@@ -1,0 +1,81 @@
+{
+  "name": "lanbridge",
+  "version": "1.0.0",
+  "description": "P2P 기반 로컬 네트워크 자료 공유 앱",
+  "main": "main.js",
+  "author": "LANBridge Team",
+  "license": "MIT",
+  "homepage": "./",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --debug",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder -mwl",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "web": "http-server -p 8000",
+    "cap:ios": "capacitor open ios",
+    "cap:android": "capacitor open android",
+    "build:ios": "capacitor build ios",
+    "build:android": "capacitor build android",
+    "cap:add": "capacitor add ios && capacitor add android",
+    "cap:sync": "capacitor sync"
+  },
+  "dependencies": {
+    "@capacitor/app": "latest",
+    "@capacitor/core": "latest",
+    "@capacitor/network": "latest",
+    "@capacitor/preferences": "latest",
+    "selfsigned": "^2.4.1",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "http-server": "latest"
+  },
+  "build": {
+    "appId": "com.lanbridge.app",
+    "productName": "LANBridge",
+    "files": [
+      "main.js",
+      "preload.js",
+      "launcher.js",
+      "signal-server.js",
+      "app.js",
+      "webrtc.js",
+      "protocol.js",
+      "index.html",
+      "launcher.html",
+      "style.css",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility"
+    }
+  }
+}

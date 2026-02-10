@@ -1,0 +1,27 @@
+{
+  "appId": "com.lanbridge.app",
+  "appName": "LANBridge",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "App": {
+      "hideLaunchSplash": true
+    }
+  },
+  "server": {
+    "url": "http://localhost:8000",
+    "cleartext": true,
+    "allowNavigation": [
+      "localhost",
+      "*.local",
+      "192.168.*",
+      "10.*"
+    ]
+  },
+  "ios": {
+    "contentInset": "automatic"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

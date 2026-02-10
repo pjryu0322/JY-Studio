@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0" />
+  <meta name="theme-color" content="#667eea" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LANBridge" />
+  <meta name="theme-color" content="#667eea" />
+  <meta name="description" content="P2P 기반 로컬 네트워크 자료 공유 앱" />
+  <title>LANBridge</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #222;
+      position: fixed;
+      overflow: hidden;
+      touch-action: manipulation;
+      -webkit-user-select: none;
+        -webkit-user-select: none;
+        user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    body {
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+      background: #f5f7fb;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* Titlebar (Electron) */
+    .titlebar {
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      user-select: none;
+      -webkit-app-region: drag;
+      flex-shrink: 0;
+    }
+
+    .titlebar-title {
+      font-size: 16px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .titlebar-controls {
+      display: flex;
+      gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    .titlebar-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: transparent;
+      color: white;
+      cursor: pointer;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+
+    .titlebar-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .titlebar-btn.close:hover {
+      background: #ff5252;
+    }
+
+    /* Content */
+    .content {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      min-height: 0;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 640px;
+      background: white;
+      border-radius: 14px;
+      padding: 28px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      max-height: 90vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        border-radius: 8px;
+        padding: 20px;
+        max-height: none;
+      }
+
+      h1 { font-size: 20px; }
+
+      .section-title { font-size: 12px; }
+
+      .btn {
+        padding: 10px 14px;
+        font-size: 13px;
+      }
+
+      .row { gap: 8px; }
+
+      .addr { font-size: 11px; padding: 10px; }
+
+      .muted { font-size: 11px; }
+
+      /* Safe area for mobile */
+      body {
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle { color: #666; margin-bottom: 20px; font-size: 14px; }
+
+    .section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #667eea;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    .row { 
+      display: flex; 
+      gap: 12px; 
+      margin-bottom: 12px; 
+      flex-wrap: wrap; 
+    }
+
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 11px 18px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-start { 
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+    }
+
+    .btn-stop { 
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+    }
+
+    .btn-refresh { 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      background: linear-gradient(135deg, #eef2ff 0%, #f3e8ff 100%);
+      border-left: 4px solid #667eea;
+    }
+
+    .status.running {
+      background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%);
+      border-left-color: #10b981;
+    }
+
+    .status.stopped {
+      background: linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%);
+      border-left-color: #ef4444;
+    }
+
+    .addr {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 12px;
+      font-weight: 500;
+      word-break: break-all;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 8px;
+    }
+
+    .addr:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .addr-label {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .info {
+      background: #f8fafc;
+      border-left: 3px solid #667eea;
+      border-radius: 4px;
+      padding: 12px 14px;
+      font-size: 12px;
+      color: #475569;
+      margin-top: 16px;
+    }
+
+    .muted { color: #999; font-size: 12px; margin-top: 8px; }
+
+    .icon { display: inline-block; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+    <!-- Titlebar (Electron only) -->
+    <div class="titlebar" id="titlebar" style="display: none;">
+      <div class="titlebar-title">LANBridge</div>
+      <div class="titlebar-controls">
+        <button class="titlebar-btn" onclick="window.electronAPI?.minimize()" title="최소화">−</button>
+        <button class="titlebar-btn" onclick="window.electronAPI?.maximize()" title="최대화">◻</button>
+        <button class="titlebar-btn close" onclick="window.electronAPI?.close()" title="닫기">✕</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <div class="card">
+        <h1>LANBridge</h1>
+        <p class="subtitle">로컬 네트워크에서 P2P 자료 공유</p>
+
+        <div class="section">
+          <div class="section-title">제어</div>
+          <div class="row">
+            <button class="btn btn-start" onclick="startServer()">
+              <span class="icon">▶</span>서버 시작
+            </button>
+            <button class="btn btn-stop" onclick="stopServer()">
+              <span class="icon">⏹</span>서버 정지
+            </button>
+            <button class="btn btn-refresh" onclick="refreshStatus()">
+              <span class="icon">🔄</span>상태 확인
+            </button>
+            <button class="btn btn-refresh" onclick="openHostPage()">
+              <span class="icon">↩</span>공유자 화면
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">상태</div>
+          <div id="status" class="status">상태 확인 중...</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">접속 주소</div>
+          <div class="addr-label">로컬 네트워크</div>
+          <div class="addr" id="lanUrl" onclick="copyToClipboard(this)">
+            -
+          </div>
+          <div class="addr-label">로컬호스트</div>
+          <div class="addr" id="localUrl" onclick="copyToClipboard(this)">
+            -
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">공유자/참여자 페이지</div>
+          <div class="addr-label">로컬 네트워크</div>
+          <div class="addr" id="appLanUrl" onclick="copyToClipboard(this)">
+            -
+          </div>
+          <div class="addr-label">로컬호스트</div>
+          <div class="addr" id="appLocalUrl" onclick="copyToClipboard(this)">
+            -
+          </div>
+        </div>
+
+        <div class="info">
+          <span class="icon">ℹ️</span>
+          같은 WiFi에 연결된 참여자는 <strong>로컬 네트워크</strong> 주소로 접속하세요.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 플랫폼 감지
+    const platform = (() => {
+      // Capacitor (iOS/Android)
+      if (window.Capacitor) {
+        return 'capacitor';
+      }
+      // Electron
+      if (typeof window !== 'undefined' && typeof window.process === 'object' && window.process.type === 'renderer') {
+        return 'electron';
+      }
+      if (typeof navigator !== 'undefined' && typeof navigator.userAgentData !== 'undefined') {
+        return 'web';
+      }
+      if (/Electron/i.test(navigator.userAgent)) {
+        return 'electron';
+      }
+      return 'web';
+    })();
+
+    console.log('[LANBridge] Platform:', platform);
+
+    // Electron titlebar 표시
+    if (platform === 'electron' && window.electronAPI) {
+      document.getElementById('titlebar').style.display = 'flex';
+    }
+
+    // Capacitor 초기화
+    if (platform === 'capacitor' && window.Capacitor) {
+      (async () => {
+        const { App } = window.Capacitor.Plugins;
+        if (App) {
+          // iOS safe area 처리
+          document.body.style.paddingTop = 'env(safe-area-inset-top)';
+          document.body.style.paddingBottom = 'env(safe-area-inset-bottom)';
+          document.body.style.paddingLeft = 'env(safe-area-inset-left)';
+          document.body.style.paddingRight = 'env(safe-area-inset-right)';
+        }
+      })();
+    }
+
+    // API 호스트 결정 (현재 접속 주소 사용)
+    const getApiHost = () => {
+      return `${window.location.protocol}//${window.location.host}`;
+    };
+
+    const apiHost = getApiHost();
+    console.log('[LANBridge] API Host:', apiHost);
+
+    async function refreshStatus() {
+      try {
+        const statusEl = document.getElementById('status');
+        statusEl.className = 'status';
+        statusEl.textContent = '상태 확인 중...';
+
+        const statusUrl = `${apiHost}/api/status`;
+
+        const res = await fetch(statusUrl, { 
+          mode: 'cors',
+          timeout: 5000 
+        });
+        const data = await res.json();
+
+        const localEl = document.getElementById('localUrl');
+        const lanEl = document.getElementById('lanUrl');
+        const appLocalEl = document.getElementById('appLocalUrl');
+        const appLanEl = document.getElementById('appLanUrl');
+
+        if (data.running) {
+          statusEl.className = 'status running';
+          statusEl.textContent = '✅ 서버 실행 중';
+        } else {
+          statusEl.className = 'status stopped';
+          statusEl.textContent = '🔴 서버 정지됨';
+        }
+
+        localEl.textContent = data.localUrl || `localhost:${window.location.port}`;
+        lanEl.textContent = data.lanUrl || `localhost:${window.location.port}`;
+
+        let lanHost = window.location.hostname;
+        try {
+          if (data.lanUrl) {
+            const parts = data.lanUrl.split(':');
+            lanHost = parts[0];
+          }
+        } catch (_) {
+          // Fallback to current hostname
+        }
+
+        const currentPort = window.location.port || '3000';
+        appLocalEl.textContent = `${window.location.protocol}//localhost:${currentPort}/`;
+        appLanEl.textContent = `${window.location.protocol}//${lanHost}:${currentPort}/`;
+      } catch (err) {
+        console.error('Status check failed:', err);
+        const statusEl = document.getElementById('status');
+        statusEl.className = 'status stopped';
+        statusEl.textContent = '🔴 연결 실패: ' + (platform === 'capacitor' ? '같은 WiFi에 연결된 공유자 PC가 필요합니다' : 'Launcher를 실행하세요');
+      }
+    }
+
+    async function startServer() {
+      try {
+        const startUrl = `${apiHost}/api/start`;
+
+        const res = await fetch(startUrl, { 
+          method: 'POST',
+          mode: 'cors'
+        });
+        if (res.ok) {
+          setTimeout(() => refreshStatus(), 500);
+        } else {
+          alert('서버 시작 실패. Launcher 상태를 확인하세요.');
+        }
+      } catch (err) {
+        console.error('Start failed:', err);
+        alert('서버 시작 실패. 공유자 PC의 Launcher를 확인하세요.');
+      }
+    }
+
+    async function stopServer() {
+      try {
+        const stopUrl = `${apiHost}/api/stop`;
+
+        const res = await fetch(stopUrl, { 
+          method: 'POST',
+          mode: 'cors'
+        });
+        if (!res.ok) {
+          alert('서버 정지 실패. Launcher 상태를 확인하세요.');
+          return;
+        }
+
+        const data = await res.json();
+        if (data.success || data.stopped) {
+          setTimeout(() => refreshStatus(), 500);
+          return;
+        }
+
+        const statusEl = document.getElementById('status');
+        statusEl.className = 'status stopped';
+        if (data.reason === 'not-running') {
+          statusEl.textContent = '⚠️ Launcher가 관리 중인 서버가 없습니다.';
+        } else {
+          statusEl.textContent = '⚠️ 서버 정지 요청이 완료되지 않았습니다.';
+        }
+      } catch (err) {
+        console.error('Stop failed:', err);
+      }
+    }
+
+    function openHostPage() {
+      window.location.href = `${window.location.protocol}//${window.location.host}/?role=host`;
+    }
+
+    function copyToClipboard(el) {
+      const text = el.textContent;
+      if (text && text !== '-') {
+        navigator.clipboard.writeText(text).then(() => {
+          const originalText = el.textContent;
+          el.textContent = '✓ 복사됨!';
+          setTimeout(() => {
+            el.textContent = originalText;
+          }, 2000);
+        }).catch(() => {
+          alert('복사 실패: ' + text);
+        });
+      }
+    }
+
+    // 초기 상태 확인
+    refreshStatus();
+    
+    // 5초마다 상태 갱신
+    setInterval(refreshStatus, 5000);
+  </script>
+</body>
+</html>
