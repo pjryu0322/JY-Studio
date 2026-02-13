@@ -1,0 +1,23 @@
+{
+  "name": "krx-monitor",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace apps/api",
+    "dev:web": "npm run dev --workspace apps/web",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "prisma:generate": "npx prisma generate --schema apps/api/prisma/schema.prisma",
+    "prisma:migrate": "npx prisma migrate dev --schema apps/api/prisma/schema.prisma --name init",
+    "seed": "node apps/api/prisma/seed.js",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
