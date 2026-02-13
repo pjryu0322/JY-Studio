@@ -42,6 +42,9 @@ KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입�
 7. API + Web 동시 실행
    - `npm run dev`
 
+## Monitor 메모
+- 다음 단계 구현 타이틀: split view + rotation + lock + pin
+
 ## 핵심 동작 시나리오
 1. `/watchlist/editor` 접속
 2. 세트 생성 (예: `나의관심세트`)
