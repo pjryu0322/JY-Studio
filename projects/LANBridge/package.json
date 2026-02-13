@@ -22,7 +22,11 @@
     "build:ios": "capacitor build ios",
     "build:android": "capacitor build android",
     "cap:add": "capacitor add ios && capacitor add android",
-    "cap:sync": "capacitor sync"
+    "cap:sync": "capacitor sync",
+    "test": "node --test",
+    "lint": "node --check app.js && node --check config.js && node --check init.js && node --check launcher.js && node --check main.js && node --check mobile-build.js && node --check preload.js && node --check protocol.js && node --check signal-server.js && node --check signaling.js && node --check webrtc.js && node --check build.js && node --check generate-cert.js && node --check bin-launcher.js",
+    "format": "npx prettier --write \"*.{js,json,md,html,css}\"",
+    "cert:generate": "node generate-cert.js"
   },
   "dependencies": {
     "@capacitor/app": "latest",
