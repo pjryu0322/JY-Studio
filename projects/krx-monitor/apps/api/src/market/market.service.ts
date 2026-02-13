@@ -1,25 +1,23 @@
 import { Injectable } from '@nestjs/common';
 
-type Candle = {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
+type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
+
+type SnapshotState = {
+  last: number;
+  prevClose: number;
 };
 
 @Injectable()
 export class MarketService {
-  private hashCode(input: string): number {
-    let hash = 0;
-    for (let i = 0; i < input.length; i += 1) {
-      hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
-    }
-    return hash;
+  private state = new Map<string, SnapshotState>();
+
+  private hash(input: string): number {
+    let h = 0;
+    for (let i = 0; i < input.length; i += 1) h = (h * 31 + input.charCodeAt(i)) >>> 0;
+    return h;
   }
 
-  private seeded(seed: number): () => number {
+  private rand(seed: number): () => number {
     let s = seed || 1;
     return () => {
       s = (s * 1664525 + 1013904223) % 4294967296;
@@ -27,58 +25,72 @@ export class MarketService {
     };
   }
 
-  generateCandles(code: string, tf: '1d' | '5m' = '5m', count = 120): Candle[] {
-    const stepSec = tf === '1d' ? 86400 : 300;
-    const seed = this.hashCode(`${code}:${tf}:${count}`);
-    const random = this.seeded(seed);
+  private codeName(code: string) {
+    return `Mock-${code}`;
+  }
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const base = 10000 + (seed % 50000);
-    let prev = base;
+  getSnapshot(codes: string[]) {
+    return codes.filter(Boolean).map((code) => {
+      const seed = this.hash(code);
+      const random = this.rand(seed + Math.floor(Date.now() / 2000));
+      const existing = this.state.get(code);
+      const base = 8000 + (seed % 90000);
+      const prevClose = existing?.prevClose ?? base;
+      const oldLast = existing?.last ?? base;
+      const nextLast = Math.max(1000, oldLast + (random() - 0.5) * Math.max(30, oldLast * 0.003));
+      const open = prevClose + (random() - 0.5) * Math.max(20, prevClose * 0.002);
+      const high = Math.max(nextLast, open) + random() * 45;
+      const low = Math.min(nextLast, open) - random() * 45;
+      const volume = Math.floor(100000 + random() * 7000000);
+      const value = Math.floor(volume * nextLast);
+      const change = nextLast - prevClose;
+      const changePct = (change / prevClose) * 100;
 
+      this.state.set(code, { last: nextLast, prevClose });
+
+      return {
+        code,
+        name: this.codeName(code),
+        last: Math.round(nextLast),
+        prevClose: Math.round(prevClose),
+        change: Math.round(change),
+        changePct: Number(changePct.toFixed(2)),
+        open: Math.round(open),
+        high: Math.round(high),
+        low: Math.round(low),
+        volume,
+        value,
+        time: new Date().toISOString(),
+      };
+    });
+  }
+
+  getCandles(code: string, tf: '1d' | '5m', count: number): Candle[] {
+    const step = tf === '1d' ? 86400 : 300;
+    const now = Math.floor(Date.now() / 1000);
+    const seed = this.hash(`${code}:${tf}`);
+    const random = this.rand(seed);
+    let price = 9000 + (seed % 70000);
     const candles: Candle[] = [];
 
     for (let i = count - 1; i >= 0; i -= 1) {
-      const drift = (random() - 0.48) * (tf === '1d' ? 500 : 120);
-      const open = prev;
-      const close = Math.max(500, open + drift);
-      const high = Math.max(open, close) + random() * 80;
-      const low = Math.min(open, close) - random() * 80;
-      const volume = Math.floor(10000 + random() * 300000);
-
+      const open = price;
+      const drift = (random() - 0.48) * (tf === '1d' ? 380 : 90);
+      const close = Math.max(1000, open + drift);
+      const high = Math.max(open, close) + random() * 60;
+      const low = Math.min(open, close) - random() * 60;
+      const volume = Math.floor(50000 + random() * 2000000);
       candles.push({
-        time: nowSec - i * stepSec,
+        time: now - i * step,
         open: Number(open.toFixed(2)),
         high: Number(high.toFixed(2)),
         low: Number(low.toFixed(2)),
         close: Number(close.toFixed(2)),
         volume,
       });
-
-      prev = close;
+      price = close;
     }
 
     return candles;
-  }
-
-  getSnapshot(codes: string[]) {
-    return codes
-      .filter((code) => code.trim().length > 0)
-      .map((code) => {
-        const candles = this.generateCandles(code, '5m', 2);
-        const prev = candles[0]?.close ?? 0;
-        const last = candles[1]?.close ?? prev;
-        const change = last - prev;
-        const changePct = prev === 0 ? 0 : (change / prev) * 100;
-
-        return {
-          code,
-          price: Number(last.toFixed(2)),
-          change: Number(change.toFixed(2)),
-          changePct: Number(changePct.toFixed(2)),
-          volume: candles[1]?.volume ?? 0,
-          ts: new Date().toISOString(),
-        };
-      });
   }
 }

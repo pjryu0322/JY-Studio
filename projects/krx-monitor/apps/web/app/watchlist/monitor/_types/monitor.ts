@@ -6,32 +6,21 @@ export type WatchItem = { id: number; group_id: number; code: string; sort_order
 
 export type SnapshotItem = {
   code: string;
-  price: number;
+  name: string;
+  last: number;
+  prevClose: number;
   change: number;
   changePct: number;
-  volume: number;
-  ts: string;
-};
-
-export type NewsItem = {
-  id: string;
-  code: string;
-  title: string;
-  summary: string;
-  publishedAt: string;
-};
-
-export type Memo = {
-  code: string;
-  content: string;
-  updated_at: string | null;
-};
-
-export type Candle = {
-  time: number;
   open: number;
   high: number;
   low: number;
-  close: number;
   volume: number;
+  value: number;
+  time: string;
 };
+
+export type Candle = { time: number; open: number; high: number; low: number; close: number; volume: number };
+
+export type NewsItem = { id: string; ts: string; title: string; source: string; category: string };
+
+export type Memo = { code: string; content: string; updated_at: string | null };
