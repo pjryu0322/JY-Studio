@@ -25,6 +25,14 @@ KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입�
   - `/api/v1/watch/groups/:groupId/items`
   - `POST /api/v1/watch/groups/:groupId/items/bulk`
   - `POST /api/v1/watch/groups/:groupId/items/reorder`
+- Market(Mock):
+  - `GET /api/v1/market/snapshot?codes=AAA,BBB`
+  - `GET /api/v1/market/candles?code=AAA&tf=1d|5m&count=120`
+- News(Mock):
+  - `GET /api/v1/news?code=AAA&limit=5`
+- Memo:
+  - `GET /api/v1/stocks/:code/memo`
+  - `PUT /api/v1/stocks/:code/memo`
 
 ## 로컬 실행 순서
 1. 환경 변수 파일 생성
@@ -42,16 +50,14 @@ KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입�
 7. API + Web 동시 실행
    - `npm run dev`
 
-## Monitor 메모
-- 다음 단계 구현 타이틀: split view + rotation + lock + pin
-
 ## 핵심 동작 시나리오
-1. `/watchlist/editor` 접속
-2. 세트 생성 (예: `나의관심세트`)
-3. 그룹 생성 (예: `단기모니터`)
-4. 종목 검색 후 5개 추가
-5. 아이템 ↑/↓ 버튼으로 정렬 순서 변경
-6. 중요 종목 PIN 토글로 고정
+1. `/watchlist/editor` 접속 후 세트/그룹 생성
+2. 그룹에 종목 5개 이상 추가, 일부는 PIN 설정
+3. `/watchlist/monitor` 접속 후 동일 그룹 선택
+4. ▶ 클릭 시 5초마다 다음 종목으로 우측 차트/탭이 변경
+5. 스크롤/탭변경/메모입력/차트드래그 시 자동 일시정지(PAUSED_INTERACTION)
+6. 재개는 ▶ 클릭으로만 가능
+7. LOCK ON 시 차트는 lockCode 고정, 우하단 탭은 activeCode 기준으로 계속 변경
 
 ## 주요 스크립트 (루트)
 - `npm run dev`

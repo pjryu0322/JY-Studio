@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -62,9 +61,7 @@ export class WatchService {
       where: { id: groupId, set_id: setId },
       data: {
         ...(payload.name !== undefined ? { name: payload.name } : {}),
-        ...(payload.rotationIntervalSec !== undefined
-          ? { rotation_interval_sec: payload.rotationIntervalSec }
-          : {}),
+        ...(payload.rotationIntervalSec !== undefined ? { rotation_interval_sec: payload.rotationIntervalSec } : {}),
       },
     });
   }
@@ -117,7 +114,7 @@ export class WatchService {
       select: { code: true },
     });
 
-    const existingCodes = new Set(existing.map((item) => item.code));
+    const existingCodes = new Set(existing.map((item: { code: string }) => item.code));
     const filtered = [...new Set(codes)].filter((code) => !existingCodes.has(code));
 
     const maxOrder =
@@ -142,7 +139,7 @@ export class WatchService {
   async reorderItems(groupId: number, orderedCodes: string[]) {
     const uniqueCodes = [...new Set(orderedCodes)];
     const existing = await this.prisma.watch_item.findMany({ where: { group_id: groupId } });
-    const codeSet = new Set(existing.map((item) => item.code));
+    const codeSet = new Set(existing.map((item: { code: string }) => item.code));
 
     for (const code of uniqueCodes) {
       if (!codeSet.has(code)) {
@@ -163,7 +160,7 @@ export class WatchService {
   }
 
   private handleDuplicateError(error: unknown): never {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === 'P2002') {
       throw new BadRequestException('Duplicate code in same group is not allowed');
     }
 

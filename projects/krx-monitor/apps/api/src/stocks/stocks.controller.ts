@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Query } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('api/v1/stocks')
@@ -20,6 +20,21 @@ export class StocksController {
       take: 20,
       orderBy: [{ code: 'asc' }],
       select: { code: true, name: true, market: true },
+    });
+  }
+
+  @Get(':code/memo')
+  async getMemo(@Param('code') code: string) {
+    const memo = await this.prisma.stock_memo.findUnique({ where: { code } });
+    return memo ?? { code, content: '', updated_at: null };
+  }
+
+  @Put(':code/memo')
+  async putMemo(@Param('code') code: string, @Body() body: { content: string }) {
+    return this.prisma.stock_memo.upsert({
+      where: { code },
+      create: { code, content: body.content ?? '' },
+      update: { content: body.content ?? '' },
     });
   }
 }

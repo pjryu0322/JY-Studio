@@ -34,6 +34,9 @@ export default async function HomePage() {
       <p>
         <Link href="/watchlist/editor">Watchlist Editor로 이동</Link>
       </p>
+      <p>
+        <Link href="/watchlist/monitor">Watchlist Monitor로 이동</Link>
+      </p>
     </main>
   );
 }
