@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 type HealthResponse = {
   ok: boolean;
   ts: string;
@@ -29,6 +31,9 @@ export default async function HomePage() {
       <h1>KRX Monitor Web</h1>
       <p>/api/v1/health 호출 결과:</p>
       <pre>{JSON.stringify(health, null, 2)}</pre>
+      <p>
+        <Link href="/watchlist/editor">Watchlist Editor로 이동</Link>
+      </p>
     </main>
   );
 }

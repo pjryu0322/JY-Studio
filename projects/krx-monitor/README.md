@@ -16,9 +16,15 @@ KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입�
 - `apps/api/prisma`: Prisma schema/migrate/seed
 - `docker-compose.yml`: Postgres
 
-## 필수 엔드포인트
-- API: `GET /api/v1/health` → `{ ok: true, ts: string }`
-- Web: 홈 화면에서 API health 결과 출력
+## API 요약
+- Health: `GET /api/v1/health`
+- 종목 검색: `GET /api/v1/stocks/search?q=`
+- Watch CRUD:
+  - `/api/v1/watch/sets`
+  - `/api/v1/watch/sets/:setId/groups`
+  - `/api/v1/watch/groups/:groupId/items`
+  - `POST /api/v1/watch/groups/:groupId/items/bulk`
+  - `POST /api/v1/watch/groups/:groupId/items/reorder`
 
 ## 로컬 실행 순서
 1. 환경 변수 파일 생성
@@ -35,6 +41,14 @@ KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입�
    - `npm run seed`
 7. API + Web 동시 실행
    - `npm run dev`
+
+## 핵심 동작 시나리오
+1. `/watchlist/editor` 접속
+2. 세트 생성 (예: `나의관심세트`)
+3. 그룹 생성 (예: `단기모니터`)
+4. 종목 검색 후 5개 추가
+5. 아이템 ↑/↓ 버튼으로 정렬 순서 변경
+6. 중요 종목 PIN 토글로 고정
 
 ## 주요 스크립트 (루트)
 - `npm run dev`

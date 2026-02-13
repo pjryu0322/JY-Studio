@@ -32,3 +32,41 @@ model sync_run_log {
   ended_at   DateTime?
   message    String?
 }
+
+model watch_set {
+  id         Int           @id @default(autoincrement())
+  name       String
+  created_at DateTime      @default(now())
+  groups     watch_group[]
+}
+
+model watch_group {
+  id                    Int          @id @default(autoincrement())
+  set_id                Int
+  name                  String
+  rotation_interval_sec Int          @default(5)
+  created_at            DateTime     @default(now())
+  watch_set             watch_set    @relation(fields: [set_id], references: [id], onDelete: Cascade)
+  items                 watch_item[]
+
+  @@index([set_id])
+}
+
+model watch_item {
+  id         Int         @id @default(autoincrement())
+  group_id    Int
+  code       String
+  sort_order Int
+  pinned     Boolean     @default(false)
+  created_at DateTime    @default(now())
+  watch_group watch_group @relation(fields: [group_id], references: [id], onDelete: Cascade)
+
+  @@index([group_id])
+  @@unique([group_id, code])
+}
+
+model stock_memo {
+  code       String   @id
+  content    String
+  updated_at DateTime @updatedAt
+}
