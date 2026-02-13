@@ -34,6 +34,18 @@ KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입�
   - `GET /api/v1/stocks/:code/memo`
   - `PUT /api/v1/stocks/:code/memo`
 
+## 로컬 실행 5줄
+```bash
+npm install
+npm run db:up
+npm run prisma:generate
+npm run prisma:migrate
+npm run seed
+npm run dev
+# (별도 터미널)
+npm run smoke
+```
+
 ## 로컬 실행 순서
 1. 환경 변수 파일 생성
    - `cp .env.example .env`
