@@ -14,12 +14,11 @@ const url = require('url');
 const { spawn } = require('child_process');
 const os = require('os');
 
-const LAUNCHER_PORT = 9100;
-const SIGNAL_PORT = 3000;
+let LAUNCHER_PORT = 3001;
+let SIGNAL_PORT = 3001;
 const USE_HTTPS = true; // Launcher는 항상 HTTPS
 
 let signalProcess = null;
-
 function getLanIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -44,24 +43,46 @@ function serveFile(res, filePath, contentType, encoding = 'utf8') {
   });
 }
 
-function startSignalServer() {
+function isPortAvailable(port, callback) {
+  const net = require('net');
+  const tester = net.createServer()
+    .once('error', err => {
+      if (err.code === 'EADDRINUSE') callback(false);
+      else callback(false);
+    })
+    .once('listening', () => {
+      tester.close();
+      callback(true);
+    })
+    .listen(port);
+}
+
+function startSignalServer(autoRetry = true) {
   if (signalProcess && !signalProcess.killed) {
     return { started: false, reason: 'already-running' };
   }
 
-  const nodePath = process.execPath || 'C:\\Program Files\\nodejs\\node.exe';
+  const nodePath = process.execPath || 'C:\Program Files\nodejs\node.exe';
   const scriptPath = path.join(__dirname, 'signal-server.js');
 
-  signalProcess = spawn(nodePath, [scriptPath], {
-    cwd: __dirname,
-    stdio: ['ignore', 'inherit', 'inherit'],
-    env: { ...process.env, PORT: SIGNAL_PORT }
+  isPortAvailable(SIGNAL_PORT, available => {
+    if (!available && autoRetry) {
+      console.log(`[Launcher] 포트 ${SIGNAL_PORT} 사용 중 → 다음 포트로 재시도`);
+      SIGNAL_PORT++;
+      LAUNCHER_PORT = SIGNAL_PORT;
+      startSignalServer(false); // 재귀 호출, autoRetry는 1회만
+      return;
+    }
+    signalProcess = spawn(nodePath, [scriptPath], {
+      cwd: __dirname,
+      stdio: ['ignore', 'inherit', 'inherit'],
+      env: { ...process.env, PORT: SIGNAL_PORT }
+    });
+    signalProcess.on('close', () => {
+      signalProcess = null;
+    });
+    console.log(`[Launcher] Signal Server started on port ${SIGNAL_PORT}`);
   });
-
-  signalProcess.on('close', () => {
-    signalProcess = null;
-  });
-
   return { started: true };
 }
 
@@ -128,7 +149,7 @@ const server = https.createServer({
   key: fs.readFileSync(path.join(__dirname, 'certs/server.key')),
   cert: fs.readFileSync(path.join(__dirname, 'certs/server.crt'))
 }, (req, res) => {
-  const parsedUrl = url.parse(req.url, true);
+  const parsedUrl = new URL(req.url, `https://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
 
   // CORS 헤더 (모바일 앱에서 접속 가능하도록)
@@ -256,6 +277,7 @@ server.listen(LAUNCHER_PORT, '0.0.0.0', () => {
 });
 
 process.on('SIGINT', () => {
-  stopSignalServer();
-  server.close(() => process.exit(0));
+  stopSignalServer(() => {
+    server.close(() => process.exit(0));
+  });
 });

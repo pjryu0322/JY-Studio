@@ -80,7 +80,7 @@ async function requestHandler(req, res) {
     return;
   }
 
-  const parsedUrl = url.parse(req.url, true);
+  const parsedUrl = new URL(req.url, `https://${req.headers.host}`);
   const pathname = parsedUrl.pathname;
 
   console.log(`[Signal] ${req.method} ${pathname}`);
