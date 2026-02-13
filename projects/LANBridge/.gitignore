@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+/dist/
+/out/
+/build/
+/release/
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.zip
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local certificates
+certs/*.key
+certs/*.crt
+
+# OS files
+.DS_Store
+Thumbs.db
