@@ -1,0 +1,19 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 24px;
+  background: #fafafa;
+  color: #1f2937;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+pre {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+}
