@@ -1,0 +1,19 @@
+This repository is a monorepo called JY-Studio.
+
+Structure rules:
+- All runnable applications must be inside /projects. Do not add runnable app code at repo root.
+- Each project must be self-contained.
+- Shared code must go into /libs; avoid copy-pasting across projects.
+- No cross-project hard dependency without clear interface.
+- Use modular architecture.
+- Keep folder naming consistent (kebab-case).
+- Prefer clarity over complexity.
+- Generate minimal but executable code.
+- Always explain structural changes before refactoring.
+- Avoid breaking existing running apps.
+
+Development philosophy:
+- Codex generates scaffolding.
+- Cursor refines and improves code.
+- Keep commits small and atomic.
+- Prefer small PRs: one logical change per PR.

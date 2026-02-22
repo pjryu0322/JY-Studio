@@ -1,6 +1,41 @@
 # LANBridge
 
+## Overview
+
 로컬 네트워크에서 WebRTC 기반으로 채팅/파일 공유를 수행하는 Electron 앱입니다.
+
+## Prerequisites
+
+- Node.js (LTS 권장)
+- npm
+
+## Local run
+
+```bash
+npm install
+npm run dev
+```
+
+- 일반 실행: `npm start`
+- 웹 확인용(정적): `npm run web`
+
+## Build
+
+```bash
+npm run build
+```
+
+- 플랫폼별: `npm run build:win`, `npm run build:mac`, `npm run build:linux`
+
+## Test
+
+```bash
+npm run test
+npm run lint
+npm run format
+```
+
+---
 
 ## 프로젝트 구조 요약
 
@@ -13,32 +48,6 @@ projects/LANBridge/
 ├─ index.html / style.css        # 앱 UI
 ├─ package.json                  # 스크립트/의존성
 └─ README.md
-```
-
-## 실행
-
-```bash
-npm install
-npm run dev
-```
-
-- 일반 실행: `npm start`
-- 웹 확인용(정적): `npm run web`
-
-## 빌드
-
-```bash
-npm run build
-```
-
-- 플랫폼별: `npm run build:win`, `npm run build:mac`, `npm run build:linux`
-
-## 품질 스크립트
-
-```bash
-npm run test
-npm run lint
-npm run format
 ```
 
 ## 참고

@@ -1,6 +1,39 @@
 # krx-monitor
 
-KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입니다.
+## Overview
+
+KRX 모니터 개인용 MVP를 위한 **npm workspaces 기반 모노레포**입니다. 관심그룹/관심종목 관리, lightweight-charts 기반 차트, 5초 로테이션 + LOCK/PIN.
+
+## Prerequisites
+
+- Node.js (LTS)
+- Docker (Postgres)
+- npm
+
+## Local run
+
+```bash
+cp .env.example .env
+npm install
+npm run db:up
+npm run prisma:generate
+npm run prisma:migrate
+npm run seed
+npm run dev
+```
+
+## Build
+
+- API: `npm run build --workspace apps/api`
+- Web: `npm run build --workspace apps/web`
+
+## Test
+
+```bash
+npm run smoke
+```
+
+---
 
 ## 목표
 - 관심그룹/관심종목 관리 + 모니터
