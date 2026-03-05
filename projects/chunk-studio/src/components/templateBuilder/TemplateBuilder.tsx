@@ -16,9 +16,11 @@ import TemplateTree from "./TemplateTree";
 import TemplateDiffViewer from "./TemplateDiffViewer";
 import TemplateOutline from "./TemplateOutline";
 import TemplateWarnings from "./TemplateWarnings";
+import TemplateDriftViewer from "./TemplateDriftViewer";
 import PipelineBar from "./PipelineBar";
 import { buildTemplateOutline } from "@/lib/template/outlineBuilder";
 import { validateTemplateDraft } from "@/lib/template/validateTemplateDraft";
+import type { DriftItem, DriftResult } from "@/lib/templateDrift/driftTypes";
 
 const saveSchema = z.object({
   family: z.string().min(1),
@@ -139,7 +141,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
   const [allowLowConfidenceAuto, setAllowLowConfidenceAuto] = useState(false);
   const [autoBanner, setAutoBanner] = useState<string | null>(null);
   const [rightPanelTab, setRightPanelTab] = useState<
-    "edit" | "outline" | "warnings" | "diff" | "graph"
+    "edit" | "outline" | "warnings" | "drift" | "diff" | "graph"
   >("edit");
   const [graphSummary, setGraphSummary] = useState<{
     nodes: number;
@@ -149,6 +151,10 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     diffs: string[];
   } | null>(null);
   const [lastAutoDetectTime, setLastAutoDetectTime] = useState<number | null>(null);
+  const [driftResult, setDriftResult] = useState<DriftResult | null>(null);
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [driftMessage, setDriftMessage] = useState<string | null>(null);
+  const [allowHighDriftAuto, setAllowHighDriftAuto] = useState(false);
   const [templateFamilyInput, setTemplateFamilyInput] = useState(family);
   const [templateList, setTemplateList] = useState<TemplateListItem[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -634,7 +640,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     }
     const payload = (await res.json()) as TemplateAutoDetectResponse;
     setAutoDraft(payload);
-    setLastAutoDetectTime(Date.now());
+    setLastAutoDetectTime((prev) => (prev ?? 0) + 1);
     if (payload.docType) setDocType(payload.docType);
   };
 
@@ -659,6 +665,21 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
   };
 
   const handleOneClickAutoApply = async () => {
+    const driftTemplateId = saved?.templateId || selectedTemplateId.trim();
+    const driftTemplateVersion = saved?.version || selectedVersion.trim();
+    if (driftTemplateId && driftTemplateVersion) {
+      const drift = await runDriftCheck({ silent: true });
+      if (drift && (drift.severity === "high" || drift.score >= 0.7)) {
+        if (!(showDebug && allowHighDriftAuto)) {
+          setAutoBanner(
+            "템플릿과 문서 구조 차이가 큽니다. 먼저 Drift 탭에서 확인 후 적용하세요."
+          );
+          setRightPanelTab("drift");
+          return;
+        }
+      }
+    }
+
     const res = await fetch(`/api/templates/auto-detect${showDebug ? "?debug=1" : ""}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -670,7 +691,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     }
     const payload = (await res.json()) as TemplateAutoDetectResponse;
     setAutoDraft(payload);
-    setLastAutoDetectTime(Date.now());
+    setLastAutoDetectTime((prev) => (prev ?? 0) + 1);
     if (payload.docType) setDocType(payload.docType);
 
     if (payload.confidence < 0.65 && !allowLowConfidenceAuto) {
@@ -701,6 +722,57 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     });
     await runDraftPreview(payload);
     setAutoBanner("자동 적용 완료 — 필요 시 드래그로 수정하세요.");
+  };
+
+  const runDriftCheck = async (opts?: { silent?: boolean }): Promise<DriftResult | null> => {
+    const templateId = saved?.templateId || selectedTemplateId.trim();
+    const version = saved?.version || selectedVersion.trim();
+    const targetFamily = templateFamilyInput.trim() || family;
+    if (!templateId || !version) {
+      if (!opts?.silent) {
+        setDriftMessage("드리프트 검사를 위해 templateId/version이 필요합니다.");
+      }
+      return null;
+    }
+    setDriftLoading(true);
+    if (!opts?.silent) {
+      setDriftMessage(null);
+    }
+    const res = await fetch("/api/templates/drift", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        family: targetFamily,
+        templateId,
+        version,
+        docId: jobId,
+        options: { debug: showDebug },
+      }),
+    });
+    setDriftLoading(false);
+    if (!res.ok) {
+      if (!opts?.silent) {
+        setDriftMessage("드리프트 검사 실패");
+      }
+      return null;
+    }
+    const payload = (await res.json()) as {
+      drift?: DriftResult;
+      autoDetect?: { confidence?: number; docType?: string };
+    };
+    if (!payload.drift) {
+      if (!opts?.silent) {
+        setDriftMessage("드리프트 응답이 비어 있습니다.");
+      }
+      return null;
+    }
+    setDriftResult(payload.drift);
+    if (!opts?.silent) {
+      setDriftMessage(
+        `검출 docType=${payload.autoDetect?.docType ?? "-"}, confidence=${payload.autoDetect?.confidence ?? "-"}`
+      );
+    }
+    return payload.drift;
   };
 
   const handleApplyAutoDraft = () => {
@@ -931,6 +1003,16 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
               낮은 신뢰도에서도 적용
             </label>
           )}
+          {showDebug && (
+            <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={allowHighDriftAuto}
+                onChange={(e) => setAllowHighDriftAuto(e.target.checked)}
+              />
+              드리프트 높아도 적용
+            </label>
+          )}
         </div>
       </header>
       <div
@@ -1023,6 +1105,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
               ["edit", "Edit"],
               ["outline", "Outline"],
               ["warnings", "Warnings"],
+              ["drift", "Drift"],
               ["diff", "Diff"],
               ["graph", "Graph"],
             ] as const).map(([id, label]) => (
@@ -1173,6 +1256,26 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
           {rightPanelTab === "outline" && <TemplateOutline outline={outlineModel} />}
           {rightPanelTab === "warnings" && (
             <TemplateWarnings validation={draftValidation} />
+          )}
+          {rightPanelTab === "drift" && (
+            <TemplateDriftViewer
+              drift={driftResult}
+              loading={driftLoading}
+              message={driftMessage}
+              onRun={() => {
+                void runDriftCheck();
+              }}
+              onItemClick={(item: DriftItem) => {
+                const target =
+                  item.ref?.sectionId ||
+                  item.ref?.fieldKey ||
+                  item.ref?.tableId ||
+                  item.ref?.repeatId;
+                if (target) {
+                  setFocusedNodeId(target);
+                }
+              }}
+            />
           )}
 
           {(rightPanelTab === "diff" || rightPanelTab === "graph") && (
