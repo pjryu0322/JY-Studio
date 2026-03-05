@@ -5,9 +5,16 @@ import type { DriftItem, DriftResult, DriftSeverity } from "@/lib/templateDrift/
 
 interface TemplateDriftViewerProps {
   drift: DriftResult | null;
+  recentItems?: Array<{
+    docId: string;
+    severity: DriftSeverity;
+    score: number;
+    updatedAt: string;
+  }>;
   loading: boolean;
   message?: string | null;
   onRun: () => void;
+  onGuideCreateVersion?: () => void;
   onItemClick?: (item: DriftItem) => void;
 }
 
@@ -25,9 +32,11 @@ function badgeStyle(severity: DriftSeverity) {
 
 export default function TemplateDriftViewer({
   drift,
+  recentItems = [],
   loading,
   message,
   onRun,
+  onGuideCreateVersion,
   onItemClick,
 }: TemplateDriftViewerProps) {
   const [activeRef, setActiveRef] = useState<string | null>(null);
@@ -78,6 +87,15 @@ export default function TemplateDriftViewer({
             added {drift.summary.added} / removed {drift.summary.removed} / modified {drift.summary.modified} /
             anchorsMissing {drift.summary.anchorsMissing} / layoutShifts {drift.summary.layoutShifts}
           </div>
+          {(drift.severity === "high" || drift.score >= 0.7) && (
+            <button
+              type="button"
+              onClick={onGuideCreateVersion}
+              style={{ fontSize: 12, padding: "6px 8px", marginBottom: 10 }}
+            >
+              이 결과로 새 버전 생성 가이드
+            </button>
+          )}
 
           {severityOrder.map((severity) => {
             const items = grouped.get(severity) ?? [];
@@ -128,6 +146,32 @@ export default function TemplateDriftViewer({
           })}
         </>
       )}
+
+      <div style={{ marginTop: 10, borderTop: "1px solid #eee", paddingTop: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+          최근 드리프트 기록
+        </div>
+        {recentItems.length === 0 ? (
+          <div style={{ fontSize: 12, color: "#666" }}>기록이 없습니다.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 6 }}>
+            {recentItems.slice(0, 8).map((item) => (
+              <div
+                key={`${item.docId}-${item.updatedAt}`}
+                style={{ border: "1px solid #eee", borderRadius: 6, padding: 8, fontSize: 12 }}
+              >
+                <div>
+                  docId: {item.docId}
+                </div>
+                <div style={{ color: "#555" }}>
+                  severity={item.severity}, score={item.score.toFixed(2)}
+                </div>
+                <div style={{ color: "#777" }}>{item.updatedAt}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -118,6 +118,13 @@ interface TemplateSchemaDTO {
   }>;
 }
 
+interface DriftHistoryItem {
+  docId: string;
+  severity: "low" | "medium" | "high";
+  score: number;
+  updatedAt: string;
+}
+
 export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps) {
   const [doc, setDoc] = useState<JobDetailDTO | null>(null);
   const [recommend, setRecommend] = useState<TemplateRecommendResponse | null>(null);
@@ -154,6 +161,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
   const [driftResult, setDriftResult] = useState<DriftResult | null>(null);
   const [driftLoading, setDriftLoading] = useState(false);
   const [driftMessage, setDriftMessage] = useState<string | null>(null);
+  const [driftHistory, setDriftHistory] = useState<DriftHistoryItem[]>([]);
   const [allowHighDriftAuto, setAllowHighDriftAuto] = useState(false);
   const [templateFamilyInput, setTemplateFamilyInput] = useState(family);
   const [templateList, setTemplateList] = useState<TemplateListItem[]>([]);
@@ -724,6 +732,25 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     setAutoBanner("자동 적용 완료 — 필요 시 드래그로 수정하세요.");
   };
 
+  const loadDriftHistory = useCallback(async () => {
+    const templateId = saved?.templateId || selectedTemplateId.trim();
+    const version = saved?.version || selectedVersion.trim();
+    const targetFamily = templateFamilyInput.trim() || family;
+    if (!templateId || !version) {
+      setDriftHistory([]);
+      return;
+    }
+    const res = await fetch(
+      `/api/templates/drift?family=${encodeURIComponent(targetFamily)}&templateId=${encodeURIComponent(templateId)}&version=${encodeURIComponent(version)}`
+    );
+    if (!res.ok) {
+      setDriftHistory([]);
+      return;
+    }
+    const payload = (await res.json()) as { items?: DriftHistoryItem[] };
+    setDriftHistory(Array.isArray(payload.items) ? payload.items : []);
+  }, [saved, selectedTemplateId, selectedVersion, templateFamilyInput, family]);
+
   const runDriftCheck = async (opts?: { silent?: boolean }): Promise<DriftResult | null> => {
     const templateId = saved?.templateId || selectedTemplateId.trim();
     const version = saved?.version || selectedVersion.trim();
@@ -767,6 +794,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
       return null;
     }
     setDriftResult(payload.drift);
+    void loadDriftHistory();
     if (!opts?.silent) {
       setDriftMessage(
         `검출 docType=${payload.autoDetect?.docType ?? "-"}, confidence=${payload.autoDetect?.confidence ?? "-"}`
@@ -1112,7 +1140,12 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
               <button
                 key={id}
                 type="button"
-                onClick={() => setRightPanelTab(id)}
+                onClick={() => {
+                  setRightPanelTab(id);
+                  if (id === "drift") {
+                    void loadDriftHistory();
+                  }
+                }}
                 style={{
                   fontSize: 12,
                   padding: "4px 8px",
@@ -1260,10 +1293,16 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
           {rightPanelTab === "drift" && (
             <TemplateDriftViewer
               drift={driftResult}
+              recentItems={driftHistory}
               loading={driftLoading}
               message={driftMessage}
               onRun={() => {
                 void runDriftCheck();
+              }}
+              onGuideCreateVersion={() => {
+                setAutoBanner(
+                  "현재 드리프트 결과를 반영하려면 구조를 수정한 뒤 상단의 Save New Version 버튼으로 새 버전을 저장하세요."
+                );
               }}
               onItemClick={(item: DriftItem) => {
                 const target =

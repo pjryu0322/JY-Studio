@@ -7,6 +7,10 @@ import {
   generateDraftTemplate,
 } from "@/lib/templateAuto/templateAutoDetector";
 import { detectTemplateDrift } from "@/lib/templateDrift/driftEngine";
+import {
+  listDriftResults,
+  saveDriftResult,
+} from "@/lib/templateDrift/driftRepository";
 
 interface DriftBody {
   family?: string;
@@ -17,6 +21,21 @@ interface DriftBody {
   options?: {
     debug?: boolean;
   };
+}
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const family = searchParams.get("family")?.trim() || "default/general";
+  const templateId = searchParams.get("templateId")?.trim();
+  const version = searchParams.get("version")?.trim();
+  if (!templateId || !version) {
+    return NextResponse.json(
+      { error: "templateId and version are required" },
+      { status: 400 }
+    );
+  }
+  const items = await listDriftResults({ family, templateId, version });
+  return NextResponse.json({ items });
 }
 
 export async function POST(req: Request) {
@@ -60,6 +79,13 @@ export async function POST(req: Request) {
     extractedTemplateDraft: draftTemplate,
     docId,
     docType: auto.result.docType,
+  });
+  await saveDriftResult({
+    family,
+    templateId: templateSchema.templateId,
+    version: templateSchema.version,
+    docId,
+    driftResult: drift,
   });
 
   return NextResponse.json({
