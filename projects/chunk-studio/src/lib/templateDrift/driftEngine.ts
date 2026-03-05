@@ -5,6 +5,8 @@ import type { DriftResult } from "./driftTypes";
 interface DetectTemplateDriftInput {
   templateSchema: TemplateSchema;
   layoutProfile: LayoutProfile;
+  docId?: string;
+  docType?: TemplateSchema["docType"];
   extractedTemplateDraft?: unknown;
 }
 
@@ -18,8 +20,8 @@ export function detectTemplateDrift(
   return {
     templateId: input.templateSchema.templateId,
     version: input.templateSchema.version,
-    docId: "unknown",
-    docType: input.layoutProfile.docType,
+    docId: input.docId ?? "unknown",
+    docType: input.docType ?? input.layoutProfile.docType,
     severity: "low",
     score: 0,
     items: [],
