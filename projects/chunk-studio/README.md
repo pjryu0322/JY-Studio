@@ -65,7 +65,7 @@ npm run dev
 
 ### 템플릿 저장 위치
 
-- 스키마: `data/templates/<family>/<templateId>/<version>/schema.json`
+- 스키마: `data/templates/<family>/<templateId>/<version>/template.json`
 - 인덱스: `data/templates/<family>/index.json`
 
 ### 템플릿 API
@@ -75,3 +75,41 @@ npm run dev
 - `POST /api/templates/recommend` `{ jobId, family }`
 - `POST /api/templates/build` `{ family, name, docType, selections, profile }`
 - `POST /api/templates/apply` `{ jobId, family, templateId, version }`
+
+## Template Drift
+
+### What is Template Drift
+
+- 템플릿 구조(섹션/필드/표/반복/앵커)와 현재 문서 구조의 차이를 수치화한 점검 결과입니다.
+- 결과는 `severity(low/medium/high)`와 `score(0~1)`로 제공됩니다.
+
+### How it works
+
+- 기준: 저장된 템플릿 스키마
+- 비교 대상: 문서에서 auto-detect로 생성한 draft 구조
+- 엔진이 차이 요약을 만들고 점수/등급을 계산합니다.
+
+### UI에서 실행 방법
+
+1. `/templates/builder?jobId=...&family=...` 진입
+2. 템플릿을 로드하거나 저장해 `templateId/version`을 선택
+3. 우측 `Drift` 탭에서 `드리프트 검사` 실행
+4. severity/score/요약/항목 및 최근 기록 확인
+
+### Auto UX 영향
+
+- `원클릭 자동 적용` 전에 템플릿이 선택된 경우 Drift를 먼저 검사합니다.
+- `severity=high` 또는 `score>=0.7`이면 자동 적용을 중단하고 Drift 탭 확인을 안내합니다.
+- 디버그 ON일 때만 override가 가능합니다.
+
+### Drift 결과 저장 위치
+
+- 파일: `data/drifts/<family>/<templateId>/<version>/<docId>.json`
+- 목록 API: `GET /api/templates/drift?family=...&templateId=...&version=...`
+- 단건 API: `GET /api/templates/drift/{docId}?family=...&templateId=...&version=...`
+
+### 수동 검증 시나리오
+
+- **Case A**: 동일 템플릿 + 유사 문서 -> `low drift` 기대
+- **Case B**: 섹션 추가 + 필드 제거 -> `medium drift` 기대
+- **Case C**: 앵커 누락 + 표 헤더 변경 -> `high drift` 기대
