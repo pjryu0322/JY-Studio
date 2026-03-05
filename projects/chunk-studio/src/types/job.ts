@@ -32,6 +32,7 @@ export interface ChunkDTO {
   text: string;
   meta: {
     chunkId: string;
+    type: "section" | "paragraph" | "table" | "repeat_item" | "list";
     sectionPath: string[];
     sourceBlockIds: string[];
     startBlockIdx: number;

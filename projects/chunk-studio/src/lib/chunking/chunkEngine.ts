@@ -16,6 +16,7 @@ import {
 import { ocrWarningsFromQuality } from "./rules/ocrQuality";
 import { splitSentences, takeLastSentences } from "./rules/sentenceSplit";
 import { getTokenizer } from "./tokenizer";
+import { detectChunkType } from "./rules/chunkTypeDetector";
 
 const PIPELINE_VERSION_FALLBACK = "chunk-v2.0.0";
 
@@ -116,10 +117,20 @@ function finalizeChunk(
     pipelineVersion: temp.pipelineVersion,
   });
 
+  const representativeBlock =
+    temp.sourceBlocks.find((block) => block.type === "table") ??
+    temp.sourceBlocks.find((block) => block.type === "heading") ??
+    temp.sourceBlocks.find((block) => block.type === "list_item") ??
+    temp.sourceBlocks[0];
+  const semanticType = representativeBlock
+    ? detectChunkType(representativeBlock)
+    : "paragraph";
+
   return {
     text,
     meta: {
       chunkId,
+      type: semanticType,
       sectionPath: temp.sectionPath,
       sourceBlockIds,
       startBlockIdx,
