@@ -17,6 +17,7 @@ import { ocrWarningsFromQuality } from "./rules/ocrQuality";
 import { splitSentences, takeLastSentences } from "./rules/sentenceSplit";
 import { getTokenizer } from "./tokenizer";
 import { detectChunkType } from "./rules/chunkTypeDetector";
+import { isNoiseChunk } from "./rules/noiseFilter";
 
 const PIPELINE_VERSION_FALLBACK = "chunk-v2.0.0";
 
@@ -126,7 +127,7 @@ function finalizeChunk(
     ? detectChunkType(representativeBlock)
     : "paragraph";
 
-  return {
+  const chunk: Chunk = {
     text,
     meta: {
       chunkId,
@@ -154,6 +155,8 @@ function finalizeChunk(
       pipelineVersion: temp.pipelineVersion,
     },
   };
+  chunk.meta.noise = isNoiseChunk(chunk);
+  return chunk;
 }
 
 function maybeMergeSmallAdjacentChunks(
@@ -207,6 +210,7 @@ function maybeMergeSmallAdjacentChunks(
         new Set([...prev.meta.quality.warnings, ...chunk.meta.quality.warnings])
       );
       prev.meta.tags = Array.from(new Set([...prev.meta.tags, ...chunk.meta.tags]));
+      prev.meta.noise = Boolean(prev.meta.noise || chunk.meta.noise);
       continue;
     }
     out.push(chunk);

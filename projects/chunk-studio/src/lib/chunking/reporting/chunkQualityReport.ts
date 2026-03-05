@@ -51,7 +51,7 @@ export function generateChunkQualityReport(chunks: Chunk[]): ChunkQualityReport 
     }
     if (length < 40) tinyChunks += 1;
     if (length > 1500) oversizedChunks += 1;
-    if (chunk.meta.quality.warnings.includes("HEADER_NOISE")) {
+    if (chunk.meta.noise || chunk.meta.quality.warnings.includes("HEADER_NOISE")) {
       noiseChunksRemoved += 1;
     }
 

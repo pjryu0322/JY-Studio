@@ -60,6 +60,7 @@ export interface ChunkQuality {
 export interface ChunkMeta {
   chunkId: string;
   type: "section" | "paragraph" | "table" | "repeat_item" | "list";
+  noise?: boolean;
   sectionPath: string[];
   sourceBlockIds: string[];
   startBlockIdx: number;
