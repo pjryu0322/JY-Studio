@@ -33,6 +33,8 @@ export interface DriftItem {
   kind: DriftKind;
   severity: DriftSeverity;
   message: string;
+  reason?: string;
+  recommendedAction?: string;
   ref?: DriftRef;
   metrics?: DriftMetrics;
 }

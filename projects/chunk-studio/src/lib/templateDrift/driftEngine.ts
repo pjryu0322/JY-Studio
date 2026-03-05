@@ -67,6 +67,11 @@ export function detectTemplateDrift(
         kind: "SECTION_RENAMED",
         severity: match.score >= driftConfig.titleSimilarityThreshold ? "low" : "medium",
         message: `섹션 제목 변경 감지: "${match.templateSection.title}" → "${match.draftSection.title}"`,
+        reason:
+          match.score >= driftConfig.titleSimilarityThreshold
+            ? "섹션 제목은 다르지만 유사도가 높고 순서가 유사합니다."
+            : "섹션 제목 유사도는 중간 수준이며 문서 구조 변화 가능성이 있습니다.",
+        recommendedAction: "기존 섹션으로 유지할지 확인하세요.",
         ref: {
           sectionId: match.templateSection.id,
         },
@@ -92,6 +97,8 @@ export function detectTemplateDrift(
       kind: "SECTION_REMOVED",
       severity: "medium",
       message: `템플릿 섹션 누락: "${section.title}"`,
+      reason: "기존 템플릿의 섹션이 새 문서에서 탐지되지 않았습니다.",
+      recommendedAction: "문서 구조 변경 여부를 확인하고 필요 시 새 버전으로 저장하세요.",
       ref: { sectionId: section.id },
     });
   }
@@ -100,6 +107,8 @@ export function detectTemplateDrift(
       kind: "SECTION_ADDED",
       severity: "medium",
       message: `새 섹션 감지: "${section.title}"`,
+      reason: "기존 템플릿에 없는 섹션이 문서에서 새롭게 탐지되었습니다.",
+      recommendedAction: "신규 섹션이 반복적으로 등장하면 템플릿 섹션으로 추가하세요.",
       ref: { sectionId: section.id },
     });
   }
@@ -141,6 +150,8 @@ export function detectTemplateDrift(
           kind: "TABLE_HEADER_CHANGED",
           severity: "low",
           message: `표 헤더 순서 변경: ${t.id}`,
+          reason: "표 헤더 구성은 유사하지만 컬럼 순서가 변경되었습니다.",
+          recommendedAction: "순서 변경만이라면 그대로 진행하고 미리보기 결과를 확인하세요.",
           ref: { tableId: t.id },
           metrics: {
             orderChanged: true,
@@ -169,6 +180,8 @@ export function detectTemplateDrift(
       kind: "TABLE_HEADER_CHANGED",
       severity,
       message: `표 헤더 변경 감지: ${t.id}`,
+      reason: "표 헤더 이름 또는 순서가 변경되었습니다.",
+      recommendedAction: "표 컬럼 구조를 검토하세요.",
       ref: { tableId: t.id },
       metrics: {
         missingHeaders: missingCount,
@@ -184,6 +197,8 @@ export function detectTemplateDrift(
         kind: "TABLE_REMOVED",
         severity: "medium",
         message: `템플릿 표 누락: ${table.id}`,
+        reason: "기존 템플릿의 표가 새 문서에서 확인되지 않았습니다.",
+        recommendedAction: "표가 삭제된 문서 유형인지 확인하고 필요 시 템플릿을 갱신하세요.",
         ref: { tableId: table.id },
       });
     }
@@ -194,6 +209,8 @@ export function detectTemplateDrift(
         kind: "TABLE_ADDED",
         severity: "low",
         message: `새 표 감지: ${table.name}`,
+        reason: "템플릿에 없던 추가 표가 문서에서 탐지되었습니다.",
+        recommendedAction: "추가 표가 고정 구조라면 템플릿 표 정의에 반영하세요.",
         ref: { tableId: table.id },
       });
     }

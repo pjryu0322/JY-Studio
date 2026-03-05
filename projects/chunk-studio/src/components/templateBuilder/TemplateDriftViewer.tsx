@@ -15,6 +15,8 @@ interface TemplateDriftViewerProps {
   message?: string | null;
   onRun: () => void;
   onGuideCreateVersion?: () => void;
+  onContinueWithCurrentTemplate?: () => void;
+  onEditInBuilder?: () => void;
   onItemClick?: (item: DriftItem) => void;
 }
 
@@ -37,9 +39,12 @@ export default function TemplateDriftViewer({
   message,
   onRun,
   onGuideCreateVersion,
+  onContinueWithCurrentTemplate,
+  onEditInBuilder,
   onItemClick,
 }: TemplateDriftViewerProps) {
   const [activeRef, setActiveRef] = useState<string | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
     if (!drift) return new Map<DriftSeverity, DriftItem[]>();
@@ -52,8 +57,48 @@ export default function TemplateDriftViewer({
     return map;
   }, [drift]);
 
+  const summaryRecommendation = useMemo(() => {
+    if (!drift) return "드리프트 결과를 먼저 실행해 주세요.";
+    if (drift.severity === "high" || drift.score >= 0.7) {
+      return "자동 적용 대신 템플릿 수정 또는 새 버전 저장을 권장합니다.";
+    }
+    if (drift.severity === "medium" || drift.score >= 0.4) {
+      return "구조 변경 여부를 검토한 뒤 적용하세요.";
+    }
+    return "경미한 차이입니다. 적용 후 미리보기를 확인하세요.";
+  }, [drift]);
+
   return (
     <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10, marginTop: 12 }}>
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 1,
+          background: "#fff",
+          border: "1px solid #eee",
+          borderRadius: 8,
+          padding: 8,
+          marginBottom: 10,
+        }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Drift 요약</div>
+        <div style={{ fontSize: 12, color: "#444", marginBottom: 6 }}>
+          {summaryRecommendation}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" onClick={onContinueWithCurrentTemplate} style={{ fontSize: 12, padding: "5px 8px" }}>
+            현재 템플릿으로 계속 진행
+          </button>
+          <button type="button" onClick={onGuideCreateVersion} style={{ fontSize: 12, padding: "5px 8px" }}>
+            새 버전 저장으로 이동
+          </button>
+          <button type="button" onClick={onEditInBuilder} style={{ fontSize: 12, padding: "5px 8px" }}>
+            Builder에서 수정 계속
+          </button>
+        </div>
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <h4 style={{ margin: 0, fontSize: 13, flex: 1 }}>Template Drift</h4>
         <button type="button" onClick={onRun} disabled={loading} style={{ fontSize: 12, padding: "6px 8px" }}>
@@ -137,6 +182,53 @@ export default function TemplateDriftViewer({
                           {item.kind}
                         </div>
                         <div style={{ color: "#555", marginTop: 2 }}>{item.message}</div>
+                        <div style={{ marginTop: 6 }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setExpandedKey((prev) =>
+                                prev === `${item.kind}-${idx}-${refKey}`
+                                  ? null
+                                  : `${item.kind}-${idx}-${refKey}`
+                              );
+                            }}
+                            style={{
+                              fontSize: 11,
+                              color: "#1e88e5",
+                              textDecoration: "underline",
+                              background: "transparent",
+                              border: "none",
+                              padding: 0,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {expandedKey === `${item.kind}-${idx}-${refKey}` ? "상세 접기" : "상세 보기"}
+                          </button>
+                        </div>
+                        {expandedKey === `${item.kind}-${idx}-${refKey}` && (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              paddingTop: 6,
+                              borderTop: "1px dashed #ddd",
+                              fontSize: 12,
+                              color: "#444",
+                              display: "grid",
+                              gap: 4,
+                            }}
+                          >
+                            <div>
+                              <strong>why:</strong>{" "}
+                              {item.reason ?? "매칭/비교 결과로 해당 드리프트 항목이 분류되었습니다."}
+                            </div>
+                            <div>
+                              <strong>next:</strong>{" "}
+                              {item.recommendedAction ?? "필요 시 템플릿 구조를 조정하고 새 버전을 검토하세요."}
+                            </div>
+                          </div>
+                        )}
                       </button>
                     );
                   })}

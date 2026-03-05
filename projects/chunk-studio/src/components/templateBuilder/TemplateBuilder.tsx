@@ -162,6 +162,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
   const [driftLoading, setDriftLoading] = useState(false);
   const [driftMessage, setDriftMessage] = useState<string | null>(null);
   const [driftHistory, setDriftHistory] = useState<DriftHistoryItem[]>([]);
+  const [driftContinueConfirmed, setDriftContinueConfirmed] = useState(false);
   const [allowHighDriftAuto, setAllowHighDriftAuto] = useState(false);
   const [templateFamilyInput, setTemplateFamilyInput] = useState(family);
   const [templateList, setTemplateList] = useState<TemplateListItem[]>([]);
@@ -794,6 +795,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
       return null;
     }
     setDriftResult(payload.drift);
+    setDriftContinueConfirmed(false);
     void loadDriftHistory();
     if (!opts?.silent) {
       setDriftMessage(
@@ -1304,6 +1306,15 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
                   "현재 드리프트 결과를 반영하려면 구조를 수정한 뒤 상단의 Save New Version 버튼으로 새 버전을 저장하세요."
                 );
               }}
+              onContinueWithCurrentTemplate={() => {
+                setDriftContinueConfirmed(true);
+                setAutoBanner(null);
+                setDriftMessage("현재 템플릿으로 계속 진행하도록 선택했습니다.");
+              }}
+              onEditInBuilder={() => {
+                setRightPanelTab("edit");
+                setAutoBanner("Builder 편집 탭에서 구조를 조정한 뒤 다시 Drift를 확인하세요.");
+              }}
               onItemClick={(item: DriftItem) => {
                 const target =
                   item.ref?.sectionId ||
@@ -1315,6 +1326,11 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
                 }
               }}
             />
+          )}
+          {rightPanelTab === "drift" && driftContinueConfirmed && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#2e7d32" }}>
+              현재 템플릿 유지 진행 상태입니다.
+            </div>
           )}
 
           {(rightPanelTab === "diff" || rightPanelTab === "graph") && (
