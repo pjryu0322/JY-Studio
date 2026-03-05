@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  UPLOADED
+  ACTION_REQUIRED
+  QUEUED
+  CONVERTING
+  PDF_READY
+  EXTRACTING_TEXT
+  CHUNKING
+  DONE
+  FAILED
+}
+
+enum FileSourceType {
+  original
+  replacement_pdf
+}
+
+enum ArtifactType {
+  PDF
+  EXTRACTED_TEXT
+  CHUNKS_JSON
+  CHUNK_DIFF_JSON
+  OCR_QUALITY_JSON
+}
+
+model Job {
+  id        String    @id @default(uuid())
+  status    JobStatus @default(UPLOADED)
+  progress  Int       @default(0)
+  message   String?
+  errorCode String?
+  errorDetail String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  files     JobFile[]
+  artifacts Artifact[]
+}
+
+model JobFile {
+  id           String         @id @default(uuid())
+  jobId        String
+  job          Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  sourceType   FileSourceType @default(original)
+
+  originalName String
+  ext          String
+  mime         String?
+  sizeBytes    Int?
+
+  storagePath  String
+  sha256       String?
+
+  createdAt    DateTime       @default(now())
+
+  @@index([jobId])
+  @@index([sourceType])
+}
+
+model Artifact {
+  id        String       @id @default(uuid())
+  jobId     String
+  job       Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  type      ArtifactType
+  path      String
+  meta      Json?
+
+  createdAt DateTime     @default(now())
+
+  @@index([jobId])
+  @@index([type])
+}

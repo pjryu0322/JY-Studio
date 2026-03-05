@@ -1,0 +1,54 @@
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-layout__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.top-bar {
+  flex-shrink: 0;
+  height: 48px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.top-bar__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.sidebar {
+  flex-shrink: 0;
+  width: 200px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-alt);
+  padding: 12px 0;
+}
+
+.sidebar__nav {
+  padding: 0 12px;
+}
+
+.sidebar__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.chunk-panel {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--background);
+}
