@@ -4,6 +4,7 @@ import { normalizeLabel } from "@/lib/templateAuto/normalize";
 import type { DriftItem, DriftResult } from "./driftTypes";
 import { driftConfig } from "./driftConfig";
 import { matchSections, type SectionLike } from "./sectionMatcher";
+import { matchTableHeaders } from "./tableMatcher";
 
 interface DetectTemplateDriftInput {
   templateSchema: TemplateSchema;
@@ -103,15 +104,111 @@ export function detectTemplateDrift(
     });
   }
 
+  const draftTablesFromTemplate = (() => {
+    if (
+      !input.extractedTemplateDraft ||
+      typeof input.extractedTemplateDraft !== "object"
+    ) {
+      return null;
+    }
+    const raw = input.extractedTemplateDraft as {
+      tables?: Array<{ headerLabels?: string[]; name?: string }>;
+    };
+    if (!Array.isArray(raw.tables)) return null;
+    return raw.tables.map((table, idx) => ({
+      id: `draft_tbl_${idx + 1}`,
+      headerLabels: Array.isArray(table.headerLabels) ? table.headerLabels : [],
+      name: table.name ?? `표 ${idx + 1}`,
+    }));
+  })();
+  const draftTables =
+    draftTablesFromTemplate && draftTablesFromTemplate.length > 0
+      ? draftTablesFromTemplate
+      : input.layoutProfile.tableCandidates.map((table, idx) => ({
+          id: `layout_tbl_${idx + 1}`,
+          headerLabels: table.headerLabels ?? [],
+          name: `표 ${idx + 1}`,
+        }));
+  const templateTables = input.templateSchema.tables;
+  const tableCount = Math.min(templateTables.length, draftTables.length);
+  for (let i = 0; i < tableCount; i += 1) {
+    const t = templateTables[i]!;
+    const d = draftTables[i]!;
+    const headerMatch = matchTableHeaders(t.headerLabels, d.headerLabels);
+    if (headerMatch.missingHeaders.length === 0 && headerMatch.addedHeaders.length === 0) {
+      if (headerMatch.orderChanged) {
+        items.push({
+          kind: "TABLE_HEADER_CHANGED",
+          severity: "low",
+          message: `표 헤더 순서 변경: ${t.id}`,
+          ref: { tableId: t.id },
+          metrics: {
+            orderChanged: true,
+          },
+        });
+      }
+      continue;
+    }
+
+    const missingCount = headerMatch.missingHeaders.length;
+    const addedCount = headerMatch.addedHeaders.length;
+    const hasSemanticMatch = headerMatch.matchedHeaders.some(
+      (m) => m.reason === "canonical" || m.reason === "fuzzy"
+    );
+    const severity =
+      missingCount >= 2
+        ? "high"
+        : missingCount === 1
+          ? "medium"
+          : addedCount <= 1
+            ? "low"
+            : hasSemanticMatch
+              ? "low"
+              : "medium";
+    items.push({
+      kind: "TABLE_HEADER_CHANGED",
+      severity,
+      message: `표 헤더 변경 감지: ${t.id}`,
+      ref: { tableId: t.id },
+      metrics: {
+        missingHeaders: missingCount,
+        addedHeaders: addedCount,
+        orderChanged: headerMatch.orderChanged,
+      },
+    });
+  }
+  if (templateTables.length > draftTables.length) {
+    for (let i = draftTables.length; i < templateTables.length; i += 1) {
+      const table = templateTables[i]!;
+      items.push({
+        kind: "TABLE_REMOVED",
+        severity: "medium",
+        message: `템플릿 표 누락: ${table.id}`,
+        ref: { tableId: table.id },
+      });
+    }
+  } else if (draftTables.length > templateTables.length) {
+    for (let i = templateTables.length; i < draftTables.length; i += 1) {
+      const table = draftTables[i]!;
+      items.push({
+        kind: "TABLE_ADDED",
+        severity: "low",
+        message: `새 표 감지: ${table.name}`,
+        ref: { tableId: table.id },
+      });
+    }
+  }
+
   const summary = {
-    added: items.filter((item) => item.kind === "SECTION_ADDED").length,
-    removed: items.filter((item) => item.kind === "SECTION_REMOVED").length,
-    modified: items.filter((item) => item.kind === "SECTION_RENAMED").length,
+    added: items.filter((item) => item.kind === "SECTION_ADDED" || item.kind === "TABLE_ADDED").length,
+    removed: items.filter((item) => item.kind === "SECTION_REMOVED" || item.kind === "TABLE_REMOVED").length,
+    modified: items.filter((item) => item.kind === "SECTION_RENAMED" || item.kind === "TABLE_HEADER_CHANGED").length,
     anchorsMissing: 0,
     layoutShifts: 0,
   };
   const weighted =
     (summary.modified + summary.added + summary.removed) * driftConfig.weights.sections +
+    items.filter((item) => item.kind.startsWith("TABLE_")).length * driftConfig.weights.tables +
     summary.layoutShifts * driftConfig.weights.repeats +
     summary.anchorsMissing;
   const normalizationBase = Math.max(1, 10 * driftConfig.titleSimilarityThreshold);
