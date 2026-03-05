@@ -62,17 +62,25 @@ interface TempChunk {
   textParts: string[];
   sourceBlocks: Block[];
   sectionPath: string[];
+  sectionTitle?: string;
+  sectionLevel?: number;
   hasTable: boolean;
   hasList: boolean;
   tags: string[];
   pipelineVersion: string;
 }
 
-function createTemp(sectionPath: string[], pipelineVersion: string): TempChunk {
+function createTemp(
+  sectionPath: string[],
+  pipelineVersion: string,
+  sectionContext?: { title?: string; level?: number }
+): TempChunk {
   return {
     textParts: [],
     sourceBlocks: [],
     sectionPath,
+    sectionTitle: sectionContext?.title,
+    sectionLevel: sectionContext?.level,
     hasTable: false,
     hasList: false,
     tags: [],
@@ -133,6 +141,8 @@ function finalizeChunk(
       chunkId,
       type: semanticType,
       sectionPath: temp.sectionPath,
+      sectionTitle: temp.sectionTitle,
+      sectionLevel: temp.sectionLevel,
       sourceBlockIds,
       startBlockIdx,
       endBlockIdx,
@@ -322,7 +332,12 @@ export function buildChunksFromBlocks(
   const withSection = attachSectionPath(blocks);
   const chunks: Chunk[] = [];
   const pipelineVersion = options?.pipelineVersion ?? PIPELINE_VERSION_FALLBACK;
-  let temp = createTemp(withSection[0]?.sectionPath ?? [], pipelineVersion);
+  let currentSection: { title?: string; level?: number } = {};
+  let temp = createTemp(
+    withSection[0]?.sectionPath ?? [],
+    pipelineVersion,
+    currentSection
+  );
   const tokenizer = getTokenizer();
 
   const flush = () => {
@@ -331,21 +346,37 @@ export function buildChunksFromBlocks(
       ocrQuality: options?.ocrQuality,
     });
     if (chunk) chunks.push(chunk);
-    temp = createTemp(temp.sectionPath, pipelineVersion);
+    temp = createTemp(temp.sectionPath, pipelineVersion, currentSection);
   };
 
   for (let i = 0; i < withSection.length; i += 1) {
     const item = withSection[i];
     const block = item.block;
+    const prev = withSection[i - 1];
+    const next = withSection[i + 1];
+    const repeatListStart =
+      block.type === "list_item" && (!prev || prev.block.type !== "list_item");
     const sectionChanged =
       sectionKey(item.sectionPath) !== sectionKey(temp.sectionPath);
-    const hardBoundary = block.type === "heading" || sectionChanged;
+    const hardBoundary =
+      block.type === "heading" ||
+      sectionChanged ||
+      block.type === "table" ||
+      repeatListStart;
     if (hardBoundary && temp.textParts.length > 0) {
       flush();
     }
     if (sectionChanged) {
       temp.sectionPath = item.sectionPath;
     }
+    if (block.type === "heading") {
+      currentSection = {
+        title: block.text.trim(),
+        level: block.level ?? 1,
+      };
+    }
+    temp.sectionTitle = currentSection.title;
+    temp.sectionLevel = currentSection.level;
 
     maybeAddListLead(withSection, i, temp);
 
@@ -361,6 +392,17 @@ export function buildChunksFromBlocks(
 
     if (!config.enableConstraintRules) {
       temp.tags = [];
+    }
+
+    if (block.type === "table") {
+      flush();
+      temp.sectionPath = item.sectionPath;
+      continue;
+    }
+    if (block.type === "list_item" && (!next || next.block.type !== "list_item")) {
+      flush();
+      temp.sectionPath = item.sectionPath;
+      continue;
     }
 
     const tokenNow = tokenizer.countTokens(temp.textParts.join("\n\n"));
