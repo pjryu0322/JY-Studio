@@ -17,6 +17,7 @@ import TemplateDiffViewer from "./TemplateDiffViewer";
 import TemplateOutline from "./TemplateOutline";
 import TemplateWarnings from "./TemplateWarnings";
 import TemplateDriftViewer from "./TemplateDriftViewer";
+import FeedbackSummary from "./FeedbackSummary";
 import PipelineBar from "./PipelineBar";
 import { buildTemplateOutline } from "@/lib/template/outlineBuilder";
 import { validateTemplateDraft } from "@/lib/template/validateTemplateDraft";
@@ -130,6 +131,13 @@ interface DriftHistoryItem {
   updatedAt: string;
 }
 
+interface FeedbackAliasItem {
+  from: string;
+  to: string;
+  count: number;
+  enabled: boolean;
+}
+
 export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps) {
   const [doc, setDoc] = useState<JobDetailDTO | null>(null);
   const [recommend, setRecommend] = useState<TemplateRecommendResponse | null>(null);
@@ -153,7 +161,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
   const [allowLowConfidenceAuto, setAllowLowConfidenceAuto] = useState(false);
   const [autoBanner, setAutoBanner] = useState<string | null>(null);
   const [rightPanelTab, setRightPanelTab] = useState<
-    "edit" | "outline" | "warnings" | "drift" | "diff" | "graph"
+    "edit" | "outline" | "warnings" | "feedback" | "drift" | "diff" | "graph"
   >("edit");
   const [graphSummary, setGraphSummary] = useState<{
     nodes: number;
@@ -173,6 +181,12 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
   const [templateList, setTemplateList] = useState<TemplateListItem[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedVersion, setSelectedVersion] = useState("");
+  const [feedbackAliases, setFeedbackAliases] = useState<{
+    labels: FeedbackAliasItem[];
+    sections: FeedbackAliasItem[];
+    source: string;
+  }>({ labels: [], sections: [], source: "feedback" });
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const structuralRefreshInitRef = useRef(false);
   const structuralRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -923,6 +937,26 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     setDriftHistory(Array.isArray(payload.items) ? payload.items : []);
   }, [saved, selectedTemplateId, selectedVersion, templateFamilyInput, family]);
 
+  const loadFeedbackAliases = useCallback(async () => {
+    const targetFamily = templateFamilyInput.trim() || family;
+    setFeedbackLoading(true);
+    const res = await fetch(
+      `/api/feedback/aliases?family=${encodeURIComponent(targetFamily)}&docType=${encodeURIComponent(docType)}`
+    );
+    setFeedbackLoading(false);
+    if (!res.ok) return;
+    const payload = (await res.json()) as {
+      labels?: FeedbackAliasItem[];
+      sections?: FeedbackAliasItem[];
+      source?: string;
+    };
+    setFeedbackAliases({
+      labels: Array.isArray(payload.labels) ? payload.labels : [],
+      sections: Array.isArray(payload.sections) ? payload.sections : [],
+      source: payload.source ?? "feedback",
+    });
+  }, [templateFamilyInput, family, docType]);
+
   const runDriftCheck = async (opts?: { silent?: boolean }): Promise<DriftResult | null> => {
     const templateId = saved?.templateId || selectedTemplateId.trim();
     const version = saved?.version || selectedVersion.trim();
@@ -1306,6 +1340,7 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
               ["edit", "Edit"],
               ["outline", "Outline"],
               ["warnings", "Warnings"],
+              ["feedback", "Feedback"],
               ["drift", "Drift"],
               ["diff", "Diff"],
               ["graph", "Graph"],
@@ -1317,6 +1352,9 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
                   setRightPanelTab(id);
                   if (id === "drift") {
                     void loadDriftHistory();
+                  }
+                  if (id === "feedback") {
+                    void loadFeedbackAliases();
                   }
                 }}
                 style={{
@@ -1390,6 +1428,11 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
                 sections {autoDraft.sections.length} / fields {autoDraft.fields.length} / tables{" "}
                 {autoDraft.tables.length}
               </div>
+              {showDebug && autoDraft.aliasApplied && autoDraft.aliasApplied.length > 0 && (
+                <div style={{ fontSize: 12, color: "#1e88e5", marginTop: 4 }}>
+                  추천 라벨: {autoDraft.aliasApplied[0]?.split(" -> ")[1] ?? autoDraft.fields[0]?.label ?? "-"} (피드백 보정 적용)
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleApplyAutoDraft}
@@ -1462,6 +1505,29 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
           {rightPanelTab === "outline" && <TemplateOutline outline={outlineModel} />}
           {rightPanelTab === "warnings" && (
             <TemplateWarnings validation={draftValidation} />
+          )}
+          {rightPanelTab === "feedback" && (
+            <FeedbackSummary
+              family={templateFamilyInput.trim() || family}
+              docType={docType}
+              labels={feedbackAliases.labels}
+              sections={feedbackAliases.sections}
+              loading={feedbackLoading}
+              onRefresh={() => {
+                void loadFeedbackAliases();
+              }}
+              onToggle={(input) => {
+                void fetch("/api/feedback/aliases/toggle", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    family: templateFamilyInput.trim() || family,
+                    docType,
+                    ...input,
+                  }),
+                }).then(() => loadFeedbackAliases());
+              }}
+            />
           )}
           {rightPanelTab === "drift" && (
             <TemplateDriftViewer

@@ -4,6 +4,7 @@ import {
   generateDraftTemplate,
 } from "@/lib/templateAuto/templateAutoDetector";
 import { loadJobExtractedText } from "@/lib/template/jobDocument";
+import { buildAliasMap } from "@/lib/templateFeedback/aliasRepository";
 
 interface AutoDetectBody {
   docId?: string;
@@ -26,7 +27,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Document text not found" }, { status: 404 });
   }
 
-  const detected = autoDetectTemplateFromText(doc.text);
+  const firstPass = autoDetectTemplateFromText(doc.text);
+  const aliases = await buildAliasMap({
+    family,
+    docType: firstPass.result.docType,
+  });
+  const detected = autoDetectTemplateFromText(doc.text, {
+    aliasMap: {
+      labelAliasMap: aliases.labelAliasMap,
+      sectionAliasMap: aliases.sectionAliasMap,
+    },
+  });
   const draftTemplate = generateDraftTemplate({
     profile: detected.result,
     family,
@@ -40,6 +51,16 @@ export async function POST(req: Request) {
     tables: detected.result.tables,
     confidence: detected.result.confidence,
     draftTemplate,
-    ...(isDebug ? detected.debug : {}),
+    ...(isDebug
+      ? {
+          ...detected.debug,
+          topSignals: [
+            ...detected.debug.topSignals,
+            aliases.source === "repository"
+              ? "feedback alias repository applied"
+              : "feedback alias inferred from events",
+          ],
+        }
+      : {}),
   });
 }

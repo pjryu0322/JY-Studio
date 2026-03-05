@@ -63,6 +63,7 @@ export interface TemplateAutoDetectResponse {
   reasons?: string[];
   topSignals?: string[];
   matchedLabels?: string[];
+  aliasApplied?: string[];
   draftTemplate?: {
     templateId: string;
     version: string;

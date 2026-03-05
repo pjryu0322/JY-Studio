@@ -51,6 +51,7 @@ export interface TemplateAutoDetectDebugInfo {
   reasons: string[];
   topSignals: string[];
   matchedLabels: string[];
+  aliasApplied?: string[];
 }
 
 function blockBBox(index: number, total: number, wide = false): CandidateBBox {
@@ -71,7 +72,30 @@ function toFieldLabelByDict(text: string): string | null {
   return null;
 }
 
-export function detectFieldCandidates(blocks: Block[]): FieldCandidate[] {
+interface AliasMapInput {
+  labelAliasMap?: Record<string, string>;
+  sectionAliasMap?: Record<string, string>;
+}
+
+function applyAlias(
+  value: string,
+  aliasMap: Record<string, string> | undefined,
+  aliasApplied: Set<string>
+): string {
+  const key = normalizeLabel(value);
+  const mapped = aliasMap?.[key];
+  if (!mapped) return value;
+  if (normalizeLabel(value) !== normalizeLabel(mapped)) {
+    aliasApplied.add(`${value} -> ${mapped}`);
+  }
+  return mapped;
+}
+
+export function detectFieldCandidates(
+  blocks: Block[],
+  aliasMap?: AliasMapInput,
+  aliasApplied: Set<string> = new Set()
+): FieldCandidate[] {
   const out: Array<FieldCandidate & { canonical: string; score: number; rawSignals: string[] }> =
     [];
   const total = Math.max(1, blocks.length);
@@ -115,7 +139,8 @@ export function detectFieldCandidates(blocks: Block[]): FieldCandidate[] {
       for (const row of rows) {
         const left = row[0]?.trim();
         if (!left) continue;
-        const label = canonicalizeLabel(left) ?? normalizeLabel(left);
+        const canonicalRaw = canonicalizeLabel(left) ?? normalizeLabel(left);
+        const label = applyAlias(canonicalRaw, aliasMap?.labelAliasMap, aliasApplied);
         if (!label) continue;
         out.push({
           label,
@@ -129,7 +154,8 @@ export function detectFieldCandidates(blocks: Block[]): FieldCandidate[] {
     }
 
     if (detectedLabel) {
-      const canonical = canonicalizeLabel(detectedLabel) ?? normalizeLabel(detectedLabel);
+      const canonicalRaw = canonicalizeLabel(detectedLabel) ?? normalizeLabel(detectedLabel);
+      const canonical = applyAlias(canonicalRaw, aliasMap?.labelAliasMap, aliasApplied);
       const freq = labelFreq.get(canonical) ?? 1;
       score += Math.min(0.08, (freq - 1) * 0.02);
       if (freq > 1) rawSignals.push("label frequency");
@@ -166,7 +192,11 @@ export function detectFieldCandidates(blocks: Block[]): FieldCandidate[] {
     }));
 }
 
-export function detectSectionCandidates(blocks: Block[]): SectionCandidate[] {
+export function detectSectionCandidates(
+  blocks: Block[],
+  aliasMap?: AliasMapInput,
+  aliasApplied: Set<string> = new Set()
+): SectionCandidate[] {
   const total = Math.max(1, blocks.length);
   const candidates: Array<SectionCandidate & { key: string }> = [];
   for (const block of blocks) {
@@ -181,8 +211,9 @@ export function detectSectionCandidates(blocks: Block[]): SectionCandidate[] {
     if (!looksHeading && !keywordHit) continue;
     const key = normalizeLabel(text);
     const confidence = looksHeading ? 0.86 : 0.74;
+    const rawTitle = text.replace(/[:：]+$/, "");
     candidates.push({
-      title: text.replace(/[:：]+$/, ""),
+      title: applyAlias(rawTitle, aliasMap?.sectionAliasMap, aliasApplied),
       bbox: blockBBox(block.blockIndex, total, true),
       confidence,
       level: block.type === "heading" ? block.level ?? 1 : 1,
@@ -264,14 +295,18 @@ export function generateDraftTemplate(input: {
   };
 }
 
-export function autoDetectTemplateFromText(text: string): {
+export function autoDetectTemplateFromText(
+  text: string,
+  options?: { aliasMap?: AliasMapInput }
+): {
   result: TemplateAutoDetectResult;
   debug: TemplateAutoDetectDebugInfo;
 } {
   const normalized = normalizeText(text);
   const { blocks, tables } = buildDocumentBlocks(normalized);
-  const fields = detectFieldCandidates(blocks);
-  const sections = detectSectionCandidates(blocks);
+  const aliasApplied = new Set<string>();
+  const fields = detectFieldCandidates(blocks, options?.aliasMap, aliasApplied);
+  const sections = detectSectionCandidates(blocks, options?.aliasMap, aliasApplied);
   const tableCandidates: TableCandidate[] = tables.map((table, idx) => ({
     name: table.caption || `표 ${idx + 1}`,
     headerLabels: table.header ?? table.rows[0] ?? [],
@@ -314,6 +349,7 @@ export function autoDetectTemplateFromText(text: string): {
       tableCandidates.length > 0 ? "table structure signals" : "few table signals",
     ],
     matchedLabels: fields.slice(0, 10).map((field) => field.label),
+    aliasApplied: Array.from(aliasApplied),
   };
   return { result, debug };
 }
