@@ -102,6 +102,18 @@ export interface JobDetailDTO extends Job {
   extractedText: string;
   chunks: ChunkDTO[];
   report: ChunkReportDTO | null;
+  chunkQualityReport?: {
+    totalChunks: number;
+    sectionChunks: number;
+    paragraphChunks: number;
+    tableChunks: number;
+    repeatChunks: number;
+    tinyChunks: number;
+    oversizedChunks: number;
+    noiseChunksRemoved: number;
+    orphanChunks: number;
+    averageChunkLength: number;
+  } | null;
   cleaningLog: CleaningLogDTO | null;
   diff: ChunkDiffSummaryDTO | null;
   ocrQuality?: {

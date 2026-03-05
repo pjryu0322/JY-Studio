@@ -3,6 +3,7 @@ import { buildDocumentBlocks } from "@/lib/chunking/blockBuilder";
 import { buildChunksFromBlocks } from "@/lib/chunking/chunkEngine";
 import { exportChunksToJsonl } from "@/lib/chunking/exporters/jsonl";
 import { buildChunkDiffSummary } from "@/lib/chunking/reporting/chunkDiff";
+import { generateChunkQualityReport } from "@/lib/chunking/reporting/chunkQualityReport";
 import { buildQualityReport } from "@/lib/chunking/reporting/qualityReport";
 import { removeHeaderFooterNoise } from "@/lib/chunking/rules/headerFooter";
 import { estimateOcrQuality } from "@/lib/chunking/rules/ocrQuality";
@@ -84,6 +85,7 @@ export async function runChunkingPipeline({
     docId: jobId,
     ocrQuality,
   });
+  const qualityReport = generateChunkQualityReport(chunks);
   const report = buildQualityReport(chunks);
   const diff: ChunkDiffSummary | null = beforeChunks
     ? buildChunkDiffSummary(
@@ -138,6 +140,11 @@ export async function runChunkingPipeline({
     ...report,
     pipelineVersion: CHUNK_PIPELINE_VERSION,
   });
+  const chunkQualityArtifactMeta = toJsonValue({
+    artifactKey: "CHUNK_QUALITY_JSON",
+    ...qualityReport,
+    pipelineVersion: CHUNK_PIPELINE_VERSION,
+  });
   const cleaningArtifactMeta = toJsonValue({
     artifactKey: "CLEANING_LOG_JSON",
     ...cleanedResult.log,
@@ -183,6 +190,14 @@ export async function runChunkingPipeline({
         type: "CHUNKS_JSON",
         path: `inline://jobs/${jobId}/chunk-report.json`,
         meta: reportArtifactMeta,
+      },
+    });
+    await tx.artifact.create({
+      data: {
+        jobId,
+        type: "CHUNKS_JSON",
+        path: `inline://jobs/${jobId}/chunk-quality.json`,
+        meta: chunkQualityArtifactMeta,
       },
     });
     await tx.artifact.create({

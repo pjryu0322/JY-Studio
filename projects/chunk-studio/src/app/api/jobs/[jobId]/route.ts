@@ -31,6 +31,9 @@ export async function GET(_: Request, ctx: RouteCtx) {
     const reportArtifact = job.artifacts.find((a) =>
       a.path.endsWith("/chunk-report.json")
     );
+    const chunkQualityArtifact = job.artifacts.find((a) =>
+      a.path.endsWith("/chunk-quality.json")
+    );
     const cleaningArtifact = job.artifacts.find((a) =>
       a.path.endsWith("/cleaning-log.json")
     );
@@ -51,6 +54,12 @@ export async function GET(_: Request, ctx: RouteCtx) {
     const reportMeta =
       reportArtifact && reportArtifact.meta && typeof reportArtifact.meta === "object"
         ? (reportArtifact.meta as Record<string, unknown>)
+        : null;
+    const chunkQualityMeta =
+      chunkQualityArtifact &&
+      chunkQualityArtifact.meta &&
+      typeof chunkQualityArtifact.meta === "object"
+        ? (chunkQualityArtifact.meta as Record<string, unknown>)
         : null;
     const cleaningMeta =
       cleaningArtifact && cleaningArtifact.meta && typeof cleaningArtifact.meta === "object"
@@ -84,6 +93,7 @@ export async function GET(_: Request, ctx: RouteCtx) {
       extractedText: typeof extractedMeta?.text === "string" ? extractedMeta.text : "",
       chunks: Array.isArray(chunksMeta?.chunks) ? chunksMeta?.chunks : [],
       report: reportMeta ?? null,
+      chunkQualityReport: chunkQualityMeta ?? null,
       cleaningLog: cleaningMeta
         ? {
             method: cleaningMeta.method ?? "freq",
