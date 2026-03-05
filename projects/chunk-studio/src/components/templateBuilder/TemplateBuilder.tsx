@@ -21,6 +21,11 @@ import PipelineBar from "./PipelineBar";
 import { buildTemplateOutline } from "@/lib/template/outlineBuilder";
 import { validateTemplateDraft } from "@/lib/template/validateTemplateDraft";
 import type { DriftItem, DriftResult } from "@/lib/templateDrift/driftTypes";
+import type {
+  TemplateFeedbackEvent,
+  FeedbackEventType,
+  FeedbackTargetType,
+} from "@/lib/templateFeedback/feedbackTypes";
 
 const saveSchema = z.object({
   family: z.string().min(1),
@@ -333,12 +338,38 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     }
     const existing = fields.map((f) => f.label).concat(sections.map((s) => s.title));
     const fallbackName = suggestLabel(doc?.extractedText ?? "", type, existing);
+    const finalName = name?.trim() || fallbackName;
     addByType({
       type,
-      name: name?.trim() || fallbackName,
+      name: finalName,
       bbox: menu.bbox,
       sectionId: parentSectionId,
     });
+    if (type === "section") {
+      logFeedback({
+        eventType: "SECTION_ADD",
+        targetType: "section",
+        afterValue: finalName,
+      });
+    } else if (type === "table") {
+      logFeedback({
+        eventType: "TABLE_ADD",
+        targetType: "table",
+        afterValue: finalName,
+      });
+    } else if (type === "repeat") {
+      logFeedback({
+        eventType: "REPEAT_ADD",
+        targetType: "repeat",
+        afterValue: finalName,
+      });
+    } else {
+      logFeedback({
+        eventType: "FIELD_ADD",
+        targetType: "field",
+        afterValue: finalName,
+      });
+    }
     clearPendingSelection();
     setFocusedNodeId(null);
     setMenu(null);
@@ -396,6 +427,127 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
       });
     return candidates[0]?.id;
   };
+
+  const logFeedback = useCallback(
+    (input: {
+      eventType: FeedbackEventType;
+      targetType: FeedbackTargetType;
+      targetId?: string;
+      beforeValue?: string;
+      afterValue?: string;
+    }) => {
+      const targetFamily = templateFamilyInput.trim() || family;
+      const targetTemplateId = saved?.templateId || selectedTemplateId || "unspecified";
+      const payload: TemplateFeedbackEvent = {
+        eventType: input.eventType,
+        family: targetFamily,
+        docType,
+        templateId: targetTemplateId,
+        docId: jobId,
+        beforeValue: input.beforeValue,
+        afterValue: input.afterValue,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        timestamp: new Date().toISOString(),
+      };
+      void fetch("/api/templates/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => null);
+    },
+    [templateFamilyInput, family, saved?.templateId, selectedTemplateId, docType, jobId]
+  );
+
+  const handleUpdateSection = useCallback(
+    (id: string, patch: Parameters<typeof updateSection>[1]) => {
+      const prev = sections.find((section) => section.id === id);
+      updateSection(id, patch);
+      if (prev && typeof patch.title === "string" && patch.title.trim() && patch.title !== prev.title) {
+        logFeedback({
+          eventType: "SECTION_RENAME",
+          targetType: "section",
+          targetId: id,
+          beforeValue: prev.title,
+          afterValue: patch.title,
+        });
+      }
+    },
+    [sections, updateSection, logFeedback]
+  );
+
+  const handleUpdateField = useCallback(
+    (key: string, patch: Parameters<typeof updateField>[1]) => {
+      const prev = fields.find((field) => field.key === key);
+      updateField(key, patch);
+      if (prev && typeof patch.label === "string" && patch.label.trim() && patch.label !== prev.label) {
+        logFeedback({
+          eventType: "FIELD_RELABEL",
+          targetType: "field",
+          targetId: key,
+          beforeValue: prev.label,
+          afterValue: patch.label,
+        });
+      }
+    },
+    [fields, updateField, logFeedback]
+  );
+
+  const handleDeleteSection = useCallback(
+    (id: string) => {
+      const prev = sections.find((section) => section.id === id);
+      deleteSection(id);
+      logFeedback({
+        eventType: "SECTION_REMOVE",
+        targetType: "section",
+        targetId: id,
+        beforeValue: prev?.title,
+      });
+    },
+    [sections, deleteSection, logFeedback]
+  );
+
+  const handleDeleteField = useCallback(
+    (key: string) => {
+      const prev = fields.find((field) => field.key === key);
+      deleteField(key);
+      logFeedback({
+        eventType: "FIELD_REMOVE",
+        targetType: "field",
+        targetId: key,
+        beforeValue: prev?.label,
+      });
+    },
+    [fields, deleteField, logFeedback]
+  );
+
+  const handleDeleteTable = useCallback(
+    (id: string) => {
+      const prev = tables.find((table) => table.id === id);
+      deleteTable(id);
+      logFeedback({
+        eventType: "TABLE_REMOVE",
+        targetType: "table",
+        targetId: id,
+        beforeValue: prev?.name,
+      });
+    },
+    [tables, deleteTable, logFeedback]
+  );
+
+  const handleDeleteRepeatBlock = useCallback(
+    (id: string) => {
+      const prev = repeatBlocks.find((repeat) => repeat.id === id);
+      deleteRepeatBlock(id);
+      logFeedback({
+        eventType: "REPEAT_REMOVE",
+        targetType: "repeat",
+        targetId: id,
+        beforeValue: prev?.name,
+      });
+    },
+    [repeatBlocks, deleteRepeatBlock, logFeedback]
+  );
 
   const outlineModel = useMemo(
     () =>
@@ -635,6 +787,25 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
     const trimmed = name.trim();
     if (!trimmed) return;
     addChildByType({ sectionId, type, name: trimmed });
+    if (type === "table") {
+      logFeedback({
+        eventType: "TABLE_ADD",
+        targetType: "table",
+        afterValue: trimmed,
+      });
+    } else if (type === "repeat") {
+      logFeedback({
+        eventType: "REPEAT_ADD",
+        targetType: "repeat",
+        afterValue: trimmed,
+      });
+    } else {
+      logFeedback({
+        eventType: "FIELD_ADD",
+        targetType: "field",
+        afterValue: trimmed,
+      });
+    }
   };
 
   const handleAutoDetect = async () => {
@@ -1179,14 +1350,14 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
               sectionId: r.sectionId,
               bboxHint: r.bboxHint,
             }))}
-            onUpdateSection={updateSection}
-            onDeleteSection={deleteSection}
-            onUpdateField={updateField}
-            onDeleteField={deleteField}
+            onUpdateSection={handleUpdateSection}
+            onDeleteSection={handleDeleteSection}
+            onUpdateField={handleUpdateField}
+            onDeleteField={handleDeleteField}
             onUpdateTable={updateTable}
-            onDeleteTable={deleteTable}
+            onDeleteTable={handleDeleteTable}
             onUpdateRepeatBlock={updateRepeatBlock}
-            onDeleteRepeatBlock={deleteRepeatBlock}
+            onDeleteRepeatBlock={handleDeleteRepeatBlock}
             onMoveSection={moveSection}
             onQuickAddChild={handleQuickAddChild}
             onFocusNode={setFocusedNodeId}
