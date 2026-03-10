@@ -4,11 +4,13 @@ import EntryCard from "@/components/entry/EntryCard";
 import RecentJobsPanel from "@/components/entry/RecentJobsPanel";
 import RecentDocumentsPanel from "@/components/entry/RecentDocumentsPanel";
 import SystemAlertsPanel from "@/components/entry/SystemAlertsPanel";
+import ScreenLabel from "@/components/entry/ScreenLabel";
 import { useRecentJobs } from "@/components/entry/useRecentJobs";
 import Link from "next/link";
 
 export default function Home() {
-  const { alerts, documents, loading } = useRecentJobs();
+  const { alerts, documents, jobs, loading } = useRecentJobs();
+  const recentJob = jobs[0] ?? null;
 
   return (
     <main
@@ -30,6 +32,7 @@ export default function Home() {
             boxShadow: "0 20px 42px rgba(17, 31, 64, 0.08)",
           }}
         >
+          <ScreenLabel screen="진입 허브" context="역할 선택" />
           <div
             style={{
               fontSize: 11,
@@ -40,6 +43,7 @@ export default function Home() {
               padding: "4px 10px",
               background: "rgba(70, 120, 255, 0.12)",
               border: "1px solid rgba(70, 120, 255, 0.2)",
+              marginTop: 10,
               marginBottom: 10,
             }}
           >
@@ -101,8 +105,8 @@ export default function Home() {
             title="Operator"
             description="업로드 -> 청킹 실행 -> 구조/미리보기/청크 검토 -> Diff 확인 -> RAG 내보내기까지 한 번에 처리합니다."
             actions={[
-              { label: "워크스페이스 열기", href: "/workspace", emphasis: "primary" },
-              { label: "작업 이어보기", href: "/jobs" },
+              { label: "새 문서 업로드", href: "/workspace#upload-entry", emphasis: "primary" },
+              { label: "최근 작업 이어가기", href: recentJob ? `/jobs/${recentJob.id}` : "/jobs" },
             ]}
             indicators={[
               { label: "진행", value: String(alerts.running) },
@@ -117,8 +121,8 @@ export default function Home() {
             title="Manager"
             description="파이프라인 상태/실패를 관제하고, 템플릿 추천/드리프트와 운영 알림을 점검합니다."
             actions={[
-              { label: "관리 대시보드", href: "/admin", emphasis: "primary" },
-              { label: "템플릿 빌더", href: "/templates/builder" },
+              { label: "작업 현황 보기", href: "/admin?view=running", emphasis: "primary" },
+              { label: "템플릿 관리", href: "/templates/builder" },
             ]}
             indicators={[
               { label: "실패 작업", value: String(alerts.failed) },

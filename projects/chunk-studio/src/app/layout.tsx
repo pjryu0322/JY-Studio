@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import GlobalTopNav from "@/components/entry/GlobalTopNav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,6 +31,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable}`}
         style={{ margin: 0, background: "#f5f7fb", color: "#111827" }}
       >
+        <GlobalTopNav />
         <div style={{ minHeight: "100vh" }}>{children}</div>
       </body>
     </html>

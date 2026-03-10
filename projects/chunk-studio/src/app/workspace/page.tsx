@@ -4,6 +4,7 @@ import Link from "next/link";
 import UploadPanel from "@/components/jobs/UploadPanel";
 import RecentJobsPanel from "@/components/entry/RecentJobsPanel";
 import RecentDocumentsPanel from "@/components/entry/RecentDocumentsPanel";
+import ScreenLabel from "@/components/entry/ScreenLabel";
 import { useRecentJobs } from "@/components/entry/useRecentJobs";
 
 export default function WorkspacePage() {
@@ -22,6 +23,7 @@ export default function WorkspacePage() {
             boxShadow: "0 14px 30px rgba(17, 31, 64, 0.08)",
           }}
         >
+          <ScreenLabel screen="작업공간" mode="Operator" context="업로드 및 작업 재개" />
           <div style={{ fontSize: 11, color: "#274c96", fontWeight: 700, marginBottom: 6 }}>
             OPERATOR 모드
           </div>
@@ -29,7 +31,22 @@ export default function WorkspacePage() {
           <p style={{ margin: 0, fontSize: 13, color: "#56627b" }}>
             문서를 업로드하고 최근 작업을 이어서 청킹 워크벤치로 진입합니다.
           </p>
-          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+          <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Link
+              href="/jobs"
+              style={{
+                fontSize: 12,
+                border: "1px solid rgba(65, 84, 120, 0.24)",
+                color: "#2f4267",
+                background: "#fff",
+                borderRadius: 10,
+                padding: "7px 11px",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              작업 목록 보기
+            </Link>
             {loading ? (
               <span style={{ fontSize: 12, color: "#777" }}>최근 작업 불러오는 중...</span>
             ) : recentJob ? (
@@ -54,7 +71,9 @@ export default function WorkspacePage() {
           </div>
         </header>
 
-        <UploadPanel />
+        <div id="upload-entry">
+          <UploadPanel />
+        </div>
 
         <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
           <RecentJobsPanel />

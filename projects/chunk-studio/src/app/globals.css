@@ -36,3 +36,13 @@ body {
   font-size: 14px;
   line-height: 1.5;
 }
+
+.entry-row-link {
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.entry-row-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(59, 130, 246, 0.32) !important;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.06);
+}

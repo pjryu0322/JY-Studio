@@ -36,8 +36,20 @@ export default function TopBar() {
 
   return (
     <header className="top-bar">
-      <Link href="/" className="top-bar__title">
-        Chunk Studio
+      <div style={{ display: "grid", gap: 2 }}>
+        <Link href="/" className="top-bar__title" style={{ textDecoration: "none", color: "#122549" }}>
+          Chunk Studio
+        </Link>
+        <span style={{ fontSize: 11, color: "#64748b" }}>Chunk Studio / Operator / 작업 상세</span>
+      </div>
+      <Link href="/workspace" style={{ fontSize: 12, textDecoration: "none" }}>
+        작업공간
+      </Link>
+      <Link href="/jobs" style={{ fontSize: 12, textDecoration: "none" }}>
+        최근 작업
+      </Link>
+      <Link href="/admin" style={{ fontSize: 12, textDecoration: "none" }}>
+        관리자
       </Link>
       <input
         ref={fileInputRef}
@@ -55,10 +67,10 @@ export default function TopBar() {
         onClick={() => fileInputRef.current?.click()}
         style={{ padding: "6px 10px", fontSize: 12 }}
       >
-        {uploading ? "Uploading..." : "Upload"}
+        {uploading ? "업로드 중..." : "새 문서 업로드"}
       </button>
       <span style={{ fontSize: 12, color: "#666" }}>
-        job: {selectedJob?.status ?? "none"}
+        작업 상태: {selectedJob?.status ?? "없음"}
       </span>
       <input
         value={family}
@@ -77,10 +89,13 @@ export default function TopBar() {
         }
         style={{ padding: "6px 10px", fontSize: 12 }}
       >
-        Template Builder
+        템플릿 빌더
       </button>
-      <Link href="/jobs" style={{ marginLeft: "auto", fontSize: 12 }}>
-        Jobs View
+      <Link
+        href={selectedJob?.id ? `/jobs/${selectedJob.id}` : "/jobs"}
+        style={{ marginLeft: "auto", fontSize: 12, textDecoration: "none" }}
+      >
+        작업 상세 바로가기
       </Link>
     </header>
   );

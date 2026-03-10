@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRecentJobs } from "./useRecentJobs";
 
 export default function SystemAlertsPanel() {
-  const { alerts, loading } = useRecentJobs();
+  const { alerts, filteredJobIds, loading } = useRecentJobs();
 
   return (
     <section
@@ -38,9 +38,26 @@ export default function SystemAlertsPanel() {
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          <AlertRow label="실패 작업" value={alerts.failed} color="#c62828" />
-          <AlertRow label="조치 필요" value={alerts.actionRequired} color="#ef6c00" />
-          <AlertRow label="진행 중 파이프라인" value={alerts.running} color="#1565c0" />
+          <AlertRow
+            label="실패 작업"
+            value={alerts.failed}
+            color="#c62828"
+            href={`/admin?view=failed&ids=${encodeURIComponent(filteredJobIds.failed.join(","))}`}
+          />
+          <AlertRow
+            label="조치 필요"
+            value={alerts.actionRequired}
+            color="#ef6c00"
+            href={`/admin?view=actionRequired&ids=${encodeURIComponent(
+              filteredJobIds.actionRequired.join(",")
+            )}`}
+          />
+          <AlertRow
+            label="진행 중 파이프라인"
+            value={alerts.running}
+            color="#1565c0"
+            href={`/admin?view=running&ids=${encodeURIComponent(filteredJobIds.running.join(","))}`}
+          />
         </div>
       )}
     </section>
@@ -51,14 +68,20 @@ function AlertRow({
   label,
   value,
   color,
+  href,
 }: {
   label: string;
   value: number;
   color: string;
+  href: string;
 }) {
   return (
-    <div
+    <Link
+      href={href}
+      className="entry-row-link"
       style={{
+        textDecoration: "none",
+        color: "inherit",
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
@@ -70,6 +93,6 @@ function AlertRow({
     >
       <span style={{ fontSize: 12, color: "#555" }}>{label}</span>
       <strong style={{ fontSize: 14, color }}>{value}</strong>
-    </div>
+    </Link>
   );
 }

@@ -36,7 +36,10 @@ export function useRecentJobs() {
   }, []);
 
   const documents = useMemo(() => {
-    const map = new Map<string, { name: string; count: number; updatedAt: string }>();
+    const map = new Map<
+      string,
+      { name: string; count: number; updatedAt: string; recentJobId: string | null }
+    >();
     jobs.forEach((job) => {
       const name = job.originalFilename?.trim();
       if (!name) return;
@@ -45,9 +48,10 @@ export function useRecentJobs() {
         prev.count += 1;
         if (new Date(job.updatedAt) > new Date(prev.updatedAt)) {
           prev.updatedAt = job.updatedAt;
+          prev.recentJobId = job.id;
         }
       } else {
-        map.set(name, { name, count: 1, updatedAt: job.updatedAt });
+        map.set(name, { name, count: 1, updatedAt: job.updatedAt, recentJobId: job.id });
       }
     });
     return Array.from(map.values()).sort(
@@ -64,5 +68,16 @@ export function useRecentJobs() {
     return { failed, actionRequired, running };
   }, [jobs]);
 
-  return { jobs, documents, alerts, loading };
+  const filteredJobIds = useMemo(() => {
+    const failed = jobs.filter((job) => job.status === "FAILED").map((job) => job.id);
+    const actionRequired = jobs
+      .filter((job) => job.status === "ACTION_REQUIRED")
+      .map((job) => job.id);
+    const running = jobs
+      .filter((job) => ["QUEUED", "CONVERTING", "EXTRACTING_TEXT", "CHUNKING"].includes(job.status))
+      .map((job) => job.id);
+    return { failed, actionRequired, running };
+  }, [jobs]);
+
+  return { jobs, documents, alerts, filteredJobIds, loading };
 }

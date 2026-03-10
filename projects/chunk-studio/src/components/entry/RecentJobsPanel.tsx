@@ -19,7 +19,7 @@ export default function RecentJobsPanel() {
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h4 style={{ margin: 0, fontSize: 15, color: "#132547" }}>🧩 최근 작업</h4>
-        <Link href="/workspace" style={{ fontSize: 12, color: "#3156b9", textDecoration: "none" }}>
+        <Link href="/jobs" style={{ fontSize: 12, color: "#3156b9", textDecoration: "none" }}>
           전체 보기
         </Link>
       </div>
@@ -57,6 +57,7 @@ export default function RecentJobsPanel() {
           <Link
             key={job.id}
             href={`/jobs/${job.id}`}
+            className="entry-row-link"
             style={{
               display: "flex",
               justifyContent: "space-between",

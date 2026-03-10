@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRecentJobs } from "./useRecentJobs";
 
 export default function RecentDocumentsPanel() {
@@ -18,8 +19,11 @@ export default function RecentDocumentsPanel() {
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h4 style={{ margin: 0, fontSize: 15, color: "#132547" }}>📄 최근 문서</h4>
-        <span style={{ fontSize: 12, color: "#64748b" }}>최근 업로드 기준</span>
+        <Link href="/workspace" style={{ fontSize: 12, color: "#3156b9", textDecoration: "none" }}>
+          전체 보기
+        </Link>
       </div>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>최근 업로드 기준</div>
       {loading && (
         <div style={{ display: "grid", gap: 6 }}>
           {Array.from({ length: 3 }, (_, idx) => (
@@ -51,9 +55,13 @@ export default function RecentDocumentsPanel() {
       )}
       <div style={{ display: "grid", gap: 6 }}>
         {recent.map((doc) => (
-          <div
+          <Link
             key={doc.name}
+            href={doc.recentJobId ? `/jobs/${doc.recentJobId}` : "/workspace"}
+            className="entry-row-link"
             style={{
+              textDecoration: "none",
+              color: "inherit",
               border: "1px solid #eee",
               borderRadius: 8,
               padding: "8px 10px",
@@ -61,6 +69,7 @@ export default function RecentDocumentsPanel() {
               justifyContent: "space-between",
               gap: 8,
               background: "#fcfdff",
+              transition: "all 120ms ease",
             }}
             title={doc.name}
           >
@@ -75,7 +84,7 @@ export default function RecentDocumentsPanel() {
               {doc.name}
             </span>
             <span style={{ fontSize: 11, color: "#666" }}>작업 {doc.count}</span>
-          </div>
+          </Link>
         ))}
       </div>
     </section>
