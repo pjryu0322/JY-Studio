@@ -4,6 +4,11 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useJobStore } from "@/store/jobStore";
 import type { JobDetailDTO } from "@/types/job";
+import {
+  detectBoundaryIssues,
+  suggestMergeCandidates,
+} from "@/lib/analysis/chunkBoundaryInspector";
+import { mapPageToChunks } from "@/lib/analysis/chunkMappingService";
 
 const PdfPreviewClient = dynamic(
   () => import("@/components/templates/PdfPreviewClient"),
@@ -21,6 +26,7 @@ export default function PreviewArea() {
   const [numPages, setNumPages] = useState(0);
   const [width, setWidth] = useState(760);
   const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(null);
+  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const canPreviewPdf = useMemo(() => {
@@ -62,6 +68,42 @@ export default function PreviewArea() {
   }, []);
 
   useEffect(() => {
+    const onSelectedChunk = (e: Event) => {
+      const custom = e as CustomEvent<string>;
+      if (typeof custom.detail === "string") {
+        setSelectedChunkId(custom.detail);
+      }
+    };
+    window.addEventListener("chunkstudio:selected-chunk", onSelectedChunk as EventListener);
+    return () =>
+      window.removeEventListener(
+        "chunkstudio:selected-chunk",
+        onSelectedChunk as EventListener
+      );
+  }, []);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || !detail?.chunks?.length) return;
+    const onClick = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const pageContainer = target?.closest("[data-page-number]") as HTMLElement | null;
+      if (!pageContainer) return;
+      const pageText = pageContainer.getAttribute("data-page-number");
+      const page = Number(pageText);
+      if (!Number.isFinite(page) || page <= 0) return;
+      const mapped = mapPageToChunks(detail.chunks, page);
+      if (mapped.length === 0) return;
+      const chunkId = mapped[0].meta.chunkId;
+      setSelectedChunkId(chunkId);
+      window.dispatchEvent(new CustomEvent("chunkstudio:selected-chunk", { detail: chunkId }));
+      window.dispatchEvent(new CustomEvent("chunkstudio:selected-page", { detail: page }));
+    };
+    root.addEventListener("click", onClick);
+    return () => root.removeEventListener("click", onClick);
+  }, [detail]);
+
+  useEffect(() => {
     const onGoPage = (e: Event) => {
       const custom = e as CustomEvent<number>;
       const page = custom.detail;
@@ -89,6 +131,24 @@ export default function PreviewArea() {
     });
     return sections.size;
   }, [detail]);
+  const boundaryOverview = useMemo(() => {
+    const chunks = detail?.chunks ?? [];
+    const issues = detectBoundaryIssues(chunks);
+    const mergeCandidates = suggestMergeCandidates(chunks);
+    const top = chunks.slice(0, 12).map((chunk, index) => {
+      const pageRange = (chunk.meta as unknown as { pageRange?: [number, number] }).pageRange;
+      const start = Array.isArray(pageRange) ? pageRange[0] : null;
+      const end = Array.isArray(pageRange) ? pageRange[1] : null;
+      return {
+        chunkId: chunk.meta.chunkId,
+        index,
+        start,
+        end,
+        isSelected: selectedChunkId === chunk.meta.chunkId,
+      };
+    });
+    return { top, issueCount: issues.length, mergeCount: mergeCandidates.length };
+  }, [detail, selectedChunkId]);
 
   if (!selectedJob) {
     return (
@@ -111,6 +171,49 @@ export default function PreviewArea() {
           status: {selectedJob.status} / sections: {sectionCount} / pages:{" "}
           {visiblePages}
         </span>
+      </div>
+      <div
+        style={{
+          margin: "8px 8px 0",
+          border: "1px solid #e2e8f0",
+          borderRadius: 8,
+          background: "#fff",
+          padding: 8,
+          fontSize: 11,
+          color: "#334155",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <strong>Semantic Chunk Boundary Inspector</strong>
+          <span>
+            issues: {boundaryOverview.issueCount} / merge candidates:{" "}
+            {boundaryOverview.mergeCount}
+          </span>
+        </div>
+        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {boundaryOverview.top.map((item) => (
+            <button
+              key={item.chunkId}
+              type="button"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent("chunkstudio:selected-chunk", { detail: item.chunkId })
+                )
+              }
+              style={{
+                border: item.isSelected ? "1px solid #3b82f6" : "1px solid #cbd5e1",
+                borderRadius: 999,
+                background: item.isSelected ? "#eaf2ff" : "#f8fafc",
+                color: item.isSelected ? "#1d4ed8" : "#334155",
+                padding: "2px 7px",
+                cursor: "pointer",
+              }}
+              title={`${item.chunkId} / start p.${item.start ?? "-"} / end p.${item.end ?? "-"}`}
+            >
+              #{item.index + 1} start p.{item.start ?? "-"} end p.{item.end ?? "-"}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="preview-area__scroll" ref={scrollRef}>
         {canPreviewPdf && !pdfUnavailable ? (

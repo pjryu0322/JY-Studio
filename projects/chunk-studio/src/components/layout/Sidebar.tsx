@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useJobStore } from "@/store/jobStore";
 import type { JobDetailDTO } from "@/types/job";
+import {
+  detectSectionNumberPattern,
+  extractDocumentStructure,
+} from "@/lib/analysis/documentStructureExtractor";
 
 export default function Sidebar() {
   const jobs = useJobStore((s) => s.jobs);
@@ -31,15 +35,7 @@ export default function Sidebar() {
     };
   }, [selectedJob]);
 
-  const sections = useMemo(() => {
-    if (!selectedJob || !detail?.chunks?.length) return [];
-    const map = new Map<string, number>();
-    detail.chunks.forEach((chunk) => {
-      const key = chunk.meta.sectionPath?.join(" > ").trim() || "Unsectioned";
-      map.set(key, (map.get(key) ?? 0) + 1);
-    });
-    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
-  }, [detail, selectedJob]);
+  const sections = useMemo(() => extractDocumentStructure(detail?.chunks ?? []), [detail]);
 
   const pages = useMemo(() => {
     if (!selectedJob || !detail?.chunks?.length) return [];
@@ -60,11 +56,15 @@ export default function Sidebar() {
     window.dispatchEvent(new CustomEvent("chunkstudio:go-page", { detail: page }));
   };
 
-  const selectSection = (sectionName: string) => {
-    setSelectedSection(sectionName);
+  const selectSection = (sectionPath: string, pageStart: number | null) => {
+    setSelectedSection(sectionPath);
     window.dispatchEvent(
-      new CustomEvent("chunkstudio:selected-section", { detail: sectionName })
+      new CustomEvent("chunkstudio:selected-section", { detail: sectionPath })
     );
+    if (pageStart) {
+      setSelectedPage(pageStart);
+      window.dispatchEvent(new CustomEvent("chunkstudio:go-page", { detail: pageStart }));
+    }
   };
 
   useEffect(() => {
@@ -85,24 +85,25 @@ export default function Sidebar() {
           {sections.length === 0 && (
             <div style={{ fontSize: 12, color: "#777" }}>구조 데이터 없음</div>
           )}
-          {sections.slice(0, 80).map((section) => (
+          {sections.slice(0, 100).map((section) => (
             <button
-              key={section.name}
+              key={section.sectionId}
               type="button"
-              onClick={() => selectSection(section.name)}
+              onClick={() => selectSection(section.path, section.pageStart)}
               style={{
                 border:
-                  selectedSection === section.name
+                  selectedSection === section.path
                     ? "1px solid #3b82f6"
                     : "1px solid #ececec",
                 borderRadius: 6,
                 padding: "6px 8px",
                 fontSize: 12,
-                background: selectedSection === section.name ? "#eff6ff" : "#fff",
+                background: selectedSection === section.path ? "#eff6ff" : "#fff",
                 textAlign: "left",
                 cursor: "pointer",
+                marginLeft: Math.max(0, (section.level - 1) * 8),
               }}
-              title={section.name}
+              title={section.path}
             >
               <div
                 style={{
@@ -112,10 +113,12 @@ export default function Sidebar() {
                   color: "#333",
                 }}
               >
-                {section.name}
+                {detectSectionNumberPattern(section.title)
+                  ? `${section.title}`
+                  : section.title}
               </div>
               <div style={{ marginTop: 2, fontSize: 11, color: "#666" }}>
-                chunks: {section.count}
+                p.{section.pageStart ?? "-"} ~ p.{section.pageEnd ?? "-"} / L{section.level}
               </div>
             </button>
           ))}

@@ -3,6 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useJobStore } from "@/store/jobStore";
 import type { ChunkDTO, JobDetailDTO } from "@/types/job";
+import {
+  analyzeChunkQualityBatch,
+  type ChunkQualityStatus,
+} from "@/lib/analysis/chunkQualityAnalyzer";
+import {
+  highlightChunkInPreview,
+  mapChunkToPage,
+} from "@/lib/analysis/chunkMappingService";
+import { suggestSplitPoints } from "@/lib/analysis/chunkBoundaryInspector";
+import type { RagRefinementPayload } from "@/lib/analysis/ragExportOptimizer";
 
 export default function JobDetail() {
   const { jobs, selectedJobId } = useJobStore();
@@ -19,6 +29,21 @@ export default function JobDetail() {
   const [excludedChunkIds, setExcludedChunkIds] = useState<Set<string>>(new Set());
   const [mergePairs, setMergePairs] = useState<Record<string, string>>({});
   const [sectionFilter, setSectionFilter] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!job) return;
+    const payload: RagRefinementPayload & { jobId: string } = {
+      jobId: job.id,
+      editedLabels,
+      reviewNotes,
+      excludedChunkIds: Array.from(excludedChunkIds),
+      mergePairs,
+      modifiedChunkIds: Array.from(modifiedChunkIds),
+    };
+    window.dispatchEvent(
+      new CustomEvent("chunkstudio:refinements-changed", { detail: payload })
+    );
+  }, [editedLabels, excludedChunkIds, job, mergePairs, modifiedChunkIds, reviewNotes]);
 
   useEffect(() => {
     if (!job) return;
@@ -41,14 +66,15 @@ export default function JobDetail() {
       (detail?.chunks ?? []).map((chunk, index) => ({
         chunk,
         index,
-        status: getChunkStatus(chunk, modifiedChunkIds),
+        quality: analyzeChunkQualityBatch([chunk])[0],
       })),
-    [detail, modifiedChunkIds]
+    [detail]
   );
 
   const filteredChunks = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return indexedChunks.filter(({ chunk, status }) => {
+    return indexedChunks.filter(({ chunk, quality }) => {
+      const status = resolveUiStatus(chunk, quality.status, modifiedChunkIds);
       const matchSearch = !q
         ? true
         : chunk.text.toLowerCase().includes(q) ||
@@ -71,7 +97,7 @@ export default function JobDetail() {
       const matchSection = !sectionFilter || chunkSection === sectionFilter;
       return matchSearch && matchFilter && matchSection;
     });
-  }, [filter, indexedChunks, search, sectionFilter]);
+  }, [filter, indexedChunks, modifiedChunkIds, search, sectionFilter]);
 
   const selectedEntry = useMemo(() => {
     const resolvedSelectedId = selectedChunkId ?? detail?.chunks?.[0]?.meta.chunkId ?? null;
@@ -82,6 +108,9 @@ export default function JobDetail() {
     );
   }, [detail, filteredChunks, selectedChunkId]);
   const selectedChunk = selectedEntry?.chunk ?? null;
+  const selectedQuality = selectedChunk
+    ? analyzeChunkQualityBatch([selectedChunk])[0]
+    : null;
 
   useEffect(() => {
     const onSelectedSection = (e: Event) => {
@@ -97,6 +126,21 @@ export default function JobDetail() {
       );
   }, []);
 
+  useEffect(() => {
+    const onSelectedChunk = (e: Event) => {
+      const custom = e as CustomEvent<string>;
+      if (typeof custom.detail === "string") {
+        setSelectedChunkId(custom.detail);
+      }
+    };
+    window.addEventListener("chunkstudio:selected-chunk", onSelectedChunk as EventListener);
+    return () =>
+      window.removeEventListener(
+        "chunkstudio:selected-chunk",
+        onSelectedChunk as EventListener
+      );
+  }, []);
+
   if (!job) {
     return (
       <div style={{ padding: 24 }}>
@@ -109,12 +153,11 @@ export default function JobDetail() {
   }
 
   const selectChunk = (chunk: ChunkDTO) => {
-    const [startPage] = getPageRange(chunk);
     setSelectedChunkId(chunk.meta.chunkId);
-    if (startPage) {
-      window.dispatchEvent(new CustomEvent("chunkstudio:go-page", { detail: startPage }));
-      window.dispatchEvent(new CustomEvent("chunkstudio:selected-page", { detail: startPage }));
-    }
+    window.dispatchEvent(
+      new CustomEvent("chunkstudio:selected-chunk", { detail: chunk.meta.chunkId })
+    );
+    highlightChunkInPreview(chunk);
   };
 
   const markModified = (chunkId: string) => {
@@ -196,9 +239,10 @@ export default function JobDetail() {
           </div>
         </div>
         <div style={{ marginTop: 10, display: "grid", gap: 6, maxHeight: 320, overflow: "auto" }}>
-          {filteredChunks.map(({ chunk, index, status }) => {
-            const [startPage, endPage] = getPageRange(chunk);
+          {filteredChunks.map(({ chunk, index, quality }) => {
+            const { pageStart: startPage, pageEnd: endPage } = mapChunkToPage(chunk);
             const isSelected = selectedChunkId === chunk.meta.chunkId;
+            const status = resolveUiStatus(chunk, quality.status, modifiedChunkIds);
             return (
               <button
                 key={chunk.meta.chunkId || `chunk-${index}`}
@@ -239,10 +283,16 @@ export default function JobDetail() {
         ) : (
           <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
             <Row label="chunk id" value={selectedChunk.meta.chunkId} />
-            <Row label="page range" value={`p.${getPageRange(selectedChunk)[0] ?? "-"} ~ p.${getPageRange(selectedChunk)[1] ?? "-"}`} />
+            <Row
+              label="page range"
+              value={`p.${mapChunkToPage(selectedChunk).pageStart ?? "-"} ~ p.${mapChunkToPage(selectedChunk).pageEnd ?? "-"}`}
+            />
             <Row label="structure path" value={selectedChunk.meta.sectionPath.join(" > ") || "Unsectioned"} />
             <Row label="section title" value={selectedChunk.meta.sectionTitle ?? "-"} />
-            <Row label="status" value={getChunkStatus(selectedChunk, modifiedChunkIds)} />
+            <Row
+              label="status"
+              value={resolveUiStatus(selectedChunk, selectedQuality?.status ?? "NORMAL", modifiedChunkIds)}
+            />
             <Row
               label="PDF matching"
               value={`block ${selectedChunk.meta.startBlockIdx} ~ ${selectedChunk.meta.endBlockIdx}`}
@@ -250,7 +300,8 @@ export default function JobDetail() {
             <div style={{ fontSize: 12, color: "#334155" }}>
               <strong>quality warnings</strong>
               <div style={{ marginTop: 4, color: "#b91c1c" }}>
-                {makeQualityHints(selectedChunk).join(", ") || "특이 경고 없음"}
+                {makeQualityHints(selectedChunk, selectedQuality?.warnings ?? []).join(", ") ||
+                  "특이 경고 없음"}
               </div>
             </div>
             <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", padding: 8, fontSize: 12, color: "#334155", whiteSpace: "pre-wrap" }}>
@@ -291,11 +342,13 @@ export default function JobDetail() {
               <button
                 type="button"
                 onClick={() => {
+                  const split = suggestSplitPoints(selectedChunk)[0];
                   markModified(selectedChunk.meta.chunkId);
                   setReviewNotes((prev) => ({
                     ...prev,
                     [selectedChunk.meta.chunkId]:
-                      (prev[selectedChunk.meta.chunkId] ?? "") + "\n[split] 분할 검토 필요",
+                      (prev[selectedChunk.meta.chunkId] ?? "") +
+                      `\n[split] 분할 검토 필요${split ? ` (offset ${split.offset})` : ""}`,
                   }));
                 }}
                 style={actionBtn}
@@ -353,25 +406,20 @@ export default function JobDetail() {
   );
 }
 
-function getPageRange(chunk: ChunkDTO): [number | null, number | null] {
-  const meta = chunk.meta as unknown as { pageRange?: [number, number] };
-  if (!Array.isArray(meta.pageRange) || meta.pageRange.length !== 2) return [null, null];
-  return [meta.pageRange[0], meta.pageRange[1]];
-}
-
-function getChunkStatus(chunk: ChunkDTO, modified: Set<string>) {
+function resolveUiStatus(
+  chunk: ChunkDTO,
+  analyzed: ChunkQualityStatus,
+  modified: Set<string>
+) {
   if (modified.has(chunk.meta.chunkId)) return "수정됨";
-  const tokens = chunk.meta.quality.tokens;
-  const warningText = chunk.meta.quality.warnings.join(" ").toLowerCase();
-  const isNoise = chunk.meta.noise || warningText.includes("noise") || warningText.includes("header") || warningText.includes("footer");
-  if (isNoise) return "노이즈의심";
-  if (tokens >= 1000) return "과대청크";
-  if (tokens > 0 && tokens <= 120) return "과소청크";
-  if (chunk.meta.quality.warnings.length > 0) return "검토필요";
+  if (analyzed === "NOISE_SUSPECTED") return "노이즈의심";
+  if (analyzed === "TOO_LONG") return "과대청크";
+  if (analyzed === "TOO_SHORT") return "과소청크";
+  if (analyzed === "REVIEW_REQUIRED") return "검토필요";
   return "정상";
 }
 
-function makeQualityHints(chunk: ChunkDTO): string[] {
+function makeQualityHints(chunk: ChunkDTO, analyzerWarnings: string[]): string[] {
   const hints = new Set<string>();
   const warningText = chunk.meta.quality.warnings.join(" ").toLowerCase();
   if (warningText.includes("header") || warningText.includes("footer")) hints.add("반복 헤더/푸터 의심");
@@ -380,6 +428,7 @@ function makeQualityHints(chunk: ChunkDTO): string[] {
   if (chunk.meta.quality.tokens >= 1000) hints.add("과도하게 긴 청크");
   if (chunk.meta.quality.tokens <= 120) hints.add("경계가 짧아 불명확할 수 있음");
   chunk.meta.quality.warnings.forEach((w) => hints.add(w));
+  analyzerWarnings.forEach((w) => hints.add(w));
   return Array.from(hints).slice(0, 6);
 }
 
