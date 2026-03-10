@@ -55,11 +55,30 @@ export default function DocumentCanvas({
   focusedBoxId,
   onSelectionComplete,
 }: DocumentCanvasProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const previewHostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<DraftBox | null>(null);
   const [start, setStart] = useState<{ page: number; x: number; y: number } | null>(null);
   const [pdfError, setPdfError] = useState(false);
   const [pageFrames, setPageFrames] = useState<Frame[]>([]);
+  const [numPages, setNumPages] = useState(0);
+  const [previewWidth, setPreviewWidth] = useState(760);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    const host = previewHostRef.current;
+    if (!host) return;
+    const updateWidth = () => {
+      const width = host.clientWidth;
+      const next = Math.max(420, Math.min(960, width - 24));
+      setPreviewWidth(next);
+    };
+    const obs = new ResizeObserver(updateWidth);
+    obs.observe(host);
+    updateWidth();
+    return () => obs.disconnect();
+  }, []);
 
   useEffect(() => {
     const updateFrame = () => {
@@ -165,78 +184,157 @@ export default function DocumentCanvas({
     }
   }, [focusedBoxId, sectionBoxes, otherBoxes, frameByPage]);
 
+  useEffect(() => {
+    const container = scrollRef.current;
+    const root = canvasRef.current;
+    if (!container || !root || pageFrames.length === 0) return;
+    const onScroll = () => {
+      const rootRect = root.getBoundingClientRect();
+      const middleY = container.scrollTop + container.clientHeight * 0.35;
+      const matched = pageFrames.find((frame) => {
+        const top = frame.y * rootRect.height;
+        const bottom = top + frame.h * rootRect.height;
+        return middleY >= top && middleY <= bottom;
+      });
+      if (matched) setCurrentPage(matched.page);
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [pageFrames]);
+
+  const scrollToPage = (page: number) => {
+    const frame = frameByPage.get(page);
+    const container = scrollRef.current;
+    const root = canvasRef.current;
+    if (!frame || !container || !root) return;
+    const rootRect = root.getBoundingClientRect();
+    container.scrollTo({
+      top: Math.max(0, frame.y * rootRect.height - 12),
+      behavior: "smooth",
+    });
+    setCurrentPage(page);
+  };
+
   return (
     <div
-      ref={canvasRef}
       style={{
-        position: "relative",
         border: "1px solid #d2d2d2",
         borderRadius: 8,
         minHeight: 720,
-        overflow: "hidden",
         background: "#f9f9f9",
-      }}
-      onMouseDown={(e) => {
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        const px = (e.clientX - rect.left) / rect.width;
-        const py = (e.clientY - rect.top) / rect.height;
-        const frame = pageFrames.find(
-          (f) => px >= f.x && py >= f.y && px <= f.x + f.w && py <= f.y + f.h
-        );
-        if (!frame) return;
-        const x = clamp01((px - frame.x) / Math.max(frame.w, 1e-6));
-        const y = clamp01((py - frame.y) / Math.max(frame.h, 1e-6));
-        setStart({ page: frame.page, x, y });
-        setDraft({ page: frame.page, x, y, w: 0, h: 0 });
-      }}
-      onMouseMove={(e) => {
-        if (!start) return;
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        const frame = frameByPage.get(start.page);
-        if (!frame) return;
-        const px = (e.clientX - rect.left) / rect.width;
-        const py = (e.clientY - rect.top) / rect.height;
-        const nx = clamp01((px - frame.x) / Math.max(frame.w, 1e-6));
-        const ny = clamp01((py - frame.y) / Math.max(frame.h, 1e-6));
-        const x = Math.min(nx, start.x);
-        const y = Math.min(ny, start.y);
-        const w = Math.abs(nx - start.x);
-        const h = Math.abs(ny - start.y);
-        setDraft({ page: start.page, x, y, w, h });
-      }}
-      onMouseUp={(e) => {
-        setStart(null);
-        if (!draft || draft.w < 0.01 || draft.h < 0.01) return;
-        onSelectionComplete(draft, { x: e.clientX + 8, y: e.clientY + 8 });
-        setDraft(null);
-      }}
-      onMouseLeave={() => {
-        setStart(null);
-        setDraft(null);
+        display: "grid",
+        gridTemplateColumns: "92px 1fr",
       }}
     >
-      {!pdfError && (
-        <PdfPreviewClient
-          fileUrl={pdfUrl}
-          width={760}
-          onLoadError={() => setPdfError(true)}
-        />
-      )}
-      {pdfError && (
-        <div style={{ padding: 12, fontSize: 12, color: "#444", whiteSpace: "pre-wrap" }}>
-          {fallbackText?.slice(0, 4000) ||
-            "PDF 미리보기를 로드하지 못했습니다. 텍스트 fallback 상태에서 영역 선택은 계속 가능합니다."}
+      <aside
+        style={{
+          borderRight: "1px solid #e0e0e0",
+          padding: 8,
+          overflowY: "auto",
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>Pages</div>
+        <div style={{ display: "grid", gap: 6 }}>
+          {Array.from({ length: numPages }, (_, idx) => idx + 1).map((page) => (
+            <button
+              key={page}
+              type="button"
+              onClick={() => scrollToPage(page)}
+              style={{
+                fontSize: 11,
+                padding: "4px 6px",
+                borderRadius: 6,
+                border: "1px solid #ddd",
+                background: currentPage === page ? "#e3f2fd" : "#fff",
+                color: currentPage === page ? "#0d47a1" : "#444",
+                cursor: "pointer",
+              }}
+            >
+              p.{page}
+            </button>
+          ))}
         </div>
-      )}
-
-      <SelectionOverlay
-        sections={mappedSectionBoxes}
-        others={mappedOtherBoxes}
-        draft={mappedDraft}
-        focusedId={focusedBoxId}
-      />
+      </aside>
+      <div ref={previewHostRef} style={{ minWidth: 0, minHeight: 0 }}>
+        <div
+          ref={scrollRef}
+          style={{
+            height: "100%",
+            maxHeight: 720,
+            overflow: "auto",
+            padding: 12,
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            ref={canvasRef}
+            style={{ position: "relative" }}
+            onMouseDown={(e) => {
+              const rect = canvasRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              const px = (e.clientX - rect.left) / rect.width;
+              const py = (e.clientY - rect.top) / rect.height;
+              const frame = pageFrames.find(
+                (f) => px >= f.x && py >= f.y && px <= f.x + f.w && py <= f.y + f.h
+              );
+              if (!frame) return;
+              const x = clamp01((px - frame.x) / Math.max(frame.w, 1e-6));
+              const y = clamp01((py - frame.y) / Math.max(frame.h, 1e-6));
+              setStart({ page: frame.page, x, y });
+              setDraft({ page: frame.page, x, y, w: 0, h: 0 });
+            }}
+            onMouseMove={(e) => {
+              if (!start) return;
+              const rect = canvasRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              const frame = frameByPage.get(start.page);
+              if (!frame) return;
+              const px = (e.clientX - rect.left) / rect.width;
+              const py = (e.clientY - rect.top) / rect.height;
+              const nx = clamp01((px - frame.x) / Math.max(frame.w, 1e-6));
+              const ny = clamp01((py - frame.y) / Math.max(frame.h, 1e-6));
+              const x = Math.min(nx, start.x);
+              const y = Math.min(ny, start.y);
+              const w = Math.abs(nx - start.x);
+              const h = Math.abs(ny - start.y);
+              setDraft({ page: start.page, x, y, w, h });
+            }}
+            onMouseUp={(e) => {
+              setStart(null);
+              if (!draft || draft.w < 0.01 || draft.h < 0.01) return;
+              onSelectionComplete(draft, { x: e.clientX + 8, y: e.clientY + 8 });
+              setDraft(null);
+            }}
+            onMouseLeave={() => {
+              setStart(null);
+              setDraft(null);
+            }}
+          >
+            {!pdfError && (
+              <PdfPreviewClient
+                fileUrl={pdfUrl}
+                width={previewWidth}
+                onLoadSuccess={setNumPages}
+                onLoadError={() => setPdfError(true)}
+              />
+            )}
+            {pdfError && (
+              <div style={{ padding: 12, fontSize: 12, color: "#444", whiteSpace: "pre-wrap" }}>
+                {fallbackText?.slice(0, 4000) ||
+                  "PDF 미리보기를 로드하지 못했습니다. 텍스트 fallback 상태에서 영역 선택은 계속 가능합니다."}
+              </div>
+            )}
+            <SelectionOverlay
+              sections={mappedSectionBoxes}
+              others={mappedOtherBoxes}
+              draft={mappedDraft}
+              focusedId={focusedBoxId}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

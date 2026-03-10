@@ -142,6 +142,7 @@ export default function TemplateTree({
   onFocusNode,
   focusedNodeId,
 }: TemplateTreeProps) {
+  const [collapsedSectionIds, setCollapsedSectionIds] = useState<Set<string>>(new Set());
   const [inlineEdit, setInlineEdit] = useState<
     | {
         type: "section";
@@ -228,6 +229,14 @@ export default function TemplateTree({
     }
     setInlineEdit(null);
   };
+  const toggleSectionCollapsed = (sectionId: string) => {
+    setCollapsedSectionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
 
   const renderSectionNode = (section: SectionNode) => {
     const depth = asTreeDepth(section);
@@ -235,6 +244,7 @@ export default function TemplateTree({
     const childFields = fields.filter((field) => field.sectionId === section.id);
     const childTables = tables.filter((table) => table.sectionId === section.id);
     const childRepeats = repeatBlocks.filter((block) => block.sectionId === section.id);
+    const collapsed = collapsedSectionIds.has(section.id);
     const openInlineCreate = (type: "field" | "table" | "repeat") => {
       setInlineCreate({
         sectionId: section.id,
@@ -311,6 +321,13 @@ export default function TemplateTree({
           >
             삭제
           </button>
+          <button
+            type="button"
+            onClick={() => toggleSectionCollapsed(section.id)}
+            style={smallBtnStyle}
+          >
+            {collapsed ? "펼치기" : "접기"}
+          </button>
         </div>
         {inlineEdit?.type === "section" && inlineEdit.id === section.id && (
           <InlineFormContainer
@@ -384,8 +401,9 @@ export default function TemplateTree({
             submitLabel="추가"
           />
         )}
-        <div style={{ marginLeft: 14, marginTop: 4 }}>
-          {childFields.map((field) => (
+        {!collapsed && (
+          <div style={{ marginLeft: 14, marginTop: 4 }}>
+            {childFields.map((field) => (
             <TreeLeafRow
               key={field.key}
               label={`├ Field: ${field.label}`}
@@ -394,9 +412,9 @@ export default function TemplateTree({
               onEdit={() => startSimpleEdit("field", field.key, field.label)}
               onDelete={() => onDeleteField(field.key)}
             />
-          ))}
-          {inlineEdit?.type === "field" &&
-            childFields.some((field) => field.key === inlineEdit.id) && (
+            ))}
+            {inlineEdit?.type === "field" &&
+              childFields.some((field) => field.key === inlineEdit.id) && (
               <InlineNameForm
                 value={inlineEdit.name}
                 onChange={(name) =>
@@ -407,8 +425,8 @@ export default function TemplateTree({
                 onSubmit={submitSimpleEdit}
                 onCancel={() => setInlineEdit(null)}
               />
-            )}
-          {childTables.map((table) => (
+              )}
+            {childTables.map((table) => (
             <TreeLeafRow
               key={table.id}
               label={`├ Table: ${table.name}`}
@@ -417,9 +435,9 @@ export default function TemplateTree({
               onEdit={() => startSimpleEdit("table", table.id, table.name)}
               onDelete={() => onDeleteTable(table.id)}
             />
-          ))}
-          {inlineEdit?.type === "table" &&
-            childTables.some((table) => table.id === inlineEdit.id) && (
+            ))}
+            {inlineEdit?.type === "table" &&
+              childTables.some((table) => table.id === inlineEdit.id) && (
               <InlineNameForm
                 value={inlineEdit.name}
                 onChange={(name) =>
@@ -430,8 +448,8 @@ export default function TemplateTree({
                 onSubmit={submitSimpleEdit}
                 onCancel={() => setInlineEdit(null)}
               />
-            )}
-          {childRepeats.map((block) => (
+              )}
+            {childRepeats.map((block) => (
             <TreeLeafRow
               key={block.id}
               label={`├ Repeat: ${block.name}`}
@@ -440,9 +458,9 @@ export default function TemplateTree({
               onEdit={() => startSimpleEdit("repeat", block.id, block.name)}
               onDelete={() => onDeleteRepeatBlock(block.id)}
             />
-          ))}
-          {inlineEdit?.type === "repeat" &&
-            childRepeats.some((block) => block.id === inlineEdit.id) && (
+            ))}
+            {inlineEdit?.type === "repeat" &&
+              childRepeats.some((block) => block.id === inlineEdit.id) && (
               <InlineNameForm
                 value={inlineEdit.name}
                 onChange={(name) =>
@@ -453,9 +471,10 @@ export default function TemplateTree({
                 onSubmit={submitSimpleEdit}
                 onCancel={() => setInlineEdit(null)}
               />
-            )}
-          {childSections.map((child) => renderSectionNode(child))}
-        </div>
+              )}
+            {childSections.map((child) => renderSectionNode(child))}
+          </div>
+        )}
       </div>
     );
   };
@@ -472,6 +491,22 @@ export default function TemplateTree({
   return (
     <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
       <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Template Structure</h3>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <button
+          type="button"
+          style={smallBtnStyle}
+          onClick={() => setCollapsedSectionIds(new Set())}
+        >
+          Expand All
+        </button>
+        <button
+          type="button"
+          style={smallBtnStyle}
+          onClick={() => setCollapsedSectionIds(new Set(sections.map((section) => section.id)))}
+        >
+          Collapse All
+        </button>
+      </div>
       <div style={{ fontSize: 13, marginBottom: 8 }}>{templateName || "새 템플릿"}</div>
       <DndContext collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>

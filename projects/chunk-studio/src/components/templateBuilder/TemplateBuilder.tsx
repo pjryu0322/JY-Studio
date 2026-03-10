@@ -1307,11 +1307,27 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
         style={{
           flex: 1,
           display: "grid",
-          gridTemplateColumns: "1.35fr 0.95fr",
+          gridTemplateColumns: "1.45fr 0.95fr",
           minHeight: 0,
         }}
       >
         <section style={{ borderRight: "1px solid #ddd", padding: 12, minHeight: 0 }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              border: "1px solid #dbe8ff",
+              background: "#f3f8ff",
+              color: "#0d47a1",
+              borderRadius: 999,
+              padding: "3px 8px",
+              marginBottom: 8,
+            }}
+          >
+            Left Workbench: Document Structure + Pages + Preview
+          </div>
           <div style={{ marginBottom: 8, fontSize: 12, color: "#666" }}>
             문서에서 영역을 드래그하면 타입 선택 메뉴가 뜹니다. (하위 요소는 Section 내부/선택 상태에서만 생성)
           </div>
@@ -1335,6 +1351,22 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
         </section>
 
         <section style={{ padding: 12, minHeight: 0, overflow: "auto" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 11,
+              border: "1px solid #e2e2e2",
+              background: "#fafafa",
+              color: "#555",
+              borderRadius: 999,
+              padding: "3px 8px",
+              marginBottom: 8,
+            }}
+          >
+            Right Workbench: Semantic Chunk Review / Diff / Drift
+          </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
             {([
               ["edit", "Edit"],
@@ -1464,6 +1496,19 @@ export default function TemplateBuilder({ jobId, family }: TemplateBuilderProps)
                 total {preview.chunkMeta.total} / section {preview.chunkMeta.sectionChunks} /
                 table {preview.chunkMeta.tableChunks} / repeat{" "}
                 {preview.chunkMeta.repeatChunks}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#555",
+                  marginBottom: 6,
+                  background: "#f8fbff",
+                  border: "1px solid #e3efff",
+                  borderRadius: 6,
+                  padding: "6px 8px",
+                }}
+              >
+                RAG Mapping: chunk text + section/page provenance + quality metadata {"->"} retrieval-ready JSONL
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {preview.chunks.slice(0, 8).map((chunk) => (

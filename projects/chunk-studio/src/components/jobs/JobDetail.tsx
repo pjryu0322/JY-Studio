@@ -86,6 +86,8 @@ export default function JobDetail() {
       return matchSearch && matchWarnings && matchTags;
     });
   }, [detail, search, warningFilter, tagFilter, allWarnings, allTags]);
+  const meaningfulTags = (tags: string[]) =>
+    tags.filter((tag) => !tag.startsWith("CONSTRAINT_") && tag !== "GENERAL").slice(0, 5);
 
   if (!job) {
     return (
@@ -200,6 +202,22 @@ export default function JobDetail() {
 
   return (
     <div style={{ padding: 16, height: "100%", boxSizing: "border-box" }}>
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 11,
+          border: "1px solid #e2e2e2",
+          background: "#fafafa",
+          color: "#555",
+          borderRadius: 999,
+          padding: "3px 8px",
+          marginBottom: 8,
+        }}
+      >
+        Chunk Review Workbench
+      </div>
       <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 600 }}>
         {job.originalFilename ?? `Job ${job.id}`}
       </h2>
@@ -366,6 +384,12 @@ export default function JobDetail() {
         )}
         {actionError && <div style={{ marginTop: 6, color: "#c62828", fontSize: 12 }}>{actionError}</div>}
       </section>
+      <section style={{ marginTop: 12, border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
+        <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>RAG Preparation Mapping</h3>
+        <div style={{ fontSize: 12, color: "#444" }}>
+          chunk text {"->"} section/page provenance {"->"} quality/warnings {"->"} export(JSONL) {"->"} retrieval-ready dataset
+        </div>
+      </section>
 
       {detail?.diff && (
         <section style={{ marginTop: 12, border: "1px solid #ddd", borderRadius: 8, padding: 10 }}>
@@ -426,6 +450,8 @@ export default function JobDetail() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {filteredChunks.slice(0, 30).map((chunk, index) => {
             const rowKey = chunk.meta.chunkId || `${job.id}-${index}`;
+            const tagsForDisplay = meaningfulTags(chunk.meta.tags);
+            const hiddenTagCount = Math.max(0, chunk.meta.tags.length - tagsForDisplay.length);
             return (
               <div key={rowKey} style={{ border: "1px solid #e0e0e0", borderRadius: 6, padding: 8, background: "#fafafa" }}>
                 <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>
@@ -434,13 +460,16 @@ export default function JobDetail() {
                 <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>
                   source: {chunk.meta.startBlockIdx}~{chunk.meta.endBlockIdx} / chunkId: {chunk.meta.chunkId}
                 </div>
-                {chunk.meta.tags.length > 0 && (
+                {tagsForDisplay.length > 0 && (
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
-                    {chunk.meta.tags.map((tag) => (
+                    {tagsForDisplay.map((tag) => (
                       <span key={`${rowKey}-${tag}`} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 10, border: "1px solid #90caf9", color: "#1565c0", background: "#e3f2fd" }}>
                         {tag}
                       </span>
                     ))}
+                    {hiddenTagCount > 0 && (
+                      <span style={{ fontSize: 10, color: "#666" }}>+{hiddenTagCount} hidden</span>
+                    )}
                   </div>
                 )}
                 {chunk.meta.quality.warnings.length > 0 && (
