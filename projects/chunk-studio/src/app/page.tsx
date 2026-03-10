@@ -1,41 +1,189 @@
+"use client";
+
 import EntryCard from "@/components/entry/EntryCard";
 import RecentJobsPanel from "@/components/entry/RecentJobsPanel";
 import RecentDocumentsPanel from "@/components/entry/RecentDocumentsPanel";
 import SystemAlertsPanel from "@/components/entry/SystemAlertsPanel";
+import { useRecentJobs } from "@/components/entry/useRecentJobs";
+import Link from "next/link";
 
 export default function Home() {
+  const { alerts, documents, loading } = useRecentJobs();
+
   return (
-    <main style={{ minHeight: "100vh", background: "#f7f8fa", padding: 20 }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gap: 16 }}>
-        <header style={{ border: "1px solid #ddd", borderRadius: 12, background: "#fff", padding: 16 }}>
-          <h1 style={{ margin: "0 0 8px", fontSize: 28 }}>Chunk Studio</h1>
-          <p style={{ margin: 0, fontSize: 14, color: "#555", lineHeight: 1.5 }}>
-            Visual chunking workbench for trustworthy document structure inspection, semantic chunk review,
-            and RAG-ready export preparation.
+    <main
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at 0% 0%, rgba(73, 127, 255, 0.12) 0, transparent 28%), radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.11) 0, transparent 22%), #f5f7fb",
+        padding: 20,
+      }}
+    >
+      <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 16 }}>
+        <header
+          style={{
+            border: "1px solid rgba(90, 123, 214, 0.25)",
+            borderRadius: 20,
+            background:
+              "linear-gradient(165deg, rgba(255,255,255,0.98) 0%, rgba(247,251,255,0.98) 48%, rgba(238,246,255,0.98) 100%)",
+            padding: 20,
+            boxShadow: "0 20px 42px rgba(17, 31, 64, 0.08)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: "#274c96",
+              fontWeight: 700,
+              display: "inline-block",
+              borderRadius: 999,
+              padding: "4px 10px",
+              background: "rgba(70, 120, 255, 0.12)",
+              border: "1px solid rgba(70, 120, 255, 0.2)",
+              marginBottom: 10,
+            }}
+          >
+            Chunk Studio 진입 허브
+          </div>
+          <h1 style={{ margin: "0 0 10px", fontSize: 34, color: "#102544", letterSpacing: "-0.02em" }}>
+            Chunk Studio
+          </h1>
+          <p style={{ margin: 0, maxWidth: 920, fontSize: 14, color: "#56627b", lineHeight: 1.6 }}>
+            문서 구조를 시각적으로 검토하고, 의미 기반 청크 품질을 확인한 뒤, RAG 검색에 바로 쓸 수 있는
+            결과로 내보내는 청킹 워크벤치입니다.
           </p>
+          <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <KpiChip label="진행 중" value={loading ? "..." : String(alerts.running)} tone="info" />
+            <KpiChip label="실패" value={loading ? "..." : String(alerts.failed)} tone="danger" />
+            <KpiChip label="최근 문서" value={loading ? "..." : String(documents.length)} tone="neutral" />
+            <KpiChip label="조치 필요" value={loading ? "..." : String(alerts.actionRequired)} tone="warning" />
+          </div>
+          <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Link
+              href="/workspace"
+              style={{
+                textDecoration: "none",
+                borderRadius: 12,
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#fff",
+                background: "linear-gradient(135deg, #2b64f3, #1f4ed8)",
+                border: "1px solid #2459d9",
+                padding: "9px 14px",
+                boxShadow: "0 10px 20px rgba(40, 88, 220, 0.24)",
+              }}
+            >
+              문서 작업 시작
+            </Link>
+            <Link
+              href="/admin"
+              style={{
+                textDecoration: "none",
+                borderRadius: 12,
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#2f4267",
+                background: "#fff",
+                border: "1px solid rgba(65, 84, 120, 0.24)",
+                padding: "9px 14px",
+              }}
+            >
+              관리 화면 열기
+            </Link>
+          </div>
         </header>
 
-        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
           <EntryCard
+            icon="🛠️"
+            variant="operator"
+            badge="실행 모드"
             title="Operator"
-            subtitle="Worker + Reviewer"
-            description="Upload documents, run chunking jobs, inspect structure/preview/chunks, review diffs, and export RAG chunks."
-            href="/workspace"
+            description="업로드 -> 청킹 실행 -> 구조/미리보기/청크 검토 -> Diff 확인 -> RAG 내보내기까지 한 번에 처리합니다."
+            actions={[
+              { label: "워크스페이스 열기", href: "/workspace", emphasis: "primary" },
+              { label: "작업 이어보기", href: "/jobs" },
+            ]}
+            indicators={[
+              { label: "진행", value: String(alerts.running) },
+              { label: "확인", value: String(alerts.actionRequired) },
+              { label: "실패", value: String(alerts.failed) },
+            ]}
           />
           <EntryCard
+            icon="🧭"
+            variant="manager"
+            badge="관제 모드"
             title="Manager"
-            subtitle="Template Manager + System Admin"
-            description="Monitor job pipeline and failures, manage templates, review recommendations/drift, and inspect system alerts."
-            href="/admin"
+            description="파이프라인 상태/실패를 관제하고, 템플릿 추천/드리프트와 운영 알림을 점검합니다."
+            actions={[
+              { label: "관리 대시보드", href: "/admin", emphasis: "primary" },
+              { label: "템플릿 빌더", href: "/templates/builder" },
+            ]}
+            indicators={[
+              { label: "실패 작업", value: String(alerts.failed) },
+              { label: "최근 문서", value: String(documents.length) },
+              { label: "진행 작업", value: String(alerts.running) },
+            ]}
           />
         </section>
 
-        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
           <RecentJobsPanel />
           <RecentDocumentsPanel />
           <SystemAlertsPanel />
         </section>
       </div>
     </main>
+  );
+}
+
+function KpiChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "info" | "danger" | "neutral" | "warning";
+}) {
+  const toneStyle =
+    tone === "danger"
+      ? {
+          border: "1px solid rgba(211, 47, 47, 0.24)",
+          background: "rgba(255, 235, 238, 0.86)",
+          color: "#b71c1c",
+        }
+      : tone === "info"
+        ? {
+            border: "1px solid rgba(30, 136, 229, 0.24)",
+            background: "rgba(227, 242, 253, 0.86)",
+            color: "#0d47a1",
+          }
+      : tone === "warning"
+        ? {
+            border: "1px solid rgba(251, 146, 60, 0.26)",
+            background: "rgba(255, 247, 237, 0.94)",
+            color: "#9a3412",
+          }
+        : {
+            border: "1px solid rgba(100, 116, 139, 0.24)",
+            background: "rgba(248, 250, 252, 0.9)",
+            color: "#334155",
+          };
+  return (
+    <div
+      style={{
+        ...toneStyle,
+        borderRadius: 999,
+        padding: "6px 10px",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+      }}
+    >
+      <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 800 }}>{value}</span>
+    </div>
   );
 }

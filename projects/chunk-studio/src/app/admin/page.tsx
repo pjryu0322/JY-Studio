@@ -5,27 +5,38 @@ import SystemAlertsPanel from "@/components/entry/SystemAlertsPanel";
 import { useRecentJobs } from "@/components/entry/useRecentJobs";
 
 export default function AdminPage() {
-  const { jobs } = useRecentJobs();
+  const { jobs, loading } = useRecentJobs();
   const failedJobs = jobs.filter((job) => job.status === "FAILED").slice(0, 10);
   const runningJobs = jobs.filter((job) =>
     ["QUEUED", "CONVERTING", "EXTRACTING_TEXT", "CHUNKING"].includes(job.status)
   );
 
   return (
-    <main style={{ minHeight: "100vh", background: "#f7f8fa", padding: 20 }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gap: 12 }}>
-        <header style={{ border: "1px solid #ddd", borderRadius: 12, background: "#fff", padding: 14 }}>
-          <h2 style={{ margin: "0 0 6px", fontSize: 22 }}>Manager Dashboard</h2>
-          <p style={{ margin: 0, fontSize: 13, color: "#555" }}>
-            Monitor pipeline health, inspect failed jobs, and manage template workflows.
+    <main style={{ minHeight: "100vh", background: "#f5f7fb", padding: 20 }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 12 }}>
+        <header
+          style={{
+            border: "1px solid rgba(87, 120, 255, 0.24)",
+            borderRadius: 18,
+            background: "linear-gradient(165deg, #ffffff 0%, #f6faff 100%)",
+            padding: 16,
+            boxShadow: "0 14px 30px rgba(17, 31, 64, 0.08)",
+          }}
+        >
+          <div style={{ fontSize: 11, color: "#274c96", fontWeight: 700, marginBottom: 6 }}>
+            MANAGER 모드
+          </div>
+          <h2 style={{ margin: "0 0 6px", fontSize: 24, color: "#122549" }}>Manager 관제 대시보드</h2>
+          <p style={{ margin: 0, fontSize: 13, color: "#56627b" }}>
+            파이프라인 상태와 장애를 점검하고 템플릿 운영 흐름을 관리합니다.
           </p>
         </header>
 
-        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-          <section style={{ border: "1px solid #ddd", borderRadius: 10, background: "#fff", padding: 12 }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Job Monitoring</h4>
+        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+          <section style={{ border: "1px solid rgba(87, 120, 255, 0.2)", borderRadius: 16, background: "#fff", padding: 14, boxShadow: "0 10px 24px rgba(25, 36, 67, 0.06)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 15, color: "#132547" }}>📊 작업 모니터링</h4>
             <div style={{ fontSize: 12, color: "#555" }}>
-              running jobs: <strong>{runningJobs.length}</strong>
+              진행 중 작업: <strong>{loading ? "..." : runningJobs.length}</strong>
             </div>
             <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
               {runningJobs.slice(0, 8).map((job) => (
@@ -35,13 +46,13 @@ export default function AdminPage() {
                 </div>
               ))}
               {runningJobs.length === 0 && (
-                <div style={{ fontSize: 12, color: "#777" }}>No running jobs.</div>
+                <div style={{ fontSize: 12, color: "#777" }}>진행 중인 작업이 없습니다.</div>
               )}
             </div>
           </section>
 
-          <section style={{ border: "1px solid #ddd", borderRadius: 10, background: "#fff", padding: 12 }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Failed Jobs</h4>
+          <section style={{ border: "1px solid rgba(242, 101, 101, 0.28)", borderRadius: 16, background: "#fff", padding: 14, boxShadow: "0 10px 24px rgba(80, 26, 26, 0.06)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 15, color: "#991b1b" }}>⚠️ 실패 작업</h4>
             <div style={{ display: "grid", gap: 6 }}>
               {failedJobs.map((job) => (
                 <Link
@@ -60,17 +71,17 @@ export default function AdminPage() {
                 </Link>
               ))}
               {failedJobs.length === 0 && (
-                <div style={{ fontSize: 12, color: "#777" }}>No failed jobs.</div>
+                <div style={{ fontSize: 12, color: "#777" }}>실패 작업이 없습니다.</div>
               )}
             </div>
           </section>
         </section>
 
-        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-          <section style={{ border: "1px solid #ddd", borderRadius: 10, background: "#fff", padding: 12 }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Template Management</h4>
+        <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+          <section style={{ border: "1px solid rgba(87, 120, 255, 0.2)", borderRadius: 16, background: "#fff", padding: 14, boxShadow: "0 10px 24px rgba(25, 36, 67, 0.06)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 15, color: "#132547" }}>🧭 템플릿 관리</h4>
             <p style={{ margin: 0, fontSize: 12, color: "#666" }}>
-              Manage templates, recommendations, and drift checks from the template builder.
+              템플릿 추천/운영/드리프트 점검 흐름을 템플릿 빌더에서 관리합니다.
             </p>
             <Link
               href="/templates/builder"
@@ -78,21 +89,23 @@ export default function AdminPage() {
                 display: "inline-block",
                 marginTop: 10,
                 fontSize: 12,
-                border: "1px solid #1565c0",
-                color: "#1565c0",
-                borderRadius: 8,
-                padding: "6px 10px",
+                border: "1px solid #2459d9",
+                color: "#fff",
+                background: "linear-gradient(135deg, #2b64f3, #1f4ed8)",
+                borderRadius: 10,
+                padding: "7px 11px",
                 textDecoration: "none",
+                fontWeight: 700,
               }}
             >
-              Open Template Builder
+              템플릿 빌더 열기
             </Link>
           </section>
 
-          <section style={{ border: "1px solid #ddd", borderRadius: 10, background: "#fff", padding: 12 }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Template Drift Status</h4>
+          <section style={{ border: "1px solid rgba(87, 120, 255, 0.2)", borderRadius: 16, background: "#fff", padding: 14, boxShadow: "0 10px 24px rgba(25, 36, 67, 0.06)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 15, color: "#132547" }}>🧪 드리프트 상태</h4>
             <p style={{ margin: 0, fontSize: 12, color: "#666" }}>
-              Drift checks are available per template/job inside the builder Drift tab.
+              템플릿/문서별 드리프트 점검은 Builder의 Drift 탭에서 확인할 수 있습니다.
             </p>
           </section>
         </section>

@@ -7,11 +7,47 @@ export default function RecentDocumentsPanel() {
   const recent = documents.slice(0, 8);
 
   return (
-    <section style={{ border: "1px solid #ddd", borderRadius: 10, background: "#fff", padding: 12 }}>
-      <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Recent Documents</h4>
-      {loading && <div style={{ fontSize: 12, color: "#666" }}>Loading...</div>}
+    <section
+      style={{
+        border: "1px solid rgba(87, 120, 255, 0.2)",
+        borderRadius: 16,
+        background: "#fff",
+        padding: 14,
+        boxShadow: "0 10px 24px rgba(25, 36, 67, 0.06)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <h4 style={{ margin: 0, fontSize: 15, color: "#132547" }}>📄 최근 문서</h4>
+        <span style={{ fontSize: 12, color: "#64748b" }}>최근 업로드 기준</span>
+      </div>
+      {loading && (
+        <div style={{ display: "grid", gap: 6 }}>
+          {Array.from({ length: 3 }, (_, idx) => (
+            <div
+              key={`docs-loading-${idx}`}
+              style={{
+                height: 36,
+                borderRadius: 8,
+                border: "1px solid #eef2ff",
+                background: "linear-gradient(90deg, #f8fbff 0%, #edf3ff 50%, #f8fbff 100%)",
+              }}
+            />
+          ))}
+        </div>
+      )}
       {!loading && recent.length === 0 && (
-        <div style={{ fontSize: 12, color: "#666" }}>No documents yet.</div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "#667085",
+            border: "1px dashed #d6deee",
+            borderRadius: 8,
+            padding: 10,
+            background: "#fbfcff",
+          }}
+        >
+          최근 문서가 없습니다.
+        </div>
       )}
       <div style={{ display: "grid", gap: 6 }}>
         {recent.map((doc) => (
@@ -24,6 +60,7 @@ export default function RecentDocumentsPanel() {
               display: "flex",
               justifyContent: "space-between",
               gap: 8,
+              background: "#fcfdff",
             }}
             title={doc.name}
           >
@@ -37,7 +74,7 @@ export default function RecentDocumentsPanel() {
             >
               {doc.name}
             </span>
-            <span style={{ fontSize: 11, color: "#666" }}>jobs: {doc.count}</span>
+            <span style={{ fontSize: 11, color: "#666" }}>작업 {doc.count}</span>
           </div>
         ))}
       </div>

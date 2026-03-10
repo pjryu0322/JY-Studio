@@ -21,11 +21,19 @@ export default function Layout() {
 
   return (
     <div className="app-layout">
-      <TopBar />
+      <div aria-label="Top Bar">
+        <TopBar />
+      </div>
       <div className="app-layout__body">
-        <Sidebar />
-        <PreviewArea />
-        <ChunkPanel />
+        <div aria-label="Left Panel">
+          <Sidebar />
+        </div>
+        <div aria-label="Center Panel">
+          <PreviewArea />
+        </div>
+        <div aria-label="Right Panel">
+          <ChunkPanel />
+        </div>
       </div>
     </div>
   );
