@@ -83,7 +83,7 @@ export default function Sidebar() {
         <span className="sidebar__label">Document Structure</span>
         <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
           {sections.length === 0 && (
-            <div style={{ fontSize: 12, color: "#777" }}>구조 데이터 없음</div>
+            <div style={{ fontSize: 12, color: "#777" }}>구조 정보를 찾을 수 없습니다.</div>
           )}
           {sections.slice(0, 100).map((section) => (
             <button
@@ -128,9 +128,7 @@ export default function Sidebar() {
         <span className="sidebar__label">Page List</span>
         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {pages.length === 0 && (
-            <div style={{ fontSize: 12, color: "#777" }}>
-              페이지 인덱스를 계산할 수 없습니다.
-            </div>
+            <div style={{ fontSize: 12, color: "#777" }}>페이지 정보가 없습니다.</div>
           )}
           {pages.map((page) => (
             <button

@@ -86,11 +86,20 @@ export default function ChunkPanel() {
     <section className="chunk-panel">
       <div className="chunk-panel__header">
         <strong>Chunk Review</strong>
-        <details>
-          <summary style={{ cursor: "pointer", fontSize: 11, color: "#64748b" }}>
-            내보내기
-          </summary>
-          <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+      </div>
+      <div className="chunk-panel__body">
+        <JobDetail key={selectedJob?.id ?? "no-job"} />
+        <section
+          style={{
+            margin: "10px 16px 14px",
+            border: "1px solid #dfe5f0",
+            borderRadius: 10,
+            background: "#fff",
+            padding: 10,
+          }}
+        >
+          <strong style={{ fontSize: 12, color: "#0f172a" }}>RAG 데이터셋 내보내기</strong>
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
             <select
               aria-label="RAG export format"
               value={exportFormat}
@@ -98,13 +107,13 @@ export default function ChunkPanel() {
               style={{
                 border: "1px solid #cbd5e1",
                 borderRadius: 6,
-                padding: "3px 5px",
-                fontSize: 11,
+                padding: "4px 6px",
+                fontSize: 12,
                 background: "#fff",
               }}
             >
-              <option value="jsonl">JSONL</option>
               <option value="json">JSON</option>
+              <option value="jsonl">JSONL</option>
               <option value="csv">CSV</option>
             </select>
             <button
@@ -113,32 +122,21 @@ export default function ChunkPanel() {
               disabled={!selectedJob || isExporting}
               style={{
                 border: "1px solid #cbd5e1",
-                borderRadius: 6,
+                borderRadius: 7,
                 background: "#fff",
                 color: "#334155",
-                fontSize: 11,
-                padding: "3px 7px",
+                fontSize: 12,
+                padding: "4px 9px",
                 cursor: !selectedJob || isExporting ? "not-allowed" : "pointer",
               }}
             >
-              {isExporting ? "내보내는 중..." : "내보내기"}
+              {isExporting ? "내보내는 중..." : "RAG 데이터셋 다운로드"}
             </button>
           </div>
-        </details>
-      </div>
-      {exportError && (
-        <div
-          style={{
-            margin: "4px 10px 0",
-            color: "#b91c1c",
-            fontSize: 11,
-          }}
-        >
-          {exportError}
-        </div>
-      )}
-      <div className="chunk-panel__body">
-        <JobDetail key={selectedJob?.id ?? "no-job"} />
+          {exportError && (
+            <div style={{ marginTop: 6, color: "#b91c1c", fontSize: 11 }}>{exportError}</div>
+          )}
+        </section>
       </div>
     </section>
   );

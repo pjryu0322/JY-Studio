@@ -85,14 +85,14 @@ export default function JobDetail() {
         filter === "all"
           ? true
           : filter === "needs-review"
-            ? status === "검토필요"
+            ? status === "검토 필요"
             : filter === "edited"
               ? status === "수정됨"
               : filter === "noise"
-                ? status === "노이즈의심"
+                ? status === "노이즈 의심"
                 : filter === "long"
-                  ? status === "과대청크"
-                  : status === "과소청크";
+                  ? status === "긴 청크"
+                  : status === "짧은 청크";
       const chunkSection = chunk.meta.sectionPath.join(" > ") || "Unsectioned";
       const matchSection = !sectionFilter || chunkSection === sectionFilter;
       return matchSearch && matchFilter && matchSection;
@@ -213,9 +213,9 @@ export default function JobDetail() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {[
               { id: "all", label: "전체" },
-              { id: "needs-review", label: "검토필요" },
+              { id: "needs-review", label: "검토 필요" },
               { id: "edited", label: "수정됨" },
-              { id: "noise", label: "노이즈의심" },
+              { id: "noise", label: "노이즈 의심" },
               { id: "long", label: "긴 청크" },
               { id: "short", label: "짧은 청크" },
             ].map((item) => (
@@ -337,7 +337,7 @@ export default function JobDetail() {
                 }}
                 style={actionBtn}
               >
-                merge chunk
+                병합
               </button>
               <button
                 type="button"
@@ -353,7 +353,7 @@ export default function JobDetail() {
                 }}
                 style={actionBtn}
               >
-                split chunk
+                분할
               </button>
               <button
                 type="button"
@@ -368,11 +368,11 @@ export default function JobDetail() {
                 }}
                 style={actionBtn}
               >
-                exclude noisy chunk
+                제외
               </button>
             </div>
             <label style={{ fontSize: 12, color: "#334155" }}>
-              edit label/title
+              레이블 수정
               <input
                 value={editedLabels[selectedChunk.meta.chunkId] ?? selectedChunk.meta.sectionTitle ?? ""}
                 onChange={(e) =>
@@ -383,7 +383,7 @@ export default function JobDetail() {
               />
             </label>
             <label style={{ fontSize: 12, color: "#334155" }}>
-              add review note
+              검토 메모
               <textarea
                 value={reviewNotes[selectedChunk.meta.chunkId] ?? ""}
                 onChange={(e) =>
@@ -412,10 +412,10 @@ function resolveUiStatus(
   modified: Set<string>
 ) {
   if (modified.has(chunk.meta.chunkId)) return "수정됨";
-  if (analyzed === "NOISE_SUSPECTED") return "노이즈의심";
-  if (analyzed === "TOO_LONG") return "과대청크";
-  if (analyzed === "TOO_SHORT") return "과소청크";
-  if (analyzed === "REVIEW_REQUIRED") return "검토필요";
+  if (analyzed === "NOISE_SUSPECTED") return "노이즈 의심";
+  if (analyzed === "TOO_LONG") return "긴 청크";
+  if (analyzed === "TOO_SHORT") return "짧은 청크";
+  if (analyzed === "REVIEW_REQUIRED") return "검토 필요";
   return "정상";
 }
 
@@ -436,7 +436,7 @@ function StatusBadge({ status }: { status: string }) {
   const tone =
     status === "정상"
       ? { color: "#166534", bg: "#dcfce7", border: "#86efac" }
-      : status === "검토필요"
+      : status === "검토 필요"
         ? { color: "#92400e", bg: "#fef3c7", border: "#fcd34d" }
         : status === "수정됨"
           ? { color: "#1d4ed8", bg: "#dbeafe", border: "#93c5fd" }
