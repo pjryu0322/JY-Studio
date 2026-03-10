@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Chunk Studio",
-  description: "Split text into chunks with configurable token limits",
+  description: "Visual semantic chunking workbench for document-to-RAG preparation",
 };
 
 export default function RootLayout({
