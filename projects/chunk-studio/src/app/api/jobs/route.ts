@@ -14,6 +14,7 @@ import {
 import { extractDocText } from "@/lib/doc/extractDocText";
 import { runChunkingPipeline } from "@/lib/jobs/chunkingPipeline";
 import { extractPptText } from "@/lib/ppt/extractPptText";
+import { extractPdfText } from "@/lib/pdf/extractPdfText";
 import { ensureJobDir, getOriginalPath, saveWebFile } from "@/lib/files/storage";
 
 export async function GET() {
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
         message,
       },
     });
+    console.log("[POST /api/jobs] created", { jobId: job.id, ext, status });
 
     await ensureJobDir(job.id);
     const storagePath = getOriginalPath(job.id, ext);
@@ -143,6 +145,42 @@ export async function POST(req: Request) {
         text: extracted.text,
         extractionMethod: ext === "pptx" ? "PPTX_DIRECT" : "PPT_DIRECT_HEURISTIC",
         message: extracted.message,
+      });
+      return NextResponse.json({
+        jobId: job.id,
+        status: "DONE",
+        message: extracted.message,
+      });
+    }
+
+    // PDF direct extraction + chunking path.
+    if (ext === "pdf") {
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          status: "EXTRACTING_TEXT",
+          progress: 30,
+          message: "PDF 텍스트를 추출하는 중...",
+        },
+      });
+      const extracted = await extractPdfText(file);
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          status: "CHUNKING",
+          progress: 70,
+          message: "청크 생성 중...",
+        },
+      });
+      await runChunkingPipeline({
+        jobId: job.id,
+        text: extracted.text,
+        extractionMethod: "PDF_DIRECT",
+        message: extracted.message,
+      });
+      console.log("[POST /api/jobs] chunking completed", {
+        jobId: job.id,
+        extractionMethod: "PDF_DIRECT",
       });
       return NextResponse.json({
         jobId: job.id,

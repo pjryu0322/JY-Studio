@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isPdfMime } from "@/lib/jobs/upload";
 import { ensureJobDir, getReplacementPdfPath, saveWebFile } from "@/lib/files/storage";
+import { extractPdfText } from "@/lib/pdf/extractPdfText";
+import { runChunkingPipeline } from "@/lib/jobs/chunkingPipeline";
 
 export async function POST(
   req: NextRequest,
@@ -81,17 +83,34 @@ export async function POST(
       prisma.job.update({
         where: { id: jobId },
         data: {
-          status: "QUEUED",
-          progress: 0,
-          message: "Replacement PDF uploaded. Processing started.",
+          status: "EXTRACTING_TEXT",
+          progress: 30,
+          message: "Replacement PDF text extraction in progress...",
         },
       }),
     ]);
 
+    const extracted = await extractPdfText(file);
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: "CHUNKING",
+        progress: 70,
+        message: "청크 생성 중...",
+      },
+    });
+    await runChunkingPipeline({
+      jobId,
+      text: extracted.text,
+      extractionMethod: "PDF_REPLACEMENT",
+      message: extracted.message,
+    });
+    console.log("[POST /api/jobs/:id/replace-pdf] chunking completed", { jobId });
+
     return NextResponse.json({
       ok: true,
       jobId,
-      status: "QUEUED",
+      status: "DONE",
     });
   } catch (e) {
     console.error("[POST /api/jobs/:id/replace-pdf]", e);

@@ -51,7 +51,14 @@ export default function JobDetail() {
     fetch(`/api/jobs/${job.id}`)
       .then(async (res) => (res.ok ? ((await res.json()) as JobDetailDTO) : null))
       .then((data) => {
-        if (!cancelled && data) setDetail(data);
+        if (!cancelled && data) {
+          console.log("[JobDetail] chunks loaded", {
+            jobId: job.id,
+            status: data.status,
+            chunkCount: data.chunks?.length ?? 0,
+          });
+          setDetail(data);
+        }
       })
       .catch(() => {
         if (!cancelled) setDetail(null);

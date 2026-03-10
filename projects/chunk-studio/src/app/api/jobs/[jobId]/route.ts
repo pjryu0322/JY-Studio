@@ -74,7 +74,7 @@ export async function GET(_: Request, ctx: RouteCtx) {
         ? (ocrArtifact.meta as Record<string, unknown>)
         : null;
 
-    return NextResponse.json({
+    const responsePayload = {
       id: job.id,
       status: job.status,
       progress: job.progress,
@@ -116,7 +116,13 @@ export async function GET(_: Request, ctx: RouteCtx) {
       ocrQuality: ocrMeta?.quality ?? null,
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
+    };
+    console.log("[GET /api/jobs/:jobId] response", {
+      jobId,
+      status: responsePayload.status,
+      chunkCount: responsePayload.chunks.length,
     });
+    return NextResponse.json(responsePayload);
   } catch (error) {
     console.error("[GET /api/jobs/:jobId]", error);
     return NextResponse.json({ error: "Failed to load job detail" }, { status: 500 });

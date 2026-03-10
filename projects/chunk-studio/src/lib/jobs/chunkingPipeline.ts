@@ -66,6 +66,7 @@ export async function runChunkingPipeline({
   preset,
   beforeChunks,
 }: ChunkingPipelineInput): Promise<void> {
+  console.log("[chunkingPipeline] start", { jobId, extractionMethod, preset: preset ?? null });
   const cleaned = text.replace(/\r\n/g, "\n").trim();
   const resolvedConfig = normalizeConfig(chunkConfig, preset);
   const { blocks: rawBlocks, tables } = buildDocumentBlocks(cleaned);
@@ -95,6 +96,11 @@ export async function runChunkingPipeline({
       )
     : null;
   const jsonl = exportChunksToJsonl(chunks);
+  console.log("[chunkingPipeline] generated chunks", {
+    jobId,
+    chunkCount: chunks.length,
+    cleanedTextLength: cleaned.length,
+  });
 
   const extractedMeta = toJsonValue({
     extractionMethod,
@@ -248,5 +254,6 @@ export async function runChunkingPipeline({
       },
     });
   });
+  console.log("[chunkingPipeline] done", { jobId, chunkCount: chunks.length });
 }
 
