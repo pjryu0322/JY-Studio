@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useJobStore } from "@/store/jobStore";
-import ScreenLabel from "@/components/entry/ScreenLabel";
 
 export default function TopBar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,16 +33,34 @@ export default function TopBar() {
 
   return (
     <header className="top-bar">
-      <div style={{ display: "grid", gap: 4, minWidth: 280 }}>
-        <ScreenLabel screen="문서 청킹 작업공간" mode="Operator" context="PDF 검토 및 청크 정제" />
-        <span style={{ fontSize: 12, color: "#475569" }}>
-          파일: {selectedJob?.originalFilename ?? "선택된 문서 없음"}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minWidth: 320,
+          fontSize: 12,
+          color: "#334155",
+        }}
+      >
+        <strong style={{ fontSize: 13, color: "#0f172a" }}>문서 청킹 작업공간</strong>
+        <span style={{ color: "#94a3b8" }}>/</span>
+        <span
+          style={{
+            maxWidth: 280,
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
+          }}
+          title={selectedJob?.originalFilename ?? "선택된 문서 없음"}
+        >
+          {selectedJob?.originalFilename ?? "선택된 문서 없음"}
         </span>
       </div>
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.doc,.docx,.ppt,.pptx,.md,.hwp,.hwpx"
+        accept=".pdf"
         style={{ display: "none" }}
         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
@@ -59,7 +76,7 @@ export default function TopBar() {
         {uploading ? "업로드 중..." : selectedJob ? "재업로드" : "PDF 업로드"}
       </button>
       <span style={{ fontSize: 12, color: "#666" }}>
-        작업 상태: {selectedJob?.status ?? "없음"}
+        상태: {selectedJob?.status ?? "없음"}
       </span>
       <Link href="/jobs" style={{ marginLeft: "auto", fontSize: 12, textDecoration: "none" }}>
         작업목록 보기

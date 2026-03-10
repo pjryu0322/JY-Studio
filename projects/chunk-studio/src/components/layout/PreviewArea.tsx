@@ -163,59 +163,47 @@ export default function PreviewArea() {
   return (
     <section className="preview-area" ref={hostRef}>
       <div className="preview-area__header">
-        <strong>Document Preview</strong>
+        <strong>PDF Preview</strong>
         <span style={{ color: "#666" }}>
-          {selectedJob.originalFilename ?? selectedJob.id}
+          pages: {visiblePages} / sections: {sectionCount}
         </span>
-        <span style={{ color: "#666" }}>
-          status: {selectedJob.status} / sections: {sectionCount} / pages:{" "}
-          {visiblePages}
-        </span>
-      </div>
-      <div
-        style={{
-          margin: "8px 8px 0",
-          border: "1px solid #e2e8f0",
-          borderRadius: 8,
-          background: "#fff",
-          padding: 8,
-          fontSize: 11,
-          color: "#334155",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <strong>Semantic Chunk Boundary Inspector</strong>
-          <span>
-            issues: {boundaryOverview.issueCount} / merge candidates:{" "}
-            {boundaryOverview.mergeCount}
-          </span>
-        </div>
-        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {boundaryOverview.top.map((item) => (
-            <button
-              key={item.chunkId}
-              type="button"
-              onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent("chunkstudio:selected-chunk", { detail: item.chunkId })
-                )
-              }
-              style={{
-                border: item.isSelected ? "1px solid #3b82f6" : "1px solid #cbd5e1",
-                borderRadius: 999,
-                background: item.isSelected ? "#eaf2ff" : "#f8fafc",
-                color: item.isSelected ? "#1d4ed8" : "#334155",
-                padding: "2px 7px",
-                cursor: "pointer",
-              }}
-              title={`${item.chunkId} / start p.${item.start ?? "-"} / end p.${item.end ?? "-"}`}
-            >
-              #{item.index + 1} start p.{item.start ?? "-"} end p.{item.end ?? "-"}
-            </button>
-          ))}
-        </div>
+        <details style={{ marginTop: 2 }}>
+          <summary style={{ cursor: "pointer", fontSize: 11, color: "#475569" }}>
+            경계 점검 ({boundaryOverview.issueCount}) / 머지 후보 ({boundaryOverview.mergeCount})
+          </summary>
+          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {boundaryOverview.top.map((item) => (
+              <button
+                key={item.chunkId}
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent("chunkstudio:selected-chunk", { detail: item.chunkId })
+                  )
+                }
+                style={{
+                  border: item.isSelected ? "1px solid #3b82f6" : "1px solid #cbd5e1",
+                  borderRadius: 999,
+                  background: item.isSelected ? "#eaf2ff" : "#f8fafc",
+                  color: item.isSelected ? "#1d4ed8" : "#334155",
+                  padding: "2px 7px",
+                  cursor: "pointer",
+                  fontSize: 11,
+                }}
+                title={`${item.chunkId} / start p.${item.start ?? "-"} / end p.${item.end ?? "-"}`}
+              >
+                #{item.index + 1} p.{item.start ?? "-"}~{item.end ?? "-"}
+              </button>
+            ))}
+          </div>
+        </details>
       </div>
       <div className="preview-area__scroll" ref={scrollRef}>
+        {!canPreviewPdf && (
+          <div style={{ marginBottom: 8, fontSize: 11, color: "#64748b" }}>
+            PDF가 아닌 문서는 추출 텍스트만 표시됩니다.
+          </div>
+        )}
         {canPreviewPdf && !pdfUnavailable ? (
           <PdfPreviewClient
             key={selectedJob.id}
@@ -239,7 +227,7 @@ export default function PreviewArea() {
           >
             {canPreviewPdf
               ? "PDF 미리보기를 불러오지 못했습니다. 아래는 추출 텍스트입니다.\n\n"
-              : "이 작업은 PDF 원본이 아니라서 미리보기 대신 추출 텍스트를 표시합니다.\n\n"}
+              : ""}
             {(detail?.extractedText || "").slice(0, 5000) || "표시할 텍스트가 없습니다."}
           </div>
         )}

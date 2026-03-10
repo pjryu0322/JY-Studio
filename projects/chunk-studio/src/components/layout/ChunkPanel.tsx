@@ -3,12 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import JobDetail from "@/components/jobs/JobDetail";
 import { useJobStore } from "@/store/jobStore";
-import type { JobDetailDTO } from "@/types/job";
-import { analyzeChunkQualityBatch } from "@/lib/analysis/chunkQualityAnalyzer";
-import {
-  detectBoundaryIssues,
-  suggestMergeCandidates,
-} from "@/lib/analysis/chunkBoundaryInspector";
 import type { RagRefinementPayload } from "@/lib/analysis/ragExportOptimizer";
 
 type RefinementEventPayload = RagRefinementPayload & { jobId: string };
@@ -20,29 +14,12 @@ export default function ChunkPanel() {
     () => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
     [jobs, selectedJobId]
   );
-  const [detail, setDetail] = useState<JobDetailDTO | null>(null);
   const [exportFormat, setExportFormat] = useState<"json" | "jsonl" | "csv">(
     "jsonl"
   );
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [refinements, setRefinements] = useState<RagRefinementPayload | null>(null);
-
-  useEffect(() => {
-    if (!selectedJob) return;
-    let cancelled = false;
-    fetch(`/api/jobs/${selectedJob.id}`)
-      .then(async (res) => (res.ok ? ((await res.json()) as JobDetailDTO) : null))
-      .then((next) => {
-        if (!cancelled) setDetail(next);
-      })
-      .catch(() => {
-        if (!cancelled) setDetail(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedJob]);
 
   useEffect(() => {
     setRefinements(null);
@@ -70,22 +47,6 @@ export default function ChunkPanel() {
         onRefinementsChanged as EventListener
       );
   }, [selectedJob]);
-
-  const analyzerSummary = useMemo(() => {
-    const chunks = detail?.chunks ?? [];
-    const quality = analyzeChunkQualityBatch(chunks);
-    const issues = detectBoundaryIssues(chunks);
-    const mergeCandidates = suggestMergeCandidates(chunks);
-    return {
-      normal: quality.filter((q) => q.status === "NORMAL").length,
-      review: quality.filter((q) => q.status === "REVIEW_REQUIRED").length,
-      noise: quality.filter((q) => q.status === "NOISE_SUSPECTED").length,
-      long: quality.filter((q) => q.status === "TOO_LONG").length,
-      short: quality.filter((q) => q.status === "TOO_SHORT").length,
-      issues: issues.length,
-      mergeCandidates: mergeCandidates.length,
-    };
-  }, [detail]);
 
   const exportRagDataset = async () => {
     if (!selectedJob || isExporting) return;
@@ -124,120 +85,51 @@ export default function ChunkPanel() {
   return (
     <section className="chunk-panel">
       <div className="chunk-panel__header">
-        <strong>Chunk Review Panel</strong>
-        <span style={{ color: "#666" }}>
-          boundaries / quality / mapping / export
-        </span>
-      </div>
-      <div
-        style={{
-          margin: "8px 8px 0",
-          border: "1px solid #e2e8f0",
-          borderRadius: 8,
-          background: "#fff",
-          padding: 8,
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          fontSize: 11,
-        }}
-      >
-        <SummaryBadge label="정상" value={analyzerSummary.normal} color="#166534" bg="#dcfce7" />
-        <SummaryBadge
-          label="검토필요"
-          value={analyzerSummary.review}
-          color="#92400e"
-          bg="#fef3c7"
-        />
-        <SummaryBadge
-          label="노이즈의심"
-          value={analyzerSummary.noise}
-          color="#b91c1c"
-          bg="#fee2e2"
-        />
-        <SummaryBadge
-          label="긴 청크"
-          value={analyzerSummary.long}
-          color="#1d4ed8"
-          bg="#dbeafe"
-        />
-        <SummaryBadge
-          label="짧은 청크"
-          value={analyzerSummary.short}
-          color="#7c3aed"
-          bg="#ede9fe"
-        />
-        <SummaryBadge
-          label="경계 이슈"
-          value={analyzerSummary.issues}
-          color="#0f172a"
-          bg="#f1f5f9"
-        />
-        <SummaryBadge
-          label="머지 후보"
-          value={analyzerSummary.mergeCandidates}
-          color="#0f172a"
-          bg="#f1f5f9"
-        />
-      </div>
-      <div
-        style={{
-          margin: "8px 8px 0",
-          border: "1px solid #e2e8f0",
-          borderRadius: 8,
-          background: "#fff",
-          padding: 8,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          fontSize: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <strong style={{ color: "#0f172a" }}>RAG Export Optimizer</strong>
-          <select
-            value={exportFormat}
-            onChange={(e) => setExportFormat(e.target.value as "json" | "jsonl" | "csv")}
-            style={{
-              border: "1px solid #cbd5e1",
-              borderRadius: 6,
-              padding: "4px 6px",
-              fontSize: 12,
-              background: "#fff",
-            }}
-          >
-            <option value="jsonl">JSONL</option>
-            <option value="json">JSON</option>
-            <option value="csv">CSV</option>
-          </select>
-        </div>
-        <span style={{ color: "#64748b", fontSize: 11 }}>
-          modified: {refinements?.modifiedChunkIds?.length ?? 0} / excluded:{" "}
-          {refinements?.excludedChunkIds?.length ?? 0}
-        </span>
-        <button
-          type="button"
-          onClick={() => void exportRagDataset()}
-          disabled={!selectedJob || isExporting}
-          style={{
-            border: "1px solid #3b82f6",
-            borderRadius: 7,
-            background: isExporting ? "#bfdbfe" : "#2563eb",
-            color: "#fff",
-            fontSize: 12,
-            fontWeight: 600,
-            padding: "5px 10px",
-            cursor: !selectedJob || isExporting ? "not-allowed" : "pointer",
-          }}
-        >
-          {isExporting ? "내보내는 중..." : "RAG 내보내기"}
-        </button>
+        <strong>Chunk Review</strong>
+        <details>
+          <summary style={{ cursor: "pointer", fontSize: 11, color: "#64748b" }}>
+            내보내기
+          </summary>
+          <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+            <select
+              aria-label="RAG export format"
+              value={exportFormat}
+              onChange={(e) => setExportFormat(e.target.value as "json" | "jsonl" | "csv")}
+              style={{
+                border: "1px solid #cbd5e1",
+                borderRadius: 6,
+                padding: "3px 5px",
+                fontSize: 11,
+                background: "#fff",
+              }}
+            >
+              <option value="jsonl">JSONL</option>
+              <option value="json">JSON</option>
+              <option value="csv">CSV</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => void exportRagDataset()}
+              disabled={!selectedJob || isExporting}
+              style={{
+                border: "1px solid #cbd5e1",
+                borderRadius: 6,
+                background: "#fff",
+                color: "#334155",
+                fontSize: 11,
+                padding: "3px 7px",
+                cursor: !selectedJob || isExporting ? "not-allowed" : "pointer",
+              }}
+            >
+              {isExporting ? "내보내는 중..." : "내보내기"}
+            </button>
+          </div>
+        </details>
       </div>
       {exportError && (
         <div
           style={{
-            margin: "6px 8px 0",
+            margin: "4px 10px 0",
             color: "#b91c1c",
             fontSize: 11,
           }}
@@ -249,32 +141,5 @@ export default function ChunkPanel() {
         <JobDetail key={selectedJob?.id ?? "no-job"} />
       </div>
     </section>
-  );
-}
-
-function SummaryBadge({
-  label,
-  value,
-  color,
-  bg,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  bg: string;
-}) {
-  return (
-    <span
-      style={{
-        borderRadius: 999,
-        border: "1px solid #d1d5db",
-        background: bg,
-        color,
-        fontWeight: 700,
-        padding: "3px 8px",
-      }}
-    >
-      {label}: {value}
-    </span>
   );
 }

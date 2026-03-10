@@ -152,34 +152,6 @@ export default function Sidebar() {
           ))}
         </div>
       </section>
-      <section style={{ marginTop: 16 }}>
-        <span className="sidebar__label">Selected Job</span>
-        <div style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
-          {selectedJob ? (
-            <>
-              <div
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={selectedJob.originalFilename}
-              >
-                {selectedJob.originalFilename ?? selectedJob.id}
-              </div>
-              <div style={{ marginTop: 2 }}>status: {selectedJob.status}</div>
-            </>
-          ) : (
-            <div>선택된 작업 없음</div>
-          )}
-        </div>
-      </section>
-      <section style={{ marginTop: 16 }}>
-        <span className="sidebar__label">RAG Preparation</span>
-        <div style={{ marginTop: 8, fontSize: 12, color: "#666", lineHeight: 1.45 }}>
-          구조/페이지 기반 provenance와 chunk metadata를 검토한 뒤 JSONL로 export합니다.
-        </div>
-      </section>
     </aside>
   );
 }
