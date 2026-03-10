@@ -12,6 +12,8 @@ export default function Sidebar() {
     [jobs, selectedJobId]
   );
   const [detail, setDetail] = useState<JobDetailDTO | null>(null);
+  const [selectedPage, setSelectedPage] = useState<number | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedJob) return;
@@ -54,8 +56,26 @@ export default function Sidebar() {
   }, [detail, selectedJob]);
 
   const goPage = (page: number) => {
+    setSelectedPage(page);
     window.dispatchEvent(new CustomEvent("chunkstudio:go-page", { detail: page }));
   };
+
+  const selectSection = (sectionName: string) => {
+    setSelectedSection(sectionName);
+    window.dispatchEvent(
+      new CustomEvent("chunkstudio:selected-section", { detail: sectionName })
+    );
+  };
+
+  useEffect(() => {
+    const onSelectedPage = (e: Event) => {
+      const custom = e as CustomEvent<number>;
+      if (typeof custom.detail === "number") setSelectedPage(custom.detail);
+    };
+    window.addEventListener("chunkstudio:selected-page", onSelectedPage as EventListener);
+    return () =>
+      window.removeEventListener("chunkstudio:selected-page", onSelectedPage as EventListener);
+  }, []);
 
   return (
     <aside className="sidebar">
@@ -66,14 +86,21 @@ export default function Sidebar() {
             <div style={{ fontSize: 12, color: "#777" }}>구조 데이터 없음</div>
           )}
           {sections.slice(0, 80).map((section) => (
-            <div
+            <button
               key={section.name}
+              type="button"
+              onClick={() => selectSection(section.name)}
               style={{
-                border: "1px solid #ececec",
+                border:
+                  selectedSection === section.name
+                    ? "1px solid #3b82f6"
+                    : "1px solid #ececec",
                 borderRadius: 6,
                 padding: "6px 8px",
                 fontSize: 12,
-                background: "#fff",
+                background: selectedSection === section.name ? "#eff6ff" : "#fff",
+                textAlign: "left",
+                cursor: "pointer",
               }}
               title={section.name}
             >
@@ -90,7 +117,7 @@ export default function Sidebar() {
               <div style={{ marginTop: 2, fontSize: 11, color: "#666" }}>
                 chunks: {section.count}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </section>
@@ -111,8 +138,9 @@ export default function Sidebar() {
                 fontSize: 11,
                 padding: "4px 6px",
                 borderRadius: 6,
-                border: "1px solid #ddd",
-                background: "#fff",
+                border: selectedPage === page ? "1px solid #3b82f6" : "1px solid #ddd",
+                background: selectedPage === page ? "#eaf2ff" : "#fff",
+                color: selectedPage === page ? "#1d4ed8" : "#334155",
                 cursor: "pointer",
               }}
             >
