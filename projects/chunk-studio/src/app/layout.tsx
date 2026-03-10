@@ -33,7 +33,7 @@ export default function RootLayout({
       >
         <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
           <GlobalTopNav />
-          <div style={{ flex: 1 }}>{children}</div>
+          <main style={{ flex: 1 }}>{children}</main>
         </div>
       </body>
     </html>
