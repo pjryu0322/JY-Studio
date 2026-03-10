@@ -21,7 +21,7 @@ export default function JobWorkbenchPage() {
   return (
     <main style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "10px 16px 0", maxWidth: 1240, width: "100%", margin: "0 auto" }}>
-        <ScreenLabel screen="작업 상세" mode="Operator" context="구조/미리보기/청크 워크벤치" />
+        <ScreenLabel screen="작업 상세" mode="Operator" context="구조/미리보기/청크 검토" />
       </div>
       <Layout />
     </main>

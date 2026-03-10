@@ -23,7 +23,7 @@ export default function WorkspacePage() {
             boxShadow: "0 14px 30px rgba(17, 31, 64, 0.08)",
           }}
         >
-          <ScreenLabel screen="작업공간" mode="Operator" context="업로드 및 작업 재개" />
+          <ScreenLabel screen="작업공간" mode="Operator" context="문서 업로드 및 작업 재개" />
           <div style={{ fontSize: 11, color: "#274c96", fontWeight: 700, marginBottom: 6 }}>
             OPERATOR 모드
           </div>

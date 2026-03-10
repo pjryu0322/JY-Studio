@@ -41,7 +41,7 @@ function AdminPageInner() {
             boxShadow: "0 14px 30px rgba(17, 31, 64, 0.08)",
           }}
         >
-          <ScreenLabel screen="관제 대시보드" mode="Manager" context="모니터링 및 운영 관리" />
+          <ScreenLabel screen="관제 대시보드" mode="Manager" context="작업 모니터링 및 템플릿 운영" />
           <div style={{ fontSize: 11, color: "#274c96", fontWeight: 700, marginBottom: 6 }}>
             MANAGER 모드
           </div>
