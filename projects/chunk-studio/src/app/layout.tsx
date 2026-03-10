@@ -26,13 +26,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body
         className={`${geistSans.variable} ${geistMono.variable}`}
-        style={{ margin: 0, background: "#f5f7fb", color: "#111827" }}
+        style={{ margin: 0, minHeight: "100vh", background: "#f5f7fb", color: "#111827" }}
       >
-        <GlobalTopNav />
-        <div style={{ minHeight: "100vh" }}>{children}</div>
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+          <GlobalTopNav />
+          <div style={{ flex: 1 }}>{children}</div>
+        </div>
       </body>
     </html>
   );

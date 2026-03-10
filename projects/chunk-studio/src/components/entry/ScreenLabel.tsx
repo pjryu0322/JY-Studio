@@ -31,8 +31,20 @@ export default function ScreenLabel({ screen, mode, context }: ScreenLabelProps)
         color: "#516077",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <strong style={{ color: "#122549" }}>Chunk Studio</strong>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <strong style={{ color: "#122549" }}>Chunk Studio</strong>
+          <span style={{ color: "#7a889f" }}>/</span>
+          {mode ? (
+            <>
+              <span>{mode}</span>
+              <span style={{ color: "#7a889f" }}>/</span>
+            </>
+          ) : null}
+          <span>{screen}</span>
+          <span style={{ color: "#7a889f" }}>/</span>
+          <span>{context}</span>
+        </div>
         {mode ? (
           <span
             style={{
@@ -46,10 +58,6 @@ export default function ScreenLabel({ screen, mode, context }: ScreenLabelProps)
             {mode}
           </span>
         ) : null}
-        <span style={{ color: "#7a889f" }}>/</span>
-        <span>{screen}</span>
-        <span style={{ color: "#7a889f" }}>/</span>
-        <span>{context}</span>
       </div>
     </div>
   );
