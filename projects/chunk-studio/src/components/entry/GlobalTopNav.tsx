@@ -13,6 +13,7 @@ const NAV_ITEMS = [
 
 export default function GlobalTopNav() {
   const pathname = usePathname();
+  if (pathname === "/") return null;
 
   return (
     <header

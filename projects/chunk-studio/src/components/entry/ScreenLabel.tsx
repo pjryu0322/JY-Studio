@@ -23,12 +23,12 @@ export default function ScreenLabel({ screen, mode, context }: ScreenLabelProps)
   return (
     <div
       style={{
-        border: "1px solid rgba(148, 163, 184, 0.25)",
-        borderRadius: 12,
-        background: "rgba(255,255,255,0.86)",
-        padding: "8px 10px",
-        fontSize: 12,
-        color: "#516077",
+        border: "1px solid rgba(148, 163, 184, 0.2)",
+        borderRadius: 10,
+        background: "rgba(255,255,255,0.72)",
+        padding: "6px 9px",
+        fontSize: 11,
+        color: "#64748b",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
