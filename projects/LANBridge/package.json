@@ -8,7 +8,7 @@
   "homepage": "./",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --debug",
+    "dev": "electron .",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
