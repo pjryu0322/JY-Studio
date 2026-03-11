@@ -54,6 +54,7 @@ export default function PreviewPanel({
   const [firstPageSize, setFirstPageSize] = useState<PdfFirstPageSize | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_PREVIEW_ZOOM);
   const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(null);
+  const [previewFailureReason, setPreviewFailureReason] = useState<string | null>(null);
   const [pdfAvailabilityChecked, setPdfAvailabilityChecked] = useState(false);
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -115,10 +116,21 @@ export default function PreviewPanel({
       try {
         const res = await fetch(`/api/jobs/${selectedJobId}/pdf`, { method: "HEAD" });
         if (cancelled) return;
-        setFailedPdfJobId(res.ok ? null : selectedJobId);
+        if (res.ok) {
+          setFailedPdfJobId(null);
+          setPreviewFailureReason(null);
+        } else {
+          setFailedPdfJobId(selectedJobId);
+          setPreviewFailureReason(
+            res.status === 404
+              ? "원본 PDF 파일을 찾을 수 없습니다."
+              : "원본 PDF 렌더링에 실패했습니다."
+          );
+        }
       } catch {
         if (cancelled) return;
         setFailedPdfJobId(selectedJobId);
+        setPreviewFailureReason("파일 형식 또는 렌더러 상태를 확인해 주세요.");
       } finally {
         if (!cancelled) setPdfAvailabilityChecked(true);
       }
@@ -310,11 +322,6 @@ export default function PreviewPanel({
       </div>
 
       <div className="preview-panel__scroll" ref={scrollRef}>
-        {!canPreviewPdf && (
-          <div style={{ marginBottom: 8, fontSize: 11, color: "#64748b" }}>
-            PDF가 아닌 문서는 추출 텍스트만 표시됩니다.
-          </div>
-        )}
         {canPreviewPdf && !pdfUnavailable && pdfAvailabilityChecked ? (
           <PdfPreviewClient
             key={selectedJob.id}
@@ -329,7 +336,10 @@ export default function PreviewPanel({
                 })
               );
             }}
-            onLoadError={() => setFailedPdfJobId(selectedJob.id)}
+            onLoadError={() => {
+              setFailedPdfJobId(selectedJob.id);
+              setPreviewFailureReason("원본 PDF 렌더링에 실패했습니다.");
+            }}
           />
         ) : canPreviewPdf && !pdfAvailabilityChecked ? (
           <div style={{ fontSize: 12, color: "#64748b" }}>PDF 미리보기 가능 여부를 확인 중입니다.</div>
@@ -345,9 +355,13 @@ export default function PreviewPanel({
               lineHeight: 1.6,
             }}
           >
-            {canPreviewPdf
-              ? "원본 PDF 미리보기를 불러오지 못했습니다. 상단의 재업로드로 원본 파일을 다시 연결해 주세요."
-              : "현재 문서는 PDF 미리보기를 지원하지 않습니다. 원본 PDF 업로드 후 프리뷰를 확인해 주세요."}
+            <div style={{ fontWeight: 600, color: "#334155", marginBottom: 4 }}>
+              PDF 미리보기를 불러오지 못했습니다.
+            </div>
+            <div style={{ color: "#64748b", marginBottom: 4 }}>
+              {previewFailureReason ?? "원본 PDF 렌더링에 실패했습니다."}
+            </div>
+            <div style={{ color: "#64748b" }}>파일 형식 또는 렌더러 상태를 확인해 주세요.</div>
           </div>
         )}
       </div>

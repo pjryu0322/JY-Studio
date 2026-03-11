@@ -37,7 +37,13 @@ export default function JobsPage() {
           <JobList />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <JobDetail selectedJob={selectedJob} detail={detail} loading={loading} error={error} />
+          <JobDetail
+            key={selectedJob?.id ?? "no-job"}
+            selectedJob={selectedJob}
+            detail={detail}
+            loading={loading}
+            error={error}
+          />
         </div>
       </main>
     </div>

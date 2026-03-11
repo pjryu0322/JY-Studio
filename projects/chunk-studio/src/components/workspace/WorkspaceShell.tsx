@@ -36,6 +36,7 @@ export default function WorkspaceShell() {
         />
         <StructurePanel selectedJob={selectedJob} detail={detail} showLabels={showLabels} />
         <ChunkReviewPanel
+          key={selectedJob?.id ?? "no-job"}
           selectedJob={selectedJob}
           detail={detail}
           loading={loading}

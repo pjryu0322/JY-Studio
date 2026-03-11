@@ -1,0 +1,216 @@
+.card {
+  border: 1px solid #dfe5f0;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.stack8 {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.stack6 {
+  margin-top: 6px;
+  display: grid;
+  gap: 6px;
+}
+
+.mt10 {
+  margin-top: 10px;
+}
+
+.input {
+  margin-top: 4px;
+  width: 100%;
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.helperRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  padding: 5px 8px;
+  background: #f8fafc;
+  font-size: 11px;
+  color: #475569;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  border: 1px solid #d7deea;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.chipActive {
+  border-color: #3b82f6;
+  background: #eaf2ff;
+  color: #1d4ed8;
+}
+
+.listWrap {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.listRow {
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.listRowSelected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.rowHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rowTitle {
+  font-size: 11px;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.rowMeta {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #475569;
+}
+
+.rowPreview {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.recommendHint {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #1d4ed8;
+}
+
+.emptyText {
+  font-size: 12px;
+  color: #64748b;
+  padding: 8px;
+}
+
+.statusBadge {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.detailGrid {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.kvRow {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.kvLabel {
+  color: #64748b;
+}
+
+.kvValue {
+  color: #1f2937;
+}
+
+.contentBox {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px;
+  font-size: 12px;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+.recommendBox {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  padding: 8px;
+}
+
+.recommendTitle {
+  font-size: 12px;
+  color: #1e3a8a;
+  font-weight: 700;
+}
+
+.recommendText {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #334155;
+}
+
+.recommendPreview {
+  margin-top: 6px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #fff;
+  padding: 6px;
+  font-size: 11px;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+.actionBtn {
+  border: 1px solid #d7deea;
+  border-radius: 7px;
+  background: #fff;
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.textarea {
+  margin-top: 4px;
+  width: 100%;
+  border: 1px solid #d7deea;
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-size: 12px;
+  resize: vertical;
+}
