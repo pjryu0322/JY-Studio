@@ -13,6 +13,10 @@ const PdfPreviewClient = dynamic(
   () => import("@/components/templates/PdfPreviewClient"),
   { ssr: false }
 );
+const DEFAULT_PREVIEW_ZOOM = 1;
+const MIN_PREVIEW_ZOOM = 0.6;
+const MAX_PREVIEW_ZOOM = 1.8;
+const PREVIEW_ZOOM_STEP = 0.1;
 
 function toStatusGroup(status: string | undefined): "idle" | "processing" | "done" | "failed" {
   if (!status) return "idle";
@@ -29,6 +33,12 @@ interface PreviewPanelProps {
   detail: JobDetailDTO | null;
   loading: boolean;
   error: string | null;
+  showLabels: boolean;
+}
+
+interface PdfFirstPageSize {
+  width: number;
+  height: number;
 }
 
 export default function PreviewPanel({
@@ -36,12 +46,16 @@ export default function PreviewPanel({
   detail,
   loading,
   error,
+  showLabels,
 }: PreviewPanelProps) {
   const [numPages, setNumPages] = useState(0);
-  const [width, setWidth] = useState(760);
+  const [width, setWidth] = useState(320);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [firstPageSize, setFirstPageSize] = useState<PdfFirstPageSize | null>(null);
+  const [zoom, setZoom] = useState(DEFAULT_PREVIEW_ZOOM);
   const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(null);
+  const [pdfAvailabilityChecked, setPdfAvailabilityChecked] = useState(false);
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
-  const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const canPreviewPdf = useMemo(() => {
@@ -51,21 +65,69 @@ export default function PreviewPanel({
   const pdfUnavailable = Boolean(
     selectedJob?.id && failedPdfJobId && selectedJob.id === failedPdfJobId
   );
+  const selectedJobId = selectedJob?.id ?? null;
   const visiblePages = canPreviewPdf && !pdfUnavailable ? numPages || "-" : "-";
   const statusGroup = toStatusGroup(selectedJob?.status);
+  const processingMessage = selectedJob?.status === "QUEUED"
+    ? "문서를 분석 대기 중입니다."
+    : "문서를 분석 중입니다.";
 
   useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return;
+    const viewport = scrollRef.current;
+    if (!viewport) return;
     const update = () => {
-      const w = host.clientWidth;
-      setWidth(Math.max(420, Math.min(940, w - 32)));
+      setViewportSize({
+        width: Math.max(0, viewport.clientWidth),
+        height: Math.max(0, viewport.clientHeight),
+      });
     };
     const obs = new ResizeObserver(update);
-    obs.observe(host);
+    obs.observe(viewport);
     update();
     return () => obs.disconnect();
   }, []);
+
+  useEffect(() => {
+    const containerWidth = Math.max(0, viewportSize.width - 24);
+    const containerHeight = Math.max(0, viewportSize.height - 24);
+    if (!firstPageSize || containerWidth <= 0 || containerHeight <= 0) {
+      const fallback = Math.floor(containerWidth * DEFAULT_PREVIEW_ZOOM);
+      setWidth(Math.max(120, fallback));
+      return;
+    }
+    const widthScale = containerWidth / firstPageSize.width;
+    const heightScale = containerHeight / firstPageSize.height;
+    const fitToPanelScale = Math.min(widthScale, heightScale);
+    const zoomedScale = fitToPanelScale * zoom;
+    const appliedScale = Math.min(zoomedScale, widthScale);
+    const renderWidth = Math.floor(firstPageSize.width * appliedScale);
+    setWidth(Math.max(120, renderWidth));
+  }, [firstPageSize, viewportSize, zoom]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPdfAvailabilityChecked(false);
+    if (!selectedJobId || !canPreviewPdf) {
+      if (!cancelled) setPdfAvailabilityChecked(true);
+      return;
+    }
+    const check = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${selectedJobId}/pdf`, { method: "HEAD" });
+        if (cancelled) return;
+        setFailedPdfJobId(res.ok ? null : selectedJobId);
+      } catch {
+        if (cancelled) return;
+        setFailedPdfJobId(selectedJobId);
+      } finally {
+        if (!cancelled) setPdfAvailabilityChecked(true);
+      }
+    };
+    void check();
+    return () => {
+      cancelled = true;
+    };
+  }, [canPreviewPdf, selectedJobId]);
 
   useEffect(() => {
     const onSelectedChunk = (e: Event) => {
@@ -151,12 +213,66 @@ export default function PreviewPanel({
   }
 
   return (
-    <section className="preview-panel" ref={hostRef}>
+    <section className="preview-panel">
       <div className="preview-panel__header">
+        {showLabels && <span className="workspace-ui-label">Left Panel</span>}
         <strong>PDF Preview</strong>
         <span style={{ color: "#666" }}>pages: {visiblePages} / sections: {sectionCount}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            onClick={() =>
+              setZoom((prev) =>
+                Math.max(MIN_PREVIEW_ZOOM, Number((prev - PREVIEW_ZOOM_STEP).toFixed(2)))
+              )
+            }
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: 6,
+              background: "#fff",
+              fontSize: 11,
+              padding: "2px 8px",
+              cursor: "pointer",
+            }}
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom(DEFAULT_PREVIEW_ZOOM)}
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: 6,
+              background: "#fff",
+              fontSize: 11,
+              padding: "2px 8px",
+              cursor: "pointer",
+            }}
+            title="패널 맞춤 배율로 초기화"
+          >
+            {(zoom * 100).toFixed(0)}%
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setZoom((prev) =>
+                Math.min(MAX_PREVIEW_ZOOM, Number((prev + PREVIEW_ZOOM_STEP).toFixed(2)))
+              )
+            }
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: 6,
+              background: "#fff",
+              fontSize: 11,
+              padding: "2px 8px",
+              cursor: "pointer",
+            }}
+          >
+            +
+          </button>
+        </div>
         {(statusGroup === "processing" || loading) && (
-          <span style={{ color: "#64748b", fontSize: 11 }}>문서를 분석 중입니다.</span>
+          <span style={{ color: "#64748b", fontSize: 11 }}>{processingMessage}</span>
         )}
         {statusGroup === "failed" && (
           <span style={{ color: "#b91c1c", fontSize: 11 }}>문서 분석에 실패했습니다.</span>
@@ -199,14 +315,24 @@ export default function PreviewPanel({
             PDF가 아닌 문서는 추출 텍스트만 표시됩니다.
           </div>
         )}
-        {canPreviewPdf && !pdfUnavailable ? (
+        {canPreviewPdf && !pdfUnavailable && pdfAvailabilityChecked ? (
           <PdfPreviewClient
             key={selectedJob.id}
             fileUrl={`/api/jobs/${selectedJob.id}/pdf`}
             width={width}
-            onLoadSuccess={setNumPages}
+            onFirstPageSize={setFirstPageSize}
+            onLoadSuccess={(count) => {
+              setNumPages(count);
+              window.dispatchEvent(
+                new CustomEvent("chunkstudio:pdf-page-count", {
+                  detail: { jobId: selectedJob.id, count },
+                })
+              );
+            }}
             onLoadError={() => setFailedPdfJobId(selectedJob.id)}
           />
+        ) : canPreviewPdf && !pdfAvailabilityChecked ? (
+          <div style={{ fontSize: 12, color: "#64748b" }}>PDF 미리보기 가능 여부를 확인 중입니다.</div>
         ) : (
           <div
             style={{
@@ -216,14 +342,12 @@ export default function PreviewPanel({
               padding: 12,
               fontSize: 12,
               color: "#555",
-              whiteSpace: "pre-wrap",
-              lineHeight: 1.5,
+              lineHeight: 1.6,
             }}
           >
             {canPreviewPdf
-              ? "PDF 미리보기를 불러오지 못했습니다. 아래는 추출 텍스트입니다.\n\n"
-              : ""}
-            {(detail?.extractedText || "").slice(0, 5000) || "표시할 텍스트가 없습니다."}
+              ? "원본 PDF 미리보기를 불러오지 못했습니다. 상단의 재업로드로 원본 파일을 다시 연결해 주세요."
+              : "현재 문서는 PDF 미리보기를 지원하지 않습니다. 원본 PDF 업로드 후 프리뷰를 확인해 주세요."}
           </div>
         )}
       </div>

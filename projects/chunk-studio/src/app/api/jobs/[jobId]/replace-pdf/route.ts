@@ -114,6 +114,19 @@ export async function POST(
     });
   } catch (e) {
     console.error("[POST /api/jobs/:id/replace-pdf]", e);
+    try {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: "FAILED",
+          progress: 100,
+          message: "작업 처리 중 오류가 발생했습니다.",
+          errorDetail: e instanceof Error ? e.message : "unknown error",
+        },
+      });
+    } catch (updateError) {
+      console.error("[POST /api/jobs/:id/replace-pdf] failed to mark FAILED", updateError);
+    }
     return NextResponse.json(
       { error: "Failed to upload replacement PDF" },
       { status: 500 }

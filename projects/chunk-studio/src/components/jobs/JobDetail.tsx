@@ -51,6 +51,10 @@ export default function JobDetail({
     }
     return "idle";
   }, [job?.status]);
+  const processingMessage = useMemo(() => {
+    if (job?.status === "QUEUED") return "문서를 분석 대기 중입니다.";
+    return "문서를 분석 중입니다.";
+  }, [job?.status]);
 
   useEffect(() => {
     if (!job) return;
@@ -117,6 +121,13 @@ export default function JobDetail({
   const selectedQuality = selectedChunk
     ? analyzeChunkQualityBatch([selectedChunk])[0]
     : null;
+  const selectedStatus = selectedChunk
+    ? resolveUiStatus(selectedChunk, selectedQuality?.status ?? "NORMAL", modifiedChunkIds)
+    : null;
+  const suggestedMergeTarget = useMemo(
+    () => (selectedChunk && detail?.chunks ? findMergeTarget(selectedChunk, detail.chunks) : null),
+    [detail, selectedChunk]
+  );
 
   useEffect(() => {
     const onSelectedSection = (e: Event) => {
@@ -262,15 +273,23 @@ export default function JobDetail({
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <strong style={{ fontSize: 11, color: "#1f2937" }}>#{index + 1} {chunk.meta.chunkId}</strong>
+                  <strong style={{ fontSize: 11, color: "#1f2937" }}>
+                    #{index + 1} {chunk.meta.sectionTitle || chunk.meta.sectionPath.at(-1) || "Untitled"}
+                  </strong>
                   <StatusBadge status={status} />
                 </div>
                 <div style={{ marginTop: 3, fontSize: 11, color: "#475569" }}>
-                  p.{startPage ?? "-"}~{endPage ?? "-"} / {(chunk.meta.sectionPath.join(" > ") || "Unsectioned").slice(0, 44)}
+                  p.{startPage ?? "-"}~{endPage ?? "-"} /{" "}
+                  {(chunk.meta.sectionPath.join(" > ") || "Unsectioned").slice(0, 44)}
                 </div>
                 <div style={{ marginTop: 4, fontSize: 11, color: "#64748b" }}>
                   {chunk.text.slice(0, 90)}{chunk.text.length > 90 ? "..." : ""}
                 </div>
+                {status === "짧은 청크" && (
+                  <div style={{ marginTop: 4, fontSize: 10, color: "#1d4ed8" }}>
+                    추천: 인접 청크와 병합 검토
+                  </div>
+                )}
               </button>
             );
           })}
@@ -279,7 +298,7 @@ export default function JobDetail({
               {detail?.chunks?.length
                 ? "조건에 맞는 청크가 없습니다."
                 : loading || statusGroup === "processing"
-                  ? "문서를 분석 중입니다."
+                  ? processingMessage
                   : statusGroup === "failed"
                     ? "문서 분석에 실패했습니다."
                   : error
@@ -295,7 +314,7 @@ export default function JobDetail({
         {!selectedChunk ? (
           <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
             {loading || statusGroup === "processing"
-              ? "문서를 분석 중입니다."
+              ? processingMessage
               : error
                 ? error
               : "선택된 청크가 없습니다."}
@@ -309,24 +328,47 @@ export default function JobDetail({
             />
             <Row label="structure path" value={selectedChunk.meta.sectionPath.join(" > ") || "Unsectioned"} />
             <Row label="section title" value={selectedChunk.meta.sectionTitle ?? "-"} />
-            <Row
-              label="status"
-              value={resolveUiStatus(selectedChunk, selectedQuality?.status ?? "NORMAL", modifiedChunkIds)}
-            />
-            <Row
-              label="PDF matching"
-              value={`block ${selectedChunk.meta.startBlockIdx} ~ ${selectedChunk.meta.endBlockIdx}`}
-            />
-            <div style={{ fontSize: 12, color: "#334155" }}>
-              <strong>quality warnings</strong>
-              <div style={{ marginTop: 4, color: "#b91c1c" }}>
-                {makeQualityHints(selectedChunk, selectedQuality?.warnings ?? []).join(", ") ||
-                  "특이 경고 없음"}
-              </div>
-            </div>
+            <Row label="status" value={selectedStatus ?? "정상"} />
             <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc", padding: 8, fontSize: 12, color: "#334155", whiteSpace: "pre-wrap" }}>
               {selectedChunk.text.slice(0, 560)}{selectedChunk.text.length > 560 ? "..." : ""}
             </div>
+            {selectedStatus === "짧은 청크" && suggestedMergeTarget && (
+              <div style={{ border: "1px solid #bfdbfe", borderRadius: 8, background: "#eff6ff", padding: 8 }}>
+                <div style={{ fontSize: 12, color: "#1e3a8a", fontWeight: 700 }}>추천 청킹(최적안)</div>
+                <div style={{ marginTop: 4, fontSize: 11, color: "#334155" }}>
+                  현재 청크가 짧아 인접 청크 <strong>{suggestedMergeTarget.meta.chunkId}</strong> 와
+                  병합하는 것을 권장합니다.
+                </div>
+                <div
+                  style={{
+                    marginTop: 6,
+                    border: "1px solid #dbeafe",
+                    borderRadius: 6,
+                    background: "#fff",
+                    padding: 6,
+                    fontSize: 11,
+                    color: "#334155",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {buildMergedPreview(selectedChunk, suggestedMergeTarget)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMergePairs((prev) => ({
+                      ...prev,
+                      [selectedChunk.meta.chunkId]: suggestedMergeTarget.meta.chunkId,
+                    }));
+                    markModified(selectedChunk.meta.chunkId);
+                    markModified(suggestedMergeTarget.meta.chunkId);
+                  }}
+                  style={{ ...actionBtn, marginTop: 8 }}
+                >
+                  추천 병합안 적용
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => selectChunk(selectedChunk)}
@@ -439,17 +481,23 @@ function resolveUiStatus(
   return "정상";
 }
 
-function makeQualityHints(chunk: ChunkDTO, analyzerWarnings: string[]): string[] {
-  const hints = new Set<string>();
-  const warningText = chunk.meta.quality.warnings.join(" ").toLowerCase();
-  if (warningText.includes("header") || warningText.includes("footer")) hints.add("반복 헤더/푸터 의심");
-  if (chunk.meta.ocrQuality && (chunk.meta.ocrQuality.avgConfidence ?? 1) < 0.85) hints.add("OCR 품질 주의");
-  if (chunk.meta.quality.hasTable || chunk.meta.type === "table") hints.add("표 포함 청크");
-  if (chunk.meta.quality.tokens >= 1000) hints.add("과도하게 긴 청크");
-  if (chunk.meta.quality.tokens <= 120) hints.add("경계가 짧아 불명확할 수 있음");
-  chunk.meta.quality.warnings.forEach((w) => hints.add(w));
-  analyzerWarnings.forEach((w) => hints.add(w));
-  return Array.from(hints).slice(0, 6);
+function findMergeTarget(current: ChunkDTO, chunks: ChunkDTO[]): ChunkDTO | null {
+  const index = chunks.findIndex((chunk) => chunk.meta.chunkId === current.meta.chunkId);
+  if (index < 0) return null;
+  const next = chunks[index + 1] ?? null;
+  const prev = chunks[index - 1] ?? null;
+  if (next && isSameSection(current, next)) return next;
+  if (prev && isSameSection(current, prev)) return prev;
+  return next ?? prev ?? null;
+}
+
+function isSameSection(a: ChunkDTO, b: ChunkDTO): boolean {
+  return a.meta.sectionPath.join(" > ") === b.meta.sectionPath.join(" > ");
+}
+
+function buildMergedPreview(a: ChunkDTO, b: ChunkDTO): string {
+  const merged = `${a.text}\n${b.text}`.replace(/\s+/g, " ").trim();
+  return `${merged.slice(0, 320)}${merged.length > 320 ? "..." : ""}`;
 }
 
 function StatusBadge({ status }: { status: string }) {

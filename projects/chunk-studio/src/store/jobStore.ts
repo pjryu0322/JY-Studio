@@ -10,6 +10,10 @@ interface JobState {
   refresh: () => Promise<void>;
 }
 
+function pickDefaultJobId(jobs: Job[]): string | null {
+  return jobs.find((job) => job.status === "DONE")?.id ?? jobs[0]?.id ?? null;
+}
+
 export const useJobStore = create<JobState>((set, get) => ({
   jobs: [],
   selectedJobId: null,
@@ -27,7 +31,7 @@ export const useJobStore = create<JobState>((set, get) => ({
           selectedJobId:
             state.selectedJobId && jobs.some((j) => j.id === state.selectedJobId)
               ? state.selectedJobId
-              : jobs[0]?.id ?? null,
+              : pickDefaultJobId(jobs),
         }));
       }
     } catch {

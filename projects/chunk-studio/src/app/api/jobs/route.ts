@@ -41,6 +41,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  let createdJobId: string | null = null;
   let formData: FormData;
   try {
     formData = await req.formData();
@@ -87,6 +88,7 @@ export async function POST(req: Request) {
         message,
       },
     });
+    createdJobId = job.id;
     console.log("[POST /api/jobs] created", { jobId: job.id, ext, status });
 
     await ensureJobDir(job.id);
@@ -196,6 +198,21 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[POST /api/jobs]", e);
+    if (createdJobId) {
+      try {
+        await prisma.job.update({
+          where: { id: createdJobId },
+          data: {
+            status: "FAILED",
+            progress: 100,
+            message: "작업 처리 중 오류가 발생했습니다.",
+            errorDetail: e instanceof Error ? e.message : "unknown error",
+          },
+        });
+      } catch (updateError) {
+        console.error("[POST /api/jobs] failed to mark job as FAILED", updateError);
+      }
+    }
     return NextResponse.json(
       { error: "Failed to create job" },
       { status: 500 }
