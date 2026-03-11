@@ -2,8 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useJobStore } from "@/store/jobStore";
-import type { JobDetailDTO } from "@/types/job";
+import type { Job, JobDetailDTO } from "@/types/job";
 import {
   detectBoundaryIssues,
   suggestMergeCandidates,
@@ -25,15 +24,19 @@ function toStatusGroup(status: string | undefined): "idle" | "processing" | "don
   return "idle";
 }
 
-export default function PreviewPanel() {
-  const jobs = useJobStore((s) => s.jobs);
-  const selectedJobId = useJobStore((s) => s.selectedJobId);
-  const selectedJob = useMemo(
-    () => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
-    [jobs, selectedJobId]
-  );
+interface PreviewPanelProps {
+  selectedJob: Job | null;
+  detail: JobDetailDTO | null;
+  loading: boolean;
+  error: string | null;
+}
 
-  const [detail, setDetail] = useState<JobDetailDTO | null>(null);
+export default function PreviewPanel({
+  selectedJob,
+  detail,
+  loading,
+  error,
+}: PreviewPanelProps) {
   const [numPages, setNumPages] = useState(0);
   const [width, setWidth] = useState(760);
   const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(null);
@@ -50,22 +53,6 @@ export default function PreviewPanel() {
   );
   const visiblePages = canPreviewPdf && !pdfUnavailable ? numPages || "-" : "-";
   const statusGroup = toStatusGroup(selectedJob?.status);
-
-  useEffect(() => {
-    if (!selectedJob) return;
-    let cancelled = false;
-    fetch(`/api/jobs/${selectedJob.id}`)
-      .then(async (res) => (res.ok ? ((await res.json()) as JobDetailDTO) : null))
-      .then((next) => {
-        if (!cancelled) setDetail(next);
-      })
-      .catch(() => {
-        if (!cancelled) setDetail(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedJob]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -168,12 +155,13 @@ export default function PreviewPanel() {
       <div className="preview-panel__header">
         <strong>PDF Preview</strong>
         <span style={{ color: "#666" }}>pages: {visiblePages} / sections: {sectionCount}</span>
-        {statusGroup === "processing" && (
+        {(statusGroup === "processing" || loading) && (
           <span style={{ color: "#64748b", fontSize: 11 }}>문서를 분석 중입니다.</span>
         )}
         {statusGroup === "failed" && (
           <span style={{ color: "#b91c1c", fontSize: 11 }}>문서 분석에 실패했습니다.</span>
         )}
+        {error && <span style={{ color: "#b91c1c", fontSize: 11 }}>{error}</span>}
         <details style={{ marginTop: 2 }}>
           <summary style={{ cursor: "pointer", fontSize: 11, color: "#475569" }}>
             경계 점검 ({boundaryOverview.issueCount}) / 머지 후보 ({boundaryOverview.mergeCount})

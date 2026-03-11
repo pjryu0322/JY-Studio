@@ -6,9 +6,11 @@ import JobList from "@/components/jobs/JobList";
 import UploadPanel from "@/components/jobs/UploadPanel";
 import JobDetail from "@/components/jobs/JobDetail";
 import ScreenLabel from "@/components/entry/ScreenLabel";
+import { useJobDetail } from "@/hooks/useJobDetail";
 
 export default function JobsPage() {
   const refresh = useJobStore((s) => s.refresh);
+  const { selectedJob, detail, loading, error } = useJobDetail();
 
   useEffect(() => {
     refresh();
@@ -35,7 +37,7 @@ export default function JobsPage() {
           <JobList />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <JobDetail />
+          <JobDetail selectedJob={selectedJob} detail={detail} loading={loading} error={error} />
         </div>
       </main>
     </div>

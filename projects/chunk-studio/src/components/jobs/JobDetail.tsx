@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useJobStore } from "@/store/jobStore";
-import type { ChunkDTO, JobDetailDTO } from "@/types/job";
+import type { ChunkDTO, Job, JobDetailDTO } from "@/types/job";
 import {
   analyzeChunkQualityBatch,
   type ChunkQualityStatus,
@@ -14,10 +13,20 @@ import {
 import { suggestSplitPoints } from "@/lib/analysis/chunkBoundaryInspector";
 import type { RagRefinementPayload } from "@/lib/analysis/ragExportOptimizer";
 
-export default function JobDetail() {
-  const { jobs, selectedJobId } = useJobStore();
-  const job = jobs.find((j) => j.id === selectedJobId) ?? jobs[0] ?? null;
-  const [detail, setDetail] = useState<JobDetailDTO | null>(null);
+interface JobDetailProps {
+  selectedJob: Job | null;
+  detail: JobDetailDTO | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export default function JobDetail({
+  selectedJob,
+  detail,
+  loading,
+  error,
+}: JobDetailProps) {
+  const job = selectedJob;
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const [filter, setFilter] = useState<
     "all" | "needs-review" | "edited" | "noise" | "long" | "short"
@@ -57,29 +66,6 @@ export default function JobDetail() {
       new CustomEvent("chunkstudio:refinements-changed", { detail: payload })
     );
   }, [editedLabels, excludedChunkIds, job, mergePairs, modifiedChunkIds, reviewNotes]);
-
-  useEffect(() => {
-    if (!job) return;
-    let cancelled = false;
-    fetch(`/api/jobs/${job.id}`)
-      .then(async (res) => (res.ok ? ((await res.json()) as JobDetailDTO) : null))
-      .then((data) => {
-        if (!cancelled && data) {
-          console.log("[JobDetail] chunks loaded", {
-            jobId: job.id,
-            status: data.status,
-            chunkCount: data.chunks?.length ?? 0,
-          });
-          setDetail(data);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setDetail(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [job]);
 
   const indexedChunks = useMemo(
     () =>
@@ -292,10 +278,12 @@ export default function JobDetail() {
             <div style={{ fontSize: 12, color: "#64748b", padding: 8 }}>
               {detail?.chunks?.length
                 ? "조건에 맞는 청크가 없습니다."
-                : statusGroup === "processing"
+                : loading || statusGroup === "processing"
                   ? "문서를 분석 중입니다."
                   : statusGroup === "failed"
                     ? "문서 분석에 실패했습니다."
+                  : error
+                    ? error
                     : "청크가 아직 생성되지 않았습니다."}
             </div>
           )}
@@ -306,8 +294,10 @@ export default function JobDetail() {
         <strong style={{ fontSize: 13, color: "#0f172a" }}>B. Selected Chunk Detail</strong>
         {!selectedChunk ? (
           <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
-            {statusGroup === "processing"
+            {loading || statusGroup === "processing"
               ? "문서를 분석 중입니다."
+              : error
+                ? error
               : "선택된 청크가 없습니다."}
           </div>
         ) : (

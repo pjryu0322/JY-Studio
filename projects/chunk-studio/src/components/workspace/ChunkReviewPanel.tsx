@@ -1,19 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import JobDetail from "@/components/jobs/JobDetail";
-import { useJobStore } from "@/store/jobStore";
 import type { RagRefinementPayload } from "@/lib/analysis/ragExportOptimizer";
+import type { Job, JobDetailDTO } from "@/types/job";
+import RagExportSection from "./RagExportSection";
 
 type RefinementEventPayload = RagRefinementPayload & { jobId: string };
 
-export default function ChunkReviewPanel() {
-  const jobs = useJobStore((s) => s.jobs);
-  const selectedJobId = useJobStore((s) => s.selectedJobId);
-  const selectedJob = useMemo(
-    () => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
-    [jobs, selectedJobId]
-  );
+interface ChunkReviewPanelProps {
+  selectedJob: Job | null;
+  detail: JobDetailDTO | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export default function ChunkReviewPanel({
+  selectedJob,
+  detail,
+  loading,
+  error,
+}: ChunkReviewPanelProps) {
 
   const [exportFormat, setExportFormat] = useState<"json" | "jsonl" | "csv">("jsonl");
   const [isExporting, setIsExporting] = useState(false);
@@ -86,55 +93,21 @@ export default function ChunkReviewPanel() {
         <strong>Chunk Review</strong>
       </div>
       <div className="chunk-review-panel__body">
-        <JobDetail key={selectedJob?.id ?? "no-job"} />
-        <section
-          style={{
-            margin: "10px 16px 14px",
-            border: "1px solid #dfe5f0",
-            borderRadius: 10,
-            background: "#fff",
-            padding: 10,
-          }}
-        >
-          <strong style={{ fontSize: 12, color: "#0f172a" }}>RAG 데이터셋 내보내기</strong>
-          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
-            <select
-              aria-label="RAG export format"
-              value={exportFormat}
-              onChange={(e) => setExportFormat(e.target.value as "json" | "jsonl" | "csv")}
-              style={{
-                border: "1px solid #cbd5e1",
-                borderRadius: 6,
-                padding: "4px 6px",
-                fontSize: 12,
-                background: "#fff",
-              }}
-            >
-              <option value="json">JSON</option>
-              <option value="jsonl">JSONL</option>
-              <option value="csv">CSV</option>
-            </select>
-            <button
-              type="button"
-              onClick={() => void exportRagDataset()}
-              disabled={!selectedJob || isExporting}
-              style={{
-                border: "1px solid #cbd5e1",
-                borderRadius: 7,
-                background: "#fff",
-                color: "#334155",
-                fontSize: 12,
-                padding: "4px 9px",
-                cursor: !selectedJob || isExporting ? "not-allowed" : "pointer",
-              }}
-            >
-              {isExporting ? "내보내는 중..." : "RAG 데이터셋 다운로드"}
-            </button>
-          </div>
-          {exportError && (
-            <div style={{ marginTop: 6, color: "#b91c1c", fontSize: 11 }}>{exportError}</div>
-          )}
-        </section>
+        <JobDetail
+          key={selectedJob?.id ?? "no-job"}
+          selectedJob={selectedJob}
+          detail={detail}
+          loading={loading}
+          error={error}
+        />
+        <RagExportSection
+          exportFormat={exportFormat}
+          isExporting={isExporting}
+          exportError={exportError}
+          onChangeFormat={setExportFormat}
+          onExport={() => void exportRagDataset()}
+          disabled={!selectedJob || isExporting}
+        />
       </div>
     </section>
   );

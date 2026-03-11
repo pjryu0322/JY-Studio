@@ -15,7 +15,7 @@ export default function AdminPage() {
     >
       <div style={{ maxWidth: 920, margin: "0 auto", display: "grid", gap: 16 }}>
         <header style={{ textAlign: "center", padding: "8px 0" }}>
-          <ScreenLabel screen="관제 대시보드" mode="Manager" context="Manager Landing" />
+          <ScreenLabel screen="관리자 운영 화면" mode="Manager" context="운영 도구" />
           <h1 style={{ margin: "10px 0 6px", fontSize: 30, color: "#102544", letterSpacing: "-0.02em" }}>
             Manager
           </h1>

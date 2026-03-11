@@ -1,39 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useJobStore } from "@/store/jobStore";
-import type { JobDetailDTO } from "@/types/job";
+import type { Job, JobDetailDTO } from "@/types/job";
 import {
   detectSectionNumberPattern,
   extractDocumentStructure,
 } from "@/lib/analysis/documentStructureExtractor";
 
-export default function StructurePanel() {
-  const jobs = useJobStore((s) => s.jobs);
-  const selectedJobId = useJobStore((s) => s.selectedJobId);
-  const selectedJob = useMemo(
-    () => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
-    [jobs, selectedJobId]
-  );
-  const [detail, setDetail] = useState<JobDetailDTO | null>(null);
+interface StructurePanelProps {
+  selectedJob: Job | null;
+  detail: JobDetailDTO | null;
+}
+
+export default function StructurePanel({ selectedJob, detail }: StructurePanelProps) {
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selectedJob) return;
-    let cancelled = false;
-    fetch(`/api/jobs/${selectedJob.id}`)
-      .then(async (res) => (res.ok ? ((await res.json()) as JobDetailDTO) : null))
-      .then((next) => {
-        if (!cancelled) setDetail(next);
-      })
-      .catch(() => {
-        if (!cancelled) setDetail(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedJob]);
 
   const sections = useMemo(() => extractDocumentStructure(detail?.chunks ?? []), [detail]);
 
