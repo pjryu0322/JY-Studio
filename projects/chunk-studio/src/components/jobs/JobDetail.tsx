@@ -29,6 +29,19 @@ export default function JobDetail() {
   const [excludedChunkIds, setExcludedChunkIds] = useState<Set<string>>(new Set());
   const [mergePairs, setMergePairs] = useState<Record<string, string>>({});
   const [sectionFilter, setSectionFilter] = useState<string | null>(null);
+  const statusGroup = useMemo(() => {
+    if (!job?.status) return "idle";
+    if (job.status === "FAILED") return "failed";
+    if (job.status === "DONE") return "done";
+    if (
+      ["QUEUED", "CONVERTING", "PDF_READY", "EXTRACTING_TEXT", "CHUNKING"].includes(
+        job.status
+      )
+    ) {
+      return "processing";
+    }
+    return "idle";
+  }, [job?.status]);
 
   useEffect(() => {
     if (!job) return;
@@ -151,10 +164,8 @@ export default function JobDetail() {
   if (!job) {
     return (
       <div style={{ padding: 24 }}>
-        <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 600 }}>Job details</h2>
-        <p style={{ margin: 0, fontSize: 13, color: "#666" }}>
-          Select a job from the list on the left to see details.
-        </p>
+        <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 600 }}>Chunk Review</h2>
+        <p style={{ margin: 0, fontSize: 13, color: "#666" }}>PDF를 업로드해 주세요.</p>
       </div>
     );
   }
@@ -278,7 +289,15 @@ export default function JobDetail() {
             );
           })}
           {filteredChunks.length === 0 && (
-            <div style={{ fontSize: 12, color: "#64748b", padding: 8 }}>조건에 맞는 청크가 없습니다.</div>
+            <div style={{ fontSize: 12, color: "#64748b", padding: 8 }}>
+              {detail?.chunks?.length
+                ? "조건에 맞는 청크가 없습니다."
+                : statusGroup === "processing"
+                  ? "문서를 분석 중입니다."
+                  : statusGroup === "failed"
+                    ? "문서 분석에 실패했습니다."
+                    : "청크가 아직 생성되지 않았습니다."}
+            </div>
           )}
         </div>
       </section>
@@ -286,7 +305,11 @@ export default function JobDetail() {
       <section style={{ marginTop: 10, border: "1px solid #dfe5f0", borderRadius: 10, background: "#fff", padding: 10 }}>
         <strong style={{ fontSize: 13, color: "#0f172a" }}>B. Selected Chunk Detail</strong>
         {!selectedChunk ? (
-          <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>선택된 청크가 없습니다.</div>
+          <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+            {statusGroup === "processing"
+              ? "문서를 분석 중입니다."
+              : "선택된 청크가 없습니다."}
+          </div>
         ) : (
           <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
             <Row label="chunk id" value={selectedChunk.meta.chunkId} />

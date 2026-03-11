@@ -8,7 +8,7 @@ import {
   extractDocumentStructure,
 } from "@/lib/analysis/documentStructureExtractor";
 
-export default function Sidebar() {
+export default function StructurePanel() {
   const jobs = useJobStore((s) => s.jobs);
   const selectedJobId = useJobStore((s) => s.selectedJobId);
   const selectedJob = useMemo(
@@ -51,6 +51,16 @@ export default function Sidebar() {
     return Array.from(set.values()).sort((a, b) => a - b);
   }, [detail, selectedJob]);
 
+  useEffect(() => {
+    const onSelectedPage = (e: Event) => {
+      const custom = e as CustomEvent<number>;
+      if (typeof custom.detail === "number") setSelectedPage(custom.detail);
+    };
+    window.addEventListener("chunkstudio:selected-page", onSelectedPage as EventListener);
+    return () =>
+      window.removeEventListener("chunkstudio:selected-page", onSelectedPage as EventListener);
+  }, []);
+
   const goPage = (page: number) => {
     setSelectedPage(page);
     window.dispatchEvent(new CustomEvent("chunkstudio:go-page", { detail: page }));
@@ -67,20 +77,10 @@ export default function Sidebar() {
     }
   };
 
-  useEffect(() => {
-    const onSelectedPage = (e: Event) => {
-      const custom = e as CustomEvent<number>;
-      if (typeof custom.detail === "number") setSelectedPage(custom.detail);
-    };
-    window.addEventListener("chunkstudio:selected-page", onSelectedPage as EventListener);
-    return () =>
-      window.removeEventListener("chunkstudio:selected-page", onSelectedPage as EventListener);
-  }, []);
-
   return (
-    <aside className="sidebar">
+    <aside className="structure-panel">
       <section style={{ marginBottom: 16 }}>
-        <span className="sidebar__label">Document Structure</span>
+        <span className="structure-panel__label">Document Structure</span>
         <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
           {sections.length === 0 && (
             <div style={{ fontSize: 12, color: "#777" }}>구조 정보를 찾을 수 없습니다.</div>
@@ -124,8 +124,9 @@ export default function Sidebar() {
           ))}
         </div>
       </section>
+
       <section>
-        <span className="sidebar__label">Page List</span>
+        <span className="structure-panel__label">Page List</span>
         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {pages.length === 0 && (
             <div style={{ fontSize: 12, color: "#777" }}>페이지 정보가 없습니다.</div>

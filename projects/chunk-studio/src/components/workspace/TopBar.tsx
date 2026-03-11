@@ -4,6 +4,17 @@ import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useJobStore } from "@/store/jobStore";
 
+function toStatusLabel(status: string | undefined): string {
+  if (!status) return "없음";
+  if (["QUEUED", "CONVERTING", "PDF_READY", "EXTRACTING_TEXT", "CHUNKING"].includes(status)) {
+    return "분석 중";
+  }
+  if (status === "DONE") return "분석 완료";
+  if (status === "FAILED") return "실패";
+  if (status === "ACTION_REQUIRED") return "확인 필요";
+  return status;
+}
+
 export default function TopBar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refresh = useJobStore((s) => s.refresh);
@@ -11,6 +22,7 @@ export default function TopBar() {
   const jobs = useJobStore((s) => s.jobs);
   const selectedJobId = useJobStore((s) => s.selectedJobId);
   const [uploading, setUploading] = useState(false);
+
   const selectedJob = useMemo(
     () => jobs.find((j) => j.id === selectedJobId) ?? jobs[0] ?? null,
     [jobs, selectedJobId]
@@ -32,7 +44,7 @@ export default function TopBar() {
   };
 
   return (
-    <header className="top-bar">
+    <header className="workspace-topbar">
       <div
         style={{
           display: "flex",
@@ -57,6 +69,7 @@ export default function TopBar() {
           {selectedJob?.originalFilename ?? "선택된 문서 없음"}
         </span>
       </div>
+
       <input
         ref={fileInputRef}
         type="file"
@@ -76,7 +89,7 @@ export default function TopBar() {
         {uploading ? "업로드 중..." : selectedJob ? "재업로드" : "PDF 업로드"}
       </button>
       <span style={{ fontSize: 12, color: "#666" }}>
-        상태: {selectedJob?.status ?? "없음"}
+        상태: {toStatusLabel(selectedJob?.status)}
       </span>
       <Link href="/jobs" style={{ marginLeft: "auto", fontSize: 12, textDecoration: "none" }}>
         작업목록 보기

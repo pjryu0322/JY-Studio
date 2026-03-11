@@ -1,10 +1,10 @@
-.app-layout {
+.workspace-shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
 }
 
-.app-layout__body {
+.workspace-shell__body {
   display: grid;
   grid-template-columns: 280px minmax(520px, 1fr) minmax(420px, 0.95fr);
   flex: 1;
@@ -12,7 +12,7 @@
   overflow: hidden;
 }
 
-.top-bar {
+.workspace-topbar {
   flex-shrink: 0;
   min-height: 56px;
   padding: 0 16px;
@@ -23,24 +23,14 @@
   background: var(--surface);
 }
 
-.top-bar__title {
-  margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-}
-
-.sidebar {
+.structure-panel {
   border-right: 1px solid var(--border);
   background: var(--surface-alt);
   padding: 12px;
   overflow: auto;
 }
 
-.sidebar__nav {
-  padding: 0 12px;
-}
-
-.sidebar__label {
+.structure-panel__label {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -48,7 +38,7 @@
   color: var(--muted);
 }
 
-.chunk-panel {
+.chunk-review-panel {
   min-width: 420px;
   overflow: auto;
   background: var(--background);
@@ -58,7 +48,7 @@
   min-height: 0;
 }
 
-.chunk-panel__header {
+.chunk-review-panel__header {
   border-bottom: 1px solid var(--border);
   padding: 10px 12px;
   font-size: 12px;
@@ -67,13 +57,13 @@
   gap: 4px;
 }
 
-.chunk-panel__body {
+.chunk-review-panel__body {
   flex: 1;
   min-height: 0;
   overflow: auto;
 }
 
-.preview-area {
+.preview-panel {
   min-width: 520px;
   display: flex;
   flex-direction: column;
@@ -81,7 +71,7 @@
   background: #fafafa;
 }
 
-.preview-area__header {
+.preview-panel__header {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
@@ -90,7 +80,7 @@
   gap: 4px;
 }
 
-.preview-area__scroll {
+.preview-panel__scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;

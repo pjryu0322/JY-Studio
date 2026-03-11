@@ -15,13 +15,24 @@ const PdfPreviewClient = dynamic(
   { ssr: false }
 );
 
-export default function PreviewArea() {
+function toStatusGroup(status: string | undefined): "idle" | "processing" | "done" | "failed" {
+  if (!status) return "idle";
+  if (status === "FAILED") return "failed";
+  if (status === "DONE") return "done";
+  if (["QUEUED", "CONVERTING", "PDF_READY", "EXTRACTING_TEXT", "CHUNKING"].includes(status)) {
+    return "processing";
+  }
+  return "idle";
+}
+
+export default function PreviewPanel() {
   const jobs = useJobStore((s) => s.jobs);
   const selectedJobId = useJobStore((s) => s.selectedJobId);
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
     [jobs, selectedJobId]
   );
+
   const [detail, setDetail] = useState<JobDetailDTO | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [width, setWidth] = useState(760);
@@ -29,6 +40,7 @@ export default function PreviewArea() {
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
   const canPreviewPdf = useMemo(() => {
     const name = selectedJob?.originalFilename?.toLowerCase() ?? "";
     return name.endsWith(".pdf");
@@ -37,6 +49,7 @@ export default function PreviewArea() {
     selectedJob?.id && failedPdfJobId && selectedJob.id === failedPdfJobId
   );
   const visiblePages = canPreviewPdf && !pdfUnavailable ? numPages || "-" : "-";
+  const statusGroup = toStatusGroup(selectedJob?.status);
 
   useEffect(() => {
     if (!selectedJob) return;
@@ -70,16 +83,11 @@ export default function PreviewArea() {
   useEffect(() => {
     const onSelectedChunk = (e: Event) => {
       const custom = e as CustomEvent<string>;
-      if (typeof custom.detail === "string") {
-        setSelectedChunkId(custom.detail);
-      }
+      if (typeof custom.detail === "string") setSelectedChunkId(custom.detail);
     };
     window.addEventListener("chunkstudio:selected-chunk", onSelectedChunk as EventListener);
     return () =>
-      window.removeEventListener(
-        "chunkstudio:selected-chunk",
-        onSelectedChunk as EventListener
-      );
+      window.removeEventListener("chunkstudio:selected-chunk", onSelectedChunk as EventListener);
   }, []);
 
   useEffect(() => {
@@ -112,14 +120,10 @@ export default function PreviewArea() {
         `[data-page-number="${page}"]`
       ) as HTMLElement | null;
       if (!target) return;
-      scrollRef.current.scrollTo({
-        top: Math.max(0, target.offsetTop - 8),
-        behavior: "smooth",
-      });
+      scrollRef.current.scrollTo({ top: Math.max(0, target.offsetTop - 8), behavior: "smooth" });
     };
     window.addEventListener("chunkstudio:go-page", onGoPage as EventListener);
-    return () =>
-      window.removeEventListener("chunkstudio:go-page", onGoPage as EventListener);
+    return () => window.removeEventListener("chunkstudio:go-page", onGoPage as EventListener);
   }, []);
 
   const sectionCount = useMemo(() => {
@@ -131,6 +135,7 @@ export default function PreviewArea() {
     });
     return sections.size;
   }, [detail]);
+
   const boundaryOverview = useMemo(() => {
     const chunks = detail?.chunks ?? [];
     const issues = detectBoundaryIssues(chunks);
@@ -152,21 +157,23 @@ export default function PreviewArea() {
 
   if (!selectedJob) {
     return (
-      <section className="preview-area">
-        <div style={{ padding: 16, color: "#666", fontSize: 13 }}>
-          문서를 업로드하면 미리보기가 표시됩니다.
-        </div>
+      <section className="preview-panel">
+        <div style={{ padding: 16, color: "#666", fontSize: 13 }}>PDF를 업로드해 주세요.</div>
       </section>
     );
   }
 
   return (
-    <section className="preview-area" ref={hostRef}>
-      <div className="preview-area__header">
+    <section className="preview-panel" ref={hostRef}>
+      <div className="preview-panel__header">
         <strong>PDF Preview</strong>
-        <span style={{ color: "#666" }}>
-          pages: {visiblePages} / sections: {sectionCount}
-        </span>
+        <span style={{ color: "#666" }}>pages: {visiblePages} / sections: {sectionCount}</span>
+        {statusGroup === "processing" && (
+          <span style={{ color: "#64748b", fontSize: 11 }}>문서를 분석 중입니다.</span>
+        )}
+        {statusGroup === "failed" && (
+          <span style={{ color: "#b91c1c", fontSize: 11 }}>문서 분석에 실패했습니다.</span>
+        )}
         <details style={{ marginTop: 2 }}>
           <summary style={{ cursor: "pointer", fontSize: 11, color: "#475569" }}>
             경계 점검 ({boundaryOverview.issueCount}) / 머지 후보 ({boundaryOverview.mergeCount})
@@ -190,7 +197,6 @@ export default function PreviewArea() {
                   cursor: "pointer",
                   fontSize: 11,
                 }}
-                title={`${item.chunkId} / start p.${item.start ?? "-"} / end p.${item.end ?? "-"}`}
               >
                 #{item.index + 1} p.{item.start ?? "-"}~{item.end ?? "-"}
               </button>
@@ -198,7 +204,8 @@ export default function PreviewArea() {
           </div>
         </details>
       </div>
-      <div className="preview-area__scroll" ref={scrollRef}>
+
+      <div className="preview-panel__scroll" ref={scrollRef}>
         {!canPreviewPdf && (
           <div style={{ marginBottom: 8, fontSize: 11, color: "#64748b" }}>
             PDF가 아닌 문서는 추출 텍스트만 표시됩니다.

@@ -7,16 +7,15 @@ import type { RagRefinementPayload } from "@/lib/analysis/ragExportOptimizer";
 
 type RefinementEventPayload = RagRefinementPayload & { jobId: string };
 
-export default function ChunkPanel() {
+export default function ChunkReviewPanel() {
   const jobs = useJobStore((s) => s.jobs);
   const selectedJobId = useJobStore((s) => s.selectedJobId);
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null,
     [jobs, selectedJobId]
   );
-  const [exportFormat, setExportFormat] = useState<"json" | "jsonl" | "csv">(
-    "jsonl"
-  );
+
+  const [exportFormat, setExportFormat] = useState<"json" | "jsonl" | "csv">("jsonl");
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [refinements, setRefinements] = useState<RagRefinementPayload | null>(null);
@@ -66,7 +65,6 @@ export default function ChunkPanel() {
         setExportError("RAG export 실패");
         return;
       }
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -83,11 +81,11 @@ export default function ChunkPanel() {
   };
 
   return (
-    <section className="chunk-panel">
-      <div className="chunk-panel__header">
+    <section className="chunk-review-panel">
+      <div className="chunk-review-panel__header">
         <strong>Chunk Review</strong>
       </div>
-      <div className="chunk-panel__body">
+      <div className="chunk-review-panel__body">
         <JobDetail key={selectedJob?.id ?? "no-job"} />
         <section
           style={{

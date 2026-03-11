@@ -7,42 +7,33 @@ export default function Home() {
     <main
       style={{
         minHeight: "100vh",
-        background:
-          "radial-gradient(circle at 0% 0%, rgba(73, 127, 255, 0.1) 0, transparent 28%), radial-gradient(circle at 100% 0%, rgba(45, 212, 191, 0.08) 0, transparent 22%), #f5f7fb",
-        padding: "28px 20px",
+        background: "#f5f7fb",
+        padding: "24px 20px",
       }}
     >
       <div
         style={{
-          maxWidth: 980,
+          maxWidth: 920,
           margin: "0 auto",
-          minHeight: "calc(100vh - 120px)",
+          minHeight: "calc(100vh - 100px)",
           display: "grid",
           alignContent: "center",
-          gap: 20,
+          gap: 16,
         }}
       >
-        <header
-          style={{
-            padding: "6px 0",
-            textAlign: "center",
-          }}
-        >
+        <header style={{ padding: "6px 0", textAlign: "center" }}>
           <h1
             style={{
               margin: "6px 0 8px",
-              fontSize: 42,
+              fontSize: 38,
               color: "#102544",
               letterSpacing: "-0.02em",
             }}
           >
             Chunk Studio
           </h1>
-          <p style={{ margin: 0, fontSize: 18, color: "#334155", fontWeight: 600 }}>
-            Document Chunking Workbench
-          </p>
-          <p style={{ margin: "8px 0 0", fontSize: 13, color: "#64748b" }}>
-            문서 구조 분석 · 의미 기반 청킹 · RAG 준비
+          <p style={{ margin: 0, fontSize: 14, color: "#475569" }}>
+            역할을 선택해 작업을 시작하세요.
           </p>
         </header>
 
