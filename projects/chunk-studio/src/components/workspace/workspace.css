@@ -4,9 +4,9 @@
   min-height: 100vh;
 }
 
-.workspace-shell__body {
+.workspace-shell__editor {
   display: grid;
-  grid-template-columns: minmax(180px, 15vw) minmax(220px, 0.7fr) minmax(420px, 1.4fr);
+  grid-template-columns: minmax(560px, 1fr) minmax(360px, 0.42fr);
   flex: 1;
   min-height: 0;
   overflow: hidden;

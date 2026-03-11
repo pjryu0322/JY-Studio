@@ -6,9 +6,8 @@ import { useJobStore } from "@/store/jobStore";
 import { useJobDetail } from "@/hooks/useJobDetail";
 import { useWorkspacePreferences } from "@/hooks/useWorkspacePreferences";
 import TopBar from "./TopBar";
-import StructurePanel from "./StructurePanel";
-import PreviewPanel from "./PreviewPanel";
-import ChunkReviewPanel from "./ChunkReviewPanel";
+import PdfChunkViewer from "./PdfChunkViewer";
+import ChunkDetailPanel from "./ChunkDetailPanel";
 
 export default function WorkspaceShell() {
   const refresh = useJobStore((s) => s.refresh);
@@ -26,17 +25,15 @@ export default function WorkspaceShell() {
   return (
     <section className="workspace-shell" aria-label="Chunk Studio Workspace">
       <TopBar showLabels={showLabels} />
-      <div className="workspace-shell__body">
-        <PreviewPanel
+      <div className="workspace-shell__editor">
+        <PdfChunkViewer
           selectedJob={selectedJob}
           detail={detail}
           loading={loading}
           error={error}
           showLabels={showLabels}
         />
-        <StructurePanel selectedJob={selectedJob} detail={detail} showLabels={showLabels} />
-        <ChunkReviewPanel
-          key={selectedJob?.id ?? "no-job"}
+        <ChunkDetailPanel
           selectedJob={selectedJob}
           detail={detail}
           loading={loading}
