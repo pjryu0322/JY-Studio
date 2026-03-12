@@ -1,66 +1,118 @@
 "use client";
 
+import { useState } from "react";
 import type { ChunkDTO } from "@/types/job";
 
 interface ChunkOverlayLayerProps {
   chunks: ChunkDTO[];
-  currentPage: number;
+  pageNumber: number;
+  pageSize: { width: number; height: number };
   selectedChunkId: string | null;
   onSelectChunk: (chunk: ChunkDTO) => void;
 }
 
 export default function ChunkOverlayLayer({
   chunks,
-  currentPage,
+  pageNumber,
+  pageSize,
   selectedChunkId,
   onSelectChunk,
 }: ChunkOverlayLayerProps) {
+  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
   const visible = chunks
     .filter((chunk) => {
       const pageRange = (chunk.meta as unknown as { pageRange?: [number, number] }).pageRange;
-      if (!Array.isArray(pageRange) || pageRange.length !== 2) return currentPage <= 1;
-      return currentPage >= pageRange[0] && currentPage <= pageRange[1];
+      if (!Array.isArray(pageRange) || pageRange.length !== 2) return pageNumber <= 1;
+      return pageNumber >= pageRange[0] && pageNumber <= pageRange[1];
     })
-    .slice(0, 20);
+    .sort((a, b) => a.meta.startBlockIdx - b.meta.startBlockIdx)
+    .slice(0, 30);
 
   if (visible.length === 0) return null;
+
+  const minStart = Math.min(...visible.map((chunk) => chunk.meta.startBlockIdx));
+  const maxEnd = Math.max(...visible.map((chunk) => chunk.meta.endBlockIdx));
+  const span = Math.max(1, maxEnd - minStart + 1);
+
+  const positioned = visible.map((chunk, index) => {
+    const startRatio = (chunk.meta.startBlockIdx - minStart) / span;
+    const endRatio = (chunk.meta.endBlockIdx - minStart + 1) / span;
+    return { chunk, index, startRatio, endRatio };
+  });
 
   return (
     <div
       style={{
         position: "absolute",
-        top: 12,
-        right: 12,
-        zIndex: 20,
-        display: "grid",
-        gap: 6,
-        maxWidth: 260,
+        inset: 0,
+        zIndex: 10,
+        pointerEvents: "none",
       }}
     >
-      {visible.map((chunk, index) => {
+      {positioned.map(({ chunk, index, startRatio, endRatio }) => {
+        const top = Math.max(2, Math.floor(startRatio * pageSize.height));
+        const bottom = Math.max(top + 18, Math.floor(endRatio * pageSize.height) - 2);
+        const isHovered = hoveredChunkId === chunk.meta.chunkId;
         const isSelected = selectedChunkId === chunk.meta.chunkId;
         return (
           <button
             key={chunk.meta.chunkId}
             type="button"
             onClick={() => onSelectChunk(chunk)}
+            onMouseEnter={() => setHoveredChunkId(chunk.meta.chunkId)}
+            onMouseLeave={() => setHoveredChunkId(null)}
             style={{
               textAlign: "left",
-              border: isSelected ? "1px solid #1d4ed8" : "1px solid rgba(59,130,246,0.4)",
+              position: "absolute",
+              left: 8,
+              right: 8,
+              top,
+              height: bottom - top,
+              pointerEvents: "auto",
+              border: isSelected
+                ? "2px solid #1d4ed8"
+                : isHovered
+                  ? "2px solid rgba(37,99,235,0.9)"
+                  : "2px solid rgba(37,99,235,0.65)",
               borderRadius: 8,
-              padding: "6px 8px",
-              background: isSelected ? "rgba(219,234,254,0.95)" : "rgba(239,246,255,0.82)",
+              padding: "4px 6px",
+              background: isSelected
+                ? "rgba(0,120,255,0.14)"
+                : isHovered
+                  ? "rgba(0,120,255,0.12)"
+                  : "rgba(0,120,255,0.08)",
               color: "#1e3a8a",
-              fontSize: 11,
+              fontSize: 10,
               cursor: "pointer",
-              boxShadow: "0 1px 2px rgba(15,23,42,0.08)",
+              boxShadow: isSelected ? "0 0 0 1px rgba(37,99,235,0.2) inset" : undefined,
+              overflow: "hidden",
             }}
             title={chunk.meta.sectionPath.join(" > ") || "Unsectioned"}
           >
-            #{index + 1} {chunk.meta.chunkId}
-            <div style={{ marginTop: 2, color: "#334155" }}>
+            <div style={{ fontWeight: 700 }}>
+              #{index + 1} {chunk.meta.chunkId}
+            </div>
+            <div style={{ marginTop: 1, color: "#334155", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
               {chunk.meta.sectionTitle || chunk.meta.sectionPath.at(-1) || "Unsectioned"}
             </div>
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                borderTop: "2px solid rgba(37,99,235,0.95)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                borderBottom: "1px dashed rgba(37,99,235,0.9)",
+              }}
+            />
           </button>
         );
       })}

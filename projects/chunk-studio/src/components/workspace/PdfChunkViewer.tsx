@@ -89,8 +89,7 @@ export default function PdfChunkViewer({
     const heightScale = containerHeight / firstPageSize.height;
     const baseScale = Math.min(widthScale, heightScale);
     const zoomedScale = baseScale * zoom;
-    const appliedScale = Math.min(zoomedScale, widthScale);
-    setRenderWidth(Math.max(120, Math.floor(firstPageSize.width * appliedScale)));
+    setRenderWidth(Math.max(120, Math.floor(firstPageSize.width * zoomedScale)));
   }, [firstPageSize, viewportSize, zoom]);
 
   useEffect(() => {
@@ -153,6 +152,22 @@ export default function PdfChunkViewer({
     return () => window.removeEventListener("chunkstudio:go-page", onGoPage as EventListener);
   }, []);
 
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const onScroll = () => {
+      const pages = Array.from(root.querySelectorAll("[data-page-number]")) as HTMLElement[];
+      if (pages.length === 0) return;
+      const top = root.scrollTop + 16;
+      const current = pages.find((page) => page.offsetTop + page.offsetHeight >= top) ?? pages[0];
+      const pageNo = Number(current.getAttribute("data-page-number"));
+      if (Number.isFinite(pageNo) && pageNo > 0) setCurrentPage(pageNo);
+    };
+    root.addEventListener("scroll", onScroll);
+    onScroll();
+    return () => root.removeEventListener("scroll", onScroll);
+  }, [numPages]);
+
   const onSelectChunk = (chunk: ChunkDTO) => {
     setSelectedChunkId(chunk.meta.chunkId);
     window.dispatchEvent(new CustomEvent("chunkstudio:selected-chunk", { detail: chunk.meta.chunkId }));
@@ -212,6 +227,15 @@ export default function PdfChunkViewer({
               fileUrl={`/api/jobs/${selectedJob.id}/pdf`}
               width={renderWidth}
               onFirstPageSize={setFirstPageSize}
+              renderOverlay={(pageNumber, pageSize) => (
+                <ChunkOverlayLayer
+                  chunks={detail?.chunks ?? []}
+                  pageNumber={pageNumber}
+                  pageSize={pageSize}
+                  selectedChunkId={selectedChunkId}
+                  onSelectChunk={onSelectChunk}
+                />
+              )}
               onLoadSuccess={(count) => {
                 setNumPages(count);
                 window.dispatchEvent(
@@ -224,12 +248,6 @@ export default function PdfChunkViewer({
                 setFailedPdfJobId(selectedJob.id);
                 setPreviewFailureReason("원본 PDF 렌더링에 실패했습니다.");
               }}
-            />
-            <ChunkOverlayLayer
-              chunks={detail?.chunks ?? []}
-              currentPage={currentPage}
-              selectedChunkId={selectedChunkId}
-              onSelectChunk={onSelectChunk}
             />
           </>
         ) : canPreviewPdf && !pdfAvailabilityChecked ? (

@@ -5,6 +5,7 @@ import { suggestSplitPoints } from "@/lib/analysis/chunkBoundaryInspector";
 import { mapChunkToPage } from "@/lib/analysis/chunkMappingService";
 import { useChunkReviewState } from "@/hooks/useChunkReviewState";
 import { buildMergedPreview } from "./chunk-review/utils";
+import { useMemo, useState } from "react";
 
 interface ChunkDetailPanelProps {
   selectedJob: Job | null;
@@ -23,6 +24,19 @@ export default function ChunkDetailPanel({
 }: ChunkDetailPanelProps) {
   const state = useChunkReviewState({ selectedJob, detail, loading, error });
   const chunk = state.selectedChunk;
+  const [splitCursorOffset, setSplitCursorOffset] = useState<number | null>(null);
+  const sanitizedChunkText = useMemo(() => {
+    if (!chunk) return "";
+    return chunk.text
+      .split("\n")
+      .filter(
+        (line) =>
+          !line.toLowerCase().includes("pdf extraction failed") &&
+          !line.toLowerCase().includes("fallback content generated")
+      )
+      .join("\n")
+      .trim();
+  }, [chunk]);
 
   return (
     <aside className="chunk-review-panel">
@@ -37,18 +51,22 @@ export default function ChunkDetailPanel({
           </div>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
-            <DetailRow label="chunk id" value={chunk.meta.chunkId} />
+            <textarea
+              readOnly
+              value={
+                sanitizedChunkText.length > 1200
+                  ? `${sanitizedChunkText.slice(0, 1200)}...`
+                  : sanitizedChunkText
+              }
+              onClick={(e) => setSplitCursorOffset((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+              onKeyUp={(e) => setSplitCursorOffset((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+              style={{ ...contentBox, minHeight: 180, maxHeight: 320, resize: "vertical" }}
+            />
             <DetailRow
               label="page range"
               value={`p.${mapChunkToPage(chunk).pageStart ?? "-"} ~ p.${mapChunkToPage(chunk).pageEnd ?? "-"}`}
             />
-            <DetailRow label="structure path" value={chunk.meta.sectionPath.join(" > ") || "Unsectioned"} />
             <DetailRow label="section title" value={chunk.meta.sectionTitle ?? "-"} />
-            <DetailRow label="status" value={state.selectedStatus ?? "정상"} />
-            <div style={contentBox}>
-              {chunk.text.slice(0, 500)}
-              {chunk.text.length > 500 ? "..." : ""}
-            </div>
             {chunk.meta.quality.warnings.length > 0 && (
               <div style={{ fontSize: 11, color: "#b91c1c" }}>
                 warnings: {chunk.meta.quality.warnings.slice(0, 4).join(", ")}
@@ -81,6 +99,11 @@ export default function ChunkDetailPanel({
             )}
             <section style={sectionCard}>
               <strong style={{ fontSize: 12, color: "#0f172a" }}>Refinement Actions</strong>
+              {splitCursorOffset != null && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "#475569" }}>
+                  분할 커서 위치: {splitCursorOffset}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
@@ -101,13 +124,14 @@ export default function ChunkDetailPanel({
                   type="button"
                   style={actionBtn}
                   onClick={() => {
-                    const split = suggestSplitPoints(chunk)[0];
+                    const suggested = suggestSplitPoints(chunk)[0];
+                    const offset = splitCursorOffset ?? suggested?.offset;
                     state.markModified(chunk.meta.chunkId);
                     state.setReviewNotes((prev) => ({
                       ...prev,
                       [chunk.meta.chunkId]:
                         (prev[chunk.meta.chunkId] ?? "") +
-                        `\n[split] 분할 검토 필요${split ? ` (offset ${split.offset})` : ""}`,
+                        `\n[split] 분할 검토 필요${offset != null ? ` (offset ${offset})` : ""}`,
                     }));
                   }}
                 >
@@ -152,6 +176,14 @@ export default function ChunkDetailPanel({
                   style={{ ...input, resize: "vertical" }}
                 />
               </label>
+            </section>
+            <section style={sectionCard}>
+              <strong style={{ fontSize: 12, color: "#0f172a" }}>Metadata</strong>
+              <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                <DetailRow label="chunk id" value={chunk.meta.chunkId} />
+                <DetailRow label="status" value={state.selectedStatus ?? "정상"} />
+                <DetailRow label="structure path" value={chunk.meta.sectionPath.join(" > ") || "Unsectioned"} />
+              </div>
             </section>
           </div>
         )}

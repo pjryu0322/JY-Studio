@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -12,6 +13,7 @@ interface PdfPreviewClientProps {
   fileUrl: string;
   width: number;
   onFirstPageSize?: (size: { width: number; height: number }) => void;
+  renderOverlay?: (pageNumber: number, size: { width: number; height: number }) => ReactNode;
   onLoadSuccess?: (numPages: number) => void;
   onLoadError?: () => void;
 }
@@ -20,10 +22,16 @@ export default function PdfPreviewClient({
   fileUrl,
   width,
   onFirstPageSize,
+  renderOverlay,
   onLoadSuccess,
   onLoadError,
 }: PdfPreviewClientProps) {
   const [numPages, setNumPages] = useState(0);
+  const [firstPageRatio, setFirstPageRatio] = useState<number | null>(null);
+  const pageHeight = useMemo(() => {
+    if (!firstPageRatio || width <= 0) return 0;
+    return Math.max(1, Math.floor(width * firstPageRatio));
+  }, [firstPageRatio, width]);
 
   return (
     <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
@@ -47,16 +55,20 @@ export default function PdfPreviewClient({
               maxWidth: "100%",
             }}
           >
-            <Page
-              pageNumber={idx + 1}
-              width={width}
-              onLoadSuccess={(page) => {
-                if (idx === 0) {
-                  const viewport = page.getViewport({ scale: 1 });
-                  onFirstPageSize?.({ width: viewport.width, height: viewport.height });
-                }
-              }}
-            />
+            <div style={{ position: "relative", width, maxWidth: "100%", minHeight: pageHeight || undefined }}>
+              <Page
+                pageNumber={idx + 1}
+                width={width}
+                onLoadSuccess={(page) => {
+                  if (idx === 0) {
+                    const viewport = page.getViewport({ scale: 1 });
+                    onFirstPageSize?.({ width: viewport.width, height: viewport.height });
+                    setFirstPageRatio(viewport.height / viewport.width);
+                  }
+                }}
+              />
+              {pageHeight > 0 && renderOverlay?.(idx + 1, { width, height: pageHeight })}
+            </div>
           </div>
         ))}
       </Document>
