@@ -25,6 +25,7 @@
     "mammoth": "^1.8.0",
     "nanoid": "^5.1.6",
     "next": "16.1.6",
+    "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.4.296",
     "prisma": "^6.0.0",
     "react": "19.2.3",

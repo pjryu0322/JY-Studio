@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { prisma } from "@/lib/prisma";
 import { runChunkingPipeline } from "@/lib/jobs/chunkingPipeline";
 import type { Chunk, ChunkConfig } from "@/lib/chunking/types";
+import { extractPdfTextFromBytes } from "@/lib/pdf/extractPdfText";
 
 type RouteCtx = {
   params: Promise<{ jobId: string }>;
@@ -15,6 +18,13 @@ interface RechunkBody {
 export async function POST(req: Request, ctx: RouteCtx) {
   const { jobId } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as RechunkBody;
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    include: { files: true },
+  });
+  if (!job) {
+    return NextResponse.json({ error: "Job not found." }, { status: 404 });
+  }
 
   const extractedArtifact = await prisma.artifact.findFirst({
     where: { jobId, type: "EXTRACTED_TEXT" },
@@ -26,7 +36,36 @@ export async function POST(req: Request, ctx: RouteCtx) {
     );
   }
   const meta = extractedArtifact.meta as Record<string, unknown>;
-  const text = typeof meta.text === "string" ? meta.text : "";
+  let text = typeof meta.text === "string" ? meta.text : "";
+  let extractionMethod =
+    typeof meta.extractionMethod === "string" ? meta.extractionMethod : "RECHUNK";
+  const shouldRetryPdfExtraction =
+    extractionMethod.startsWith("PDF") &&
+    (text.toLowerCase().includes("pdf extraction failed") ||
+      (job.message ?? "").toLowerCase().includes("pdf extraction failed"));
+  if (shouldRetryPdfExtraction) {
+    const pdfFile = [...job.files]
+      .filter((file) => file.ext.toLowerCase() === "pdf")
+      .sort((a, b) => {
+        if (a.sourceType === "replacement_pdf" && b.sourceType !== "replacement_pdf") return -1;
+        if (a.sourceType !== "replacement_pdf" && b.sourceType === "replacement_pdf") return 1;
+        if (a.sourceType === "original" && b.sourceType !== "original") return -1;
+        if (a.sourceType !== "original" && b.sourceType === "original") return 1;
+        return 0;
+      })[0];
+    if (pdfFile?.storagePath && !pdfFile.storagePath.startsWith("simulated/")) {
+      const resolvedPath = path.isAbsolute(pdfFile.storagePath)
+        ? pdfFile.storagePath
+        : path.join(process.cwd(), pdfFile.storagePath);
+      const buffer = await readFile(resolvedPath);
+      const retried = await extractPdfTextFromBytes(
+        new Uint8Array(buffer),
+        pdfFile.originalName ?? "document.pdf"
+      );
+      text = retried.text;
+      extractionMethod = "PDF_DIRECT";
+    }
+  }
   if (!text.trim()) {
     return NextResponse.json({ error: "No extracted text available." }, { status: 400 });
   }
@@ -50,8 +89,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
   await runChunkingPipeline({
     jobId,
     text,
-    extractionMethod:
-      typeof meta.extractionMethod === "string" ? meta.extractionMethod : "RECHUNK",
+    extractionMethod,
     message: "Rechunk completed.",
     preset: body.preset,
     chunkConfig: body.config,

@@ -233,8 +233,6 @@ export default function PdfChunkViewer({
                   pageNumber={pageNumber}
                   pageSize={pageSize}
                   selectedChunkId={selectedChunkId}
-                  boundaryRatios={undefined}
-                  onBoundaryRatiosChange={() => {}}
                   onSelectChunk={onSelectChunk}
                   onHoverChunk={() => {}}
                 />
