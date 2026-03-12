@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChunkDTO } from "@/types/job";
 
 interface ChunkOverlayLayerProps {
@@ -8,7 +8,10 @@ interface ChunkOverlayLayerProps {
   pageNumber: number;
   pageSize: { width: number; height: number };
   selectedChunkId: string | null;
+  boundaryRatios?: number[];
+  onBoundaryRatiosChange?: (ratios: number[]) => void;
   onSelectChunk: (chunk: ChunkDTO) => void;
+  onHoverChunk?: (chunkId: string | null) => void;
 }
 
 export default function ChunkOverlayLayer({
@@ -16,9 +19,14 @@ export default function ChunkOverlayLayer({
   pageNumber,
   pageSize,
   selectedChunkId,
+  boundaryRatios,
+  onBoundaryRatiosChange,
   onSelectChunk,
+  onHoverChunk,
 }: ChunkOverlayLayerProps) {
   const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
+  const [draggingBoundaryIndex, setDraggingBoundaryIndex] = useState<number | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const visible = chunks
     .filter((chunk) => {
       const pageRange = (chunk.meta as unknown as { pageRange?: [number, number] }).pageRange;
@@ -27,21 +35,66 @@ export default function ChunkOverlayLayer({
     })
     .sort((a, b) => a.meta.startBlockIdx - b.meta.startBlockIdx)
     .slice(0, 30);
-
-  if (visible.length === 0) return null;
-
-  const minStart = Math.min(...visible.map((chunk) => chunk.meta.startBlockIdx));
-  const maxEnd = Math.max(...visible.map((chunk) => chunk.meta.endBlockIdx));
+  const hasVisible = visible.length > 0;
+  const minStart = hasVisible ? Math.min(...visible.map((chunk) => chunk.meta.startBlockIdx)) : 0;
+  const maxEnd = hasVisible ? Math.max(...visible.map((chunk) => chunk.meta.endBlockIdx)) : 1;
   const span = Math.max(1, maxEnd - minStart + 1);
 
-  const positioned = visible.map((chunk, index) => {
+  const basePositioned = visible.map((chunk, index) => {
     const startRatio = (chunk.meta.startBlockIdx - minStart) / span;
     const endRatio = (chunk.meta.endBlockIdx - minStart + 1) / span;
     return { chunk, index, startRatio, endRatio };
   });
+  const baseBoundaries = basePositioned.slice(0, -1).map((item) => item.endRatio);
+  const activeBoundaries = (() => {
+    if (!boundaryRatios || boundaryRatios.length !== baseBoundaries.length) return baseBoundaries;
+    const minGap = 0.02;
+    const next = [...boundaryRatios];
+    for (let i = 0; i < next.length; i += 1) {
+      const lower = i === 0 ? minGap : next[i - 1] + minGap;
+      const upper = i === next.length - 1 ? 1 - minGap : (next[i + 1] ?? 1) - minGap;
+      next[i] = clamp(next[i], lower, upper);
+    }
+    return next;
+  })();
+  const positioned = visible.map((chunk, index) => ({
+    chunk,
+    index,
+    startRatio: index === 0 ? 0 : activeBoundaries[index - 1],
+    endRatio: index === visible.length - 1 ? 1 : activeBoundaries[index],
+  }));
+
+  useEffect(() => {
+    if (!hasVisible) return;
+    if (draggingBoundaryIndex == null) return;
+    const onMove = (event: MouseEvent) => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect || !onBoundaryRatiosChange) return;
+      const ratio = clamp((event.clientY - rect.top) / rect.height, 0.02, 0.98);
+      const next = [...activeBoundaries];
+      const minGap = 0.02;
+      const lower = draggingBoundaryIndex === 0 ? minGap : next[draggingBoundaryIndex - 1] + minGap;
+      const upper =
+        draggingBoundaryIndex === next.length - 1
+          ? 1 - minGap
+          : next[draggingBoundaryIndex + 1] - minGap;
+      next[draggingBoundaryIndex] = clamp(ratio, lower, upper);
+      onBoundaryRatiosChange(next);
+    };
+    const onUp = () => setDraggingBoundaryIndex(null);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [activeBoundaries, draggingBoundaryIndex, hasVisible, onBoundaryRatiosChange]);
+
+  if (!hasVisible) return null;
 
   return (
     <div
+      ref={rootRef}
       style={{
         position: "absolute",
         inset: 0,
@@ -59,8 +112,14 @@ export default function ChunkOverlayLayer({
             key={chunk.meta.chunkId}
             type="button"
             onClick={() => onSelectChunk(chunk)}
-            onMouseEnter={() => setHoveredChunkId(chunk.meta.chunkId)}
-            onMouseLeave={() => setHoveredChunkId(null)}
+            onMouseEnter={() => {
+              setHoveredChunkId(chunk.meta.chunkId);
+              onHoverChunk?.(chunk.meta.chunkId);
+            }}
+            onMouseLeave={() => {
+              setHoveredChunkId(null);
+              onHoverChunk?.(null);
+            }}
             style={{
               textAlign: "left",
               position: "absolute",
@@ -116,6 +175,26 @@ export default function ChunkOverlayLayer({
           </button>
         );
       })}
+      {activeBoundaries.map((ratio, index) => (
+        <div
+          key={`boundary-${index}`}
+          onMouseDown={() => setDraggingBoundaryIndex(index)}
+          style={{
+            position: "absolute",
+            left: 8,
+            right: 8,
+            top: Math.floor(ratio * pageSize.height),
+            borderTop: "2px dashed rgba(15,23,42,0.55)",
+            cursor: "ns-resize",
+            pointerEvents: "auto",
+          }}
+          title="경계선 드래그로 청크 경계를 조정하세요"
+        />
+      ))}
     </div>
   );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
