@@ -45,7 +45,7 @@ export function classifyPageType(
 ): ClassifiedPageResult {
   const profile = buildPageLayoutProfile(blocks, pageNumber);
   const scores = scorePage(profile, blocks);
-  const pageType = resolvePageType(scores);
+  const pageType = resolvePageType(scores, profile);
   return { profile, scores, pageType };
 }
 
@@ -150,12 +150,23 @@ export function scorePage(profile: PageLayoutProfile, blocks: PageTextBlock[]): 
     lines.filter((line) => /\b(ver|version|개정|revision)\b/i.test(line)).length /
     Math.max(1, lines.length);
 
+  const firstPageCoverPrior = profile.pageNumber === 1 ? 0.12 : 0;
+  const firstPageLikelyCoverBoost =
+    profile.pageNumber === 1 &&
+    profile.textBlockCount <= 52 &&
+    profile.centerAlignmentRatio >= 0.3 &&
+    profile.longLineRatio <= 0.6
+      ? 0.18
+      : 0;
+
   const coverScore = clamp01(
     (profile.textBlockCount <= 30 ? 0.28 : 0) +
       scaleRange(profile.centerAlignmentRatio, 0.45, 0.95, 0.3) +
       scaleRange(profile.largeTextBlockCount, 2, 10, 0.2) +
       scaleRange(1 - profile.gridStructureScore, 0.2, 1, 0.12) +
-      scaleRange(1 - profile.longLineRatio, 0.2, 1, 0.1)
+      scaleRange(1 - profile.longLineRatio, 0.2, 1, 0.1) +
+      firstPageCoverPrior +
+      firstPageLikelyCoverBoost
   );
 
   const tocScore = clamp01(
@@ -166,12 +177,19 @@ export function scorePage(profile: PageLayoutProfile, blocks: PageTextBlock[]): 
       (/(목차|table of contents|contents)/i.test(normalized) ? 0.16 : 0)
   );
 
+  const firstPageTablePenalty =
+    profile.pageNumber === 1
+      ? scaleRange(profile.centerAlignmentRatio, 0.35, 0.95, 0.12) +
+        (profile.textBlockCount < 60 ? 0.08 : 0)
+      : 0;
+
   const tableScore = clamp01(
     scaleRange(profile.gridStructureScore, 0.32, 1, 0.34) +
       scaleRange(profile.numericRatio, 0.08, 0.7, 0.22) +
       scaleRange(profile.shortLineRatio, 0.25, 0.9, 0.16) +
       (/(표|table|단위|비고|항목|구분)/i.test(normalized) ? 0.16 : 0) +
-      scaleRange(profile.textBlockCount, 40, 260, 0.12)
+      scaleRange(profile.textBlockCount, 40, 260, 0.12) -
+      firstPageTablePenalty
   );
 
   const bodyScore = clamp01(
@@ -200,7 +218,13 @@ export function scorePage(profile: PageLayoutProfile, blocks: PageTextBlock[]): 
   };
 }
 
-function resolvePageType(scores: PageTypeScores): PageType {
+function resolvePageType(scores: PageTypeScores, profile: PageLayoutProfile): PageType {
+  if (profile.pageNumber === 1) {
+    const maxNonCover = Math.max(scores.tocScore, scores.tableScore, scores.bodyScore, scores.revisionScore);
+    if (scores.coverScore >= 0.42 && scores.coverScore + 0.06 >= maxNonCover) {
+      return "cover";
+    }
+  }
   const entries: Array<{ type: PageType; score: number }> = [
     { type: "cover", score: scores.coverScore },
     { type: "toc", score: scores.tocScore },

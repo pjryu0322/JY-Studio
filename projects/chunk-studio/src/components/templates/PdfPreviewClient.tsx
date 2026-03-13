@@ -12,7 +12,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface PdfPreviewClientProps {
   fileUrl: string;
   width: number;
+  viewMode?: "continuous" | "single";
+  focusedPage?: number;
   onFirstPageSize?: (size: { width: number; height: number }) => void;
+  onPageSize?: (pageNumber: number, size: { width: number; height: number }) => void;
   renderOverlay?: (pageNumber: number, size: { width: number; height: number }) => ReactNode;
   onLoadSuccess?: (numPages: number) => void;
   onLoadError?: () => void;
@@ -25,7 +28,10 @@ interface PdfPreviewClientProps {
 export default function PdfPreviewClient({
   fileUrl,
   width,
+  viewMode = "continuous",
+  focusedPage = 1,
   onFirstPageSize,
+  onPageSize,
   renderOverlay,
   onLoadSuccess,
   onLoadError,
@@ -33,11 +39,8 @@ export default function PdfPreviewClient({
 }: PdfPreviewClientProps) {
   const [numPages, setNumPages] = useState(0);
   const [firstPageRatio, setFirstPageRatio] = useState<number | null>(null);
+  const [pageRatios, setPageRatios] = useState<Record<number, number>>({});
   const pageRoots = useMemo(() => new Map<number, HTMLDivElement>(), []);
-  const pageHeight = useMemo(() => {
-    if (!firstPageRatio || width <= 0) return 0;
-    return Math.max(1, Math.floor(width * firstPageRatio));
-  }, [firstPageRatio, width]);
 
   return (
     <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
@@ -49,10 +52,15 @@ export default function PdfPreviewClient({
         }}
         onLoadError={() => onLoadError?.()}
       >
-        {Array.from({ length: numPages }, (_, idx) => (
+        {(viewMode === "single"
+          ? [Math.min(Math.max(1, focusedPage), Math.max(1, numPages))]
+          : Array.from({ length: numPages }, (_, idx) => idx + 1)
+        ).map((pageNumber) => {
+          const idx = pageNumber - 1;
+          return (
           <div
-            key={`pdf-page-${idx + 1}`}
-            data-page-number={idx + 1}
+            key={`pdf-page-${pageNumber}`}
+            data-page-number={pageNumber}
             style={{
               width,
               display: "flex",
@@ -63,26 +71,37 @@ export default function PdfPreviewClient({
             <div
               ref={(el) => {
                 if (!el) {
-                  pageRoots.delete(idx + 1);
+                  pageRoots.delete(pageNumber);
                   return;
                 }
-                pageRoots.set(idx + 1, el);
+                pageRoots.set(pageNumber, el);
               }}
-              style={{ position: "relative", width, minHeight: pageHeight || undefined }}
+              style={{
+                position: "relative",
+                width,
+                minHeight: (() => {
+                  const ratio = pageRatios[pageNumber] ?? firstPageRatio;
+                  if (!ratio || ratio <= 0) return undefined;
+                  return Math.max(1, Math.floor(width * ratio));
+                })(),
+              }}
             >
               <Page
-                pageNumber={idx + 1}
+                pageNumber={pageNumber}
                 width={width}
                 onLoadSuccess={(page) => {
-                  if (idx === 0) {
-                    const viewport = page.getViewport({ scale: 1 });
+                  const viewport = page.getViewport({ scale: 1 });
+                  const ratio = viewport.height / Math.max(1, viewport.width);
+                  setPageRatios((prev) => ({ ...prev, [pageNumber]: ratio }));
+                  onPageSize?.(pageNumber, { width: viewport.width, height: viewport.height });
+                  if (idx === 0 || firstPageRatio == null) {
                     onFirstPageSize?.({ width: viewport.width, height: viewport.height });
-                    setFirstPageRatio(viewport.height / viewport.width);
+                    setFirstPageRatio(ratio);
                   }
                 }}
                 onRenderTextLayerSuccess={() => {
                   if (!onPageTextMap) return;
-                  const pageRoot = pageRoots.get(idx + 1);
+                  const pageRoot = pageRoots.get(pageNumber);
                   if (!pageRoot) return;
                   const textLayer = pageRoot.querySelector(".react-pdf__Page__textContent");
                   if (!textLayer) return;
@@ -99,7 +118,7 @@ export default function PdfPreviewClient({
                         y: rect.top - rootRect.top,
                         width: rect.width,
                         height: rect.height,
-                        page: idx + 1,
+                        page: pageNumber,
                       };
                     })
                     .filter(
@@ -114,13 +133,19 @@ export default function PdfPreviewClient({
                         page: number;
                       } => Boolean(entry)
                     );
-                  onPageTextMap(idx + 1, blocks);
+                  onPageTextMap(pageNumber, blocks);
                 }}
               />
-              {pageHeight > 0 && renderOverlay?.(idx + 1, { width, height: pageHeight })}
+              {(() => {
+                const ratio = pageRatios[pageNumber] ?? firstPageRatio;
+                if (!ratio || ratio <= 0) return null;
+                const pageHeight = Math.max(1, Math.floor(width * ratio));
+                return renderOverlay?.(pageNumber, { width, height: pageHeight });
+              })()}
             </div>
           </div>
-        ))}
+          );
+        })}
       </Document>
     </div>
   );

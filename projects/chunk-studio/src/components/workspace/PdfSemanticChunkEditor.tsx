@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { WheelEvent as ReactWheelEvent } from "react";
 import type { ChunkDTO, Job, JobDetailDTO } from "@/types/job";
 import ChunkOverlayLayer from "./ChunkOverlayLayer";
 import {
@@ -19,11 +20,22 @@ const PdfPreviewClient = dynamic(
   { ssr: false }
 );
 
-type ZoomMode = "custom" | "fit-width" | "fit-page";
+type PdfViewMode = "continuous" | "single";
 
 interface PdfFirstPageSize {
   width: number;
   height: number;
+}
+
+type PageOrientation = "portrait" | "landscape";
+
+interface PageProfile {
+  pageNumber: number;
+  width: number;
+  height: number;
+  orientation: PageOrientation;
+  pageType: PageType;
+  confidence: number;
 }
 
 interface PdfSemanticChunkEditorProps {
@@ -45,11 +57,11 @@ export default function PdfSemanticChunkEditor({
 }: PdfSemanticChunkEditorProps) {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [renderWidth, setRenderWidth] = useState(420);
+  const [pdfViewMode, setPdfViewMode] = useState<PdfViewMode>("single");
+  const [freezeCurrentPage, setFreezeCurrentPage] = useState(false);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [firstPageSize, setFirstPageSize] = useState<PdfFirstPageSize | null>(null);
-  const [zoomMode, setZoomMode] = useState<ZoomMode>("custom");
-  const [zoom, setZoom] = useState(0.5);
+  const [zoom, setZoom] = useState(1);
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const [hoverChunkId, setHoverChunkId] = useState<string | null>(null);
   const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(null);
@@ -62,6 +74,7 @@ export default function PdfSemanticChunkEditor({
   const [fallbackActionError, setFallbackActionError] = useState<string | null>(null);
   const [boundaryRatiosByPage, setBoundaryRatiosByPage] = useState<Record<number, number[]>>({});
   const [pageTextMapByPage, setPageTextMapByPage] = useState<Record<number, PageTextBlock[]>>({});
+  const [pageSizeByPage, setPageSizeByPage] = useState<Record<number, { width: number; height: number }>>({});
   const [pageTypeByPage, setPageTypeByPage] = useState<Record<number, PageType>>({});
   const [pageProfileByPage, setPageProfileByPage] = useState<Record<number, PageLayoutProfile>>({});
   const [pageScoresByPage, setPageScoresByPage] = useState<Record<number, PageTypeScores>>({});
@@ -70,6 +83,9 @@ export default function PdfSemanticChunkEditor({
   );
   const [toolbarAnchor, setToolbarAnchor] = useState<{ x: number; y: number } | null>(null);
   const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredAnalyzerPage, setHoveredAnalyzerPage] = useState<number | null>(null);
+  const [overlaySelectionByPage, setOverlaySelectionByPage] = useState<Record<number, boolean>>({});
+  const [appliedOverlayPages, setAppliedOverlayPages] = useState<Set<number>>(new Set());
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [inspectorExpanded, setInspectorExpanded] = useState(false);
@@ -83,6 +99,7 @@ export default function PdfSemanticChunkEditor({
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const anchorCacheRef = useRef<Record<string, { top: number; bottom: number; left: number; right: number }>>({});
+  const wheelSwitchAtRef = useRef(0);
 
   const canPreviewPdf = useMemo(() => {
     const name = selectedJob?.originalFilename?.toLowerCase() ?? "";
@@ -136,10 +153,6 @@ export default function PdfSemanticChunkEditor({
     const top = clamp(toolbarAnchor.y - 46, 12, window.innerHeight - 120);
     return { top, left };
   }, [toolbarAnchor]);
-  const zoomPercent = useMemo(() => {
-    if (!firstPageSize || firstPageSize.width <= 0) return Math.round(zoom * 100);
-    return Math.max(10, Math.round((renderWidth / firstPageSize.width) * 100));
-  }, [firstPageSize, renderWidth, zoom]);
   const hasFallbackChunk = useMemo(() => {
     if (!detail) return false;
     const message = (detail.message ?? "").toLowerCase();
@@ -152,11 +165,6 @@ export default function PdfSemanticChunkEditor({
       );
     });
   }, [chunks, detail]);
-  const currentPageTypeLabel = useMemo(() => {
-    const type = pageTypeOverrideByPage[currentPage] ?? pageTypeByPage[currentPage];
-    if (!type) return "page type: -";
-    return `page type: ${type}`;
-  }, [currentPage, pageTypeByPage, pageTypeOverrideByPage]);
   const currentPageProfile = pageProfileByPage[currentPage] ?? null;
   const currentPageScores = pageScoresByPage[currentPage] ?? null;
   const selectedChunkAnchors = useMemo(() => {
@@ -178,6 +186,42 @@ export default function PdfSemanticChunkEditor({
       .slice(0, 30)
       .map((block) => ({ x: block.x, y: block.y, width: block.width, height: block.height }));
   }, [pageTextMapByPage, selectedChunk, selectedChunkAnchors]);
+  const renderWidth = useMemo(() => {
+    const fallback = 420;
+    if (!firstPageSize) return fallback;
+    const pageSize =
+      pdfViewMode === "single" ? pageSizeByPage[currentPage] ?? firstPageSize : firstPageSize;
+    const pageWidth = Math.max(1, pageSize.width);
+    return Math.max(120, Math.floor(pageWidth * zoom));
+  }, [currentPage, firstPageSize, pageSizeByPage, pdfViewMode, zoom]);
+  const zoomPercentLabel = useMemo(() => {
+    return `${Math.round(zoom * 100)}%`;
+  }, [zoom]);
+  const pageProfiles = useMemo(() => {
+    if (!numPages) return [] as PageProfile[];
+    const items: PageProfile[] = [];
+    for (let page = 1; page <= numPages; page += 1) {
+      const size = pageSizeByPage[page];
+      const scores = pageScoresByPage[page];
+      const detectedType = pageTypeOverrideByPage[page] ?? pageTypeByPage[page] ?? "body";
+      const width = size?.width ?? firstPageSize?.width ?? 0;
+      const height = size?.height ?? firstPageSize?.height ?? 0;
+      const orientation: PageOrientation = width > height ? "landscape" : "portrait";
+      items.push({
+        pageNumber: page,
+        width,
+        height,
+        orientation,
+        pageType: detectedType,
+        confidence: estimateConfidence(scores),
+      });
+    }
+    return items;
+  }, [firstPageSize, numPages, pageScoresByPage, pageSizeByPage, pageTypeByPage, pageTypeOverrideByPage]);
+  const selectedOverlayCount = useMemo(
+    () => Object.values(overlaySelectionByPage).filter(Boolean).length,
+    [overlaySelectionByPage]
+  );
 
   useEffect(() => {
     setMergeMenuOpen(false);
@@ -218,11 +262,15 @@ export default function PdfSemanticChunkEditor({
     if (!viewport) return;
     viewport.scrollTop = 0;
     setCurrentPage(1);
+    setZoom(1);
     setPageTextMapByPage({});
+    setPageSizeByPage({});
     setPageTypeByPage({});
     setPageProfileByPage({});
     setPageScoresByPage({});
     setPageTypeOverrideByPage({});
+    setOverlaySelectionByPage({});
+    setAppliedOverlayPages(new Set());
     anchorCacheRef.current = {};
   }, [selectedJobId]);
 
@@ -230,6 +278,7 @@ export default function PdfSemanticChunkEditor({
     const viewport = scrollRef.current;
     if (!viewport) return;
     const onScroll = () => {
+      if (freezeCurrentPage) return;
       const pages = Array.from(
         viewport.querySelectorAll("[data-page-number]")
       ) as Array<HTMLElement>;
@@ -251,7 +300,7 @@ export default function PdfSemanticChunkEditor({
     viewport.addEventListener("scroll", onScroll);
     onScroll();
     return () => viewport.removeEventListener("scroll", onScroll);
-  }, [selectedJobId, numPages]);
+  }, [freezeCurrentPage, selectedJobId, numPages]);
 
   useEffect(() => {
     const viewport = scrollRef.current;
@@ -268,17 +317,20 @@ export default function PdfSemanticChunkEditor({
     return () => obs.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!firstPageSize) return;
-    const containerWidth = Math.max(0, viewportSize.width - 24);
-    const containerHeight = Math.max(0, viewportSize.height - 24);
-    if (containerWidth <= 0 || containerHeight <= 0) return;
-    const widthScale = containerWidth / firstPageSize.width;
-    const heightScale = containerHeight / firstPageSize.height;
-    const baseScale = zoomMode === "fit-width" ? widthScale : Math.min(widthScale, heightScale);
-    const appliedScale = zoomMode === "custom" ? baseScale * zoom : baseScale;
-    setRenderWidth(Math.max(120, Math.floor(firstPageSize.width * appliedScale)));
-  }, [firstPageSize, viewportSize, zoom, zoomMode]);
+  const handleViewportWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    if (Math.abs(event.deltaY) < 4) return;
+    const now = Date.now();
+    if (now - wheelSwitchAtRef.current < 130) {
+      event.preventDefault();
+      return;
+    }
+    wheelSwitchAtRef.current = now;
+    event.preventDefault();
+    setCurrentPage((prev) => {
+      const next = event.deltaY > 0 ? prev + 1 : prev - 1;
+      return clamp(next, 1, Math.max(1, numPages));
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -424,6 +476,39 @@ export default function PdfSemanticChunkEditor({
     }
   };
 
+  const scrollToPage = (pageNumber: number) => {
+    if (pdfViewMode === "single") {
+      setCurrentPage(pageNumber);
+      return;
+    }
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+    const pageEl = viewport.querySelector(`[data-page-number="${pageNumber}"]`) as HTMLElement | null;
+    if (!pageEl) return;
+    const targetTop = Math.max(0, pageEl.offsetTop - 8);
+    viewport.scrollTo({ top: targetTop, behavior: "smooth" });
+    setCurrentPage(pageNumber);
+  };
+  const selectAllOverlayPages = () => {
+    if (!numPages) return;
+    const next: Record<number, boolean> = {};
+    for (let page = 1; page <= numPages; page += 1) next[page] = true;
+    setOverlaySelectionByPage(next);
+    setAppliedOverlayPages(new Set(Array.from({ length: numPages }, (_, idx) => idx + 1)));
+  };
+  const clearOverlaySelection = () => {
+    setOverlaySelectionByPage({});
+    setAppliedOverlayPages(new Set());
+  };
+  const nudgeZoom = (delta: number) => {
+    const pageSize =
+      pdfViewMode === "single" ? pageSizeByPage[currentPage] ?? firstPageSize : firstPageSize;
+    const basePageWidth = Math.max(1, pageSize?.width ?? firstPageSize?.width ?? 1);
+    const currentScale = renderWidth / basePageWidth;
+    const nextScale = clamp(Number((currentScale + delta).toFixed(2)), 0.2, 3);
+    setZoom(nextScale);
+  };
+
   if (!selectedJob || !canPreviewPdf) {
     return (
       <section className="workspace-shell" style={{ justifyContent: "center", alignItems: "center" }}>
@@ -456,18 +541,44 @@ export default function PdfSemanticChunkEditor({
   return (
     <section className="workspace-shell" style={{ height: "100vh", overflow: "hidden" }}>
       <div
-        ref={scrollRef}
         style={{
+          display: "grid",
+          gridTemplateColumns: "40% 60%",
+          gap: 0,
           flex: 1,
           minHeight: 0,
+          borderTop: "1px solid #e2e8f0",
+        }}
+      >
+      <div
+        style={{
+          minWidth: 0,
+          minHeight: 0,
+          height: "100%",
+          position: "relative",
+          display: "flex",
+          overflow: "hidden",
+          order: 2,
+        }}
+      >
+      <div
+        ref={scrollRef}
+        onWheelCapture={pdfViewMode === "single" ? handleViewportWheel : undefined}
+        style={{
+          flex: 1,
+          height: "100%",
+          minHeight: 0,
           overflowY: "auto",
-          overflowX: "hidden",
+          overflowX: "auto",
           display: "flex",
           justifyContent: "center",
           alignItems: "flex-start",
           padding: 12,
           position: "relative",
-          background: "#f8fafc",
+          background: "#eef2ff",
+          border: "2px solid #94a3b8",
+          borderRadius: 12,
+          boxShadow: "inset 0 0 0 1px #cbd5e1",
         }}
       >
         {canPreviewPdf && !pdfUnavailable && pdfAvailabilityChecked ? (
@@ -475,7 +586,12 @@ export default function PdfSemanticChunkEditor({
             key={selectedJob.id}
             fileUrl={`/api/jobs/${selectedJob.id}/pdf`}
             width={renderWidth}
+            viewMode={pdfViewMode}
+            focusedPage={currentPage}
             onFirstPageSize={setFirstPageSize}
+            onPageSize={(pageNumber, size) => {
+              setPageSizeByPage((prev) => ({ ...prev, [pageNumber]: size }));
+            }}
             onPageTextMap={(pageNumber, blocks) => {
               setPageTextMapByPage((prev) => ({ ...prev, [pageNumber]: blocks }));
               const classified: ClassifiedPageResult = classifyPageType(blocks, pageNumber);
@@ -500,35 +616,53 @@ export default function PdfSemanticChunkEditor({
                     pageNumber >= selectedRange[0] &&
                     pageNumber <= selectedRange[1]) ||
                   selectedChunkAnchors?.page === pageNumber;
+                const overlayEnabledForPage = appliedOverlayPages.has(pageNumber);
                 return (
-                  <ChunkOverlayLayer
-                    chunks={chunks}
-                    pageNumber={pageNumber}
-                    pageSize={pageSize}
-                    selectedChunkId={selectedChunkId}
-                    boundaryRatios={boundaryRatiosByPage[pageNumber]}
-                    onBoundaryRatiosChange={(ratios) => {
-                      setBoundaryRatiosByPage((prev) => ({ ...prev, [pageNumber]: ratios }));
-                      const affectedIds = chunks
-                        .filter((chunk) => {
-                          const range = (chunk.meta as unknown as { pageRange?: [number, number] }).pageRange;
-                          return Array.isArray(range) && pageNumber >= range[0] && pageNumber <= range[1];
-                        })
-                        .map((chunk) => chunk.meta.chunkId);
-                      setModifiedChunkIds((prev) => {
-                        const next = new Set(prev);
-                        affectedIds.forEach((id) => next.add(id));
-                        return next;
-                      });
-                    }}
-                    onSelectChunk={selectChunk}
-                    onHoverChunk={setHoverChunkId}
-                    onChunkAnchorChange={setToolbarAnchor}
-                    onHoverAnchorChange={setHoverAnchor}
-                    chunkAnchors={chunkAnchors}
-                    selectedTextBlocks={selectedOnPage ? selectedTextBlocks : []}
-                    pageType={pageType}
-                  />
+                  <div style={{ position: "absolute", inset: 0 }}>
+                    {hoveredAnalyzerPage === pageNumber && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 2,
+                          border: "2px solid rgba(37,99,235,0.95)",
+                          borderRadius: 8,
+                          background: "rgba(37,99,235,0.05)",
+                          pointerEvents: "none",
+                          zIndex: 5,
+                        }}
+                      />
+                    )}
+                    {overlayEnabledForPage ? (
+                      <ChunkOverlayLayer
+                        chunks={chunks}
+                        pageNumber={pageNumber}
+                        pageSize={pageSize}
+                        selectedChunkId={selectedChunkId}
+                        boundaryRatios={boundaryRatiosByPage[pageNumber]}
+                        onBoundaryRatiosChange={(ratios) => {
+                          setBoundaryRatiosByPage((prev) => ({ ...prev, [pageNumber]: ratios }));
+                          const affectedIds = chunks
+                            .filter((chunk) => {
+                              const range = (chunk.meta as unknown as { pageRange?: [number, number] }).pageRange;
+                              return Array.isArray(range) && pageNumber >= range[0] && pageNumber <= range[1];
+                            })
+                            .map((chunk) => chunk.meta.chunkId);
+                          setModifiedChunkIds((prev) => {
+                            const next = new Set(prev);
+                            affectedIds.forEach((id) => next.add(id));
+                            return next;
+                          });
+                        }}
+                        onSelectChunk={selectChunk}
+                        onHoverChunk={setHoverChunkId}
+                        onChunkAnchorChange={setToolbarAnchor}
+                        onHoverAnchorChange={setHoverAnchor}
+                        chunkAnchors={chunkAnchors}
+                        selectedTextBlocks={selectedOnPage ? selectedTextBlocks : []}
+                        pageType={pageType}
+                      />
+                    ) : null}
+                  </div>
                 );
               })()
             )}
@@ -548,44 +682,67 @@ export default function PdfSemanticChunkEditor({
           </div>
         )}
 
-        <div style={{ position: "fixed", top: 12, left: 12, zIndex: 40, display: "flex", gap: 6 }}>
-          <button type="button" style={floatingButton} onClick={() => { setZoomMode("custom"); setZoom((z) => Math.min(2.5, Number((z + 0.1).toFixed(2)))); }}>+</button>
-          <button type="button" style={floatingButton} onClick={() => { setZoomMode("custom"); setZoom((z) => Math.max(0.2, Number((z - 0.1).toFixed(2)))); }}>-</button>
-          <button type="button" style={floatingButton} onClick={() => setZoomMode("fit-width")}>Fit Width</button>
-          <button type="button" style={floatingButton} onClick={() => setZoomMode("fit-page")}>Fit Page</button>
-          <button type="button" style={floatingButton} onClick={() => { setZoomMode("custom"); setZoom(0.5); }}>
-            50%
-          </button>
-          <div style={{ ...floatingButton, cursor: "default", background: "#f8fafc" }}>{zoomPercent}%</div>
-          <div style={{ ...floatingButton, cursor: "default", background: "#eef2ff", color: "#3730a3" }}>
-            {currentPageTypeLabel}
-          </div>
-          <select
-            value={pageTypeOverrideByPage[currentPage] ?? ""}
-            onChange={(event) => {
-              const value = event.target.value as PageType | "";
-              setPageTypeOverrideByPage((prev) => ({
-                ...prev,
-                [currentPage]: value === "" ? null : value,
-              }));
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 60,
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            maxWidth: "62vw",
+          }}
+          onMouseEnter={() => setFreezeCurrentPage(true)}
+          onMouseLeave={() => setFreezeCurrentPage(false)}
+        >
+          <button
+            type="button"
+            style={floatingButton}
+            onClick={() => {
+              nudgeZoom(0.1);
             }}
-            style={{
-              border: "1px solid #cbd5e1",
-              borderRadius: 8,
-              background: "#fff",
-              fontSize: 12,
-              padding: "6px 8px",
-              color: "#334155",
-            }}
-            title="현재 페이지 타입 수동 오버라이드"
           >
-            <option value="">auto</option>
-            <option value="cover">cover</option>
-            <option value="toc">toc</option>
-            <option value="table">table</option>
-            <option value="body">body</option>
-            <option value="revision_or_form">revision_or_form</option>
-          </select>
+            +
+          </button>
+          <button
+            type="button"
+            style={floatingButton}
+            onClick={() => {
+              nudgeZoom(-0.1);
+            }}
+          >
+            -
+          </button>
+          <div style={{ ...floatingButton, cursor: "default", background: "#f8fafc", color: "#334155" }}>
+            {zoomPercentLabel}
+          </div>
+          <button
+            type="button"
+            style={{
+              ...floatingButton,
+              background: pdfViewMode === "continuous" ? "#e0e7ff" : "#fff",
+              color: pdfViewMode === "continuous" ? "#3730a3" : "#0f172a",
+            }}
+            onClick={() => setPdfViewMode("continuous")}
+          >
+            전체 스크롤
+          </button>
+          <button
+            type="button"
+            style={{
+              ...floatingButton,
+              background: pdfViewMode === "single" ? "#e0e7ff" : "#fff",
+              color: pdfViewMode === "single" ? "#3730a3" : "#0f172a",
+            }}
+            onClick={() => setPdfViewMode("single")}
+          >
+            페이지 단위
+          </button>
+          <div style={{ ...floatingButton, cursor: "default", background: "#f8fafc", color: "#334155" }}>
+            page {currentPage}/{Math.max(1, numPages)}
+          </div>
         </div>
 
         {currentPageProfile && currentPageScores && (
@@ -905,6 +1062,141 @@ export default function PdfSemanticChunkEditor({
           }}
         />
       </div>
+      </div>
+      <aside
+        style={{
+          minHeight: 0,
+          overflowY: "auto",
+          borderRight: "1px solid #e2e8f0",
+          background: "#ffffff",
+          padding: 12,
+          display: "grid",
+          gap: 10,
+          alignContent: "start",
+          order: 1,
+        }}
+        aria-label="Page Type Analyzer"
+      >
+        <div style={{ display: "grid", gap: 2 }}>
+          <strong style={{ fontSize: 14, color: "#0f172a" }}>Page Type Analyzer</strong>
+          <span style={{ fontSize: 12, color: "#64748b" }}>
+            페이지 구조를 먼저 점검하고 필요하면 타입을 수동 보정하세요.
+          </span>
+        </div>
+        <div
+          style={{
+            border: "1px solid #dbe3f1",
+            borderRadius: 10,
+            padding: 10,
+            display: "grid",
+            gap: 8,
+            background: "#f8fafc",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#334155" }}>선택 즉시 반영 · 선택 {selectedOverlayCount}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" style={floatingButton} onClick={selectAllOverlayPages}>
+              전체 선택
+            </button>
+            <button type="button" style={floatingButton} onClick={clearOverlaySelection}>
+              초기화
+            </button>
+          </div>
+        </div>
+        {pageProfiles.length === 0 ? (
+          <div style={{ fontSize: 12, color: "#64748b" }}>페이지 분석 데이터를 준비 중입니다.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {pageProfiles.map((profile) => (
+              <button
+                key={`page-profile-${profile.pageNumber}`}
+                type="button"
+                onMouseEnter={() => setHoveredAnalyzerPage(profile.pageNumber)}
+                onMouseLeave={() => setHoveredAnalyzerPage(null)}
+                onClick={() => scrollToPage(profile.pageNumber)}
+                style={{
+                  textAlign: "left",
+                  border: "1px solid #dbe3f1",
+                  borderRadius: 10,
+                  background:
+                    currentPage === profile.pageNumber ? "rgba(59,130,246,0.08)" : "#fff",
+                  padding: 10,
+                  display: "grid",
+                  gap: 6,
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong style={{ fontSize: 13, color: "#0f172a" }}>Page {profile.pageNumber}</strong>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>
+                    {Math.round(profile.confidence * 100)}%
+                  </span>
+                </div>
+                <Row label="orientation" value={profile.orientation} />
+                <Row label="type" value={profile.pageType} />
+                <Row
+                  label="confidence"
+                  value={profile.confidence > 0 ? profile.confidence.toFixed(2) : "-"}
+                />
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155" }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={overlaySelectionByPage[profile.pageNumber] ?? false}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setOverlaySelectionByPage((prev) => ({
+                        ...prev,
+                        [profile.pageNumber]: checked,
+                      }));
+                      setAppliedOverlayPages((prev) => {
+                        const next = new Set(prev);
+                        if (checked) next.add(profile.pageNumber);
+                        else next.delete(profile.pageNumber);
+                        return next;
+                      });
+                    }}
+                  />
+                  이 페이지 오버레이 반영
+                </label>
+                <label style={{ display: "grid", gap: 4, fontSize: 11, color: "#475569" }}>
+                  override
+                  <select
+                    value={pageTypeOverrideByPage[profile.pageNumber] ?? ""}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      const value = event.target.value as PageType | "";
+                      setPageTypeOverrideByPage((prev) => ({
+                        ...prev,
+                        [profile.pageNumber]: value === "" ? null : value,
+                      }));
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                    style={{
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 8,
+                      background: "#fff",
+                      fontSize: 12,
+                      padding: "6px 8px",
+                      color: "#334155",
+                    }}
+                  >
+                    <option value="">auto ({pageTypeByPage[profile.pageNumber] ?? "body"})</option>
+                    <option value="cover">cover</option>
+                    <option value="toc">toc</option>
+                    <option value="table">table</option>
+                    <option value="body">body</option>
+                    <option value="revision_or_form">revision_or_form</option>
+                  </select>
+                </label>
+              </button>
+            ))}
+          </div>
+        )}
+      </aside>
+      </div>
     </section>
   );
 }
@@ -1090,6 +1382,20 @@ function toTokenSet(text: string): Set<string> {
   const normalized = normalizePreviewText(text).toLowerCase();
   const tokens = normalized.split(/[^0-9a-zA-Z가-힣]+/).filter((token) => token.length >= 2);
   return new Set(tokens.slice(0, 80));
+}
+
+function estimateConfidence(scores?: PageTypeScores): number {
+  if (!scores) return 0;
+  const values = [
+    scores.coverScore,
+    scores.tocScore,
+    scores.tableScore,
+    scores.bodyScore,
+    scores.revisionScore,
+  ].sort((a, b) => b - a);
+  const top = values[0] ?? 0;
+  const second = values[1] ?? 0;
+  return clamp(top - second * 0.35 + 0.2, 0, 1);
 }
 
 function Row({ label, value }: { label: string; value: string }) {
