@@ -45,13 +45,6 @@ export default function AdminPage() {
             href="/jobs"
             supportingText="작업 목록으로 이동"
           />
-          <EntryCard
-            variant="manager"
-            title="템플릿 관리"
-            description={["추천/적용/드리프트를 검토하고", "템플릿 운영 품질을 관리합니다."]}
-            href="/templates/builder"
-            supportingText="템플릿 빌더 열기"
-          />
         </section>
 
         <div style={{ textAlign: "center" }}>

@@ -1,24 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
-import { useJobStore } from "@/store/jobStore";
 import JobList from "@/components/jobs/JobList";
 import UploadPanel from "@/components/jobs/UploadPanel";
 import JobDetail from "@/components/jobs/JobDetail";
 import ScreenLabel from "@/components/entry/ScreenLabel";
 import { useJobDetail } from "@/hooks/useJobDetail";
+import { useJobRefresh } from "@/hooks/useJobRefresh";
 
 export default function JobsPage() {
-  const refresh = useJobStore((s) => s.refresh);
   const { selectedJob, detail, loading, error } = useJobDetail();
-
-  useEffect(() => {
-    refresh();
-    const id = setInterval(() => {
-      refresh();
-    }, 2000);
-    return () => clearInterval(id);
-  }, [refresh]);
+  useJobRefresh(2000);
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>

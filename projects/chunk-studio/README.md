@@ -20,31 +20,30 @@ npm run dev
 - `/admin` : 관리자 운영 화면
 - `/jobs` : 작업 목록
 - `/jobs/[jobId]` : 특정 작업의 청킹 리뷰 화면
-- `/templates/builder` : 템플릿 빌더
 
 ## 작업공간 기능
 
 - PDF 업로드/재업로드
-- 원문 PDF 미리보기(실패 시 컴팩트 오류 상태)
-- PDF 오버레이 기반 의미 청크 선택/검토
-- 청크 상세 검토 및 정제(병합/분할/제외/레이블/메모)
+- 원문 PDF 미리보기 (실패 시 컴팩트 오류 상태)
+- 페이지 단위 분석 (orientation / page type / confidence)
+- 페이지 타입 수동 보정 (Analyzer에서 override)
 
-> 참고: `/workspace`는 **TopBar + PDF Viewer(Chunk Overlay) + Chunk Detail Panel** 구조로 동작합니다.
-> RAG 내보내기는 메인 리뷰 패널에서 분리되어 별도 기능으로 다룹니다.
+> 참고: `/workspace`는 **Page Type Analyzer + PDF Viewer** 중심의 미니멀 편집 화면입니다.
+> 템플릿 빌더/템플릿 드리프트 기능은 제거되었습니다.
 
 ## 역할 모델
 
 ### Operator
 
 - 문서 업로드
-- 구조/미리보기/청크 검토
-- 청크 정제
+- 페이지 분석 확인
+- PDF 중심 리뷰
 
 ### Manager
 
 - 작업 운영 모니터링
 - 실패 작업 점검
-- 템플릿 운영/추천/드리프트 검토
+- 운영 점검
 
 ## 실행/운영 메모
 

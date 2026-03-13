@@ -1,29 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
 import "./workspace.css";
 import { useJobStore } from "@/store/jobStore";
 import { useJobDetail } from "@/hooks/useJobDetail";
+import { useJobRefresh } from "@/hooks/useJobRefresh";
 import PdfSemanticChunkEditor from "./PdfSemanticChunkEditor";
 
 export default function WorkspaceShell() {
   const refresh = useJobStore((s) => s.refresh);
   const setSelectedJobId = useJobStore((s) => s.setSelectedJobId);
-  const { selectedJob, detail, loading, error } = useJobDetail();
+  const { selectedJob, loading, error } = useJobDetail();
 
-  useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => {
-      void refresh();
-    }, 2500);
-    return () => window.clearInterval(id);
-  }, [refresh]);
+  useJobRefresh(2500);
 
   return (
     <section className="workspace-shell" aria-label="Chunk Studio Workspace">
       <PdfSemanticChunkEditor
         selectedJob={selectedJob}
-        detail={detail}
         loading={loading}
         error={error}
         onUpload={async (file) => {

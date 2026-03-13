@@ -54,7 +54,7 @@ export default function Home() {
           <EntryCard
             variant="manager"
             title="Manager"
-            description={["작업 현황 모니터링", "실패 작업 확인", "템플릿 관리"]}
+            description={["작업 현황 모니터링", "실패 작업 확인", "운영 점검"]}
             href="/admin"
             supportingText="관리 화면으로 이동"
           />
