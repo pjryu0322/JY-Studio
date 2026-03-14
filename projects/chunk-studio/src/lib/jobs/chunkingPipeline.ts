@@ -7,6 +7,7 @@ import { generateChunkQualityReport } from "@/lib/chunking/reporting/chunkQualit
 import { buildQualityReport } from "@/lib/chunking/reporting/qualityReport";
 import { removeHeaderFooterNoise } from "@/lib/chunking/rules/headerFooter";
 import { estimateOcrQuality } from "@/lib/chunking/rules/ocrQuality";
+import { appendAuditLog } from "@/lib/admin/auditLog";
 import {
   CHUNK_PRESETS,
   DEFAULT_CHUNK_CONFIG,
@@ -67,6 +68,13 @@ export async function runChunkingPipeline({
   beforeChunks,
 }: ChunkingPipelineInput): Promise<void> {
   console.log("[chunkingPipeline] start", { jobId, extractionMethod, preset: preset ?? null });
+  await appendAuditLog({
+    category: "chunk_engine",
+    action: "pipeline_start",
+    level: "info",
+    jobId,
+    detail: { extractionMethod, preset: preset ?? null },
+  });
   const cleaned = text.replace(/\r\n/g, "\n").trim();
   const resolvedConfig = normalizeConfig(chunkConfig, preset);
   const { blocks: rawBlocks, tables } = buildDocumentBlocks(cleaned);
@@ -253,6 +261,13 @@ export async function runChunkingPipeline({
             : "Chunking completed but no chunks were generated.",
       },
     });
+  });
+  await appendAuditLog({
+    category: "chunk_engine",
+    action: "pipeline_done",
+    level: "info",
+    jobId,
+    detail: { chunkCount: chunks.length, pipelineVersion: CHUNK_PIPELINE_VERSION },
   });
   console.log("[chunkingPipeline] done", { jobId, chunkCount: chunks.length });
 }

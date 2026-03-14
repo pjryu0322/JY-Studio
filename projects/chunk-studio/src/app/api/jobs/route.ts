@@ -16,6 +16,7 @@ import { runChunkingPipeline } from "@/lib/jobs/chunkingPipeline";
 import { extractPptText } from "@/lib/ppt/extractPptText";
 import { extractPdfText } from "@/lib/pdf/extractPdfText";
 import { ensureJobDir, getOriginalPath, saveWebFile } from "@/lib/files/storage";
+import { appendAuditLog } from "@/lib/admin/auditLog";
 
 export async function GET() {
   try {
@@ -33,6 +34,12 @@ export async function GET() {
       createdAt: j.createdAt.toISOString(),
       updatedAt: j.updatedAt.toISOString(),
     }));
+    await appendAuditLog({
+      category: "job",
+      action: "list_jobs",
+      level: "info",
+      detail: { count: list.length },
+    });
     return NextResponse.json({ jobs: list });
   } catch (e) {
     console.error("[GET /api/jobs]", e);
@@ -89,6 +96,13 @@ export async function POST(req: Request) {
       },
     });
     createdJobId = job.id;
+    await appendAuditLog({
+      category: "job",
+      action: "create_job",
+      level: "info",
+      jobId: job.id,
+      detail: { ext, status },
+    });
     console.log("[POST /api/jobs] created", { jobId: job.id, ext, status });
 
     await ensureJobDir(job.id);
@@ -198,6 +212,13 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[POST /api/jobs]", e);
+    await appendAuditLog({
+      category: "job",
+      action: "create_job_failed",
+      level: "error",
+      jobId: createdJobId,
+      detail: { message: e instanceof Error ? e.message : "unknown error" },
+    });
     if (createdJobId) {
       try {
         await prisma.job.update({

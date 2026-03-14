@@ -24,8 +24,13 @@ async function getOriginalExtension(jobId) {
     where: { jobId, sourceType: "original" },
   });
   if (!original) return null;
-  const ext = path.extname(original.filePath).toLowerCase().replace(".", "");
-  return ext;
+  if (typeof original.ext === "string" && original.ext) {
+    return original.ext.toLowerCase();
+  }
+  if (typeof original.storagePath === "string") {
+    return path.extname(original.storagePath).toLowerCase().replace(".", "");
+  }
+  return null;
 }
 
 async function hasReplacementPdf(jobId) {

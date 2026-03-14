@@ -9,7 +9,7 @@ import PdfSemanticChunkEditor from "./PdfSemanticChunkEditor";
 export default function WorkspaceShell() {
   const refresh = useJobStore((s) => s.refresh);
   const setSelectedJobId = useJobStore((s) => s.setSelectedJobId);
-  const { selectedJob, loading, error } = useJobDetail();
+  const { selectedJob, detail, loading, error } = useJobDetail();
 
   useJobRefresh(2500);
 
@@ -17,6 +17,7 @@ export default function WorkspaceShell() {
     <section className="workspace-shell" aria-label="Chunk Studio Workspace">
       <PdfSemanticChunkEditor
         selectedJob={selectedJob}
+        detail={detail}
         loading={loading}
         error={error}
         onUpload={async (file) => {

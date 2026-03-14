@@ -40,6 +40,14 @@ export interface ChunkDTO {
     sourceBlockIds: string[];
     startBlockIdx: number;
     endBlockIdx: number;
+    pageRange?: [number, number];
+    bboxList?: Array<{
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      page?: number;
+    }>;
     pipelineVersion: string;
     tags: string[];
     searchText?: string;
