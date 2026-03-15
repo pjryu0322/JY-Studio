@@ -1,56 +1,83 @@
 ﻿{
-    "repository_remote_url":  "git@github.com:pjryu0322/JY-Studio.git",
-    "branch":  "main",
-    "head_commit":  "acb45642d3332efed36477855e453adcd9fc1584",
-    "generated_at":  "2026-03-15T15:03:19.3097029+09:00",
-    "files":  [
-                  {
-                      "path":  "projects/chunk-studio/src/components/workspace/useWorkspaceState.ts",
-                      "git_show_line_count":  807,
-                      "git_show_sha256":  "78e88d3af3eb6df5046d096ac42c2e34ea8728af47d4fca88efcb00b5e0cd030",
-                      "blob_sha":  "b8f136cc00fc8a0321eae95a809fd66726cffd7c"
-                  },
-                  {
-                      "path":  "projects/chunk-studio/src/components/workspace/PageAnalyzerPanel.tsx",
-                      "git_show_line_count":  326,
-                      "git_show_sha256":  "8533edc8235ee9aae4d478544afca297aec5c2aa99ffbe46138f2b40859c319d",
-                      "blob_sha":  "98fa1c908a578c93094ea3f6a574cfe60997bfa7"
-                  },
-                  {
-                      "path":  "projects/chunk-studio/src/components/workspace/ChunkOverlayCanvas.tsx",
-                      "git_show_line_count":  190,
-                      "git_show_sha256":  "644ea808d0927ba925d7d664fcbf7697f5aeded0a56cb8087d038165dd530848",
-                      "blob_sha":  "153e4ab8f7e84d048349acfec7ca07cd0d7e981e"
-                  },
-                  {
-                      "path":  "projects/chunk-studio/src/components/workspace/ChunkInspector.tsx",
-                      "git_show_line_count":  223,
-                      "git_show_sha256":  "aed9f8a9279dbb1f43ceacb91b13d22808d45dea85d9209f57ba44d6f21d324a",
-                      "blob_sha":  "bc17d80acb234d03d330e74cd8e412de1d43ecd8"
-                  },
-                  {
-                      "path":  "projects/chunk-studio/src/components/workspace/WorkspacePdfPane.tsx",
-                      "git_show_line_count":  444,
-                      "git_show_sha256":  "0f5b070967d160ebe167541f7091b3faf7fb67cc59e4d2851d773b4029ca05c3",
-                      "blob_sha":  "e36ff51c55196fb343357f745710ceb031f9da7e"
-                  },
-                  {
-                      "path":  "projects/chunk-studio/src/components/workspace/PdfSemanticChunkEditor.tsx",
-                      "git_show_line_count":  111,
-                      "git_show_sha256":  "30501673229999301f9c1e05a333c66c68ee3c213424c15d7318234d1e765940",
-                      "blob_sha":  "fdf68680e10c4867f9d228b903fe5bced3e1ef41"
-                  }
-              ],
-    "lint":  {
-                 "command":  "npm run lint",
-                 "exit_code":  0,
-                 "success":  true,
-                 "output":  "\r\n\u003e chunk-studio@0.1.0 lint\r\n\u003e eslint\r\n\r\n\r\nC:\\project\\JY-Studio\\projects\\chunk-studio\\analysis-backend\\.venv\\Lib\\site-packages\\sklearn\\utils\\_repr_html\\estimator.js\r\n    1:10  warning  \u0027copyToClipboard\u0027 is defined but never used  @typescript-eslint/no-unused-vars\r\n  106:10  warning  \u0027forceTheme\u0027 is defined but never used       @typescript-eslint/no-unused-vars\r\n\r\n??2 problems (0 errors, 2 warnings)"
-             },
-    "build":  {
-                  "command":  "npm run build",
-                  "exit_code":  0,
-                  "success":  true,
-                  "output":  "\r\n\u003e chunk-studio@0.1.0 build\r\n\u003e next build\r\n\r\n??Next.js 16.1.6 (Turbopack)\r\n- Environments: .env\r\n\r\n  Creating an optimized production build ...\r\n??Compiled successfully in 2.6s\r\n  Running TypeScript ...\r\n  Collecting page data using 15 workers ...\r\n  Generating static pages using 15 workers (0/20) ...\r\n  Generating static pages using 15 workers (5/20) \r\n  Generating static pages using 15 workers (10/20) \r\n  Generating static pages using 15 workers (15/20) \r\n??Generating static pages using 15 workers (20/20) in 352.5ms\r\n  Finalizing page optimization ...\r\n\r\nRoute (app)\r\n????/\r\n????/_not-found\r\n????/admin\r\n????/admin/logs\r\n????/admin/policy\r\n????/admin/seeds\r\n??? /api/admin/audit\r\n??? /api/admin/export-policy\r\n??? /api/admin/logs\r\n??? /api/admin/seed-datasets\r\n??? /api/analysis/health\r\n??? /api/analysis/page-understanding\r\n??? /api/export/graph\r\n??? /api/export/rag\r\n??? /api/jobs\r\n??? /api/jobs/[jobId]\r\n??? /api/jobs/[jobId]/export\r\n??? /api/jobs/[jobId]/pdf\r\n??? /api/jobs/[jobId]/rechunk\r\n??? /api/jobs/[jobId]/replace-pdf\r\n????/jobs\r\n??? /jobs/[jobId]\r\n????/workspace\r\n????/workspace/settings\r\n\r\n\r\n?? (Static)   prerendered as static content\r\n?  (Dynamic)  server-rendered on demand"
-              }
+    "verificationMeta":  {
+                             "repository":  "https://github.com/pjryu0322/JY-Studio",
+                             "projectRoot":  "projects/chunk-studio",
+                             "branch":  "main",
+                             "commit":  "fe2445af5b3986e4c4ef2bbd188e3b2b9d0b6ad0",
+                             "generatedAtUTC":  "2026-03-15T06:10:12Z",
+                             "generatedBy":  "cursor-verification-script"
+                         },
+    "gitState":  {
+                     "headCommit":  "fe2445af5b3986e4c4ef2bbd188e3b2b9d0b6ad0",
+                     "remote":  "origin",
+                     "remoteUrl":  "git@github.com:pjryu0322/JY-Studio.git",
+                     "workingTreeClean":  true,
+                     "branchTracking":  "origin/main"
+                 },
+    "buildStatus":  {
+                        "lint":  {
+                                     "command":  "npm run lint",
+                                     "result":  "success"
+                                 },
+                        "build":  {
+                                      "command":  "npm run build",
+                                      "result":  "success"
+                                  }
+                    },
+    "verifiedFiles":  [
+                          {
+                              "path":  "projects/chunk-studio/src/components/workspace/useWorkspaceState.ts",
+                              "gitShowLineCount":  808,
+                              "gitBlobSha":  "b8f136cc00fc8a0321eae95a809fd66726cffd7c",
+                              "sha256":  "412b7879c7830f46dfb760a7db307b0acc5d99b5faf02b1387305dabced4c375",
+                              "sizeBytes":  21811,
+                              "encoding":  "utf-8"
+                          },
+                          {
+                              "path":  "projects/chunk-studio/src/components/workspace/PageAnalyzerPanel.tsx",
+                              "gitShowLineCount":  327,
+                              "gitBlobSha":  "98fa1c908a578c93094ea3f6a574cfe60997bfa7",
+                              "sha256":  "8a941028210a10140b4eac465c904ce2e1bf0967e8150a1429e9edddf2d192d2",
+                              "sizeBytes":  9655,
+                              "encoding":  "utf-8"
+                          },
+                          {
+                              "path":  "projects/chunk-studio/src/components/workspace/ChunkOverlayCanvas.tsx",
+                              "gitShowLineCount":  191,
+                              "gitBlobSha":  "153e4ab8f7e84d048349acfec7ca07cd0d7e981e",
+                              "sha256":  "c2d447590879dbb2e167e3b9786237403d8c6734da24b9d7e9ae9a1673b40368",
+                              "sizeBytes":  5115,
+                              "encoding":  "utf-8"
+                          },
+                          {
+                              "path":  "projects/chunk-studio/src/components/workspace/ChunkInspector.tsx",
+                              "gitShowLineCount":  224,
+                              "gitBlobSha":  "bc17d80acb234d03d330e74cd8e412de1d43ecd8",
+                              "sha256":  "212452eebc744a168a5bf2d097ea83fd80392c709d789991dba6b2d29706feea",
+                              "sizeBytes":  6145,
+                              "encoding":  "utf-8"
+                          },
+                          {
+                              "path":  "projects/chunk-studio/src/components/workspace/WorkspacePdfPane.tsx",
+                              "gitShowLineCount":  445,
+                              "gitBlobSha":  "e36ff51c55196fb343357f745710ceb031f9da7e",
+                              "sha256":  "ebf6c1e4cc4f1323fc00fb3f68b398800a588b3cd12eea0e8c31a9bd7d7fc2f7",
+                              "sizeBytes":  12697,
+                              "encoding":  "utf-8"
+                          },
+                          {
+                              "path":  "projects/chunk-studio/src/components/workspace/PdfSemanticChunkEditor.tsx",
+                              "gitShowLineCount":  112,
+                              "gitBlobSha":  "fdf68680e10c4867f9d228b903fe5bced3e1ef41",
+                              "sha256":  "741a6ec1485a031494cfb9963de3c128799ad5310ab2496b8a1934b3a87eb7f4",
+                              "sizeBytes":  3076,
+                              "encoding":  "utf-8"
+                          }
+                      ],
+    "verificationRules":  {
+                              "expectedSourceFormat":  "multiline-typescript",
+                              "minExpectedLines":  50,
+                              "allowMinified":  false,
+                              "allowSingleLine":  false
+                          }
 }
