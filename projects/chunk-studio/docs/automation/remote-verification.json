@@ -3,12 +3,12 @@
     "repository": "https://github.com/pjryu0322/JY-Studio",
     "projectRoot": "projects/chunk-studio",
     "branch": "main",
-    "commit": "43211df2297d4fabb747ee143836343406f5cd60",
-    "generatedAtUTC": "2026-03-15T06:41:44.123Z",
+    "commit": "d0a02d5a5525dddd5a7aeca9ee9958421547d02c",
+    "generatedAtUTC": "2026-03-15T06:54:39.378Z",
     "generatedBy": "cursor-verification-script"
   },
   "gitState": {
-    "headCommit": "43211df2297d4fabb747ee143836343406f5cd60",
+    "headCommit": "d0a02d5a5525dddd5a7aeca9ee9958421547d02c",
     "remote": "origin",
     "remoteUrl": "git@github.com:pjryu0322/JY-Studio.git",
     "workingTreeClean": false,
@@ -35,10 +35,10 @@
     },
     {
       "path": "projects/chunk-studio/src/components/workspace/PageAnalyzerPanel.tsx",
-      "gitShowLineCount": 326,
-      "gitBlobSha": "98fa1c908a578c93094ea3f6a574cfe60997bfa7",
-      "sha256": "27dc465645789d85a1b99cfb259956e733c73b7659bb54e231b8915542e9d0e7",
-      "sizeBytes": 9305,
+      "gitShowLineCount": 412,
+      "gitBlobSha": "5ecbe5c31803398872d256531510e99d42110038",
+      "sha256": "11b36ea2dbc7a58dcf3543d98a4d436644eebe11e7b88026e667111dab84ffae",
+      "sizeBytes": 11738,
       "encoding": "utf-8"
     },
     {

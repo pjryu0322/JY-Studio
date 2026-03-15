@@ -43,6 +43,9 @@ interface DragBoundaryState {
   pageNumber: number;
   handle: "top" | "bottom";
   startClientY: number;
+  pageHeightPx: number;
+  startX: number;
+  startW: number;
   startY: number;
   startH: number;
 }
@@ -313,32 +316,37 @@ export function useWorkspaceState({
       const deltaPx =
         event.clientY - dragBoundary.startClientY;
       const deltaNorm =
-        deltaPx / Math.max(1, renderWidth * 1.414);
+        deltaPx / Math.max(1, dragBoundary.pageHeightPx);
       const key = `${dragBoundary.chunkId}:${dragBoundary.pageNumber}`;
       setOverlayAnchorByKey((prev) => {
         const current = prev[key] ?? {
-          x: 0.06,
+          x: dragBoundary.startX,
           y: dragBoundary.startY,
-          w: 0.88,
+          w: dragBoundary.startW,
           h: dragBoundary.startH,
         };
+        const baseY = dragBoundary.startY;
+        const baseH = dragBoundary.startH;
         if (dragBoundary.handle === "top") {
           const nextY = clamp(
-            current.y + deltaNorm,
+            baseY + deltaNorm,
             0.01,
-            current.y + current.h - 0.02,
+            baseY + baseH - 0.02,
           );
-          const diff = nextY - current.y;
-          const nextH = clamp(current.h - diff, 0.02, 0.98);
+          const nextH = clamp(
+            baseH - (nextY - baseY),
+            0.02,
+            0.98,
+          );
           return {
             ...prev,
             [key]: { ...current, y: nextY, h: nextH },
           };
         }
         const nextH = clamp(
-          current.h + deltaNorm,
+          baseH + deltaNorm,
           0.02,
-          0.98 - current.y,
+          0.98 - baseY,
         );
         return { ...prev, [key]: { ...current, h: nextH } };
       });
@@ -357,7 +365,7 @@ export function useWorkspaceState({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [dragBoundary, renderWidth, selectedJobId]);
+  }, [dragBoundary, selectedJobId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -590,22 +598,33 @@ export function useWorkspaceState({
         chunkId: string;
         pageNumber: number;
         handle: "top" | "bottom";
+        x: number;
         y: number;
+        w: number;
         h: number;
       },
     ) => {
       event.preventDefault();
       event.stopPropagation();
+      const pageElement = (
+        event.currentTarget as HTMLElement
+      ).closest("[data-page-number]");
+      const pageHeightPx = pageElement
+        ? pageElement.getBoundingClientRect().height
+        : Math.max(1, renderWidth * 1.414);
       setDragBoundary({
         chunkId: input.chunkId,
         pageNumber: input.pageNumber,
         handle: input.handle,
         startClientY: event.clientY,
+        pageHeightPx: Math.max(1, pageHeightPx),
+        startX: input.x,
         startY: input.y,
+        startW: input.w,
         startH: input.h,
       });
     },
-    [],
+    [renderWidth],
   );
 
   const selectChunk = useCallback((chunkId: string) => {
