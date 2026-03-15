@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, WheelEvent as ReactWheelEvent } from "react";
 import type { ChunkDTO, Job, JobDetailDTO } from "@/types/job";
 import { type PageType } from "./pageTypeClassifier";
+import { mapChunkToPage } from "@/lib/analysis/chunkMappingService";
 import {
   classifyPageUnderstanding,
   type DocumentFamily,
@@ -48,6 +49,7 @@ export function useWorkspaceState({ selectedJob, detail }: UseWorkspaceStatePara
   const [pageSizeByPage, setPageSizeByPage] = useState<Record<number, { width: number; height: number }>>({});
   const [familyHint, setFamilyHint] = useState<DocumentFamily>("guide_manual");
   const [recordByPage, setRecordByPage] = useState<Record<number, PageClassificationRecord>>({});
+  const [selectedPage, setSelectedPage] = useState<number>(1);
   const [hoveredAnalyzerPage, setHoveredAnalyzerPage] = useState<number | null>(null);
   const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
   const [analysisHealth, setAnalysisHealth] = useState<{
@@ -137,6 +139,7 @@ export function useWorkspaceState({ selectedJob, detail }: UseWorkspaceStatePara
 
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedPage(1);
     setZoom(1);
     setNumPages(0);
     setPageSizeByPage({});
@@ -351,12 +354,14 @@ export function useWorkspaceState({ selectedJob, detail }: UseWorkspaceStatePara
         }
       }
       setCurrentPage(nearestPage);
+      setSelectedPage(nearestPage);
     },
     [freezeCurrentPage]
   );
 
   const scrollToPage = useCallback(
     (pageNumber: number, viewport?: HTMLDivElement | null) => {
+      setSelectedPage(pageNumber);
       if (pdfViewMode === "single") {
         setCurrentPage(pageNumber);
         return;
@@ -369,6 +374,16 @@ export function useWorkspaceState({ selectedJob, detail }: UseWorkspaceStatePara
       setCurrentPage(pageNumber);
     },
     [pdfViewMode]
+  );
+
+  const focusChunkInPdf = useCallback(
+    (chunk: ChunkDTO, viewport?: HTMLDivElement | null) => {
+      const mapped = mapChunkToPage(chunk);
+      if (mapped.pageStart) {
+        scrollToPage(mapped.pageStart, viewport);
+      }
+    },
+    [scrollToPage]
   );
 
   const nudgeZoom = useCallback(
@@ -499,6 +514,8 @@ export function useWorkspaceState({ selectedJob, detail }: UseWorkspaceStatePara
     setNumPages,
     currentPage,
     setCurrentPage,
+    selectedPage,
+    setSelectedPage,
     pdfViewMode,
     setPdfViewMode,
     freezeCurrentPage,
@@ -540,6 +557,7 @@ export function useWorkspaceState({ selectedJob, detail }: UseWorkspaceStatePara
     handleViewportWheel,
     updateCurrentPageFromViewport,
     scrollToPage,
+    focusChunkInPdf,
     startBoundaryDrag,
     excludeSelectedChunk,
     mergeSelectedChunk,
