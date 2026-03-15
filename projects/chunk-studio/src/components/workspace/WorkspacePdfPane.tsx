@@ -6,7 +6,10 @@ import type { RefObject, ReactNode } from "react";
 import type { WorkspaceStateController } from "./useWorkspaceState";
 import ChunkOverlayCanvas from "./ChunkOverlayCanvas";
 
-const PdfPreviewClient = dynamic(() => import("@/components/templates/PdfPreviewClient"), { ssr: false });
+const PdfPreviewClient = dynamic(
+  () => import("@/components/templates/PdfPreviewClient"),
+  { ssr: false },
+);
 
 interface WorkspacePdfPaneProps {
   selectedJobId: string;
@@ -45,8 +48,12 @@ export default function WorkspacePdfPane({
     >
       <div
         ref={viewportRef}
-        onScroll={(event) => state.updateCurrentPageFromViewport(event.currentTarget)}
-        onWheelCapture={state.pdfViewMode === "single" ? state.handleViewportWheel : undefined}
+        onScroll={(event) =>
+          state.updateCurrentPageFromViewport(event.currentTarget)
+        }
+        onWheelCapture={
+          state.pdfViewMode === "single" ? state.handleViewportWheel : undefined
+        }
         style={{
           flex: 1,
           height: "100%",
@@ -64,7 +71,9 @@ export default function WorkspacePdfPane({
           boxShadow: "inset 0 0 0 1px #cbd5e1",
         }}
       >
-        {state.canPreviewPdf && !state.pdfUnavailable && state.pdfAvailabilityChecked ? (
+        {state.canPreviewPdf &&
+        !state.pdfUnavailable &&
+        state.pdfAvailabilityChecked ? (
           <PdfPreviewClient
             key={selectedJobId}
             fileUrl={`/api/jobs/${selectedJobId}/pdf`}
@@ -92,11 +101,17 @@ export default function WorkspacePdfPane({
             }}
           />
         ) : state.canPreviewPdf && !state.pdfAvailabilityChecked ? (
-          <div style={{ fontSize: 12, color: "#64748b" }}>PDF 미리보기 가능 여부를 확인 중입니다.</div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>
+            PDF 미리보기 가능 여부를 확인 중입니다.
+          </div>
         ) : (
           <div style={errorOverlay}>
-            <div style={{ fontWeight: 700 }}>PDF 미리보기를 불러오지 못했습니다.</div>
-            <div>{state.previewFailureReason ?? "원본 PDF 렌더링에 실패했습니다."}</div>
+            <div style={{ fontWeight: 700 }}>
+              PDF 미리보기를 불러오지 못했습니다.
+            </div>
+            <div>
+              {state.previewFailureReason ?? "원본 PDF 렌더링에 실패했습니다."}
+            </div>
             <div>파일 형식 또는 렌더러 상태를 확인해 주세요.</div>
           </div>
         )}
@@ -116,20 +131,36 @@ export default function WorkspacePdfPane({
           onMouseEnter={() => state.setFreezeCurrentPage(true)}
           onMouseLeave={() => state.setFreezeCurrentPage(false)}
         >
-          <button type="button" style={floatingButton} onClick={() => state.nudgeZoom(0.1)}>
+          <button
+            type="button"
+            style={floatingButton}
+            onClick={() => state.nudgeZoom(0.1)}
+          >
             +
           </button>
-          <button type="button" style={floatingButton} onClick={() => state.nudgeZoom(-0.1)}>
+          <button
+            type="button"
+            style={floatingButton}
+            onClick={() => state.nudgeZoom(-0.1)}
+          >
             -
           </button>
-          <div style={{ ...floatingButton, cursor: "default", background: "#f8fafc", color: "#334155" }}>
+          <div
+            style={{
+              ...floatingButton,
+              cursor: "default",
+              background: "#f8fafc",
+              color: "#334155",
+            }}
+          >
             {state.zoomPercentLabel}
           </div>
           <button
             type="button"
             style={{
               ...floatingButton,
-              background: state.pdfViewMode === "continuous" ? "#e0e7ff" : "#fff",
+              background:
+                state.pdfViewMode === "continuous" ? "#e0e7ff" : "#fff",
               color: state.pdfViewMode === "continuous" ? "#3730a3" : "#0f172a",
             }}
             onClick={() => state.setPdfViewMode("continuous")}
@@ -147,7 +178,14 @@ export default function WorkspacePdfPane({
           >
             페이지 단위
           </button>
-          <div style={{ ...floatingButton, cursor: "default", background: "#f8fafc", color: "#334155" }}>
+          <div
+            style={{
+              ...floatingButton,
+              cursor: "default",
+              background: "#f8fafc",
+              color: "#334155",
+            }}
+          >
             page {state.currentPage}/{Math.max(1, state.numPages)}
           </div>
         </div>
@@ -185,7 +223,11 @@ export default function WorkspacePdfPane({
         )}
 
         <div style={{ position: "fixed", bottom: 16, left: 16, zIndex: 50 }}>
-          <button type="button" style={floatingButton} onClick={() => state.setSettingsOpen((v) => !v)}>
+          <button
+            type="button"
+            style={floatingButton}
+            onClick={() => state.setSettingsOpen((v) => !v)}
+          >
             ⚙
           </button>
           {state.settingsOpen && (
@@ -201,10 +243,18 @@ export default function WorkspacePdfPane({
                 minWidth: 180,
               }}
             >
-              <button type="button" style={menuBtn} onClick={() => fileInputRef.current?.click()}>
+              <button
+                type="button"
+                style={menuBtn}
+                onClick={() => fileInputRef.current?.click()}
+              >
                 Upload PDF
               </button>
-              <button type="button" style={menuBtn} onClick={() => void onReload()}>
+              <button
+                type="button"
+                style={menuBtn}
+                onClick={() => void onReload()}
+              >
                 Reload document
               </button>
               <Link href="/workspace/settings" style={menuLink}>
@@ -213,22 +263,35 @@ export default function WorkspacePdfPane({
               <Link href="/jobs" style={menuLink}>
                 Job list
               </Link>
-              {loading && <div style={{ fontSize: 11, color: "#64748b" }}>문서를 분석 중입니다.</div>}
-              {error && <div style={{ fontSize: 11, color: "#b91c1c" }}>{error}</div>}
-              <div style={{ fontSize: 11, color: "#64748b" }}>Pages: {state.numPages || "-"}</div>
+              {loading && (
+                <div style={{ fontSize: 11, color: "#64748b" }}>
+                  문서를 분석 중입니다.
+                </div>
+              )}
+              {error && (
+                <div style={{ fontSize: 11, color: "#b91c1c" }}>{error}</div>
+              )}
+              <div style={{ fontSize: 11, color: "#64748b" }}>
+                Pages: {state.numPages || "-"}
+              </div>
               {state.analysisHealth && (
                 <div
                   style={{
                     fontSize: 11,
-                    color: state.analysisHealth.available ? "#166534" : "#b91c1c",
+                    color: state.analysisHealth.available
+                      ? "#166534"
+                      : "#b91c1c",
                     border: "1px solid #dbe3f1",
                     borderRadius: 7,
                     padding: "6px 8px",
                     background: "#f8fafc",
                   }}
                 >
-                  Analysis: {state.analysisHealth.mode} / {state.analysisHealth.available ? "ok" : "degraded"}
-                  <div style={{ marginTop: 2, color: "#64748b" }}>{state.analysisHealth.message}</div>
+                  Analysis: {state.analysisHealth.mode} /{" "}
+                  {state.analysisHealth.available ? "ok" : "degraded"}
+                  <div style={{ marginTop: 2, color: "#64748b" }}>
+                    {state.analysisHealth.message}
+                  </div>
                 </div>
               )}
             </div>

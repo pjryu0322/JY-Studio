@@ -17,11 +17,14 @@ interface ChunkOverlayCanvasProps {
   visibleChunks: ChunkDTO[];
   selectedChunkId: string | null;
   hoveredAnalyzerPage: number | null;
-  overlayAnchorByKey: Record<string, { x: number; y: number; w: number; h: number }>;
+  overlayAnchorByKey: Record<
+    string,
+    { x: number; y: number; w: number; h: number }
+  >;
   onSelectChunk: (chunkId: string) => void;
   onStartBoundaryDrag: (
     event: ReactMouseEvent<HTMLDivElement>,
-    input: DragBoundaryInput
+    input: DragBoundaryInput,
   ) => void;
 }
 
@@ -89,7 +92,9 @@ export default function ChunkOverlayCanvas({
               border: isSelected
                 ? "2px solid rgba(249,115,22,0.95)"
                 : "2px solid rgba(37,99,235,0.75)",
-              background: isSelected ? "rgba(249,115,22,0.22)" : "rgba(37,99,235,0.10)",
+              background: isSelected
+                ? "rgba(249,115,22,0.22)"
+                : "rgba(37,99,235,0.10)",
               borderRadius: 6,
               cursor: "pointer",
               zIndex: isSelected ? 9 : 7,

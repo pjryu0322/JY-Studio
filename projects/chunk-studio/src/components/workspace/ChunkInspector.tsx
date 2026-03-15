@@ -35,9 +35,20 @@ export default function ChunkInspector({
   onEditReviewNote,
 }: ChunkInspectorProps) {
   return (
-    <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 10, display: "grid", gap: 8 }}>
-      <strong style={{ fontSize: 13, color: "#0f172a" }}>Semantic Chunk Editor</strong>
-      <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+    <div
+      style={{
+        borderTop: "1px solid #e2e8f0",
+        paddingTop: 10,
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <strong style={{ fontSize: 13, color: "#0f172a" }}>
+        Semantic Chunk Editor
+      </strong>
+      <div
+        style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto" }}
+      >
         {visibleChunks.map((chunk) => {
           const selected = selectedChunk?.meta.chunkId === chunk.meta.chunkId;
           const mapped = mapChunkToPage(chunk);
@@ -59,16 +70,22 @@ export default function ChunkInspector({
                 gap: 4,
               }}
             >
-              <strong style={{ fontSize: 12, color: "#0f172a" }}>{chunk.meta.chunkId}</strong>
+              <strong style={{ fontSize: 12, color: "#0f172a" }}>
+                {chunk.meta.chunkId}
+              </strong>
               <span style={{ fontSize: 11, color: "#64748b" }}>
                 page {mapped.pageStart ?? "-"}~{mapped.pageEnd ?? "-"}
               </span>
-              <span style={{ fontSize: 11, color: "#334155" }}>{chunk.text.slice(0, 120)}</span>
+              <span style={{ fontSize: 11, color: "#334155" }}>
+                {chunk.text.slice(0, 120)}
+              </span>
             </button>
           );
         })}
         {visibleChunks.length === 0 && (
-          <div style={{ fontSize: 12, color: "#64748b" }}>표시할 청크가 없습니다.</div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>
+            표시할 청크가 없습니다.
+          </div>
         )}
       </div>
       {selectedChunk && (
@@ -82,34 +99,63 @@ export default function ChunkInspector({
             gap: 6,
           }}
         >
-          <div style={{ fontSize: 12, color: "#334155" }}>selected: {selectedChunk.meta.chunkId}</div>
-          <div style={{ fontSize: 11, color: "#64748b" }}>
-            boundary drag: 오버레이 상/하단 주황 핸들을 드래그해 경계를 조정하세요.
+          <div style={{ fontSize: 12, color: "#334155" }}>
+            selected: {selectedChunk.meta.chunkId}
           </div>
-          <div style={{ fontSize: 11, color: "#64748b" }}>ai suggestion: {suggestion}</div>
+          <div style={{ fontSize: 11, color: "#64748b" }}>
+            boundary drag: 오버레이 상/하단 주황 핸들을 드래그해 경계를
+            조정하세요.
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b" }}>
+            ai suggestion: {suggestion}
+          </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button type="button" style={floatingButton} onClick={onExcludeSelected}>
+            <button
+              type="button"
+              style={floatingButton}
+              onClick={onExcludeSelected}
+            >
               exclude
             </button>
-            <button type="button" style={floatingButton} onClick={onMergeSelected}>
+            <button
+              type="button"
+              style={floatingButton}
+              onClick={onMergeSelected}
+            >
               merge
             </button>
-            <button type="button" style={floatingButton} onClick={onSplitSelected}>
+            <button
+              type="button"
+              style={floatingButton}
+              onClick={onSplitSelected}
+            >
               split
             </button>
-            <button type="button" style={floatingButton} onClick={() => void onReload()}>
+            <button
+              type="button"
+              style={floatingButton}
+              onClick={() => void onReload()}
+            >
               save/reload
             </button>
           </div>
           <input
-            value={editedLabels[selectedChunk.meta.chunkId] ?? selectedChunk.meta.sectionTitle ?? ""}
-            onChange={(e) => onEditLabel(selectedChunk.meta.chunkId, e.target.value)}
+            value={
+              editedLabels[selectedChunk.meta.chunkId] ??
+              selectedChunk.meta.sectionTitle ??
+              ""
+            }
+            onChange={(e) =>
+              onEditLabel(selectedChunk.meta.chunkId, e.target.value)
+            }
             placeholder="label edit"
             style={selector}
           />
           <textarea
             value={reviewNotes[selectedChunk.meta.chunkId] ?? ""}
-            onChange={(e) => onEditReviewNote(selectedChunk.meta.chunkId, e.target.value)}
+            onChange={(e) =>
+              onEditReviewNote(selectedChunk.meta.chunkId, e.target.value)
+            }
             rows={3}
             placeholder="review note"
             style={{ ...selector, resize: "vertical" }}

@@ -30,11 +30,16 @@ export default function PdfSemanticChunkEditor({
   const state = useWorkspaceState({ selectedJob, detail });
 
   if (!selectedJob || !state.canPreviewPdf) {
-    return <WorkspaceEmptyState fileInputRef={fileInputRef} onUpload={onUpload} />;
+    return (
+      <WorkspaceEmptyState fileInputRef={fileInputRef} onUpload={onUpload} />
+    );
   }
 
   return (
-    <section className="workspace-shell" style={{ height: "100vh", overflow: "hidden" }}>
+    <section
+      className="workspace-shell"
+      style={{ height: "100vh", overflow: "hidden" }}
+    >
       <div
         style={{
           display: "grid",
@@ -65,7 +70,13 @@ export default function PdfSemanticChunkEditor({
             error={error}
             onUpload={onUpload}
             onReload={onReload}
-            inspector={<WorkspaceInspectorDock state={state} viewportRef={scrollRef} onReload={onReload} />}
+            inspector={
+              <WorkspaceInspectorDock
+                state={state}
+                viewportRef={scrollRef}
+                onReload={onReload}
+              />
+            }
           />
         </div>
 
@@ -75,12 +86,13 @@ export default function PdfSemanticChunkEditor({
           currentPage={state.selectedPage}
           onFamilyHintChange={state.setFamilyHint}
           onHoverPage={state.setHoveredAnalyzerPage}
-          onSelectPage={(pageNumber) => state.scrollToPage(pageNumber, scrollRef.current)}
+          onSelectPage={(pageNumber) =>
+            state.scrollToPage(pageNumber, scrollRef.current)
+          }
           onOverrideOrientation={state.onOverrideOrientation}
           onOverridePageType={state.onOverridePageType}
           onOverrideSubType={state.onOverrideSubType}
         />
-
       </div>
     </section>
   );
