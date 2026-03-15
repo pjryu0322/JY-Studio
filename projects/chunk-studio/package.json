@@ -16,14 +16,12 @@
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
-    "mammoth": "^1.8.0",
     "next": "16.1.6",
     "pdfjs-dist": "^5.4.296",
     "prisma": "^6.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-pdf": "^10.4.1",
-    "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

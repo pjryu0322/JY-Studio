@@ -14,6 +14,12 @@ import {
   type PageSubType,
 } from "@/lib/analysis/pageUnderstanding";
 import { mapChunkToPage } from "@/lib/analysis/chunkMappingService";
+import { fireWorkspaceAudit } from "./AuditActionClient";
+import {
+  buildChunkSuggestion,
+  mergeChunkWithNext,
+  splitChunkAtMidpoint,
+} from "./workspaceChunkEditing";
 
 const PdfPreviewClient = dynamic(
   () => import("@/components/templates/PdfPreviewClient"),
@@ -244,20 +250,10 @@ export default function PdfSemanticChunkEditor({
       });
     };
     const onUp = () => {
-      void fetch("/api/admin/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: "workspace_edit",
-          action: "boundary_drag",
-          jobId: selectedJobId,
-          level: "info",
-          detail: {
-            chunkId: dragBoundary.chunkId,
-            page: dragBoundary.pageNumber,
-            handle: dragBoundary.handle,
-          },
-        }),
+      fireWorkspaceAudit(selectedJobId, "boundary_drag", {
+        chunkId: dragBoundary.chunkId,
+        page: dragBoundary.pageNumber,
+        handle: dragBoundary.handle,
       });
       setDragBoundary(null);
     };
@@ -385,81 +381,15 @@ export default function PdfSemanticChunkEditor({
   };
 
   const fireAudit = (action: string, detailData?: Record<string, unknown>) => {
-    void fetch("/api/admin/audit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: "workspace_edit",
-        action,
-        jobId: selectedJobId,
-        level: "info",
-        detail: detailData ?? {},
-      }),
-    });
+    fireWorkspaceAudit(selectedJobId, action, detailData);
   };
 
   const applyMergeWithNext = (chunkId: string) => {
-    setLocalChunks((prev) => {
-      const idx = prev.findIndex((chunk) => chunk.meta.chunkId === chunkId);
-      if (idx < 0 || idx >= prev.length - 1) return prev;
-      const cur = prev[idx];
-      const next = prev[idx + 1];
-      const merged: ChunkDTO = {
-        ...cur,
-        text: `${cur.text}\n\n${next.text}`.trim(),
-        meta: {
-          ...cur.meta,
-          endBlockIdx: Math.max(cur.meta.endBlockIdx, next.meta.endBlockIdx),
-          sourceBlockIds: [...cur.meta.sourceBlockIds, ...next.meta.sourceBlockIds],
-          quality: {
-            ...cur.meta.quality,
-            tokens: cur.meta.quality.tokens + next.meta.quality.tokens,
-            warnings: Array.from(new Set([...cur.meta.quality.warnings, ...next.meta.quality.warnings])),
-          },
-          pageRange:
-            cur.meta.pageRange && next.meta.pageRange
-              ? [Math.min(cur.meta.pageRange[0], next.meta.pageRange[0]), Math.max(cur.meta.pageRange[1], next.meta.pageRange[1])]
-              : cur.meta.pageRange ?? next.meta.pageRange,
-        },
-      };
-      const out = [...prev.slice(0, idx), merged, ...prev.slice(idx + 2)];
-      return out;
-    });
+    setLocalChunks((prev) => mergeChunkWithNext(prev, chunkId));
   };
 
   const applySplitAtMidpoint = (chunkId: string) => {
-    setLocalChunks((prev) => {
-      const idx = prev.findIndex((chunk) => chunk.meta.chunkId === chunkId);
-      if (idx < 0) return prev;
-      const cur = prev[idx];
-      const text = cur.text.trim();
-      if (!text) return prev;
-      const mid = Math.floor(text.length / 2);
-      const splitAt = text.indexOf(". ", mid) > 0 ? text.indexOf(". ", mid) + 1 : mid;
-      const leftText = text.slice(0, splitAt).trim();
-      const rightText = text.slice(splitAt).trim();
-      if (!leftText || !rightText) return prev;
-      const left: ChunkDTO = {
-        ...cur,
-        text: leftText,
-        meta: {
-          ...cur.meta,
-          chunkId: `${cur.meta.chunkId}-a`,
-          quality: { ...cur.meta.quality, tokens: Math.max(1, Math.floor(cur.meta.quality.tokens / 2)) },
-        },
-      };
-      const right: ChunkDTO = {
-        ...cur,
-        text: rightText,
-        meta: {
-          ...cur.meta,
-          chunkId: `${cur.meta.chunkId}-b`,
-          quality: { ...cur.meta.quality, tokens: Math.max(1, cur.meta.quality.tokens - Math.floor(cur.meta.quality.tokens / 2)) },
-        },
-      };
-      const out = [...prev.slice(0, idx), left, right, ...prev.slice(idx + 1)];
-      return out;
-    });
+    setLocalChunks((prev) => splitChunkAtMidpoint(prev, chunkId));
   };
 
   if (!selectedJob || !canPreviewPdf) {
@@ -1049,7 +979,7 @@ export default function PdfSemanticChunkEditor({
                 boundary drag: 오버레이 상/하단 주황 핸들을 드래그해 경계를 조정하세요.
               </div>
               <div style={{ fontSize: 11, color: "#64748b" }}>
-                ai suggestion: {buildAiSuggestion(selectedChunk.text, selectedChunk.meta.quality.tokens)}
+                ai suggestion: {buildChunkSuggestion(selectedChunk.text, selectedChunk.meta.quality.tokens)}
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button
@@ -1191,9 +1121,3 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function buildAiSuggestion(text: string, tokens: number): string {
-  if (tokens >= 950) return "Chunk too long. Split near sentence midpoint.";
-  if (tokens <= 120) return "Chunk too short. Merge with adjacent chunk.";
-  if (!/[.!?]\s*$/.test(text.trim())) return "Boundary unclear. Review trailing sentence.";
-  return "Chunk quality looks stable.";
-}

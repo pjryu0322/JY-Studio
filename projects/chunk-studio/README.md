@@ -21,8 +21,8 @@ npm run dev
 - `/admin/logs` : 감사/시스템 로그 뷰어
 - `/admin/policy` : 내보내기 정책 관리
 - `/admin/seeds` : 시드 데이터셋 관리
-- `/jobs` : 작업 목록
-- `/jobs/[jobId]` : 특정 작업의 청킹 리뷰 화면
+- `/jobs` : 작업 이력/상세 조회
+- `/jobs/[jobId]` : 특정 작업의 운영 상세 화면
 
 ## 작업공간 기능
 
@@ -44,13 +44,11 @@ npm run dev
 
 - 문서 업로드
 - 페이지 분석 확인
-- PDF 중심 리뷰
+- PDF 중심 청크 검수/편집
 
 ### Manager
 
-- 작업 운영 모니터링
-- 실패 작업 점검
-- 운영 점검
+- 분류/정책/감사 중심 운영 점검
 - 감사 로그 조회 (`/admin/logs`)
 - Export Policy 관리 (`/admin/policy`)
 - Seed Dataset 관리 (`/admin/seeds`)
@@ -79,11 +77,10 @@ Next.js 실행 환경에 `ANALYSIS_SERVICE_URL=http://localhost:8010`를 설정�
 분석 서비스 상태는 `/api/analysis/health`로 확인할 수 있으며,
 워크스페이스 설정 메뉴에서 연동 상태를 표시합니다.
 
-### HWP/HWPX 처리 정책
+### 업로드 정책
 
-- HWP/HWPX 자동 변환은 지원하지 않습니다.
-- PDF로 변환 후 작업에 `PDF로 대체 업로드`를 사용하세요.
-- `ACTION_REQUIRED` 작업은 대체 업로드 후 파이프라인 처리로 복귀합니다.
+- 현재 사용자 업로드 경로는 **PDF만 지원**합니다.
+- DOC/DOCX/PPT/PPTX/HWP/HWPX 사용자 경로는 단계적으로 제거되었습니다.
 
 ## 참고
 

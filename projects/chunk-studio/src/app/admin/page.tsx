@@ -33,24 +33,17 @@ export default function AdminPage() {
         >
           <EntryCard
             variant="manager"
-            title="작업 현황 모니터링"
-            description={["작업 상태 확인", "상세 작업 이동"]}
-            href="/jobs"
-            supportingText="작업 화면으로 이동"
-          />
-          <EntryCard
-            variant="manager"
-            title="실패 작업 확인"
-            description={["오류 작업 검토", "재처리 동선 확인"]}
-            href="/jobs"
-            supportingText="작업 목록으로 이동"
-          />
-          <EntryCard
-            variant="manager"
             title="감사 로그 / 시스템 로그"
             description={["작업/분석/내보내기 로그 조회", "관리자 감사 추적"]}
             href="/admin/logs"
             supportingText="로그 화면으로 이동"
+          />
+          <EntryCard
+            variant="manager"
+            title="Page Classifier 점검"
+            description={["문서 패밀리/페이지 타입 분류 점검", "워크스페이스 분석 결과 확인"]}
+            href="/workspace"
+            supportingText="작업공간으로 이동"
           />
           <EntryCard
             variant="manager"

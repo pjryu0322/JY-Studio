@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import JobList from "@/components/jobs/JobList";
-import UploadPanel from "@/components/jobs/UploadPanel";
 import JobDetail from "@/components/jobs/JobDetail";
 import ScreenLabel from "@/components/entry/ScreenLabel";
 import { useJobDetail } from "@/hooks/useJobDetail";
@@ -15,8 +15,12 @@ export default function JobsPage() {
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "10px 16px", maxWidth: 1240, width: "100%", margin: "0 auto" }}>
         <ScreenLabel screen="최근 작업" mode="Operator" context="작업 목록 및 상세 검토" />
+        <div style={{ marginTop: 6 }}>
+          <Link href="/workspace" style={{ fontSize: 12, color: "#3156b9", textDecoration: "none" }}>
+            작업공간으로 이동
+          </Link>
+        </div>
       </div>
-      <UploadPanel />
       <main
         style={{
           flex: 1,

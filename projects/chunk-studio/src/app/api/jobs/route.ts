@@ -4,16 +4,8 @@ import {
   getExtension,
   isAllowedExtension,
   getStatusForExtension,
-  ACTION_REQUIRED_MESSAGE,
-  DOC_CONVERTING_MESSAGE,
-  isDocExtension,
-  isMarkdownExtension,
-  isPptExtension,
-  PPT_CONVERTING_MESSAGE,
 } from "@/lib/jobs/upload";
-import { extractDocText } from "@/lib/doc/extractDocText";
 import { runChunkingPipeline } from "@/lib/jobs/chunkingPipeline";
-import { extractPptText } from "@/lib/ppt/extractPptText";
 import { extractPdfText } from "@/lib/pdf/extractPdfText";
 import { ensureJobDir, getOriginalPath, saveWebFile } from "@/lib/files/storage";
 import { appendAuditLog } from "@/lib/admin/auditLog";
@@ -72,20 +64,13 @@ export async function POST(req: Request) {
 
   if (!isAllowedExtension(ext)) {
     return NextResponse.json(
-      { error: `Unsupported extension. Allowed: pdf, doc, docx, ppt, pptx, md, hwp, hwpx` },
+      { error: "Unsupported extension. Allowed: pdf" },
       { status: 400 }
     );
   }
 
   const status = getStatusForExtension(ext);
-  const message =
-    status === "ACTION_REQUIRED"
-      ? ACTION_REQUIRED_MESSAGE
-      : status === "CONVERTING"
-        ? isPptExtension(ext)
-          ? PPT_CONVERTING_MESSAGE
-          : DOC_CONVERTING_MESSAGE
-        : null;
+  const message = null;
 
   try {
     const job = await prisma.job.create({
@@ -120,54 +105,6 @@ export async function POST(req: Request) {
         storagePath,
       },
     });
-
-    // DOC/DOCX fallback path: process directly without LibreOffice conversion.
-    if (isDocExtension(ext)) {
-      const extracted = await extractDocText(file, ext);
-      await runChunkingPipeline({
-        jobId: job.id,
-        text: extracted.text,
-        extractionMethod: ext === "docx" ? "DOCX_DIRECT" : "DOC_DIRECT_FALLBACK",
-        message: extracted.message,
-      });
-      return NextResponse.json({
-        jobId: job.id,
-        status: "DONE",
-        message: extracted.message,
-      });
-    }
-
-    // Markdown direct path.
-    if (isMarkdownExtension(ext)) {
-      const text = await file.text();
-      await runChunkingPipeline({
-        jobId: job.id,
-        text,
-        extractionMethod: "MARKDOWN_DIRECT",
-        message: "Markdown processed directly.",
-      });
-      return NextResponse.json({
-        jobId: job.id,
-        status: "DONE",
-        message: "Markdown processed directly.",
-      });
-    }
-
-    // PPT/PPTX direct extraction path.
-    if (isPptExtension(ext)) {
-      const extracted = await extractPptText(file, ext);
-      await runChunkingPipeline({
-        jobId: job.id,
-        text: extracted.text,
-        extractionMethod: ext === "pptx" ? "PPTX_DIRECT" : "PPT_DIRECT_HEURISTIC",
-        message: extracted.message,
-      });
-      return NextResponse.json({
-        jobId: job.id,
-        status: "DONE",
-        message: extracted.message,
-      });
-    }
 
     // PDF direct extraction + chunking path.
     if (ext === "pdf") {
@@ -208,7 +145,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       jobId: job.id,
       status,
-      message: status === "ACTION_REQUIRED" ? ACTION_REQUIRED_MESSAGE : undefined,
+      message: undefined,
     });
   } catch (e) {
     console.error("[POST /api/jobs]", e);

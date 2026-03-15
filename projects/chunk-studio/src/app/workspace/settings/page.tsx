@@ -40,7 +40,7 @@ export default function WorkspaceSettingsPage() {
           <div style={{ display: "grid", gap: 4 }}>
             <strong style={{ fontSize: 14, color: "#0f172a" }}>화면 라벨 표시</strong>
             <span style={{ fontSize: 12, color: "#64748b" }}>
-              분석/에디터 디버그 라벨을 화면에 표시합니다.
+              PDF 분석/청크 편집 보조 라벨을 화면에 표시합니다.
             </span>
           </div>
           <input
