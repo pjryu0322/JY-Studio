@@ -1,5 +1,6 @@
 "use client";
 
+// Overlay-only rendering surface for chunk regions and boundary handles.
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ChunkDTO } from "@/types/job";
 import { mapChunkToPage } from "@/lib/analysis/chunkMappingService";

@@ -1,5 +1,6 @@
 "use client";
 
+// Analyzer-only presentation layer for page classification and overrides.
 import { type PageType } from "./pageTypeClassifier";
 import type {
   DocumentFamily,

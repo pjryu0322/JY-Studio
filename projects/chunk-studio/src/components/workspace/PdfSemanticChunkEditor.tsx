@@ -1,5 +1,6 @@
 "use client";
 
+// Thin composition shell for workspace modules.
 import { useRef } from "react";
 import type { Job, JobDetailDTO } from "@/types/job";
 import PageAnalyzerPanel from "./PageAnalyzerPanel";

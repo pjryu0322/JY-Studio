@@ -1,5 +1,6 @@
 "use client";
 
+// Central workspace state/controller for analyzer, overlay, and inspector flows.
 import {
   useCallback,
   useEffect,

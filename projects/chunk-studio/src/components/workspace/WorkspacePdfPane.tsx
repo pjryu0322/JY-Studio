@@ -1,5 +1,6 @@
 "use client";
 
+// PDF pane composition: document rendering, controls, and settings popover.
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { RefObject, ReactNode } from "react";
