@@ -40,10 +40,10 @@ export default function AdminPage() {
           />
           <EntryCard
             variant="manager"
-            title="Page Classifier 점검"
-            description={["문서 패밀리/페이지 타입 분류 점검", "워크스페이스 분석 결과 확인"]}
-            href="/workspace"
-            supportingText="작업공간으로 이동"
+            title="운영 모니터링"
+            description={["Classifier 신뢰도 분포", "Chunk 품질 지표 / 리뷰 활동 요약"]}
+            href="/admin/overview"
+            supportingText="운영 지표 보기"
           />
           <EntryCard
             variant="manager"

@@ -3,12 +3,12 @@
     "repository": "https://github.com/pjryu0322/JY-Studio",
     "projectRoot": "projects/chunk-studio",
     "branch": "main",
-    "commit": "d19e979f47f2de093d9914698c6c3549ff0916c4",
-    "generatedAtUTC": "2026-03-15T07:00:05.582Z",
+    "commit": "b22ac51c558fecf369386fa87009ba20ecf3fccb",
+    "generatedAtUTC": "2026-03-15T07:15:43.253Z",
     "generatedBy": "cursor-verification-script"
   },
   "gitState": {
-    "headCommit": "d19e979f47f2de093d9914698c6c3549ff0916c4",
+    "headCommit": "b22ac51c558fecf369386fa87009ba20ecf3fccb",
     "remote": "origin",
     "remoteUrl": "git@github.com:pjryu0322/JY-Studio.git",
     "workingTreeClean": false,
@@ -51,10 +51,10 @@
     },
     {
       "path": "projects/chunk-studio/src/components/workspace/ChunkInspector.tsx",
-      "gitShowLineCount": 224,
-      "gitBlobSha": "bc17d80acb234d03d330e74cd8e412de1d43ecd8",
-      "sha256": "23dd55398fbedcddc2aad75aca18bf1b2b785dc9f0de3f3d08de7b309501ee44",
-      "sizeBytes": 5906,
+      "gitShowLineCount": 364,
+      "gitBlobSha": "1475983d3912bb4b2a75c6a7a71b8aa3fe5dd7b7",
+      "sha256": "d0140a3afe6227c9fa7a783e9f4566a3be361e7eb973ba47ef9c98281efdd98a",
+      "sizeBytes": 9399,
       "encoding": "utf-8"
     },
     {

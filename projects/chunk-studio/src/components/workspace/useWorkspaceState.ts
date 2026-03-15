@@ -680,22 +680,40 @@ export function useWorkspaceState({
 
   const setChunkLabel = useCallback(
     (chunkId: string, value: string) => {
-      setEditedLabels((prev) => ({
-        ...prev,
-        [chunkId]: value,
-      }));
+      setEditedLabels((prev) => {
+        const next = {
+          ...prev,
+          [chunkId]: value,
+        };
+        if ((prev[chunkId] ?? "") !== value) {
+          fireWorkspaceAudit(selectedJobId, "update_chunk_label", {
+            chunkId,
+            labelLength: value.length,
+          });
+        }
+        return next;
+      });
     },
-    [],
+    [selectedJobId],
   );
 
   const setChunkReviewNote = useCallback(
     (chunkId: string, value: string) => {
-      setReviewNotes((prev) => ({
-        ...prev,
-        [chunkId]: value,
-      }));
+      setReviewNotes((prev) => {
+        const next = {
+          ...prev,
+          [chunkId]: value,
+        };
+        if ((prev[chunkId] ?? "") !== value) {
+          fireWorkspaceAudit(selectedJobId, "update_review_note", {
+            chunkId,
+            noteLength: value.length,
+          });
+        }
+        return next;
+      });
     },
-    [],
+    [selectedJobId],
   );
 
   const onOverrideOrientation = useCallback(
@@ -712,8 +730,12 @@ export function useWorkspaceState({
           userOverridden: true,
         },
       }));
+      fireWorkspaceAudit(selectedJobId, "override_orientation", {
+        pageNumber,
+        orientation: value,
+      });
     },
-    [pageProfiles],
+    [pageProfiles, selectedJobId],
   );
 
   const onOverridePageType = useCallback(
@@ -730,8 +752,12 @@ export function useWorkspaceState({
           userOverridden: true,
         },
       }));
+      fireWorkspaceAudit(selectedJobId, "override_page_type", {
+        pageNumber,
+        pageType: value,
+      });
     },
-    [pageProfiles],
+    [pageProfiles, selectedJobId],
   );
 
   const onOverrideSubType = useCallback(
@@ -748,8 +774,12 @@ export function useWorkspaceState({
           userOverridden: true,
         },
       }));
+      fireWorkspaceAudit(selectedJobId, "override_sub_type", {
+        pageNumber,
+        subType: value,
+      });
     },
-    [pageProfiles],
+    [pageProfiles, selectedJobId],
   );
 
   return {

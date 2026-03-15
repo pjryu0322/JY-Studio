@@ -19,6 +19,7 @@ export default function AdminLogsPage() {
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [levelFilter, setLevelFilter] = useState<string>("all");
+  const [reviewOnly, setReviewOnly] = useState(false);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -54,14 +55,48 @@ export default function AdminLogsPage() {
       const matchCategory = categoryFilter === "all" || log.category === categoryFilter;
       const level = log.level ?? "info";
       const matchLevel = levelFilter === "all" || level === levelFilter;
+      const matchReview =
+        !reviewOnly ||
+        (log.category === "workspace_edit" &&
+          (log.action.startsWith("override_") ||
+            log.action === "exclude_chunk" ||
+            log.action === "merge_chunk" ||
+            log.action === "split_chunk" ||
+            log.action === "boundary_drag" ||
+            log.action === "update_chunk_label" ||
+            log.action === "update_review_note"));
       const matchSearch =
         !q ||
         log.action.toLowerCase().includes(q) ||
         log.category.toLowerCase().includes(q) ||
         (log.jobId ?? "").toLowerCase().includes(q);
-      return matchCategory && matchLevel && matchSearch;
+      return matchCategory && matchLevel && matchReview && matchSearch;
     });
-  }, [logs, categoryFilter, levelFilter, search]);
+  }, [logs, categoryFilter, levelFilter, reviewOnly, search]);
+
+  const reviewSummary = useMemo(() => {
+    const counters = new Map<string, number>();
+    logs.forEach((log) => {
+      if (log.category !== "workspace_edit") return;
+      if (
+        !(
+          log.action.startsWith("override_") ||
+          log.action === "exclude_chunk" ||
+          log.action === "merge_chunk" ||
+          log.action === "split_chunk" ||
+          log.action === "boundary_drag" ||
+          log.action === "update_chunk_label" ||
+          log.action === "update_review_note"
+        )
+      ) {
+        return;
+      }
+      counters.set(log.action, (counters.get(log.action) ?? 0) + 1);
+    });
+    return Array.from(counters.entries())
+      .map(([action, count]) => ({ action, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [logs]);
 
   return (
     <main style={{ minHeight: "100vh", background: "#f8fafc", padding: "20px" }}>
@@ -89,6 +124,23 @@ export default function AdminLogsPage() {
             </span>
           ))}
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {reviewSummary.map((item) => (
+            <span
+              key={item.action}
+              style={{
+                border: "1px solid #facc15",
+                borderRadius: 999,
+                padding: "4px 10px",
+                fontSize: 12,
+                color: "#713f12",
+                background: "#fef9c3",
+              }}
+            >
+              {item.action}: {item.count}
+            </span>
+          ))}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 180px", gap: 8 }}>
           <input
             value={search}
@@ -111,6 +163,14 @@ export default function AdminLogsPage() {
             <option value="error">error</option>
           </select>
         </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#334155" }}>
+          <input
+            type="checkbox"
+            checked={reviewOnly}
+            onChange={(e) => setReviewOnly(e.target.checked)}
+          />
+          리뷰/오버라이드 이벤트만 보기
+        </label>
         {loading ? (
           <div style={{ fontSize: 13, color: "#64748b" }}>로그를 불러오는 중입니다.</div>
         ) : error ? (
@@ -127,6 +187,7 @@ export default function AdminLogsPage() {
                   <th style={th}>action</th>
                   <th style={th}>job</th>
                   <th style={th}>level</th>
+                  <th style={th}>detail</th>
                 </tr>
               </thead>
               <tbody>
@@ -137,6 +198,7 @@ export default function AdminLogsPage() {
                     <td style={td}>{log.action}</td>
                     <td style={td}>{log.jobId ?? "-"}</td>
                     <td style={td}>{log.level ?? "info"}</td>
+                    <td style={td}>{compactDetail(log.detail)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -169,3 +231,22 @@ const filterInput = {
   padding: "8px 10px",
   color: "#0f172a",
 } as const;
+
+function compactDetail(detail?: Record<string, unknown>) {
+  if (!detail || Object.keys(detail).length === 0) return "-";
+  const pairs = Object.entries(detail)
+    .slice(0, 3)
+    .map(([key, value]) => `${key}:${stringifyValue(value)}`);
+  return pairs.join(" | ");
+}
+
+function stringifyValue(value: unknown): string {
+  if (value == null) return "null";
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "string") {
+    return value.length > 24 ? `${value.slice(0, 24)}...` : value;
+  }
+  return "...";
+}

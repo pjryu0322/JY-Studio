@@ -44,7 +44,14 @@ export async function POST(req: Request) {
           category: "page_classifier",
           action: "classify_page_external",
           level: "info",
-          detail: { pageNumber, familyHint: body.familyHint ?? null },
+          detail: {
+            pageNumber,
+            familyHint: body.familyHint ?? null,
+            confidence: payload.confidence,
+            pageType: payload.pageTypeFinal,
+            subType: payload.subTypeFinal,
+            orientation: payload.orientationFinal,
+          },
         });
         return NextResponse.json(payload);
       }
@@ -60,7 +67,14 @@ export async function POST(req: Request) {
       category: "page_classifier",
       action: "classify_page_local",
       level: "info",
-      detail: { pageNumber, family: fallback.documentFamily },
+      detail: {
+        pageNumber,
+        family: fallback.documentFamily,
+        confidence: fallback.confidence,
+        pageType: fallback.pageTypeFinal,
+        subType: fallback.subTypeFinal,
+        orientation: fallback.orientationFinal,
+      },
     });
     return NextResponse.json(fallback);
   } catch (error) {
