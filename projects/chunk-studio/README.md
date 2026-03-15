@@ -80,7 +80,7 @@ Next.js 실행 환경에 `ANALYSIS_SERVICE_URL=http://localhost:8010`를 설정�
 ### 업로드 정책
 
 - 현재 사용자 업로드 경로는 **PDF만 지원**합니다.
-- DOC/DOCX/PPT/PPTX/HWP/HWPX 사용자 경로는 단계적으로 제거되었습니다.
+- DOC/DOCX/PPT/PPTX/MD/HWP/HWPX 업로드는 지원하지 않습니다.
 
 ## 참고
 
