@@ -38,12 +38,19 @@ export default function ChunkOverlayCanvas({
   onStartBoundaryDrag,
 }: ChunkOverlayCanvasProps) {
   const chunkOverlays = visibleChunks
-    .map((chunk) => ({ chunk, mapped: mapChunkToPage(chunk) }))
+    .map((chunk) => ({
+      chunk,
+      mapped: mapChunkToPage(chunk),
+    }))
     .filter(({ mapped }) => {
-      if (mapped.pageStart == null || mapped.pageEnd == null)
+      if (
+        mapped.pageStart == null ||
+        mapped.pageEnd == null
+      )
         return false;
       return (
-        mapped.pageStart <= pageNumber && pageNumber <= mapped.pageEnd
+        mapped.pageStart <= pageNumber &&
+        pageNumber <= mapped.pageEnd
       );
     });
 
@@ -84,16 +91,25 @@ export default function ChunkOverlayCanvas({
             }
           ).bboxList?.[0];
         const fallbackTop = 0.02 + (idx % 7) * 0.13;
-        const top = block ? Math.max(0, block.y) : fallbackTop;
+        const top = block
+          ? Math.max(0, block.y)
+          : fallbackTop;
         const left = block ? Math.max(0, block.x) : 0.06;
-        const width = block ? Math.max(0.01, block.w) : 0.88;
-        const height = block ? Math.max(0.01, block.h) : 0.09;
-        const isSelected = selectedChunkId === chunk.meta.chunkId;
+        const width = block
+          ? Math.max(0.01, block.w)
+          : 0.88;
+        const height = block
+          ? Math.max(0.01, block.h)
+          : 0.09;
+        const isSelected =
+          selectedChunkId === chunk.meta.chunkId;
         return (
           <button
             key={`${chunk.meta.chunkId}-${idx}`}
             type="button"
-            onClick={() => onSelectChunk(chunk.meta.chunkId)}
+            onClick={() =>
+              onSelectChunk(chunk.meta.chunkId)
+            }
             style={{
               position: "absolute",
               left: `${left * 100}%`,

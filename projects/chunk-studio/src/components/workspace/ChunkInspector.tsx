@@ -16,7 +16,10 @@ interface ChunkInspectorProps {
   onSplitSelected: () => void;
   onReload: () => Promise<void>;
   onEditLabel: (chunkId: string, value: string) => void;
-  onEditReviewNote: (chunkId: string, value: string) => void;
+  onEditReviewNote: (
+    chunkId: string,
+    value: string,
+  ) => void;
 }
 
 export default function ChunkInspector({
@@ -56,7 +59,8 @@ export default function ChunkInspector({
       >
         {visibleChunks.map((chunk) => {
           const selected =
-            selectedChunk?.meta.chunkId === chunk.meta.chunkId;
+            selectedChunk?.meta.chunkId ===
+            chunk.meta.chunkId;
           const mapped = mapChunkToPage(chunk);
           return (
             <button
@@ -78,13 +82,20 @@ export default function ChunkInspector({
                 gap: 4,
               }}
             >
-              <strong style={{ fontSize: 12, color: "#0f172a" }}>
+              <strong
+                style={{ fontSize: 12, color: "#0f172a" }}
+              >
                 {chunk.meta.chunkId}
               </strong>
-              <span style={{ fontSize: 11, color: "#64748b" }}>
-                page {mapped.pageStart ?? "-"}~{mapped.pageEnd ?? "-"}
+              <span
+                style={{ fontSize: 11, color: "#64748b" }}
+              >
+                page {mapped.pageStart ?? "-"}~
+                {mapped.pageEnd ?? "-"}
               </span>
-              <span style={{ fontSize: 11, color: "#334155" }}>
+              <span
+                style={{ fontSize: 11, color: "#334155" }}
+              >
                 {chunk.text.slice(0, 120)}
               </span>
             </button>
@@ -111,13 +122,19 @@ export default function ChunkInspector({
             selected: {selectedChunk.meta.chunkId}
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
-            boundary drag: 오버레이 상/하단 주황 핸들을 드래그해
-            경계를 조정하세요.
+            boundary drag: 오버레이 상/하단 주황 핸들을
+            드래그해 경계를 조정하세요.
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
             ai suggestion: {suggestion}
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+            }}
+          >
             <button
               type="button"
               style={floatingButton}
@@ -154,13 +171,18 @@ export default function ChunkInspector({
               ""
             }
             onChange={(e) =>
-              onEditLabel(selectedChunk.meta.chunkId, e.target.value)
+              onEditLabel(
+                selectedChunk.meta.chunkId,
+                e.target.value,
+              )
             }
             placeholder="label edit"
             style={selector}
           />
           <textarea
-            value={reviewNotes[selectedChunk.meta.chunkId] ?? ""}
+            value={
+              reviewNotes[selectedChunk.meta.chunkId] ?? ""
+            }
             onChange={(e) =>
               onEditReviewNote(
                 selectedChunk.meta.chunkId,

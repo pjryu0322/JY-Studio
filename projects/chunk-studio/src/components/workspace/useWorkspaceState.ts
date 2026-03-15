@@ -11,7 +11,11 @@ import type {
   MouseEvent as ReactMouseEvent,
   WheelEvent as ReactWheelEvent,
 } from "react";
-import type { ChunkDTO, Job, JobDetailDTO } from "@/types/job";
+import type {
+  ChunkDTO,
+  Job,
+  JobDetailDTO,
+} from "@/types/job";
 import { type PageType } from "./pageTypeClassifier";
 import { mapChunkToPage } from "@/lib/analysis/chunkMappingService";
 import {
@@ -52,20 +56,22 @@ export function useWorkspaceState({
   const [currentPage, setCurrentPage] = useState(1);
   const [pdfViewMode, setPdfViewMode] =
     useState<PdfViewMode>("single");
-  const [freezeCurrentPage, setFreezeCurrentPage] = useState(false);
+  const [freezeCurrentPage, setFreezeCurrentPage] =
+    useState(false);
   const [firstPageSize, setFirstPageSize] = useState<{
     width: number;
     height: number;
   } | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(
-    null,
-  );
-  const [previewFailureReason, setPreviewFailureReason] = useState<
+  const [failedPdfJobId, setFailedPdfJobId] = useState<
     string | null
   >(null);
-  const [pdfAvailabilityChecked, setPdfAvailabilityChecked] =
-    useState(false);
+  const [previewFailureReason, setPreviewFailureReason] =
+    useState<string | null>(null);
+  const [
+    pdfAvailabilityChecked,
+    setPdfAvailabilityChecked,
+  ] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pageSizeByPage, setPageSizeByPage] = useState<
     Record<number, { width: number; height: number }>
@@ -75,19 +81,21 @@ export function useWorkspaceState({
   const [recordByPage, setRecordByPage] = useState<
     Record<number, PageClassificationRecord>
   >({});
-  const [selectedPage, setSelectedPage] = useState<number>(1);
-  const [hoveredAnalyzerPage, setHoveredAnalyzerPage] = useState<
-    number | null
+  const [selectedPage, setSelectedPage] =
+    useState<number>(1);
+  const [hoveredAnalyzerPage, setHoveredAnalyzerPage] =
+    useState<number | null>(null);
+  const [hoveredChunkId, setHoveredChunkId] = useState<
+    string | null
   >(null);
-  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(
-    null,
-  );
   const [analysisHealth, setAnalysisHealth] = useState<{
     mode: "external" | "local-fallback";
     available: boolean;
     message: string;
   } | null>(null);
-  const [localChunks, setLocalChunks] = useState<ChunkDTO[]>([]);
+  const [localChunks, setLocalChunks] = useState<
+    ChunkDTO[]
+  >([]);
   const [selectedChunkId, setSelectedChunkId] = useState<
     string | null
   >(null);
@@ -100,9 +108,13 @@ export function useWorkspaceState({
   const [reviewNotes, setReviewNotes] = useState<
     Record<string, string>
   >({});
-  const [overlayAnchorByKey, setOverlayAnchorByKey] = useState<
-    Record<string, { x: number; y: number; w: number; h: number }>
-  >({});
+  const [overlayAnchorByKey, setOverlayAnchorByKey] =
+    useState<
+      Record<
+        string,
+        { x: number; y: number; w: number; h: number }
+      >
+    >({});
   const [dragBoundary, setDragBoundary] =
     useState<DragBoundaryState | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -111,13 +123,15 @@ export function useWorkspaceState({
 
   const selectedJobId = selectedJob?.id ?? null;
   const canPreviewPdf = useMemo(() => {
-    const name = selectedJob?.originalFilename?.toLowerCase() ?? "";
+    const name =
+      selectedJob?.originalFilename?.toLowerCase() ?? "";
     return name.endsWith(".pdf");
   }, [selectedJob]);
   const pdfUnavailable = Boolean(
     selectedJob?.id && failedPdfJobId === selectedJob.id,
   );
-  const currentPageRecord = recordByPage[currentPage] ?? null;
+  const currentPageRecord =
+    recordByPage[currentPage] ?? null;
 
   const renderWidth = useMemo(() => {
     const fallback = 420;
@@ -128,7 +142,13 @@ export function useWorkspaceState({
         : firstPageSize;
     const pageWidth = Math.max(1, pageSize.width);
     return Math.max(120, Math.floor(pageWidth * zoom));
-  }, [currentPage, firstPageSize, pageSizeByPage, pdfViewMode, zoom]);
+  }, [
+    currentPage,
+    firstPageSize,
+    pageSizeByPage,
+    pdfViewMode,
+    zoom,
+  ]);
 
   const zoomPercentLabel = useMemo(
     () => `${Math.round(zoom * 100)}%`,
@@ -166,9 +186,13 @@ export function useWorkspaceState({
 
   const visibleChunks = useMemo(() => {
     return localChunks
-      .filter((chunk) => !excludedChunkIds.has(chunk.meta.chunkId))
+      .filter(
+        (chunk) =>
+          !excludedChunkIds.has(chunk.meta.chunkId),
+      )
       .map((chunk) => {
-        const editedLabel = editedLabels[chunk.meta.chunkId];
+        const editedLabel =
+          editedLabels[chunk.meta.chunkId];
         if (!editedLabel) return chunk;
         return {
           ...chunk,
@@ -282,8 +306,10 @@ export function useWorkspaceState({
   useEffect(() => {
     if (!dragBoundary) return;
     const onMove = (event: MouseEvent) => {
-      const deltaPx = event.clientY - dragBoundary.startClientY;
-      const deltaNorm = deltaPx / Math.max(1, renderWidth * 1.414);
+      const deltaPx =
+        event.clientY - dragBoundary.startClientY;
+      const deltaNorm =
+        deltaPx / Math.max(1, renderWidth * 1.414);
       const key = `${dragBoundary.chunkId}:${dragBoundary.pageNumber}`;
       setOverlayAnchorByKey((prev) => {
         const current = prev[key] ?? {
@@ -338,9 +364,12 @@ export function useWorkspaceState({
     }
     const check = async () => {
       try {
-        const res = await fetch(`/api/jobs/${selectedJobId}/pdf`, {
-          method: "HEAD",
-        });
+        const res = await fetch(
+          `/api/jobs/${selectedJobId}/pdf`,
+          {
+            method: "HEAD",
+          },
+        );
         if (cancelled) return;
         if (res.ok) {
           setFailedPdfJobId(null);
@@ -370,8 +399,14 @@ export function useWorkspaceState({
   }, [canPreviewPdf, selectedJobId]);
 
   const handlePageSize = useCallback(
-    (pageNumber: number, size: { width: number; height: number }) => {
-      setPageSizeByPage((prev) => ({ ...prev, [pageNumber]: size }));
+    (
+      pageNumber: number,
+      size: { width: number; height: number },
+    ) => {
+      setPageSizeByPage((prev) => ({
+        ...prev,
+        [pageNumber]: size,
+      }));
     },
     [],
   );
@@ -408,7 +443,9 @@ export function useWorkspaceState({
             "/api/analysis/page-understanding",
             {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+              },
               body: JSON.stringify({
                 pageNumber,
                 pageSize,
@@ -457,7 +494,8 @@ export function useWorkspaceState({
         viewport.querySelectorAll("[data-page-number]"),
       ) as Array<HTMLElement>;
       if (pages.length === 0) return;
-      const viewportTop = viewport.getBoundingClientRect().top;
+      const viewportTop =
+        viewport.getBoundingClientRect().top;
       let nearestPage = 1;
       let nearestDist = Number.POSITIVE_INFINITY;
       for (const page of pages) {
@@ -480,7 +518,10 @@ export function useWorkspaceState({
   );
 
   const scrollToPage = useCallback(
-    (pageNumber: number, viewport?: HTMLDivElement | null) => {
+    (
+      pageNumber: number,
+      viewport?: HTMLDivElement | null,
+    ) => {
       setSelectedPage(pageNumber);
       if (pdfViewMode === "single") {
         setCurrentPage(pageNumber);
@@ -492,7 +533,10 @@ export function useWorkspaceState({
       ) as HTMLElement | null;
       if (!pageEl) return;
       const targetTop = Math.max(0, pageEl.offsetTop - 8);
-      viewport.scrollTo({ top: targetTop, behavior: "smooth" });
+      viewport.scrollTo({
+        top: targetTop,
+        behavior: "smooth",
+      });
       setCurrentPage(pageNumber);
     },
     [pdfViewMode],
@@ -580,38 +624,53 @@ export function useWorkspaceState({
   const mergeSelectedChunk = useCallback(() => {
     if (!selectedChunk) return;
     const chunkId = selectedChunk.meta.chunkId;
-    setLocalChunks((prev) => mergeChunkWithNext(prev, chunkId));
+    setLocalChunks((prev) =>
+      mergeChunkWithNext(prev, chunkId),
+    );
     setReviewNotes((prev) => ({
       ...prev,
       [chunkId]:
-        (prev[chunkId] ?? "") + "\n[merge] applied with next chunk",
+        (prev[chunkId] ?? "") +
+        "\n[merge] applied with next chunk",
     }));
-    fireWorkspaceAudit(selectedJobId, "merge_chunk", { chunkId });
+    fireWorkspaceAudit(selectedJobId, "merge_chunk", {
+      chunkId,
+    });
   }, [selectedChunk, selectedJobId]);
 
   const splitSelectedChunk = useCallback(() => {
     if (!selectedChunk) return;
     const chunkId = selectedChunk.meta.chunkId;
-    setLocalChunks((prev) => splitChunkAtMidpoint(prev, chunkId));
+    setLocalChunks((prev) =>
+      splitChunkAtMidpoint(prev, chunkId),
+    );
     setReviewNotes((prev) => ({
       ...prev,
       [chunkId]:
         (prev[chunkId] ?? "") +
         "\n[split] applied near sentence midpoint",
     }));
-    fireWorkspaceAudit(selectedJobId, "split_chunk", { chunkId });
+    fireWorkspaceAudit(selectedJobId, "split_chunk", {
+      chunkId,
+    });
   }, [selectedChunk, selectedJobId]);
 
   const setChunkLabel = useCallback(
     (chunkId: string, value: string) => {
-      setEditedLabels((prev) => ({ ...prev, [chunkId]: value }));
+      setEditedLabels((prev) => ({
+        ...prev,
+        [chunkId]: value,
+      }));
     },
     [],
   );
 
   const setChunkReviewNote = useCallback(
     (chunkId: string, value: string) => {
-      setReviewNotes((prev) => ({ ...prev, [chunkId]: value }));
+      setReviewNotes((prev) => ({
+        ...prev,
+        [chunkId]: value,
+      }));
     },
     [],
   );
@@ -735,6 +794,10 @@ export type WorkspaceStateController = ReturnType<
   typeof useWorkspaceState
 >;
 
-function clamp(value: number, min: number, max: number): number {
+function clamp(
+  value: number,
+  min: number,
+  max: number,
+): number {
   return Math.min(max, Math.max(min, value));
 }

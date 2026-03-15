@@ -49,7 +49,9 @@ export default function WorkspacePdfPane({
       <div
         ref={viewportRef}
         onScroll={(event) =>
-          state.updateCurrentPageFromViewport(event.currentTarget)
+          state.updateCurrentPageFromViewport(
+            event.currentTarget,
+          )
         }
         onWheelCapture={
           state.pdfViewMode === "single"
@@ -90,10 +92,16 @@ export default function WorkspacePdfPane({
                 pageNumber={pageNumber}
                 visibleChunks={state.visibleChunks}
                 selectedChunkId={state.selectedChunkId}
-                hoveredAnalyzerPage={state.hoveredAnalyzerPage}
-                overlayAnchorByKey={state.overlayAnchorByKey}
+                hoveredAnalyzerPage={
+                  state.hoveredAnalyzerPage
+                }
+                overlayAnchorByKey={
+                  state.overlayAnchorByKey
+                }
                 onSelectChunk={state.selectChunk}
-                onStartBoundaryDrag={state.startBoundaryDrag}
+                onStartBoundaryDrag={
+                  state.startBoundaryDrag
+                }
               />
             )}
             onLoadSuccess={state.setNumPages}
@@ -104,7 +112,8 @@ export default function WorkspacePdfPane({
               );
             }}
           />
-        ) : state.canPreviewPdf && !state.pdfAvailabilityChecked ? (
+        ) : state.canPreviewPdf &&
+          !state.pdfAvailabilityChecked ? (
           <div style={{ fontSize: 12, color: "#64748b" }}>
             PDF 미리보기 가능 여부를 확인 중입니다.
           </div>
@@ -117,7 +126,9 @@ export default function WorkspacePdfPane({
               {state.previewFailureReason ??
                 "원본 PDF 렌더링에 실패했습니다."}
             </div>
-            <div>파일 형식 또는 렌더러 상태를 확인해 주세요.</div>
+            <div>
+              파일 형식 또는 렌더러 상태를 확인해 주세요.
+            </div>
           </div>
         )}
 
@@ -133,8 +144,12 @@ export default function WorkspacePdfPane({
             justifyContent: "flex-end",
             maxWidth: "62vw",
           }}
-          onMouseEnter={() => state.setFreezeCurrentPage(true)}
-          onMouseLeave={() => state.setFreezeCurrentPage(false)}
+          onMouseEnter={() =>
+            state.setFreezeCurrentPage(true)
+          }
+          onMouseLeave={() =>
+            state.setFreezeCurrentPage(false)
+          }
         >
           <button
             type="button"
@@ -173,7 +188,9 @@ export default function WorkspacePdfPane({
                   ? "#3730a3"
                   : "#0f172a",
             }}
-            onClick={() => state.setPdfViewMode("continuous")}
+            onClick={() =>
+              state.setPdfViewMode("continuous")
+            }
           >
             전체 스크롤
           </button>
@@ -182,7 +199,9 @@ export default function WorkspacePdfPane({
             style={{
               ...floatingButton,
               background:
-                state.pdfViewMode === "single" ? "#e0e7ff" : "#fff",
+                state.pdfViewMode === "single"
+                  ? "#e0e7ff"
+                  : "#fff",
               color:
                 state.pdfViewMode === "single"
                   ? "#3730a3"
@@ -200,7 +219,8 @@ export default function WorkspacePdfPane({
               color: "#334155",
             }}
           >
-            page {state.currentPage}/{Math.max(1, state.numPages)}
+            page {state.currentPage}/
+            {Math.max(1, state.numPages)}
           </div>
         </div>
 
@@ -223,22 +243,35 @@ export default function WorkspacePdfPane({
             }}
           >
             <div>
-              blocks {state.currentPageRecord.features.textBlockCount}{" "}
+              blocks{" "}
+              {
+                state.currentPageRecord.features
+                  .textBlockCount
+              }{" "}
               / avgLen{" "}
               {Math.round(
-                state.currentPageRecord.features.averageLineLength,
+                state.currentPageRecord.features
+                  .averageLineLength,
               )}
             </div>
             <div>
               score c:
-              {state.currentPageRecord.scores.coverScore.toFixed(2)}{" "}
+              {state.currentPageRecord.scores.coverScore.toFixed(
+                2,
+              )}{" "}
               t:
-              {state.currentPageRecord.scores.tocScore.toFixed(2)} tb:
+              {state.currentPageRecord.scores.tocScore.toFixed(
+                2,
+              )}{" "}
+              tb:
               {state.currentPageRecord.scores.tableScore.toFixed(
                 2,
               )}{" "}
               b:
-              {state.currentPageRecord.scores.bodyScore.toFixed(2)} r:
+              {state.currentPageRecord.scores.bodyScore.toFixed(
+                2,
+              )}{" "}
+              r:
               {state.currentPageRecord.scores.revisionScore.toFixed(
                 2,
               )}
@@ -277,7 +310,9 @@ export default function WorkspacePdfPane({
               <button
                 type="button"
                 style={menuBtn}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() =>
+                  fileInputRef.current?.click()
+                }
               >
                 Upload PDF
               </button>
@@ -288,23 +323,32 @@ export default function WorkspacePdfPane({
               >
                 Reload document
               </button>
-              <Link href="/workspace/settings" style={menuLink}>
+              <Link
+                href="/workspace/settings"
+                style={menuLink}
+              >
                 Workspace settings
               </Link>
               <Link href="/jobs" style={menuLink}>
                 Job list
               </Link>
               {loading && (
-                <div style={{ fontSize: 11, color: "#64748b" }}>
+                <div
+                  style={{ fontSize: 11, color: "#64748b" }}
+                >
                   문서를 분석 중입니다.
                 </div>
               )}
               {error && (
-                <div style={{ fontSize: 11, color: "#b91c1c" }}>
+                <div
+                  style={{ fontSize: 11, color: "#b91c1c" }}
+                >
                   {error}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: "#64748b" }}>
+              <div
+                style={{ fontSize: 11, color: "#64748b" }}
+              >
                 Pages: {state.numPages || "-"}
               </div>
               {state.analysisHealth && (
@@ -321,8 +365,15 @@ export default function WorkspacePdfPane({
                   }}
                 >
                   Analysis: {state.analysisHealth.mode} /{" "}
-                  {state.analysisHealth.available ? "ok" : "degraded"}
-                  <div style={{ marginTop: 2, color: "#64748b" }}>
+                  {state.analysisHealth.available
+                    ? "ok"
+                    : "degraded"}
+                  <div
+                    style={{
+                      marginTop: 2,
+                      color: "#64748b",
+                    }}
+                  >
                     {state.analysisHealth.message}
                   </div>
                 </div>

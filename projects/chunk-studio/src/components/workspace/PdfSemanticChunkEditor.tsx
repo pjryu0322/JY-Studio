@@ -90,9 +90,14 @@ export default function PdfSemanticChunkEditor({
           onFamilyHintChange={state.setFamilyHint}
           onHoverPage={state.setHoveredAnalyzerPage}
           onSelectPage={(pageNumber) =>
-            state.scrollToPage(pageNumber, scrollRef.current)
+            state.scrollToPage(
+              pageNumber,
+              scrollRef.current,
+            )
           }
-          onOverrideOrientation={state.onOverrideOrientation}
+          onOverrideOrientation={
+            state.onOverrideOrientation
+          }
           onOverridePageType={state.onOverridePageType}
           onOverrideSubType={state.onOverrideSubType}
         />

@@ -19,8 +19,14 @@ interface PageAnalyzerPanelProps {
     page: number,
     value: PageOrientation,
   ) => void;
-  onOverridePageType: (page: number, value: PageType) => void;
-  onOverrideSubType: (page: number, value: PageSubType) => void;
+  onOverridePageType: (
+    page: number,
+    value: PageType,
+  ) => void;
+  onOverrideSubType: (
+    page: number,
+    value: PageSubType,
+  ) => void;
 }
 
 export default function PageAnalyzerPanel({
@@ -54,7 +60,8 @@ export default function PageAnalyzerPanel({
           Page Type Analyzer
         </strong>
         <span style={{ fontSize: 12, color: "#64748b" }}>
-          페이지 구조를 먼저 점검하고 필요하면 타입을 수동 보정하세요.
+          페이지 구조를 먼저 점검하고 필요하면 타입을 수동
+          보정하세요.
         </span>
       </div>
       <div
@@ -79,14 +86,22 @@ export default function PageAnalyzerPanel({
           <select
             value={familyHint}
             onChange={(e) =>
-              onFamilyHintChange(e.target.value as DocumentFamily)
+              onFamilyHintChange(
+                e.target.value as DocumentFamily,
+              )
             }
             style={selector}
           >
-            <option value="guide_manual">guide_manual</option>
+            <option value="guide_manual">
+              guide_manual
+            </option>
             <option value="public_rfp">public_rfp</option>
-            <option value="policy_manual">policy_manual</option>
-            <option value="unknown_generic">unknown_generic</option>
+            <option value="policy_manual">
+              policy_manual
+            </option>
+            <option value="unknown_generic">
+              unknown_generic
+            </option>
           </select>
         </label>
       </div>
@@ -100,9 +115,13 @@ export default function PageAnalyzerPanel({
             <button
               key={`page-profile-${profile.pageNumber}`}
               type="button"
-              onMouseEnter={() => onHoverPage(profile.pageNumber)}
+              onMouseEnter={() =>
+                onHoverPage(profile.pageNumber)
+              }
               onMouseLeave={() => onHoverPage(null)}
-              onClick={() => onSelectPage(profile.pageNumber)}
+              onClick={() =>
+                onSelectPage(profile.pageNumber)
+              }
               style={{
                 textAlign: "left",
                 border: "1px solid #dbe3f1",
@@ -124,10 +143,14 @@ export default function PageAnalyzerPanel({
                   alignItems: "center",
                 }}
               >
-                <strong style={{ fontSize: 13, color: "#0f172a" }}>
+                <strong
+                  style={{ fontSize: 13, color: "#0f172a" }}
+                >
                   Page {profile.pageNumber}
                 </strong>
-                <span style={{ fontSize: 11, color: "#64748b" }}>
+                <span
+                  style={{ fontSize: 11, color: "#64748b" }}
+                >
                   {Math.round(profile.confidence * 100)}%
                 </span>
               </div>
@@ -135,8 +158,14 @@ export default function PageAnalyzerPanel({
                 label="orientation"
                 value={profile.orientationFinal}
               />
-              <Row label="type" value={profile.pageTypeFinal} />
-              <Row label="subtype" value={profile.subTypeFinal} />
+              <Row
+                label="type"
+                value={profile.pageTypeFinal}
+              />
+              <Row
+                label="subtype"
+                value={profile.subTypeFinal}
+              />
               <Row
                 label="confidence"
                 value={
@@ -163,11 +192,15 @@ export default function PageAnalyzerPanel({
                       event.target.value as PageOrientation,
                     );
                   }}
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) =>
+                    event.stopPropagation()
+                  }
                   style={selector}
                 >
                   <option value="portrait">portrait</option>
-                  <option value="landscape">landscape</option>
+                  <option value="landscape">
+                    landscape
+                  </option>
                 </select>
               </label>
               <label
@@ -188,7 +221,9 @@ export default function PageAnalyzerPanel({
                       event.target.value as PageType,
                     );
                   }}
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) =>
+                    event.stopPropagation()
+                  }
                   style={selector}
                 >
                   <option value="cover">cover</option>
@@ -218,10 +253,14 @@ export default function PageAnalyzerPanel({
                       event.target.value as PageSubType,
                     );
                   }}
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) =>
+                    event.stopPropagation()
+                  }
                   style={selector}
                 >
-                  <option value="title_cover">title_cover</option>
+                  <option value="title_cover">
+                    title_cover
+                  </option>
                   <option value="revision_history_table">
                     revision_history_table
                   </option>
@@ -250,7 +289,13 @@ export default function PageAnalyzerPanel({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div
       style={{
