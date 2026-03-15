@@ -4,6 +4,7 @@
  * Analyzer-only presentation layer.
  * Renders page classification cards and override controls.
  */
+import { useMemo, useState } from "react";
 import { type PageType } from "./pageTypeClassifier";
 import type {
   DocumentFamily,
@@ -44,6 +45,16 @@ export default function PageAnalyzerPanel({
   onOverridePageType,
   onOverrideSubType,
 }: PageAnalyzerPanelProps) {
+  const [sortByConfidence, setSortByConfidence] =
+    useState(false);
+
+  const orderedProfiles = useMemo(() => {
+    if (!sortByConfidence) return pageProfiles;
+    return [...pageProfiles].sort(
+      (a, b) => a.confidence - b.confidence,
+    );
+  }, [pageProfiles, sortByConfidence]);
+
   return (
     <aside
       style={{
@@ -108,6 +119,24 @@ export default function PageAnalyzerPanel({
             </option>
           </select>
         </label>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            color: "#334155",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={sortByConfidence}
+            onChange={(event) =>
+              setSortByConfidence(event.target.checked)
+            }
+          />
+          Sort by confidence
+        </label>
       </div>
       {pageProfiles.length === 0 ? (
         <div style={{ fontSize: 12, color: "#64748b" }}>
@@ -115,7 +144,11 @@ export default function PageAnalyzerPanel({
         </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {pageProfiles.map((profile) => (
+          {orderedProfiles.map((profile) => {
+            const confidenceLevel = getConfidenceLevel(
+              profile.confidence,
+            );
+            return (
             <button
               key={`page-profile-${profile.pageNumber}`}
               type="button"
@@ -151,12 +184,40 @@ export default function PageAnalyzerPanel({
                   style={{ fontSize: 13, color: "#0f172a" }}
                 >
                   Page {profile.pageNumber}
+                  {confidenceLevel.level === "low" && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        color: "#dc2626",
+                        fontSize: 12,
+                      }}
+                      aria-label="low confidence warning"
+                      title="Low confidence"
+                    >
+                      ⚠
+                    </span>
+                  )}
                 </strong>
-                <span
-                  style={{ fontSize: 11, color: "#64748b" }}
-                >
+                <span style={confidenceBadge(confidenceLevel.color)}>
                   {Math.round(profile.confidence * 100)}%
                 </span>
+              </div>
+              <div
+                style={{
+                  height: 6,
+                  borderRadius: 999,
+                  background: "#e5e7eb",
+                  overflow: "hidden",
+                }}
+                aria-label={`confidence bar ${profile.confidence.toFixed(2)}`}
+              >
+                <div
+                  style={{
+                    width: `${Math.round(profile.confidence * 100)}%`,
+                    height: "100%",
+                    background: confidenceLevel.color,
+                  }}
+                />
               </div>
               <Row
                 label="orientation"
@@ -286,7 +347,8 @@ export default function PageAnalyzerPanel({
                 </select>
               </label>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </aside>
@@ -324,3 +386,27 @@ const selector = {
   color: "#334155",
   width: "100%",
 } as const;
+
+function getConfidenceLevel(confidence: number): {
+  level: "high" | "medium" | "low";
+  color: string;
+} {
+  if (confidence > 0.85) {
+    return { level: "high", color: "#16a34a" };
+  }
+  if (confidence >= 0.6) {
+    return { level: "medium", color: "#d97706" };
+  }
+  return { level: "low", color: "#dc2626" };
+}
+
+function confidenceBadge(color: string) {
+  return {
+    fontSize: 11,
+    color: "#fff",
+    background: color,
+    borderRadius: 999,
+    padding: "2px 8px",
+    fontWeight: 700,
+  } as const;
+}
