@@ -1,0 +1,131 @@
+name: GPT PR Review (Chunk Studio)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "projects/chunk-studio/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  gpt_review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare diff context
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed_files.txt
+          git diff --unified=0 "$BASE_SHA" "$HEAD_SHA" -- projects/chunk-studio > diff.patch || true
+
+          echo "changed_files<<EOF" >> "$GITHUB_OUTPUT"
+          cat changed_files.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          # Keep payload size bounded for API requests.
+          MAX_CHARS=120000
+          DIFF_CONTENT=$(cat diff.patch)
+          DIFF_TRIMMED="${DIFF_CONTENT:0:$MAX_CHARS}"
+
+          {
+            echo "diff_trimmed<<EOF"
+            echo "$DIFF_TRIMMED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build GPT prompt
+        id: prompt
+        shell: bash
+        run: |
+          set -euo pipefail
+          REVIEW_PROMPT=$(cat projects/chunk-studio/docs/automation/GPT_REVIEW_PROMPT.md)
+
+          {
+            echo "prompt<<EOF"
+            echo "$REVIEW_PROMPT"
+            echo
+            echo "## Changed files"
+            echo "${{ steps.diff.outputs.changed_files }}"
+            echo
+            echo "## Diff"
+            echo '${{ steps.diff.outputs.diff_trimmed }}'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Call OpenAI Responses API
+        id: gpt
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "OPENAI_API_KEY is not configured."
+            exit 1
+          fi
+
+          python - <<'PY'
+import json
+import os
+import urllib.request
+
+prompt = os.environ["GPT_PROMPT"]
+api_key = os.environ["OPENAI_API_KEY"]
+
+payload = {
+    "model": "gpt-4.1-mini",
+    "input": [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt
+                }
+            ]
+        }
+    ]
+}
+
+req = urllib.request.Request(
+    "https://api.openai.com/v1/responses",
+    data=json.dumps(payload).encode("utf-8"),
+    headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    },
+    method="POST"
+)
+
+with urllib.request.urlopen(req) as resp:
+    body = json.loads(resp.read().decode("utf-8"))
+
+text = body.get("output_text", "").strip()
+if not text:
+    text = "No response text returned by model."
+
+with open("gpt_review.md", "w", encoding="utf-8") as f:
+    f.write("## GPT Automated Review\n\n")
+    f.write(text)
+PY
+        env:
+          GPT_PROMPT: ${{ steps.prompt.outputs.prompt }}
+
+      - name: Comment on PR
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-path: gpt_review.md
