@@ -3,12 +3,12 @@
     "repository": "https://github.com/pjryu0322/JY-Studio",
     "projectRoot": "projects/chunk-studio",
     "branch": "main",
-    "commit": "d0a02d5a5525dddd5a7aeca9ee9958421547d02c",
-    "generatedAtUTC": "2026-03-15T06:54:39.378Z",
+    "commit": "d19e979f47f2de093d9914698c6c3549ff0916c4",
+    "generatedAtUTC": "2026-03-15T07:00:05.582Z",
     "generatedBy": "cursor-verification-script"
   },
   "gitState": {
-    "headCommit": "d0a02d5a5525dddd5a7aeca9ee9958421547d02c",
+    "headCommit": "d19e979f47f2de093d9914698c6c3549ff0916c4",
     "remote": "origin",
     "remoteUrl": "git@github.com:pjryu0322/JY-Studio.git",
     "workingTreeClean": false,
@@ -27,10 +27,10 @@
   "verifiedFiles": [
     {
       "path": "projects/chunk-studio/src/components/workspace/useWorkspaceState.ts",
-      "gitShowLineCount": 807,
-      "gitBlobSha": "b8f136cc00fc8a0321eae95a809fd66726cffd7c",
-      "sha256": "b4b5b61dc7fedc72589aaf57a5decec00385c485ade31d94f05f50c66c642778",
-      "sizeBytes": 20990,
+      "gitShowLineCount": 826,
+      "gitBlobSha": "22b616a4aab0ab34e96e0e6f11a85ccab9dbab75",
+      "sha256": "cc5012035c15b866edb6f58ff2808febb660c1935f5b71513a617f6332c1716f",
+      "sizeBytes": 21547,
       "encoding": "utf-8"
     },
     {
@@ -43,10 +43,10 @@
     },
     {
       "path": "projects/chunk-studio/src/components/workspace/ChunkOverlayCanvas.tsx",
-      "gitShowLineCount": 190,
-      "gitBlobSha": "153e4ab8f7e84d048349acfec7ca07cd0d7e981e",
-      "sha256": "9e9f17cf4f187d1129339141c70016a9699ed11aea4a0ba497deda213c13b98e",
-      "sizeBytes": 4925,
+      "gitShowLineCount": 282,
+      "gitBlobSha": "59c029765412b805bcd97a0a868e0496429e4f44",
+      "sha256": "f1251d1ac5e3f4470ae1c26c330541056cac4421b40cf68a94a1bfbcbc09ab95",
+      "sizeBytes": 7449,
       "encoding": "utf-8"
     },
     {

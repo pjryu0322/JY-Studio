@@ -5,7 +5,9 @@
  * Shows selected chunk details and edit action entry points.
  */
 import type { ChunkDTO } from "@/types/job";
+import { useMemo } from "react";
 import { mapChunkToPage } from "@/lib/analysis/chunkMappingService";
+import { evaluateChunkQuality } from "@/lib/chunking/quality/chunkQualityScore";
 
 interface ChunkInspectorProps {
   visibleChunks: ChunkDTO[];
@@ -41,6 +43,17 @@ export default function ChunkInspector({
   onEditLabel,
   onEditReviewNote,
 }: ChunkInspectorProps) {
+  const qualityMetrics = useMemo(
+    () =>
+      selectedChunk
+        ? evaluateChunkQuality(selectedChunk)
+        : null,
+    [selectedChunk],
+  );
+  const qualityTone = qualityMetrics
+    ? getQualityTone(qualityMetrics.qualityScore)
+    : null;
+
   return (
     <div
       style={{
@@ -132,6 +145,72 @@ export default function ChunkInspector({
           <div style={{ fontSize: 11, color: "#64748b" }}>
             ai suggestion: {suggestion}
           </div>
+          {qualityMetrics && qualityTone && (
+            <div
+              style={{
+                border: "1px solid #dbe3f1",
+                borderRadius: 8,
+                padding: 8,
+                display: "grid",
+                gap: 6,
+                background: "#f8fafc",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#334155",
+                    fontWeight: 700,
+                  }}
+                >
+                  retrieval quality
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#fff",
+                    background: qualityTone.color,
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {Math.round(
+                    qualityMetrics.qualityScore * 100,
+                  )}
+                  %
+                </span>
+              </div>
+              <MetricRow
+                label="quality score"
+                value={qualityMetrics.qualityScore}
+                color={qualityTone.color}
+              />
+              <MetricRow
+                label="boundary score"
+                value={qualityMetrics.boundaryScore}
+                color="#2563eb"
+              />
+              <MetricRow
+                label="noise score"
+                value={qualityMetrics.noiseScore}
+                color="#dc2626"
+              />
+              <MetricRow
+                label="structure score"
+                value={qualityMetrics.structureScore}
+                color="#7c3aed"
+              />
+            </div>
+          )}
           <div
             style={{
               display: "flex",
@@ -222,3 +301,64 @@ const selector = {
   color: "#334155",
   width: "100%",
 } as const;
+
+function MetricRow({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  const pct = Math.round(value * 100);
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 4,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          fontSize: 11,
+          color: "#475569",
+        }}
+      >
+        <span>{label}</span>
+        <span>{pct}%</span>
+      </div>
+      <div
+        style={{
+          height: 6,
+          borderRadius: 999,
+          background: "#e2e8f0",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: color,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function getQualityTone(score: number): {
+  level: "good" | "acceptable" | "poor";
+  color: string;
+} {
+  if (score >= 0.75) {
+    return { level: "good", color: "#16a34a" };
+  }
+  if (score >= 0.55) {
+    return { level: "acceptable", color: "#d97706" };
+  }
+  return { level: "poor", color: "#dc2626" };
+}
