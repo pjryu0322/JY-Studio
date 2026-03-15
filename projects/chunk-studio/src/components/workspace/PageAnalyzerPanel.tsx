@@ -15,7 +15,10 @@ interface PageAnalyzerPanelProps {
   onFamilyHintChange: (value: DocumentFamily) => void;
   onHoverPage: (page: number | null) => void;
   onSelectPage: (page: number) => void;
-  onOverrideOrientation: (page: number, value: PageOrientation) => void;
+  onOverrideOrientation: (
+    page: number,
+    value: PageOrientation,
+  ) => void;
   onOverridePageType: (page: number, value: PageType) => void;
   onOverrideSubType: (page: number, value: PageSubType) => void;
 }
@@ -65,7 +68,12 @@ export default function PageAnalyzerPanel({
         }}
       >
         <label
-          style={{ display: "grid", gap: 4, fontSize: 12, color: "#334155" }}
+          style={{
+            display: "grid",
+            gap: 4,
+            fontSize: 12,
+            color: "#334155",
+          }}
         >
           document family
           <select
@@ -123,13 +131,18 @@ export default function PageAnalyzerPanel({
                   {Math.round(profile.confidence * 100)}%
                 </span>
               </div>
-              <Row label="orientation" value={profile.orientationFinal} />
+              <Row
+                label="orientation"
+                value={profile.orientationFinal}
+              />
               <Row label="type" value={profile.pageTypeFinal} />
               <Row label="subtype" value={profile.subTypeFinal} />
               <Row
                 label="confidence"
                 value={
-                  profile.confidence > 0 ? profile.confidence.toFixed(2) : "-"
+                  profile.confidence > 0
+                    ? profile.confidence.toFixed(2)
+                    : "-"
                 }
               />
               <label
@@ -182,7 +195,9 @@ export default function PageAnalyzerPanel({
                   <option value="toc">toc</option>
                   <option value="table">table</option>
                   <option value="body">body</option>
-                  <option value="revision_or_form">revision_or_form</option>
+                  <option value="revision_or_form">
+                    revision_or_form
+                  </option>
                 </select>
               </label>
               <label
@@ -210,11 +225,21 @@ export default function PageAnalyzerPanel({
                   <option value="revision_history_table">
                     revision_history_table
                   </option>
-                  <option value="narrative_body">narrative_body</option>
-                  <option value="body_with_diagram">body_with_diagram</option>
-                  <option value="body_with_table">body_with_table</option>
-                  <option value="table_reference">table_reference</option>
-                  <option value="body_with_examples">body_with_examples</option>
+                  <option value="narrative_body">
+                    narrative_body
+                  </option>
+                  <option value="body_with_diagram">
+                    body_with_diagram
+                  </option>
+                  <option value="body_with_table">
+                    body_with_table
+                  </option>
+                  <option value="table_reference">
+                    table_reference
+                  </option>
+                  <option value="body_with_examples">
+                    body_with_examples
+                  </option>
                 </select>
               </label>
             </button>

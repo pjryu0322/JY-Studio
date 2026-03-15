@@ -40,11 +40,17 @@ export default function ChunkOverlayCanvas({
   const chunkOverlays = visibleChunks
     .map((chunk) => ({ chunk, mapped: mapChunkToPage(chunk) }))
     .filter(({ mapped }) => {
-      if (mapped.pageStart == null || mapped.pageEnd == null) return false;
-      return mapped.pageStart <= pageNumber && pageNumber <= mapped.pageEnd;
+      if (mapped.pageStart == null || mapped.pageEnd == null)
+        return false;
+      return (
+        mapped.pageStart <= pageNumber && pageNumber <= mapped.pageEnd
+      );
     });
 
-  if (chunkOverlays.length === 0 && hoveredAnalyzerPage !== pageNumber) {
+  if (
+    chunkOverlays.length === 0 &&
+    hoveredAnalyzerPage !== pageNumber
+  ) {
     return null;
   }
 
@@ -69,7 +75,12 @@ export default function ChunkOverlayCanvas({
           overlayAnchorByKey[key] ??
           (
             chunk.meta as unknown as {
-              bboxList?: Array<{ x: number; y: number; w: number; h: number }>;
+              bboxList?: Array<{
+                x: number;
+                y: number;
+                w: number;
+                h: number;
+              }>;
             }
           ).bboxList?.[0];
         const fallbackTop = 0.02 + (idx % 7) * 0.13;

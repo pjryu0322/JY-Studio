@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   MouseEvent as ReactMouseEvent,
   WheelEvent as ReactWheelEvent,
@@ -44,49 +50,61 @@ export function useWorkspaceState({
 }: UseWorkspaceStateParams) {
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pdfViewMode, setPdfViewMode] = useState<PdfViewMode>("single");
+  const [pdfViewMode, setPdfViewMode] =
+    useState<PdfViewMode>("single");
   const [freezeCurrentPage, setFreezeCurrentPage] = useState(false);
   const [firstPageSize, setFirstPageSize] = useState<{
     width: number;
     height: number;
   } | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(null);
+  const [failedPdfJobId, setFailedPdfJobId] = useState<string | null>(
+    null,
+  );
   const [previewFailureReason, setPreviewFailureReason] = useState<
     string | null
   >(null);
-  const [pdfAvailabilityChecked, setPdfAvailabilityChecked] = useState(false);
+  const [pdfAvailabilityChecked, setPdfAvailabilityChecked] =
+    useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pageSizeByPage, setPageSizeByPage] = useState<
     Record<number, { width: number; height: number }>
   >({});
-  const [familyHint, setFamilyHint] = useState<DocumentFamily>("guide_manual");
+  const [familyHint, setFamilyHint] =
+    useState<DocumentFamily>("guide_manual");
   const [recordByPage, setRecordByPage] = useState<
     Record<number, PageClassificationRecord>
   >({});
   const [selectedPage, setSelectedPage] = useState<number>(1);
-  const [hoveredAnalyzerPage, setHoveredAnalyzerPage] = useState<number | null>(
+  const [hoveredAnalyzerPage, setHoveredAnalyzerPage] = useState<
+    number | null
+  >(null);
+  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(
     null,
   );
-  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
   const [analysisHealth, setAnalysisHealth] = useState<{
     mode: "external" | "local-fallback";
     available: boolean;
     message: string;
   } | null>(null);
   const [localChunks, setLocalChunks] = useState<ChunkDTO[]>([]);
-  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
-  const [excludedChunkIds, setExcludedChunkIds] = useState<Set<string>>(
-    new Set(),
-  );
-  const [editedLabels, setEditedLabels] = useState<Record<string, string>>({});
-  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [selectedChunkId, setSelectedChunkId] = useState<
+    string | null
+  >(null);
+  const [excludedChunkIds, setExcludedChunkIds] = useState<
+    Set<string>
+  >(new Set());
+  const [editedLabels, setEditedLabels] = useState<
+    Record<string, string>
+  >({});
+  const [reviewNotes, setReviewNotes] = useState<
+    Record<string, string>
+  >({});
   const [overlayAnchorByKey, setOverlayAnchorByKey] = useState<
     Record<string, { x: number; y: number; w: number; h: number }>
   >({});
-  const [dragBoundary, setDragBoundary] = useState<DragBoundaryState | null>(
-    null,
-  );
+  const [dragBoundary, setDragBoundary] =
+    useState<DragBoundaryState | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const analyzedPageRef = useRef<Set<number>>(new Set());
   const wheelSwitchAtRef = useRef(0);
@@ -112,7 +130,10 @@ export function useWorkspaceState({
     return Math.max(120, Math.floor(pageWidth * zoom));
   }, [currentPage, firstPageSize, pageSizeByPage, pdfViewMode, zoom]);
 
-  const zoomPercentLabel = useMemo(() => `${Math.round(zoom * 100)}%`, [zoom]);
+  const zoomPercentLabel = useMemo(
+    () => `${Math.round(zoom * 100)}%`,
+    [zoom],
+  );
 
   const pageProfiles = useMemo(() => {
     if (!numPages) return [] as PageClassificationRecord[];
@@ -135,7 +156,13 @@ export function useWorkspaceState({
       );
     }
     return items;
-  }, [numPages, pageSizeByPage, firstPageSize, recordByPage, familyHint]);
+  }, [
+    numPages,
+    pageSizeByPage,
+    firstPageSize,
+    recordByPage,
+    familyHint,
+  ]);
 
   const visibleChunks = useMemo(() => {
     return localChunks
@@ -157,8 +184,9 @@ export function useWorkspaceState({
     if (!visibleChunks.length) return null;
     if (!selectedChunkId) return visibleChunks[0];
     return (
-      visibleChunks.find((chunk) => chunk.meta.chunkId === selectedChunkId) ??
-      visibleChunks[0]
+      visibleChunks.find(
+        (chunk) => chunk.meta.chunkId === selectedChunkId,
+      ) ?? visibleChunks[0]
     );
   }, [visibleChunks, selectedChunkId]);
 
@@ -190,7 +218,9 @@ export function useWorkspaceState({
 
   useEffect(() => {
     if (!selectedJobId) return;
-    setLocalChunks((prev) => (prev.length > 0 ? prev : (detail?.chunks ?? [])));
+    setLocalChunks((prev) =>
+      prev.length > 0 ? prev : (detail?.chunks ?? []),
+    );
   }, [detail?.chunks, selectedJobId]);
 
   useEffect(() => {
@@ -270,9 +300,16 @@ export function useWorkspaceState({
           );
           const diff = nextY - current.y;
           const nextH = clamp(current.h - diff, 0.02, 0.98);
-          return { ...prev, [key]: { ...current, y: nextY, h: nextH } };
+          return {
+            ...prev,
+            [key]: { ...current, y: nextY, h: nextH },
+          };
         }
-        const nextH = clamp(current.h + deltaNorm, 0.02, 0.98 - current.y);
+        const nextH = clamp(
+          current.h + deltaNorm,
+          0.02,
+          0.98 - current.y,
+        );
         return { ...prev, [key]: { ...current, h: nextH } };
       });
     };
@@ -319,7 +356,9 @@ export function useWorkspaceState({
       } catch {
         if (cancelled) return;
         setFailedPdfJobId(selectedJobId);
-        setPreviewFailureReason("파일 형식 또는 렌더러 상태를 확인해 주세요.");
+        setPreviewFailureReason(
+          "파일 형식 또는 렌더러 상태를 확인해 주세요.",
+        );
       } finally {
         if (!cancelled) setPdfAvailabilityChecked(true);
       }
@@ -359,17 +398,32 @@ export function useWorkspaceState({
         blocks,
         familyHint,
       });
-      setRecordByPage((prev) => ({ ...prev, [pageNumber]: localRecord }));
+      setRecordByPage((prev) => ({
+        ...prev,
+        [pageNumber]: localRecord,
+      }));
       void (async () => {
         try {
-          const res = await fetch("/api/analysis/page-understanding", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pageNumber, pageSize, blocks, familyHint }),
-          });
+          const res = await fetch(
+            "/api/analysis/page-understanding",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pageNumber,
+                pageSize,
+                blocks,
+                familyHint,
+              }),
+            },
+          );
           if (!res.ok) return;
-          const remote = (await res.json()) as PageClassificationRecord;
-          setRecordByPage((prev) => ({ ...prev, [pageNumber]: remote }));
+          const remote =
+            (await res.json()) as PageClassificationRecord;
+          setRecordByPage((prev) => ({
+            ...prev,
+            [pageNumber]: remote,
+          }));
         } catch {
           // keep local classifier result
         }
@@ -407,9 +461,13 @@ export function useWorkspaceState({
       let nearestPage = 1;
       let nearestDist = Number.POSITIVE_INFINITY;
       for (const page of pages) {
-        const value = Number(page.getAttribute("data-page-number") ?? "0");
+        const value = Number(
+          page.getAttribute("data-page-number") ?? "0",
+        );
         if (!value) continue;
-        const dist = Math.abs(page.getBoundingClientRect().top - viewportTop);
+        const dist = Math.abs(
+          page.getBoundingClientRect().top - viewportTop,
+        );
         if (dist < nearestDist) {
           nearestDist = dist;
           nearestPage = value;
@@ -468,7 +526,13 @@ export function useWorkspaceState({
       );
       setZoom(nextScale);
     },
-    [currentPage, firstPageSize, pageSizeByPage, pdfViewMode, renderWidth],
+    [
+      currentPage,
+      firstPageSize,
+      pageSizeByPage,
+      pdfViewMode,
+      renderWidth,
+    ],
   );
 
   const startBoundaryDrag = useCallback(
@@ -519,7 +583,8 @@ export function useWorkspaceState({
     setLocalChunks((prev) => mergeChunkWithNext(prev, chunkId));
     setReviewNotes((prev) => ({
       ...prev,
-      [chunkId]: (prev[chunkId] ?? "") + "\n[merge] applied with next chunk",
+      [chunkId]:
+        (prev[chunkId] ?? "") + "\n[merge] applied with next chunk",
     }));
     fireWorkspaceAudit(selectedJobId, "merge_chunk", { chunkId });
   }, [selectedChunk, selectedJobId]);
@@ -531,18 +596,25 @@ export function useWorkspaceState({
     setReviewNotes((prev) => ({
       ...prev,
       [chunkId]:
-        (prev[chunkId] ?? "") + "\n[split] applied near sentence midpoint",
+        (prev[chunkId] ?? "") +
+        "\n[split] applied near sentence midpoint",
     }));
     fireWorkspaceAudit(selectedJobId, "split_chunk", { chunkId });
   }, [selectedChunk, selectedJobId]);
 
-  const setChunkLabel = useCallback((chunkId: string, value: string) => {
-    setEditedLabels((prev) => ({ ...prev, [chunkId]: value }));
-  }, []);
+  const setChunkLabel = useCallback(
+    (chunkId: string, value: string) => {
+      setEditedLabels((prev) => ({ ...prev, [chunkId]: value }));
+    },
+    [],
+  );
 
-  const setChunkReviewNote = useCallback((chunkId: string, value: string) => {
-    setReviewNotes((prev) => ({ ...prev, [chunkId]: value }));
-  }, []);
+  const setChunkReviewNote = useCallback(
+    (chunkId: string, value: string) => {
+      setReviewNotes((prev) => ({ ...prev, [chunkId]: value }));
+    },
+    [],
+  );
 
   const onOverrideOrientation = useCallback(
     (pageNumber: number, value: PageOrientation) => {
@@ -659,7 +731,9 @@ export function useWorkspaceState({
   };
 }
 
-export type WorkspaceStateController = ReturnType<typeof useWorkspaceState>;
+export type WorkspaceStateController = ReturnType<
+  typeof useWorkspaceState
+>;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

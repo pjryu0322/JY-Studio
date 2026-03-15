@@ -47,10 +47,16 @@ export default function ChunkInspector({
         Semantic Chunk Editor
       </strong>
       <div
-        style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto" }}
+        style={{
+          display: "grid",
+          gap: 6,
+          maxHeight: 220,
+          overflowY: "auto",
+        }}
       >
         {visibleChunks.map((chunk) => {
-          const selected = selectedChunk?.meta.chunkId === chunk.meta.chunkId;
+          const selected =
+            selectedChunk?.meta.chunkId === chunk.meta.chunkId;
           const mapped = mapChunkToPage(chunk);
           return (
             <button
@@ -62,7 +68,9 @@ export default function ChunkInspector({
               }}
               style={{
                 textAlign: "left",
-                border: selected ? "1px solid #2563eb" : "1px solid #dbe3f1",
+                border: selected
+                  ? "1px solid #2563eb"
+                  : "1px solid #dbe3f1",
                 borderRadius: 8,
                 background: selected ? "#eff6ff" : "#fff",
                 padding: 8,
@@ -103,8 +111,8 @@ export default function ChunkInspector({
             selected: {selectedChunk.meta.chunkId}
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
-            boundary drag: 오버레이 상/하단 주황 핸들을 드래그해 경계를
-            조정하세요.
+            boundary drag: 오버레이 상/하단 주황 핸들을 드래그해
+            경계를 조정하세요.
           </div>
           <div style={{ fontSize: 11, color: "#64748b" }}>
             ai suggestion: {suggestion}
@@ -154,7 +162,10 @@ export default function ChunkInspector({
           <textarea
             value={reviewNotes[selectedChunk.meta.chunkId] ?? ""}
             onChange={(e) =>
-              onEditReviewNote(selectedChunk.meta.chunkId, e.target.value)
+              onEditReviewNote(
+                selectedChunk.meta.chunkId,
+                e.target.value,
+              )
             }
             rows={3}
             placeholder="review note"

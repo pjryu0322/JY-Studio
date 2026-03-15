@@ -52,7 +52,9 @@ export default function WorkspacePdfPane({
           state.updateCurrentPageFromViewport(event.currentTarget)
         }
         onWheelCapture={
-          state.pdfViewMode === "single" ? state.handleViewportWheel : undefined
+          state.pdfViewMode === "single"
+            ? state.handleViewportWheel
+            : undefined
         }
         style={{
           flex: 1,
@@ -97,7 +99,9 @@ export default function WorkspacePdfPane({
             onLoadSuccess={state.setNumPages}
             onLoadError={() => {
               state.setFailedPdfJobId(selectedJobId);
-              state.setPreviewFailureReason("원본 PDF 렌더링에 실패했습니다.");
+              state.setPreviewFailureReason(
+                "원본 PDF 렌더링에 실패했습니다.",
+              );
             }}
           />
         ) : state.canPreviewPdf && !state.pdfAvailabilityChecked ? (
@@ -110,7 +114,8 @@ export default function WorkspacePdfPane({
               PDF 미리보기를 불러오지 못했습니다.
             </div>
             <div>
-              {state.previewFailureReason ?? "원본 PDF 렌더링에 실패했습니다."}
+              {state.previewFailureReason ??
+                "원본 PDF 렌더링에 실패했습니다."}
             </div>
             <div>파일 형식 또는 렌더러 상태를 확인해 주세요.</div>
           </div>
@@ -160,8 +165,13 @@ export default function WorkspacePdfPane({
             style={{
               ...floatingButton,
               background:
-                state.pdfViewMode === "continuous" ? "#e0e7ff" : "#fff",
-              color: state.pdfViewMode === "continuous" ? "#3730a3" : "#0f172a",
+                state.pdfViewMode === "continuous"
+                  ? "#e0e7ff"
+                  : "#fff",
+              color:
+                state.pdfViewMode === "continuous"
+                  ? "#3730a3"
+                  : "#0f172a",
             }}
             onClick={() => state.setPdfViewMode("continuous")}
           >
@@ -171,8 +181,12 @@ export default function WorkspacePdfPane({
             type="button"
             style={{
               ...floatingButton,
-              background: state.pdfViewMode === "single" ? "#e0e7ff" : "#fff",
-              color: state.pdfViewMode === "single" ? "#3730a3" : "#0f172a",
+              background:
+                state.pdfViewMode === "single" ? "#e0e7ff" : "#fff",
+              color:
+                state.pdfViewMode === "single"
+                  ? "#3730a3"
+                  : "#0f172a",
             }}
             onClick={() => state.setPdfViewMode("single")}
           >
@@ -209,20 +223,37 @@ export default function WorkspacePdfPane({
             }}
           >
             <div>
-              blocks {state.currentPageRecord.features.textBlockCount} / avgLen{" "}
-              {Math.round(state.currentPageRecord.features.averageLineLength)}
+              blocks {state.currentPageRecord.features.textBlockCount}{" "}
+              / avgLen{" "}
+              {Math.round(
+                state.currentPageRecord.features.averageLineLength,
+              )}
             </div>
             <div>
-              score c:{state.currentPageRecord.scores.coverScore.toFixed(2)} t:
+              score c:
+              {state.currentPageRecord.scores.coverScore.toFixed(2)}{" "}
+              t:
               {state.currentPageRecord.scores.tocScore.toFixed(2)} tb:
-              {state.currentPageRecord.scores.tableScore.toFixed(2)} b:
+              {state.currentPageRecord.scores.tableScore.toFixed(
+                2,
+              )}{" "}
+              b:
               {state.currentPageRecord.scores.bodyScore.toFixed(2)} r:
-              {state.currentPageRecord.scores.revisionScore.toFixed(2)}
+              {state.currentPageRecord.scores.revisionScore.toFixed(
+                2,
+              )}
             </div>
           </div>
         )}
 
-        <div style={{ position: "fixed", bottom: 16, left: 16, zIndex: 50 }}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: 16,
+            zIndex: 50,
+          }}
+        >
           <button
             type="button"
             style={floatingButton}
@@ -269,7 +300,9 @@ export default function WorkspacePdfPane({
                 </div>
               )}
               {error && (
-                <div style={{ fontSize: 11, color: "#b91c1c" }}>{error}</div>
+                <div style={{ fontSize: 11, color: "#b91c1c" }}>
+                  {error}
+                </div>
               )}
               <div style={{ fontSize: 11, color: "#64748b" }}>
                 Pages: {state.numPages || "-"}

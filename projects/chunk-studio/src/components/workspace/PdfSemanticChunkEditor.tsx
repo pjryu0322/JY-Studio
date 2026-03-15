@@ -31,7 +31,10 @@ export default function PdfSemanticChunkEditor({
 
   if (!selectedJob || !state.canPreviewPdf) {
     return (
-      <WorkspaceEmptyState fileInputRef={fileInputRef} onUpload={onUpload} />
+      <WorkspaceEmptyState
+        fileInputRef={fileInputRef}
+        onUpload={onUpload}
+      />
     );
   }
 
