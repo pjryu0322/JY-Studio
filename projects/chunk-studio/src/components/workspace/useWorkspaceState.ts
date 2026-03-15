@@ -1,6 +1,9 @@
 "use client";
 
-// Central workspace state/controller for analyzer, overlay, and inspector flows.
+/*
+ * Central workspace state/controller for analyzer, overlay, and inspector flows.
+ * This hook owns mutable workspace coordination state and action handlers.
+ */
 import {
   useCallback,
   useEffect,

@@ -1,6 +1,9 @@
 "use client";
 
-// Thin composition shell for workspace modules.
+/*
+ * Thin composition shell.
+ * Wires state/controller with extracted workspace view modules.
+ */
 import { useRef } from "react";
 import type { Job, JobDetailDTO } from "@/types/job";
 import PageAnalyzerPanel from "./PageAnalyzerPanel";

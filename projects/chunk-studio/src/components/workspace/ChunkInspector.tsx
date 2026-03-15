@@ -1,6 +1,9 @@
 "use client";
 
-// Inspector-only UI for chunk selection details and edit actions.
+/*
+ * Inspector-only UI.
+ * Shows selected chunk details and edit action entry points.
+ */
 import type { ChunkDTO } from "@/types/job";
 import { mapChunkToPage } from "@/lib/analysis/chunkMappingService";
 
