@@ -552,6 +552,8 @@ export function useWorkspaceState({ selectedJob, detail }: UseWorkspaceStatePara
   };
 }
 
+export type WorkspaceStateController = ReturnType<typeof useWorkspaceState>;
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
