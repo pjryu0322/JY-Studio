@@ -12,12 +12,10 @@ const remoteVerificationPath = resolve(
 );
 
 const verifiedFiles = [
-  "projects/chunk-studio/src/components/workspace/useWorkspaceState.ts",
-  "projects/chunk-studio/src/components/workspace/PageAnalyzerPanel.tsx",
-  "projects/chunk-studio/src/components/workspace/ChunkOverlayCanvas.tsx",
-  "projects/chunk-studio/src/components/workspace/ChunkInspector.tsx",
-  "projects/chunk-studio/src/components/workspace/WorkspacePdfPane.tsx",
-  "projects/chunk-studio/src/components/workspace/PdfSemanticChunkEditor.tsx",
+  "projects/chunk-studio/src/lib/chunking/adaptive/documentFamilyResolver.ts",
+  "projects/chunk-studio/src/lib/chunking/adaptive/strategyResolver.ts",
+  "projects/chunk-studio/src/lib/chunking/chunkEngine.ts",
+  "projects/chunk-studio/src/lib/chunking/types.ts",
 ];
 
 function run(command, cwd = repoRoot) {

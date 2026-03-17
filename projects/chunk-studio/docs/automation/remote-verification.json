@@ -3,12 +3,12 @@
     "repository": "https://github.com/pjryu0322/JY-Studio",
     "projectRoot": "projects/chunk-studio",
     "branch": "main",
-    "commit": "5b7e2eeaea3d5effcf250e9b4851cf8dc7411222",
-    "generatedAtUTC": "2026-03-17T08:53:53.714Z",
+    "commit": "8602d03238df48680eea5312fb606841d431ccb3",
+    "generatedAtUTC": "2026-03-17T09:17:26.526Z",
     "generatedBy": "cursor-verification-script"
   },
   "gitState": {
-    "headCommit": "5b7e2eeaea3d5effcf250e9b4851cf8dc7411222",
+    "headCommit": "8602d03238df48680eea5312fb606841d431ccb3",
     "remote": "origin",
     "remoteUrl": "git@github.com:pjryu0322/JY-Studio.git",
     "workingTreeClean": false,
@@ -26,51 +26,35 @@
   },
   "verifiedFiles": [
     {
-      "path": "projects/chunk-studio/src/components/workspace/useWorkspaceState.ts",
-      "gitShowLineCount": 856,
-      "gitBlobSha": "b366491517faba54c9ed32667fb066f69fa3bba1",
-      "sha256": "3e115da4a6cfeb73c117dd78724d1a415a921b90613aa2df0c30cbadfce03a7b",
-      "sizeBytes": 22489,
+      "path": "projects/chunk-studio/src/lib/chunking/adaptive/documentFamilyResolver.ts",
+      "gitShowLineCount": 152,
+      "gitBlobSha": "cf1e801b58fa1506dd17a319a0450db35d3448e9",
+      "sha256": "4da386f7537533e7cc904676f679dbb27ef3d7bb17846f1a4494dd40ba609790",
+      "sizeBytes": 5366,
       "encoding": "utf-8"
     },
     {
-      "path": "projects/chunk-studio/src/components/workspace/PageAnalyzerPanel.tsx",
-      "gitShowLineCount": 412,
-      "gitBlobSha": "5ecbe5c31803398872d256531510e99d42110038",
-      "sha256": "11b36ea2dbc7a58dcf3543d98a4d436644eebe11e7b88026e667111dab84ffae",
-      "sizeBytes": 11738,
+      "path": "projects/chunk-studio/src/lib/chunking/adaptive/strategyResolver.ts",
+      "gitShowLineCount": 213,
+      "gitBlobSha": "1b66ac5fd67de9c100a9f591656437ca25aa5764",
+      "sha256": "f50b8ec9fa3be12b1a7062a9145e0c720b5cdbe653e111987bedefc6bba6d889",
+      "sizeBytes": 5933,
       "encoding": "utf-8"
     },
     {
-      "path": "projects/chunk-studio/src/components/workspace/ChunkOverlayCanvas.tsx",
-      "gitShowLineCount": 282,
-      "gitBlobSha": "59c029765412b805bcd97a0a868e0496429e4f44",
-      "sha256": "f1251d1ac5e3f4470ae1c26c330541056cac4421b40cf68a94a1bfbcbc09ab95",
-      "sizeBytes": 7449,
+      "path": "projects/chunk-studio/src/lib/chunking/chunkEngine.ts",
+      "gitShowLineCount": 685,
+      "gitBlobSha": "a582031566a4e5e41356dd272c0fcf6c02cd657f",
+      "sha256": "566be5026e9f47d72affe8eb52547bdba338b3c1783f6107f6c9055c32ced8f5",
+      "sizeBytes": 22408,
       "encoding": "utf-8"
     },
     {
-      "path": "projects/chunk-studio/src/components/workspace/ChunkInspector.tsx",
-      "gitShowLineCount": 364,
-      "gitBlobSha": "1475983d3912bb4b2a75c6a7a71b8aa3fe5dd7b7",
-      "sha256": "d0140a3afe6227c9fa7a783e9f4566a3be361e7eb973ba47ef9c98281efdd98a",
-      "sizeBytes": 9399,
-      "encoding": "utf-8"
-    },
-    {
-      "path": "projects/chunk-studio/src/components/workspace/WorkspacePdfPane.tsx",
-      "gitShowLineCount": 446,
-      "gitBlobSha": "e36ff51c55196fb343357f745710ceb031f9da7e",
-      "sha256": "b955533bd01282bf2c285b627d3bc86207ed9b5452105310fc887d211924ed3a",
-      "sizeBytes": 12201,
-      "encoding": "utf-8"
-    },
-    {
-      "path": "projects/chunk-studio/src/components/workspace/PdfSemanticChunkEditor.tsx",
-      "gitShowLineCount": 111,
-      "gitBlobSha": "fdf68680e10c4867f9d228b903fe5bced3e1ef41",
-      "sha256": "4c080c0371eaefc26ed6a85f35c6020ae5d7c24c86a7f9d5c3eddd39281d97fe",
-      "sizeBytes": 2965,
+      "path": "projects/chunk-studio/src/lib/chunking/types.ts",
+      "gitShowLineCount": 216,
+      "gitBlobSha": "d664ca0cc82776ff56774cd930dff7319fb1a0c6",
+      "sha256": "900946723a00e79aa6e23400aefff7583f4cae558b2f2d5e9d8405f58f03ce2d",
+      "sizeBytes": 4612,
       "encoding": "utf-8"
     }
   ],
