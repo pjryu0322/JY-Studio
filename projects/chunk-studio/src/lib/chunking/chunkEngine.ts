@@ -18,6 +18,10 @@ import { splitSentences, takeLastSentences } from "./rules/sentenceSplit";
 import { getTokenizer } from "./tokenizer";
 import { detectChunkType } from "./rules/chunkTypeDetector";
 import { isNoiseChunk } from "./rules/noiseFilter";
+import {
+  resolveDocumentFamily,
+  type DocumentFamilyResolverInput,
+} from "./adaptive/documentFamilyResolver";
 
 const PIPELINE_VERSION_FALLBACK = "chunk-v2.0.0";
 
@@ -37,6 +41,128 @@ function sectionKey(path: string[]): string {
 
 function normalizeSearchText(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function derivePageTypeDistribution(
+  blocks: Block[]
+): DocumentFamilyResolverInput["pageTypeDistribution"] {
+  const pageMap = new Map<number, Block[]>();
+  for (const block of blocks) {
+    if (typeof block.page !== "number") continue;
+    const curr = pageMap.get(block.page) ?? [];
+    curr.push(block);
+    pageMap.set(block.page, curr);
+  }
+
+  const counters = {
+    cover: 0,
+    toc: 0,
+    table: 0,
+    body: 0,
+    revision_or_form: 0,
+  };
+
+  for (const pageBlocks of pageMap.values()) {
+    const texts = pageBlocks.map((b) => b.text.trim()).filter(Boolean);
+    const merged = texts.join(" ");
+    const tableCount = pageBlocks.filter((b) => b.type === "table").length;
+    const headingCount = pageBlocks.filter((b) => b.type === "heading").length;
+    const listCount = pageBlocks.filter((b) => b.type === "list_item").length;
+    const labelLikeCount = texts.filter((t) => /^[^:]{1,24}\s*[:：]\s*\S+/.test(t)).length;
+    const tocLike =
+      /목차|table of contents|contents/i.test(merged) ||
+      texts.filter((t) => /(\.{3,}\s*\d+$)/.test(t)).length >= 2;
+    const coverLike = pageBlocks.length <= 8 && headingCount >= 1 && tableCount === 0;
+    const revisionLike = labelLikeCount >= 2 || /revision|version|개정|이력|승인|검토/i.test(merged);
+
+    if (tocLike) {
+      counters.toc += 1;
+    } else if (revisionLike && listCount === 0) {
+      counters.revision_or_form += 1;
+    } else if (tableCount >= Math.max(1, Math.floor(pageBlocks.length * 0.25))) {
+      counters.table += 1;
+    } else if (coverLike) {
+      counters.cover += 1;
+    } else {
+      counters.body += 1;
+    }
+  }
+
+  if (pageMap.size === 0) {
+    return { body: 1 };
+  }
+
+  return {
+    cover: counters.cover / pageMap.size,
+    toc: counters.toc / pageMap.size,
+    table: counters.table / pageMap.size,
+    body: counters.body / pageMap.size,
+    revision_or_form: counters.revision_or_form / pageMap.size,
+  };
+}
+
+function deriveDocumentFamilyResolverInput(blocks: Block[]): DocumentFamilyResolverInput {
+  const total = Math.max(1, blocks.length);
+  const headingCount = blocks.filter((block) => block.type === "heading").length;
+  const tableCount = blocks.filter((block) => block.type === "table").length;
+  const listCount = blocks.filter((block) => block.type === "list_item").length;
+  const textLines = blocks.map((block) => block.text.trim()).filter(Boolean);
+  const clauseLines = textLines.filter((line) =>
+    /(제\s*\d+\s*조|제\s*\d+\s*항|article\s*\d+|clause\s*\d+)/i.test(line)
+  ).length;
+  const numberedLines = textLines.filter((line) =>
+    /^(\d+(\.\d+)*[\)\.]?|제\s*\d+\s*조|제\s*\d+\s*항|[A-Z]\.)/.test(line)
+  ).length;
+  const labelValueLines = textLines.filter((line) => /^[^:：]{1,24}\s*[:：]\s*\S+/.test(line)).length;
+  const requirementLines = textLines.filter((line) =>
+    /요구사항|필수|must|shall|required|납품|과업|제안/.test(line.toLowerCase())
+  ).length;
+  const evaluationLines = textLines.filter((line) =>
+    /평가|배점|criteria|score|scoring|evaluation/.test(line.toLowerCase())
+  ).length;
+  const paragraphBlocks = blocks.filter((block) => block.type === "paragraph");
+  const avgParagraphLength =
+    paragraphBlocks.reduce((acc, block) => acc + block.text.trim().length, 0) /
+    Math.max(1, paragraphBlocks.length);
+  const textDensity = clamp01(
+    textLines.reduce((acc, line) => acc + line.length, 0) / Math.max(1, total * 120)
+  );
+
+  const pageGroups = new Map<number, number>();
+  for (const block of blocks) {
+    if (typeof block.page !== "number") continue;
+    pageGroups.set(block.page, (pageGroups.get(block.page) ?? 0) + 1);
+  }
+  const blockCountsPerPage = [...pageGroups.values()];
+  const pageIndependence =
+    blockCountsPerPage.length === 0
+      ? 0
+      : clamp01(
+          blockCountsPerPage.filter((count) => count <= 8).length /
+            Math.max(1, blockCountsPerPage.length)
+        );
+
+  return {
+    pageTypeDistribution: derivePageTypeDistribution(blocks),
+    headingDensity: headingCount / total,
+    tableDensity: tableCount / total,
+    formLikeSignals: labelValueLines / Math.max(1, textLines.length),
+    clausePatternRatio: clauseLines / Math.max(1, textLines.length),
+    textDensity,
+    layoutStructureSignals: {
+      bulletDensity: listCount / total,
+      numberingStructure: numberedLines / Math.max(1, textLines.length),
+      labelValueDensity: labelValueLines / Math.max(1, textLines.length),
+      paragraphContinuity: clamp01(avgParagraphLength / 120),
+      pageIndependence,
+    },
+    requirementKeywordRatio: requirementLines / Math.max(1, textLines.length),
+    evaluationKeywordRatio: evaluationLines / Math.max(1, textLines.length),
+  };
 }
 
 function buildChunkId(input: {
@@ -91,7 +217,15 @@ function createTemp(
 function finalizeChunk(
   temp: TempChunk,
   config: ChunkConfig,
-  options?: { docId?: string; ocrQuality?: OcrQualitySignal }
+  options?: {
+    docId?: string;
+    ocrQuality?: OcrQualitySignal;
+    documentFamily?: {
+      documentFamilyId: string;
+      confidence: number;
+      reasoning: string[];
+    };
+  }
 ): Chunk | null {
   const text = temp.textParts.join("\n\n").trim();
   if (!text) return null;
@@ -162,6 +296,7 @@ function finalizeChunk(
       ocrQuality: options?.ocrQuality,
       normalized,
       tags,
+      documentFamily: options?.documentFamily,
       pipelineVersion: temp.pipelineVersion,
     },
   };
@@ -329,6 +464,7 @@ export function buildChunksFromBlocks(
     ocrQuality?: OcrQualitySignal;
   }
 ): Chunk[] {
+  const documentFamily = resolveDocumentFamily(deriveDocumentFamilyResolverInput(blocks));
   const withSection = attachSectionPath(blocks);
   const chunks: Chunk[] = [];
   const pipelineVersion = options?.pipelineVersion ?? PIPELINE_VERSION_FALLBACK;
@@ -344,6 +480,7 @@ export function buildChunksFromBlocks(
     const chunk = finalizeChunk(temp, config, {
       docId: options?.docId,
       ocrQuality: options?.ocrQuality,
+      documentFamily,
     });
     if (chunk) chunks.push(chunk);
     temp = createTemp(temp.sectionPath, pipelineVersion, currentSection);
@@ -415,6 +552,7 @@ export function buildChunksFromBlocks(
     const last = finalizeChunk(temp, config, {
       docId: options?.docId,
       ocrQuality: options?.ocrQuality,
+      documentFamily,
     });
     if (last) chunks.push(last);
   }

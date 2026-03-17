@@ -83,6 +83,11 @@ export interface ChunkMeta {
     deliverables?: string[];
     evalItems?: Array<{ name: string; score?: number }>;
   };
+  documentFamily?: {
+    documentFamilyId: string;
+    confidence: number;
+    reasoning: string[];
+  };
   pipelineVersion: string;
 }
 
