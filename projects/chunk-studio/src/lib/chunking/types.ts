@@ -88,6 +88,24 @@ export interface ChunkMeta {
     confidence: number;
     reasoning: string[];
   };
+  strategyDecision?: {
+    documentFamilyId: string;
+    pageType: string;
+    strategyId: string;
+    config: {
+      preserveHeading: boolean;
+      preserveClauseBoundary: boolean;
+      mergeShortParagraphs: boolean;
+      splitLongBlocks: boolean;
+      separateTables: boolean;
+      preferPageLocalChunk: boolean;
+      removeHeaderFooterNoise: boolean;
+      minTokens: number;
+      maxTokens: number;
+      allowCrossPageMerge: boolean;
+    };
+    reasoning: string[];
+  };
   pipelineVersion: string;
 }
 

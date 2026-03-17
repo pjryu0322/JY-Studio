@@ -22,6 +22,7 @@ import {
   resolveDocumentFamily,
   type DocumentFamilyResolverInput,
 } from "./adaptive/documentFamilyResolver";
+import { resolveChunkStrategy } from "./adaptive/strategyResolver";
 
 const PIPELINE_VERSION_FALLBACK = "chunk-v2.0.0";
 
@@ -165,6 +166,17 @@ function deriveDocumentFamilyResolverInput(blocks: Block[]): DocumentFamilyResol
   };
 }
 
+function dominantPageType(
+  distribution: DocumentFamilyResolverInput["pageTypeDistribution"]
+): string {
+  const pageType = distribution ?? {};
+  const ordered = Object.entries(pageType).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
+  const top = ordered[0]?.[0] ?? "body";
+  if (top === "revision_or_form") return "form";
+  if (top === "table") return "table-heavy";
+  return top;
+}
+
 function buildChunkId(input: {
   docId?: string;
   sectionPath: string[];
@@ -223,6 +235,24 @@ function finalizeChunk(
     documentFamily?: {
       documentFamilyId: string;
       confidence: number;
+      reasoning: string[];
+    };
+    strategyDecision?: {
+      documentFamilyId: string;
+      pageType: string;
+      strategyId: string;
+      config: {
+        preserveHeading: boolean;
+        preserveClauseBoundary: boolean;
+        mergeShortParagraphs: boolean;
+        splitLongBlocks: boolean;
+        separateTables: boolean;
+        preferPageLocalChunk: boolean;
+        removeHeaderFooterNoise: boolean;
+        minTokens: number;
+        maxTokens: number;
+        allowCrossPageMerge: boolean;
+      };
       reasoning: string[];
     };
   }
@@ -297,6 +327,7 @@ function finalizeChunk(
       normalized,
       tags,
       documentFamily: options?.documentFamily,
+      strategyDecision: options?.strategyDecision,
       pipelineVersion: temp.pipelineVersion,
     },
   };
@@ -409,7 +440,34 @@ function pushSentencesWithLimit(
   temp: TempChunk,
   block: Block,
   config: ChunkConfig,
-  chunks: Chunk[]
+  chunks: Chunk[],
+  finalizeOptions?: {
+    docId?: string;
+    ocrQuality?: OcrQualitySignal;
+    documentFamily?: {
+      documentFamilyId: string;
+      confidence: number;
+      reasoning: string[];
+    };
+    strategyDecision?: {
+      documentFamilyId: string;
+      pageType: string;
+      strategyId: string;
+      config: {
+        preserveHeading: boolean;
+        preserveClauseBoundary: boolean;
+        mergeShortParagraphs: boolean;
+        splitLongBlocks: boolean;
+        separateTables: boolean;
+        preferPageLocalChunk: boolean;
+        removeHeaderFooterNoise: boolean;
+        minTokens: number;
+        maxTokens: number;
+        allowCrossPageMerge: boolean;
+      };
+      reasoning: string[];
+    };
+  }
 ): TempChunk {
   const sentences = splitSentences(toChunkText(block));
   const tokenizer = getTokenizer();
@@ -420,7 +478,7 @@ function pushSentencesWithLimit(
     const probeText = [...temp.textParts, sentence].join(" ");
     const tokens = tokenizer.countTokens(probeText);
     if (tokens > config.maxTokens && temp.textParts.length > 0 && !isConstraint) {
-      const complete = finalizeChunk(temp, config);
+      const complete = finalizeChunk(temp, config, finalizeOptions);
       if (complete) chunks.push(complete);
       temp = createTemp(temp.sectionPath, temp.pipelineVersion);
     }
@@ -464,7 +522,37 @@ export function buildChunksFromBlocks(
     ocrQuality?: OcrQualitySignal;
   }
 ): Chunk[] {
-  const documentFamily = resolveDocumentFamily(deriveDocumentFamilyResolverInput(blocks));
+  const resolverInput = deriveDocumentFamilyResolverInput(blocks);
+  const documentFamily = resolveDocumentFamily(resolverInput);
+  const pageType = dominantPageType(resolverInput.pageTypeDistribution);
+  const strategy = resolveChunkStrategy({
+    documentFamilyId: documentFamily.documentFamilyId,
+    pageType,
+    layoutProfile: {
+      headingDensity: resolverInput.headingDensity,
+      tableDensity: resolverInput.tableDensity,
+      formLikeScore: resolverInput.formLikeSignals,
+      clausePatternScore: resolverInput.clausePatternRatio,
+      textDensity: resolverInput.textDensity,
+      bulletDensity: resolverInput.layoutStructureSignals?.bulletDensity,
+    },
+  });
+  const strategyDecision = {
+    documentFamilyId: documentFamily.documentFamilyId,
+    pageType,
+    strategyId: strategy.strategyId,
+    config: strategy.config,
+    reasoning: strategy.reasoning,
+  };
+  const effectiveConfig: ChunkConfig = {
+    ...config,
+    minTokens: strategy.config.minTokens,
+    maxTokens: strategy.config.maxTokens,
+    targetTokens: Math.min(
+      strategy.config.maxTokens,
+      Math.max(strategy.config.minTokens, config.targetTokens)
+    ),
+  };
   const withSection = attachSectionPath(blocks);
   const chunks: Chunk[] = [];
   const pipelineVersion = options?.pipelineVersion ?? PIPELINE_VERSION_FALLBACK;
@@ -477,10 +565,11 @@ export function buildChunksFromBlocks(
   const tokenizer = getTokenizer();
 
   const flush = () => {
-    const chunk = finalizeChunk(temp, config, {
+    const chunk = finalizeChunk(temp, effectiveConfig, {
       docId: options?.docId,
       ocrQuality: options?.ocrQuality,
       documentFamily,
+      strategyDecision,
     });
     if (chunk) chunks.push(chunk);
     temp = createTemp(temp.sectionPath, pipelineVersion, currentSection);
@@ -491,6 +580,11 @@ export function buildChunksFromBlocks(
     const block = item.block;
     const prev = withSection[i - 1];
     const next = withSection[i + 1];
+    const pageChanged =
+      strategy.config.preferPageLocalChunk &&
+      typeof prev?.block.page === "number" &&
+      typeof block.page === "number" &&
+      prev.block.page !== block.page;
     const repeatListStart =
       block.type === "list_item" && (!prev || prev.block.type !== "list_item");
     const sectionChanged =
@@ -498,7 +592,8 @@ export function buildChunksFromBlocks(
     const hardBoundary =
       block.type === "heading" ||
       sectionChanged ||
-      block.type === "table" ||
+      (strategy.config.separateTables && block.type === "table") ||
+      pageChanged ||
       repeatListStart;
     if (hardBoundary && temp.textParts.length > 0) {
       flush();
@@ -517,21 +612,31 @@ export function buildChunksFromBlocks(
 
     maybeAddListLead(withSection, i, temp);
 
-    if (block.type === "table") {
-      const tableFragments = splitTableBlock(block, config);
+    if (block.type === "table" && strategy.config.separateTables) {
+      const tableFragments = splitTableBlock(block, effectiveConfig);
       for (const fragment of tableFragments) {
         const pseudoBlock: Block = { ...block, text: fragment };
-        temp = pushSentencesWithLimit(temp, pseudoBlock, config, chunks);
+        temp = pushSentencesWithLimit(temp, pseudoBlock, effectiveConfig, chunks, {
+          docId: options?.docId,
+          ocrQuality: options?.ocrQuality,
+          documentFamily,
+          strategyDecision,
+        });
       }
     } else {
-      temp = pushSentencesWithLimit(temp, block, config, chunks);
+      temp = pushSentencesWithLimit(temp, block, effectiveConfig, chunks, {
+        docId: options?.docId,
+        ocrQuality: options?.ocrQuality,
+        documentFamily,
+        strategyDecision,
+      });
     }
 
-    if (!config.enableConstraintRules) {
+    if (!effectiveConfig.enableConstraintRules) {
       temp.tags = [];
     }
 
-    if (block.type === "table") {
+    if (strategy.config.separateTables && block.type === "table") {
       flush();
       temp.sectionPath = item.sectionPath;
       continue;
@@ -543,22 +648,28 @@ export function buildChunksFromBlocks(
     }
 
     const tokenNow = tokenizer.countTokens(temp.textParts.join("\n\n"));
-    if (tokenNow >= config.targetTokens && block.type !== "list_item") {
+    if (tokenNow >= effectiveConfig.targetTokens && block.type !== "list_item") {
       flush();
       temp.sectionPath = item.sectionPath;
     }
   }
   if (temp.textParts.length > 0) {
-    const last = finalizeChunk(temp, config, {
+    const last = finalizeChunk(temp, effectiveConfig, {
       docId: options?.docId,
       ocrQuality: options?.ocrQuality,
       documentFamily,
+      strategyDecision,
     });
     if (last) chunks.push(last);
   }
 
-  const merged = maybeMergeSmallAdjacentChunks(chunks, config);
-  return applySentenceOverlap(merged, config.overlapSentences);
+  const merged = strategy.config.mergeShortParagraphs
+    ? maybeMergeSmallAdjacentChunks(chunks, effectiveConfig)
+    : chunks;
+  const overlap = strategy.config.allowCrossPageMerge
+    ? effectiveConfig.overlapSentences
+    : 0;
+  return applySentenceOverlap(merged, overlap);
 }
 
 export function buildChunksFromText(
