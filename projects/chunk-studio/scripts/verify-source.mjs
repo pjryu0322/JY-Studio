@@ -44,7 +44,7 @@ function getBlobSha(path) {
   return parts.length >= 3 ? parts[2] : "";
 }
 
-const headCommit = run("git rev-parse HEAD");
+const headCommit = run("git rev-parse HEAD~1");
 const remoteUrl = run("git remote get-url origin");
 const branch = run("git branch --show-current");
 const branchTracking = run(

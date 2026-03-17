@@ -4,14 +4,14 @@
     "projectRoot": "projects/chunk-studio",
     "branch": "main",
     "commit": "1791b190d60c13a6f8f3639cbfe4cadd001fc424",
-    "generatedAtUTC": "2026-03-17T07:06:30.623Z",
+    "generatedAtUTC": "2026-03-17T08:00:03.150Z",
     "generatedBy": "cursor-verification-script"
   },
   "gitState": {
     "headCommit": "1791b190d60c13a6f8f3639cbfe4cadd001fc424",
     "remote": "origin",
     "remoteUrl": "git@github.com:pjryu0322/JY-Studio.git",
-    "workingTreeClean": true,
+    "workingTreeClean": false,
     "branchTracking": "origin/main"
   },
   "buildStatus": {
