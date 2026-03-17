@@ -3,12 +3,12 @@
     "repository": "https://github.com/pjryu0322/JY-Studio",
     "projectRoot": "projects/chunk-studio",
     "branch": "main",
-    "commit": "298e489eb7038e530c95cb03bc7eb5dd45827543",
-    "generatedAtUTC": "2026-03-17T05:23:01.068Z",
+    "commit": "75534397fb0e04bb33019bfeb8f4ecfe3241b3cd",
+    "generatedAtUTC": "2026-03-17T06:58:27.903Z",
     "generatedBy": "cursor-verification-script"
   },
   "gitState": {
-    "headCommit": "298e489eb7038e530c95cb03bc7eb5dd45827543",
+    "headCommit": "75534397fb0e04bb33019bfeb8f4ecfe3241b3cd",
     "remote": "origin",
     "remoteUrl": "git@github.com:pjryu0322/JY-Studio.git",
     "workingTreeClean": true,
