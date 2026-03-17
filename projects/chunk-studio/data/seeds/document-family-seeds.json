@@ -1,0 +1,111 @@
+﻿[
+  {
+    "seedId": "SEED-DF01-001",
+    "documentFamilyId": "DF-01",
+    "documentFamilyName": "Public RFP",
+    "title": "공공정보화 사업 제안요청서",
+    "signals": {
+      "pageTypeDistribution": {
+        "cover": 1,
+        "toc": 2,
+        "body": 35,
+        "table-heavy": 6,
+        "appendix": 3
+      },
+      "headingDensity": 0.82,
+      "tableDensity": 0.46,
+      "formLikeScore": 0.05,
+      "clausePatternScore": 0.11,
+      "textDensity": 0.79,
+      "bulletDensity": 0.58
+    },
+    "expectedStrategyId": "section_requirement_hybrid",
+    "reasoning": [
+      "requirement_sections_detected",
+      "evaluation_keywords_detected",
+      "section_based_structure"
+    ]
+  },
+  {
+    "seedId": "SEED-DF04-001",
+    "documentFamilyId": "DF-04",
+    "documentFamilyName": "Standard / Guide",
+    "title": "데이터 표준용어 관리 가이드",
+    "signals": {
+      "pageTypeDistribution": {
+        "cover": 1,
+        "revision-history": 2,
+        "toc": 1,
+        "body": 28,
+        "table-heavy": 8,
+        "appendix": 2
+      },
+      "headingDensity": 0.76,
+      "tableDensity": 0.52,
+      "formLikeScore": 0.08,
+      "clausePatternScore": 0.09,
+      "textDensity": 0.73,
+      "bulletDensity": 0.61
+    },
+    "expectedStrategyId": "heading_bullet_table_hybrid",
+    "reasoning": [
+      "heading_detected",
+      "bullet_density_high",
+      "table_structure_present"
+    ]
+  },
+  {
+    "seedId": "SEED-DF06-001",
+    "documentFamilyId": "DF-06",
+    "documentFamilyName": "Form",
+    "title": "인사 사직서 양식",
+    "signals": {
+      "pageTypeDistribution": {
+        "cover": 0,
+        "toc": 0,
+        "body": 1,
+        "form": 1,
+        "appendix": 0
+      },
+      "headingDensity": 0.18,
+      "tableDensity": 0.21,
+      "formLikeScore": 0.91,
+      "clausePatternScore": 0.02,
+      "textDensity": 0.31,
+      "bulletDensity": 0.03
+    },
+    "expectedStrategyId": "form_block",
+    "reasoning": [
+      "form_layout_detected",
+      "label_value_structure",
+      "low_paragraph_continuity"
+    ]
+  },
+  {
+    "seedId": "SEED-DF07-001",
+    "documentFamilyId": "DF-07",
+    "documentFamilyName": "Slide / PPT PDF",
+    "title": "사업 추진 보고 발표자료",
+    "signals": {
+      "pageTypeDistribution": {
+        "cover": 1,
+        "toc": 0,
+        "body": 12,
+        "table-heavy": 2,
+        "appendix": 0
+      },
+      "headingDensity": 0.24,
+      "tableDensity": 0.14,
+      "formLikeScore": 0.04,
+      "clausePatternScore": 0.01,
+      "textDensity": 0.29,
+      "bulletDensity": 0.17
+    },
+    "expectedStrategyId": "page_block",
+    "reasoning": [
+      "page_local_structure",
+      "low_text_density",
+      "slide_like_layout"
+    ]
+  }
+]

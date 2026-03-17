@@ -117,6 +117,9 @@ export function resolveDocumentFamily(input: DocumentFamilyResolverInput): {
   // DF-07 (Slide / PPT PDF)
   if (pageIndependence >= 0.45) add("DF-07", 0.9, "page_based_layout_detected");
   if (textDensity <= 0.35) add("DF-07", 0.9, "low_text_density");
+  if (textDensity <= 0.35 && pageIndependence >= 0.45) {
+    add("DF-07", 1.8, "slide_profile_dominant");
+  }
   if (pageType.cover + pageType.toc + pageType.table >= 0.55) {
     add("DF-07", 0.7, "independent_pages_detected");
   }
