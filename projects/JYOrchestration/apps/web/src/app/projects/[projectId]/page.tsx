@@ -1,19 +1,24 @@
+"use client";
+
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { useParams } from "next/navigation";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 
-type ProjectDetailPageProps = {
-  params: Promise<{
-    projectId: string;
-  }>;
-};
-
-function buildProjectSpecPrompt(project: {
+type Project = {
+  id: string;
   name: string;
   description: string | null;
   projectType: string;
   status: string;
-}) {
+};
+
+type ApiResponse<T> = {
+  success: boolean;
+  message?: string;
+  data?: T;
+};
+
+function buildProjectSpecPrompt(project: Project) {
   return `너는 소프트웨어 아키텍트이자 요구사항 분석가다.
 아래 프로젝트 정보를 기반으로 ProjectSpec 문서를 "마크다운 문서"로 작성하라.
 불필요하게 장황한 설명은 제외하고, 구조화된 결과만 제공하라.
@@ -40,18 +45,70 @@ function buildProjectSpecPrompt(project: {
 8. 초기 마일스톤`;
 }
 
-export default async function ProjectDetailPage({ params }: ProjectDetailPageProps) {
-  const { projectId } = await params;
-  const project = await prisma.project.findUnique({
-    where: {
-      id: projectId,
-    },
-  });
+export default function ProjectDetailPage() {
+  const params = useParams<{ projectId: string }>();
+  const projectId = typeof params?.projectId === "string" ? params.projectId : "";
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
-  if (!project) {
-    notFound();
+  useEffect(() => {
+    if (!projectId) return;
+
+    async function loadProjectDetail() {
+      try {
+        setLoading(true);
+        setErrorMessage(null);
+
+        const res = await fetch("/api/projects");
+        const json = (await res.json()) as ApiResponse<Project[]>;
+
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          setProject(null);
+          setErrorMessage(json.message || "프로젝트 정보를 불러오지 못했습니다.");
+          return;
+        }
+
+        const target = json.data.find((item) => item.id === projectId) || null;
+        if (!target) {
+          setProject(null);
+          setErrorMessage("존재하지 않는 프로젝트입니다.");
+          return;
+        }
+
+        setProject(target);
+      } catch (error) {
+        console.error("Failed to load project detail:", error);
+        setProject(null);
+        setErrorMessage("프로젝트 정보를 불러오는 중 오류가 발생했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProjectDetail();
+  }, [projectId]);
+
+  const projectSpecPrompt = useMemo(() => {
+    if (!project) {
+      return "";
+    }
+    return buildProjectSpecPrompt(project);
+  }, [project]);
+
+  function handleSelectFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setSelectedFileName(null);
+      setUploadMessage(null);
+      return;
+    }
+
+    setSelectedFileName(file.name);
+    setUploadMessage("현재 단계에서는 업로드 UI만 제공됩니다.");
   }
-  const projectSpecPrompt = buildProjectSpecPrompt(project);
 
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
@@ -65,6 +122,15 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         ProjectSpec 설정
       </h1>
 
+      {loading ? (
+        <p style={{ marginBottom: 16 }}>프로젝트 정보를 불러오는 중...</p>
+      ) : null}
+      {errorMessage ? (
+        <p style={{ marginBottom: 16, color: "#b00020" }}>{errorMessage}</p>
+      ) : null}
+
+      {project ? (
+        <>
       <section
         style={{
           border: "1px solid #ddd",
@@ -160,11 +226,31 @@ export default async function ProjectDetailPage({ params }: ProjectDetailPagePro
         }}
       >
         <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 10 }}>ProjectSpec 업로드 (다음 단계)</h2>
-        <p style={{ margin: 0 }}>
-          다음 단계에서 ProjectSpec 문서 업로드 및 파싱 기능이 추가될 예정입니다. 현재 단계에서는
-          화면 뼈대만 제공합니다.
+        <p style={{ marginTop: 0, marginBottom: 10 }}>
+          ProjectSpec은 Markdown/DOCX 중심으로 다룰 예정이며, 다음 단계에서 업로드 API와 파싱 기능이
+          추가될 예정입니다.
         </p>
+        <p style={{ marginTop: 0, marginBottom: 12 }}>
+          현재는 UI 뼈대만 준비하는 단계이며 실제 업로드는 수행되지 않습니다.
+        </p>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <input type="file" accept=".md,.doc,.docx" onChange={handleSelectFile} />
+          <p style={{ margin: 0, color: "#555" }}>
+            지원 예정 형식: <code>.md</code>, <code>.doc</code>, <code>.docx</code>
+          </p>
+          {selectedFileName ? (
+            <p style={{ margin: 0 }}>
+              선택된 파일: <strong>{selectedFileName}</strong>
+            </p>
+          ) : (
+            <p style={{ margin: 0, color: "#555" }}>아직 선택된 파일이 없습니다.</p>
+          )}
+          {uploadMessage ? <p style={{ margin: 0, color: "#555" }}>{uploadMessage}</p> : null}
+        </div>
       </section>
+        </>
+      ) : null}
     </main>
   );
 }
