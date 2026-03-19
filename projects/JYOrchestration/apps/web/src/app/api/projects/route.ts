@@ -3,14 +3,14 @@ import { prisma } from "@/lib/prisma";
 
 type ApiSuccess<T> = {
   success: true;
-  message: string;
-  data: T;
+  message?: string;
+  data?: T;
 };
 
-type ApiFailure = {
+type ApiFailure<T = null> = {
   success: false;
-  message: string;
-  data: null;
+  message?: string;
+  data?: T;
 };
 
 function ok<T>(message: string, data: T, status = 200) {
@@ -18,8 +18,10 @@ function ok<T>(message: string, data: T, status = 200) {
   return NextResponse.json(payload, { status });
 }
 
-function fail(message: string, status: number) {
-  const payload: ApiFailure = { success: false, message, data: null };
+function fail<T = null>(message: string, status: number, data?: T) {
+  const payload: ApiFailure<T> = data === undefined
+    ? { success: false, message }
+    : { success: false, message, data };
   return NextResponse.json(payload, { status });
 }
 
@@ -34,7 +36,7 @@ export async function GET() {
     return ok("프로젝트 목록 조회에 성공했습니다.", projects);
   } catch (error) {
     console.error("GET /api/projects error:", error);
-    return fail("프로젝트 목록 조회 중 오류가 발생했습니다.", 500);
+    return fail("프로젝트 목록 조회 중 오류가 발생했습니다.", 500, []);
   }
 }
 
