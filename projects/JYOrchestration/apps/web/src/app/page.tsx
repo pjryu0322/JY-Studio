@@ -14,10 +14,19 @@ type Project = {
   updatedAt: string;
 };
 
+type ApiResponse<T> = {
+  success: boolean;
+  message: string;
+  data: T;
+};
+
 export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [listMessage, setListMessage] = useState<string | null>(null);
+  const [formMessage, setFormMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -28,15 +37,21 @@ export default function HomePage() {
   async function loadProjects() {
     try {
       setLoading(true);
+      setListMessage(null);
       const res = await fetch("/api/projects");
-      const json = await res.json();
+      const json = (await res.json()) as ApiResponse<Project[] | null>;
 
-      if (json.success) {
-        setProjects(json.data);
+      if (!res.ok || !json.success || !Array.isArray(json.data)) {
+        setProjects([]);
+        setListMessage(json.message || "프로젝트 목록을 불러오지 못했습니다.");
+        return;
       }
+
+      setProjects(json.data);
     } catch (error) {
-      console.error(error);
-      alert("프로젝트 목록을 불러오지 못했습니다.");
+      console.error("Failed to load projects:", error);
+      setProjects([]);
+      setListMessage("프로젝트 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -44,9 +59,12 @@ export default function HomePage() {
 
   async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault();
+    setFormMessage(null);
+    setFormError(null);
 
-    if (!name.trim()) {
-      alert("프로젝트명을 입력해 주세요.");
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setFormError("프로젝트명을 입력해 주세요.");
       return;
     }
 
@@ -59,18 +77,18 @@ export default function HomePage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name,
-          description,
+          name: trimmedName,
+          description: description.trim(),
           projectType,
-          repoUrl,
-          defaultBranch,
+          repoUrl: repoUrl.trim(),
+          defaultBranch: defaultBranch.trim(),
         }),
       });
 
-      const json = await res.json();
+      const json = (await res.json()) as ApiResponse<Project | null>;
 
-      if (!json.success) {
-        alert(json.message || "프로젝트 생성에 실패했습니다.");
+      if (!res.ok || !json.success) {
+        setFormError(json.message || "프로젝트 생성에 실패했습니다.");
         return;
       }
 
@@ -79,11 +97,12 @@ export default function HomePage() {
       setProjectType("web-service");
       setRepoUrl("");
       setDefaultBranch("main");
+      setFormMessage(json.message || "프로젝트가 생성되었습니다.");
 
       await loadProjects();
     } catch (error) {
-      console.error(error);
-      alert("프로젝트 생성 중 오류가 발생했습니다.");
+      console.error("Failed to create project:", error);
+      setFormError("프로젝트 생성 중 오류가 발생했습니다.");
     } finally {
       setSubmitting(false);
     }
@@ -117,11 +136,19 @@ export default function HomePage() {
 
         <form onSubmit={handleCreateProject}>
           <div style={{ display: "grid", gap: 12 }}>
+            {formError ? (
+              <p style={{ color: "#b00020", margin: 0 }}>{formError}</p>
+            ) : null}
+            {formMessage ? (
+              <p style={{ color: "#0b6b2a", margin: 0 }}>{formMessage}</p>
+            ) : null}
+
             <input
               type="text"
               placeholder="프로젝트명"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              disabled={submitting}
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
@@ -129,6 +156,7 @@ export default function HomePage() {
               placeholder="프로젝트 설명"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              disabled={submitting}
               rows={4}
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
@@ -136,6 +164,7 @@ export default function HomePage() {
             <select
               value={projectType}
               onChange={(e) => setProjectType(e.target.value)}
+              disabled={submitting}
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             >
               <option value="web-service">web-service</option>
@@ -149,6 +178,7 @@ export default function HomePage() {
               placeholder="저장소 URL (선택)"
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
+              disabled={submitting}
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
@@ -157,6 +187,7 @@ export default function HomePage() {
               placeholder="기본 브랜치"
               value={defaultBranch}
               onChange={(e) => setDefaultBranch(e.target.value)}
+              disabled={submitting}
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
@@ -169,7 +200,8 @@ export default function HomePage() {
                 border: "none",
                 background: "#111",
                 color: "#fff",
-                cursor: "pointer",
+                cursor: submitting ? "not-allowed" : "pointer",
+                opacity: submitting ? 0.7 : 1,
               }}
             >
               {submitting ? "생성 중..." : "프로젝트 생성"}
@@ -191,6 +223,8 @@ export default function HomePage() {
 
         {loading ? (
           <p>불러오는 중...</p>
+        ) : listMessage ? (
+          <p style={{ color: "#b00020" }}>{listMessage}</p>
         ) : projects.length === 0 ? (
           <p>등록된 프로젝트가 없습니다.</p>
         ) : (
