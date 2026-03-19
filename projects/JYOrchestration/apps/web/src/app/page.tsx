@@ -25,8 +25,8 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [listMessage, setListMessage] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -59,12 +59,12 @@ export default function HomePage() {
 
   async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault();
-    setSuccess(null);
-    setError(null);
+    setSuccessMessage(null);
+    setErrorMessage(null);
 
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("프로젝트명을 입력해 주세요.");
+      setErrorMessage("프로젝트명을 입력해 주세요.");
       return;
     }
 
@@ -88,7 +88,7 @@ export default function HomePage() {
       const json = (await res.json()) as ApiResponse<Project | null>;
 
       if (!res.ok || !json.success) {
-        setError(json.message || "프로젝트 생성에 실패했습니다.");
+        setErrorMessage(json.message || "프로젝트 생성에 실패했습니다.");
         return;
       }
 
@@ -97,12 +97,12 @@ export default function HomePage() {
       setProjectType("web-service");
       setRepoUrl("");
       setDefaultBranch("main");
-      setSuccess(json.message || "프로젝트가 생성되었습니다.");
+      setSuccessMessage(json.message || "프로젝트가 생성되었습니다.");
 
       await loadProjects();
     } catch (error) {
       console.error("Failed to create project:", error);
-      setError("프로젝트 생성 중 오류가 발생했습니다.");
+      setErrorMessage("프로젝트 생성 중 오류가 발생했습니다.");
     } finally {
       setSubmitting(false);
     }
@@ -136,11 +136,11 @@ export default function HomePage() {
 
         <form onSubmit={handleCreateProject}>
           <div style={{ display: "grid", gap: 12 }}>
-            {error ? (
-              <p style={{ color: "#b00020", margin: 0 }}>{error}</p>
+            {errorMessage ? (
+              <p style={{ color: "#b00020", margin: 0 }}>{errorMessage}</p>
             ) : null}
-            {success ? (
-              <p style={{ color: "#0b6b2a", margin: 0 }}>{success}</p>
+            {successMessage ? (
+              <p style={{ color: "#0b6b2a", margin: 0 }}>{successMessage}</p>
             ) : null}
 
             <input
