@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type Project = {
@@ -257,6 +258,23 @@ export default function HomePage() {
                 <div style={{ fontSize: 14, color: "#777" }}>
                   유형: {project.projectType} / 브랜치:{" "}
                   {project.defaultBranch || "-"}
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link
+                    href={`/projects/${project.id}`}
+                    style={{
+                      display: "inline-block",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #ccc",
+                      color: "#111",
+                      textDecoration: "none",
+                      fontSize: 14,
+                      fontWeight: 600,
+                    }}
+                  >
+                    ProjectSpec 설정
+                  </Link>
                 </div>
               </div>
             ))}
