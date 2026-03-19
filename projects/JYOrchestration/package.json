@@ -1,0 +1,16 @@
+{
+  "name": "jyorchestration",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --recursive build",
+    "lint": "pnpm --recursive lint"
+  },
+  "devDependencies": {
+    "prisma": "6.16.0"
+  },
+  "dependencies": {
+    "@prisma/client": "6.16.0"
+  }
+}
