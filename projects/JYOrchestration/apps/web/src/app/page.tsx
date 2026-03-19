@@ -273,7 +273,7 @@ export default function HomePage() {
                       fontWeight: 600,
                     }}
                   >
-                    ProjectSpec 설정
+                    상세 보기
                   </Link>
                 </div>
               </div>
