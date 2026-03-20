@@ -22,6 +22,17 @@ export type TaskRunItem = {
   updatedAt: string;
 };
 
+export type GitChangeRequestItem = {
+  id: string;
+  projectId: string;
+  taskId: string;
+  taskRunId: string;
+  status: string;
+  requestNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type TaskListSectionProps = {
   tasks: TaskItem[];
   loadingTasks: boolean;
@@ -32,10 +43,12 @@ type TaskListSectionProps = {
   taskPromptMap: Record<string, TaskPromptItem>;
   runningPromptId: string | null;
   markingReadyTaskId: string | null;
+  registeringGitRequestRunId: string | null;
   taskRunMap: Record<string, TaskRunItem>;
   onGeneratePrompt: (taskId: string) => void;
   onRunTask: (taskId: string) => void;
   onMarkReadyForGit: (taskId: string) => void;
+  onRegisterGitRequest: (taskId: string) => void;
 };
 
 export function TaskListSection({
@@ -48,10 +61,12 @@ export function TaskListSection({
   taskPromptMap,
   runningPromptId,
   markingReadyTaskId,
+  registeringGitRequestRunId,
   taskRunMap,
   onGeneratePrompt,
   onRunTask,
   onMarkReadyForGit,
+  onRegisterGitRequest,
 }: TaskListSectionProps) {
   return (
     <section
@@ -192,6 +207,30 @@ export function TaskListSection({
                   }}
                 >
                   {markingReadyTaskId === task.id ? "전환 중..." : "Git 반영 준비"}
+                </button>
+              ) : null}
+              {taskRunMap[task.id]?.status === "READY_FOR_GIT" ? (
+                <button
+                  type="button"
+                  onClick={() => onRegisterGitRequest(task.id)}
+                  disabled={registeringGitRequestRunId === taskRunMap[task.id]?.id}
+                  style={{
+                    marginTop: 8,
+                    marginLeft: 8,
+                    padding: "6px 10px",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    background: "#fff",
+                    cursor:
+                      registeringGitRequestRunId === taskRunMap[task.id]?.id
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity: registeringGitRequestRunId === taskRunMap[task.id]?.id ? 0.7 : 1,
+                  }}
+                >
+                  {registeringGitRequestRunId === taskRunMap[task.id]?.id
+                    ? "요청 등록 중..."
+                    : "Git 요청 등록"}
                 </button>
               ) : null}
             </div>

@@ -20,6 +20,7 @@ model Project {
   uploads       ProjectSpecUpload[]
   tasks         Task[]
   taskPrompts   TaskPrompt[]
+  gitRequests   GitChangeRequest[]
 
   @@map("projects")
 }
@@ -60,6 +61,7 @@ model Task {
   projectSpecUpload   ProjectSpecUpload @relation(fields: [projectSpecUploadId], references: [id], onDelete: Cascade)
   prompts             TaskPrompt[]
   runs                TaskRun[]
+  gitRequests         GitChangeRequest[]
 
   @@index([projectId, order])
   @@index([projectSpecUploadId])
@@ -93,8 +95,28 @@ model TaskRun {
   updatedAt    DateTime   @updatedAt
   task         Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
   taskPrompt   TaskPrompt @relation(fields: [taskPromptId], references: [id], onDelete: Cascade)
+  gitRequests  GitChangeRequest[]
 
   @@index([taskId, createdAt])
   @@index([taskPromptId])
   @@map("task_runs")
+}
+
+model GitChangeRequest {
+  id          String   @id @default(uuid())
+  projectId   String
+  taskId      String
+  taskRunId   String
+  status      String   @default("REQUESTED")
+  requestNote String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskRun     TaskRun  @relation(fields: [taskRunId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([taskId])
+  @@index([taskRunId])
+  @@map("git_change_requests")
 }

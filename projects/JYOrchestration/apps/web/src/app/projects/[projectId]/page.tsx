@@ -19,7 +19,13 @@ import { ProjectSpecUploadHistorySection } from "@/components/project-spec/Proje
 import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
 import { buildProjectSpecPrompt, fallbackProject } from "@/components/project-spec/prompt";
 import { Project, TaskItem, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
-import { TaskListSection, TaskPromptItem, TaskRunItem } from "@/components/task/TaskListSection";
+import {
+  GitChangeRequestItem,
+  TaskListSection,
+  TaskPromptItem,
+  TaskRunItem,
+} from "@/components/task/TaskListSection";
+import { formatTestedAt } from "@/components/project-spec/format";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -48,6 +54,9 @@ export default function ProjectDetailPage() {
   const [markingReadyTaskId, setMarkingReadyTaskId] = useState<string | null>(null);
   const [loadingTaskPrompts, setLoadingTaskPrompts] = useState(false);
   const [loadingTaskRuns, setLoadingTaskRuns] = useState(false);
+  const [gitRequests, setGitRequests] = useState<GitChangeRequestItem[]>([]);
+  const [loadingGitRequests, setLoadingGitRequests] = useState(false);
+  const [registeringGitRequestRunId, setRegisteringGitRequestRunId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -135,11 +144,32 @@ export default function ProjectDetailPage() {
       }
     }
 
+    async function loadGitRequests() {
+      try {
+        setLoadingGitRequests(true);
+        const encodedProjectId = encodeURIComponent(projectId);
+        const res = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
+        const json = (await res.json()) as {
+          success: boolean;
+          data?: GitChangeRequestItem[];
+        };
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          return;
+        }
+        setGitRequests(json.data);
+      } catch (error) {
+        console.error("Failed to load git change requests:", error);
+      } finally {
+        setLoadingGitRequests(false);
+      }
+    }
+
     loadProjectDetail();
     loadUploadHistory();
     loadTasks();
     loadTaskPrompts();
     loadTaskRuns();
+    loadGitRequests();
   }, [projectId]);
 
   const projectSpecPrompt = useMemo(
@@ -443,6 +473,54 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleRegisterGitRequest(taskId: string) {
+    const run = taskRunMap[taskId];
+    if (!run) {
+      setPromptMessage("요청 등록 대상 TaskRun을 찾을 수 없습니다.");
+      return;
+    }
+
+    try {
+      setRegisteringGitRequestRunId(run.id);
+      setPromptMessage(null);
+
+      const res = await fetch("/api/task/git-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ taskRunId: run.id }),
+      });
+
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+      };
+
+      if (!res.ok || !json.success) {
+        setPromptMessage(json.message || "Git 반영 요청 등록에 실패했습니다.");
+        return;
+      }
+
+      const encodedProjectId = encodeURIComponent(projectId);
+      const listRes = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
+      const listJson = (await listRes.json()) as {
+        success: boolean;
+        data?: GitChangeRequestItem[];
+      };
+      if (listRes.ok && listJson.success && Array.isArray(listJson.data)) {
+        setGitRequests(listJson.data);
+      }
+
+      setPromptMessage(json.message || "Git 반영 요청이 등록되었습니다.");
+    } catch (error) {
+      console.error("Failed to register git change request:", error);
+      setPromptMessage("Git 반영 요청 등록 중 오류가 발생했습니다.");
+    } finally {
+      setRegisteringGitRequestRunId(null);
+    }
+  }
+
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
@@ -479,11 +557,55 @@ export default function ProjectDetailPage() {
         taskPromptMap={taskPromptMap}
         runningPromptId={runningPromptId}
         markingReadyTaskId={markingReadyTaskId}
+        registeringGitRequestRunId={registeringGitRequestRunId}
         taskRunMap={taskRunMap}
         onGeneratePrompt={handleGenerateTaskPrompt}
         onRunTask={handleRunTask}
         onMarkReadyForGit={handleMarkReadyForGit}
+        onRegisterGitRequest={handleRegisterGitRequest}
       />
+      <section
+        style={{
+          borderTop: "1px solid #e5e5e5",
+          marginTop: 16,
+          paddingTop: 12,
+        }}
+      >
+        <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 8px 0" }}>Git 반영 요청 목록</h3>
+        {loadingGitRequests ? (
+          <p style={{ margin: 0, color: "#555" }}>Git 반영 요청 목록을 불러오는 중...</p>
+        ) : gitRequests.length === 0 ? (
+          <p style={{ margin: 0, color: "#555" }}>아직 등록된 Git 반영 요청이 없습니다.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {gitRequests.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  border: "1px solid #e0e0e0",
+                  borderRadius: 8,
+                  padding: 10,
+                  background: "#fff",
+                }}
+              >
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>task:</strong>{" "}
+                  {tasks.find((task) => task.id === item.taskId)?.name || item.taskId}
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>taskRunId:</strong> {item.taskRunId}
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>status:</strong> {item.status}
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }
