@@ -40,10 +40,14 @@ export default function ProjectDetailPage() {
   const [taskMessage, setTaskMessage] = useState<string | null>(null);
   const [generatingTaskUploadId, setGeneratingTaskUploadId] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
-  const [taskPromptMap, setTaskPromptMap] = useState<Record<string, TaskPromptItem>>({});
+  const [taskPrompts, setTaskPrompts] = useState<TaskPromptItem[]>([]);
+  const [promptMessage, setPromptMessage] = useState<string | null>(null);
   const [generatingPromptTaskId, setGeneratingPromptTaskId] = useState<string | null>(null);
-  const [taskRunMap, setTaskRunMap] = useState<Record<string, TaskRunItem>>({});
-  const [runningTaskPromptId, setRunningTaskPromptId] = useState<string | null>(null);
+  const [taskRuns, setTaskRuns] = useState<TaskRunItem[]>([]);
+  const [runningPromptId, setRunningPromptId] = useState<string | null>(null);
+  const [markingReadyTaskId, setMarkingReadyTaskId] = useState<string | null>(null);
+  const [loadingTaskPrompts, setLoadingTaskPrompts] = useState(false);
+  const [loadingTaskRuns, setLoadingTaskRuns] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -93,6 +97,7 @@ export default function ProjectDetailPage() {
 
     async function loadTaskPrompts() {
       try {
+        setLoadingTaskPrompts(true);
         const encodedProjectId = encodeURIComponent(projectId);
         const res = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`);
         const json = (await res.json()) as {
@@ -102,19 +107,17 @@ export default function ProjectDetailPage() {
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
         }
-
-        const promptMap = json.data.reduce<Record<string, TaskPromptItem>>((acc, item) => {
-          acc[item.taskId] = item;
-          return acc;
-        }, {});
-        setTaskPromptMap(promptMap);
+        setTaskPrompts(json.data);
       } catch (error) {
         console.error("Failed to load task prompts:", error);
+      } finally {
+        setLoadingTaskPrompts(false);
       }
     }
 
     async function loadTaskRuns() {
       try {
+        setLoadingTaskRuns(true);
         const encodedProjectId = encodeURIComponent(projectId);
         const res = await fetch(`/api/task/run?projectId=${encodedProjectId}`);
         const json = (await res.json()) as {
@@ -124,14 +127,11 @@ export default function ProjectDetailPage() {
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
         }
-
-        const runMap = json.data.reduce<Record<string, TaskRunItem>>((acc, item) => {
-          acc[item.taskId] = item;
-          return acc;
-        }, {});
-        setTaskRunMap(runMap);
+        setTaskRuns(json.data);
       } catch (error) {
         console.error("Failed to load task runs:", error);
+      } finally {
+        setLoadingTaskRuns(false);
       }
     }
 
@@ -145,6 +145,24 @@ export default function ProjectDetailPage() {
   const projectSpecPrompt = useMemo(
     () => buildProjectSpecPrompt(project ?? fallbackProject),
     [project]
+  );
+
+  const taskPromptMap = useMemo(
+    () =>
+      taskPrompts.reduce<Record<string, TaskPromptItem>>((acc, item) => {
+        acc[item.taskId] = item;
+        return acc;
+      }, {}),
+    [taskPrompts]
+  );
+
+  const taskRunMap = useMemo(
+    () =>
+      taskRuns.reduce<Record<string, TaskRunItem>>((acc, item) => {
+        acc[item.taskId] = item;
+        return acc;
+      }, {}),
+    [taskRuns]
   );
 
   function handleSelectFile(e: ChangeEvent<HTMLInputElement>) {
@@ -268,6 +286,7 @@ export default function ProjectDetailPage() {
       }
 
       setTaskMessage(json.message || "Task 생성이 완료되었습니다.");
+      setPromptMessage(null);
       const taskResult = await fetchGeneratedTasks(projectId);
       if (taskResult.res.ok && taskResult.json.success && Array.isArray(taskResult.json.data)) {
         setTasks(taskResult.json.data);
@@ -285,7 +304,7 @@ export default function ProjectDetailPage() {
   async function handleGenerateTaskPrompt(taskId: string) {
     try {
       setGeneratingPromptTaskId(taskId);
-      setTaskMessage(null);
+      setPromptMessage(null);
 
       const res = await fetch("/api/task/prompt", {
         method: "POST",
@@ -302,18 +321,24 @@ export default function ProjectDetailPage() {
       };
 
       if (!res.ok || !json.success || !json.data) {
-        setTaskMessage(json.message || "Task 프롬프트 생성 요청에 실패했습니다.");
+        setPromptMessage(json.message || "Task 프롬프트 생성 요청에 실패했습니다.");
         return;
       }
-
-      setTaskPromptMap((prev) => ({
-        ...prev,
-        [json.data!.taskId]: json.data!,
-      }));
-      setTaskMessage(json.message || "Task 실행 프롬프트가 생성되었습니다.");
+      const encodedProjectId = encodeURIComponent(projectId);
+      const promptRes = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`);
+      const promptJson = (await promptRes.json()) as { success: boolean; data?: TaskPromptItem[] };
+      if (promptRes.ok && promptJson.success && Array.isArray(promptJson.data)) {
+        setTaskPrompts(promptJson.data);
+      } else {
+        setTaskPrompts((prev) => {
+          const filtered = prev.filter((item) => item.taskId !== json.data!.taskId);
+          return [json.data!, ...filtered];
+        });
+      }
+      setPromptMessage(json.message || "Task 실행 프롬프트가 생성되었습니다.");
     } catch (error) {
       console.error("Failed to generate task prompt:", error);
-      setTaskMessage("Task 프롬프트 생성 중 오류가 발생했습니다.");
+      setPromptMessage("Task 프롬프트 생성 중 오류가 발생했습니다.");
     } finally {
       setGeneratingPromptTaskId(null);
     }
@@ -322,13 +347,13 @@ export default function ProjectDetailPage() {
   async function handleRunTask(taskId: string) {
     const prompt = taskPromptMap[taskId];
     if (!prompt) {
-      setTaskMessage("먼저 프롬프트를 생성해 주세요.");
+      setPromptMessage("먼저 프롬프트를 생성해 주세요.");
       return;
     }
 
     try {
-      setRunningTaskPromptId(prompt.id);
-      setTaskMessage(null);
+      setRunningPromptId(prompt.id);
+      setPromptMessage(null);
 
       const res = await fetch("/api/task/run", {
         method: "POST",
@@ -345,20 +370,76 @@ export default function ProjectDetailPage() {
       };
 
       if (!res.ok || !json.success || !json.data) {
-        setTaskMessage(json.message || "Task 실행 요청에 실패했습니다.");
+        setPromptMessage(json.message || "Task 실행 요청에 실패했습니다.");
+        return;
+      }
+      const encodedProjectId = encodeURIComponent(projectId);
+      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`);
+      const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
+      if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
+        setTaskRuns(runJson.data);
+      } else {
+        setTaskRuns((prev) => {
+          const filtered = prev.filter((item) => item.taskId !== json.data!.taskId);
+          return [json.data!, ...filtered];
+        });
+      }
+      setPromptMessage(json.message || "Task mock 실행이 완료되었습니다.");
+    } catch (error) {
+      console.error("Failed to run task:", error);
+      setPromptMessage("Task 실행 중 오류가 발생했습니다.");
+    } finally {
+      setRunningPromptId(null);
+    }
+  }
+
+  async function handleMarkReadyForGit(taskId: string) {
+    const prompt = taskPromptMap[taskId];
+    if (!prompt) {
+      setPromptMessage("먼저 프롬프트를 생성해 주세요.");
+      return;
+    }
+
+    try {
+      setMarkingReadyTaskId(taskId);
+      setPromptMessage(null);
+
+      const res = await fetch("/api/task/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ taskPromptId: prompt.id, action: "mark-ready-for-git" }),
+      });
+
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        data?: TaskRunItem;
+      };
+
+      if (!res.ok || !json.success || !json.data) {
+        setPromptMessage(json.message || "READY_FOR_GIT 전환에 실패했습니다.");
         return;
       }
 
-      setTaskRunMap((prev) => ({
-        ...prev,
-        [json.data!.taskId]: json.data!,
-      }));
-      setTaskMessage(json.message || "Task mock 실행이 완료되었습니다.");
+      const encodedProjectId = encodeURIComponent(projectId);
+      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`);
+      const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
+      if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
+        setTaskRuns(runJson.data);
+      } else {
+        setTaskRuns((prev) => {
+          const filtered = prev.filter((item) => item.taskId !== json.data!.taskId);
+          return [json.data!, ...filtered];
+        });
+      }
+      setPromptMessage(json.message || "TaskRun이 READY_FOR_GIT 상태로 전환되었습니다.");
     } catch (error) {
-      console.error("Failed to run task:", error);
-      setTaskMessage("Task 실행 중 오류가 발생했습니다.");
+      console.error("Failed to mark task run ready for git:", error);
+      setPromptMessage("READY_FOR_GIT 전환 중 오류가 발생했습니다.");
     } finally {
-      setRunningTaskPromptId(null);
+      setMarkingReadyTaskId(null);
     }
   }
 
@@ -391,12 +472,17 @@ export default function ProjectDetailPage() {
       <TaskListSection
         tasks={tasks}
         loadingTasks={loadingTasks}
+        loadingTaskPrompts={loadingTaskPrompts}
+        loadingTaskRuns={loadingTaskRuns}
+        promptMessage={promptMessage}
         generatingPromptTaskId={generatingPromptTaskId}
         taskPromptMap={taskPromptMap}
-        runningTaskPromptId={runningTaskPromptId}
+        runningPromptId={runningPromptId}
+        markingReadyTaskId={markingReadyTaskId}
         taskRunMap={taskRunMap}
         onGeneratePrompt={handleGenerateTaskPrompt}
         onRunTask={handleRunTask}
+        onMarkReadyForGit={handleMarkReadyForGit}
       />
     </main>
   );

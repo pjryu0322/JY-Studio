@@ -1,4 +1,5 @@
 import { TaskItem } from "@/components/project-spec/types";
+import { formatTestedAt } from "@/components/project-spec/format";
 
 export type TaskPromptItem = {
   id: string;
@@ -24,23 +25,33 @@ export type TaskRunItem = {
 type TaskListSectionProps = {
   tasks: TaskItem[];
   loadingTasks: boolean;
+  loadingTaskPrompts: boolean;
+  loadingTaskRuns: boolean;
+  promptMessage: string | null;
   generatingPromptTaskId: string | null;
   taskPromptMap: Record<string, TaskPromptItem>;
-  runningTaskPromptId: string | null;
+  runningPromptId: string | null;
+  markingReadyTaskId: string | null;
   taskRunMap: Record<string, TaskRunItem>;
   onGeneratePrompt: (taskId: string) => void;
   onRunTask: (taskId: string) => void;
+  onMarkReadyForGit: (taskId: string) => void;
 };
 
 export function TaskListSection({
   tasks,
   loadingTasks,
+  loadingTaskPrompts,
+  loadingTaskRuns,
+  promptMessage,
   generatingPromptTaskId,
   taskPromptMap,
-  runningTaskPromptId,
+  runningPromptId,
+  markingReadyTaskId,
   taskRunMap,
   onGeneratePrompt,
   onRunTask,
+  onMarkReadyForGit,
 }: TaskListSectionProps) {
   return (
     <section
@@ -54,6 +65,11 @@ export function TaskListSection({
       <p style={{ margin: "0 0 8px 0", color: "#555" }}>
         현재 단계는 parsedJson 기반 mock 규칙으로 Task를 생성합니다.
       </p>
+      {promptMessage ? <p style={{ margin: "0 0 8px 0", color: "#333" }}>{promptMessage}</p> : null}
+      {loadingTaskPrompts ? (
+        <p style={{ margin: "0 0 8px 0", color: "#555" }}>Task 프롬프트를 불러오는 중...</p>
+      ) : null}
+      {loadingTaskRuns ? <p style={{ margin: "0 0 8px 0", color: "#555" }}>Task 실행 이력을 불러오는 중...</p> : null}
       {loadingTasks ? (
         <p style={{ margin: 0, color: "#555" }}>Task 목록을 불러오는 중...</p>
       ) : tasks.length === 0 ? (
@@ -86,6 +102,9 @@ export function TaskListSection({
                 <strong>prompt version:</strong>{" "}
                 {taskPromptMap[task.id] ? taskPromptMap[task.id].version : "-"}
               </p>
+              <p style={{ margin: "4px 0 0 0" }}>
+                <strong>prompt status:</strong> {taskPromptMap[task.id]?.status || "-"}
+              </p>
               <button
                 type="button"
                 onClick={() => onGeneratePrompt(task.id)}
@@ -105,7 +124,7 @@ export function TaskListSection({
               <button
                 type="button"
                 onClick={() => onRunTask(task.id)}
-                disabled={!taskPromptMap[task.id] || runningTaskPromptId === taskPromptMap[task.id]?.id}
+                disabled={!taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id}
                 style={{
                   marginTop: 8,
                   marginLeft: 8,
@@ -114,14 +133,14 @@ export function TaskListSection({
                   borderRadius: 6,
                   background: "#fff",
                   cursor:
-                    !taskPromptMap[task.id] || runningTaskPromptId === taskPromptMap[task.id]?.id
+                    !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id
                       ? "not-allowed"
                       : "pointer",
                   opacity:
-                    !taskPromptMap[task.id] || runningTaskPromptId === taskPromptMap[task.id]?.id ? 0.7 : 1,
+                    !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id ? 0.7 : 1,
                 }}
               >
-                {runningTaskPromptId === taskPromptMap[task.id]?.id ? "Run 실행 중..." : "Run 실행"}
+                {runningPromptId === taskPromptMap[task.id]?.id ? "Run 실행 중..." : "Run 실행"}
               </button>
               {taskPromptMap[task.id] ? (
                 <details style={{ marginTop: 8 }}>
@@ -145,9 +164,36 @@ export function TaskListSection({
               <p style={{ margin: "8px 0 0 0" }}>
                 <strong>run status:</strong> {taskRunMap[task.id]?.status || "-"}
               </p>
+              {taskRunMap[task.id]?.status === "READY_FOR_GIT" ? (
+                <p style={{ margin: "4px 0 0 0", color: "#0a7d2e", fontWeight: 600 }}>
+                  Git 반영 준비 완료
+                </p>
+              ) : null}
               <p style={{ margin: "4px 0 0 0" }}>
                 <strong>resultText:</strong> {taskRunMap[task.id]?.resultText || "-"}
               </p>
+              <p style={{ margin: "4px 0 0 0" }}>
+                <strong>run createdAt:</strong>{" "}
+                {taskRunMap[task.id]?.createdAt ? formatTestedAt(taskRunMap[task.id].createdAt) : "-"}
+              </p>
+              {taskRunMap[task.id]?.status === "DONE" ? (
+                <button
+                  type="button"
+                  onClick={() => onMarkReadyForGit(task.id)}
+                  disabled={markingReadyTaskId === task.id}
+                  style={{
+                    marginTop: 8,
+                    padding: "6px 10px",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    background: "#fff",
+                    cursor: markingReadyTaskId === task.id ? "not-allowed" : "pointer",
+                    opacity: markingReadyTaskId === task.id ? 0.7 : 1,
+                  }}
+                >
+                  {markingReadyTaskId === task.id ? "전환 중..." : "Git 반영 준비"}
+                </button>
+              ) : null}
             </div>
           ))}
         </div>

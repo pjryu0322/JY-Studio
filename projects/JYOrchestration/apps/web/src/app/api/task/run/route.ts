@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 type TaskRunBody = {
   taskPromptId?: string;
+  action?: string;
 };
 
 export async function GET(request: NextRequest) {
@@ -61,6 +62,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as TaskRunBody;
     const taskPromptId = String(body.taskPromptId ?? "").trim();
+    const action = String(body.action ?? "").trim();
 
     if (!taskPromptId) {
       return NextResponse.json(
@@ -88,6 +90,64 @@ export async function POST(request: Request) {
         },
         { status: 404 }
       );
+    }
+
+    if (action === "mark-ready-for-git") {
+      const latestRun = await prisma.taskRun.findFirst({
+        where: {
+          taskPromptId: prompt.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      if (!latestRun) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "READY_FOR_GIT 전환 대상 Run이 없습니다.",
+          },
+          { status: 404 }
+        );
+      }
+
+      if (latestRun.status !== "DONE" && latestRun.status !== "READY_FOR_GIT") {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "DONE 상태 Run만 READY_FOR_GIT로 전환할 수 있습니다.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const updated = await prisma.taskRun.update({
+        where: { id: latestRun.id },
+        data: {
+          status: "READY_FOR_GIT",
+          resultText: latestRun.resultText || "Mock 실행 완료",
+        },
+        select: {
+          id: true,
+          taskId: true,
+          taskPromptId: true,
+          status: true,
+          resultText: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...updated,
+          createdAt: updated.createdAt.toISOString(),
+          updatedAt: updated.updatedAt.toISOString(),
+        },
+        message: "TaskRun이 READY_FOR_GIT 상태로 전환되었습니다.",
+      });
     }
 
     const run = await prisma.taskRun.create({
