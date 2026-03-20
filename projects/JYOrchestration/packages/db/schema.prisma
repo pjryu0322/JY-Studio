@@ -25,7 +25,7 @@ model Project {
 model ProjectSpecUpload {
   id               String   @id @default(uuid())
   projectId        String
-  sourceType       String   @default("document")
+  sourceType       String?
   originalFileName String
   fileType         String
   fileSize         Int

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 function mapUploadRecord(record: {
   id: string;
   projectId: string;
-  sourceType: string;
+  sourceType: string | null;
   originalFileName: string;
   fileType: string;
   fileSize: number;
@@ -18,7 +18,7 @@ function mapUploadRecord(record: {
     originalFileName: record.originalFileName,
     fileType: record.fileType || "application/octet-stream",
     fileSize: record.fileSize,
-    sourceType: record.sourceType,
+    sourceType: record.sourceType || "document",
     status: record.status,
     createdAt: record.createdAt.toISOString(),
     contentStored: record.contentStored,
