@@ -29,7 +29,7 @@ function inferSourceType(file: File) {
   const name = file.name.toLowerCase();
   const type = (file.type || "").toLowerCase();
 
-  if (name.endsWith(".md") || type === "text/markdown") {
+  if (name.endsWith(".md") || type.startsWith("text/markdown")) {
     return "markdown";
   }
   return "document";
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     if (sourceType === "markdown") {
       try {
         contentText = await file.text();
-        contentStored = true;
+        contentStored = Boolean(contentText && contentText.trim().length > 0);
       } catch (error) {
         console.error("Failed to read source text from upload:", error);
       }
