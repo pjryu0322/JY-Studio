@@ -8,11 +8,10 @@ function mapUploadRecord(record: {
   originalFileName: string;
   fileType: string;
   fileSize: number;
-  contentText: string | null;
+  contentStored: boolean;
   status: string;
   createdAt: Date;
 }) {
-  const contentStored = Boolean(record.contentText && record.contentText.trim().length > 0);
   return {
     id: record.id,
     projectId: record.projectId,
@@ -22,7 +21,7 @@ function mapUploadRecord(record: {
     sourceType: record.sourceType,
     status: record.status,
     createdAt: record.createdAt.toISOString(),
-    contentStored,
+    contentStored: record.contentStored,
   };
 }
 

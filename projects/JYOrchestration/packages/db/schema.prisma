@@ -25,11 +25,12 @@ model Project {
 model ProjectSpecUpload {
   id               String   @id @default(uuid())
   projectId        String
-  sourceType       String   @default("UNKNOWN")
+  sourceType       String   @default("document")
   originalFileName String
   fileType         String
   fileSize         Int
   contentText      String?
+  contentStored    Boolean  @default(false)
   status           String   @default("REGISTERED")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

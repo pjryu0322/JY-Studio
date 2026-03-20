@@ -8,11 +8,10 @@ function mapUploadRecord(record: {
   originalFileName: string;
   fileType: string;
   fileSize: number;
-  contentText: string | null;
+  contentStored: boolean;
   status: string;
   createdAt: Date;
 }) {
-  const contentStored = Boolean(record.contentText && record.contentText.trim().length > 0);
   return {
     id: record.id,
     projectId: record.projectId,
@@ -22,7 +21,7 @@ function mapUploadRecord(record: {
     sourceType: record.sourceType,
     status: record.status,
     createdAt: record.createdAt.toISOString(),
-    contentStored,
+    contentStored: record.contentStored,
   };
 }
 
@@ -30,19 +29,10 @@ function inferSourceType(file: File) {
   const name = file.name.toLowerCase();
   const type = (file.type || "").toLowerCase();
 
-  if (name.endsWith(".md") || type.includes("markdown")) {
-    return "MARKDOWN";
+  if (name.endsWith(".md") || type === "text/markdown") {
+    return "markdown";
   }
-  if (name.endsWith(".docx")) {
-    return "DOCX";
-  }
-  if (name.endsWith(".doc")) {
-    return "DOC";
-  }
-  if (type.startsWith("text/")) {
-    return "TEXT";
-  }
-  return "UNKNOWN";
+  return "document";
 }
 
 export async function POST(request: NextRequest) {
@@ -75,11 +65,12 @@ export async function POST(request: NextRequest) {
 
     const sourceType = inferSourceType(file);
     let contentText: string | null = null;
+    let contentStored = false;
 
-    // Save raw text only for markdown/text files in this phase.
-    if (sourceType === "MARKDOWN" || sourceType === "TEXT") {
+    if (sourceType === "markdown") {
       try {
         contentText = await file.text();
+        contentStored = true;
       } catch (error) {
         console.error("Failed to read source text from upload:", error);
       }
@@ -93,6 +84,7 @@ export async function POST(request: NextRequest) {
         fileSize: file.size,
         fileType: file.type || "application/octet-stream",
         contentText,
+        contentStored,
       },
     });
 
