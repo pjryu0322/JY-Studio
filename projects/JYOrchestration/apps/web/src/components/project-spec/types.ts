@@ -50,3 +50,14 @@ export type ParseResult = {
   parsedAt: string | null;
   hasParsedJson: boolean;
 };
+
+export type TaskItem = {
+  id: string;
+  projectId: string;
+  projectSpecUploadId: string;
+  name: string;
+  description: string;
+  status: string;
+  order: number;
+  createdAt: string;
+};

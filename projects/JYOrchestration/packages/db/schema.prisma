@@ -18,6 +18,7 @@ model Project {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   uploads       ProjectSpecUpload[]
+  tasks         Task[]
 
   @@map("projects")
 }
@@ -38,7 +39,25 @@ model ProjectSpecUpload {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks            Task[]
 
   @@index([projectId, createdAt])
   @@map("project_spec_uploads")
+}
+
+model Task {
+  id                  String            @id @default(uuid())
+  projectId           String
+  projectSpecUploadId String
+  name                String
+  description         String
+  status              String            @default("TODO")
+  order               Int
+  createdAt           DateTime          @default(now())
+  project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectSpecUpload   ProjectSpecUpload @relation(fields: [projectSpecUploadId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, order])
+  @@index([projectSpecUploadId])
+  @@map("tasks")
 }

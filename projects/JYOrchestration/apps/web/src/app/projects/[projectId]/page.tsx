@@ -3,8 +3,10 @@
 import { useParams } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
+  fetchGeneratedTasks,
   fetchProjectById,
   fetchProjectSpecUploadHistory,
+  generateTasksFromParsedSpec,
   runProjectSpecMockParse,
   uploadProjectSpecTestFile,
 } from "@/components/project-spec/api";
@@ -16,7 +18,8 @@ import { ProjectSpecPromptSection } from "@/components/project-spec/ProjectSpecP
 import { ProjectSpecUploadHistorySection } from "@/components/project-spec/ProjectSpecUploadHistorySection";
 import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
 import { buildProjectSpecPrompt, fallbackProject } from "@/components/project-spec/prompt";
-import { Project, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
+import { Project, TaskItem, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
+import { TaskListSection } from "@/components/task/TaskListSection";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -33,6 +36,9 @@ export default function ProjectDetailPage() {
   const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
   const [parseMessage, setParseMessage] = useState<string | null>(null);
   const [parsingUploadId, setParsingUploadId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [taskMessage, setTaskMessage] = useState<string | null>(null);
+  const [generatingTaskUploadId, setGeneratingTaskUploadId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -65,8 +71,21 @@ export default function ProjectDetailPage() {
       }
     }
 
+    async function loadTasks() {
+      try {
+        const { res, json } = await fetchGeneratedTasks(projectId);
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          return;
+        }
+        setTasks(json.data);
+      } catch (error) {
+        console.error("Failed to load generated tasks:", error);
+      }
+    }
+
     loadProjectDetail();
     loadUploadHistory();
+    loadTasks();
   }, [projectId]);
 
   const projectSpecPrompt = useMemo(
@@ -127,6 +146,7 @@ export default function ProjectDetailPage() {
       setUploadMessage(json.message || "ProjectSpec 업로드 메타데이터가 등록되었습니다.");
       setUploadStatus("success");
       setParseMessage(null);
+      setTaskMessage(null);
       const historyResult = await fetchProjectSpecUploadHistory(projectId);
       if (
         historyResult.res.ok &&
@@ -177,6 +197,35 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleGenerateTasks(uploadId: string) {
+    if (!projectId) {
+      setTaskMessage("projectId 정보를 확인할 수 없습니다.");
+      return;
+    }
+
+    try {
+      setGeneratingTaskUploadId(uploadId);
+      setTaskMessage(null);
+
+      const { res, json } = await generateTasksFromParsedSpec(uploadId);
+      if (!res.ok || !json.success || !Array.isArray(json.data)) {
+        setTaskMessage(json.message || "Task 생성 요청에 실패했습니다.");
+        return;
+      }
+
+      setTaskMessage(json.message || "Task 생성이 완료되었습니다.");
+      const taskResult = await fetchGeneratedTasks(projectId);
+      if (taskResult.res.ok && taskResult.json.success && Array.isArray(taskResult.json.data)) {
+        setTasks(taskResult.json.data);
+      }
+    } catch (error) {
+      console.error("Failed to generate tasks from parsed spec:", error);
+      setTaskMessage("Task 생성 중 오류가 발생했습니다.");
+    } finally {
+      setGeneratingTaskUploadId(null);
+    }
+  }
+
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
@@ -197,9 +246,13 @@ export default function ProjectDetailPage() {
       <ProjectSpecUploadHistorySection
         uploadHistory={uploadHistory}
         parsingUploadId={parsingUploadId}
+        generatingTaskUploadId={generatingTaskUploadId}
         parseMessage={parseMessage}
+        taskMessage={taskMessage}
         onParse={handleRunParse}
+        onGenerateTasks={handleGenerateTasks}
       />
+      <TaskListSection tasks={tasks} />
     </main>
   );
 }

@@ -1,4 +1,4 @@
-import { ApiResponse, ParseResult, Project, UploadHistoryItem, UploadResult } from "./types";
+import { ApiResponse, ParseResult, Project, TaskItem, UploadHistoryItem, UploadResult } from "./types";
 
 export async function fetchProjectById(projectId: string): Promise<{
   project: Project | null;
@@ -56,5 +56,25 @@ export async function runProjectSpecMockParse(projectSpecUploadId: string) {
   });
 
   const json = (await res.json()) as ApiResponse<ParseResult>;
+  return { res, json };
+}
+
+export async function fetchGeneratedTasks(projectId: string) {
+  const encodedProjectId = encodeURIComponent(projectId);
+  const res = await fetch(`/api/task/generate?projectId=${encodedProjectId}`);
+  const json = (await res.json()) as ApiResponse<TaskItem[]>;
+  return { res, json };
+}
+
+export async function generateTasksFromParsedSpec(projectSpecUploadId: string) {
+  const res = await fetch("/api/task/generate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ projectSpecUploadId }),
+  });
+
+  const json = (await res.json()) as ApiResponse<TaskItem[]>;
   return { res, json };
 }
