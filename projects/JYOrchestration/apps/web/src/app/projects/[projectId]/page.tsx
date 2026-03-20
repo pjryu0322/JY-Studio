@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
 import { ProjectSpecGuideSection } from "@/components/project-spec/ProjectSpecGuideSection";
+import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
+import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
 import { ProjectSpecPromptSection } from "@/components/project-spec/ProjectSpecPromptSection";
 import { ProjectSpecUploadHistorySection } from "@/components/project-spec/ProjectSpecUploadHistorySection";
 import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
@@ -145,23 +146,8 @@ export default function ProjectDetailPage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
-      <div style={{ marginBottom: 20 }}>
-        <Link href="/" style={{ color: "#333", textDecoration: "none" }}>
-          ← 프로젝트 목록으로
-        </Link>
-      </div>
-
-      <h1 style={{ fontSize: 30, fontWeight: 700, marginBottom: 20 }}>
-        ProjectSpec 설정
-      </h1>
-
-      {loading ? (
-        <p style={{ marginBottom: 16 }}>프로젝트 정보를 불러오는 중...</p>
-      ) : null}
-      {errorMessage ? (
-        <p style={{ marginBottom: 16, color: "#b00020" }}>{errorMessage}</p>
-      ) : null}
-
+      <ProjectSpecPageHeader />
+      <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
       <ProjectInfoCard project={project} />
       <ProjectSpecGuideSection />
       <ProjectSpecPromptSection prompt={projectSpecPrompt} />
