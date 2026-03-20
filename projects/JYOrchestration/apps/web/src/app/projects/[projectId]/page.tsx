@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { fetchProjectById, uploadProjectSpecTestFile } from "@/components/project-spec/api";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
 import { ProjectSpecGuideSection } from "@/components/project-spec/ProjectSpecGuideSection";
@@ -11,13 +12,7 @@ import { ProjectSpecPromptSection } from "@/components/project-spec/ProjectSpecP
 import { ProjectSpecUploadHistorySection } from "@/components/project-spec/ProjectSpecUploadHistorySection";
 import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
 import { buildProjectSpecPrompt, fallbackProject } from "@/components/project-spec/prompt";
-import {
-  ApiResponse,
-  Project,
-  UploadHistoryItem,
-  UploadResult,
-  UploadStatus,
-} from "@/components/project-spec/types";
+import { Project, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -40,24 +35,9 @@ export default function ProjectDetailPage() {
       try {
         setLoading(true);
         setErrorMessage(null);
-
-        const res = await fetch("/api/projects");
-        const json = (await res.json()) as ApiResponse<Project[]>;
-
-        if (!res.ok || !json.success || !Array.isArray(json.data)) {
-          setProject(null);
-          setErrorMessage(json.message || "프로젝트 정보를 불러오지 못했습니다.");
-          return;
-        }
-
-        const target = json.data.find((item) => item.id === projectId) || null;
-        if (!target) {
-          setProject(null);
-          setErrorMessage("존재하지 않는 프로젝트입니다.");
-          return;
-        }
-
-        setProject(target);
+        const result = await fetchProjectById(projectId);
+        setProject(result.project);
+        setErrorMessage(result.errorMessage);
       } catch (error) {
         console.error("Failed to load project detail:", error);
         setProject(null);
@@ -106,16 +86,7 @@ export default function ProjectDetailPage() {
       setUploadMessage(null);
       setUploadResult(null);
       setUploadStatus("idle");
-
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-
-      const res = await fetch("/api/project-spec/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const json = (await res.json()) as ApiResponse<UploadResult>;
+      const { res, json } = await uploadProjectSpecTestFile(selectedFile);
       if (!res.ok || !json.success || !json.data) {
         setUploadMessage(json.message || "업로드 테스트 요청에 실패했습니다.");
         setUploadStatus("error");
