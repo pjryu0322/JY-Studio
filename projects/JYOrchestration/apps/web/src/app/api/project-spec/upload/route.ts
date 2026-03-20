@@ -21,47 +21,13 @@ function mapUploadRecord(record: {
   };
 }
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
-    if (!projectId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "projectId가 필요합니다.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const uploads = await prisma.projectSpecUpload.findMany({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: uploads.map(mapUploadRecord),
-      message: "ProjectSpec 업로드 메타데이터 조회에 성공했습니다.",
-    });
-  } catch (error) {
-    console.error("GET /api/project-spec/upload error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: "업로드 메타데이터 조회 중 오류가 발생했습니다.",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: Request) {
-  try {
+    const queryProjectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
     const formData = await request.formData();
     const file = formData.get("file");
-    const projectId = String(formData.get("projectId") ?? "").trim();
+    const formProjectId = String(formData.get("projectId") ?? "").trim();
+    const projectId = formProjectId || queryProjectId;
 
     if (!(file instanceof File)) {
       return NextResponse.json(

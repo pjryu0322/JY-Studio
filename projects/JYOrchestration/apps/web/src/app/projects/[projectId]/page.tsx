@@ -119,7 +119,14 @@ export default function ProjectDetailPage() {
       setUploadResult(json.data);
       setUploadMessage(json.message || "ProjectSpec 업로드 메타데이터가 등록되었습니다.");
       setUploadStatus("success");
-      setUploadHistory((prev) => [json.data, ...prev]);
+      const historyResult = await fetchProjectSpecUploadHistory(projectId);
+      if (
+        historyResult.res.ok &&
+        historyResult.json.success &&
+        Array.isArray(historyResult.json.data)
+      ) {
+        setUploadHistory(historyResult.json.data);
+      }
     } catch (error) {
       console.error("Failed to upload project spec file:", error);
       setUploadMessage("업로드 테스트 중 오류가 발생했습니다.");

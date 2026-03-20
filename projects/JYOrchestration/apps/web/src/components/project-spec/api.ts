@@ -30,7 +30,7 @@ export async function fetchProjectById(projectId: string): Promise<{
 
 export async function fetchProjectSpecUploadHistory(projectId: string) {
   const encodedProjectId = encodeURIComponent(projectId);
-  const res = await fetch(`/api/project-spec/upload?projectId=${encodedProjectId}`);
+  const res = await fetch(`/api/project-spec/list?projectId=${encodedProjectId}`);
   const json = (await res.json()) as ApiResponse<UploadHistoryItem[]>;
   return { res, json };
 }
@@ -40,7 +40,8 @@ export async function uploadProjectSpecTestFile(file: File, projectId: string) {
   formData.append("file", file);
   formData.append("projectId", projectId);
 
-  const res = await fetch("/api/project-spec/upload", {
+  const encodedProjectId = encodeURIComponent(projectId);
+  const res = await fetch(`/api/project-spec/upload?projectId=${encodedProjectId}`, {
     method: "POST",
     body: formData,
   });
