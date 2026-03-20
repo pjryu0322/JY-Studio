@@ -57,6 +57,7 @@ export default function ProjectDetailPage() {
   const [gitRequests, setGitRequests] = useState<GitChangeRequestItem[]>([]);
   const [loadingGitRequests, setLoadingGitRequests] = useState(false);
   const [registeringGitRequestRunId, setRegisteringGitRequestRunId] = useState<string | null>(null);
+  const [applyingGitRequestId, setApplyingGitRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -521,6 +522,48 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleApplyGitRequest(gitChangeRequestId: string) {
+    try {
+      setApplyingGitRequestId(gitChangeRequestId);
+      setPromptMessage(null);
+
+      const res = await fetch("/api/task/git-apply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ gitChangeRequestId }),
+      });
+
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+      };
+
+      if (!res.ok || !json.success) {
+        setPromptMessage(json.message || "Git 반영 실행에 실패했습니다.");
+        return;
+      }
+
+      const encodedProjectId = encodeURIComponent(projectId);
+      const listRes = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
+      const listJson = (await listRes.json()) as {
+        success: boolean;
+        data?: GitChangeRequestItem[];
+      };
+      if (listRes.ok && listJson.success && Array.isArray(listJson.data)) {
+        setGitRequests(listJson.data);
+      }
+
+      setPromptMessage(json.message || "Git 반영(mock) 완료");
+    } catch (error) {
+      console.error("Failed to apply git change request:", error);
+      setPromptMessage("Git 반영(mock) 실행 중 오류가 발생했습니다.");
+    } finally {
+      setApplyingGitRequestId(null);
+    }
+  }
+
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
@@ -607,9 +650,33 @@ export default function ProjectDetailPage() {
                 <p style={{ margin: 0, marginBottom: 4 }}>
                   <strong>diff:</strong> {item.diffText ? "있음" : "없음"}
                 </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>applyStatus:</strong> {item.applyStatus || "PENDING"}
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>applyLog:</strong> {item.applyLog ? "있음" : "없음"}
+                </p>
                 <p style={{ margin: 0 }}>
                   <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
                 </p>
+                {item.status === "REQUESTED" ? (
+                  <button
+                    type="button"
+                    onClick={() => handleApplyGitRequest(item.id)}
+                    disabled={applyingGitRequestId === item.id}
+                    style={{
+                      marginTop: 8,
+                      padding: "6px 10px",
+                      border: "1px solid #ccc",
+                      borderRadius: 6,
+                      background: "#fff",
+                      cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
+                      opacity: applyingGitRequestId === item.id ? 0.7 : 1,
+                    }}
+                  >
+                    {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
+                  </button>
+                ) : null}
                 {item.diffText ? (
                   <details style={{ marginTop: 8 }}>
                     <summary style={{ cursor: "pointer" }}>diffText 보기</summary>
@@ -626,6 +693,25 @@ export default function ProjectDetailPage() {
                       }}
                     >
                       {item.diffText}
+                    </pre>
+                  </details>
+                ) : null}
+                {item.applyLog ? (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: "pointer" }}>applyLog 보기</summary>
+                    <pre
+                      style={{
+                        marginTop: 8,
+                        background: "#f7f7f7",
+                        border: "1px solid #e0e0e0",
+                        borderRadius: 8,
+                        padding: 10,
+                        whiteSpace: "pre-wrap",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {item.applyLog}
                     </pre>
                   </details>
                 ) : null}

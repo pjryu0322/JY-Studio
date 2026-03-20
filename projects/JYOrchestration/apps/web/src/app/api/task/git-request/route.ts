@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
         files: true,
         diffText: true,
         commitMessage: true,
+        applyStatus: true,
+        applyLog: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -149,6 +151,7 @@ export async function POST(request: Request) {
         files,
         diffText,
         commitMessage,
+        applyStatus: "PENDING",
       },
       select: {
         id: true,
@@ -159,6 +162,8 @@ export async function POST(request: Request) {
         files: true,
         diffText: true,
         commitMessage: true,
+        applyStatus: true,
+        applyLog: true,
       },
     });
 

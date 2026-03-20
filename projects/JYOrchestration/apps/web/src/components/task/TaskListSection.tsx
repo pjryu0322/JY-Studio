@@ -37,6 +37,8 @@ export type GitChangeRequestItem = {
   files: GitChangeRequestFileItem[] | null;
   diffText: string | null;
   commitMessage: string | null;
+  applyStatus: string | null;
+  applyLog: string | null;
   createdAt: string;
   updatedAt: string;
 };

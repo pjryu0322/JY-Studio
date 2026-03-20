@@ -112,6 +112,8 @@ model GitChangeRequest {
   files       Json?
   diffText    String?
   commitMessage String?
+  applyStatus String?  @default("PENDING")
+  applyLog    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
