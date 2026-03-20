@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       data: {
         fileName: file.name,
         fileSize: file.size,
-        fileType: file.type,
+        fileType: file.type || "application/octet-stream",
       },
       message: "업로드 API 뼈대가 정상 동작했습니다.",
     });
