@@ -1,4 +1,4 @@
-import { ApiResponse, Project, UploadResult } from "./types";
+import { ApiResponse, Project, UploadHistoryItem, UploadResult } from "./types";
 
 export async function fetchProjectById(projectId: string): Promise<{
   project: Project | null;
@@ -28,9 +28,17 @@ export async function fetchProjectById(projectId: string): Promise<{
   };
 }
 
-export async function uploadProjectSpecTestFile(file: File) {
+export async function fetchProjectSpecUploadHistory(projectId: string) {
+  const encodedProjectId = encodeURIComponent(projectId);
+  const res = await fetch(`/api/project-spec/upload?projectId=${encodedProjectId}`);
+  const json = (await res.json()) as ApiResponse<UploadHistoryItem[]>;
+  return { res, json };
+}
+
+export async function uploadProjectSpecTestFile(file: File, projectId: string) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("projectId", projectId);
 
   const res = await fetch("/api/project-spec/upload", {
     method: "POST",

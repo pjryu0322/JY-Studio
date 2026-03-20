@@ -13,16 +13,23 @@ export type ApiResponse<T> = {
 };
 
 export type UploadResult = {
+  id: string;
+  projectId: string;
   fileName: string;
   fileSize: number;
   fileType: string;
+  status: string;
+  createdAt: string;
 };
 
 export type UploadStatus = "idle" | "success" | "error";
 
 export type UploadHistoryItem = {
+  id: string;
+  projectId: string;
   fileName: string;
   fileSize: number;
   fileType: string;
-  testedAt: string;
+  status: string;
+  createdAt: string;
 };

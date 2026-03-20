@@ -1,4 +1,5 @@
 import { ChangeEvent } from "react";
+import { formatTestedAt } from "./format";
 import { UploadResult, UploadStatus } from "./types";
 
 type ProjectSpecUploadTestSectionProps = {
@@ -36,7 +37,7 @@ export function ProjectSpecUploadTestSection({
         추가될 예정입니다.
       </p>
       <p style={{ marginTop: 0, marginBottom: 12 }}>
-        현재는 UI 뼈대만 준비하는 단계이며 실제 업로드는 수행되지 않습니다.
+        현재 단계에서는 파일 본문 저장/파싱 없이 메타데이터만 DB에 등록합니다.
       </p>
 
       <div style={{ display: "grid", gap: 10 }}>
@@ -110,6 +111,12 @@ export function ProjectSpecUploadTestSection({
             </p>
             <p style={{ margin: 0 }}>
               <strong>fileType:</strong> {uploadResult.fileType || "unknown"}
+            </p>
+            <p style={{ margin: 0, marginTop: 4 }}>
+              <strong>status:</strong> {uploadResult.status}
+            </p>
+            <p style={{ margin: 0, marginTop: 4 }}>
+              <strong>createdAt:</strong> {formatTestedAt(uploadResult.createdAt)}
             </p>
           </div>
         ) : null}

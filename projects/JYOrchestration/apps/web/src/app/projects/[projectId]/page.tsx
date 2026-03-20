@@ -2,8 +2,11 @@
 
 import { useParams } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { fetchProjectById, uploadProjectSpecTestFile } from "@/components/project-spec/api";
-import { formatTestedAt } from "@/components/project-spec/format";
+import {
+  fetchProjectById,
+  fetchProjectSpecUploadHistory,
+  uploadProjectSpecTestFile,
+} from "@/components/project-spec/api";
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
 import { ProjectSpecGuideSection } from "@/components/project-spec/ProjectSpecGuideSection";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
@@ -47,7 +50,20 @@ export default function ProjectDetailPage() {
       }
     }
 
+    async function loadUploadHistory() {
+      try {
+        const { res, json } = await fetchProjectSpecUploadHistory(projectId);
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          return;
+        }
+        setUploadHistory(json.data);
+      } catch (error) {
+        console.error("Failed to load upload metadata history:", error);
+      }
+    }
+
     loadProjectDetail();
+    loadUploadHistory();
   }, [projectId]);
 
   const projectSpecPrompt = useMemo(
@@ -68,12 +84,19 @@ export default function ProjectDetailPage() {
 
     setSelectedFile(file);
     setSelectedFileName(file.name);
-    setUploadMessage("현재 단계에서는 업로드 API 뼈대를 검증합니다.");
+    setUploadMessage("현재 단계에서는 파일 본문 저장 없이 메타데이터 등록만 수행합니다.");
     setUploadResult(null);
     setUploadStatus("idle");
   }
 
   async function handleUploadTest() {
+    if (!projectId) {
+      setUploadMessage("projectId 정보를 확인할 수 없습니다.");
+      setUploadResult(null);
+      setUploadStatus("error");
+      return;
+    }
+
     if (!selectedFile) {
       setUploadMessage("업로드할 파일을 먼저 선택해 주세요.");
       setUploadResult(null);
@@ -86,7 +109,7 @@ export default function ProjectDetailPage() {
       setUploadMessage(null);
       setUploadResult(null);
       setUploadStatus("idle");
-      const { res, json } = await uploadProjectSpecTestFile(selectedFile);
+      const { res, json } = await uploadProjectSpecTestFile(selectedFile, projectId);
       if (!res.ok || !json.success || !json.data) {
         setUploadMessage(json.message || "업로드 테스트 요청에 실패했습니다.");
         setUploadStatus("error");
@@ -94,17 +117,9 @@ export default function ProjectDetailPage() {
       }
 
       setUploadResult(json.data);
-      setUploadMessage(json.message || "업로드 API 뼈대가 정상 동작했습니다.");
+      setUploadMessage(json.message || "ProjectSpec 업로드 메타데이터가 등록되었습니다.");
       setUploadStatus("success");
-      setUploadHistory((prev) => [
-        {
-          fileName: json.data.fileName,
-          fileSize: json.data.fileSize,
-          fileType: json.data.fileType || "unknown",
-          testedAt: formatTestedAt(new Date()),
-        },
-        ...prev,
-      ]);
+      setUploadHistory((prev) => [json.data, ...prev]);
     } catch (error) {
       console.error("Failed to upload project spec file:", error);
       setUploadMessage("업로드 테스트 중 오류가 발생했습니다.");

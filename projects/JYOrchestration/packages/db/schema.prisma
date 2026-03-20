@@ -17,6 +17,22 @@ model Project {
   status        String
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
+  uploads       ProjectSpecUpload[]
 
   @@map("projects")
+}
+
+model ProjectSpecUpload {
+  id               String   @id @default(uuid())
+  projectId        String
+  originalFileName String
+  fileType         String
+  fileSize         Int
+  status           String   @default("REGISTERED")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@map("project_spec_uploads")
 }
