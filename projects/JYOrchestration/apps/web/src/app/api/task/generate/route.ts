@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
         status: true,
         order: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -99,6 +100,7 @@ export async function GET(request: NextRequest) {
       data: tasks.map((task) => ({
         ...task,
         createdAt: task.createdAt.toISOString(),
+        updatedAt: task.updatedAt.toISOString(),
       })),
     });
   } catch (error) {
@@ -189,6 +191,7 @@ export async function POST(request: Request) {
         status: true,
         order: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -197,6 +200,7 @@ export async function POST(request: Request) {
       data: tasks.map((task) => ({
         ...task,
         createdAt: task.createdAt.toISOString(),
+        updatedAt: task.updatedAt.toISOString(),
       })),
       message: "ProjectSpec parsedJson 기반 Task가 생성되었습니다.",
     });

@@ -60,4 +60,5 @@ export type TaskItem = {
   status: string;
   order: number;
   createdAt: string;
+  updatedAt: string;
 };
