@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     if (sourceType === "markdown") {
       try {
         contentText = await file.text();
-        contentStored = Boolean(contentText && contentText.trim().length > 0);
+        contentStored = true;
       } catch (error) {
         console.error("Failed to read source text from upload:", error);
       }
