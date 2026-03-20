@@ -235,7 +235,15 @@ export default function ProjectDetailPage() {
         </p>
 
         <div style={{ display: "grid", gap: 10 }}>
-          <input type="file" accept=".md,.doc,.docx" onChange={handleSelectFile} />
+          <label htmlFor="projectspec-file-input" style={{ fontWeight: 600 }}>
+            ProjectSpec 파일 선택 (UI 뼈대)
+          </label>
+          <input
+            id="projectspec-file-input"
+            type="file"
+            accept=".md,.doc,.docx"
+            onChange={handleSelectFile}
+          />
           <p style={{ margin: 0, color: "#555" }}>
             지원 예정 형식: <code>.md</code>, <code>.doc</code>, <code>.docx</code>
           </p>
