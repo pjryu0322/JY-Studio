@@ -24,6 +24,8 @@ type UploadResult = {
   fileType: string;
 };
 
+type UploadStatus = "idle" | "success" | "error";
+
 const fallbackProject: Project = {
   id: "",
   name: "프로젝트 정보 로딩 중",
@@ -70,6 +72,7 @@ export default function ProjectDetailPage() {
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
 
   useEffect(() => {
     if (!projectId) return;
@@ -120,19 +123,22 @@ export default function ProjectDetailPage() {
       setSelectedFileName(null);
       setUploadMessage(null);
       setUploadResult(null);
+      setUploadStatus("idle");
       return;
     }
 
     setSelectedFile(file);
     setSelectedFileName(file.name);
-    setUploadMessage("현재 단계에서는 업로드 UI만 제공됩니다.");
+    setUploadMessage("현재 단계에서는 업로드 API 뼈대를 검증합니다.");
     setUploadResult(null);
+    setUploadStatus("idle");
   }
 
   async function handleUploadTest() {
     if (!selectedFile) {
       setUploadMessage("업로드할 파일을 먼저 선택해 주세요.");
       setUploadResult(null);
+      setUploadStatus("error");
       return;
     }
 
@@ -140,6 +146,7 @@ export default function ProjectDetailPage() {
       setUploading(true);
       setUploadMessage(null);
       setUploadResult(null);
+      setUploadStatus("idle");
 
       const formData = new FormData();
       formData.append("file", selectedFile);
@@ -152,15 +159,18 @@ export default function ProjectDetailPage() {
       const json = (await res.json()) as ApiResponse<UploadResult>;
       if (!res.ok || !json.success || !json.data) {
         setUploadMessage(json.message || "업로드 테스트 요청에 실패했습니다.");
+        setUploadStatus("error");
         return;
       }
 
       setUploadResult(json.data);
       setUploadMessage(json.message || "업로드 API 뼈대가 정상 동작했습니다.");
+      setUploadStatus("success");
     } catch (error) {
       console.error("Failed to upload project spec file:", error);
       setUploadMessage("업로드 테스트 중 오류가 발생했습니다.");
       setUploadResult(null);
+      setUploadStatus("error");
     } finally {
       setUploading(false);
     }
@@ -324,16 +334,33 @@ export default function ProjectDetailPage() {
           ) : (
             <p style={{ margin: 0, color: "#555" }}>아직 선택된 파일이 없습니다.</p>
           )}
-          {uploadMessage ? <p style={{ margin: 0, color: "#555" }}>{uploadMessage}</p> : null}
-          {uploadResult ? (
+          {uploadStatus === "error" && uploadMessage ? (
             <div
               style={{
-                border: "1px solid #e0e0e0",
+                border: "1px solid #f5c2c7",
                 borderRadius: 8,
                 padding: 10,
-                background: "#fafafa",
+                background: "#fff5f5",
+                color: "#b00020",
               }}
             >
+              <p style={{ margin: 0, fontWeight: 600, marginBottom: 4 }}>업로드 테스트 실패</p>
+              <p style={{ margin: 0 }}>{uploadMessage}</p>
+            </div>
+          ) : null}
+          {uploadStatus === "success" && uploadResult ? (
+            <div
+              style={{
+                border: "1px solid #cfe8d2",
+                borderRadius: 8,
+                padding: 10,
+                background: "#f3fbf4",
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600, marginBottom: 6 }}>업로드 테스트 결과</p>
+              <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>message:</strong> {uploadMessage || "업로드 API 뼈대가 정상 동작했습니다."}
+              </p>
               <p style={{ margin: 0, marginBottom: 4 }}>
                 <strong>fileName:</strong> {uploadResult.fileName}
               </p>
