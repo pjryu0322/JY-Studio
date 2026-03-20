@@ -18,6 +18,14 @@ type ApiResponse<T> = {
   data?: T;
 };
 
+const fallbackProject: Project = {
+  id: "",
+  name: "프로젝트 정보 로딩 중",
+  description: null,
+  projectType: "-",
+  status: "-",
+};
+
 function buildProjectSpecPrompt(project: Project) {
   return `너는 소프트웨어 아키텍트이자 요구사항 분석가다.
 아래 프로젝트 정보를 기반으로 ProjectSpec 문서를 "마크다운 문서"로 작성하라.
@@ -91,12 +99,10 @@ export default function ProjectDetailPage() {
     loadProjectDetail();
   }, [projectId]);
 
-  const projectSpecPrompt = useMemo(() => {
-    if (!project) {
-      return "";
-    }
-    return buildProjectSpecPrompt(project);
-  }, [project]);
+  const projectSpecPrompt = useMemo(
+    () => buildProjectSpecPrompt(project ?? fallbackProject),
+    [project]
+  );
 
   function handleSelectFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -129,8 +135,6 @@ export default function ProjectDetailPage() {
         <p style={{ marginBottom: 16, color: "#b00020" }}>{errorMessage}</p>
       ) : null}
 
-      {project ? (
-        <>
       <section
         style={{
           border: "1px solid #ddd",
@@ -142,16 +146,16 @@ export default function ProjectDetailPage() {
         <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12 }}>프로젝트 기본 정보</h2>
         <div style={{ display: "grid", gap: 8 }}>
           <div>
-            <strong>프로젝트명:</strong> {project.name}
+            <strong>프로젝트명:</strong> {project?.name || "정보 없음"}
           </div>
           <div>
-            <strong>설명:</strong> {project.description || "설명 없음"}
+            <strong>설명:</strong> {project?.description || "설명 없음"}
           </div>
           <div>
-            <strong>Project Type:</strong> {project.projectType}
+            <strong>Project Type:</strong> {project?.projectType || "-"}
           </div>
           <div>
-            <strong>Status:</strong> {project.status}
+            <strong>Status:</strong> {project?.status || "-"}
           </div>
         </div>
       </section>
@@ -257,8 +261,6 @@ export default function ProjectDetailPage() {
           {uploadMessage ? <p style={{ margin: 0, color: "#555" }}>{uploadMessage}</p> : null}
         </div>
       </section>
-        </>
-      ) : null}
     </main>
   );
 }
