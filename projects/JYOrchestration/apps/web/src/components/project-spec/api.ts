@@ -35,11 +35,7 @@ export async function fetchProjectSpecUploadHistory(projectId: string) {
   return { res, json };
 }
 
-export async function uploadProjectSpecTestFile(file: File, projectId: string) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("projectId", projectId);
-
+export async function uploadProjectSpecTestFile(formData: FormData, projectId: string) {
   const encodedProjectId = encodeURIComponent(projectId);
   const res = await fetch(`/api/project-spec/upload?projectId=${encodedProjectId}`, {
     method: "POST",

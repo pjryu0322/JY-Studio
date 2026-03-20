@@ -109,7 +109,11 @@ export default function ProjectDetailPage() {
       setUploadMessage(null);
       setUploadResult(null);
       setUploadStatus("idle");
-      const { res, json } = await uploadProjectSpecTestFile(selectedFile, projectId);
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("projectId", projectId);
+
+      const { res, json } = await uploadProjectSpecTestFile(formData, projectId);
       if (!res.ok || !json.success || !json.data) {
         setUploadMessage(json.message || "업로드 테스트 요청에 실패했습니다.");
         setUploadStatus("error");
