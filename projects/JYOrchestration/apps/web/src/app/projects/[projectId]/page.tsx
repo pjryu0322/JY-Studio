@@ -26,6 +26,13 @@ type UploadResult = {
 
 type UploadStatus = "idle" | "success" | "error";
 
+type UploadHistoryItem = {
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  testedAt: string;
+};
+
 const fallbackProject: Project = {
   id: "",
   name: "프로젝트 정보 로딩 중",
@@ -73,6 +80,7 @@ export default function ProjectDetailPage() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
+  const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -166,6 +174,15 @@ export default function ProjectDetailPage() {
       setUploadResult(json.data);
       setUploadMessage(json.message || "업로드 API 뼈대가 정상 동작했습니다.");
       setUploadStatus("success");
+      setUploadHistory((prev) => [
+        {
+          fileName: json.data.fileName,
+          fileSize: json.data.fileSize,
+          fileType: json.data.fileType || "unknown",
+          testedAt: new Date().toLocaleString(),
+        },
+        ...prev,
+      ]);
     } catch (error) {
       console.error("Failed to upload project spec file:", error);
       setUploadMessage("업로드 테스트 중 오류가 발생했습니다.");
@@ -372,6 +389,48 @@ export default function ProjectDetailPage() {
               </p>
             </div>
           ) : null}
+
+          <div
+            style={{
+              borderTop: "1px solid #e5e5e5",
+              paddingTop: 10,
+              marginTop: 2,
+            }}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 8px 0" }}>
+              최근 업로드 테스트 결과
+            </h3>
+            {uploadHistory.length === 0 ? (
+              <p style={{ margin: 0, color: "#555" }}>아직 업로드 테스트 이력이 없습니다.</p>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {uploadHistory.map((item, index) => (
+                  <div
+                    key={`${item.fileName}-${item.testedAt}-${index}`}
+                    style={{
+                      border: "1px solid #e0e0e0",
+                      borderRadius: 8,
+                      padding: 10,
+                      background: "#fff",
+                    }}
+                  >
+                    <p style={{ margin: 0, marginBottom: 4 }}>
+                      <strong>fileName:</strong> {item.fileName}
+                    </p>
+                    <p style={{ margin: 0, marginBottom: 4 }}>
+                      <strong>fileSize:</strong> {item.fileSize}
+                    </p>
+                    <p style={{ margin: 0, marginBottom: 4 }}>
+                      <strong>fileType:</strong> {item.fileType || "unknown"}
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      <strong>testedAt:</strong> {item.testedAt}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </main>
