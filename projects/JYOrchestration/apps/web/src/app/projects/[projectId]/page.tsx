@@ -598,9 +598,37 @@ export default function ProjectDetailPage() {
                 <p style={{ margin: 0, marginBottom: 4 }}>
                   <strong>status:</strong> {item.status}
                 </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>commitMessage:</strong> {item.commitMessage || "-"}
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>변경 파일 수:</strong> {Array.isArray(item.files) ? item.files.length : 0}
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>diff:</strong> {item.diffText ? "있음" : "없음"}
+                </p>
                 <p style={{ margin: 0 }}>
                   <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
                 </p>
+                {item.diffText ? (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: "pointer" }}>diffText 보기</summary>
+                    <pre
+                      style={{
+                        marginTop: 8,
+                        background: "#f7f7f7",
+                        border: "1px solid #e0e0e0",
+                        borderRadius: 8,
+                        padding: 10,
+                        whiteSpace: "pre-wrap",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {item.diffText}
+                    </pre>
+                  </details>
+                ) : null}
               </div>
             ))}
           </div>

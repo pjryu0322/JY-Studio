@@ -109,6 +109,9 @@ model GitChangeRequest {
   taskRunId   String
   status      String   @default("REQUESTED")
   requestNote String?
+  files       Json?
+  diffText    String?
+  commitMessage String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

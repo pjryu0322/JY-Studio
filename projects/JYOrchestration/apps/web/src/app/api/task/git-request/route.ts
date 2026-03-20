@@ -5,6 +5,37 @@ type CreateGitRequestBody = {
   taskRunId?: string;
 };
 
+type MockFileChange = {
+  path: string;
+  type: "MODIFY" | "CREATE";
+};
+
+function buildMockFileChanges(): MockFileChange[] {
+  return [
+    {
+      path: "apps/web/src/app/page.tsx",
+      type: "MODIFY",
+    },
+    {
+      path: "apps/web/src/app/projects/[projectId]/page.tsx",
+      type: "MODIFY",
+    },
+  ];
+}
+
+function buildMockDiff(taskId: string, resultText: string | null): string {
+  const summary = (resultText || "Mock 실행 결과를 기반으로 코드 변경안을 구성합니다.").slice(0, 140);
+  return [
+    "--- a/page.tsx",
+    "+++ b/page.tsx",
+    "@@ -1,3 +1,6 @@",
+    `+// taskId: ${taskId}`,
+    `+// source summary: ${summary}`,
+    '+console.log("task applied");',
+    "",
+  ].join("\n");
+}
+
 export async function GET(request: NextRequest) {
   try {
     const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
@@ -28,6 +59,9 @@ export async function GET(request: NextRequest) {
         taskRunId: true,
         status: true,
         requestNote: true,
+        files: true,
+        diffText: true,
+        commitMessage: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -73,6 +107,7 @@ export async function POST(request: Request) {
         id: true,
         status: true,
         taskId: true,
+        resultText: true,
         task: {
           select: {
             projectId: true,
@@ -101,12 +136,19 @@ export async function POST(request: Request) {
       );
     }
 
+    const files = buildMockFileChanges();
+    const diffText = buildMockDiff(run.taskId, run.resultText);
+    const commitMessage = `feat: apply task ${run.taskId}`;
+
     const saved = await prisma.gitChangeRequest.create({
       data: {
         projectId: run.task.projectId,
         taskId: run.taskId,
         taskRunId: run.id,
         status: "REQUESTED",
+        files,
+        diffText,
+        commitMessage,
       },
       select: {
         id: true,
@@ -114,6 +156,9 @@ export async function POST(request: Request) {
         taskId: true,
         taskRunId: true,
         status: true,
+        files: true,
+        diffText: true,
+        commitMessage: true,
       },
     });
 

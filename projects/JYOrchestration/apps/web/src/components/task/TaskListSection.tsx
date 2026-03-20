@@ -22,6 +22,11 @@ export type TaskRunItem = {
   updatedAt: string;
 };
 
+export type GitChangeRequestFileItem = {
+  path: string;
+  type: "MODIFY" | "CREATE";
+};
+
 export type GitChangeRequestItem = {
   id: string;
   projectId: string;
@@ -29,6 +34,9 @@ export type GitChangeRequestItem = {
   taskRunId: string;
   status: string;
   requestNote: string | null;
+  files: GitChangeRequestFileItem[] | null;
+  diffText: string | null;
+  commitMessage: string | null;
   createdAt: string;
   updatedAt: string;
 };
