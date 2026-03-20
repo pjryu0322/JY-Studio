@@ -84,7 +84,7 @@ export default function ProjectDetailPage() {
 
     setSelectedFile(file);
     setSelectedFileName(file.name);
-    setUploadMessage("현재 단계에서는 파일 본문 저장 없이 메타데이터 등록만 수행합니다.");
+    setUploadMessage("md는 원문 저장을 시도하고, doc/docx는 메타데이터 중심으로 등록합니다.");
     setUploadResult(null);
     setUploadStatus("idle");
   }

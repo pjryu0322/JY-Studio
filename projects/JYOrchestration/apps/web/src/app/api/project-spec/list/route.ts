@@ -4,20 +4,25 @@ import { prisma } from "@/lib/prisma";
 function mapUploadRecord(record: {
   id: string;
   projectId: string;
+  sourceType: string;
   originalFileName: string;
   fileType: string;
   fileSize: number;
+  contentText: string | null;
   status: string;
   createdAt: Date;
 }) {
+  const contentStored = Boolean(record.contentText && record.contentText.trim().length > 0);
   return {
     id: record.id,
     projectId: record.projectId,
-    fileName: record.originalFileName,
+    originalFileName: record.originalFileName,
     fileType: record.fileType || "application/octet-stream",
     fileSize: record.fileSize,
+    sourceType: record.sourceType,
     status: record.status,
     createdAt: record.createdAt.toISOString(),
+    contentStored,
   };
 }
 

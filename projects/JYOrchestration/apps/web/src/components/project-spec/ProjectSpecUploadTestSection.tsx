@@ -33,11 +33,10 @@ export function ProjectSpecUploadTestSection({
     >
       <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 10 }}>ProjectSpec 업로드 (다음 단계)</h2>
       <p style={{ marginTop: 0, marginBottom: 10 }}>
-        ProjectSpec은 Markdown/DOCX 중심으로 다룰 예정이며, 다음 단계에서 업로드 API와 파싱 기능이
-        추가될 예정입니다.
+        `.md`는 원문 텍스트 저장을 시도하고, `.doc/.docx`는 현재 메타데이터 중심으로 등록합니다.
       </p>
       <p style={{ marginTop: 0, marginBottom: 12 }}>
-        현재 단계에서는 파일 본문 저장/파싱 없이 메타데이터만 DB에 등록합니다.
+        실제 문서 파싱/정책 생성은 다음 단계에서 추가될 예정입니다.
       </p>
 
       <div style={{ display: "grid", gap: 10 }}>
@@ -104,13 +103,19 @@ export function ProjectSpecUploadTestSection({
               <strong>message:</strong> {uploadMessage || "업로드 API 뼈대가 정상 동작했습니다."}
             </p>
             <p style={{ margin: 0, marginBottom: 4 }}>
-              <strong>fileName:</strong> {uploadResult.fileName}
+              <strong>originalFileName:</strong> {uploadResult.originalFileName}
             </p>
             <p style={{ margin: 0, marginBottom: 4 }}>
               <strong>fileSize:</strong> {uploadResult.fileSize}
             </p>
-            <p style={{ margin: 0 }}>
+            <p style={{ margin: 0, marginBottom: 4 }}>
               <strong>fileType:</strong> {uploadResult.fileType || "unknown"}
+            </p>
+            <p style={{ margin: 0, marginTop: 4 }}>
+              <strong>sourceType:</strong> {uploadResult.sourceType}
+            </p>
+            <p style={{ margin: 0, marginTop: 4 }}>
+              <strong>contentStored:</strong> {uploadResult.contentStored ? "true" : "false"}
             </p>
             <p style={{ margin: 0, marginTop: 4 }}>
               <strong>status:</strong> {uploadResult.status}

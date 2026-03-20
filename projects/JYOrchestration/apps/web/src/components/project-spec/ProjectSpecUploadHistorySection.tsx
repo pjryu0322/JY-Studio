@@ -37,13 +37,19 @@ export function ProjectSpecUploadHistorySection({
               }}
             >
               <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>fileName:</strong> {item.fileName}
+                <strong>originalFileName:</strong> {item.originalFileName}
               </p>
               <p style={{ margin: 0, marginBottom: 4 }}>
                 <strong>fileSize:</strong> {item.fileSize}
               </p>
               <p style={{ margin: 0, marginBottom: 4 }}>
                 <strong>fileType:</strong> {item.fileType || "unknown"}
+              </p>
+              <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>sourceType:</strong> {item.sourceType}
+              </p>
+              <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>contentStored:</strong> {item.contentStored ? "true" : "false"}
               </p>
               <p style={{ margin: 0, marginBottom: 4 }}>
                 <strong>status:</strong> {item.status}
