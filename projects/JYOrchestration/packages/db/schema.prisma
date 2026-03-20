@@ -59,6 +59,7 @@ model Task {
   project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectSpecUpload   ProjectSpecUpload @relation(fields: [projectSpecUploadId], references: [id], onDelete: Cascade)
   prompts             TaskPrompt[]
+  runs                TaskRun[]
 
   @@index([projectId, order])
   @@index([projectSpecUploadId])
@@ -67,15 +68,33 @@ model Task {
 
 model TaskPrompt {
   id         String   @id @default(uuid())
-  taskId     String   @unique
+  taskId     String
   projectId  String
   promptText String
+  version    Int
   status     String   @default("READY")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runs       TaskRun[]
 
   @@index([projectId, createdAt])
   @@map("task_prompts")
+}
+
+model TaskRun {
+  id           String     @id @default(uuid())
+  taskId       String
+  taskPromptId String
+  status       String     @default("PENDING")
+  resultText   String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  task         Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskPrompt   TaskPrompt @relation(fields: [taskPromptId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@index([taskPromptId])
+  @@map("task_runs")
 }

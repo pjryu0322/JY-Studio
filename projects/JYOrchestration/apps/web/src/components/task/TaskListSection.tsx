@@ -1,10 +1,22 @@
 import { TaskItem } from "@/components/project-spec/types";
 
 export type TaskPromptItem = {
+  id: string;
   taskId: string;
   projectId: string;
   promptText: string;
+  version: number;
   status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TaskRunItem = {
+  id: string;
+  taskId: string;
+  taskPromptId: string;
+  status: string;
+  resultText: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -14,7 +26,10 @@ type TaskListSectionProps = {
   loadingTasks: boolean;
   generatingPromptTaskId: string | null;
   taskPromptMap: Record<string, TaskPromptItem>;
+  runningTaskPromptId: string | null;
+  taskRunMap: Record<string, TaskRunItem>;
   onGeneratePrompt: (taskId: string) => void;
+  onRunTask: (taskId: string) => void;
 };
 
 export function TaskListSection({
@@ -22,7 +37,10 @@ export function TaskListSection({
   loadingTasks,
   generatingPromptTaskId,
   taskPromptMap,
+  runningTaskPromptId,
+  taskRunMap,
   onGeneratePrompt,
+  onRunTask,
 }: TaskListSectionProps) {
   return (
     <section
@@ -64,6 +82,10 @@ export function TaskListSection({
               <p style={{ margin: "4px 0 0 0" }}>
                 <strong>prompt:</strong> {taskPromptMap[task.id] ? "생성됨" : "미생성"}
               </p>
+              <p style={{ margin: "4px 0 0 0" }}>
+                <strong>prompt version:</strong>{" "}
+                {taskPromptMap[task.id] ? taskPromptMap[task.id].version : "-"}
+              </p>
               <button
                 type="button"
                 onClick={() => onGeneratePrompt(task.id)}
@@ -79,6 +101,27 @@ export function TaskListSection({
                 }}
               >
                 {generatingPromptTaskId === task.id ? "프롬프트 생성 중..." : "프롬프트 생성"}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRunTask(task.id)}
+                disabled={!taskPromptMap[task.id] || runningTaskPromptId === taskPromptMap[task.id]?.id}
+                style={{
+                  marginTop: 8,
+                  marginLeft: 8,
+                  padding: "6px 10px",
+                  border: "1px solid #ccc",
+                  borderRadius: 6,
+                  background: "#fff",
+                  cursor:
+                    !taskPromptMap[task.id] || runningTaskPromptId === taskPromptMap[task.id]?.id
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity:
+                    !taskPromptMap[task.id] || runningTaskPromptId === taskPromptMap[task.id]?.id ? 0.7 : 1,
+                }}
+              >
+                {runningTaskPromptId === taskPromptMap[task.id]?.id ? "Run 실행 중..." : "Run 실행"}
               </button>
               {taskPromptMap[task.id] ? (
                 <details style={{ marginTop: 8 }}>
@@ -99,6 +142,12 @@ export function TaskListSection({
                   </pre>
                 </details>
               ) : null}
+              <p style={{ margin: "8px 0 0 0" }}>
+                <strong>run status:</strong> {taskRunMap[task.id]?.status || "-"}
+              </p>
+              <p style={{ margin: "4px 0 0 0" }}>
+                <strong>resultText:</strong> {taskRunMap[task.id]?.resultText || "-"}
+              </p>
             </div>
           ))}
         </div>

@@ -19,7 +19,7 @@ import { ProjectSpecUploadHistorySection } from "@/components/project-spec/Proje
 import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
 import { buildProjectSpecPrompt, fallbackProject } from "@/components/project-spec/prompt";
 import { Project, TaskItem, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
-import { TaskListSection, TaskPromptItem } from "@/components/task/TaskListSection";
+import { TaskListSection, TaskPromptItem, TaskRunItem } from "@/components/task/TaskListSection";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -42,6 +42,8 @@ export default function ProjectDetailPage() {
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [taskPromptMap, setTaskPromptMap] = useState<Record<string, TaskPromptItem>>({});
   const [generatingPromptTaskId, setGeneratingPromptTaskId] = useState<string | null>(null);
+  const [taskRunMap, setTaskRunMap] = useState<Record<string, TaskRunItem>>({});
+  const [runningTaskPromptId, setRunningTaskPromptId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -111,10 +113,33 @@ export default function ProjectDetailPage() {
       }
     }
 
+    async function loadTaskRuns() {
+      try {
+        const encodedProjectId = encodeURIComponent(projectId);
+        const res = await fetch(`/api/task/run?projectId=${encodedProjectId}`);
+        const json = (await res.json()) as {
+          success: boolean;
+          data?: TaskRunItem[];
+        };
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          return;
+        }
+
+        const runMap = json.data.reduce<Record<string, TaskRunItem>>((acc, item) => {
+          acc[item.taskId] = item;
+          return acc;
+        }, {});
+        setTaskRunMap(runMap);
+      } catch (error) {
+        console.error("Failed to load task runs:", error);
+      }
+    }
+
     loadProjectDetail();
     loadUploadHistory();
     loadTasks();
     loadTaskPrompts();
+    loadTaskRuns();
   }, [projectId]);
 
   const projectSpecPrompt = useMemo(
@@ -294,6 +319,49 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleRunTask(taskId: string) {
+    const prompt = taskPromptMap[taskId];
+    if (!prompt) {
+      setTaskMessage("먼저 프롬프트를 생성해 주세요.");
+      return;
+    }
+
+    try {
+      setRunningTaskPromptId(prompt.id);
+      setTaskMessage(null);
+
+      const res = await fetch("/api/task/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ taskPromptId: prompt.id }),
+      });
+
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        data?: TaskRunItem;
+      };
+
+      if (!res.ok || !json.success || !json.data) {
+        setTaskMessage(json.message || "Task 실행 요청에 실패했습니다.");
+        return;
+      }
+
+      setTaskRunMap((prev) => ({
+        ...prev,
+        [json.data!.taskId]: json.data!,
+      }));
+      setTaskMessage(json.message || "Task mock 실행이 완료되었습니다.");
+    } catch (error) {
+      console.error("Failed to run task:", error);
+      setTaskMessage("Task 실행 중 오류가 발생했습니다.");
+    } finally {
+      setRunningTaskPromptId(null);
+    }
+  }
+
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
@@ -325,7 +393,10 @@ export default function ProjectDetailPage() {
         loadingTasks={loadingTasks}
         generatingPromptTaskId={generatingPromptTaskId}
         taskPromptMap={taskPromptMap}
+        runningTaskPromptId={runningTaskPromptId}
+        taskRunMap={taskRunMap}
         onGeneratePrompt={handleGenerateTaskPrompt}
+        onRunTask={handleRunTask}
       />
     </main>
   );

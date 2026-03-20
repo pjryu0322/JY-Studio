@@ -52,12 +52,14 @@ export async function GET(request: NextRequest) {
 
     const prompts = await prisma.taskPrompt.findMany({
       where: { projectId },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ taskId: "asc" }, { version: "desc" }],
+      distinct: ["taskId"],
       select: {
         id: true,
         taskId: true,
         projectId: true,
         promptText: true,
+        version: true,
         status: true,
         createdAt: true,
         updatedAt: true,
@@ -120,35 +122,48 @@ export async function POST(request: Request) {
     }
 
     const promptText = buildTaskExecutionPrompt(task);
+    const saved = await prisma.$transaction(async (tx) => {
+      const latest = await tx.taskPrompt.findFirst({
+        where: { taskId: task.id },
+        orderBy: { version: "desc" },
+        select: { version: true },
+      });
+      const nextVersion = (latest?.version ?? 0) + 1;
 
-    const saved = await prisma.taskPrompt.upsert({
-      where: { taskId: task.id },
-      update: {
-        promptText,
-        status: "READY",
-      },
-      create: {
-        taskId: task.id,
-        projectId: task.projectId,
-        promptText,
-        status: "READY",
-      },
-      select: {
-        taskId: true,
-        projectId: true,
-        promptText: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      await tx.taskPrompt.updateMany({
+        where: { taskId: task.id, status: "READY" },
+        data: { status: "UPDATED" },
+      });
+
+      return tx.taskPrompt.create({
+        data: {
+          taskId: task.id,
+          projectId: task.projectId,
+          promptText,
+          version: nextVersion,
+          status: "READY",
+        },
+        select: {
+          id: true,
+          taskId: true,
+          projectId: true,
+          promptText: true,
+          version: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
     });
 
     return NextResponse.json({
       success: true,
       data: {
+        id: saved.id,
         taskId: saved.taskId,
         projectId: saved.projectId,
         promptText: saved.promptText,
+        version: saved.version,
         status: saved.status,
         createdAt: saved.createdAt.toISOString(),
         updatedAt: saved.updatedAt.toISOString(),
