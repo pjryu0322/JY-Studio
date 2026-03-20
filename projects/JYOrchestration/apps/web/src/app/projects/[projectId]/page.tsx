@@ -18,6 +18,12 @@ type ApiResponse<T> = {
   data?: T;
 };
 
+type UploadResult = {
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+};
+
 const fallbackProject: Project = {
   id: "",
   name: "프로젝트 정보 로딩 중",
@@ -59,8 +65,11 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -107,13 +116,54 @@ export default function ProjectDetailPage() {
   function handleSelectFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) {
+      setSelectedFile(null);
       setSelectedFileName(null);
       setUploadMessage(null);
+      setUploadResult(null);
       return;
     }
 
+    setSelectedFile(file);
     setSelectedFileName(file.name);
     setUploadMessage("현재 단계에서는 업로드 UI만 제공됩니다.");
+    setUploadResult(null);
+  }
+
+  async function handleUploadTest() {
+    if (!selectedFile) {
+      setUploadMessage("업로드할 파일을 먼저 선택해 주세요.");
+      setUploadResult(null);
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadMessage(null);
+      setUploadResult(null);
+
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const res = await fetch("/api/project-spec/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = (await res.json()) as ApiResponse<UploadResult>;
+      if (!res.ok || !json.success || !json.data) {
+        setUploadMessage(json.message || "업로드 테스트 요청에 실패했습니다.");
+        return;
+      }
+
+      setUploadResult(json.data);
+      setUploadMessage(json.message || "업로드 API 뼈대가 정상 동작했습니다.");
+    } catch (error) {
+      console.error("Failed to upload project spec file:", error);
+      setUploadMessage("업로드 테스트 중 오류가 발생했습니다.");
+      setUploadResult(null);
+    } finally {
+      setUploading(false);
+    }
   }
 
   return (
@@ -251,6 +301,22 @@ export default function ProjectDetailPage() {
           <p style={{ margin: 0, color: "#555" }}>
             지원 예정 형식: <code>.md</code>, <code>.doc</code>, <code>.docx</code>
           </p>
+          <button
+            type="button"
+            onClick={handleUploadTest}
+            disabled={uploading}
+            style={{
+              width: "fit-content",
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #ccc",
+              background: "#fff",
+              cursor: uploading ? "not-allowed" : "pointer",
+              opacity: uploading ? 0.7 : 1,
+            }}
+          >
+            {uploading ? "업로드 테스트 중..." : "업로드 테스트"}
+          </button>
           {selectedFileName ? (
             <p style={{ margin: 0 }}>
               선택된 파일: <strong>{selectedFileName}</strong>
@@ -259,6 +325,26 @@ export default function ProjectDetailPage() {
             <p style={{ margin: 0, color: "#555" }}>아직 선택된 파일이 없습니다.</p>
           )}
           {uploadMessage ? <p style={{ margin: 0, color: "#555" }}>{uploadMessage}</p> : null}
+          {uploadResult ? (
+            <div
+              style={{
+                border: "1px solid #e0e0e0",
+                borderRadius: 8,
+                padding: 10,
+                background: "#fafafa",
+              }}
+            >
+              <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>fileName:</strong> {uploadResult.fileName}
+              </p>
+              <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>fileSize:</strong> {uploadResult.fileSize}
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong>fileType:</strong> {uploadResult.fileType || "unknown"}
+              </p>
+            </div>
+          ) : null}
         </div>
       </section>
     </main>
