@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
+  fetchGeneratedTasks,
   fetchProjectById,
   fetchProjectSpecUploadHistory,
   generateTasksFromParsedSpec,
@@ -38,6 +39,7 @@ export default function ProjectDetailPage() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [taskMessage, setTaskMessage] = useState<string | null>(null);
   const [generatingTaskUploadId, setGeneratingTaskUploadId] = useState<string | null>(null);
+  const [loadingTasks, setLoadingTasks] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -70,8 +72,24 @@ export default function ProjectDetailPage() {
       }
     }
 
+    async function loadTasks() {
+      try {
+        setLoadingTasks(true);
+        const { res, json } = await fetchGeneratedTasks(projectId);
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          return;
+        }
+        setTasks(json.data);
+      } catch (error) {
+        console.error("Failed to load generated tasks:", error);
+      } finally {
+        setLoadingTasks(false);
+      }
+    }
+
     loadProjectDetail();
     loadUploadHistory();
+    loadTasks();
   }, [projectId]);
 
   const projectSpecPrompt = useMemo(
@@ -200,7 +218,12 @@ export default function ProjectDetailPage() {
       }
 
       setTaskMessage(json.message || "Task 생성이 완료되었습니다.");
-      setTasks(json.data.items);
+      const taskResult = await fetchGeneratedTasks(projectId);
+      if (taskResult.res.ok && taskResult.json.success && Array.isArray(taskResult.json.data)) {
+        setTasks(taskResult.json.data);
+      } else {
+        setTasks(json.data.items);
+      }
     } catch (error) {
       console.error("Failed to generate tasks from parsed spec:", error);
       setTaskMessage("Task 생성 중 오류가 발생했습니다.");
@@ -235,7 +258,7 @@ export default function ProjectDetailPage() {
         onParse={handleRunParse}
         onGenerateTasks={handleGenerateTasks}
       />
-      <TaskListSection tasks={tasks} />
+      <TaskListSection tasks={tasks} loadingTasks={loadingTasks} />
     </main>
   );
 }

@@ -98,26 +98,25 @@ export function ProjectSpecUploadHistorySection({
               >
                 {parsingUploadId === item.id ? "파싱 실행 중..." : "파싱 실행"}
               </button>
-              <button
-                type="button"
-                onClick={() => onGenerateTasks(item.id)}
-                disabled={generatingTaskUploadId === item.id || item.parseStatus !== "SUCCESS"}
-                style={{
-                  marginTop: 8,
-                  marginLeft: 8,
-                  padding: "6px 10px",
-                  border: "1px solid #ccc",
-                  borderRadius: 6,
-                  background: "#fff",
-                  cursor:
-                    generatingTaskUploadId === item.id || item.parseStatus !== "SUCCESS"
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity: generatingTaskUploadId === item.id || item.parseStatus !== "SUCCESS" ? 0.7 : 1,
-                }}
-              >
-                {generatingTaskUploadId === item.id ? "Task 생성 중..." : "Task 생성"}
-              </button>
+              {item.parseStatus === "SUCCESS" ? (
+                <button
+                  type="button"
+                  onClick={() => onGenerateTasks(item.id)}
+                  disabled={generatingTaskUploadId === item.id}
+                  style={{
+                    marginTop: 8,
+                    marginLeft: 8,
+                    padding: "6px 10px",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    background: "#fff",
+                    cursor: generatingTaskUploadId === item.id ? "not-allowed" : "pointer",
+                    opacity: generatingTaskUploadId === item.id ? 0.7 : 1,
+                  }}
+                >
+                  {generatingTaskUploadId === item.id ? "Task 생성 중..." : "Task 생성"}
+                </button>
+              ) : null}
             </div>
           ))}
         </div>

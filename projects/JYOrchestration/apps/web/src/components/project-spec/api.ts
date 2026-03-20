@@ -2,6 +2,7 @@ import {
   ApiResponse,
   ParseResult,
   Project,
+  TaskItem,
   TaskGenerateResult,
   UploadHistoryItem,
   UploadResult,
@@ -76,5 +77,12 @@ export async function generateTasksFromParsedSpec(projectSpecUploadId: string) {
   });
 
   const json = (await res.json()) as ApiResponse<TaskGenerateResult>;
+  return { res, json };
+}
+
+export async function fetchGeneratedTasks(projectId: string) {
+  const encodedProjectId = encodeURIComponent(projectId);
+  const res = await fetch(`/api/task/generate?projectId=${encodedProjectId}`);
+  const json = (await res.json()) as ApiResponse<TaskItem[]>;
   return { res, json };
 }
