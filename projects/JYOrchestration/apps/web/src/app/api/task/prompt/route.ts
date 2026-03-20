@@ -1,0 +1,168 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+
+type CreateTaskPromptBody = {
+  taskId?: string;
+};
+
+function buildTaskExecutionPrompt(task: {
+  id: string;
+  name: string;
+  description: string | null;
+  projectId: string;
+  projectSpecUploadId: string;
+}) {
+  return `# Task 실행 프롬프트
+
+## 작업명
+${task.name}
+
+## 목표
+${task.description || "Task 설명이 비어 있으므로, ProjectSpec 문맥을 기준으로 작업 목표를 구체화하세요."}
+
+## 수정 범위 제한
+- 프로젝트 범위: projects/JYOrchestration 내부만 수정
+- 다른 모노레포 프로젝트 수정 금지
+- 루트 설정 변경 금지
+
+## 완료 기준
+- Task 요구사항을 충족하는 코드 변경
+- 타입/린트 오류 없음
+- 변경 영향 범위 최소화
+
+## 고정 제약
+- projectId: ${task.projectId}
+- projectSpecUploadId: ${task.projectSpecUploadId}
+- taskId: ${task.id}
+- OpenAI/Cursor/Git 자동 실행 기능 추가 금지`;
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
+    if (!projectId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "projectId가 필요합니다.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const prompts = await prisma.taskPrompt.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        taskId: true,
+        projectId: true,
+        promptText: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: prompts.map((prompt) => ({
+        ...prompt,
+        createdAt: prompt.createdAt.toISOString(),
+        updatedAt: prompt.updatedAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    console.error("GET /api/task/prompt error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Task 프롬프트 조회 중 오류가 발생했습니다.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as CreateTaskPromptBody;
+    const taskId = String(body.taskId ?? "").trim();
+    if (!taskId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "taskId가 필요합니다.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        projectId: true,
+        projectSpecUploadId: true,
+      },
+    });
+
+    if (!task) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "대상 Task를 찾을 수 없습니다.",
+        },
+        { status: 404 }
+      );
+    }
+
+    const promptText = buildTaskExecutionPrompt(task);
+
+    const saved = await prisma.taskPrompt.upsert({
+      where: { taskId: task.id },
+      update: {
+        promptText,
+        status: "READY",
+      },
+      create: {
+        taskId: task.id,
+        projectId: task.projectId,
+        promptText,
+        status: "READY",
+      },
+      select: {
+        taskId: true,
+        projectId: true,
+        promptText: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        taskId: saved.taskId,
+        projectId: saved.projectId,
+        promptText: saved.promptText,
+        status: saved.status,
+        createdAt: saved.createdAt.toISOString(),
+        updatedAt: saved.updatedAt.toISOString(),
+      },
+      message: "Task 실행 프롬프트가 생성되었습니다.",
+    });
+  } catch (error) {
+    console.error("POST /api/task/prompt error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Task 프롬프트 생성 중 오류가 발생했습니다.",
+      },
+      { status: 500 }
+    );
+  }
+}
