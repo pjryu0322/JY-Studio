@@ -5,6 +5,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
   fetchProjectById,
   fetchProjectSpecUploadHistory,
+  runProjectSpecMockParse,
   uploadProjectSpecTestFile,
 } from "@/components/project-spec/api";
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
@@ -30,6 +31,8 @@ export default function ProjectDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
+  const [parseMessage, setParseMessage] = useState<string | null>(null);
+  const [parsingUploadId, setParsingUploadId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -123,6 +126,7 @@ export default function ProjectDetailPage() {
       setUploadResult(json.data);
       setUploadMessage(json.message || "ProjectSpec 업로드 메타데이터가 등록되었습니다.");
       setUploadStatus("success");
+      setParseMessage(null);
       const historyResult = await fetchProjectSpecUploadHistory(projectId);
       if (
         historyResult.res.ok &&
@@ -138,6 +142,38 @@ export default function ProjectDetailPage() {
       setUploadStatus("error");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleRunParse(uploadId: string) {
+    if (!projectId) {
+      setParseMessage("projectId 정보를 확인할 수 없습니다.");
+      return;
+    }
+
+    try {
+      setParsingUploadId(uploadId);
+      setParseMessage(null);
+
+      const { res, json } = await runProjectSpecMockParse(uploadId);
+      setParseMessage(
+        json.message ||
+          (res.ok ? "ProjectSpec mock parsing이 완료되었습니다." : "ProjectSpec parsing에 실패했습니다.")
+      );
+
+      const historyResult = await fetchProjectSpecUploadHistory(projectId);
+      if (
+        historyResult.res.ok &&
+        historyResult.json.success &&
+        Array.isArray(historyResult.json.data)
+      ) {
+        setUploadHistory(historyResult.json.data);
+      }
+    } catch (error) {
+      console.error("Failed to run project spec mock parse:", error);
+      setParseMessage("mock parsing 실행 중 오류가 발생했습니다.");
+    } finally {
+      setParsingUploadId(null);
     }
   }
 
@@ -158,7 +194,12 @@ export default function ProjectDetailPage() {
         onSelectFile={handleSelectFile}
         onUploadTest={handleUploadTest}
       />
-      <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
+      <ProjectSpecUploadHistorySection
+        uploadHistory={uploadHistory}
+        parsingUploadId={parsingUploadId}
+        parseMessage={parseMessage}
+        onParse={handleRunParse}
+      />
     </main>
   );
 }

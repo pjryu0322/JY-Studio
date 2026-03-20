@@ -1,4 +1,4 @@
-import { ApiResponse, Project, UploadHistoryItem, UploadResult } from "./types";
+import { ApiResponse, ParseResult, Project, UploadHistoryItem, UploadResult } from "./types";
 
 export async function fetchProjectById(projectId: string): Promise<{
   project: Project | null;
@@ -43,5 +43,18 @@ export async function uploadProjectSpecTestFile(formData: FormData, projectId: s
   });
 
   const json = (await res.json()) as ApiResponse<UploadResult>;
+  return { res, json };
+}
+
+export async function runProjectSpecMockParse(projectSpecUploadId: string) {
+  const res = await fetch("/api/project-spec/parse", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ projectSpecUploadId }),
+  });
+
+  const json = (await res.json()) as ApiResponse<ParseResult>;
   return { res, json };
 }

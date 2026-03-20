@@ -9,6 +9,9 @@ function mapUploadRecord(record: {
   fileType: string;
   fileSize: number;
   contentStored: boolean;
+  parseStatus: string | null;
+  parsedAt: Date | null;
+  parsedJson: unknown | null;
   status: string;
   createdAt: Date;
 }) {
@@ -19,6 +22,9 @@ function mapUploadRecord(record: {
     fileType: record.fileType || "application/octet-stream",
     fileSize: record.fileSize,
     sourceType: record.sourceType || "document",
+    parseStatus: record.parseStatus || "PENDING",
+    parsedAt: record.parsedAt?.toISOString() || null,
+    hasParsedJson: Boolean(record.parsedJson),
     status: record.status,
     createdAt: record.createdAt.toISOString(),
     contentStored: record.contentStored,

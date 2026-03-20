@@ -32,6 +32,9 @@ model ProjectSpecUpload {
   contentText      String?
   contentStored    Boolean  @default(false)
   status           String   @default("REGISTERED")
+  parsedJson       Json?
+  parseStatus      String?  @default("PENDING")
+  parsedAt         DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

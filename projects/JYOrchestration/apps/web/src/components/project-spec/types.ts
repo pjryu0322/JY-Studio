@@ -19,6 +19,9 @@ export type UploadResult = {
   fileSize: number;
   fileType: string;
   sourceType: string;
+  parseStatus: string;
+  parsedAt: string | null;
+  hasParsedJson: boolean;
   status: string;
   createdAt: string;
   contentStored: boolean;
@@ -33,7 +36,17 @@ export type UploadHistoryItem = {
   fileSize: number;
   fileType: string;
   sourceType: string;
+  parseStatus: string;
+  parsedAt: string | null;
+  hasParsedJson: boolean;
   status: string;
   createdAt: string;
   contentStored: boolean;
+};
+
+export type ParseResult = {
+  id: string;
+  parseStatus: string | null;
+  parsedAt: string | null;
+  hasParsedJson: boolean;
 };

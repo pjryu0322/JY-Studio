@@ -3,10 +3,16 @@ import { formatTestedAt } from "./format";
 
 type ProjectSpecUploadHistorySectionProps = {
   uploadHistory: UploadHistoryItem[];
+  parsingUploadId: string | null;
+  parseMessage: string | null;
+  onParse: (uploadId: string) => void;
 };
 
 export function ProjectSpecUploadHistorySection({
   uploadHistory,
+  parsingUploadId,
+  parseMessage,
+  onParse,
 }: ProjectSpecUploadHistorySectionProps) {
   return (
     <div
@@ -22,6 +28,9 @@ export function ProjectSpecUploadHistorySection({
       <p style={{ margin: "0 0 8px 0", color: "#555" }}>
         DB에 등록된 최근 ProjectSpec 업로드 메타데이터입니다.
       </p>
+      {parseMessage ? (
+        <p style={{ margin: "0 0 8px 0", color: "#333" }}>{parseMessage}</p>
+      ) : null}
       {uploadHistory.length === 0 ? (
         <p style={{ margin: 0, color: "#555" }}>아직 등록된 업로드 메타데이터가 없습니다.</p>
       ) : (
@@ -52,11 +61,36 @@ export function ProjectSpecUploadHistorySection({
                 <strong>contentStored:</strong> {item.contentStored ? "true" : "false"}
               </p>
               <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>parseStatus:</strong> {item.parseStatus || "PENDING"}
+              </p>
+              <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>parsedAt:</strong> {item.parsedAt ? formatTestedAt(item.parsedAt) : "-"}
+              </p>
+              <p style={{ margin: 0, marginBottom: 4 }}>
+                <strong>parsedJson:</strong> {item.hasParsedJson ? "JSON 생성됨" : "미생성"}
+              </p>
+              <p style={{ margin: 0, marginBottom: 4 }}>
                 <strong>status:</strong> {item.status}
               </p>
               <p style={{ margin: 0 }}>
                 <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
               </p>
+              <button
+                type="button"
+                onClick={() => onParse(item.id)}
+                disabled={parsingUploadId === item.id}
+                style={{
+                  marginTop: 8,
+                  padding: "6px 10px",
+                  border: "1px solid #ccc",
+                  borderRadius: 6,
+                  background: "#fff",
+                  cursor: parsingUploadId === item.id ? "not-allowed" : "pointer",
+                  opacity: parsingUploadId === item.id ? 0.7 : 1,
+                }}
+              >
+                {parsingUploadId === item.id ? "파싱 실행 중..." : "파싱 실행"}
+              </button>
             </div>
           ))}
         </div>

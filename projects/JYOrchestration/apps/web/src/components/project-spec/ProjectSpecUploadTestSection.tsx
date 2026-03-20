@@ -118,6 +118,15 @@ export function ProjectSpecUploadTestSection({
               <strong>contentStored:</strong> {uploadResult.contentStored ? "true" : "false"}
             </p>
             <p style={{ margin: 0, marginTop: 4 }}>
+              <strong>parseStatus:</strong> {uploadResult.parseStatus || "PENDING"}
+            </p>
+            <p style={{ margin: 0, marginTop: 4 }}>
+              <strong>parsedAt:</strong> {uploadResult.parsedAt ? formatTestedAt(uploadResult.parsedAt) : "-"}
+            </p>
+            <p style={{ margin: 0, marginTop: 4 }}>
+              <strong>parsedJson:</strong> {uploadResult.hasParsedJson ? "JSON 생성됨" : "미생성"}
+            </p>
+            <p style={{ margin: 0, marginTop: 4 }}>
               <strong>status:</strong> {uploadResult.status}
             </p>
             <p style={{ margin: 0, marginTop: 4 }}>
