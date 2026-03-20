@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 type GenerateTaskBody = {
@@ -64,55 +64,6 @@ function buildMockTasks(parsedJson: unknown) {
   }
 
   return taskSeeds;
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
-    if (!projectId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "projectId가 필요합니다.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const tasks = await prisma.task.findMany({
-      where: { projectId },
-      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        projectId: true,
-        projectSpecUploadId: true,
-        name: true,
-        description: true,
-        status: true,
-        order: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: tasks.map((task) => ({
-        ...task,
-        createdAt: task.createdAt.toISOString(),
-        updatedAt: task.updatedAt.toISOString(),
-      })),
-    });
-  } catch (error) {
-    console.error("GET /api/task/generate error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Task 목록 조회 중 오류가 발생했습니다.",
-      },
-      { status: 500 }
-    );
-  }
 }
 
 export async function POST(request: Request) {
@@ -197,12 +148,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      data: tasks.map((task) => ({
-        ...task,
-        createdAt: task.createdAt.toISOString(),
-        updatedAt: task.updatedAt.toISOString(),
-      })),
-      message: "ProjectSpec parsedJson 기반 Task가 생성되었습니다.",
+      data: {
+        count: tasks.length,
+        items: tasks.map((task) => ({
+          ...task,
+          createdAt: task.createdAt.toISOString(),
+          updatedAt: task.updatedAt.toISOString(),
+        })),
+      },
+      message: "Task가 생성되었습니다.",
     });
   } catch (error) {
     console.error("POST /api/task/generate error:", error);

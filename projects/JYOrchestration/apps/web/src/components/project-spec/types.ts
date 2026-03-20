@@ -56,9 +56,14 @@ export type TaskItem = {
   projectId: string;
   projectSpecUploadId: string;
   name: string;
-  description: string;
+  description: string | null;
   status: string;
   order: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type TaskGenerateResult = {
+  count: number;
+  items: TaskItem[];
 };

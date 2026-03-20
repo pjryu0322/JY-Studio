@@ -3,7 +3,6 @@
 import { useParams } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import {
-  fetchGeneratedTasks,
   fetchProjectById,
   fetchProjectSpecUploadHistory,
   generateTasksFromParsedSpec,
@@ -71,21 +70,8 @@ export default function ProjectDetailPage() {
       }
     }
 
-    async function loadTasks() {
-      try {
-        const { res, json } = await fetchGeneratedTasks(projectId);
-        if (!res.ok || !json.success || !Array.isArray(json.data)) {
-          return;
-        }
-        setTasks(json.data);
-      } catch (error) {
-        console.error("Failed to load generated tasks:", error);
-      }
-    }
-
     loadProjectDetail();
     loadUploadHistory();
-    loadTasks();
   }, [projectId]);
 
   const projectSpecPrompt = useMemo(
@@ -208,16 +194,13 @@ export default function ProjectDetailPage() {
       setTaskMessage(null);
 
       const { res, json } = await generateTasksFromParsedSpec(uploadId);
-      if (!res.ok || !json.success || !Array.isArray(json.data)) {
+      if (!res.ok || !json.success || !json.data || !Array.isArray(json.data.items)) {
         setTaskMessage(json.message || "Task 생성 요청에 실패했습니다.");
         return;
       }
 
       setTaskMessage(json.message || "Task 생성이 완료되었습니다.");
-      const taskResult = await fetchGeneratedTasks(projectId);
-      if (taskResult.res.ok && taskResult.json.success && Array.isArray(taskResult.json.data)) {
-        setTasks(taskResult.json.data);
-      }
+      setTasks(json.data.items);
     } catch (error) {
       console.error("Failed to generate tasks from parsed spec:", error);
       setTaskMessage("Task 생성 중 오류가 발생했습니다.");

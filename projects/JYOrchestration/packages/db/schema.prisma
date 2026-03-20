@@ -50,7 +50,7 @@ model Task {
   projectId           String
   projectSpecUploadId String
   name                String
-  description         String
+  description         String?
   status              String            @default("TODO")
   order               Int
   createdAt           DateTime          @default(now())
