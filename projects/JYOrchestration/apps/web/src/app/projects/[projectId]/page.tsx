@@ -33,6 +33,10 @@ type UploadHistoryItem = {
   testedAt: string;
 };
 
+function formatTestedAt(date: Date) {
+  return date.toLocaleString("ko-KR", { hour12: false });
+}
+
 const fallbackProject: Project = {
   id: "",
   name: "프로젝트 정보 로딩 중",
@@ -179,7 +183,7 @@ export default function ProjectDetailPage() {
           fileName: json.data.fileName,
           fileSize: json.data.fileSize,
           fileType: json.data.fileType || "unknown",
-          testedAt: new Date().toLocaleString(),
+          testedAt: formatTestedAt(new Date()),
         },
         ...prev,
       ]);
@@ -400,6 +404,9 @@ export default function ProjectDetailPage() {
             <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 8px 0" }}>
               최근 업로드 테스트 결과
             </h3>
+            <p style={{ margin: "0 0 8px 0", color: "#555" }}>
+              현재 세션에서 실행한 업로드 테스트 결과입니다.
+            </p>
             {uploadHistory.length === 0 ? (
               <p style={{ margin: 0, color: "#555" }}>아직 업로드 테스트 이력이 없습니다.</p>
             ) : (
