@@ -304,15 +304,15 @@ export default function ProjectDetailPage() {
           <button
             type="button"
             onClick={handleUploadTest}
-            disabled={uploading}
+            disabled={uploading || !selectedFile}
             style={{
               width: "fit-content",
               padding: "8px 14px",
               borderRadius: 8,
               border: "1px solid #ccc",
               background: "#fff",
-              cursor: uploading ? "not-allowed" : "pointer",
-              opacity: uploading ? 0.7 : 1,
+              cursor: uploading || !selectedFile ? "not-allowed" : "pointer",
+              opacity: uploading || !selectedFile ? 0.7 : 1,
             }}
           >
             {uploading ? "업로드 테스트 중..." : "업로드 테스트"}
