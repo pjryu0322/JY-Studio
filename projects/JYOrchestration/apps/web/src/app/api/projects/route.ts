@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import {
+  createProject,
+  listProjectsOrderedByCreatedDesc,
+} from "@/lib/service/projectService";
 
 type ApiSuccess<T> = {
   success: true;
@@ -27,11 +30,7 @@ function fail<T = null>(message: string, status: number, data?: T) {
 
 export async function GET() {
   try {
-    const projects = await prisma.project.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const projects = await listProjectsOrderedByCreatedDesc();
 
     return ok("프로젝트 목록 조회에 성공했습니다.", projects);
   } catch (error) {
@@ -62,15 +61,12 @@ export async function POST(request: NextRequest) {
       return fail("프로젝트명은 필수입니다.", 400);
     }
 
-    const project = await prisma.project.create({
-      data: {
-        name,
-        description,
-        projectType,
-        repoUrl,
-        defaultBranch,
-        status: "ACTIVE",
-      },
+    const project = await createProject({
+      name,
+      description,
+      projectType,
+      repoUrl,
+      defaultBranch,
     });
 
     return ok("프로젝트가 생성되었습니다.", project, 201);
