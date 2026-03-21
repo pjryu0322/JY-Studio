@@ -28,6 +28,9 @@ Thumbs.db
 # IDE
 # =========================
 .vscode/
+# 예외: JYOrchestration만 워크스페이스 TS/Prisma 타입용 settings.json 추적
+!projects/JYOrchestration/.vscode/
+!projects/JYOrchestration/.vscode/settings.json
 .idea/
 
 # =========================
