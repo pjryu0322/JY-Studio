@@ -114,6 +114,9 @@ model GitChangeRequest {
   commitMessage String?
   applyStatus String?  @default("PENDING")
   applyLog    String?
+  branchName        String?
+  applyStartedAt    DateTime?
+  applyFinishedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

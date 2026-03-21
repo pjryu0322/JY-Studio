@@ -5,13 +5,23 @@ type ApplyGitRequestBody = {
   gitChangeRequestId?: string;
 };
 
-function buildApplyLog(taskId: string, commitMessage: string | null): string {
-  const safeMessage = commitMessage || `feat: apply task ${taskId}`;
+function buildBranchName(taskId: string): string {
+  return `task-${taskId.slice(0, 8)}`;
+}
+
+function buildStructuredApplyLog(params: {
+  branchName: string;
+  commitMessage: string;
+}): string {
+  const { branchName, commitMessage } = params;
   return [
-    `git checkout -b task-${taskId.slice(0, 8)}`,
-    "apply diff",
-    `git commit -m '${safeMessage}'`,
-    `git push origin task-${taskId.slice(0, 8)}`,
+    "[START]",
+    `git checkout -b ${branchName}`,
+    "apply diff...",
+    `git add -A`,
+    `git commit -m '${commitMessage}'`,
+    `git push origin ${branchName}  (mock — 실제 push 미실행)`,
+    "[END]",
   ].join("\n");
 }
 
@@ -51,29 +61,50 @@ export async function POST(request: Request) {
       );
     }
 
+    const branchName = buildBranchName(found.taskId);
+    const startedAt = new Date();
+    const safeCommitMessage = found.commitMessage || `feat: apply task ${found.taskId}`;
+
     await prisma.gitChangeRequest.update({
       where: { id: found.id },
-      data: { applyStatus: "APPLYING" },
+      data: {
+        applyStatus: "APPLYING",
+        branchName,
+        applyStartedAt: startedAt,
+      },
     });
 
-    const applyLog = buildApplyLog(found.taskId, found.commitMessage);
+    const applyLog = buildStructuredApplyLog({
+      branchName,
+      commitMessage: safeCommitMessage,
+    });
+
+    const finishedAt = new Date();
 
     const updated = await prisma.gitChangeRequest.update({
       where: { id: found.id },
       data: {
         applyStatus: "DONE",
         applyLog,
+        applyFinishedAt: finishedAt,
       },
       select: {
         id: true,
+        branchName: true,
         applyStatus: true,
         applyLog: true,
+        applyStartedAt: true,
+        applyFinishedAt: true,
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: updated,
+      data: {
+        ...updated,
+        applyStartedAt: updated.applyStartedAt?.toISOString() ?? null,
+        applyFinishedAt: updated.applyFinishedAt?.toISOString() ?? null,
+      },
       message: "Git 반영(mock) 완료",
     });
   } catch (error) {
