@@ -1,6 +1,7 @@
 /**
  * Project CRUD / 설정 (API 레이어에서 호출).
  */
+import { MOCK_PROJECT_CREATOR_USER_ID } from "@/lib/rbac/constants";
 import { prisma } from "@/lib/prisma";
 
 export async function listProjectsOrderedByCreatedDesc() {
@@ -18,15 +19,25 @@ export type CreateProjectInput = {
 };
 
 export async function createProject(input: CreateProjectInput) {
-  return prisma.project.create({
-    data: {
-      name: input.name,
-      description: input.description,
-      projectType: input.projectType,
-      repoUrl: input.repoUrl,
-      defaultBranch: input.defaultBranch,
-      status: "ACTIVE",
-    },
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.create({
+      data: {
+        name: input.name,
+        description: input.description,
+        projectType: input.projectType,
+        repoUrl: input.repoUrl,
+        defaultBranch: input.defaultBranch,
+        status: "ACTIVE",
+      },
+    });
+    await tx.projectMember.create({
+      data: {
+        projectId: project.id,
+        userId: MOCK_PROJECT_CREATOR_USER_ID,
+        role: "OWNER",
+      },
+    });
+    return project;
   });
 }
 

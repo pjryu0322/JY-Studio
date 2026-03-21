@@ -7,6 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ProjectMemberRole {
+  OWNER
+  PLANNER
+  REVIEWER
+  OPERATOR
+}
+
 model Project {
   id            String             @id @default(uuid())
   name          String
@@ -21,8 +28,21 @@ model Project {
   tasks         Task[]
   taskPrompts   TaskPrompt[]
   gitRequests   GitChangeRequest[]
+  members       ProjectMember[]
 
   @@map("projects")
+}
+
+model ProjectMember {
+  id        String            @id @default(uuid())
+  projectId String
+  userId    String
+  role      ProjectMemberRole
+  createdAt DateTime          @default(now())
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
 }
 
 model ProjectSpecUpload {

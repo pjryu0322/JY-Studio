@@ -7,6 +7,7 @@ type ProjectSpecUploadHistorySectionProps = {
   generatingTaskUploadId: string | null;
   parseMessage: string | null;
   taskMessage: string | null;
+  canRunReviewActions: boolean;
   onParse: (uploadId: string) => void;
   onGenerateTasks: (uploadId: string) => void;
 };
@@ -17,6 +18,7 @@ export function ProjectSpecUploadHistorySection({
   generatingTaskUploadId,
   parseMessage,
   taskMessage,
+  canRunReviewActions,
   onParse,
   onGenerateTasks,
 }: ProjectSpecUploadHistorySectionProps) {
@@ -82,23 +84,25 @@ export function ProjectSpecUploadHistorySection({
               <p style={{ margin: 0 }}>
                 <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
               </p>
-              <button
-                type="button"
-                onClick={() => onParse(item.id)}
-                disabled={parsingUploadId === item.id}
-                style={{
-                  marginTop: 8,
-                  padding: "6px 10px",
-                  border: "1px solid #ccc",
-                  borderRadius: 6,
-                  background: "#fff",
-                  cursor: parsingUploadId === item.id ? "not-allowed" : "pointer",
-                  opacity: parsingUploadId === item.id ? 0.7 : 1,
-                }}
-              >
-                {parsingUploadId === item.id ? "파싱 실행 중..." : "파싱 실행"}
-              </button>
-              {item.parseStatus === "SUCCESS" ? (
+              {canRunReviewActions ? (
+                <button
+                  type="button"
+                  onClick={() => onParse(item.id)}
+                  disabled={parsingUploadId === item.id}
+                  style={{
+                    marginTop: 8,
+                    padding: "6px 10px",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    background: "#fff",
+                    cursor: parsingUploadId === item.id ? "not-allowed" : "pointer",
+                    opacity: parsingUploadId === item.id ? 0.7 : 1,
+                  }}
+                >
+                  {parsingUploadId === item.id ? "파싱 실행 중..." : "파싱 실행"}
+                </button>
+              ) : null}
+              {canRunReviewActions && item.parseStatus === "SUCCESS" ? (
                 <button
                   type="button"
                   onClick={() => onGenerateTasks(item.id)}

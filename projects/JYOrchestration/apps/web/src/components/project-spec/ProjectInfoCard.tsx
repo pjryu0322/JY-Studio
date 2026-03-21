@@ -2,9 +2,10 @@ import { Project } from "./types";
 
 type ProjectInfoCardProps = {
   project: Project | null;
+  currentUserRoleLabel: string | null;
 };
 
-export function ProjectInfoCard({ project }: ProjectInfoCardProps) {
+export function ProjectInfoCard({ project, currentUserRoleLabel }: ProjectInfoCardProps) {
   return (
     <section
       style={{
@@ -16,6 +17,11 @@ export function ProjectInfoCard({ project }: ProjectInfoCardProps) {
     >
       <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12 }}>프로젝트 기본 정보</h2>
       <div style={{ display: "grid", gap: 8 }}>
+        {currentUserRoleLabel ? (
+          <div>
+            <strong>현재 역할:</strong> {currentUserRoleLabel}
+          </div>
+        ) : null}
         <div>
           <strong>프로젝트명:</strong> {project?.name || "정보 없음"}
         </div>

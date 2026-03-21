@@ -61,6 +61,10 @@ type TaskListSectionProps = {
   markingReadyTaskId: string | null;
   registeringGitRequestRunId: string | null;
   taskRunMap: Record<string, TaskRunItem>;
+  canGeneratePrompt: boolean;
+  canRunTask: boolean;
+  canMarkReadyForGit: boolean;
+  canRegisterGitRequest: boolean;
   onGeneratePrompt: (taskId: string) => void;
   onRunTask: (taskId: string) => void;
   onMarkReadyForGit: (taskId: string) => void;
@@ -79,6 +83,10 @@ export function TaskListSection({
   markingReadyTaskId,
   registeringGitRequestRunId,
   taskRunMap,
+  canGeneratePrompt,
+  canRunTask,
+  canMarkReadyForGit,
+  canRegisterGitRequest,
   onGeneratePrompt,
   onRunTask,
   onMarkReadyForGit,
@@ -136,43 +144,47 @@ export function TaskListSection({
               <p style={{ margin: "4px 0 0 0" }}>
                 <strong>prompt status:</strong> {taskPromptMap[task.id]?.status || "-"}
               </p>
-              <button
-                type="button"
-                onClick={() => onGeneratePrompt(task.id)}
-                disabled={generatingPromptTaskId === task.id}
-                style={{
-                  marginTop: 8,
-                  padding: "6px 10px",
-                  border: "1px solid #ccc",
-                  borderRadius: 6,
-                  background: "#fff",
-                  cursor: generatingPromptTaskId === task.id ? "not-allowed" : "pointer",
-                  opacity: generatingPromptTaskId === task.id ? 0.7 : 1,
-                }}
-              >
-                {generatingPromptTaskId === task.id ? "프롬프트 생성 중..." : "프롬프트 생성"}
-              </button>
-              <button
-                type="button"
-                onClick={() => onRunTask(task.id)}
-                disabled={!taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id}
-                style={{
-                  marginTop: 8,
-                  marginLeft: 8,
-                  padding: "6px 10px",
-                  border: "1px solid #ccc",
-                  borderRadius: 6,
-                  background: "#fff",
-                  cursor:
-                    !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity:
-                    !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id ? 0.7 : 1,
-                }}
-              >
-                {runningPromptId === taskPromptMap[task.id]?.id ? "Run 실행 중..." : "Run 실행"}
-              </button>
+              {canGeneratePrompt ? (
+                <button
+                  type="button"
+                  onClick={() => onGeneratePrompt(task.id)}
+                  disabled={generatingPromptTaskId === task.id}
+                  style={{
+                    marginTop: 8,
+                    padding: "6px 10px",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    background: "#fff",
+                    cursor: generatingPromptTaskId === task.id ? "not-allowed" : "pointer",
+                    opacity: generatingPromptTaskId === task.id ? 0.7 : 1,
+                  }}
+                >
+                  {generatingPromptTaskId === task.id ? "프롬프트 생성 중..." : "프롬프트 생성"}
+                </button>
+              ) : null}
+              {canRunTask ? (
+                <button
+                  type="button"
+                  onClick={() => onRunTask(task.id)}
+                  disabled={!taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id}
+                  style={{
+                    marginTop: 8,
+                    marginLeft: canGeneratePrompt ? 8 : 0,
+                    padding: "6px 10px",
+                    border: "1px solid #ccc",
+                    borderRadius: 6,
+                    background: "#fff",
+                    cursor:
+                      !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity:
+                      !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id ? 0.7 : 1,
+                  }}
+                >
+                  {runningPromptId === taskPromptMap[task.id]?.id ? "Run 실행 중..." : "Run 실행"}
+                </button>
+              ) : null}
               {taskPromptMap[task.id] ? (
                 <details style={{ marginTop: 8 }}>
                   <summary style={{ cursor: "pointer" }}>프롬프트 미리보기</summary>
@@ -207,7 +219,7 @@ export function TaskListSection({
                 <strong>run createdAt:</strong>{" "}
                 {taskRunMap[task.id]?.createdAt ? formatTestedAt(taskRunMap[task.id].createdAt) : "-"}
               </p>
-              {taskRunMap[task.id]?.status === "DONE" ? (
+              {canMarkReadyForGit && taskRunMap[task.id]?.status === "DONE" ? (
                 <button
                   type="button"
                   onClick={() => onMarkReadyForGit(task.id)}
@@ -225,7 +237,7 @@ export function TaskListSection({
                   {markingReadyTaskId === task.id ? "전환 중..." : "Git 반영 준비"}
                 </button>
               ) : null}
-              {taskRunMap[task.id]?.status === "READY_FOR_GIT" ? (
+              {canRegisterGitRequest && taskRunMap[task.id]?.status === "READY_FOR_GIT" ? (
                 <button
                   type="button"
                   onClick={() => onRegisterGitRequest(task.id)}

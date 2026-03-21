@@ -26,6 +26,18 @@ import {
   TaskRunItem,
 } from "@/components/task/TaskListSection";
 import { formatTestedAt } from "@/components/project-spec/format";
+import { ProjectMembersSection } from "@/components/project-spec/ProjectMembersSection";
+import {
+  getCurrentMockUser,
+  getCurrentUserProjectRole,
+  getProjectMembersMock,
+} from "@/lib/rbac/mockProjectContext";
+import {
+  canEditSpec,
+  canManageMembers,
+  canOperate,
+  canReview,
+} from "@/lib/rbac/projectPermissions";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -63,6 +75,27 @@ export default function ProjectDetailPage() {
   const [gitApplySimulateFailure, setGitApplySimulateFailure] = useState(false);
   const [gitApplyMessage, setGitApplyMessage] = useState<string | null>(null);
   const [gitApplyError, setGitApplyError] = useState<string | null>(null);
+
+  const currentUser = useMemo(() => getCurrentMockUser(), []);
+  const projectRole = useMemo(
+    () => (projectId ? getCurrentUserProjectRole(projectId, currentUser.id) : null),
+    [projectId, currentUser.id]
+  );
+  const rbac = useMemo(
+    () => ({
+      canEditSpec: canEditSpec(projectRole),
+      canReview: canReview(projectRole),
+      canOperate: canOperate(projectRole),
+      canManageMembers: canManageMembers(projectRole),
+    }),
+    [projectRole]
+  );
+  const memberRows = useMemo(
+    () => (projectId ? getProjectMembersMock(projectId) : []),
+    [projectId]
+  );
+  const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
+  const showTaskSection = rbac.canReview || rbac.canOperate;
 
   useEffect(() => {
     if (!projectId) return;
@@ -652,52 +685,80 @@ export default function ProjectDetailPage() {
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
       <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
-      <ProjectInfoCard project={project} />
-      <ProjectSpecGuideSection />
-      <ProjectSpecPromptSection prompt={projectSpecPrompt} />
-      <ProjectSpecUploadTestSection
-        selectedFile={selectedFile}
-        selectedFileName={selectedFileName}
-        uploadMessage={uploadMessage}
-        uploadResult={uploadResult}
-        uploadStatus={uploadStatus}
-        uploading={uploading}
-        onSelectFile={handleSelectFile}
-        onUploadTest={handleUploadTest}
+      <ProjectInfoCard
+        project={project}
+        currentUserRoleLabel={projectRole && projectId ? projectRole : null}
       />
-      <ProjectSpecUploadHistorySection
-        uploadHistory={uploadHistory}
-        parsingUploadId={parsingUploadId}
-        generatingTaskUploadId={generatingTaskUploadId}
-        parseMessage={parseMessage}
-        taskMessage={taskMessage}
-        onParse={handleRunParse}
-        onGenerateTasks={handleGenerateTasks}
-      />
-      <TaskListSection
-        tasks={tasks}
-        loadingTasks={loadingTasks}
-        loadingTaskPrompts={loadingTaskPrompts}
-        loadingTaskRuns={loadingTaskRuns}
-        promptMessage={promptMessage}
-        generatingPromptTaskId={generatingPromptTaskId}
-        taskPromptMap={taskPromptMap}
-        runningPromptId={runningPromptId}
-        markingReadyTaskId={markingReadyTaskId}
-        registeringGitRequestRunId={registeringGitRequestRunId}
-        taskRunMap={taskRunMap}
-        onGeneratePrompt={handleGenerateTaskPrompt}
-        onRunTask={handleRunTask}
-        onMarkReadyForGit={handleMarkReadyForGit}
-        onRegisterGitRequest={handleRegisterGitRequest}
-      />
-      <section
-        style={{
-          borderTop: "1px solid #e5e5e5",
-          marginTop: 16,
-          paddingTop: 12,
-        }}
-      >
+      <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+        프로젝트 생성 시 생성자는 OWNER로 기록되며, 이후 PLANNER / REVIEWER / OPERATOR로 역할을 나눌 수
+        있습니다. 현재 사용자·멤버 목록은 mock 기준입니다.
+      </p>
+      {rbac.canManageMembers ? <ProjectMembersSection members={memberRows} /> : null}
+      {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
+      {rbac.canEditSpec ? <ProjectSpecPromptSection prompt={projectSpecPrompt} /> : null}
+      {rbac.canEditSpec ? (
+        <ProjectSpecUploadTestSection
+          selectedFile={selectedFile}
+          selectedFileName={selectedFileName}
+          uploadMessage={uploadMessage}
+          uploadResult={uploadResult}
+          uploadStatus={uploadStatus}
+          uploading={uploading}
+          onSelectFile={handleSelectFile}
+          onUploadTest={handleUploadTest}
+        />
+      ) : null}
+      {showSpecUploadHistory ? (
+        <>
+          {!rbac.canEditSpec && rbac.canReview ? (
+            <p style={{ margin: "0 0 8px 0", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
+              ProjectSpec 파일 등록·업로드는 PLANNER 또는 OWNER 역할에서 수행합니다. 아래는 등록된 업로드
+              이력과 파싱·Task 단계입니다.
+            </p>
+          ) : null}
+          <ProjectSpecUploadHistorySection
+            uploadHistory={uploadHistory}
+            parsingUploadId={parsingUploadId}
+            generatingTaskUploadId={generatingTaskUploadId}
+            parseMessage={parseMessage}
+            taskMessage={taskMessage}
+            canRunReviewActions={rbac.canReview}
+            onParse={handleRunParse}
+            onGenerateTasks={handleGenerateTasks}
+          />
+        </>
+      ) : null}
+      {showTaskSection ? (
+        <TaskListSection
+          tasks={tasks}
+          loadingTasks={loadingTasks}
+          loadingTaskPrompts={loadingTaskPrompts}
+          loadingTaskRuns={loadingTaskRuns}
+          promptMessage={promptMessage}
+          generatingPromptTaskId={generatingPromptTaskId}
+          taskPromptMap={taskPromptMap}
+          runningPromptId={runningPromptId}
+          markingReadyTaskId={markingReadyTaskId}
+          registeringGitRequestRunId={registeringGitRequestRunId}
+          taskRunMap={taskRunMap}
+          canGeneratePrompt={rbac.canReview}
+          canRunTask={rbac.canOperate}
+          canMarkReadyForGit={rbac.canOperate}
+          canRegisterGitRequest={rbac.canOperate}
+          onGeneratePrompt={handleGenerateTaskPrompt}
+          onRunTask={handleRunTask}
+          onMarkReadyForGit={handleMarkReadyForGit}
+          onRegisterGitRequest={handleRegisterGitRequest}
+        />
+      ) : null}
+      {rbac.canOperate ? (
+        <section
+          style={{
+            borderTop: "1px solid #e5e5e5",
+            marginTop: 16,
+            paddingTop: 12,
+          }}
+        >
         <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 8px 0" }}>Git 반영 요청 목록</h3>
         <div
           style={{
@@ -918,7 +979,8 @@ export default function ProjectDetailPage() {
             ))}
           </div>
         )}
-      </section>
+        </section>
+      ) : null}
     </main>
   );
 }
