@@ -58,6 +58,8 @@ export default function ProjectDetailPage() {
   const [loadingGitRequests, setLoadingGitRequests] = useState(false);
   const [registeringGitRequestRunId, setRegisteringGitRequestRunId] = useState<string | null>(null);
   const [applyingGitRequestId, setApplyingGitRequestId] = useState<string | null>(null);
+  const [gitApplyMode, setGitApplyMode] = useState<"mock" | "cursor" | "git">("mock");
+  const [gitApplyPushOption, setGitApplyPushOption] = useState(false);
 
   useEffect(() => {
     if (!projectId) return;
@@ -532,7 +534,11 @@ export default function ProjectDetailPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ gitChangeRequestId }),
+        body: JSON.stringify({
+          gitChangeRequestId,
+          mode: gitApplyMode,
+          options: { push: gitApplyPushOption },
+        }),
       });
 
       const json = (await res.json()) as {
@@ -555,10 +561,10 @@ export default function ProjectDetailPage() {
         setGitRequests(listJson.data);
       }
 
-      setPromptMessage(json.message || "Git 반영(mock) 완료");
+      setPromptMessage(json.message || "Git 반영 실행이 완료되었습니다.");
     } catch (error) {
       console.error("Failed to apply git change request:", error);
-      setPromptMessage("Git 반영(mock) 실행 중 오류가 발생했습니다.");
+      setPromptMessage("Git 반영 실행 중 오류가 발생했습니다.");
     } finally {
       setApplyingGitRequestId(null);
     }
@@ -615,6 +621,40 @@ export default function ProjectDetailPage() {
         }}
       >
         <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 8px 0" }}>Git 반영 요청 목록</h3>
+        <div
+          style={{
+            marginBottom: 12,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#333" }}>
+            <span>실행 모드</span>
+            <select
+              value={gitApplyMode}
+              onChange={(e) =>
+                setGitApplyMode(e.target.value as "mock" | "cursor" | "git")
+              }
+              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #ccc" }}
+            >
+              <option value="mock">Mock 실행</option>
+              <option value="cursor">Cursor 실행 (스텁)</option>
+              <option value="git">Git 실행</option>
+            </select>
+          </label>
+          {gitApplyMode === "git" ? (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#555" }}>
+              <input
+                type="checkbox"
+                checked={gitApplyPushOption}
+                onChange={(e) => setGitApplyPushOption(e.target.checked)}
+              />
+              원격 push 요청 (GIT_APPLY_PUSH_ENABLED=true 일 때만 실제 push)
+            </label>
+          ) : null}
+        </div>
         {loadingGitRequests ? (
           <p style={{ margin: 0, color: "#555" }}>Git 반영 요청 목록을 불러오는 중...</p>
         ) : gitRequests.length === 0 ? (
