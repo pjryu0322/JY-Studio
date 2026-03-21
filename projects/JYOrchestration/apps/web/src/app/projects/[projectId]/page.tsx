@@ -60,6 +60,8 @@ export default function ProjectDetailPage() {
   const [applyingGitRequestId, setApplyingGitRequestId] = useState<string | null>(null);
   const [gitApplyMode, setGitApplyMode] = useState<"mock" | "cursor" | "git">("mock");
   const [gitApplyPushOption, setGitApplyPushOption] = useState(false);
+  const [gitApplyMessage, setGitApplyMessage] = useState<string | null>(null);
+  const [gitApplyError, setGitApplyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -524,10 +526,23 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function refreshGitRequestsList() {
+    const encodedProjectId = encodeURIComponent(projectId);
+    const listRes = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
+    const listJson = (await listRes.json()) as {
+      success: boolean;
+      data?: GitChangeRequestItem[];
+    };
+    if (listRes.ok && listJson.success && Array.isArray(listJson.data)) {
+      setGitRequests(listJson.data);
+    }
+  }
+
   async function handleApplyGitRequest(gitChangeRequestId: string) {
     try {
       setApplyingGitRequestId(gitChangeRequestId);
-      setPromptMessage(null);
+      setGitApplyMessage(null);
+      setGitApplyError(null);
 
       const res = await fetch("/api/task/git-apply", {
         method: "POST",
@@ -544,27 +559,27 @@ export default function ProjectDetailPage() {
       const json = (await res.json()) as {
         success: boolean;
         message?: string;
+        code?: string;
       };
 
+      await refreshGitRequestsList();
+
       if (!res.ok || !json.success) {
-        setPromptMessage(json.message || "Git 반영 실행에 실패했습니다.");
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "Git 반영 실행에 실패했습니다.";
+        setGitApplyError(detail);
+        setGitApplyMessage(null);
         return;
       }
 
-      const encodedProjectId = encodeURIComponent(projectId);
-      const listRes = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
-      const listJson = (await listRes.json()) as {
-        success: boolean;
-        data?: GitChangeRequestItem[];
-      };
-      if (listRes.ok && listJson.success && Array.isArray(listJson.data)) {
-        setGitRequests(listJson.data);
-      }
-
-      setPromptMessage(json.message || "Git 반영 실행이 완료되었습니다.");
+      setGitApplyMessage(json.message || "Git 반영 실행이 완료되었습니다.");
+      setGitApplyError(null);
     } catch (error) {
       console.error("Failed to apply git change request:", error);
-      setPromptMessage("Git 반영 실행 중 오류가 발생했습니다.");
+      setGitApplyError("Git 반영 실행 중 오류가 발생했습니다.");
+      setGitApplyMessage(null);
     } finally {
       setApplyingGitRequestId(null);
     }
@@ -655,6 +670,16 @@ export default function ProjectDetailPage() {
             </label>
           ) : null}
         </div>
+        <p style={{ margin: "0 0 8px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+          <strong>모드 안내:</strong> Mock은 내부 시뮬레이션만 수행합니다. Cursor는 Cursor 연동 구조·페이로드
+          검증(스텁) 단계입니다. Git은 로컬 저장소 반영 구조 검증 단계이며, 실제 원격 push는 기본 비활성입니다.
+        </p>
+        {gitApplyError ? (
+          <p style={{ margin: "0 0 8px 0", color: "#b00020", fontSize: 14 }}>{gitApplyError}</p>
+        ) : null}
+        {gitApplyMessage ? (
+          <p style={{ margin: "0 0 8px 0", color: "#0a7d2e", fontSize: 14 }}>{gitApplyMessage}</p>
+        ) : null}
         {loadingGitRequests ? (
           <p style={{ margin: 0, color: "#555" }}>Git 반영 요청 목록을 불러오는 중...</p>
         ) : gitRequests.length === 0 ? (
