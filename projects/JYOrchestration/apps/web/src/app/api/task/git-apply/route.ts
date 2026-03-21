@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   buildApplyLogForMode,
+  buildPlannedGitFlow,
   parseExecutionMode,
   type ExecutionMode,
 } from "@/lib/git-apply/execution";
 import { validateExecutionPrecheck } from "@/lib/git-apply/precheck";
+import {
+  executeCursorForGitChangeRequest,
+  formatCursorApplyLogSuccess,
+} from "@/lib/execution/cursorExecutor";
 
 type ApplyGitRequestBody = {
   gitChangeRequestId?: string;
@@ -19,6 +24,7 @@ const ERROR_CODES = {
   INVALID_STATUS: "INVALID_STATUS",
   EXECUTION_PRECHECK_FAILED: "EXECUTION_PRECHECK_FAILED",
   EXECUTION_FAILED: "EXECUTION_FAILED",
+  CURSOR_EXECUTION_FAILED: "CURSOR_EXECUTION_FAILED",
 } as const;
 
 function jsonError(code: string, message: string, status: number) {
@@ -34,7 +40,7 @@ function completionMessage(mode: ExecutionMode): string {
     case "mock":
       return "Git 반영(mock) 완료";
     case "cursor":
-      return "Cursor 실행 파이프라인(스텁) 완료";
+      return "Cursor 실행 인터페이스(스텁) 처리 완료";
     case "git":
       return "Git 실행 파이프라인 완료";
     default:
@@ -131,16 +137,50 @@ export async function POST(request: Request) {
     });
 
     try {
-      const applyLog = await buildApplyLogForMode({
-        mode,
-        branchName,
-        commitMessage: safeCommitMessage,
-        taskId: found.taskId,
-        projectId: found.projectId,
-        files: found.files,
-        diffText: found.diffText,
-        requestedPush,
-      });
+      let applyLog: string;
+
+      if (mode === "cursor") {
+        const cursorResult = await executeCursorForGitChangeRequest({
+          taskId: found.taskId,
+          files: found.files,
+          diffText: found.diffText,
+          commitMessage: found.commitMessage,
+        });
+
+        if (!cursorResult.success) {
+          const errText =
+            cursorResult.error?.trim() || "Cursor 실행에 실패했습니다.";
+          await prisma.gitChangeRequest.update({
+            where: { id: found.id },
+            data: {
+              applyStatus: "FAILED",
+              applyLog: `[CURSOR_FAILED] ${errText}`,
+              applyFinishedAt: new Date(),
+            },
+          });
+          return jsonError(
+            ERROR_CODES.CURSOR_EXECUTION_FAILED,
+            errText,
+            500
+          );
+        }
+
+        applyLog = formatCursorApplyLogSuccess(
+          buildPlannedGitFlow(branchName, safeCommitMessage),
+          cursorResult
+        );
+      } else {
+        applyLog = await buildApplyLogForMode({
+          mode,
+          branchName,
+          commitMessage: safeCommitMessage,
+          taskId: found.taskId,
+          projectId: found.projectId,
+          files: found.files,
+          diffText: found.diffText,
+          requestedPush,
+        });
+      }
 
       const finishedAt = new Date();
 

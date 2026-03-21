@@ -27,7 +27,7 @@ export function buildCursorPayload(ctx: CursorExecutionPayload): string {
   return JSON.stringify(body, null, 2);
 }
 
-function buildPlannedGitFlow(branchName: string, commitMessage: string): string {
+export function buildPlannedGitFlow(branchName: string, commitMessage: string): string {
   return [
     "[PLANNED GIT FLOW]",
     `git checkout -b ${branchName}`,
@@ -35,19 +35,6 @@ function buildPlannedGitFlow(branchName: string, commitMessage: string): string 
     "git add -A",
     `git commit -m '${commitMessage}'`,
     "git push origin <branch>  (push: options.push + GIT_APPLY_PUSH_ENABLED=true 일 때만)",
-  ].join("\n");
-}
-
-function buildCursorStubSection(payloadJson: string): string {
-  const max = 4000;
-  const shown =
-    payloadJson.length > max ? `${payloadJson.slice(0, max)}\n... [truncated]` : payloadJson;
-  return [
-    "[CURSOR][STUB]",
-    "실제 Cursor CLI/API는 환경변수로만 자격 증명 주입 (하드코딩 금지).",
-    "[PAYLOAD]",
-    shown,
-    "[END CURSOR STUB]",
   ].join("\n");
 }
 
@@ -146,21 +133,9 @@ export async function buildApplyLogForMode(ctx: ApplyLogContext): Promise<string
   }
 
   if (ctx.mode === "cursor") {
-    const payloadJson = buildCursorPayload({
-      taskId: ctx.taskId,
-      projectId: ctx.projectId,
-      files: ctx.files,
-      diffText: ctx.diffText,
-      commitMessage: ctx.commitMessage,
-      branchName: ctx.branchName,
-    });
-    return [
-      header,
-      planned,
-      buildCursorStubSection(payloadJson),
-      "[RESULT] cursor 스텁 완료",
-      "[END]",
-    ].join("\n\n");
+    throw new Error(
+      "cursor 모드는 git-apply에서 cursorExecutor를 통해 처리해야 합니다."
+    );
   }
 
   const workdir = process.env.GIT_APPLY_WORKDIR?.trim();
