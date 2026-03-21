@@ -3,11 +3,16 @@
  * 실제 Cursor CLI/API 호출은 하지 않으며, 이후 실제 연동 시 이 모듈만 교체/확장하면 됩니다.
  */
 
+/** commitMessage에 포함 시 스텁 실행을 실패로 처리 (테스트/데모용) */
+export const CURSOR_SIMULATE_FAIL_KEYWORD = "[FAIL]";
+
 export type CursorExecutionInput = {
   taskId: string;
   files: unknown;
   diffText: string | null;
   commitMessage: string | null;
+  /** true이면 외부 호출 없이 실패 결과 반환 (테스트용) */
+  simulateFailure?: boolean;
 };
 
 export type CursorExecutionResult = {
@@ -47,6 +52,23 @@ export async function executeCursorForGitChangeRequest(
     `[STUB] 파일 항목 수=${Array.isArray(input.files) ? input.files.length : 0}`,
   ];
 
+  const failByKeyword = (input.commitMessage ?? "").includes(
+    CURSOR_SIMULATE_FAIL_KEYWORD
+  );
+  const failByFlag = input.simulateFailure === true;
+  if (failByFlag || failByKeyword) {
+    const reason = failByFlag
+      ? "simulateFailure 옵션이 true입니다."
+      : `commitMessage에 '${CURSOR_SIMULATE_FAIL_KEYWORD}' 가 포함되어 있습니다.`;
+    logs.push(`[STUB] Simulated failure: ${reason}`);
+    return {
+      success: false,
+      updatedFiles: [],
+      logs,
+      error: "Simulated cursor execution failure",
+    };
+  }
+
   return {
     success: true,
     updatedFiles,
@@ -67,6 +89,23 @@ export function formatCursorApplyLogSuccess(
     ...result.logs,
     `[CURSOR] updatedFiles: ${JSON.stringify(result.updatedFiles)}`,
     "[CURSOR_EXECUTION_DONE]",
+    "[END]",
+  ];
+  return lines.join("\n");
+}
+
+/** applyLog에 기록할 실패 블록 */
+export function formatCursorApplyLogFailure(
+  plannedGitFlowSection: string,
+  result: CursorExecutionResult
+): string {
+  const errLine = result.error?.trim() || "Cursor 실행에 실패했습니다.";
+  const lines = [
+    "[mode: cursor]",
+    plannedGitFlowSection,
+    "[CURSOR_EXECUTION_FAILED]",
+    `error: ${errLine}`,
+    ...result.logs,
     "[END]",
   ];
   return lines.join("\n");

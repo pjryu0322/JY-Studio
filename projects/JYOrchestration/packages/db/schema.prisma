@@ -117,6 +117,9 @@ model GitChangeRequest {
   branchName        String?
   applyStartedAt    DateTime?
   applyFinishedAt   DateTime?
+  retryCount  Int      @default(0)
+  lastError   String?
+  lastRetryAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

@@ -60,6 +60,7 @@ export default function ProjectDetailPage() {
   const [applyingGitRequestId, setApplyingGitRequestId] = useState<string | null>(null);
   const [gitApplyMode, setGitApplyMode] = useState<"mock" | "cursor" | "git">("mock");
   const [gitApplyPushOption, setGitApplyPushOption] = useState(false);
+  const [gitApplySimulateFailure, setGitApplySimulateFailure] = useState(false);
   const [gitApplyMessage, setGitApplyMessage] = useState<string | null>(null);
   const [gitApplyError, setGitApplyError] = useState<string | null>(null);
 
@@ -153,10 +154,12 @@ export default function ProjectDetailPage() {
       try {
         setLoadingGitRequests(true);
         const encodedProjectId = encodeURIComponent(projectId);
-        const res = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
+        const res = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`);
         const json = (await res.json()) as {
           success: boolean;
           data?: GitChangeRequestItem[];
+          code?: string;
+          message?: string;
         };
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
@@ -508,7 +511,7 @@ export default function ProjectDetailPage() {
       }
 
       const encodedProjectId = encodeURIComponent(projectId);
-      const listRes = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
+      const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`);
       const listJson = (await listRes.json()) as {
         success: boolean;
         data?: GitChangeRequestItem[];
@@ -528,7 +531,7 @@ export default function ProjectDetailPage() {
 
   async function refreshGitRequestsList() {
     const encodedProjectId = encodeURIComponent(projectId);
-    const listRes = await fetch(`/api/task/git-request?projectId=${encodedProjectId}`);
+    const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`);
     const listJson = (await listRes.json()) as {
       success: boolean;
       data?: GitChangeRequestItem[];
@@ -552,7 +555,12 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({
           gitChangeRequestId,
           mode: gitApplyMode,
-          options: { push: gitApplyPushOption },
+          options: {
+            push: gitApplyPushOption,
+            ...(gitApplyMode === "cursor"
+              ? { simulateFailure: gitApplySimulateFailure }
+              : {}),
+          },
         }),
       });
 
@@ -579,6 +587,61 @@ export default function ProjectDetailPage() {
     } catch (error) {
       console.error("Failed to apply git change request:", error);
       setGitApplyError("Git 반영 실행 중 오류가 발생했습니다.");
+      setGitApplyMessage(null);
+    } finally {
+      setApplyingGitRequestId(null);
+    }
+  }
+
+  const MAX_GIT_APPLY_RETRIES = 2;
+
+  async function handleRetryGitApply(gitChangeRequestId: string) {
+    try {
+      setApplyingGitRequestId(gitChangeRequestId);
+      setGitApplyMessage(null);
+      setGitApplyError(null);
+
+      const res = await fetch("/api/task/git-apply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gitChangeRequestId,
+          mode: gitApplyMode,
+          retry: true,
+          options: {
+            push: gitApplyPushOption,
+            ...(gitApplyMode === "cursor"
+              ? { simulateFailure: gitApplySimulateFailure }
+              : {}),
+          },
+        }),
+      });
+
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+      };
+
+      await refreshGitRequestsList();
+
+      if (!res.ok || !json.success) {
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "Git 반영 재시도에 실패했습니다.";
+        setGitApplyError(detail);
+        setGitApplyMessage(null);
+        return;
+      }
+
+      setGitApplyMessage(json.message || "Git 반영 재시도가 완료되었습니다.");
+      setGitApplyError(null);
+    } catch (error) {
+      console.error("Failed to retry git change request:", error);
+      setGitApplyError("Git 반영 재시도 중 오류가 발생했습니다.");
       setGitApplyMessage(null);
     } finally {
       setApplyingGitRequestId(null);
@@ -669,6 +732,16 @@ export default function ProjectDetailPage() {
               원격 push 요청 (GIT_APPLY_PUSH_ENABLED=true 일 때만 실제 push)
             </label>
           ) : null}
+          {gitApplyMode === "cursor" ? (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#555" }}>
+              <input
+                type="checkbox"
+                checked={gitApplySimulateFailure}
+                onChange={(e) => setGitApplySimulateFailure(e.target.checked)}
+              />
+              Cursor 스텁 실패 시뮬레이션 (simulateFailure)
+            </label>
+          ) : null}
         </div>
         <p style={{ margin: "0 0 8px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
           <strong>모드 안내:</strong> Mock은 내부 시뮬레이션만 수행합니다. Cursor는 Cursor 연동 구조·페이로드
@@ -690,10 +763,13 @@ export default function ProjectDetailPage() {
               <div
                 key={item.id}
                 style={{
-                  border: "1px solid #e0e0e0",
+                  border:
+                    item.applyStatus === "FAILED"
+                      ? "1px solid #c62828"
+                      : "1px solid #e0e0e0",
                   borderRadius: 8,
                   padding: 10,
-                  background: "#fff",
+                  background: item.applyStatus === "FAILED" ? "#fff8f8" : "#fff",
                 }}
               >
                 <p style={{ margin: 0, marginBottom: 4 }}>
@@ -716,7 +792,29 @@ export default function ProjectDetailPage() {
                   <strong>diff:</strong> {item.diffText ? "있음" : "없음"}
                 </p>
                 <p style={{ margin: 0, marginBottom: 4 }}>
-                  <strong>applyStatus:</strong> {item.applyStatus || "PENDING"}
+                  <strong>applyStatus:</strong>{" "}
+                  <span
+                    style={{
+                      color: item.applyStatus === "FAILED" ? "#b00020" : undefined,
+                      fontWeight: item.applyStatus === "FAILED" ? 600 : undefined,
+                    }}
+                  >
+                    {item.applyStatus || "PENDING"}
+                  </span>
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>retryCount:</strong> {item.retryCount ?? 0}{" "}
+                  <span style={{ color: "#666", fontSize: 12 }}>
+                    (최대 재시도 {MAX_GIT_APPLY_RETRIES}회, 남은 횟수:{" "}
+                    {Math.max(0, MAX_GIT_APPLY_RETRIES - (item.retryCount ?? 0))})
+                  </span>
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>lastError:</strong> {item.lastError || "-"}
+                </p>
+                <p style={{ margin: 0, marginBottom: 4 }}>
+                  <strong>lastRetryAt:</strong>{" "}
+                  {item.lastRetryAt ? formatTestedAt(item.lastRetryAt) : "-"}
                 </p>
                 <p style={{ margin: 0, marginBottom: 4 }}>
                   <strong>applyLog:</strong> {item.applyLog ? "있음" : "없음"}
@@ -724,24 +822,60 @@ export default function ProjectDetailPage() {
                 <p style={{ margin: 0 }}>
                   <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
                 </p>
-                {item.status === "REQUESTED" ? (
-                  <button
-                    type="button"
-                    onClick={() => handleApplyGitRequest(item.id)}
-                    disabled={applyingGitRequestId === item.id}
-                    style={{
-                      marginTop: 8,
-                      padding: "6px 10px",
-                      border: "1px solid #ccc",
-                      borderRadius: 6,
-                      background: "#fff",
-                      cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
-                      opacity: applyingGitRequestId === item.id ? 0.7 : 1,
-                    }}
-                  >
-                    {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
-                  </button>
-                ) : null}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                  {item.status === "REQUESTED" &&
+                  item.applyStatus !== "FAILED" &&
+                  item.applyStatus !== "DONE" &&
+                  item.applyStatus !== "APPLYING" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyGitRequest(item.id)}
+                      disabled={applyingGitRequestId === item.id}
+                      style={{
+                        padding: "6px 10px",
+                        border: "1px solid #ccc",
+                        borderRadius: 6,
+                        background: "#fff",
+                        cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
+                        opacity: applyingGitRequestId === item.id ? 0.7 : 1,
+                      }}
+                    >
+                      {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
+                    </button>
+                  ) : null}
+                  {item.status === "REQUESTED" && item.applyStatus === "FAILED" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleRetryGitApply(item.id)}
+                      disabled={
+                        applyingGitRequestId === item.id ||
+                        (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                      }
+                      style={{
+                        padding: "6px 10px",
+                        border: "1px solid #c62828",
+                        borderRadius: 6,
+                        background: "#fff",
+                        cursor:
+                          applyingGitRequestId === item.id ||
+                          (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          applyingGitRequestId === item.id ||
+                          (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      {applyingGitRequestId === item.id
+                        ? "재시도 중..."
+                        : (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                          ? "재시도 한도 초과"
+                          : "재시도 실행"}
+                    </button>
+                  ) : null}
+                </div>
                 {item.diffText ? (
                   <details style={{ marginTop: 8 }}>
                     <summary style={{ cursor: "pointer" }}>diffText 보기</summary>
