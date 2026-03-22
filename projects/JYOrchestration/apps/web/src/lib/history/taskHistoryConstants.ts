@@ -18,6 +18,7 @@ export const TaskHistoryEventType = {
   MANUAL_FORCED_COMPLETE: "MANUAL_FORCED_COMPLETE",
   MANUAL_BLOCKED: "MANUAL_BLOCKED",
   TASK_REORDERED: "TASK_REORDERED",
+  FOLLOWUP_TASK_CREATED: "FOLLOWUP_TASK_CREATED",
 } as const;
 
 export type TaskHistoryEventTypeKey = keyof typeof TaskHistoryEventType;

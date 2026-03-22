@@ -21,6 +21,7 @@ import { buildProjectSpecPrompt, fallbackProject } from "@/components/project-sp
 import { Project, TaskItem, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
 import {
   GitChangeRequestItem,
+  TaskFollowUpDraft,
   TaskListSection,
   TaskPromptItem,
   TaskRunItem,
@@ -97,6 +98,8 @@ export default function ProjectDetailPage() {
   const [blockingTaskId, setBlockingTaskId] = useState<string | null>(null);
   const [unblockingTaskId, setUnblockingTaskId] = useState<string | null>(null);
   const [forceCompletingTaskId, setForceCompletingTaskId] = useState<string | null>(null);
+  const [followUpDraft, setFollowUpDraft] = useState<TaskFollowUpDraft | null>(null);
+  const [followUpSaving, setFollowUpSaving] = useState(false);
 
   const currentUser = useMemo(() => getCurrentMockUser(), []);
   const projectRole = useMemo(
@@ -830,6 +833,57 @@ export default function ProjectDetailPage() {
     }
   }
 
+  function handleRequestFollowUp(taskId: string) {
+    const t = tasks.find((x) => x.id === taskId);
+    setFollowUpDraft({
+      sourceTaskId: taskId,
+      name: t ? `${t.name} (보완)` : "보완 작업",
+      description: "",
+      changeReason: "",
+    });
+  }
+
+  async function handleSubmitFollowUp() {
+    if (!projectId || !followUpDraft) {
+      return;
+    }
+    if (!followUpDraft.changeReason.trim()) {
+      setPromptMessage("변경 사유를 입력해 주세요.");
+      return;
+    }
+    try {
+      setFollowUpSaving(true);
+      setPromptMessage(null);
+      const res = await fetch("/api/task/follow-up", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({
+          projectId,
+          sourceTaskId: followUpDraft.sourceTaskId,
+          name: followUpDraft.name,
+          description: followUpDraft.description.trim() || null,
+          changeReason: followUpDraft.changeReason,
+        }),
+      });
+      const json = (await res.json()) as { success: boolean; message?: string; code?: string };
+      if (!res.ok || !json.success) {
+        setPromptMessage(json.message || "보완 작업 생성에 실패했습니다.");
+        return;
+      }
+      setFollowUpDraft(null);
+      setPromptMessage(json.message || "보완 작업이 생성되었습니다.");
+      await reloadTasksList();
+    } catch (error) {
+      console.error("Failed to create follow-up task:", error);
+      setPromptMessage("보완 작업 생성 중 오류가 발생했습니다.");
+    } finally {
+      setFollowUpSaving(false);
+    }
+  }
+
   async function handleRegisterGitRequest(taskId: string) {
     const run = taskRunMap[taskId];
     if (!run) {
@@ -1085,6 +1139,13 @@ export default function ProjectDetailPage() {
           onForceCompleteRun={handleForceCompleteRun}
           onBlockTask={handleBlockTask}
           onUnblockTask={handleUnblockTask}
+          canCreateFollowUp={rbac.canReview}
+          followUpDraft={followUpDraft}
+          followUpSaving={followUpSaving}
+          onRequestFollowUp={handleRequestFollowUp}
+          onFollowUpDraftChange={setFollowUpDraft}
+          onCancelFollowUp={() => setFollowUpDraft(null)}
+          onSubmitFollowUp={() => void handleSubmitFollowUp()}
         />
       ) : null}
       {showTaskSection && auditTaskId ? (

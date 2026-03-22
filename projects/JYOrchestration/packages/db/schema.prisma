@@ -76,10 +76,15 @@ model Task {
   description         String?
   status              String            @default("TODO")
   order               Int
+  parentTaskId        String?
+  taskKind            String            @default("PRIMARY")
+  changeReason        String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectSpecUpload   ProjectSpecUpload @relation(fields: [projectSpecUploadId], references: [id], onDelete: Cascade)
+  parentTask          Task?             @relation("TaskFollowUp", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  followUps           Task[]            @relation("TaskFollowUp")
   prompts             TaskPrompt[]
   runs                TaskRun[]
   gitRequests         GitChangeRequest[]
@@ -87,6 +92,7 @@ model Task {
 
   @@index([projectId, order])
   @@index([projectSpecUploadId])
+  @@index([parentTaskId])
   @@map("tasks")
 }
 

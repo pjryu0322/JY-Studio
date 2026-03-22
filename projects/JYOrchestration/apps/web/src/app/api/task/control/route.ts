@@ -35,6 +35,9 @@ const taskSelect = {
   description: true,
   status: true,
   order: true,
+  parentTaskId: true,
+  taskKind: true,
+  changeReason: true,
   createdAt: true,
   updatedAt: true,
 } as const;

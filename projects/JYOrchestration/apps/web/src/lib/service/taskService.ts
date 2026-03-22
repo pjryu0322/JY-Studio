@@ -69,3 +69,89 @@ export async function reorderTasksInProject(
 
   return { ok: true };
 }
+
+export type CreateFollowUpTaskResult =
+  | {
+      ok: true;
+      followUp: { id: string; parentTaskId: string | null; taskKind: string; order: number };
+    }
+  | { ok: false; message: string };
+
+/**
+ * Inserts a FOLLOW_UP task immediately after a DONE source task (same project / spec upload).
+ * Shifts `order` for tasks in the project with order greater than the source's order.
+ */
+export async function createFollowUpTaskAfterDoneSource(params: {
+  projectId: string;
+  sourceTaskId: string;
+  name: string;
+  description: string | null;
+  changeReason: string;
+}): Promise<CreateFollowUpTaskResult> {
+  const name = params.name.trim();
+  const changeReason = params.changeReason.trim();
+  if (!name) {
+    return { ok: false, message: "작업명(name)이 필요합니다." };
+  }
+  if (!changeReason) {
+    return { ok: false, message: "변경 사유(changeReason)가 필요합니다." };
+  }
+
+  const source = await prisma.task.findFirst({
+    where: { id: params.sourceTaskId, projectId: params.projectId },
+    select: {
+      id: true,
+      status: true,
+      order: true,
+      projectSpecUploadId: true,
+    },
+  });
+
+  if (!source) {
+    return { ok: false, message: "원본 Task를 찾을 수 없습니다." };
+  }
+
+  if (source.status !== "DONE") {
+    return {
+      ok: false,
+      message: "완료(DONE) 상태의 Task만 보완(Follow-up) 작업을 생성할 수 있습니다.",
+    };
+  }
+
+  const inserted = await prisma.$transaction(async (tx) => {
+    const sourceOrder = source.order;
+    await tx.task.updateMany({
+      where: { projectId: params.projectId, order: { gt: sourceOrder } },
+      data: { order: { increment: 1 } },
+    });
+    return tx.task.create({
+      data: {
+        projectId: params.projectId,
+        projectSpecUploadId: source.projectSpecUploadId,
+        name,
+        description: params.description?.trim() || null,
+        status: "TODO",
+        order: sourceOrder + 1,
+        parentTaskId: source.id,
+        taskKind: "FOLLOW_UP",
+        changeReason,
+      },
+      select: {
+        id: true,
+        parentTaskId: true,
+        taskKind: true,
+        order: true,
+      },
+    });
+  });
+
+  return {
+    ok: true,
+    followUp: {
+      id: inserted.id,
+      parentTaskId: inserted.parentTaskId,
+      taskKind: inserted.taskKind,
+      order: inserted.order,
+    },
+  };
+}

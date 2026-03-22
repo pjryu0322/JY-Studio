@@ -400,6 +400,11 @@ export async function POST(request: Request) {
         },
       });
 
+      await prisma.task.update({
+        where: { id: prompt.taskId },
+        data: { status: "DONE" },
+      });
+
       try {
         await appendTaskHistory({
           projectId,
@@ -498,6 +503,11 @@ export async function POST(request: Request) {
         createdAt: true,
         updatedAt: true,
       },
+    });
+
+    await prisma.task.update({
+      where: { id: prompt.taskId },
+      data: { status: "DONE" },
     });
 
     try {

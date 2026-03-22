@@ -60,6 +60,9 @@ export type TaskItem = {
   description: string | null;
   status: string;
   order: number;
+  parentTaskId: string | null;
+  taskKind: string;
+  changeReason: string | null;
   createdAt: string;
   updatedAt: string;
 };

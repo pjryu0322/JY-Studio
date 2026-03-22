@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, DragEvent } from "react";
+import type { ChangeEvent, CSSProperties, DragEvent } from "react";
 import { useMemo, useState } from "react";
 import { TaskItem } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
@@ -29,6 +29,13 @@ export type TaskRunItem = {
   resultText: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type TaskFollowUpDraft = {
+  sourceTaskId: string;
+  name: string;
+  description: string;
+  changeReason: string;
 };
 
 export type GitChangeRequestFileItem = {
@@ -90,6 +97,13 @@ type TaskListSectionProps = {
   onForceCompleteRun: (taskId: string) => void;
   onBlockTask: (taskId: string) => void;
   onUnblockTask: (taskId: string) => void;
+  canCreateFollowUp: boolean;
+  followUpDraft: TaskFollowUpDraft | null;
+  followUpSaving: boolean;
+  onRequestFollowUp: (taskId: string) => void;
+  onFollowUpDraftChange: (draft: TaskFollowUpDraft) => void;
+  onCancelFollowUp: () => void;
+  onSubmitFollowUp: () => void;
 };
 
 const btnBase: CSSProperties = {
@@ -133,6 +147,13 @@ export function TaskListSection({
   onForceCompleteRun,
   onBlockTask,
   onUnblockTask,
+  canCreateFollowUp,
+  followUpDraft,
+  followUpSaving,
+  onRequestFollowUp,
+  onFollowUpDraftChange,
+  onCancelFollowUp,
+  onSubmitFollowUp,
 }: TaskListSectionProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -282,6 +303,10 @@ export function TaskListSection({
               }
               return "Run 실행";
             })();
+            const taskKind = task.taskKind ?? "PRIMARY";
+            const parentName = task.parentTaskId
+              ? sortedTasks.find((t) => t.id === task.parentTaskId)?.name ?? task.parentTaskId
+              : null;
             const badge = taskFlowBadgeColors(flow);
             const flowLabel = taskFlowStatusLabel(flow);
             const isDragOver = dragOverId === task.id && draggingId !== task.id;
@@ -388,10 +413,36 @@ export function TaskListSection({
                     >
                       {flowLabel}
                     </span>
+                    {taskKind === "FOLLOW_UP" ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: 0.6,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          background: "#ede7f6",
+                          color: "#4527a0",
+                          border: "1px solid #b39ddb",
+                        }}
+                      >
+                        FOLLOW-UP
+                      </span>
+                    ) : null}
                     <span style={{ fontSize: 12, color: "#78909c" }}>
                       DB status: <code style={{ fontSize: 12 }}>{task.status}</code>
                     </span>
                   </div>
+                  {taskKind === "FOLLOW_UP" && parentName ? (
+                    <p style={{ margin: "0 0 6px 0", fontSize: 13, color: "#5e35b1" }}>
+                      <strong>원본 Task:</strong> {parentName}
+                    </p>
+                  ) : null}
+                  {taskKind === "FOLLOW_UP" && task.changeReason ? (
+                    <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#6a1b9a", lineHeight: 1.45 }}>
+                      <strong>보완 사유:</strong> {task.changeReason}
+                    </p>
+                  ) : null}
                   {task.description ? (
                     <p style={{ margin: "0 0 8px 0", fontSize: 13, color: "#546e7a" }}>{task.description}</p>
                   ) : null}
@@ -555,7 +606,129 @@ export function TaskListSection({
                         {unblockingTaskId === task.id ? "해제 중..." : "차단 해제"}
                       </button>
                     ) : null}
+                    {canCreateFollowUp && task.status === "DONE" ? (
+                      <button
+                        type="button"
+                        onClick={() => onRequestFollowUp(task.id)}
+                        disabled={followUpSaving}
+                        style={{
+                          ...btnBase,
+                          border: "1px solid #1565c0",
+                          color: "#1565c0",
+                          fontWeight: 600,
+                          cursor: followUpSaving ? "not-allowed" : "pointer",
+                          opacity: followUpSaving ? 0.7 : 1,
+                        }}
+                        title="완료된 Task를 열지 않고 보완용 Follow-up Task를 붙입니다."
+                      >
+                        보완 작업 생성
+                      </button>
+                    ) : null}
                   </div>
+
+                  {followUpDraft && followUpDraft.sourceTaskId === task.id ? (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        border: "1px dashed #00897b",
+                        borderRadius: 8,
+                        background: "#f1f8f6",
+                      }}
+                    >
+                      <p style={{ margin: "0 0 10px 0", fontWeight: 600, color: "#004d40" }}>
+                        보완 Follow-up Task
+                      </p>
+                      <label style={{ display: "block", marginBottom: 8, fontSize: 13, color: "#333" }}>
+                        작업명
+                        <input
+                          type="text"
+                          value={followUpDraft.name}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                            onFollowUpDraftChange({ ...followUpDraft, name: e.target.value })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            maxWidth: 480,
+                            marginTop: 4,
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: "1px solid #ccc",
+                          }}
+                        />
+                      </label>
+                      <label style={{ display: "block", marginBottom: 8, fontSize: 13, color: "#333" }}>
+                        설명 (선택)
+                        <textarea
+                          value={followUpDraft.description}
+                          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+                            onFollowUpDraftChange({ ...followUpDraft, description: e.target.value })
+                          }
+                          rows={2}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            maxWidth: 480,
+                            marginTop: 4,
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: "1px solid #ccc",
+                            resize: "vertical",
+                          }}
+                        />
+                      </label>
+                      <label style={{ display: "block", marginBottom: 10, fontSize: 13, color: "#333" }}>
+                        변경 사유 <span style={{ color: "#c62828" }}>*</span>
+                        <textarea
+                          value={followUpDraft.changeReason}
+                          onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+                            onFollowUpDraftChange({ ...followUpDraft, changeReason: e.target.value })
+                          }
+                          rows={2}
+                          placeholder="왜 보완 작업이 필요한지 적어 주세요."
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            maxWidth: 480,
+                            marginTop: 4,
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            border: "1px solid #ccc",
+                            resize: "vertical",
+                          }}
+                        />
+                      </label>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={onSubmitFollowUp}
+                          disabled={followUpSaving}
+                          style={{
+                            ...btnBase,
+                            background: "#00897b",
+                            color: "#fff",
+                            border: "1px solid #00695c",
+                            cursor: followUpSaving ? "not-allowed" : "pointer",
+                            opacity: followUpSaving ? 0.75 : 1,
+                          }}
+                        >
+                          {followUpSaving ? "생성 중..." : "보완 Task 생성"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onCancelFollowUp}
+                          disabled={followUpSaving}
+                          style={{
+                            ...btnBase,
+                            cursor: followUpSaving ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          취소
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {taskPromptMap[task.id] ? (
                     <details style={{ marginTop: 4 }}>

@@ -19,6 +19,7 @@ export function taskHistoryEventLabel(eventType: string): string {
     MANUAL_FORCED_COMPLETE: "강제 완료",
     MANUAL_BLOCKED: "수동 차단",
     TASK_REORDERED: "순서 변경",
+    FOLLOWUP_TASK_CREATED: "보완 Task 생성",
   };
   return map[eventType] ?? eventType.replace(/_/g, " ");
 }
@@ -33,6 +34,7 @@ export function taskHistoryEventTone(eventType: string): EventBadgeTone {
   if (eventType === "RETRY_TRIGGERED") return "retry";
   if (eventType.startsWith("MANUAL_")) return "neutral";
   if (eventType.startsWith("TASK_")) return "neutral";
+  if (eventType.startsWith("FOLLOWUP")) return "neutral";
   return "neutral";
 }
 
