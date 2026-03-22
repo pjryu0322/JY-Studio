@@ -15,6 +15,10 @@ export function taskHistoryEventLabel(eventType: string): string {
     GIT_APPLY_FAILED: "Git 반영 실패",
     MANUAL_APPROVED: "수동 승인",
     MANUAL_REJECTED: "수동 거절",
+    MANUAL_CANCELLED: "수동 취소",
+    MANUAL_FORCED_COMPLETE: "강제 완료",
+    MANUAL_BLOCKED: "수동 차단",
+    TASK_REORDERED: "순서 변경",
   };
   return map[eventType] ?? eventType.replace(/_/g, " ");
 }
@@ -28,6 +32,7 @@ export function taskHistoryEventTone(eventType: string): EventBadgeTone {
   if (eventType.startsWith("VALIDATION_")) return eventType.includes("FAIL") ? "risk" : "run";
   if (eventType === "RETRY_TRIGGERED") return "retry";
   if (eventType.startsWith("MANUAL_")) return "neutral";
+  if (eventType.startsWith("TASK_")) return "neutral";
   return "neutral";
 }
 

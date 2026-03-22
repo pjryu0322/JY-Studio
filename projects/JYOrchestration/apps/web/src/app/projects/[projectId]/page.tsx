@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchGeneratedTasks,
   fetchProjectById,
@@ -92,6 +92,11 @@ export default function ProjectDetailPage() {
   const [auditHistory, setAuditHistory] = useState<TaskHistoryItem[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [reorderSaving, setReorderSaving] = useState(false);
+  const [abortingTaskId, setAbortingTaskId] = useState<string | null>(null);
+  const [blockingTaskId, setBlockingTaskId] = useState<string | null>(null);
+  const [unblockingTaskId, setUnblockingTaskId] = useState<string | null>(null);
+  const [forceCompletingTaskId, setForceCompletingTaskId] = useState<string | null>(null);
 
   const currentUser = useMemo(() => getCurrentMockUser(), []);
   const projectRole = useMemo(
@@ -338,6 +343,43 @@ export default function ProjectDetailPage() {
     [taskRuns]
   );
 
+  const reloadTaskRuns = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    try {
+      const encodedProjectId = encodeURIComponent(projectId);
+      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
+        headers: mockAuthHeaders(),
+      });
+      const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
+      if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
+        setTaskRuns(runJson.data);
+      }
+    } catch (error) {
+      console.error("Failed to reload task runs:", error);
+    }
+  }, [projectId]);
+
+  const reloadTasksList = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+    try {
+      const { res, json } = await fetchGeneratedTasks(projectId);
+      const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+      if (denied) {
+        setErrorMessage(denied);
+        return;
+      }
+      if (res.ok && json.success && Array.isArray(json.data)) {
+        setTasks(json.data);
+      }
+    } catch (error) {
+      console.error("Failed to reload tasks:", error);
+    }
+  }, [projectId]);
+
   function handleSelectFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) {
@@ -552,19 +594,7 @@ export default function ProjectDetailPage() {
         setPromptMessage(json.message || "Task 실행 요청에 실패했습니다.");
         return;
       }
-      const encodedProjectId = encodeURIComponent(projectId);
-      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
-        headers: mockAuthHeaders(),
-      });
-      const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
-      if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
-        setTaskRuns(runJson.data);
-      } else {
-        setTaskRuns((prev) => {
-          const filtered = prev.filter((item) => item.taskId !== json.data!.taskId);
-          return [json.data!, ...filtered];
-        });
-      }
+      await reloadTaskRuns();
       setPromptMessage(json.message || "Task mock 실행이 완료되었습니다.");
     } catch (error) {
       console.error("Failed to run task:", error);
@@ -606,25 +636,197 @@ export default function ProjectDetailPage() {
         return;
       }
 
-      const encodedProjectId = encodeURIComponent(projectId);
-      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
-        headers: mockAuthHeaders(),
-      });
-      const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
-      if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
-        setTaskRuns(runJson.data);
-      } else {
-        setTaskRuns((prev) => {
-          const filtered = prev.filter((item) => item.taskId !== json.data!.taskId);
-          return [json.data!, ...filtered];
-        });
-      }
+      await reloadTaskRuns();
       setPromptMessage(json.message || "TaskRun이 READY_FOR_GIT 상태로 전환되었습니다.");
     } catch (error) {
       console.error("Failed to mark task run ready for git:", error);
       setPromptMessage("READY_FOR_GIT 전환 중 오류가 발생했습니다.");
     } finally {
       setMarkingReadyTaskId(null);
+    }
+  }
+
+  async function handleReorderTasks(orderedTaskIds: string[]) {
+    if (!projectId || orderedTaskIds.length !== tasks.length) {
+      return;
+    }
+    const prevTasks = tasks;
+    const byId = new Map(tasks.map((t) => [t.id, t] as const));
+    const optimistic = orderedTaskIds.map((id, order) => {
+      const row = byId.get(id);
+      return row ? { ...row, order } : null;
+    });
+    if (optimistic.some((row) => row === null)) {
+      return;
+    }
+    setTasks(optimistic as TaskItem[]);
+    try {
+      setReorderSaving(true);
+      const res = await fetch("/api/task/reorder", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ projectId, orderedTaskIds }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+        data?: TaskItem[];
+      };
+      if (!res.ok || !json.success) {
+        setTasks(prevTasks);
+        setPromptMessage(json.message || "Task 순서 저장에 실패했습니다.");
+        return;
+      }
+      if (Array.isArray(json.data)) {
+        setTasks(json.data);
+      }
+      setPromptMessage(json.message || "Task 순서가 저장되었습니다.");
+    } catch (error) {
+      console.error("Failed to reorder tasks:", error);
+      setTasks(prevTasks);
+      setPromptMessage("Task 순서 저장 중 오류가 발생했습니다.");
+    } finally {
+      setReorderSaving(false);
+    }
+  }
+
+  async function handleAbortRun(taskId: string) {
+    const prompt = taskPromptMap[taskId];
+    if (!prompt) {
+      setPromptMessage("먼저 프롬프트를 생성해 주세요.");
+      return;
+    }
+    try {
+      setAbortingTaskId(taskId);
+      setPromptMessage(null);
+      const res = await fetch("/api/task/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ taskPromptId: prompt.id, action: "abort-run" }),
+      });
+      const json = (await res.json()) as { success: boolean; message?: string; code?: string };
+      if (!res.ok || !json.success) {
+        setPromptMessage(json.message || "실행 중단에 실패했습니다.");
+        return;
+      }
+      await reloadTaskRuns();
+      await reloadTasksList();
+      setPromptMessage(json.message || "실행이 중단되었습니다.");
+    } catch (error) {
+      console.error("Failed to abort task run:", error);
+      setPromptMessage("실행 중단 중 오류가 발생했습니다.");
+    } finally {
+      setAbortingTaskId(null);
+    }
+  }
+
+  async function handleForceCompleteRun(taskId: string) {
+    try {
+      setForceCompletingTaskId(taskId);
+      setPromptMessage(null);
+      const res = await fetch("/api/task/control", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ taskId, action: "force-complete-latest" }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+        data?: { task: TaskItem; taskRun?: TaskRunItem };
+      };
+      if (!res.ok || !json.success) {
+        setPromptMessage(json.message || "강제 완료 처리에 실패했습니다.");
+        return;
+      }
+      if (json.data?.task) {
+        setTasks((prev) => prev.map((t) => (t.id === json.data!.task.id ? json.data!.task : t)));
+      }
+      await reloadTaskRuns();
+      setPromptMessage(json.message || "최신 Run을 DONE으로 전환했습니다.");
+    } catch (error) {
+      console.error("Failed to force-complete task run:", error);
+      setPromptMessage("강제 완료 처리 중 오류가 발생했습니다.");
+    } finally {
+      setForceCompletingTaskId(null);
+    }
+  }
+
+  async function handleBlockTask(taskId: string) {
+    try {
+      setBlockingTaskId(taskId);
+      setPromptMessage(null);
+      const res = await fetch("/api/task/control", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ taskId, action: "block" }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+        data?: { task: TaskItem };
+      };
+      if (!res.ok || !json.success) {
+        setPromptMessage(json.message || "차단 처리에 실패했습니다.");
+        return;
+      }
+      if (json.data?.task) {
+        setTasks((prev) => prev.map((t) => (t.id === json.data!.task.id ? json.data!.task : t)));
+      }
+      setPromptMessage(json.message || "Task를 차단했습니다.");
+    } catch (error) {
+      console.error("Failed to block task:", error);
+      setPromptMessage("차단 처리 중 오류가 발생했습니다.");
+    } finally {
+      setBlockingTaskId(null);
+    }
+  }
+
+  async function handleUnblockTask(taskId: string) {
+    try {
+      setUnblockingTaskId(taskId);
+      setPromptMessage(null);
+      const res = await fetch("/api/task/control", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ taskId, action: "unblock" }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+        data?: { task: TaskItem };
+      };
+      if (!res.ok || !json.success) {
+        setPromptMessage(json.message || "차단 해제에 실패했습니다.");
+        return;
+      }
+      if (json.data?.task) {
+        setTasks((prev) => prev.map((t) => (t.id === json.data!.task.id ? json.data!.task : t)));
+      }
+      setPromptMessage(json.message || "차단을 해제했습니다.");
+    } catch (error) {
+      console.error("Failed to unblock task:", error);
+      setPromptMessage("차단 해제 중 오류가 발생했습니다.");
+    } finally {
+      setUnblockingTaskId(null);
     }
   }
 
@@ -867,11 +1069,22 @@ export default function ProjectDetailPage() {
           canRunTask={rbac.canOperate}
           canMarkReadyForGit={rbac.canOperate}
           canRegisterGitRequest={rbac.canOperate}
+          canReorderTasks={rbac.canReview}
+          reorderSaving={reorderSaving}
+          abortingTaskId={abortingTaskId}
+          blockingTaskId={blockingTaskId}
+          unblockingTaskId={unblockingTaskId}
+          forceCompletingTaskId={forceCompletingTaskId}
           onGeneratePrompt={handleGenerateTaskPrompt}
           onRunTask={handleRunTask}
           onMarkReadyForGit={handleMarkReadyForGit}
           onRegisterGitRequest={handleRegisterGitRequest}
           onViewTaskHistory={(tid) => setAuditTaskId(tid)}
+          onReorderTasks={handleReorderTasks}
+          onAbortRun={handleAbortRun}
+          onForceCompleteRun={handleForceCompleteRun}
+          onBlockTask={handleBlockTask}
+          onUnblockTask={handleUnblockTask}
         />
       ) : null}
       {showTaskSection && auditTaskId ? (
