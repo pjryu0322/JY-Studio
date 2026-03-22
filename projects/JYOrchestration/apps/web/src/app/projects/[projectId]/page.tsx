@@ -1069,7 +1069,7 @@ export default function ProjectDetailPage() {
           canRunTask={rbac.canOperate}
           canMarkReadyForGit={rbac.canOperate}
           canRegisterGitRequest={rbac.canOperate}
-          canReorderTasks={rbac.canReview}
+          canReorderTasks={rbac.canOperate}
           reorderSaving={reorderSaving}
           abortingTaskId={abortingTaskId}
           blockingTaskId={blockingTaskId}

@@ -220,7 +220,8 @@ export function TaskListSection({
       {canReorderTasks ? (
         <p style={{ margin: "0 0 10px 0", color: "#37474f", fontSize: 13, lineHeight: 1.5 }}>
           <strong>순서 변경:</strong> 왼쪽 ⋮⋮ 핸들을 잡아 다른 행 위에 놓으면{" "}
-          <code style={{ fontSize: 12 }}>POST /api/task/reorder</code>로 저장됩니다 (REVIEWER 이상).
+          <code style={{ fontSize: 12 }}>POST /api/task/reorder</code>로 저장됩니다 (OPERATOR·REVIEWER·OWNER,
+          실행 권한과 동일).
         </p>
       ) : null}
       {canRunTask ? (
@@ -312,7 +313,10 @@ export function TaskListSection({
                 />
                 <div
                   draggable={canReorderTasks && !reorderSaving}
-                  onDragStart={(e) => handleDragStart(e, task.id)}
+                  onDragStart={(e) => {
+                    e.stopPropagation();
+                    handleDragStart(e, task.id);
+                  }}
                   onDragEnd={handleDragEnd}
                   title={canReorderTasks && !reorderSaving ? "드래그하여 순서 변경" : undefined}
                   style={{
