@@ -69,6 +69,7 @@ type TaskListSectionProps = {
   onRunTask: (taskId: string) => void;
   onMarkReadyForGit: (taskId: string) => void;
   onRegisterGitRequest: (taskId: string) => void;
+  onViewTaskHistory: (taskId: string) => void;
 };
 
 export function TaskListSection({
@@ -91,6 +92,7 @@ export function TaskListSection({
   onRunTask,
   onMarkReadyForGit,
   onRegisterGitRequest,
+  onViewTaskHistory,
 }: TaskListSectionProps) {
   return (
     <section
@@ -102,7 +104,8 @@ export function TaskListSection({
     >
       <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 8px 0" }}>생성된 Task 목록</h3>
       <p style={{ margin: "0 0 8px 0", color: "#555" }}>
-        현재 단계는 parsedJson 기반 mock 규칙으로 Task를 생성합니다.
+        현재 단계는 parsedJson 기반 mock 규칙으로 Task를 생성합니다. 프로젝트 참여자는 역할과 관계없이 Task
+        감사 이력을 읽기 전용으로 열람할 수 있습니다.
       </p>
       {promptMessage ? <p style={{ margin: "0 0 8px 0", color: "#333" }}>{promptMessage}</p> : null}
       {loadingTaskPrompts ? (
@@ -144,6 +147,21 @@ export function TaskListSection({
               <p style={{ margin: "4px 0 0 0" }}>
                 <strong>prompt status:</strong> {taskPromptMap[task.id]?.status || "-"}
               </p>
+              <button
+                type="button"
+                onClick={() => onViewTaskHistory(task.id)}
+                style={{
+                  marginTop: 8,
+                  padding: "6px 10px",
+                  border: "1px solid #1976d2",
+                  borderRadius: 6,
+                  background: "#fff",
+                  color: "#1976d2",
+                  cursor: "pointer",
+                }}
+              >
+                Task 감사 이력 보기
+              </button>
               {canGeneratePrompt ? (
                 <button
                   type="button"

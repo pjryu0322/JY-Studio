@@ -29,6 +29,7 @@ model Project {
   taskPrompts   TaskPrompt[]
   gitRequests   GitChangeRequest[]
   members       ProjectMember[]
+  taskHistories TaskHistory[]
 
   @@map("projects")
 }
@@ -82,6 +83,7 @@ model Task {
   prompts             TaskPrompt[]
   runs                TaskRun[]
   gitRequests         GitChangeRequest[]
+  histories           TaskHistory[]
 
   @@index([projectId, order])
   @@index([projectSpecUploadId])
@@ -150,4 +152,21 @@ model GitChangeRequest {
   @@index([taskId])
   @@index([taskRunId])
   @@map("git_change_requests")
+}
+
+model TaskHistory {
+  id         String   @id @default(uuid())
+  projectId  String
+  taskId     String
+  actorType  String
+  actorId    String?
+  eventType  String
+  summary    String?
+  detailJson Json?
+  createdAt  DateTime @default(now())
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, taskId, createdAt])
+  @@map("task_histories")
 }

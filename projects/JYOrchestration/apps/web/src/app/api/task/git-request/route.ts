@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
 import {
   requireExecutionPipelineRead,
   requireGitChangeRequestCreate,
 } from "@/lib/service/projectAccessGuard";
+import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 type CreateGitRequestBody = {
   taskRunId?: string;
@@ -56,7 +58,15 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = getCurrentUserIdFromRequest(request);
-    await requireExecutionPipelineRead(projectId, userId);
+    try {
+      await requireExecutionPipelineRead(projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const requests = await prisma.gitChangeRequest.findMany({
       where: { projectId },
@@ -152,7 +162,15 @@ export async function POST(request: Request) {
       );
     }
 
-    await requireGitChangeRequestCreate(run.task.projectId, userId);
+    try {
+      await requireGitChangeRequestCreate(run.task.projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const files = buildMockFileChanges();
     const diffText = buildMockDiff(run.taskId, run.resultText);
@@ -182,6 +200,25 @@ export async function POST(request: Request) {
         applyLog: true,
       },
     });
+
+    try {
+      await appendTaskHistory({
+        projectId: saved.projectId,
+        taskId: saved.taskId,
+        actorType: TaskHistoryActorType.USER,
+        actorId: userId,
+        eventType: TaskHistoryEventType.GIT_REQUEST_CREATED,
+        summary: "Git 반영 요청 등록",
+        detailJson: {
+          gitChangeRequestId: saved.id,
+          commitMessage: saved.commitMessage,
+          files: saved.files,
+          diffExists: Boolean(diffText && diffText.length > 0),
+        },
+      });
+    } catch (historyError) {
+      console.error("GIT_REQUEST_CREATED history append failed:", historyError);
+    }
 
     return NextResponse.json({
       success: true,

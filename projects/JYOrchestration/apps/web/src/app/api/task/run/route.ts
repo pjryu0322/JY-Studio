@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
 import {
   requireExecutionPipelineRead,
   requireReadyForGitTransition,
   requireTaskRun,
 } from "@/lib/service/projectAccessGuard";
+import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 type TaskRunBody = {
   taskPromptId?: string;
@@ -27,7 +29,15 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = getCurrentUserIdFromRequest(request);
-    await requireExecutionPipelineRead(projectId, userId);
+    try {
+      await requireExecutionPipelineRead(projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const runs = await prisma.taskRun.findMany({
       where: {
@@ -113,7 +123,15 @@ export async function POST(request: Request) {
     const projectId = prompt.task.projectId;
 
     if (action === "mark-ready-for-git") {
-      await requireReadyForGitTransition(projectId, userId);
+      try {
+        await requireReadyForGitTransition(projectId, userId);
+      } catch (error) {
+        const denied = rbacErrorResponse(error);
+        if (denied) {
+          return denied;
+        }
+        throw error;
+      }
       const latestRun = await prisma.taskRun.findFirst({
         where: {
           taskPromptId: prompt.id,
@@ -171,7 +189,15 @@ export async function POST(request: Request) {
       });
     }
 
-    await requireTaskRun(projectId, userId);
+    try {
+      await requireTaskRun(projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const run = await prisma.taskRun.create({
       data: {
@@ -180,6 +206,24 @@ export async function POST(request: Request) {
         status: "PENDING",
       },
     });
+
+    try {
+      await appendTaskHistory({
+        projectId,
+        taskId: prompt.taskId,
+        actorType: TaskHistoryActorType.USER,
+        actorId: userId,
+        eventType: TaskHistoryEventType.RUN_STARTED,
+        summary: "Task 실행 시작",
+        detailJson: {
+          taskPromptId: prompt.id,
+          taskRunId: run.id,
+          mode: "mock",
+        },
+      });
+    } catch (historyError) {
+      console.error("RUN_STARTED history append failed:", historyError);
+    }
 
     const completed = await prisma.taskRun.update({
       where: { id: run.id },
@@ -197,6 +241,25 @@ export async function POST(request: Request) {
         updatedAt: true,
       },
     });
+
+    try {
+      await appendTaskHistory({
+        projectId,
+        taskId: prompt.taskId,
+        actorType: TaskHistoryActorType.SYSTEM,
+        actorId: null,
+        eventType: TaskHistoryEventType.RUN_COMPLETED,
+        summary: "Task 실행 완료",
+        detailJson: {
+          taskRunId: completed.id,
+          taskPromptId: prompt.id,
+          status: completed.status,
+          resultText: completed.resultText,
+        },
+      });
+    } catch (historyError) {
+      console.error("RUN_COMPLETED history append failed:", historyError);
+    }
 
     return NextResponse.json({
       success: true,

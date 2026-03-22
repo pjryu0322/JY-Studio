@@ -8,6 +8,7 @@ import {
   listGitChangeRequestsForProject,
   serializeGitChangeRequestList,
 } from "@/lib/service/executionService";
+import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
 import {
   requireExecutionPipelineRead,
   requireGitApply,
@@ -82,7 +83,12 @@ export async function POST(request: Request) {
 
     const gcr = await prisma.gitChangeRequest.findUnique({
       where: { id: gitChangeRequestId },
-      select: { projectId: true },
+      select: {
+        projectId: true,
+        taskId: true,
+        retryCount: true,
+        lastError: true,
+      },
     });
     if (!gcr) {
       return jsonError(
@@ -102,7 +108,39 @@ export async function POST(request: Request) {
       throw error;
     }
 
+    const modeStr = String(body.mode ?? "mock").trim() || "mock";
+    const isRetry = body.retry === true;
+    const retryCountBeforeApply = gcr.retryCount;
+    const lastErrorBeforeApply = gcr.lastError;
+
     const result = await applyGitChangeFromApiBody(body);
+
+    const afterRow = await prisma.gitChangeRequest.findUnique({
+      where: { id: gitChangeRequestId },
+      select: {
+        applyStartedAt: true,
+        applyStatus: true,
+        branchName: true,
+        applyLog: true,
+        retryCount: true,
+        lastError: true,
+      },
+    });
+
+    if (afterRow) {
+      await appendGitApplyAuditTrail({
+        actorUserId: userId,
+        projectId: gcr.projectId,
+        taskId: gcr.taskId,
+        mode: result.ok ? String(result.data.mode) : modeStr,
+        isRetry,
+        retryCountBeforeApply,
+        lastErrorBeforeApply,
+        afterRow,
+        applyOk: result.ok,
+        errorCode: result.ok ? undefined : result.code,
+      });
+    }
 
     if (!result.ok) {
       return jsonError(result.code, result.message, result.httpStatus);

@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import {
-  requireExecutionPipelineRead,
-  requireTaskGenerate,
-} from "@/lib/service/projectAccessGuard";
+import { requireProjectMember, requireTaskGenerate } from "@/lib/service/projectAccessGuard";
 
 type GenerateTaskBody = {
   projectSpecUploadId?: string;
@@ -86,7 +83,15 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = getCurrentUserIdFromRequest(request);
-    await requireExecutionPipelineRead(projectId, userId);
+    try {
+      await requireProjectMember(projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const tasks = await prisma.task.findMany({
       where: { projectId },
@@ -172,7 +177,15 @@ export async function POST(request: Request) {
       );
     }
 
-    await requireTaskGenerate(upload.projectId, userId);
+    try {
+      await requireTaskGenerate(upload.projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const taskSeeds = buildMockTasks(upload.parsedJson);
 

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
 import {
-  requireExecutionPipelineRead,
+  requireProjectMember,
   requireTaskPromptCreate,
 } from "@/lib/service/projectAccessGuard";
+import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 type CreateTaskPromptBody = {
   taskId?: string;
@@ -57,7 +59,15 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = getCurrentUserIdFromRequest(request);
-    await requireExecutionPipelineRead(projectId, userId);
+    try {
+      await requireProjectMember(projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const prompts = await prisma.taskPrompt.findMany({
       where: { projectId },
@@ -135,23 +145,32 @@ export async function POST(request: Request) {
       );
     }
 
-    await requireTaskPromptCreate(task.projectId, userId);
+    try {
+      await requireTaskPromptCreate(task.projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const promptText = buildTaskExecutionPrompt(task);
-    const saved = await prisma.$transaction(async (tx) => {
+    const { saved, nextVersion, isRevision } = await prisma.$transaction(async (tx) => {
       const latest = await tx.taskPrompt.findFirst({
         where: { taskId: task.id },
         orderBy: { version: "desc" },
         select: { version: true },
       });
       const nextVersion = (latest?.version ?? 0) + 1;
+      const isRevision = nextVersion > 1;
 
       await tx.taskPrompt.updateMany({
         where: { taskId: task.id, status: "READY" },
         data: { status: "UPDATED" },
       });
 
-      return tx.taskPrompt.create({
+      const created = await tx.taskPrompt.create({
         data: {
           taskId: task.id,
           projectId: task.projectId,
@@ -170,7 +189,30 @@ export async function POST(request: Request) {
           updatedAt: true,
         },
       });
+      return { saved: created, nextVersion, isRevision };
     });
+
+    try {
+      await appendTaskHistory({
+        projectId: task.projectId,
+        taskId: task.id,
+        actorType: TaskHistoryActorType.USER,
+        actorId: userId,
+        eventType: isRevision
+          ? TaskHistoryEventType.PROMPT_REVISED
+          : TaskHistoryEventType.PROMPT_CREATED,
+        summary: isRevision
+          ? `프롬프트 개정 (v${nextVersion})`
+          : `프롬프트 생성 (v${nextVersion})`,
+        detailJson: {
+          promptVersion: nextVersion,
+          promptText,
+          status: saved.status,
+        },
+      });
+    } catch (historyError) {
+      console.error("Task prompt history append failed:", historyError);
+    }
 
     return NextResponse.json({
       success: true,

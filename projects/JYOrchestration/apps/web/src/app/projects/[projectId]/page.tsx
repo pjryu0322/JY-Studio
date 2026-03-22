@@ -25,6 +25,7 @@ import {
   TaskPromptItem,
   TaskRunItem,
 } from "@/components/task/TaskListSection";
+import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHistoryTimeline";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectMembersSection } from "@/components/project-spec/ProjectMembersSection";
 import {
@@ -87,6 +88,10 @@ export default function ProjectDetailPage() {
   const [gitApplySimulateFailure, setGitApplySimulateFailure] = useState(false);
   const [gitApplyMessage, setGitApplyMessage] = useState<string | null>(null);
   const [gitApplyError, setGitApplyError] = useState<string | null>(null);
+  const [auditTaskId, setAuditTaskId] = useState<string | null>(null);
+  const [auditHistory, setAuditHistory] = useState<TaskHistoryItem[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
 
   const currentUser = useMemo(() => getCurrentMockUser(), []);
   const projectRole = useMemo(
@@ -107,7 +112,7 @@ export default function ProjectDetailPage() {
     [projectId]
   );
   const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
-  const showTaskSection = rbac.canReview || rbac.canOperate;
+  const showTaskSection = rbac.canReview || rbac.canOperate || rbac.canEditSpec;
 
   useEffect(() => {
     if (!projectId) return;
@@ -259,6 +264,56 @@ export default function ProjectDetailPage() {
     loadTaskRuns();
     loadGitRequests();
   }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId || !auditTaskId) {
+      setAuditHistory([]);
+      setAuditError(null);
+      return;
+    }
+
+    const historyProjectId = projectId;
+    const historyTaskId = auditTaskId;
+
+    async function loadHistory() {
+      try {
+        setAuditLoading(true);
+        setAuditError(null);
+        const encodedTask = encodeURIComponent(historyTaskId);
+        const encodedProject = encodeURIComponent(historyProjectId);
+        const res = await fetch(
+          `/api/task/history?taskId=${encodedTask}&projectId=${encodedProject}`,
+          { headers: mockAuthHeaders() }
+        );
+        const json = (await res.json()) as {
+          success: boolean;
+          message?: string;
+          code?: string;
+          data?: TaskHistoryItem[];
+        };
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setAuditError(denied);
+          setAuditHistory([]);
+          return;
+        }
+        if (!res.ok || !json.success || !Array.isArray(json.data)) {
+          setAuditError(json.message || "이력을 불러오지 못했습니다.");
+          setAuditHistory([]);
+          return;
+        }
+        setAuditHistory(json.data);
+      } catch (error) {
+        console.error("Failed to load task history:", error);
+        setAuditError("이력 조회 중 오류가 발생했습니다.");
+        setAuditHistory([]);
+      } finally {
+        setAuditLoading(false);
+      }
+    }
+
+    void loadHistory();
+  }, [projectId, auditTaskId]);
 
   const projectSpecPrompt = useMemo(
     () => buildProjectSpecPrompt(project ?? fallbackProject),
@@ -816,6 +871,21 @@ export default function ProjectDetailPage() {
           onRunTask={handleRunTask}
           onMarkReadyForGit={handleMarkReadyForGit}
           onRegisterGitRequest={handleRegisterGitRequest}
+          onViewTaskHistory={(tid) => setAuditTaskId(tid)}
+        />
+      ) : null}
+      {showTaskSection && auditTaskId ? (
+        <TaskHistoryTimeline
+          taskId={auditTaskId}
+          taskName={tasks.find((t) => t.id === auditTaskId)?.name ?? null}
+          items={auditHistory}
+          loading={auditLoading}
+          errorMessage={auditError}
+          onClose={() => {
+            setAuditTaskId(null);
+            setAuditHistory([]);
+            setAuditError(null);
+          }}
         />
       ) : null}
       {rbac.canOperate ? (
