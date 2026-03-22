@@ -3,7 +3,18 @@
  * 실행 로직 변경 없이 데이터 접근만 담당.
  */
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
+import {
+  isTaskRunResultJson,
+  type TaskRunResultJson,
+} from "@/lib/integration/taskRunResultTypes";
 import { prisma } from "@/lib/prisma";
+
+/** TaskRun.resultJson 안전 파싱 (후속 Git·UI에서 재사용). */
+export function parseTaskRunResultJson(raw: unknown): TaskRunResultJson | null {
+  return isTaskRunResultJson(raw) ? raw : null;
+}
+
+export type { TaskRunExecutionResult } from "@/lib/integration/taskRunResultTypes";
 
 export async function countTasksByProjectId(projectId: string): Promise<number> {
   return prisma.task.count({ where: { projectId } });

@@ -24,6 +24,8 @@ model Project {
   status        String
   /** AUTO_APPLY: Git 반영 즉시 가능(기본). MANUAL_APPROVAL: 승인 게이트 필요. */
   gitApprovalMode String           @default("AUTO_APPLY")
+  /** Task mock 실행 완료 시 Run→GitChangeRequest 자동 생성 여부 */
+  autoCreateGitRequest Boolean     @default(true)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   uploads       ProjectSpecUpload[]
@@ -121,6 +123,8 @@ model TaskRun {
   taskPromptId String
   status       String     @default("PENDING")
   resultText   String?
+  /** 구조화 실행 결과(JSON). resultText는 하위호환용으로 유지. */
+  resultJson   Json?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   task         Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)

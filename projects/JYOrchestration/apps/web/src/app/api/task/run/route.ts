@@ -1,14 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
+import type { TaskRunExecutionResult } from "@/lib/integration/taskRunResultTypes";
+import { taskRunExecutionResultToStoredJson } from "@/lib/integration/taskRunResultTypes";
 import { prisma } from "@/lib/prisma";
+import {
+  createGitChangeRequestFromExecutionResult,
+  GIT_CHANGE_REQUEST_FROM_RUN_CODES,
+} from "@/lib/service/gitChangeRequestFromTaskRun";
 import {
   requireExecutionPipelineRead,
   requireReadyForGitTransition,
   requireTaskRun,
 } from "@/lib/service/projectAccessGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
+import {
+  isRunExecutionConflictError,
+  RunExecutionConflictError,
+} from "@/lib/production/runExecutionErrors";
 
 type TaskRunBody = {
   taskPromptId?: string;
@@ -62,6 +73,7 @@ export async function GET(request: NextRequest) {
         taskPromptId: true,
         status: true,
         resultText: true,
+        resultJson: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -170,6 +182,14 @@ export async function POST(request: Request) {
         data: {
           status: "FAILED",
           resultText: "[FORCE_FAIL] 운영자 강제 실패",
+          resultJson: {
+            success: false,
+            mode: "force-fail",
+            updatedFiles: [],
+            commitMessage: null,
+            logs: [],
+            error: "운영자 강제 실패",
+          } as Prisma.InputJsonValue,
         },
         select: {
           id: true,
@@ -177,6 +197,7 @@ export async function POST(request: Request) {
           taskPromptId: true,
           status: true,
           resultText: true,
+          resultJson: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -267,6 +288,14 @@ export async function POST(request: Request) {
           data: {
             status: "FAILED",
             resultText: "[ABORTED] 사용자 실행 중단",
+            resultJson: {
+              success: false,
+              mode: "abort-run",
+              updatedFiles: [],
+              commitMessage: null,
+              logs: [],
+              error: "사용자 실행 중단",
+            } as Prisma.InputJsonValue,
           },
           select: {
             id: true,
@@ -274,6 +303,7 @@ export async function POST(request: Request) {
             taskPromptId: true,
             status: true,
             resultText: true,
+            resultJson: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -327,7 +357,10 @@ export async function POST(request: Request) {
         id: true,
         taskId: true,
         task: {
-          select: { projectId: true },
+          select: {
+            projectId: true,
+            project: { select: { autoCreateGitRequest: true } },
+          },
         },
       },
     });
@@ -395,6 +428,7 @@ export async function POST(request: Request) {
           taskPromptId: true,
           status: true,
           resultText: true,
+          resultJson: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -462,13 +496,85 @@ export async function POST(request: Request) {
       });
     }
 
-    const run = await prisma.taskRun.create({
-      data: {
-        taskId: prompt.taskId,
-        taskPromptId: prompt.id,
-        status: "PENDING",
-      },
-    });
+    const executionResult: TaskRunExecutionResult = {
+      success: true,
+      mode: "mock",
+      updatedFiles: [
+        {
+          path: `projects/${prompt.taskId}/mock-output.ts`,
+          changeType: "MODIFY",
+        },
+      ],
+      commitMessage: `feat: apply task ${prompt.taskId}`,
+      logs: ["mock execution completed"],
+      error: null,
+    };
+
+    const storedExecutionJson = taskRunExecutionResultToStoredJson(executionResult);
+
+    let completed;
+    try {
+      completed = await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          "SELECT id FROM tasks WHERE id = $1::uuid FOR UPDATE",
+          prompt.taskId
+        );
+
+        const pending = await tx.taskRun.findFirst({
+          where: { taskId: prompt.taskId, status: "PENDING" },
+          select: { id: true },
+        });
+        if (pending) {
+          throw new RunExecutionConflictError();
+        }
+
+        const run = await tx.taskRun.create({
+          data: {
+            taskId: prompt.taskId,
+            taskPromptId: prompt.id,
+            status: "PENDING",
+          },
+        });
+
+        const doneRow = await tx.taskRun.update({
+          where: { id: run.id },
+          data: {
+            status: "DONE",
+            resultText: "Mock 실행 완료",
+            resultJson: storedExecutionJson as Prisma.InputJsonValue,
+          },
+          select: {
+            id: true,
+            taskId: true,
+            taskPromptId: true,
+            status: true,
+            resultText: true,
+            resultJson: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+        await tx.task.update({
+          where: { id: prompt.taskId },
+          data: { status: "DONE" },
+        });
+
+        return doneRow;
+      });
+    } catch (inner) {
+      if (isRunExecutionConflictError(inner)) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: inner.errorCode,
+            message: inner.message,
+          },
+          { status: inner.httpStatus }
+        );
+      }
+      throw inner;
+    }
 
     try {
       await appendTaskHistory({
@@ -480,35 +586,13 @@ export async function POST(request: Request) {
         summary: "Task 실행 시작",
         detailJson: {
           taskPromptId: prompt.id,
-          taskRunId: run.id,
+          taskRunId: completed.id,
           mode: "mock",
         },
       });
     } catch (historyError) {
       console.error("RUN_STARTED history append failed:", historyError);
     }
-
-    const completed = await prisma.taskRun.update({
-      where: { id: run.id },
-      data: {
-        status: "DONE",
-        resultText: "Mock 실행 완료",
-      },
-      select: {
-        id: true,
-        taskId: true,
-        taskPromptId: true,
-        status: true,
-        resultText: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    await prisma.task.update({
-      where: { id: prompt.taskId },
-      data: { status: "DONE" },
-    });
 
     try {
       await appendTaskHistory({
@@ -523,15 +607,74 @@ export async function POST(request: Request) {
           taskPromptId: prompt.id,
           status: completed.status,
           resultText: completed.resultText,
+          hasStructuredResult: completed.resultJson != null,
+          updatedFiles: executionResult.updatedFiles,
+          commitMessage: executionResult.commitMessage,
         },
       });
     } catch (historyError) {
       console.error("RUN_COMPLETED history append failed:", historyError);
     }
 
+    let responseRun = completed;
+    const shouldAutoCreateGitRequest =
+      executionResult.success === true &&
+      executionResult.updatedFiles.length > 0 &&
+      prompt.task.project.autoCreateGitRequest === true;
+
+    if (shouldAutoCreateGitRequest) {
+      const auto = await createGitChangeRequestFromExecutionResult({
+        projectId,
+        taskId: prompt.taskId,
+        taskRunId: completed.id,
+        actorUserId: userId,
+        executionResult,
+      });
+      if (auto.ok) {
+        const refreshed = await prisma.taskRun.findUnique({
+          where: { id: completed.id },
+          select: {
+            id: true,
+            taskId: true,
+            taskPromptId: true,
+            status: true,
+            resultText: true,
+            resultJson: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+        if (refreshed) {
+          responseRun = refreshed;
+        }
+      } else if (auto.httpStatus === 403) {
+        // 권한 없음: Run 성공은 유지, 수동 git-request 흐름으로 이어갈 수 있음
+      } else if (auto.code === GIT_CHANGE_REQUEST_FROM_RUN_CODES.ALREADY_EXISTS) {
+        // 동시·재시도 등으로 이미 연결된 경우 조용히 최신 Run만 반환
+        const refreshed = await prisma.taskRun.findUnique({
+          where: { id: completed.id },
+          select: {
+            id: true,
+            taskId: true,
+            taskPromptId: true,
+            status: true,
+            resultText: true,
+            resultJson: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+        if (refreshed) {
+          responseRun = refreshed;
+        }
+      } else {
+        console.error("Run 완료 후 자동 Git 요청 실패:", auto.code, auto.message);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      data: serializeTaskRunRow(completed),
+      data: serializeTaskRunRow(responseRun),
       message: "Task mock 실행이 완료되었습니다.",
     });
   } catch (error) {

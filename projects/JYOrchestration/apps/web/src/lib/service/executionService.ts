@@ -627,3 +627,20 @@ export async function getProjectObservabilitySnapshot(
 export type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 
 export { GIT_APPLY_ERROR_CODES };
+
+/** Run→Git: 프로젝트 `autoCreateGitRequest` + 전역 env(JY_AUTO_GIT_REQUEST_AFTER_RUN) 보조 */
+export {
+  buildGitChangeRequestPayloadFromExecutionResult,
+  buildGitChangeRequestPayloadFromTaskRun,
+  createGitChangeRequestForTaskRun,
+  createGitChangeRequestFromExecutionResult,
+  GIT_CHANGE_REQUEST_FROM_RUN_CODES,
+  isAutoGitRequestAfterRunEnabled,
+} from "./gitChangeRequestFromTaskRun";
+export type {
+  CreateGitChangeRequestForTaskRunInput,
+  CreateGitChangeRequestForTaskRunResult,
+  CreateGitChangeRequestForTaskRunSource,
+  CreateGitChangeRequestFromExecutionResultInput,
+} from "./gitChangeRequestFromTaskRun";
+export type { TaskRunExecutionResult } from "@/lib/integration/taskRunResultTypes";
