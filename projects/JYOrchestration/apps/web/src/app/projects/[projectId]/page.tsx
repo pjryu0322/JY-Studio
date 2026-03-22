@@ -41,6 +41,8 @@ import {
   canReview,
 } from "@/lib/rbac/projectPermissions";
 import { mockAuthHeaders } from "@/lib/auth/requestUser";
+import { ExecutionObservabilityPanel } from "@/components/dashboard/ExecutionObservabilityPanel";
+import type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 import { RBAC_FORBIDDEN_CODE } from "@/lib/rbac/projectAccessDenied";
 
 function rbacForbiddenMessage(
@@ -100,6 +102,9 @@ export default function ProjectDetailPage() {
   const [forceCompletingTaskId, setForceCompletingTaskId] = useState<string | null>(null);
   const [followUpDraft, setFollowUpDraft] = useState<TaskFollowUpDraft | null>(null);
   const [followUpSaving, setFollowUpSaving] = useState(false);
+  const [execSummary, setExecSummary] = useState<ProjectObservabilitySnapshot | null>(null);
+  const [execSummaryLoading, setExecSummaryLoading] = useState(false);
+  const [execSummaryError, setExecSummaryError] = useState<string | null>(null);
 
   const currentUser = useMemo(() => getCurrentMockUser(), []);
   const projectRole = useMemo(
@@ -121,6 +126,64 @@ export default function ProjectDetailPage() {
   );
   const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
   const showTaskSection = rbac.canReview || rbac.canOperate || rbac.canEditSpec;
+
+  useEffect(() => {
+    if (!projectId || !rbac.canOperate) {
+      setExecSummary(null);
+      setExecSummaryError(null);
+      setExecSummaryLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadExecutionSummary() {
+      setExecSummaryLoading(true);
+      setExecSummaryError(null);
+      try {
+        const encoded = encodeURIComponent(projectId);
+        const res = await fetch(`/api/project/summary?projectId=${encoded}`, {
+          headers: mockAuthHeaders(),
+        });
+        const json = (await res.json()) as {
+          success: boolean;
+          message?: string;
+          code?: string;
+          data?: ProjectObservabilitySnapshot;
+        };
+        if (cancelled) {
+          return;
+        }
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setExecSummaryError(denied);
+          setExecSummary(null);
+          return;
+        }
+        if (!res.ok || !json.success || !json.data) {
+          setExecSummaryError(json.message || "실행 요약을 불러오지 못했습니다.");
+          setExecSummary(null);
+          return;
+        }
+        setExecSummary(json.data);
+      } catch (error) {
+        console.error("Failed to load execution summary:", error);
+        if (!cancelled) {
+          setExecSummaryError("실행 요약 조회 중 오류가 발생했습니다.");
+          setExecSummary(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setExecSummaryLoading(false);
+        }
+      }
+    }
+
+    void loadExecutionSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, rbac.canOperate]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -1067,6 +1130,13 @@ export default function ProjectDetailPage() {
         project={project}
         currentUserRoleLabel={projectRole && projectId ? projectRole : null}
       />
+      {rbac.canOperate ? (
+        <ExecutionObservabilityPanel
+          data={execSummary}
+          loading={execSummaryLoading}
+          errorMessage={execSummaryError}
+        />
+      ) : null}
       <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
         프로젝트 생성 시 생성자는 OWNER로 기록되며, 이후 PLANNER / REVIEWER / OPERATOR로 역할을 나눌 수
         있습니다. 현재 사용자·멤버 목록은 mock 기준입니다.

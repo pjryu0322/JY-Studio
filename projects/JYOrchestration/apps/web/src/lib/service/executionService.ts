@@ -14,6 +14,7 @@ import {
   countTasksByProjectId,
 } from "@/lib/service/taskService";
 import { getExecutionQueueStubStatus } from "@/lib/service/executionQueue";
+import type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 
 export type GitApplyApiBody = {
   gitChangeRequestId?: string;
@@ -135,5 +136,99 @@ export async function getProjectExecutionSummary(
     queue: getExecutionQueueStubStatus(),
   };
 }
+
+/**
+ * 운영 관측용 스냅샷 (읽기 전용 집계). Task는 최신 Run 상태를 우선해 running/failed를 구분하고,
+ * 그 외는 Task.status 기준으로 done/todo를 나눈다.
+ */
+export async function getProjectObservabilitySnapshot(
+  projectId: string
+): Promise<ProjectObservabilitySnapshot | null> {
+  if (!(await projectIdExists(projectId))) {
+    return null;
+  }
+
+  const [tasks, latestRuns, taskRunTotal, gitTotal, gitRows, retriedCount] = await Promise.all([
+    prisma.task.findMany({
+      where: { projectId },
+      select: { id: true, status: true },
+    }),
+    prisma.taskRun.findMany({
+      where: { task: { projectId } },
+      orderBy: [{ taskId: "asc" }, { createdAt: "desc" }],
+      distinct: ["taskId"],
+      select: { taskId: true, status: true },
+    }),
+    prisma.taskRun.count({ where: { task: { projectId } } }),
+    prisma.gitChangeRequest.count({ where: { projectId } }),
+    prisma.gitChangeRequest.findMany({
+      where: { projectId },
+      select: { status: true, applyStatus: true },
+    }),
+    prisma.gitChangeRequest.count({
+      where: { projectId, retryCount: { gt: 0 } },
+    }),
+  ]);
+
+  const latestByTask = new Map(latestRuns.map((r) => [r.taskId, r.status]));
+
+  let todo = 0;
+  let running = 0;
+  let done = 0;
+  let failed = 0;
+
+  for (const t of tasks) {
+    const runStatus = latestByTask.get(t.id);
+    if (runStatus === "PENDING") {
+      running += 1;
+    } else if (runStatus === "FAILED") {
+      failed += 1;
+    } else if (t.status === "DONE") {
+      done += 1;
+    } else {
+      todo += 1;
+    }
+  }
+
+  let gitRequested = 0;
+  let gitApplying = 0;
+  let gitDone = 0;
+  let gitFailed = 0;
+
+  for (const row of gitRows) {
+    const a = row.applyStatus ?? "PENDING";
+    if (a === "APPLYING") {
+      gitApplying += 1;
+    } else if (a === "DONE") {
+      gitDone += 1;
+    } else if (a === "FAILED") {
+      gitFailed += 1;
+    } else {
+      // PENDING·null 등 아직 반영 전·대기 중인 요청
+      gitRequested += 1;
+    }
+  }
+
+  return {
+    task: {
+      total: tasks.length,
+      todo,
+      running,
+      done,
+      failed,
+    },
+    taskRun: { total: taskRunTotal },
+    git: {
+      total: gitTotal,
+      requested: gitRequested,
+      applying: gitApplying,
+      done: gitDone,
+      failed: gitFailed,
+    },
+    retry: { total: retriedCount },
+  };
+}
+
+export type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 
 export { GIT_APPLY_ERROR_CODES };
