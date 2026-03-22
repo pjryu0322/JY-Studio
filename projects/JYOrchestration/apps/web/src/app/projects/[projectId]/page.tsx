@@ -38,6 +38,18 @@ import {
   canOperate,
   canReview,
 } from "@/lib/rbac/projectPermissions";
+import { mockAuthHeaders } from "@/lib/auth/requestUser";
+import { RBAC_FORBIDDEN_CODE } from "@/lib/rbac/projectAccessDenied";
+
+function rbacForbiddenMessage(
+  res: Response,
+  json: { code?: string; message?: string }
+): string | null {
+  if (res.status === 403 && json.code === RBAC_FORBIDDEN_CODE && json.message) {
+    return json.message;
+  }
+  return null;
+}
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -119,6 +131,11 @@ export default function ProjectDetailPage() {
     async function loadUploadHistory() {
       try {
         const { res, json } = await fetchProjectSpecUploadHistory(projectId);
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setErrorMessage(denied);
+          return;
+        }
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
         }
@@ -132,6 +149,11 @@ export default function ProjectDetailPage() {
       try {
         setLoadingTasks(true);
         const { res, json } = await fetchGeneratedTasks(projectId);
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setErrorMessage(denied);
+          return;
+        }
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
         }
@@ -147,11 +169,20 @@ export default function ProjectDetailPage() {
       try {
         setLoadingTaskPrompts(true);
         const encodedProjectId = encodeURIComponent(projectId);
-        const res = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`);
+        const res = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`, {
+          headers: mockAuthHeaders(),
+        });
         const json = (await res.json()) as {
           success: boolean;
+          code?: string;
+          message?: string;
           data?: TaskPromptItem[];
         };
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setErrorMessage(denied);
+          return;
+        }
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
         }
@@ -167,11 +198,20 @@ export default function ProjectDetailPage() {
       try {
         setLoadingTaskRuns(true);
         const encodedProjectId = encodeURIComponent(projectId);
-        const res = await fetch(`/api/task/run?projectId=${encodedProjectId}`);
+        const res = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
+          headers: mockAuthHeaders(),
+        });
         const json = (await res.json()) as {
           success: boolean;
+          code?: string;
+          message?: string;
           data?: TaskRunItem[];
         };
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setErrorMessage(denied);
+          return;
+        }
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
         }
@@ -187,13 +227,20 @@ export default function ProjectDetailPage() {
       try {
         setLoadingGitRequests(true);
         const encodedProjectId = encodeURIComponent(projectId);
-        const res = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`);
+        const res = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`, {
+          headers: mockAuthHeaders(),
+        });
         const json = (await res.json()) as {
           success: boolean;
           data?: GitChangeRequestItem[];
           code?: string;
           message?: string;
         };
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setErrorMessage(denied);
+          return;
+        }
         if (!res.ok || !json.success || !Array.isArray(json.data)) {
           return;
         }
@@ -381,6 +428,7 @@ export default function ProjectDetailPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskId }),
       });
@@ -388,6 +436,7 @@ export default function ProjectDetailPage() {
       const json = (await res.json()) as {
         success: boolean;
         message?: string;
+        code?: string;
         data?: TaskPromptItem;
       };
 
@@ -396,7 +445,9 @@ export default function ProjectDetailPage() {
         return;
       }
       const encodedProjectId = encodeURIComponent(projectId);
-      const promptRes = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`);
+      const promptRes = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`, {
+        headers: mockAuthHeaders(),
+      });
       const promptJson = (await promptRes.json()) as { success: boolean; data?: TaskPromptItem[] };
       if (promptRes.ok && promptJson.success && Array.isArray(promptJson.data)) {
         setTaskPrompts(promptJson.data);
@@ -430,6 +481,7 @@ export default function ProjectDetailPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskPromptId: prompt.id }),
       });
@@ -437,6 +489,7 @@ export default function ProjectDetailPage() {
       const json = (await res.json()) as {
         success: boolean;
         message?: string;
+        code?: string;
         data?: TaskRunItem;
       };
 
@@ -445,7 +498,9 @@ export default function ProjectDetailPage() {
         return;
       }
       const encodedProjectId = encodeURIComponent(projectId);
-      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`);
+      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
+        headers: mockAuthHeaders(),
+      });
       const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
       if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
         setTaskRuns(runJson.data);
@@ -479,6 +534,7 @@ export default function ProjectDetailPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskPromptId: prompt.id, action: "mark-ready-for-git" }),
       });
@@ -486,6 +542,7 @@ export default function ProjectDetailPage() {
       const json = (await res.json()) as {
         success: boolean;
         message?: string;
+        code?: string;
         data?: TaskRunItem;
       };
 
@@ -495,7 +552,9 @@ export default function ProjectDetailPage() {
       }
 
       const encodedProjectId = encodeURIComponent(projectId);
-      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`);
+      const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
+        headers: mockAuthHeaders(),
+      });
       const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
       if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
         setTaskRuns(runJson.data);
@@ -529,6 +588,7 @@ export default function ProjectDetailPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskRunId: run.id }),
       });
@@ -536,6 +596,7 @@ export default function ProjectDetailPage() {
       const json = (await res.json()) as {
         success: boolean;
         message?: string;
+        code?: string;
       };
 
       if (!res.ok || !json.success) {
@@ -544,7 +605,9 @@ export default function ProjectDetailPage() {
       }
 
       const encodedProjectId = encodeURIComponent(projectId);
-      const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`);
+      const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`, {
+        headers: mockAuthHeaders(),
+      });
       const listJson = (await listRes.json()) as {
         success: boolean;
         data?: GitChangeRequestItem[];
@@ -564,7 +627,9 @@ export default function ProjectDetailPage() {
 
   async function refreshGitRequestsList() {
     const encodedProjectId = encodeURIComponent(projectId);
-    const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`);
+    const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`, {
+      headers: mockAuthHeaders(),
+    });
     const listJson = (await listRes.json()) as {
       success: boolean;
       data?: GitChangeRequestItem[];
@@ -584,6 +649,7 @@ export default function ProjectDetailPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...mockAuthHeaders(),
         },
         body: JSON.stringify({
           gitChangeRequestId,
@@ -638,6 +704,7 @@ export default function ProjectDetailPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...mockAuthHeaders(),
         },
         body: JSON.stringify({
           gitChangeRequestId,

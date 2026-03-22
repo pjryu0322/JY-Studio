@@ -2,6 +2,13 @@
 export type ProjectRole = "OWNER" | "PLANNER" | "REVIEWER" | "OPERATOR";
 
 /**
+ * API: ProjectSpec 업로드·파싱 — PLANNER, REVIEWER, OWNER.
+ */
+export function canPlan(role: ProjectRole | null | undefined): boolean {
+  return role === "OWNER" || role === "PLANNER" || role === "REVIEWER";
+}
+
+/**
  * PLANNER / OWNER — ProjectSpec 안내, 프롬프트 가이드, 업로드·등록 영역.
  */
 export function canEditSpec(role: ProjectRole | null | undefined): boolean {

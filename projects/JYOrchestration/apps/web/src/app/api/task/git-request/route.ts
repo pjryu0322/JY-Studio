@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import {
+  requireExecutionPipelineRead,
+  requireGitChangeRequestCreate,
+} from "@/lib/service/projectAccessGuard";
 
 type CreateGitRequestBody = {
   taskRunId?: string;
@@ -49,6 +55,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const userId = getCurrentUserIdFromRequest(request);
+    await requireExecutionPipelineRead(projectId, userId);
+
     const requests = await prisma.gitChangeRequest.findMany({
       where: { projectId },
       orderBy: { createdAt: "desc" },
@@ -78,6 +87,10 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("GET /api/task/git-request error:", error);
     return NextResponse.json(
       {
@@ -91,6 +104,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
+    const userId = getCurrentUserIdFromRequest(request);
     const body = (await request.json()) as CreateGitRequestBody;
     const taskRunId = String(body.taskRunId ?? "").trim();
     if (!taskRunId) {
@@ -138,6 +152,8 @@ export async function POST(request: Request) {
       );
     }
 
+    await requireGitChangeRequestCreate(run.task.projectId, userId);
+
     const files = buildMockFileChanges();
     const diffText = buildMockDiff(run.taskId, run.resultText);
     const commitMessage = `feat: apply task ${run.taskId}`;
@@ -173,6 +189,10 @@ export async function POST(request: Request) {
       message: "Git 반영 요청이 등록되었습니다.",
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("POST /api/task/git-request error:", error);
     return NextResponse.json(
       {

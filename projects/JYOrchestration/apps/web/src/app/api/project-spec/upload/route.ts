@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import { requireProjectSpecUpload } from "@/lib/service/projectAccessGuard";
 
 function mapUploadRecord(record: {
   id: string;
@@ -69,6 +72,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userId = getCurrentUserIdFromRequest(request);
+    await requireProjectSpecUpload(projectId, userId);
+
     const sourceType = inferSourceType(file);
     let contentText: string | null = null;
     let contentStored = false;
@@ -100,6 +106,10 @@ export async function POST(request: NextRequest) {
       message: "ProjectSpec 업로드 메타데이터가 등록되었습니다.",
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("POST /api/project-spec/upload error:", error);
     return NextResponse.json(
       {

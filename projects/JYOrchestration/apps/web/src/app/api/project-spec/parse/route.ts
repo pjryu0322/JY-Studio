@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import { requireProjectSpecParse } from "@/lib/service/projectAccessGuard";
 
 type ParseRequestBody = {
   projectSpecUploadId?: string;
@@ -33,6 +36,9 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+
+    const userId = getCurrentUserIdFromRequest(request);
+    await requireProjectSpecParse(upload.projectId, userId);
 
     const contentText = (upload.contentText || "").trim();
     if (!contentText) {
@@ -87,6 +93,10 @@ export async function POST(request: Request) {
       message: "ProjectSpec mock parsing이 완료되었습니다.",
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("POST /api/project-spec/parse error:", error);
     return NextResponse.json(
       {

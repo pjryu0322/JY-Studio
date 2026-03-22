@@ -1,5 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import {
+  requireExecutionPipelineRead,
+  requireTaskGenerate,
+} from "@/lib/service/projectAccessGuard";
 
 type GenerateTaskBody = {
   projectSpecUploadId?: string;
@@ -66,8 +72,65 @@ function buildMockTasks(parsedJson: unknown) {
   return taskSeeds;
 }
 
+export async function GET(request: NextRequest) {
+  try {
+    const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
+    if (!projectId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "projectId가 필요합니다.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const userId = getCurrentUserIdFromRequest(request);
+    await requireExecutionPipelineRead(projectId, userId);
+
+    const tasks = await prisma.task.findMany({
+      where: { projectId },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        projectId: true,
+        projectSpecUploadId: true,
+        name: true,
+        description: true,
+        status: true,
+        order: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: tasks.map((task) => ({
+        ...task,
+        createdAt: task.createdAt.toISOString(),
+        updatedAt: task.updatedAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
+    console.error("GET /api/task/generate error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Task 목록 조회 중 오류가 발생했습니다.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
+    const userId = getCurrentUserIdFromRequest(request);
     const body = (await request.json()) as GenerateTaskBody;
     const projectSpecUploadId = String(body.projectSpecUploadId ?? "").trim();
     if (!projectSpecUploadId) {
@@ -108,6 +171,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    await requireTaskGenerate(upload.projectId, userId);
 
     const taskSeeds = buildMockTasks(upload.parsedJson);
 
@@ -159,6 +224,10 @@ export async function POST(request: Request) {
       message: "Task가 생성되었습니다.",
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("POST /api/task/generate error:", error);
     return NextResponse.json(
       {

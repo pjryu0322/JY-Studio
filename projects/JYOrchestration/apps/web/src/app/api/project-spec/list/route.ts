@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { requireProjectRole } from "@/lib/rbac/requireProjectRole";
 import { prisma } from "@/lib/prisma";
 
 function mapUploadRecord(record: {
@@ -44,6 +47,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const userId = getCurrentUserIdFromRequest(request);
+    await requireProjectRole(
+      projectId,
+      userId,
+      ["OWNER", "PLANNER", "REVIEWER"],
+      "업로드 메타데이터 조회는 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
+    );
+
     const uploads = await prisma.projectSpecUpload.findMany({
       where: { projectId },
       orderBy: { createdAt: "desc" },
@@ -55,6 +66,10 @@ export async function GET(request: NextRequest) {
       data: uploads.map(mapUploadRecord),
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("GET /api/project-spec/list error:", error);
     return NextResponse.json(
       {

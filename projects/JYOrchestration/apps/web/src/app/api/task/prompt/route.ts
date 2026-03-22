@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import {
+  requireExecutionPipelineRead,
+  requireTaskPromptCreate,
+} from "@/lib/service/projectAccessGuard";
 
 type CreateTaskPromptBody = {
   taskId?: string;
@@ -50,6 +56,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const userId = getCurrentUserIdFromRequest(request);
+    await requireExecutionPipelineRead(projectId, userId);
+
     const prompts = await prisma.taskPrompt.findMany({
       where: { projectId },
       orderBy: [{ taskId: "asc" }, { version: "desc" }],
@@ -75,6 +84,10 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("GET /api/task/prompt error:", error);
     return NextResponse.json(
       {
@@ -88,6 +101,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
+    const userId = getCurrentUserIdFromRequest(request);
     const body = (await request.json()) as CreateTaskPromptBody;
     const taskId = String(body.taskId ?? "").trim();
     if (!taskId) {
@@ -120,6 +134,8 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+
+    await requireTaskPromptCreate(task.projectId, userId);
 
     const promptText = buildTaskExecutionPrompt(task);
     const saved = await prisma.$transaction(async (tx) => {
@@ -171,6 +187,10 @@ export async function POST(request: Request) {
       message: "Task 실행 프롬프트가 생성되었습니다.",
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("POST /api/task/prompt error:", error);
     return NextResponse.json(
       {

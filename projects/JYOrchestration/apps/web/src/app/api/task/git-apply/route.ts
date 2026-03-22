@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { prisma } from "@/lib/prisma";
 import {
   applyGitChangeFromApiBody,
   GIT_APPLY_ERROR_CODES,
   listGitChangeRequestsForProject,
   serializeGitChangeRequestList,
 } from "@/lib/service/executionService";
+import {
+  requireExecutionPipelineRead,
+  requireGitApply,
+} from "@/lib/service/projectAccessGuard";
 
 type ApplyGitRequestBody = {
   gitChangeRequestId?: string;
@@ -29,6 +36,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const userId = getCurrentUserIdFromRequest(request);
+    try {
+      await requireExecutionPipelineRead(projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
+
     const requests = await listGitChangeRequestsForProject(projectId);
 
     return NextResponse.json({
@@ -36,6 +54,10 @@ export async function GET(request: NextRequest) {
       data: serializeGitChangeRequestList(requests),
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("GET /api/task/git-apply error:", error);
     return jsonError(
       GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
@@ -47,7 +69,39 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
+    const userId = getCurrentUserIdFromRequest(request);
     const body = (await request.json()) as ApplyGitRequestBody;
+    const gitChangeRequestId = String(body.gitChangeRequestId ?? "").trim();
+    if (!gitChangeRequestId) {
+      return jsonError(
+        GIT_APPLY_ERROR_CODES.INVALID_REQUEST,
+        "gitChangeRequestId가 필요합니다.",
+        400
+      );
+    }
+
+    const gcr = await prisma.gitChangeRequest.findUnique({
+      where: { id: gitChangeRequestId },
+      select: { projectId: true },
+    });
+    if (!gcr) {
+      return jsonError(
+        GIT_APPLY_ERROR_CODES.INVALID_REQUEST,
+        "대상 Git 반영 요청을 찾을 수 없습니다.",
+        404
+      );
+    }
+
+    try {
+      await requireGitApply(gcr.projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
+
     const result = await applyGitChangeFromApiBody(body);
 
     if (!result.ok) {
@@ -71,6 +125,10 @@ export async function POST(request: Request) {
       message: result.message,
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("POST /api/task/git-apply error:", error);
     return jsonError(
       GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,

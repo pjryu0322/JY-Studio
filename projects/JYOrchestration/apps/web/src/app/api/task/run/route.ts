@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import {
+  requireExecutionPipelineRead,
+  requireReadyForGitTransition,
+  requireTaskRun,
+} from "@/lib/service/projectAccessGuard";
 
 type TaskRunBody = {
   taskPromptId?: string;
@@ -18,6 +25,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const userId = getCurrentUserIdFromRequest(request);
+    await requireExecutionPipelineRead(projectId, userId);
 
     const runs = await prisma.taskRun.findMany({
       where: {
@@ -47,6 +57,10 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("GET /api/task/run error:", error);
     return NextResponse.json(
       {
@@ -60,6 +74,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
+    const userId = getCurrentUserIdFromRequest(request);
     const body = (await request.json()) as TaskRunBody;
     const taskPromptId = String(body.taskPromptId ?? "").trim();
     const action = String(body.action ?? "").trim();
@@ -79,6 +94,9 @@ export async function POST(request: Request) {
       select: {
         id: true,
         taskId: true,
+        task: {
+          select: { projectId: true },
+        },
       },
     });
 
@@ -92,7 +110,10 @@ export async function POST(request: Request) {
       );
     }
 
+    const projectId = prompt.task.projectId;
+
     if (action === "mark-ready-for-git") {
+      await requireReadyForGitTransition(projectId, userId);
       const latestRun = await prisma.taskRun.findFirst({
         where: {
           taskPromptId: prompt.id,
@@ -150,6 +171,8 @@ export async function POST(request: Request) {
       });
     }
 
+    await requireTaskRun(projectId, userId);
+
     const run = await prisma.taskRun.create({
       data: {
         taskId: prompt.taskId,
@@ -185,6 +208,10 @@ export async function POST(request: Request) {
       message: "Task mock 실행이 완료되었습니다.",
     });
   } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) {
+      return denied;
+    }
     console.error("POST /api/task/run error:", error);
     return NextResponse.json(
       {
