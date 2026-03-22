@@ -89,6 +89,39 @@ export async function requireGitApply(projectId: string, userId: string) {
   return role;
 }
 
+/** Git 승인 게이트: 승인 요청 제출·재요청 (OPERATOR 이상, Git 요청 등록과 동일). */
+export async function requireGitApprovalGateSubmit(projectId: string, userId: string) {
+  const role = await resolveProjectRole(projectId, userId);
+  if (!canOperate(role)) {
+    throw new ProjectAccessDeniedError(
+      "Git 승인 요청 제출은 OPERATOR·REVIEWER·OWNER 권한이 필요합니다."
+    );
+  }
+  return role;
+}
+
+/** Git 승인 게이트: 승인·반려 (REVIEWER 이상 — 검토 권한과 정렬). */
+export async function requireGitApprovalGateReview(projectId: string, userId: string) {
+  const role = await resolveProjectRole(projectId, userId);
+  if (!canReview(role)) {
+    throw new ProjectAccessDeniedError(
+      "Git 반영 승인·반려는 REVIEWER·OWNER 권한이 필요합니다."
+    );
+  }
+  return role;
+}
+
+/** 프로젝트 Git 반영 정책(AUTO_APPLY / MANUAL_APPROVAL) 변경 — 검토 권한 이상. */
+export async function requireProjectGitApprovalModeUpdate(projectId: string, userId: string) {
+  const role = await resolveProjectRole(projectId, userId);
+  if (!canReview(role)) {
+    throw new ProjectAccessDeniedError(
+      "Git 반영 정책 변경은 REVIEWER·OWNER 권한이 필요합니다."
+    );
+  }
+  return role;
+}
+
 /** Any project member (DB or dev mock list) may read Task audit history; role does not matter. */
 export async function requireProjectMember(projectId: string, userId: string) {
   const dbMember = await prisma.projectMember.findUnique({

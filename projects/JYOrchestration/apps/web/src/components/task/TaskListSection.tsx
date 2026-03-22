@@ -48,6 +48,9 @@ export type GitChangeRequestItem = {
   projectId: string;
   taskId: string;
   taskRunId: string;
+  /** 프로젝트 `gitApprovalMode` (git-apply 목록 응답에 포함) */
+  gitApprovalMode?: string;
+  rejectionReason?: string | null;
   status: string;
   requestNote: string | null;
   files: GitChangeRequestFileItem[] | null;

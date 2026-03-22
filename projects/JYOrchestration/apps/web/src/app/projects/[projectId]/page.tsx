@@ -44,6 +44,10 @@ import { mockAuthHeaders } from "@/lib/auth/requestUser";
 import { ExecutionObservabilityPanel } from "@/components/dashboard/ExecutionObservabilityPanel";
 import type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 import { RBAC_FORBIDDEN_CODE } from "@/lib/rbac/projectAccessDenied";
+import {
+  GIT_APPROVAL_MODE_AUTO_APPLY,
+  GIT_APPROVAL_MODE_MANUAL_APPROVAL,
+} from "@/lib/git-apply/retry";
 
 function rbacForbiddenMessage(
   res: Response,
@@ -91,6 +95,8 @@ export default function ProjectDetailPage() {
   const [gitApplySimulateFailure, setGitApplySimulateFailure] = useState(false);
   const [gitApplyMessage, setGitApplyMessage] = useState<string | null>(null);
   const [gitApplyError, setGitApplyError] = useState<string | null>(null);
+  const [gitPolicySaving, setGitPolicySaving] = useState(false);
+  const [gitRejectReasons, setGitRejectReasons] = useState<Record<string, string>>({});
   const [auditTaskId, setAuditTaskId] = useState<string | null>(null);
   const [auditHistory, setAuditHistory] = useState<TaskHistoryItem[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -1013,6 +1019,159 @@ export default function ProjectDetailPage() {
     }
   }
 
+  function isManualGitItem(item: GitChangeRequestItem): boolean {
+    return (
+      String(item.gitApprovalMode ?? GIT_APPROVAL_MODE_AUTO_APPLY).trim() ===
+      GIT_APPROVAL_MODE_MANUAL_APPROVAL
+    );
+  }
+
+  async function handlePatchGitPolicy(e: ChangeEvent<HTMLSelectElement>) {
+    const mode = e.target.value;
+    if (!projectId || !project) {
+      return;
+    }
+    setGitPolicySaving(true);
+    setGitApplyError(null);
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...mockAuthHeaders(),
+          },
+          body: JSON.stringify({ gitApprovalMode: mode }),
+        }
+      );
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+      };
+      if (!res.ok || !json.success) {
+        setGitApplyError(json.message || "Git 반영 정책 저장에 실패했습니다.");
+        return;
+      }
+      setProject((p) => (p ? { ...p, gitApprovalMode: mode } : null));
+      await refreshGitRequestsList();
+    } catch (error) {
+      console.error("Failed to patch git approval mode:", error);
+      setGitApplyError("Git 반영 정책 저장 중 오류가 발생했습니다.");
+    } finally {
+      setGitPolicySaving(false);
+    }
+  }
+
+  async function handleGitApprove(gitChangeRequestId: string) {
+    try {
+      setApplyingGitRequestId(gitChangeRequestId);
+      setGitApplyMessage(null);
+      setGitApplyError(null);
+      const res = await fetch("/api/git/approve", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ gitChangeRequestId }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+      };
+      await refreshGitRequestsList();
+      if (!res.ok || !json.success) {
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "승인 처리에 실패했습니다.";
+        setGitApplyError(detail);
+        return;
+      }
+      setGitApplyMessage(json.message || "승인되었습니다.");
+    } catch (error) {
+      console.error("Failed to approve git request:", error);
+      setGitApplyError("승인 처리 중 오류가 발생했습니다.");
+    } finally {
+      setApplyingGitRequestId(null);
+    }
+  }
+
+  async function handleGitReject(gitChangeRequestId: string) {
+    try {
+      setApplyingGitRequestId(gitChangeRequestId);
+      setGitApplyMessage(null);
+      setGitApplyError(null);
+      const reason = (gitRejectReasons[gitChangeRequestId] ?? "").trim() || undefined;
+      const res = await fetch("/api/git/reject", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ gitChangeRequestId, reason }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+      };
+      await refreshGitRequestsList();
+      if (!res.ok || !json.success) {
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "반려 처리에 실패했습니다.";
+        setGitApplyError(detail);
+        return;
+      }
+      setGitApplyMessage(json.message || "반려되었습니다.");
+    } catch (error) {
+      console.error("Failed to reject git request:", error);
+      setGitApplyError("반려 처리 중 오류가 발생했습니다.");
+    } finally {
+      setApplyingGitRequestId(null);
+    }
+  }
+
+  async function handleGitResubmitApproval(gitChangeRequestId: string) {
+    try {
+      setApplyingGitRequestId(gitChangeRequestId);
+      setGitApplyMessage(null);
+      setGitApplyError(null);
+      const res = await fetch("/api/git/submit-approval", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...mockAuthHeaders(),
+        },
+        body: JSON.stringify({ gitChangeRequestId }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+      };
+      await refreshGitRequestsList();
+      if (!res.ok || !json.success) {
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "승인 재요청에 실패했습니다.";
+        setGitApplyError(detail);
+        return;
+      }
+      setGitApplyMessage(json.message || "승인 재요청이 접수되었습니다.");
+    } catch (error) {
+      console.error("Failed to resubmit git approval:", error);
+      setGitApplyError("승인 재요청 중 오류가 발생했습니다.");
+    } finally {
+      setApplyingGitRequestId(null);
+    }
+  }
+
   async function handleApplyGitRequest(gitChangeRequestId: string) {
     try {
       setApplyingGitRequestId(gitChangeRequestId);
@@ -1248,6 +1407,42 @@ export default function ProjectDetailPage() {
             flexWrap: "wrap",
             gap: 12,
             alignItems: "center",
+            fontSize: 14,
+            color: "#333",
+          }}
+        >
+          <span>
+            <strong>Git 반영 정책:</strong>{" "}
+            {String(project?.gitApprovalMode ?? GIT_APPROVAL_MODE_AUTO_APPLY).trim() ===
+            GIT_APPROVAL_MODE_MANUAL_APPROVAL
+              ? "승인 필요 (MANUAL_APPROVAL)"
+              : "자동 반영 (AUTO_APPLY)"}
+          </span>
+          {rbac.canReview ? (
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#555" }}>변경</span>
+              <select
+                value={
+                  String(project?.gitApprovalMode ?? GIT_APPROVAL_MODE_AUTO_APPLY).trim() ||
+                  GIT_APPROVAL_MODE_AUTO_APPLY
+                }
+                onChange={handlePatchGitPolicy}
+                disabled={gitPolicySaving}
+                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #ccc" }}
+              >
+                <option value={GIT_APPROVAL_MODE_AUTO_APPLY}>자동 반영</option>
+                <option value={GIT_APPROVAL_MODE_MANUAL_APPROVAL}>승인 필요</option>
+              </select>
+            </label>
+          ) : null}
+        </div>
+        <div
+          style={{
+            marginBottom: 12,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            alignItems: "center",
           }}
         >
           <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#333" }}>
@@ -1364,58 +1559,203 @@ export default function ProjectDetailPage() {
                 <p style={{ margin: 0 }}>
                   <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
                 </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                  {item.status === "REQUESTED" &&
-                  item.applyStatus !== "FAILED" &&
-                  item.applyStatus !== "DONE" &&
-                  item.applyStatus !== "APPLYING" ? (
-                    <button
-                      type="button"
-                      onClick={() => handleApplyGitRequest(item.id)}
-                      disabled={applyingGitRequestId === item.id}
-                      style={{
-                        padding: "6px 10px",
-                        border: "1px solid #ccc",
-                        borderRadius: 6,
-                        background: "#fff",
-                        cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
-                        opacity: applyingGitRequestId === item.id ? 0.7 : 1,
-                      }}
-                    >
-                      {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
-                    </button>
-                  ) : null}
-                  {item.status === "REQUESTED" && item.applyStatus === "FAILED" ? (
-                    <button
-                      type="button"
-                      onClick={() => handleRetryGitApply(item.id)}
-                      disabled={
-                        applyingGitRequestId === item.id ||
-                        (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
-                      }
-                      style={{
-                        padding: "6px 10px",
-                        border: "1px solid #c62828",
-                        borderRadius: 6,
-                        background: "#fff",
-                        cursor:
+                {isManualGitItem(item) && item.status === "REJECTED" ? (
+                  <p style={{ margin: "8px 0 0 0", color: "#b00020", fontSize: 13 }}>
+                    <strong>반려 사유:</strong> {item.rejectionReason?.trim() || "(없음)"}
+                  </p>
+                ) : null}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {!isManualGitItem(item) &&
+                    item.status === "REQUESTED" &&
+                    item.applyStatus !== "FAILED" &&
+                    item.applyStatus !== "DONE" &&
+                    item.applyStatus !== "APPLYING" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleApplyGitRequest(item.id)}
+                        disabled={applyingGitRequestId === item.id}
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid #ccc",
+                          borderRadius: 6,
+                          background: "#fff",
+                          cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
+                          opacity: applyingGitRequestId === item.id ? 0.7 : 1,
+                        }}
+                      >
+                        {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
+                      </button>
+                    ) : null}
+                    {isManualGitItem(item) &&
+                    item.status === "APPROVED" &&
+                    item.applyStatus !== "FAILED" &&
+                    item.applyStatus !== "DONE" &&
+                    item.applyStatus !== "APPLYING" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleApplyGitRequest(item.id)}
+                        disabled={applyingGitRequestId === item.id}
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid #ccc",
+                          borderRadius: 6,
+                          background: "#fff",
+                          cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
+                          opacity: applyingGitRequestId === item.id ? 0.7 : 1,
+                        }}
+                      >
+                        {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
+                      </button>
+                    ) : null}
+                    {!isManualGitItem(item) &&
+                    item.status === "REQUESTED" &&
+                    item.applyStatus === "FAILED" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRetryGitApply(item.id)}
+                        disabled={
                           applyingGitRequestId === item.id ||
                           (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
-                            ? "not-allowed"
-                            : "pointer",
-                        opacity:
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid #c62828",
+                          borderRadius: 6,
+                          background: "#fff",
+                          cursor:
+                            applyingGitRequestId === item.id ||
+                            (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            applyingGitRequestId === item.id ||
+                            (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                              ? 0.5
+                              : 1,
+                        }}
+                      >
+                        {applyingGitRequestId === item.id
+                          ? "재시도 중..."
+                          : (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                            ? "재시도 한도 초과"
+                            : "재시도 실행"}
+                      </button>
+                    ) : null}
+                    {isManualGitItem(item) &&
+                    item.status === "APPROVED" &&
+                    item.applyStatus === "FAILED" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRetryGitApply(item.id)}
+                        disabled={
                           applyingGitRequestId === item.id ||
                           (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
-                            ? 0.5
-                            : 1,
-                      }}
-                    >
-                      {applyingGitRequestId === item.id
-                        ? "재시도 중..."
-                        : (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
-                          ? "재시도 한도 초과"
-                          : "재시도 실행"}
-                    </button>
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid #c62828",
+                          borderRadius: 6,
+                          background: "#fff",
+                          cursor:
+                            applyingGitRequestId === item.id ||
+                            (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            applyingGitRequestId === item.id ||
+                            (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                              ? 0.5
+                              : 1,
+                        }}
+                      >
+                        {applyingGitRequestId === item.id
+                          ? "재시도 중..."
+                          : (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
+                            ? "재시도 한도 초과"
+                            : "재시도 실행"}
+                      </button>
+                    ) : null}
+                    {isManualGitItem(item) &&
+                    item.status === "APPROVAL_REQUIRED" &&
+                    rbac.canReview ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleGitApprove(item.id)}
+                          disabled={applyingGitRequestId === item.id}
+                          style={{
+                            padding: "6px 10px",
+                            border: "1px solid #0a7d2e",
+                            borderRadius: 6,
+                            background: "#0a7d2e",
+                            color: "#fff",
+                            cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
+                            opacity: applyingGitRequestId === item.id ? 0.7 : 1,
+                          }}
+                        >
+                          {applyingGitRequestId === item.id ? "처리 중..." : "승인"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGitReject(item.id)}
+                          disabled={applyingGitRequestId === item.id}
+                          style={{
+                            padding: "6px 10px",
+                            border: "1px solid #b00020",
+                            borderRadius: 6,
+                            background: "#fff",
+                            color: "#b00020",
+                            cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
+                            opacity: applyingGitRequestId === item.id ? 0.7 : 1,
+                          }}
+                        >
+                          {applyingGitRequestId === item.id ? "처리 중..." : "반려"}
+                        </button>
+                      </>
+                    ) : null}
+                    {isManualGitItem(item) &&
+                    item.status === "REJECTED" &&
+                    rbac.canOperate ? (
+                      <button
+                        type="button"
+                        onClick={() => handleGitResubmitApproval(item.id)}
+                        disabled={applyingGitRequestId === item.id}
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid #ccc",
+                          borderRadius: 6,
+                          background: "#fff",
+                          cursor: applyingGitRequestId === item.id ? "not-allowed" : "pointer",
+                          opacity: applyingGitRequestId === item.id ? 0.7 : 1,
+                        }}
+                      >
+                        {applyingGitRequestId === item.id ? "처리 중..." : "승인 재요청"}
+                      </button>
+                    ) : null}
+                  </div>
+                  {isManualGitItem(item) &&
+                  item.status === "APPROVAL_REQUIRED" &&
+                  rbac.canReview ? (
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 420 }}>
+                      <span style={{ fontSize: 12, color: "#666" }}>반려 사유 (선택)</span>
+                      <textarea
+                        value={gitRejectReasons[item.id] ?? ""}
+                        onChange={(e) =>
+                          setGitRejectReasons((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
+                        rows={2}
+                        style={{
+                          fontSize: 13,
+                          padding: 6,
+                          borderRadius: 6,
+                          border: "1px solid #ccc",
+                        }}
+                      />
+                    </label>
                   ) : null}
                 </div>
                 {item.diffText ? (

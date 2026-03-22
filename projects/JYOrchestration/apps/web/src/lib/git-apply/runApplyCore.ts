@@ -14,6 +14,7 @@ import {
   appendSelfHealingSuccessFooter,
   buildRetryApplyLogSection,
   buildRetryPlan,
+  isManualGitApprovalMode,
   MAX_GIT_APPLY_RETRY_COUNT,
   mergeRetryPrefixWithBody,
   shouldRetryGitApply,
@@ -28,6 +29,8 @@ export const GIT_APPLY_ERROR_CODES = {
   INVALID_REQUEST: "INVALID_REQUEST",
   GIT_CHANGE_REQUEST_NOT_FOUND: "GIT_CHANGE_REQUEST_NOT_FOUND",
   INVALID_STATUS: "INVALID_STATUS",
+  APPROVAL_GATE_PENDING: "APPROVAL_GATE_PENDING",
+  APPROVAL_NOT_GRANTED: "APPROVAL_NOT_GRANTED",
   EXECUTION_PRECHECK_FAILED: "EXECUTION_PRECHECK_FAILED",
   EXECUTION_FAILED: "EXECUTION_FAILED",
   CURSOR_EXECUTION_FAILED: "CURSOR_EXECUTION_FAILED",
@@ -127,6 +130,7 @@ export async function runGitApplyCoreFromBody(
       retryCount: true,
       lastError: true,
       lastRetryAt: true,
+      project: { select: { gitApprovalMode: true } },
     },
   });
 
@@ -139,8 +143,11 @@ export async function runGitApplyCoreFromBody(
     };
   }
 
+  const gitApprovalMode = found.project.gitApprovalMode;
+  const manualApproval = isManualGitApprovalMode(gitApprovalMode);
+
   if (isRetry) {
-    if (!shouldRetryGitApply(found)) {
+    if (!shouldRetryGitApply(found, gitApprovalMode)) {
       if (found.applyStatus !== "FAILED") {
         return {
           ok: false,
@@ -165,11 +172,39 @@ export async function runGitApplyCoreFromBody(
       };
     }
   } else {
-    if (found.status !== "REQUESTED") {
+    if (found.status === "APPROVAL_REQUIRED") {
+      return {
+        ok: false,
+        code: GIT_APPLY_ERROR_CODES.APPROVAL_NOT_GRANTED,
+        message:
+          "승인 대기 중입니다. 검토자가 승인한 뒤에만 Git 반영을 실행할 수 있습니다.",
+        httpStatus: 403,
+      };
+    }
+    if (found.status === "REJECTED") {
+      return {
+        ok: false,
+        code: GIT_APPLY_ERROR_CODES.APPROVAL_NOT_GRANTED,
+        message:
+          "반려된 요청입니다. 수동 승인 모드에서는 승인 재요청 후 검토를 받아 주세요.",
+        httpStatus: 403,
+      };
+    }
+    if (manualApproval) {
+      if (found.status !== "APPROVED") {
+        return {
+          ok: false,
+          code: GIT_APPLY_ERROR_CODES.INVALID_STATUS,
+          message: "승인(APPROVED)된 요청만 Git 반영을 실행할 수 있습니다.",
+          httpStatus: 400,
+        };
+      }
+    } else if (found.status !== "REQUESTED") {
       return {
         ok: false,
         code: GIT_APPLY_ERROR_CODES.INVALID_STATUS,
-        message: "status가 REQUESTED인 요청만 실행할 수 있습니다.",
+        message:
+          "자동 반영 모드에서는 status가 REQUESTED인 요청만 Git 반영을 실행할 수 있습니다.",
         httpStatus: 400,
       };
     }
@@ -330,6 +365,7 @@ export async function runGitApplyCoreFromBody(
     const updated = await prisma.gitChangeRequest.update({
       where: { id: found.id },
       data: {
+        status: "DONE",
         applyStatus: "DONE",
         applyLog,
         applyFinishedAt: finishedAt,

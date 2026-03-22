@@ -2,6 +2,13 @@
  * git-apply self-healing / 재시도 정책 (외부 서비스 호출 없음).
  */
 
+export const GIT_APPROVAL_MODE_AUTO_APPLY = "AUTO_APPLY";
+export const GIT_APPROVAL_MODE_MANUAL_APPROVAL = "MANUAL_APPROVAL";
+
+export function isManualGitApprovalMode(mode: string | null | undefined): boolean {
+  return String(mode ?? "").trim() === GIT_APPROVAL_MODE_MANUAL_APPROVAL;
+}
+
 /** 재시도 가능 횟수 상한: retryCount가 이 값 미만일 때만 재시도 허용 */
 export const MAX_GIT_APPLY_RETRY_COUNT = 2;
 
@@ -20,9 +27,16 @@ export type RetryPlan = {
   logTag: "[RETRY_1]" | "[RETRY_2]";
 };
 
-export function shouldRetryGitApply(record: GitApplyRetryRecord): boolean {
+export function shouldRetryGitApply(
+  record: GitApplyRetryRecord,
+  gitApprovalMode?: string | null
+): boolean {
+  const manual = isManualGitApprovalMode(gitApprovalMode);
+  const statusOk = manual
+    ? record.status === "APPROVED"
+    : record.status === "REQUESTED";
   return (
-    record.status === "REQUESTED" &&
+    statusOk &&
     record.applyStatus === "FAILED" &&
     record.retryCount < MAX_GIT_APPLY_RETRY_COUNT
   );
@@ -89,12 +103,15 @@ export function appendSelfHealingSuccessFooter(
 /**
  * 클라이언트/상위 계층용 힌트: 재시도 시 simulateFailure는 기본 false로 두면 스텁 성공 가능.
  */
-export function getNextRetryPayload(record: GitApplyRetryRecord): {
+export function getNextRetryPayload(
+  record: GitApplyRetryRecord,
+  gitApprovalMode?: string | null
+): {
   options: { simulateFailure: boolean };
   retryEligible: boolean;
 } {
   return {
     options: { simulateFailure: false },
-    retryEligible: shouldRetryGitApply(record),
+    retryEligible: shouldRetryGitApply(record, gitApprovalMode),
   };
 }

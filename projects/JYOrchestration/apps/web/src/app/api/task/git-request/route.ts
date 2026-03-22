@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
+import { isManualGitApprovalMode } from "@/lib/git-apply/retry";
 import { prisma } from "@/lib/prisma";
 import {
   requireExecutionPipelineRead,
@@ -172,6 +173,13 @@ export async function POST(request: Request) {
       throw error;
     }
 
+    const projectRow = await prisma.project.findUnique({
+      where: { id: run.task.projectId },
+      select: { gitApprovalMode: true },
+    });
+    const manualApproval = isManualGitApprovalMode(projectRow?.gitApprovalMode);
+    const initialStatus = manualApproval ? "APPROVAL_REQUIRED" : "REQUESTED";
+
     const files = buildMockFileChanges();
     const diffText = buildMockDiff(run.taskId, run.resultText);
     const commitMessage = `feat: apply task ${run.taskId}`;
@@ -181,11 +189,12 @@ export async function POST(request: Request) {
         projectId: run.task.projectId,
         taskId: run.taskId,
         taskRunId: run.id,
-        status: "REQUESTED",
+        status: initialStatus,
         files,
         diffText,
         commitMessage,
         applyStatus: "PENDING",
+        rejectionReason: null,
       },
       select: {
         id: true,
@@ -218,6 +227,25 @@ export async function POST(request: Request) {
       });
     } catch (historyError) {
       console.error("GIT_REQUEST_CREATED history append failed:", historyError);
+    }
+
+    if (manualApproval) {
+      try {
+        await appendTaskHistory({
+          projectId: saved.projectId,
+          taskId: saved.taskId,
+          actorType: TaskHistoryActorType.SYSTEM,
+          actorId: null,
+          eventType: TaskHistoryEventType.GIT_APPROVAL_REQUIRED,
+          summary: "Git 반영 승인이 필요한 요청으로 등록됨",
+          detailJson: {
+            gitChangeRequestId: saved.id,
+            gitApprovalMode: "MANUAL_APPROVAL",
+          },
+        });
+      } catch (historyError) {
+        console.error("GIT_APPROVAL_REQUIRED history append failed:", historyError);
+      }
     }
 
     return NextResponse.json({

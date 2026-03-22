@@ -7,6 +7,7 @@ import {
   GIT_APPLY_ERROR_CODES,
   listGitChangeRequestsForProject,
   serializeGitChangeRequestList,
+  validateGitApplyPostEligibility,
 } from "@/lib/service/executionService";
 import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
 import {
@@ -86,8 +87,10 @@ export async function POST(request: Request) {
       select: {
         projectId: true,
         taskId: true,
+        status: true,
         retryCount: true,
         lastError: true,
+        project: { select: { gitApprovalMode: true } },
       },
     });
     if (!gcr) {
@@ -110,6 +113,15 @@ export async function POST(request: Request) {
 
     const modeStr = String(body.mode ?? "mock").trim() || "mock";
     const isRetry = body.retry === true;
+
+    const policyErr = validateGitApplyPostEligibility({
+      isRetry,
+      gitApprovalMode: gcr.project.gitApprovalMode,
+      status: gcr.status,
+    });
+    if (policyErr) {
+      return jsonError(policyErr.code, policyErr.message, policyErr.httpStatus);
+    }
     const retryCountBeforeApply = gcr.retryCount;
     const lastErrorBeforeApply = gcr.lastError;
 

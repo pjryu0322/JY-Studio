@@ -4,6 +4,8 @@ export type Project = {
   description: string | null;
   projectType: string;
   status: string;
+  /** AUTO_APPLY | MANUAL_APPROVAL (API/Prisma 기본 AUTO_APPLY) */
+  gitApprovalMode?: string;
 };
 
 export type ApiResponse<T> = {
