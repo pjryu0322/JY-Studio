@@ -30,6 +30,9 @@ function parseSelfHealingMessage(message: string): {
   strategies: string[];
   createdTasks: Array<{ strategy: string; taskId: string }>;
   reason?: string;
+  autoRunTriggered?: boolean;
+  autoRunExecutedCount?: number;
+  autoRunSkippedCount?: number;
 } {
   const lines = message
     .split("\n")
@@ -43,6 +46,9 @@ function parseSelfHealingMessage(message: string): {
     strategies: string[];
     createdTasks: Array<{ strategy: string; taskId: string }>;
     reason?: string;
+    autoRunTriggered?: boolean;
+    autoRunExecutedCount?: number;
+    autoRunSkippedCount?: number;
   } = {
     created: null,
     strategies: [],
@@ -51,7 +57,7 @@ function parseSelfHealingMessage(message: string): {
 
   let inCreatedTasks = false;
   for (const line of lines) {
-    if (line.startsWith("Task 생성됨")) {
+    if (line.startsWith("Task 생성됨") || line.startsWith("Task 생성 및 자동 실행 연결됨")) {
       out.created = true;
       inCreatedTasks = false;
       continue;
@@ -81,6 +87,22 @@ function parseSelfHealingMessage(message: string): {
 
     if (line === "createdTasks:" || line.toLowerCase() === "createdtasks:") {
       inCreatedTasks = true;
+      continue;
+    }
+
+    const autoTriggered = line.match(/^triggered:\s*(true|false)$/i);
+    if (autoTriggered?.[1]) {
+      out.autoRunTriggered = autoTriggered[1].toLowerCase() === "true";
+      continue;
+    }
+    const executed = line.match(/^executed:\s*(\d+)$/i);
+    if (executed?.[1]) {
+      out.autoRunExecutedCount = Number(executed[1]);
+      continue;
+    }
+    const skipped = line.match(/^skipped:\s*(\d+)$/i);
+    if (skipped?.[1]) {
+      out.autoRunSkippedCount = Number(skipped[1]);
       continue;
     }
 
@@ -337,6 +359,18 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                                           )
                                         </div>
                                       ))}
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                {parsed?.autoRunTriggered ? (
+                                  <div style={{ marginTop: 8, color: "#333" }}>
+                                    <div style={{ fontWeight: 800, color: AUTO_HEALING_COLOR }}>
+                                      Auto Run
+                                    </div>
+                                    <div style={{ marginTop: 3 }}>
+                                      executed: <span style={{ fontWeight: 800 }}>{parsed.autoRunExecutedCount ?? 0}</span>,
+                                      skipped: <span style={{ fontWeight: 800 }}>{parsed.autoRunSkippedCount ?? 0}</span>
                                     </div>
                                   </div>
                                 ) : null}

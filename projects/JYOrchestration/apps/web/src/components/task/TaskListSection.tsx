@@ -359,6 +359,10 @@ export function TaskListSection({
               changeReason: task.changeReason,
               taskKind,
             });
+            const runMeta = taskRunMap[task.id]?.resultJson as unknown as
+              | { autoExecution?: boolean; initiatedBy?: string }
+              | undefined;
+            const autoRunConnected = Boolean(runMeta?.autoExecution === true);
             const badge = taskFlowBadgeColors(flow);
             const flowLabel = taskFlowStatusLabel(flow);
             const isDragOver = dragOverId === task.id && draggingId !== task.id;
@@ -535,6 +539,22 @@ export function TaskListSection({
                         }}
                       >
                         ⚙ {autoMeta.strategy ? `[${autoMeta.strategy}]` : "[AUTO]"}
+                      </span>
+                    ) : null}
+                    {taskKind === "AUTO_HEALING" && autoRunConnected ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: 0.6,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          background: "#f1f5f9",
+                          color: "#0f172a",
+                          border: "1px solid #cbd5e1",
+                        }}
+                      >
+                        ⚡ AUTO-RUN
                       </span>
                     ) : null}
                     {parentTaskButton}

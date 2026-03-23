@@ -17,6 +17,8 @@ import {
 import { logExecutionEvent } from "@/lib/service/executionEventService";
 import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
 import { triggerSelfHealingLite } from "@/lib/service/selfHealingService";
+import { triggerAutoHealingExecution } from "@/lib/service/autoHealingExecutionService";
+import { AUTO_HEALING_AUTO_RUN_ENABLED } from "@/lib/execution/autoHealingExecutionPolicy";
 
 export type GitApplyExecutionPayload = RunGitApplyCoreBody & {
   actorUserId: string;
@@ -624,6 +626,21 @@ async function markJobRetryOrFailed(
     const failureType = lastEvent.failureType ? String(lastEvent.failureType) : null;
     const sourceTaskId = await resolveSourceTaskIdFromJob(job);
 
+    // AUTO_HEALING Task에서 발생한 실패는 다시 Self-Healing을 분기하지 않는다.
+    if (sourceTaskId) {
+      const sourceTask = await prisma.task.findUnique({
+        where: { id: sourceTaskId },
+        select: { taskKind: true },
+      });
+      if (sourceTask?.taskKind === "AUTO_HEALING") {
+        logWorker("self-healing-skipped-auto-task", {
+          jobId: job.id,
+          sourceTaskId,
+        });
+        return;
+      }
+    }
+
     const res = await triggerSelfHealingLite({
       jobId: job.id,
       projectId: job.projectId,
@@ -631,6 +648,28 @@ async function markJobRetryOrFailed(
       detailJson: lastEvent.detailJson,
       sourceTaskId,
     });
+
+    let autoRunRes:
+      | {
+          triggered: boolean;
+          executedTaskIds: string[];
+          skippedTaskIds: Array<{ taskId: string; reason: string }>;
+        }
+      | null = null;
+    if (res.created && AUTO_HEALING_AUTO_RUN_ENABLED) {
+      try {
+        autoRunRes = await triggerAutoHealingExecution({
+          projectId: job.projectId,
+          sourceExecutionJobId: job.id,
+          createdTaskIds: res.createdTasks.map((t) => t.taskId),
+        });
+      } catch (e) {
+        console.error("[execution-worker] autoHealingExecution failed:", e);
+        autoRunRes = { triggered: false, executedTaskIds: [], skippedTaskIds: [] };
+      }
+    } else {
+      autoRunRes = { triggered: false, executedTaskIds: [], skippedTaskIds: [] };
+    }
 
     const failureTypeKey = failureType ?? "UNKNOWN";
     const strategiesText = res.strategies.join(", ");
@@ -640,7 +679,9 @@ async function markJobRetryOrFailed(
         : "";
 
     const message = res.created
-      ? `Task 생성됨 (${res.createdTasks.length} tasks)\nfailureType: ${failureTypeKey}\nstrategies: ${strategiesText}\ncreatedTasks:\n${createdTasksText}`
+      ? autoRunRes?.triggered
+        ? `Task 생성 및 자동 실행 연결됨 (${res.createdTasks.length} tasks)\nfailureType: ${failureTypeKey}\nstrategies: ${strategiesText}\ncreatedTasks:\n${createdTasksText}\nAuto Run:\ntriggered: true\nexecuted: ${autoRunRes.executedTaskIds.length}\nskipped: ${autoRunRes.skippedTaskIds.length}`
+        : `Task 생성됨 (${res.createdTasks.length} tasks)\nfailureType: ${failureTypeKey}\nstrategies: ${strategiesText}\ncreatedTasks:\n${createdTasksText}`
       : `생성 실패 (${res.reason ?? "UNKNOWN"})\nfailureType: ${failureTypeKey}\nstrategies: ${strategiesText}`;
 
     await logEventSafe({
@@ -656,6 +697,9 @@ async function markJobRetryOrFailed(
         sourceTaskId,
         created: res.created,
         reason: res.reason ?? null,
+        autoRunTriggered: Boolean(autoRunRes?.triggered),
+        autoRunExecutedTaskIds: autoRunRes?.executedTaskIds ?? [],
+        autoRunSkippedTaskIds: (autoRunRes?.skippedTaskIds ?? []).map((x) => x.taskId),
       } as Prisma.InputJsonValue,
     });
 
@@ -666,6 +710,7 @@ async function markJobRetryOrFailed(
       reason: res.reason,
       failureType,
       strategies: res.strategies,
+      autoRunTriggered: Boolean(autoRunRes?.triggered),
     });
   } catch (e) {
     console.error("[execution-worker] self-healing-lite failed:", e);
