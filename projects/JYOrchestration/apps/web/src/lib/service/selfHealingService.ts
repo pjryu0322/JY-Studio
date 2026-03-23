@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { getSelfHealingAction } from "@/lib/execution/selfHealingStrategy";
+import {
+  getSelfHealingStrategies,
+  getSelfHealingStrategyMessage,
+  type SelfHealingAction,
+} from "@/lib/execution/selfHealingStrategy";
 
 async function resolveProjectSpecUpload(projectId: string): Promise<string | null> {
   const upload = await prisma.projectSpecUpload.findFirst({
@@ -24,53 +28,69 @@ export async function triggerSelfHealingLite(params: {
   failureType?: string | null;
   detailJson?: unknown;
   sourceTaskId?: string | null;
-}): Promise<{ created: boolean; taskId?: string; reason?: string }> {
+}): Promise<{
+  created: boolean;
+  strategies: SelfHealingAction[];
+  createdTasks: Array<{ strategy: SelfHealingAction; taskId: string }>;
+  reason?: string;
+}> {
   const failureTypeKey = params.failureType ?? "UNKNOWN";
-  const changeReason = `AUTO_HEALING:${failureTypeKey}:${params.jobId}`;
-
-  // 1) 중복 생성 방지: jobId가 포함된 changeReason 기반으로 체크
-  const existing = await prisma.task.findFirst({
-    where: { projectId: params.projectId, changeReason },
-    select: { id: true },
-  });
-  if (existing) {
-    return { created: false, reason: "ALREADY_CREATED" };
-  }
+  const strategies = getSelfHealingStrategies(params.failureType);
 
   const projectSpecUploadId = await resolveProjectSpecUpload(params.projectId);
   if (!projectSpecUploadId) {
-    return { created: false, reason: "NO_PROJECT_SPEC_UPLOAD" };
+    return { created: false, strategies, createdTasks: [], reason: "NO_PROJECT_SPEC_UPLOAD" };
   }
 
-  const actionInfo = getSelfHealingAction(params.failureType);
-  const action = actionInfo.action;
-  const reasonMessage = actionInfo.message;
   const detailJsonText = JSON.stringify(params.detailJson ?? null, null, 2);
-  const description = [
-    "자동 복구 작업이 생성되었습니다.",
-    `failureType: ${failureTypeKey}`,
-    `action: ${action}`,
-    `reason: ${reasonMessage}`,
-    "원인 로그:",
-    detailJsonText,
-  ].join("\n");
 
-  const nextOrder = await resolveNextOrder(params.projectId);
-  const created = await prisma.task.create({
-    data: {
-      projectId: params.projectId,
-      projectSpecUploadId,
-      name: `[AUTO] Recover from ${failureTypeKey}`,
-      description,
-      taskKind: "AUTO_HEALING",
-      status: "TODO",
-      order: nextOrder,
-      parentTaskId: params.sourceTaskId ?? null,
-      changeReason,
-    },
-    select: { id: true },
-  });
+  // 여러 전략이 생성되므로 order를 한 번 계산해 증가시킨다.
+  let nextOrder = await resolveNextOrder(params.projectId);
 
-  return { created: true, taskId: created.id };
+  const createdTasks: Array<{ strategy: SelfHealingAction; taskId: string }> = [];
+  for (const strategy of strategies) {
+    // 1) 전략까지 포함한 중복 방지(changeReason 기반)
+    const changeReason = `AUTO_HEALING:${failureTypeKey}:${strategy}:${params.jobId}`;
+    const existing = await prisma.task.findFirst({
+      where: { projectId: params.projectId, changeReason },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    const reasonMessage = getSelfHealingStrategyMessage(strategy);
+    const description = [
+      "자동 복구 작업이 생성되었습니다.",
+      `failureType: ${failureTypeKey}`,
+      `action: ${strategy}`,
+      `reason: ${reasonMessage}`,
+      "원인 로그:",
+      detailJsonText,
+    ].join("\n");
+
+    const created = await prisma.task.create({
+      data: {
+        projectId: params.projectId,
+        projectSpecUploadId,
+        name: `[AUTO][${strategy}] Recover from ${failureTypeKey}`,
+        description,
+        taskKind: "AUTO_HEALING",
+        status: "TODO",
+        order: nextOrder,
+        parentTaskId: params.sourceTaskId ?? null,
+        changeReason,
+      },
+      select: { id: true },
+    });
+
+    createdTasks.push({ strategy, taskId: created.id });
+    nextOrder++;
+  }
+
+  if (createdTasks.length === 0) {
+    return { created: false, strategies, createdTasks: [], reason: "ALREADY_CREATED" };
+  }
+
+  // created=true는 "적어도 1개 이상 생성"을 의미한다.
+  return { created: true, strategies, createdTasks };
 }
 

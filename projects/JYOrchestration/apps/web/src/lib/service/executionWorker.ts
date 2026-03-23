@@ -16,7 +16,6 @@ import {
 } from "@/lib/git-apply/runApplyCore";
 import { logExecutionEvent } from "@/lib/service/executionEventService";
 import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
-import { getSelfHealingAction } from "@/lib/execution/selfHealingStrategy";
 import { triggerSelfHealingLite } from "@/lib/service/selfHealingService";
 
 export type GitApplyExecutionPayload = RunGitApplyCoreBody & {
@@ -623,7 +622,6 @@ async function markJobRetryOrFailed(
     if (!lastEvent) return;
 
     const failureType = lastEvent.failureType ? String(lastEvent.failureType) : null;
-    const actionInfo = getSelfHealingAction(failureType);
     const sourceTaskId = await resolveSourceTaskIdFromJob(job);
 
     const res = await triggerSelfHealingLite({
@@ -634,31 +632,40 @@ async function markJobRetryOrFailed(
       sourceTaskId,
     });
 
+    const failureTypeKey = failureType ?? "UNKNOWN";
+    const strategiesText = res.strategies.join(", ");
+    const createdTasksText =
+      res.createdTasks.length > 0
+        ? res.createdTasks.map((t) => `- ${t.strategy}: ${t.taskId}`).join("\n")
+        : "";
+
+    const message = res.created
+      ? `Task 생성됨 (${res.createdTasks.length} tasks)\nfailureType: ${failureTypeKey}\nstrategies: ${strategiesText}\ncreatedTasks:\n${createdTasksText}`
+      : `생성 실패 (${res.reason ?? "UNKNOWN"})\nfailureType: ${failureTypeKey}\nstrategies: ${strategiesText}`;
+
     await logEventSafe({
       projectId: job.projectId,
       executionJobId: job.id,
       stage: "SELF_HEALING",
       status: res.created ? "SUCCESS" : "FAILED",
-      message: res.created
-        ? `Task 생성됨: ${res.taskId ?? "-"}\naction: ${actionInfo.action}`
-        : `Task 생성 불가: ${res.reason ?? "UNKNOWN"}`,
+      message,
       detailJson: {
-        failureType,
-        action: actionInfo.action,
+        failureType: failureTypeKey,
+        strategies: res.strategies,
+        createdTasks: res.createdTasks,
         sourceTaskId,
         created: res.created,
         reason: res.reason ?? null,
-        taskId: res.taskId ?? null,
       } as Prisma.InputJsonValue,
     });
 
     logWorker("self-healing-triggered", {
       jobId: job.id,
       created: res.created,
-      taskId: res.taskId,
+      createdTasks: res.createdTasks,
       reason: res.reason,
       failureType,
-      action: actionInfo.action,
+      strategies: res.strategies,
     });
   } catch (e) {
     console.error("[execution-worker] self-healing-lite failed:", e);

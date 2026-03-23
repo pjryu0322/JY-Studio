@@ -10,6 +10,40 @@ import {
   taskFlowStatusLabel,
 } from "@/lib/ui/taskFlowPresentation";
 
+function parseAutoHealingMeta(task: {
+  name: string;
+  changeReason: string | null;
+  taskKind: string;
+}): { failureType?: string; strategy?: string } {
+  if (task.taskKind !== "AUTO_HEALING") return {};
+
+  // New format: AUTO_HEALING:<failureTypeKey>:<strategy>:<jobId>
+  if (task.changeReason?.startsWith("AUTO_HEALING:")) {
+    const parts = task.changeReason.split(":");
+    if (parts.length >= 4) {
+      return { failureType: parts[1], strategy: parts[2] };
+    }
+    // Legacy format: AUTO_HEALING:<failureTypeKey>:<jobId>
+    if (parts.length === 3) {
+      return { failureType: parts[1] };
+    }
+  }
+
+  // Name format (Phase 5-2): [AUTO][STRATEGY] Recover from FAILURE_TYPE
+  const m1 = task.name.match(/^\[AUTO\]\[([^\]]+)\]\s*Recover from\s+(.+)$/);
+  if (m1) {
+    return { strategy: m1[1], failureType: m1[2] };
+  }
+
+  // Name format (legacy): [AUTO] Recover from FAILURE_TYPE
+  const m2 = task.name.match(/^\[AUTO\]\s*Recover from\s+(.+)$/);
+  if (m2) {
+    return { failureType: m2[1] };
+  }
+
+  return {};
+}
+
 export type TaskPromptItem = {
   id: string;
   taskId: string;
@@ -320,6 +354,11 @@ export function TaskListSection({
             const parentName = task.parentTaskId
               ? sortedTasks.find((t) => t.id === task.parentTaskId)?.name ?? task.parentTaskId
               : null;
+            const autoMeta = parseAutoHealingMeta({
+              name: task.name,
+              changeReason: task.changeReason,
+              taskKind,
+            });
             const badge = taskFlowBadgeColors(flow);
             const flowLabel = taskFlowStatusLabel(flow);
             const isDragOver = dragOverId === task.id && draggingId !== task.id;
@@ -442,7 +481,17 @@ export function TaskListSection({
                     </span>
                     <strong style={{ fontSize: 16, flex: "1 1 160px" }}>
                       {isAutoHealing ? "⚙️ " : null}
-                      {task.name}
+                      {isAutoHealing && autoMeta.strategy ? (
+                        <span>
+                          [{autoMeta.strategy}] {" "}
+                          {`Recover from ${autoMeta.failureType ?? "UNKNOWN"}`}
+                        </span>
+                      ) : isAutoHealing && autoMeta.failureType ? (
+                        <span>{`[AUTO] Recover from ${autoMeta.failureType}`}</span>
+                      ) : (
+                        task.name
+                      )}
+                      {!isAutoHealing ? task.name : null}
                     </strong>
                     <span
                       style={{
@@ -485,7 +534,7 @@ export function TaskListSection({
                           border: "1px solid #90caf9",
                         }}
                       >
-                        ⚙ AUTO
+                        ⚙ {autoMeta.strategy ? `[${autoMeta.strategy}]` : "[AUTO]"}
                       </span>
                     ) : null}
                     {parentTaskButton}

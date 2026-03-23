@@ -25,23 +25,79 @@ function stageLabel(stage: string): string {
 }
 
 function parseSelfHealingMessage(message: string): {
-  created?: boolean;
-  taskId?: string;
+  created: boolean | null;
+  failureType?: string;
+  strategies: string[];
+  createdTasks: Array<{ strategy: string; taskId: string }>;
   reason?: string;
-  action?: string;
 } {
-  const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
-  const out: {
-    created?: boolean;
-    taskId?: string;
-    reason?: string;
-    action?: string;
-  } = {};
+  const lines = message
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .map((l) => l.trim())
+    .filter(Boolean);
 
+  const out: {
+    created: boolean | null;
+    failureType?: string;
+    strategies: string[];
+    createdTasks: Array<{ strategy: string; taskId: string }>;
+    reason?: string;
+  } = {
+    created: null,
+    strategies: [],
+    createdTasks: [],
+  };
+
+  let inCreatedTasks = false;
   for (const line of lines) {
+    if (line.startsWith("Task 생성됨")) {
+      out.created = true;
+      inCreatedTasks = false;
+      continue;
+    }
+    if (line.startsWith("생성 실패")) {
+      out.created = false;
+      const m = line.match(/생성 실패\s*\(([^)]+)\)/);
+      if (m?.[1]) out.reason = m[1];
+      inCreatedTasks = false;
+      continue;
+    }
+
+    const failureTypeLine = line.match(/^failureType:\s*(.+)$/i);
+    if (failureTypeLine?.[1]) {
+      out.failureType = failureTypeLine[1].trim();
+      continue;
+    }
+
+    const strategiesLine = line.match(/^strategies:\s*(.+)$/i);
+    if (strategiesLine?.[1]) {
+      out.strategies = strategiesLine[1]
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      continue;
+    }
+
+    if (line === "createdTasks:" || line.toLowerCase() === "createdtasks:") {
+      inCreatedTasks = true;
+      continue;
+    }
+
+    if (inCreatedTasks && line.startsWith("-")) {
+      // - STRATEGY: taskId
+      const m = line.match(/^-+\s*([^:]+):\s*(.+)$/);
+      if (m?.[1] && m?.[2]) {
+        out.createdTasks.push({ strategy: m[1].trim(), taskId: m[2].trim() });
+      }
+      continue;
+    }
+
+    // backward compatibility (Phase 5-0/5-1 single strategy)
     if (line.startsWith("Task 생성됨:")) {
       out.created = true;
-      out.taskId = line.replace("Task 생성됨:", "").trim();
+      const taskId = line.replace("Task 생성됨:", "").trim();
+      out.createdTasks.push({ strategy: "UNKNOWN", taskId });
       continue;
     }
     if (line.startsWith("Task 생성 불가:")) {
@@ -50,7 +106,8 @@ function parseSelfHealingMessage(message: string): {
       continue;
     }
     if (line.toLowerCase().startsWith("action:")) {
-      out.action = line.replace(/^action:/i, "").trim();
+      const action = line.replace(/^action:/i, "").trim();
+      out.strategies = action ? [action] : [];
       continue;
     }
   }
@@ -196,7 +253,10 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                 {group.events.map((ev, idx) => {
                   const color = group.stage === "SELF_HEALING" ? AUTO_HEALING_COLOR : statusColor(ev.status);
                   const durationText = ev.durationMs == null ? null : `${ev.durationMs}ms`;
-                  const parsed = group.stage === "SELF_HEALING" && ev.message ? parseSelfHealingMessage(ev.message) : null;
+                  const parsed =
+                    group.stage === "SELF_HEALING" && ev.message
+                      ? parseSelfHealingMessage(ev.message)
+                      : null;
                   return (
                     <div
                       key={`${group.stage}-${ev.status}-${ev.createdAt}-${idx}`}
@@ -230,28 +290,54 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                               <>
                                 {parsed?.created != null ? (
                                   parsed.created ? (
-                                    <div>
+                                    <div style={{ fontWeight: 800 }}>
                                       Task 생성됨{" "}
-                                      {parsed.taskId ? (
-                                        <span style={{ color: AUTO_HEALING_COLOR, fontWeight: 700 }}>
-                                          (taskId: {parsed.taskId})
-                                        </span>
-                                      ) : null}
+                                      <span style={{ color: AUTO_HEALING_COLOR }}>
+                                        ({parsed.createdTasks.length} tasks)
+                                      </span>
                                     </div>
                                   ) : (
-                                    <div>
+                                    <div style={{ fontWeight: 800 }}>
                                       생성 실패{" "}
                                       {parsed.reason ? (
-                                        <span style={{ color: AUTO_HEALING_COLOR, fontWeight: 700 }}>
-                                          ({parsed.reason})
-                                        </span>
+                                        <span style={{ color: AUTO_HEALING_COLOR }}>{parsed.reason}</span>
                                       ) : null}
                                     </div>
                                   )
                                 ) : null}
-                                {parsed?.action ? (
-                                  <div style={{ color: "#1d4ed8" }}>
-                                    action: <span style={{ fontWeight: 700 }}>{parsed.action}</span>
+
+                                {parsed?.failureType ? (
+                                  <div style={{ marginTop: 2 }}>
+                                    failureType:{" "}
+                                    <span style={{ fontWeight: 700, color: AUTO_HEALING_COLOR }}>
+                                      {parsed.failureType}
+                                    </span>
+                                  </div>
+                                ) : null}
+
+                                {parsed?.strategies?.length ? (
+                                  <div style={{ marginTop: 2 }}>
+                                    strategies:{" "}
+                                    <span style={{ fontWeight: 800, color: "#1d4ed8" }}>
+                                      {parsed.strategies.join(", ")}
+                                    </span>
+                                  </div>
+                                ) : null}
+
+                                {parsed?.createdTasks?.length ? (
+                                  <div style={{ marginTop: 6, color: "#333" }}>
+                                    <div style={{ fontWeight: 800, color: "#1d4ed8" }}>Created Tasks</div>
+                                    <div style={{ marginTop: 3 }}>
+                                      {parsed.createdTasks.map((t, i) => (
+                                        <div key={`${t.strategy}-${t.taskId}-${i}`}>
+                                          - <span style={{ fontWeight: 800 }}>{t.strategy}</span> (taskId:{" "}
+                                          <span style={{ color: AUTO_HEALING_COLOR, fontWeight: 800 }}>
+                                            {t.taskId}
+                                          </span>
+                                          )
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 ) : null}
                               </>
