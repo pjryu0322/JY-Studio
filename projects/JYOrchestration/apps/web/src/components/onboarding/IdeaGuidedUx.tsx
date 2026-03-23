@@ -186,7 +186,15 @@ export function IdeaGuidedUx({
             marginBottom: 8,
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#37474f" }}>진행 단계</span>
+          <div style={{ width: "100%" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#37474f" }}>진행 단계</span>
+            <span
+              style={{ display: "block", fontSize: 11, color: "#90a4ae", marginTop: 4 }}
+              aria-hidden
+            >
+              지금 할 일은 아래 파란 상자입니다.
+            </span>
+          </div>
           {snapshot.steps.map((s) => {
             const label = IDEA_UX_STEP_LABELS[s.id];
             const isNextPeek = nextStepHighlight === s.id && s.status === "not_started";
@@ -199,7 +207,7 @@ export function IdeaGuidedUx({
             return (
               <span
                 key={s.id}
-                title={`${label.title} (${s.status})`}
+                title={label.title}
                 style={{
                   fontSize: 11,
                   padding: "4px 8px",
@@ -247,7 +255,7 @@ export function IdeaGuidedUx({
             checked={recommendedMode}
             onChange={(e) => persistRecommended(e.target.checked)}
           />
-          추천 모드 (Action Panel 중심 · 고급 기능은 접어 둠)
+          간단 안내 모드 — 한 번에 하나씩, 아래만 따라가면 됩니다
         </label>
       </nav>
 
@@ -261,17 +269,17 @@ export function IdeaGuidedUx({
           background: "linear-gradient(180deg, #f5f9ff 0%, #fff 55%)",
           boxShadow: "0 4px 18px rgba(21,101,192,0.08)",
         }}
-        aria-label="다음 행동"
+        aria-label="지금 할 일"
       >
         <p style={{ margin: "0 0 4px 0", fontSize: 12, color: "#1565c0", fontWeight: 700 }}>
           현재 단계 · {IDEA_UX_STEP_LABELS[snapshot.currentStep].title}
           {snapshot.allComplete ? " (완료)" : ""}
         </p>
-        <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#546e7a", lineHeight: 1.5 }}>
-          {failureBlocksPrimary && failureAssist
-            ? failureAssist.shortCause
-            : primary.description}
-        </p>
+        {!failureAssist || failureAssist.kind === "generic" ? (
+          <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#546e7a", lineHeight: 1.5 }}>
+            {primary.description}
+          </p>
+        ) : null}
 
         {failureAssist ? (
           <div
@@ -336,7 +344,7 @@ export function IdeaGuidedUx({
               onClick={() =>
                 onPrimaryAction({
                   id: "follow_up",
-                  label: "보완 작업 생성",
+                  label: "추가 할 일 만들기",
                   description: "",
                   taskId: failureAssist.taskId,
                 })
@@ -352,7 +360,7 @@ export function IdeaGuidedUx({
                 cursor: actionBusy ? "not-allowed" : "pointer",
               }}
             >
-              보완 작업 생성
+              추가 할 일 만들기
             </button>
           </div>
         ) : null}
@@ -365,7 +373,7 @@ export function IdeaGuidedUx({
               onClick={() =>
                 onPrimaryAction({
                   id: "retry_git_apply",
-                  label: "Git 반영 재시도",
+                  label: "다시 반영하기",
                   description: "",
                   gitChangeRequestId: failureAssist.gitChangeRequestId,
                 })
@@ -381,7 +389,7 @@ export function IdeaGuidedUx({
                 cursor: actionBusy ? "not-allowed" : "pointer",
               }}
             >
-              {actionBusy ? "처리 중…" : "Git 반영 재시도"}
+              {actionBusy ? "처리 중…" : "다시 반영하기"}
             </button>
             <button
               type="button"
@@ -389,7 +397,7 @@ export function IdeaGuidedUx({
               onClick={() =>
                 onPrimaryAction({
                   id: "scroll_git",
-                  label: "Git 영역으로 이동",
+                  label: "저장소 반영 화면으로 이동",
                   description: "",
                 })
               }
@@ -404,7 +412,7 @@ export function IdeaGuidedUx({
                 cursor: "pointer",
               }}
             >
-              Git 영역으로 이동
+              자세한 화면 보기
             </button>
           </div>
         ) : null}
@@ -473,14 +481,14 @@ export function IdeaGuidedUx({
             color: "#37474f",
           }}
         >
-          <span style={{ fontWeight: 600, color: "#546e7a", width: "100%" }}>완료 체크</span>
-          <span>{m.specUploaded ? "✔" : "○"} 스펙 업로드</span>
-          <span>{m.parsed ? "✔" : "○"} 파싱</span>
-          <span>{m.tasksCreated ? "✔" : "○"} Task 생성</span>
-          <span>{m.promptsReady ? "✔" : "○"} 프롬프트</span>
-          <span>{m.runSucceeded ? "✔" : "○"} 실행 성공</span>
-          <span>{m.gitApplied ? "✔" : "○"} Git 반영</span>
-          <span>{m.prLinked ? "✔" : "○"} PR 연결</span>
+          <span style={{ fontWeight: 600, color: "#546e7a", width: "100%" }}>지금까지 한 일</span>
+          <span>{m.specUploaded ? "✔" : "○"} 아이디어 문서 올림</span>
+          <span>{m.parsed ? "✔" : "○"} 문서 내용 정리됨</span>
+          <span>{m.tasksCreated ? "✔" : "○"} 할 일 목록 있음</span>
+          <span>{m.promptsReady ? "✔" : "○"} 실행 지침 준비됨</span>
+          <span>{m.runSucceeded ? "✔" : "○"} 실행 한 번 성공</span>
+          <span>{m.gitApplied ? "✔" : "○"} 저장소에 반영됨</span>
+          <span>{m.prLinked ? "✔" : "○"} 팀과 연결됨</span>
         </div>
       </section>
     </>

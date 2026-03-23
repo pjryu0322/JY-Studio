@@ -540,19 +540,19 @@ export default function ProjectDetailPage() {
     if (latestFailed) {
       const t = tasks.find((x) => x.id === latestFailed.taskId);
       const shortCause = t
-        ? `「${t.name}」실행이 실패했습니다.`
-        : "Task 실행이 실패했습니다.";
+        ? `「${t.name}」을(를) 끝내지 못했습니다.`
+        : "자동 실행이 끝나지 않았습니다.";
       const detailLines = [
         ...ideaUxFailureLines,
         ...(latestFailed.resultText?.trim()
           ? [
-              `실행 결과(일부): ${latestFailed.resultText.slice(0, 240)}${latestFailed.resultText.length > 240 ? "…" : ""}`,
+              `시스템 메시지(일부): ${latestFailed.resultText.slice(0, 240)}${latestFailed.resultText.length > 240 ? "…" : ""}`,
             ]
           : []),
       ].filter(Boolean);
       return {
         kind: "run_failed",
-        headline: "실행 실패",
+        headline: "실행이 끝나지 않았습니다",
         shortCause,
         detailLines,
         taskId: latestFailed.taskId,
@@ -566,8 +566,8 @@ export default function ProjectDetailPage() {
       }
       return {
         kind: "git_failed",
-        headline: "Git 반영 실패",
-        shortCause: "Git 반영이 완료되지 않았습니다. 재시도하거나 로그를 확인하세요.",
+        headline: "저장소에 반영하지 못했습니다",
+        shortCause: "아래에서 다시 시도하거나, 자세히 보기로 원인을 확인하세요.",
         detailLines: lines,
         gitChangeRequestId: failedGit.id,
       };
@@ -575,7 +575,7 @@ export default function ProjectDetailPage() {
     if (ideaUxFailureLines.length > 0) {
       return {
         kind: "generic",
-        headline: "문제 발생",
+        headline: "잠깐 확인이 필요합니다",
         shortCause: ideaUxFailureLines[0].slice(0, 160),
         detailLines: ideaUxFailureLines,
       };
@@ -2380,7 +2380,7 @@ export default function ProjectDetailPage() {
         <>
           <CollapsibleSection
             title="진행 현황 보기"
-            subtitle="프로젝트 정보·실행 요약"
+            subtitle="이 프로젝트가 어디까지 왔는지 한눈에"
             defaultOpen={false}
             open={progressPanelOpen}
             onOpenChange={setProgressPanelOpen}
@@ -2398,8 +2398,8 @@ export default function ProjectDetailPage() {
             ) : null}
           </CollapsibleSection>
           <CollapsibleSection
-            title="고급 보기"
-            subtitle="업로드·Task·Git·감사 등 전체 기능"
+            title="전체 기능 펼치기"
+            subtitle="문서 업로드, 실행, 저장소 반영, 기록 보기 등"
             defaultOpen={false}
             open={advancedPanelOpen}
             onOpenChange={setAdvancedPanelOpen}

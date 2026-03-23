@@ -30,9 +30,9 @@ export const IDEA_UX_STEP_LABELS: Record<
   2: { title: "기능 정의", short: "기능 정의" },
   3: { title: "작업 생성", short: "작업 생성" },
   4: { title: "실행", short: "실행" },
-  5: { title: "코드 생성", short: "코드 생성" },
-  6: { title: "Git 반영", short: "Git 반영" },
-  7: { title: "PR / 협업", short: "PR" },
+  5: { title: "저장 준비", short: "저장 준비" },
+  6: { title: "저장소에 반영", short: "저장소" },
+  7: { title: "팀과 공유", short: "공유" },
 };
 
 export type IdeaUxStepStatus = "not_started" | "current" | "done";
@@ -271,7 +271,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
   let primaryAction: IdeaUxPrimaryAction = {
     id: "scroll_upload",
     label: "아이디어 입력",
-    description: "스펙 파일을 올려 아이디어를 구체화하세요.",
+    description: "아이디어를 담은 문서를 올리면 다음 단계로 넘어갑니다.",
   };
   let scrollAnchor = IDEA_UX_ANCHORS[1];
 
@@ -283,13 +283,13 @@ export function computeIdeaGuidedUxSnapshot(input: {
       primaryAction = {
         id: "scroll_upload",
         label: "스펙 업로드",
-        description: "아래에서 스펙 파일을 선택해 업로드하세요.",
+        description: "아래에서 문서 파일을 선택해 올려 주세요.",
       };
     } else {
       primaryAction = {
         id: "scroll_upload",
         label: "업로드 영역 확인",
-        description: "PLANNER·OWNER 권한이 필요합니다. 담당자에게 요청하세요.",
+        description: "문서를 올릴 수 있는 권한이 필요합니다. 담당자에게 부탁하세요.",
       };
     }
   } else if (!hasParsedSpec(uploadHistory)) {
@@ -300,20 +300,20 @@ export function computeIdeaGuidedUxSnapshot(input: {
       primaryAction = {
         id: "scroll_history",
         label: "업로드 이력 보기",
-        description: "REVIEWER 이상에서 Parsing을 실행할 수 있습니다.",
+        description: "문서를 읽고 정리하는 작업은 검토 권한이 있는 분만 할 수 있습니다.",
       };
     } else if (up) {
       primaryAction = {
         id: "run_parse",
-        label: "문서 파싱 실행",
-        description: "업로드된 스펙을 파싱해 기능 정의를 완료하세요.",
+        label: "문서 내용 정리하기",
+        description: "올린 문서를 읽어 기능 목록으로 정리합니다.",
         uploadId: up,
       };
     } else {
       primaryAction = {
         id: "scroll_history",
         label: "업로드 이력으로 이동",
-        description: "파싱 가능한 업로드 항목을 확인하세요.",
+        description: "아직 정리되지 않은 문서가 있는지 목록에서 확인하세요.",
       };
     }
   } else if (tasks.length === 0) {
@@ -325,20 +325,20 @@ export function computeIdeaGuidedUxSnapshot(input: {
       primaryAction = {
         id: "scroll_history",
         label: "업로드 이력 보기",
-        description: "Task 생성은 REVIEWER 이상 권한이 필요합니다.",
+        description: "할 일 목록 만들기는 검토 권한이 있는 분만 할 수 있습니다.",
       };
     } else if (parsedId) {
       primaryAction = {
         id: "generate_tasks",
-        label: "Task 생성하기",
-        description: "파싱된 스펙에서 실행 가능한 작업 목록을 만드세요.",
+        label: "할 일 목록 만들기",
+        description: "정리된 내용을 바탕으로 실제로 할 일 목록을 만듭니다.",
         uploadId: parsedId,
       };
     } else {
       primaryAction = {
         id: "scroll_history",
         label: "업로드 이력으로 이동",
-        description: "Task 생성할 업로드를 선택하세요.",
+        description: "목록에서 문서를 선택해 주세요.",
       };
     }
   } else {
@@ -349,14 +349,14 @@ export function computeIdeaGuidedUxSnapshot(input: {
       if (!input.canReview) {
         primaryAction = {
           id: "scroll_tasks",
-          label: "Task 목록 보기",
-          description: "프롬프트 생성은 REVIEWER 이상에서 가능합니다.",
+          label: "할 일 목록 보기",
+          description: "실행 지침 만들기는 검토 권한이 있는 분만 할 수 있습니다.",
         };
       } else {
         primaryAction = {
           id: "generate_prompt",
-          label: "프롬프트 생성",
-          description: `「${tp.name}」에 대한 프롬프트를 만든 뒤 실행 단계로 넘어가세요.`,
+          label: "실행 지침 만들기",
+          description: `「${tp.name}」에 대해 자동 실행에 쓸 안내 문장을 만듭니다.`,
           taskId: tp.id,
         };
       }
@@ -367,8 +367,8 @@ export function computeIdeaGuidedUxSnapshot(input: {
         scrollAnchor = IDEA_UX_ANCHORS[4];
         primaryAction = {
           id: "mark_ready_for_git",
-          label: "Git 반영 준비하기",
-          description: "완료된 Run을 Git 반영 준비(READY_FOR_GIT)로 표시하세요.",
+          label: "저장 준비하기",
+          description: "끝난 실행을 다음 단계(저장소에 반영)로 넘길 준비를 합니다.",
           taskId: markReady.taskId,
         };
       } else if (markReady && !input.canOperate) {
@@ -376,8 +376,8 @@ export function computeIdeaGuidedUxSnapshot(input: {
         scrollAnchor = IDEA_UX_ANCHORS[4];
         primaryAction = {
           id: "scroll_tasks",
-          label: "Task 목록 보기",
-          description: "OPERATOR 이상에서 Git 반영 준비를 진행할 수 있습니다.",
+          label: "할 일 목록 보기",
+          description: "저장 준비는 실행 권한이 있는 분만 할 수 있습니다.",
         };
       } else {
         const needRun = firstTaskNeedingRun(tasks, taskRunMap);
@@ -388,14 +388,14 @@ export function computeIdeaGuidedUxSnapshot(input: {
           if (!input.canOperate) {
             primaryAction = {
               id: "scroll_tasks",
-              label: "Task 목록 보기",
-              description: "Run 실행은 OPERATOR 이상에서 가능합니다.",
+              label: "할 일 목록 보기",
+              description: "자동 실행은 실행 권한이 있는 분만 할 수 있습니다.",
             };
           } else {
             primaryAction = {
               id: "run_task",
-              label: "Run 실행",
-              description: `「${needRun.name}」Task를 실행해 결과를 만드세요.`,
+              label: "자동 실행하기",
+              description: `「${needRun.name}」을(를) 실행해 결과를 만듭니다.`,
               taskId: needRun.id,
             };
           }
@@ -406,7 +406,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
             primaryAction = {
               id: "scroll_tasks",
               label: "실행 상태 확인",
-              description: "Run이 끝나면 자동으로 다음 안내가 갱신됩니다. 목록에서 상태를 확인하세요.",
+              description: "실행이 끝나면 자동으로 다음 안내가 바뀝니다. 잠시만 기다려 주세요.",
             };
           } else {
             const reg = firstReadyForGitRunWithoutGcr(taskRuns, gitRequests);
@@ -416,14 +416,14 @@ export function computeIdeaGuidedUxSnapshot(input: {
               if (!input.canOperate) {
                 primaryAction = {
                   id: "scroll_tasks",
-                  label: "Task 목록 보기",
-                  description: "Git 요청 등록은 OPERATOR 이상에서 가능합니다.",
+                  label: "할 일 목록 보기",
+                  description: "저장소 반영 요청은 실행 권한이 있는 분만 할 수 있습니다.",
                 };
               } else {
                 primaryAction = {
                   id: "register_git_request",
-                  label: "Git 반영 요청",
-                  description: "준비된 Run에 대해 Git 반영 요청을 등록하세요.",
+                  label: "저장소 반영 요청",
+                  description: "준비된 실행에 대해 저장소에 반영해 달라고 요청합니다.",
                   taskId: reg.taskId,
                 };
               }
@@ -435,27 +435,27 @@ export function computeIdeaGuidedUxSnapshot(input: {
               if (!input.canOperate) {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "Git 반영 영역 보기",
-                  description: "Git 반영은 OPERATOR 이상에서 진행합니다.",
+                  label: "저장소 반영 화면 보기",
+                  description: "저장소 반영은 실행 권한이 있는 분만 할 수 있습니다.",
                 };
               } else if (failedId) {
                 primaryAction = {
                   id: "retry_git_apply",
-                  label: "Git 반영 재시도",
-                  description: "실패 원인을 확인한 뒤 재시도하세요.",
+                  label: "다시 반영하기",
+                  description: "아래에서 이유를 확인한 뒤 다시 시도해 보세요.",
                   gitChangeRequestId: failedId,
                 };
               } else if (applyTarget) {
                 primaryAction = {
                   id: "apply_git",
-                  label: "Git 반영",
-                  description: "정책에 따라 승인 후 반영을 실행하세요.",
+                  label: "저장소에 반영",
+                  description: "정해진 절차에 따라 승인 후 반영을 진행합니다.",
                   gitChangeRequestId: applyTarget.id,
                 };
               } else {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "Git 반영 영역 보기",
+                  label: "저장소 반영 화면 보기",
                   description: "승인 대기·적용 대기 항목을 확인하세요.",
                 };
               }
@@ -466,22 +466,22 @@ export function computeIdeaGuidedUxSnapshot(input: {
               if (!input.canOperate) {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "PR 영역 보기",
-                  description: "PR 작업은 OPERATOR 이상에서 진행할 수 있습니다.",
+                  label: "공유 화면 보기",
+                  description: "팀 공유·협업은 실행 권한이 있는 분만 할 수 있습니다.",
                 };
               } else if (prRow) {
                 primaryAction = {
                   id: "create_pr",
-                  label: "PR 생성",
+                  label: "팀에 공유 요청",
                   description:
-                    "Push가 완료된 요청입니다. GitHub PR을 생성하거나 아래 목록에서 동기화하세요.",
+                    "원격 저장소에 올라간 뒤입니다. 팀과 공유할 요청을 만들거나 연결하세요.",
                   gitChangeRequestId: prRow.id,
                 };
               } else {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "PR 상태 확인",
-                  description: "PR이 필요한 항목을 확인하세요.",
+                  label: "공유 상태 확인",
+                  description: "공유가 필요한 항목을 확인하세요.",
                 };
               }
             } else if (
@@ -496,16 +496,16 @@ export function computeIdeaGuidedUxSnapshot(input: {
                 id: "none",
                 label: "흐름 완료",
                 description:
-                  "주요 단계를 마쳤습니다. 필요 시 아래 「고급 보기」에서 세부 기능을 이용하세요.",
+                  "주요 단계를 마쳤습니다. 더 보기는 아래 「전체 기능 펼치기」에서 할 수 있습니다.",
               };
             } else {
               currentStep = 4;
               scrollAnchor = IDEA_UX_ANCHORS[4];
               primaryAction = {
                 id: "scroll_tasks",
-                label: "Task 목록 확인",
+                label: "할 일 목록 확인",
                 description:
-                  "Run 실행·완료 처리·Git 반영 준비 상태를 Task 목록에서 확인하세요.",
+                  "실행·완료·저장 준비 상태를 할 일 목록에서 확인하세요.",
               };
             }
           }
