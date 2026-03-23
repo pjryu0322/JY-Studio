@@ -49,6 +49,7 @@ type WorkerRuntimeState = {
 
 const globalWorkerState = globalThis as typeof globalThis & {
   __jyExecutionWorkerState?: WorkerRuntimeState;
+  __jyFailureClassifierSelfTestRan?: boolean;
 };
 
 function getWorkerState(): WorkerRuntimeState {
@@ -64,6 +65,110 @@ function getWorkerState(): WorkerRuntimeState {
     };
   }
   return globalWorkerState.__jyExecutionWorkerState;
+}
+
+async function maybeRunFailureClassifierSelfTest(): Promise<void> {
+  if (
+    globalWorkerState.__jyFailureClassifierSelfTestRan ||
+    process.env.NODE_ENV === "production" ||
+    process.env.EXECUTION_FAILURE_CLASSIFIER_TEST !== "1"
+  ) {
+    return;
+  }
+
+  globalWorkerState.__jyFailureClassifierSelfTestRan = true;
+
+  try {
+    const projectId = await prisma.project
+      .findFirst({
+        select: { id: true },
+      })
+      .then((r) => r?.id);
+
+    if (!projectId) {
+      logWorker("failure-classifier-selftest-skipped", { reason: "no project" });
+      return;
+    }
+
+    const executionJob = await prisma.executionJob.create({
+      data: {
+        projectId,
+        type: "git-apply",
+        status: "PENDING",
+        payload: {} as unknown as Prisma.InputJsonValue,
+      },
+      select: { id: true },
+    });
+
+    const jobId = executionJob.id;
+
+    const samples: Array<{
+      name: string;
+      message: string;
+      detailJson: Prisma.InputJsonValue;
+    }> = [
+      {
+        name: "cursor_failure",
+        message: "cursor_execution_failed",
+        detailJson: {
+          step: "EXECUTE",
+          attempt: 1,
+          error: "cursor_execution_failed",
+          rawError: "cursor_execution_failed",
+          errorCode: "CURSOR_EXECUTION_FAILED",
+        } as Prisma.InputJsonValue,
+      },
+      {
+        name: "git_apply_failure",
+        message: "git apply failed",
+        detailJson: {
+          step: "EXECUTE",
+          attempt: 1,
+          error: "git apply failed",
+          rawError: "git apply failed",
+        } as Prisma.InputJsonValue,
+      },
+      {
+        name: "pr_create_failure",
+        message: "pull request failed",
+        detailJson: {
+          step: "PR",
+          attempt: 1,
+          error: "pull request failed",
+          rawError: "pull request failed",
+        } as Prisma.InputJsonValue,
+      },
+    ];
+
+    for (const s of samples) {
+      await logEventSafe({
+        projectId,
+        executionJobId: jobId,
+        stage: "EXECUTE",
+        status: "FAILED",
+        message: s.message,
+        detailJson: s.detailJson,
+      });
+    }
+
+    const events = await prisma.executionEventLog.findMany({
+      where: { executionJobId: jobId },
+      orderBy: { createdAt: "asc" },
+      select: { message: true, stage: true, failureType: true },
+    });
+
+    logWorker("failure-classifier-selftest-result", {
+      jobId,
+      events: events.map((e) => ({
+        stage: e.stage,
+        message: e.message,
+        failureType: e.failureType,
+      })),
+    });
+    await prisma.executionJob.delete({ where: { id: jobId } });
+  } catch (e) {
+    console.error("[failure-classifier-selftest] failed:", e);
+  }
 }
 
 function logWorker(event: string, detail: Record<string, unknown>) {
@@ -113,17 +218,36 @@ async function runJobWithExecutionEvents(
   });
   try {
     const result = await executeJob(job);
-    await logEventSafe({
-      projectId: job.projectId,
-      executionJobId: job.id,
-      stage: "EXECUTE",
-      status: "SUCCESS",
-      startedAt: execStartedAt,
-      detailJson: {
-        attempt: getAttemptNumber(job),
-        type: job.type,
-      } as Prisma.InputJsonValue,
-    });
+    if (result && "ok" in result && result.ok) {
+      await logEventSafe({
+        projectId: job.projectId,
+        executionJobId: job.id,
+        stage: "EXECUTE",
+        status: "SUCCESS",
+        startedAt: execStartedAt,
+        detailJson: {
+          attempt: getAttemptNumber(job),
+          type: job.type,
+        } as Prisma.InputJsonValue,
+      });
+    } else {
+      const message = result?.message ?? "Execution failed";
+      await logEventSafe({
+        projectId: job.projectId,
+        executionJobId: job.id,
+        stage: "EXECUTE",
+        status: "FAILED",
+        message,
+        startedAt: execStartedAt,
+        detailJson: {
+          step: "EXECUTE",
+          attempt: getAttemptNumber(job),
+          type: job.type,
+          error: message,
+          rawError: message,
+        } as Prisma.InputJsonValue,
+      });
+    }
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -137,7 +261,9 @@ async function runJobWithExecutionEvents(
       detailJson: {
         attempt: getAttemptNumber(job),
         type: job.type,
+        step: "EXECUTE",
         error: message,
+        rawError: message,
       } as Prisma.InputJsonValue,
     });
     throw error;
@@ -445,9 +571,12 @@ async function markJobRetryOrFailed(
     status: "FAILED",
     message: "Execution failed",
     detailJson: {
+      step: "COMPLETE",
       attempt: failedCountAfterCurrentAttempt,
       type: job.type,
       error: message,
+      rawError: message,
+        errorCode: extractErrorCode(result),
     } as Prisma.InputJsonValue,
     startedAt: now,
   });
@@ -623,6 +752,8 @@ export function startExecutionWorker(options?: ExecutionWorkerOptions): {
       pollIntervalMs: state.pollIntervalMs,
     };
   }
+
+  void maybeRunFailureClassifierSelfTest();
 
   state.pollIntervalMs = Math.max(500, options?.pollIntervalMs ?? DEFAULT_POLL_MS);
   state.maxConcurrency = Math.max(1, options?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);

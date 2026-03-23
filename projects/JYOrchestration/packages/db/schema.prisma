@@ -92,6 +92,8 @@ model ExecutionEventLog {
   /** STARTED | SUCCESS | FAILED */
   status             String
   message            String?
+  /** failure classification for FAILED events */
+  failureType       String?
   detailJson         Json?
   durationMs         Int?
   createdAt          DateTime @default(now())
