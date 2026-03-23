@@ -1,6 +1,9 @@
 /**
  * 실행 큐 워커: PENDING → RUNNING → DONE/FAILED.
- * 실패 시 retryCount/maxRetries/availableAt 기반 backoff 재시도를 수행한다.
+ * retry 정책:
+ * - retryCount: 누적 실패 횟수
+ * - maxAttempts: 총 시도 횟수 상한(초기 실행 포함)
+ * - canRetry 조건: (retryCount + 1) < maxAttempts
  */
 import { randomUUID } from "node:crypto";
 import type { ExecutionJob, Prisma } from "@prisma/client";
@@ -65,6 +68,22 @@ function logWorker(event: string, detail: Record<string, unknown>) {
   console.info("[execution-worker]", event, detail);
 }
 
+function getAttemptNumber(job: Pick<ExecutionJob, "retryCount">): number {
+  return job.retryCount + 1;
+}
+
+function canRetry(job: Pick<ExecutionJob, "retryCount" | "maxAttempts">): boolean {
+  const failedCountAfterCurrentAttempt = job.retryCount + 1;
+  return failedCountAfterCurrentAttempt < job.maxAttempts;
+}
+
+function isRetryWaiting(
+  job: Pick<ExecutionJob, "status" | "availableAt">,
+  now = new Date()
+): boolean {
+  return job.status === "PENDING" && !!job.availableAt && job.availableAt > now;
+}
+
 function serializeApplyResult(r: RunGitApplyCoreResult): Prisma.InputJsonValue {
   if (r.ok) {
     return {
@@ -93,9 +112,10 @@ function serializeApplyResult(r: RunGitApplyCoreResult): Prisma.InputJsonValue {
   };
 }
 
-function computeBackoffSeconds(nextRetryCount: number): number {
-  if (nextRetryCount <= 1) return 10;
-  if (nextRetryCount === 2) return 30;
+function computeBackoffSeconds(nextAttemptNumber: number): number {
+  if (nextAttemptNumber <= 1) return 0;
+  if (nextAttemptNumber === 2) return 10;
+  if (nextAttemptNumber === 3) return 30;
   return 60;
 }
 
@@ -193,10 +213,11 @@ async function claimNextExecutableJob(workerId: string): Promise<ExecutionJob | 
   }
   logWorker("claimed", {
     jobId: job.id,
+    projectId: job.projectId,
     type: job.type,
     claimedBy: workerId,
     retryCount: job.retryCount,
-    maxRetries: job.maxRetries,
+    attempt: getAttemptNumber(job),
   });
   return job;
 }
@@ -222,6 +243,10 @@ async function executeJob(job: ExecutionJob): Promise<RunGitApplyCoreResult | St
 }
 
 async function markJobDone(jobId: string, result: RunGitApplyCoreResult | StructuredJobResult) {
+  const before = await prisma.executionJob.findUnique({
+    where: { id: jobId },
+    select: { id: true, projectId: true, type: true, retryCount: true },
+  });
   const serialized =
     "httpStatus" in result
       ? serializeApplyResult(result)
@@ -237,7 +262,15 @@ async function markJobDone(jobId: string, result: RunGitApplyCoreResult | Struct
       heartbeatAt: new Date(),
     },
   });
-  logWorker("completed", { jobId });
+  if (before) {
+    logWorker("completed", {
+      jobId: before.id,
+      projectId: before.projectId,
+      type: before.type,
+      retryCount: before.retryCount,
+      attempt: getAttemptNumber(before),
+    });
+  }
 }
 
 async function markJobRetryOrFailed(
@@ -245,22 +278,23 @@ async function markJobRetryOrFailed(
   result: RunGitApplyCoreResult | StructuredJobResult
 ) {
   const message = result.message;
-  const nextRetryCount = job.retryCount + 1;
-  const canRetry = nextRetryCount < job.maxRetries;
+  const failedCountAfterCurrentAttempt = job.retryCount + 1;
+  const shouldRetry = canRetry(job);
   const now = new Date();
   const serialized =
     "httpStatus" in result
       ? serializeApplyResult(result)
       : (result as Prisma.InputJsonValue);
 
-  if (canRetry) {
-    const waitSeconds = computeBackoffSeconds(nextRetryCount);
+  if (shouldRetry) {
+    const nextAttemptNumber = failedCountAfterCurrentAttempt + 1;
+    const waitSeconds = computeBackoffSeconds(nextAttemptNumber);
     const availableAt = new Date(now.getTime() + waitSeconds * 1000);
     await prisma.executionJob.update({
       where: { id: job.id },
       data: {
         status: "PENDING",
-        retryCount: nextRetryCount,
+        retryCount: failedCountAfterCurrentAttempt,
         lastError: message,
         result: serialized,
         error: null,
@@ -272,8 +306,11 @@ async function markJobRetryOrFailed(
     });
     logWorker("retry-scheduled", {
       jobId: job.id,
-      retryCount: nextRetryCount,
-      maxRetries: job.maxRetries,
+      projectId: job.projectId,
+      type: job.type,
+      retryCount: failedCountAfterCurrentAttempt,
+      attempt: nextAttemptNumber,
+      maxAttempts: job.maxAttempts,
       availableAt: availableAt.toISOString(),
       message,
     });
@@ -284,10 +321,10 @@ async function markJobRetryOrFailed(
     where: { id: job.id },
     data: {
       status: "FAILED",
-      retryCount: nextRetryCount,
+      retryCount: failedCountAfterCurrentAttempt,
       finishedAt: now,
       result: serialized,
-      error: `Execution failed after ${nextRetryCount} attempts`,
+      error: `Execution failed after ${failedCountAfterCurrentAttempt} attempts`,
       lastError: message,
       claimedBy: null,
       heartbeatAt: now,
@@ -295,8 +332,11 @@ async function markJobRetryOrFailed(
   });
   logWorker("failed-final", {
     jobId: job.id,
-    retryCount: nextRetryCount,
-    maxRetries: job.maxRetries,
+    projectId: job.projectId,
+    type: job.type,
+    retryCount: failedCountAfterCurrentAttempt,
+    attempt: failedCountAfterCurrentAttempt,
+    maxAttempts: job.maxAttempts,
     message,
   });
 }
@@ -325,6 +365,13 @@ export async function processExecutionJobById(jobId: string): Promise<void> {
 
   const job = await prisma.executionJob.findUnique({ where: { id: jobId } });
   if (!job) return;
+  logWorker("started", {
+    jobId: job.id,
+    projectId: job.projectId,
+    type: job.type,
+    retryCount: job.retryCount,
+    attempt: getAttemptNumber(job),
+  });
   try {
     const result = await executeJob(job);
     if (result.ok) {
@@ -350,6 +397,16 @@ export async function processExecutionQueue(maxJobs = 10, workerId = "manual-bat
     if (!next) {
       break;
     }
+    if (isRetryWaiting(next)) {
+      continue;
+    }
+    logWorker("started", {
+      jobId: next.id,
+      projectId: next.projectId,
+      type: next.type,
+      retryCount: next.retryCount,
+      attempt: getAttemptNumber(next),
+    });
     try {
       const result = await executeJob(next);
       if (result.ok) {
@@ -383,7 +440,17 @@ async function processLoopTick(): Promise<void> {
     for (let i = 0; i < availableSlots; i++) {
       const job = await claimNextExecutableJob(state.instanceId);
       if (!job) break;
+      if (isRetryWaiting(job)) {
+        continue;
+      }
       state.activeJobs.add(job.id);
+      logWorker("started", {
+        jobId: job.id,
+        projectId: job.projectId,
+        type: job.type,
+        retryCount: job.retryCount,
+        attempt: getAttemptNumber(job),
+      });
       void (async () => {
         const heartbeatTimer = setInterval(async () => {
           try {
@@ -444,6 +511,11 @@ export function startExecutionWorker(options?: ExecutionWorkerOptions): {
   }, state.pollIntervalMs);
   void processLoopTick();
   logWorker("started", {
+    jobId: "worker-runtime",
+    projectId: "all",
+    type: "worker",
+    retryCount: 0,
+    attempt: 0,
     instanceId: state.instanceId,
     pollIntervalMs: state.pollIntervalMs,
     maxConcurrency: state.maxConcurrency,

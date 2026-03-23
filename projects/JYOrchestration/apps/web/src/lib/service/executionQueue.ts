@@ -21,10 +21,15 @@ export type EnqueueResult =
 export type ExecutionQueueStatusSnapshot = {
   pending: number;
   running: number;
+  /** status=PENDING && availableAt > now */
   retryWaiting: number;
   failedRecent: number;
   mode: "db";
 };
+
+function logQueue(event: string, detail: Record<string, unknown>) {
+  console.info("[execution-worker]", event, detail);
+}
 
 export async function enqueueExecution(input: {
   projectId: string;
@@ -42,10 +47,12 @@ export async function enqueueExecution(input: {
       },
       select: { id: true },
     });
-    console.info("[execution-queue] enqueued", {
+    logQueue("enqueued", {
       jobId: row.id,
       projectId: input.projectId,
       type: input.type,
+      retryCount: 0,
+      attempt: 1,
     });
     return { queued: true, jobId: row.id };
   } catch (e) {

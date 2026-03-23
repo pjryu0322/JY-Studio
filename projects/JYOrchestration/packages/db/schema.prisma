@@ -52,13 +52,17 @@ model ExecutionJob {
   projectId  String
   /** git-apply | pipeline | cursor */
   type       String
-  /** PENDING | RUNNING | DONE | FAILED */
+  /** PENDING(실행 가능) | RUNNING | DONE | FAILED */
   status     String    @default("PENDING")
+  /** 누적 실패 횟수 */
   retryCount Int       @default(0)
-  maxRetries Int       @default(3)
+  /** 총 시도 횟수 상한(초기 실행 포함) */
+  maxAttempts Int      @default(3)
   payload    Json
   result     Json?
+  /** 최근 실행 실패 원인 (retry 중 갱신) */
   lastError  String?
+  /** status=PENDING 일 때, now 이후면 retry 대기 상태로 간주 */
   availableAt DateTime?
   claimedBy  String?
   heartbeatAt DateTime?
