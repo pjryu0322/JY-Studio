@@ -16,6 +16,7 @@ import {
 } from "@/lib/git-apply/runApplyCore";
 import { logExecutionEvent } from "@/lib/service/executionEventService";
 import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
+import { triggerSelfHealing } from "@/lib/service/selfHealingService";
 
 export type GitApplyExecutionPayload = RunGitApplyCoreBody & {
   actorUserId: string;
@@ -576,10 +577,30 @@ async function markJobRetryOrFailed(
       type: job.type,
       error: message,
       rawError: message,
-        errorCode: extractErrorCode(result),
+      errorCode: extractErrorCode(result),
     } as Prisma.InputJsonValue,
     startedAt: now,
   });
+
+  // FINAL FAILED 이후 Self-Healing 트리거.
+  // 기존 retry/backoff 상태 전이는 절대 건드리지 않고, 최종 FAILED 확정 뒤 side-effect를 최소화한다.
+  const lastEvent = await prisma.executionEventLog.findFirst({
+    where: { executionJobId: job.id, status: "FAILED" },
+    orderBy: { createdAt: "desc" },
+    select: { failureType: true, detailJson: true },
+  });
+
+  if (lastEvent?.failureType) {
+    try {
+      await triggerSelfHealing({
+        job,
+        failureType: String(lastEvent.failureType),
+        detailJson: lastEvent.detailJson,
+      });
+    } catch (e) {
+      console.error("[execution-worker] triggerSelfHealing failed:", e);
+    }
+  }
   logWorker("failed-final", {
     jobId: job.id,
     projectId: job.projectId,

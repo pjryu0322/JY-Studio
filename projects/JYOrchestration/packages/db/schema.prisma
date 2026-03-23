@@ -57,6 +57,8 @@ model ExecutionJob {
   status     String    @default("PENDING")
   /** 누적 실패 횟수 */
   retryCount Int       @default(0)
+  /** Self-healing 재시도 깊이 (무한 루프 방지) */
+  healingDepth Int    @default(0)
   /** 총 시도 횟수 상한(초기 실행 포함) */
   maxAttempts Int      @default(3)
   payload    Json

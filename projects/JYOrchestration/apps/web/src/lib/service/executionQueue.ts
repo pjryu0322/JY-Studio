@@ -35,6 +35,7 @@ export async function enqueueExecution(input: {
   projectId: string;
   type: ExecutionQueueJobType;
   payload: Prisma.InputJsonValue;
+  healingDepth?: number;
 }): Promise<EnqueueResult> {
   try {
     const row = await prisma.executionJob.create({
@@ -42,6 +43,7 @@ export async function enqueueExecution(input: {
         projectId: input.projectId,
         type: input.type,
         status: "PENDING",
+        healingDepth: input.healingDepth ?? 0,
         payload: input.payload,
         availableAt: new Date(),
       },

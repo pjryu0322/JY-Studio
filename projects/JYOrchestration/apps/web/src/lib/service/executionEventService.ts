@@ -9,7 +9,8 @@ export type ExecutionEventStage =
   | "APPLY"
   | "PR"
   | "RETRY"
-  | "COMPLETE";
+  | "COMPLETE"
+  | "SELF_HEALING";
 
 export type ExecutionEventStatus = "STARTED" | "SUCCESS" | "FAILED";
 
