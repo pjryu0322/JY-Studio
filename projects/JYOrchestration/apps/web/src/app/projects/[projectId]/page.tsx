@@ -51,6 +51,11 @@ import {
   GIT_PUSH_MODE_MANUAL_PUSH,
   normalizeGitApprovalModeForDisplay,
 } from "@/lib/git-apply/retry";
+import { IdeaGuidedUx } from "@/components/onboarding/IdeaGuidedUx";
+import {
+  computeIdeaGuidedUxSnapshot,
+  type IdeaUxPrimaryAction,
+} from "@/lib/onboarding/ideaGuidedUx";
 import { computeProjectGuidedFlowSnapshot } from "@/lib/onboarding/projectGuidedFlow";
 import { ProjectGuidedFlowPanel } from "@/components/onboarding/ProjectGuidedFlowPanel";
 
@@ -118,6 +123,8 @@ export default function ProjectDetailPage() {
   const [execSummaryLoading, setExecSummaryLoading] = useState(false);
   const [execSummaryError, setExecSummaryError] = useState<string | null>(null);
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
+  const [ideaUxRecommended, setIdeaUxRecommended] = useState(false);
+  const [ideaUxAdvanced, setIdeaUxAdvanced] = useState(false);
 
   const currentUser = useMemo(() => getCurrentMockUser(), []);
   const projectRole = useMemo(
@@ -465,6 +472,62 @@ export default function ProjectDetailPage() {
       }),
     [uploadHistory, tasks, taskPrompts, taskRuns, gitRequests]
   );
+
+  const ideaUxSnapshot = useMemo(
+    () =>
+      computeIdeaGuidedUxSnapshot({
+        uploadHistory,
+        tasks,
+        taskRuns,
+        gitRequests,
+        taskPromptMap,
+        taskRunMap,
+        canRegisterSpec: rbac.canEditSpec,
+        canReview: rbac.canReview,
+        canOperate: rbac.canOperate,
+      }),
+    [
+      uploadHistory,
+      tasks,
+      taskRuns,
+      gitRequests,
+      taskPromptMap,
+      taskRunMap,
+      rbac.canEditSpec,
+      rbac.canReview,
+      rbac.canOperate,
+    ]
+  );
+
+  const ideaUxFailureLines = useMemo(() => {
+    const lines: string[] = [];
+    if (gitApplyError) {
+      lines.push(gitApplyError);
+    }
+    if (uploadStatus === "error" && uploadMessage) {
+      lines.push(uploadMessage);
+    }
+    if (parseMessage && /실패|오류|denied|403|FAIL|실패했습니다/i.test(parseMessage)) {
+      lines.push(parseMessage);
+    }
+    if (taskMessage && /실패|오류|FAIL|실패했습니다/i.test(taskMessage)) {
+      lines.push(taskMessage);
+    }
+    if (promptMessage && /실패|오류|FAIL|실패했습니다/i.test(promptMessage)) {
+      lines.push(promptMessage);
+    }
+    return lines;
+  }, [gitApplyError, uploadStatus, uploadMessage, parseMessage, taskMessage, promptMessage]);
+
+  const ideaUxActionBusy =
+    parsingUploadId !== null ||
+    generatingTaskUploadId !== null ||
+    applyingGitRequestId !== null ||
+    registeringGitRequestRunId !== null ||
+    runningPromptId !== null ||
+    generatingPromptTaskId !== null ||
+    markingReadyTaskId !== null ||
+    gitPrBusyId !== null;
 
   const reloadTaskRuns = useCallback(async () => {
     if (!projectId) {
@@ -1460,6 +1523,79 @@ export default function ProjectDetailPage() {
     }
   }
 
+  function handleIdeaPrimaryAction(action: IdeaUxPrimaryAction) {
+    const scroll = (id: string) => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    switch (action.id) {
+      case "scroll_upload":
+        scroll("guided-flow-upload");
+        return;
+      case "scroll_history":
+        scroll("guided-flow-history");
+        return;
+      case "scroll_tasks":
+        scroll("guided-flow-tasks");
+        return;
+      case "scroll_git":
+        scroll("guided-flow-git");
+        return;
+      case "run_parse":
+        if (action.uploadId) {
+          void handleRunParse(action.uploadId);
+        }
+        return;
+      case "generate_tasks":
+        if (action.uploadId) {
+          void handleGenerateTasks(action.uploadId);
+        }
+        return;
+      case "generate_prompt":
+        if (action.taskId) {
+          void handleGenerateTaskPrompt(action.taskId);
+        }
+        return;
+      case "run_task":
+        if (action.taskId) {
+          void handleRunTask(action.taskId);
+        }
+        return;
+      case "mark_ready_for_git":
+        if (action.taskId) {
+          void handleMarkReadyForGit(action.taskId);
+        }
+        return;
+      case "register_git_request":
+        if (action.taskId) {
+          void handleRegisterGitRequest(action.taskId);
+        }
+        return;
+      case "apply_git":
+        if (action.gitChangeRequestId) {
+          void handleApplyGitRequest(action.gitChangeRequestId);
+        }
+        return;
+      case "retry_git_apply":
+        if (action.gitChangeRequestId) {
+          void handleRetryGitApply(action.gitChangeRequestId);
+        }
+        return;
+      case "create_pr":
+        if (action.gitChangeRequestId) {
+          void handleGitHubPrAction(action.gitChangeRequestId, "create");
+        }
+        return;
+      case "sync_pr":
+        if (action.gitChangeRequestId) {
+          void handleGitHubPrAction(action.gitChangeRequestId, "sync");
+        }
+        return;
+      case "none":
+      default:
+        return;
+    }
+  }
+
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
@@ -1482,11 +1618,23 @@ export default function ProjectDetailPage() {
         </div>
       ) : null}
       <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
+      {!loading && project && !errorMessage ? (
+        <IdeaGuidedUx
+          snapshot={ideaUxSnapshot}
+          recommendedMode={ideaUxRecommended}
+          onRecommendedModeChange={setIdeaUxRecommended}
+          showAdvancedUi={ideaUxAdvanced}
+          onShowAdvancedUiChange={setIdeaUxAdvanced}
+          failureLines={ideaUxFailureLines}
+          actionBusy={ideaUxActionBusy}
+          onPrimaryAction={handleIdeaPrimaryAction}
+        />
+      ) : null}
       <ProjectInfoCard
         project={project}
         currentUserRoleLabel={projectRole && projectId ? projectRole : null}
       />
-      {!loading && project ? (
+      {!loading && project && ideaUxAdvanced ? (
         <ProjectGuidedFlowPanel
           snapshot={guidedFlowSnapshot}
           canRegisterSpec={rbac.canEditSpec}
@@ -1494,20 +1642,24 @@ export default function ProjectDetailPage() {
           canOperate={rbac.canOperate}
         />
       ) : null}
-      {rbac.canOperate ? (
+      {rbac.canOperate && ideaUxAdvanced ? (
         <ExecutionObservabilityPanel
           data={execSummary}
           loading={execSummaryLoading}
           errorMessage={execSummaryError}
         />
       ) : null}
-      <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-        프로젝트 생성 시 생성자는 OWNER로 기록되며, 이후 PLANNER / REVIEWER / OPERATOR로 역할을 나눌 수
-        있습니다. 현재 사용자·멤버 목록은 mock 기준입니다.
-      </p>
-      {rbac.canManageMembers ? <ProjectMembersSection members={memberRows} /> : null}
-      {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
-      {rbac.canEditSpec ? <ProjectSpecPromptSection prompt={projectSpecPrompt} /> : null}
+      {ideaUxAdvanced ? (
+        <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+          프로젝트 생성 시 생성자는 OWNER로 기록되며, 이후 PLANNER / REVIEWER / OPERATOR로 역할을 나눌 수
+          있습니다. 현재 사용자·멤버 목록은 mock 기준입니다.
+        </p>
+      ) : null}
+      {rbac.canManageMembers && ideaUxAdvanced ? <ProjectMembersSection members={memberRows} /> : null}
+      {rbac.canEditSpec && ideaUxAdvanced ? <ProjectSpecGuideSection /> : null}
+      {rbac.canEditSpec && ideaUxAdvanced ? (
+        <ProjectSpecPromptSection prompt={projectSpecPrompt} />
+      ) : null}
       <div id="guided-flow-upload">
         {rbac.canEditSpec ? (
           <ProjectSpecUploadTestSection
