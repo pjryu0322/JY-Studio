@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { extractMainFeaturesFromFreeText } from "@/lib/project-spec/mockSpecExtract";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectSpecParse } from "@/lib/service/projectAccessGuard";
@@ -38,7 +39,15 @@ export async function POST(request: Request) {
     }
 
     const userId = getCurrentUserIdFromRequest(request);
-    await requireProjectSpecParse(upload.projectId, userId);
+    try {
+      await requireProjectSpecParse(upload.projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const contentText = (upload.contentText || "").trim();
     if (!contentText) {
@@ -65,11 +74,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const projectOverview = contentText.slice(0, 200);
+    const projectOverview = contentText.slice(0, 600);
+    const mainFeatures = extractMainFeaturesFromFreeText(contentText);
+    const constraints: string[] = [];
+    const lower = contentText.toLowerCase();
+    if (/password|비밀번호|bcrypt|oauth|jwt|세션/.test(lower)) {
+      constraints.push("인증·비밀번호는 안전한 방식(예: 해시 저장, HTTPS)을 전제로 설명할 것");
+    }
+    if (/offline|오프라인|pwa/.test(lower)) {
+      constraints.push("오프라인 요구가 있으면 범위에 명시");
+    }
     const parsedJson = {
       projectOverview,
-      mainFeatures: [] as string[],
-      constraints: [] as string[],
+      mainFeatures,
+      constraints,
       techStack: [] as string[],
     };
 

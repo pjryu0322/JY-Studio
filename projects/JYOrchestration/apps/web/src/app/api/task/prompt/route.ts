@@ -13,36 +13,75 @@ type CreateTaskPromptBody = {
   taskId?: string;
 };
 
-function buildTaskExecutionPrompt(task: {
-  id: string;
-  name: string;
-  description: string | null;
-  projectId: string;
-  projectSpecUploadId: string;
-}) {
-  return `# Task 실행 프롬프트
+const DEMO_APP_ROOT = "apps/web/src/app/note-demo";
+const DEMO_COMPONENTS = "apps/web/src/components/note-demo";
+
+function formatSpecContext(parsedJson: unknown): string {
+  if (parsedJson == null || typeof parsedJson !== "object") {
+    return "(ProjectSpec 요약 없음 — Task 설명만 따르세요.)";
+  }
+  const p = parsedJson as Record<string, unknown>;
+  const overview = typeof p.projectOverview === "string" ? p.projectOverview.trim() : "";
+  const features = Array.isArray(p.mainFeatures)
+    ? p.mainFeatures.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
+    : [];
+  const constraints = Array.isArray(p.constraints)
+    ? p.constraints.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
+    : [];
+  const lines: string[] = [];
+  if (overview) {
+    lines.push(`- 제품·아이디어 요약: ${overview.slice(0, 800)}`);
+  }
+  if (features.length > 0) {
+    lines.push(`- 기능·문장 목록:\n${features.map((f) => `  - ${f}`).join("\n")}`);
+  }
+  if (constraints.length > 0) {
+    lines.push(`- 제약·주의:\n${constraints.map((c) => `  - ${c}`).join("\n")}`);
+  }
+  return lines.length > 0 ? lines.join("\n") : "(ProjectSpec 필드가 비어 있습니다.)";
+}
+
+function buildTaskExecutionPrompt(
+  task: {
+    id: string;
+    name: string;
+    description: string | null;
+    projectId: string;
+    projectSpecUploadId: string;
+  },
+  specContext: string
+) {
+  return `# Task 실행 프롬프트 (Cursor에서 그대로 실행 가능하도록 작성됨)
 
 ## 작업명
 ${task.name}
 
-## 목표
-${task.description || "Task 설명이 비어 있으므로, ProjectSpec 문맥을 기준으로 작업 목표를 구체화하세요."}
+## 이번 Task에서 할 일
+${task.description || "Task 설명이 비어 있으면, 아래 ProjectSpec 요약과 작업명만으로 목표를 구체화하세요."}
+
+## ProjectSpec 맥락 (사용자가 올린 아이디어에서 추출)
+${specContext}
+
+## 구현 위치 (이 저장소 기준)
+- 데모·샘플 UI는 Next.js App Router 아래에 둡니다: \`${DEMO_APP_ROOT}/\`
+- 재사용 컴포넌트: \`${DEMO_COMPONENTS}/\` (없으면 생성)
+- JYOrchestration 본체(프로젝트 목록·권한·Git 파이프라인)는 깨지지 않게 두고, 위 경로에 **메모 앱 UI·로직**을 만듭니다.
 
 ## 수정 범위 제한
-- 프로젝트 범위: projects/JYOrchestration 내부만 수정
-- 다른 모노레포 프로젝트 수정 금지
-- 루트 설정 변경 금지
+- 모노레포에서 **projects/JYOrchestration** 아래만 변경 (다른 프로젝트 디렉터리 수정 금지)
+- 루트 package.json·타 프로젝트 건드리지 않기
+- “오케스트레이션 자동 실행기” 같은 메타 기능은 새로 넣지 않기
 
-## 완료 기준
-- Task 요구사항을 충족하는 코드 변경
-- 타입/린트 오류 없음
-- 변경 영향 범위 최소화
+## 완료 기준 (반드시 확인)
+- \`pnpm\` / \`npm\` 기준으로 **타입 오류·린트 오류 없음**
+- 로그인·저장이 요구된 Task면: **입력 검증**(빈 비밀번호, 저장 실패 시 사용자 메시지)까지 포함
+- 새 페이지는 \`${DEMO_APP_ROOT}/page.tsx\`에서 라우팅 가능하게 연결
 
-## 고정 제약
+## 메타 (시스템 ID — 삭제 금지)
 - projectId: ${task.projectId}
 - projectSpecUploadId: ${task.projectSpecUploadId}
 - taskId: ${task.id}
-- OpenAI/Cursor/Git 자동 실행 기능 추가 금지`;
+`;
 }
 
 export async function GET(request: NextRequest) {
@@ -135,6 +174,13 @@ export async function POST(request: Request) {
       },
     });
 
+    const specUpload = task
+      ? await prisma.projectSpecUpload.findUnique({
+          where: { id: task.projectSpecUploadId },
+          select: { parsedJson: true },
+        })
+      : null;
+
     if (!task) {
       return NextResponse.json(
         {
@@ -155,7 +201,8 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const promptText = buildTaskExecutionPrompt(task);
+    const specContext = formatSpecContext(specUpload?.parsedJson ?? null);
+    const promptText = buildTaskExecutionPrompt(task, specContext);
     const { saved, nextVersion, isRevision } = await prisma.$transaction(async (tx) => {
       const latest = await tx.taskPrompt.findFirst({
         where: { taskId: task.id },

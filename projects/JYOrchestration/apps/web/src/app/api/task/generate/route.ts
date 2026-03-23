@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import {
+  beginnerFriendlyTaskTitle,
+  orderFeaturesForImplementation,
+} from "@/lib/project-spec/mockSpecExtract";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectMember, requireTaskGenerate } from "@/lib/service/projectAccessGuard";
@@ -19,23 +23,23 @@ function buildMockTasks(parsedJson: unknown) {
   const parsed = (parsedJson ?? {}) as Record<string, unknown>;
   const projectOverview =
     typeof parsed.projectOverview === "string" ? parsed.projectOverview.trim() : "";
-  const mainFeatures = toTextArray(parsed.mainFeatures);
+  const mainFeatures = orderFeaturesForImplementation(toTextArray(parsed.mainFeatures));
   const constraints = toTextArray(parsed.constraints);
 
   const taskSeeds: Array<{ name: string; description: string }> = [];
 
   if (projectOverview) {
     taskSeeds.push({
-      name: "프로젝트 초기 구조 설계",
-      description: `ProjectOverview 기반 초기 설계: ${projectOverview.slice(0, 180)}`,
+      name: "① 아이디어·화면 범위 잡기",
+      description: `무엇을 만들지 한눈에 보이게 정리합니다. 개요: ${projectOverview.slice(0, 220)}`,
     });
   }
 
   if (mainFeatures.length > 0) {
     mainFeatures.forEach((feature, index) => {
       taskSeeds.push({
-        name: `핵심 기능 구현 ${index + 1}`,
-        description: `Feature 반영 작업: ${feature}`,
+        name: beginnerFriendlyTaskTitle(feature, index),
+        description: `다음 요구를 구현합니다: ${feature}`,
       });
     });
   }
@@ -43,8 +47,8 @@ function buildMockTasks(parsedJson: unknown) {
   if (constraints.length > 0) {
     constraints.forEach((constraint, index) => {
       taskSeeds.push({
-        name: `제약조건 반영 ${index + 1}`,
-        description: `Constraint 반영 작업: ${constraint}`,
+        name: `주의할 점 반영 ${index + 1}`,
+        description: `요구사항에 맞게 반영: ${constraint}`,
       });
     });
   }
@@ -52,16 +56,16 @@ function buildMockTasks(parsedJson: unknown) {
   if (taskSeeds.length === 0) {
     taskSeeds.push(
       {
-        name: "프로젝트 초기 구조 설계",
-        description: "ProjectSpec 기반 초기 구조를 정의합니다.",
+        name: "① 만들 제품 범위 정하기",
+        description: "ProjectSpec에 무엇을 만들지 적어 두었는지 확인하고, 화면 단위로 나눕니다.",
       },
       {
-        name: "핵심 기능 구현",
-        description: "ProjectSpec에 명시된 핵심 기능 구현 범위를 정리합니다.",
+        name: "② 핵심 화면·기능 만들기",
+        description: "사용자가 가장 먼저 쓰는 화면과 동작부터 구현합니다.",
       },
       {
-        name: "제약조건 반영",
-        description: "ProjectSpec 제약조건을 개발 계획에 반영합니다.",
+        name: "③ 저장·오류 처리 다듬기",
+        description: "데이터가 남는지, 잘못 입력했을 때 안내가 있는지 확인합니다.",
       }
     );
   }
