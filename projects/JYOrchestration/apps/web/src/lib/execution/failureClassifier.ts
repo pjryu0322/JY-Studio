@@ -89,12 +89,12 @@ export function classifyFailure(input: {
   // 1) 패턴 기반 우선 매칭 (confidence: 0.8)
   // 우선순위는 "더 구체적인 실패"가 먼저 잡히도록 배열 순서로 결정한다.
   const priority: FailureType[] = [
+    FAILURE_TYPES.AUTH_ERROR,
+    FAILURE_TYPES.NETWORK_ERROR,
     FAILURE_TYPES.CURSOR_EXECUTION_FAILED,
     FAILURE_TYPES.GIT_CONFLICT,
     FAILURE_TYPES.GIT_APPLY_FAILED,
     FAILURE_TYPES.PR_CREATION_FAILED,
-    FAILURE_TYPES.AUTH_ERROR,
-    FAILURE_TYPES.NETWORK_ERROR,
   ];
 
   for (const type of priority) {
