@@ -67,7 +67,7 @@ export function GitGateControls({
   const [error, setError] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  const mode = String(gitApprovalMode ?? "AUTO_APPLY").trim();
+  const mode = String(gitApprovalMode ?? "NO_APPROVAL").trim();
   if (mode !== GIT_APPROVAL_MODE_MANUAL_APPROVAL) {
     return null;
   }

@@ -48,12 +48,20 @@ export async function GET(request: NextRequest) {
     }
 
     const userId = getCurrentUserIdFromRequest(request);
-    await requireProjectRole(
-      projectId,
-      userId,
-      ["OWNER", "PLANNER", "REVIEWER"],
-      "업로드 메타데이터 조회는 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
-    );
+    try {
+      await requireProjectRole(
+        projectId,
+        userId,
+        ["OWNER", "PLANNER", "REVIEWER"],
+        "업로드 메타데이터 조회는 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
+      );
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const uploads = await prisma.projectSpecUpload.findMany({
       where: { projectId },

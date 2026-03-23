@@ -73,7 +73,15 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = getCurrentUserIdFromRequest(request);
-    await requireProjectSpecUpload(projectId, userId);
+    try {
+      await requireProjectSpecUpload(projectId, userId);
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
+    }
 
     const sourceType = inferSourceType(file);
     let contentText: string | null = null;

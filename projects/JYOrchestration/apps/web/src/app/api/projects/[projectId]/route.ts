@@ -4,11 +4,16 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import {
   GIT_APPROVAL_MODE_AUTO_APPLY,
   GIT_APPROVAL_MODE_MANUAL_APPROVAL,
+  GIT_APPROVAL_MODE_NO_APPROVAL,
+  GIT_PUSH_MODE_AUTO_PUSH,
+  GIT_PUSH_MODE_MANUAL_PUSH,
+  normalizeGitApprovalModeForStorage,
 } from "@/lib/git-apply/retry";
 import { prisma } from "@/lib/prisma";
-import { requireProjectGitApprovalModeUpdate } from "@/lib/service/projectAccessGuard";
+import { requireProjectGitPolicyUpdate } from "@/lib/service/projectAccessGuard";
 
-type PatchBody = { gitApprovalMode?: string };
+/** 승인(gitApprovalMode)과 push(gitPushMode)는 각각 독립 PATCH 가능 */
+type PatchBody = { gitApprovalMode?: string; gitPushMode?: string };
 
 export async function PATCH(
   request: NextRequest,
@@ -26,7 +31,7 @@ export async function PATCH(
 
     const userId = getCurrentUserIdFromRequest(request);
     try {
-      await requireProjectGitApprovalModeUpdate(id, userId);
+      await requireProjectGitPolicyUpdate(id, userId);
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -45,15 +50,53 @@ export async function PATCH(
       );
     }
 
-    const mode = String(body.gitApprovalMode ?? "").trim();
-    if (mode !== GIT_APPROVAL_MODE_AUTO_APPLY && mode !== GIT_APPROVAL_MODE_MANUAL_APPROVAL) {
+    const rawApproval = body.gitApprovalMode;
+    const rawPush = body.gitPushMode;
+    const hasApproval = rawApproval !== undefined && String(rawApproval).trim() !== "";
+    const hasPush = rawPush !== undefined && String(rawPush).trim() !== "";
+
+    if (!hasApproval && !hasPush) {
       return NextResponse.json(
         {
           success: false,
-          message: `gitApprovalMode는 "${GIT_APPROVAL_MODE_AUTO_APPLY}" 또는 "${GIT_APPROVAL_MODE_MANUAL_APPROVAL}" 이어야 합니다.`,
+          message: "gitApprovalMode 또는 gitPushMode 중 하나 이상을 지정해야 합니다.",
         },
         { status: 400 }
       );
+    }
+
+    const data: { gitApprovalMode?: string; gitPushMode?: string } = {};
+
+    if (hasApproval) {
+      const mode = String(rawApproval ?? "").trim();
+      if (
+        mode !== GIT_APPROVAL_MODE_NO_APPROVAL &&
+        mode !== GIT_APPROVAL_MODE_AUTO_APPLY &&
+        mode !== GIT_APPROVAL_MODE_MANUAL_APPROVAL
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `gitApprovalMode는 "${GIT_APPROVAL_MODE_NO_APPROVAL}", "${GIT_APPROVAL_MODE_AUTO_APPLY}"(레거시), "${GIT_APPROVAL_MODE_MANUAL_APPROVAL}" 중 하나여야 합니다.`,
+          },
+          { status: 400 }
+        );
+      }
+      data.gitApprovalMode = normalizeGitApprovalModeForStorage(mode);
+    }
+
+    if (hasPush) {
+      const pm = String(rawPush ?? "").trim();
+      if (pm !== GIT_PUSH_MODE_AUTO_PUSH && pm !== GIT_PUSH_MODE_MANUAL_PUSH) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `gitPushMode는 "${GIT_PUSH_MODE_AUTO_PUSH}" 또는 "${GIT_PUSH_MODE_MANUAL_PUSH}" 이어야 합니다.`,
+          },
+          { status: 400 }
+        );
+      }
+      data.gitPushMode = pm;
     }
 
     const existing = await prisma.project.findUnique({
@@ -69,7 +112,7 @@ export async function PATCH(
 
     const updated = await prisma.project.update({
       where: { id },
-      data: { gitApprovalMode: mode },
+      data,
     });
 
     return NextResponse.json({

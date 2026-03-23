@@ -1,12 +1,55 @@
 /**
  * git-apply self-healing / 재시도 정책 (외부 서비스 호출 없음).
+ *
+ * 정책 분리:
+ * - `gitApprovalMode`: 승인 게이트·GCR 상태(REQUESTED/APPROVED 등)만. push와 독립.
+ * - `gitPushMode`: apply 시 `requestedPush` 기본값만. 승인과 독립.
  */
 
+/** 승인 게이트 없음 (기본). 레거시 AUTO_APPLY 와 동일 의미 */
+export const GIT_APPROVAL_MODE_NO_APPROVAL = "NO_APPROVAL";
+/** @deprecated 저장 시 NO_APPROVAL 로 정규화됨 */
 export const GIT_APPROVAL_MODE_AUTO_APPLY = "AUTO_APPLY";
 export const GIT_APPROVAL_MODE_MANUAL_APPROVAL = "MANUAL_APPROVAL";
 
+/** git apply 시 원격 push 기본 시도 여부 (프로젝트 정책) */
+export const GIT_PUSH_MODE_AUTO_PUSH = "AUTO_PUSH";
+export const GIT_PUSH_MODE_MANUAL_PUSH = "MANUAL_PUSH";
+
 export function isManualGitApprovalMode(mode: string | null | undefined): boolean {
   return String(mode ?? "").trim() === GIT_APPROVAL_MODE_MANUAL_APPROVAL;
+}
+
+/** AUTO_APPLY·빈 값·NO_APPROVAL → 승인 게이트 없음으로 간주 */
+export function isNoApprovalGitMode(mode: string | null | undefined): boolean {
+  const m = String(mode ?? "").trim();
+  return (
+    m === "" ||
+    m === GIT_APPROVAL_MODE_NO_APPROVAL ||
+    m === GIT_APPROVAL_MODE_AUTO_APPLY
+  );
+}
+
+/** API/DB 저장용: AUTO_APPLY → NO_APPROVAL */
+export function normalizeGitApprovalModeForStorage(mode: string): string {
+  const m = String(mode ?? "").trim();
+  if (m === GIT_APPROVAL_MODE_AUTO_APPLY) return GIT_APPROVAL_MODE_NO_APPROVAL;
+  return m;
+}
+
+/** UI 표시용: 레거시·빈 값 → NO_APPROVAL */
+export function normalizeGitApprovalModeForDisplay(mode: string | null | undefined): string {
+  const m = String(mode ?? "").trim();
+  if (m === GIT_APPROVAL_MODE_MANUAL_APPROVAL) return GIT_APPROVAL_MODE_MANUAL_APPROVAL;
+  if (m === GIT_APPROVAL_MODE_AUTO_APPLY || m === GIT_APPROVAL_MODE_NO_APPROVAL || m === "") {
+    return GIT_APPROVAL_MODE_NO_APPROVAL;
+  }
+  return GIT_APPROVAL_MODE_NO_APPROVAL;
+}
+
+export function isAutoGitPushMode(mode: string | null | undefined): boolean {
+  const m = String(mode ?? "").trim();
+  return m === "" || m === GIT_PUSH_MODE_AUTO_PUSH;
 }
 
 /** 재시도 가능 횟수 상한: retryCount가 이 값 미만일 때만 재시도 허용 */

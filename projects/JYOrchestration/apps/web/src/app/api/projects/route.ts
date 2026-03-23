@@ -1,3 +1,7 @@
+/**
+ * Workspace-level endpoints (no projectId scope). Per-project RBAC lives under
+ * /api/project-spec/* and /api/task/*.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import {
   createProject,

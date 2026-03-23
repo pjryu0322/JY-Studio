@@ -1,7 +1,8 @@
 /**
- * 실행 큐 (스텁). 향후 병렬 실행·스케줄링 확장용.
- * 현재는 인-프로세스 즉시 실행만 사용하며 큐는 사용하지 않는다.
+ * DB 기반 실행 큐. 향후 Redis 등 외부 브로커로 교체 시 enqueue/claim 인터페이스만 유지.
  */
+import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 
 export type ExecutionQueueJobType = "git-apply" | "pipeline" | "cursor";
 
@@ -17,21 +18,41 @@ export type EnqueueResult =
   | { queued: true; jobId: string }
   | { queued: false; reason: string };
 
-/** 스텁: 항상 큐 미사용(즉시 실행 경로만 존재) */
-export async function enqueueExecution(
-  job: Omit<ExecutionQueueJob, "id" | "enqueuedAt">
-): Promise<EnqueueResult> {
-  void job;
-  return {
-    queued: false,
-    reason: "stub: execution queue not enabled; use synchronous API routes",
-  };
-}
-
-export function getExecutionQueueStubStatus(): {
+export type ExecutionQueueStatusSnapshot = {
   pending: number;
   running: number;
-  mode: "stub";
-} {
-  return { pending: 0, running: 0, mode: "stub" };
+  mode: "db";
+};
+
+export async function enqueueExecution(input: {
+  projectId: string;
+  type: ExecutionQueueJobType;
+  payload: Prisma.InputJsonValue;
+}): Promise<EnqueueResult> {
+  try {
+    const row = await prisma.executionJob.create({
+      data: {
+        projectId: input.projectId,
+        type: input.type,
+        status: "PENDING",
+        payload: input.payload,
+      },
+      select: { id: true },
+    });
+    return { queued: true, jobId: row.id };
+  } catch (e) {
+    console.error("enqueueExecution failed:", e);
+    return {
+      queued: false,
+      reason: e instanceof Error ? e.message : "enqueue failed",
+    };
+  }
+}
+
+export async function getExecutionQueueStatus(): Promise<ExecutionQueueStatusSnapshot> {
+  const [pending, running] = await Promise.all([
+    prisma.executionJob.count({ where: { status: "PENDING" } }),
+    prisma.executionJob.count({ where: { status: "RUNNING" } }),
+  ]);
+  return { pending, running, mode: "db" };
 }

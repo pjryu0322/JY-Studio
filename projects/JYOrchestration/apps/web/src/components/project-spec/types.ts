@@ -4,8 +4,10 @@ export type Project = {
   description: string | null;
   projectType: string;
   status: string;
-  /** AUTO_APPLY | MANUAL_APPROVAL (API/Prisma 기본 AUTO_APPLY) */
+  /** 승인만: NO_APPROVAL | MANUAL_APPROVAL (레거시 AUTO_APPLY = NO_APPROVAL). push와 독립. */
   gitApprovalMode?: string;
+  /** push만: AUTO_PUSH | MANUAL_PUSH. 승인과 독립. */
+  gitPushMode?: string;
 };
 
 export type ApiResponse<T> = {

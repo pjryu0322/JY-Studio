@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
@@ -185,6 +186,14 @@ export async function POST(request: NextRequest) {
           data: {
             status: "DONE",
             resultText: "[FORCE_COMPLETE] 운영자 강제 완료",
+            resultJson: {
+              success: true,
+              mode: "force-complete",
+              updatedFiles: [],
+              commitMessage: null,
+              logs: ["[FORCE_COMPLETE] 운영자 강제 완료"],
+              error: null,
+            } as Prisma.InputJsonValue,
           },
           select: {
             id: true,
@@ -192,6 +201,7 @@ export async function POST(request: NextRequest) {
             taskPromptId: true,
             status: true,
             resultText: true,
+            resultJson: true,
             createdAt: true,
             updatedAt: true,
           },

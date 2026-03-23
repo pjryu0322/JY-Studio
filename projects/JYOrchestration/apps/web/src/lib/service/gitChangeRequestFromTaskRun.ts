@@ -480,6 +480,7 @@ export async function createGitChangeRequestForTaskRun(
     where: { id: run.task.projectId },
     select: { gitApprovalMode: true },
   });
+  /** 승인 게이트만; gitPushMode 와 무관 */
   const manualApproval = isManualGitApprovalMode(projectRow?.gitApprovalMode);
   const initialStatus = manualApproval ? "APPROVAL_REQUIRED" : "REQUESTED";
 
@@ -577,6 +578,7 @@ export async function createGitChangeRequestFromExecutionResult(
     where: { id: run.task.projectId },
     select: { gitApprovalMode: true },
   });
+  /** 승인 게이트만; gitPushMode 와 무관 */
   const manualApproval = isManualGitApprovalMode(projectRow?.gitApprovalMode);
   const initialStatus = manualApproval ? "APPROVAL_REQUIRED" : "REQUESTED";
 

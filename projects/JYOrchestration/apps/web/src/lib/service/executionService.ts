@@ -21,7 +21,10 @@ import {
   countTaskRunsByProjectId,
   countTasksByProjectId,
 } from "@/lib/service/taskService";
-import { getExecutionQueueStubStatus } from "@/lib/service/executionQueue";
+import {
+  getExecutionQueueStatus,
+  type ExecutionQueueStatusSnapshot,
+} from "@/lib/service/executionQueue";
 import type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 
 export type GitApplyApiBody = {
@@ -499,7 +502,7 @@ export type ProjectExecutionSummary = {
   };
   tasks: { total: number };
   taskRuns: { total: number };
-  queue: ReturnType<typeof getExecutionQueueStubStatus>;
+  queue: ExecutionQueueStatusSnapshot;
 };
 
 /**
@@ -532,9 +535,10 @@ export async function getProjectExecutionSummary(
     where: { projectId, applyStatus: "APPLYING" },
   });
 
-  const [tasksTotal, runsTotal] = await Promise.all([
+  const [tasksTotal, runsTotal, queue] = await Promise.all([
     countTasksByProjectId(projectId),
     countTaskRunsByProjectId(projectId),
+    getExecutionQueueStatus(),
   ]);
 
   return {
@@ -546,7 +550,7 @@ export async function getProjectExecutionSummary(
     },
     tasks: { total: tasksTotal },
     taskRuns: { total: runsTotal },
-    queue: getExecutionQueueStubStatus(),
+    queue,
   };
 }
 

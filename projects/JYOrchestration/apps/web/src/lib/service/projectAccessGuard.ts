@@ -111,16 +111,22 @@ export async function requireGitApprovalGateReview(projectId: string, userId: st
   return role;
 }
 
-/** 프로젝트 Git 반영 정책(AUTO_APPLY / MANUAL_APPROVAL) 변경 — 검토 권한 이상. */
+/**
+ * 프로젝트 Git 정책 PATCH (gitApprovalMode·gitPushMode 분리 필드, 서로 독립).
+ * 검토(REVIEWER) 이상.
+ */
 export async function requireProjectGitApprovalModeUpdate(projectId: string, userId: string) {
   const role = await resolveProjectRole(projectId, userId);
   if (!canReview(role)) {
     throw new ProjectAccessDeniedError(
-      "Git 반영 정책 변경은 REVIEWER·OWNER 권한이 필요합니다."
+      "Git 승인·push 정책 변경은 REVIEWER·OWNER 권한이 필요합니다."
     );
   }
   return role;
 }
+
+/** `requireProjectGitApprovalModeUpdate` 별칭 (의미: 승인·push 정책 통합 가드). */
+export const requireProjectGitPolicyUpdate = requireProjectGitApprovalModeUpdate;
 
 /** Any project member (DB or dev mock list) may read Task audit history; role does not matter. */
 export async function requireProjectMember(projectId: string, userId: string) {

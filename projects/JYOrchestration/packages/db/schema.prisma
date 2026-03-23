@@ -42,8 +42,29 @@ model Project {
   gitRequests   GitChangeRequest[]
   members       ProjectMember[]
   taskHistories TaskHistory[]
+  executionJobs ExecutionJob[]
 
   @@map("projects")
+}
+
+model ExecutionJob {
+  id         String    @id @default(uuid())
+  projectId  String
+  /** git-apply | pipeline | cursor */
+  type       String
+  /** PENDING | RUNNING | DONE | FAILED */
+  status     String    @default("PENDING")
+  payload    Json
+  result     Json?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("execution_jobs")
 }
 
 model ProjectMember {

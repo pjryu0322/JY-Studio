@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import { enqueueExecution } from "@/lib/service/executionQueue";
+import type { GitApplyExecutionPayload } from "@/lib/service/executionWorker";
+import { processExecutionJobById } from "@/lib/service/executionWorker";
 import {
-  applyGitChangeFromApiBody,
   GIT_APPLY_ERROR_CODES,
   listGitChangeRequestsForProject,
   serializeGitChangeRequestList,
   validateGitApplyPostEligibility,
 } from "@/lib/service/executionService";
-import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
 import {
   requireExecutionPipelineRead,
   requireGitApply,
@@ -122,66 +123,120 @@ export async function POST(request: Request) {
     if (policyErr) {
       return jsonError(policyErr.code, policyErr.message, policyErr.httpStatus);
     }
-    const retryCountBeforeApply = gcr.retryCount;
-    const lastErrorBeforeApply = gcr.lastError;
 
-    const result = await applyGitChangeFromApiBody(body);
+    const payload: GitApplyExecutionPayload = {
+      gitChangeRequestId,
+      mode: modeStr,
+      options: body.options,
+      retry: isRetry,
+      actorUserId: userId,
+    };
 
-    const afterRow = await prisma.gitChangeRequest.findUnique({
-      where: { id: gitChangeRequestId },
-      select: {
-        applyStartedAt: true,
-        applyStatus: true,
-        branchName: true,
-        applyLog: true,
-        retryCount: true,
-        lastError: true,
-      },
+    const enq = await enqueueExecution({
+      projectId: gcr.projectId,
+      type: "git-apply",
+      payload,
     });
 
-    if (afterRow) {
-      await appendGitApplyAuditTrail({
-        actorUserId: userId,
-        projectId: gcr.projectId,
-        taskId: gcr.taskId,
-        mode: result.ok ? String(result.data.mode) : modeStr,
-        isRetry,
-        retryCountBeforeApply,
-        lastErrorBeforeApply,
-        afterRow,
-        applyOk: result.ok,
-        errorCode: result.ok ? undefined : result.code,
-      });
+    if (!enq.queued) {
+      return jsonError(
+        GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
+        `실행 큐 등록 실패: ${enq.reason}`,
+        500
+      );
     }
 
-    if (!result.ok) {
-      return jsonError(result.code, result.message, result.httpStatus);
+    await processExecutionJobById(enq.jobId);
+
+    const jobRow = await prisma.executionJob.findUnique({
+      where: { id: enq.jobId },
+    });
+    if (!jobRow) {
+      return jsonError(
+        GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
+        "실행 작업을 찾을 수 없습니다.",
+        500
+      );
     }
 
-    const githubPr = result.githubPr;
+    if (jobRow.status === "RUNNING" || jobRow.status === "PENDING") {
+      return jsonError(
+        GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
+        "실행 작업이 완료되지 않았습니다.",
+        500
+      );
+    }
+
+    const stored = jobRow.result as
+      | {
+          ok: true;
+          data: {
+            id: string;
+            branchName: string | null;
+            applyStatus: string | null;
+            applyLog: string | null;
+            applyStartedAt: string | null;
+            applyFinishedAt: string | null;
+            lastRetryAt: string | null;
+            retryCount: number;
+            lastError: string | null;
+            mode: string;
+          };
+          message: string;
+          githubPr?: {
+            phase: string;
+            message?: string;
+            code?: string;
+            pullRequestUrl?: string;
+            pullRequestNumber?: number;
+          };
+        }
+      | {
+          ok: false;
+          code: string;
+          message: string;
+          httpStatus: number;
+        }
+      | null;
+
+    if (!stored || typeof stored !== "object") {
+      return jsonError(
+        GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
+        jobRow.error ?? "실행 결과가 없습니다.",
+        500
+      );
+    }
+
+    if (!stored.ok) {
+      return jsonError(stored.code, stored.message, stored.httpStatus);
+    }
+
+    const githubPr = stored.githubPr;
     const prWarning =
       githubPr?.phase === "failed"
         ? `Git 반영은 완료되었지만 PR 생성에 실패했습니다. 원인: ${githubPr.message ?? "알 수 없음"}${githubPr.code ? ` (${githubPr.code})` : ""}`
         : undefined;
 
+    const d = stored.data;
     return NextResponse.json({
       success: true,
+      queued: true,
+      jobId: enq.jobId,
       data: {
-        id: result.data.id,
-        branchName: result.data.branchName,
-        applyStatus: result.data.applyStatus,
-        applyLog: result.data.applyLog,
-        applyStartedAt: result.data.applyStartedAt?.toISOString() ?? null,
-        applyFinishedAt: result.data.applyFinishedAt?.toISOString() ?? null,
-        lastRetryAt: result.data.lastRetryAt?.toISOString() ?? null,
-        retryCount: result.data.retryCount,
-        lastError: result.data.lastError,
-        mode: result.data.mode,
-        /** 적용 시점 프로젝트 정책 (승인·push 분리; 클라이언트 표시용) */
+        id: d.id,
+        branchName: d.branchName,
+        applyStatus: d.applyStatus,
+        applyLog: d.applyLog,
+        applyStartedAt: d.applyStartedAt,
+        applyFinishedAt: d.applyFinishedAt,
+        lastRetryAt: d.lastRetryAt,
+        retryCount: d.retryCount,
+        lastError: d.lastError,
+        mode: d.mode,
         projectGitApprovalMode: gcr.project.gitApprovalMode,
         projectGitPushMode: gcr.project.gitPushMode,
       },
-      message: result.message,
+      message: stored.message,
       ...(githubPr ? { githubPr } : {}),
       ...(prWarning ? { prWarning } : {}),
     });
