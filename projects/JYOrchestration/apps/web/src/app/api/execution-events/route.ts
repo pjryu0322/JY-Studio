@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const jobId = request.nextUrl.searchParams.get("jobId")?.trim() || "";
     if (!jobId) {
-      return jsonError("jobId가 필요합니다.", 400);
+      return jsonError("jobId is required", 400);
     }
 
     const job = await prisma.executionJob.findUnique({
