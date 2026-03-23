@@ -27,6 +27,8 @@ export type TaskRunItem = {
   taskPromptId: string;
   status: string;
   resultText: string | null;
+  /** 구조화 실행 결과 (API가 내려줄 때만 존재) */
+  resultJson?: unknown;
   createdAt: string;
   updatedAt: string;
 };
@@ -48,8 +50,10 @@ export type GitChangeRequestItem = {
   projectId: string;
   taskId: string;
   taskRunId: string;
-  /** 프로젝트 `gitApprovalMode` (git-apply 목록 응답에 포함) */
+  /** 승인 정책만 (push와 무관) */
   gitApprovalMode?: string;
+  /** push 기본값 정책만 (승인과 무관) */
+  gitPushMode?: string;
   rejectionReason?: string | null;
   status: string;
   requestNote: string | null;
@@ -64,6 +68,11 @@ export type GitChangeRequestItem = {
   retryCount?: number;
   lastError?: string | null;
   lastRetryAt?: string | null;
+  pullRequestUrl?: string | null;
+  pullRequestNumber?: number | null;
+  pullRequestState?: string | null;
+  reviewStatus?: string | null;
+  mergedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -768,6 +777,26 @@ export function TaskListSection({
                     <p style={{ margin: "4px 0" }}>
                       <strong>resultText:</strong> {taskRunMap[task.id]?.resultText || "-"}
                     </p>
+                    {taskRunMap[task.id]?.resultJson != null ? (
+                      <details style={{ margin: "6px 0" }}>
+                        <summary style={{ cursor: "pointer", fontWeight: 600, color: "#37474f" }}>
+                          resultJson (구조화 결과)
+                        </summary>
+                        <pre
+                          style={{
+                            margin: "6px 0 0 0",
+                            padding: 8,
+                            background: "#f5f5f5",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            overflow: "auto",
+                            maxHeight: 160,
+                          }}
+                        >
+                          {JSON.stringify(taskRunMap[task.id]?.resultJson, null, 2)}
+                        </pre>
+                      </details>
+                    ) : null}
                     <p style={{ margin: "4px 0" }}>
                       <strong>run 시각:</strong>{" "}
                       {taskRunMap[task.id]?.createdAt ? formatTestedAt(taskRunMap[task.id].createdAt) : "-"}
