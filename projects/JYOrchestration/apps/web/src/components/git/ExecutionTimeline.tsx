@@ -11,6 +11,8 @@ type ExecutionEventRow = {
   createdAt: string;
 };
 
+const AUTO_HEALING_COLOR = "#2563eb";
+
 function statusColor(status: string): string {
   if (status === "SUCCESS") return "#0a7d2e";
   if (status === "FAILED") return "#b00020";
@@ -20,6 +22,40 @@ function statusColor(status: string): string {
 function stageLabel(stage: string): string {
   if (stage === "SELF_HEALING") return "AUTO RECOVERY";
   return stage;
+}
+
+function parseSelfHealingMessage(message: string): {
+  created?: boolean;
+  taskId?: string;
+  reason?: string;
+  action?: string;
+} {
+  const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
+  const out: {
+    created?: boolean;
+    taskId?: string;
+    reason?: string;
+    action?: string;
+  } = {};
+
+  for (const line of lines) {
+    if (line.startsWith("Task 생성됨:")) {
+      out.created = true;
+      out.taskId = line.replace("Task 생성됨:", "").trim();
+      continue;
+    }
+    if (line.startsWith("Task 생성 불가:")) {
+      out.created = false;
+      out.reason = line.replace("Task 생성 불가:", "").trim();
+      continue;
+    }
+    if (line.toLowerCase().startsWith("action:")) {
+      out.action = line.replace(/^action:/i, "").trim();
+      continue;
+    }
+  }
+
+  return out;
 }
 
 export function ExecutionTimeline({ jobId }: { jobId: string }) {
@@ -120,7 +156,21 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
       {!loading && !error && stageGroups.length > 0 ? (
         <div style={{ display: "grid", gap: 10 }}>
           {stageGroups.map((group) => (
-            <div key={group.stage} style={{ paddingBottom: 2 }}>
+            <div
+              key={group.stage}
+              style={
+                group.stage === "SELF_HEALING"
+                  ? {
+                      padding: 12,
+                      borderRadius: 10,
+                      border: `1px solid ${AUTO_HEALING_COLOR}55`,
+                      background: "#eff6ff",
+                      marginTop: 10,
+                      marginBottom: 10,
+                    }
+                  : { paddingBottom: 2 }
+              }
+            >
               <div
                 style={{
                   display: "flex",
@@ -144,8 +194,9 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                 }}
               >
                 {group.events.map((ev, idx) => {
-                  const color = group.stage === "SELF_HEALING" ? "#1e64ff" : statusColor(ev.status);
+                  const color = group.stage === "SELF_HEALING" ? AUTO_HEALING_COLOR : statusColor(ev.status);
                   const durationText = ev.durationMs == null ? null : `${ev.durationMs}ms`;
+                  const parsed = group.stage === "SELF_HEALING" && ev.message ? parseSelfHealingMessage(ev.message) : null;
                   return (
                     <div
                       key={`${group.stage}-${ev.status}-${ev.createdAt}-${idx}`}
@@ -173,9 +224,46 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                             {durationText ? `duration: ${durationText}` : null}
                           </span>
                         </div>
-                        <div style={{ color: "#333", marginTop: 2, lineHeight: 1.4 }}>
-                          {ev.message ? ev.message : <span style={{ color: "#999" }}>-</span>}
-                        </div>
+                        {group.stage === "SELF_HEALING" ? (
+                          <div style={{ color: "#333", marginTop: 2, lineHeight: 1.4 }}>
+                            {ev.message ? (
+                              <>
+                                {parsed?.created != null ? (
+                                  parsed.created ? (
+                                    <div>
+                                      Task 생성됨{" "}
+                                      {parsed.taskId ? (
+                                        <span style={{ color: AUTO_HEALING_COLOR, fontWeight: 700 }}>
+                                          (taskId: {parsed.taskId})
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      생성 실패{" "}
+                                      {parsed.reason ? (
+                                        <span style={{ color: AUTO_HEALING_COLOR, fontWeight: 700 }}>
+                                          ({parsed.reason})
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  )
+                                ) : null}
+                                {parsed?.action ? (
+                                  <div style={{ color: "#1d4ed8" }}>
+                                    action: <span style={{ fontWeight: 700 }}>{parsed.action}</span>
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span style={{ color: "#999" }}>-</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ color: "#333", marginTop: 2, lineHeight: 1.4 }}>
+                            {ev.message ? ev.message : <span style={{ color: "#999" }}>-</span>}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

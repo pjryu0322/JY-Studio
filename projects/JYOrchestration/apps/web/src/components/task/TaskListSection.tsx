@@ -325,9 +325,36 @@ export function TaskListSection({
             const isDragOver = dragOverId === task.id && draggingId !== task.id;
             const isDragging = draggingId === task.id;
 
+            const isAutoHealing = taskKind === "AUTO_HEALING";
+            const parentTaskButton =
+              isAutoHealing && task.parentTaskId ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const el = document.getElementById(`task-li-${task.parentTaskId}`);
+                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    background: "#dbeafe",
+                    color: "#1d4ed8",
+                    border: "1px solid #93c5fd",
+                    cursor: "pointer",
+                    marginLeft: 8,
+                  }}
+                >
+                  🔗 원본 Task 보기
+                </button>
+              ) : null;
+
             return (
               <li
                 key={task.id}
+                id={`task-li-${task.id}`}
                 onDragOver={(e) => handleDragOver(e, task.id)}
                 onDragLeave={handleDragLeaveLi}
                 onDrop={(e) => handleDrop(e, task.id)}
@@ -413,7 +440,10 @@ export function TaskListSection({
                     >
                       {index + 1}
                     </span>
-                    <strong style={{ fontSize: 16, flex: "1 1 160px" }}>{task.name}</strong>
+                    <strong style={{ fontSize: 16, flex: "1 1 160px" }}>
+                      {isAutoHealing ? "⚙️ " : null}
+                      {task.name}
+                    </strong>
                     <span
                       style={{
                         fontSize: 12,
@@ -458,6 +488,7 @@ export function TaskListSection({
                         ⚙ AUTO
                       </span>
                     ) : null}
+                    {parentTaskButton}
                     <span style={{ fontSize: 12, color: "#78909c" }}>
                       DB status: <code style={{ fontSize: 12 }}>{task.status}</code>
                     </span>
