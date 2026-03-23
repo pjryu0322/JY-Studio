@@ -20,12 +20,13 @@ export async function logExecutionEvent(input: {
   status: ExecutionEventStatus;
   message?: string;
   detailJson?: Prisma.InputJsonValue;
-  startedAt?: Date;
+  startedAt?: Date | string;
 }): Promise<void> {
-  const durationMs =
-    input.status === "STARTED" || !input.startedAt
-      ? null
-      : Math.max(0, Date.now() - input.startedAt.getTime());
+  const now = new Date();
+  let durationMs: number | null = null;
+  if (input.startedAt) {
+    durationMs = Math.max(0, now.getTime() - new Date(input.startedAt).getTime());
+  }
 
   await prisma.executionEventLog.create({
     data: {
