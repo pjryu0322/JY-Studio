@@ -1686,7 +1686,7 @@ export default function ProjectDetailPage() {
               style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #ccc" }}
             >
               <option value="mock">Mock 실행</option>
-              <option value="cursor">Cursor 실행 (스텁)</option>
+              <option value="cursor">Cursor 실행 (CLI·웹훅·스텁)</option>
               <option value="git">Git 실행</option>
             </select>
           </label>
@@ -1708,13 +1708,35 @@ export default function ProjectDetailPage() {
                 checked={gitApplySimulateFailure}
                 onChange={(e) => setGitApplySimulateFailure(e.target.checked)}
               />
-              Cursor 스텁 실패 시뮬레이션 (simulateFailure)
+              Cursor 실패 시뮬레이션 (simulateFailure)
             </label>
           ) : null}
         </div>
+        {gitApplyMode === "cursor" ? (
+          <p
+            style={{
+              margin: "0 0 8px 0",
+              fontSize: 12,
+              color: "#455a64",
+              lineHeight: 1.55,
+              padding: "8px 10px",
+              background: "#eceff1",
+              borderRadius: 8,
+              border: "1px solid #cfd8dc",
+            }}
+          >
+            <strong>Cursor CLI:</strong> 서버 env에서{" "}
+            <code style={{ fontSize: 11 }}>ENABLE_CURSOR_EXECUTION=true</code>,{" "}
+            <code>CURSOR_EXEC_MODE=cli</code>, <code>CURSOR_CLI_PATH</code>, <code>CURSOR_WORKDIR</code>, 선택{" "}
+            <code>CURSOR_PAYLOAD_DIR</code>, <code>CURSOR_EXEC_TIMEOUT_MS</code>, <code>CURSOR_CLI_ARGS</code> 를
+            설정하면 실제 프로세스가 실행됩니다. 미설정·비활성 시 웹훅 또는 스텁으로 폴백합니다.{" "}
+            <code>JY_SAFE_MODE</code> 가 켜져 있으면 CLI·웹훅은 호출되지 않습니다. 실패 시{" "}
+            <code>applyLog</code>의 <code>[CURSOR_EXECUTION_FAILED]</code>·<code>[CURSOR_HINT]</code> 를 확인하세요.
+          </p>
+        ) : null}
         <p style={{ margin: "0 0 8px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-          <strong>모드 안내:</strong> Mock은 내부 시뮬레이션만 수행합니다. Cursor는 Cursor 연동 구조·페이로드
-          검증(스텁) 단계입니다. Git은 로컬 저장소 반영 구조 검증 단계이며, 실제 원격 push는 기본 비활성입니다.
+          <strong>모드 안내:</strong> Mock은 내부 시뮬레이션만 수행합니다. Cursor는 표준 페이로드로 CLI(선택)·웹훅·스텁
+          경로를 사용합니다. Git은 로컬 저장소 반영 구조 검증 단계이며, 실제 원격 push는 기본 비활성입니다.
         </p>
         {gitApplyError ? (
           <p style={{ margin: "0 0 8px 0", color: "#b00020", fontSize: 14 }}>{gitApplyError}</p>
@@ -1773,6 +1795,16 @@ export default function ProjectDetailPage() {
                     {item.applyStatus || "PENDING"}
                   </span>
                 </p>
+                {item.applyLog?.includes("[mode: cursor]") ? (
+                  <p style={{ margin: "0 0 4px 0", fontSize: 12, color: "#4a148c", lineHeight: 1.45 }}>
+                    <strong>Cursor 실행:</strong>{" "}
+                    {item.applyLog.includes("[CURSOR_EXECUTION_FAILED]")
+                      ? "실패 — applyLog·lastError·CURSOR_CLI_PATH 확인"
+                      : item.applyLog.includes("[CURSOR_EXECUTION_DONE]")
+                        ? "완료 — applyLog에 CLI/웹훅/스텁 요약·RAW 일부 포함"
+                        : "진행/기록 — applyLog 펼쳐 확인"}
+                  </p>
+                ) : null}
                 <p style={{ margin: 0, marginBottom: 4 }}>
                   <strong>retryCount:</strong> {item.retryCount ?? 0}{" "}
                   <span style={{ color: "#666", fontSize: 12 }}>

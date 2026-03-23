@@ -139,7 +139,7 @@ export async function runGitApplyCoreFromBody(
       ok: false,
       code: GIT_APPLY_ERROR_CODES.SAFE_MODE_FORBIDS_REAL_GIT,
       message:
-        "안전 모드(JY_SAFE_MODE)가 켜져 있어 실제 Git 반영 모드(git)는 사용할 수 없습니다. mock 또는 cursor(스텁)를 사용하세요.",
+        "안전 모드(JY_SAFE_MODE)가 켜져 있어 실제 Git 반영 모드(git)는 사용할 수 없습니다. mock 또는 cursor를 사용하세요. (cursor는 안전 모드에서 CLI·웹훅 없이 드라이 런됩니다.)",
       httpStatus: 403,
     };
   }
@@ -411,6 +411,9 @@ export async function runGitApplyCoreFromBody(
       if (!cursorResult.success) {
         const errText =
           cursorResult.error?.trim() || "Cursor 실행에 실패했습니다.";
+        const lastErrorLine = cursorResult.code
+          ? `${errText} (${cursorResult.code})`
+          : errText;
         const failApplyLog = mergeRetryPrefixWithBody(
           retryLogPrefix,
           formatCursorApplyLogFailure(
@@ -425,7 +428,7 @@ export async function runGitApplyCoreFromBody(
             applyStatus: "FAILED",
             applyLog: failApplyLog,
             applyFinishedAt: new Date(),
-            lastError: errText,
+            lastError: lastErrorLine,
           },
         });
         return {

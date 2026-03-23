@@ -3,28 +3,20 @@ import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
+import type { CursorExecutionPayload } from "@/lib/integration/cursorExecutionTypes";
+import { serializeCursorExecutionPayload } from "@/lib/integration/cursorExecutionTypes";
+import type { TaskRunResultJson } from "@/lib/integration/taskRunResultTypes";
+
 export type ExecutionMode = "mock" | "cursor" | "git";
 
-export type CursorExecutionPayload = {
-  taskId: string;
-  projectId: string;
-  files: unknown;
-  diffText: string | null;
-  commitMessage: string | null;
-  branchName: string;
-};
+/** Git apply·Run 연계 시 TaskRun.resultJson 스키마 (실행 파이프라인 공통 참조). */
+export type { TaskRunResultJson };
 
-/** Cursor 연동용 JSON 페이로드 (GitChangeRequest 기반) */
+export type { CursorExecutionPayload };
+
+/** Cursor 연동용 JSON 문자열 (표준 CursorExecutionPayload) */
 export function buildCursorPayload(ctx: CursorExecutionPayload): string {
-  const body = {
-    taskId: ctx.taskId,
-    projectId: ctx.projectId,
-    files: ctx.files,
-    diffText: ctx.diffText,
-    commitMessage: ctx.commitMessage,
-    branchName: ctx.branchName,
-  };
-  return JSON.stringify(body, null, 2);
+  return serializeCursorExecutionPayload(ctx);
 }
 
 export function buildPlannedGitFlow(branchName: string, commitMessage: string): string {
@@ -34,7 +26,7 @@ export function buildPlannedGitFlow(branchName: string, commitMessage: string): 
     "apply diff...",
     "git add -A",
     `git commit -m '${commitMessage}'`,
-    "git push origin <branch>  (push: options.push + GIT_APPLY_PUSH_ENABLED=true 일 때만)",
+    "git push origin <branch>  (push: 프로젝트 gitPushMode·options.push + GIT_APPLY_PUSH_ENABLED=true)",
   ].join("\n");
 }
 
@@ -133,9 +125,13 @@ export async function buildApplyLogForMode(ctx: ApplyLogContext): Promise<string
   }
 
   if (ctx.mode === "cursor") {
-    throw new Error(
-      "cursor 모드는 git-apply에서 cursorExecutor를 통해 처리해야 합니다."
-    );
+    return [
+      header,
+      planned,
+      "[NOTE] cursor 모드 실제 실행은 runApplyCore → executeCursorForGitChangeRequest 에서 수행됩니다.",
+      "[NOTE] 이 로그는 buildApplyLogForMode(cursor) 직접 호출 시 안내용입니다.",
+      "[END]",
+    ].join("\n");
   }
 
   const workdir = process.env.GIT_APPLY_WORKDIR?.trim();
