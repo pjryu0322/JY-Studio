@@ -538,7 +538,7 @@ export async function getProjectExecutionSummary(
   const [tasksTotal, runsTotal, queue] = await Promise.all([
     countTasksByProjectId(projectId),
     countTaskRunsByProjectId(projectId),
-    getExecutionQueueStatus(),
+    getExecutionQueueStatus(projectId),
   ]);
 
   return {

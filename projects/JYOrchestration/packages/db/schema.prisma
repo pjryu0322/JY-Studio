@@ -54,8 +54,15 @@ model ExecutionJob {
   type       String
   /** PENDING | RUNNING | DONE | FAILED */
   status     String    @default("PENDING")
+  retryCount Int       @default(0)
+  maxRetries Int       @default(3)
   payload    Json
   result     Json?
+  lastError  String?
+  availableAt DateTime?
+  claimedBy  String?
+  heartbeatAt DateTime?
+  /** 최종 실패/종료 요약 */
   error      String?
   startedAt  DateTime?
   finishedAt DateTime?
@@ -64,6 +71,7 @@ model ExecutionJob {
 
   @@index([projectId, status, createdAt])
   @@index([status, createdAt])
+  @@index([status, availableAt, createdAt])
   @@map("execution_jobs")
 }
 

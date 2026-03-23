@@ -21,6 +21,8 @@ export type EnqueueResult =
 export type ExecutionQueueStatusSnapshot = {
   pending: number;
   running: number;
+  retryWaiting: number;
+  failedRecent: number;
   mode: "db";
 };
 
@@ -36,8 +38,14 @@ export async function enqueueExecution(input: {
         type: input.type,
         status: "PENDING",
         payload: input.payload,
+        availableAt: new Date(),
       },
       select: { id: true },
+    });
+    console.info("[execution-queue] enqueued", {
+      jobId: row.id,
+      projectId: input.projectId,
+      type: input.type,
     });
     return { queued: true, jobId: row.id };
   } catch (e) {
@@ -49,10 +57,25 @@ export async function enqueueExecution(input: {
   }
 }
 
-export async function getExecutionQueueStatus(): Promise<ExecutionQueueStatusSnapshot> {
-  const [pending, running] = await Promise.all([
-    prisma.executionJob.count({ where: { status: "PENDING" } }),
-    prisma.executionJob.count({ where: { status: "RUNNING" } }),
+export async function getExecutionQueueStatus(projectId?: string): Promise<ExecutionQueueStatusSnapshot> {
+  const now = new Date();
+  const recentWindow = new Date(now.getTime() - 1000 * 60 * 60);
+  const projectFilter = projectId ? { projectId } : {};
+  const [pending, running, retryWaiting, failedRecent] = await Promise.all([
+    prisma.executionJob.count({
+      where: {
+        ...projectFilter,
+        status: "PENDING",
+        OR: [{ availableAt: null }, { availableAt: { lte: now } }],
+      },
+    }),
+    prisma.executionJob.count({ where: { ...projectFilter, status: "RUNNING" } }),
+    prisma.executionJob.count({
+      where: { ...projectFilter, status: "PENDING", availableAt: { gt: now } },
+    }),
+    prisma.executionJob.count({
+      where: { ...projectFilter, status: "FAILED", finishedAt: { gte: recentWindow } },
+    }),
   ]);
-  return { pending, running, mode: "db" };
+  return { pending, running, retryWaiting, failedRecent, mode: "db" };
 }
