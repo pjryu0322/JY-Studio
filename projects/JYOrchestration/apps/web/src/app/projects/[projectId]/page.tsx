@@ -51,7 +51,11 @@ import {
   GIT_PUSH_MODE_MANUAL_PUSH,
   normalizeGitApprovalModeForDisplay,
 } from "@/lib/git-apply/retry";
-import { IdeaGuidedUx } from "@/components/onboarding/IdeaGuidedUx";
+import {
+  IdeaGuidedUx,
+  type IdeaUxFailureAssist,
+} from "@/components/onboarding/IdeaGuidedUx";
+import { CollapsibleSection } from "@/components/common/CollapsibleSection";
 import {
   computeIdeaGuidedUxSnapshot,
   type IdeaUxPrimaryAction,
@@ -123,8 +127,9 @@ export default function ProjectDetailPage() {
   const [execSummaryLoading, setExecSummaryLoading] = useState(false);
   const [execSummaryError, setExecSummaryError] = useState<string | null>(null);
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
-  const [ideaUxRecommended, setIdeaUxRecommended] = useState(false);
-  const [ideaUxAdvanced, setIdeaUxAdvanced] = useState(false);
+  const [ideaUxRecommended, setIdeaUxRecommended] = useState(true);
+  const [progressPanelOpen, setProgressPanelOpen] = useState(false);
+  const [advancedPanelOpen, setAdvancedPanelOpen] = useState(false);
 
   const currentUser = useMemo(() => getCurrentMockUser(), []);
   const projectRole = useMemo(
@@ -146,6 +151,13 @@ export default function ProjectDetailPage() {
   );
   const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
   const showTaskSection = rbac.canReview || rbac.canOperate || rbac.canEditSpec;
+
+  useEffect(() => {
+    if (!ideaUxRecommended) {
+      setProgressPanelOpen(true);
+      setAdvancedPanelOpen(true);
+    }
+  }, [ideaUxRecommended]);
 
   useEffect(() => {
     if (!project) {
@@ -518,6 +530,58 @@ export default function ProjectDetailPage() {
     }
     return lines;
   }, [gitApplyError, uploadStatus, uploadMessage, parseMessage, taskMessage, promptMessage]);
+
+  const ideaUxFailureAssist = useMemo((): IdeaUxFailureAssist | null => {
+    const failedRuns = taskRuns.filter((r) => r.status === "FAILED");
+    const latestFailed =
+      failedRuns.length === 0
+        ? null
+        : [...failedRuns].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    if (latestFailed) {
+      const t = tasks.find((x) => x.id === latestFailed.taskId);
+      const shortCause = t
+        ? `「${t.name}」실행이 실패했습니다.`
+        : "Task 실행이 실패했습니다.";
+      const detailLines = [
+        ...ideaUxFailureLines,
+        ...(latestFailed.resultText?.trim()
+          ? [
+              `실행 결과(일부): ${latestFailed.resultText.slice(0, 240)}${latestFailed.resultText.length > 240 ? "…" : ""}`,
+            ]
+          : []),
+      ].filter(Boolean);
+      return {
+        kind: "run_failed",
+        headline: "실행 실패",
+        shortCause,
+        detailLines,
+        taskId: latestFailed.taskId,
+      };
+    }
+    const failedGit = gitRequests.find((g) => g.applyStatus === "FAILED");
+    if (failedGit) {
+      const lines = [...ideaUxFailureLines];
+      if (gitApplyError) {
+        lines.push(gitApplyError);
+      }
+      return {
+        kind: "git_failed",
+        headline: "Git 반영 실패",
+        shortCause: "Git 반영이 완료되지 않았습니다. 재시도하거나 로그를 확인하세요.",
+        detailLines: lines,
+        gitChangeRequestId: failedGit.id,
+      };
+    }
+    if (ideaUxFailureLines.length > 0) {
+      return {
+        kind: "generic",
+        headline: "문제 발생",
+        shortCause: ideaUxFailureLines[0].slice(0, 160),
+        detailLines: ideaUxFailureLines,
+      };
+    }
+    return null;
+  }, [taskRuns, tasks, gitRequests, ideaUxFailureLines, gitApplyError]);
 
   const ideaUxActionBusy =
     parsingUploadId !== null ||
@@ -1590,76 +1654,44 @@ export default function ProjectDetailPage() {
           void handleGitHubPrAction(action.gitChangeRequestId, "sync");
         }
         return;
+      case "retry_run":
+        if (action.taskId) {
+          void handleRunTask(action.taskId);
+        }
+        return;
+      case "follow_up":
+        if (action.taskId) {
+          setAdvancedPanelOpen(true);
+          handleRequestFollowUp(action.taskId);
+          requestAnimationFrame(() => {
+            document.getElementById("guided-flow-tasks")?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          });
+        }
+        return;
       case "none":
       default:
         return;
     }
   }
 
-  return (
-    <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
-      <ProjectSpecPageHeader />
-      {executionSafeMode ? (
-        <div
-          role="status"
-          style={{
-            marginBottom: 14,
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid #ffcc80",
-            background: "#fff8e1",
-            color: "#e65100",
-            fontSize: 13,
-            lineHeight: 1.5,
-          }}
-        >
-          <strong>안전 모드</strong>가 켜져 있습니다(서버 <code>JY_SAFE_MODE</code>). 실제 Git 워크스페이스 반영
-          모드(git)는 비활성화되며, mock·cursor(스텁)만 사용할 수 있습니다.
-        </div>
-      ) : null}
-      <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
-      {!loading && project && !errorMessage ? (
-        <IdeaGuidedUx
-          snapshot={ideaUxSnapshot}
-          recommendedMode={ideaUxRecommended}
-          onRecommendedModeChange={setIdeaUxRecommended}
-          showAdvancedUi={ideaUxAdvanced}
-          onShowAdvancedUiChange={setIdeaUxAdvanced}
-          failureLines={ideaUxFailureLines}
-          actionBusy={ideaUxActionBusy}
-          onPrimaryAction={handleIdeaPrimaryAction}
-        />
-      ) : null}
-      <ProjectInfoCard
-        project={project}
-        currentUserRoleLabel={projectRole && projectId ? projectRole : null}
-      />
-      {!loading && project && ideaUxAdvanced ? (
-        <ProjectGuidedFlowPanel
-          snapshot={guidedFlowSnapshot}
-          canRegisterSpec={rbac.canEditSpec}
-          canReview={rbac.canReview}
-          canOperate={rbac.canOperate}
-        />
-      ) : null}
-      {rbac.canOperate && ideaUxAdvanced ? (
-        <ExecutionObservabilityPanel
-          data={execSummary}
-          loading={execSummaryLoading}
-          errorMessage={execSummaryError}
-        />
-      ) : null}
-      {ideaUxAdvanced ? (
-        <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-          프로젝트 생성 시 생성자는 OWNER로 기록되며, 이후 PLANNER / REVIEWER / OPERATOR로 역할을 나눌 수
-          있습니다. 현재 사용자·멤버 목록은 mock 기준입니다.
-        </p>
-      ) : null}
-      {rbac.canManageMembers && ideaUxAdvanced ? <ProjectMembersSection members={memberRows} /> : null}
-      {rbac.canEditSpec && ideaUxAdvanced ? <ProjectSpecGuideSection /> : null}
-      {rbac.canEditSpec && ideaUxAdvanced ? (
-        <ProjectSpecPromptSection prompt={projectSpecPrompt} />
-      ) : null}
+  const handleIdeaUxBeforeAnchor = useCallback(
+    (anchorId: string) => {
+      if (!ideaUxRecommended) {
+        return;
+      }
+      setAdvancedPanelOpen(true);
+      if (anchorId === "guided-flow-git") {
+        setProgressPanelOpen(true);
+      }
+    },
+    [ideaUxRecommended]
+  );
+
+  const projectFlowTail = (
+    <>
       <div id="guided-flow-upload">
         {rbac.canEditSpec ? (
           <ProjectSpecUploadTestSection
@@ -2306,6 +2338,125 @@ export default function ProjectDetailPage() {
         )}
         </section>
       ) : null}
+    </>
+  );
+
+  const showGuidedChrome = Boolean(!loading && project && !errorMessage);
+
+  return (
+    <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
+      <ProjectSpecPageHeader />
+      {executionSafeMode ? (
+        <div
+          role="status"
+          style={{
+            marginBottom: 14,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid #ffcc80",
+            background: "#fff8e1",
+            color: "#e65100",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>안전 모드</strong>가 켜져 있습니다(서버 <code>JY_SAFE_MODE</code>). 실제 Git 워크스페이스 반영
+          모드(git)는 비활성화되며, mock·cursor(스텁)만 사용할 수 있습니다.
+        </div>
+      ) : null}
+      <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
+      {showGuidedChrome ? (
+        <IdeaGuidedUx
+          snapshot={ideaUxSnapshot}
+          recommendedMode={ideaUxRecommended}
+          onRecommendedModeChange={setIdeaUxRecommended}
+          failureAssist={ideaUxFailureAssist}
+          actionBusy={ideaUxActionBusy}
+          onPrimaryAction={handleIdeaPrimaryAction}
+          onBeforeNavigateToAnchor={handleIdeaUxBeforeAnchor}
+        />
+      ) : null}
+      {showGuidedChrome && ideaUxRecommended ? (
+        <>
+          <CollapsibleSection
+            title="진행 현황 보기"
+            subtitle="프로젝트 정보·실행 요약"
+            defaultOpen={false}
+            open={progressPanelOpen}
+            onOpenChange={setProgressPanelOpen}
+          >
+            <ProjectInfoCard
+              project={project}
+              currentUserRoleLabel={projectRole && projectId ? projectRole : null}
+            />
+            {rbac.canOperate ? (
+              <ExecutionObservabilityPanel
+                data={execSummary}
+                loading={execSummaryLoading}
+                errorMessage={execSummaryError}
+              />
+            ) : null}
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="고급 보기"
+            subtitle="업로드·Task·Git·감사 등 전체 기능"
+            defaultOpen={false}
+            open={advancedPanelOpen}
+            onOpenChange={setAdvancedPanelOpen}
+          >
+            {!loading && project ? (
+              <ProjectGuidedFlowPanel
+                snapshot={guidedFlowSnapshot}
+                canRegisterSpec={rbac.canEditSpec}
+                canReview={rbac.canReview}
+                canOperate={rbac.canOperate}
+              />
+            ) : null}
+            <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+              프로젝트 생성 시 생성자는 OWNER로 기록되며, 이후 PLANNER / REVIEWER / OPERATOR로 역할을 나눌 수
+              있습니다. 현재 사용자·멤버 목록은 mock 기준입니다.
+            </p>
+            {rbac.canManageMembers ? <ProjectMembersSection members={memberRows} /> : null}
+            {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
+            {rbac.canEditSpec ? (
+              <ProjectSpecPromptSection prompt={projectSpecPrompt} />
+            ) : null}
+            {projectFlowTail}
+          </CollapsibleSection>
+        </>
+      ) : (
+        <>
+          <ProjectInfoCard
+            project={project}
+            currentUserRoleLabel={projectRole && projectId ? projectRole : null}
+          />
+          {!loading && project ? (
+            <ProjectGuidedFlowPanel
+              snapshot={guidedFlowSnapshot}
+              canRegisterSpec={rbac.canEditSpec}
+              canReview={rbac.canReview}
+              canOperate={rbac.canOperate}
+            />
+          ) : null}
+          {rbac.canOperate ? (
+            <ExecutionObservabilityPanel
+              data={execSummary}
+              loading={execSummaryLoading}
+              errorMessage={execSummaryError}
+            />
+          ) : null}
+          <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
+            프로젝트 생성 시 생성자는 OWNER로 기록되며, 이후 PLANNER / REVIEWER / OPERATOR로 역할을 나눌 수
+            있습니다. 현재 사용자·멤버 목록은 mock 기준입니다.
+          </p>
+          {rbac.canManageMembers ? <ProjectMembersSection members={memberRows} /> : null}
+          {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
+          {rbac.canEditSpec ? (
+            <ProjectSpecPromptSection prompt={projectSpecPrompt} />
+          ) : null}
+          {projectFlowTail}
+        </>
+      )}
     </main>
   );
 }

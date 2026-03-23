@@ -28,12 +28,31 @@ export const IDEA_UX_STEP_LABELS: Record<
 > = {
   1: { title: "아이디어", short: "아이디어" },
   2: { title: "기능 정의", short: "기능 정의" },
-  3: { title: "작업 생성", short: "작업" },
+  3: { title: "작업 생성", short: "작업 생성" },
   4: { title: "실행", short: "실행" },
-  5: { title: "코드 생성", short: "코드" },
-  6: { title: "Git 반영", short: "Git" },
-  7: { title: "PR 협업", short: "PR" },
+  5: { title: "코드 생성", short: "코드 생성" },
+  6: { title: "Git 반영", short: "Git 반영" },
+  7: { title: "PR / 협업", short: "PR" },
 };
+
+export type IdeaUxStepStatus = "not_started" | "current" | "done";
+
+function stepStatusFor(
+  id: IdeaUxStepId,
+  currentStep: IdeaUxStepId,
+  allComplete: boolean
+): IdeaUxStepStatus {
+  if (allComplete) {
+    return "done";
+  }
+  if (id < currentStep) {
+    return "done";
+  }
+  if (id === currentStep) {
+    return "current";
+  }
+  return "not_started";
+}
 
 export type IdeaUxActionId =
   | "scroll_upload"
@@ -44,6 +63,8 @@ export type IdeaUxActionId =
   | "generate_tasks"
   | "generate_prompt"
   | "run_task"
+  | "retry_run"
+  | "follow_up"
   | "mark_ready_for_git"
   | "register_git_request"
   | "apply_git"
@@ -68,12 +89,24 @@ export type IdeaUxAchievements = {
   prLinked: boolean;
 };
 
+/** 단계별 완료 체감용 (Step Navigator·Action Panel 공통) */
+export type IdeaUxMilestones = {
+  specUploaded: boolean;
+  parsed: boolean;
+  tasksCreated: boolean;
+  promptsReady: boolean;
+  runSucceeded: boolean;
+  gitApplied: boolean;
+  prLinked: boolean;
+};
+
 export type IdeaGuidedUxSnapshot = {
   currentStep: IdeaUxStepId;
   allComplete: boolean;
-  steps: { id: IdeaUxStepId; done: boolean }[];
+  steps: { id: IdeaUxStepId; status: IdeaUxStepStatus }[];
   primaryAction: IdeaUxPrimaryAction;
   achievements: IdeaUxAchievements;
+  milestones: IdeaUxMilestones;
   scrollAnchor: string;
 };
 
@@ -222,12 +255,23 @@ export function computeIdeaGuidedUxSnapshot(input: {
     prLinked: gitRequests.some((g) => g.pullRequestNumber != null),
   };
 
+  const milestones: IdeaUxMilestones = {
+    specUploaded: uploadHistory.length > 0,
+    parsed: hasParsedSpec(uploadHistory),
+    tasksCreated: tasks.length > 0,
+    promptsReady:
+      tasks.length > 0 && tasks.every((t) => Boolean(taskPromptMap[t.id])),
+    runSucceeded: taskRuns.some((r) => r.status === "DONE"),
+    gitApplied: hasGitApplyCompleted(gitRequests),
+    prLinked: gitRequests.some((g) => g.pullRequestNumber != null),
+  };
+
   let currentStep: IdeaUxStepId = 1;
   let allComplete = false;
   let primaryAction: IdeaUxPrimaryAction = {
     id: "scroll_upload",
-    label: "업로드 영역으로 이동",
-    description: "ProjectSpec 파일을 등록해 아이디어를 구체화하세요.",
+    label: "아이디어 입력",
+    description: "스펙 파일을 올려 아이디어를 구체화하세요.",
   };
   let scrollAnchor = IDEA_UX_ANCHORS[1];
 
@@ -238,7 +282,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
     if (input.canRegisterSpec) {
       primaryAction = {
         id: "scroll_upload",
-        label: "스펙 업로드로 이동",
+        label: "스펙 업로드",
         description: "아래에서 스펙 파일을 선택해 업로드하세요.",
       };
     } else {
@@ -255,20 +299,20 @@ export function computeIdeaGuidedUxSnapshot(input: {
     if (!input.canReview) {
       primaryAction = {
         id: "scroll_history",
-        label: "업로드 이력으로 이동",
+        label: "업로드 이력 보기",
         description: "REVIEWER 이상에서 Parsing을 실행할 수 있습니다.",
       };
     } else if (up) {
       primaryAction = {
         id: "run_parse",
-        label: "Parsing 실행",
+        label: "문서 파싱 실행",
         description: "업로드된 스펙을 파싱해 기능 정의를 완료하세요.",
         uploadId: up,
       };
     } else {
       primaryAction = {
         id: "scroll_history",
-        label: "이력으로 이동",
+        label: "업로드 이력으로 이동",
         description: "파싱 가능한 업로드 항목을 확인하세요.",
       };
     }
@@ -280,20 +324,20 @@ export function computeIdeaGuidedUxSnapshot(input: {
     if (!input.canReview) {
       primaryAction = {
         id: "scroll_history",
-        label: "이력으로 이동",
+        label: "업로드 이력 보기",
         description: "Task 생성은 REVIEWER 이상 권한이 필요합니다.",
       };
     } else if (parsedId) {
       primaryAction = {
         id: "generate_tasks",
-        label: "Task 생성",
-        description: "파싱된 스펙에서 작업 목록을 생성하세요.",
+        label: "Task 생성하기",
+        description: "파싱된 스펙에서 실행 가능한 작업 목록을 만드세요.",
         uploadId: parsedId,
       };
     } else {
       primaryAction = {
         id: "scroll_history",
-        label: "이력으로 이동",
+        label: "업로드 이력으로 이동",
         description: "Task 생성할 업로드를 선택하세요.",
       };
     }
@@ -305,7 +349,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
       if (!input.canReview) {
         primaryAction = {
           id: "scroll_tasks",
-          label: "Task 목록으로 이동",
+          label: "Task 목록 보기",
           description: "프롬프트 생성은 REVIEWER 이상에서 가능합니다.",
         };
       } else {
@@ -323,7 +367,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
         scrollAnchor = IDEA_UX_ANCHORS[4];
         primaryAction = {
           id: "mark_ready_for_git",
-          label: "Git 반영 준비",
+          label: "Git 반영 준비하기",
           description: "완료된 Run을 Git 반영 준비(READY_FOR_GIT)로 표시하세요.",
           taskId: markReady.taskId,
         };
@@ -332,7 +376,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
         scrollAnchor = IDEA_UX_ANCHORS[4];
         primaryAction = {
           id: "scroll_tasks",
-          label: "Task 목록으로 이동",
+          label: "Task 목록 보기",
           description: "OPERATOR 이상에서 Git 반영 준비를 진행할 수 있습니다.",
         };
       } else {
@@ -344,7 +388,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
           if (!input.canOperate) {
             primaryAction = {
               id: "scroll_tasks",
-              label: "Task 목록으로 이동",
+              label: "Task 목록 보기",
               description: "Run 실행은 OPERATOR 이상에서 가능합니다.",
             };
           } else {
@@ -361,7 +405,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
             scrollAnchor = IDEA_UX_ANCHORS[4];
             primaryAction = {
               id: "scroll_tasks",
-              label: "실행 완료 대기",
+              label: "실행 상태 확인",
               description: "Run이 끝나면 자동으로 다음 안내가 갱신됩니다. 목록에서 상태를 확인하세요.",
             };
           } else {
@@ -372,13 +416,13 @@ export function computeIdeaGuidedUxSnapshot(input: {
               if (!input.canOperate) {
                 primaryAction = {
                   id: "scroll_tasks",
-                  label: "Task 목록으로 이동",
+                  label: "Task 목록 보기",
                   description: "Git 요청 등록은 OPERATOR 이상에서 가능합니다.",
                 };
               } else {
                 primaryAction = {
                   id: "register_git_request",
-                  label: "Git 반영 요청 등록",
+                  label: "Git 반영 요청",
                   description: "준비된 Run에 대해 Git 반영 요청을 등록하세요.",
                   taskId: reg.taskId,
                 };
@@ -391,7 +435,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
               if (!input.canOperate) {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "Git 반영 영역으로 이동",
+                  label: "Git 반영 영역 보기",
                   description: "Git 반영은 OPERATOR 이상에서 진행합니다.",
                 };
               } else if (failedId) {
@@ -404,14 +448,14 @@ export function computeIdeaGuidedUxSnapshot(input: {
               } else if (applyTarget) {
                 primaryAction = {
                   id: "apply_git",
-                  label: "Git 반영 실행",
+                  label: "Git 반영",
                   description: "정책에 따라 승인 후 반영을 실행하세요.",
                   gitChangeRequestId: applyTarget.id,
                 };
               } else {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "Git 반영 영역으로 이동",
+                  label: "Git 반영 영역 보기",
                   description: "승인 대기·적용 대기 항목을 확인하세요.",
                 };
               }
@@ -422,7 +466,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
               if (!input.canOperate) {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "PR 영역으로 이동",
+                  label: "PR 영역 보기",
                   description: "PR 작업은 OPERATOR 이상에서 진행할 수 있습니다.",
                 };
               } else if (prRow) {
@@ -436,7 +480,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
               } else {
                 primaryAction = {
                   id: "scroll_git",
-                  label: "Git 영역으로 이동",
+                  label: "PR 상태 확인",
                   description: "PR이 필요한 항목을 확인하세요.",
                 };
               }
@@ -452,7 +496,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
                 id: "none",
                 label: "흐름 완료",
                 description:
-                  "주요 단계를 마쳤습니다. 필요 시 「고급 보기」에서 세부 기능을 이용하세요.",
+                  "주요 단계를 마쳤습니다. 필요 시 아래 「고급 보기」에서 세부 기능을 이용하세요.",
               };
             } else {
               currentStep = 4;
@@ -470,10 +514,12 @@ export function computeIdeaGuidedUxSnapshot(input: {
     }
   }
 
-  const steps: { id: IdeaUxStepId; done: boolean }[] = IDEA_UX_STEP_IDS.map((id) => ({
-    id,
-    done: allComplete ? true : id < currentStep,
-  }));
+  const steps: { id: IdeaUxStepId; status: IdeaUxStepStatus }[] = IDEA_UX_STEP_IDS.map(
+    (id) => ({
+      id,
+      status: stepStatusFor(id, currentStep, allComplete),
+    })
+  );
 
   return {
     currentStep,
@@ -481,6 +527,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
     steps,
     primaryAction,
     achievements,
+    milestones,
     scrollAnchor,
   };
 }
