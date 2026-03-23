@@ -16,7 +16,8 @@ import {
 } from "@/lib/git-apply/runApplyCore";
 import { logExecutionEvent } from "@/lib/service/executionEventService";
 import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
-import { triggerSelfHealing } from "@/lib/service/selfHealingService";
+import { getSelfHealingAction } from "@/lib/execution/selfHealingStrategy";
+import { triggerSelfHealingLite } from "@/lib/service/selfHealingService";
 
 export type GitApplyExecutionPayload = RunGitApplyCoreBody & {
   actorUserId: string;
@@ -180,6 +181,26 @@ function extractGitChangeRequestId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const v = (payload as { gitChangeRequestId?: unknown }).gitChangeRequestId;
   return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function extractTaskIdFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const v = (payload as { taskId?: unknown }).taskId;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+async function resolveSourceTaskIdFromJob(job: ExecutionJob): Promise<string | null> {
+  const gitChangeRequestId = extractGitChangeRequestId(job.payload);
+  if (gitChangeRequestId) {
+    const gcr = await prisma.gitChangeRequest.findUnique({
+      where: { id: gitChangeRequestId },
+      select: { taskId: true },
+    });
+    if (gcr?.taskId) return gcr.taskId;
+  }
+
+  const payloadTaskId = extractTaskIdFromPayload(job.payload);
+  return payloadTaskId;
 }
 
 function extractMode(payload: unknown): string | null {
@@ -582,25 +603,6 @@ async function markJobRetryOrFailed(
     startedAt: now,
   });
 
-  // FINAL FAILED 이후 Self-Healing 트리거.
-  // 기존 retry/backoff 상태 전이는 절대 건드리지 않고, 최종 FAILED 확정 뒤 side-effect를 최소화한다.
-  const lastEvent = await prisma.executionEventLog.findFirst({
-    where: { executionJobId: job.id, status: "FAILED" },
-    orderBy: { createdAt: "desc" },
-    select: { failureType: true, detailJson: true },
-  });
-
-  if (lastEvent?.failureType) {
-    try {
-      await triggerSelfHealing({
-        job,
-        failureType: String(lastEvent.failureType),
-        detailJson: lastEvent.detailJson,
-      });
-    } catch (e) {
-      console.error("[execution-worker] triggerSelfHealing failed:", e);
-    }
-  }
   logWorker("failed-final", {
     jobId: job.id,
     projectId: job.projectId,
@@ -610,6 +612,56 @@ async function markJobRetryOrFailed(
     maxAttempts: job.maxAttempts,
     message,
   });
+
+  // FINAL FAILED 이후 Self-Healing Lite (자동 복구 시도 X, 작업 등록만 수행)
+  try {
+    const lastEvent = await prisma.executionEventLog.findFirst({
+      where: { executionJobId: job.id, status: "FAILED" },
+      orderBy: { createdAt: "desc" },
+      select: { failureType: true, detailJson: true },
+    });
+    if (!lastEvent) return;
+
+    const failureType = lastEvent.failureType ? String(lastEvent.failureType) : null;
+    const actionInfo = getSelfHealingAction(failureType);
+    const sourceTaskId = await resolveSourceTaskIdFromJob(job);
+
+    await logEventSafe({
+      projectId: job.projectId,
+      executionJobId: job.id,
+      stage: "SELF_HEALING",
+      status: "STARTED",
+      detailJson: {
+        failureType,
+        action: actionInfo.action,
+        sourceTaskId,
+      } as Prisma.InputJsonValue,
+    });
+
+    const res = await triggerSelfHealingLite({
+      jobId: job.id,
+      projectId: job.projectId,
+      failureType,
+      detailJson: lastEvent.detailJson,
+      sourceTaskId,
+    });
+
+    logWorker("self-healing-lite-result", {
+      jobId: job.id,
+      created: res.created,
+      taskId: res.taskId,
+      reason: res.reason,
+      failureType,
+      action: actionInfo.action,
+    });
+  } catch (e) {
+    console.error("[execution-worker] self-healing-lite failed:", e);
+    logWorker("self-healing-lite-error", {
+      jobId: job.id,
+      projectId: job.projectId,
+      message: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 /**
