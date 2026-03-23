@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { classifyFailure } from "@/lib/execution/failureClassifier";
-import { FAILURE_TYPES, type FailureType } from "@/lib/execution/failureTypes";
+import type { FailureType } from "@/lib/execution/failureTypes";
 
 export type ExecutionEventStage =
   | "PRECHECK"
@@ -48,11 +48,20 @@ export async function logExecutionEvent(input: {
 
   let failureType: FailureType | undefined;
   if (input.status === "FAILED") {
-    failureType = classifyFailure({
+    const classification = classifyFailure({
       stage: input.stage,
       message: input.message ?? null,
       detailJson: normalizedDetailJson,
     });
+    failureType = classification.type;
+
+    // 실패 분류 confidence를 detailJson에도 넣어, UI/후속 자동 대응에서 활용 가능하게 만든다.
+    const base =
+      (normalizedDetailJson ?? {}) as unknown as Record<string, unknown>;
+    normalizedDetailJson = {
+      ...base,
+      failureConfidence: classification.confidence,
+    } as Prisma.InputJsonValue;
   }
 
   await prisma.executionEventLog.create({
