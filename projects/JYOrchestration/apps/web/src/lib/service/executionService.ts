@@ -44,7 +44,7 @@ export async function syncGitChangeRequestPullRequestFromGithub(input: {
 
 /** git-apply GET과 동일 select / projectId 필터 */
 export async function listGitChangeRequestsForProject(projectId: string) {
-  return prisma.gitChangeRequest.findMany({
+  const rows = await prisma.gitChangeRequest.findMany({
     where: { projectId },
     orderBy: { createdAt: "desc" },
     select: {
@@ -76,6 +76,24 @@ export async function listGitChangeRequestsForProject(projectId: string) {
       project: { select: { gitApprovalMode: true, gitPushMode: true } },
     },
   });
+  const jobRows = await prisma.executionJob.findMany({
+    where: { projectId, type: "git-apply" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, payload: true },
+  });
+  const latestJobByGcrId = new Map<string, string>();
+  for (const row of jobRows) {
+    const payload = row.payload as { gitChangeRequestId?: unknown } | null;
+    const gcrId = typeof payload?.gitChangeRequestId === "string" ? payload.gitChangeRequestId : null;
+    if (!gcrId || latestJobByGcrId.has(gcrId)) {
+      continue;
+    }
+    latestJobByGcrId.set(gcrId, row.id);
+  }
+  return rows.map((row) => ({
+    ...row,
+    latestExecutionJobId: latestJobByGcrId.get(row.id) ?? null,
+  }));
 }
 
 export function serializeGitChangeRequestList(

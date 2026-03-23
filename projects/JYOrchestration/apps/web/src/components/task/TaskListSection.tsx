@@ -62,6 +62,7 @@ export type GitChangeRequestItem = {
   commitMessage: string | null;
   applyStatus: string | null;
   applyLog: string | null;
+  latestExecutionJobId?: string | null;
   branchName?: string | null;
   applyStartedAt?: string | null;
   applyFinishedAt?: string | null;

@@ -62,6 +62,7 @@ import {
 } from "@/lib/onboarding/ideaGuidedUx";
 import { computeProjectGuidedFlowSnapshot } from "@/lib/onboarding/projectGuidedFlow";
 import { ProjectGuidedFlowPanel } from "@/components/onboarding/ProjectGuidedFlowPanel";
+import { ExecutionTimeline } from "@/components/git/ExecutionTimeline";
 
 function rbacForbiddenMessage(
   res: Response,
@@ -2329,6 +2330,12 @@ export default function ProjectDetailPage() {
                     >
                       {item.applyLog}
                     </pre>
+                  </details>
+                ) : null}
+                {item.latestExecutionJobId ? (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ cursor: "pointer" }}>Execution Timeline 보기</summary>
+                    <ExecutionTimeline jobId={item.latestExecutionJobId} />
                   </details>
                 ) : null}
               </div>

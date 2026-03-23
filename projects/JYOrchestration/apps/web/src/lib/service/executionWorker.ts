@@ -11,8 +11,10 @@ import { prisma } from "@/lib/prisma";
 import {
   runGitApplyCoreFromBody,
   type RunGitApplyCoreBody,
+  type RunGitApplyCoreEventContext,
   type RunGitApplyCoreResult,
 } from "@/lib/git-apply/runApplyCore";
+import { logExecutionEvent } from "@/lib/service/executionEventService";
 import { appendGitApplyAuditTrail } from "@/lib/service/taskHistoryService";
 
 export type GitApplyExecutionPayload = RunGitApplyCoreBody & {
@@ -68,6 +70,33 @@ function logWorker(event: string, detail: Record<string, unknown>) {
   console.info("[execution-worker]", event, detail);
 }
 
+function extractGitChangeRequestId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const v = (payload as { gitChangeRequestId?: unknown }).gitChangeRequestId;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function extractMode(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const v = (payload as { mode?: unknown }).mode;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function extractErrorCode(result: RunGitApplyCoreResult | StructuredJobResult): string | null {
+  if ("code" in result && typeof result.code === "string") {
+    return result.code;
+  }
+  return null;
+}
+
+async function logEventSafe(input: Parameters<typeof logExecutionEvent>[0]): Promise<void> {
+  try {
+    await logExecutionEvent(input);
+  } catch (e) {
+    console.error("[execution-worker] event log failed", e);
+  }
+}
+
 function getAttemptNumber(job: Pick<ExecutionJob, "retryCount">): number {
   return job.retryCount + 1;
 }
@@ -119,7 +148,8 @@ function computeBackoffSeconds(nextAttemptNumber: number): number {
   return 60;
 }
 
-async function runGitApplyJob(payload: unknown): Promise<RunGitApplyCoreResult> {
+async function runGitApplyJob(job: ExecutionJob): Promise<RunGitApplyCoreResult> {
+  const payload = job.payload;
   const p = payload as GitApplyExecutionPayload;
   const body: RunGitApplyCoreBody = {
     gitChangeRequestId: p.gitChangeRequestId,
@@ -144,7 +174,15 @@ async function runGitApplyJob(payload: unknown): Promise<RunGitApplyCoreResult> 
   const isRetry = body.retry === true;
   const modeStr = String(body.mode ?? "mock").trim() || "mock";
 
-  const result = await runGitApplyCoreFromBody(body);
+  const eventCtx: RunGitApplyCoreEventContext = {
+    executionJobId: job.id,
+    projectId: job.projectId,
+    taskId: gcrBefore?.taskId ?? null,
+    gitChangeRequestId,
+    attemptNumber: getAttemptNumber(job),
+  };
+
+  const result = await runGitApplyCoreFromBody(body, eventCtx);
 
   const afterRow = await prisma.gitChangeRequest.findUnique({
     where: { id: gitChangeRequestId },
@@ -225,7 +263,7 @@ async function claimNextExecutableJob(workerId: string): Promise<ExecutionJob | 
 async function executeJob(job: ExecutionJob): Promise<RunGitApplyCoreResult | StructuredJobResult> {
   switch (job.type) {
     case "git-apply":
-      return runGitApplyJob(job.payload);
+      return runGitApplyJob(job);
     case "pipeline":
     case "cursor":
       return {
@@ -263,6 +301,17 @@ async function markJobDone(jobId: string, result: RunGitApplyCoreResult | Struct
     },
   });
   if (before) {
+    await logEventSafe({
+      projectId: before.projectId,
+      executionJobId: before.id,
+      stage: "COMPLETE",
+      status: "SUCCESS",
+      message: "Execution job completed successfully.",
+      detailJson: {
+        attemptNumber: getAttemptNumber(before),
+        retryCount: before.retryCount,
+      } as Prisma.InputJsonValue,
+    });
     logWorker("completed", {
       jobId: before.id,
       projectId: before.projectId,
@@ -287,6 +336,19 @@ async function markJobRetryOrFailed(
       : (result as Prisma.InputJsonValue);
 
   if (shouldRetry) {
+    const retryStartedAt = new Date();
+    await logEventSafe({
+      projectId: job.projectId,
+      executionJobId: job.id,
+      stage: "RETRY",
+      status: "STARTED",
+      message: "Retry scheduling started.",
+      detailJson: {
+        attemptNumber: failedCountAfterCurrentAttempt + 1,
+        retryCount: failedCountAfterCurrentAttempt,
+        mode: extractMode(job.payload),
+      } as Prisma.InputJsonValue,
+    });
     const nextAttemptNumber = failedCountAfterCurrentAttempt + 1;
     const waitSeconds = computeBackoffSeconds(nextAttemptNumber);
     const availableAt = new Date(now.getTime() + waitSeconds * 1000);
@@ -303,6 +365,22 @@ async function markJobRetryOrFailed(
         availableAt,
         finishedAt: null,
       },
+    });
+    await logEventSafe({
+      projectId: job.projectId,
+      executionJobId: job.id,
+      stage: "RETRY",
+      status: "SUCCESS",
+      message: `Retry scheduled for attempt ${nextAttemptNumber}.`,
+      detailJson: {
+        attemptNumber: nextAttemptNumber,
+        retryCount: failedCountAfterCurrentAttempt,
+        mode: extractMode(job.payload),
+        errorCode: extractErrorCode(result),
+        rawError: message,
+        step: "RETRY",
+      } as Prisma.InputJsonValue,
+      startedAt: retryStartedAt,
     });
     logWorker("retry-scheduled", {
       jobId: job.id,
@@ -329,6 +407,22 @@ async function markJobRetryOrFailed(
       claimedBy: null,
       heartbeatAt: now,
     },
+  });
+  await logEventSafe({
+    projectId: job.projectId,
+    executionJobId: job.id,
+    stage: "COMPLETE",
+    status: "FAILED",
+    message: "Execution job failed permanently.",
+    detailJson: {
+      attemptNumber: failedCountAfterCurrentAttempt,
+      retryCount: failedCountAfterCurrentAttempt,
+      mode: extractMode(job.payload),
+      errorCode: extractErrorCode(result),
+      rawError: message,
+      step: "COMPLETE",
+    } as Prisma.InputJsonValue,
+    startedAt: now,
   });
   logWorker("failed-final", {
     jobId: job.id,
@@ -365,6 +459,19 @@ export async function processExecutionJobById(jobId: string): Promise<void> {
 
   const job = await prisma.executionJob.findUnique({ where: { id: jobId } });
   if (!job) return;
+  await logEventSafe({
+    projectId: job.projectId,
+    executionJobId: job.id,
+    stage: "COMPLETE",
+    status: "STARTED",
+    message: "Execution job started.",
+    detailJson: {
+      attemptNumber: getAttemptNumber(job),
+      retryCount: job.retryCount,
+      mode: extractMode(job.payload),
+      gitChangeRequestId: extractGitChangeRequestId(job.payload),
+    } as Prisma.InputJsonValue,
+  });
   logWorker("started", {
     jobId: job.id,
     projectId: job.projectId,
@@ -400,6 +507,19 @@ export async function processExecutionQueue(maxJobs = 10, workerId = "manual-bat
     if (isRetryWaiting(next)) {
       continue;
     }
+    await logEventSafe({
+      projectId: next.projectId,
+      executionJobId: next.id,
+      stage: "COMPLETE",
+      status: "STARTED",
+      message: "Execution job started.",
+      detailJson: {
+        attemptNumber: getAttemptNumber(next),
+        retryCount: next.retryCount,
+        mode: extractMode(next.payload),
+        gitChangeRequestId: extractGitChangeRequestId(next.payload),
+      } as Prisma.InputJsonValue,
+    });
     logWorker("started", {
       jobId: next.id,
       projectId: next.projectId,
@@ -444,6 +564,19 @@ async function processLoopTick(): Promise<void> {
         continue;
       }
       state.activeJobs.add(job.id);
+      void logEventSafe({
+        projectId: job.projectId,
+        executionJobId: job.id,
+        stage: "COMPLETE",
+        status: "STARTED",
+        message: "Execution job started.",
+        detailJson: {
+          attemptNumber: getAttemptNumber(job),
+          retryCount: job.retryCount,
+          mode: extractMode(job.payload),
+          gitChangeRequestId: extractGitChangeRequestId(job.payload),
+        } as Prisma.InputJsonValue,
+      });
       logWorker("started", {
         jobId: job.id,
         projectId: job.projectId,

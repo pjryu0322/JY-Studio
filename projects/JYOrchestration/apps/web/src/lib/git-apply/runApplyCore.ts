@@ -2,6 +2,7 @@
  * Git apply POST 본문 처리 (기존 route.ts 인라인 로직과 동일).
  * API 라우트는 이 모듈에만 위임한다.
  */
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   buildApplyLogForMode,
@@ -33,6 +34,10 @@ import {
 } from "@/lib/integration/cursorExecutionTypes";
 import { isExecutionSafeMode } from "@/lib/production/safeMode";
 import { maybeAutoCreateGithubPullRequest } from "@/lib/service/githubPullRequestService";
+import {
+  logExecutionEvent,
+  type ExecutionEventStage,
+} from "@/lib/service/executionEventService";
 
 export const GIT_APPLY_ERROR_CODES = {
   INVALID_REQUEST: "INVALID_REQUEST",
@@ -91,6 +96,69 @@ export type RunGitApplyCoreErr = {
 
 export type RunGitApplyCoreResult = RunGitApplyCoreOk | RunGitApplyCoreErr;
 
+export type RunGitApplyCoreEventContext = {
+  executionJobId: string;
+  projectId: string;
+  taskId?: string | null;
+  gitChangeRequestId?: string | null;
+  attemptNumber?: number;
+};
+
+async function logStageStarted(
+  ctx: RunGitApplyCoreEventContext | undefined,
+  stage: ExecutionEventStage,
+  message?: string,
+  detailJson?: Prisma.InputJsonValue
+): Promise<Date> {
+  const startedAt = new Date();
+  if (!ctx) {
+    return startedAt;
+  }
+  try {
+    await logExecutionEvent({
+      projectId: ctx.projectId,
+      executionJobId: ctx.executionJobId,
+      taskId: ctx.taskId,
+      gitChangeRequestId: ctx.gitChangeRequestId,
+      stage,
+      status: "STARTED",
+      message,
+      detailJson,
+    });
+  } catch {
+    /* observability should not break execution */
+  }
+  return startedAt;
+}
+
+async function logStageFinished(
+  ctx: RunGitApplyCoreEventContext | undefined,
+  stage: ExecutionEventStage,
+  status: "SUCCESS" | "FAILED",
+  startedAt: Date,
+  message?: string,
+  detailJson?: Prisma.InputJsonValue
+): Promise<void> {
+  if (!ctx) {
+    return;
+  }
+  try {
+    await logExecutionEvent({
+      projectId: ctx.projectId,
+      executionJobId: ctx.executionJobId,
+      taskId: ctx.taskId,
+      gitChangeRequestId: ctx.gitChangeRequestId,
+      stage,
+      status,
+      message,
+      detailJson,
+      startedAt,
+    });
+  } catch {
+    /* observability should not break execution */
+  }
+}
+
 function buildBranchName(taskId: string): string {
   return `task-${taskId.slice(0, 8)}`;
 }
@@ -109,7 +177,8 @@ function completionMessage(mode: ExecutionMode): string {
 }
 
 export async function runGitApplyCoreFromBody(
-  body: RunGitApplyCoreBody
+  body: RunGitApplyCoreBody,
+  eventCtx?: RunGitApplyCoreEventContext
 ): Promise<RunGitApplyCoreResult> {
   const gitChangeRequestId = String(body.gitChangeRequestId ?? "").trim();
   const mode = parseExecutionMode(body.mode);
@@ -319,6 +388,15 @@ export async function runGitApplyCoreFromBody(
     ? `${rawCommit} ${retryPlan.commitMessageSuffix}`.trim()
     : rawCommit;
 
+  const precheckStartedAt = await logStageStarted(
+    eventCtx,
+    "PRECHECK",
+    "실행 사전검사를 시작합니다.",
+    {
+      attemptNumber: eventCtx?.attemptNumber ?? 1,
+      mode,
+    } as Prisma.InputJsonValue
+  );
   const precheck = validateExecutionPrecheck(mode, {
     taskId: found.taskId,
     commitMessage: executionCommitMessage,
@@ -327,6 +405,18 @@ export async function runGitApplyCoreFromBody(
   });
 
   if (!precheck.ok) {
+    await logStageFinished(
+      eventCtx,
+      "PRECHECK",
+      "FAILED",
+      precheckStartedAt,
+      precheck.message,
+      {
+        step: "PRECHECK",
+        errorCode: GIT_APPLY_ERROR_CODES.EXECUTION_PRECHECK_FAILED,
+        rawError: precheck.message,
+      } as Prisma.InputJsonValue
+    );
     await prisma.gitChangeRequest.update({
       where: { id: found.id },
       data: {
@@ -343,6 +433,17 @@ export async function runGitApplyCoreFromBody(
       httpStatus: 400,
     };
   }
+  await logStageFinished(
+    eventCtx,
+    "PRECHECK",
+    "SUCCESS",
+    precheckStartedAt,
+    "실행 사전검사를 통과했습니다.",
+    {
+      attemptNumber: eventCtx?.attemptNumber ?? 1,
+      mode,
+    } as Prisma.InputJsonValue
+  );
 
   const branchName = buildBranchName(found.taskId);
   const startedAt = new Date();
@@ -377,6 +478,16 @@ export async function runGitApplyCoreFromBody(
   });
 
   try {
+    const executeStartedAt = await logStageStarted(
+      eventCtx,
+      "EXECUTE",
+      "실행 단계를 시작합니다.",
+      {
+        attemptNumber: eventCtx?.attemptNumber ?? 1,
+        mode,
+        branchName,
+      } as Prisma.InputJsonValue
+    );
     let applyLog: string;
 
     if (mode === "cursor") {
@@ -421,6 +532,20 @@ export async function runGitApplyCoreFromBody(
             payloadJson,
             cursorResult
           )
+        );
+        await logStageFinished(
+          eventCtx,
+          "EXECUTE",
+          "FAILED",
+          executeStartedAt,
+          errText,
+          {
+            step: "EXECUTE",
+            errorCode: cursorResult.code ?? GIT_APPLY_ERROR_CODES.CURSOR_EXECUTION_FAILED,
+            rawError: cursorResult.error ?? errText,
+            attemptNumber: eventCtx?.attemptNumber ?? 1,
+            mode,
+          } as Prisma.InputJsonValue
         );
         await prisma.gitChangeRequest.update({
           where: { id: found.id },
@@ -474,7 +599,29 @@ export async function runGitApplyCoreFromBody(
         ].join("\n");
       }
     }
+    await logStageFinished(
+      eventCtx,
+      "EXECUTE",
+      "SUCCESS",
+      executeStartedAt,
+      "실행 단계를 완료했습니다.",
+      {
+        attemptNumber: eventCtx?.attemptNumber ?? 1,
+        mode,
+        branchName,
+      } as Prisma.InputJsonValue
+    );
 
+    const applyStartedAt = await logStageStarted(
+      eventCtx,
+      "APPLY",
+      "Git 반영 결과를 저장합니다.",
+      {
+        attemptNumber: eventCtx?.attemptNumber ?? 1,
+        mode,
+        branchName,
+      } as Prisma.InputJsonValue
+    );
     applyLog = mergeRetryPrefixWithBody(retryLogPrefix, applyLog);
     const finalRetryCount = isRetry ? nextRetryCount : found.retryCount;
     applyLog = appendSelfHealingSuccessFooter(applyLog, finalRetryCount);
@@ -491,7 +638,29 @@ export async function runGitApplyCoreFromBody(
         lastError: null,
       },
     });
+    await logStageFinished(
+      eventCtx,
+      "APPLY",
+      "SUCCESS",
+      applyStartedAt,
+      "Git 반영 결과 저장이 완료되었습니다.",
+      {
+        attemptNumber: eventCtx?.attemptNumber ?? 1,
+        mode,
+        branchName,
+      } as Prisma.InputJsonValue
+    );
 
+    const prStartedAt = await logStageStarted(
+      eventCtx,
+      "PR",
+      "PR 후속 단계를 실행합니다.",
+      {
+        attemptNumber: eventCtx?.attemptNumber ?? 1,
+        mode,
+        branchName,
+      } as Prisma.InputJsonValue
+    );
     const prOutcome = await maybeAutoCreateGithubPullRequest({
       mode,
       requestedPush,
@@ -499,6 +668,36 @@ export async function runGitApplyCoreFromBody(
       gitPushMode: found.project.gitPushMode,
       gitChangeRequestId: found.id,
     });
+    if (prOutcome.kind === "failed") {
+      await logStageFinished(
+        eventCtx,
+        "PR",
+        "FAILED",
+        prStartedAt,
+        prOutcome.message,
+        {
+          step: "PR",
+          errorCode: prOutcome.code ?? "PR_CREATE_FAILED",
+          rawError: prOutcome.message,
+          attemptNumber: eventCtx?.attemptNumber ?? 1,
+          mode,
+          branchName,
+        } as Prisma.InputJsonValue
+      );
+    } else {
+      await logStageFinished(
+        eventCtx,
+        "PR",
+        "SUCCESS",
+        prStartedAt,
+        prOutcome.kind === "created" ? "Pull Request를 생성했습니다." : "PR 생성이 생략되었습니다.",
+        {
+          attemptNumber: eventCtx?.attemptNumber ?? 1,
+          mode,
+          branchName,
+        } as Prisma.InputJsonValue
+      );
+    }
 
     const updated = await prisma.gitChangeRequest.findUnique({
       where: { id: found.id },
@@ -566,6 +765,24 @@ export async function runGitApplyCoreFromBody(
         : "실행 단계에서 오류가 발생했습니다.";
     const bodyLog = `[EXECUTION_FAILED] ${failMsg}`;
     const failApplyLog = mergeRetryPrefixWithBody(retryLogPrefix, bodyLog);
+    if (eventCtx) {
+      await logExecutionEvent({
+        projectId: eventCtx.projectId,
+        executionJobId: eventCtx.executionJobId,
+        taskId: eventCtx.taskId ?? found.taskId,
+        gitChangeRequestId: eventCtx.gitChangeRequestId ?? found.id,
+        stage: "EXECUTE",
+        status: "FAILED",
+        message: failMsg,
+        detailJson: {
+          step: "EXECUTE",
+          errorCode: GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
+          rawError: innerError instanceof Error ? innerError.stack ?? innerError.message : String(innerError),
+          attemptNumber: eventCtx.attemptNumber ?? 1,
+          mode,
+        } as Prisma.InputJsonValue,
+      }).catch(() => undefined);
+    }
     await prisma.gitChangeRequest.update({
       where: { id: found.id },
       data: {
