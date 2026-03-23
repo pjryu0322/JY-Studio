@@ -22,8 +22,16 @@ model Project {
   repoUrl       String?
   defaultBranch String?
   status        String
-  /** AUTO_APPLY: Git 반영 즉시 가능(기본). MANUAL_APPROVAL: 승인 게이트 필요. */
-  gitApprovalMode String           @default("AUTO_APPLY")
+  /**
+   * 승인 게이트만 담당 (GCR status·승인 API). push·원격 반영과 무관.
+   * NO_APPROVAL(기본) | MANUAL_APPROVAL. 레거시 AUTO_APPLY = NO_APPROVAL.
+   */
+  gitApprovalMode String           @default("NO_APPROVAL")
+  /**
+   * 원격 push 시도 여부만 담당 (git-apply options.push 기본값). 승인과 무관.
+   * AUTO_PUSH(기본) | MANUAL_PUSH.
+   */
+  gitPushMode     String           @default("AUTO_PUSH")
   /** Task mock 실행 완료 시 Run→GitChangeRequest 자동 생성 여부 */
   autoCreateGitRequest Boolean     @default(true)
   createdAt     DateTime           @default(now())
@@ -155,6 +163,13 @@ model GitChangeRequest {
   lastError   String?
   lastRetryAt DateTime?
   rejectionReason String?
+  pullRequestUrl   String?
+  pullRequestNumber Int?
+  /** OPEN | CLOSED | MERGED (GitHub PR state 정규화) */
+  pullRequestState String?
+  /** PENDING | APPROVED | CHANGES_REQUESTED (리뷰 요약) */
+  reviewStatus     String?
+  mergedAt         DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

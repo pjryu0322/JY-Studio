@@ -45,9 +45,14 @@ import { ExecutionObservabilityPanel } from "@/components/dashboard/ExecutionObs
 import type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 import { RBAC_FORBIDDEN_CODE } from "@/lib/rbac/projectAccessDenied";
 import {
-  GIT_APPROVAL_MODE_AUTO_APPLY,
   GIT_APPROVAL_MODE_MANUAL_APPROVAL,
+  GIT_APPROVAL_MODE_NO_APPROVAL,
+  GIT_PUSH_MODE_AUTO_PUSH,
+  GIT_PUSH_MODE_MANUAL_PUSH,
+  normalizeGitApprovalModeForDisplay,
 } from "@/lib/git-apply/retry";
+import { computeProjectGuidedFlowSnapshot } from "@/lib/onboarding/projectGuidedFlow";
+import { ProjectGuidedFlowPanel } from "@/components/onboarding/ProjectGuidedFlowPanel";
 
 function rbacForbiddenMessage(
   res: Response,
@@ -95,6 +100,7 @@ export default function ProjectDetailPage() {
   const [gitApplySimulateFailure, setGitApplySimulateFailure] = useState(false);
   const [gitApplyMessage, setGitApplyMessage] = useState<string | null>(null);
   const [gitApplyError, setGitApplyError] = useState<string | null>(null);
+  const [gitPrBusyId, setGitPrBusyId] = useState<string | null>(null);
   const [gitPolicySaving, setGitPolicySaving] = useState(false);
   const [gitRejectReasons, setGitRejectReasons] = useState<Record<string, string>>({});
   const [auditTaskId, setAuditTaskId] = useState<string | null>(null);
@@ -111,6 +117,7 @@ export default function ProjectDetailPage() {
   const [execSummary, setExecSummary] = useState<ProjectObservabilitySnapshot | null>(null);
   const [execSummaryLoading, setExecSummaryLoading] = useState(false);
   const [execSummaryError, setExecSummaryError] = useState<string | null>(null);
+  const [executionSafeMode, setExecutionSafeMode] = useState(false);
 
   const currentUser = useMemo(() => getCurrentMockUser(), []);
   const projectRole = useMemo(
@@ -132,6 +139,16 @@ export default function ProjectDetailPage() {
   );
   const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
   const showTaskSection = rbac.canReview || rbac.canOperate || rbac.canEditSpec;
+
+  useEffect(() => {
+    if (!project) {
+      return;
+    }
+    const pushMode = String(project.gitPushMode ?? GIT_PUSH_MODE_AUTO_PUSH).trim();
+    setGitApplyPushOption(
+      pushMode === GIT_PUSH_MODE_AUTO_PUSH || pushMode === ""
+    );
+  }, [project?.id, project?.gitPushMode]);
 
   useEffect(() => {
     if (!projectId || !rbac.canOperate) {
@@ -190,6 +207,28 @@ export default function ProjectDetailPage() {
       cancelled = true;
     };
   }, [projectId, rbac.canOperate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRuntimeFlags() {
+      try {
+        const res = await fetch("/api/config/runtime");
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: { executionSafeMode?: boolean };
+        };
+        if (!cancelled && json.success && json.data?.executionSafeMode === true) {
+          setExecutionSafeMode(true);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    void loadRuntimeFlags();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!projectId) return;
@@ -413,6 +452,18 @@ export default function ProjectDetailPage() {
         return acc;
       }, {}),
     [taskRuns]
+  );
+
+  const guidedFlowSnapshot = useMemo(
+    () =>
+      computeProjectGuidedFlowSnapshot({
+        uploadHistory,
+        tasks,
+        taskPrompts,
+        taskRuns,
+        gitRequests,
+      }),
+    [uploadHistory, tasks, taskPrompts, taskRuns, gitRequests]
   );
 
   const reloadTaskRuns = useCallback(async () => {
@@ -663,7 +714,11 @@ export default function ProjectDetailPage() {
       };
 
       if (!res.ok || !json.success || !json.data) {
-        setPromptMessage(json.message || "Task 실행 요청에 실패했습니다.");
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "Task 실행 요청에 실패했습니다.";
+        setPromptMessage(detail);
         return;
       }
       await reloadTaskRuns();
@@ -980,7 +1035,11 @@ export default function ProjectDetailPage() {
       };
 
       if (!res.ok || !json.success) {
-        setPromptMessage(json.message || "Git 반영 요청 등록에 실패했습니다.");
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "Git 반영 요청 등록에 실패했습니다.";
+        setPromptMessage(detail);
         return;
       }
 
@@ -1019,9 +1078,90 @@ export default function ProjectDetailPage() {
     }
   }
 
+  function applyLogHasGitPushOk(log: string | null | undefined): boolean {
+    return Boolean(log && log.includes("[GIT] push OK"));
+  }
+
+  function extractGithubPrCreateFailureLine(log: string | null | undefined): string | null {
+    if (!log?.includes("[GIT] PR create failed")) {
+      return null;
+    }
+    const hit = log
+      .split("\n")
+      .filter((line) => line.includes("[GIT] PR create failed"))
+      .pop();
+    return hit?.trim() ?? null;
+  }
+
+  function formatPrMergeSummary(item: GitChangeRequestItem): string {
+    if (item.mergedAt) {
+      return formatTestedAt(item.mergedAt);
+    }
+    if (String(item.pullRequestState ?? "").toUpperCase() === "MERGED") {
+      return "병합됨";
+    }
+    return "아직 아님";
+  }
+
+  async function handleGitHubPrAction(gitChangeRequestId: string, action: "create" | "sync") {
+    try {
+      setGitPrBusyId(gitChangeRequestId);
+      setGitApplyMessage(null);
+      setGitApplyError(null);
+      const manualPush =
+        String(project?.gitPushMode ?? GIT_PUSH_MODE_AUTO_PUSH).trim() ===
+        GIT_PUSH_MODE_MANUAL_PUSH;
+
+      let res: Response;
+      if (action === "sync") {
+        const q = new URLSearchParams({ gitChangeRequestId });
+        res = await fetch(`/api/git/pr/status?${q.toString()}`, {
+          headers: mockAuthHeaders(),
+        });
+      } else {
+        res = await fetch("/api/task/git-pr", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...mockAuthHeaders(),
+          },
+          body: JSON.stringify({
+            gitChangeRequestId,
+            action: "create",
+            relaxAutoPushPolicy: manualPush,
+          }),
+        });
+      }
+
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+        code?: string;
+      };
+      await refreshGitRequestsList();
+      if (!res.ok || !json.success) {
+        const detail =
+          json.code && json.message
+            ? `${json.message} (${json.code})`
+            : json.message || "GitHub PR 처리에 실패했습니다.";
+        setGitApplyError(detail);
+        return;
+      }
+      setGitApplyMessage(
+        json.message ||
+          (action === "sync" ? "PR 상태를 동기화했습니다." : "Pull Request를 생성했습니다.")
+      );
+    } catch (error) {
+      console.error("GitHub PR action failed:", error);
+      setGitApplyError("GitHub PR 처리 중 오류가 발생했습니다.");
+    } finally {
+      setGitPrBusyId(null);
+    }
+  }
+
   function isManualGitItem(item: GitChangeRequestItem): boolean {
     return (
-      String(item.gitApprovalMode ?? GIT_APPROVAL_MODE_AUTO_APPLY).trim() ===
+      String(item.gitApprovalMode ?? GIT_APPROVAL_MODE_NO_APPROVAL).trim() ===
       GIT_APPROVAL_MODE_MANUAL_APPROVAL
     );
   }
@@ -1058,6 +1198,43 @@ export default function ProjectDetailPage() {
     } catch (error) {
       console.error("Failed to patch git approval mode:", error);
       setGitApplyError("Git 반영 정책 저장 중 오류가 발생했습니다.");
+    } finally {
+      setGitPolicySaving(false);
+    }
+  }
+
+  async function handlePatchGitPushMode(e: ChangeEvent<HTMLSelectElement>) {
+    const mode = e.target.value;
+    if (!projectId || !project) {
+      return;
+    }
+    setGitPolicySaving(true);
+    setGitApplyError(null);
+    try {
+      const res = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            ...mockAuthHeaders(),
+          },
+          body: JSON.stringify({ gitPushMode: mode }),
+        }
+      );
+      const json = (await res.json()) as {
+        success: boolean;
+        message?: string;
+      };
+      if (!res.ok || !json.success) {
+        setGitApplyError(json.message || "Git push 정책 저장에 실패했습니다.");
+        return;
+      }
+      setProject((p) => (p ? { ...p, gitPushMode: mode } : null));
+      await refreshGitRequestsList();
+    } catch (error) {
+      console.error("Failed to patch git push mode:", error);
+      setGitApplyError("Git push 정책 저장 중 오류가 발생했습니다.");
     } finally {
       setGitPolicySaving(false);
     }
@@ -1200,6 +1377,7 @@ export default function ProjectDetailPage() {
         success: boolean;
         message?: string;
         code?: string;
+        prWarning?: string;
       };
 
       await refreshGitRequestsList();
@@ -1215,7 +1393,7 @@ export default function ProjectDetailPage() {
       }
 
       setGitApplyMessage(json.message || "Git 반영 실행이 완료되었습니다.");
-      setGitApplyError(null);
+      setGitApplyError(json.prWarning?.trim() ? json.prWarning : null);
     } catch (error) {
       console.error("Failed to apply git change request:", error);
       setGitApplyError("Git 반영 실행 중 오류가 발생했습니다.");
@@ -1256,6 +1434,7 @@ export default function ProjectDetailPage() {
         success: boolean;
         message?: string;
         code?: string;
+        prWarning?: string;
       };
 
       await refreshGitRequestsList();
@@ -1271,7 +1450,7 @@ export default function ProjectDetailPage() {
       }
 
       setGitApplyMessage(json.message || "Git 반영 재시도가 완료되었습니다.");
-      setGitApplyError(null);
+      setGitApplyError(json.prWarning?.trim() ? json.prWarning : null);
     } catch (error) {
       console.error("Failed to retry git change request:", error);
       setGitApplyError("Git 반영 재시도 중 오류가 발생했습니다.");
@@ -1284,11 +1463,37 @@ export default function ProjectDetailPage() {
   return (
     <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
+      {executionSafeMode ? (
+        <div
+          role="status"
+          style={{
+            marginBottom: 14,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid #ffcc80",
+            background: "#fff8e1",
+            color: "#e65100",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>안전 모드</strong>가 켜져 있습니다(서버 <code>JY_SAFE_MODE</code>). 실제 Git 워크스페이스 반영
+          모드(git)는 비활성화되며, mock·cursor(스텁)만 사용할 수 있습니다.
+        </div>
+      ) : null}
       <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
       <ProjectInfoCard
         project={project}
         currentUserRoleLabel={projectRole && projectId ? projectRole : null}
       />
+      {!loading && project ? (
+        <ProjectGuidedFlowPanel
+          snapshot={guidedFlowSnapshot}
+          canRegisterSpec={rbac.canEditSpec}
+          canReview={rbac.canReview}
+          canOperate={rbac.canOperate}
+        />
+      ) : null}
       {rbac.canOperate ? (
         <ExecutionObservabilityPanel
           data={execSummary}
@@ -1303,20 +1508,22 @@ export default function ProjectDetailPage() {
       {rbac.canManageMembers ? <ProjectMembersSection members={memberRows} /> : null}
       {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
       {rbac.canEditSpec ? <ProjectSpecPromptSection prompt={projectSpecPrompt} /> : null}
-      {rbac.canEditSpec ? (
-        <ProjectSpecUploadTestSection
-          selectedFile={selectedFile}
-          selectedFileName={selectedFileName}
-          uploadMessage={uploadMessage}
-          uploadResult={uploadResult}
-          uploadStatus={uploadStatus}
-          uploading={uploading}
-          onSelectFile={handleSelectFile}
-          onUploadTest={handleUploadTest}
-        />
-      ) : null}
+      <div id="guided-flow-upload">
+        {rbac.canEditSpec ? (
+          <ProjectSpecUploadTestSection
+            selectedFile={selectedFile}
+            selectedFileName={selectedFileName}
+            uploadMessage={uploadMessage}
+            uploadResult={uploadResult}
+            uploadStatus={uploadStatus}
+            uploading={uploading}
+            onSelectFile={handleSelectFile}
+            onUploadTest={handleUploadTest}
+          />
+        ) : null}
+      </div>
       {showSpecUploadHistory ? (
-        <>
+        <div id="guided-flow-history">
           {!rbac.canEditSpec && rbac.canReview ? (
             <p style={{ margin: "0 0 8px 0", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
               ProjectSpec 파일 등록·업로드는 PLANNER 또는 OWNER 역할에서 수행합니다. 아래는 등록된 업로드
@@ -1333,9 +1540,10 @@ export default function ProjectDetailPage() {
             onParse={handleRunParse}
             onGenerateTasks={handleGenerateTasks}
           />
-        </>
+        </div>
       ) : null}
       {showTaskSection ? (
+        <div id="guided-flow-tasks">
         <TaskListSection
           tasks={tasks}
           loadingTasks={loadingTasks}
@@ -1376,6 +1584,7 @@ export default function ProjectDetailPage() {
           onCancelFollowUp={() => setFollowUpDraft(null)}
           onSubmitFollowUp={() => void handleSubmitFollowUp()}
         />
+        </div>
       ) : null}
       {showTaskSection && auditTaskId ? (
         <TaskHistoryTimeline
@@ -1393,6 +1602,7 @@ export default function ProjectDetailPage() {
       ) : null}
       {rbac.canOperate ? (
         <section
+          id="guided-flow-git"
           style={{
             borderTop: "1px solid #e5e5e5",
             marginTop: 16,
@@ -1412,26 +1622,47 @@ export default function ProjectDetailPage() {
           }}
         >
           <span>
-            <strong>Git 반영 정책:</strong>{" "}
-            {String(project?.gitApprovalMode ?? GIT_APPROVAL_MODE_AUTO_APPLY).trim() ===
+            <strong>승인 정책:</strong>{" "}
+            {normalizeGitApprovalModeForDisplay(project?.gitApprovalMode) ===
             GIT_APPROVAL_MODE_MANUAL_APPROVAL
               ? "승인 필요 (MANUAL_APPROVAL)"
-              : "자동 반영 (AUTO_APPLY)"}
+              : "승인 생략 (NO_APPROVAL)"}
           </span>
           {rbac.canReview ? (
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: "#555" }}>변경</span>
               <select
-                value={
-                  String(project?.gitApprovalMode ?? GIT_APPROVAL_MODE_AUTO_APPLY).trim() ||
-                  GIT_APPROVAL_MODE_AUTO_APPLY
-                }
+                value={normalizeGitApprovalModeForDisplay(project?.gitApprovalMode)}
                 onChange={handlePatchGitPolicy}
                 disabled={gitPolicySaving}
                 style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #ccc" }}
               >
-                <option value={GIT_APPROVAL_MODE_AUTO_APPLY}>자동 반영</option>
+                <option value={GIT_APPROVAL_MODE_NO_APPROVAL}>승인 생략</option>
                 <option value={GIT_APPROVAL_MODE_MANUAL_APPROVAL}>승인 필요</option>
+              </select>
+            </label>
+          ) : null}
+          <span style={{ marginLeft: 8 }}>
+            <strong>Push 정책:</strong>{" "}
+            {String(project?.gitPushMode ?? GIT_PUSH_MODE_AUTO_PUSH).trim() ===
+            GIT_PUSH_MODE_MANUAL_PUSH
+              ? "수동 (MANUAL_PUSH)"
+              : "자동 시도 (AUTO_PUSH)"}
+          </span>
+          {rbac.canReview ? (
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#555" }}>push</span>
+              <select
+                value={
+                  String(project?.gitPushMode ?? GIT_PUSH_MODE_AUTO_PUSH).trim() ||
+                  GIT_PUSH_MODE_AUTO_PUSH
+                }
+                onChange={handlePatchGitPushMode}
+                disabled={gitPolicySaving}
+                style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #ccc" }}
+              >
+                <option value={GIT_PUSH_MODE_AUTO_PUSH}>자동 push 시도</option>
+                <option value={GIT_PUSH_MODE_MANUAL_PUSH}>수동만</option>
               </select>
             </label>
           ) : null}
@@ -1466,7 +1697,8 @@ export default function ProjectDetailPage() {
                 checked={gitApplyPushOption}
                 onChange={(e) => setGitApplyPushOption(e.target.checked)}
               />
-              원격 push 요청 (GIT_APPLY_PUSH_ENABLED=true 일 때만 실제 push)
+              원격 push 요청 (프로젝트 AUTO_PUSH면 기본 켜짐·해제 시 이번 실행만 생략 /{" "}
+              GIT_APPLY_PUSH_ENABLED=true 일 때만 실제 push)
             </label>
           ) : null}
           {gitApplyMode === "cursor" ? (
@@ -1496,7 +1728,9 @@ export default function ProjectDetailPage() {
           <p style={{ margin: 0, color: "#555" }}>아직 등록된 Git 반영 요청이 없습니다.</p>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
-            {gitRequests.map((item) => (
+            {gitRequests.map((item) => {
+              const prCreateFailLine = extractGithubPrCreateFailureLine(item.applyLog);
+              return (
               <div
                 key={item.id}
                 style={{
@@ -1556,6 +1790,29 @@ export default function ProjectDetailPage() {
                 <p style={{ margin: 0, marginBottom: 4 }}>
                   <strong>applyLog:</strong> {item.applyLog ? "있음" : "없음"}
                 </p>
+                <div style={{ margin: "0 0 4px 0", fontSize: 13, lineHeight: 1.5 }}>
+                  <strong>GitHub PR</strong>
+                  <div style={{ marginTop: 4, color: "#333" }}>
+                    <span style={{ color: "#555" }}>PR:</span>{" "}
+                    {item.pullRequestNumber != null ? `#${item.pullRequestNumber}` : "—"}
+                  </div>
+                  <div style={{ color: "#333" }}>
+                    <span style={{ color: "#555" }}>상태:</span>{" "}
+                    {item.pullRequestState ?? "—"}
+                  </div>
+                  <div style={{ color: "#333" }}>
+                    <span style={{ color: "#555" }}>리뷰:</span>{" "}
+                    {item.reviewStatus ?? "—"}
+                  </div>
+                  <div style={{ color: "#333" }}>
+                    <span style={{ color: "#555" }}>병합:</span> {formatPrMergeSummary(item)}
+                  </div>
+                  {prCreateFailLine ? (
+                    <p style={{ margin: "8px 0 0 0", color: "#b00020", fontSize: 12 }}>
+                      {prCreateFailLine}
+                    </p>
+                  ) : null}
+                </div>
                 <p style={{ margin: 0 }}>
                   <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
                 </p>
@@ -1674,6 +1931,68 @@ export default function ProjectDetailPage() {
                           : (item.retryCount ?? 0) >= MAX_GIT_APPLY_RETRIES
                             ? "재시도 한도 초과"
                             : "재시도 실행"}
+                      </button>
+                    ) : null}
+                    {!executionSafeMode &&
+                    rbac.canOperate &&
+                    gitApplyMode === "git" &&
+                    item.applyStatus === "DONE" &&
+                    applyLogHasGitPushOk(item.applyLog) &&
+                    item.pullRequestNumber == null ? (
+                      <button
+                        type="button"
+                        onClick={() => handleGitHubPrAction(item.id, "create")}
+                        disabled={gitPrBusyId === item.id}
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid #1565c0",
+                          borderRadius: 6,
+                          background: "#fff",
+                          color: "#1565c0",
+                          cursor: gitPrBusyId === item.id ? "not-allowed" : "pointer",
+                          opacity: gitPrBusyId === item.id ? 0.7 : 1,
+                        }}
+                      >
+                        {gitPrBusyId === item.id ? "처리 중..." : "GitHub PR 생성"}
+                      </button>
+                    ) : null}
+                    {item.pullRequestUrl ? (
+                      <a
+                        href={item.pullRequestUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-block",
+                          padding: "6px 10px",
+                          border: "1px solid #1565c0",
+                          borderRadius: 6,
+                          background: "#1565c0",
+                          color: "#fff",
+                          textDecoration: "none",
+                          fontSize: 13,
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        PR 열기
+                      </a>
+                    ) : null}
+                    {!executionSafeMode &&
+                    rbac.canOperate &&
+                    item.pullRequestNumber != null ? (
+                      <button
+                        type="button"
+                        onClick={() => handleGitHubPrAction(item.id, "sync")}
+                        disabled={gitPrBusyId === item.id}
+                        style={{
+                          padding: "6px 10px",
+                          border: "1px solid #666",
+                          borderRadius: 6,
+                          background: "#fff",
+                          cursor: gitPrBusyId === item.id ? "not-allowed" : "pointer",
+                          opacity: gitPrBusyId === item.id ? 0.7 : 1,
+                        }}
+                      >
+                        {gitPrBusyId === item.id ? "동기화 중..." : "PR 상태 동기화"}
                       </button>
                     ) : null}
                     {isManualGitItem(item) &&
@@ -1797,7 +2116,8 @@ export default function ProjectDetailPage() {
                   </details>
                 ) : null}
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
         </section>

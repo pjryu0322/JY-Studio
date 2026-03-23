@@ -14,6 +14,7 @@ import {
   appendSelfHealingSuccessFooter,
   buildRetryApplyLogSection,
   buildRetryPlan,
+  isAutoGitPushMode,
   isManualGitApprovalMode,
   MAX_GIT_APPLY_RETRY_COUNT,
   mergeRetryPrefixWithBody,
@@ -21,9 +22,17 @@ import {
 } from "@/lib/git-apply/retry";
 import {
   executeCursorForGitChangeRequest,
+  extractGcrFilePaths,
   formatCursorApplyLogFailure,
   formatCursorApplyLogSuccess,
 } from "@/lib/execution/cursorExecutor";
+import { formatGithubFollowUpBlock } from "@/lib/integration/githubIntegrationHints";
+import {
+  serializeCursorExecutionPayload,
+  type CursorExecutionPayload,
+} from "@/lib/integration/cursorExecutionTypes";
+import { isExecutionSafeMode } from "@/lib/production/safeMode";
+import { maybeAutoCreateGithubPullRequest } from "@/lib/service/githubPullRequestService";
 
 export const GIT_APPLY_ERROR_CODES = {
   INVALID_REQUEST: "INVALID_REQUEST",
@@ -31,6 +40,9 @@ export const GIT_APPLY_ERROR_CODES = {
   INVALID_STATUS: "INVALID_STATUS",
   APPROVAL_GATE_PENDING: "APPROVAL_GATE_PENDING",
   APPROVAL_NOT_GRANTED: "APPROVAL_NOT_GRANTED",
+  SAFE_MODE_FORBIDS_REAL_GIT: "SAFE_MODE_FORBIDS_REAL_GIT",
+  GIT_PROJECT_APPLY_BUSY: "GIT_PROJECT_APPLY_BUSY",
+  GIT_APPLY_ALREADY_IN_PROGRESS: "GIT_APPLY_ALREADY_IN_PROGRESS",
   EXECUTION_PRECHECK_FAILED: "EXECUTION_PRECHECK_FAILED",
   EXECUTION_FAILED: "EXECUTION_FAILED",
   CURSOR_EXECUTION_FAILED: "CURSOR_EXECUTION_FAILED",
@@ -60,6 +72,14 @@ export type RunGitApplyCoreOk = {
     mode: ExecutionMode;
   };
   message: string;
+  /** push 성공 후 GitHub PR 자동 생성 시도 결과 (시도 없으면 skipped) */
+  githubPr?: {
+    phase: "skipped" | "ok" | "failed";
+    pullRequestUrl?: string;
+    pullRequestNumber?: number;
+    code?: string;
+    message?: string;
+  };
 };
 
 export type RunGitApplyCoreErr = {
@@ -93,7 +113,6 @@ export async function runGitApplyCoreFromBody(
 ): Promise<RunGitApplyCoreResult> {
   const gitChangeRequestId = String(body.gitChangeRequestId ?? "").trim();
   const mode = parseExecutionMode(body.mode);
-  const requestedPush = Boolean(body.options?.push);
   const simulateCursorFailure = Boolean(body.options?.simulateFailure);
   const isRetry = body.retry === true;
 
@@ -115,6 +134,16 @@ export async function runGitApplyCoreFromBody(
     };
   }
 
+  if (isExecutionSafeMode() && mode === "git") {
+    return {
+      ok: false,
+      code: GIT_APPLY_ERROR_CODES.SAFE_MODE_FORBIDS_REAL_GIT,
+      message:
+        "안전 모드(JY_SAFE_MODE)가 켜져 있어 실제 Git 반영 모드(git)는 사용할 수 없습니다. mock 또는 cursor(스텁)를 사용하세요.",
+      httpStatus: 403,
+    };
+  }
+
   const found = await prisma.gitChangeRequest.findUnique({
     where: { id: gitChangeRequestId },
     select: {
@@ -130,7 +159,20 @@ export async function runGitApplyCoreFromBody(
       retryCount: true,
       lastError: true,
       lastRetryAt: true,
-      project: { select: { gitApprovalMode: true } },
+      project: {
+        select: {
+          gitApprovalMode: true,
+          gitPushMode: true,
+          repoUrl: true,
+          defaultBranch: true,
+        },
+      },
+      taskRun: {
+        select: {
+          taskPromptId: true,
+          taskPrompt: { select: { promptText: true } },
+        },
+      },
     },
   });
 
@@ -143,8 +185,42 @@ export async function runGitApplyCoreFromBody(
     };
   }
 
+  /** 승인 게이트·GCR 상태만 (push와 무관) */
   const gitApprovalMode = found.project.gitApprovalMode;
   const manualApproval = isManualGitApprovalMode(gitApprovalMode);
+
+  /** 원격 push 시도 여부만 (승인과 무관; gitPushMode + 명시 options.push) */
+  const pushOpt = body.options?.push;
+  const autoPushDefault = isAutoGitPushMode(found.project.gitPushMode);
+  const requestedPush =
+    pushOpt === false ? false : autoPushDefault || Boolean(pushOpt);
+
+  const otherApplying = await prisma.gitChangeRequest.findFirst({
+    where: {
+      projectId: found.projectId,
+      applyStatus: "APPLYING",
+      id: { not: found.id },
+    },
+    select: { id: true },
+  });
+  if (otherApplying) {
+    return {
+      ok: false,
+      code: GIT_APPLY_ERROR_CODES.GIT_PROJECT_APPLY_BUSY,
+      message:
+        "이 프로젝트에서 다른 Git 반영이 이미 진행 중입니다. 완료된 뒤 다시 시도해 주세요.",
+      httpStatus: 409,
+    };
+  }
+
+  if (!isRetry && found.applyStatus === "APPLYING") {
+    return {
+      ok: false,
+      code: GIT_APPLY_ERROR_CODES.GIT_APPLY_ALREADY_IN_PROGRESS,
+      message: "이 Git 반영 요청은 이미 실행 중입니다. 중복 실행할 수 없습니다.",
+      httpStatus: 409,
+    };
+  }
 
   if (isRetry) {
     if (!shouldRetryGitApply(found, gitApprovalMode)) {
@@ -204,7 +280,7 @@ export async function runGitApplyCoreFromBody(
         ok: false,
         code: GIT_APPLY_ERROR_CODES.INVALID_STATUS,
         message:
-          "자동 반영 모드에서는 status가 REQUESTED인 요청만 Git 반영을 실행할 수 있습니다.",
+          "승인 생략(NO_APPROVAL) 모드에서는 status가 REQUESTED인 요청만 Git 반영을 실행할 수 있습니다.",
         httpStatus: 400,
       };
     }
@@ -304,13 +380,33 @@ export async function runGitApplyCoreFromBody(
     let applyLog: string;
 
     if (mode === "cursor") {
-      const cursorResult = await executeCursorForGitChangeRequest({
+      const taskPromptId = found.taskRun.taskPromptId;
+      const promptText = found.taskRun.taskPrompt?.promptText ?? "";
+      const filePaths = extractGcrFilePaths(found.files);
+      const cursorPayload: CursorExecutionPayload = {
         taskId: found.taskId,
-        files: found.files,
-        diffText: found.diffText,
-        commitMessage: executionCommitMessage,
-        simulateFailure: simulateCursorFailure,
-      });
+        taskPromptId,
+        projectId: found.projectId,
+        branchName,
+        prompt: promptText,
+        context: {
+          repoUrl: found.project.repoUrl ?? undefined,
+          defaultBranch: found.project.defaultBranch ?? undefined,
+          ...(filePaths.length > 0 ? { files: filePaths } : {}),
+          diffText: found.diffText,
+          commitMessage: executionCommitMessage,
+        },
+      };
+      const payloadJson = serializeCursorExecutionPayload(cursorPayload);
+
+      const cursorResult = await executeCursorForGitChangeRequest(
+        cursorPayload,
+        {
+          simulateFailure: simulateCursorFailure,
+          commitMessageForKeyword: executionCommitMessage,
+          gcrFiles: found.files,
+        }
+      );
 
       if (!cursorResult.success) {
         const errText =
@@ -319,6 +415,7 @@ export async function runGitApplyCoreFromBody(
           retryLogPrefix,
           formatCursorApplyLogFailure(
             buildPlannedGitFlow(branchName, executionCommitMessage),
+            payloadJson,
             cursorResult
           )
         );
@@ -341,8 +438,17 @@ export async function runGitApplyCoreFromBody(
 
       applyLog = formatCursorApplyLogSuccess(
         buildPlannedGitFlow(branchName, executionCommitMessage),
+        payloadJson,
         cursorResult
       );
+      applyLog = [
+        applyLog,
+        ...formatGithubFollowUpBlock({
+          branchName,
+          projectRepoUrl: found.project.repoUrl,
+          defaultBranch: found.project.defaultBranch,
+        }),
+      ].join("\n");
     } else {
       applyLog = await buildApplyLogForMode({
         mode,
@@ -354,6 +460,16 @@ export async function runGitApplyCoreFromBody(
         diffText: found.diffText,
         requestedPush,
       });
+      if (mode === "git") {
+        applyLog = [
+          applyLog,
+          ...formatGithubFollowUpBlock({
+            branchName,
+            projectRepoUrl: found.project.repoUrl,
+            defaultBranch: found.project.defaultBranch,
+          }),
+        ].join("\n");
+      }
     }
 
     applyLog = mergeRetryPrefixWithBody(retryLogPrefix, applyLog);
@@ -362,7 +478,7 @@ export async function runGitApplyCoreFromBody(
 
     const finishedAt = new Date();
 
-    const updated = await prisma.gitChangeRequest.update({
+    await prisma.gitChangeRequest.update({
       where: { id: found.id },
       data: {
         status: "DONE",
@@ -371,6 +487,18 @@ export async function runGitApplyCoreFromBody(
         applyFinishedAt: finishedAt,
         lastError: null,
       },
+    });
+
+    const prOutcome = await maybeAutoCreateGithubPullRequest({
+      mode,
+      requestedPush,
+      applyLog,
+      gitPushMode: found.project.gitPushMode,
+      gitChangeRequestId: found.id,
+    });
+
+    const updated = await prisma.gitChangeRequest.findUnique({
+      where: { id: found.id },
       select: {
         id: true,
         branchName: true,
@@ -383,6 +511,32 @@ export async function runGitApplyCoreFromBody(
         lastRetryAt: true,
       },
     });
+
+    if (!updated) {
+      return {
+        ok: false,
+        code: GIT_APPLY_ERROR_CODES.GIT_CHANGE_REQUEST_NOT_FOUND,
+        message: "Git 반영 후 레코드를 다시 읽지 못했습니다.",
+        httpStatus: 500,
+      };
+    }
+
+    let githubPr: RunGitApplyCoreOk["githubPr"];
+    if (prOutcome.kind === "skipped") {
+      githubPr = { phase: "skipped" };
+    } else if (prOutcome.kind === "created") {
+      githubPr = {
+        phase: "ok",
+        pullRequestUrl: prOutcome.pullRequestUrl,
+        pullRequestNumber: prOutcome.pullRequestNumber,
+      };
+    } else {
+      githubPr = {
+        phase: "failed",
+        code: prOutcome.code,
+        message: prOutcome.message,
+      };
+    }
 
     return {
       ok: true,
@@ -399,6 +553,7 @@ export async function runGitApplyCoreFromBody(
         mode,
       },
       message: completionMessage(mode),
+      githubPr,
     };
   } catch (innerError) {
     console.error("runGitApplyCoreFromBody pipeline error:", innerError);

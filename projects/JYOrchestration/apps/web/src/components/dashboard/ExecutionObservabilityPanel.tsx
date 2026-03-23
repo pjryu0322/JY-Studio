@@ -174,6 +174,11 @@ export function ExecutionObservabilityPanel({
                 { key: "fail", value: data.git.failed, color: "#ef5350", label: "실패(FAILED)" },
               ]}
             />
+            <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#546e7a", lineHeight: 1.55 }}>
+              GitHub PR 연결: <strong>{data.git.pullRequest.linked}</strong> · OPEN:{" "}
+              <strong>{data.git.pullRequest.open}</strong> · 병합 반영:{" "}
+              <strong>{data.git.pullRequest.merged}</strong>
+            </p>
           </div>
 
           <div style={cardStyle}>

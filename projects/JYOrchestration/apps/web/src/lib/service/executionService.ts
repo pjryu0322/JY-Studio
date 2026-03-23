@@ -14,6 +14,7 @@ import {
   GIT_APPLY_ERROR_CODES,
   type RunGitApplyCoreResult,
 } from "@/lib/git-apply/runApplyCore";
+import { syncPullRequestStatus } from "@/lib/service/githubPullRequestService";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { projectIdExists } from "@/lib/service/projectService";
 import {
@@ -29,6 +30,14 @@ export type GitApplyApiBody = {
   options?: { push?: boolean; simulateFailure?: boolean };
   retry?: boolean;
 };
+
+/** GitHub PR 상태를 GCR에 반영 (수동 동기화·테스트) */
+export async function syncGitChangeRequestPullRequestFromGithub(input: {
+  gitChangeRequestId: string;
+  actorUserId?: string | null;
+}) {
+  return syncPullRequestStatus(input);
+}
 
 /** git-apply GET과 동일 select / projectId 필터 */
 export async function listGitChangeRequestsForProject(projectId: string) {
@@ -54,9 +63,14 @@ export async function listGitChangeRequestsForProject(projectId: string) {
       lastError: true,
       lastRetryAt: true,
       rejectionReason: true,
+      pullRequestUrl: true,
+      pullRequestNumber: true,
+      pullRequestState: true,
+      reviewStatus: true,
+      mergedAt: true,
       createdAt: true,
       updatedAt: true,
-      project: { select: { gitApprovalMode: true } },
+      project: { select: { gitApprovalMode: true, gitPushMode: true } },
     },
   });
 }
@@ -69,11 +83,13 @@ export function serializeGitChangeRequestList(
     return {
       ...rest,
       gitApprovalMode: project.gitApprovalMode,
+      gitPushMode: project.gitPushMode,
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString(),
       applyStartedAt: item.applyStartedAt?.toISOString() ?? null,
       applyFinishedAt: item.applyFinishedAt?.toISOString() ?? null,
       lastRetryAt: item.lastRetryAt?.toISOString() ?? null,
+      mergedAt: item.mergedAt?.toISOString() ?? null,
     };
   });
 }
@@ -91,10 +107,12 @@ export async function applyGitChangeFromApiBody(
 }
 
 /**
- * 라우트 계층 정책 검사 (프로젝트 gitApprovalMode + GCR status). 재시도는 코어에 위임.
+ * 라우트 계층 승인 게이트 검사만 수행 (gitApprovalMode + GCR status).
+ * 원격 push는 `gitPushMode`·`runGitApplyCoreFromBody`에서만 다룸.
  */
 export function validateGitApplyPostEligibility(input: {
   isRetry: boolean;
+  /** 승인 정책만; push 정책과 무관 */
   gitApprovalMode: string | null | undefined;
   status: string;
 }): { code: string; message: string; httpStatus: number } | null {
@@ -129,7 +147,7 @@ export function validateGitApplyPostEligibility(input: {
     return {
       code: GIT_APPLY_ERROR_CODES.INVALID_STATUS,
       message:
-        "자동 반영 모드에서는 status가 REQUESTED인 요청만 Git 반영을 실행할 수 있습니다.",
+        "승인 생략(NO_APPROVAL) 모드에서는 status가 REQUESTED인 요청만 Git 반영을 실행할 수 있습니다.",
       httpStatus: 400,
     };
   }
@@ -226,7 +244,7 @@ export async function submitGitChangeRequestForApproval(input: {
       ok: false,
       code: GIT_GATE_ERROR_CODES.INVALID_STATE,
       message:
-        "이 프로젝트는 자동 반영(AUTO_APPLY) 모드입니다. 승인 API를 사용할 수 없습니다.",
+        "이 프로젝트는 승인 생략(NO_APPROVAL) 모드입니다. 승인 API를 사용할 수 없습니다.",
       httpStatus: 400,
     };
   }
@@ -558,7 +576,13 @@ export async function getProjectObservabilitySnapshot(
     prisma.gitChangeRequest.count({ where: { projectId } }),
     prisma.gitChangeRequest.findMany({
       where: { projectId },
-      select: { status: true, applyStatus: true },
+      select: {
+        status: true,
+        applyStatus: true,
+        pullRequestNumber: true,
+        pullRequestState: true,
+        mergedAt: true,
+      },
     }),
     prisma.gitChangeRequest.count({
       where: { projectId, retryCount: { gt: 0 } },
@@ -589,6 +613,9 @@ export async function getProjectObservabilitySnapshot(
   let gitApplying = 0;
   let gitDone = 0;
   let gitFailed = 0;
+  let prLinked = 0;
+  let prOpen = 0;
+  let prMerged = 0;
 
   for (const row of gitRows) {
     const a = row.applyStatus ?? "PENDING";
@@ -601,6 +628,16 @@ export async function getProjectObservabilitySnapshot(
     } else {
       // PENDING·null 등 아직 반영 전·대기 중인 요청
       gitRequested += 1;
+    }
+    if (row.pullRequestNumber != null) {
+      prLinked += 1;
+    }
+    const prSt = String(row.pullRequestState ?? "").toUpperCase();
+    if (prSt === "OPEN") {
+      prOpen += 1;
+    }
+    if (prSt === "MERGED" || row.mergedAt != null) {
+      prMerged += 1;
     }
   }
 
@@ -619,6 +656,11 @@ export async function getProjectObservabilitySnapshot(
       applying: gitApplying,
       done: gitDone,
       failed: gitFailed,
+      pullRequest: {
+        linked: prLinked,
+        open: prOpen,
+        merged: prMerged,
+      },
     },
     retry: { total: retriedCount },
   };

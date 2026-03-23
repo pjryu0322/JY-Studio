@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         status: true,
         retryCount: true,
         lastError: true,
-        project: { select: { gitApprovalMode: true } },
+        project: { select: { gitApprovalMode: true, gitPushMode: true } },
       },
     });
     if (!gcr) {
@@ -158,6 +158,12 @@ export async function POST(request: Request) {
       return jsonError(result.code, result.message, result.httpStatus);
     }
 
+    const githubPr = result.githubPr;
+    const prWarning =
+      githubPr?.phase === "failed"
+        ? `Git 반영은 완료되었지만 PR 생성에 실패했습니다. 원인: ${githubPr.message ?? "알 수 없음"}${githubPr.code ? ` (${githubPr.code})` : ""}`
+        : undefined;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -171,8 +177,13 @@ export async function POST(request: Request) {
         retryCount: result.data.retryCount,
         lastError: result.data.lastError,
         mode: result.data.mode,
+        /** 적용 시점 프로젝트 정책 (승인·push 분리; 클라이언트 표시용) */
+        projectGitApprovalMode: gcr.project.gitApprovalMode,
+        projectGitPushMode: gcr.project.gitPushMode,
       },
       message: result.message,
+      ...(githubPr ? { githubPr } : {}),
+      ...(prWarning ? { prWarning } : {}),
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);

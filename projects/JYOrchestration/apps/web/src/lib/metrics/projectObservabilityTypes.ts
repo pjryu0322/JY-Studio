@@ -14,6 +14,12 @@ export type ProjectObservabilitySnapshot = {
     applying: number;
     done: number;
     failed: number;
+    /** GitChangeRequest에 PR 번호가 연결된 건수·OPEN·병합 반영 건수 */
+    pullRequest: {
+      linked: number;
+      open: number;
+      merged: number;
+    };
   };
   retry: { total: number };
 };
