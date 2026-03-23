@@ -17,6 +17,11 @@ function statusColor(status: string): string {
   return "#b26a00"; // STARTED/그 외(진행중)
 }
 
+function stageLabel(stage: string): string {
+  if (stage === "SELF_HEALING") return "AUTO RECOVERY";
+  return stage;
+}
+
 export function ExecutionTimeline({ jobId }: { jobId: string }) {
   const [items, setItems] = useState<ExecutionEventRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -124,7 +129,10 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                   marginBottom: 6,
                 }}
               >
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{group.stage}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>
+                      {group.stage === "SELF_HEALING" ? "🔵 " : null}
+                      {stageLabel(group.stage)}
+                    </span>
                 <span style={{ color: "#666", fontSize: 12 }}>({group.events.length} events)</span>
               </div>
 
@@ -136,7 +144,7 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                 }}
               >
                 {group.events.map((ev, idx) => {
-                  const color = statusColor(ev.status);
+                  const color = group.stage === "SELF_HEALING" ? "#1e64ff" : statusColor(ev.status);
                   const durationText = ev.durationMs == null ? null : `${ev.durationMs}ms`;
                   return (
                     <div

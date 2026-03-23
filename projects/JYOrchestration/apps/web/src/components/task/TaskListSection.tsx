@@ -442,6 +442,22 @@ export function TaskListSection({
                         FOLLOW-UP
                       </span>
                     ) : null}
+                    {taskKind === "AUTO_HEALING" ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: 0.6,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          background: "#e3f2fd",
+                          color: "#1565c0",
+                          border: "1px solid #90caf9",
+                        }}
+                      >
+                        ⚙ AUTO
+                      </span>
+                    ) : null}
                     <span style={{ fontSize: 12, color: "#78909c" }}>
                       DB status: <code style={{ fontSize: 12 }}>{task.status}</code>
                     </span>

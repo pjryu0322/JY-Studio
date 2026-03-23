@@ -626,18 +626,6 @@ async function markJobRetryOrFailed(
     const actionInfo = getSelfHealingAction(failureType);
     const sourceTaskId = await resolveSourceTaskIdFromJob(job);
 
-    await logEventSafe({
-      projectId: job.projectId,
-      executionJobId: job.id,
-      stage: "SELF_HEALING",
-      status: "STARTED",
-      detailJson: {
-        failureType,
-        action: actionInfo.action,
-        sourceTaskId,
-      } as Prisma.InputJsonValue,
-    });
-
     const res = await triggerSelfHealingLite({
       jobId: job.id,
       projectId: job.projectId,
@@ -646,7 +634,25 @@ async function markJobRetryOrFailed(
       sourceTaskId,
     });
 
-    logWorker("self-healing-lite-result", {
+    await logEventSafe({
+      projectId: job.projectId,
+      executionJobId: job.id,
+      stage: "SELF_HEALING",
+      status: res.created ? "SUCCESS" : "FAILED",
+      message: res.created
+        ? `Task 생성됨: ${res.taskId ?? "-"}\naction: ${actionInfo.action}`
+        : `Task 생성 불가: ${res.reason ?? "UNKNOWN"}`,
+      detailJson: {
+        failureType,
+        action: actionInfo.action,
+        sourceTaskId,
+        created: res.created,
+        reason: res.reason ?? null,
+        taskId: res.taskId ?? null,
+      } as Prisma.InputJsonValue,
+    });
+
+    logWorker("self-healing-triggered", {
       jobId: job.id,
       created: res.created,
       taskId: res.taskId,
