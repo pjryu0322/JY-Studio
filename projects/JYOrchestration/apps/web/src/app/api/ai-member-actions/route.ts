@@ -67,9 +67,11 @@ export async function GET(request: NextRequest) {
     const data = rows.map((r) => {
       const base = serializeAiMemberActionRow(r);
       const at = r.actionType as AiMemberActionTypeId;
+      const lockedAutoApprove = r.resolvedApprovalMode === "AUTO_APPROVE";
       return {
         ...base,
         canReview:
+          !lockedAutoApprove &&
           r.status === "DONE" &&
           (r.reviewStatus === "PENDING_REVIEW" || r.reviewStatus === "NEEDS_REVISION") &&
           roleCanReviewAiMemberAction(role, at),
@@ -148,9 +150,14 @@ export async function POST(request: NextRequest) {
       requestedByUserId: userId,
     });
 
+    const serialized = serializeAiMemberActionRow(row);
     return NextResponse.json({
       success: true,
-      data: serializeAiMemberActionRow(row),
+      data: {
+        ...serialized,
+        approvalMode: row.resolvedApprovalMode ?? null,
+        applyMode: row.resolvedApplyMode ?? null,
+      },
     });
   } catch (error) {
     if (error instanceof AiMemberActionValidationError) {

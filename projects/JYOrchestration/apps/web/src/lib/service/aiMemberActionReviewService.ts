@@ -67,6 +67,11 @@ export async function reviewAiMemberAction(input: {
   if (row.status !== "DONE") {
     throw new AiMemberActionValidationError("완료(DONE)된 액션만 검토할 수 있습니다.");
   }
+  if (row.resolvedApprovalMode === "AUTO_APPROVE") {
+    throw new AiMemberActionValidationError(
+      "자동 승인 정책으로 생성된 액션은 수동 검토 API로 변경할 수 없습니다."
+    );
+  }
 
   await requireProjectPermission(row.projectId, input.reviewerUserId, "canViewProject", "reviewAiMemberAction");
   const role = await getUserProjectRole(row.projectId, input.reviewerUserId);

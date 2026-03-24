@@ -23,6 +23,8 @@ export function serializeAiMemberActionRow(row: {
   availableAt?: Date | null;
   consumedBy?: string | null;
   correlationKey?: string | null;
+  resolvedApprovalMode?: string | null;
+  resolvedApplyMode?: string | null;
   reviewStatus?: string | null;
   reviewedByUserId?: string | null;
   reviewedAt?: Date | null;
@@ -74,6 +76,8 @@ export function serializeAiMemberActionRow(row: {
     availableAt: row.availableAt?.toISOString() ?? null,
     consumedBy: row.consumedBy ?? null,
     correlationKey: row.correlationKey ?? null,
+    resolvedApprovalMode: row.resolvedApprovalMode ?? null,
+    resolvedApplyMode: row.resolvedApplyMode ?? null,
     reviewStatus: row.reviewStatus ?? null,
     reviewedByUserId: row.reviewedByUserId ?? null,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,

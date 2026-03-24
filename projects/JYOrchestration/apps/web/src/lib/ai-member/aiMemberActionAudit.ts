@@ -214,3 +214,91 @@ export async function auditAiMemberActionApplyFailed(baseInput: AuditBase, actor
     TaskHistoryEventType.AI_MEMBER_ACTION_APPLY_FAILED
   );
 }
+
+export async function auditAiMemberActionAutoApprovedByPolicy(
+  baseInput: AuditBase,
+  extra: { approvalMode: string; applyMode: string }
+) {
+  const detailJson: Prisma.InputJsonObject = {
+    ...baseInput.detailJson,
+    policySource: "project_action_type",
+    resolvedApprovalMode: extra.approvalMode,
+    resolvedApplyMode: extra.applyMode,
+  };
+  await appendWithResolvedTask(
+    { ...baseInput, detailJson, summary: "프로젝트 정책에 의한 자동 승인" },
+    TaskHistoryActorType.SYSTEM,
+    null,
+    TaskHistoryEventType.AI_MEMBER_ACTION_AUTO_APPROVED
+  );
+}
+
+export async function auditAiMemberActionReviewRequired(baseInput: AuditBase) {
+  const detailJson: Prisma.InputJsonObject = {
+    ...baseInput.detailJson,
+    policySource: "project_action_type",
+  };
+  await appendWithResolvedTask(
+    { ...baseInput, detailJson, summary: "수동 검토 필요(MANUAL_REVIEW 정책)" },
+    TaskHistoryActorType.SYSTEM,
+    null,
+    TaskHistoryEventType.AI_MEMBER_ACTION_REVIEW_REQUIRED
+  );
+}
+
+export async function auditAiMemberActionAppliedBySystem(baseInput: AuditBase) {
+  await appendWithResolvedTask(
+    { ...baseInput, summary: "정책 자동 적용(AUTO_APPLY)" },
+    TaskHistoryActorType.SYSTEM,
+    null,
+    TaskHistoryEventType.AI_MEMBER_ACTION_AUTO_APPLIED
+  );
+}
+
+export async function auditAiMemberActionApplyFailedBySystem(baseInput: AuditBase, errorMessage: string) {
+  const detailJson: Prisma.InputJsonObject = {
+    ...baseInput.detailJson,
+    errorMessage,
+    source: "AUTO_APPLY",
+  };
+  await appendWithResolvedTask(
+    { ...baseInput, detailJson, summary: `정책 자동 적용 실패: ${errorMessage}` },
+    TaskHistoryActorType.SYSTEM,
+    null,
+    TaskHistoryEventType.AI_MEMBER_ACTION_APPLY_FAILED
+  );
+}
+
+export async function auditProjectAiActionPolicyUpdated(input: {
+  projectId: string;
+  actorUserId: string;
+  actionType: string;
+  approvalMode: string;
+  applyMode: string;
+}) {
+  const task = await prisma.task.findFirst({
+    where: { projectId: input.projectId },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!task) {
+    return;
+  }
+  try {
+    await appendTaskHistory({
+      projectId: input.projectId,
+      taskId: task.id,
+      actorType: TaskHistoryActorType.USER,
+      actorId: input.actorUserId,
+      eventType: TaskHistoryEventType.PROJECT_AI_ACTION_POLICY_UPDATED,
+      summary: `AI 액션 정책 변경: ${input.actionType}`,
+      detailJson: {
+        actionType: input.actionType,
+        approvalMode: input.approvalMode,
+        applyMode: input.applyMode,
+      },
+    });
+  } catch {
+    // best-effort
+  }
+}

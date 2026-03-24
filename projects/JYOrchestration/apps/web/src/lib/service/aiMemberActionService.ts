@@ -10,6 +10,8 @@ import {
   auditAiMemberActionFailedByUser,
   auditAiMemberActionRequested,
 } from "@/lib/ai-member/aiMemberActionAudit";
+import { processReviewAndOptionalAutoApplyAfterDone } from "@/lib/ai-member/aiMemberActionCompletion";
+import { resolveAiActionPolicyModes } from "@/lib/ai-member/aiMemberActionApprovalPolicy";
 import {
   claimAiMemberActionById,
   dispatchClaimedAiMemberAction,
@@ -230,6 +232,8 @@ export async function createAiMemberAction(input: CreateAiMemberActionInput) {
     input.correlationKey?.trim() ||
     `${input.projectId}:${input.actionType}:${input.taskId ?? ""}:${input.gitChangeRequestId ?? ""}:${randomUUID().slice(0, 8)}`;
 
+  const policy = await resolveAiActionPolicyModes(input.projectId, input.actionType, input.projectMemberId);
+
   const created = await prisma.projectMemberAction.create({
     data: {
       projectId: input.projectId,
@@ -245,6 +249,8 @@ export async function createAiMemberAction(input: CreateAiMemberActionInput) {
       providerKey: input.providerKey?.trim() || null,
       correlationKey,
       requestedByUserId: input.requestedByUserId,
+      resolvedApprovalMode: policy.approvalMode,
+      resolvedApplyMode: policy.applyMode,
     },
   });
 
@@ -381,16 +387,6 @@ export async function updateAiMemberActionStatus(input: {
     data.finishedAt = now;
   }
 
-  if (input.status === "DONE") {
-    data.reviewStatus = "PENDING_REVIEW";
-    data.reviewedBy = { disconnect: true };
-    data.reviewedAt = null;
-    data.reviewComment = null;
-    data.approvedPayload = Prisma.DbNull;
-    data.applyStatus = "NOT_APPLIED";
-    data.appliedAt = null;
-    data.appliedBy = { disconnect: true };
-  }
   if (input.status === "FAILED" || input.status === "CANCELED") {
     data.reviewStatus = null;
     data.reviewedBy = { disconnect: true };
@@ -423,6 +419,7 @@ export async function updateAiMemberActionStatus(input: {
 
   if (input.status === "DONE") {
     await auditAiMemberActionCompletedByUser(auditBase, input.actorUserId);
+    await processReviewAndOptionalAutoApplyAfterDone(updated.id);
   }
   if (input.status === "FAILED") {
     await auditAiMemberActionFailedByUser(auditBase, input.actorUserId);

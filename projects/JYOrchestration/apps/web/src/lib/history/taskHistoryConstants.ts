@@ -56,6 +56,14 @@ export const TaskHistoryEventType = {
   /** 승인 결과 시스템 적용 완료 */
   AI_MEMBER_ACTION_APPLIED: "AI_MEMBER_ACTION_APPLIED",
   AI_MEMBER_ACTION_APPLY_FAILED: "AI_MEMBER_ACTION_APPLY_FAILED",
+  /** 프로젝트 정책에 의한 자동 승인(사람 검토 생략) */
+  AI_MEMBER_ACTION_AUTO_APPROVED: "AI_MEMBER_ACTION_AUTO_APPROVED",
+  /** 수동 검토가 필요함(PENDING_REVIEW 진입) */
+  AI_MEMBER_ACTION_REVIEW_REQUIRED: "AI_MEMBER_ACTION_REVIEW_REQUIRED",
+  /** 시스템에 의한 승인 결과 자동 적용 */
+  AI_MEMBER_ACTION_AUTO_APPLIED: "AI_MEMBER_ACTION_AUTO_APPLIED",
+  /** 프로젝트 AI 액션 승인/적용 정책 변경 */
+  PROJECT_AI_ACTION_POLICY_UPDATED: "PROJECT_AI_ACTION_POLICY_UPDATED",
 } as const;
 
 export type TaskHistoryEventTypeKey = keyof typeof TaskHistoryEventType;

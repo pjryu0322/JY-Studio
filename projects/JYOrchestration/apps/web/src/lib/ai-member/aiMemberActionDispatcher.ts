@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import {
   auditAiMemberActionAwaitingManual,
   auditAiMemberActionCompleted,
@@ -7,6 +7,7 @@ import {
 } from "@/lib/ai-member/aiMemberActionAudit";
 import type { ActionForExecution } from "@/lib/ai-member/executors/types";
 import { selectExecutorForMode } from "@/lib/ai-member/executors";
+import { processReviewAndOptionalAutoApplyAfterDone } from "@/lib/ai-member/aiMemberActionCompletion";
 import { prisma } from "@/lib/prisma";
 
 const MAX_BACKOFF_MS = 30_000;
@@ -209,14 +210,6 @@ export async function dispatchClaimedAiMemberAction(
         errorMessage: null,
         lastError: null,
         consumedBy: null,
-        reviewStatus: "PENDING_REVIEW",
-        reviewedByUserId: null,
-        reviewedAt: null,
-        reviewComment: null,
-        approvedPayload: Prisma.DbNull,
-        applyStatus: "NOT_APPLIED",
-        appliedAt: null,
-        appliedByUserId: null,
       },
     });
 
@@ -224,6 +217,8 @@ export async function dispatchClaimedAiMemberAction(
       auditBase(row, "DONE", out.summaryText ?? "AI 멤버 액션 완료"),
       { actorId: consumedBy }
     );
+
+    await processReviewAndOptionalAutoApplyAfterDone(row.id);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await prisma.projectMemberAction.update({

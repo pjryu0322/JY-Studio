@@ -94,6 +94,22 @@ enum AiMemberActionReviewDecision {
   REQUEST_REVISION
 }
 
+/// 프로젝트별 AI 액션 승인 정책(사람 검토 생략 vs 필수)
+enum ProjectAiActionApprovalMode {
+  /// 정책에 따라 완료 시 자동 승인 처리(적용은 applyMode 별도)
+  AUTO_APPROVE
+  /// 사람 검토 후 승인
+  MANUAL_REVIEW
+}
+
+/// 프로젝트별 AI 승인 결과 시스템 반영 정책
+enum ProjectAiActionApplyMode {
+  /// 승인 후 자동 반영(ingest)
+  AUTO_APPLY
+  /// 사용자가 적용 버튼으로 반영
+  MANUAL_APPLY
+}
+
 model User {
   /// 사용자 ID
   id           String   @id @default(cuid())
@@ -178,9 +194,35 @@ model Project {
   executionEventLogs ExecutionEventLog[]
   /// 멤버(주로 AI) 대상 액션 요청
   memberActions ProjectMemberAction[]
+  /// AI 멤버 액션 승인·적용 정책(액션 유형별)
+  aiActionPolicies ProjectAiActionPolicy[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// 프로젝트·액션 유형별 AI 승인/적용 정책
+model ProjectAiActionPolicy {
+  /// 정책 행 ID
+  id             String                    @id @default(uuid())
+  /// 프로젝트 ID
+  projectId      String
+  /// 액션 유형
+  actionType     AiMemberActionType
+  /// 승인 모드(행 없음 = 기본 자동 승인과 동일)
+  approvalMode   ProjectAiActionApprovalMode
+  /// 적용 모드(행 없음 = 기본 수동 적용과 동일)
+  applyMode      ProjectAiActionApplyMode   @default(MANUAL_APPLY)
+  /// 생성일시
+  createdAt      DateTime                   @default(now())
+  /// 수정일시
+  updatedAt      DateTime                   @updatedAt
+  /// 소속 프로젝트
+  project        Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, actionType])
+  @@index([projectId])
+  @@map("project_ai_action_policies")
 }
 
 model ExecutionJob {
@@ -351,6 +393,10 @@ model ProjectMemberAction {
   consumedBy   String?
   /// 상관 키(추적·멱등)
   correlationKey String?
+  /// 요청 시점에 확정한 승인 정책 스냅샷(null이면 완료 시 DB 정책 또는 기본값으로 해석)
+  resolvedApprovalMode ProjectAiActionApprovalMode?
+  /// 요청 시점에 확정한 적용 정책 스냅샷
+  resolvedApplyMode    ProjectAiActionApplyMode?
   /// 사람 검토 상태(AI 결과 제안 vs 승인 후)
   reviewStatus      AiMemberActionReviewStatus?
   /// 검토(승인/반려) 수행 사용자

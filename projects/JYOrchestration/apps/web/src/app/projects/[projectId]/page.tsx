@@ -29,6 +29,7 @@ import {
 } from "@/components/task/TaskListSection";
 import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHistoryTimeline";
 import { formatTestedAt } from "@/components/project-spec/format";
+import { ProjectAiActionPolicySection } from "@/components/project-spec/ProjectAiActionPolicySection";
 import { ProjectMembersSection, type ProjectMemberUiRow } from "@/components/project-spec/ProjectMembersSection";
 import {
   canEditSpec,
@@ -2594,6 +2595,9 @@ export default function ProjectDetailPage() {
               currentProjectRole={projectRole}
               currentUserId={currentUserId}
             />
+            {projectId ? (
+              <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
+            ) : null}
             {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
             {rbac.canEditSpec ? (
               <ProjectSpecPromptSection prompt={projectSpecPrompt} />
@@ -2641,6 +2645,9 @@ export default function ProjectDetailPage() {
             currentProjectRole={projectRole}
             currentUserId={currentUserId}
           />
+          {projectId ? (
+            <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
+          ) : null}
           {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
           {rbac.canEditSpec ? (
             <ProjectSpecPromptSection prompt={projectSpecPrompt} />
