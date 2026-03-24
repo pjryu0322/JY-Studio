@@ -115,15 +115,18 @@ export default function HomePage() {
 
   return (
     <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 8 }}>
-        JYOrchestration
-      </h1>
-      <p style={{ marginBottom: 24, color: "#555" }}>
-        프로젝트 생성, ProjectSpec 등록, FeatureSpec 업로드, Task 계획과 실행을
-        관리하는 웹서비스 MVP
-      </p>
+      <section data-debug-label="[A] Header" style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 8 }}>
+          JYOrchestration
+        </h1>
+        <p style={{ margin: 0, color: "#555" }}>
+          프로젝트 생성, ProjectSpec 등록, FeatureSpec 업로드, Task 계획과 실행을
+          관리하는 웹서비스 MVP
+        </p>
+      </section>
 
       <section
+        data-debug-label="[B] Project Form"
         style={{
           border: "1px solid #ddd",
           borderRadius: 12,
@@ -150,6 +153,7 @@ export default function HomePage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={submitting}
+              data-debug-label="[B-1] Project Name"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
@@ -159,6 +163,7 @@ export default function HomePage() {
               onChange={(e) => setDescription(e.target.value)}
               disabled={submitting}
               rows={4}
+              data-debug-label="[B-2] Project Description"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
@@ -166,6 +171,7 @@ export default function HomePage() {
               value={projectType}
               onChange={(e) => setProjectType(e.target.value)}
               disabled={submitting}
+              data-debug-label="[B-3] Project Type"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             >
               <option value="web-service">web-service</option>
@@ -180,6 +186,7 @@ export default function HomePage() {
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
               disabled={submitting}
+              data-debug-label="[B-4] Repository URL"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
@@ -189,12 +196,14 @@ export default function HomePage() {
               value={defaultBranch}
               onChange={(e) => setDefaultBranch(e.target.value)}
               disabled={submitting}
+              data-debug-label="[B-5] Branch"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
             <button
               type="submit"
               disabled={submitting}
+              data-debug-label="[B-6] Create Project"
               style={{
                 padding: "12px 16px",
                 borderRadius: 8,
@@ -212,6 +221,7 @@ export default function HomePage() {
       </section>
 
       <section
+        data-debug-label="[C] Project List"
         style={{
           border: "1px solid #ddd",
           borderRadius: 12,
@@ -222,6 +232,7 @@ export default function HomePage() {
           프로젝트 목록
         </h2>
 
+        <div data-debug-label="[C-1] Project List Content">
         {loading ? (
           <p>불러오는 중...</p>
         ) : listMessage ? (
@@ -280,6 +291,7 @@ export default function HomePage() {
             ))}
           </div>
         )}
+        </div>
       </section>
     </main>
   );
