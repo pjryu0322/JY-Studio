@@ -3,6 +3,7 @@
 import type { ChangeEvent, CSSProperties, DragEvent } from "react";
 import { useMemo, useState } from "react";
 import { TaskItem } from "@/components/project-spec/types";
+import { TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { formatTestedAt } from "@/components/project-spec/format";
 import {
   deriveTaskFlowStatus,
@@ -42,6 +43,27 @@ function parseAutoHealingMeta(task: {
   }
 
   return {};
+}
+
+function parseAutoRunTriggeredDetail(detailJson: unknown): {
+  strategy?: string;
+  failureType?: string;
+  autoRunExecutedCount?: number;
+  autoRunSkippedCount?: number;
+} {
+  if (!detailJson || typeof detailJson !== "object") return {};
+  const d = detailJson as Record<string, unknown>;
+  const strategy = typeof d.strategy === "string" ? d.strategy : undefined;
+  const failureType = typeof d.failureType === "string" ? d.failureType : undefined;
+  const autoRunExecutedCount =
+    typeof d.autoRunExecutedCount === "number" && Number.isFinite(d.autoRunExecutedCount)
+      ? d.autoRunExecutedCount
+      : undefined;
+  const autoRunSkippedCount =
+    typeof d.autoRunSkippedCount === "number" && Number.isFinite(d.autoRunSkippedCount)
+      ? d.autoRunSkippedCount
+      : undefined;
+  return { strategy, failureType, autoRunExecutedCount, autoRunSkippedCount };
 }
 
 export type TaskPromptItem = {
@@ -359,10 +381,27 @@ export function TaskListSection({
               changeReason: task.changeReason,
               taskKind,
             });
+            // AUTO_HEALING auto-run 배지: TaskHistory(AUTO_HEALING_AUTO_RUN_TRIGGERED) 우선, 없으면 latest run의 structured resultJson(autoExecution) 보조.
             const runMeta = taskRunMap[task.id]?.resultJson as unknown as
               | { autoExecution?: boolean; initiatedBy?: string }
               | undefined;
             const autoRunConnected = Boolean(runMeta?.autoExecution === true);
+            const hasAutoRunFromHistory =
+              Array.isArray(task.histories) &&
+              task.histories.some(
+                (h) => h.eventType === TaskHistoryEventType.AUTO_HEALING_AUTO_RUN_TRIGGERED
+              );
+            const hasAutoRun =
+              hasAutoRunFromHistory ||
+              (task.histories === undefined && autoRunConnected);
+            const triggeredHistory = Array.isArray(task.histories)
+              ? task.histories.find(
+                  (h) => h.eventType === TaskHistoryEventType.AUTO_HEALING_AUTO_RUN_TRIGGERED
+                )
+              : undefined;
+            const triggeredDetail = parseAutoRunTriggeredDetail(triggeredHistory?.detailJson);
+            const effectiveStrategy = triggeredDetail.strategy ?? autoMeta.strategy;
+            const effectiveFailureType = triggeredDetail.failureType ?? autoMeta.failureType;
             const badge = taskFlowBadgeColors(flow);
             const flowLabel = taskFlowStatusLabel(flow);
             const isDragOver = dragOverId === task.id && draggingId !== task.id;
@@ -485,13 +524,12 @@ export function TaskListSection({
                     </span>
                     <strong style={{ fontSize: 16, flex: "1 1 160px" }}>
                       {isAutoHealing ? "⚙️ " : null}
-                      {isAutoHealing && autoMeta.strategy ? (
+                      {isAutoHealing && effectiveStrategy ? (
                         <span>
-                          [{autoMeta.strategy}] {" "}
-                          {`Recover from ${autoMeta.failureType ?? "UNKNOWN"}`}
+                          [{effectiveStrategy}] {`Recover from ${effectiveFailureType ?? "UNKNOWN"}`}
                         </span>
-                      ) : isAutoHealing && autoMeta.failureType ? (
-                        <span>{`[AUTO] Recover from ${autoMeta.failureType}`}</span>
+                      ) : isAutoHealing && effectiveFailureType ? (
+                        <span>{`[AUTO] Recover from ${effectiveFailureType}`}</span>
                       ) : (
                         task.name
                       )}
@@ -538,10 +576,10 @@ export function TaskListSection({
                           border: "1px solid #90caf9",
                         }}
                       >
-                        ⚙ {autoMeta.strategy ? `[${autoMeta.strategy}]` : "[AUTO]"}
+                        ⚙ {effectiveStrategy ? `[${effectiveStrategy}]` : "[AUTO]"}
                       </span>
                     ) : null}
-                    {taskKind === "AUTO_HEALING" && autoRunConnected ? (
+                    {taskKind === "AUTO_HEALING" && hasAutoRun ? (
                       <span
                         style={{
                           fontSize: 11,
@@ -549,12 +587,32 @@ export function TaskListSection({
                           letterSpacing: 0.6,
                           padding: "4px 10px",
                           borderRadius: 999,
-                          background: "#f1f5f9",
-                          color: "#0f172a",
-                          border: "1px solid #cbd5e1",
+                          background: "#ecfdf5",
+                          color: "#047857",
+                          border: "1px solid #6ee7b7",
                         }}
                       >
-                        ⚡ AUTO-RUN
+                        [AUTO-RUN]
+                      </span>
+                    ) : null}
+                    {taskKind === "AUTO_HEALING" &&
+                    hasAutoRun &&
+                    (triggeredDetail.autoRunExecutedCount != null ||
+                      triggeredDetail.autoRunSkippedCount != null) ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: 0.3,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          background: "#fffbeb",
+                          color: "#b45309",
+                          border: "1px solid #fcd34d",
+                        }}
+                      >
+                        Executed: {triggeredDetail.autoRunExecutedCount ?? "—"} / Skipped:{" "}
+                        {triggeredDetail.autoRunSkippedCount ?? "—"}
                       </span>
                     ) : null}
                     {parentTaskButton}

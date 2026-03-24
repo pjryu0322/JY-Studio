@@ -7,6 +7,7 @@ import {
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectMember, requireTaskGenerate } from "@/lib/service/projectAccessGuard";
+import { TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 
 type GenerateTaskBody = {
   projectSpecUploadId?: string;
@@ -113,16 +114,31 @@ export async function GET(request: NextRequest) {
         changeReason: true,
         createdAt: true,
         updatedAt: true,
+        histories: {
+          where: {
+            eventType: TaskHistoryEventType.AUTO_HEALING_AUTO_RUN_TRIGGERED,
+          },
+          select: { eventType: true, detailJson: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: tasks.map((task) => ({
-        ...task,
-        createdAt: task.createdAt.toISOString(),
-        updatedAt: task.updatedAt.toISOString(),
-      })),
+      data: tasks.map((task) => {
+        const { histories, ...rest } = task;
+        return {
+          ...rest,
+          createdAt: task.createdAt.toISOString(),
+          updatedAt: task.updatedAt.toISOString(),
+          histories: histories.map((h) => ({
+            eventType: h.eventType,
+            detailJson: h.detailJson ?? undefined,
+          })),
+        };
+      }),
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -231,6 +247,14 @@ export async function POST(request: Request) {
         changeReason: true,
         createdAt: true,
         updatedAt: true,
+        histories: {
+          where: {
+            eventType: TaskHistoryEventType.AUTO_HEALING_AUTO_RUN_TRIGGERED,
+          },
+          select: { eventType: true, detailJson: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
       },
     });
 
@@ -238,11 +262,18 @@ export async function POST(request: Request) {
       success: true,
       data: {
         count: tasks.length,
-        items: tasks.map((task) => ({
-          ...task,
-          createdAt: task.createdAt.toISOString(),
-          updatedAt: task.updatedAt.toISOString(),
-        })),
+        items: tasks.map((task) => {
+          const { histories, ...rest } = task;
+          return {
+            ...rest,
+            createdAt: task.createdAt.toISOString(),
+            updatedAt: task.updatedAt.toISOString(),
+            histories: histories.map((h) => ({
+              eventType: h.eventType,
+              detailJson: h.detailJson ?? undefined,
+            })),
+          };
+        }),
       },
       message: "Task가 생성되었습니다.",
     });

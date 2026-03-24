@@ -56,6 +56,12 @@ export type ParseResult = {
   hasParsedJson: boolean;
 };
 
+/** Task list에 포함되는 최소 감사 이력 (AUTO-RUN 등 UI 판별용). */
+export type TaskHistoryLiteItem = {
+  eventType: string;
+  detailJson?: unknown;
+};
+
 export type TaskItem = {
   id: string;
   projectId: string;
@@ -69,6 +75,7 @@ export type TaskItem = {
   changeReason: string | null;
   createdAt: string;
   updatedAt: string;
+  histories?: TaskHistoryLiteItem[];
 };
 
 export type TaskGenerateResult = {

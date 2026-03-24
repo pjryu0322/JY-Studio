@@ -9,14 +9,33 @@ type ExecutionEventRow = {
   message: string | null;
   durationMs: number | null;
   createdAt: string;
+  detailJson?: {
+    failureType?: string;
+    strategies?: string[];
+    createdTasks?: Array<{
+      strategy: string;
+      taskId: string;
+    }>;
+    sourceTaskId?: string | null;
+    created?: boolean;
+    reason?: string | null;
+    autoRunTriggered?: boolean;
+    autoRunExecutedTaskIds?: string[];
+    autoRunSkippedTaskIds?: string[] | Array<{ taskId: string; reason?: string }>;
+  } | null;
 };
 
 const AUTO_HEALING_COLOR = "#2563eb";
+const AUTO_RUN_ACTIVE = "#0a7d2e";
+const AUTO_RUN_IDLE = "#64748b";
+const COUNT_EXECUTED = "#0a7d2e";
+const COUNT_SKIPPED = "#c2410c";
+const REASON_EMPHASIS = "#c2410c";
 
 function statusColor(status: string): string {
   if (status === "SUCCESS") return "#0a7d2e";
   if (status === "FAILED") return "#b00020";
-  return "#b26a00"; // STARTED/그 외(진행중)
+  return "#b26a00";
 }
 
 function stageLabel(stage: string): string {
@@ -24,117 +43,100 @@ function stageLabel(stage: string): string {
   return stage;
 }
 
-function parseSelfHealingMessage(message: string): {
-  created: boolean | null;
-  failureType?: string;
-  strategies: string[];
-  createdTasks: Array<{ strategy: string; taskId: string }>;
-  reason?: string;
-  autoRunTriggered?: boolean;
-  autoRunExecutedCount?: number;
-  autoRunSkippedCount?: number;
-} {
-  const lines = message
-    .split("\n")
-    .map((l) => l.trimEnd())
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  const out: {
-    created: boolean | null;
-    failureType?: string;
-    strategies: string[];
-    createdTasks: Array<{ strategy: string; taskId: string }>;
-    reason?: string;
-    autoRunTriggered?: boolean;
-    autoRunExecutedCount?: number;
-    autoRunSkippedCount?: number;
-  } = {
-    created: null,
-    strategies: [],
-    createdTasks: [],
-  };
-
-  let inCreatedTasks = false;
-  for (const line of lines) {
-    if (line.startsWith("Task 생성됨") || line.startsWith("Task 생성 및 자동 실행 연결됨")) {
-      out.created = true;
-      inCreatedTasks = false;
-      continue;
-    }
-    if (line.startsWith("생성 실패")) {
-      out.created = false;
-      const m = line.match(/생성 실패\s*\(([^)]+)\)/);
-      if (m?.[1]) out.reason = m[1];
-      inCreatedTasks = false;
-      continue;
-    }
-
-    const failureTypeLine = line.match(/^failureType:\s*(.+)$/i);
-    if (failureTypeLine?.[1]) {
-      out.failureType = failureTypeLine[1].trim();
-      continue;
-    }
-
-    const strategiesLine = line.match(/^strategies:\s*(.+)$/i);
-    if (strategiesLine?.[1]) {
-      out.strategies = strategiesLine[1]
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      continue;
-    }
-
-    if (line === "createdTasks:" || line.toLowerCase() === "createdtasks:") {
-      inCreatedTasks = true;
-      continue;
-    }
-
-    const autoTriggered = line.match(/^triggered:\s*(true|false)$/i);
-    if (autoTriggered?.[1]) {
-      out.autoRunTriggered = autoTriggered[1].toLowerCase() === "true";
-      continue;
-    }
-    const executed = line.match(/^executed:\s*(\d+)$/i);
-    if (executed?.[1]) {
-      out.autoRunExecutedCount = Number(executed[1]);
-      continue;
-    }
-    const skipped = line.match(/^skipped:\s*(\d+)$/i);
-    if (skipped?.[1]) {
-      out.autoRunSkippedCount = Number(skipped[1]);
-      continue;
-    }
-
-    if (inCreatedTasks && line.startsWith("-")) {
-      // - STRATEGY: taskId
-      const m = line.match(/^-+\s*([^:]+):\s*(.+)$/);
-      if (m?.[1] && m?.[2]) {
-        out.createdTasks.push({ strategy: m[1].trim(), taskId: m[2].trim() });
-      }
-      continue;
-    }
-
-    // backward compatibility (Phase 5-0/5-1 single strategy)
-    if (line.startsWith("Task 생성됨:")) {
-      out.created = true;
-      const taskId = line.replace("Task 생성됨:", "").trim();
-      out.createdTasks.push({ strategy: "UNKNOWN", taskId });
-      continue;
-    }
-    if (line.startsWith("Task 생성 불가:")) {
-      out.created = false;
-      out.reason = line.replace("Task 생성 불가:", "").trim();
-      continue;
-    }
-    if (line.toLowerCase().startsWith("action:")) {
-      const action = line.replace(/^action:/i, "").trim();
-      out.strategies = action ? [action] : [];
-      continue;
-    }
+/** SELF_HEALING 전용: 문자열 message 필드는 사용하지 않고 detailJson만 렌더한다. */
+function SelfHealingStructuredBody({ detailJson }: { detailJson: ExecutionEventRow["detailJson"] }) {
+  if (detailJson == null) {
+    return <div style={{ color: "#999" }}>(no structured self-healing data)</div>;
   }
 
-  return out;
+  const d = detailJson;
+  const createdTasks = Array.isArray(d.createdTasks) ? d.createdTasks : [];
+  const createdCount = createdTasks.length;
+  const strategies = Array.isArray(d.strategies) ? d.strategies : [];
+  const strategiesLine = strategies.filter((s): s is string => typeof s === "string").join(", ");
+
+  const executedCount = Array.isArray(d.autoRunExecutedTaskIds) ? d.autoRunExecutedTaskIds.length : 0;
+  const skippedCount = Array.isArray(d.autoRunSkippedTaskIds) ? d.autoRunSkippedTaskIds.length : 0;
+
+  const autoRunStateKnown = d.autoRunTriggered === true || d.autoRunTriggered === false;
+
+  return (
+    <div style={{ color: "#333", marginTop: 2, lineHeight: 1.45 }}>
+      {d.created === true ? (
+        <div style={{ fontWeight: 800 }}>
+          Task 생성됨{" "}
+          <span style={{ color: AUTO_HEALING_COLOR }}>({createdCount} tasks)</span>
+        </div>
+      ) : null}
+      {d.created === false ? (
+        <div style={{ fontWeight: 800 }}>
+          생성 실패
+          {d.reason != null && String(d.reason).length > 0 ? (
+            <>
+              {" "}
+              <span style={{ fontWeight: 800, color: REASON_EMPHASIS }}>{String(d.reason)}</span>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {d.created !== true && d.created !== false && d.reason != null && String(d.reason).length > 0 ? (
+        <div style={{ marginTop: 4, fontWeight: 700, color: REASON_EMPHASIS }}>{String(d.reason)}</div>
+      ) : null}
+
+      {d.failureType ? (
+        <div style={{ marginTop: 6 }}>
+          failureType: <strong style={{ color: AUTO_HEALING_COLOR }}>{d.failureType}</strong>
+        </div>
+      ) : null}
+
+      {strategies.length > 0 ? (
+        <div style={{ marginTop: 4 }}>
+          strategies: <strong style={{ color: "#1d4ed8" }}>{strategiesLine}</strong>
+        </div>
+      ) : null}
+
+      {createdTasks.length > 0 ? (
+        <div style={{ marginTop: 8 }}>
+          <div>
+            <strong>Created Tasks ({createdTasks.length})</strong>
+          </div>
+          <div style={{ marginTop: 4 }}>
+            {createdTasks.map((t, i) => {
+              const taskIdDisplay =
+                typeof t.taskId === "string" && t.taskId ? t.taskId : "—";
+              const rowKey = typeof t.taskId === "string" && t.taskId ? t.taskId : `row-${i}`;
+              const strat = typeof t.strategy === "string" ? t.strategy : "UNKNOWN";
+              return (
+                <div key={rowKey}>
+                  - <strong>{strat}</strong> ({taskIdDisplay})
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {d.autoRunTriggered === true ? (
+        <div style={{ marginTop: 10 }}>
+          <strong style={{ color: AUTO_RUN_ACTIVE }}>Auto Run: ACTIVE</strong>
+        </div>
+      ) : null}
+      {d.autoRunTriggered === false ? (
+        <div style={{ marginTop: 10 }}>
+          <strong style={{ color: AUTO_RUN_IDLE }}>Auto Run: NOT TRIGGERED</strong>
+        </div>
+      ) : null}
+
+      {autoRunStateKnown ? (
+        <div style={{ marginTop: 4 }}>
+          executed:{" "}
+          <strong style={{ color: executedCount > 0 ? COUNT_EXECUTED : AUTO_RUN_IDLE }}>{executedCount}</strong>
+          , skipped:{" "}
+          <strong style={{ color: skippedCount > 0 ? COUNT_SKIPPED : AUTO_RUN_IDLE }}>{skippedCount}</strong>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function ExecutionTimeline({ jobId }: { jobId: string }) {
@@ -204,9 +206,6 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
   }, [jobId]);
 
   const stageGroups = useMemo(() => {
-    // API는 createdAt asc로 내려오므로,
-    // stage 내부 순서는 items 순서를 그대로 사용하고,
-    // stage 그룹 순서는 stage의 "첫 등장(createdAt)" 순서를 유지합니다.
     const order: string[] = [];
     const byStage = new Map<string, ExecutionEventRow[]>();
     for (const row of items) {
@@ -258,10 +257,10 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                   marginBottom: 6,
                 }}
               >
-                    <span style={{ fontWeight: 700, fontSize: 13 }}>
-                      {group.stage === "SELF_HEALING" ? "🔵 " : null}
-                      {stageLabel(group.stage)}
-                    </span>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>
+                  {group.stage === "SELF_HEALING" ? "🔵 " : null}
+                  {stageLabel(group.stage)}
+                </span>
                 <span style={{ color: "#666", fontSize: 12 }}>({group.events.length} events)</span>
               </div>
 
@@ -275,10 +274,7 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                 {group.events.map((ev, idx) => {
                   const color = group.stage === "SELF_HEALING" ? AUTO_HEALING_COLOR : statusColor(ev.status);
                   const durationText = ev.durationMs == null ? null : `${ev.durationMs}ms`;
-                  const parsed =
-                    group.stage === "SELF_HEALING" && ev.message
-                      ? parseSelfHealingMessage(ev.message)
-                      : null;
+
                   return (
                     <div
                       key={`${group.stage}-${ev.status}-${ev.createdAt}-${idx}`}
@@ -307,78 +303,7 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
                           </span>
                         </div>
                         {group.stage === "SELF_HEALING" ? (
-                          <div style={{ color: "#333", marginTop: 2, lineHeight: 1.4 }}>
-                            {ev.message ? (
-                              <>
-                                {parsed?.created != null ? (
-                                  parsed.created ? (
-                                    <div style={{ fontWeight: 800 }}>
-                                      Task 생성됨{" "}
-                                      <span style={{ color: AUTO_HEALING_COLOR }}>
-                                        ({parsed.createdTasks.length} tasks)
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <div style={{ fontWeight: 800 }}>
-                                      생성 실패{" "}
-                                      {parsed.reason ? (
-                                        <span style={{ color: AUTO_HEALING_COLOR }}>{parsed.reason}</span>
-                                      ) : null}
-                                    </div>
-                                  )
-                                ) : null}
-
-                                {parsed?.failureType ? (
-                                  <div style={{ marginTop: 2 }}>
-                                    failureType:{" "}
-                                    <span style={{ fontWeight: 700, color: AUTO_HEALING_COLOR }}>
-                                      {parsed.failureType}
-                                    </span>
-                                  </div>
-                                ) : null}
-
-                                {parsed?.strategies?.length ? (
-                                  <div style={{ marginTop: 2 }}>
-                                    strategies:{" "}
-                                    <span style={{ fontWeight: 800, color: "#1d4ed8" }}>
-                                      {parsed.strategies.join(", ")}
-                                    </span>
-                                  </div>
-                                ) : null}
-
-                                {parsed?.createdTasks?.length ? (
-                                  <div style={{ marginTop: 6, color: "#333" }}>
-                                    <div style={{ fontWeight: 800, color: "#1d4ed8" }}>Created Tasks</div>
-                                    <div style={{ marginTop: 3 }}>
-                                      {parsed.createdTasks.map((t, i) => (
-                                        <div key={`${t.strategy}-${t.taskId}-${i}`}>
-                                          - <span style={{ fontWeight: 800 }}>{t.strategy}</span> (taskId:{" "}
-                                          <span style={{ color: AUTO_HEALING_COLOR, fontWeight: 800 }}>
-                                            {t.taskId}
-                                          </span>
-                                          )
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ) : null}
-
-                                {parsed?.autoRunTriggered ? (
-                                  <div style={{ marginTop: 8, color: "#333" }}>
-                                    <div style={{ fontWeight: 800, color: AUTO_HEALING_COLOR }}>
-                                      Auto Run
-                                    </div>
-                                    <div style={{ marginTop: 3 }}>
-                                      executed: <span style={{ fontWeight: 800 }}>{parsed.autoRunExecutedCount ?? 0}</span>,
-                                      skipped: <span style={{ fontWeight: 800 }}>{parsed.autoRunSkippedCount ?? 0}</span>
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span style={{ color: "#999" }}>-</span>
-                            )}
-                          </div>
+                          <SelfHealingStructuredBody detailJson={ev.detailJson} />
                         ) : (
                           <div style={{ color: "#333", marginTop: 2, lineHeight: 1.4 }}>
                             {ev.message ? ev.message : <span style={{ color: "#999" }}>-</span>}

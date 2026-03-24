@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         stage: true,
         status: true,
         message: true,
+        detailJson: true,
         durationMs: true,
         createdAt: true,
       },
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest) {
         message: r.message,
         durationMs: r.durationMs,
         createdAt: r.createdAt.toISOString(),
+        detailJson: r.detailJson ?? null,
       })),
     });
   } catch (error) {
