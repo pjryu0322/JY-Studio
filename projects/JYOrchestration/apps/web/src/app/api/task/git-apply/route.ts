@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const requests = await listGitChangeRequestsForProject(projectId);
+    const requests = await listGitChangeRequestsForProject(projectId, userId);
 
     return NextResponse.json({
       success: true,

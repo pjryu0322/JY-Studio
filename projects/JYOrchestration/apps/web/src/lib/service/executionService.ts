@@ -17,6 +17,7 @@ import {
 import { syncPullRequestStatus } from "@/lib/service/githubPullRequestService";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { projectIdExists } from "@/lib/service/projectService";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import {
   countTaskRunsByProjectId,
   countTasksByProjectId,
@@ -32,7 +33,24 @@ export type GitApplyApiBody = {
   mode?: string;
   options?: { push?: boolean; simulateFailure?: boolean };
   retry?: boolean;
+  actorUserId?: string;
 };
+
+async function requireGitChangeRequestOwnedByUser(
+  gitChangeRequestId: string,
+  actorUserId: string,
+  action: string
+): Promise<{ projectId: string; taskId: string; executionId: string | null }> {
+  const row = await prisma.gitChangeRequest.findUnique({
+    where: { id: gitChangeRequestId },
+    select: { projectId: true, taskId: true },
+  });
+  if (!row) {
+    throw new Error("GIT_CHANGE_REQUEST_NOT_FOUND");
+  }
+  await requireProjectOwnedByUser(row.projectId, actorUserId, action);
+  return { projectId: row.projectId, taskId: row.taskId, executionId: null };
+}
 
 /** GitHub PR 상태를 GCR에 반영 (수동 동기화·테스트) */
 export async function syncGitChangeRequestPullRequestFromGithub(input: {
@@ -43,7 +61,17 @@ export async function syncGitChangeRequestPullRequestFromGithub(input: {
 }
 
 /** git-apply GET과 동일 select / projectId 필터 */
-export async function listGitChangeRequestsForProject(projectId: string) {
+export async function listGitChangeRequestsForProject(
+  projectId: string,
+  actorUserId?: string
+) {
+  if (actorUserId) {
+    await requireProjectOwnedByUser(
+      projectId,
+      actorUserId,
+      "executionService.listGitChangeRequestsForProject"
+    );
+  }
   const rows = await prisma.gitChangeRequest.findMany({
     where: { projectId },
     orderBy: { createdAt: "desc" },
@@ -119,6 +147,18 @@ export function serializeGitChangeRequestList(
 export async function applyGitChangeFromApiBody(
   body: GitApplyApiBody
 ): Promise<RunGitApplyCoreResult> {
+  const actorUserId = String(body.actorUserId ?? "").trim();
+  if (actorUserId) {
+    const gcrId = String(body.gitChangeRequestId ?? "").trim();
+    if (!gcrId) {
+      throw new Error("GIT_CHANGE_REQUEST_ID_REQUIRED");
+    }
+    await requireGitChangeRequestOwnedByUser(
+      gcrId,
+      actorUserId,
+      "executionService.applyGitChangeFromApiBody"
+    );
+  }
   return runGitApplyCoreFromBody({
     gitChangeRequestId: body.gitChangeRequestId,
     mode: body.mode,
@@ -236,6 +276,21 @@ export async function submitGitChangeRequestForApproval(input: {
     };
   }
 
+  try {
+    await requireGitChangeRequestOwnedByUser(
+      id,
+      input.actorUserId,
+      "executionService.submitGitChangeRequestForApproval"
+    );
+  } catch {
+    return {
+      ok: false,
+      code: GIT_GATE_ERROR_CODES.NOT_FOUND,
+      message: "대상 Git 반영 요청을 찾을 수 없거나 접근 권한이 없습니다.",
+      httpStatus: 403,
+    };
+  }
+
   const row = await prisma.gitChangeRequest.findUnique({
     where: { id },
     select: {
@@ -332,6 +387,21 @@ export async function approveGitChangeRequest(input: {
     };
   }
 
+  try {
+    await requireGitChangeRequestOwnedByUser(
+      id,
+      input.actorUserId,
+      "executionService.approveGitChangeRequest"
+    );
+  } catch {
+    return {
+      ok: false,
+      code: GIT_GATE_ERROR_CODES.NOT_FOUND,
+      message: "대상 Git 반영 요청을 찾을 수 없거나 접근 권한이 없습니다.",
+      httpStatus: 403,
+    };
+  }
+
   const row = await prisma.gitChangeRequest.findUnique({
     where: { id },
     select: {
@@ -425,6 +495,21 @@ export async function rejectGitChangeRequest(input: {
       code: GIT_GATE_ERROR_CODES.INVALID_REQUEST,
       message: "gitChangeRequestId가 필요합니다.",
       httpStatus: 400,
+    };
+  }
+
+  try {
+    await requireGitChangeRequestOwnedByUser(
+      id,
+      input.actorUserId,
+      "executionService.rejectGitChangeRequest"
+    );
+  } catch {
+    return {
+      ok: false,
+      code: GIT_GATE_ERROR_CODES.NOT_FOUND,
+      message: "대상 Git 반영 요청을 찾을 수 없거나 접근 권한이 없습니다.",
+      httpStatus: 403,
     };
   }
 

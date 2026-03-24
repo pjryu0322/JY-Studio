@@ -4,6 +4,8 @@ export type ExecutionAccessLogEntry = {
   userId: string | null;
   projectId?: string;
   taskId?: string;
+  executionId?: string;
+  action?: string;
   context?: string;
 };
 

@@ -2,6 +2,7 @@
  * Project CRUD / 설정 (API 레이어에서 호출).
  */
 import { prisma } from "@/lib/prisma";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 export async function listProjectsOrderedByCreatedDesc(ownerUserId: string) {
   return prisma.project.findMany({
@@ -49,4 +50,8 @@ export async function projectIdExists(id: string): Promise<boolean> {
     select: { id: true },
   });
   return Boolean(row);
+}
+
+export async function requireOwnedProject(projectId: string, userId: string, action: string) {
+  return requireProjectOwnedByUser(projectId, userId, action);
 }

@@ -21,6 +21,7 @@ export async function requireProjectOwnedByUser(
       reason: "PROJECT_NOT_FOUND",
       userId,
       projectId,
+      action: context,
       context,
     });
     throw new ProjectAccessDeniedError("프로젝트를 찾을 수 없습니다.");
@@ -31,11 +32,12 @@ export async function requireProjectOwnedByUser(
       reason: "NOT_PROJECT_OWNER",
       userId,
       projectId,
+      action: context,
       context,
     });
     throw new ProjectAccessDeniedError("프로젝트 소유자만 이 작업을 수행할 수 있습니다.");
   }
-  logExecutionAccess({ result: "allowed", userId, projectId, context });
+  logExecutionAccess({ result: "allowed", userId, projectId, action: context, context });
   return p;
 }
 
@@ -63,6 +65,7 @@ export async function requireTaskOwnedByProjectOwner(
       reason: "TASK_NOT_FOUND",
       userId,
       taskId,
+      action: context,
       context,
     });
     throw new ProjectAccessDeniedError("Task를 찾을 수 없습니다.");
@@ -75,6 +78,7 @@ export async function requireTaskOwnedByProjectOwner(
       userId,
       projectId: task.projectId,
       taskId,
+      action: context,
       context,
     });
     throw new ProjectAccessDeniedError("프로젝트 소유자만 이 Task에 접근할 수 있습니다.");
@@ -86,6 +90,7 @@ export async function requireTaskOwnedByProjectOwner(
       userId,
       projectId: task.projectId,
       taskId,
+      action: context,
       context,
     });
     throw new ProjectAccessDeniedError("Task 소유 정보가 프로젝트와 일치하지 않습니다.");
@@ -95,6 +100,7 @@ export async function requireTaskOwnedByProjectOwner(
     userId,
     projectId: task.projectId,
     taskId,
+    action: context,
     context,
   });
   return {
@@ -119,6 +125,7 @@ export async function requireTaskPromptOwnedByProjectOwner(
       result: "denied",
       reason: "TASK_PROMPT_NOT_FOUND",
       userId,
+      action: context,
       context,
     });
     throw new ProjectAccessDeniedError("Task 프롬프트를 찾을 수 없습니다.");
