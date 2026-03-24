@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "@/lib/service/executionWorkerRuntime";
 import DebugLabelLayer from "@/components/debug/DebugLabelLayer";
+import DebugSettings from "@/components/debug/DebugSettings";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,7 +32,12 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
-        {process.env.NEXT_PUBLIC_DEBUG_LABEL === "true" ? <DebugLabelLayer /> : null}
+        {process.env.NODE_ENV === "development" ? (
+          <>
+            <DebugLabelLayer />
+            <DebugSettings />
+          </>
+        ) : null}
       </body>
     </html>
   );

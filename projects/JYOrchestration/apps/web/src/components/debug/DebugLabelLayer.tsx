@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import {
+  JY_DEBUG_LABELS_CHANGED_EVENT,
+  readDebugLabelsStorage,
+} from "@/components/debug/debugLabelPrefs";
 
 type Label = {
   key: string;
@@ -10,17 +14,32 @@ type Label = {
   left: number;
 };
 
-function isDebugLabelEnabled(): boolean {
-  return (
-    process.env.NODE_ENV === "development" &&
-    process.env.NEXT_PUBLIC_DEBUG_LABEL === "true"
-  );
+function computeVisualDebugLabelsEnabled(): boolean {
+  if (process.env.NODE_ENV !== "development") return false;
+  const envOn = process.env.NEXT_PUBLIC_DEBUG_LABEL === "true";
+  const lsOn = readDebugLabelsStorage();
+  return envOn || lsOn;
 }
 
 export default function DebugLabelLayer() {
   const pathname = usePathname();
+  const [show, setShow] = useState(false);
   const [labels, setLabels] = useState<Label[]>([]);
   const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+
+    const sync = () => setShow(computeVisualDebugLabelsEnabled());
+    sync();
+
+    window.addEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   const collect = useCallback(() => {
     if (typeof document === "undefined") return;
@@ -56,7 +75,7 @@ export default function DebugLabelLayer() {
   }, [collect]);
 
   useEffect(() => {
-    if (!isDebugLabelEnabled()) return;
+    if (!show) return;
 
     scheduleCollect();
 
@@ -77,9 +96,9 @@ export default function DebugLabelLayer() {
       observer.disconnect();
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [pathname, scheduleCollect]);
+  }, [show, pathname, scheduleCollect]);
 
-  if (!isDebugLabelEnabled()) {
+  if (!show) {
     return null;
   }
 
