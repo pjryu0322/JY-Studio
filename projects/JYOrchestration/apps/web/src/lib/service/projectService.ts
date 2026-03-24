@@ -4,9 +4,27 @@
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 
-export async function listProjectsOrderedByCreatedDesc(ownerUserId: string) {
+/** @deprecated 이름 보존용 — 내부적으로 소유 또는 HUMAN 멤버십 프로젝트를 반환합니다. */
+export async function listProjectsOrderedByCreatedDesc(userId: string) {
+  return listProjectsAccessibleToUser(userId);
+}
+
+/** 소유 프로젝트 또는 HUMAN 멤버로 참여 중인 프로젝트(시드·협업 테스트 포함). */
+export async function listProjectsAccessibleToUser(userId: string) {
   return prisma.project.findMany({
-    where: { ownerUserId },
+    where: {
+      OR: [
+        { ownerUserId: userId },
+        {
+          members: {
+            some: {
+              userId,
+              memberType: "HUMAN",
+            },
+          },
+        },
+      ],
+    },
     orderBy: { createdAt: "desc" },
   });
 }
