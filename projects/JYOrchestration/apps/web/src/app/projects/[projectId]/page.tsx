@@ -129,6 +129,7 @@ export default function ProjectDetailPage() {
   const [advancedPanelOpen, setAdvancedPanelOpen] = useState(false);
 
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [memberRows, setMemberRows] = useState<ProjectMemberUiRow[]>([]);
   const permissions = useMemo(
     () =>
@@ -147,6 +148,8 @@ export default function ProjectDetailPage() {
             canChangeGitPolicy: false,
             canViewExecution: false,
             canControlExecution: false,
+            canRequestAiMemberAction: false,
+            canRequestAiReviewAction: false,
           },
     [projectRole]
   );
@@ -180,6 +183,7 @@ export default function ProjectDetailPage() {
   const reloadSessionContext = useCallback(async () => {
     if (!projectId) {
       setProjectRole(null);
+      setCurrentUserId(null);
       setMemberRows([]);
       return;
     }
@@ -190,15 +194,18 @@ export default function ProjectDetailPage() {
       success: boolean;
       data?: {
         myRole: ProjectRole | null;
+        currentUserId?: string;
         members: ProjectMemberUiRow[];
       };
     };
     if (!res.ok || !json.success || !json.data) {
       setProjectRole(null);
+      setCurrentUserId(null);
       setMemberRows([]);
       return;
     }
     setProjectRole(json.data.myRole);
+    setCurrentUserId(json.data.currentUserId ?? null);
     setMemberRows(Array.isArray(json.data.members) ? json.data.members : []);
   }, [projectId]);
 
@@ -210,6 +217,7 @@ export default function ProjectDetailPage() {
       } catch {
         if (!cancelled) {
           setProjectRole(null);
+          setCurrentUserId(null);
           setMemberRows([]);
         }
       }
@@ -2487,6 +2495,13 @@ export default function ProjectDetailPage() {
               members={memberRows}
               canManageMembers={rbac.canManageMembers}
               onChanged={reloadSessionContext}
+              tasks={tasks}
+              gitRequests={gitRequests}
+              taskPrompts={taskPrompts}
+              canRequestAiMemberAction={permissions.canRequestAiMemberAction}
+              canRequestAiReviewAction={permissions.canRequestAiReviewAction}
+              currentProjectRole={projectRole}
+              currentUserId={currentUserId}
             />
             {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
             {rbac.canEditSpec ? (
@@ -2525,6 +2540,13 @@ export default function ProjectDetailPage() {
             members={memberRows}
             canManageMembers={rbac.canManageMembers}
             onChanged={reloadSessionContext}
+            tasks={tasks}
+            gitRequests={gitRequests}
+            taskPrompts={taskPrompts}
+            canRequestAiMemberAction={permissions.canRequestAiMemberAction}
+            canRequestAiReviewAction={permissions.canRequestAiReviewAction}
+            currentProjectRole={projectRole}
+            currentUserId={currentUserId}
           />
           {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
           {rbac.canEditSpec ? (

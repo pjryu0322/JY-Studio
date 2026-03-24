@@ -27,6 +27,42 @@ enum ProjectMemberType {
   AI
 }
 
+/// AI(또는 멤버) 액션 유형
+enum AiMemberActionType {
+  /// 코드/변경 리뷰 요청
+  REVIEW_REQUEST
+  /// Task 초안 생성 요청
+  TASK_DRAFT_REQUEST
+  /// QA 점검 요청
+  QA_CHECK_REQUEST
+  /// 요약 요청
+  SUMMARY_REQUEST
+}
+
+/// AI 멤버 액션 진행 상태
+enum AiMemberActionStatus {
+  /// 요청됨
+  REQUESTED
+  /// 진행 중
+  IN_PROGRESS
+  /// 완료
+  DONE
+  /// 실패
+  FAILED
+  /// 취소
+  CANCELED
+}
+
+/// 실행 모드(스텁·수동·향후 OpenAI 등)
+enum AiMemberActionExecutionMode {
+  /// 즉시 더미/수동 완료용
+  STUB
+  /// 내부 워커/운영자 처리
+  MANUAL_AGENT
+  /// 향후 OpenAI·에이전트 연동
+  FUTURE_OPENAI
+}
+
 model User {
   /// 사용자 ID
   id           String   @id @default(cuid())
@@ -49,6 +85,8 @@ model User {
   memberships   ProjectMember[]
   /// 초대한 프로젝트 멤버 목록
   invitedProjectMembers ProjectMember[] @relation("ProjectMemberInvitedBy")
+  /// 요청한 AI 멤버 액션 목록
+  requestedMemberActions ProjectMemberAction[]
   /// 소유 Task (프로젝트 소유자와 동일한 ownerUserId)
   ownedTasks      Task[]         @relation("TaskOwner")
 
@@ -101,6 +139,8 @@ model Project {
   executionJobs ExecutionJob[]
   /// 실행 이벤트 로그
   executionEventLogs ExecutionEventLog[]
+  /// 멤버(주로 AI) 대상 액션 요청
+  memberActions ProjectMemberAction[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -215,11 +255,72 @@ model ProjectMember {
   user      User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// 초대한 사용자
   invitedBy User?             @relation("ProjectMemberInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  /// 할당된 멤버 액션
+  memberActions ProjectMemberAction[]
 
   @@unique([projectId, userId])
   @@index([projectId, memberType])
   @@index([projectId, role])
   @@map("project_members")
+}
+
+/// 프로젝트 멤버(주로 AI)에 대한 협업 액션 요청
+model ProjectMemberAction {
+  /// 액션 ID
+  id           String                  @id @default(uuid())
+  /// 프로젝트 ID
+  projectId    String
+  /// 연결 태스크 ID(선택)
+  taskId       String?
+  /// 연결 태스크 프롬프트 ID(선택)
+  taskPromptId String?
+  /// 연결 태스크 실행 ID(선택)
+  taskRunId    String?
+  /// 연결 Git 변경 요청 ID(선택)
+  gitChangeRequestId String?
+  /// 대상 프로젝트 멤버 ID(AI 권장, HUMAN 확장 가능)
+  projectMemberId String
+  /// 액션 유형
+  actionType   AiMemberActionType
+  /// 상태
+  status       AiMemberActionStatus    @default(REQUESTED)
+  /// 요청 본문(JSON)
+  requestPayload Json?
+  /// 결과 본문(JSON)
+  resultPayload  Json?
+  /// 요청한 사용자 ID(세션 주체)
+  requestedByUserId String
+  /// 요청 시각
+  requestedAt  DateTime                @default(now())
+  /// 시작 시각
+  startedAt    DateTime?
+  /// 종료 시각
+  finishedAt   DateTime?
+  /// 오류 메시지
+  errorMessage String?
+  /// 실행 모드
+  executionMode AiMemberActionExecutionMode @default(STUB)
+  /// 수정일시
+  updatedAt    DateTime                @updatedAt
+  /// 소속 프로젝트
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 대상 멤버
+  projectMember ProjectMember  @relation(fields: [projectMemberId], references: [id], onDelete: Cascade)
+  /// 연결 태스크
+  task          Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  /// 연결 프롬프트
+  taskPrompt    TaskPrompt?    @relation(fields: [taskPromptId], references: [id], onDelete: SetNull)
+  /// 연결 실행
+  taskRun       TaskRun?       @relation(fields: [taskRunId], references: [id], onDelete: SetNull)
+  /// 연결 Git 변경 요청
+  gitChangeRequest GitChangeRequest? @relation(fields: [gitChangeRequestId], references: [id], onDelete: SetNull)
+  /// 요청한 사용자
+  requestedBy   User           @relation(fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, requestedAt])
+  @@index([taskId])
+  @@index([projectMemberId])
+  @@map("project_member_actions")
 }
 
 model ProjectSpecUpload {
@@ -305,6 +406,8 @@ model Task {
   gitRequests         GitChangeRequest[]
   /// 이력
   histories           TaskHistory[]
+  /// 멤버 액션
+  memberActions       ProjectMemberAction[]
 
   @@index([projectId, order])
   @@index([projectSpecUploadId])
@@ -336,6 +439,8 @@ model TaskPrompt {
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /// 실행 기록
   runs       TaskRun[]
+  /// 멤버 액션
+  memberActions ProjectMemberAction[]
 
   @@index([projectId, createdAt])
   @@map("task_prompts")
@@ -364,6 +469,8 @@ model TaskRun {
   taskPrompt   TaskPrompt @relation(fields: [taskPromptId], references: [id], onDelete: Cascade)
   /// Git 변경 요청
   gitRequests  GitChangeRequest[]
+  /// 멤버 액션
+  memberActions ProjectMemberAction[]
 
   @@index([taskId, createdAt])
   @@index([taskPromptId])
@@ -427,6 +534,8 @@ model GitChangeRequest {
   task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   /// 소속 실행
   taskRun     TaskRun  @relation(fields: [taskRunId], references: [id], onDelete: Cascade)
+  /// 멤버 액션
+  memberActions ProjectMemberAction[]
 
   @@index([projectId, createdAt])
   @@index([taskId])

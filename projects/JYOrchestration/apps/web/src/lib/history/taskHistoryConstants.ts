@@ -32,6 +32,12 @@ export const TaskHistoryEventType = {
   MANUAL_BLOCKED: "MANUAL_BLOCKED",
   TASK_REORDERED: "TASK_REORDERED",
   FOLLOWUP_TASK_CREATED: "FOLLOWUP_TASK_CREATED",
+  /** AI 멤버(또는 멤버) 액션 요청 생성 */
+  ACTION_REQUESTED: "ACTION_REQUESTED",
+  /** AI 멤버 액션 완료 */
+  ACTION_COMPLETED: "ACTION_COMPLETED",
+  /** AI 멤버 액션 실패 */
+  ACTION_FAILED: "ACTION_FAILED",
 } as const;
 
 export type TaskHistoryEventTypeKey = keyof typeof TaskHistoryEventType;

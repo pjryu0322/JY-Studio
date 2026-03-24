@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
         ownerUserId,
         isProjectOwner: ownerUserId === userId,
         canManageMembers: myRole === "OWNER",
+        currentUserId: userId,
         members: rows.map((m) => ({
           memberId: m.memberId,
           userId: m.userId,

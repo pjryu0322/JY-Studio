@@ -13,6 +13,10 @@ export type ProjectPermissionKey =
   | "canChangeGitPolicy"
   | "canViewExecution"
   | "canControlExecution"
+  /** OWNER/EDITOR: AI 멤버에 초안·QA·요약 등 액션 요청 */
+  | "canRequestAiMemberAction"
+  /** OWNER/EDITOR/REVIEWER: AI 리뷰 요청 */
+  | "canRequestAiReviewAction"
   | "canEdit"
   | "canRun"
   | "canApprove"
@@ -33,6 +37,8 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canChangeGitPolicy: true,
     canViewExecution: true,
     canControlExecution: true,
+    canRequestAiMemberAction: true,
+    canRequestAiReviewAction: true,
     canEdit: true,
     canRun: true,
     canApprove: true,
@@ -52,6 +58,8 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canChangeGitPolicy: false,
     canViewExecution: true,
     canControlExecution: true,
+    canRequestAiMemberAction: true,
+    canRequestAiReviewAction: true,
     canEdit: true,
     canRun: true,
     canApprove: false,
@@ -71,6 +79,8 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canChangeGitPolicy: false,
     canViewExecution: true,
     canControlExecution: false,
+    canRequestAiMemberAction: false,
+    canRequestAiReviewAction: true,
     canEdit: false,
     canRun: false,
     canApprove: true,
@@ -90,6 +100,8 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canChangeGitPolicy: false,
     canViewExecution: true,
     canControlExecution: false,
+    canRequestAiMemberAction: false,
+    canRequestAiReviewAction: false,
     canEdit: false,
     canRun: false,
     canApprove: false,
