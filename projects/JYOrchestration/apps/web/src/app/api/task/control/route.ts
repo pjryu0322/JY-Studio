@@ -4,7 +4,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
-import { requireTaskRun } from "@/lib/service/projectAccessGuard";
+import { requireTaskOwnedByProjectOwner } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 type ControlBody = {
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     const projectId = task.projectId;
 
     try {
-      await requireTaskRun(projectId, userId);
+      await requireTaskOwnedByProjectOwner(task.id, userId, "POST /api/task/control");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

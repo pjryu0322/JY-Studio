@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectSpecUpload } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 function mapUploadRecord(record: {
   id: string;
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectSpecUpload(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "POST /api/project-spec/upload");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

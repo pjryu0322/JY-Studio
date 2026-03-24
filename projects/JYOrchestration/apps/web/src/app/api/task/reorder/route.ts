@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireTaskRun } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import { reorderTasksInProject } from "@/lib/service/taskService";
 
 type ReorderBody = {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await requireTaskRun(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "POST /api/task/reorder");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

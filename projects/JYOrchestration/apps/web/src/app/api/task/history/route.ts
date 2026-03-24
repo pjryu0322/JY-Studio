@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectMember } from "@/lib/service/projectAccessGuard";
+import { requireTaskOwnedByProjectOwner } from "@/lib/service/taskOwnershipGuard";
 import {
   listTaskHistoryByTaskId,
   serializeTaskHistoryRow,
@@ -39,13 +39,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const projectId = task.projectId;
     const userId = await requireSessionUserId(request);
     if (userId instanceof NextResponse) {
       return userId;
     }
     try {
-      await requireProjectMember(projectId, userId);
+      await requireTaskOwnedByProjectOwner(taskId, userId, "GET /api/task/history");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

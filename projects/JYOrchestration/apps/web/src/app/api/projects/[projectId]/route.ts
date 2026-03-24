@@ -10,7 +10,7 @@ import {
   normalizeGitApprovalModeForStorage,
 } from "@/lib/git-apply/retry";
 import { prisma } from "@/lib/prisma";
-import { requireProjectGitPolicyUpdate } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 /** 승인(gitApprovalMode)과 push(gitPushMode)는 각각 독립 PATCH 가능 */
 type PatchBody = { gitApprovalMode?: string; gitPushMode?: string };
@@ -34,7 +34,7 @@ export async function PATCH(
       return userId;
     }
     try {
-      await requireProjectGitPolicyUpdate(id, userId);
+      await requireProjectOwnedByUser(id, userId, "PATCH /api/projects/[projectId]");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

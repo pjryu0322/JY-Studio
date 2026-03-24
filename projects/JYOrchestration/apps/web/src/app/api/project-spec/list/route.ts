@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { requireProjectRole } from "@/lib/rbac/requireProjectRole";
 import { prisma } from "@/lib/prisma";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 function mapUploadRecord(record: {
   id: string;
@@ -52,12 +52,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectRole(
-        projectId,
-        userId,
-        ["OWNER", "PLANNER", "REVIEWER"],
-        "업로드 메타데이터 조회는 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
-      );
+      await requireProjectOwnedByUser(projectId, userId, "GET /api/project-spec/list");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

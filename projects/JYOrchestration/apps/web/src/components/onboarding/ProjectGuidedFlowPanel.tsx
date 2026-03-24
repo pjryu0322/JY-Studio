@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ProjectGuidedFlowSnapshot } from "@/lib/onboarding/projectGuidedFlow";
 import { guidedFlowNextHint } from "@/lib/onboarding/projectGuidedFlow";
 
@@ -26,19 +26,17 @@ export function ProjectGuidedFlowPanel({
   canReview,
   canOperate,
 }: ProjectGuidedFlowPanelProps) {
-  const [collapsed, setCollapsed] = useState(true);
-  const [showAllSteps, setShowAllSteps] = useState(false);
-
-  useEffect(() => {
-    try {
-      const v = window.localStorage.getItem(STORAGE_COLLAPSED);
-      if (v === "0") {
-        setCollapsed(false);
-      }
-    } catch {
-      /* ignore */
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
     }
-  }, []);
+    try {
+      return window.localStorage.getItem(STORAGE_COLLAPSED) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const [showAllSteps, setShowAllSteps] = useState(false);
 
   const persistCollapsed = useCallback((next: boolean) => {
     setCollapsed(next);

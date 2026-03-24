@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { requireExecutionPipelineRead } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import { getProjectObservabilitySnapshot } from "@/lib/service/executionService";
 
 export async function GET(request: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireExecutionPipelineRead(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "GET /api/project/summary");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

@@ -15,16 +15,13 @@ export default function DebugSettings() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    setLabelsOn(readDebugLabelsStorage());
-  }, [mounted]);
-
-  useEffect(() => {
-    if (!mounted) return;
+    if (typeof window === "undefined") {
+      return;
+    }
+    queueMicrotask(() => {
+      setMounted(true);
+      setLabelsOn(readDebugLabelsStorage());
+    });
     const syncFromStorage = () => setLabelsOn(readDebugLabelsStorage());
     window.addEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, syncFromStorage);
     window.addEventListener("storage", syncFromStorage);
@@ -32,7 +29,7 @@ export default function DebugSettings() {
       window.removeEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, syncFromStorage);
       window.removeEventListener("storage", syncFromStorage);
     };
-  }, [mounted]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;

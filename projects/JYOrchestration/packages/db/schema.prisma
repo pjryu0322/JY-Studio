@@ -39,6 +39,8 @@ model User {
   ownedProjects Project[]
   /// 프로젝트 멤버십 목록
   memberships   ProjectMember[]
+  /// 소유 Task (프로젝트 소유자와 동일한 ownerUserId)
+  ownedTasks      Task[]         @relation("TaskOwner")
 
   @@map("users")
 }
@@ -237,6 +239,8 @@ model Task {
   id                  String            @id @default(uuid())
   /// 프로젝트 ID
   projectId           String
+  /// 태스크 소유 사용자 ID(프로젝트 소유자와 동일해야 함)
+  ownerUserId         String
   /// 스펙 업로드 ID
   projectSpecUploadId String
   /// 태스크명
@@ -259,6 +263,8 @@ model Task {
   updatedAt           DateTime          @updatedAt
   /// 소속 프로젝트
   project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 소유 사용자(프로젝트 ownerUserId와 정합)
+  taskOwner           User              @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   /// 스펙 업로드
   projectSpecUpload   ProjectSpecUpload @relation(fields: [projectSpecUploadId], references: [id], onDelete: Cascade)
   /// 상위 태스크
@@ -277,6 +283,7 @@ model Task {
   @@index([projectId, order])
   @@index([projectSpecUploadId])
   @@index([parentTaskId])
+  @@index([ownerUserId])
   @@map("tasks")
 }
 

@@ -4,9 +4,9 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
 import {
-  requireProjectMember,
-  requireTaskPromptCreate,
-} from "@/lib/service/projectAccessGuard";
+  requireProjectOwnedByUser,
+  requireTaskOwnedByProjectOwner,
+} from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 type CreateTaskPromptBody = {
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectMember(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/prompt");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -198,7 +198,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      await requireTaskPromptCreate(task.projectId, userId);
+      await requireTaskOwnedByProjectOwner(task.id, userId, "POST /api/task/prompt");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

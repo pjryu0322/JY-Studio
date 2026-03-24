@@ -6,7 +6,7 @@ import {
 } from "@/lib/project-spec/mockSpecExtract";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectMember, requireTaskGenerate } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import { TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 
 type GenerateTaskBody = {
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectMember(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/generate");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -183,6 +183,7 @@ export async function POST(request: Request) {
         id: true,
         projectId: true,
         parsedJson: true,
+        project: { select: { ownerUserId: true } },
       },
     });
 
@@ -207,7 +208,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      await requireTaskGenerate(upload.projectId, userId);
+      await requireProjectOwnedByUser(upload.projectId, userId, "POST /api/task/generate");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -228,6 +229,7 @@ export async function POST(request: Request) {
       await tx.task.createMany({
         data: taskSeeds.map((seed, index) => ({
           projectId: upload.projectId,
+          ownerUserId: upload.project.ownerUserId,
           projectSpecUploadId: upload.id,
           name: seed.name,
           description: seed.description,

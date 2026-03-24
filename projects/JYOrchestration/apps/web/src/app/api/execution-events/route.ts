@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireExecutionPipelineRead } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ success: false, message }, { status });
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireExecutionPipelineRead(job.projectId, userId);
+      await requireProjectOwnedByUser(job.projectId, userId, "GET /api/execution-events");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

@@ -11,10 +11,9 @@ import {
   GIT_CHANGE_REQUEST_FROM_RUN_CODES,
 } from "@/lib/service/gitChangeRequestFromTaskRun";
 import {
-  requireExecutionPipelineRead,
-  requireReadyForGitTransition,
-  requireTaskRun,
-} from "@/lib/service/projectAccessGuard";
+  requireProjectOwnedByUser,
+  requireTaskOwnedByProjectOwner,
+} from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import {
   isRunExecutionConflictError,
@@ -53,7 +52,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireExecutionPipelineRead(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/run");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -140,7 +139,7 @@ export async function POST(request: Request) {
       const projectId = task.projectId;
 
       try {
-        await requireTaskRun(projectId, userId);
+        await requireTaskOwnedByProjectOwner(task.id, userId, "POST /api/task/run:force-fail-latest");
       } catch (error) {
         const denied = rbacErrorResponse(error);
         if (denied) {
@@ -261,7 +260,11 @@ export async function POST(request: Request) {
       const abortProjectId = promptForAbort.task.projectId;
 
       try {
-        await requireTaskRun(abortProjectId, userId);
+        await requireTaskOwnedByProjectOwner(
+          promptForAbort.taskId,
+          userId,
+          "POST /api/task/run:abort-run"
+        );
       } catch (error) {
         const denied = rbacErrorResponse(error);
         if (denied) {
@@ -383,16 +386,17 @@ export async function POST(request: Request) {
 
     const projectId = prompt.task.projectId;
 
-    if (action === "mark-ready-for-git") {
-      try {
-        await requireReadyForGitTransition(projectId, userId);
-      } catch (error) {
-        const denied = rbacErrorResponse(error);
-        if (denied) {
-          return denied;
-        }
-        throw error;
+    try {
+      await requireTaskOwnedByProjectOwner(prompt.taskId, userId, "POST /api/task/run");
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
       }
+      throw error;
+    }
+
+    if (action === "mark-ready-for-git") {
       const latestRun = await prisma.taskRun.findFirst({
         where: {
           taskPromptId: prompt.id,
@@ -468,16 +472,6 @@ export async function POST(request: Request) {
         data: serializeTaskRunRow(updated),
         message: "TaskRun이 READY_FOR_GIT 상태로 전환되었습니다.",
       });
-    }
-
-    try {
-      await requireTaskRun(projectId, userId);
-    } catch (error) {
-      const denied = rbacErrorResponse(error);
-      if (denied) {
-        return denied;
-      }
-      throw error;
     }
 
     const taskGate = await prisma.task.findUnique({

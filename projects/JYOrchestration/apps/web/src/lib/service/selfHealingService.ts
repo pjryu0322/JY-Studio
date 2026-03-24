@@ -42,6 +42,14 @@ export async function triggerSelfHealingLite(params: {
     return { created: false, strategies, createdTasks: [], reason: "NO_PROJECT_SPEC_UPLOAD" };
   }
 
+  const projectRow = await prisma.project.findUnique({
+    where: { id: params.projectId },
+    select: { ownerUserId: true },
+  });
+  if (!projectRow) {
+    return { created: false, strategies, createdTasks: [], reason: "PROJECT_NOT_FOUND" };
+  }
+
   const detailJsonText = JSON.stringify(params.detailJson ?? null, null, 2);
 
   // 여러 전략이 생성되므로 order를 한 번 계산해 증가시킨다.
@@ -70,6 +78,7 @@ export async function triggerSelfHealingLite(params: {
     const created = await prisma.task.create({
       data: {
         projectId: params.projectId,
+        ownerUserId: projectRow.ownerUserId,
         projectSpecUploadId,
         name: `[AUTO][${strategy}] Recover from ${failureTypeKey}`,
         description,

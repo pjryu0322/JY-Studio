@@ -3,7 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { syncPullRequestStatus } from "@/lib/service/githubPullRequestService";
-import { requireGitApply } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 function jsonError(code: string, message: string, status: number) {
   return NextResponse.json({ success: false, code, message }, { status });
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      await requireGitApply(gcr.projectId, userId);
+      await requireProjectOwnedByUser(gcr.projectId, userId, "GET /api/git/pr/status");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

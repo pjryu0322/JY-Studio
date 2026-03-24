@@ -68,9 +68,6 @@ export function GitGateControls({
   const [rejectReason, setRejectReason] = useState("");
 
   const mode = String(gitApprovalMode ?? "NO_APPROVAL").trim();
-  if (mode !== GIT_APPROVAL_MODE_MANUAL_APPROVAL) {
-    return null;
-  }
 
   const run = useCallback(
     async (path: string, body: object) => {
@@ -99,6 +96,10 @@ export function GitGateControls({
     },
     [onAfterMutation]
   );
+
+  if (mode !== GIT_APPROVAL_MODE_MANUAL_APPROVAL) {
+    return null;
+  }
 
   const showSubmit = status === "REJECTED" && canSubmitApproval;
   const showReview = status === "APPROVAL_REQUIRED" && canReviewApproval;

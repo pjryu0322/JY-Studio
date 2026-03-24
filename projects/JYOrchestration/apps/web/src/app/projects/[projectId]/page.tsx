@@ -130,6 +130,7 @@ export default function ProjectDetailPage() {
 
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
   const [memberRows, setMemberRows] = useState<ProjectMemberRow[]>([]);
+  const [isProjectOwner, setIsProjectOwner] = useState(false);
   const rbac = useMemo(
     () => ({
       canEditSpec: canEditSpec(projectRole),
@@ -153,6 +154,7 @@ export default function ProjectDetailPage() {
     if (!projectId) {
       setProjectRole(null);
       setMemberRows([]);
+      setIsProjectOwner(false);
       return;
     }
     let cancelled = false;
@@ -164,7 +166,11 @@ export default function ProjectDetailPage() {
         );
         const json = (await res.json()) as {
           success: boolean;
-          data?: { myRole: ProjectRole | null; members: ProjectMemberRow[] };
+          data?: {
+            myRole: ProjectRole | null;
+            members: ProjectMemberRow[];
+            isProjectOwner?: boolean;
+          };
         };
         if (cancelled) {
           return;
@@ -172,14 +178,17 @@ export default function ProjectDetailPage() {
         if (!res.ok || !json.success || !json.data) {
           setProjectRole(null);
           setMemberRows([]);
+          setIsProjectOwner(false);
           return;
         }
         setProjectRole(json.data.myRole);
         setMemberRows(Array.isArray(json.data.members) ? json.data.members : []);
+        setIsProjectOwner(json.data.isProjectOwner === true);
       } catch {
         if (!cancelled) {
           setProjectRole(null);
           setMemberRows([]);
+          setIsProjectOwner(false);
         }
       }
     })();
@@ -196,10 +205,10 @@ export default function ProjectDetailPage() {
     setGitApplyPushOption(
       pushMode === GIT_PUSH_MODE_AUTO_PUSH || pushMode === ""
     );
-  }, [project?.id, project?.gitPushMode]);
+  }, [project]);
 
   useEffect(() => {
-    if (!projectId || !rbac.canOperate) {
+    if (!projectId || !isProjectOwner) {
       setExecSummary(null);
       setExecSummaryError(null);
       setExecSummaryLoading(false);
@@ -254,7 +263,7 @@ export default function ProjectDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, rbac.canOperate]);
+  }, [projectId, isProjectOwner]);
 
   useEffect(() => {
     let cancelled = false;
@@ -525,7 +534,7 @@ export default function ProjectDetailPage() {
         taskRunMap,
         canRegisterSpec: rbac.canEditSpec,
         canReview: rbac.canReview,
-        canOperate: rbac.canOperate,
+        canOperate: isProjectOwner,
       }),
     [
       uploadHistory,
@@ -536,7 +545,7 @@ export default function ProjectDetailPage() {
       taskRunMap,
       rbac.canEditSpec,
       rbac.canReview,
-      rbac.canOperate,
+      isProjectOwner,
     ]
   );
 
@@ -1770,10 +1779,10 @@ export default function ProjectDetailPage() {
           registeringGitRequestRunId={registeringGitRequestRunId}
           taskRunMap={taskRunMap}
           canGeneratePrompt={rbac.canReview}
-          canRunTask={rbac.canOperate}
-          canMarkReadyForGit={rbac.canOperate}
-          canRegisterGitRequest={rbac.canOperate}
-          canReorderTasks={rbac.canOperate}
+          canRunTask={isProjectOwner}
+          canMarkReadyForGit={isProjectOwner}
+          canRegisterGitRequest={isProjectOwner}
+          canReorderTasks={isProjectOwner}
           reorderSaving={reorderSaving}
           abortingTaskId={abortingTaskId}
           blockingTaskId={blockingTaskId}
@@ -1813,7 +1822,7 @@ export default function ProjectDetailPage() {
           }}
         />
       ) : null}
-      {rbac.canOperate ? (
+      {isProjectOwner ? (
         <section
           id="guided-flow-git"
           style={{
@@ -1841,7 +1850,7 @@ export default function ProjectDetailPage() {
               ? "승인 필요 (MANUAL_APPROVAL)"
               : "승인 생략 (NO_APPROVAL)"}
           </span>
-          {rbac.canReview ? (
+          {isProjectOwner ? (
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: "#555" }}>변경</span>
               <select
@@ -1862,7 +1871,7 @@ export default function ProjectDetailPage() {
               ? "수동 (MANUAL_PUSH)"
               : "자동 시도 (AUTO_PUSH)"}
           </span>
-          {rbac.canReview ? (
+          {isProjectOwner ? (
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: "#555" }}>push</span>
               <select
@@ -2179,7 +2188,7 @@ export default function ProjectDetailPage() {
                       </button>
                     ) : null}
                     {!executionSafeMode &&
-                    rbac.canOperate &&
+                    isProjectOwner &&
                     gitApplyMode === "git" &&
                     item.applyStatus === "DONE" &&
                     applyLogHasGitPushOk(item.applyLog) &&
@@ -2222,7 +2231,7 @@ export default function ProjectDetailPage() {
                       </a>
                     ) : null}
                     {!executionSafeMode &&
-                    rbac.canOperate &&
+                    isProjectOwner &&
                     item.pullRequestNumber != null ? (
                       <button
                         type="button"
@@ -2242,7 +2251,7 @@ export default function ProjectDetailPage() {
                     ) : null}
                     {isManualGitItem(item) &&
                     item.status === "APPROVAL_REQUIRED" &&
-                    rbac.canReview ? (
+                    isProjectOwner ? (
                       <>
                         <button
                           type="button"
@@ -2280,7 +2289,7 @@ export default function ProjectDetailPage() {
                     ) : null}
                     {isManualGitItem(item) &&
                     item.status === "REJECTED" &&
-                    rbac.canOperate ? (
+                    isProjectOwner ? (
                       <button
                         type="button"
                         onClick={() => handleGitResubmitApproval(item.id)}
@@ -2300,7 +2309,7 @@ export default function ProjectDetailPage() {
                   </div>
                   {isManualGitItem(item) &&
                   item.status === "APPROVAL_REQUIRED" &&
-                  rbac.canReview ? (
+                  isProjectOwner ? (
                     <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 420 }}>
                       <span style={{ fontSize: 12, color: "#666" }}>반려 사유 (선택)</span>
                       <textarea
@@ -2424,7 +2433,7 @@ export default function ProjectDetailPage() {
               project={project}
               currentUserRoleLabel={projectRole && projectId ? projectRole : null}
             />
-            {rbac.canOperate ? (
+            {isProjectOwner ? (
               <ExecutionObservabilityPanel
                 data={execSummary}
                 loading={execSummaryLoading}
@@ -2444,7 +2453,7 @@ export default function ProjectDetailPage() {
                 snapshot={guidedFlowSnapshot}
                 canRegisterSpec={rbac.canEditSpec}
                 canReview={rbac.canReview}
-                canOperate={rbac.canOperate}
+                canOperate={isProjectOwner}
               />
             ) : null}
             <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
@@ -2470,10 +2479,10 @@ export default function ProjectDetailPage() {
               snapshot={guidedFlowSnapshot}
               canRegisterSpec={rbac.canEditSpec}
               canReview={rbac.canReview}
-              canOperate={rbac.canOperate}
+              canOperate={isProjectOwner}
             />
           ) : null}
-          {rbac.canOperate ? (
+          {isProjectOwner ? (
             <ExecutionObservabilityPanel
               data={execSummary}
               loading={execSummaryLoading}

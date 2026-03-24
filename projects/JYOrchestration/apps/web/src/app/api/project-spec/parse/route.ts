@@ -3,7 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { extractMainFeaturesFromFreeText } from "@/lib/project-spec/mockSpecExtract";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectSpecParse } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 type ParseRequestBody = {
   projectSpecUploadId?: string;
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       return userId;
     }
     try {
-      await requireProjectSpecParse(upload.projectId, userId);
+      await requireProjectOwnedByUser(upload.projectId, userId, "POST /api/project-spec/parse");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { resolveProjectRole } from "@/lib/rbac/resolveProjectRole";
-import { requireProjectMember } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import { listProjectMembers } from "@/lib/service/projectMemberService";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      await requireProjectMember(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "GET /api/project/session-context");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -29,11 +30,18 @@ export async function GET(request: NextRequest) {
 
     const myRole = await resolveProjectRole(projectId, userId);
     const rows = await listProjectMembers(projectId);
+    const projectRow = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerUserId: true },
+    });
+    const ownerUserId = projectRow?.ownerUserId ?? "";
 
     return NextResponse.json({
       success: true,
       data: {
         myRole,
+        ownerUserId,
+        isProjectOwner: ownerUserId === userId,
         members: rows.map((m) => ({ userId: m.userId, role: m.role })),
       },
     });

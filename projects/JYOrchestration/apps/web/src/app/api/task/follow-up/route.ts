@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
-import { requireTaskGenerate } from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { createFollowUpTaskAfterDoneSource } from "@/lib/service/taskService";
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await requireTaskGenerate(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "POST /api/task/follow-up");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -52,6 +52,7 @@ export async function POST(request: NextRequest) {
       name,
       description,
       changeReason,
+      actorUserId: userId,
     });
 
     if (!result.ok) {

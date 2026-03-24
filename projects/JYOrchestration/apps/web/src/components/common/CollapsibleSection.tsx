@@ -31,7 +31,9 @@ export function CollapsibleSection({
 
   useEffect(() => {
     if (!isControlled) {
-      setInternalOpen(defaultOpen);
+      queueMicrotask(() => {
+        setInternalOpen(defaultOpen);
+      });
     }
   }, [defaultOpen, isControlled]);
 

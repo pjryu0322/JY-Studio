@@ -8,6 +8,7 @@ import {
   type TaskRunResultJson,
 } from "@/lib/integration/taskRunResultTypes";
 import { prisma } from "@/lib/prisma";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 
 /** TaskRun.resultJson 안전 파싱 (후속 Git·UI에서 재사용). */
 export function parseTaskRunResultJson(raw: unknown): TaskRunResultJson | null {
@@ -35,6 +36,13 @@ export async function reorderTasksInProject(
   orderedTaskIds: string[],
   options: { actorUserId: string }
 ): Promise<{ ok: true } | { ok: false; message: string }> {
+  const actorUserId = options.actorUserId;
+  try {
+    await requireProjectOwnedByUser(projectId, actorUserId, "taskService.reorderTasksInProject");
+  } catch {
+    return { ok: false, message: "프로젝트 소유자만 Task 순서를 변경할 수 있습니다." };
+  }
+
   const existing = await prisma.task.findMany({
     where: { projectId },
     select: { id: true },
@@ -48,8 +56,6 @@ export async function reorderTasksInProject(
       return { ok: false, message: "다른 프로젝트의 Task id가 포함되어 있습니다." };
     }
   }
-
-  const actorUserId = options.actorUserId;
 
   await prisma.$transaction(async (tx) => {
     for (let index = 0; index < orderedTaskIds.length; index++) {
@@ -98,7 +104,20 @@ export async function createFollowUpTaskAfterDoneSource(params: {
   name: string;
   description: string | null;
   changeReason: string;
+  actorUserId: string;
 }): Promise<CreateFollowUpTaskResult> {
+  let ownerUserId: string;
+  try {
+    const p = await requireProjectOwnedByUser(
+      params.projectId,
+      params.actorUserId,
+      "taskService.createFollowUpTaskAfterDoneSource"
+    );
+    ownerUserId = p.ownerUserId;
+  } catch {
+    return { ok: false, message: "프로젝트 소유자만 후속 Task를 생성할 수 있습니다." };
+  }
+
   const name = params.name.trim();
   const changeReason = params.changeReason.trim();
   if (!name) {
@@ -138,6 +157,7 @@ export async function createFollowUpTaskAfterDoneSource(params: {
     return tx.task.create({
       data: {
         projectId: params.projectId,
+        ownerUserId,
         projectSpecUploadId: source.projectSpecUploadId,
         name,
         description: params.description?.trim() || null,

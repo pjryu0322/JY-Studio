@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import {
-  requireExecutionPipelineRead,
-} from "@/lib/service/projectAccessGuard";
+import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import { createGitChangeRequestForTaskRun } from "@/lib/service/gitChangeRequestFromTaskRun";
 
 type CreateGitRequestBody = {
@@ -29,7 +27,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireExecutionPipelineRead(projectId, userId);
+      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/git-request");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -98,6 +96,27 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       );
+    }
+
+    const runRow = await prisma.taskRun.findUnique({
+      where: { id: taskRunId },
+      select: { task: { select: { projectId: true } } },
+    });
+    if (!runRow) {
+      return NextResponse.json(
+        { success: false, message: "대상 TaskRun을 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
+
+    try {
+      await requireProjectOwnedByUser(runRow.task.projectId, userId, "POST /api/task/git-request");
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) {
+        return denied;
+      }
+      throw error;
     }
 
     const result = await createGitChangeRequestForTaskRun({

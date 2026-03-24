@@ -210,12 +210,6 @@ async function resolveSourceTaskIdFromJob(job: ExecutionJob): Promise<string | n
   return payloadTaskId;
 }
 
-function extractMode(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const v = (payload as { mode?: unknown }).mode;
-  return typeof v === "string" && v.trim() ? v.trim() : null;
-}
-
 function extractErrorCode(result: RunGitApplyCoreResult | StructuredJobResult): string | null {
   if ("code" in result && typeof result.code === "string") {
     return result.code;
