@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
@@ -45,7 +45,10 @@ const taskSelect = {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     const body = (await request.json()) as ControlBody;
     const taskId = String(body.taskId ?? "").trim();
     const action = String(body.action ?? "").trim();

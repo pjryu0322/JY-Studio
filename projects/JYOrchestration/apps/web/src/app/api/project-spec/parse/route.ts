@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { extractMainFeaturesFromFreeText } from "@/lib/project-spec/mockSpecExtract";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
@@ -38,7 +38,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     try {
       await requireProjectSpecParse(upload.projectId, userId);
     } catch (error) {

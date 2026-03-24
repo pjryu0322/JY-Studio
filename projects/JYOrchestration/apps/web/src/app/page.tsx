@@ -21,7 +21,14 @@ type ApiResponse<T> = {
   data?: T;
 };
 
+type SessionUser = {
+  id: string;
+  email: string;
+  name: string;
+};
+
 export default function HomePage() {
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -35,12 +42,32 @@ export default function HomePage() {
   const [repoUrl, setRepoUrl] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("main");
 
+  async function loadSession() {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      const json = (await res.json()) as ApiResponse<SessionUser | null>;
+      if (res.ok && json.success && json.data) {
+        setSessionUser(json.data);
+      } else {
+        setSessionUser(null);
+      }
+    } catch {
+      setSessionUser(null);
+    }
+  }
+
   async function loadProjects() {
     try {
       setLoading(true);
       setListMessage(null);
-      const res = await fetch("/api/projects");
+      const res = await fetch("/api/projects", { credentials: "include" });
       const json = (await res.json()) as ApiResponse<Project[] | null>;
+
+      if (res.status === 401) {
+        setProjects([]);
+        setListMessage(json.message || "로그인이 필요합니다.");
+        return;
+      }
 
       if (!res.ok || !json.success || !Array.isArray(json.data)) {
         setProjects([]);
@@ -77,6 +104,7 @@ export default function HomePage() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
           name: trimmedName,
           description: description.trim(),
@@ -110,15 +138,58 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    loadProjects();
+    void loadSession();
+    void loadProjects();
   }, []);
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {
+      /* ignore */
+    }
+    window.location.href = "/login";
+  }
 
   return (
     <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
       <section data-debug-label="[A] Header" style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, marginBottom: 8 }}>
-          JYOrchestration
-        </h1>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>
+            JYOrchestration
+          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 14, color: "#444" }}>
+              {sessionUser
+                ? `${sessionUser.name} (${sessionUser.email})`
+                : "…"}
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              로그아웃
+            </button>
+          </div>
+        </div>
         <p style={{ margin: 0, color: "#555" }}>
           프로젝트 생성, ProjectSpec 등록, FeatureSpec 업로드, Task 계획과 실행을
           관리하는 웹서비스 MVP

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { syncPullRequestStatus } from "@/lib/service/githubPullRequestService";
@@ -15,7 +15,10 @@ function jsonError(code: string, message: string, status: number) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     const gitChangeRequestId =
       request.nextUrl.searchParams.get("gitChangeRequestId")?.trim() || "";
     if (!gitChangeRequestId) {

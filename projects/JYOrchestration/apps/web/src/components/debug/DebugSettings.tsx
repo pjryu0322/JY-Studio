@@ -52,10 +52,6 @@ export default function DebugSettings() {
     };
   }, [open]);
 
-  if (process.env.NODE_ENV !== "development") {
-    return null;
-  }
-
   if (!mounted) {
     return null;
   }
@@ -77,7 +73,7 @@ export default function DebugSettings() {
           type="button"
           aria-expanded={open}
           aria-haspopup="dialog"
-          aria-label="디버그 설정"
+          aria-label="화면 표시 설정"
           onClick={() => setOpen((v) => !v)}
           style={{
             width: 36,
@@ -102,7 +98,7 @@ export default function DebugSettings() {
           <div
             ref={panelRef}
             role="dialog"
-            aria-label="디버그 설정"
+            aria-label="화면 표시 설정"
             style={{
               position: "absolute",
               top: "100%",
@@ -118,7 +114,7 @@ export default function DebugSettings() {
             }}
           >
             <p style={{ margin: "0 0 10px 0", fontSize: 12, fontWeight: 600, color: "#64748b" }}>
-              Developer
+              표시
             </p>
             <label
               style={{
@@ -141,7 +137,7 @@ export default function DebugSettings() {
                 }}
                 style={{ width: 16, height: 16, accentColor: "#2563eb" }}
               />
-              <span>Debug Labels 표시</span>
+              <span>화면 라벨 표시</span>
             </label>
             <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "#94a3b8", lineHeight: 1.4 }}>
               상태는 이 브라우저에만 저장됩니다.

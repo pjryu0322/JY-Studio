@@ -29,18 +29,14 @@ import {
 import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHistoryTimeline";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectMembersSection } from "@/components/project-spec/ProjectMembersSection";
-import {
-  getCurrentMockUser,
-  getCurrentUserProjectRole,
-  getProjectMembersMock,
-} from "@/lib/rbac/mockProjectContext";
+import type { ProjectMemberRow } from "@/lib/rbac/mockProjectContext";
 import {
   canEditSpec,
   canManageMembers,
   canOperate,
   canReview,
 } from "@/lib/rbac/projectPermissions";
-import { mockAuthHeaders } from "@/lib/auth/requestUser";
+import type { ProjectRole } from "@/lib/rbac/projectPermissions";
 import { ExecutionObservabilityPanel } from "@/components/dashboard/ExecutionObservabilityPanel";
 import type { ProjectObservabilitySnapshot } from "@/lib/metrics/projectObservabilityTypes";
 import { RBAC_FORBIDDEN_CODE } from "@/lib/rbac/projectAccessDenied";
@@ -132,11 +128,8 @@ export default function ProjectDetailPage() {
   const [progressPanelOpen, setProgressPanelOpen] = useState(false);
   const [advancedPanelOpen, setAdvancedPanelOpen] = useState(false);
 
-  const currentUser = useMemo(() => getCurrentMockUser(), []);
-  const projectRole = useMemo(
-    () => (projectId ? getCurrentUserProjectRole(projectId, currentUser.id) : null),
-    [projectId, currentUser.id]
-  );
+  const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
+  const [memberRows, setMemberRows] = useState<ProjectMemberRow[]>([]);
   const rbac = useMemo(
     () => ({
       canEditSpec: canEditSpec(projectRole),
@@ -145,10 +138,6 @@ export default function ProjectDetailPage() {
       canManageMembers: canManageMembers(projectRole),
     }),
     [projectRole]
-  );
-  const memberRows = useMemo(
-    () => (projectId ? getProjectMembersMock(projectId) : []),
-    [projectId]
   );
   const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
   const showTaskSection = rbac.canReview || rbac.canOperate || rbac.canEditSpec;
@@ -159,6 +148,45 @@ export default function ProjectDetailPage() {
       setAdvancedPanelOpen(true);
     }
   }, [ideaUxRecommended]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setProjectRole(null);
+      setMemberRows([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/project/session-context?projectId=${encodeURIComponent(projectId)}`,
+          { credentials: "include" }
+        );
+        const json = (await res.json()) as {
+          success: boolean;
+          data?: { myRole: ProjectRole | null; members: ProjectMemberRow[] };
+        };
+        if (cancelled) {
+          return;
+        }
+        if (!res.ok || !json.success || !json.data) {
+          setProjectRole(null);
+          setMemberRows([]);
+          return;
+        }
+        setProjectRole(json.data.myRole);
+        setMemberRows(Array.isArray(json.data.members) ? json.data.members : []);
+      } catch {
+        if (!cancelled) {
+          setProjectRole(null);
+          setMemberRows([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   useEffect(() => {
     if (!project) {
@@ -186,7 +214,7 @@ export default function ProjectDetailPage() {
       try {
         const encoded = encodeURIComponent(projectId);
         const res = await fetch(`/api/project/summary?projectId=${encoded}`, {
-          headers: mockAuthHeaders(),
+          credentials: "include",
         });
         const json = (await res.json()) as {
           success: boolean;
@@ -311,7 +339,7 @@ export default function ProjectDetailPage() {
         setLoadingTaskPrompts(true);
         const encodedProjectId = encodeURIComponent(projectId);
         const res = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`, {
-          headers: mockAuthHeaders(),
+          credentials: "include",
         });
         const json = (await res.json()) as {
           success: boolean;
@@ -340,7 +368,7 @@ export default function ProjectDetailPage() {
         setLoadingTaskRuns(true);
         const encodedProjectId = encodeURIComponent(projectId);
         const res = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
-          headers: mockAuthHeaders(),
+          credentials: "include",
         });
         const json = (await res.json()) as {
           success: boolean;
@@ -369,7 +397,7 @@ export default function ProjectDetailPage() {
         setLoadingGitRequests(true);
         const encodedProjectId = encodeURIComponent(projectId);
         const res = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`, {
-          headers: mockAuthHeaders(),
+          credentials: "include",
         });
         const json = (await res.json()) as {
           success: boolean;
@@ -419,7 +447,7 @@ export default function ProjectDetailPage() {
         const encodedProject = encodeURIComponent(historyProjectId);
         const res = await fetch(
           `/api/task/history?taskId=${encodedTask}&projectId=${encodedProject}`,
-          { headers: mockAuthHeaders() }
+          { credentials: "include" }
         );
         const json = (await res.json()) as {
           success: boolean;
@@ -601,7 +629,7 @@ export default function ProjectDetailPage() {
     try {
       const encodedProjectId = encodeURIComponent(projectId);
       const runRes = await fetch(`/api/task/run?projectId=${encodedProjectId}`, {
-        headers: mockAuthHeaders(),
+        credentials: "include",
       });
       const runJson = (await runRes.json()) as { success: boolean; data?: TaskRunItem[] };
       if (runRes.ok && runJson.success && Array.isArray(runJson.data)) {
@@ -774,9 +802,9 @@ export default function ProjectDetailPage() {
 
       const res = await fetch("/api/task/prompt", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskId }),
       });
@@ -794,7 +822,7 @@ export default function ProjectDetailPage() {
       }
       const encodedProjectId = encodeURIComponent(projectId);
       const promptRes = await fetch(`/api/task/prompt?projectId=${encodedProjectId}`, {
-        headers: mockAuthHeaders(),
+        credentials: "include",
       });
       const promptJson = (await promptRes.json()) as { success: boolean; data?: TaskPromptItem[] };
       if (promptRes.ok && promptJson.success && Array.isArray(promptJson.data)) {
@@ -827,9 +855,9 @@ export default function ProjectDetailPage() {
 
       const res = await fetch("/api/task/run", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskPromptId: prompt.id }),
       });
@@ -872,9 +900,9 @@ export default function ProjectDetailPage() {
 
       const res = await fetch("/api/task/run", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskPromptId: prompt.id, action: "mark-ready-for-git" }),
       });
@@ -919,9 +947,9 @@ export default function ProjectDetailPage() {
       setReorderSaving(true);
       const res = await fetch("/api/task/reorder", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ projectId, orderedTaskIds }),
       });
@@ -960,9 +988,9 @@ export default function ProjectDetailPage() {
       setPromptMessage(null);
       const res = await fetch("/api/task/run", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskPromptId: prompt.id, action: "abort-run" }),
       });
@@ -988,9 +1016,9 @@ export default function ProjectDetailPage() {
       setPromptMessage(null);
       const res = await fetch("/api/task/control", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskId, action: "force-complete-latest" }),
       });
@@ -1023,9 +1051,9 @@ export default function ProjectDetailPage() {
       setPromptMessage(null);
       const res = await fetch("/api/task/control", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskId, action: "block" }),
       });
@@ -1057,9 +1085,9 @@ export default function ProjectDetailPage() {
       setPromptMessage(null);
       const res = await fetch("/api/task/control", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskId, action: "unblock" }),
       });
@@ -1108,9 +1136,9 @@ export default function ProjectDetailPage() {
       setPromptMessage(null);
       const res = await fetch("/api/task/follow-up", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({
           projectId,
@@ -1149,9 +1177,9 @@ export default function ProjectDetailPage() {
 
       const res = await fetch("/api/task/git-request", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ taskRunId: run.id }),
       });
@@ -1173,7 +1201,7 @@ export default function ProjectDetailPage() {
 
       const encodedProjectId = encodeURIComponent(projectId);
       const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`, {
-        headers: mockAuthHeaders(),
+        credentials: "include",
       });
       const listJson = (await listRes.json()) as {
         success: boolean;
@@ -1195,7 +1223,7 @@ export default function ProjectDetailPage() {
   async function refreshGitRequestsList() {
     const encodedProjectId = encodeURIComponent(projectId);
     const listRes = await fetch(`/api/task/git-apply?projectId=${encodedProjectId}`, {
-      headers: mockAuthHeaders(),
+      credentials: "include",
     });
     const listJson = (await listRes.json()) as {
       success: boolean;
@@ -1244,14 +1272,14 @@ export default function ProjectDetailPage() {
       if (action === "sync") {
         const q = new URLSearchParams({ gitChangeRequestId });
         res = await fetch(`/api/git/pr/status?${q.toString()}`, {
-          headers: mockAuthHeaders(),
+          credentials: "include",
         });
       } else {
         res = await fetch("/api/task/git-pr", {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            ...mockAuthHeaders(),
           },
           body: JSON.stringify({
             gitChangeRequestId,
@@ -1306,9 +1334,9 @@ export default function ProjectDetailPage() {
         `/api/projects/${encodeURIComponent(projectId)}`,
         {
           method: "PATCH",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            ...mockAuthHeaders(),
           },
           body: JSON.stringify({ gitApprovalMode: mode }),
         }
@@ -1343,9 +1371,9 @@ export default function ProjectDetailPage() {
         `/api/projects/${encodeURIComponent(projectId)}`,
         {
           method: "PATCH",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            ...mockAuthHeaders(),
           },
           body: JSON.stringify({ gitPushMode: mode }),
         }
@@ -1375,9 +1403,9 @@ export default function ProjectDetailPage() {
       setGitApplyError(null);
       const res = await fetch("/api/git/approve", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ gitChangeRequestId }),
       });
@@ -1412,9 +1440,9 @@ export default function ProjectDetailPage() {
       const reason = (gitRejectReasons[gitChangeRequestId] ?? "").trim() || undefined;
       const res = await fetch("/api/git/reject", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ gitChangeRequestId, reason }),
       });
@@ -1448,9 +1476,9 @@ export default function ProjectDetailPage() {
       setGitApplyError(null);
       const res = await fetch("/api/git/submit-approval", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({ gitChangeRequestId }),
       });
@@ -1485,9 +1513,9 @@ export default function ProjectDetailPage() {
 
       const res = await fetch("/api/task/git-apply", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({
           gitChangeRequestId,
@@ -1541,9 +1569,9 @@ export default function ProjectDetailPage() {
 
       const res = await fetch("/api/task/git-apply", {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...mockAuthHeaders(),
         },
         body: JSON.stringify({
           gitChangeRequestId,

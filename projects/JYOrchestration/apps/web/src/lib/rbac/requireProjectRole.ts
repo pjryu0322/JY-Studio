@@ -9,7 +9,7 @@ export async function requireProjectRole(
   message: string
 ): Promise<ProjectRole> {
   const role = await resolveProjectRole(projectId, userId);
-  if (!allowedRoles.includes(role)) {
+  if (!role || !allowedRoles.includes(role)) {
     throw new ProjectAccessDeniedError(message);
   }
   return role;

@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { mockAuthHeaders } from "@/lib/auth/requestUser";
-
 type ExecutionEventRow = {
   stage: string;
   status: string;
@@ -151,7 +149,7 @@ export function ExecutionTimeline({ jobId }: { jobId: string }) {
     try {
       const q = new URLSearchParams({ jobId });
       const res = await fetch(`/api/execution-events?${q.toString()}`, {
-        headers: mockAuthHeaders(),
+        credentials: "include",
       });
       const json = (await res.json()) as {
         success: boolean;

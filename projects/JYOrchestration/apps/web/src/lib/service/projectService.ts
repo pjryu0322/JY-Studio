@@ -1,11 +1,11 @@
 /**
  * Project CRUD / 설정 (API 레이어에서 호출).
  */
-import { MOCK_PROJECT_CREATOR_USER_ID } from "@/lib/rbac/constants";
 import { prisma } from "@/lib/prisma";
 
-export async function listProjectsOrderedByCreatedDesc() {
+export async function listProjectsOrderedByCreatedDesc(ownerUserId: string) {
   return prisma.project.findMany({
+    where: { ownerUserId },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -16,6 +16,7 @@ export type CreateProjectInput = {
   projectType: string;
   repoUrl: string | null;
   defaultBranch: string;
+  ownerUserId: string;
 };
 
 export async function createProject(input: CreateProjectInput) {
@@ -24,6 +25,7 @@ export async function createProject(input: CreateProjectInput) {
       data: {
         name: input.name,
         description: input.description,
+        ownerUserId: input.ownerUserId,
         projectType: input.projectType,
         repoUrl: input.repoUrl,
         defaultBranch: input.defaultBranch,
@@ -33,7 +35,7 @@ export async function createProject(input: CreateProjectInput) {
     await tx.projectMember.create({
       data: {
         projectId: project.id,
-        userId: MOCK_PROJECT_CREATOR_USER_ID,
+        userId: input.ownerUserId,
         role: "OWNER",
       },
     });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import {
   GIT_APPROVAL_MODE_AUTO_APPLY,
@@ -29,7 +29,10 @@ export async function PATCH(
       );
     }
 
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     try {
       await requireProjectGitPolicyUpdate(id, userId);
     } catch (error) {

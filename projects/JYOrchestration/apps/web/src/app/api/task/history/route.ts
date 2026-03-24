@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectMember } from "@/lib/service/projectAccessGuard";
@@ -40,7 +40,10 @@ export async function GET(request: NextRequest) {
     }
 
     const projectId = task.projectId;
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     try {
       await requireProjectMember(projectId, userId);
     } catch (error) {

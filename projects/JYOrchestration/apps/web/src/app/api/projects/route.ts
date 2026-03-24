@@ -3,6 +3,7 @@
  * /api/project-spec/* and /api/task/*.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUserIdFromRequest } from "@/lib/auth/requestUser";
 import {
   createProject,
   listProjectsOrderedByCreatedDesc,
@@ -32,9 +33,13 @@ function fail<T = null>(message: string, status: number, data?: T) {
   return NextResponse.json(payload, { status });
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const projects = await listProjectsOrderedByCreatedDesc();
+    const userId = await getSessionUserIdFromRequest(request);
+    if (!userId) {
+      return fail("로그인이 필요합니다.", 401, []);
+    }
+    const projects = await listProjectsOrderedByCreatedDesc(userId);
 
     return ok("프로젝트 목록 조회에 성공했습니다.", projects);
   } catch (error) {
@@ -54,6 +59,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const userId = await getSessionUserIdFromRequest(request);
+    if (!userId) {
+      return fail("로그인이 필요합니다.", 401);
+    }
+
     const payload = (body ?? {}) as Record<string, unknown>;
     const name = String(payload.name ?? "").trim();
     const description = String(payload.description ?? "").trim() || null;
@@ -71,6 +81,7 @@ export async function POST(request: NextRequest) {
       projectType,
       repoUrl,
       defaultBranch,
+      ownerUserId: userId,
     });
 
     return ok("프로젝트가 생성되었습니다.", project, 201);

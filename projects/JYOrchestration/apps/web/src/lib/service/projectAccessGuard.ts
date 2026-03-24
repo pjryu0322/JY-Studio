@@ -1,11 +1,9 @@
 /**
  * Project-scoped RBAC checks (service layer). Used from API routes and reusable for future callers.
  */
-import { getProjectMembersMock } from "@/lib/rbac/mockProjectContext";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
 import { canOperate, canPlan, canReview } from "@/lib/rbac/projectPermissions";
 import { resolveProjectRole } from "@/lib/rbac/resolveProjectRole";
-import { prisma } from "@/lib/prisma";
 
 export async function requireProjectSpecUpload(projectId: string, userId: string) {
   const role = await resolveProjectRole(projectId, userId);
@@ -128,19 +126,10 @@ export async function requireProjectGitApprovalModeUpdate(projectId: string, use
 /** `requireProjectGitApprovalModeUpdate` 별칭 (의미: 승인·push 정책 통합 가드). */
 export const requireProjectGitPolicyUpdate = requireProjectGitApprovalModeUpdate;
 
-/** Any project member (DB or dev mock list) may read Task audit history; role does not matter. */
+/** Project owner, DB member, or (dev) mock member may read Task audit history. */
 export async function requireProjectMember(projectId: string, userId: string) {
-  const dbMember = await prisma.projectMember.findUnique({
-    where: {
-      projectId_userId: { projectId, userId },
-    },
-    select: { id: true },
-  });
-  if (dbMember) {
-    return;
-  }
-  const inMock = getProjectMembersMock(projectId).some((m) => m.userId === userId);
-  if (inMock) {
+  const role = await resolveProjectRole(projectId, userId);
+  if (role !== null) {
     return;
   }
   throw new ProjectAccessDeniedError("프로젝트 참여자만 Task 이력을 조회할 수 있습니다.");

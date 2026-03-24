@@ -1,28 +1,58 @@
 import type { NextRequest } from "next/server";
-import { MOCK_CURRENT_USER_ID } from "@/lib/rbac/constants";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 
 const MOCK_USER_HEADER = "x-mock-user-id";
 
-/**
- * Identifies the caller for RBAC. Header overrides default mock user (integration / manual tests).
- */
-export function getCurrentUserIdFromRequest(request: Request | NextRequest): string {
-  const raw = request.headers.get(MOCK_USER_HEADER)?.trim();
-  if (raw) {
-    return raw;
+function readCookieFromHeader(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) {
+    return null;
   }
-  return MOCK_CURRENT_USER_ID;
+  const parts = cookieHeader.split(";").map((p) => p.trim());
+  for (const p of parts) {
+    if (p.startsWith(`${name}=`)) {
+      return decodeURIComponent(p.slice(name.length + 1));
+    }
+  }
+  return null;
 }
 
-/** Same as {@link getCurrentUserIdFromRequest} without a request (e.g. background jobs). */
-export function getCurrentUserId(): string {
-  return MOCK_CURRENT_USER_ID;
+function readSessionCookieFromRequest(request: Request | NextRequest): string | null {
+  if ("cookies" in request && typeof (request as NextRequest).cookies?.get === "function") {
+    const v = (request as NextRequest).cookies.get(SESSION_COOKIE_NAME)?.value;
+    if (v) {
+      return v;
+    }
+  }
+  return readCookieFromHeader(request.headers.get("cookie"), SESSION_COOKIE_NAME);
+}
+
+/**
+ * Resolves the signed-in user id from the HTTP-only session cookie.
+ * In non-production, `x-mock-user-id` is honored for manual / integration testing only.
+ */
+export async function getSessionUserIdFromRequest(
+  request: Request | NextRequest
+): Promise<string | null> {
+  if (process.env.NODE_ENV !== "production") {
+    const mock = request.headers.get(MOCK_USER_HEADER)?.trim();
+    if (mock) {
+      return mock;
+    }
+  }
+  const raw = readSessionCookieFromRequest(request);
+  if (!raw) {
+    return null;
+  }
+  return verifySessionToken(raw);
+}
+
+/** @deprecated Use {@link getSessionUserIdFromRequest} (async). */
+export async function getCurrentUserIdFromRequest(
+  request: Request | NextRequest
+): Promise<string | null> {
+  return getSessionUserIdFromRequest(request);
 }
 
 export function mockUserIdHeaderName(): typeof MOCK_USER_HEADER {
   return MOCK_USER_HEADER;
-}
-
-export function mockAuthHeaders(): Record<string, string> {
-  return { [MOCK_USER_HEADER]: MOCK_CURRENT_USER_ID };
 }

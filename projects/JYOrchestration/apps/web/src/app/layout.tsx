@@ -32,12 +32,8 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
-        {process.env.NODE_ENV === "development" ? (
-          <>
-            <DebugLabelLayer />
-            <DebugSettings />
-          </>
-        ) : null}
+        <DebugLabelLayer />
+        <DebugSettings />
       </body>
     </html>
   );

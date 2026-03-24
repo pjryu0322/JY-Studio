@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import {
@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     try {
       await requireExecutionPipelineRead(projectId, userId);
     } catch (error) {
@@ -81,7 +84,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     const body = (await request.json()) as CreateGitRequestBody;
     const taskRunId = String(body.taskRunId ?? "").trim();
     if (!taskRunId) {

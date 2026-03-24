@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireExecutionPipelineRead } from "@/lib/service/projectAccessGuard";
@@ -23,7 +23,10 @@ export async function GET(request: NextRequest) {
       return jsonError("실행 작업을 찾을 수 없습니다.", 404);
     }
 
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     try {
       await requireExecutionPipelineRead(job.projectId, userId);
     } catch (error) {

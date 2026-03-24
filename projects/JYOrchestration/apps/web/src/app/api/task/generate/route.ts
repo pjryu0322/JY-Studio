@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import {
   beginnerFriendlyTaskTitle,
   orderFeaturesForImplementation,
@@ -87,7 +87,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     try {
       await requireProjectMember(projectId, userId);
     } catch (error) {
@@ -158,7 +161,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     const body = (await request.json()) as GenerateTaskBody;
     const projectSpecUploadId = String(body.projectSpecUploadId ?? "").trim();
     if (!projectSpecUploadId) {

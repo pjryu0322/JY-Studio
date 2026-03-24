@@ -32,18 +32,23 @@ type StructuredJobResult = {
 };
 
 export type ExecutionWorkerOptions = {
+  /** 바쁠 때(클레임 발생 또는 실행 중 job 있음) 다음 폴링까지 대기(ms) */
   pollIntervalMs?: number;
+  /** 유휴(pending 없음·실행 중 job 없음)일 때 다음 폴링까지 대기(ms) */
+  pollIdleMs?: number;
   maxConcurrency?: number;
 };
 
 const DEFAULT_POLL_MS = 2000;
+const DEFAULT_IDLE_POLL_MS = 4500;
 const DEFAULT_MAX_CONCURRENCY = 2;
 const HEARTBEAT_INTERVAL_MS = 5000;
 
 type WorkerRuntimeState = {
   started: boolean;
   instanceId: string;
-  pollIntervalMs: number;
+  pollActiveMs: number;
+  pollIdleMs: number;
   maxConcurrency: number;
   timer: NodeJS.Timeout | null;
   activeJobs: Set<string>;
@@ -60,7 +65,8 @@ function getWorkerState(): WorkerRuntimeState {
     globalWorkerState.__jyExecutionWorkerState = {
       started: false,
       instanceId: `worker-${randomUUID()}`,
-      pollIntervalMs: DEFAULT_POLL_MS,
+      pollActiveMs: DEFAULT_POLL_MS,
+      pollIdleMs: DEFAULT_IDLE_POLL_MS,
       maxConcurrency: DEFAULT_MAX_CONCURRENCY,
       timer: null,
       activeJobs: new Set<string>(),
@@ -809,14 +815,18 @@ export async function processExecutionQueue(maxJobs = 10, workerId = "manual-bat
   return processed;
 }
 
-async function processLoopTick(): Promise<void> {
+/** 이번 틱에서 비동기 실행을 시작한 job 수 (유휴 폴링 완화 판단용) */
+async function processLoopTick(): Promise<number> {
   const state = getWorkerState();
-  if (state.processing) return;
+  if (state.processing) {
+    return 0;
+  }
   state.processing = true;
+  let started = 0;
   try {
     const availableSlots = Math.max(0, state.maxConcurrency - state.activeJobs.size);
     if (availableSlots === 0) {
-      return;
+      return 0;
     }
     for (let i = 0; i < availableSlots; i++) {
       const job = await claimNextExecutableJob(state.instanceId);
@@ -825,6 +835,7 @@ async function processLoopTick(): Promise<void> {
         continue;
       }
       state.activeJobs.add(job.id);
+      started += 1;
       logWorker("started", {
         jobId: job.id,
         projectId: job.projectId,
@@ -863,6 +874,7 @@ async function processLoopTick(): Promise<void> {
         }
       })();
     }
+    return started;
   } finally {
     state.processing = false;
   }
@@ -873,6 +885,7 @@ export function startExecutionWorker(options?: ExecutionWorkerOptions): {
   instanceId: string;
   maxConcurrency: number;
   pollIntervalMs: number;
+  pollIdleMs: number;
 } {
   const state = getWorkerState();
   if (state.started) {
@@ -880,19 +893,59 @@ export function startExecutionWorker(options?: ExecutionWorkerOptions): {
       started: false,
       instanceId: state.instanceId,
       maxConcurrency: state.maxConcurrency,
-      pollIntervalMs: state.pollIntervalMs,
+      pollIntervalMs: state.pollActiveMs,
+      pollIdleMs: state.pollIdleMs,
+    };
+  }
+
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.error("[execution-worker] DATABASE_URL 없음 — 워커 시작 생략");
+    return {
+      started: false,
+      instanceId: state.instanceId,
+      maxConcurrency: state.maxConcurrency,
+      pollIntervalMs: state.pollActiveMs,
+      pollIdleMs: state.pollIdleMs,
     };
   }
 
   void maybeRunFailureClassifierSelfTest();
 
-  state.pollIntervalMs = Math.max(500, options?.pollIntervalMs ?? DEFAULT_POLL_MS);
+  state.pollActiveMs = Math.max(500, options?.pollIntervalMs ?? DEFAULT_POLL_MS);
+  state.pollIdleMs = Math.max(
+    2000,
+    Math.min(120_000, options?.pollIdleMs ?? DEFAULT_IDLE_POLL_MS)
+  );
   state.maxConcurrency = Math.max(1, options?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY);
   state.started = true;
-  state.timer = setInterval(() => {
-    void processLoopTick();
-  }, state.pollIntervalMs);
-  void processLoopTick();
+
+  async function runWorkerLoop(): Promise<void> {
+    if (!state.started) {
+      return;
+    }
+    let delay = state.pollIdleMs;
+    try {
+      if (state.processing) {
+        delay = state.pollActiveMs;
+      } else {
+        const startedThisTick = await processLoopTick();
+        const busy = state.activeJobs.size > 0 || startedThisTick > 0;
+        delay = busy ? state.pollActiveMs : state.pollIdleMs;
+      }
+    } catch (e) {
+      console.error("[execution-worker] processLoopTick failed:", e);
+      delay = state.pollIdleMs;
+    }
+    if (state.timer != null) {
+      clearTimeout(state.timer);
+    }
+    state.timer = setTimeout(() => {
+      void runWorkerLoop();
+    }, delay);
+  }
+
+  void runWorkerLoop();
+
   logWorker("started", {
     jobId: "worker-runtime",
     projectId: "all",
@@ -900,13 +953,15 @@ export function startExecutionWorker(options?: ExecutionWorkerOptions): {
     retryCount: 0,
     attempt: 0,
     instanceId: state.instanceId,
-    pollIntervalMs: state.pollIntervalMs,
+    pollIntervalMs: state.pollActiveMs,
+    pollIdleMs: state.pollIdleMs,
     maxConcurrency: state.maxConcurrency,
   });
   return {
     started: true,
     instanceId: state.instanceId,
     maxConcurrency: state.maxConcurrency,
-    pollIntervalMs: state.pollIntervalMs,
+    pollIntervalMs: state.pollActiveMs,
+    pollIdleMs: state.pollIdleMs,
   };
 }

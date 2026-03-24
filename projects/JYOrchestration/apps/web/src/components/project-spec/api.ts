@@ -1,4 +1,3 @@
-import { mockAuthHeaders } from "@/lib/auth/requestUser";
 import {
   ApiResponse,
   ParseResult,
@@ -13,7 +12,7 @@ export async function fetchProjectById(projectId: string): Promise<{
   project: Project | null;
   errorMessage: string | null;
 }> {
-  const res = await fetch("/api/projects");
+  const res = await fetch("/api/projects", { credentials: "include" });
   const json = (await res.json()) as ApiResponse<Project[]>;
 
   if (!res.ok || !json.success || !Array.isArray(json.data)) {
@@ -40,7 +39,7 @@ export async function fetchProjectById(projectId: string): Promise<{
 export async function fetchProjectSpecUploadHistory(projectId: string) {
   const encodedProjectId = encodeURIComponent(projectId);
   const res = await fetch(`/api/project-spec/list?projectId=${encodedProjectId}`, {
-    headers: mockAuthHeaders(),
+    credentials: "include",
   });
   const json = (await res.json()) as ApiResponse<UploadHistoryItem[]>;
   return { res, json };
@@ -50,7 +49,7 @@ export async function uploadProjectSpecTestFile(formData: FormData, projectId: s
   const encodedProjectId = encodeURIComponent(projectId);
   const res = await fetch(`/api/project-spec/upload?projectId=${encodedProjectId}`, {
     method: "POST",
-    headers: mockAuthHeaders(),
+    credentials: "include",
     body: formData,
   });
 
@@ -61,9 +60,9 @@ export async function uploadProjectSpecTestFile(formData: FormData, projectId: s
 export async function runProjectSpecMockParse(projectSpecUploadId: string) {
   const res = await fetch("/api/project-spec/parse", {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...mockAuthHeaders(),
     },
     body: JSON.stringify({ projectSpecUploadId }),
   });
@@ -75,9 +74,9 @@ export async function runProjectSpecMockParse(projectSpecUploadId: string) {
 export async function generateTasksFromParsedSpec(projectSpecUploadId: string) {
   const res = await fetch("/api/task/generate", {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...mockAuthHeaders(),
     },
     body: JSON.stringify({ projectSpecUploadId }),
   });
@@ -89,7 +88,7 @@ export async function generateTasksFromParsedSpec(projectSpecUploadId: string) {
 export async function fetchGeneratedTasks(projectId: string) {
   const encodedProjectId = encodeURIComponent(projectId);
   const res = await fetch(`/api/task/generate?projectId=${encodedProjectId}`, {
-    headers: mockAuthHeaders(),
+    credentials: "include",
   });
   const json = (await res.json()) as ApiResponse<TaskItem[]>;
   return { res, json };

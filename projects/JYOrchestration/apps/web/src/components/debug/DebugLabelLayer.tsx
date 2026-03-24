@@ -14,8 +14,8 @@ type Label = {
   left: number;
 };
 
+/** dev/prod 무관: env 플래그 또는 사용자 localStorage 설정 */
 function computeVisualDebugLabelsEnabled(): boolean {
-  if (process.env.NODE_ENV !== "development") return false;
   const envOn = process.env.NEXT_PUBLIC_DEBUG_LABEL === "true";
   const lsOn = readDebugLabelsStorage();
   return envOn || lsOn;
@@ -28,8 +28,6 @@ export default function DebugLabelLayer() {
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== "development") return;
-
     const sync = () => setShow(computeVisualDebugLabelsEnabled());
     sync();
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import {
@@ -16,7 +16,10 @@ function jsonError(code: string, message: string, status: number) {
 
 export async function POST(request: Request) {
   try {
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     const body = (await request.json()) as Body;
     const gitChangeRequestId = String(body.gitChangeRequestId ?? "").trim();
     if (!gitChangeRequestId) {

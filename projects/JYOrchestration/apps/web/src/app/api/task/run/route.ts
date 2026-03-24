@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import type { TaskRunExecutionResult } from "@/lib/integration/taskRunResultTypes";
@@ -48,7 +48,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     try {
       await requireExecutionPipelineRead(projectId, userId);
     } catch (error) {
@@ -105,7 +108,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   try {
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     const body = (await request.json()) as TaskRunBody;
     const taskPromptId = String(body.taskPromptId ?? "").trim();
     const taskIdForAction = String(body.taskId ?? "").trim();

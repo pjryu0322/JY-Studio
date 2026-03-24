@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUserIdFromRequest } from "@/lib/auth/requestUser";
+import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireTaskRun } from "@/lib/service/projectAccessGuard";
@@ -22,7 +22,10 @@ function normalizeIdList(value: unknown): string[] {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = getCurrentUserIdFromRequest(request);
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) {
+      return userId;
+    }
     const body = (await request.json()) as ReorderBody;
     const projectId = String(body.projectId ?? "").trim();
     const orderedTaskIds =

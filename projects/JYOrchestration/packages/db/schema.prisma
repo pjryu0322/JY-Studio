@@ -7,72 +7,129 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// 프로젝트 멤버 역할 구분
 enum ProjectMemberRole {
+  /// 소유자
   OWNER
+  /// 기획
   PLANNER
+  /// 검토
   REVIEWER
+  /// 운영
   OPERATOR
 }
 
+model User {
+  /// 사용자 ID
+  id           String   @id @default(cuid())
+  /// 이메일
+  email        String   @unique
+  /// 비밀번호 해시
+  passwordHash String
+  /// 사용자 이름
+  name         String
+  /// 전역 권한
+  globalRole   String   @default("USER")
+  /// 생성일시
+  createdAt    DateTime @default(now())
+  /// 수정일시
+  updatedAt    DateTime @updatedAt
+
+  /// 소유한 프로젝트 목록
+  ownedProjects Project[]
+  /// 프로젝트 멤버십 목록
+  memberships   ProjectMember[]
+
+  @@map("users")
+}
+
 model Project {
-  id            String             @id @default(uuid())
+  /// 프로젝트 ID
+  id            String   @id @default(cuid())
+  /// 프로젝트명
   name          String
+  /// 프로젝트 설명
   description   String?
+  /// 소유자 사용자 ID
+  ownerUserId   String
+  /// 소유자 사용자
+  owner         User     @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  /// 프로젝트 유형
   projectType   String
+  /// 저장소 URL
   repoUrl       String?
+  /// 기본 브랜치
   defaultBranch String?
+  /// 프로젝트 상태
   status        String
-  /**
-   * 승인 게이트만 담당 (GCR status·승인 API). push·원격 반영과 무관.
-   * NO_APPROVAL(기본) | MANUAL_APPROVAL. 레거시 AUTO_APPLY = NO_APPROVAL.
-   */
+  /// Git 승인 게이트 모드(NO_APPROVAL·MANUAL_APPROVAL 등)
   gitApprovalMode String           @default("NO_APPROVAL")
-  /**
-   * 원격 push 시도 여부만 담당 (git-apply options.push 기본값). 승인과 무관.
-   * AUTO_PUSH(기본) | MANUAL_PUSH.
-   */
+  /// Git push 정책(AUTO_PUSH·MANUAL_PUSH)
   gitPushMode     String           @default("AUTO_PUSH")
-  /** Task mock 실행 완료 시 Run→GitChangeRequest 자동 생성 여부 */
+  /// Task 실행 완료 시 Git 변경 요청 자동 생성 여부
   autoCreateGitRequest Boolean     @default(true)
+  /// 생성일시
   createdAt     DateTime           @default(now())
+  /// 수정일시
   updatedAt     DateTime           @updatedAt
+
+  /// 업로드된 스펙 파일
   uploads       ProjectSpecUpload[]
+  /// 태스크
   tasks         Task[]
+  /// 태스크 프롬프트
   taskPrompts   TaskPrompt[]
+  /// Git 변경 요청
   gitRequests   GitChangeRequest[]
+  /// 프로젝트 멤버
   members       ProjectMember[]
+  /// 태스크 이력
   taskHistories TaskHistory[]
+  /// 실행 작업
   executionJobs ExecutionJob[]
+  /// 실행 이벤트 로그
   executionEventLogs ExecutionEventLog[]
 
+  @@index([ownerUserId])
   @@map("projects")
 }
 
 model ExecutionJob {
+  /// 실행 작업 ID
   id         String    @id @default(uuid())
+  /// 프로젝트 ID
   projectId  String
-  /** git-apply | pipeline | cursor */
+  /// 작업 유형(git-apply·pipeline·cursor)
   type       String
-  /** PENDING(실행 가능) | RUNNING | DONE | FAILED */
+  /// 상태(PENDING·RUNNING·DONE·FAILED)
   status     String    @default("PENDING")
-  /** 누적 실패 횟수 */
+  /// 누적 실패 횟수
   retryCount Int       @default(0)
-  /** 총 시도 횟수 상한(초기 실행 포함) */
+  /// 최대 시도 횟수
   maxAttempts Int      @default(3)
+  /// 실행 페이로드(JSON)
   payload    Json
+  /// 실행 결과(JSON)
   result     Json?
-  /** 최근 실행 실패 원인 (retry 중 갱신) */
+  /// 최근 실패 원인
   lastError  String?
-  /** status=PENDING 일 때, now 이후면 retry 대기 상태로 간주 */
+  /// 재시도 가능 시각
   availableAt DateTime?
+  /// 워커 클레임 식별자
   claimedBy  String?
+  /// 하트비트 시각
   heartbeatAt DateTime?
-  /** 최종 실패/종료 요약 */
+  /// 최종 오류 요약
   error      String?
+  /// 시작 시각
   startedAt  DateTime?
+  /// 종료 시각
   finishedAt DateTime?
+  /// 생성일시
   createdAt  DateTime  @default(now())
+  /// 소속 프로젝트
   project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 이벤트 로그
   eventLogs  ExecutionEventLog[]
 
   @@index([projectId, status, createdAt])
@@ -82,22 +139,33 @@ model ExecutionJob {
 }
 
 model ExecutionEventLog {
+  /// 이벤트 로그 ID
   id                 String   @id @default(uuid())
+  /// 프로젝트 ID
   projectId          String
+  /// 실행 작업 ID
   executionJobId     String
+  /// 태스크 ID
   taskId             String?
+  /// Git 변경 요청 ID
   gitChangeRequestId String?
-  /** PRECHECK | EXECUTE | APPLY | PR | RETRY | COMPLETE */
+  /// 단계(PRECHECK·EXECUTE·APPLY·PR·RETRY·COMPLETE)
   stage              String
-  /** STARTED | SUCCESS | FAILED */
+  /// 상태(STARTED·SUCCESS·FAILED)
   status             String
+  /// 메시지
   message            String?
-  /** failure classification for FAILED events */
+  /// 실패 유형 분류
   failureType       String?
+  /// 상세 JSON
   detailJson         Json?
+  /// 소요 시간(ms)
   durationMs         Int?
+  /// 생성일시
   createdAt          DateTime @default(now())
+  /// 소속 프로젝트
   project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 소속 실행 작업
   executionJob       ExecutionJob @relation(fields: [executionJobId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
@@ -107,33 +175,57 @@ model ExecutionEventLog {
 }
 
 model ProjectMember {
+  /// 멤버 행 ID
   id        String            @id @default(uuid())
+  /// 프로젝트 ID
   projectId String
+  /// 사용자 ID
   userId    String
+  /// 프로젝트 내 역할
   role      ProjectMemberRole
+  /// 생성일시
   createdAt DateTime          @default(now())
+  /// 소속 프로젝트
   project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 연결 사용자
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
   @@map("project_members")
 }
 
 model ProjectSpecUpload {
+  /// 업로드 ID
   id               String   @id @default(uuid())
+  /// 프로젝트 ID
   projectId        String
+  /// 소스 유형
   sourceType       String?
+  /// 원본 파일명
   originalFileName String
+  /// 파일 MIME/유형
   fileType         String
+  /// 파일 크기(바이트)
   fileSize         Int
+  /// 본문 텍스트(선택)
   contentText      String?
+  /// 본문 저장 여부
   contentStored    Boolean  @default(false)
+  /// 업로드 상태
   status           String   @default("REGISTERED")
+  /// 파싱 결과 JSON
   parsedJson       Json?
+  /// 파싱 상태
   parseStatus      String?  @default("PENDING")
+  /// 파싱 완료 시각
   parsedAt         DateTime?
+  /// 생성일시
   createdAt        DateTime @default(now())
+  /// 수정일시
   updatedAt        DateTime @updatedAt
+  /// 소속 프로젝트
   project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 파생 태스크
   tasks            Task[]
 
   @@index([projectId, createdAt])
@@ -141,25 +233,45 @@ model ProjectSpecUpload {
 }
 
 model Task {
+  /// 태스크 ID
   id                  String            @id @default(uuid())
+  /// 프로젝트 ID
   projectId           String
+  /// 스펙 업로드 ID
   projectSpecUploadId String
+  /// 태스크명
   name                String
+  /// 설명
   description         String?
+  /// 상태
   status              String            @default("TODO")
+  /// 정렬 순서
   order               Int
+  /// 상위 태스크 ID(후속 작업)
   parentTaskId        String?
+  /// 태스크 종류(PRIMARY 등)
   taskKind            String            @default("PRIMARY")
+  /// 변경 사유
   changeReason        String?
+  /// 생성일시
   createdAt           DateTime          @default(now())
+  /// 수정일시
   updatedAt           DateTime          @updatedAt
+  /// 소속 프로젝트
   project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 스펙 업로드
   projectSpecUpload   ProjectSpecUpload @relation(fields: [projectSpecUploadId], references: [id], onDelete: Cascade)
+  /// 상위 태스크
   parentTask          Task?             @relation("TaskFollowUp", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  /// 후속 태스크
   followUps           Task[]            @relation("TaskFollowUp")
+  /// 프롬프트
   prompts             TaskPrompt[]
+  /// 실행 기록
   runs                TaskRun[]
+  /// Git 변경 요청
   gitRequests         GitChangeRequest[]
+  /// 이력
   histories           TaskHistory[]
 
   @@index([projectId, order])
@@ -169,16 +281,27 @@ model Task {
 }
 
 model TaskPrompt {
+  /// 프롬프트 ID
   id         String   @id @default(uuid())
+  /// 태스크 ID
   taskId     String
+  /// 프로젝트 ID
   projectId  String
+  /// 프롬프트 본문
   promptText String
+  /// 버전
   version    Int
+  /// 상태
   status     String   @default("READY")
+  /// 생성일시
   createdAt  DateTime @default(now())
+  /// 수정일시
   updatedAt  DateTime @updatedAt
+  /// 소속 태스크
   task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// 소속 프로젝트
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 실행 기록
   runs       TaskRun[]
 
   @@index([projectId, createdAt])
@@ -186,17 +309,27 @@ model TaskPrompt {
 }
 
 model TaskRun {
+  /// 실행 ID
   id           String     @id @default(uuid())
+  /// 태스크 ID
   taskId       String
+  /// 프롬프트 ID
   taskPromptId String
+  /// 상태
   status       String     @default("PENDING")
+  /// 결과 텍스트
   resultText   String?
-  /** 구조화 실행 결과(JSON). resultText는 하위호환용으로 유지. */
+  /// 결과 JSON
   resultJson   Json?
+  /// 생성일시
   createdAt    DateTime   @default(now())
+  /// 수정일시
   updatedAt    DateTime   @updatedAt
+  /// 소속 태스크
   task         Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// 사용 프롬프트
   taskPrompt   TaskPrompt @relation(fields: [taskPromptId], references: [id], onDelete: Cascade)
+  /// Git 변경 요청
   gitRequests  GitChangeRequest[]
 
   @@index([taskId, createdAt])
@@ -205,35 +338,61 @@ model TaskRun {
 }
 
 model GitChangeRequest {
+  /// 요청 ID
   id          String   @id @default(uuid())
+  /// 프로젝트 ID
   projectId   String
+  /// 태스크 ID
   taskId      String
+  /// 태스크 실행 ID
   taskRunId   String
+  /// 요청 상태
   status      String   @default("REQUESTED")
+  /// 요청 메모
   requestNote String?
+  /// 변경 파일 목록(JSON)
   files       Json?
+  /// diff 텍스트
   diffText    String?
+  /// 커밋 메시지
   commitMessage String?
+  /// 반영 상태
   applyStatus String?  @default("PENDING")
+  /// 반영 로그
   applyLog    String?
+  /// 브랜치명
   branchName        String?
+  /// 반영 시작 시각
   applyStartedAt    DateTime?
+  /// 반영 종료 시각
   applyFinishedAt   DateTime?
+  /// 재시도 횟수
   retryCount  Int      @default(0)
+  /// 마지막 오류
   lastError   String?
+  /// 마지막 재시도 시각
   lastRetryAt DateTime?
+  /// 반려 사유
   rejectionReason String?
+  /// Pull Request URL
   pullRequestUrl   String?
+  /// Pull Request 번호
   pullRequestNumber Int?
-  /** OPEN | CLOSED | MERGED (GitHub PR state 정규화) */
+  /// PR 상태(OPEN·CLOSED·MERGED)
   pullRequestState String?
-  /** PENDING | APPROVED | CHANGES_REQUESTED (리뷰 요약) */
+  /// 리뷰 상태 요약
   reviewStatus     String?
+  /// 머지 시각
   mergedAt         DateTime?
+  /// 생성일시
   createdAt   DateTime @default(now())
+  /// 수정일시
   updatedAt   DateTime @updatedAt
+  /// 소속 프로젝트
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 소속 태스크
   task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// 소속 실행
   taskRun     TaskRun  @relation(fields: [taskRunId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
@@ -243,16 +402,27 @@ model GitChangeRequest {
 }
 
 model TaskHistory {
+  /// 이력 ID
   id         String   @id @default(uuid())
+  /// 프로젝트 ID
   projectId  String
+  /// 태스크 ID
   taskId     String
+  /// 행위자 유형
   actorType  String
+  /// 행위자 ID
   actorId    String?
+  /// 이벤트 유형
   eventType  String
+  /// 요약
   summary    String?
+  /// 상세 JSON
   detailJson Json?
+  /// 생성일시
   createdAt  DateTime @default(now())
+  /// 소속 프로젝트
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 소속 태스크
   task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([projectId, taskId, createdAt])
