@@ -1,32 +1,32 @@
-/** Mirrors {@link ProjectMemberRole} in Prisma; keep in sync for mock UI until auth is wired. */
-export type ProjectRole = "OWNER" | "PLANNER" | "REVIEWER" | "OPERATOR";
+import type { ProjectRole } from "@/lib/auth/roles";
+export type { ProjectRole } from "@/lib/auth/roles";
 
 /**
- * API: ProjectSpec 업로드·파싱 — PLANNER, REVIEWER, OWNER.
+ * API: ProjectSpec 업로드·파싱 — EDITOR, OWNER.
  */
 export function canPlan(role: ProjectRole | null | undefined): boolean {
-  return role === "OWNER" || role === "PLANNER" || role === "REVIEWER";
+  return role === "OWNER" || role === "EDITOR";
 }
 
 /**
- * PLANNER / OWNER — ProjectSpec 안내, 프롬프트 가이드, 업로드·등록 영역.
+ * EDITOR / OWNER — ProjectSpec 안내, 프롬프트 가이드, 업로드·등록 영역.
  */
 export function canEditSpec(role: ProjectRole | null | undefined): boolean {
-  return role === "OWNER" || role === "PLANNER";
+  return role === "OWNER" || role === "EDITOR";
 }
 
 /**
- * REVIEWER / OWNER — mock 파싱, Task 생성, Task 프롬프트 생성.
+ * REVIEWER / EDITOR / OWNER — 검토 및 생성계 기능.
  */
 export function canReview(role: ProjectRole | null | undefined): boolean {
-  return role === "OWNER" || role === "REVIEWER";
+  return role === "OWNER" || role === "REVIEWER" || role === "EDITOR";
 }
 
 /**
- * OPERATOR / REVIEWER / OWNER — Run, Git 요청·반영·재시도, Git 반영 준비 전환.
+ * EDITOR / OWNER — Run, Git 요청·반영·재시도, Git 반영 준비 전환.
  */
 export function canOperate(role: ProjectRole | null | undefined): boolean {
-  return role === "OWNER" || role === "REVIEWER" || role === "OPERATOR";
+  return role === "OWNER" || role === "EDITOR";
 }
 
 export function canManageMembers(role: ProjectRole | null | undefined): boolean {

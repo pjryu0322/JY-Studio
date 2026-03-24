@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
+import { RolePermissions, type ProjectRole } from "@/lib/auth/roles";
+import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { resolveProjectRole } from "@/lib/rbac/resolveProjectRole";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
 import { listProjectMembers } from "@/lib/service/projectMemberService";
 import { prisma } from "@/lib/prisma";
 
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/project/session-context");
+      await requireProjectPermission(projectId, userId, "canView", "GET /api/project/session-context");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const myRole = await resolveProjectRole(projectId, userId);
+    const myRole = (await resolveProjectRole(projectId, userId)) as ProjectRole | null;
     const rows = await listProjectMembers(projectId);
     const projectRow = await prisma.project.findUnique({
       where: { id: projectId },
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         myRole,
+        permissions: myRole ? RolePermissions[myRole] : null,
         ownerUserId,
         isProjectOwner: ownerUserId === userId,
         members: rows.map((m) => ({ userId: m.userId, role: m.role })),

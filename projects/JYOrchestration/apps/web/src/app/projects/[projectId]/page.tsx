@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { RolePermissions } from "@/lib/auth/roles";
 import {
   fetchGeneratedTasks,
   fetchProjectById,
@@ -130,7 +131,13 @@ export default function ProjectDetailPage() {
 
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
   const [memberRows, setMemberRows] = useState<ProjectMemberRow[]>([]);
-  const [isProjectOwner, setIsProjectOwner] = useState(false);
+  const permissions = useMemo(
+    () =>
+      projectRole
+        ? RolePermissions[projectRole]
+        : { canEdit: false, canRun: false, canApprove: false, canReorder: false, canView: false },
+    [projectRole]
+  );
   const rbac = useMemo(
     () => ({
       canEditSpec: canEditSpec(projectRole),
@@ -154,7 +161,6 @@ export default function ProjectDetailPage() {
     if (!projectId) {
       setProjectRole(null);
       setMemberRows([]);
-      setIsProjectOwner(false);
       return;
     }
     let cancelled = false;
@@ -169,7 +175,6 @@ export default function ProjectDetailPage() {
           data?: {
             myRole: ProjectRole | null;
             members: ProjectMemberRow[];
-            isProjectOwner?: boolean;
           };
         };
         if (cancelled) {
@@ -178,17 +183,14 @@ export default function ProjectDetailPage() {
         if (!res.ok || !json.success || !json.data) {
           setProjectRole(null);
           setMemberRows([]);
-          setIsProjectOwner(false);
           return;
         }
         setProjectRole(json.data.myRole);
         setMemberRows(Array.isArray(json.data.members) ? json.data.members : []);
-        setIsProjectOwner(json.data.isProjectOwner === true);
       } catch {
         if (!cancelled) {
           setProjectRole(null);
           setMemberRows([]);
-          setIsProjectOwner(false);
         }
       }
     })();
@@ -208,7 +210,7 @@ export default function ProjectDetailPage() {
   }, [project]);
 
   useEffect(() => {
-    if (!projectId || !isProjectOwner) {
+    if (!projectId || !permissions.canRun) {
       setExecSummary(null);
       setExecSummaryError(null);
       setExecSummaryLoading(false);
@@ -263,7 +265,7 @@ export default function ProjectDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, isProjectOwner]);
+  }, [projectId, permissions.canRun]);
 
   useEffect(() => {
     let cancelled = false;
@@ -534,7 +536,7 @@ export default function ProjectDetailPage() {
         taskRunMap,
         canRegisterSpec: rbac.canEditSpec,
         canReview: rbac.canReview,
-        canOperate: isProjectOwner,
+        canOperate: permissions.canRun,
       }),
     [
       uploadHistory,
@@ -545,7 +547,7 @@ export default function ProjectDetailPage() {
       taskRunMap,
       rbac.canEditSpec,
       rbac.canReview,
-      isProjectOwner,
+      permissions.canRun,
     ]
   );
 
@@ -1779,10 +1781,10 @@ export default function ProjectDetailPage() {
           registeringGitRequestRunId={registeringGitRequestRunId}
           taskRunMap={taskRunMap}
           canGeneratePrompt={rbac.canReview}
-          canRunTask={isProjectOwner}
-          canMarkReadyForGit={isProjectOwner}
-          canRegisterGitRequest={isProjectOwner}
-          canReorderTasks={isProjectOwner}
+          canRunTask={permissions.canRun}
+          canMarkReadyForGit={permissions.canRun}
+          canRegisterGitRequest={permissions.canRun}
+          canReorderTasks={permissions.canReorder}
           reorderSaving={reorderSaving}
           abortingTaskId={abortingTaskId}
           blockingTaskId={blockingTaskId}
@@ -1822,7 +1824,7 @@ export default function ProjectDetailPage() {
           }}
         />
       ) : null}
-      {isProjectOwner ? (
+      {permissions.canRun ? (
         <section
           id="guided-flow-git"
           style={{
@@ -1850,7 +1852,7 @@ export default function ProjectDetailPage() {
               ? "승인 필요 (MANUAL_APPROVAL)"
               : "승인 생략 (NO_APPROVAL)"}
           </span>
-          {isProjectOwner ? (
+          {permissions.canApprove ? (
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: "#555" }}>변경</span>
               <select
@@ -1871,7 +1873,7 @@ export default function ProjectDetailPage() {
               ? "수동 (MANUAL_PUSH)"
               : "자동 시도 (AUTO_PUSH)"}
           </span>
-          {isProjectOwner ? (
+          {permissions.canApprove ? (
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: "#555" }}>push</span>
               <select
@@ -2188,7 +2190,7 @@ export default function ProjectDetailPage() {
                       </button>
                     ) : null}
                     {!executionSafeMode &&
-                    isProjectOwner &&
+                    permissions.canRun &&
                     gitApplyMode === "git" &&
                     item.applyStatus === "DONE" &&
                     applyLogHasGitPushOk(item.applyLog) &&
@@ -2231,7 +2233,7 @@ export default function ProjectDetailPage() {
                       </a>
                     ) : null}
                     {!executionSafeMode &&
-                    isProjectOwner &&
+                    permissions.canRun &&
                     item.pullRequestNumber != null ? (
                       <button
                         type="button"
@@ -2251,7 +2253,7 @@ export default function ProjectDetailPage() {
                     ) : null}
                     {isManualGitItem(item) &&
                     item.status === "APPROVAL_REQUIRED" &&
-                    isProjectOwner ? (
+                    permissions.canApprove ? (
                       <>
                         <button
                           type="button"
@@ -2289,7 +2291,7 @@ export default function ProjectDetailPage() {
                     ) : null}
                     {isManualGitItem(item) &&
                     item.status === "REJECTED" &&
-                    isProjectOwner ? (
+                    permissions.canRun ? (
                       <button
                         type="button"
                         onClick={() => handleGitResubmitApproval(item.id)}
@@ -2309,7 +2311,7 @@ export default function ProjectDetailPage() {
                   </div>
                   {isManualGitItem(item) &&
                   item.status === "APPROVAL_REQUIRED" &&
-                  isProjectOwner ? (
+                  permissions.canApprove ? (
                     <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 420 }}>
                       <span style={{ fontSize: 12, color: "#666" }}>반려 사유 (선택)</span>
                       <textarea
@@ -2433,7 +2435,7 @@ export default function ProjectDetailPage() {
               project={project}
               currentUserRoleLabel={projectRole && projectId ? projectRole : null}
             />
-            {isProjectOwner ? (
+            {permissions.canRun ? (
               <ExecutionObservabilityPanel
                 data={execSummary}
                 loading={execSummaryLoading}
@@ -2453,7 +2455,7 @@ export default function ProjectDetailPage() {
                 snapshot={guidedFlowSnapshot}
                 canRegisterSpec={rbac.canEditSpec}
                 canReview={rbac.canReview}
-                canOperate={isProjectOwner}
+                canOperate={permissions.canRun}
               />
             ) : null}
             <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
@@ -2479,10 +2481,10 @@ export default function ProjectDetailPage() {
               snapshot={guidedFlowSnapshot}
               canRegisterSpec={rbac.canEditSpec}
               canReview={rbac.canReview}
-              canOperate={isProjectOwner}
+              canOperate={permissions.canRun}
             />
           ) : null}
-          {isProjectOwner ? (
+          {permissions.canRun ? (
             <ExecutionObservabilityPanel
               data={execSummary}
               loading={execSummaryLoading}

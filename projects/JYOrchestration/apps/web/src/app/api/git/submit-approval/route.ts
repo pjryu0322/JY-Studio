@@ -6,7 +6,7 @@ import {
   GIT_GATE_ERROR_CODES,
   submitGitChangeRequestForApproval,
 } from "@/lib/service/executionService";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 type Body = { gitChangeRequestId?: string };
 
@@ -43,7 +43,12 @@ export async function POST(request: Request) {
     }
 
     try {
-      await requireProjectOwnedByUser(gcr.projectId, userId, "POST /api/git/submit-approval");
+      await requireProjectPermissionById(
+        gcr.projectId,
+        userId,
+        "canRun",
+        "POST /api/git/submit-approval"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

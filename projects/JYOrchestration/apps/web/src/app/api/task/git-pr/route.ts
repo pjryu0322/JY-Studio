@@ -6,7 +6,7 @@ import {
   createPullRequestForGitChangeRequest,
   syncPullRequestStatus,
 } from "@/lib/service/githubPullRequestService";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 type Body = {
   gitChangeRequestId?: string;
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await requireProjectOwnedByUser(gcr.projectId, userId, "POST /api/task/git-pr");
+      await requireProjectPermissionById(gcr.projectId, userId, "canRun", "POST /api/task/git-pr");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

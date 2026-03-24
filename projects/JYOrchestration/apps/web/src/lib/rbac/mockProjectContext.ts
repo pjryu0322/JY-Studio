@@ -14,7 +14,7 @@ export function getProjectMembersMock(projectId: string): ProjectMemberRow[] {
   return [
     { userId: "demo-user-1", role: "OWNER" },
     { userId: "demo-user-2", role: "REVIEWER" },
-    { userId: "demo-user-3", role: "OPERATOR" },
+    { userId: "demo-user-3", role: "EDITOR" },
   ];
 }
 

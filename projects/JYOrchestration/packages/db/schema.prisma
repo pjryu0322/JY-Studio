@@ -11,12 +11,12 @@ datasource db {
 enum ProjectMemberRole {
   /// 소유자
   OWNER
-  /// 기획
-  PLANNER
+  /// 편집자(생성/수정/실행)
+  EDITOR
   /// 검토
   REVIEWER
-  /// 운영
-  OPERATOR
+  /// 조회 전용
+  VIEWER
 }
 
 model User {

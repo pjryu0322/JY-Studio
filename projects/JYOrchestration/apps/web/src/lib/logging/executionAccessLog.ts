@@ -2,10 +2,12 @@ export type ExecutionAccessLogEntry = {
   result: "allowed" | "denied";
   reason?: string;
   userId: string | null;
+  role?: string | null;
   projectId?: string;
   taskId?: string;
   executionId?: string;
   action?: string;
+  permissionChecked?: string;
   context?: string;
 };
 

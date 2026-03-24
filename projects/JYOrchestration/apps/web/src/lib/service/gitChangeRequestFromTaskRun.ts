@@ -14,7 +14,7 @@ import {
 } from "@/lib/integration/taskRunResultTypes";
 import { prisma } from "@/lib/prisma";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
-import { requireGitChangeRequestCreate } from "@/lib/service/projectAccessGuard";
+import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 export type GitChangeRequestFileRow = {
@@ -449,7 +449,12 @@ export async function createGitChangeRequestForTaskRun(
   }
 
   try {
-    await requireGitChangeRequestCreate(run.task.projectId, input.actorUserId);
+    await requireProjectPermission(
+      run.task.projectId,
+      input.actorUserId,
+      "canRun",
+      "gitChangeRequestFromTaskRun.createGitChangeRequestForTaskRun"
+    );
   } catch (e) {
     if (e instanceof ProjectAccessDeniedError) {
       return {
@@ -547,7 +552,12 @@ export async function createGitChangeRequestFromExecutionResult(
   }
 
   try {
-    await requireGitChangeRequestCreate(run.task.projectId, input.actorUserId);
+    await requireProjectPermission(
+      run.task.projectId,
+      input.actorUserId,
+      "canRun",
+      "gitChangeRequestFromTaskRun.createGitChangeRequestFromExecutionResult"
+    );
   } catch (e) {
     if (e instanceof ProjectAccessDeniedError) {
       return {

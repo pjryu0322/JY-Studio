@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { createGitChangeRequestForTaskRun } from "@/lib/service/gitChangeRequestFromTaskRun";
 
 type CreateGitRequestBody = {
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/git-request");
+      await requireProjectPermissionById(projectId, userId, "canView", "GET /api/task/git-request");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -110,7 +110,12 @@ export async function POST(request: Request) {
     }
 
     try {
-      await requireProjectOwnedByUser(runRow.task.projectId, userId, "POST /api/task/git-request");
+      await requireProjectPermissionById(
+        runRow.task.projectId,
+        userId,
+        "canRun",
+        "POST /api/task/git-request"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

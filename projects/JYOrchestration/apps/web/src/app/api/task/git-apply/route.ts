@@ -10,7 +10,7 @@ import {
   serializeGitChangeRequestList,
   validateGitApplyPostEligibility,
 } from "@/lib/service/executionService";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 type ApplyGitRequestBody = {
   gitChangeRequestId?: string;
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/git-apply");
+      await requireProjectPermissionById(projectId, userId, "canView", "GET /api/task/git-apply");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      await requireProjectOwnedByUser(gcr.projectId, userId, "POST /api/task/git-apply");
+      await requireProjectPermissionById(gcr.projectId, userId, "canRun", "POST /api/task/git-apply");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

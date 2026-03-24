@@ -3,6 +3,8 @@
  * Task는 항상 Project에 속하며, 접근은 project.ownerUserId === userId 로 검증한다.
  */
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
+import { requireProjectPermission } from "@/lib/auth/rbacGuard";
+import type { ProjectPermissionKey } from "@/lib/auth/roles";
 import { logExecutionAccess } from "@/lib/logging/executionAccessLog";
 import { prisma } from "@/lib/prisma";
 
@@ -39,6 +41,15 @@ export async function requireProjectOwnedByUser(
   }
   logExecutionAccess({ result: "allowed", userId, projectId, action: context, context });
   return p;
+}
+
+export async function requireProjectPermissionById(
+  projectId: string,
+  userId: string,
+  permission: ProjectPermissionKey,
+  context: string
+) {
+  return requireProjectPermission(projectId, userId, permission, context);
 }
 
 export async function requireTaskOwnedByProjectOwner(
@@ -108,6 +119,55 @@ export async function requireTaskOwnedByProjectOwner(
     projectId: task.projectId,
     ownerUserId: task.ownerUserId,
   };
+}
+
+export async function requireTaskPermission(
+  taskId: string,
+  userId: string,
+  permission: ProjectPermissionKey,
+  context: string
+): Promise<{ id: string; projectId: string }> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, projectId: true },
+  });
+  if (!task) {
+    logExecutionAccess({
+      result: "denied",
+      reason: "TASK_NOT_FOUND",
+      userId,
+      taskId,
+      action: context,
+      permissionChecked: permission,
+    });
+    throw new ProjectAccessDeniedError("Task를 찾을 수 없습니다.");
+  }
+  await requireProjectPermission(task.projectId, userId, permission, context);
+  return { id: task.id, projectId: task.projectId };
+}
+
+export async function requireTaskPromptPermission(
+  taskPromptId: string,
+  userId: string,
+  permission: ProjectPermissionKey,
+  context: string
+): Promise<{ taskId: string; projectId: string }> {
+  const prompt = await prisma.taskPrompt.findUnique({
+    where: { id: taskPromptId },
+    select: { taskId: true, projectId: true },
+  });
+  if (!prompt) {
+    logExecutionAccess({
+      result: "denied",
+      reason: "TASK_PROMPT_NOT_FOUND",
+      userId,
+      action: context,
+      permissionChecked: permission,
+    });
+    throw new ProjectAccessDeniedError("Task 프롬프트를 찾을 수 없습니다.");
+  }
+  await requireProjectPermission(prompt.projectId, userId, permission, `${context}:taskPrompt`);
+  return { taskId: prompt.taskId, projectId: prompt.projectId };
 }
 
 /** taskPromptId → Task 로 이어져 소유자·프로젝트 일치 검증 */

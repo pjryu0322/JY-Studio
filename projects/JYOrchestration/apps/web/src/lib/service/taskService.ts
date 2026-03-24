@@ -8,7 +8,7 @@ import {
   type TaskRunResultJson,
 } from "@/lib/integration/taskRunResultTypes";
 import { prisma } from "@/lib/prisma";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 /** TaskRun.resultJson 안전 파싱 (후속 Git·UI에서 재사용). */
 export function parseTaskRunResultJson(raw: unknown): TaskRunResultJson | null {
@@ -38,7 +38,12 @@ export async function reorderTasksInProject(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const actorUserId = options.actorUserId;
   try {
-    await requireProjectOwnedByUser(projectId, actorUserId, "taskService.reorderTasksInProject");
+    await requireProjectPermissionById(
+      projectId,
+      actorUserId,
+      "canReorder",
+      "taskService.reorderTasksInProject"
+    );
   } catch {
     return { ok: false, message: "프로젝트 소유자만 Task 순서를 변경할 수 있습니다." };
   }
@@ -108,14 +113,22 @@ export async function createFollowUpTaskAfterDoneSource(params: {
 }): Promise<CreateFollowUpTaskResult> {
   let ownerUserId: string;
   try {
-    const p = await requireProjectOwnedByUser(
+    await requireProjectPermissionById(
       params.projectId,
       params.actorUserId,
+      "canEdit",
       "taskService.createFollowUpTaskAfterDoneSource"
     );
+    const p = await prisma.project.findUnique({
+      where: { id: params.projectId },
+      select: { ownerUserId: true },
+    });
+    if (!p) {
+      return { ok: false, message: "프로젝트를 찾을 수 없습니다." };
+    }
     ownerUserId = p.ownerUserId;
   } catch {
-    return { ok: false, message: "프로젝트 소유자만 후속 Task를 생성할 수 있습니다." };
+    return { ok: false, message: "후속 Task 생성 권한이 없습니다." };
   }
 
   const name = params.name.trim();

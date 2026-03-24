@@ -11,8 +11,8 @@ import {
   GIT_CHANGE_REQUEST_FROM_RUN_CODES,
 } from "@/lib/service/gitChangeRequestFromTaskRun";
 import {
-  requireProjectOwnedByUser,
-  requireTaskOwnedByProjectOwner,
+  requireProjectPermissionById,
+  requireTaskPermission,
 } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import {
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/run");
+      await requireProjectPermissionById(projectId, userId, "canView", "GET /api/task/run");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
       const projectId = task.projectId;
 
       try {
-        await requireTaskOwnedByProjectOwner(task.id, userId, "POST /api/task/run:force-fail-latest");
+        await requireTaskPermission(task.id, userId, "canRun", "POST /api/task/run:force-fail-latest");
       } catch (error) {
         const denied = rbacErrorResponse(error);
         if (denied) {
@@ -260,9 +260,10 @@ export async function POST(request: Request) {
       const abortProjectId = promptForAbort.task.projectId;
 
       try {
-        await requireTaskOwnedByProjectOwner(
+        await requireTaskPermission(
           promptForAbort.taskId,
           userId,
+          "canRun",
           "POST /api/task/run:abort-run"
         );
       } catch (error) {
@@ -387,7 +388,7 @@ export async function POST(request: Request) {
     const projectId = prompt.task.projectId;
 
     try {
-      await requireTaskOwnedByProjectOwner(prompt.taskId, userId, "POST /api/task/run");
+      await requireTaskPermission(prompt.taskId, userId, "canRun", "POST /api/task/run");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {

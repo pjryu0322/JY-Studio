@@ -17,7 +17,7 @@ import {
 import { syncPullRequestStatus } from "@/lib/service/githubPullRequestService";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { projectIdExists } from "@/lib/service/projectService";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import {
   countTaskRunsByProjectId,
   countTasksByProjectId,
@@ -39,6 +39,7 @@ export type GitApplyApiBody = {
 async function requireGitChangeRequestOwnedByUser(
   gitChangeRequestId: string,
   actorUserId: string,
+  permission: "canRun" | "canApprove",
   action: string
 ): Promise<{ projectId: string; taskId: string; executionId: string | null }> {
   const row = await prisma.gitChangeRequest.findUnique({
@@ -48,7 +49,7 @@ async function requireGitChangeRequestOwnedByUser(
   if (!row) {
     throw new Error("GIT_CHANGE_REQUEST_NOT_FOUND");
   }
-  await requireProjectOwnedByUser(row.projectId, actorUserId, action);
+  await requireProjectPermission(row.projectId, actorUserId, permission, action);
   return { projectId: row.projectId, taskId: row.taskId, executionId: null };
 }
 
@@ -66,9 +67,10 @@ export async function listGitChangeRequestsForProject(
   actorUserId?: string
 ) {
   if (actorUserId) {
-    await requireProjectOwnedByUser(
+    await requireProjectPermission(
       projectId,
       actorUserId,
+      "canView",
       "executionService.listGitChangeRequestsForProject"
     );
   }
@@ -156,6 +158,7 @@ export async function applyGitChangeFromApiBody(
     await requireGitChangeRequestOwnedByUser(
       gcrId,
       actorUserId,
+      "canRun",
       "executionService.applyGitChangeFromApiBody"
     );
   }
@@ -280,6 +283,7 @@ export async function submitGitChangeRequestForApproval(input: {
     await requireGitChangeRequestOwnedByUser(
       id,
       input.actorUserId,
+      "canRun",
       "executionService.submitGitChangeRequestForApproval"
     );
   } catch {
@@ -391,6 +395,7 @@ export async function approveGitChangeRequest(input: {
     await requireGitChangeRequestOwnedByUser(
       id,
       input.actorUserId,
+      "canApprove",
       "executionService.approveGitChangeRequest"
     );
   } catch {
@@ -502,6 +507,7 @@ export async function rejectGitChangeRequest(input: {
     await requireGitChangeRequestOwnedByUser(
       id,
       input.actorUserId,
+      "canApprove",
       "executionService.rejectGitChangeRequest"
     );
   } catch {
