@@ -452,7 +452,7 @@ export async function createGitChangeRequestForTaskRun(
     await requireProjectPermission(
       run.task.projectId,
       input.actorUserId,
-      "canRun",
+      "canRegisterGitRequest",
       "gitChangeRequestFromTaskRun.createGitChangeRequestForTaskRun"
     );
   } catch (e) {
@@ -555,7 +555,7 @@ export async function createGitChangeRequestFromExecutionResult(
     await requireProjectPermission(
       run.task.projectId,
       input.actorUserId,
-      "canRun",
+      "canRegisterGitRequest",
       "gitChangeRequestFromTaskRun.createGitChangeRequestFromExecutionResult"
     );
   } catch (e) {

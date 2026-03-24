@@ -4,8 +4,8 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
 import {
-  requireProjectOwnedByUser,
-  requireTaskOwnedByProjectOwner,
+  requireProjectPermissionById,
+  requireTaskPermission,
 } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
@@ -18,7 +18,7 @@ const DEMO_COMPONENTS = "apps/web/src/components/note-demo";
 
 function formatSpecContext(parsedJson: unknown): string {
   if (parsedJson == null || typeof parsedJson !== "object") {
-    return "(ProjectSpec 요약 없음 — Task 설명만 따르세요.)";
+    return "(ProjectSpec ?�약 ?�음 ??Task ?�명�??�르?�요.)";
   }
   const p = parsedJson as Record<string, unknown>;
   const overview = typeof p.projectOverview === "string" ? p.projectOverview.trim() : "";
@@ -30,15 +30,15 @@ function formatSpecContext(parsedJson: unknown): string {
     : [];
   const lines: string[] = [];
   if (overview) {
-    lines.push(`- 제품·아이디어 요약: ${overview.slice(0, 800)}`);
+    lines.push(`- ?�품·?�이?�어 ?�약: ${overview.slice(0, 800)}`);
   }
   if (features.length > 0) {
     lines.push(`- 기능·문장 목록:\n${features.map((f) => `  - ${f}`).join("\n")}`);
   }
   if (constraints.length > 0) {
-    lines.push(`- 제약·주의:\n${constraints.map((c) => `  - ${c}`).join("\n")}`);
+    lines.push(`- ?�약·주의:\n${constraints.map((c) => `  - ${c}`).join("\n")}`);
   }
-  return lines.length > 0 ? lines.join("\n") : "(ProjectSpec 필드가 비어 있습니다.)";
+  return lines.length > 0 ? lines.join("\n") : "(ProjectSpec ?�드가 비어 ?�습?�다.)";
 }
 
 function buildTaskExecutionPrompt(
@@ -51,33 +51,33 @@ function buildTaskExecutionPrompt(
   },
   specContext: string
 ) {
-  return `# Task 실행 프롬프트 (Cursor에서 그대로 실행 가능하도록 작성됨)
+  return `# Task ?�행 ?�롬?�트 (Cursor?�서 그�?�??�행 가?�하?�록 ?�성??
 
-## 작업명
+## ?�업�?
 ${task.name}
 
-## 이번 Task에서 할 일
-${task.description || "Task 설명이 비어 있으면, 아래 ProjectSpec 요약과 작업명만으로 목표를 구체화하세요."}
+## ?�번 Task?�서 ????
+${task.description || "Task ?�명??비어 ?�으�? ?�래 ProjectSpec ?�약�??�업명만?�로 목표�?구체?�하?�요."}
 
-## ProjectSpec 맥락 (사용자가 올린 아이디어에서 추출)
+## ProjectSpec 맥락 (?�용?��? ?�린 ?�이?�어?�서 추출)
 ${specContext}
 
-## 구현 위치 (이 저장소 기준)
-- 데모·샘플 UI는 Next.js App Router 아래에 둡니다: \`${DEMO_APP_ROOT}/\`
-- 재사용 컴포넌트: \`${DEMO_COMPONENTS}/\` (없으면 생성)
-- JYOrchestration 본체(프로젝트 목록·권한·Git 파이프라인)는 깨지지 않게 두고, 위 경로에 **메모 앱 UI·로직**을 만듭니다.
+## 구현 ?�치 (???�?�소 기�?)
+- ?�모·?�플 UI??Next.js App Router ?�래???�니?? \`${DEMO_APP_ROOT}/\`
+- ?�사??컴포?�트: \`${DEMO_COMPONENTS}/\` (?�으�??�성)
+- JYOrchestration 본체(?�로?�트 목록·권한·Git ?�이?�라????깨�?지 ?�게 ?�고, ??경로??**메모 ??UI·로직**??만듭?�다.
 
-## 수정 범위 제한
-- 모노레포에서 **projects/JYOrchestration** 아래만 변경 (다른 프로젝트 디렉터리 수정 금지)
-- 루트 package.json·타 프로젝트 건드리지 않기
-- “오케스트레이션 자동 실행기” 같은 메타 기능은 새로 넣지 않기
+## ?�정 범위 ?�한
+- 모노?�포?�서 **projects/JYOrchestration** ?�래�?변�?(?�른 ?�로?�트 ?�렉?�리 ?�정 금�?)
+- 루트 package.json·?� ?�로?�트 건드리�? ?�기
+- ?�오케?�트?�이???�동 ?�행기�?같�? 메�? 기능?� ?�로 ?��? ?�기
 
-## 완료 기준 (반드시 확인)
-- \`pnpm\` / \`npm\` 기준으로 **타입 오류·린트 오류 없음**
-- 로그인·저장이 요구된 Task면: **입력 검증**(빈 비밀번호, 저장 실패 시 사용자 메시지)까지 포함
-- 새 페이지는 \`${DEMO_APP_ROOT}/page.tsx\`에서 라우팅 가능하게 연결
+## ?�료 기�? (반드???�인)
+- \`pnpm\` / \`npm\` 기�??�로 **?�???�류·린트 ?�류 ?�음**
+- 로그?�·�??�이 ?�구??Task�? **?�력 검�?*(�?비�?번호, ?�???�패 ???�용??메시지)까�? ?�함
+- ???�이지??\`${DEMO_APP_ROOT}/page.tsx\`?�서 ?�우??가?�하�??�결
 
-## 메타 (시스템 ID — 삭제 금지)
+## 메�? (?�스??ID ????�� 금�?)
 - projectId: ${task.projectId}
 - projectSpecUploadId: ${task.projectSpecUploadId}
 - taskId: ${task.id}
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "projectId가 필요합니다.",
+          message: "projectId가 ?�요?�니??",
         },
         { status: 400 }
       );
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/prompt");
+      await requireProjectPermissionById(projectId, userId, "canViewProject", "GET /api/task/prompt");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: "Task 프롬프트 조회 중 오류가 발생했습니다.",
+        message: "Task ?�롬?�트 조회 �??�류가 발생?�습?�다.",
       },
       { status: 500 }
     );
@@ -163,7 +163,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "taskId가 필요합니다.",
+          message: "taskId가 ?�요?�니??",
         },
         { status: 400 }
       );
@@ -191,14 +191,14 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "대상 Task를 찾을 수 없습니다.",
+          message: "?�??Task�?찾을 ???�습?�다.",
         },
         { status: 404 }
       );
     }
 
     try {
-      await requireTaskOwnedByProjectOwner(task.id, userId, "POST /api/task/prompt");
+      await requireTaskPermission(task.id, userId, "canCreatePrompt", "POST /api/task/prompt");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -255,8 +255,8 @@ export async function POST(request: Request) {
           ? TaskHistoryEventType.PROMPT_REVISED
           : TaskHistoryEventType.PROMPT_CREATED,
         summary: isRevision
-          ? `프롬프트 개정 (v${nextVersion})`
-          : `프롬프트 생성 (v${nextVersion})`,
+          ? `?�롬?�트 개정 (v${nextVersion})`
+          : `?�롬?�트 ?�성 (v${nextVersion})`,
         detailJson: {
           promptVersion: nextVersion,
           promptText,
@@ -279,7 +279,7 @@ export async function POST(request: Request) {
         createdAt: saved.createdAt.toISOString(),
         updatedAt: saved.updatedAt.toISOString(),
       },
-      message: "Task 실행 프롬프트가 생성되었습니다.",
+      message: "Task ?�행 ?�롬?�트가 ?�성?�었?�니??",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -290,7 +290,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        message: "Task 프롬프트 생성 중 오류가 발생했습니다.",
+        message: "Task ?�롬?�트 ?�성 �??�류가 발생?�습?�다.",
       },
       { status: 500 }
     );

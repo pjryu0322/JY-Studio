@@ -41,7 +41,7 @@ export async function reorderTasksInProject(
     await requireProjectPermissionById(
       projectId,
       actorUserId,
-      "canReorder",
+      "canReorderTask",
       "taskService.reorderTasksInProject"
     );
   } catch {
@@ -116,7 +116,7 @@ export async function createFollowUpTaskAfterDoneSource(params: {
     await requireProjectPermissionById(
       params.projectId,
       params.actorUserId,
-      "canEdit",
+      "canEditProject",
       "taskService.createFollowUpTaskAfterDoneSource"
     );
     const p = await prisma.project.findUnique({

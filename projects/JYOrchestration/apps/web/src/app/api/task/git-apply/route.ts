@@ -23,14 +23,14 @@ function jsonError(code: string, message: string, status: number) {
   return NextResponse.json({ success: false, code, message }, { status });
 }
 
-/** Git 요청 목록 (self-healing 필드 포함). git-request와 동일 projectId 조회이며 필드만 확장. */
+/** Git ?�청 목록 (self-healing ?�드 ?�함). git-request?� ?�일 projectId 조회?�며 ?�드�??�장. */
 export async function GET(request: NextRequest) {
   try {
     const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
     if (!projectId) {
       return jsonError(
         GIT_APPLY_ERROR_CODES.INVALID_REQUEST,
-        "projectId가 필요합니다.",
+        "projectId가 ?�요?�니??",
         400
       );
     }
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectPermissionById(projectId, userId, "canView", "GET /api/task/git-apply");
+      await requireProjectPermissionById(projectId, userId, "canViewExecution", "GET /api/task/git-apply");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     console.error("GET /api/task/git-apply error:", error);
     return jsonError(
       GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
-      "Git 반영 요청 목록 조회 중 오류가 발생했습니다.",
+      "Git 반영 ?�청 목록 조회 �??�류가 발생?�습?�다.",
       500
     );
   }
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     if (!gitChangeRequestId) {
       return jsonError(
         GIT_APPLY_ERROR_CODES.INVALID_REQUEST,
-        "gitChangeRequestId가 필요합니다.",
+        "gitChangeRequestId가 ?�요?�니??",
         400
       );
     }
@@ -99,13 +99,13 @@ export async function POST(request: Request) {
     if (!gcr) {
       return jsonError(
         GIT_APPLY_ERROR_CODES.INVALID_REQUEST,
-        "대상 Git 반영 요청을 찾을 수 없습니다.",
+        "?�??Git 반영 ?�청??찾을 ???�습?�다.",
         404
       );
     }
 
     try {
-      await requireProjectPermissionById(gcr.projectId, userId, "canRun", "POST /api/task/git-apply");
+      await requireProjectPermissionById(gcr.projectId, userId, "canApplyGit", "POST /api/task/git-apply");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
     if (!enq.queued) {
       return jsonError(
         GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
-        `실행 큐 등록 실패: ${enq.reason}`,
+        `?�행 ???�록 ?�패: ${enq.reason}`,
         500
       );
     }
@@ -152,7 +152,7 @@ export async function POST(request: Request) {
       success: true,
       queued: true,
       jobId: enq.jobId,
-      message: "Git 반영 작업이 큐에 등록되었습니다.",
+      message: "Git 반영 ?�업???�에 ?�록?�었?�니??",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -162,7 +162,7 @@ export async function POST(request: Request) {
     console.error("POST /api/task/git-apply error:", error);
     return jsonError(
       GIT_APPLY_ERROR_CODES.EXECUTION_FAILED,
-      "Git 반영 실행 중 오류가 발생했습니다.",
+      "Git 반영 ?�행 �??�류가 발생?�습?�다.",
       500
     );
   }

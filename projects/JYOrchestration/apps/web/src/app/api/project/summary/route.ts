@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { getProjectObservabilitySnapshot } from "@/lib/service/executionService";
 
 export async function GET(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
     if (!projectId) {
       return NextResponse.json(
-        { success: false, message: "projectId가 필요합니다." },
+        { success: false, message: "projectId? ?????." },
         { status: 400 }
       );
     }
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/project/summary");
+      await requireProjectPermissionById(projectId, userId, "canViewExecution", "GET /api/project/summary");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     const data = await getProjectObservabilitySnapshot(projectId);
     if (!data) {
       return NextResponse.json(
-        { success: false, message: "프로젝트를 찾을 수 없습니다." },
+        { success: false, message: "????? ?? ? ????." },
         { status: 404 }
       );
     }
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
     console.error("GET /api/project/summary error:", error);
     return NextResponse.json(
-      { success: false, message: "실행 요약을 불러오는 중 오류가 발생했습니다." },
+      { success: false, message: "?? ??? ???? ? ??? ??????." },
       { status: 500 }
     );
   }

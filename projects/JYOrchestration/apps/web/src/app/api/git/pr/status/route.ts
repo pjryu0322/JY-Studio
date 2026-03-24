@@ -3,14 +3,14 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { syncPullRequestStatus } from "@/lib/service/githubPullRequestService";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 function jsonError(code: string, message: string, status: number) {
   return NextResponse.json({ success: false, code, message }, { status });
 }
 
 /**
- * GitHub PR 상태 수동 동기화 (GET).
+ * GitHub PR ?? ?? ??? (GET).
  * GET /api/git/pr/status?gitChangeRequestId=...
  */
 export async function GET(request: NextRequest) {
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const gitChangeRequestId =
       request.nextUrl.searchParams.get("gitChangeRequestId")?.trim() || "";
     if (!gitChangeRequestId) {
-      return jsonError("INVALID_REQUEST", "gitChangeRequestId가 필요합니다.", 400);
+      return jsonError("INVALID_REQUEST", "gitChangeRequestId? ?????.", 400);
     }
 
     const gcr = await prisma.gitChangeRequest.findUnique({
@@ -30,11 +30,16 @@ export async function GET(request: NextRequest) {
       select: { projectId: true },
     });
     if (!gcr) {
-      return jsonError("NOT_FOUND", "GitChangeRequest를 찾을 수 없습니다.", 404);
+      return jsonError("NOT_FOUND", "GitChangeRequest? ?? ? ????.", 404);
     }
 
     try {
-      await requireProjectOwnedByUser(gcr.projectId, userId, "GET /api/git/pr/status");
+      await requireProjectPermissionById(
+        gcr.projectId,
+        userId,
+        "canViewExecution",
+        "GET /api/git/pr/status"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -53,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "PR 상태를 동기화했습니다.",
+      message: "PR ??? ???????.",
       data: {
         pullRequestState: r.data.pullRequestState,
         reviewStatus: r.data.reviewStatus,
@@ -67,6 +72,6 @@ export async function GET(request: NextRequest) {
       return denied;
     }
     console.error("GET /api/git/pr/status error:", error);
-    return jsonError("INTERNAL_ERROR", "PR 상태 동기화 중 오류가 발생했습니다.", 500);
+    return jsonError("INTERNAL_ERROR", "PR ?? ??? ? ??? ??????.", 500);
   }
 }

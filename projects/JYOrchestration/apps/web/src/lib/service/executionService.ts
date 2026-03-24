@@ -39,7 +39,7 @@ export type GitApplyApiBody = {
 async function requireGitChangeRequestOwnedByUser(
   gitChangeRequestId: string,
   actorUserId: string,
-  permission: "canRun" | "canApprove",
+  permission: "canRunTask" | "canRegisterGitRequest" | "canReviewGit",
   action: string
 ): Promise<{ projectId: string; taskId: string; executionId: string | null }> {
   const row = await prisma.gitChangeRequest.findUnique({
@@ -70,7 +70,7 @@ export async function listGitChangeRequestsForProject(
     await requireProjectPermission(
       projectId,
       actorUserId,
-      "canView",
+      "canViewExecution",
       "executionService.listGitChangeRequestsForProject"
     );
   }
@@ -158,7 +158,7 @@ export async function applyGitChangeFromApiBody(
     await requireGitChangeRequestOwnedByUser(
       gcrId,
       actorUserId,
-      "canRun",
+      "canRunTask",
       "executionService.applyGitChangeFromApiBody"
     );
   }
@@ -283,7 +283,7 @@ export async function submitGitChangeRequestForApproval(input: {
     await requireGitChangeRequestOwnedByUser(
       id,
       input.actorUserId,
-      "canRun",
+      "canRegisterGitRequest",
       "executionService.submitGitChangeRequestForApproval"
     );
   } catch {
@@ -395,7 +395,7 @@ export async function approveGitChangeRequest(input: {
     await requireGitChangeRequestOwnedByUser(
       id,
       input.actorUserId,
-      "canApprove",
+      "canReviewGit",
       "executionService.approveGitChangeRequest"
     );
   } catch {
@@ -507,7 +507,7 @@ export async function rejectGitChangeRequest(input: {
     await requireGitChangeRequestOwnedByUser(
       id,
       input.actorUserId,
-      "canApprove",
+      "canReviewGit",
       "executionService.rejectGitChangeRequest"
     );
   } catch {

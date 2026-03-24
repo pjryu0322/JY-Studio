@@ -16,11 +16,11 @@ export async function GET(request: NextRequest) {
 
     const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
     if (!projectId) {
-      return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
+      return NextResponse.json({ success: false, message: "projectId가 ?�요?�니??" }, { status: 400 });
     }
 
     try {
-      await requireProjectPermission(projectId, userId, "canView", "GET /api/project/session-context");
+      await requireProjectPermission(projectId, userId, "canViewProject", "GET /api/project/session-context");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     }
     console.error("GET /api/project/session-context error:", error);
     return NextResponse.json(
-      { success: false, message: "세션 컨텍스트를 불러오는 중 오류가 발생했습니다." },
+      { success: false, message: "?�션 컨텍?�트�?불러?�는 �??�류가 발생?�습?�다." },
       { status: 500 }
     );
   }

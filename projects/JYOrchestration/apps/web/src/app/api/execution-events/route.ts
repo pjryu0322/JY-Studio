@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       select: { id: true, projectId: true },
     });
     if (!job) {
-      return jsonError("실행 작업을 찾을 수 없습니다.", 404);
+      return jsonError("?�행 ?�업??찾을 ???�습?�다.", 404);
     }
 
     const userId = await requireSessionUserId(request);
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectPermissionById(job.projectId, userId, "canView", "GET /api/execution-events");
+      await requireProjectPermissionById(job.projectId, userId, "canViewExecution", "GET /api/execution-events");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -67,6 +67,6 @@ export async function GET(request: NextRequest) {
       return denied;
     }
     console.error("GET /api/execution-events error:", error);
-    return jsonError("실행 이벤트 조회 중 오류가 발생했습니다.", 500);
+    return jsonError("?�행 ?�벤??조회 �??�류가 발생?�습?�다.", 500);
   }
 }

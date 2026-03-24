@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireTaskOwnedByProjectOwner } from "@/lib/service/taskOwnershipGuard";
+import { requireTaskPermission } from "@/lib/service/taskOwnershipGuard";
 import {
   listTaskHistoryByTaskId,
   serializeTaskHistoryRow,
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     if (!taskId) {
       return NextResponse.json(
-        { success: false, message: "taskId가 필요합니다." },
+        { success: false, message: "taskId? ?????." },
         { status: 400 }
       );
     }
@@ -27,14 +27,14 @@ export async function GET(request: NextRequest) {
 
     if (!task) {
       return NextResponse.json(
-        { success: false, message: "대상 Task를 찾을 수 없습니다." },
+        { success: false, message: "?? Task? ?? ? ????." },
         { status: 404 }
       );
     }
 
     if (projectIdParam && projectIdParam !== task.projectId) {
       return NextResponse.json(
-        { success: false, message: "projectId가 Task와 일치하지 않습니다." },
+        { success: false, message: "projectId? Task? ???? ????." },
         { status: 400 }
       );
     }
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireTaskOwnedByProjectOwner(taskId, userId, "GET /api/task/history");
+      await requireTaskPermission(taskId, userId, "canViewExecution", "GET /api/task/history");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     }
     console.error("GET /api/task/history error:", error);
     return NextResponse.json(
-      { success: false, message: "Task 이력 조회 중 오류가 발생했습니다." },
+      { success: false, message: "Task ?? ?? ? ??? ??????." },
       { status: 500 }
     );
   }

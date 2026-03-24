@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 function mapUploadRecord(record: {
   id: string;
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "projectId가 필요합니다.",
+          message: "projectId? ?????.",
         },
         { status: 400 }
       );
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/project-spec/list");
+      await requireProjectPermissionById(projectId, userId, "canViewProject", "GET /api/project-spec/list");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: "업로드 메타데이터 조회 중 오류가 발생했습니다.",
+        message: "??? ????? ?? ? ??? ??????.",
       },
       { status: 500 }
     );

@@ -11,7 +11,7 @@ import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 type Body = {
   gitChangeRequestId?: string;
   action?: string;
-  /** MANUAL_PUSH 프로젝트에서도 PR 생성 허용 */
+  /** MANUAL_PUSH ?�로?�트?�서??PR ?�성 ?�용 */
   relaxAutoPushPolicy?: boolean;
 };
 
@@ -20,7 +20,7 @@ function jsonError(code: string, message: string, status: number) {
 }
 
 /**
- * GitHub PR 생성·동기화 (git 반영·push 이후).
+ * GitHub PR ?�성·?�기??(git 반영·push ?�후).
  * POST { gitChangeRequestId, action: "create" | "sync", relaxAutoPushPolicy? }
  */
 export async function POST(request: NextRequest) {
@@ -33,14 +33,14 @@ export async function POST(request: NextRequest) {
     try {
       body = (await request.json()) as Body;
     } catch {
-      return jsonError("INVALID_JSON", "요청 본문이 올바른 JSON이 아닙니다.", 400);
+      return jsonError("INVALID_JSON", "?�청 본문???�바�?JSON???�닙?�다.", 400);
     }
 
     const gitChangeRequestId = String(body.gitChangeRequestId ?? "").trim();
     const action = String(body.action ?? "create").trim().toLowerCase();
 
     if (!gitChangeRequestId) {
-      return jsonError("INVALID_REQUEST", "gitChangeRequestId가 필요합니다.", 400);
+      return jsonError("INVALID_REQUEST", "gitChangeRequestId가 ?�요?�니??", 400);
     }
 
     const gcr = await prisma.gitChangeRequest.findUnique({
@@ -48,11 +48,11 @@ export async function POST(request: NextRequest) {
       select: { projectId: true },
     });
     if (!gcr) {
-      return jsonError("NOT_FOUND", "GitChangeRequest를 찾을 수 없습니다.", 404);
+      return jsonError("NOT_FOUND", "GitChangeRequest�?찾을 ???�습?�다.", 404);
     }
 
     try {
-      await requireProjectPermissionById(gcr.projectId, userId, "canRun", "POST /api/task/git-pr");
+      await requireProjectPermissionById(gcr.projectId, userId, "canViewExecution", "POST /api/task/git-pr");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       }
       return NextResponse.json({
         success: true,
-        message: "PR 상태를 동기화했습니다.",
+        message: "PR ?�태�??�기?�했?�니??",
         data: {
           pullRequestState: r.data.pullRequestState,
           reviewStatus: r.data.reviewStatus,
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     if (action !== "create") {
       return jsonError(
         "INVALID_ACTION",
-        'action은 "create" 또는 "sync" 이어야 합니다.',
+        'action?� "create" ?�는 "sync" ?�어???�니??',
         400
       );
     }
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Pull Request를 생성했습니다.",
+      message: "Pull Request�??�성?�습?�다.",
       data: r.data,
     });
   } catch (error) {
@@ -106,6 +106,6 @@ export async function POST(request: NextRequest) {
       return denied;
     }
     console.error("POST /api/task/git-pr error:", error);
-    return jsonError("INTERNAL_ERROR", "GitHub PR 처리 중 오류가 발생했습니다.", 500);
+    return jsonError("INTERNAL_ERROR", "GitHub PR 처리 �??�류가 발생?�습?�다.", 500);
   }
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 function mapUploadRecord(record: {
   id: string;
@@ -37,7 +37,6 @@ function mapUploadRecord(record: {
 function inferSourceType(file: File) {
   const name = file.name.toLowerCase();
   const type = (file.type || "").toLowerCase();
-
   if (name.endsWith(".md") || type.startsWith("text/markdown")) {
     return "markdown";
   }
@@ -54,20 +53,13 @@ export async function POST(request: NextRequest) {
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "업로드할 파일이 필요합니다.",
-        },
+        { success: false, message: "???? ??? ?????." },
         { status: 400 }
       );
     }
-
     if (!projectId) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "projectId가 필요합니다.",
-        },
+        { success: false, message: "projectId? ?????." },
         { status: 400 }
       );
     }
@@ -77,7 +69,12 @@ export async function POST(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "POST /api/project-spec/upload");
+      await requireProjectPermissionById(
+        projectId,
+        userId,
+        "canEditProject",
+        "POST /api/project-spec/upload"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -89,7 +86,6 @@ export async function POST(request: NextRequest) {
     const sourceType = inferSourceType(file);
     let contentText: string | null = null;
     let contentStored = false;
-
     if (sourceType === "markdown") {
       try {
         contentText = await file.text();
@@ -114,7 +110,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: mapUploadRecord(saved),
-      message: "ProjectSpec 업로드 메타데이터가 등록되었습니다.",
+      message: "ProjectSpec ??? ?????? ???????.",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -123,10 +119,7 @@ export async function POST(request: NextRequest) {
     }
     console.error("POST /api/project-spec/upload error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "업로드 요청 처리 중 오류가 발생했습니다.",
-      },
+      { success: false, message: "??? ?? ?? ? ??? ??????." },
       { status: 500 }
     );
   }

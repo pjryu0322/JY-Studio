@@ -6,7 +6,7 @@ import {
 } from "@/lib/project-spec/mockSpecExtract";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 
 type GenerateTaskBody = {
@@ -31,8 +31,8 @@ function buildMockTasks(parsedJson: unknown) {
 
   if (projectOverview) {
     taskSeeds.push({
-      name: "① 아이디어·화면 범위 잡기",
-      description: `무엇을 만들지 한눈에 보이게 정리합니다. 개요: ${projectOverview.slice(0, 220)}`,
+      name: "�?� �??이�??�?�·�??면 �?�?? �?�기",
+      description: `무�??�? �?�?��? �??�??�?� 보이�? �?리�?��??�?�. �?�??: ${projectOverview.slice(0, 220)}`,
     });
   }
 
@@ -40,7 +40,7 @@ function buildMockTasks(parsedJson: unknown) {
     mainFeatures.forEach((feature, index) => {
       taskSeeds.push({
         name: beginnerFriendlyTaskTitle(feature, index),
-        description: `다음 요구를 구현합니다: ${feature}`,
+        description: `�?��? �??구를 구�??�?��??�?�: ${feature}`,
       });
     });
   }
@@ -48,8 +48,8 @@ function buildMockTasks(parsedJson: unknown) {
   if (constraints.length > 0) {
     constraints.forEach((constraint, index) => {
       taskSeeds.push({
-        name: `주의할 점 반영 ${index + 1}`,
-        description: `요구사항에 맞게 반영: ${constraint}`,
+        name: `주�?�?� 점 �?�?� ${index + 1}`,
+        description: `�??구�?��?��?� �?�? �?�?�: ${constraint}`,
       });
     });
   }
@@ -57,16 +57,16 @@ function buildMockTasks(parsedJson: unknown) {
   if (taskSeeds.length === 0) {
     taskSeeds.push(
       {
-        name: "① 만들 제품 범위 정하기",
-        description: "ProjectSpec에 무엇을 만들지 적어 두었는지 확인하고, 화면 단위로 나눕니다.",
+        name: "�?� �?�?� �?�?? �?�?? �?�??기",
+        description: "ProjectSpec�?� 무�??�? �?�?��? 적�?� �?��??�??�? �??인�??고, �??면 �?��??�? �??�??�??�?�.",
       },
       {
-        name: "② 핵심 화면·기능 만들기",
-        description: "사용자가 가장 먼저 쓰는 화면과 동작부터 구현합니다.",
+        name: "�?� �?��?� �??면·기�?� �?�?�기",
+        description: "�?��?��?��? �?�?� 먼�? �?��?? �??면과 �?�??�?�?� 구�??�?��??�?�.",
       },
       {
-        name: "③ 저장·오류 처리 다듬기",
-        description: "데이터가 남는지, 잘못 입력했을 때 안내가 있는지 확인합니다.",
+        name: "�?� �?�?�·�?��? �?리 �?��?�기",
+        description: "데이�?��? �?��??�?, �??못 �??력�??�? �?? �??�?��? �??�??�? �??인�?��??�?�.",
       }
     );
   }
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "projectId가 필요합니다.",
+          message: "projectId�? �??�??�?��??�?�.",
         },
         { status: 400 }
       );
@@ -92,7 +92,12 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(projectId, userId, "GET /api/task/generate");
+      await requireProjectPermissionById(
+        projectId,
+        userId,
+        "canGenerateTask",
+        "GET /api/task/generate"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -152,7 +157,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: "Task 목록 조회 중 오류가 발생했습니다.",
+        message: "Task 목록 조�?? �? �?��?�? �?�?��??�?��??�?�.",
       },
       { status: 500 }
     );
@@ -171,7 +176,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "projectSpecUploadId가 필요합니다.",
+          message: "projectSpecUploadId�? �??�??�?��??�?�.",
         },
         { status: 400 }
       );
@@ -191,7 +196,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "대상 ProjectSpecUpload를 찾을 수 없습니다.",
+          message: "�??�?� ProjectSpecUpload를 찾�? �?? �??�?��??�?�.",
         },
         { status: 404 }
       );
@@ -201,14 +206,19 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "parsedJson이 없어 Task를 생성할 수 없습니다.",
+          message: "parsedJson이 �??�?� Task를 �?��?��?� �?? �??�?��??�?�.",
         },
         { status: 400 }
       );
     }
 
     try {
-      await requireProjectOwnedByUser(upload.projectId, userId, "POST /api/task/generate");
+      await requireProjectPermissionById(
+        upload.projectId,
+        userId,
+        "canGenerateTask",
+        "POST /api/task/generate"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -283,7 +293,7 @@ export async function POST(request: Request) {
           };
         }),
       },
-      message: "Task가 생성되었습니다.",
+      message: "Task�? �?��?��?�??�?��??�?�.",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -294,7 +304,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        message: "Task 생성 중 오류가 발생했습니다.",
+        message: "Task �?��?� �? �?��?�? �?�?��??�?��??�?�.",
       },
       { status: 500 }
     );

@@ -3,7 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { extractMainFeaturesFromFreeText } from "@/lib/project-spec/mockSpecExtract";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 type ParseRequestBody = {
   projectSpecUploadId?: string;
@@ -16,10 +16,7 @@ export async function POST(request: Request) {
 
     if (!projectSpecUploadId) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "projectSpecUploadId가 필요합니다.",
-        },
+        { success: false, message: "projectSpecUploadId? ?????." },
         { status: 400 }
       );
     }
@@ -27,13 +24,9 @@ export async function POST(request: Request) {
     const upload = await prisma.projectSpecUpload.findUnique({
       where: { id: projectSpecUploadId },
     });
-
     if (!upload) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "대상 업로드 레코드를 찾을 수 없습니다.",
-        },
+        { success: false, message: "?? ??? ???? ?? ? ????." },
         { status: 404 }
       );
     }
@@ -43,7 +36,12 @@ export async function POST(request: Request) {
       return userId;
     }
     try {
-      await requireProjectOwnedByUser(upload.projectId, userId, "POST /api/project-spec/parse");
+      await requireProjectPermissionById(
+        upload.projectId,
+        userId,
+        "canEditProject",
+        "POST /api/project-spec/parse"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -56,12 +54,8 @@ export async function POST(request: Request) {
     if (!contentText) {
       const failed = await prisma.projectSpecUpload.update({
         where: { id: projectSpecUploadId },
-        data: {
-          parseStatus: "FAILED",
-          parsedAt: new Date(),
-        },
+        data: { parseStatus: "FAILED", parsedAt: new Date() },
       });
-
       return NextResponse.json(
         {
           success: false,
@@ -71,7 +65,7 @@ export async function POST(request: Request) {
             parsedAt: failed.parsedAt?.toISOString() ?? null,
             hasParsedJson: false,
           },
-          message: "파싱할 원문(contentText)이 없어 mock parsing에 실패했습니다.",
+          message: "??? ??(contentText)? ?? mock parsing? ??????.",
         },
         { status: 400 }
       );
@@ -81,11 +75,11 @@ export async function POST(request: Request) {
     const mainFeatures = extractMainFeaturesFromFreeText(contentText);
     const constraints: string[] = [];
     const lower = contentText.toLowerCase();
-    if (/password|비밀번호|bcrypt|oauth|jwt|세션/.test(lower)) {
-      constraints.push("인증·비밀번호는 안전한 방식(예: 해시 저장, HTTPS)을 전제로 설명할 것");
+    if (/password|bcrypt|oauth|jwt|session|auth/.test(lower)) {
+      constraints.push("?? ??? ?? ?? ? HTTPS ???? ?????.");
     }
-    if (/offline|오프라인|pwa/.test(lower)) {
-      constraints.push("오프라인 요구가 있으면 범위에 명시");
+    if (/offline|pwa/.test(lower)) {
+      constraints.push("???? ??? ??? ??? ?????.");
     }
     const parsedJson = {
       projectOverview,
@@ -111,7 +105,7 @@ export async function POST(request: Request) {
         parsedAt: updated.parsedAt?.toISOString() ?? null,
         hasParsedJson: Boolean(updated.parsedJson),
       },
-      message: "ProjectSpec mock parsing이 완료되었습니다.",
+      message: "ProjectSpec mock parsing? ???????.",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -120,10 +114,7 @@ export async function POST(request: Request) {
     }
     console.error("POST /api/project-spec/parse error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "mock parsing 처리 중 오류가 발생했습니다.",
-      },
+      { success: false, message: "ProjectSpec parsing ? ??? ??????." },
       { status: 500 }
     );
   }

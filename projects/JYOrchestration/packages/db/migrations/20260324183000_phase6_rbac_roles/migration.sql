@@ -16,3 +16,9 @@ LEFT JOIN "project_members" pm
   ON pm."projectId" = p."id"
  AND pm."userId" = p."ownerUserId"
 WHERE pm."id" IS NULL;
+
+COMMENT ON TABLE "project_members" IS '프로젝트 협업 멤버 역할 테이블';
+COMMENT ON COLUMN "project_members"."projectId" IS '소속 프로젝트 ID';
+COMMENT ON COLUMN "project_members"."userId" IS '멤버 사용자 ID';
+COMMENT ON COLUMN "project_members"."role" IS '프로젝트 내 역할(OWNER/EDITOR/REVIEWER/VIEWER)';
+COMMENT ON COLUMN "project_members"."createdAt" IS '생성 일시';

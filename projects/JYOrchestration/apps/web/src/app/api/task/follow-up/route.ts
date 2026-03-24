@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
-import { requireProjectOwnedByUser } from "@/lib/service/taskOwnershipGuard";
+import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { createFollowUpTaskAfterDoneSource } from "@/lib/service/taskService";
 
@@ -30,14 +30,19 @@ export async function POST(request: NextRequest) {
     const changeReason = String(body.changeReason ?? "").trim();
 
     if (!projectId) {
-      return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
+      return NextResponse.json({ success: false, message: "projectId? ?????." }, { status: 400 });
     }
     if (!sourceTaskId) {
-      return NextResponse.json({ success: false, message: "sourceTaskId가 필요합니다." }, { status: 400 });
+      return NextResponse.json({ success: false, message: "sourceTaskId? ?????." }, { status: 400 });
     }
 
     try {
-      await requireProjectOwnedByUser(projectId, userId, "POST /api/task/follow-up");
+      await requireProjectPermissionById(
+        projectId,
+        userId,
+        "canEditProject",
+        "POST /api/task/follow-up"
+      );
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -68,7 +73,7 @@ export async function POST(request: NextRequest) {
         actorType: TaskHistoryActorType.USER,
         actorId: userId,
         eventType: TaskHistoryEventType.FOLLOWUP_TASK_CREATED,
-        summary: "완료된 Task의 보완 작업이 생성되었습니다.",
+        summary: "??? Task? ?? ??? ???????.",
         detailJson: {
           sourceTaskId,
           followUpTaskId: followUp.id,
@@ -88,7 +93,7 @@ export async function POST(request: NextRequest) {
         taskKind: followUp.taskKind,
         order: followUp.order,
       },
-      message: "보완 작업이 생성되었습니다.",
+      message: "?? ??? ???????.",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -97,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
     console.error("POST /api/task/follow-up error:", error);
     return NextResponse.json(
-      { success: false, message: "보완 Task 생성 중 오류가 발생했습니다." },
+      { success: false, message: "?? Task ?? ? ??? ??????." },
       { status: 500 }
     );
   }

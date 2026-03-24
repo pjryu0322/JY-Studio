@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "projectId가 필요합니다.",
+          message: "projectId가 ?�요?�니??",
         },
         { status: 400 }
       );
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectPermissionById(projectId, userId, "canView", "GET /api/task/run");
+      await requireProjectPermissionById(projectId, userId, "canViewExecution", "GET /api/task/run");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: "TaskRun 조회 중 오류가 발생했습니다.",
+        message: "TaskRun 조회 �??�류가 발생?�습?�다.",
       },
       { status: 500 }
     );
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
     if (action === "force-fail-latest") {
       if (!taskIdForAction) {
         return NextResponse.json(
-          { success: false, message: "taskId가 필요합니다." },
+          { success: false, message: "taskId가 ?�요?�니??" },
           { status: 400 }
         );
       }
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
 
       if (!task) {
         return NextResponse.json(
-          { success: false, message: "대상 Task를 찾을 수 없습니다." },
+          { success: false, message: "?�??Task�?찾을 ???�습?�다." },
           { status: 404 }
         );
       }
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
       const projectId = task.projectId;
 
       try {
-        await requireTaskPermission(task.id, userId, "canRun", "POST /api/task/run:force-fail-latest");
+        await requireTaskPermission(task.id, userId, "canRunTask", "POST /api/task/run:force-fail-latest");
       } catch (error) {
         const denied = rbacErrorResponse(error);
         if (denied) {
@@ -155,14 +155,14 @@ export async function POST(request: Request) {
 
       if (!latestRun) {
         return NextResponse.json(
-          { success: false, message: "실패 처리할 TaskRun이 없습니다." },
+          { success: false, message: "?�패 처리??TaskRun???�습?�다." },
           { status: 404 }
         );
       }
 
       if (latestRun.status === "FAILED") {
         return NextResponse.json(
-          { success: false, message: "이미 FAILED 상태입니다." },
+          { success: false, message: "?��? FAILED ?�태?�니??" },
           { status: 400 }
         );
       }
@@ -176,7 +176,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            message: "Git 반영 요청과 연결된 Run은 강제 실패할 수 없습니다.",
+            message: "Git 반영 ?�청�??�결??Run?� 강제 ?�패?????�습?�다.",
           },
           { status: 400 }
         );
@@ -186,14 +186,14 @@ export async function POST(request: Request) {
         where: { id: latestRun.id },
         data: {
           status: "FAILED",
-          resultText: "[FORCE_FAIL] 운영자 강제 실패",
+          resultText: "[FORCE_FAIL] ?�영??강제 ?�패",
           resultJson: {
             success: false,
             mode: "force-fail",
             updatedFiles: [],
             commitMessage: null,
             logs: [],
-            error: "운영자 강제 실패",
+            error: "?�영??강제 ?�패",
           } as Prisma.InputJsonValue,
         },
         select: {
@@ -215,7 +215,7 @@ export async function POST(request: Request) {
           actorType: TaskHistoryActorType.USER,
           actorId: userId,
           eventType: TaskHistoryEventType.RUN_FAILED,
-          summary: "Task 실행 강제 실패(운영자)",
+          summary: "Task ?�행 강제 ?�패(?�영??",
           detailJson: {
             taskRunId: updated.id,
             taskPromptId: updated.taskPromptId,
@@ -229,14 +229,14 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         data: serializeTaskRunRow(updated),
-        message: "최신 TaskRun을 FAILED로 전환했습니다.",
+        message: "최신 TaskRun??FAILED�??�환?�습?�다.",
       });
     }
 
     if (action === "abort-run") {
       if (!taskPromptId) {
         return NextResponse.json(
-          { success: false, message: "taskPromptId가 필요합니다." },
+          { success: false, message: "taskPromptId가 ?�요?�니??" },
           { status: 400 }
         );
       }
@@ -252,7 +252,7 @@ export async function POST(request: Request) {
 
       if (!promptForAbort) {
         return NextResponse.json(
-          { success: false, message: "대상 TaskPrompt를 찾을 수 없습니다." },
+          { success: false, message: "?�??TaskPrompt�?찾을 ???�습?�다." },
           { status: 404 }
         );
       }
@@ -263,7 +263,7 @@ export async function POST(request: Request) {
         await requireTaskPermission(
           promptForAbort.taskId,
           userId,
-          "canRun",
+          "canRunTask",
           "POST /api/task/run:abort-run"
         );
       } catch (error) {
@@ -286,7 +286,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            message: "중단할 PENDING 상태 실행이 없습니다.",
+            message: "중단??PENDING ?�태 ?�행???�습?�다.",
           },
           { status: 400 }
         );
@@ -297,14 +297,14 @@ export async function POST(request: Request) {
           where: { id: pendingRun.id },
           data: {
             status: "FAILED",
-            resultText: "[ABORTED] 사용자 실행 중단",
+            resultText: "[ABORTED] ?�용???�행 중단",
             resultJson: {
               success: false,
               mode: "abort-run",
               updatedFiles: [],
               commitMessage: null,
               logs: [],
-              error: "사용자 실행 중단",
+              error: "?�용???�행 중단",
             } as Prisma.InputJsonValue,
           },
           select: {
@@ -332,7 +332,7 @@ export async function POST(request: Request) {
           actorType: TaskHistoryActorType.USER,
           actorId: userId,
           eventType: TaskHistoryEventType.MANUAL_CANCELLED,
-          summary: "Task 실행 중단(취소)",
+          summary: "Task ?�행 중단(취소)",
           detailJson: {
             taskRunId: aborted.id,
             taskPromptId: promptForAbort.id,
@@ -347,7 +347,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         data: serializeTaskRunRow(aborted),
-        message: "실행이 중단(FAILED) 처리되었습니다.",
+        message: "?�행??중단(FAILED) 처리?�었?�니??",
       });
     }
 
@@ -355,7 +355,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "taskPromptId가 필요합니다.",
+          message: "taskPromptId가 ?�요?�니??",
         },
         { status: 400 }
       );
@@ -379,7 +379,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "대상 TaskPrompt를 찾을 수 없습니다.",
+          message: "?�??TaskPrompt�?찾을 ???�습?�다.",
         },
         { status: 404 }
       );
@@ -388,7 +388,7 @@ export async function POST(request: Request) {
     const projectId = prompt.task.projectId;
 
     try {
-      await requireTaskPermission(prompt.taskId, userId, "canRun", "POST /api/task/run");
+      await requireTaskPermission(prompt.taskId, userId, "canRunTask", "POST /api/task/run");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -411,7 +411,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            message: "READY_FOR_GIT 전환 대상 Run이 없습니다.",
+            message: "READY_FOR_GIT ?�환 ?�??Run???�습?�다.",
           },
           { status: 404 }
         );
@@ -421,7 +421,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            message: "DONE 상태 Run만 READY_FOR_GIT로 전환할 수 있습니다.",
+            message: "DONE ?�태 Run�?READY_FOR_GIT�??�환?????�습?�다.",
           },
           { status: 400 }
         );
@@ -431,7 +431,7 @@ export async function POST(request: Request) {
         where: { id: latestRun.id },
         data: {
           status: "READY_FOR_GIT",
-          resultText: latestRun.resultText || "Mock 실행 완료",
+          resultText: latestRun.resultText || "Mock ?�행 ?�료",
         },
         select: {
           id: true,
@@ -457,7 +457,7 @@ export async function POST(request: Request) {
           actorType: TaskHistoryActorType.USER,
           actorId: userId,
           eventType: TaskHistoryEventType.MANUAL_APPROVED,
-          summary: "Git 반영 준비 승인(READY_FOR_GIT)",
+          summary: "Git 반영 준�??�인(READY_FOR_GIT)",
           detailJson: {
             taskRunId: updated.id,
             taskPromptId: prompt.id,
@@ -471,7 +471,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         data: serializeTaskRunRow(updated),
-        message: "TaskRun이 READY_FOR_GIT 상태로 전환되었습니다.",
+        message: "TaskRun??READY_FOR_GIT ?�태�??�환?�었?�니??",
       });
     }
 
@@ -484,7 +484,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "BLOCKED 상태의 Task는 실행할 수 없습니다.",
+          message: "BLOCKED ?�태??Task???�행?????�습?�다.",
         },
         { status: 400 }
       );
@@ -541,7 +541,7 @@ export async function POST(request: Request) {
           where: { id: run.id },
           data: {
             status: "DONE",
-            resultText: "Mock 실행 완료",
+            resultText: "Mock ?�행 ?�료",
             resultJson: storedExecutionJson as Prisma.InputJsonValue,
           },
           select: {
@@ -584,7 +584,7 @@ export async function POST(request: Request) {
         actorType: TaskHistoryActorType.USER,
         actorId: userId,
         eventType: TaskHistoryEventType.RUN_STARTED,
-        summary: "Task 실행 시작",
+        summary: "Task ?�행 ?�작",
         detailJson: {
           taskPromptId: prompt.id,
           taskRunId: completed.id,
@@ -602,7 +602,7 @@ export async function POST(request: Request) {
         actorType: TaskHistoryActorType.SYSTEM,
         actorId: null,
         eventType: TaskHistoryEventType.RUN_COMPLETED,
-        summary: "Task 실행 완료",
+        summary: "Task ?�행 ?�료",
         detailJson: {
           taskRunId: completed.id,
           taskPromptId: prompt.id,
@@ -649,9 +649,9 @@ export async function POST(request: Request) {
           responseRun = refreshed;
         }
       } else if (auto.httpStatus === 403) {
-        // 권한 없음: Run 성공은 유지, 수동 git-request 흐름으로 이어갈 수 있음
+        // 권한 ?�음: Run ?�공?� ?��?, ?�동 git-request ?�름?�로 ?�어�????�음
       } else if (auto.code === GIT_CHANGE_REQUEST_FROM_RUN_CODES.ALREADY_EXISTS) {
-        // 동시·재시도 등으로 이미 연결된 경우 조용히 최신 Run만 반환
+        // ?�시·?�시???�으�??��? ?�결??경우 조용??최신 Run�?반환
         const refreshed = await prisma.taskRun.findUnique({
           where: { id: completed.id },
           select: {
@@ -669,14 +669,14 @@ export async function POST(request: Request) {
           responseRun = refreshed;
         }
       } else {
-        console.error("Run 완료 후 자동 Git 요청 실패:", auto.code, auto.message);
+        console.error("Run ?�료 ???�동 Git ?�청 ?�패:", auto.code, auto.message);
       }
     }
 
     return NextResponse.json({
       success: true,
       data: serializeTaskRunRow(responseRun),
-      message: "Task mock 실행이 완료되었습니다.",
+      message: "Task mock ?�행???�료?�었?�니??",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -687,7 +687,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        message: "Task mock 실행 중 오류가 발생했습니다.",
+        message: "Task mock ?�행 �??�류가 발생?�습?�다.",
       },
       { status: 500 }
     );

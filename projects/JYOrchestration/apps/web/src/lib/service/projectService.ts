@@ -53,5 +53,5 @@ export async function projectIdExists(id: string): Promise<boolean> {
 }
 
 export async function requireOwnedProject(projectId: string, userId: string, action: string) {
-  return requireProjectPermission(projectId, userId, "canEdit", action);
+  return requireProjectPermission(projectId, userId, "canEditProject", action);
 }

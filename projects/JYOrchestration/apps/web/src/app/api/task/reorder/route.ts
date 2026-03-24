@@ -35,19 +35,19 @@ export async function POST(request: NextRequest) {
 
     if (!projectId) {
       return NextResponse.json(
-        { success: false, message: "projectId가 필요합니다." },
+        { success: false, message: "projectId가 ?�요?�니??" },
         { status: 400 }
       );
     }
     if (orderedTaskIds.length === 0) {
       return NextResponse.json(
-        { success: false, message: "orderedTaskIds 배열이 필요합니다." },
+        { success: false, message: "orderedTaskIds 배열???�요?�니??" },
         { status: 400 }
       );
     }
 
     try {
-      await requireProjectPermissionById(projectId, userId, "canReorder", "POST /api/task/reorder");
+      await requireProjectPermissionById(projectId, userId, "canReorderTask", "POST /api/task/reorder");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         createdAt: task.createdAt.toISOString(),
         updatedAt: task.updatedAt.toISOString(),
       })),
-      message: "Task 순서가 저장되었습니다.",
+      message: "Task ?�서가 ?�?�되?�습?�다.",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
     console.error("POST /api/task/reorder error:", error);
     return NextResponse.json(
-      { success: false, message: "Task 순서 저장 중 오류가 발생했습니다." },
+      { success: false, message: "Task ?�서 ?�??�??�류가 발생?�습?�다." },
       { status: 500 }
     );
   }

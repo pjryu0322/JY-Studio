@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "projectId가 필요합니다.",
+          message: "projectId가 ?�요?�니??",
         },
         { status: 400 }
       );
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       return userId;
     }
     try {
-      await requireProjectPermissionById(projectId, userId, "canView", "GET /api/task/git-request");
+      await requireProjectPermissionById(projectId, userId, "canViewProject", "GET /api/task/git-request");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) {
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: "Git 반영 요청 목록 조회 중 오류가 발생했습니다.",
+        message: "Git 반영 ?�청 목록 조회 �??�류가 발생?�습?�다.",
       },
       { status: 500 }
     );
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "taskRunId가 필요합니다.",
+          message: "taskRunId가 ?�요?�니??",
         },
         { status: 400 }
       );
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
     });
     if (!runRow) {
       return NextResponse.json(
-        { success: false, message: "대상 TaskRun을 찾을 수 없습니다." },
+        { success: false, message: "?�??TaskRun??찾을 ???�습?�다." },
         { status: 404 }
       );
     }
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
       await requireProjectPermissionById(
         runRow.task.projectId,
         userId,
-        "canRun",
+        "canRegisterGitRequest",
         "POST /api/task/git-request"
       );
     } catch (error) {
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       data: result.data,
-      message: "Git 반영 요청이 등록되었습니다.",
+      message: "Git 반영 ?�청???�록?�었?�니??",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        message: "Git 반영 요청 등록 중 오류가 발생했습니다.",
+        message: "Git 반영 ?�청 ?�록 �??�류가 발생?�습?�다.",
       },
       { status: 500 }
     );

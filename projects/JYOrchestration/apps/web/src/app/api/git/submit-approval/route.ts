@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     if (!gitChangeRequestId) {
       return jsonError(
         GIT_GATE_ERROR_CODES.INVALID_REQUEST,
-        "gitChangeRequestId가 필요합니다.",
+        "gitChangeRequestId가 ?�요?�니??",
         400
       );
     }
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     if (!gcr) {
       return jsonError(
         GIT_GATE_ERROR_CODES.NOT_FOUND,
-        "대상 Git 반영 요청을 찾을 수 없습니다.",
+        "?�??Git 반영 ?�청??찾을 ???�습?�다.",
         404
       );
     }
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       await requireProjectPermissionById(
         gcr.projectId,
         userId,
-        "canRun",
+        "canRegisterGitRequest",
         "POST /api/git/submit-approval"
       );
     } catch (error) {
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
         ...result.data,
         updatedAt: result.data.updatedAt.toISOString(),
       },
-      message: "승인 요청이 제출되었습니다.",
+      message: "?�인 ?�청???�출?�었?�니??",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     console.error("POST /api/git/submit-approval error:", error);
     return jsonError(
       GIT_GATE_ERROR_CODES.INVALID_REQUEST,
-      "승인 요청 제출 중 오류가 발생했습니다.",
+      "?�인 ?�청 ?�출 �??�류가 발생?�습?�다.",
       500
     );
   }
