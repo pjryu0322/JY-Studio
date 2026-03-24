@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
     if (!projectId) {
-      return NextResponse.json({ success: false, message: "projectId가 ?�요?�니??" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     }
 
     try {
@@ -44,7 +44,18 @@ export async function GET(request: NextRequest) {
         permissions: myRole ? RolePermissions[myRole] : null,
         ownerUserId,
         isProjectOwner: ownerUserId === userId,
-        members: rows.map((m) => ({ userId: m.userId, role: m.role })),
+        canManageMembers: myRole === "OWNER",
+        members: rows.map((m) => ({
+          memberId: m.memberId,
+          userId: m.userId,
+          displayName: m.displayName,
+          role: m.role,
+          memberType: m.memberType,
+          aiProvider: m.aiProvider,
+          aiAgentKey: m.aiAgentKey,
+          isOwner: m.isOwner,
+          canManageMembers: myRole === "OWNER",
+        })),
       },
     });
   } catch (error) {
@@ -54,7 +65,7 @@ export async function GET(request: NextRequest) {
     }
     console.error("GET /api/project/session-context error:", error);
     return NextResponse.json(
-      { success: false, message: "?�션 컨텍?�트�?불러?�는 �??�류가 발생?�습?�다." },
+      { success: false, message: "세션 컨텍스트를 불러오는 중 오류가 발생했습니다." },
       { status: 500 }
     );
   }

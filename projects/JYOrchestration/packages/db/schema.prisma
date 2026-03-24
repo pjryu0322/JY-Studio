@@ -19,6 +19,14 @@ enum ProjectMemberRole {
   VIEWER
 }
 
+/// 프로젝트 멤버 유형
+enum ProjectMemberType {
+  /// 사람 사용자
+  HUMAN
+  /// AI 멤버
+  AI
+}
+
 model User {
   /// 사용자 ID
   id           String   @id @default(cuid())
@@ -39,6 +47,8 @@ model User {
   ownedProjects Project[]
   /// 프로젝트 멤버십 목록
   memberships   ProjectMember[]
+  /// 초대한 프로젝트 멤버 목록
+  invitedProjectMembers ProjectMember[] @relation("ProjectMemberInvitedBy")
   /// 소유 Task (프로젝트 소유자와 동일한 ownerUserId)
   ownedTasks      Task[]         @relation("TaskOwner")
 
@@ -181,18 +191,34 @@ model ProjectMember {
   id        String            @id @default(uuid())
   /// 프로젝트 ID
   projectId String
-  /// 사용자 ID
-  userId    String
+  /// 사용자 ID(HUMAN일 때 사용)
+  userId    String?
+  /// 멤버 유형(HUMAN/AI)
+  memberType ProjectMemberType @default(HUMAN)
+  /// 표시 이름(특히 AI 멤버용)
+  displayName String?
+  /// AI 제공자(OPENAI/INTERNAL 등)
+  aiProvider String?
+  /// AI 에이전트 식별 키
+  aiAgentKey String?
+  /// 초대한 사용자 ID
+  invitedByUserId String?
   /// 프로젝트 내 역할
   role      ProjectMemberRole
   /// 생성일시
   createdAt DateTime          @default(now())
+  /// 수정일시
+  updatedAt DateTime          @updatedAt
   /// 소속 프로젝트
   project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  /// 연결 사용자
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 연결 사용자(HUMAN 멤버)
+  user      User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 초대한 사용자
+  invitedBy User?             @relation("ProjectMemberInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, userId])
+  @@index([projectId, memberType])
+  @@index([projectId, role])
   @@map("project_members")
 }
 
