@@ -18,14 +18,25 @@ export type ProjectMemberUiRow = {
 
 type AiActionRow = {
   id: string;
+  projectId: string;
   actionType: string;
   status: string;
   executionMode: string;
+  providerKey: string | null;
   taskId: string | null;
   gitChangeRequestId: string | null;
   requestedAt: string;
   requestedByUserId: string;
-  targetMember: { displayName: string | null; role: string };
+  summaryPreview: string | null;
+  errorMessage: string | null;
+  lastError: string | null;
+  retryCount: number;
+  consumedBy: string | null;
+  targetMember: {
+    displayName: string | null;
+    role: string;
+    aiProvider: string | null;
+  };
 };
 
 type ProjectMembersSectionProps = {
@@ -38,6 +49,8 @@ type ProjectMembersSectionProps = {
   taskPrompts?: TaskPromptItem[];
   canRequestAiMemberAction?: boolean;
   canRequestAiReviewAction?: boolean;
+  /** OWNER/EDITOR: 디스패치·run-once·재시도 큐잉 */
+  canDispatchAiMemberAction?: boolean;
   /** 액션 수정(스텁/완료) 권한 판별용 */
   currentProjectRole?: ProjectRole | null;
   currentUserId?: string | null;
@@ -76,6 +89,7 @@ export function ProjectMembersSection({
   taskPrompts = [],
   canRequestAiMemberAction = false,
   canRequestAiReviewAction = false,
+  canDispatchAiMemberAction = false,
   currentProjectRole = null,
   currentUserId = null,
 }: ProjectMembersSectionProps) {
@@ -93,6 +107,8 @@ export function ProjectMembersSection({
 
   const [aiActions, setAiActions] = useState<AiActionRow[]>([]);
   const [actionsLoading, setActionsLoading] = useState(false);
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+  const [runOnceBusy, setRunOnceBusy] = useState(false);
 
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestMemberId, setRequestMemberId] = useState<string | null>(null);
@@ -113,6 +129,17 @@ export function ProjectMembersSection({
     if (role === "OWNER" || role === "EDITOR") return true;
     if (role === "REVIEWER") return a.actionType === "REVIEW_REQUEST";
     return false;
+  }
+
+  function formatActionTarget(a: AiActionRow): string {
+    if (a.gitChangeRequestId) {
+      return `Git 변경 요청 ${a.gitChangeRequestId.slice(0, 8)}…`;
+    }
+    if (a.taskId) {
+      const t = tasks.find((x) => x.id === a.taskId);
+      return t ? `Task: ${t.name}` : `Task ${a.taskId.slice(0, 8)}…`;
+    }
+    return "프로젝트";
   }
 
   const reloadActions = useCallback(async () => {
@@ -224,6 +251,7 @@ export function ProjectMembersSection({
 
   async function patchAction(actionId: string, payload: Record<string, unknown>) {
     setError(null);
+    setActionBusyId(actionId);
     try {
       const res = await fetch(`/api/ai-member-actions/${encodeURIComponent(actionId)}`, {
         method: "PATCH",
@@ -238,6 +266,74 @@ export function ProjectMembersSection({
       await reloadActions();
     } catch (e) {
       setError(e instanceof Error ? e.message : "상태 변경 중 오류입니다.");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function dispatchAction(actionId: string) {
+    setError(null);
+    setActionBusyId(actionId);
+    try {
+      const res = await fetch(`/api/ai-member-actions/${encodeURIComponent(actionId)}/dispatch`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "디스패치에 실패했습니다.");
+      }
+      setMessage("액션이 디스패치되었습니다.");
+      await reloadActions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "디스패치 중 오류입니다.");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function retryAction(actionId: string) {
+    setError(null);
+    setActionBusyId(actionId);
+    try {
+      const res = await fetch(`/api/ai-member-actions/${encodeURIComponent(actionId)}/retry`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "재시도 큐잉에 실패했습니다.");
+      }
+      setMessage("액션을 다시 요청(REQUESTED) 상태로 두었습니다.");
+      await reloadActions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "재시도 중 오류입니다.");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function runDispatchOnceForProject() {
+    if (!projectId) return;
+    setError(null);
+    setRunOnceBusy(true);
+    try {
+      const res = await fetch("/api/ai-member-actions/dispatch/run-once", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "run-once 실행에 실패했습니다.");
+      }
+      setMessage("디스패처 1회 실행을 완료했습니다.");
+      await reloadActions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "run-once 중 오류입니다.");
+    } finally {
+      setRunOnceBusy(false);
     }
   }
 
@@ -565,59 +661,117 @@ export function ProjectMembersSection({
       ) : null}
 
       <div style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>AI 멤버 액션 이력</h3>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>AI 멤버 액션</h3>
+          {canDispatchAiMemberAction ? (
+            <button type="button" disabled={runOnceBusy || !projectId} onClick={runDispatchOnceForProject}>
+              {runOnceBusy ? "실행 중…" : "디스패처 1회(run-once)"}
+            </button>
+          ) : null}
+        </div>
+        <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px 0" }}>
+          백그라운드 처리는 환경 변수 <code style={{ fontSize: 11 }}>AI_ACTION_WORKER_ENABLED=true</code> 로 켤 수
+          있습니다.
+        </p>
         {actionsLoading ? (
           <p style={{ fontSize: 13, color: "#666" }}>불러오는 중…</p>
         ) : aiActions.length === 0 ? (
           <p style={{ fontSize: 13, color: "#666" }}>등록된 요청이 없습니다.</p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-            {aiActions.slice(0, 30).map((a) => (
-              <li
-                key={a.id}
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 13,
-                  borderBottom: "1px solid #eee",
-                  paddingBottom: 6,
-                }}
-              >
-                <span style={statusBadgeStyle(a.status)}>{a.status}</span>
-                <span style={{ fontWeight: 600 }}>{a.actionType}</span>
-                <span style={{ color: "#666" }}>
-                  → {a.targetMember.displayName ?? a.targetMember.role} ({a.targetMember.role})
-                </span>
-                <span style={{ color: "#94a3b8", fontSize: 12 }}>{a.requestedAt}</span>
-                {canPatchListedAction(a) ? (
-                  <>
-                    {a.status === "REQUESTED" || a.status === "IN_PROGRESS" ? (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
+            {aiActions.slice(0, 30).map((a) => {
+              const busy = actionBusyId === a.id;
+              const aiLabel =
+                a.targetMember.displayName ??
+                a.targetMember.aiProvider ??
+                a.targetMember.role;
+              return (
+                <li
+                  key={a.id}
+                  style={{
+                    fontSize: 13,
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    background: "#fafafa",
+                  }}
+                >
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span style={statusBadgeStyle(a.status)}>{a.status}</span>
+                    <span style={{ fontWeight: 600 }}>{a.actionType}</span>
+                    <span style={{ color: "#64748b", fontSize: 12 }}>
+                      {a.executionMode}
+                      {a.providerKey ? ` · ${a.providerKey}` : ""}
+                    </span>
+                  </div>
+                  <div style={{ color: "#334155", marginBottom: 4 }}>
+                    🤖 {aiLabel} → 대상: {formatActionTarget(a)}
+                  </div>
+                  {a.summaryPreview ? (
+                    <div style={{ color: "#475569", fontSize: 12, marginBottom: 4, lineHeight: 1.45 }}>
+                      요약: {a.summaryPreview}
+                      {a.summaryPreview.length >= 240 ? "…" : ""}
+                    </div>
+                  ) : null}
+                  {(a.lastError || a.errorMessage) && (a.status === "FAILED" || a.status === "IN_PROGRESS") ? (
+                    <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 4 }}>
+                      {a.lastError || a.errorMessage}
+                    </div>
+                  ) : null}
+                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 8 }}>{a.requestedAt}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                    {canDispatchAiMemberAction && a.status === "REQUESTED" ? (
+                      <button type="button" disabled={busy} onClick={() => dispatchAction(a.id)}>
+                        {busy ? "처리 중…" : "디스패치"}
+                      </button>
+                    ) : null}
+                    {canDispatchAiMemberAction && (a.status === "FAILED" || a.status === "CANCELED") ? (
+                      <button type="button" disabled={busy} onClick={() => retryAction(a.id)}>
+                        {busy ? "처리 중…" : "다시 요청"}
+                      </button>
+                    ) : null}
+                    {canPatchListedAction(a) ? (
                       <>
-                        <button type="button" onClick={() => patchAction(a.id, { runStub: true })}>
-                          스텁 완료
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            patchAction(a.id, { status: "DONE", resultPayload: { manual: true } })
-                          }
-                        >
-                          수동 완료
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => patchAction(a.id, { status: "FAILED", errorMessage: "수동 실패" })}
-                        >
-                          실패 처리
-                        </button>
+                        {a.status === "REQUESTED" || a.status === "IN_PROGRESS" ? (
+                          <>
+                            <button type="button" disabled={busy} onClick={() => patchAction(a.id, { runStub: true })}>
+                              스텁 완료
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                patchAction(a.id, { status: "DONE", resultPayload: { manual: true } })
+                              }
+                            >
+                              수동 완료
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                patchAction(a.id, { status: "FAILED", errorMessage: "수동 실패" })
+                              }
+                            >
+                              실패 처리
+                            </button>
+                          </>
+                        ) : null}
                       </>
                     ) : null}
-                  </>
-                ) : null}
-              </li>
-            ))}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

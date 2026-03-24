@@ -1,14 +1,23 @@
+import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import type {
   AiMemberActionExecutionModeId,
   AiMemberActionStatusId,
   AiMemberActionTypeId,
 } from "@/lib/ai-member/aiMemberActionTypes";
+import {
+  auditAiMemberActionCompletedByUser,
+  auditAiMemberActionFailedByUser,
+  auditAiMemberActionRequested,
+} from "@/lib/ai-member/aiMemberActionAudit";
+import {
+  claimAiMemberActionById,
+  dispatchClaimedAiMemberAction,
+} from "@/lib/ai-member/aiMemberActionDispatcher";
+import { ingestAiMemberActionResult } from "@/lib/ai-member/aiMemberActionResultIngestion";
 import { requireProjectPermission, getUserProjectRole } from "@/lib/auth/rbacGuard";
-import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { prisma } from "@/lib/prisma";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
-import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 export class AiMemberActionValidationError extends Error {
   constructor(message: string) {
@@ -25,20 +34,34 @@ async function requireCreatePermission(projectId: string, userId: string, action
   await requireProjectPermission(projectId, userId, permissionForCreate(actionType), context);
 }
 
-async function assertCanPatchAction(projectId: string, userId: string, row: { requestedByUserId: string; actionType: AiMemberActionTypeId }) {
+export async function requireDispatchAiMemberActionPermission(projectId: string, userId: string, context: string) {
+  await requireProjectPermission(projectId, userId, "canDispatchAiMemberAction", context);
+}
+
+async function assertCanPatchAction(
+  projectId: string,
+  userId: string,
+  row: { requestedByUserId: string; actionType: AiMemberActionTypeId }
+) {
   await requireProjectPermission(projectId, userId, "canViewProject", "patch member action");
   const role = await getUserProjectRole(projectId, userId);
   if (!role) {
     throw new ProjectAccessDeniedError("프로젝트 접근 권한이 없습니다.");
   }
+  if (role === "VIEWER") {
+    throw new ProjectAccessDeniedError("이 액션을 수정할 권한이 없습니다.");
+  }
   if (row.requestedByUserId === userId) {
+    if (role === "REVIEWER" && row.actionType !== "REVIEW_REQUEST") {
+      throw new ProjectAccessDeniedError("이 액션을 수정할 권한이 없습니다.");
+    }
     return;
   }
   if (role === "OWNER" || role === "EDITOR") {
     return;
   }
-  if (role === "REVIEWER" && row.actionType === "REVIEW_REQUEST") {
-    return;
+  if (role === "REVIEWER") {
+    throw new ProjectAccessDeniedError("이 액션을 수정할 권한이 없습니다.");
   }
   throw new ProjectAccessDeniedError("이 액션을 수정할 권한이 없습니다.");
 }
@@ -132,61 +155,45 @@ async function validateTargetRefs(
   }
 }
 
-async function resolveTaskIdForAudit(input: {
-  taskId?: string | null;
-  taskPromptId?: string | null;
-  taskRunId?: string | null;
-  gitChangeRequestId?: string | null;
-}): Promise<string | null> {
-  if (input.taskId) return input.taskId;
-  if (input.taskPromptId) {
-    const p = await prisma.taskPrompt.findUnique({
-      where: { id: input.taskPromptId },
-      select: { taskId: true },
-    });
-    return p?.taskId ?? null;
-  }
-  if (input.taskRunId) {
-    const r = await prisma.taskRun.findUnique({
-      where: { id: input.taskRunId },
-      select: { taskId: true },
-    });
-    return r?.taskId ?? null;
-  }
-  if (input.gitChangeRequestId) {
-    const g = await prisma.gitChangeRequest.findUnique({
-      where: { id: input.gitChangeRequestId },
-      select: { taskId: true },
-    });
-    return g?.taskId ?? null;
-  }
-  return null;
-}
-
-async function appendActionTaskHistory(input: {
-  projectId: string;
-  taskId: string | null;
-  requestedByUserId: string;
-  eventType: string;
-  summary: string;
-  detailJson: Prisma.InputJsonObject;
-}) {
-  if (!input.taskId) {
-    return;
-  }
-  try {
-    await appendTaskHistory({
-      projectId: input.projectId,
-      taskId: input.taskId,
-      actorType: TaskHistoryActorType.USER,
-      actorId: input.requestedByUserId,
-      eventType: input.eventType,
-      summary: input.summary,
-      detailJson: input.detailJson,
-    });
-  } catch {
-    // 감사 베스트 에포트
-  }
+function auditPayloadFromRow(
+  row: {
+    id: string;
+    projectId: string;
+    taskId: string | null;
+    taskPromptId: string | null;
+    taskRunId: string | null;
+    gitChangeRequestId: string | null;
+    actionType: string;
+    projectMemberId: string;
+    requestedByUserId: string;
+    executionMode: string;
+    providerKey: string | null;
+  },
+  pm: { displayName: string | null },
+  status: string,
+  summary: string
+) {
+  return {
+    projectId: row.projectId,
+    taskId: row.taskId,
+    taskPromptId: row.taskPromptId,
+    taskRunId: row.taskRunId,
+    gitChangeRequestId: row.gitChangeRequestId,
+    actionId: row.id,
+    actionType: row.actionType,
+    projectMemberId: row.projectMemberId,
+    aiDisplayName: pm.displayName,
+    requestedByUserId: row.requestedByUserId,
+    status,
+    summary,
+    detailJson: {
+      actionId: row.id,
+      actionType: row.actionType,
+      projectMemberId: row.projectMemberId,
+      executionMode: row.executionMode,
+      providerKey: row.providerKey,
+    },
+  };
 }
 
 export type CreateAiMemberActionInput = {
@@ -199,6 +206,8 @@ export type CreateAiMemberActionInput = {
   gitChangeRequestId?: string | null;
   requestPayload?: Prisma.InputJsonValue | null;
   executionMode?: AiMemberActionExecutionModeId | null;
+  providerKey?: string | null;
+  correlationKey?: string | null;
   requestedByUserId: string;
 };
 
@@ -218,8 +227,11 @@ export async function createAiMemberAction(input: CreateAiMemberActionInput) {
   });
 
   const mode = input.executionMode ?? "STUB";
+  const correlationKey =
+    input.correlationKey?.trim() ||
+    `${input.projectId}:${input.actionType}:${input.taskId ?? ""}:${input.gitChangeRequestId ?? ""}:${randomUUID().slice(0, 8)}`;
 
-  const row = await prisma.projectMemberAction.create({
+  const created = await prisma.projectMemberAction.create({
     data: {
       projectId: input.projectId,
       taskId: input.taskId?.trim() || null,
@@ -231,32 +243,27 @@ export async function createAiMemberAction(input: CreateAiMemberActionInput) {
       status: "REQUESTED",
       requestPayload: input.requestPayload ?? undefined,
       executionMode: mode,
+      providerKey: input.providerKey?.trim() || null,
+      correlationKey,
       requestedByUserId: input.requestedByUserId,
     },
+  });
+
+  const row = await prisma.projectMemberAction.findUniqueOrThrow({
+    where: { id: created.id },
     include: {
       projectMember: { select: { id: true, displayName: true, memberType: true, role: true, aiProvider: true } },
     },
   });
 
-  const auditTaskId = await resolveTaskIdForAudit({
-    taskId: row.taskId,
-    taskPromptId: row.taskPromptId,
-    taskRunId: row.taskRunId,
-    gitChangeRequestId: row.gitChangeRequestId,
-  });
-
-  await appendActionTaskHistory({
-    projectId: row.projectId,
-    taskId: auditTaskId,
-    requestedByUserId: input.requestedByUserId,
-    eventType: TaskHistoryEventType.ACTION_REQUESTED,
-    summary: `멤버 액션 요청: ${row.actionType}`,
-    detailJson: {
-      actionId: row.id,
-      actionType: row.actionType,
-      projectMemberId: row.projectMemberId,
-      executionMode: row.executionMode,
-    },
+  await auditAiMemberActionRequested({
+    ...auditPayloadFromRow(
+      row,
+      row.projectMember,
+      "REQUESTED",
+      `AI 멤버 액션 요청: ${row.actionType}`
+    ),
+    actorUserId: input.requestedByUserId,
   });
 
   return row;
@@ -299,6 +306,38 @@ export async function listAiMemberActionsByTask(taskId: string, actorUserId: str
   });
 }
 
+export async function listAiMemberActionsByGitChangeRequest(gitChangeRequestId: string, actorUserId: string) {
+  const gcr = await prisma.gitChangeRequest.findUnique({
+    where: { id: gitChangeRequestId },
+    select: { projectId: true },
+  });
+  if (!gcr) {
+    throw new AiMemberActionValidationError("Git 변경 요청을 찾을 수 없습니다.");
+  }
+  await requireProjectPermission(gcr.projectId, actorUserId, "canViewProject", "aiMemberActionService.listByGit");
+  return prisma.projectMemberAction.findMany({
+    where: { projectId: gcr.projectId, gitChangeRequestId },
+    orderBy: { requestedAt: "desc" },
+    include: {
+      projectMember: { select: { id: true, displayName: true, memberType: true, role: true, aiProvider: true } },
+    },
+  });
+}
+
+export async function getAiMemberActionById(actionId: string, actorUserId: string) {
+  const row = await prisma.projectMemberAction.findUnique({
+    where: { id: actionId },
+    include: {
+      projectMember: { select: { id: true, displayName: true, memberType: true, role: true, aiProvider: true } },
+    },
+  });
+  if (!row) {
+    throw new AiMemberActionValidationError("액션을 찾을 수 없습니다.");
+  }
+  await requireProjectPermission(row.projectId, actorUserId, "canViewProject", "aiMemberActionService.getById");
+  return row;
+}
+
 export async function updateAiMemberActionStatus(input: {
   actionId: string;
   actorUserId: string;
@@ -309,6 +348,9 @@ export async function updateAiMemberActionStatus(input: {
 }) {
   const row = await prisma.projectMemberAction.findUnique({
     where: { id: input.actionId },
+    include: {
+      projectMember: { select: { displayName: true } },
+    },
   });
   if (!row) {
     throw new AiMemberActionValidationError("액션을 찾을 수 없습니다.");
@@ -319,16 +361,36 @@ export async function updateAiMemberActionStatus(input: {
   });
 
   const now = new Date();
+  if (input.status === "DONE" && input.resultPayload !== undefined && input.resultPayload !== null) {
+    const rp = input.resultPayload;
+    if (typeof rp === "object" && !Array.isArray(rp)) {
+      await ingestAiMemberActionResult({
+        actionId: row.id,
+        projectId: row.projectId,
+        actionType: row.actionType,
+        taskId: row.taskId,
+        gitChangeRequestId: row.gitChangeRequestId,
+        taskRunId: row.taskRunId,
+        resultPayload: rp as Record<string, unknown>,
+      });
+    }
+  }
+
   const data: Prisma.ProjectMemberActionUpdateInput = {
     status: input.status,
     resultPayload: input.resultPayload ?? undefined,
     errorMessage: input.errorMessage ?? undefined,
+    consumedBy: input.status === "DONE" || input.status === "FAILED" || input.status === "CANCELED" ? null : undefined,
   };
   if (input.executionMode) {
     data.executionMode = input.executionMode;
   }
   if (input.status === "IN_PROGRESS" && !row.startedAt) {
     data.startedAt = now;
+  }
+  if (input.status === "FAILED") {
+    data.lastError = input.errorMessage ?? undefined;
+    data.retryCount = { increment: 1 };
   }
   if (input.status === "DONE" || input.status === "FAILED" || input.status === "CANCELED") {
     data.finishedAt = now;
@@ -342,40 +404,22 @@ export async function updateAiMemberActionStatus(input: {
     },
   });
 
-  const auditTaskId = await resolveTaskIdForAudit({
-    taskId: updated.taskId,
-    taskPromptId: updated.taskPromptId,
-    taskRunId: updated.taskRunId,
-    gitChangeRequestId: updated.gitChangeRequestId,
-  });
+  const auditBase = auditPayloadFromRow(
+    updated,
+    updated.projectMember,
+    input.status,
+    input.status === "DONE"
+      ? `AI 멤버 액션 수동 완료: ${updated.actionType}`
+      : input.status === "FAILED"
+        ? `AI 멤버 액션 수동 실패: ${updated.actionType}`
+        : input.status
+  );
 
   if (input.status === "DONE") {
-    await appendActionTaskHistory({
-      projectId: updated.projectId,
-      taskId: auditTaskId,
-      requestedByUserId: input.actorUserId,
-      eventType: TaskHistoryEventType.ACTION_COMPLETED,
-      summary: `멤버 액션 완료: ${updated.actionType}`,
-      detailJson: {
-        actionId: updated.id,
-        actionType: updated.actionType,
-        projectMemberId: updated.projectMemberId,
-      },
-    });
+    await auditAiMemberActionCompletedByUser(auditBase, input.actorUserId);
   }
   if (input.status === "FAILED") {
-    await appendActionTaskHistory({
-      projectId: updated.projectId,
-      taskId: auditTaskId,
-      requestedByUserId: input.actorUserId,
-      eventType: TaskHistoryEventType.ACTION_FAILED,
-      summary: `멤버 액션 실패: ${updated.actionType}`,
-      detailJson: {
-        actionId: updated.id,
-        actionType: updated.actionType,
-        errorMessage: String(input.errorMessage ?? updated.errorMessage ?? ""),
-      },
-    });
+    await auditAiMemberActionFailedByUser(auditBase, input.actorUserId);
   }
 
   return updated;
@@ -410,16 +454,115 @@ export async function failAiMemberAction(input: {
   });
 }
 
-/** STUB: 요청 직후 인진행 → 즉시 완료 더미 결과 */
-export async function runStubAiMemberAction(actionId: string, actorUserId: string) {
-  await updateAiMemberActionStatus({
-    actionId,
-    actorUserId,
-    status: "IN_PROGRESS",
+/** StubExecutor + ingestion + 감사(디스패처 경로) */
+export async function runStubPipelineForUser(actionId: string, actorUserId: string) {
+  const row = await prisma.projectMemberAction.findUnique({
+    where: { id: actionId },
+    include: {
+      projectMember: { select: { displayName: true, aiProvider: true, aiAgentKey: true } },
+    },
   });
-  return completeAiMemberAction({
-    actionId,
-    actorUserId,
-    resultPayload: { mode: "STUB", completedAt: new Date().toISOString(), note: "자동 스텁 완료" },
+  if (!row) {
+    throw new AiMemberActionValidationError("액션을 찾을 수 없습니다.");
+  }
+  await assertCanPatchAction(row.projectId, actorUserId, {
+    requestedByUserId: row.requestedByUserId,
+    actionType: row.actionType as AiMemberActionTypeId,
+  });
+
+  const tag = `user:${actorUserId}`;
+  let working = row;
+  if (row.status === "REQUESTED") {
+    const claimed = await claimAiMemberActionById(actionId, tag);
+    if (!claimed) {
+      throw new AiMemberActionValidationError("액션을 클레임할 수 없습니다. 다른 워커가 처리 중일 수 있습니다.");
+    }
+    working = claimed;
+  }
+
+  if (working.status !== "IN_PROGRESS") {
+    throw new AiMemberActionValidationError("REQUESTED 또는 IN_PROGRESS 상태에서만 스텁 파이프라인을 실행할 수 있습니다.");
+  }
+
+  await prisma.projectMemberAction.update({
+    where: { id: actionId },
+    data: { executionMode: "STUB" },
+  });
+
+  const fresh = await prisma.projectMemberAction.findUniqueOrThrow({
+    where: { id: actionId },
+    include: {
+      projectMember: { select: { displayName: true, aiProvider: true, aiAgentKey: true } },
+    },
+  });
+
+  await dispatchClaimedAiMemberAction(fresh, tag);
+  return prisma.projectMemberAction.findUniqueOrThrow({
+    where: { id: actionId },
+    include: {
+      projectMember: { select: { id: true, displayName: true, memberType: true, role: true, aiProvider: true } },
+    },
+  });
+}
+
+export async function dispatchAiMemberActionForUser(actionId: string, actorUserId: string) {
+  const row = await prisma.projectMemberAction.findUnique({
+    where: { id: actionId },
+    include: {
+      projectMember: { select: { displayName: true, aiProvider: true, aiAgentKey: true } },
+    },
+  });
+  if (!row) {
+    throw new AiMemberActionValidationError("액션을 찾을 수 없습니다.");
+  }
+  await requireDispatchAiMemberActionPermission(row.projectId, actorUserId, "aiMemberActionService.dispatchForUser");
+  if (row.status !== "REQUESTED") {
+    throw new AiMemberActionValidationError("REQUESTED 상태의 액션만 디스패치할 수 있습니다.");
+  }
+  const tag = `user-dispatch:${actorUserId}`;
+  const claimed = await claimAiMemberActionById(actionId, tag);
+  if (!claimed) {
+    throw new AiMemberActionValidationError("액션을 클레임할 수 없습니다.");
+  }
+  await dispatchClaimedAiMemberAction(claimed, tag);
+  return prisma.projectMemberAction.findUniqueOrThrow({
+    where: { id: actionId },
+    include: {
+      projectMember: { select: { id: true, displayName: true, memberType: true, role: true, aiProvider: true } },
+    },
+  });
+}
+
+/** FAILED → REQUESTED 재큐(OWNER/EDITOR) */
+export async function retryAiMemberActionRequest(actionId: string, actorUserId: string) {
+  const row = await prisma.projectMemberAction.findUnique({ where: { id: actionId } });
+  if (!row) {
+    throw new AiMemberActionValidationError("액션을 찾을 수 없습니다.");
+  }
+  const role = await getUserProjectRole(row.projectId, actorUserId);
+  if (role !== "OWNER" && role !== "EDITOR") {
+    throw new ProjectAccessDeniedError("재시도 큐잉은 OWNER/EDITOR만 가능합니다.");
+  }
+  await requireProjectPermission(row.projectId, actorUserId, "canViewProject", "retryAiMemberAction");
+  if (row.status !== "FAILED" && row.status !== "CANCELED") {
+    throw new AiMemberActionValidationError("FAILED 또는 CANCELED 액션만 다시 요청할 수 있습니다.");
+  }
+  await prisma.projectMemberAction.update({
+    where: { id: actionId },
+    data: {
+      status: "REQUESTED",
+      consumedBy: null,
+      startedAt: null,
+      finishedAt: null,
+      errorMessage: null,
+      lastError: null,
+      availableAt: null,
+    },
+  });
+  return prisma.projectMemberAction.findUniqueOrThrow({
+    where: { id: actionId },
+    include: {
+      projectMember: { select: { id: true, displayName: true, memberType: true, role: true, aiProvider: true } },
+    },
   });
 }

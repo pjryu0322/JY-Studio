@@ -150,6 +150,7 @@ export default function ProjectDetailPage() {
             canControlExecution: false,
             canRequestAiMemberAction: false,
             canRequestAiReviewAction: false,
+            canDispatchAiMemberAction: false,
           },
     [projectRole]
   );
@@ -2500,6 +2501,7 @@ export default function ProjectDetailPage() {
               taskPrompts={taskPrompts}
               canRequestAiMemberAction={permissions.canRequestAiMemberAction}
               canRequestAiReviewAction={permissions.canRequestAiReviewAction}
+              canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
               currentProjectRole={projectRole}
               currentUserId={currentUserId}
             />
@@ -2545,6 +2547,7 @@ export default function ProjectDetailPage() {
             taskPrompts={taskPrompts}
             canRequestAiMemberAction={permissions.canRequestAiMemberAction}
             canRequestAiReviewAction={permissions.canRequestAiReviewAction}
+            canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
             currentProjectRole={projectRole}
             currentUserId={currentUserId}
           />

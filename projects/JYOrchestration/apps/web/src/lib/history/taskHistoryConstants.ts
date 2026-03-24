@@ -38,6 +38,16 @@ export const TaskHistoryEventType = {
   ACTION_COMPLETED: "ACTION_COMPLETED",
   /** AI 멤버 액션 실패 */
   ACTION_FAILED: "ACTION_FAILED",
+  /** AI 멤버 액션 요청(명시적 라벨) */
+  AI_MEMBER_ACTION_REQUESTED: "AI_MEMBER_ACTION_REQUESTED",
+  /** AI 멤버 액션 디스패치 시작 */
+  AI_MEMBER_ACTION_STARTED: "AI_MEMBER_ACTION_STARTED",
+  /** AI 멤버 액션 완료 */
+  AI_MEMBER_ACTION_COMPLETED: "AI_MEMBER_ACTION_COMPLETED",
+  /** AI 멤버 액션 실패 */
+  AI_MEMBER_ACTION_FAILED: "AI_MEMBER_ACTION_FAILED",
+  /** 수동 에이전트 대기 */
+  AI_MEMBER_ACTION_AWAITING_MANUAL: "AI_MEMBER_ACTION_AWAITING_MANUAL",
 } as const;
 
 export type TaskHistoryEventTypeKey = keyof typeof TaskHistoryEventType;

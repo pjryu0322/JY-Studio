@@ -3,6 +3,7 @@ import {
   parseAiMemberActionExecutionMode,
   parseAiMemberActionType,
 } from "@/lib/ai-member/aiMemberActionTypes";
+import { serializeAiMemberActionRow } from "@/lib/ai-member/aiMemberActionApiSerialize";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import {
@@ -10,63 +11,8 @@ import {
   createAiMemberAction,
   listAiMemberActionsByProject,
   listAiMemberActionsByTask,
+  listAiMemberActionsByGitChangeRequest,
 } from "@/lib/service/aiMemberActionService";
-
-function serializeRow(row: {
-  id: string;
-  projectId: string;
-  taskId: string | null;
-  taskPromptId: string | null;
-  taskRunId: string | null;
-  gitChangeRequestId: string | null;
-  projectMemberId: string;
-  actionType: string;
-  status: string;
-  requestPayload: unknown;
-  resultPayload: unknown;
-  requestedByUserId: string;
-  requestedAt: Date;
-  startedAt: Date | null;
-  finishedAt: Date | null;
-  errorMessage: string | null;
-  executionMode: string;
-  updatedAt: Date;
-  projectMember: {
-    id: string;
-    displayName: string | null;
-    memberType: string;
-    role: string;
-    aiProvider: string | null;
-  };
-}) {
-  return {
-    id: row.id,
-    projectId: row.projectId,
-    taskId: row.taskId,
-    taskPromptId: row.taskPromptId,
-    taskRunId: row.taskRunId,
-    gitChangeRequestId: row.gitChangeRequestId,
-    projectMemberId: row.projectMemberId,
-    actionType: row.actionType,
-    status: row.status,
-    requestPayload: row.requestPayload,
-    resultPayload: row.resultPayload,
-    requestedByUserId: row.requestedByUserId,
-    requestedAt: row.requestedAt.toISOString(),
-    startedAt: row.startedAt?.toISOString() ?? null,
-    finishedAt: row.finishedAt?.toISOString() ?? null,
-    errorMessage: row.errorMessage,
-    executionMode: row.executionMode,
-    updatedAt: row.updatedAt.toISOString(),
-    targetMember: {
-      id: row.projectMember.id,
-      displayName: row.projectMember.displayName,
-      memberType: row.projectMember.memberType,
-      role: row.projectMember.role,
-      aiProvider: row.projectMember.aiProvider,
-    },
-  };
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -76,26 +22,24 @@ export async function GET(request: NextRequest) {
     }
     const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
     const taskId = request.nextUrl.searchParams.get("taskId")?.trim() || "";
-    if (!projectId && !taskId) {
+    const gitChangeRequestId = request.nextUrl.searchParams.get("gitChangeRequestId")?.trim() || "";
+    const n = [projectId, taskId, gitChangeRequestId].filter(Boolean).length;
+    if (n !== 1) {
       return NextResponse.json(
-        { success: false, message: "projectId 또는 taskId 쿼리가 필요합니다." },
-        { status: 400 }
-      );
-    }
-    if (projectId && taskId) {
-      return NextResponse.json(
-        { success: false, message: "projectId와 taskId는 동시에 지정할 수 없습니다." },
+        { success: false, message: "projectId, taskId, gitChangeRequestId 중 하나만 지정하세요." },
         { status: 400 }
       );
     }
 
-    const rows = taskId
-      ? await listAiMemberActionsByTask(taskId, userId)
-      : await listAiMemberActionsByProject(projectId, userId);
+    const rows = gitChangeRequestId
+      ? await listAiMemberActionsByGitChangeRequest(gitChangeRequestId, userId)
+      : taskId
+        ? await listAiMemberActionsByTask(taskId, userId)
+        : await listAiMemberActionsByProject(projectId, userId);
 
     return NextResponse.json({
       success: true,
-      data: rows.map((r) => serializeRow(r)),
+      data: rows.map((r) => serializeAiMemberActionRow(r)),
     });
   } catch (error) {
     if (error instanceof AiMemberActionValidationError) {
@@ -123,6 +67,8 @@ type PostBody = {
   gitChangeRequestId?: string | null;
   requestPayload?: unknown;
   executionMode?: string | null;
+  providerKey?: string | null;
+  correlationKey?: string | null;
 };
 
 export async function POST(request: NextRequest) {
@@ -153,12 +99,14 @@ export async function POST(request: NextRequest) {
       gitChangeRequestId: body.gitChangeRequestId ?? null,
       requestPayload: body.requestPayload ?? null,
       executionMode: executionMode ?? undefined,
+      providerKey: body.providerKey ?? null,
+      correlationKey: body.correlationKey ?? null,
       requestedByUserId: userId,
     });
 
     return NextResponse.json({
       success: true,
-      data: serializeRow(row),
+      data: serializeAiMemberActionRow(row),
     });
   } catch (error) {
     if (error instanceof AiMemberActionValidationError) {

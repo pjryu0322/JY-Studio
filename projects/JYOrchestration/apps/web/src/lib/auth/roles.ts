@@ -17,6 +17,8 @@ export type ProjectPermissionKey =
   | "canRequestAiMemberAction"
   /** OWNER/EDITOR/REVIEWER: AI 리뷰 요청 */
   | "canRequestAiReviewAction"
+  /** OWNER/EDITOR: AI 액션 수동 디스패치·run-once */
+  | "canDispatchAiMemberAction"
   | "canEdit"
   | "canRun"
   | "canApprove"
@@ -39,6 +41,7 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canControlExecution: true,
     canRequestAiMemberAction: true,
     canRequestAiReviewAction: true,
+    canDispatchAiMemberAction: true,
     canEdit: true,
     canRun: true,
     canApprove: true,
@@ -60,6 +63,7 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canControlExecution: true,
     canRequestAiMemberAction: true,
     canRequestAiReviewAction: true,
+    canDispatchAiMemberAction: true,
     canEdit: true,
     canRun: true,
     canApprove: false,
@@ -81,6 +85,7 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canControlExecution: false,
     canRequestAiMemberAction: false,
     canRequestAiReviewAction: true,
+    canDispatchAiMemberAction: false,
     canEdit: false,
     canRun: false,
     canApprove: true,
@@ -102,6 +107,7 @@ export const RolePermissions: Record<ProjectRole, Record<ProjectPermissionKey, b
     canControlExecution: false,
     canRequestAiMemberAction: false,
     canRequestAiReviewAction: false,
+    canDispatchAiMemberAction: false,
     canEdit: false,
     canRun: false,
     canApprove: false,

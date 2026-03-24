@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "@/lib/service/executionWorkerRuntime";
+import "@/lib/service/aiActionWorkerRuntime";
 import DebugLabelLayer from "@/components/debug/DebugLabelLayer";
 import DebugSettings from "@/components/debug/DebugSettings";
 

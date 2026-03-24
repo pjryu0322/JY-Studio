@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { serializeAiMemberActionRow } from "@/lib/ai-member/aiMemberActionApiSerialize";
 import { parseAiMemberActionExecutionMode, parseAiMemberActionStatus } from "@/lib/ai-member/aiMemberActionTypes";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
@@ -6,7 +7,7 @@ import {
   AiMemberActionValidationError,
   failAiMemberAction,
   completeAiMemberAction,
-  runStubAiMemberAction,
+  runStubPipelineForUser,
   updateAiMemberActionStatus,
 } from "@/lib/service/aiMemberActionService";
 
@@ -15,7 +16,7 @@ type PatchBody = {
   resultPayload?: unknown;
   errorMessage?: string | null;
   executionMode?: string | null;
-  /** true이면 STUB 파이프라인(IN_PROGRESS → DONE) 자동 처리 */
+  /** true이면 StubExecutor + ingestion + 감사 파이프라인 */
   runStub?: boolean;
 };
 
@@ -32,8 +33,8 @@ export async function PATCH(
     const body = (await request.json()) as PatchBody;
 
     if (body.runStub === true) {
-      const row = await runStubAiMemberAction(actionId, userId);
-      return NextResponse.json({ success: true, data: row });
+      const row = await runStubPipelineForUser(actionId, userId);
+      return NextResponse.json({ success: true, data: serializeAiMemberActionRow(row) });
     }
 
     const status = body.status ? parseAiMemberActionStatus(body.status) : null;
@@ -52,7 +53,7 @@ export async function PATCH(
         actorUserId: userId,
         resultPayload: body.resultPayload ?? undefined,
       });
-      return NextResponse.json({ success: true, data: row });
+      return NextResponse.json({ success: true, data: serializeAiMemberActionRow(row) });
     }
 
     if (status === "FAILED") {
@@ -63,7 +64,7 @@ export async function PATCH(
         errorMessage: msg,
         resultPayload: body.resultPayload ?? undefined,
       });
-      return NextResponse.json({ success: true, data: row });
+      return NextResponse.json({ success: true, data: serializeAiMemberActionRow(row) });
     }
 
     const row = await updateAiMemberActionStatus({
@@ -75,7 +76,7 @@ export async function PATCH(
       executionMode,
     });
 
-    return NextResponse.json({ success: true, data: row });
+    return NextResponse.json({ success: true, data: serializeAiMemberActionRow(row) });
   } catch (error) {
     if (error instanceof AiMemberActionValidationError) {
       return NextResponse.json({ success: false, message: error.message }, { status: 400 });

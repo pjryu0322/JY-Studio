@@ -20,7 +20,12 @@ export const AI_MEMBER_ACTION_STATUSES = [
 export type AiMemberActionStatusId = (typeof AI_MEMBER_ACTION_STATUSES)[number];
 
 /** Prisma `AiMemberActionExecutionMode`와 동기화 */
-export const AI_MEMBER_ACTION_EXECUTION_MODES = ["STUB", "MANUAL_AGENT", "FUTURE_OPENAI"] as const;
+export const AI_MEMBER_ACTION_EXECUTION_MODES = [
+  "STUB",
+  "MANUAL_AGENT",
+  "OPENAI",
+  "INTERNAL_AGENT",
+] as const;
 
 export type AiMemberActionExecutionModeId = (typeof AI_MEMBER_ACTION_EXECUTION_MODES)[number];
 
@@ -39,7 +44,10 @@ export function parseAiMemberActionStatus(raw: unknown): AiMemberActionStatusId 
 }
 
 export function parseAiMemberActionExecutionMode(raw: unknown): AiMemberActionExecutionModeId | null {
-  const s = String(raw ?? "").trim().toUpperCase();
+  let s = String(raw ?? "").trim().toUpperCase();
+  if (s === "FUTURE_OPENAI") {
+    s = "OPENAI";
+  }
   return (AI_MEMBER_ACTION_EXECUTION_MODES as readonly string[]).includes(s)
     ? (s as AiMemberActionExecutionModeId)
     : null;
