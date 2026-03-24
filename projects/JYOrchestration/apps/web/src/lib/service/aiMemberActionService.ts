@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type {
   AiMemberActionExecutionModeId,
   AiMemberActionStatusId,
@@ -14,7 +14,6 @@ import {
   claimAiMemberActionById,
   dispatchClaimedAiMemberAction,
 } from "@/lib/ai-member/aiMemberActionDispatcher";
-import { ingestAiMemberActionResult } from "@/lib/ai-member/aiMemberActionResultIngestion";
 import { requireProjectPermission, getUserProjectRole } from "@/lib/auth/rbacGuard";
 import { prisma } from "@/lib/prisma";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
@@ -155,7 +154,7 @@ async function validateTargetRefs(
   }
 }
 
-function auditPayloadFromRow(
+export function auditPayloadFromRow(
   row: {
     id: string;
     projectId: string;
@@ -361,20 +360,6 @@ export async function updateAiMemberActionStatus(input: {
   });
 
   const now = new Date();
-  if (input.status === "DONE" && input.resultPayload !== undefined && input.resultPayload !== null) {
-    const rp = input.resultPayload;
-    if (typeof rp === "object" && !Array.isArray(rp)) {
-      await ingestAiMemberActionResult({
-        actionId: row.id,
-        projectId: row.projectId,
-        actionType: row.actionType,
-        taskId: row.taskId,
-        gitChangeRequestId: row.gitChangeRequestId,
-        taskRunId: row.taskRunId,
-        resultPayload: rp as Record<string, unknown>,
-      });
-    }
-  }
 
   const data: Prisma.ProjectMemberActionUpdateInput = {
     status: input.status,
@@ -394,6 +379,27 @@ export async function updateAiMemberActionStatus(input: {
   }
   if (input.status === "DONE" || input.status === "FAILED" || input.status === "CANCELED") {
     data.finishedAt = now;
+  }
+
+  if (input.status === "DONE") {
+    data.reviewStatus = "PENDING_REVIEW";
+    data.reviewedBy = { disconnect: true };
+    data.reviewedAt = null;
+    data.reviewComment = null;
+    data.approvedPayload = Prisma.DbNull;
+    data.applyStatus = "NOT_APPLIED";
+    data.appliedAt = null;
+    data.appliedBy = { disconnect: true };
+  }
+  if (input.status === "FAILED" || input.status === "CANCELED") {
+    data.reviewStatus = null;
+    data.reviewedBy = { disconnect: true };
+    data.reviewedAt = null;
+    data.reviewComment = null;
+    data.approvedPayload = Prisma.DbNull;
+    data.applyStatus = "NOT_APPLIED";
+    data.appliedAt = null;
+    data.appliedBy = { disconnect: true };
   }
 
   const updated = await prisma.projectMemberAction.update({
@@ -557,6 +563,15 @@ export async function retryAiMemberActionRequest(actionId: string, actorUserId: 
       errorMessage: null,
       lastError: null,
       availableAt: null,
+      resultPayload: Prisma.DbNull,
+      reviewStatus: null,
+      reviewedByUserId: null,
+      reviewedAt: null,
+      reviewComment: null,
+      approvedPayload: Prisma.DbNull,
+      applyStatus: "NOT_APPLIED",
+      appliedAt: null,
+      appliedByUserId: null,
     },
   });
   return prisma.projectMemberAction.findUniqueOrThrow({

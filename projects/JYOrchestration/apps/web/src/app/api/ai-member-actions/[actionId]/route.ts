@@ -16,7 +16,7 @@ type PatchBody = {
   resultPayload?: unknown;
   errorMessage?: string | null;
   executionMode?: string | null;
-  /** true이면 StubExecutor + ingestion + 감사 파이프라인 */
+  /** true이면 StubExecutor + 감사(결과는 제안 단계, 도메인 자동 반영 없음) */
   runStub?: boolean;
 };
 

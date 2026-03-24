@@ -3,7 +3,16 @@ import {
   parseAiMemberActionExecutionMode,
   parseAiMemberActionType,
 } from "@/lib/ai-member/aiMemberActionTypes";
-import { serializeAiMemberActionRow } from "@/lib/ai-member/aiMemberActionApiSerialize";
+import {
+  serializeAiMemberActionRow,
+} from "@/lib/ai-member/aiMemberActionApiSerialize";
+import type { AiMemberActionTypeId } from "@/lib/ai-member/aiMemberActionTypes";
+import {
+  roleCanApplyApprovedAiMemberAction,
+  roleCanReviewAiMemberAction,
+} from "@/lib/ai-member/aiMemberActionReviewPolicy";
+import { getUserProjectRole } from "@/lib/auth/rbacGuard";
+import { prisma } from "@/lib/prisma";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import {
@@ -37,9 +46,44 @@ export async function GET(request: NextRequest) {
         ? await listAiMemberActionsByTask(taskId, userId)
         : await listAiMemberActionsByProject(projectId, userId);
 
+    const projectIdForRole =
+      projectId ||
+      rows[0]?.projectId ||
+      (taskId
+        ? (await prisma.task.findUnique({ where: { id: taskId }, select: { projectId: true } }))?.projectId
+        : null) ||
+      (gitChangeRequestId
+        ? (
+            await prisma.gitChangeRequest.findUnique({
+              where: { id: gitChangeRequestId },
+              select: { projectId: true },
+            })
+          )?.projectId
+        : null) ||
+      "";
+
+    const role = projectIdForRole ? await getUserProjectRole(projectIdForRole, userId) : null;
+
+    const data = rows.map((r) => {
+      const base = serializeAiMemberActionRow(r);
+      const at = r.actionType as AiMemberActionTypeId;
+      return {
+        ...base,
+        canReview:
+          r.status === "DONE" &&
+          (r.reviewStatus === "PENDING_REVIEW" || r.reviewStatus === "NEEDS_REVISION") &&
+          roleCanReviewAiMemberAction(role, at),
+        canApply:
+          r.status === "DONE" &&
+          r.reviewStatus === "APPROVED" &&
+          r.applyStatus !== "APPLIED" &&
+          roleCanApplyApprovedAiMemberAction(role, at),
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data: rows.map((r) => serializeAiMemberActionRow(r)),
+      data,
     });
   } catch (error) {
     if (error instanceof AiMemberActionValidationError) {

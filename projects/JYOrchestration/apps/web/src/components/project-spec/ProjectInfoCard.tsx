@@ -3,9 +3,19 @@ import { Project } from "./types";
 type ProjectInfoCardProps = {
   project: Project | null;
   currentUserRoleLabel: string | null;
+  /** AI 멤버 액션 검토·적용 요약(선택) */
+  aiActionReviewSummary?: {
+    pendingReview: number;
+    approvedPendingApply: number;
+    rejected: number;
+  } | null;
 };
 
-export function ProjectInfoCard({ project, currentUserRoleLabel }: ProjectInfoCardProps) {
+export function ProjectInfoCard({
+  project,
+  currentUserRoleLabel,
+  aiActionReviewSummary = null,
+}: ProjectInfoCardProps) {
   return (
     <section
       style={{
@@ -34,6 +44,15 @@ export function ProjectInfoCard({ project, currentUserRoleLabel }: ProjectInfoCa
         <div>
           <strong>Status:</strong> {project?.status || "-"}
         </div>
+        {aiActionReviewSummary &&
+        (aiActionReviewSummary.pendingReview > 0 ||
+          aiActionReviewSummary.approvedPendingApply > 0 ||
+          aiActionReviewSummary.rejected > 0) ? (
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #eee", fontSize: 13 }}>
+            <strong>AI 액션 검토 현황:</strong> 검토 대기 {aiActionReviewSummary.pendingReview}건 · 승인 후
+            적용 대기 {aiActionReviewSummary.approvedPendingApply}건 · 반려 {aiActionReviewSummary.rejected}건
+          </div>
+        ) : null}
       </div>
     </section>
   );

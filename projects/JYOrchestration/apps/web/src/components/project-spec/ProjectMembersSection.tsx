@@ -32,11 +32,26 @@ type AiActionRow = {
   lastError: string | null;
   retryCount: number;
   consumedBy: string | null;
+  reviewStatus: string | null;
+  applyStatus: string;
+  reviewComment: string | null;
+  reviewedAt: string | null;
+  canReview?: boolean;
+  canApply?: boolean;
+  resultPayload?: unknown;
   targetMember: {
     displayName: string | null;
     role: string;
     aiProvider: string | null;
   };
+};
+
+type ReviewLogRow = {
+  id: string;
+  decision: string;
+  comment: string | null;
+  reviewerName: string;
+  createdAt: string;
 };
 
 type ProjectMembersSectionProps = {
@@ -79,6 +94,27 @@ function statusBadgeStyle(status: string): CSSProperties {
   }
 }
 
+function reviewBadgeStyle(rs: string | null): CSSProperties {
+  const base: CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "2px 8px",
+    borderRadius: 999,
+  };
+  switch (rs) {
+    case "APPROVED":
+      return { ...base, background: "#d1fae5", color: "#065f46" };
+    case "REJECTED":
+      return { ...base, background: "#fecaca", color: "#991b1b" };
+    case "NEEDS_REVISION":
+      return { ...base, background: "#fde68a", color: "#92400e" };
+    case "PENDING_REVIEW":
+      return { ...base, background: "#dbeafe", color: "#1e40af" };
+    default:
+      return { ...base, background: "#f1f5f9", color: "#475569" };
+  }
+}
+
 export function ProjectMembersSection({
   projectId,
   members,
@@ -109,6 +145,10 @@ export function ProjectMembersSection({
   const [actionsLoading, setActionsLoading] = useState(false);
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [runOnceBusy, setRunOnceBusy] = useState(false);
+  const [reviewCommentDraft, setReviewCommentDraft] = useState<Record<string, string>>({});
+  const [reviewHistoryByAction, setReviewHistoryByAction] = useState<Record<string, ReviewLogRow[]>>({});
+  const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
+  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
 
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestMemberId, setRequestMemberId] = useState<string | null>(null);
@@ -334,6 +374,89 @@ export function ProjectMembersSection({
       setError(e instanceof Error ? e.message : "run-once 중 오류입니다.");
     } finally {
       setRunOnceBusy(false);
+    }
+  }
+
+  async function submitReviewDecision(
+    actionId: string,
+    decision: "APPROVE" | "REJECT" | "REQUEST_REVISION"
+  ) {
+    setError(null);
+    setActionBusyId(actionId);
+    try {
+      const res = await fetch(`/api/ai-member-actions/${encodeURIComponent(actionId)}/review`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          decision,
+          comment: reviewCommentDraft[actionId]?.trim() || null,
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "검토 처리에 실패했습니다.");
+      }
+      setMessage("검토가 반영되었습니다.");
+      setReviewCommentDraft((prev) => {
+        const next = { ...prev };
+        delete next[actionId];
+        return next;
+      });
+      await reloadActions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "검토 중 오류입니다.");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function applyApprovedAction(actionId: string) {
+    setError(null);
+    setActionBusyId(actionId);
+    try {
+      const res = await fetch(`/api/ai-member-actions/${encodeURIComponent(actionId)}/apply`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "적용에 실패했습니다.");
+      }
+      setMessage("승인 결과를 시스템에 반영했습니다.");
+      await reloadActions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "적용 중 오류입니다.");
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function toggleReviewHistory(actionId: string) {
+    if (historyOpenId === actionId) {
+      setHistoryOpenId(null);
+      return;
+    }
+    setHistoryOpenId(actionId);
+    if (reviewHistoryByAction[actionId]?.length) {
+      return;
+    }
+    setHistoryLoadingId(actionId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/ai-member-actions/${encodeURIComponent(actionId)}/reviews`, {
+        credentials: "include",
+      });
+      const json = (await res.json()) as { success?: boolean; data?: ReviewLogRow[] };
+      if (!res.ok || !json.success || !Array.isArray(json.data)) {
+        throw new Error("검토 이력을 불러오지 못했습니다.");
+      }
+      setReviewHistoryByAction((prev) => ({ ...prev, [actionId]: json.data ?? [] }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "이력 로드 오류");
+      setHistoryOpenId(null);
+    } finally {
+      setHistoryLoadingId(null);
     }
   }
 
@@ -680,7 +803,7 @@ export function ProjectMembersSection({
         </div>
         <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px 0" }}>
           백그라운드 처리는 환경 변수 <code style={{ fontSize: 11 }}>AI_ACTION_WORKER_ENABLED=true</code> 로 켤 수
-          있습니다.
+          있습니다. AI 결과는 자동으로 Git/Task에 반영되지 않으며, 완료 후 사람 검토·승인·「적용」 단계가 필요합니다.
         </p>
         {actionsLoading ? (
           <p style={{ fontSize: 13, color: "#666" }}>불러오는 중…</p>
@@ -727,7 +850,58 @@ export function ProjectMembersSection({
                       {a.lastError || a.errorMessage}
                     </div>
                   ) : null}
-                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 8 }}>{a.requestedAt}</div>
+                  <div style={{ color: "#94a3b8", fontSize: 11, marginBottom: 6 }}>{a.requestedAt}</div>
+                  {a.status === "DONE" ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                      <span style={reviewBadgeStyle(a.reviewStatus)}>검토: {a.reviewStatus ?? "—"}</span>
+                      <span style={{ fontSize: 11, color: "#64748b" }}>적용: {a.applyStatus}</span>
+                    </div>
+                  ) : null}
+                  {a.status === "DONE" && a.reviewComment ? (
+                    <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>
+                      최근 검토 코멘트: {a.reviewComment}
+                    </div>
+                  ) : null}
+                  {a.status === "DONE" && a.resultPayload != null ? (
+                    <details style={{ marginBottom: 8, fontSize: 11, color: "#64748b" }}>
+                      <summary style={{ cursor: "pointer" }}>AI 제안 결과(JSON) 미리보기</summary>
+                      <pre
+                        style={{
+                          marginTop: 6,
+                          padding: 8,
+                          background: "#fff",
+                          borderRadius: 6,
+                          overflow: "auto",
+                          maxHeight: 160,
+                          fontSize: 10,
+                        }}
+                      >
+                        {(() => {
+                          try {
+                            return JSON.stringify(a.resultPayload, null, 2).slice(0, 4000);
+                          } catch {
+                            return String(a.resultPayload);
+                          }
+                        })()}
+                      </pre>
+                    </details>
+                  ) : null}
+                  {a.canReview ? (
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={{ display: "block", fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                        검토 코멘트
+                      </label>
+                      <textarea
+                        value={reviewCommentDraft[a.id] ?? ""}
+                        onChange={(e) =>
+                          setReviewCommentDraft((prev) => ({ ...prev, [a.id]: e.target.value }))
+                        }
+                        rows={2}
+                        style={{ width: "100%", maxWidth: 480, fontSize: 12, padding: 6 }}
+                        placeholder="반려 사유 등(선택)"
+                      />
+                    </div>
+                  ) : null}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                     {canDispatchAiMemberAction && a.status === "REQUESTED" ? (
                       <button type="button" disabled={busy} onClick={() => dispatchAction(a.id)}>
@@ -768,7 +942,47 @@ export function ProjectMembersSection({
                         ) : null}
                       </>
                     ) : null}
+                    {a.canReview ? (
+                      <>
+                        <button type="button" disabled={busy} onClick={() => submitReviewDecision(a.id, "APPROVE")}>
+                          승인
+                        </button>
+                        <button type="button" disabled={busy} onClick={() => submitReviewDecision(a.id, "REJECT")}>
+                          반려
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => submitReviewDecision(a.id, "REQUEST_REVISION")}
+                        >
+                          재검토 요청
+                        </button>
+                      </>
+                    ) : null}
+                    {a.canApply ? (
+                      <button type="button" disabled={busy} onClick={() => applyApprovedAction(a.id)}>
+                        적용
+                      </button>
+                    ) : null}
+                    {a.status === "DONE" ? (
+                      <button type="button" disabled={historyLoadingId === a.id} onClick={() => toggleReviewHistory(a.id)}>
+                        {historyOpenId === a.id ? "이력 닫기" : "검토 이력"}
+                      </button>
+                    ) : null}
                   </div>
+                  {historyOpenId === a.id ? (
+                    <ul style={{ margin: "8px 0 0 0", paddingLeft: 18, fontSize: 12, color: "#475569" }}>
+                      {(reviewHistoryByAction[a.id] ?? []).length === 0 && historyLoadingId === a.id ? (
+                        <li>불러오는 중…</li>
+                      ) : null}
+                      {(reviewHistoryByAction[a.id] ?? []).map((h) => (
+                        <li key={h.id} style={{ marginBottom: 4 }}>
+                          <strong>{h.decision}</strong> · {h.reviewerName} · {h.createdAt}
+                          {h.comment ? <div style={{ color: "#64748b" }}>{h.comment}</div> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </li>
               );
             })}

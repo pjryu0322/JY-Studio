@@ -23,6 +23,14 @@ export function serializeAiMemberActionRow(row: {
   availableAt?: Date | null;
   consumedBy?: string | null;
   correlationKey?: string | null;
+  reviewStatus?: string | null;
+  reviewedByUserId?: string | null;
+  reviewedAt?: Date | null;
+  reviewComment?: string | null;
+  approvedPayload?: unknown;
+  applyStatus?: string;
+  appliedAt?: Date | null;
+  appliedByUserId?: string | null;
   updatedAt: Date;
   projectMember: {
     id: string;
@@ -66,6 +74,14 @@ export function serializeAiMemberActionRow(row: {
     availableAt: row.availableAt?.toISOString() ?? null,
     consumedBy: row.consumedBy ?? null,
     correlationKey: row.correlationKey ?? null,
+    reviewStatus: row.reviewStatus ?? null,
+    reviewedByUserId: row.reviewedByUserId ?? null,
+    reviewedAt: row.reviewedAt?.toISOString() ?? null,
+    reviewComment: row.reviewComment ? row.reviewComment.slice(0, 2000) : null,
+    approvedPayload: row.approvedPayload ?? null,
+    applyStatus: row.applyStatus ?? "NOT_APPLIED",
+    appliedAt: row.appliedAt?.toISOString() ?? null,
+    appliedByUserId: row.appliedByUserId ?? null,
     updatedAt: row.updatedAt.toISOString(),
     targetMember: {
       id: row.projectMember.id,
@@ -74,5 +90,26 @@ export function serializeAiMemberActionRow(row: {
       role: row.projectMember.role,
       aiProvider: row.projectMember.aiProvider,
     },
+  };
+}
+
+export function serializeAiMemberActionReviewLogEntry(log: {
+  id: string;
+  actionId: string;
+  reviewerUserId: string;
+  decision: string;
+  comment: string | null;
+  createdAt: Date;
+  reviewer: { id: string; name: string; email: string };
+}) {
+  return {
+    id: log.id,
+    actionId: log.actionId,
+    reviewerUserId: log.reviewerUserId,
+    reviewerName: log.reviewer.name,
+    reviewerEmail: log.reviewer.email,
+    decision: log.decision,
+    comment: log.comment,
+    createdAt: log.createdAt.toISOString(),
   };
 }

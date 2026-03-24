@@ -1,11 +1,10 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   auditAiMemberActionAwaitingManual,
   auditAiMemberActionCompleted,
   auditAiMemberActionFailed,
   auditAiMemberActionStarted,
 } from "@/lib/ai-member/aiMemberActionAudit";
-import { ingestAiMemberActionResult } from "@/lib/ai-member/aiMemberActionResultIngestion";
 import type { ActionForExecution } from "@/lib/ai-member/executors/types";
 import { selectExecutorForMode } from "@/lib/ai-member/executors";
 import { prisma } from "@/lib/prisma";
@@ -200,17 +199,6 @@ export async function dispatchClaimedAiMemberAction(
       return;
     }
 
-    await ingestAiMemberActionResult({
-      actionId: row.id,
-      projectId: row.projectId,
-      actionType: row.actionType,
-      taskId: row.taskId,
-      gitChangeRequestId: row.gitChangeRequestId,
-      taskRunId: row.taskRunId,
-      resultPayload: out.resultPayload,
-      summaryText: out.summaryText,
-    });
-
     await prisma.projectMemberAction.update({
       where: { id: row.id },
       data: {
@@ -221,6 +209,14 @@ export async function dispatchClaimedAiMemberAction(
         errorMessage: null,
         lastError: null,
         consumedBy: null,
+        reviewStatus: "PENDING_REVIEW",
+        reviewedByUserId: null,
+        reviewedAt: null,
+        reviewComment: null,
+        approvedPayload: Prisma.DbNull,
+        applyStatus: "NOT_APPLIED",
+        appliedAt: null,
+        appliedByUserId: null,
       },
     });
 

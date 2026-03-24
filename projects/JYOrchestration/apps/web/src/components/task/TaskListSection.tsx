@@ -173,6 +173,8 @@ type TaskListSectionProps = {
   onFollowUpDraftChange: (draft: TaskFollowUpDraft) => void;
   onCancelFollowUp: () => void;
   onSubmitFollowUp: () => void;
+  /** taskId → AI 멤버 액션 검토/적용 한 줄 힌트 */
+  aiMemberTaskHints?: Record<string, string>;
 };
 
 const btnBase: CSSProperties = {
@@ -223,6 +225,7 @@ export function TaskListSection({
   onFollowUpDraftChange,
   onCancelFollowUp,
   onSubmitFollowUp,
+  aiMemberTaskHints = {},
 }: TaskListSectionProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -547,6 +550,19 @@ export function TaskListSection({
                     >
                       {flowLabel}
                     </span>
+                    {aiMemberTaskHints[task.id] ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "#475569",
+                          width: "100%",
+                          flexBasis: "100%",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {aiMemberTaskHints[task.id]}
+                      </span>
+                    ) : null}
                     {taskKind === "FOLLOW_UP" ? (
                       <span
                         style={{

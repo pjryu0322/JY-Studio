@@ -162,6 +162,18 @@ export default function ProjectDetailPage() {
     }),
     [permissions.canReorderTask, permissions.canReviewGit, permissions.canRunTask]
   );
+
+  type AiMemberActionOverviewRow = {
+    taskId: string | null;
+    gitChangeRequestId: string | null;
+    actionType: string;
+    status: string;
+    reviewStatus: string | null;
+    applyStatus: string;
+    requestedAt: string;
+  };
+  const [aiMemberActionsOverview, setAiMemberActionsOverview] = useState<AiMemberActionOverviewRow[]>([]);
+
   const rbac = useMemo(
     () => ({
       canEditSpec: canEditSpec(projectRole),
@@ -173,6 +185,76 @@ export default function ProjectDetailPage() {
   );
   const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
   const showTaskSection = rbac.canReview || rbac.canOperate || rbac.canEditSpec;
+
+  useEffect(() => {
+    if (!projectId || !permissions.canViewProject) {
+      setAiMemberActionsOverview([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch(
+        `/api/ai-member-actions?projectId=${encodeURIComponent(projectId)}`,
+        { credentials: "include" }
+      );
+      const json = (await res.json()) as {
+        success?: boolean;
+        data?: AiMemberActionOverviewRow[];
+      };
+      if (cancelled || !res.ok || !json.success || !Array.isArray(json.data)) {
+        return;
+      }
+      setAiMemberActionsOverview(json.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, permissions.canViewProject, tasks.length, gitRequests.length]);
+
+  const aiActionReviewSummaryForCard = useMemo(() => {
+    let pendingReview = 0;
+    let approvedPendingApply = 0;
+    let rejected = 0;
+    for (const a of aiMemberActionsOverview) {
+      if (a.status !== "DONE") continue;
+      if (a.reviewStatus === "PENDING_REVIEW" || a.reviewStatus === "NEEDS_REVISION") {
+        pendingReview += 1;
+      }
+      if (a.reviewStatus === "APPROVED" && a.applyStatus !== "APPLIED") {
+        approvedPendingApply += 1;
+      }
+      if (a.reviewStatus === "REJECTED") {
+        rejected += 1;
+      }
+    }
+    return { pendingReview, approvedPendingApply, rejected };
+  }, [aiMemberActionsOverview]);
+
+  const aiMemberTaskHints = useMemo(() => {
+    const latest = new Map<string, { at: string; label: string }>();
+    for (const a of aiMemberActionsOverview) {
+      if (!a.taskId) continue;
+      const label = `AI: ${a.actionType} · 검토 ${a.reviewStatus ?? "—"} · 적용 ${a.applyStatus}`;
+      const prev = latest.get(a.taskId);
+      if (!prev || a.requestedAt > prev.at) {
+        latest.set(a.taskId, { at: a.requestedAt, label });
+      }
+    }
+    return Object.fromEntries([...latest.entries()].map(([k, v]) => [k, v.label]));
+  }, [aiMemberActionsOverview]);
+
+  const aiMemberGitHints = useMemo(() => {
+    const latest = new Map<string, { at: string; label: string }>();
+    for (const a of aiMemberActionsOverview) {
+      if (!a.gitChangeRequestId) continue;
+      const label = `AI: ${a.actionType} · 검토 ${a.reviewStatus ?? "—"} · 적용 ${a.applyStatus}`;
+      const prev = latest.get(a.gitChangeRequestId);
+      if (!prev || a.requestedAt > prev.at) {
+        latest.set(a.gitChangeRequestId, { at: a.requestedAt, label });
+      }
+    }
+    return Object.fromEntries([...latest.entries()].map(([k, v]) => [k, v.label]));
+  }, [aiMemberActionsOverview]);
 
   useEffect(() => {
     if (!ideaUxRecommended) {
@@ -1836,6 +1918,7 @@ export default function ProjectDetailPage() {
           onFollowUpDraftChange={setFollowUpDraft}
           onCancelFollowUp={() => setFollowUpDraft(null)}
           onSubmitFollowUp={() => void handleSubmitFollowUp()}
+          aiMemberTaskHints={aiMemberTaskHints}
         />
         </div>
       ) : null}
@@ -2022,6 +2105,11 @@ export default function ProjectDetailPage() {
                   <strong>task:</strong>{" "}
                   {tasks.find((task) => task.id === item.taskId)?.name || item.taskId}
                 </p>
+                {aiMemberGitHints[item.id] ? (
+                  <p style={{ margin: "0 0 4px 0", fontSize: 12, color: "#0f766e", lineHeight: 1.45 }}>
+                    <strong>AI 멤버 액션:</strong> {aiMemberGitHints[item.id]}
+                  </p>
+                ) : null}
                 <p style={{ margin: 0, marginBottom: 4 }}>
                   <strong>taskRunId:</strong> {item.taskRunId}
                 </p>
@@ -2463,6 +2551,7 @@ export default function ProjectDetailPage() {
             <ProjectInfoCard
               project={project}
               currentUserRoleLabel={projectRole && projectId ? projectRole : null}
+              aiActionReviewSummary={aiActionReviewSummaryForCard}
             />
             {uiPermissions.canRun ? (
               <ExecutionObservabilityPanel
@@ -2517,6 +2606,7 @@ export default function ProjectDetailPage() {
           <ProjectInfoCard
             project={project}
             currentUserRoleLabel={projectRole && projectId ? projectRole : null}
+            aiActionReviewSummary={aiActionReviewSummaryForCard}
           />
           {!loading && project ? (
             <ProjectGuidedFlowPanel
