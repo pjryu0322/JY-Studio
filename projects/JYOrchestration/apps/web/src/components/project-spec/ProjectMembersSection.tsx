@@ -557,14 +557,14 @@ export function ProjectMembersSection({
   }, [taskPrompts, requestTaskId]);
 
   return (
-    <section style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}>
+    <section data-testid="project-members-section" style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}>
       <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>멤버 관리</h2>
       <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
         HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.
       </p>
       {canManageMembers ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <button type="button" onClick={() => setInviteOpen((v) => !v)}>
+          <button type="button" data-testid="member-invite-toggle" onClick={() => setInviteOpen((v) => !v)}>
             {inviteOpen ? "초대 패널 닫기" : "멤버 초대"}
           </button>
         </div>
@@ -588,6 +588,7 @@ export function ProjectMembersSection({
                 placeholder="user email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
+                data-testid="invite-human-email"
               />
             ) : (
               <>
@@ -595,20 +596,23 @@ export function ProjectMembersSection({
                   placeholder="AI display name"
                   value={inviteDisplayName}
                   onChange={(e) => setInviteDisplayName(e.target.value)}
+                  data-testid="invite-ai-display-name"
                 />
                 <input
                   placeholder="AI provider (optional)"
                   value={inviteAiProvider}
                   onChange={(e) => setInviteAiProvider(e.target.value)}
+                  data-testid="invite-ai-provider"
                 />
                 <input
                   placeholder="AI agent key (optional)"
                   value={inviteAiAgentKey}
                   onChange={(e) => setInviteAiAgentKey(e.target.value)}
+                  data-testid="invite-ai-agent-key"
                 />
               </>
             )}
-            <button type="button" disabled={inviteBusy} onClick={handleInviteSubmit}>
+            <button type="button" data-testid="invite-submit" disabled={inviteBusy} onClick={handleInviteSubmit}>
               {inviteBusy ? "처리 중..." : "추가"}
             </button>
           </div>
@@ -796,7 +800,12 @@ export function ProjectMembersSection({
         >
           <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>AI 멤버 액션</h3>
           {canDispatchAiMemberAction ? (
-            <button type="button" disabled={runOnceBusy || !projectId} onClick={runDispatchOnceForProject}>
+            <button
+              type="button"
+              data-testid="ai-dispatch-run-once"
+              disabled={runOnceBusy || !projectId}
+              onClick={runDispatchOnceForProject}
+            >
               {runOnceBusy ? "실행 중…" : "디스패처 1회(run-once)"}
             </button>
           ) : null}

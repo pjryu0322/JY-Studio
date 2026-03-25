@@ -4,6 +4,8 @@ import { ReactNode, useEffect, useState } from "react";
 
 type CollapsibleSectionProps = {
   title: string;
+  /** 접기 버튼용 테스트 훅(E2E) */
+  toggleTestId?: string;
   /** 비제어: 초기 펼침 */
   defaultOpen: boolean;
   children: ReactNode;
@@ -19,6 +21,7 @@ type CollapsibleSectionProps = {
  */
 export function CollapsibleSection({
   title,
+  toggleTestId,
   defaultOpen,
   open: controlledOpen,
   onOpenChange,
@@ -58,6 +61,7 @@ export function CollapsibleSection({
     >
       <button
         type="button"
+        data-testid={toggleTestId}
         onClick={() => setOpen(!open)}
         style={{
           width: "100%",

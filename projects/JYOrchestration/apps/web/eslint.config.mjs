@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "tests/**",
+    "scripts/**",
+    "playwright.config.ts",
+    "vitest.config.ts",
   ]),
 ]);
 

@@ -1,0 +1,2 @@
+.artifacts/test-results/*.json
+!.artifacts/test-results/.gitkeep

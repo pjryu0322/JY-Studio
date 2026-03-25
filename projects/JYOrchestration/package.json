@@ -6,11 +6,16 @@
     "dev": "pnpm --filter web dev",
     "build": "pnpm --recursive build",
     "lint": "pnpm --recursive lint",
-    "seed:test": "node packages/db/scripts/seed-test-data.mjs"
+    "seed:test": "node packages/db/scripts/seed-test-data.mjs",
+    "test:api": "node scripts/ensure-artifacts-dir.mjs && cross-env TEST_BASE_URL=http://127.0.0.1:3000 pnpm --filter web run test:api",
+    "test:e2e": "node scripts/ensure-artifacts-dir.mjs && pnpm --filter web exec playwright test",
+    "test:aggregate": "node apps/web/scripts/aggregate-test-results.mjs",
+    "test:all": "node scripts/run-test-harness.mjs"
   },
   "devDependencies": {
     "bcryptjs": "^3.0.3",
-    "prisma": "6.16.0"
+    "prisma": "6.16.0",
+    "cross-env": "^7.0.3"
   },
   "dependencies": {
     "@prisma/client": "6.16.0"

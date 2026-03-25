@@ -175,6 +175,7 @@ export default function HomePage() {
             </span>
             <button
               type="button"
+              data-testid="home-logout"
               onClick={() => void handleLogout()}
               style={{
                 padding: "8px 14px",
@@ -224,6 +225,7 @@ export default function HomePage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={submitting}
+              data-testid="home-project-name"
               data-debug-label="[B-1] Project Name"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
@@ -274,6 +276,7 @@ export default function HomePage() {
             <button
               type="submit"
               disabled={submitting}
+              data-testid="home-create-project"
               data-debug-label="[B-6] Create Project"
               style={{
                 padding: "12px 16px",
@@ -344,6 +347,9 @@ export default function HomePage() {
                 <div style={{ marginTop: 12 }}>
                   <Link
                     href={`/projects/${project.id}`}
+                    data-testid={
+                      project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
+                    }
                     style={{
                       display: "inline-block",
                       padding: "8px 12px",
@@ -364,6 +370,13 @@ export default function HomePage() {
         )}
         </div>
       </section>
+      {process.env.NODE_ENV !== "production" ? (
+        <footer style={{ marginTop: 32, paddingTop: 16, borderTop: "1px solid #eee", fontSize: 13 }}>
+          <Link href="/dev/test-results" data-testid="link-test-results" style={{ color: "#2563eb" }}>
+            테스트 결과 대시보드 (개발용)
+          </Link>
+        </footer>
+      ) : null}
     </main>
   );
 }

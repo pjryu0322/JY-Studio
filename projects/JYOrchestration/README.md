@@ -65,3 +65,37 @@ npm run seed:test -- --with-actions
 `NODE_ENV=production` 이면 항상 404입니다.
 
 시드 스크립트(`packages/db/scripts/seed-test-data.mjs`)와 `apps/web/src/lib/dev/testSeedConstants.ts`의 프로젝트명·소유자 이메일·correlation 접두어는 **동기화**해 두었습니다.
+
+## 자동 테스트 하네스 (API + E2E + 결과 UI)
+
+Next.js는 **동일 워크스페이스에 dev 서버를 하나만** 띄울 수 있습니다. 로컬에서 전체 하네스를 돌릴 때는 **터미널 A**에서 먼저 개발 서버를 실행한 뒤 **터미널 B**에서 테스트를 실행하세요.
+
+### 사전 준비
+
+1. DB 마이그레이션 + `npm run seed:test -- --with-actions` (또는 하네스가 시드를 다시 실행)
+2. 터미널 A: `pnpm dev` → `http://127.0.0.1:3000`
+3. (E2E 최초 1회) `pnpm --filter web run test:e2e:install` — Chromium 설치
+
+### 명령 (저장소 루트 `projects/JYOrchestration`)
+
+| 명령 | 설명 |
+|------|------|
+| `npm run test:api` | **이미 3000에서 서버가 떠 있다고 가정.** Vitest API 통합 테스트 (`TEST_BASE_URL=http://127.0.0.1:3000`) |
+| `npm run test:e2e` | Playwright E2E. 로컬에서는 기존 dev 서버 **재사용**(`reuseExistingServer`). `CI=true` 이면 자체로 `pnpm dev` 기동 |
+| `npm run test:aggregate` | `vitest-raw.json` + `playwright-raw.json` → `.artifacts/test-results/latest.json` |
+| `npm run test:all` | 시드 후 **3000 응답 대기** → `test:api` → `test:e2e` → 집계 (**dev는 미리 실행**) |
+
+### 결과 파일
+
+- `.artifacts/test-results/vitest-raw.json` — Vitest JSON 리포터 출력  
+- `.artifacts/test-results/playwright-raw.json` — Playwright JSON 리포터 출력  
+- `.artifacts/test-results/latest.json` — 위 둘을 합친 요약(집계기)  
+- `.artifacts/test-results/history/*.json` — 집계 시점별 복사본
+
+### 결과 대시보드 (브라우저)
+
+- 경로: **`/dev/test-results`**
+- 로그인 필요. `GET /api/dev/test-results` 로 `latest.json` 을 읽습니다.
+- **production** 에서는 `ENABLE_TEST_RESULTS_UI=true` 일 때만 API·기능 노출(그 외 404).
+
+로그인 후 홈 하단 링크 **「테스트 결과 대시보드 (개발용)」** 로도 이동할 수 있습니다 (`NODE_ENV !== production` 일 때만 표시).

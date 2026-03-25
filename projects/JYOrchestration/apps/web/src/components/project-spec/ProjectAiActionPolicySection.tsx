@@ -105,7 +105,7 @@ export function ProjectAiActionPolicySection({ projectId, canEditPolicy }: Props
   };
 
   return (
-    <section style={cardStyle}>
+    <section data-testid="ai-action-policy-section" style={cardStyle}>
       <h3 style={{ margin: "0 0 4px 0", fontSize: 15, color: "#0f172a" }}>AI 승인 정책</h3>
       <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
         액션 유형별로 완료 후 검토(승인)와 결과 반영(적용) 방식을 구분해 둡니다. 행이 없을 때와 동일한 기본값은
@@ -136,6 +136,7 @@ export function ProjectAiActionPolicySection({ projectId, canEditPolicy }: Props
             <div key={r.actionType} style={rowStyle}>
               <span style={labelStyle}>{ACTION_LABELS[r.actionType] ?? r.actionType}</span>
               <select
+                data-testid={`policy-approval-${r.actionType}`}
                 value={r.approvalMode}
                 disabled={!canEditPolicy || savingKey === r.actionType}
                 onChange={(e) => void onChangeRow(r.actionType, "approvalMode", e.target.value)}

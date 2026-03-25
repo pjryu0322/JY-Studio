@@ -2565,6 +2565,7 @@ export default function ProjectDetailPage() {
           <CollapsibleSection
             title="전체 기능 펼치기"
             subtitle="문서 업로드, 실행, 저장소 반영, 기록 보기 등"
+            toggleTestId="expand-advanced-panel"
             defaultOpen={false}
             open={advancedPanelOpen}
             onOpenChange={setAdvancedPanelOpen}

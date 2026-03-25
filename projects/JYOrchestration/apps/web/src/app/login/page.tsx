@@ -116,6 +116,7 @@ function LoginForm() {
         <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
           <button
             type="button"
+            data-testid="auth-tab-login"
             onClick={() => {
               setTab("login");
               setError(null);
@@ -135,6 +136,7 @@ function LoginForm() {
           </button>
           <button
             type="button"
+            data-testid="auth-tab-register"
             onClick={() => {
               setTab("register");
               setError(null);
@@ -168,6 +170,7 @@ function LoginForm() {
               onChange={(e) => setLoginEmail(e.target.value)}
               disabled={submitting}
               required
+              data-testid="login-email"
               style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
             />
             <input
@@ -178,11 +181,13 @@ function LoginForm() {
               onChange={(e) => setLoginPassword(e.target.value)}
               disabled={submitting}
               required
+              data-testid="login-password"
               style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
             />
             <button
               type="submit"
               disabled={submitting}
+              data-testid="login-submit"
               style={{
                 padding: "12px 16px",
                 borderRadius: 8,
@@ -207,6 +212,7 @@ function LoginForm() {
               onChange={(e) => setRegName(e.target.value)}
               disabled={submitting}
               required
+              data-testid="register-name"
               style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
             />
             <input
@@ -217,6 +223,7 @@ function LoginForm() {
               onChange={(e) => setRegEmail(e.target.value)}
               disabled={submitting}
               required
+              data-testid="register-email"
               style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
             />
             <input
@@ -228,11 +235,13 @@ function LoginForm() {
               disabled={submitting}
               required
               minLength={8}
+              data-testid="register-password"
               style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
             />
             <button
               type="submit"
               disabled={submitting}
+              data-testid="register-submit"
               style={{
                 padding: "12px 16px",
                 borderRadius: 8,
