@@ -28,6 +28,7 @@ test.describe("E2E project", () => {
   test("[E2E-PRJ-003] 상세 — 고급 설정 탭에서 유형·저장소·브랜치 확인", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
+    await page.getByTestId("project-detail-settings-toggle").click();
     await page.getByTestId("project-detail-tab-advanced").click();
     const panel = page.getByTestId("project-advanced-settings-panel");
     await expect(panel).toBeVisible();
@@ -39,6 +40,7 @@ test.describe("E2E project", () => {
   test("[E2E-PRJ-004] 상세 — Git Integration 탭 연결 UI", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
+    await page.getByTestId("project-detail-settings-toggle").click();
     await page.getByTestId("project-detail-tab-git").click();
     const gitPanel = page.getByTestId("project-git-integration-panel");
     await expect(gitPanel).toBeVisible();

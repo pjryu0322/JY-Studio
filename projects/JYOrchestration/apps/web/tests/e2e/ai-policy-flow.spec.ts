@@ -9,6 +9,7 @@ test.describe("E2E AI policy", () => {
     await page.waitForURL(/\/$/, { timeout: 30_000 });
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
+    await page.getByTestId("project-detail-settings-toggle").click();
     await page.getByTestId("project-detail-tab-advanced").click();
     await expect(page.getByTestId("ai-action-policy-section")).toBeVisible();
   });

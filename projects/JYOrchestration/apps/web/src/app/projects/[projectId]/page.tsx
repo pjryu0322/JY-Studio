@@ -135,7 +135,14 @@ export default function ProjectDetailPage() {
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
   const [ideaUxRecommended, setIdeaUxRecommended] = useState(true);
   const [mainTab, setMainTab] = useState<ProjectMainTab>("overview");
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (mainTab === "overview") {
+      setSettingsMenuOpen(false);
+    }
+  }, [mainTab]);
 
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -1884,19 +1891,6 @@ export default function ProjectDetailPage() {
     <>
       {showTaskSection ? (
         <div id="guided-flow-tasks" data-ui-label="[O-2] Execution Worker — Task Queue Runs Control">
-          {!loading && project && !errorMessage ? (
-            ideaUxRecommended ? (
-              <IdeaGuidedUx
-                snapshot={ideaUxSnapshot}
-                recommendedMode={ideaUxRecommended}
-                onRecommendedModeChange={setIdeaUxRecommended}
-                failureAssist={ideaUxFailureAssist}
-                actionBusy={ideaUxActionBusy}
-                onPrimaryAction={handleIdeaPrimaryAction}
-                onBeforeNavigateToAnchor={handleIdeaUxBeforeAnchor}
-              />
-            ) : null
-          ) : null}
           {uiPermissions.canRun ? (
             <ExecutionObservabilityPanel
               data={execSummary}
@@ -2587,41 +2581,95 @@ export default function ProjectDetailPage() {
               borderBottom: "1px solid #e5e5e5",
             }}
           >
-            {detailTabs.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                data-testid={`project-detail-tab-${t.id}`}
-                data-ui-label={
-                  t.id === "overview"
-                    ? "[P-3-2-1] Tab — Overview"
-                    : t.id === "members"
-                      ? "[P-3-2-2] Tab — Members"
-                      : t.id === "ai-members"
-                        ? "[P-3-2-3] Tab — AI Members"
-                        : t.id === "git"
-                          ? "[P-3-2-4] Tab — Git Integration"
-                          : "[P-3-2-5] Tab — Advanced Settings"
-                }
-                onClick={() => setMainTab(t.id)}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: mainTab === t.id ? "1px solid #2563eb" : "1px solid #ccc",
-                  background: mainTab === t.id ? "#eff6ff" : "#fafafa",
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: mainTab === t.id ? 600 : 500,
-                  color: mainTab === t.id ? "#1e40af" : "#333",
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
+            {detailTabs
+              .filter((t) => t.id === "overview")
+              .map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  data-testid={`project-detail-tab-${t.id}`}
+                  data-ui-label="[P-3-2-1] Tab — Overview"
+                  onClick={() => setMainTab(t.id)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    border: mainTab === t.id ? "1px solid #2563eb" : "1px solid #ccc",
+                    background: mainTab === t.id ? "#eff6ff" : "#fafafa",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: mainTab === t.id ? 600 : 500,
+                    color: mainTab === t.id ? "#1e40af" : "#333",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+
+            <button
+              type="button"
+              data-testid="project-detail-settings-toggle"
+              data-ui-label="[P-3-2-0] Tab — Settings Icon"
+              onClick={() => setSettingsMenuOpen((v) => !v)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: settingsMenuOpen ? "1px solid #2563eb" : "1px solid #ccc",
+                background: settingsMenuOpen ? "#eff6ff" : "#fafafa",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: settingsMenuOpen ? 700 : 600,
+                color: settingsMenuOpen ? "#1e40af" : "#333",
+              }}
+            >
+              ⚙ 설정
+            </button>
+
+            {settingsMenuOpen
+              ? detailTabs
+                  .filter((t) => t.id !== "overview")
+                  .map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      data-testid={`project-detail-tab-${t.id}`}
+                      data-ui-label={
+                        t.id === "members"
+                          ? "[P-3-2-2] Tab — Members"
+                          : t.id === "ai-members"
+                            ? "[P-3-2-3] Tab — AI Members"
+                            : t.id === "git"
+                              ? "[P-3-2-4] Tab — Git Integration"
+                              : "[P-3-2-5] Tab — Advanced Settings"
+                      }
+                      onClick={() => setMainTab(t.id)}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        border: mainTab === t.id ? "1px solid #2563eb" : "1px solid #ccc",
+                        background: mainTab === t.id ? "#eff6ff" : "#fafafa",
+                        cursor: "pointer",
+                        fontSize: 14,
+                        fontWeight: mainTab === t.id ? 600 : 500,
+                        color: mainTab === t.id ? "#1e40af" : "#333",
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))
+              : null}
           </nav>
 
           {mainTab === "overview" ? (
             <div data-ui-label="[P-4-1] Overview Region — Project Spec → AI Analysis → Execution">
+              <IdeaGuidedUx
+                snapshot={ideaUxSnapshot}
+                recommendedMode={ideaUxRecommended}
+                onRecommendedModeChange={setIdeaUxRecommended}
+                failureAssist={ideaUxFailureAssist}
+                actionBusy={ideaUxActionBusy}
+                onPrimaryAction={handleIdeaPrimaryAction}
+                onBeforeNavigateToAnchor={handleIdeaUxBeforeAnchor}
+              />
               <ProjectInfoCard
                 project={project}
                 currentUserRoleLabel={projectRole && projectId ? projectRole : null}
@@ -2631,7 +2679,7 @@ export default function ProjectDetailPage() {
                 compactOverview
               />
               {rbac.canEditSpec ? (
-                <div id="guided-flow-upload" data-ui-label="[F-2-1] Spec Definition Input — ProjectSpec File Selection">
+                <div id="guided-flow-upload">
                   <ProjectSpecUploadTestSection
                     selectedFile={selectedFile}
                     selectedFileName={selectedFileName}
@@ -2678,51 +2726,55 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
-          {mainTab === "members" ? (
-            <ProjectMembersSection
-              projectId={projectId}
-              members={memberRows}
-              canManageMembers={rbac.canManageMembers}
-              onChanged={reloadSessionContext}
-              tasks={tasks}
-              gitRequests={gitRequests}
-              taskPrompts={taskPrompts}
-              canRequestAiMemberAction={permissions.canRequestAiMemberAction}
-              canRequestAiReviewAction={permissions.canRequestAiReviewAction}
-              canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
-              currentProjectRole={projectRole}
-              currentUserId={currentUserId}
-              memberSurface="human"
-            />
-          ) : null}
-
-          {mainTab === "ai-members" ? (
-            <ProjectMembersSection
-              projectId={projectId}
-              members={memberRows}
-              canManageMembers={rbac.canManageMembers}
-              onChanged={reloadSessionContext}
-              tasks={tasks}
-              gitRequests={gitRequests}
-              taskPrompts={taskPrompts}
-              canRequestAiMemberAction={permissions.canRequestAiMemberAction}
-              canRequestAiReviewAction={permissions.canRequestAiReviewAction}
-              canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
-              currentProjectRole={projectRole}
-              currentUserId={currentUserId}
-              memberSurface="ai"
-            />
-          ) : null}
-
-          {mainTab === "git" ? <ProjectGitIntegrationPanel project={project} /> : null}
-
-          {mainTab === "advanced" ? (
-            <>
-              <ProjectAdvancedSettingsPanel project={project} />
-              {projectId ? (
-                <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
+          {mainTab !== "overview" ? (
+            <div data-ui-label="[P-4-4] Settings Screen — Members / AI Members / Git / Advanced">
+              {mainTab === "members" ? (
+                <ProjectMembersSection
+                  projectId={projectId}
+                  members={memberRows}
+                  canManageMembers={rbac.canManageMembers}
+                  onChanged={reloadSessionContext}
+                  tasks={tasks}
+                  gitRequests={gitRequests}
+                  taskPrompts={taskPrompts}
+                  canRequestAiMemberAction={permissions.canRequestAiMemberAction}
+                  canRequestAiReviewAction={permissions.canRequestAiReviewAction}
+                  canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
+                  currentProjectRole={projectRole}
+                  currentUserId={currentUserId}
+                  memberSurface="human"
+                />
               ) : null}
-            </>
+
+              {mainTab === "ai-members" ? (
+                <ProjectMembersSection
+                  projectId={projectId}
+                  members={memberRows}
+                  canManageMembers={rbac.canManageMembers}
+                  onChanged={reloadSessionContext}
+                  tasks={tasks}
+                  gitRequests={gitRequests}
+                  taskPrompts={taskPrompts}
+                  canRequestAiMemberAction={permissions.canRequestAiMemberAction}
+                  canRequestAiReviewAction={permissions.canRequestAiReviewAction}
+                  canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
+                  currentProjectRole={projectRole}
+                  currentUserId={currentUserId}
+                  memberSurface="ai"
+                />
+              ) : null}
+
+              {mainTab === "git" ? <ProjectGitIntegrationPanel project={project} /> : null}
+
+              {mainTab === "advanced" ? (
+                <>
+                  <ProjectAdvancedSettingsPanel project={project} />
+                  {projectId ? (
+                    <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
+                  ) : null}
+                </>
+              ) : null}
+            </div>
           ) : null}
         </>
       ) : null}

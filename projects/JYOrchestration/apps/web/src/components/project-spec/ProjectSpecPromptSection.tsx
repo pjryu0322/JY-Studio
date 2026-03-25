@@ -17,7 +17,26 @@ export function ProjectSpecPromptSection({ prompt }: ProjectSpecPromptSectionPro
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(prompt);
+      // Use Clipboard API when available, otherwise fallback to execCommand.
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(prompt);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = prompt;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.top = "-1000px";
+        textarea.style.left = "-1000px";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        textarea.setSelectionRange(0, textarea.value.length);
+        const ok = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!ok) {
+          throw new Error("copy_failed");
+        }
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
