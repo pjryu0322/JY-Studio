@@ -142,6 +142,8 @@ model User {
   aiMemberActionReviewLogs AiMemberActionReviewLog[]
   /// 소유 Task (프로젝트 소유자와 동일한 ownerUserId)
   ownedTasks      Task[]         @relation("TaskOwner")
+  /// 소프트 삭제를 수행한 프로젝트(감사)
+  softDeletedProjects Project[] @relation("ProjectSoftDeletedBy")
 
   @@map("users")
 }
@@ -163,8 +165,13 @@ model Project {
   repoUrl       String?
   /// 기본 브랜치
   defaultBranch String?
-  /// 프로젝트 상태
+  /// 프로젝트 생명주기: ACTIVE | DELETED (소프트 삭제)
   status        String
+  /// 소프트 삭제 시각
+  deletedAt     DateTime?
+  /// 소프트 삭제 수행 사용자
+  deletedByUserId String?
+  deletedBy     User?              @relation("ProjectSoftDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
   /// Git 승인 게이트 모드(NO_APPROVAL·MANUAL_APPROVAL 등)
   gitApprovalMode String           @default("NO_APPROVAL")
   /// Git push 정책(AUTO_PUSH·MANUAL_PUSH)

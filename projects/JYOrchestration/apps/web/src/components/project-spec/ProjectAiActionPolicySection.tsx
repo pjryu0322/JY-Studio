@@ -105,7 +105,11 @@ export function ProjectAiActionPolicySection({ projectId, canEditPolicy }: Props
   };
 
   return (
-    <section data-testid="ai-action-policy-section" data-ui-label="[P-A] AI Action Policy" style={cardStyle}>
+    <section
+      data-testid="ai-action-policy-section"
+      data-ui-label="[P-6-3] Advanced Surface — AI Action Policy | legacy [P-A] AI Action Policy"
+      style={cardStyle}
+    >
       <h3 style={{ margin: "0 0 4px 0", fontSize: 15, color: "#0f172a" }}>AI 승인 정책</h3>
       <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
         액션 유형별로 완료 후 검토(승인)와 결과 반영(적용) 방식을 구분해 둡니다. 행이 없을 때와 동일한 기본값은

@@ -117,6 +117,7 @@ export function TaskHistoryTimeline({
 
   return (
     <section
+      data-ui-label="[F-4-1] Function — Task Audit Timeline"
       style={{
         marginTop: 16,
         border: "1px solid #b0bec5",

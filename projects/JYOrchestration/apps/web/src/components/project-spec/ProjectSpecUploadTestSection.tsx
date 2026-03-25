@@ -25,6 +25,7 @@ export function ProjectSpecUploadTestSection({
 }: ProjectSpecUploadTestSectionProps) {
   return (
     <section
+      data-ui-label="[F-1-4] Function — ProjectSpec File Upload"
       style={{
         border: "1px dashed #bbb",
         borderRadius: 12,

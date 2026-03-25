@@ -9,7 +9,7 @@ test.describe("E2E AI action", () => {
     await page.waitForURL(/\/$/, { timeout: 30_000 });
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("expand-advanced-panel").click();
+    await page.getByTestId("project-detail-tab-ai-members").click();
     await expect(page.getByTestId("ai-dispatch-run-once")).toBeVisible();
   });
 

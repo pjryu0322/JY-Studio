@@ -59,6 +59,7 @@ export function ProjectGuidedFlowPanel({
 
   return (
     <section
+      data-ui-label="[P-2-2] Stage Flow — Guided Flow Checklist | [F-1-1] Function — Onboarding Steps"
       style={{
         marginBottom: 20,
         border: "1px solid #c5cae9",

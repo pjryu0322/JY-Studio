@@ -69,6 +69,8 @@ type ProjectMembersSectionProps = {
   /** 액션 수정(스텁/완료) 권한 판별용 */
   currentProjectRole?: ProjectRole | null;
   currentUserId?: string | null;
+  /** 탭 분리: 사람 멤버만 / AI만 / 전체 */
+  memberSurface?: "all" | "human" | "ai";
 };
 
 const ROLE_OPTIONS: ProjectRole[] = ["OWNER", "EDITOR", "REVIEWER", "VIEWER"];
@@ -128,9 +130,12 @@ export function ProjectMembersSection({
   canDispatchAiMemberAction = false,
   currentProjectRole = null,
   currentUserId = null,
+  memberSurface = "all",
 }: ProjectMembersSectionProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteType, setInviteType] = useState<"HUMAN" | "AI">("HUMAN");
+  const [inviteType, setInviteType] = useState<"HUMAN" | "AI">(
+    memberSurface === "ai" ? "AI" : "HUMAN"
+  );
   const [inviteRole, setInviteRole] = useState<ProjectRole>("VIEWER");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteDisplayName, setInviteDisplayName] = useState("");
@@ -206,6 +211,11 @@ export function ProjectMembersSection({
     void reloadActions();
   }, [reloadActions]);
 
+  useEffect(() => {
+    if (memberSurface === "human") setInviteType("HUMAN");
+    if (memberSurface === "ai") setInviteType("AI");
+  }, [memberSurface]);
+
   const sortedMembers = useMemo(
     () =>
       [...members].sort((a, b) => {
@@ -216,6 +226,12 @@ export function ProjectMembersSection({
       }),
     [members]
   );
+
+  const displayMembers = useMemo(() => {
+    if (memberSurface === "human") return sortedMembers.filter((m) => m.memberType === "HUMAN");
+    if (memberSurface === "ai") return sortedMembers.filter((m) => m.memberType === "AI");
+    return sortedMembers;
+  }, [sortedMembers, memberSurface]);
 
   const actionOptionsForModal = useMemo(() => {
     const opts: { value: AiMemberActionTypeId; label: string }[] = [];
@@ -556,16 +572,35 @@ export function ProjectMembersSection({
     return taskPrompts.filter((p) => p.taskId === requestTaskId);
   }, [taskPrompts, requestTaskId]);
 
+  const title =
+    memberSurface === "human" ? "사람 멤버" : memberSurface === "ai" ? "AI 멤버" : "멤버 관리";
+  const subtitle =
+    memberSurface === "human"
+      ? "프로젝트에 참여하는 사람 사용자를 초대·역할 변경합니다."
+      : memberSurface === "ai"
+        ? "AI 멤버를 추가하고 액션을 요청·처리합니다."
+        : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
+
   return (
     <section
-      data-testid="project-members-section"
-      data-ui-label="[P-M] Project Members"
+      data-testid={
+        memberSurface === "human"
+          ? "project-members-human-section"
+          : memberSurface === "ai"
+            ? "project-members-ai-section"
+            : "project-members-section"
+      }
+      data-ui-label={
+        memberSurface === "human"
+          ? "[P-6-1] Members Surface — Human | legacy [P-MH] Human Members"
+          : memberSurface === "ai"
+            ? "[P-6-2] Members Surface — AI | legacy [P-MA] AI Members"
+            : "[P-6-0] Members Surface — All | legacy [P-M] Project Members"
+      }
       style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}
     >
-      <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>멤버 관리</h2>
-      <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-        HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.
-      </p>
+      <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>{title}</h2>
+      <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>{subtitle}</p>
       {canManageMembers ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <button type="button" data-testid="member-invite-toggle" onClick={() => setInviteOpen((v) => !v)}>
@@ -576,10 +611,25 @@ export function ProjectMembersSection({
       {inviteOpen && canManageMembers ? (
         <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 12, marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-            <select value={inviteType} onChange={(e) => setInviteType(e.target.value as "HUMAN" | "AI")}>
-              <option value="HUMAN">HUMAN</option>
-              <option value="AI">AI</option>
-            </select>
+            {memberSurface === "all" ? (
+              <select value={inviteType} onChange={(e) => setInviteType(e.target.value as "HUMAN" | "AI")}>
+                <option value="HUMAN">HUMAN</option>
+                <option value="AI">AI</option>
+              </select>
+            ) : (
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  background: inviteType === "AI" ? "#ede9fe" : "#eef2ff",
+                  color: inviteType === "AI" ? "#5b21b6" : "#1d4ed8",
+                }}
+              >
+                {inviteType}
+              </span>
+            )}
             <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as ProjectRole)}>
               {ROLE_OPTIONS.map((role) => (
                 <option key={role} value={role}>
@@ -626,7 +676,7 @@ export function ProjectMembersSection({
       {error ? <p style={{ color: "#b42318", fontSize: 13 }}>{error}</p> : null}
 
       <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
-        {sortedMembers.map((m) => (
+        {displayMembers.map((m) => (
           <li
             key={m.memberId}
             style={{
@@ -791,7 +841,7 @@ export function ProjectMembersSection({
         </div>
       ) : null}
 
-      <div style={{ marginTop: 20 }}>
+      <div style={{ marginTop: memberSurface === "human" ? 0 : 20, display: memberSurface === "human" ? "none" : "block" }}>
         <div
           style={{
             display: "flex",

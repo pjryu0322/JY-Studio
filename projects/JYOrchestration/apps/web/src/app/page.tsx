@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
+import { PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 
 type Project = {
   id: string;
   name: string;
   description: string | null;
+  ownerUserId?: string;
   projectType: string;
   repoUrl: string | null;
   defaultBranch: string | null;
@@ -28,18 +32,18 @@ type SessionUser = {
 };
 
 export default function HomePage() {
+  const router = useRouter();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [listMessage, setListMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [gitHintOnHome, setGitHintOnHome] = useState<string | null>(null);
+  const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const defaultProjectType = "web-service";
   const defaultBranch = "main";
@@ -58,11 +62,12 @@ export default function HomePage() {
     }
   }
 
-  async function loadProjects() {
+  const loadProjects = useCallback(async () => {
     try {
       setLoading(true);
       setListMessage(null);
-      const res = await fetch("/api/projects", { credentials: "include" });
+      const q = includeDeletedProjects ? "?includeDeleted=1" : "";
+      const res = await fetch(`/api/projects${q}`, { credentials: "include" });
       const json = (await res.json()) as ApiResponse<Project[] | null>;
 
       if (res.status === 401) {
@@ -85,11 +90,10 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [includeDeletedProjects]);
 
   async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault();
-    setSuccessMessage(null);
     setErrorMessage(null);
 
     const trimmedName = name.trim();
@@ -118,17 +122,15 @@ export default function HomePage() {
 
       const json = (await res.json()) as ApiResponse<Project | null>;
 
-      if (!res.ok || !json.success) {
+      if (!res.ok || !json.success || !json.data?.id) {
         setErrorMessage(json.message || "프로젝트 생성에 실패했습니다.");
         return;
       }
 
       setName("");
       setDescription("");
-      setGitHintOnHome(null);
-      setSuccessMessage(json.message || "프로젝트가 생성되었습니다.");
-
       await loadProjects();
+      router.push(`/projects/${json.data.id}`);
     } catch (error) {
       console.error("Failed to create project:", error);
       setErrorMessage("프로젝트 생성 중 오류가 발생했습니다.");
@@ -139,8 +141,11 @@ export default function HomePage() {
 
   useEffect(() => {
     void loadSession();
-    void loadProjects();
   }, []);
+
+  useEffect(() => {
+    void loadProjects();
+  }, [loadProjects]);
 
   async function handleLogout() {
     try {
@@ -210,15 +215,11 @@ export default function HomePage() {
           새 프로젝트 생성
         </h2>
 
-        <form onSubmit={handleCreateProject}>
+        <form data-testid="home-create-project-form" onSubmit={handleCreateProject}>
           <div style={{ display: "grid", gap: 12 }}>
             {errorMessage ? (
               <p style={{ color: "#b00020", margin: 0 }}>{errorMessage}</p>
             ) : null}
-            {successMessage ? (
-              <p style={{ color: "#0b6b2a", margin: 0 }}>{successMessage}</p>
-            ) : null}
-
             <input
               type="text"
               placeholder="프로젝트명"
@@ -236,123 +237,14 @@ export default function HomePage() {
               onChange={(e) => setDescription(e.target.value)}
               disabled={submitting}
               rows={3}
+              data-testid="home-project-description"
               data-ui-label="[B-2] Project Description"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
-            <button
-              type="button"
-              data-testid="home-advanced-settings-toggle"
-              data-ui-label="[B-ADV] Advanced Settings Toggle"
-              onClick={() => {
-                setAdvancedOpen((v) => !v);
-                setGitHintOnHome(null);
-              }}
-              disabled={submitting}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: "1px solid #ccc",
-                background: "#fafafa",
-                cursor: submitting ? "not-allowed" : "pointer",
-                fontSize: 14,
-                textAlign: "left",
-                color: "#333",
-              }}
-            >
-              {advancedOpen ? "▼ 고급 설정 닫기" : "▶ 고급 설정"}
-            </button>
-
-            {advancedOpen ? (
-              <div
-                data-ui-label="[B-ADV-PANEL] Advanced Settings"
-                style={{
-                  display: "grid",
-                  gap: 14,
-                  padding: 14,
-                  borderRadius: 8,
-                  border: "1px solid #e5e5e5",
-                  background: "#fcfcfc",
-                }}
-              >
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    프로젝트 유형
-                  </label>
-                  <select
-                    value={defaultProjectType}
-                    disabled
-                    data-ui-label="[B-3] Project Type"
-                    style={{
-                      padding: 10,
-                      border: "1px solid #ccc",
-                      borderRadius: 8,
-                      width: "100%",
-                      maxWidth: 360,
-                      opacity: 0.85,
-                    }}
-                  >
-                    <option value="web-service">web-service</option>
-                  </select>
-                  <p style={{ margin: "6px 0 0 0", fontSize: 12, color: "#64748b" }}>
-                    현재는 web-service만 지원됩니다
-                  </p>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    저장소 (Git)
-                  </label>
-                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 14, color: "#64748b" }}>연결 안됨</span>
-                    <button
-                      type="button"
-                      data-testid="home-git-connect-hint"
-                      onClick={() =>
-                        setGitHintOnHome("프로젝트를 만든 뒤 상세 화면에서 Git을 연결할 수 있습니다.")
-                      }
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #ccc",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}
-                    >
-                      Git 연결하기
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                    기본 브랜치
-                  </label>
-                  <input
-                    type="text"
-                    value={defaultBranch}
-                    readOnly
-                    data-ui-label="[B-5] Default Branch"
-                    aria-readonly
-                    style={{
-                      padding: 10,
-                      border: "1px solid #ccc",
-                      borderRadius: 8,
-                      width: "100%",
-                      maxWidth: 360,
-                      background: "#f1f5f9",
-                      color: "#334155",
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {gitHintOnHome ? (
-              <p style={{ margin: 0, fontSize: 13, color: "#475569" }}>{gitHintOnHome}</p>
-            ) : null}
+            <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+              생성 후 프로젝트 상세에서 Git·고급 설정을 이어서 구성할 수 있습니다.
+            </p>
 
             <button
               type="submit"
@@ -383,9 +275,38 @@ export default function HomePage() {
           padding: 20,
         }}
       >
-        <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>
-          프로젝트 목록
-        </h2>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>프로젝트 목록</h2>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 14,
+              color: "#334155",
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+          >
+            <input
+              type="checkbox"
+              data-testid="home-include-deleted-projects"
+              checked={includeDeletedProjects}
+              onChange={(e) => setIncludeDeletedProjects(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: "#2563eb" }}
+            />
+            삭제된 프로젝트 보기
+          </label>
+        </div>
 
         <div data-ui-label="[C-1] Project List Content">
         {loading ? (
@@ -414,7 +335,13 @@ export default function HomePage() {
                   }}
                 >
                   <strong>{project.name}</strong>
-                  <span>{project.status}</span>
+                  <span style={{ fontSize: 13, color: "#64748b" }}>
+                    {project.status === PROJECT_LIFECYCLE_DELETED ? (
+                      <span style={{ color: "#b91c1c", fontWeight: 600 }}>삭제됨</span>
+                    ) : (
+                      project.status
+                    )}
+                  </span>
                 </div>
 
                 <div style={{ color: "#555", marginBottom: 8 }}>
@@ -430,7 +357,7 @@ export default function HomePage() {
                     <>저장소 미연결 · 기본 브랜치 {project.defaultBranch || "main"}</>
                   )}
                 </div>
-                <div style={{ marginTop: 12 }}>
+                <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                   <Link
                     href={`/projects/${project.id}`}
                     data-testid={
@@ -449,6 +376,27 @@ export default function HomePage() {
                   >
                     상세 보기
                   </Link>
+                  {sessionUser &&
+                  project.ownerUserId === sessionUser.id &&
+                  project.status !== PROJECT_LIFECYCLE_DELETED ? (
+                    <button
+                      type="button"
+                      data-testid={`home-delete-project-${project.id}`}
+                      onClick={() => setDeleteTarget({ id: project.id, name: project.name })}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #fecaca",
+                        background: "#fff",
+                        color: "#b91c1c",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      삭제
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -462,6 +410,15 @@ export default function HomePage() {
             테스트 결과 대시보드 (개발용)
           </Link>
         </footer>
+      ) : null}
+      {deleteTarget ? (
+        <ProjectDeleteConfirmModal
+          open={Boolean(deleteTarget)}
+          projectId={deleteTarget.id}
+          projectName={deleteTarget.name}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => void loadProjects()}
+        />
       ) : null}
     </main>
   );

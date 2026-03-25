@@ -24,6 +24,7 @@ export function ProjectSpecUploadHistorySection({
 }: ProjectSpecUploadHistorySectionProps) {
   return (
     <div
+      data-ui-label="[F-1-5] Function — Upload History Parse & Generate Tasks"
       style={{
         borderTop: "1px solid #e5e5e5",
         paddingTop: 10,

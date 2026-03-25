@@ -12,26 +12,26 @@ export async function fetchProjectById(projectId: string): Promise<{
   project: Project | null;
   errorMessage: string | null;
 }> {
-  const res = await fetch("/api/projects", { credentials: "include" });
-  const json = (await res.json()) as ApiResponse<Project[]>;
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}`, { credentials: "include" });
+  const json = (await res.json()) as ApiResponse<Project>;
 
-  if (!res.ok || !json.success || !Array.isArray(json.data)) {
+  if (res.status === 404 || res.status === 403) {
     return {
       project: null,
       errorMessage: json.message || "프로젝트 정보를 불러오지 못했습니다.",
     };
   }
 
-  const target = json.data.find((item) => item.id === projectId) || null;
-  if (!target) {
+  if (!res.ok || !json.success || !json.data) {
     return {
       project: null,
-      errorMessage: "존재하지 않는 프로젝트입니다.",
+      errorMessage: json.message || "프로젝트 정보를 불러오지 못했습니다.",
     };
   }
 
   return {
-    project: target,
+    project: json.data,
     errorMessage: null,
   };
 }

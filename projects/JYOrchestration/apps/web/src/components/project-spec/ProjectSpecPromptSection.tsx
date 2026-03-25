@@ -5,6 +5,7 @@ type ProjectSpecPromptSectionProps = {
 export function ProjectSpecPromptSection({ prompt }: ProjectSpecPromptSectionProps) {
   return (
     <section
+      data-ui-label="[F-1-3] Function — GPT Prompt Guide"
       style={{
         border: "1px solid #ddd",
         borderRadius: 12,

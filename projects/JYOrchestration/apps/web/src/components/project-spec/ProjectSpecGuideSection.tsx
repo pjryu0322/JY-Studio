@@ -1,6 +1,7 @@
 export function ProjectSpecGuideSection() {
   return (
     <section
+      data-ui-label="[F-1-2] Function — ProjectSpec Registration Guide"
       style={{
         border: "1px solid #ddd",
         borderRadius: 12,

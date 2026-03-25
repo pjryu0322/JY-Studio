@@ -2,10 +2,13 @@ export type Project = {
   id: string;
   name: string;
   description: string | null;
+  ownerUserId?: string;
   projectType: string;
   repoUrl?: string | null;
   defaultBranch?: string | null;
   status: string;
+  deletedAt?: string | null;
+  deletedByUserId?: string | null;
   /** 승인만: NO_APPROVAL | MANUAL_APPROVAL (레거시 AUTO_APPLY = NO_APPROVAL). push와 독립. */
   gitApprovalMode?: string;
   /** push만: AUTO_PUSH | MANUAL_PUSH. 승인과 독립. */

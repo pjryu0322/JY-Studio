@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
 import {
@@ -11,6 +11,7 @@ import {
   runProjectSpecMockParse,
   uploadProjectSpecTestFile,
 } from "@/components/project-spec/api";
+import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
 import { ProjectSpecGuideSection } from "@/components/project-spec/ProjectSpecGuideSection";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
@@ -31,6 +32,7 @@ import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHist
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectAiActionPolicySection } from "@/components/project-spec/ProjectAiActionPolicySection";
 import { ProjectMembersSection, type ProjectMemberUiRow } from "@/components/project-spec/ProjectMembersSection";
+import { PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import {
   canEditSpec,
   canManageMembers,
@@ -52,7 +54,8 @@ import {
   IdeaGuidedUx,
   type IdeaUxFailureAssist,
 } from "@/components/onboarding/IdeaGuidedUx";
-import { CollapsibleSection } from "@/components/common/CollapsibleSection";
+import { ProjectGitIntegrationPanel } from "@/components/project/ProjectGitIntegrationPanel";
+import { ProjectAdvancedSettingsPanel } from "@/components/project/ProjectAdvancedSettingsPanel";
 import {
   computeIdeaGuidedUxSnapshot,
   type IdeaUxPrimaryAction,
@@ -71,7 +74,10 @@ function rbacForbiddenMessage(
   return null;
 }
 
+type ProjectMainTab = "overview" | "members" | "ai-members" | "git" | "advanced";
+
 export default function ProjectDetailPage() {
+  const router = useRouter();
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
   const [project, setProject] = useState<Project | null>(null);
@@ -126,8 +132,8 @@ export default function ProjectDetailPage() {
   const [execSummaryError, setExecSummaryError] = useState<string | null>(null);
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
   const [ideaUxRecommended, setIdeaUxRecommended] = useState(true);
-  const [progressPanelOpen, setProgressPanelOpen] = useState(false);
-  const [advancedPanelOpen, setAdvancedPanelOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<ProjectMainTab>("overview");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -256,13 +262,6 @@ export default function ProjectDetailPage() {
     }
     return Object.fromEntries([...latest.entries()].map(([k, v]) => [k, v.label]));
   }, [aiMemberActionsOverview]);
-
-  useEffect(() => {
-    if (!ideaUxRecommended) {
-      setProgressPanelOpen(true);
-      setAdvancedPanelOpen(true);
-    }
-  }, [ideaUxRecommended]);
 
   const reloadSessionContext = useCallback(async () => {
     if (!projectId) {
@@ -1813,7 +1812,7 @@ export default function ProjectDetailPage() {
         return;
       case "follow_up":
         if (action.taskId) {
-          setAdvancedPanelOpen(true);
+          setMainTab("overview");
           handleRequestFollowUp(action.taskId);
           requestAnimationFrame(() => {
             document.getElementById("guided-flow-tasks")?.scrollIntoView({
@@ -1834,9 +1833,14 @@ export default function ProjectDetailPage() {
       if (!ideaUxRecommended) {
         return;
       }
-      setAdvancedPanelOpen(true);
+      setMainTab("overview");
       if (anchorId === "guided-flow-git") {
-        setProgressPanelOpen(true);
+        requestAnimationFrame(() => {
+          document.getElementById("guided-flow-git")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
       }
     },
     [ideaUxRecommended]
@@ -1844,7 +1848,8 @@ export default function ProjectDetailPage() {
 
   const projectFlowTail = (
     <>
-      <div id="guided-flow-upload">
+      <div data-ui-label="[O-1] Task Pipeline — Spec Ingest Parse Plan">
+        <div id="guided-flow-upload" data-ui-label="[O-1-1] Task Pipeline — Spec Upload Slot">
         {rbac.canEditSpec ? (
           <ProjectSpecUploadTestSection
             selectedFile={selectedFile}
@@ -1857,9 +1862,9 @@ export default function ProjectDetailPage() {
             onUploadTest={handleUploadTest}
           />
         ) : null}
-      </div>
-      {showSpecUploadHistory ? (
-        <div id="guided-flow-history">
+        </div>
+        {showSpecUploadHistory ? (
+        <div id="guided-flow-history" data-ui-label="[O-1-2] Task Pipeline — Parse History Generate Tasks">
           {!rbac.canEditSpec && rbac.canReview ? (
             <p style={{ margin: "0 0 8px 0", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
               ProjectSpec 파일 등록·업로드는 PLANNER 또는 OWNER 역할에서 수행합니다. 아래는 등록된 업로드
@@ -1877,9 +1882,11 @@ export default function ProjectDetailPage() {
             onGenerateTasks={handleGenerateTasks}
           />
         </div>
-      ) : null}
+        ) : null}
+      </div>
       {showTaskSection ? (
-        <div id="guided-flow-tasks">
+        <div id="guided-flow-tasks" data-ui-label="[O-2] Execution Worker — Task Queue Runs Control">
+        <div data-ui-label="[O-3] Self-Healing Flow — Follow-up Retry Abort Auto-Heal">
         <TaskListSection
           tasks={tasks}
           loadingTasks={loadingTasks}
@@ -1922,6 +1929,7 @@ export default function ProjectDetailPage() {
           aiMemberTaskHints={aiMemberTaskHints}
         />
         </div>
+        </div>
       ) : null}
       {showTaskSection && auditTaskId ? (
         <TaskHistoryTimeline
@@ -1940,6 +1948,7 @@ export default function ProjectDetailPage() {
       {uiPermissions.canRun ? (
         <section
           id="guided-flow-git"
+          data-ui-label="[O-4] Git Apply Flow — Policy Requests Apply PR"
           style={{
             borderTop: "1px solid #e5e5e5",
             marginTop: 16,
@@ -2507,12 +2516,24 @@ export default function ProjectDetailPage() {
 
   const showGuidedChrome = Boolean(!loading && project && !errorMessage);
 
+  const detailTabs: { id: ProjectMainTab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "members", label: "Members" },
+    { id: "ai-members", label: "AI Members" },
+    { id: "git", label: "Git Integration" },
+    { id: "advanced", label: "Advanced Settings" },
+  ];
+
   return (
-    <main data-ui-label="[P] Project Detail" style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
+    <main
+      data-ui-label="[P-1-1] Page Shell — Project Detail | legacy [P] Project Detail"
+      style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}
+    >
       <ProjectSpecPageHeader />
       {executionSafeMode ? (
         <div
           role="status"
+          data-ui-label="[P-1-2] Page Banner — Execution Safe Mode"
           style={{
             marginBottom: 14,
             padding: "10px 12px",
@@ -2540,48 +2561,94 @@ export default function ProjectDetailPage() {
           onBeforeNavigateToAnchor={handleIdeaUxBeforeAnchor}
         />
       ) : null}
-      {showGuidedChrome && ideaUxRecommended ? (
+      {showGuidedChrome ? (
         <>
-          <CollapsibleSection
-            title="진행 현황 보기"
-            subtitle="이 프로젝트가 어디까지 왔는지 한눈에"
-            defaultOpen={false}
-            open={progressPanelOpen}
-            onOpenChange={setProgressPanelOpen}
+          <nav
+            aria-label="프로젝트 섹션"
+            data-ui-label="[P-3-1] Tab Chrome — Project Detail Regions"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginBottom: 20,
+              paddingBottom: 12,
+              borderBottom: "1px solid #e5e5e5",
+            }}
           >
-            <ProjectInfoCard
-              project={project}
-              currentUserRoleLabel={projectRole && projectId ? projectRole : null}
-              aiActionReviewSummary={aiActionReviewSummaryForCard}
-            />
-            {uiPermissions.canRun ? (
-              <ExecutionObservabilityPanel
-                data={execSummary}
-                loading={execSummaryLoading}
-                errorMessage={execSummaryError}
+            {detailTabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                data-testid={`project-detail-tab-${t.id}`}
+                data-ui-label={
+                  t.id === "overview"
+                    ? "[P-3-2-1] Tab — Overview"
+                    : t.id === "members"
+                      ? "[P-3-2-2] Tab — Members"
+                      : t.id === "ai-members"
+                        ? "[P-3-2-3] Tab — AI Members"
+                        : t.id === "git"
+                          ? "[P-3-2-4] Tab — Git Integration"
+                          : "[P-3-2-5] Tab — Advanced Settings"
+                }
+                onClick={() => setMainTab(t.id)}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: mainTab === t.id ? "1px solid #2563eb" : "1px solid #ccc",
+                  background: mainTab === t.id ? "#eff6ff" : "#fafafa",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: mainTab === t.id ? 600 : 500,
+                  color: mainTab === t.id ? "#1e40af" : "#333",
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+
+          {mainTab === "overview" ? (
+            <div data-ui-label="[P-4-1] Overview Region — Spec & Orchestration Surface">
+              <ProjectInfoCard
+                project={project}
+                currentUserRoleLabel={projectRole && projectId ? projectRole : null}
+                aiActionReviewSummary={aiActionReviewSummaryForCard}
+                showOwnerDelete={projectRole === "OWNER"}
+                onRequestDelete={() => setDeleteModalOpen(true)}
+                compactOverview
               />
-            ) : null}
-          </CollapsibleSection>
-          <CollapsibleSection
-            title="전체 기능 펼치기"
-            subtitle="문서 업로드, 실행, 저장소 반영, 기록 보기 등"
-            toggleTestId="expand-advanced-panel"
-            defaultOpen={false}
-            open={advancedPanelOpen}
-            onOpenChange={setAdvancedPanelOpen}
-          >
-            {!loading && project ? (
-              <ProjectGuidedFlowPanel
-                snapshot={guidedFlowSnapshot}
-                canRegisterSpec={rbac.canEditSpec}
-                canReview={rbac.canReview}
-                canOperate={uiPermissions.canRun}
-              />
-            ) : null}
-            <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-              프로젝트 생성자는 OWNER이며, OWNER / EDITOR / REVIEWER / VIEWER 역할과 HUMAN / AI 멤버를
-              함께 관리할 수 있습니다.
-            </p>
+              {uiPermissions.canRun ? (
+                <ExecutionObservabilityPanel
+                  data={execSummary}
+                  loading={execSummaryLoading}
+                  errorMessage={execSummaryError}
+                />
+              ) : null}
+              {!loading && project ? (
+                <ProjectGuidedFlowPanel
+                  snapshot={guidedFlowSnapshot}
+                  canRegisterSpec={rbac.canEditSpec}
+                  canReview={rbac.canReview}
+                  canOperate={uiPermissions.canRun}
+                />
+              ) : null}
+              <p
+                data-ui-label="[F-3-1] Function — RBAC & Member Entry Hint"
+                style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}
+              >
+                프로젝트 생성자는 OWNER이며, OWNER / EDITOR / REVIEWER / VIEWER 역할과 HUMAN / AI 멤버를
+                함께 관리할 수 있습니다. 멤버·Git·고급 설정은 상단 탭에서 구성합니다.
+              </p>
+              {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
+              {rbac.canEditSpec ? (
+                <ProjectSpecPromptSection prompt={projectSpecPrompt} />
+              ) : null}
+              {projectFlowTail}
+            </div>
+          ) : null}
+
+          {mainTab === "members" ? (
             <ProjectMembersSection
               projectId={projectId}
               members={memberRows}
@@ -2595,67 +2662,49 @@ export default function ProjectDetailPage() {
               canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
               currentProjectRole={projectRole}
               currentUserId={currentUserId}
+              memberSurface="human"
             />
-            {projectId ? (
-              <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
-            ) : null}
-            {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
-            {rbac.canEditSpec ? (
-              <ProjectSpecPromptSection prompt={projectSpecPrompt} />
-            ) : null}
-            {projectFlowTail}
-          </CollapsibleSection>
+          ) : null}
+
+          {mainTab === "ai-members" ? (
+            <ProjectMembersSection
+              projectId={projectId}
+              members={memberRows}
+              canManageMembers={rbac.canManageMembers}
+              onChanged={reloadSessionContext}
+              tasks={tasks}
+              gitRequests={gitRequests}
+              taskPrompts={taskPrompts}
+              canRequestAiMemberAction={permissions.canRequestAiMemberAction}
+              canRequestAiReviewAction={permissions.canRequestAiReviewAction}
+              canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
+              currentProjectRole={projectRole}
+              currentUserId={currentUserId}
+              memberSurface="ai"
+            />
+          ) : null}
+
+          {mainTab === "git" ? <ProjectGitIntegrationPanel project={project} /> : null}
+
+          {mainTab === "advanced" ? (
+            <>
+              <ProjectAdvancedSettingsPanel project={project} />
+              {projectId ? (
+                <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
+              ) : null}
+            </>
+          ) : null}
         </>
-      ) : (
-        <>
-          <ProjectInfoCard
-            project={project}
-            currentUserRoleLabel={projectRole && projectId ? projectRole : null}
-            aiActionReviewSummary={aiActionReviewSummaryForCard}
-          />
-          {!loading && project ? (
-            <ProjectGuidedFlowPanel
-              snapshot={guidedFlowSnapshot}
-              canRegisterSpec={rbac.canEditSpec}
-              canReview={rbac.canReview}
-              canOperate={uiPermissions.canRun}
-            />
-          ) : null}
-          {uiPermissions.canRun ? (
-            <ExecutionObservabilityPanel
-              data={execSummary}
-              loading={execSummaryLoading}
-              errorMessage={execSummaryError}
-            />
-          ) : null}
-          <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
-            프로젝트 생성자는 OWNER이며, OWNER / EDITOR / REVIEWER / VIEWER 역할과 HUMAN / AI 멤버를 함께
-            관리할 수 있습니다.
-          </p>
-          <ProjectMembersSection
-            projectId={projectId}
-            members={memberRows}
-            canManageMembers={rbac.canManageMembers}
-            onChanged={reloadSessionContext}
-            tasks={tasks}
-            gitRequests={gitRequests}
-            taskPrompts={taskPrompts}
-            canRequestAiMemberAction={permissions.canRequestAiMemberAction}
-            canRequestAiReviewAction={permissions.canRequestAiReviewAction}
-            canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
-            currentProjectRole={projectRole}
-            currentUserId={currentUserId}
-          />
-          {projectId ? (
-            <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
-          ) : null}
-          {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
-          {rbac.canEditSpec ? (
-            <ProjectSpecPromptSection prompt={projectSpecPrompt} />
-          ) : null}
-          {projectFlowTail}
-        </>
-      )}
+      ) : null}
+      {project && projectId && project.status !== PROJECT_LIFECYCLE_DELETED ? (
+        <ProjectDeleteConfirmModal
+          open={deleteModalOpen}
+          projectId={projectId}
+          projectName={project.name}
+          onClose={() => setDeleteModalOpen(false)}
+          onDeleted={() => router.push("/")}
+        />
+      ) : null}
     </main>
   );
 }

@@ -39,7 +39,10 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return fail("로그인이 필요합니다.", 401, []);
     }
-    const projects = await listProjectsOrderedByCreatedDesc(userId);
+    const sp = request.nextUrl.searchParams;
+    const includeDeleted =
+      sp.get("includeDeleted") === "1" || sp.get("includeDeleted")?.toLowerCase() === "true";
+    const projects = await listProjectsOrderedByCreatedDesc(userId, { includeDeleted });
 
     return ok("프로젝트 목록 조회에 성공했습니다.", projects);
   } catch (error) {

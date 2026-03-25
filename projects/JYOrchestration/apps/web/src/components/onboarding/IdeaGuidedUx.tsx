@@ -161,9 +161,10 @@ export function IdeaGuidedUx({
   const m = snapshot.milestones;
 
   return (
-    <>
+    <div data-ui-label="[P-2-1] Stage Flow — Idea Guided UX Shell">
       <nav
         aria-label="진행 단계"
+        data-ui-label="[P-2-1-1] Stage Flow — Milestone Step Strip"
         style={{
           position: "sticky",
           top: 0,
@@ -261,6 +262,7 @@ export function IdeaGuidedUx({
 
       <section
         id="idea-ux-action-panel"
+        data-ui-label="[F-2-1] Function — Primary Action & Failure Assist"
         style={{
           marginBottom: 18,
           padding: "16px 18px",
@@ -470,6 +472,7 @@ export function IdeaGuidedUx({
         ) : null}
 
         <div
+          data-ui-label="[P-2-1-2] Stage Flow — Pipeline Milestone Readout"
           style={{
             marginTop: 14,
             paddingTop: 12,
@@ -491,6 +494,6 @@ export function IdeaGuidedUx({
           <span>{m.prLinked ? "✔" : "○"} 팀과 연결됨</span>
         </div>
       </section>
-    </>
+    </div>
   );
 }
