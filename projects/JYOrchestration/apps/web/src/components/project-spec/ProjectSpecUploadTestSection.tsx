@@ -1,4 +1,5 @@
 import { ChangeEvent } from "react";
+import { AiPipelineStatus } from "./AiPipelineStatusPanel";
 import { formatTestedAt } from "./format";
 import { UploadResult, UploadStatus } from "./types";
 
@@ -8,9 +9,9 @@ type ProjectSpecUploadTestSectionProps = {
   uploadMessage: string | null;
   uploadResult: UploadResult | null;
   uploadStatus: UploadStatus;
-  uploading: boolean;
+  aiPipelineStatus: AiPipelineStatus;
   onSelectFile: (e: ChangeEvent<HTMLInputElement>) => void;
-  onUploadTest: () => void;
+  onUploadAndAnalyze: () => void;
 };
 
 export function ProjectSpecUploadTestSection({
@@ -19,10 +20,15 @@ export function ProjectSpecUploadTestSection({
   uploadMessage,
   uploadResult,
   uploadStatus,
-  uploading,
+  aiPipelineStatus,
   onSelectFile,
-  onUploadTest,
+  onUploadAndAnalyze,
 }: ProjectSpecUploadTestSectionProps) {
+  const analyzingBusy =
+    aiPipelineStatus === "uploading" ||
+    aiPipelineStatus === "analyzing" ||
+    aiPipelineStatus === "generating_tasks";
+
   return (
     <section
       data-ui-label="[F-1-4] Function — ProjectSpec File Upload"
@@ -32,13 +38,11 @@ export function ProjectSpecUploadTestSection({
         padding: 20,
       }}
     >
-      <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 10 }}>ProjectSpec 업로드 (다음 단계)</h2>
+      <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 10 }}>ProjectSpec 업로드</h2>
       <p style={{ marginTop: 0, marginBottom: 10 }}>
-        `.md`는 원문 텍스트 저장을 시도하고, `.doc/.docx`는 현재 메타데이터 중심으로 등록합니다.
+        파일을 업로드하면 AI가 요구사항을 분석하고 Task를 자동 생성합니다.
       </p>
-      <p style={{ marginTop: 0, marginBottom: 12 }}>
-        실제 문서 파싱/정책 생성은 다음 단계에서 추가될 예정입니다.
-      </p>
+      <p style={{ marginTop: 0, marginBottom: 12 }}>아래의 한 번의 버튼으로 전체 흐름이 실행됩니다.</p>
 
       <div style={{ display: "grid", gap: 10 }}>
         <label htmlFor="projectspec-file-input" style={{ fontWeight: 600 }}>
@@ -55,19 +59,20 @@ export function ProjectSpecUploadTestSection({
         </p>
         <button
           type="button"
-          onClick={onUploadTest}
-          disabled={uploading || !selectedFile}
+          data-testid="project-spec-ai-analyze-start"
+          onClick={onUploadAndAnalyze}
+          disabled={analyzingBusy || !selectedFile}
           style={{
             width: "fit-content",
             padding: "8px 14px",
             borderRadius: 8,
             border: "1px solid #ccc",
             background: "#fff",
-            cursor: uploading || !selectedFile ? "not-allowed" : "pointer",
-            opacity: uploading || !selectedFile ? 0.7 : 1,
+            cursor: analyzingBusy || !selectedFile ? "not-allowed" : "pointer",
+            opacity: analyzingBusy || !selectedFile ? 0.7 : 1,
           }}
         >
-          {uploading ? "업로드 테스트 중..." : "업로드 테스트"}
+          AI 분석 시작
         </button>
         {selectedFileName ? (
           <p style={{ margin: 0 }}>
@@ -86,7 +91,7 @@ export function ProjectSpecUploadTestSection({
               color: "#b00020",
             }}
           >
-            <p style={{ margin: 0, fontWeight: 600, marginBottom: 4 }}>업로드 테스트 실패</p>
+            <p style={{ margin: 0, fontWeight: 600, marginBottom: 4 }}>AI 분석 시작 실패</p>
             <p style={{ margin: 0 }}>{uploadMessage}</p>
           </div>
         ) : null}
@@ -99,7 +104,7 @@ export function ProjectSpecUploadTestSection({
               background: "#f3fbf4",
             }}
           >
-            <p style={{ margin: 0, fontWeight: 600, marginBottom: 6 }}>업로드 테스트 결과</p>
+            <p style={{ margin: 0, fontWeight: 600, marginBottom: 6 }}>업로드 완료</p>
             <p style={{ margin: 0, marginBottom: 4 }}>
               <strong>message:</strong> {uploadMessage || "업로드 API 뼈대가 정상 동작했습니다."}
             </p>
@@ -117,15 +122,6 @@ export function ProjectSpecUploadTestSection({
             </p>
             <p style={{ margin: 0, marginTop: 4 }}>
               <strong>contentStored:</strong> {uploadResult.contentStored ? "true" : "false"}
-            </p>
-            <p style={{ margin: 0, marginTop: 4 }}>
-              <strong>parseStatus:</strong> {uploadResult.parseStatus || "PENDING"}
-            </p>
-            <p style={{ margin: 0, marginTop: 4 }}>
-              <strong>parsedAt:</strong> {uploadResult.parsedAt ? formatTestedAt(uploadResult.parsedAt) : "-"}
-            </p>
-            <p style={{ margin: 0, marginTop: 4 }}>
-              <strong>parsedJson:</strong> {uploadResult.hasParsedJson ? "JSON 생성됨" : "미생성"}
             </p>
             <p style={{ margin: 0, marginTop: 4 }}>
               <strong>status:</strong> {uploadResult.status}

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 
 test.describe("E2E project", () => {
   test.beforeEach(async ({ page }) => {
@@ -49,5 +51,35 @@ test.describe("E2E project", () => {
     await page.getByTestId("project-open-seed").click();
     await expect(page).toHaveURL(/\/projects\/.+/);
     await expect(page.getByText("Web Meeting MVP").first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("[E2E-PRJ-AI-001] AI 분석 시작: 업로드 → 분석 → Task 자동 생성", async ({ page }) => {
+    await page.getByTestId("project-open-seed").click();
+    await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
+
+    // 기존 파싱/생성 버튼은 제거되어야 합니다.
+    await expect(page.getByRole("button", { name: /파싱 실행/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Task 생성$/i })).toHaveCount(0);
+
+    const tmpMdPath = path.join(__dirname, `tmp-projectspec-${Date.now()}.md`);
+    fs.writeFileSync(
+      tmpMdPath,
+      `# Spec\n\n- 목표: E2E용 ProjectSpec 업로드\n- 기능: AI가 Task를 자동 생성\n- 제약: 없음\n`
+    );
+
+    const fileInput = page.locator("#projectspec-file-input");
+    await fileInput.setInputFiles(tmpMdPath);
+
+    const analyzeBtn = page.getByTestId("project-spec-ai-analyze-start");
+    await expect(analyzeBtn).toBeEnabled();
+    await analyzeBtn.click();
+
+    await expect(page.getByTestId("ai-pipeline-status-panel")).toContainText("Task 생성 완료", {
+      timeout: 60_000,
+    });
+    await expect(page.getByText(/AI가 .*개의 Task를 생성했습니다/)).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator("#guided-flow-tasks")).toBeVisible();
+
+    fs.unlinkSync(tmpMdPath);
   });
 });

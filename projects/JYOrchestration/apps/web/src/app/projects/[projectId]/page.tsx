@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
 import {
   fetchGeneratedTasks,
@@ -19,6 +19,7 @@ import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPage
 import { ProjectSpecPromptSection } from "@/components/project-spec/ProjectSpecPromptSection";
 import { ProjectSpecUploadHistorySection } from "@/components/project-spec/ProjectSpecUploadHistorySection";
 import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
+import { AiPipelineStatusPanel, type AiPipelineStatus } from "@/components/project-spec/AiPipelineStatusPanel";
 import { buildProjectSpecPrompt, fallbackProject } from "@/components/project-spec/prompt";
 import { Project, TaskItem, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
 import {
@@ -87,14 +88,17 @@ export default function ProjectDetailPage() {
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
+
+  const [aiPipelineStatus, setAiPipelineStatus] = useState<AiPipelineStatus>("idle");
+  const [aiPipelineProgressStep, setAiPipelineProgressStep] = useState<0 | 1 | 2 | 3>(0);
+  const [aiPipelineTopMessage, setAiPipelineTopMessage] = useState<string | null>(null);
+  const latestUploadIdRef = useRef<string | null>(null);
+
   const [parseMessage, setParseMessage] = useState<string | null>(null);
-  const [parsingUploadId, setParsingUploadId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [taskMessage, setTaskMessage] = useState<string | null>(null);
-  const [generatingTaskUploadId, setGeneratingTaskUploadId] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [taskPrompts, setTaskPrompts] = useState<TaskPromptItem[]>([]);
   const [promptMessage, setPromptMessage] = useState<string | null>(null);
@@ -735,8 +739,9 @@ export default function ProjectDetailPage() {
   }, [taskRuns, tasks, gitRequests, ideaUxFailureLines, gitApplyError]);
 
   const ideaUxActionBusy =
-    parsingUploadId !== null ||
-    generatingTaskUploadId !== null ||
+    aiPipelineStatus === "uploading" ||
+    aiPipelineStatus === "analyzing" ||
+    aiPipelineStatus === "generating_tasks" ||
     applyingGitRequestId !== null ||
     registeringGitRequestRunId !== null ||
     runningPromptId !== null ||
@@ -799,23 +804,67 @@ export default function ProjectDetailPage() {
     setUploadStatus("idle");
   }
 
-  async function handleUploadTest() {
+  function getLatestUploadId(): string | null {
+    return latestUploadIdRef.current;
+  }
+
+  async function handleUploadAndAnalyze() {
+    setAiPipelineTopMessage(null);
+    setParseMessage(null);
+    setTaskMessage(null);
+
+    // 1) upload
+    setAiPipelineStatus("uploading");
+    setAiPipelineProgressStep(1);
+
+    await handleUploadTest();
+
+    const latestUploadId = getLatestUploadId();
+    if (!latestUploadId) {
+      setAiPipelineStatus("error");
+      return;
+    }
+
+    // 2) analyzing
+    setAiPipelineStatus("analyzing");
+    setAiPipelineProgressStep(2);
+    const parsedOk = await handleRunParse(latestUploadId);
+    if (!parsedOk) {
+      setAiPipelineStatus("error");
+      return;
+    }
+
+    // 3) generating tasks
+    setAiPipelineStatus("generating_tasks");
+    setAiPipelineProgressStep(3);
+    const taskCount = await handleGenerateTasks(latestUploadId);
+
+    setAiPipelineTopMessage(`AI가 ${taskCount}개의 Task를 생성했습니다`);
+    setAiPipelineStatus("done");
+
+    requestAnimationFrame(() => {
+      document.getElementById("guided-flow-tasks")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  async function handleUploadTest(): Promise<void> {
     if (!projectId) {
-      setUploadMessage("projectId 정보를 확인할 수 없습니다.");
+      setUploadMessage("프로젝트 정보를 확인할 수 없습니다.");
       setUploadResult(null);
       setUploadStatus("error");
+      latestUploadIdRef.current = null;
       return;
     }
 
     if (!selectedFile) {
-      setUploadMessage("업로드할 파일을 먼저 선택해 주세요.");
+      setUploadMessage("분석할 ProjectSpec 파일을 먼저 선택해 주세요.");
       setUploadResult(null);
       setUploadStatus("error");
+      latestUploadIdRef.current = null;
       return;
     }
 
     try {
-      setUploading(true);
       setUploadMessage(null);
       setUploadResult(null);
       setUploadStatus("idle");
@@ -825,16 +874,18 @@ export default function ProjectDetailPage() {
 
       const { res, json } = await uploadProjectSpecTestFile(formData, projectId);
       if (!res.ok || !json.success || !json.data) {
-        setUploadMessage(json.message || "업로드 테스트 요청에 실패했습니다.");
+        setUploadMessage(json.message || "파일 업로드 요청에 실패했습니다.");
         setUploadStatus("error");
+        latestUploadIdRef.current = null;
         return;
       }
 
       setUploadResult(json.data);
-      setUploadMessage(json.message || "ProjectSpec 업로드 메타데이터가 등록되었습니다.");
+      setUploadMessage(json.message || "파일 업로드가 완료되었습니다. AI 분석을 시작합니다.");
       setUploadStatus("success");
       setParseMessage(null);
       setTaskMessage(null);
+      latestUploadIdRef.current = json.data.id;
       const historyResult = await fetchProjectSpecUploadHistory(projectId);
       if (
         historyResult.res.ok &&
@@ -845,29 +896,24 @@ export default function ProjectDetailPage() {
       }
     } catch (error) {
       console.error("Failed to upload project spec file:", error);
-      setUploadMessage("업로드 테스트 중 오류가 발생했습니다.");
+      setUploadMessage("파일 업로드 중 오류가 발생했습니다.");
       setUploadResult(null);
       setUploadStatus("error");
-    } finally {
-      setUploading(false);
+      latestUploadIdRef.current = null;
     }
   }
 
-  async function handleRunParse(uploadId: string) {
+  async function handleRunParse(uploadId: string): Promise<boolean> {
     if (!projectId) {
-      setParseMessage("projectId 정보를 확인할 수 없습니다.");
-      return;
+      setParseMessage("프로젝트 정보를 확인할 수 없습니다.");
+      return false;
     }
 
     try {
-      setParsingUploadId(uploadId);
       setParseMessage(null);
 
       const { res, json } = await runProjectSpecMockParse(uploadId);
-      setParseMessage(
-        json.message ||
-          (res.ok ? "ProjectSpec mock parsing이 완료되었습니다." : "ProjectSpec parsing에 실패했습니다.")
-      );
+      setParseMessage(json.message || (res.ok ? "AI 분석이 완료되었습니다." : "AI 분석에 실패했습니다."));
 
       const historyResult = await fetchProjectSpecUploadHistory(projectId);
       if (
@@ -877,31 +923,32 @@ export default function ProjectDetailPage() {
       ) {
         setUploadHistory(historyResult.json.data);
       }
+
+      return Boolean(res.ok && json.success);
     } catch (error) {
       console.error("Failed to run project spec mock parse:", error);
-      setParseMessage("mock parsing 실행 중 오류가 발생했습니다.");
-    } finally {
-      setParsingUploadId(null);
+      setParseMessage("AI 분석 중 오류가 발생했습니다.");
+      return false;
     }
   }
 
-  async function handleGenerateTasks(uploadId: string) {
+  async function handleGenerateTasks(uploadId: string): Promise<number> {
     if (!projectId) {
-      setTaskMessage("projectId 정보를 확인할 수 없습니다.");
-      return;
+      setTaskMessage("프로젝트 정보를 확인할 수 없습니다.");
+      return 0;
     }
 
     try {
-      setGeneratingTaskUploadId(uploadId);
       setTaskMessage(null);
 
       const { res, json } = await generateTasksFromParsedSpec(uploadId);
       if (!res.ok || !json.success || !json.data || !Array.isArray(json.data.items)) {
-        setTaskMessage(json.message || "Task 생성 요청에 실패했습니다.");
-        return;
+        setTaskMessage(json.message || "AI 작업 생성 요청에 실패했습니다.");
+        return 0;
       }
 
-      setTaskMessage(json.message || "Task 생성이 완료되었습니다.");
+      const count = typeof json.data.count === "number" ? json.data.count : json.data.items.length;
+      setTaskMessage(json.message || "AI 작업 생성이 완료되었습니다.");
       setPromptMessage(null);
       const taskResult = await fetchGeneratedTasks(projectId);
       if (taskResult.res.ok && taskResult.json.success && Array.isArray(taskResult.json.data)) {
@@ -909,11 +956,12 @@ export default function ProjectDetailPage() {
       } else {
         setTasks(json.data.items);
       }
+
+      return count;
     } catch (error) {
       console.error("Failed to generate tasks from parsed spec:", error);
-      setTaskMessage("Task 생성 중 오류가 발생했습니다.");
-    } finally {
-      setGeneratingTaskUploadId(null);
+      setTaskMessage("AI 작업 생성 중 오류가 발생했습니다.");
+      return 0;
     }
   }
 
@@ -1850,42 +1898,42 @@ export default function ProjectDetailPage() {
     <>
       <div data-ui-label="[O-1] Task Pipeline — Spec Ingest Parse Plan">
         <div id="guided-flow-upload" data-ui-label="[O-1-1] Task Pipeline — Spec Upload Slot">
-        {rbac.canEditSpec ? (
-          <ProjectSpecUploadTestSection
-            selectedFile={selectedFile}
-            selectedFileName={selectedFileName}
-            uploadMessage={uploadMessage}
-            uploadResult={uploadResult}
-            uploadStatus={uploadStatus}
-            uploading={uploading}
-            onSelectFile={handleSelectFile}
-            onUploadTest={handleUploadTest}
+          {rbac.canEditSpec ? (
+            <ProjectSpecUploadTestSection
+              selectedFile={selectedFile}
+              selectedFileName={selectedFileName}
+              uploadMessage={uploadMessage}
+              uploadResult={uploadResult}
+              uploadStatus={uploadStatus}
+              aiPipelineStatus={aiPipelineStatus}
+              onSelectFile={handleSelectFile}
+              onUploadAndAnalyze={handleUploadAndAnalyze}
+            />
+          ) : null}
+          <AiPipelineStatusPanel
+            status={aiPipelineStatus}
+            progressStep={aiPipelineProgressStep}
           />
-        ) : null}
         </div>
         {showSpecUploadHistory ? (
         <div id="guided-flow-history" data-ui-label="[O-1-2] Task Pipeline — Parse History Generate Tasks">
           {!rbac.canEditSpec && rbac.canReview ? (
             <p style={{ margin: "0 0 8px 0", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
               ProjectSpec 파일 등록·업로드는 PLANNER 또는 OWNER 역할에서 수행합니다. 아래는 등록된 업로드
-              이력과 파싱·Task 단계입니다.
+              이력과 AI 분석/Task 생성 단계입니다.
             </p>
           ) : null}
-          <ProjectSpecUploadHistorySection
-            uploadHistory={uploadHistory}
-            parsingUploadId={parsingUploadId}
-            generatingTaskUploadId={generatingTaskUploadId}
-            parseMessage={parseMessage}
-            taskMessage={taskMessage}
-            canRunReviewActions={rbac.canReview}
-            onParse={handleRunParse}
-            onGenerateTasks={handleGenerateTasks}
-          />
+          <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
         </div>
         ) : null}
       </div>
       {showTaskSection ? (
         <div id="guided-flow-tasks" data-ui-label="[O-2] Execution Worker — Task Queue Runs Control">
+          {aiPipelineTopMessage ? (
+            <p style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: 800, color: "#0b6b2a" }}>
+              {aiPipelineTopMessage}
+            </p>
+          ) : null}
         <div data-ui-label="[O-3] Self-Healing Flow — Follow-up Retry Abort Auto-Heal">
         <TaskListSection
           tasks={tasks}

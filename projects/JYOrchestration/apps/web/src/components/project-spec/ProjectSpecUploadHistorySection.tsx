@@ -3,44 +3,35 @@ import { formatTestedAt } from "./format";
 
 type ProjectSpecUploadHistorySectionProps = {
   uploadHistory: UploadHistoryItem[];
-  parsingUploadId: string | null;
-  generatingTaskUploadId: string | null;
-  parseMessage: string | null;
-  taskMessage: string | null;
-  canRunReviewActions: boolean;
-  onParse: (uploadId: string) => void;
-  onGenerateTasks: (uploadId: string) => void;
 };
 
 export function ProjectSpecUploadHistorySection({
   uploadHistory,
-  parsingUploadId,
-  generatingTaskUploadId,
-  parseMessage,
-  taskMessage,
-  canRunReviewActions,
-  onParse,
-  onGenerateTasks,
 }: ProjectSpecUploadHistorySectionProps) {
+  const aiAnalysisState = (item: UploadHistoryItem): { label: string; color: string } => {
+    if (item.hasParsedJson) {
+      return { label: "완료", color: "#16a34a" };
+    }
+    const ps = String(item.parseStatus || "").toUpperCase();
+    if (ps.includes("FAIL") || ps.includes("ERROR")) {
+      return { label: "실패", color: "#dc2626" };
+    }
+    return { label: "대기", color: "#64748b" };
+  };
+
   return (
     <div
-      data-ui-label="[F-1-5] Function — Upload History Parse & Generate Tasks"
+      data-ui-label="[F-1-5] Function — Upload History (AI Analysis Status)"
       style={{
         borderTop: "1px solid #e5e5e5",
         paddingTop: 10,
         marginTop: 12,
       }}
     >
-      <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 8px 0" }}>
-        최근 메타데이터 등록 결과
-      </h3>
+      <h3 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 8px 0" }}>최근 업로드 이력</h3>
       <p style={{ margin: "0 0 8px 0", color: "#555" }}>
-        DB에 등록된 최근 ProjectSpec 업로드 메타데이터입니다.
+        AI 분석 진행/결과 상태를 보여줍니다.
       </p>
-      {parseMessage ? (
-        <p style={{ margin: "0 0 8px 0", color: "#333" }}>{parseMessage}</p>
-      ) : null}
-      {taskMessage ? <p style={{ margin: "0 0 8px 0", color: "#333" }}>{taskMessage}</p> : null}
       {uploadHistory.length === 0 ? (
         <p style={{ margin: 0, color: "#555" }}>아직 등록된 업로드 메타데이터가 없습니다.</p>
       ) : (
@@ -70,14 +61,15 @@ export function ProjectSpecUploadHistorySection({
               <p style={{ margin: 0, marginBottom: 4 }}>
                 <strong>contentStored:</strong> {item.contentStored ? "true" : "false"}
               </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>parseStatus:</strong> {item.parseStatus || "PENDING"}
+              <p style={{ margin: "0 0 4px 0" }}>
+                <strong>AI 분석 상태:</strong>{" "}
+                <span style={{ color: aiAnalysisState(item).color, fontWeight: 800 }}>
+                  {aiAnalysisState(item).label}
+                </span>
               </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>parsedAt:</strong> {item.parsedAt ? formatTestedAt(item.parsedAt) : "-"}
-              </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>parsedJson:</strong> {item.hasParsedJson ? "JSON 생성됨" : "미생성"}
+              <p style={{ margin: "0 0 4px 0" }}>
+                <strong>AI 분석 완료 시각:</strong>{" "}
+                {item.parsedAt ? formatTestedAt(item.parsedAt) : "-"}
               </p>
               <p style={{ margin: 0, marginBottom: 4 }}>
                 <strong>status:</strong> {item.status}
@@ -85,43 +77,6 @@ export function ProjectSpecUploadHistorySection({
               <p style={{ margin: 0 }}>
                 <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
               </p>
-              {canRunReviewActions ? (
-                <button
-                  type="button"
-                  onClick={() => onParse(item.id)}
-                  disabled={parsingUploadId === item.id}
-                  style={{
-                    marginTop: 8,
-                    padding: "6px 10px",
-                    border: "1px solid #ccc",
-                    borderRadius: 6,
-                    background: "#fff",
-                    cursor: parsingUploadId === item.id ? "not-allowed" : "pointer",
-                    opacity: parsingUploadId === item.id ? 0.7 : 1,
-                  }}
-                >
-                  {parsingUploadId === item.id ? "파싱 실행 중..." : "파싱 실행"}
-                </button>
-              ) : null}
-              {canRunReviewActions && item.parseStatus === "SUCCESS" ? (
-                <button
-                  type="button"
-                  onClick={() => onGenerateTasks(item.id)}
-                  disabled={generatingTaskUploadId === item.id}
-                  style={{
-                    marginTop: 8,
-                    marginLeft: 8,
-                    padding: "6px 10px",
-                    border: "1px solid #ccc",
-                    borderRadius: 6,
-                    background: "#fff",
-                    cursor: generatingTaskUploadId === item.id ? "not-allowed" : "pointer",
-                    opacity: generatingTaskUploadId === item.id ? 0.7 : 1,
-                  }}
-                >
-                  {generatingTaskUploadId === item.id ? "Task 생성 중..." : "Task 생성"}
-                </button>
-              ) : null}
             </div>
           ))}
         </div>

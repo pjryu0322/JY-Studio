@@ -79,15 +79,15 @@ export function computeProjectGuidedFlowSnapshot(input: {
     },
     {
       id: 3,
-      title: "STEP 3: Parsing",
-      shortTitle: "Parsing",
+      title: "STEP 3: AI 분석",
+      shortTitle: "AI 분석",
       done: s3,
       anchorId: GUIDED_FLOW_ANCHORS.history,
     },
     {
       id: 4,
-      title: "STEP 4: Task 생성",
-      shortTitle: "Task 생성",
+      title: "STEP 4: AI 작업 생성",
+      shortTitle: "AI 작업 생성",
       done: s4,
       anchorId: GUIDED_FLOW_ANCHORS.history,
     },
@@ -136,17 +136,17 @@ export function guidedFlowNextHint(input: {
       if (!input.canRegisterSpec) {
         return "ProjectSpec 파일 등록은 PLANNER·OWNER 권한이 필요합니다. 담당자에게 요청하거나 역할을 확인하세요.";
       }
-      return "「ProjectSpec 업로드 테스트」에서 스펙 파일을 선택한 뒤 업로드하세요.";
+      return "아래에서 스펙 파일을 선택한 뒤 `AI 분석 시작`을 눌러 진행하세요.";
     case 3:
       if (!input.canReview) {
-        return "Parsing은 REVIEWER 이상에서 실행할 수 있습니다.";
+        return "AI 분석은 REVIEWER 이상에서 실행할 수 있습니다.";
       }
-      return "업로드 이력에서 해당 항목의 Parsing(mock)을 실행하세요.";
+      return "AI 분석이 자동으로 진행됩니다. 잠시만 기다리세요.";
     case 4:
       if (!input.canReview) {
-        return "Task 생성은 REVIEWER 이상에서 실행할 수 있습니다.";
+        return "AI 작업 생성은 REVIEWER 이상에서 실행할 수 있습니다.";
       }
-      return "파싱이 끝난 업로드에서 Task 생성을 실행하세요.";
+      return "AI 작업 생성이 완료되면 아래에서 Task를 확인하세요.";
     case 5:
       if (!input.canReview) {
         return "프롬프트 생성은 REVIEWER 이상에서 실행할 수 있습니다.";
