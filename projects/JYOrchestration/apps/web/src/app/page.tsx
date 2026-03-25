@@ -38,9 +38,11 @@ export default function HomePage() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [projectType, setProjectType] = useState("web-service");
-  const [repoUrl, setRepoUrl] = useState("");
-  const [defaultBranch, setDefaultBranch] = useState("main");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [gitHintOnHome, setGitHintOnHome] = useState<string | null>(null);
+
+  const defaultProjectType = "web-service";
+  const defaultBranch = "main";
 
   async function loadSession() {
     try {
@@ -108,9 +110,9 @@ export default function HomePage() {
         body: JSON.stringify({
           name: trimmedName,
           description: description.trim(),
-          projectType,
-          repoUrl: repoUrl.trim(),
-          defaultBranch: defaultBranch.trim(),
+          projectType: defaultProjectType,
+          repoUrl: null,
+          defaultBranch,
         }),
       });
 
@@ -123,9 +125,7 @@ export default function HomePage() {
 
       setName("");
       setDescription("");
-      setProjectType("web-service");
-      setRepoUrl("");
-      setDefaultBranch("main");
+      setGitHintOnHome(null);
       setSuccessMessage(json.message || "프로젝트가 생성되었습니다.");
 
       await loadProjects();
@@ -152,8 +152,8 @@ export default function HomePage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
-      <section data-debug-label="[A] Header" style={{ marginBottom: 24 }}>
+    <main style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }} data-ui-label="[A] Home">
+      <section data-ui-label="[A-1] Header" style={{ marginBottom: 24 }}>
         <div
           style={{
             display: "flex",
@@ -198,7 +198,7 @@ export default function HomePage() {
       </section>
 
       <section
-        data-debug-label="[B] Project Form"
+        data-ui-label="[B] Create Project Form"
         style={{
           border: "1px solid #ddd",
           borderRadius: 12,
@@ -226,58 +226,139 @@ export default function HomePage() {
               onChange={(e) => setName(e.target.value)}
               disabled={submitting}
               data-testid="home-project-name"
-              data-debug-label="[B-1] Project Name"
+              data-ui-label="[B-1] Project Name"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
             <textarea
-              placeholder="프로젝트 설명"
+              placeholder="프로젝트 설명 (선택)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={submitting}
-              rows={4}
-              data-debug-label="[B-2] Project Description"
+              rows={3}
+              data-ui-label="[B-2] Project Description"
               style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
             />
 
-            <select
-              value={projectType}
-              onChange={(e) => setProjectType(e.target.value)}
+            <button
+              type="button"
+              data-testid="home-advanced-settings-toggle"
+              data-ui-label="[B-ADV] Advanced Settings Toggle"
+              onClick={() => {
+                setAdvancedOpen((v) => !v);
+                setGitHintOnHome(null);
+              }}
               disabled={submitting}
-              data-debug-label="[B-3] Project Type"
-              style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                background: "#fafafa",
+                cursor: submitting ? "not-allowed" : "pointer",
+                fontSize: 14,
+                textAlign: "left",
+                color: "#333",
+              }}
             >
-              <option value="web-service">web-service</option>
-              <option value="api-service">api-service</option>
-              <option value="si-enterprise">si-enterprise</option>
-              <option value="rag-ai-service">rag-ai-service</option>
-            </select>
+              {advancedOpen ? "▼ 고급 설정 닫기" : "▶ 고급 설정"}
+            </button>
 
-            <input
-              type="text"
-              placeholder="저장소 URL (선택)"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              disabled={submitting}
-              data-debug-label="[B-4] Repository URL"
-              style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
-            />
+            {advancedOpen ? (
+              <div
+                data-ui-label="[B-ADV-PANEL] Advanced Settings"
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  padding: 14,
+                  borderRadius: 8,
+                  border: "1px solid #e5e5e5",
+                  background: "#fcfcfc",
+                }}
+              >
+                <div>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    프로젝트 유형
+                  </label>
+                  <select
+                    value={defaultProjectType}
+                    disabled
+                    data-ui-label="[B-3] Project Type"
+                    style={{
+                      padding: 10,
+                      border: "1px solid #ccc",
+                      borderRadius: 8,
+                      width: "100%",
+                      maxWidth: 360,
+                      opacity: 0.85,
+                    }}
+                  >
+                    <option value="web-service">web-service</option>
+                  </select>
+                  <p style={{ margin: "6px 0 0 0", fontSize: 12, color: "#64748b" }}>
+                    현재는 web-service만 지원됩니다
+                  </p>
+                </div>
 
-            <input
-              type="text"
-              placeholder="기본 브랜치"
-              value={defaultBranch}
-              onChange={(e) => setDefaultBranch(e.target.value)}
-              disabled={submitting}
-              data-debug-label="[B-5] Branch"
-              style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
-            />
+                <div>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    저장소 (Git)
+                  </label>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 14, color: "#64748b" }}>연결 안됨</span>
+                    <button
+                      type="button"
+                      data-testid="home-git-connect-hint"
+                      onClick={() =>
+                        setGitHintOnHome("프로젝트를 만든 뒤 상세 화면에서 Git을 연결할 수 있습니다.")
+                      }
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #ccc",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Git 연결하기
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                    기본 브랜치
+                  </label>
+                  <input
+                    type="text"
+                    value={defaultBranch}
+                    readOnly
+                    data-ui-label="[B-5] Default Branch"
+                    aria-readonly
+                    style={{
+                      padding: 10,
+                      border: "1px solid #ccc",
+                      borderRadius: 8,
+                      width: "100%",
+                      maxWidth: 360,
+                      background: "#f1f5f9",
+                      color: "#334155",
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {gitHintOnHome ? (
+              <p style={{ margin: 0, fontSize: 13, color: "#475569" }}>{gitHintOnHome}</p>
+            ) : null}
 
             <button
               type="submit"
               disabled={submitting}
               data-testid="home-create-project"
-              data-debug-label="[B-6] Create Project"
+              data-ui-label="[B-6] Create Project Submit"
               style={{
                 padding: "12px 16px",
                 borderRadius: 8,
@@ -295,7 +376,7 @@ export default function HomePage() {
       </section>
 
       <section
-        data-debug-label="[C] Project List"
+        data-ui-label="[C] Project List"
         style={{
           border: "1px solid #ddd",
           borderRadius: 12,
@@ -306,7 +387,7 @@ export default function HomePage() {
           프로젝트 목록
         </h2>
 
-        <div data-debug-label="[C-1] Project List Content">
+        <div data-ui-label="[C-1] Project List Content">
         {loading ? (
           <p>불러오는 중...</p>
         ) : listMessage ? (
@@ -340,9 +421,14 @@ export default function HomePage() {
                   {project.description || "설명 없음"}
                 </div>
 
-                <div style={{ fontSize: 14, color: "#777" }}>
-                  유형: {project.projectType} / 브랜치:{" "}
-                  {project.defaultBranch || "-"}
+                <div style={{ fontSize: 13, color: "#64748b" }}>
+                  {project.repoUrl ? (
+                    <>
+                      저장소 연결됨 · 브랜치 {project.defaultBranch || "main"}
+                    </>
+                  ) : (
+                    <>저장소 미연결 · 기본 브랜치 {project.defaultBranch || "main"}</>
+                  )}
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <Link

@@ -3,6 +3,8 @@ export type Project = {
   name: string;
   description: string | null;
   projectType: string;
+  repoUrl?: string | null;
+  defaultBranch?: string | null;
   status: string;
   /** 승인만: NO_APPROVAL | MANUAL_APPROVAL (레거시 AUTO_APPLY = NO_APPROVAL). push와 독립. */
   gitApprovalMode?: string;

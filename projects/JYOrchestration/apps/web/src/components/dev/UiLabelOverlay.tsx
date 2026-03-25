@@ -2,56 +2,49 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { subscribe, readUiLabelsEnabled } from "@/lib/ui-label/useUiLabel";
 import {
-  JY_DEBUG_LABELS_CHANGED_EVENT,
-  readDebugLabelsStorage,
-} from "@/components/debug/debugLabelPrefs";
+  DEBUG_LABEL_BADGE_BASE_STYLE,
+  DEBUG_LABEL_OVERLAY_ROOT_STYLE,
+} from "@/components/debug/debugLabelLayerStyles";
 
-type Label = {
+type LabelItem = {
   key: string;
   text: string;
   top: number;
   left: number;
 };
 
-/** dev/prod 무관: env 플래그 또는 사용자 localStorage 설정 */
-function computeVisualDebugLabelsEnabled(): boolean {
-  const envOn = process.env.NEXT_PUBLIC_DEBUG_LABEL === "true";
-  const lsOn = readDebugLabelsStorage();
-  return envOn || lsOn;
-}
-
-export default function DebugLabelLayer() {
+export default function UiLabelOverlay() {
   const pathname = usePathname();
   const [show, setShow] = useState(false);
-  const [labels, setLabels] = useState<Label[]>([]);
+  const [labels, setLabels] = useState<LabelItem[]>([]);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const sync = () => setShow(computeVisualDebugLabelsEnabled());
+    const sync = () => setShow(readUiLabelsEnabled());
     sync();
-
-    window.addEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, sync);
     window.addEventListener("storage", sync);
+    const off = subscribe(sync);
     return () => {
-      window.removeEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, sync);
       window.removeEventListener("storage", sync);
+      off();
     };
   }, []);
 
   const collect = useCallback(() => {
     if (typeof document === "undefined") return;
 
-    const nodes = document.querySelectorAll("[data-debug-label]");
-    const next: Label[] = [];
+    const nodes = document.querySelectorAll("[data-ui-label]");
+    const next: LabelItem[] = [];
 
     nodes.forEach((el, index) => {
       const rect = el.getBoundingClientRect();
-      const text = el.getAttribute("data-debug-label")?.trim() ?? "";
+      const text = el.getAttribute("data-ui-label")?.trim() ?? "";
 
       if (rect.width > 0 && rect.height > 0 && text) {
         next.push({
-          key: `dbg-label-${index}`,
+          key: `ui-label-${index}-${text.slice(0, 24)}`,
           text,
           top: rect.top,
           left: rect.left,
@@ -73,7 +66,10 @@ export default function DebugLabelLayer() {
   }, [collect]);
 
   useEffect(() => {
-    if (!show) return;
+    if (!show) {
+      void Promise.resolve().then(() => setLabels([]));
+      return;
+    }
 
     scheduleCollect();
 
@@ -85,7 +81,7 @@ export default function DebugLabelLayer() {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["data-debug-label"],
+      attributeFilter: ["data-ui-label", "class", "style"],
     });
 
     return () => {
@@ -101,26 +97,14 @@ export default function DebugLabelLayer() {
   }
 
   return (
-    <div aria-hidden style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 2147483000 }}>
+    <div aria-hidden data-ui-label-overlay-root style={DEBUG_LABEL_OVERLAY_ROOT_STYLE}>
       {labels.map((l) => (
         <div
           key={l.key}
           style={{
-            position: "fixed",
+            ...DEBUG_LABEL_BADGE_BASE_STYLE,
             top: l.top,
             left: l.left,
-            background: "rgba(255,0,0,0.85)",
-            color: "#fff",
-            fontSize: 11,
-            padding: "2px 6px",
-            borderRadius: 4,
-            zIndex: 2147483646,
-            pointerEvents: "none",
-            maxWidth: "min(280px, 90vw)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
           }}
         >
           {l.text}

@@ -86,6 +86,7 @@ function LoginForm() {
 
   return (
     <main
+      data-ui-label="[L] Login Page"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -96,6 +97,7 @@ function LoginForm() {
       }}
     >
       <div
+        data-ui-label="[L-1] Login / Register Card"
         style={{
           width: "100%",
           maxWidth: 420,
@@ -113,7 +115,7 @@ function LoginForm() {
           로그인 후 오케스트레이션을 사용할 수 있습니다.
         </p>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <div data-ui-label="[L-2] Auth Tabs" style={{ display: "flex", gap: 8, marginBottom: 20 }}>
           <button
             type="button"
             data-testid="auth-tab-login"
@@ -161,7 +163,7 @@ function LoginForm() {
         ) : null}
 
         {tab === "login" ? (
-          <form onSubmit={onLogin} style={{ display: "grid", gap: 14 }}>
+          <form data-ui-label="[L-3] Login Form" onSubmit={onLogin} style={{ display: "grid", gap: 14 }}>
             <input
               type="email"
               autoComplete="email"
@@ -203,7 +205,7 @@ function LoginForm() {
             </button>
           </form>
         ) : (
-          <form onSubmit={onRegister} style={{ display: "grid", gap: 14 }}>
+          <form data-ui-label="[L-4] Register Form" onSubmit={onRegister} style={{ display: "grid", gap: 14 }}>
             <input
               type="text"
               autoComplete="name"

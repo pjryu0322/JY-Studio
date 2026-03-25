@@ -2508,7 +2508,7 @@ export default function ProjectDetailPage() {
   const showGuidedChrome = Boolean(!loading && project && !errorMessage);
 
   return (
-    <main style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
+    <main data-ui-label="[P] Project Detail" style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
       <ProjectSpecPageHeader />
       {executionSafeMode ? (
         <div

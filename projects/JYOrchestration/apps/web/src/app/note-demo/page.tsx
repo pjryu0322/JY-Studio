@@ -4,7 +4,10 @@
  */
 export default function NoteDemoPage() {
   return (
-    <main style={{ padding: 24, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
+    <main
+      data-ui-label="[N-1] Note Demo"
+      style={{ padding: 24, maxWidth: 560, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}
+    >
       <h1 style={{ fontSize: 22, fontWeight: 700 }}>메모 데모</h1>
       <p style={{ color: "#555", lineHeight: 1.6 }}>
         이 화면은 JYOrchestration Task 실행으로 로그인·저장·목록 기능이 붙는 자리입니다. 아직 구현 전이면

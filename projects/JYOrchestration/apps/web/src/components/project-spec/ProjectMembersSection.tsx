@@ -557,7 +557,11 @@ export function ProjectMembersSection({
   }, [taskPrompts, requestTaskId]);
 
   return (
-    <section data-testid="project-members-section" style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}>
+    <section
+      data-testid="project-members-section"
+      data-ui-label="[P-M] Project Members"
+      style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}
+    >
       <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>멤버 관리</h2>
       <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}>
         HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.

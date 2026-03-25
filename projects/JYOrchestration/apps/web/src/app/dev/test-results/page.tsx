@@ -92,14 +92,18 @@ export default function TestResultsDashboardPage() {
 
   if (data === undefined) {
     return (
-      <main style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
+      <main data-ui-label="[D-1] Test Results Dashboard" style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
         <p>불러오는 중…</p>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 960, margin: "0 auto" }} data-testid="test-results-page">
+    <main
+      data-ui-label="[D-1] Test Results Dashboard"
+      style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}
+      data-testid="test-results-page"
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>테스트 결과</h1>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { Project } from "./types";
 
 type ProjectInfoCardProps = {
@@ -11,11 +14,19 @@ type ProjectInfoCardProps = {
   } | null;
 };
 
+function formatProjectTypeLabel(type: string | null | undefined): string {
+  if (!type) return "-";
+  if (type === "web-service") return "웹 서비스";
+  return type;
+}
+
 export function ProjectInfoCard({
   project,
   currentUserRoleLabel,
   aiActionReviewSummary = null,
 }: ProjectInfoCardProps) {
+  const [gitConnectNote, setGitConnectNote] = useState<string | null>(null);
+
   return (
     <section
       style={{
@@ -39,11 +50,64 @@ export function ProjectInfoCard({
           <strong>설명:</strong> {project?.description || "설명 없음"}
         </div>
         <div>
-          <strong>Project Type:</strong> {project?.projectType || "-"}
+          <strong>유형:</strong> {formatProjectTypeLabel(project?.projectType)}
         </div>
         <div>
-          <strong>Status:</strong> {project?.status || "-"}
+          <strong>상태:</strong> {project?.status || "-"}
         </div>
+
+        <div
+          style={{
+            marginTop: 4,
+            paddingTop: 10,
+            borderTop: "1px solid #eee",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+            <strong>Git 저장소:</strong>{" "}
+            {project?.repoUrl ? (
+              <a
+                href={project.repoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ wordBreak: "break-all", color: "#2563eb" }}
+              >
+                {project.repoUrl}
+              </a>
+            ) : (
+              <span style={{ color: "#64748b" }}>연결 안됨</span>
+            )}
+          </div>
+          {!project?.repoUrl ? (
+            <button
+              type="button"
+              data-testid="project-git-connect"
+              onClick={() =>
+                setGitConnectNote("Git 연결 기능은 준비 중입니다. 준비되면 이 화면에서 바로 연결할 수 있습니다.")
+              }
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              Git 연결하기
+            </button>
+          ) : null}
+        </div>
+        {gitConnectNote ? (
+          <p style={{ margin: 0, fontSize: 13, color: "#475569" }}>{gitConnectNote}</p>
+        ) : null}
+
         {aiActionReviewSummary &&
         (aiActionReviewSummary.pendingReview > 0 ||
           aiActionReviewSummary.approvedPendingApply > 0 ||

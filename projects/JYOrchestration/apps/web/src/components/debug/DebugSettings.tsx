@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  JY_DEBUG_LABELS_CHANGED_EVENT,
-  readDebugLabelsStorage,
-  writeDebugLabelsStorage,
-} from "@/components/debug/debugLabelPrefs";
+import { readUiLabelsEnabled, writeUiLabelsEnabled, subscribe } from "@/lib/ui-label/useUiLabel";
 
 export default function DebugSettings() {
   const [open, setOpen] = useState(false);
@@ -20,13 +16,13 @@ export default function DebugSettings() {
     }
     queueMicrotask(() => {
       setMounted(true);
-      setLabelsOn(readDebugLabelsStorage());
+      setLabelsOn(readUiLabelsEnabled());
     });
-    const syncFromStorage = () => setLabelsOn(readDebugLabelsStorage());
-    window.addEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, syncFromStorage);
+    const syncFromStorage = () => setLabelsOn(readUiLabelsEnabled());
+    const off = subscribe(syncFromStorage);
     window.addEventListener("storage", syncFromStorage);
     return () => {
-      window.removeEventListener(JY_DEBUG_LABELS_CHANGED_EVENT, syncFromStorage);
+      off();
       window.removeEventListener("storage", syncFromStorage);
     };
   }, []);
@@ -130,7 +126,7 @@ export default function DebugSettings() {
                 onChange={(e) => {
                   const next = e.target.checked;
                   setLabelsOn(next);
-                  writeDebugLabelsStorage(next);
+                  writeUiLabelsEnabled(next);
                 }}
                 style={{ width: 16, height: 16, accentColor: "#2563eb" }}
               />
