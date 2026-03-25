@@ -13,7 +13,6 @@ import {
 } from "@/components/project-spec/api";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
-import { ProjectSpecGuideSection } from "@/components/project-spec/ProjectSpecGuideSection";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
 import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
 import { ProjectSpecPromptSection } from "@/components/project-spec/ProjectSpecPromptSection";
@@ -61,8 +60,7 @@ import {
   computeIdeaGuidedUxSnapshot,
   type IdeaUxPrimaryAction,
 } from "@/lib/onboarding/ideaGuidedUx";
-import { computeProjectGuidedFlowSnapshot } from "@/lib/onboarding/projectGuidedFlow";
-import { ProjectGuidedFlowPanel } from "@/components/onboarding/ProjectGuidedFlowPanel";
+// ProjectGuidedFlowPanel(단계 체크리스트)은 Project Spec 화면에서 제거했습니다.
 import { ExecutionTimeline } from "@/components/git/ExecutionTimeline";
 
 function rbacForbiddenMessage(
@@ -626,18 +624,6 @@ export default function ProjectDetailPage() {
         return acc;
       }, {}),
     [taskRuns]
-  );
-
-  const guidedFlowSnapshot = useMemo(
-    () =>
-      computeProjectGuidedFlowSnapshot({
-        uploadHistory,
-        tasks,
-        taskPrompts,
-        taskRuns,
-        gitRequests,
-      }),
-    [uploadHistory, tasks, taskPrompts, taskRuns, gitRequests]
   );
 
   const ideaUxSnapshot = useMemo(
@@ -1896,39 +1882,28 @@ export default function ProjectDetailPage() {
 
   const projectFlowTail = (
     <>
-      <div data-ui-label="[O-1] Task Pipeline — Spec Ingest Parse Plan">
-        <div id="guided-flow-upload" data-ui-label="[O-1-1] Task Pipeline — Spec Upload Slot">
-          {rbac.canEditSpec ? (
-            <ProjectSpecUploadTestSection
-              selectedFile={selectedFile}
-              selectedFileName={selectedFileName}
-              uploadMessage={uploadMessage}
-              uploadResult={uploadResult}
-              uploadStatus={uploadStatus}
-              aiPipelineStatus={aiPipelineStatus}
-              onSelectFile={handleSelectFile}
-              onUploadAndAnalyze={handleUploadAndAnalyze}
-            />
-          ) : null}
-          <AiPipelineStatusPanel
-            status={aiPipelineStatus}
-            progressStep={aiPipelineProgressStep}
-          />
-        </div>
-        {showSpecUploadHistory ? (
-        <div id="guided-flow-history" data-ui-label="[O-1-2] Task Pipeline — Parse History Generate Tasks">
-          {!rbac.canEditSpec && rbac.canReview ? (
-            <p style={{ margin: "0 0 8px 0", fontSize: 14, color: "#555", lineHeight: 1.5 }}>
-              ProjectSpec 파일 등록·업로드는 PLANNER 또는 OWNER 역할에서 수행합니다. 아래는 등록된 업로드
-              이력과 AI 분석/Task 생성 단계입니다.
-            </p>
-          ) : null}
-          <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
-        </div>
-        ) : null}
-      </div>
       {showTaskSection ? (
         <div id="guided-flow-tasks" data-ui-label="[O-2] Execution Worker — Task Queue Runs Control">
+          {!loading && project && !errorMessage ? (
+            ideaUxRecommended ? (
+              <IdeaGuidedUx
+                snapshot={ideaUxSnapshot}
+                recommendedMode={ideaUxRecommended}
+                onRecommendedModeChange={setIdeaUxRecommended}
+                failureAssist={ideaUxFailureAssist}
+                actionBusy={ideaUxActionBusy}
+                onPrimaryAction={handleIdeaPrimaryAction}
+                onBeforeNavigateToAnchor={handleIdeaUxBeforeAnchor}
+              />
+            ) : null
+          ) : null}
+          {uiPermissions.canRun ? (
+            <ExecutionObservabilityPanel
+              data={execSummary}
+              loading={execSummaryLoading}
+              errorMessage={execSummaryError}
+            />
+          ) : null}
           {aiPipelineTopMessage ? (
             <p style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: 800, color: "#0b6b2a" }}>
               {aiPipelineTopMessage}
@@ -2599,17 +2574,6 @@ export default function ProjectDetailPage() {
       ) : null}
       <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
       {showGuidedChrome ? (
-        <IdeaGuidedUx
-          snapshot={ideaUxSnapshot}
-          recommendedMode={ideaUxRecommended}
-          onRecommendedModeChange={setIdeaUxRecommended}
-          failureAssist={ideaUxFailureAssist}
-          actionBusy={ideaUxActionBusy}
-          onPrimaryAction={handleIdeaPrimaryAction}
-          onBeforeNavigateToAnchor={handleIdeaUxBeforeAnchor}
-        />
-      ) : null}
-      {showGuidedChrome ? (
         <>
           <nav
             aria-label="프로젝트 섹션"
@@ -2657,7 +2621,7 @@ export default function ProjectDetailPage() {
           </nav>
 
           {mainTab === "overview" ? (
-            <div data-ui-label="[P-4-1] Overview Region — Spec & Orchestration Surface">
+            <div data-ui-label="[P-4-1] Overview Region — Project Spec → AI Analysis → Execution">
               <ProjectInfoCard
                 project={project}
                 currentUserRoleLabel={projectRole && projectId ? projectRole : null}
@@ -2666,31 +2630,49 @@ export default function ProjectDetailPage() {
                 onRequestDelete={() => setDeleteModalOpen(true)}
                 compactOverview
               />
-              {uiPermissions.canRun ? (
-                <ExecutionObservabilityPanel
-                  data={execSummary}
-                  loading={execSummaryLoading}
-                  errorMessage={execSummaryError}
-                />
+              {rbac.canEditSpec ? (
+                <div id="guided-flow-upload" data-ui-label="[F-2-1] Spec Definition Input — ProjectSpec File Selection">
+                  <ProjectSpecUploadTestSection
+                    selectedFile={selectedFile}
+                    selectedFileName={selectedFileName}
+                    uploadMessage={uploadMessage}
+                    uploadResult={uploadResult}
+                    uploadStatus={uploadStatus}
+                    aiPipelineStatus={aiPipelineStatus}
+                    onSelectFile={handleSelectFile}
+                    onUploadAndAnalyze={handleUploadAndAnalyze}
+                    showFileInput
+                    showAnalyzeButton={false}
+                  />
+                </div>
               ) : null}
-              {!loading && project ? (
-                <ProjectGuidedFlowPanel
-                  snapshot={guidedFlowSnapshot}
-                  canRegisterSpec={rbac.canEditSpec}
-                  canReview={rbac.canReview}
-                  canOperate={uiPermissions.canRun}
-                />
+              {showSpecUploadHistory ? (
+                <div id="guided-flow-history" data-ui-label="[F-2-2] Optional Reference Upload — Upload History">
+                  <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
+                </div>
               ) : null}
-              <p
-                data-ui-label="[F-3-1] Function — RBAC & Member Entry Hint"
-                style={{ margin: "0 0 16px 0", fontSize: 13, color: "#666", lineHeight: 1.5 }}
-              >
-                프로젝트 생성자는 OWNER이며, OWNER / EDITOR / REVIEWER / VIEWER 역할과 HUMAN / AI 멤버를
-                함께 관리할 수 있습니다. 멤버·Git·고급 설정은 상단 탭에서 구성합니다.
-              </p>
-              {rbac.canEditSpec ? <ProjectSpecGuideSection /> : null}
               {rbac.canEditSpec ? (
                 <ProjectSpecPromptSection prompt={projectSpecPrompt} />
+              ) : null}
+              {rbac.canEditSpec ? (
+                <div
+                  data-ui-label="[O-1] Orchestration — AI Analysis Start & Task Generation"
+                  style={{ marginBottom: 16 }}
+                >
+                  <AiPipelineStatusPanel status={aiPipelineStatus} progressStep={aiPipelineProgressStep} />
+                  <ProjectSpecUploadTestSection
+                    selectedFile={selectedFile}
+                    selectedFileName={selectedFileName}
+                    uploadMessage={uploadMessage}
+                    uploadResult={uploadResult}
+                    uploadStatus={uploadStatus}
+                    aiPipelineStatus={aiPipelineStatus}
+                    onSelectFile={handleSelectFile}
+                    onUploadAndAnalyze={handleUploadAndAnalyze}
+                    showFileInput={false}
+                    showAnalyzeButton
+                  />
+                </div>
               ) : null}
               {projectFlowTail}
             </div>

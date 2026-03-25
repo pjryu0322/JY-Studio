@@ -47,19 +47,7 @@ export function ProjectSpecUploadHistorySection({
               }}
             >
               <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>originalFileName:</strong> {item.originalFileName}
-              </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>fileSize:</strong> {item.fileSize}
-              </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>fileType:</strong> {item.fileType || "unknown"}
-              </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>sourceType:</strong> {item.sourceType}
-              </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>contentStored:</strong> {item.contentStored ? "true" : "false"}
+                <strong>참고 파일:</strong> {item.originalFileName}
               </p>
               <p style={{ margin: "0 0 4px 0" }}>
                 <strong>AI 분석 상태:</strong>{" "}
@@ -67,15 +55,8 @@ export function ProjectSpecUploadHistorySection({
                   {aiAnalysisState(item).label}
                 </span>
               </p>
-              <p style={{ margin: "0 0 4px 0" }}>
-                <strong>AI 분석 완료 시각:</strong>{" "}
-                {item.parsedAt ? formatTestedAt(item.parsedAt) : "-"}
-              </p>
-              <p style={{ margin: 0, marginBottom: 4 }}>
-                <strong>status:</strong> {item.status}
-              </p>
               <p style={{ margin: 0 }}>
-                <strong>createdAt:</strong> {formatTestedAt(item.createdAt)}
+                <strong>완료 시각:</strong> {item.parsedAt ? formatTestedAt(item.parsedAt) : "-"}
               </p>
             </div>
           ))}
