@@ -255,6 +255,10 @@ export async function postProjectTaskDraftsAiReorder(projectId: string, body?: {
     model: string;
     usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null } | null;
     cycleDetected: boolean;
+    reason?: string;
+    parallelGroups?: string[][];
+    cycleProblemEdge?: { source: string; target: string } | null;
+    cycleCandidateEdges?: Array<{ source: string; target: string }>;
     tasks: Array<{
       id: string;
       dependsOnIds?: string[];

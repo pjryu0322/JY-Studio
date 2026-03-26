@@ -5,6 +5,12 @@ export type TaskDraftWorkflowSuggestion = {
   positionY: number;
 };
 
+export type TaskDraftWorkflowAiMeta = {
+  reason: string;
+  parallelGroups: string[][];
+  cycleCandidateEdges: Array<{ source: string; target: string }>;
+};
+
 const DEFAULT_MODEL = "gpt-4o-mini";
 
 function toStringArray(x: unknown): string[] {
@@ -19,7 +25,7 @@ function toNumber(x: unknown): number {
 
 export function parseWorkflowSuggestionJson(
   text: string
-): { tasks: TaskDraftWorkflowSuggestion[] } {
+): { tasks: TaskDraftWorkflowSuggestion[]; meta: TaskDraftWorkflowAiMeta } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text) as unknown;
@@ -50,7 +56,22 @@ export function parseWorkflowSuggestionJson(
   if (tasks.length === 0) {
     throw new Error("OPENAI_WORKFLOW_NO_VALID_TASKS");
   }
-  return { tasks };
+  const reason = String(root.reason ?? "").trim() || "의존성과 병렬 실행 가능성을 기준으로 재배치";
+  const rawParallel = Array.isArray(root.parallelGroups) ? root.parallelGroups : [];
+  const parallelGroups = rawParallel
+    .filter((g): g is unknown[] => Array.isArray(g))
+    .map((g) => toStringArray(g).slice(0, 50))
+    .filter((g) => g.length > 0)
+    .slice(0, 20);
+  const rawCycle = Array.isArray(root.cycleCandidateEdges) ? root.cycleCandidateEdges : [];
+  const cycleCandidateEdges = rawCycle
+    .map((v) => (v && typeof v === "object" ? (v as Record<string, unknown>) : null))
+    .filter((x): x is Record<string, unknown> => Boolean(x))
+    .map((o) => ({ source: String(o.source ?? "").trim(), target: String(o.target ?? "").trim() }))
+    .filter((e) => e.source.length > 0 && e.target.length > 0)
+    .slice(0, 30);
+
+  return { tasks, meta: { reason, parallelGroups, cycleCandidateEdges } };
 }
 
 function buildUserMessage(input: {
@@ -89,6 +110,9 @@ ${taskLines}
 
 [출력 JSON 스키마 — 키 이름을 정확히 맞출 것]
 {
+  "reason": "재정렬 이유 한 줄 요약",
+  "parallelGroups": [["병렬로 시작 가능한 TaskDraft id", "..."], ["..."]],
+  "cycleCandidateEdges": [{"source":"idA","target":"idB"}],
   "tasks": [
     {
       "id": "TaskDraft id",
@@ -122,6 +146,7 @@ export async function reorderTaskDraftWorkflowWithOpenAI(input: {
   model: string;
   usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null } | null;
   suggestion: TaskDraftWorkflowSuggestion[];
+  meta: TaskDraftWorkflowAiMeta;
 }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -180,6 +205,6 @@ export async function reorderTaskDraftWorkflowWithOpenAI(input: {
       ? { promptTokens: u.prompt_tokens, completionTokens: u.completion_tokens, totalTokens: u.total_tokens }
       : null;
 
-  return { model, usage, suggestion: parsed.tasks };
+  return { model, usage, suggestion: parsed.tasks, meta: parsed.meta };
 }
 

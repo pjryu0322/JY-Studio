@@ -10,21 +10,30 @@ function jsonArrayFromDb(v: unknown): string[] {
   return v.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean);
 }
 
-function hasCycle(nodes: string[], depsById: Map<string, string[]>): boolean {
+function findCycle(nodes: string[], depsById: Map<string, string[]>): { source: string; target: string } | null {
   const visited = new Set<string>();
   const inStack = new Set<string>();
-  const dfs = (id: string): boolean => {
-    if (inStack.has(id)) return true;
-    if (visited.has(id)) return false;
+  const dfs = (id: string): { source: string; target: string } | null => {
+    if (inStack.has(id)) return null;
+    if (visited.has(id)) return null;
     visited.add(id);
     inStack.add(id);
     for (const dep of depsById.get(id) ?? []) {
-      if (dfs(dep)) return true;
+      if (!visited.has(dep)) {
+        const hit = dfs(dep);
+        if (hit) return hit;
+      } else if (inStack.has(dep)) {
+        return { source: dep, target: id };
+      }
     }
     inStack.delete(id);
-    return false;
+    return null;
   };
-  return nodes.some((id) => dfs(id));
+  for (const id of nodes) {
+    const hit = dfs(id);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 export async function POST(
@@ -107,7 +116,8 @@ export async function POST(
     }
 
     const nodes = drafts.map((d) => d.id);
-    const cycle = hasCycle(nodes, nextDepsById);
+    const cycleEdge = findCycle(nodes, nextDepsById);
+    const cycle = Boolean(cycleEdge);
 
     return NextResponse.json({
       success: true,
@@ -118,6 +128,10 @@ export async function POST(
         model: ai.model,
         usage: ai.usage,
         cycleDetected: cycle,
+        reason: ai.meta.reason,
+        parallelGroups: ai.meta.parallelGroups,
+        cycleProblemEdge: cycle ? cycleEdge : null,
+        cycleCandidateEdges: ai.meta.cycleCandidateEdges,
         tasks: ai.suggestion
           .filter((t) => allowedIds.has(t.id))
           .map((t) => ({

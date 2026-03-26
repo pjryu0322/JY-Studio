@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   deleteProjectTaskDraft,
   fetchProjectTaskDrafts,
@@ -17,10 +17,14 @@ import type { SpecWorkspaceAiModelId } from "@/lib/project-spec/specWorkspaceMod
 import ReactFlow, {
   Background,
   Controls,
+  Handle,
   MiniMap,
+  Position,
   type Connection,
   type Edge,
   type Node,
+  type NodeProps,
+  type NodeTypes,
 } from "reactflow";
 import dagre from "dagre";
 
@@ -28,6 +32,7 @@ import "reactflow/dist/style.css";
 
 const WORKFLOW_STAGES = ["Planning", "Build", "Test", "Review", "Apply"] as const;
 type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
+type WorkflowStatus = "CONFIRMED" | "READY" | "BLOCKED" | "INVALID";
 
 function normalizeStage(s: string | null | undefined): WorkflowStage {
   const v = String(s ?? "").trim();
@@ -130,6 +135,76 @@ function computeExecutionLevels(input: {
   return levels;
 }
 
+type TaskDraftNodeData = {
+  title: string;
+  priority: string;
+  workflowStatus: WorkflowStatus;
+  stage: WorkflowStage;
+  specVersionNumber: number;
+  createdByType: string;
+  isStart: boolean;
+  isTerminal: boolean;
+  isParallelCandidate: boolean;
+};
+
+const TaskDraftNodeView = memo(function TaskDraftNodeView({
+  data,
+  selected,
+}: NodeProps & { data: TaskDraftNodeData }) {
+  const statusBg =
+    data.workflowStatus === "READY"
+      ? "#dcfce7"
+      : data.workflowStatus === "BLOCKED"
+        ? "#e2e8f0"
+        : data.workflowStatus === "INVALID"
+          ? "#fee2e2"
+          : "#e0e7ff";
+  return (
+    <div
+      style={{
+        width: 280,
+        borderRadius: 12,
+        border: selected ? "2px solid #7c3aed" : "1px solid #cbd5e1",
+        background: "#fff",
+        boxShadow: selected ? "0 2px 12px rgba(124,58,237,0.25)" : "0 1px 3px rgba(15,23,42,0.06)",
+        overflow: "hidden",
+      }}
+    >
+      <Handle type="target" position={Position.Left} />
+      <div style={{ padding: "8px 10px", borderBottom: "1px solid #e2e8f0", background: statusBg }}>
+        <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", lineHeight: 1.35 }}>{data.title}</div>
+        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <span style={badgeBase("#fff", "#334155")}>P:{data.priority}</span>
+          <span style={badgeBase("#fff", "#334155")}>{data.workflowStatus}</span>
+          <span style={badgeBase("#fff", "#334155")}>Spec v{data.specVersionNumber}</span>
+        </div>
+      </div>
+      <div style={{ padding: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span style={badgeBase("#f8fafc", "#475569")}>{data.stage}</span>
+        <span style={badgeBase(data.createdByType === "USER" ? "#fff7ed" : "#eff6ff", "#475569")}>
+          {data.createdByType === "USER" ? "USER" : "AI"}
+        </span>
+        {data.isStart ? <span style={badgeBase("#ecfeff", "#0e7490")}>START</span> : null}
+        {data.isTerminal ? <span style={badgeBase("#fef3c7", "#92400e")}>TERMINAL</span> : null}
+        {data.isParallelCandidate ? <span style={badgeBase("#dcfce7", "#166534")}>PARALLEL</span> : null}
+      </div>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  );
+});
+
+function badgeBase(bg: string, color: string): CSSProperties {
+  return {
+    fontSize: 10,
+    fontWeight: 900,
+    padding: "2px 7px",
+    borderRadius: 999,
+    background: bg,
+    color,
+    border: "1px solid #e2e8f0",
+  };
+}
+
 type TaskDraftPanelProps = {
   projectId: string;
   canEdit: boolean;
@@ -166,6 +241,10 @@ export function TaskDraftPanel({
         cycleDetected: boolean;
         tasks: Array<{ id: string; dependsOnIds?: string[]; positionX: number; positionY: number }>;
         model: string;
+        reason: string;
+        parallelGroups: string[][];
+        cycleProblemEdge?: { source: string; target: string } | null;
+        cycleCandidateEdges?: Array<{ source: string; target: string }>;
       }
   >(null);
 
@@ -283,49 +362,69 @@ export function TaskDraftPanel({
     return computeExecutionLevels({ draftIds, depsById, confirmedIds });
   }, [confirmedIds, depsById, drafts]);
 
+  const parallelCandidateIds = useMemo(() => {
+    const s = new Set<string>();
+    if (!aiSuggestion?.parallelGroups) return s;
+    for (const g of aiSuggestion.parallelGroups) {
+      for (const id of g) s.add(id);
+    }
+    return s;
+  }, [aiSuggestion]);
+
+  const cycleEdgeId = useMemo(() => {
+    if (validation.cycle) {
+      return `${validation.cycle.edge.source}__to__${validation.cycle.edge.target}`;
+    }
+    if (aiSuggestion?.cycleProblemEdge) {
+      return `${aiSuggestion.cycleProblemEdge.source}__to__${aiSuggestion.cycleProblemEdge.target}`;
+    }
+    return null;
+  }, [aiSuggestion, validation.cycle]);
+
+  const nodeTypes = useMemo<NodeTypes>(() => ({ taskDraftNode: TaskDraftNodeView }), []);
+
   const nodes: Node[] = useMemo(() => {
     return drafts.map((d) => ({
       id: d.id,
+      type: "taskDraftNode",
       position: { x: d.positionX ?? 0, y: d.positionY ?? 0 },
       data: {
         title: d.title,
         priority: d.priority,
-      },
-      style: {
-        border: selectedId === d.id ? "2px solid #7c3aed" : "1px solid #ddd6fe",
-        borderRadius: 10,
-        padding: 10,
-        background:
-          workflowStatusById.get(d.id) === "READY"
-            ? "#ecfdf5"
-            : workflowStatusById.get(d.id) === "BLOCKED"
-              ? "#f1f5f9"
-              : workflowStatusById.get(d.id) === "INVALID"
-                ? "#fef2f2"
-                : d.status === "CONFIRMED"
-                  ? "#e0e7ff"
-                  : "#fff",
-        width: 260,
-        boxShadow: selectedId === d.id ? "0 2px 12px rgba(124,58,237,0.25)" : "none",
+        workflowStatus: workflowStatusById.get(d.id) ?? "BLOCKED",
+        stage: normalizeStage(d.stage),
+        specVersionNumber: d.specVersionNumber,
+        createdByType: d.createdByType,
+        isStart: validation.startIds.includes(d.id),
+        isTerminal: validation.terminalIds.includes(d.id),
+        isParallelCandidate: parallelCandidateIds.has(d.id),
       },
     }));
-  }, [drafts, selectedId, workflowStatusById]);
+  }, [drafts, parallelCandidateIds, validation.startIds, validation.terminalIds, workflowStatusById]);
 
   const edges: Edge[] = useMemo(() => {
     const out: Edge[] = [];
     for (const d of drafts) {
       for (const depId of d.dependsOnIds ?? []) {
         if (!byId.has(depId)) continue;
+        const id = `${depId}__to__${d.id}`;
         out.push({
-          id: `${depId}__to__${d.id}`,
+          id,
           source: depId,
           target: d.id,
           type: "smoothstep",
+          style:
+            cycleEdgeId && cycleEdgeId === id
+              ? { stroke: "#dc2626", strokeWidth: 3 }
+              : parallelCandidateIds.has(depId) && parallelCandidateIds.has(d.id)
+                ? { stroke: "#16a34a", strokeWidth: 2 }
+                : undefined,
+          animated: Boolean(cycleEdgeId && cycleEdgeId === id),
         });
       }
     }
     return out;
-  }, [byId, drafts]);
+  }, [byId, cycleEdgeId, drafts, parallelCandidateIds]);
 
   async function handleRegenerate() {
     if (!projectId || !canEdit) {
@@ -530,7 +629,7 @@ export function TaskDraftPanel({
     nextDepsById.set(conn.target, next);
     const cycle = detectCycle(drafts.map((d) => d.id), nextDepsById);
     if (cycle) {
-      setMessage("순환 의존성이 생겨 연결을 만들 수 없습니다. (cycle)");
+      setMessage(`순환 의존성이 생겨 연결을 만들 수 없습니다. (${cycle.cyclePath.slice(0, 6).join(" → ")})`);
       return;
     }
     setBusy("edge");
@@ -649,6 +748,10 @@ export function TaskDraftPanel({
         cycleDetected: json.data.cycleDetected,
         tasks: json.data.tasks,
         model: json.data.model,
+        reason: json.data.reason ?? "의존성과 병렬 실행 가능성을 기준으로 재배치",
+        parallelGroups: Array.isArray(json.data.parallelGroups) ? json.data.parallelGroups : [],
+        cycleProblemEdge: json.data.cycleProblemEdge ?? null,
+        cycleCandidateEdges: Array.isArray(json.data.cycleCandidateEdges) ? json.data.cycleCandidateEdges : [],
       });
       setMessage(json.message || "AI 재정렬 추천을 생성했습니다.");
     } catch (e) {
@@ -1029,6 +1132,34 @@ export function TaskDraftPanel({
             AI 추천 준비됨 {aiSuggestion.cycleDetected ? "(순환 감지: 의존성 변경 제외)" : ""}
           </div>
           <div style={{ marginBottom: 8, fontSize: 12, color: "#0f766e" }}>모델: {aiSuggestion.model}</div>
+          <div style={{ marginBottom: 8, fontSize: 12, color: "#134e4a" }}>
+            이유: {aiSuggestion.reason}
+            {aiSuggestion.parallelGroups.length > 0 ? (
+              <>
+                <br />
+                병렬 가능:{" "}
+                {aiSuggestion.parallelGroups
+                  .slice(0, 3)
+                  .map((g) => g.slice(0, 3).join(" / "))
+                  .join(" | ")}
+              </>
+            ) : null}
+            {aiSuggestion.cycleProblemEdge ? (
+              <>
+                <br />
+                cycle edge: {aiSuggestion.cycleProblemEdge.source} → {aiSuggestion.cycleProblemEdge.target}
+              </>
+            ) : aiSuggestion.cycleCandidateEdges && aiSuggestion.cycleCandidateEdges.length > 0 ? (
+              <>
+                <br />
+                잠재 cycle edge 후보:{" "}
+                {aiSuggestion.cycleCandidateEdges
+                  .slice(0, 3)
+                  .map((e) => `${e.source}→${e.target}`)
+                  .join(", ")}
+              </>
+            ) : null}
+          </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
@@ -1097,6 +1228,27 @@ export function TaskDraftPanel({
         </div>
       ) : null}
 
+      <div
+        style={{
+          margin: "0 0 10px 0",
+          padding: 10,
+          borderRadius: 10,
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+          fontSize: 12,
+          color: "#334155",
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <span>시작 가능 노드: {validation.startIds.length}</span>
+        <span>끝 노드: {validation.terminalIds.length}</span>
+        <span>고립 노드: {validation.isolatedIds.length}</span>
+        <span>READY: {[...workflowStatusById.values()].filter((s) => s === "READY").length}</span>
+        <span>BLOCKED: {[...workflowStatusById.values()].filter((s) => s === "BLOCKED").length}</span>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12, alignItems: "start" }}>
         <div
           data-testid="task-draft-workflow-canvas"
@@ -1148,6 +1300,7 @@ export function TaskDraftPanel({
             </div>
           ) : (
             <ReactFlow
+              nodeTypes={nodeTypes}
               nodes={nodes}
               edges={edges}
               style={{ position: "relative", zIndex: 2 }}
