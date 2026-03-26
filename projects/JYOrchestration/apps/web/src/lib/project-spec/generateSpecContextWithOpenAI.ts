@@ -191,3 +191,82 @@ export async function completeWorkspaceSpecMarkdown(
 
   return { markdown, model, usage };
 }
+
+/**
+ * 현재 확정 Project Spec 마크다운을 입력으로 다듬은(refine) 본문만 생성한다.
+ */
+export async function refineWorkspaceSpecMarkdown(
+  currentMarkdown: string,
+  modelFromRequest?: string | null
+): Promise<{
+  markdown: string;
+  model: string;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+}> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY_NOT_CONFIGURED");
+  }
+
+  const trimmed = modelFromRequest?.trim();
+  const model =
+    trimmed && trimmed.length > 0 ? trimmed : process.env.OPENAI_MODEL?.trim() || WORKSPACE_SPEC_DEFAULT_MODEL;
+
+  const userMessage = `아래는 현재 확정된 Project Spec 마크다운입니다. 구조(헤딩·섹션 순서)는 최대한 유지하고, 명확성·완결성·표현 일관성만 개선한 전체 본문을 출력하세요. 없던 요구나 범위를 임의로 추가하지 마세요.
+
+---
+${currentMarkdown.trim()}
+---`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.35,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a senior software architect. Refine the given Project Spec in place: preserve section structure and headings; improve clarity and consistency only. Output only the full Markdown body (Korean if the input is Korean). No markdown code fences wrapping the whole document, no preamble or epilogue.",
+        },
+        { role: "user", content: userMessage },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+  }
+
+  const body = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  const markdown = body.choices?.[0]?.message?.content?.trim();
+  if (!markdown) {
+    throw new Error("OPENAI_EMPTY_RESPONSE");
+  }
+
+  const u = body.usage;
+  const usage =
+    typeof u?.prompt_tokens === "number" &&
+    typeof u?.completion_tokens === "number" &&
+    typeof u?.total_tokens === "number"
+      ? {
+          promptTokens: u.prompt_tokens,
+          completionTokens: u.completion_tokens,
+          totalTokens: u.total_tokens,
+        }
+      : null;
+
+  return { markdown, model, usage };
+}

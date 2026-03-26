@@ -1,12 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { buildWorkspacePromptText } from "@/lib/project-spec/buildWorkspacePromptText";
-import { completeWorkspaceSpecMarkdown } from "@/lib/project-spec/generateSpecContextWithOpenAI";
+import {
+  completeWorkspaceSpecMarkdown,
+  refineWorkspaceSpecMarkdown,
+} from "@/lib/project-spec/generateSpecContextWithOpenAI";
+import {
+  appendProjectSpecVersionAndSetCurrent,
+  rollbackProjectSpecToVersion,
+} from "@/lib/project-spec/appendProjectSpecVersion";
 import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import type { Project } from "@/components/project-spec/types";
+
+const PROJECT_MAP_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  projectType: true,
+  specCoreGoals: true,
+  specScopeIn: true,
+  specScopeOut: true,
+  specTargetUsers: true,
+  specSuccessCriteria: true,
+  confirmedSpecMarkdown: true,
+  confirmedSpecResponseId: true,
+  confirmedSpecAt: true,
+  currentSpecVersionId: true,
+} as const;
 
 function mapProject(row: {
   id: string;
@@ -21,6 +44,7 @@ function mapProject(row: {
   confirmedSpecMarkdown: string | null;
   confirmedSpecResponseId: string | null;
   confirmedSpecAt: Date | null;
+  currentSpecVersionId: string | null;
 }): Pick<
   Project,
   | "id"
@@ -35,6 +59,7 @@ function mapProject(row: {
   | "confirmedSpecMarkdown"
   | "confirmedSpecResponseId"
   | "confirmedSpecAt"
+  | "currentSpecVersionId"
 > {
   return {
     id: row.id,
@@ -49,6 +74,7 @@ function mapProject(row: {
     confirmedSpecMarkdown: row.confirmedSpecMarkdown,
     confirmedSpecResponseId: row.confirmedSpecResponseId,
     confirmedSpecAt: row.confirmedSpecAt?.toISOString() ?? null,
+    currentSpecVersionId: row.currentSpecVersionId,
   };
 }
 
@@ -80,20 +106,7 @@ export async function GET(
 
     const projectRow = await prisma.project.findUnique({
       where: { id },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        projectType: true,
-        specCoreGoals: true,
-        specScopeIn: true,
-        specScopeOut: true,
-        specTargetUsers: true,
-        specSuccessCriteria: true,
-        confirmedSpecMarkdown: true,
-        confirmedSpecResponseId: true,
-        confirmedSpecAt: true,
-      },
+      select: PROJECT_MAP_SELECT,
     });
     if (!projectRow) {
       return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
@@ -111,11 +124,33 @@ export async function GET(
       take: 50,
     });
 
+    const specVersions = await prisma.projectSpecVersion.findMany({
+      where: { projectId: id },
+      orderBy: { version: "desc" },
+      take: 80,
+      select: {
+        id: true,
+        projectId: true,
+        version: true,
+        markdown: true,
+        sourceType: true,
+        createdAt: true,
+      },
+    });
+
     return NextResponse.json({
       success: true,
       message: "Spec 워크스페이스를 불러왔습니다.",
       data: {
         project: mapProject(projectRow),
+        specVersions: specVersions.map((v) => ({
+          id: v.id,
+          projectId: v.projectId,
+          version: v.version,
+          markdown: v.markdown,
+          sourceType: v.sourceType,
+          createdAt: v.createdAt.toISOString(),
+        })),
         prompts: prompts.map((p) => ({
           id: p.id,
           projectId: p.projectId,
@@ -237,20 +272,7 @@ export async function PATCH(
     const updated = await prisma.project.update({
       where: { id },
       data: data as Parameters<typeof prisma.project.update>[0]["data"],
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        projectType: true,
-        specCoreGoals: true,
-        specScopeIn: true,
-        specScopeOut: true,
-        specTargetUsers: true,
-        specSuccessCriteria: true,
-        confirmedSpecMarkdown: true,
-        confirmedSpecResponseId: true,
-        confirmedSpecAt: true,
-      },
+      select: PROJECT_MAP_SELECT,
     });
 
     return NextResponse.json({
@@ -292,7 +314,10 @@ type PostBody =
       responseBId: string;
       mergedMarkdown: string;
       selectedSections: Record<string, "A" | "B">;
-    };
+    }
+  | { action: "appendManualSpec"; markdown: string }
+  | { action: "refineSpec"; model?: string }
+  | { action: "rollbackSpec"; versionId: string };
 
 export async function POST(
   request: NextRequest,
@@ -628,30 +653,21 @@ export async function POST(
         return NextResponse.json({ success: false, message: "응답을 찾을 수 없습니다." }, { status: 404 });
       }
 
-      const updatedProject = await prisma.project.update({
-        where: { id },
-        data: {
-          confirmedSpecMarkdown: resp.responseMarkdown,
-          confirmedSpecResponseId: resp.id,
-          confirmedSpecAt: new Date(),
-          confirmedSpecSourceType: "RESPONSE",
-          confirmedSpecSourceData: { responseId: resp.id },
-        },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          projectType: true,
-          specCoreGoals: true,
-          specScopeIn: true,
-          specScopeOut: true,
-          specTargetUsers: true,
-          specSuccessCriteria: true,
-          confirmedSpecMarkdown: true,
-          confirmedSpecResponseId: true,
-          confirmedSpecAt: true,
-        },
+      await appendProjectSpecVersionAndSetCurrent({
+        projectId: id,
+        markdown: resp.responseMarkdown,
+        sourceType: "RESPONSE",
+        sourceData: { responseId: resp.id },
+        createdByUserId: userId,
       });
+
+      const updatedProject = await prisma.project.findUnique({
+        where: { id },
+        select: PROJECT_MAP_SELECT,
+      });
+      if (!updatedProject) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
 
       return NextResponse.json({
         success: true,
@@ -682,38 +698,171 @@ export async function POST(
         return NextResponse.json({ success: false, message: "비교 응답을 찾을 수 없습니다." }, { status: 404 });
       }
 
-      const updatedProject = await prisma.project.update({
-        where: { id },
-        data: {
-          confirmedSpecMarkdown: mergedMarkdown,
-          confirmedSpecResponseId: null,
-          confirmedSpecAt: new Date(),
-          confirmedSpecSourceType: "MERGED_SECTIONS",
-          confirmedSpecSourceData: {
-            responseAId: respA.id,
-            responseBId: respB.id,
-            selectedSections,
-          },
+      await appendProjectSpecVersionAndSetCurrent({
+        projectId: id,
+        markdown: mergedMarkdown,
+        sourceType: "MERGED_SECTIONS",
+        sourceData: {
+          responseAId: respA.id,
+          responseBId: respB.id,
+          selectedSections,
         },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          projectType: true,
-          specCoreGoals: true,
-          specScopeIn: true,
-          specScopeOut: true,
-          specTargetUsers: true,
-          specSuccessCriteria: true,
-          confirmedSpecMarkdown: true,
-          confirmedSpecResponseId: true,
-          confirmedSpecAt: true,
-        },
+        createdByUserId: userId,
       });
+
+      const updatedProject = await prisma.project.findUnique({
+        where: { id },
+        select: PROJECT_MAP_SELECT,
+      });
+      if (!updatedProject) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
 
       return NextResponse.json({
         success: true,
         message: "섹션 병합 결과를 공식 Project Spec으로 확정했습니다.",
+        data: { project: mapProject(updatedProject) },
+      });
+    }
+
+    if (body.action === "appendManualSpec") {
+      const md = String(body.markdown ?? "").trim();
+      if (!md) {
+        return NextResponse.json({ success: false, message: "markdown이 비어 있습니다." }, { status: 400 });
+      }
+      await appendProjectSpecVersionAndSetCurrent({
+        projectId: id,
+        markdown: md,
+        sourceType: "MANUAL_EDIT",
+        sourceData: null,
+        createdByUserId: userId,
+      });
+      const updatedProject = await prisma.project.findUnique({
+        where: { id },
+        select: PROJECT_MAP_SELECT,
+      });
+      if (!updatedProject) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+      return NextResponse.json({
+        success: true,
+        message: "수정 내용을 새 버전으로 저장했습니다.",
+        data: { project: mapProject(updatedProject) },
+      });
+    }
+
+    if (body.action === "refineSpec") {
+      let refineModel: string | null = null;
+      const rawRefine = typeof body.model === "string" ? body.model.trim() : "";
+      if (rawRefine) {
+        if (!isAllowedSpecWorkspaceModel(rawRefine)) {
+          return NextResponse.json(
+            { success: false, message: "지원하지 않는 모델입니다. gpt-4o, gpt-4.1, gpt-4o-mini 중에서 선택하세요." },
+            { status: 400 }
+          );
+        }
+        refineModel = rawRefine;
+      }
+
+      const projBase = await prisma.project.findUnique({
+        where: { id },
+        select: {
+          currentSpecVersionId: true,
+          currentSpecVersion: { select: { markdown: true } },
+          confirmedSpecMarkdown: true,
+        },
+      });
+      if (!projBase) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+      const currentMd =
+        projBase.currentSpecVersion?.markdown?.trim() || projBase.confirmedSpecMarkdown?.trim() || "";
+      if (!currentMd) {
+        return NextResponse.json(
+          { success: false, message: "확정된 Project Spec이 없어 AI 개선을 실행할 수 없습니다." },
+          { status: 400 }
+        );
+      }
+
+      let refined: string;
+      let modelUsed: string;
+      try {
+        const out = await refineWorkspaceSpecMarkdown(currentMd, refineModel);
+        refined = out.markdown;
+        modelUsed = out.model;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === "OPENAI_API_KEY_NOT_CONFIGURED") {
+          return NextResponse.json(
+            {
+              success: false,
+              message: "OpenAI API 키가 설정되지 않았습니다. OPENAI_API_KEY를 구성하세요.",
+              code: "OPENAI_NOT_CONFIGURED",
+            },
+            { status: 503 }
+          );
+        }
+        console.error("refineWorkspaceSpecMarkdown failed:", e);
+        return NextResponse.json(
+          {
+            success: false,
+            message: "AI 개선 요청에 실패했습니다. 잠시 후 다시 시도하세요.",
+            code: "OPENAI_REFINE_FAILED",
+          },
+          { status: 502 }
+        );
+      }
+
+      await appendProjectSpecVersionAndSetCurrent({
+        projectId: id,
+        markdown: refined,
+        sourceType: "AI_REFINE",
+        sourceData: {
+          model: modelUsed,
+          basedOnVersionId: projBase.currentSpecVersionId,
+        },
+        createdByUserId: userId,
+      });
+
+      const updatedProject = await prisma.project.findUnique({
+        where: { id },
+        select: PROJECT_MAP_SELECT,
+      });
+      if (!updatedProject) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "현재 스펙을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.",
+        data: { project: mapProject(updatedProject) },
+      });
+    }
+
+    if (body.action === "rollbackSpec") {
+      const versionId = String(body.versionId ?? "").trim();
+      if (!versionId) {
+        return NextResponse.json({ success: false, message: "versionId가 필요합니다." }, { status: 400 });
+      }
+      try {
+        await rollbackProjectSpecToVersion({ projectId: id, versionId });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === "SPEC_VERSION_NOT_FOUND") {
+          return NextResponse.json({ success: false, message: "해당 버전을 찾을 수 없습니다." }, { status: 404 });
+        }
+        throw e;
+      }
+      const updatedProject = await prisma.project.findUnique({
+        where: { id },
+        select: PROJECT_MAP_SELECT,
+      });
+      if (!updatedProject) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+      return NextResponse.json({
+        success: true,
+        message: "선택한 버전을 현재 활성 스펙으로 되돌렸습니다.",
         data: { project: mapProject(updatedProject) },
       });
     }

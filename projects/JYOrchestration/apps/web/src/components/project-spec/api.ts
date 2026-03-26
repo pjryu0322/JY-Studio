@@ -4,6 +4,7 @@ import {
   Project,
   ProjectSpecPromptRecord,
   ProjectSpecResponseRecord,
+  ProjectSpecVersionRecord,
   TaskItem,
   TaskGenerateResult,
   UploadHistoryItem,
@@ -111,7 +112,9 @@ export type SpecWorkspaceSnapshot = {
     | "confirmedSpecMarkdown"
     | "confirmedSpecResponseId"
     | "confirmedSpecAt"
+    | "currentSpecVersionId"
   >;
+  specVersions: ProjectSpecVersionRecord[];
   prompts: ProjectSpecPromptRecord[];
   responses: ProjectSpecResponseRecord[];
 };
@@ -171,6 +174,9 @@ export async function postSpecWorkspaceAction(
         mergedMarkdown: string;
         selectedSections: Record<string, "A" | "B">;
       }
+    | { action: "appendManualSpec"; markdown: string }
+    | { action: "refineSpec"; model?: string }
+    | { action: "rollbackSpec"; versionId: string }
 ) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/spec-workspace`, {

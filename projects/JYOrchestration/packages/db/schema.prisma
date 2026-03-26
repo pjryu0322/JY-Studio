@@ -226,9 +226,35 @@ model Project {
   specWorkspacePrompts ProjectSpecWorkspacePrompt[]
   /// Spec 정의 워크스페이스: AI 응답
   specWorkspaceResponses ProjectSpecWorkspaceResponse[]
+  /// 확정 Project Spec 버전 이력(append-only)
+  specVersions ProjectSpecVersion[] @relation("ProjectSpecVersions")
+  /// 현재 활성 확정 Spec이 가리키는 버전 행
+  currentSpecVersionId String? @unique
+  currentSpecVersion   ProjectSpecVersion? @relation("ProjectCurrentSpecVersion", fields: [currentSpecVersionId], references: [id], onDelete: SetNull)
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// 확정 Project Spec의 버전(덮어쓰기 없음, 항상 append)
+model ProjectSpecVersion {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation("ProjectSpecVersions", fields: [projectId], references: [id], onDelete: Cascade)
+  /// 프로젝트별 1부터 증가
+  version   Int
+  markdown  String   @db.Text
+  /// RESPONSE | MERGED_SECTIONS | MANUAL_EDIT | AI_REFINE | LEGACY_IMPORT 등
+  sourceType String
+  sourceData Json?
+  createdAt DateTime @default(now())
+  createdByUserId String?
+
+  currentForProject Project? @relation("ProjectCurrentSpecVersion")
+
+  @@unique([projectId, version])
+  @@index([projectId])
+  @@map("project_spec_versions")
 }
 
 /// Project Spec 정의 워크스페이스 — 생성·저장된 프롬프트(버전별)

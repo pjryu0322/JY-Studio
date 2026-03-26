@@ -22,6 +22,18 @@ export type Project = {
   confirmedSpecMarkdown?: string | null;
   confirmedSpecResponseId?: string | null;
   confirmedSpecAt?: string | null;
+  /** 현재 활성 확정 Spec 버전 ID (project_spec_versions) */
+  currentSpecVersionId?: string | null;
+};
+
+/** 확정 Project Spec 버전 행 (append-only) */
+export type ProjectSpecVersionRecord = {
+  id: string;
+  projectId: string;
+  version: number;
+  markdown: string;
+  sourceType: string;
+  createdAt: string;
 };
 
 /** API: ProjectSpecPrompt 엔터티 (DB: ProjectSpecWorkspacePrompt) */
