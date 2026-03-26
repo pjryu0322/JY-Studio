@@ -6,6 +6,8 @@
     "dev": "pnpm --filter web dev",
     "build": "pnpm --recursive build",
     "lint": "pnpm --recursive lint",
+    "db:generate": "prisma generate --schema=packages/db/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema=packages/db/schema.prisma",
     "seed:test": "node packages/db/scripts/seed-test-data.mjs",
     "test:api": "node scripts/ensure-artifacts-dir.mjs && cross-env TEST_BASE_URL=http://127.0.0.1:3000 pnpm --filter web run test:api",
     "test:e2e": "node scripts/ensure-artifacts-dir.mjs && pnpm --filter web exec playwright test",

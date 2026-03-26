@@ -899,6 +899,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
   return (
     <section
+      id="guided-flow-spec-workspace"
       data-testid="project-spec-workspace"
       style={{
         border: "1px solid #cbd5e1",
@@ -909,11 +910,12 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       }}
     >
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <LabelTag label="[F-1-3] Function — Project Spec Definition Workspace" />
+        <LabelTag label="[F-1-3] Workspace — Project Spec definition (AI-first)" />
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Project Spec 정의 워크스페이스</h2>
       </div>
       <p style={{ margin: "0 0 16px 0", color: "#475569", lineHeight: 1.55, fontSize: 14 }}>
-        프로젝트 정보를 다듬고, 생성된 프롬프트로 AI와 상호작용한 뒤, 응답 중 하나를 확정해 공식 Project Spec으로 저장합니다.
+        프로젝트 정보 → AI로 Spec 필드 초안 → 필드 수정·저장 → Project Spec Prompt로 AI 응답 생성 → 응답 비교·확정 → 아래 Task
+        초안 확인·확정 순으로 진행합니다.
       </p>
 
       {loadError ? (
@@ -1050,6 +1052,16 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                 </span>
               ) : null}
             </div>
+            {generatingContext ? (
+              <p
+                role="status"
+                data-testid="spec-workspace-inline-ai-field-draft"
+                data-ui-label="[F-1-3-1b-s] Inline — AI spec field draft status"
+                style={{ margin: "10px 0 0 0", fontSize: 13, fontWeight: 600, color: "#5b21b6" }}
+              >
+                AI가 Spec 필드 초안을 생성하는 중입니다…
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -1248,7 +1260,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <LabelTag label="[F-1-3-2] Workspace — Generated Prompt & AI Actions" />
+          <LabelTag label="[F-1-3-2] Workspace — Prompt & Spec AI request" />
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Project Spec Prompt (자동 생성)</h3>
         </div>
 
@@ -1395,12 +1407,24 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             AI로 Spec을 만들려면 핵심 목표·In/Out scope·대상 사용자·성공 기준을 모두 입력하세요.
           </p>
         ) : null}
+        {actionBusy === "regen" ? (
+          <p
+            role="status"
+            data-testid="spec-workspace-inline-prompt-regen"
+            data-ui-label="[F-1-3-2-s1] Inline — prompt version refresh"
+            style={{ margin: "10px 0 0 0", fontSize: 13, color: "#334155", fontWeight: 600 }}
+          >
+            프로젝트 정보를 저장하고 프롬프트 버전을 갱신하는 중…
+          </p>
+        ) : null}
         {actionBusy === "ai-spec" ? (
           <p
             data-testid="spec-workspace-ai-spec-progress"
+            role="status"
+            data-ui-label="[F-1-3-2-s2] Inline — Project Spec AI response request"
             style={{ margin: "10px 0 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}
           >
-            현재 입력값을 저장하고 AI에 요청하는 중…
+            현재 입력값을 저장한 뒤 AI에 Project Spec 응답을 요청하는 중…
           </p>
         ) : null}
       </div>
@@ -1416,12 +1440,22 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-3] Workspace — AI Response List" />
+          <LabelTag label="[F-1-3-3] Workspace — AI responses & compare" />
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>AI 응답</h3>
         </div>
         <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b" }}>
           응답 두 개를 「비교」로 선택하면 섹션 단위로 나란히 보이고, 차이 있는 섹션만 강조됩니다.
         </p>
+        {actionBusy?.startsWith("confirm") ? (
+          <p
+            role="status"
+            data-testid="spec-workspace-inline-confirm-spec"
+            data-ui-label="[F-1-3-3-s] Inline — confirm / merge Project Spec"
+            style={{ margin: "0 0 12px 0", fontSize: 13, fontWeight: 600, color: "#1d4ed8" }}
+          >
+            Project Spec 확정을 처리하는 중입니다. 완료되면 Task 초안이 자동으로 맞춰질 수 있습니다.
+          </p>
+        ) : null}
 
         {compareLeft && compareRight ? (
           <div
@@ -1893,7 +1927,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-4] Workspace — Confirmed Project Spec" />
+          <LabelTag label="[F-1-3-4] Workspace — Confirmed spec & versions" />
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>확정된 Project Spec</h3>
         </div>
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#166534", lineHeight: 1.5 }}>
@@ -1954,6 +1988,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                 </button>
               </div>
             ) : null}
+            {actionBusy === "refine-spec" ? (
+              <p
+                role="status"
+                data-ui-label="[F-1-3-4-s1] Inline — AI refine on confirmed spec"
+                style={{ margin: "0 0 12px 0", fontSize: 13, fontWeight: 600, color: "#14532d" }}
+              >
+                확정 Spec을 기준으로 AI 개선 응답을 받는 중입니다…
+              </p>
+            ) : null}
             {specEditOpen && canEdit ? (
               <div style={{ marginBottom: 12 }}>
                 <textarea
@@ -1992,6 +2035,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                     {actionBusy === "append-manual" ? "저장 중…" : "새 버전으로 저장"}
                   </button>
                 </div>
+                {actionBusy === "append-manual" ? (
+                  <p
+                    role="status"
+                    data-ui-label="[F-1-3-4-s2] Inline — manual spec version append"
+                    style={{ margin: "10px 0 0 0", fontSize: 13, fontWeight: 600, color: "#14532d" }}
+                  >
+                    수정한 Spec을 새 버전으로 저장하는 중입니다…
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <div
@@ -2021,6 +2073,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             {specVersions.length > 0 ? (
               <div style={{ marginTop: 16 }}>
                 <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 800, color: "#14532d" }}>버전 이력</h4>
+                {actionBusy?.startsWith("rollback-") ? (
+                  <p
+                    role="status"
+                    data-ui-label="[F-1-3-4-s3] Inline — spec version rollback"
+                    style={{ margin: "0 0 8px 0", fontSize: 13, fontWeight: 600, color: "#92400e" }}
+                  >
+                    활성 Spec 버전을 변경(롤백)하는 중입니다…
+                  </p>
+                ) : null}
                 <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#166534" }}>
                   두 버전을 선택하면 아래에서 응답 비교와 동일한 섹션 비교 UI를 사용합니다.
                 </p>

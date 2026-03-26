@@ -27,6 +27,11 @@ export default defineConfig({
     reuseExistingServer: process.env.CI ? false : true,
     timeout: 180_000,
     cwd: __dirname,
+    env: {
+      ...process.env,
+      // 레거시 업로드·파이프라인 E2E(E2E-PRJ-AI-001)용. 메인 UX 기본값은 비노출.
+      NEXT_PUBLIC_JY_SPEC_LEGACY_UPLOAD: "true",
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

@@ -74,6 +74,10 @@ function rbacForbiddenMessage(
 
 type ProjectMainTab = "overview" | "members" | "ai-members" | "git" | "advanced";
 
+const LEGACY_SPEC_UPLOAD_UI_ENABLED =
+  typeof process.env.NEXT_PUBLIC_JY_SPEC_LEGACY_UPLOAD === "string" &&
+  process.env.NEXT_PUBLIC_JY_SPEC_LEGACY_UPLOAD.trim().toLowerCase() === "true";
+
 export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
@@ -1779,10 +1783,10 @@ export default function ProjectDetailPage() {
     };
     switch (action.id) {
       case "scroll_upload":
-        scroll("guided-flow-upload");
+        scroll("guided-flow-spec-workspace");
         return;
       case "scroll_history":
-        scroll("guided-flow-history");
+        scroll("guided-flow-spec-workspace");
         return;
       case "scroll_tasks":
         scroll("guided-flow-tasks");
@@ -2673,52 +2677,71 @@ export default function ProjectDetailPage() {
                 compactOverview
                 hideLifecycleStatus
               />
-              {rbac.canEditSpec ? (
-                <div id="guided-flow-upload">
-                  <ProjectSpecUploadTestSection
-                    selectedFile={selectedFile}
-                    selectedFileName={selectedFileName}
-                    uploadMessage={uploadMessage}
-                    uploadResult={uploadResult}
-                    uploadStatus={uploadStatus}
-                    aiPipelineStatus={aiPipelineStatus}
-                    onSelectFile={handleSelectFile}
-                    onUploadAndAnalyze={handleUploadAndAnalyze}
-                    showFileInput
-                    showAnalyzeButton={false}
-                  />
-                </div>
-              ) : null}
-              {showSpecUploadHistory ? (
-                <div id="guided-flow-history" data-ui-label="[F-2-2] Optional Reference Upload — Upload History">
-                  <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
-                </div>
-              ) : null}
               <ProjectSpecWorkspace
                 projectId={projectId}
                 project={project}
                 canEdit={rbac.canEditSpec}
                 onProjectUpdated={setProject}
               />
-              {rbac.canEditSpec ? (
-                <div
-                  data-ui-label="[O-1] Orchestration — AI Analysis Start & Task Generation"
-                  style={{ marginBottom: 16 }}
+              {LEGACY_SPEC_UPLOAD_UI_ENABLED && rbac.canEditSpec ? (
+                <section
+                  aria-label="레거시 Project Spec 파일 업로드 파이프라인"
+                  data-ui-label="[F-1-L-0] Legacy — file upload pipeline region"
+                  style={{
+                    marginTop: 24,
+                    marginBottom: 16,
+                    padding: 16,
+                    borderRadius: 10,
+                    border: "1px dashed #94a3b8",
+                    background: "#f8fafc",
+                  }}
                 >
-                  <AiPipelineStatusPanel status={aiPipelineStatus} progressStep={aiPipelineProgressStep} />
-                  <ProjectSpecUploadTestSection
-                    selectedFile={selectedFile}
-                    selectedFileName={selectedFileName}
-                    uploadMessage={uploadMessage}
-                    uploadResult={uploadResult}
-                    uploadStatus={uploadStatus}
-                    aiPipelineStatus={aiPipelineStatus}
-                    onSelectFile={handleSelectFile}
-                    onUploadAndAnalyze={handleUploadAndAnalyze}
-                    showFileInput={false}
-                    showAnalyzeButton
-                  />
-                </div>
+                  <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 16, fontWeight: 800, color: "#334155" }}>
+                    고급: 파일 업로드 파이프라인 (레거시)
+                  </h3>
+                  <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+                    구 방식 업로드·mock 파싱·Task 자동 생성 UI입니다. 기본 경로는 위의 Project Spec 정의 워크스페이스입니다. 이
+                    영역은 환경 변수{" "}
+                    <code style={{ fontSize: 12 }}>NEXT_PUBLIC_JY_SPEC_LEGACY_UPLOAD=true</code> 로만 켭니다.
+                  </p>
+                  <div id="guided-flow-legacy-upload-anchor">
+                    <ProjectSpecUploadTestSection
+                      selectedFile={selectedFile}
+                      selectedFileName={selectedFileName}
+                      uploadMessage={uploadMessage}
+                      uploadResult={uploadResult}
+                      uploadStatus={uploadStatus}
+                      aiPipelineStatus={aiPipelineStatus}
+                      onSelectFile={handleSelectFile}
+                      onUploadAndAnalyze={handleUploadAndAnalyze}
+                      showFileInput
+                      showAnalyzeButton={false}
+                    />
+                  </div>
+                  {showSpecUploadHistory ? (
+                    <div id="guided-flow-history">
+                      <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
+                    </div>
+                  ) : null}
+                  <div
+                    data-ui-label="[O-1] Orchestration — legacy AI analysis & task generation"
+                    style={{ marginTop: 12 }}
+                  >
+                    <AiPipelineStatusPanel status={aiPipelineStatus} progressStep={aiPipelineProgressStep} />
+                    <ProjectSpecUploadTestSection
+                      selectedFile={selectedFile}
+                      selectedFileName={selectedFileName}
+                      uploadMessage={uploadMessage}
+                      uploadResult={uploadResult}
+                      uploadStatus={uploadStatus}
+                      aiPipelineStatus={aiPipelineStatus}
+                      onSelectFile={handleSelectFile}
+                      onUploadAndAnalyze={handleUploadAndAnalyze}
+                      showFileInput={false}
+                      showAnalyzeButton
+                    />
+                  </div>
+                </section>
               ) : null}
               {projectFlowTail}
             </div>

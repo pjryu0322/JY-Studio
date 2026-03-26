@@ -47,7 +47,7 @@ export function AiPipelineStatusPanel({ status, progressStep }: Props) {
   return (
     <section
       data-testid="ai-pipeline-status-panel"
-      data-ui-label="[F-2-4] Function — AI Pipeline Status Panel"
+      data-ui-label="[F-1-L-2] Legacy — file upload pipeline status"
       style={{
         border: "1px solid #e0e0e0",
         borderRadius: 12,

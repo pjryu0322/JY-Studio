@@ -9,8 +9,9 @@ export const GUIDED_FLOW_STEP_IDS = [1, 2, 3, 4, 5, 6, 7] as const;
 export type GuidedFlowStepId = (typeof GUIDED_FLOW_STEP_IDS)[number];
 
 export const GUIDED_FLOW_ANCHORS = {
-  upload: "guided-flow-upload",
-  history: "guided-flow-history",
+  /** 워크스페이스 기반 Spec 정의(메인 흐름) */
+  upload: "guided-flow-spec-workspace",
+  history: "guided-flow-spec-workspace",
   tasks: "guided-flow-tasks",
   git: "guided-flow-git",
 } as const;

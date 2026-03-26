@@ -209,7 +209,7 @@ export function TaskDraftPanel({
       }}
     >
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <LabelTag label="[F-1-3-5] Workspace — Task Drafts" />
+        <LabelTag label="[F-1-3-5] Workspace — Task drafts (Spec-linked)" />
         <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Task 초안 (Spec 연동)</h3>
       </div>
       <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#5b21b6", lineHeight: 1.5 }}>
@@ -245,7 +245,7 @@ export function TaskDraftPanel({
         </div>
       ) : null}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, alignItems: "center" }}>
         <button
           type="button"
           data-testid="task-draft-refresh"
@@ -304,6 +304,16 @@ export function TaskDraftPanel({
           </>
         ) : null}
       </div>
+      {busy === "regen" ? (
+        <p
+          role="status"
+          data-testid="task-draft-inline-ai-generate"
+          data-ui-label="[F-1-3-5-s] Inline — Task draft AI generation"
+          style={{ margin: "0 0 10px 0", fontSize: 13, fontWeight: 600, color: "#5b21b6" }}
+        >
+          AI가 현재 Spec 버전 기준으로 Task 초안을 생성하는 중입니다…
+        </p>
+      ) : null}
 
       {message ? (
         <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#4c1d95" }} role="status">

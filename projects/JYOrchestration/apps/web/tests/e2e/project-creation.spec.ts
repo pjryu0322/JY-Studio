@@ -69,8 +69,8 @@ test.describe("E2E project", () => {
     await page.getByTestId("spec-workspace-toggle-prompt").click();
     await expect(page.getByTestId("spec-workspace-prompt-preview")).toContainText("프로젝트명");
 
-    // 실행 관측은 Task 관리/수행 영역에서만 보입니다.
-    await expect(page.locator("#guided-flow-upload").getByTestId("execution-observability-panel")).toHaveCount(0);
+    // 실행 관측은 Task 관리/수행 영역에서만 보입니다(워크스페이스에는 없음).
+    await expect(page.getByTestId("project-spec-workspace").getByTestId("execution-observability-panel")).toHaveCount(0);
     await expect(page.locator("#guided-flow-tasks").getByTestId("execution-observability-panel")).toHaveCount(1);
 
     await page.getByTestId("spec-workspace-copy-prompt").click();

@@ -13,9 +13,9 @@ export const IDEA_UX_STEP_IDS = [1, 2, 3, 4, 5, 6, 7] as const;
 export type IdeaUxStepId = (typeof IDEA_UX_STEP_IDS)[number];
 
 export const IDEA_UX_ANCHORS: Record<IdeaUxStepId, string> = {
-  1: "guided-flow-upload",
-  2: "guided-flow-history",
-  3: "guided-flow-history",
+  1: "guided-flow-spec-workspace",
+  2: "guided-flow-spec-workspace",
+  3: "guided-flow-spec-workspace",
   4: "guided-flow-tasks",
   5: "guided-flow-tasks",
   6: "guided-flow-git",

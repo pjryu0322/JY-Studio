@@ -21,7 +21,7 @@ export function ProjectSpecUploadHistorySection({
 
   return (
     <div
-      data-ui-label="[F-1-5] Function — Upload History"
+      data-ui-label="[F-1-L-3] Legacy — upload history"
       style={{
         borderTop: "1px solid #e5e5e5",
         paddingTop: 10,

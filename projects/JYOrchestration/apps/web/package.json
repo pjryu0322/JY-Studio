@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "db:generate": "prisma generate --schema=../../packages/db/schema.prisma",
+    "postinstall": "prisma generate --schema=../../packages/db/schema.prisma",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -28,6 +30,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
+    "prisma": "6.16.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^5.4.11",
