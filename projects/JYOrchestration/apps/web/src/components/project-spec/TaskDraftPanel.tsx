@@ -31,6 +31,7 @@ import ReactFlow, {
   Handle,
   MiniMap,
   Position,
+  useReactFlow,
   useStore,
   type Connection,
   type Edge,
@@ -44,12 +45,25 @@ import "reactflow/dist/style.css";
 type WorkflowStatus = "CONFIRMED" | "READY" | "BLOCKED" | "INVALID";
 
 const SWIMLANE_BAND_COLORS = [
-  "rgba(2,132,199,0.09)",
-  "rgba(99,102,241,0.08)",
-  "rgba(16,185,129,0.08)",
-  "rgba(245,158,11,0.07)",
-  "rgba(239,68,68,0.06)",
+  "rgba(2,132,199,0.055)",
+  "rgba(99,102,241,0.05)",
+  "rgba(16,185,129,0.05)",
+  "rgba(245,158,11,0.045)",
+  "rgba(239,68,68,0.04)",
 ];
+
+/** 데이터 로드 후 캔버스가 전체 흐름을 담도록 fitView */
+function CanvasFitView({ revision }: { revision: number }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    if (revision <= 0) return;
+    const t = window.setTimeout(() => {
+      fitView({ padding: 0.2, duration: 320, maxZoom: 1.15, minZoom: 0.15 });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [revision, fitView]);
+  return null;
+}
 
 /** viewport transform과 동일 — 스윔레인이 노드·엣지와 함께 패닝/줌됨 */
 function SwimlaneBands() {
@@ -229,6 +243,10 @@ const TaskDraftNodeView = memo(function TaskDraftNodeView({
         : data.workflowStatus === "INVALID"
           ? "#fee2e2"
           : "#e0e7ff";
+  const flowAccent =
+    !selected && (data.isStart || data.isTerminal)
+      ? `${data.isStart ? "inset 3px 0 0 0 #5eead4" : ""}${data.isStart && data.isTerminal ? ", " : ""}${data.isTerminal ? "inset -3px 0 0 0 #fcd34d" : ""}`
+      : "";
   return (
     <div
       style={{
@@ -236,7 +254,9 @@ const TaskDraftNodeView = memo(function TaskDraftNodeView({
         borderRadius: 12,
         border: selected ? "2px solid #7c3aed" : "1px solid #cbd5e1",
         background: "#fff",
-        boxShadow: selected ? "0 2px 12px rgba(124,58,237,0.25)" : "0 1px 3px rgba(15,23,42,0.06)",
+        boxShadow: selected
+          ? "0 2px 12px rgba(124,58,237,0.25)"
+          : [flowAccent, "0 1px 3px rgba(15,23,42,0.06)"].filter(Boolean).join(", "),
         overflow: "hidden",
       }}
     >
@@ -294,6 +314,9 @@ export function TaskDraftPanel({
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [executionPreviewOpen, setExecutionPreviewOpen] = useState(false);
   const autoWireRanRef = useRef(false);
+  const initialCanvasFitRef = useRef(false);
+  const [canvasFitRevision, setCanvasFitRevision] = useState(0);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<
     | null
     | {
@@ -307,81 +330,40 @@ export function TaskDraftPanel({
       }
   >(null);
 
-  const loadDrafts = useCallback(async () => {
-    if (!projectId) {
-      return;
-    }
-    setLoading(true);
-    setMessage(null);
-    try {
-      // Workflow Builder는 DRAFT + CONFIRMED를 함께 보여줘야 READY/BLOCKED 계산이 가능하다.
-      const { res, json } = await fetchProjectTaskDrafts(projectId);
-      if (!res.ok || !json.success || !json.data) {
-        setMessage(json.message || "Task 초안을 불러오지 못했습니다.");
-        setDrafts([]);
+  const loadDrafts = useCallback(
+    async (opts?: { clearMessage?: boolean }) => {
+      if (!projectId) {
         return;
       }
-      setDrafts(json.data);
-    } catch (e) {
-      console.error(e);
-      setMessage("Task 초안 조회 중 오류가 발생했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
+      const clearMessage = opts?.clearMessage !== false;
+      if (clearMessage) setMessage(null);
+      setLoading(true);
+      try {
+        const { res, json } = await fetchProjectTaskDrafts(projectId);
+        if (!res.ok || !json.success || !json.data) {
+          setMessage(json.message || "Task 초안을 불러오지 못했습니다.");
+          setDrafts([]);
+          return;
+        }
+        setDrafts(json.data);
+      } catch (e) {
+        console.error(e);
+        setMessage("Task 초안 조회 중 오류가 발생했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [projectId]
+  );
 
   useEffect(() => {
     void loadDrafts();
   }, [loadDrafts, refreshKey]);
 
-  const shouldAutoWire = useMemo(() => {
-    if (autoWireRanRef.current) return false;
-    const draftOnly = drafts.filter((d) => d.status === "DRAFT");
-    if (draftOnly.length < 2) return false;
-    return draftOnly.every((d) => (d.dependsOnIds ?? []).length === 0);
-  }, [drafts]);
-
-  // 기존 데이터(초기 연결이 없던 시점에 생성된 draft)도 "완성된 흐름"으로 보이도록 자동 연결/배치
   useEffect(() => {
-    if (!canEdit || !projectId) return;
-    if (!shouldAutoWire) return;
-    autoWireRanRef.current = true;
-    void (async () => {
-      setBusy("auto-wire");
-      setMessage(null);
-      try {
-        const draftOnly = drafts.filter((d) => d.status === "DRAFT");
-        const synthesized = synthesizeWorkflowDrafts(
-          draftOnly.map((d) => ({
-            id: d.id,
-            title: d.title,
-            description: d.description,
-            priority: d.priority,
-            stage: d.stage,
-          }))
-        );
-        const byId = new Map(synthesized.map((x) => [x.id, x] as const));
-        for (const d of draftOnly) {
-          const s = byId.get(d.id);
-          if (!s) continue;
-          await patchProjectTaskDraft(projectId, d.id, {
-            dependsOnIds: s.dependsOnIds,
-            positionX: s.positionX,
-            positionY: s.positionY,
-            stage: s.stage,
-            // title 기반 dependsOn은 레거시 호환이지만, UX 혼란 방지를 위해 id 기반만 신뢰한다.
-            dependsOn: [],
-          });
-        }
-        await loadDrafts();
-      } catch (e) {
-        console.error(e);
-        setMessage("초기 워크플로우 자동 연결 중 오류가 발생했습니다.");
-      } finally {
-        setBusy(null);
-      }
-    })();
-  }, [canEdit, drafts, loadDrafts, projectId, shouldAutoWire]);
+    autoWireRanRef.current = false;
+    initialCanvasFitRef.current = false;
+  }, [projectId]);
 
   const byId = useMemo(() => {
     const m = new Map<string, TaskDraftDto>();
@@ -445,6 +427,98 @@ export function TaskDraftPanel({
       isolatedIds,
     };
   }, [byId, depsById, drafts]);
+
+  const shouldAutoWire = useMemo(() => {
+    if (autoWireRanRef.current) return false;
+    const draftOnly = drafts.filter((d) => d.status === "DRAFT");
+    if (draftOnly.length < 2) return false;
+    const allEmpty = draftOnly.every((d) => (d.dependsOnIds ?? []).length === 0);
+    if (allEmpty) return true;
+    const draftIds = new Set(draftOnly.map((d) => d.id));
+    let draftDraftEdgeCount = 0;
+    for (const d of draftOnly) {
+      for (const dep of d.dependsOnIds ?? []) {
+        if (draftIds.has(dep)) draftDraftEdgeCount++;
+      }
+    }
+    const isolatedDraftCount = validation.isolatedIds.filter((id) => byId.get(id)?.status === "DRAFT").length;
+    if (draftDraftEdgeCount === 0) return true;
+    if (isolatedDraftCount >= 2) return true;
+    return false;
+  }, [byId, drafts, validation.isolatedIds]);
+
+  const needsDefaultFlowCta = useMemo(() => {
+    if (!canEdit) return false;
+    const draftOnly = drafts.filter((d) => d.status === "DRAFT");
+    if (draftOnly.length < 2) return false;
+    const draftIds = new Set(draftOnly.map((d) => d.id));
+    let draftDraftEdgeCount = 0;
+    for (const d of draftOnly) {
+      for (const dep of d.dependsOnIds ?? []) {
+        if (draftIds.has(dep)) draftDraftEdgeCount++;
+      }
+    }
+    const isolatedDraftCount = validation.isolatedIds.filter((id) => byId.get(id)?.status === "DRAFT").length;
+    return isolatedDraftCount >= 2 || draftDraftEdgeCount === 0;
+  }, [byId, canEdit, drafts, validation.isolatedIds]);
+
+  const showDefaultFlowCta = useMemo(() => {
+    if (!canEdit || !needsDefaultFlowCta) return false;
+    if (shouldAutoWire) return false;
+    return true;
+  }, [canEdit, needsDefaultFlowCta, shouldAutoWire]);
+
+  const runSynthesizeDefaultFlow = useCallback(async () => {
+    if (!projectId || !canEdit) return;
+    const draftOnly = drafts.filter((d) => d.status === "DRAFT");
+    if (draftOnly.length < 2) return;
+    setBusy("auto-wire");
+    try {
+      const synthesized = synthesizeWorkflowDrafts(
+        draftOnly.map((d) => ({
+          id: d.id,
+          title: d.title,
+          description: d.description,
+          priority: d.priority,
+          stage: d.stage,
+        }))
+      );
+      const synById = new Map(synthesized.map((x) => [x.id, x] as const));
+      for (const d of draftOnly) {
+        const s = synById.get(d.id);
+        if (!s) continue;
+        await patchProjectTaskDraft(projectId, d.id, {
+          dependsOnIds: s.dependsOnIds,
+          positionX: s.positionX,
+          positionY: s.positionY,
+          stage: s.stage,
+          dependsOn: [],
+        });
+      }
+      await loadDrafts({ clearMessage: false });
+      setMessage("AI가 기본 워크플로우를 자동 구성했습니다. 필요하면 노드를 연결·수정하세요.");
+      setCanvasFitRevision((x) => x + 1);
+    } catch (e) {
+      console.error(e);
+      setMessage("기본 워크플로우를 구성하는 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }, [canEdit, drafts, loadDrafts, projectId]);
+
+  useEffect(() => {
+    if (!canEdit || !projectId) return;
+    if (!shouldAutoWire) return;
+    autoWireRanRef.current = true;
+    void runSynthesizeDefaultFlow();
+  }, [canEdit, projectId, runSynthesizeDefaultFlow, shouldAutoWire]);
+
+  useEffect(() => {
+    if (loading || drafts.length === 0) return;
+    if (initialCanvasFitRef.current) return;
+    initialCanvasFitRef.current = true;
+    setCanvasFitRevision((x) => x + 1);
+  }, [drafts.length, loading]);
 
   const workflowStatusById = useMemo(() => {
     const m = new Map<string, "CONFIRMED" | "READY" | "BLOCKED" | "INVALID">();
@@ -524,10 +598,10 @@ export function TaskDraftPanel({
           type: "smoothstep",
           style:
             cycleEdgeId && cycleEdgeId === id
-              ? { stroke: "#dc2626", strokeWidth: 3 }
+              ? { stroke: "#dc2626", strokeWidth: 3.5 }
               : parallelCandidateIds.has(depId) && parallelCandidateIds.has(d.id)
-                ? { stroke: "#16a34a", strokeWidth: 2 }
-                : undefined,
+                ? { stroke: "#15803d", strokeWidth: 2.5 }
+                : { stroke: "#475569", strokeWidth: 2.5 },
           animated: Boolean(cycleEdgeId && cycleEdgeId === id),
         });
       }
@@ -552,7 +626,8 @@ export function TaskDraftPanel({
       }
       const n = json.data?.createdCount ?? 0;
       setMessage(`Task 초안 ${n}개를(을) 생성했습니다.`);
-      await loadDrafts();
+      await loadDrafts({ clearMessage: false });
+      setCanvasFitRevision((x) => x + 1);
     } catch (e) {
       console.error(e);
       setMessage("Task 초안 재생성 중 오류가 발생했습니다.");
@@ -772,7 +847,8 @@ export function TaskDraftPanel({
         await patchProjectTaskDraft(projectId, p.id, { positionX: p.x, positionY: p.y });
       }
       setMessage("워크플로우를 자동 정렬했습니다.");
-      await loadDrafts();
+      await loadDrafts({ clearMessage: false });
+      setCanvasFitRevision((x) => x + 1);
     } catch (e) {
       console.error(e);
       setMessage("자동 정렬 저장 중 오류가 발생했습니다.");
@@ -820,7 +896,7 @@ export function TaskDraftPanel({
         cycleProblemEdge: json.data.cycleProblemEdge ?? null,
         cycleCandidateEdges: Array.isArray(json.data.cycleCandidateEdges) ? json.data.cycleCandidateEdges : [],
       });
-      setMessage(json.message || "AI 재정렬 추천을 생성했습니다.");
+      setMessage(json.message || "재정렬 제안을 불러왔습니다. 아래에서 적용할 수 있습니다.");
     } catch (e) {
       console.error(e);
       setMessage("AI 재정렬 중 오류가 발생했습니다.");
@@ -853,7 +929,8 @@ export function TaskDraftPanel({
       }
       setMessage("AI 추천을 적용했습니다.");
       setAiSuggestion(null);
-      await loadDrafts();
+      await loadDrafts({ clearMessage: false });
+      setCanvasFitRevision((x) => x + 1);
     } catch (e) {
       console.error(e);
       setMessage("AI 추천 적용 중 오류가 발생했습니다.");
@@ -873,38 +950,41 @@ export function TaskDraftPanel({
         background: "#faf5ff",
       }}
     >
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
         <LabelTag label="[F-1-3-5] Workspace — Task drafts (Spec-linked)" />
-        <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Task 초안 (Spec 연동)</h3>
+        <div style={{ flex: "1 1 220px" }}>
+          <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: "#1e1b4b" }}>AI가 제안한 실행 흐름</h3>
+          <p style={{ margin: "6px 0 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+            AI가 기본 순서와 연결을 먼저 잡습니다. 필요하면 노드를 드래그하거나 연결을 바꾸세요. 검토 후 「확정」하면 실제 Task로
+            반영됩니다.
+          </p>
+        </div>
       </div>
-      <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#5b21b6", lineHeight: 1.5 }}>
-        확정 Spec 버전이 바뀔 때마다 AI가 Task 초안을 자동 생성합니다. 검토 후 「확정」하면 실제 Task로 추가되며, 기존 Task는 자동
-        삭제되지 않습니다.
-      </p>
 
       {lastAutoSync ? (
         <div
           data-testid="task-draft-auto-sync-banner"
           style={{
-            marginBottom: 12,
-            padding: 10,
+            marginBottom: 8,
+            padding: "8px 10px",
             borderRadius: 8,
             background: lastAutoSync.ok ? "#ecfdf5" : "#fef2f2",
             border: `1px solid ${lastAutoSync.ok ? "#6ee7b7" : "#fecaca"}`,
-            fontSize: 13,
+            fontSize: 12,
             color: lastAutoSync.ok ? "#065f46" : "#991b1b",
+            lineHeight: 1.45,
           }}
         >
           {lastAutoSync.ok ? (
             <>
-              <strong>Spec 반영:</strong> Task 초안 {lastAutoSync.createdCount ?? 0}개 생성
+              Spec 반영 · Task 초안 {lastAutoSync.createdCount ?? 0}개 생성
               {typeof lastAutoSync.supersededCount === "number" && lastAutoSync.supersededCount > 0
-                ? ` · 이전 DRAFT ${lastAutoSync.supersededCount}개 SUPERSEDED 처리`
+                ? ` · 이전 DRAFT ${lastAutoSync.supersededCount}개 정리됨`
                 : ""}
             </>
           ) : (
             <>
-              <strong>Task 초안 자동 생성 실패:</strong> {lastAutoSync.message ?? "알 수 없는 오류"}
+              <strong>자동 생성 실패:</strong> {lastAutoSync.message ?? "알 수 없는 오류"}
             </>
           )}
         </div>
@@ -933,23 +1013,6 @@ export function TaskDraftPanel({
             </button>
             <button
               type="button"
-              data-testid="task-draft-auto-layout"
-              disabled={busy === "layout" || drafts.length === 0}
-              onClick={() => void handleAutoLayoutPersist()}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #7c3aed",
-                background: "#fff",
-                fontWeight: 700,
-                cursor: busy === "layout" ? "wait" : "pointer",
-                fontSize: 12,
-              }}
-            >
-              {busy === "layout" ? "정렬 중…" : "자동 정렬"}
-            </button>
-            <button
-              type="button"
               data-testid="task-draft-confirm-all"
               disabled={busy === "confirm-all" || drafts.length === 0 || !validation.ok}
               onClick={() => void handleConfirmAll()}
@@ -966,6 +1029,108 @@ export function TaskDraftPanel({
             >
               {busy === "confirm-all" ? "확정 중…" : "전체 DRAFT 확정 → Task"}
             </button>
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                data-testid="task-draft-more-menu"
+                disabled={drafts.length === 0 && !loading}
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  color: "#334155",
+                }}
+              >
+                더보기
+              </button>
+              {moreMenuOpen ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    zIndex: 30,
+                    top: 40,
+                    left: 0,
+                    minWidth: 200,
+                    borderRadius: 10,
+                    border: "1px solid #e2e8f0",
+                    background: "#fff",
+                    padding: 8,
+                    boxShadow: "0 8px 30px rgba(15,23,42,0.12)",
+                    display: "grid",
+                    gap: 4,
+                  }}
+                >
+                  <button
+                    type="button"
+                    data-testid="task-draft-auto-layout"
+                    disabled={busy === "layout" || drafts.length === 0}
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      void handleAutoLayoutPersist();
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      fontWeight: 700,
+                      cursor: busy === "layout" ? "wait" : "pointer",
+                      fontSize: 12,
+                      textAlign: "left",
+                    }}
+                  >
+                    {busy === "layout" ? "정렬 중…" : "자동 정렬 (lane 맞춤)"}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="task-draft-refresh"
+                    disabled={loading}
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      void loadDrafts();
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      fontWeight: 700,
+                      cursor: loading ? "wait" : "pointer",
+                      fontSize: 12,
+                      textAlign: "left",
+                    }}
+                  >
+                    새로고침
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="task-draft-ai-reorder"
+                    disabled={busy === "ai-reorder" || drafts.length === 0}
+                    onClick={() => {
+                      setMoreMenuOpen(false);
+                      void handleAiReorder();
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      fontWeight: 700,
+                      cursor: busy === "ai-reorder" ? "wait" : "pointer",
+                      fontSize: 12,
+                      textAlign: "left",
+                    }}
+                  >
+                    {busy === "ai-reorder" ? "요청 중…" : "AI로 Workflow 재정렬"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </>
         ) : null}
       </div>
@@ -974,14 +1139,19 @@ export function TaskDraftPanel({
           role="status"
           data-testid="task-draft-inline-ai-generate"
           data-ui-label="[F-1-3-5-s] Inline — Task draft AI generation"
-          style={{ margin: "0 0 10px 0", fontSize: 13, fontWeight: 600, color: "#5b21b6" }}
+          style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 600, color: "#5b21b6" }}
         >
-          AI가 현재 Spec 버전 기준으로 Task 초안을 생성하는 중입니다…
+          Spec 기준으로 Task 초안을 생성하는 중…
+        </p>
+      ) : null}
+      {busy === "auto-wire" ? (
+        <p role="status" style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 600, color: "#0f766e" }}>
+          기본 워크플로우(연결·배치)를 구성하는 중…
         </p>
       ) : null}
 
       {message ? (
-        <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#4c1d95" }} role="status">
+        <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#4c1d95", lineHeight: 1.45 }} role="status">
           {message}
         </p>
       ) : null}
@@ -990,22 +1160,22 @@ export function TaskDraftPanel({
         <div
           data-testid="task-draft-ai-suggestion-banner"
           style={{
-            margin: "0 0 10px 0",
+            margin: "0 0 8px 0",
             padding: 10,
             borderRadius: 10,
             border: "1px solid #99f6e4",
             background: "#f0fdfa",
             color: "#134e4a",
-            fontSize: 13,
-            lineHeight: 1.5,
+            fontSize: 12,
+            lineHeight: 1.45,
           }}
         >
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>
-            AI 추천 준비됨 {aiSuggestion.cycleDetected ? "(순환 감지: 의존성 변경 제외)" : ""}
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>
+            AI 재정렬 제안 {aiSuggestion.cycleDetected ? "(순환 제외)" : ""}
           </div>
-          <div style={{ marginBottom: 8, fontSize: 12, color: "#0f766e" }}>모델: {aiSuggestion.model}</div>
+          <div style={{ marginBottom: 6, fontSize: 11, color: "#0f766e" }}>{aiSuggestion.model}</div>
           <div style={{ marginBottom: 8, fontSize: 12, color: "#134e4a" }}>
-            이유: {aiSuggestion.reason}
+            {aiSuggestion.reason}
             {aiSuggestion.parallelGroups.length > 0 ? (
               <>
                 <br />
@@ -1073,30 +1243,25 @@ export function TaskDraftPanel({
         <div
           data-testid="task-draft-workflow-invalid-banner"
           style={{
-            margin: "0 0 10px 0",
+            margin: "0 0 8px 0",
             padding: 10,
             borderRadius: 10,
             border: "1px solid #fecaca",
             background: "#fef2f2",
             color: "#991b1b",
-            fontSize: 13,
-            lineHeight: 1.5,
+            fontSize: 12,
+            lineHeight: 1.45,
           }}
         >
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>워크플로우가 유효하지 않습니다</div>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>확정할 수 없음 · 그래프를 수정하세요</div>
           {validation.cycle ? (
-            <div style={{ marginBottom: 6 }}>
-              - <strong>순환(cycle)</strong> 감지됨: {validation.cycle.cyclePath.slice(0, 8).join(" → ")}
+            <div style={{ marginBottom: 4 }}>
+              순환: {validation.cycle.cyclePath.slice(0, 8).join(" → ")}
             </div>
           ) : null}
           {validation.missingDepEdges.length > 0 ? (
-            <div>
-              - <strong>누락 의존성</strong> {validation.missingDepEdges.length}개 (삭제된 노드를 가리키는 연결이 있습니다)
-            </div>
+            <div>누락된 선행 Task 참조 {validation.missingDepEdges.length}개</div>
           ) : null}
-          <div style={{ marginTop: 6, fontSize: 12 }}>
-            유효하지 않은 상태에서는 확정(→Task)을 차단합니다.
-          </div>
         </div>
       ) : null}
 
@@ -1114,49 +1279,37 @@ export function TaskDraftPanel({
           position: "relative",
         }}
       >
-          {/* Canvas corner actions */}
-          {canEdit ? (
-            <div style={{ position: "absolute", top: 10, right: 10, zIndex: 5, display: "flex", gap: 8 }}>
+          {showDefaultFlowCta ? (
+            <div style={{ position: "absolute", top: 10, left: 10, zIndex: 5, maxWidth: "min(100% - 20px, 320px)" }}>
               <button
                 type="button"
-                data-testid="task-draft-refresh"
-                disabled={loading}
-                onClick={() => void loadDrafts()}
+                data-testid="task-draft-rebuild-default-flow"
+                disabled={busy === "auto-wire"}
+                onClick={() => void runSynthesizeDefaultFlow()}
                 style={{
-                  padding: "8px 10px",
+                  padding: "8px 12px",
                   borderRadius: 10,
-                  border: "1px solid #cbd5e1",
-                  background: "#fff",
+                  border: "1px solid #0d9488",
+                  background: "#f0fdfa",
+                  color: "#115e59",
                   fontWeight: 800,
-                  cursor: loading ? "wait" : "pointer",
+                  cursor: busy === "auto-wire" ? "wait" : "pointer",
                   fontSize: 12,
+                  lineHeight: 1.35,
+                  textAlign: "left",
                 }}
               >
-                새로고침
-              </button>
-              <button
-                type="button"
-                data-testid="task-draft-ai-reorder"
-                disabled={busy === "ai-reorder" || drafts.length === 0}
-                onClick={() => void handleAiReorder()}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #0f766e",
-                  background: "#0d9488",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: busy === "ai-reorder" ? "wait" : "pointer",
-                  fontSize: 12,
-                }}
-              >
-                AI 재정렬
+                AI 기본 흐름 다시 만들기
+                <span style={{ display: "block", fontWeight: 600, fontSize: 11, opacity: 0.9, marginTop: 2 }}>
+                  연결이 약하거나 고립 노드가 많을 때 다시 잡습니다.
+                </span>
               </button>
             </div>
           ) : null}
           {drafts.length === 0 && !loading ? (
-            <div style={{ padding: 14, fontSize: 13, color: "#6b21b6" }}>
-              아직 DRAFT 초안이 없습니다. Project Spec을 확정하면 자동 생성되거나, 위 버튼으로 수동 생성할 수 있습니다.
+            <div style={{ padding: 14, fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
+              아직 표시할 흐름이 없습니다. Spec을 확정하면 AI가 Task 초안과 연결을 자동으로 만들거나, 위에서 「AI로 Task 초안 다시
+              생성」을 누를 수 있습니다.
             </div>
           ) : (
             <ReactFlow
@@ -1164,6 +1317,11 @@ export function TaskDraftPanel({
               nodes={nodes}
               edges={edges}
               style={{ position: "relative", zIndex: 2 }}
+              defaultEdgeOptions={{
+                style: { stroke: "#475569", strokeWidth: 2.5 },
+                type: "smoothstep",
+              }}
+              elevateEdgesOnSelect
               onConnect={(c) => void handleConnect(c)}
               onNodeClick={(_, n) => {
                 const d = byId.get(n.id);
@@ -1171,10 +1329,10 @@ export function TaskDraftPanel({
               }}
               onNodeDragStop={(_, n) => void handleNodeDragStop(n)}
               onEdgeClick={(_, e) => void handleDeleteEdge(e)}
-              fitView
             >
+              <CanvasFitView revision={canvasFitRevision} />
               <SwimlaneBands />
-              <Background />
+              <Background gap={20} size={1.2} color="#cbd5e1" />
               <MiniMap />
               <Controls />
             </ReactFlow>
