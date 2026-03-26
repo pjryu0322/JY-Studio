@@ -26,6 +26,110 @@ import dagre from "dagre";
 
 import "reactflow/dist/style.css";
 
+const WORKFLOW_STAGES = ["Planning", "Build", "Test", "Review", "Apply"] as const;
+type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
+
+function normalizeStage(s: string | null | undefined): WorkflowStage {
+  const v = String(s ?? "").trim();
+  return (WORKFLOW_STAGES as readonly string[]).includes(v) ? (v as WorkflowStage) : "Build";
+}
+
+function uniqueStrings(xs: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs) {
+    const v = String(x ?? "").trim();
+    if (!v || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+type CycleHit = { edge: { source: string; target: string }; cyclePath: string[] } | null;
+
+function detectCycle(nodes: string[], depsById: Map<string, string[]>): CycleHit {
+  const visited = new Set<string>();
+  const inStack = new Set<string>();
+  const parent = new Map<string, string | null>();
+
+  const dfs = (id: string): CycleHit => {
+    visited.add(id);
+    inStack.add(id);
+    for (const dep of depsById.get(id) ?? []) {
+      if (!visited.has(dep)) {
+        parent.set(dep, id);
+        const hit = dfs(dep);
+        if (hit) return hit;
+      } else if (inStack.has(dep)) {
+        // id -> dep creates a back edge (cycle)
+        const path: string[] = [dep];
+        let cur: string | null = id;
+        while (cur && cur !== dep) {
+          path.push(cur);
+          cur = parent.get(cur) ?? null;
+        }
+        path.push(dep);
+        path.reverse();
+        return { edge: { source: dep, target: id }, cyclePath: path };
+      }
+    }
+    inStack.delete(id);
+    return null;
+  };
+
+  for (const id of nodes) {
+    if (!visited.has(id)) {
+      parent.set(id, null);
+      const hit = dfs(id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+function computeExecutionLevels(input: {
+  draftIds: string[];
+  depsById: Map<string, string[]>;
+  confirmedIds: Set<string>;
+}): string[][] {
+  const { draftIds, depsById, confirmedIds } = input;
+  const indeg = new Map<string, number>();
+  const out = new Map<string, string[]>();
+  for (const id of draftIds) {
+    indeg.set(id, 0);
+    out.set(id, []);
+  }
+
+  for (const id of draftIds) {
+    const deps = depsById.get(id) ?? [];
+    for (const dep of deps) {
+      // CONFIRMED는 이미 충족된 것으로 보고 indegree에 포함하지 않는다
+      if (confirmedIds.has(dep)) continue;
+      if (!indeg.has(dep)) continue;
+      indeg.set(id, (indeg.get(id) ?? 0) + 1);
+      out.get(dep)!.push(id);
+    }
+  }
+
+  const levels: string[][] = [];
+  let cur = draftIds.filter((id) => (indeg.get(id) ?? 0) === 0);
+  const seen = new Set<string>();
+  while (cur.length > 0) {
+    levels.push(cur);
+    const next: string[] = [];
+    for (const id of cur) {
+      seen.add(id);
+      for (const to of out.get(id) ?? []) {
+        indeg.set(to, (indeg.get(to) ?? 0) - 1);
+        if ((indeg.get(to) ?? 0) === 0) next.push(to);
+      }
+    }
+    cur = next.filter((id) => !seen.has(id));
+  }
+  return levels;
+}
+
 type TaskDraftPanelProps = {
   projectId: string;
   canEdit: boolean;
@@ -54,6 +158,8 @@ export function TaskDraftPanel({
   const [editCriteria, setEditCriteria] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const savingPositionsRef = useRef(new Map<string, number>());
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<
     | null
     | {
@@ -70,7 +176,8 @@ export function TaskDraftPanel({
     setLoading(true);
     setMessage(null);
     try {
-      const { res, json } = await fetchProjectTaskDrafts(projectId, { status: "DRAFT" });
+      // Workflow Builder는 DRAFT + CONFIRMED를 함께 보여줘야 READY/BLOCKED 계산이 가능하다.
+      const { res, json } = await fetchProjectTaskDrafts(projectId);
       if (!res.ok || !json.success || !json.data) {
         setMessage(json.message || "Task 초안을 불러오지 못했습니다.");
         setDrafts([]);
@@ -95,6 +202,87 @@ export function TaskDraftPanel({
     return m;
   }, [drafts]);
 
+  const confirmedIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const d of drafts) {
+      if (d.status === "CONFIRMED") s.add(d.id);
+    }
+    return s;
+  }, [drafts]);
+
+  const depsById = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const d of drafts) {
+      m.set(d.id, uniqueStrings(d.dependsOnIds ?? []).filter((x) => x !== d.id));
+    }
+    return m;
+  }, [drafts]);
+
+  const validation = useMemo(() => {
+    const allIds = drafts.map((d) => d.id);
+    const missingDepEdges: Array<{ targetId: string; missingId: string }> = [];
+    for (const d of drafts) {
+      for (const dep of depsById.get(d.id) ?? []) {
+        if (!byId.has(dep)) {
+          missingDepEdges.push({ targetId: d.id, missingId: dep });
+        }
+      }
+    }
+    const cycle = detectCycle(allIds, depsById);
+
+    const incomingCount = new Map<string, number>();
+    const outgoingCount = new Map<string, number>();
+    for (const id of allIds) {
+      incomingCount.set(id, 0);
+      outgoingCount.set(id, 0);
+    }
+    for (const d of drafts) {
+      const deps = depsById.get(d.id) ?? [];
+      outgoingCount.set(d.id, deps.length);
+      for (const dep of deps) {
+        incomingCount.set(dep, (incomingCount.get(dep) ?? 0) + 1);
+      }
+    }
+    const startIds = allIds.filter((id) => (outgoingCount.get(id) ?? 0) === 0);
+    const terminalIds = allIds.filter((id) => (incomingCount.get(id) ?? 0) === 0);
+    const isolatedIds = allIds.filter(
+      (id) => (incomingCount.get(id) ?? 0) === 0 && (outgoingCount.get(id) ?? 0) === 0
+    );
+
+    return {
+      ok: !cycle && missingDepEdges.length === 0,
+      cycle,
+      missingDepEdges,
+      startIds,
+      terminalIds,
+      isolatedIds,
+    };
+  }, [byId, depsById, drafts]);
+
+  const workflowStatusById = useMemo(() => {
+    const m = new Map<string, "CONFIRMED" | "READY" | "BLOCKED" | "INVALID">();
+    for (const d of drafts) {
+      if (d.status === "CONFIRMED") {
+        m.set(d.id, "CONFIRMED");
+        continue;
+      }
+      const deps = depsById.get(d.id) ?? [];
+      const hasMissing = deps.some((x) => !byId.has(x));
+      if (hasMissing) {
+        m.set(d.id, "INVALID");
+        continue;
+      }
+      const ready = deps.length === 0 || deps.every((x) => confirmedIds.has(x));
+      m.set(d.id, ready ? "READY" : "BLOCKED");
+    }
+    return m;
+  }, [byId, confirmedIds, depsById, drafts]);
+
+  const executionLevels = useMemo(() => {
+    const draftIds = drafts.filter((d) => d.status === "DRAFT").map((d) => d.id);
+    return computeExecutionLevels({ draftIds, depsById, confirmedIds });
+  }, [confirmedIds, depsById, drafts]);
+
   const nodes: Node[] = useMemo(() => {
     return drafts.map((d) => ({
       id: d.id,
@@ -107,12 +295,21 @@ export function TaskDraftPanel({
         border: selectedId === d.id ? "2px solid #7c3aed" : "1px solid #ddd6fe",
         borderRadius: 10,
         padding: 10,
-        background: "#fff",
+        background:
+          workflowStatusById.get(d.id) === "READY"
+            ? "#ecfdf5"
+            : workflowStatusById.get(d.id) === "BLOCKED"
+              ? "#f1f5f9"
+              : workflowStatusById.get(d.id) === "INVALID"
+                ? "#fef2f2"
+                : d.status === "CONFIRMED"
+                  ? "#e0e7ff"
+                  : "#fff",
         width: 260,
         boxShadow: selectedId === d.id ? "0 2px 12px rgba(124,58,237,0.25)" : "none",
       },
     }));
-  }, [drafts, selectedId]);
+  }, [drafts, selectedId, workflowStatusById]);
 
   const edges: Edge[] = useMemo(() => {
     const out: Edge[] = [];
@@ -160,6 +357,16 @@ export function TaskDraftPanel({
     if (!projectId || !canEdit || drafts.length === 0) {
       return;
     }
+    if (!validation.ok) {
+      setMessage("워크플로우가 유효하지 않아 확정할 수 없습니다. (순환/누락 의존성 확인)");
+      return;
+    }
+    setConfirmModalOpen(true);
+    return;
+  }
+
+  async function runConfirmAll() {
+    if (!projectId || !canEdit || drafts.length === 0) return;
     setBusy("confirm-all");
     setMessage(null);
     try {
@@ -180,6 +387,10 @@ export function TaskDraftPanel({
 
   async function handleConfirmOne(draftId: string) {
     if (!projectId || !canEdit) {
+      return;
+    }
+    if (!validation.ok) {
+      setMessage("워크플로우가 유효하지 않아 확정할 수 없습니다. (순환/누락 의존성 확인)");
       return;
     }
     setBusy(`confirm-${draftId}`);
@@ -268,6 +479,7 @@ export function TaskDraftPanel({
       setMessage("확정된 Spec 버전이 없어 Task 초안을 추가할 수 없습니다. 먼저 Spec을 확정하세요.");
       return;
     }
+    setAddMenuOpen(false);
     setBusy("add");
     setMessage(null);
     try {
@@ -280,6 +492,7 @@ export function TaskDraftPanel({
         positionX: 40,
         positionY: drafts.length * 40,
         dependsOnIds: [],
+        stage: "Build",
       });
       if (!res.ok || !json.success || !json.data) {
         setMessage(json.message || "Task 초안 추가에 실패했습니다.");
@@ -311,7 +524,15 @@ export function TaskDraftPanel({
     const target = byId.get(conn.target);
     if (!target) return;
     const cur = Array.isArray(target.dependsOnIds) ? target.dependsOnIds : [];
-    const next = [...new Set([...cur, conn.source])];
+    const next = uniqueStrings([...cur, conn.source]).filter((x) => x !== conn.target);
+    // cycle 검증
+    const nextDepsById = new Map(depsById);
+    nextDepsById.set(conn.target, next);
+    const cycle = detectCycle(drafts.map((d) => d.id), nextDepsById);
+    if (cycle) {
+      setMessage("순환 의존성이 생겨 연결을 만들 수 없습니다. (cycle)");
+      return;
+    }
     setBusy("edge");
     setMessage(null);
     try {
@@ -392,6 +613,22 @@ export function TaskDraftPanel({
     } catch (e) {
       console.error(e);
       setMessage("자동 정렬 저장 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleStageChange(nextStage: WorkflowStage) {
+    if (!editing || !canEdit) return;
+    setBusy("stage");
+    setMessage(null);
+    try {
+      await patchProjectTaskDraft(projectId, editing.id, { stage: nextStage });
+      setEditing({ ...editing, stage: nextStage });
+      await loadDrafts();
+    } catch (e) {
+      console.error(e);
+      setMessage("stage 변경 중 오류가 발생했습니다.");
     } finally {
       setBusy(null);
     }
@@ -518,23 +755,171 @@ export function TaskDraftPanel({
         </button>
         {canEdit ? (
           <>
-            <button
-              type="button"
-              data-testid="task-draft-add"
-              disabled={busy === "add"}
-              onClick={() => void handleAddDraft()}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #4f46e5",
-                background: "#eef2ff",
-                fontWeight: 800,
-                cursor: busy === "add" ? "wait" : "pointer",
-                fontSize: 12,
-              }}
-            >
-              {busy === "add" ? "추가 중…" : "+ Task 초안 추가"}
-            </button>
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                data-testid="task-draft-add"
+                disabled={busy === "add"}
+                onClick={() => setAddMenuOpen((v) => !v)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #4f46e5",
+                  background: "#eef2ff",
+                  fontWeight: 900,
+                  cursor: busy === "add" ? "wait" : "pointer",
+                  fontSize: 12,
+                }}
+              >
+                {busy === "add" ? "추가 중…" : "+ Task 추가"}
+              </button>
+              {addMenuOpen ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    zIndex: 20,
+                    top: 40,
+                    left: 0,
+                    minWidth: 240,
+                    borderRadius: 10,
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    padding: 10,
+                    boxShadow: "0 8px 30px rgba(15,23,42,0.12)",
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => void handleAddDraft()}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      textAlign: "left",
+                    }}
+                  >
+                    독립 노드로 추가
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedId}
+                    onClick={() => {
+                      const base = selectedId ? byId.get(selectedId) : null;
+                      const bx = base?.positionX ?? 0;
+                      const by = base?.positionY ?? 0;
+                      const stage = normalizeStage(base?.stage);
+                      void (async () => {
+                        if (!selectedId) return;
+                        setAddMenuOpen(false);
+                        setBusy("add");
+                        setMessage(null);
+                        try {
+                          const { res, json } = await postProjectTaskDraftCreate(projectId, {
+                            specVersionId: currentSpecVersionId ?? "",
+                            title: "새 Task",
+                            description: null,
+                            priority: "MEDIUM",
+                            acceptanceCriteria: [],
+                            positionX: bx + 340,
+                            positionY: by,
+                            dependsOnIds: [selectedId],
+                            stage,
+                          });
+                          if (!res.ok || !json.success || !json.data) {
+                            setMessage(json.message || "Task 초안 추가에 실패했습니다.");
+                            return;
+                          }
+                          setSelectedId(json.data.id);
+                          openEdit(json.data);
+                          await loadDrafts();
+                        } catch (e) {
+                          console.error(e);
+                          setMessage("Task 초안 추가 중 오류가 발생했습니다.");
+                        } finally {
+                          setBusy(null);
+                        }
+                      })();
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      background: selectedId ? "#fff" : "#f8fafc",
+                      fontWeight: 800,
+                      cursor: selectedId ? "pointer" : "not-allowed",
+                      fontSize: 12,
+                      textAlign: "left",
+                      opacity: selectedId ? 1 : 0.65,
+                    }}
+                  >
+                    선택 노드 “뒤(후속)”로 추가 (새 노드가 선택 노드에 의존)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedId}
+                    onClick={() => {
+                      void (async () => {
+                        if (!selectedId) return;
+                        const base = byId.get(selectedId);
+                        const bx = base?.positionX ?? 0;
+                        const by = base?.positionY ?? 0;
+                        const stage = normalizeStage(base?.stage);
+                        setAddMenuOpen(false);
+                        setBusy("add");
+                        setMessage(null);
+                        try {
+                          const { res, json } = await postProjectTaskDraftCreate(projectId, {
+                            specVersionId: currentSpecVersionId ?? "",
+                            title: "새 Task",
+                            description: null,
+                            priority: "MEDIUM",
+                            acceptanceCriteria: [],
+                            positionX: bx - 340,
+                            positionY: by,
+                            dependsOnIds: [],
+                            stage,
+                          });
+                          if (!res.ok || !json.success || !json.data) {
+                            setMessage(json.message || "Task 초안 추가에 실패했습니다.");
+                            return;
+                          }
+                          const cur = uniqueStrings((byId.get(selectedId)?.dependsOnIds ?? []).slice());
+                          const next = uniqueStrings([...cur, json.data.id]);
+                          await persistDependsOnIds(selectedId, next);
+                          setSelectedId(json.data.id);
+                          openEdit(json.data);
+                          await loadDrafts();
+                        } catch (e) {
+                          console.error(e);
+                          setMessage("Task 초안 추가 중 오류가 발생했습니다.");
+                        } finally {
+                          setBusy(null);
+                        }
+                      })();
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      background: selectedId ? "#fff" : "#f8fafc",
+                      fontWeight: 800,
+                      cursor: selectedId ? "pointer" : "not-allowed",
+                      fontSize: 12,
+                      textAlign: "left",
+                      opacity: selectedId ? 1 : 0.65,
+                    }}
+                  >
+                    선택 노드 “앞(선행)”으로 추가 (선택 노드가 새 노드에 의존)
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               data-testid="task-draft-regenerate"
@@ -591,7 +976,7 @@ export function TaskDraftPanel({
             <button
               type="button"
               data-testid="task-draft-confirm-all"
-              disabled={busy === "confirm-all" || drafts.length === 0}
+              disabled={busy === "confirm-all" || drafts.length === 0 || !validation.ok}
               onClick={() => void handleConfirmAll()}
               style={{
                 padding: "8px 12px",
@@ -681,6 +1066,37 @@ export function TaskDraftPanel({
         </div>
       ) : null}
 
+      {!validation.ok ? (
+        <div
+          data-testid="task-draft-workflow-invalid-banner"
+          style={{
+            margin: "0 0 10px 0",
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid #fecaca",
+            background: "#fef2f2",
+            color: "#991b1b",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>워크플로우가 유효하지 않습니다</div>
+          {validation.cycle ? (
+            <div style={{ marginBottom: 6 }}>
+              - <strong>순환(cycle)</strong> 감지됨: {validation.cycle.cyclePath.slice(0, 8).join(" → ")}
+            </div>
+          ) : null}
+          {validation.missingDepEdges.length > 0 ? (
+            <div>
+              - <strong>누락 의존성</strong> {validation.missingDepEdges.length}개 (삭제된 노드를 가리키는 연결이 있습니다)
+            </div>
+          ) : null}
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            유효하지 않은 상태에서는 확정(→Task)을 차단합니다.
+          </div>
+        </div>
+      ) : null}
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12, alignItems: "start" }}>
         <div
           data-testid="task-draft-workflow-canvas"
@@ -690,8 +1106,42 @@ export function TaskDraftPanel({
             background: "#fff",
             height: 520,
             overflow: "hidden",
+            position: "relative",
           }}
         >
+          {/* Swimlanes */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 0,
+              pointerEvents: "none",
+              background:
+                "linear-gradient(180deg, rgba(2,132,199,0.06) 0%, rgba(2,132,199,0.00) 18%, rgba(99,102,241,0.06) 20%, rgba(99,102,241,0.00) 38%, rgba(16,185,129,0.06) 40%, rgba(16,185,129,0.00) 58%, rgba(245,158,11,0.06) 60%, rgba(245,158,11,0.00) 78%, rgba(239,68,68,0.05) 80%, rgba(239,68,68,0.00) 100%)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 10,
+              zIndex: 1,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              fontSize: 11,
+              fontWeight: 900,
+              color: "#475569",
+            }}
+          >
+            {WORKFLOW_STAGES.map((s) => (
+              <span key={s} style={{ padding: "2px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                {s}
+              </span>
+            ))}
+          </div>
           {drafts.length === 0 && !loading ? (
             <div style={{ padding: 14, fontSize: 13, color: "#6b21b6" }}>
               아직 DRAFT 초안이 없습니다. Project Spec을 확정하면 자동 생성되거나, 위 버튼으로 수동 생성할 수 있습니다.
@@ -700,6 +1150,7 @@ export function TaskDraftPanel({
             <ReactFlow
               nodes={nodes}
               edges={edges}
+              style={{ position: "relative", zIndex: 2 }}
               onConnect={(c) => void handleConnect(c)}
               onNodeClick={(_, n) => {
                 setSelectedId(n.id);
@@ -737,6 +1188,48 @@ export function TaskDraftPanel({
             </p>
           ) : (
             <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: "#f1f5f9",
+                    border: "1px solid #e2e8f0",
+                    color: "#334155",
+                  }}
+                >
+                  {workflowStatusById.get(editing.id) ?? "DRAFT"}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: "#fff",
+                    border: "1px solid #e2e8f0",
+                    color: "#334155",
+                  }}
+                >
+                  stage: {normalizeStage(editing.stage)}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: editing.createdByType === "USER" ? "#fff7ed" : "#eff6ff",
+                    border: "1px solid #e2e8f0",
+                    color: "#334155",
+                  }}
+                >
+                  {editing.createdByType === "USER" ? "사용자 추가" : "AI 생성"}
+                </span>
+              </div>
+
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>제목</span>
                 <input
@@ -756,6 +1249,22 @@ export function TaskDraftPanel({
                   <option value="HIGH">HIGH</option>
                   <option value="MEDIUM">MEDIUM</option>
                   <option value="LOW">LOW</option>
+                </select>
+              </label>
+
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Stage (Lane)</span>
+                <select
+                  value={normalizeStage(editing.stage)}
+                  disabled={!canEdit || busy === "stage"}
+                  onChange={(e) => void handleStageChange(normalizeStage(e.target.value))}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                >
+                  {WORKFLOW_STAGES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -856,8 +1365,108 @@ export function TaskDraftPanel({
               <div style={{ fontSize: 12, color: "#64748b" }}>updated: {formatTestedAt(editing.updatedAt)}</div>
             </div>
           )}
+
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
+            <div style={{ fontWeight: 900, fontSize: 13, color: "#1e1b4b", marginBottom: 8 }}>
+              실행 순서 미리보기 (DAG)
+            </div>
+            {executionLevels.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#64748b" }}>DRAFT 노드가 없습니다.</div>
+            ) : (
+              <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
+                {executionLevels.slice(0, 12).map((level, idx) => (
+                  <li key={idx} style={{ fontSize: 12, color: "#334155", lineHeight: 1.4 }}>
+                    {level
+                      .map((id) => byId.get(id)?.title ?? id.slice(0, 8))
+                      .slice(0, 6)
+                      .join(" / ")}
+                    {level.length > 6 ? ` 외 ${level.length - 6}개` : ""}
+                  </li>
+                ))}
+              </ol>
+            )}
+            {validation.isolatedIds.length > 0 ? (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#b45309" }}>
+                고립 노드 {validation.isolatedIds.length}개 (연결 없음): 확정 전 흐름에 포함되는지 확인하세요.
+              </div>
+            ) : null}
+          </div>
         </aside>
       </div>
+
+      {confirmModalOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-testid="task-draft-confirm-modal"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.55)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 50,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "min(560px, 100%)",
+              borderRadius: 12,
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              padding: 14,
+            }}
+          >
+            <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>전체 DRAFT 확정 → Task</div>
+            <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.55 }}>
+              - DRAFT {drafts.filter((d) => d.status === "DRAFT").length}개를 실제 Task로 추가합니다.
+              <br />
+              - 기존 Task는 삭제되지 않습니다.
+              {validation.isolatedIds.length > 0 ? (
+                <>
+                  <br />- 고립 노드 {validation.isolatedIds.length}개가 있습니다(연결 없음).
+                </>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmModalOpen(false)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                disabled={busy === "confirm-all"}
+                onClick={() => {
+                  setConfirmModalOpen(false);
+                  void runConfirmAll();
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #15803d",
+                  background: "#16a34a",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: busy === "confirm-all" ? "wait" : "pointer",
+                }}
+              >
+                {busy === "confirm-all" ? "확정 중…" : "확정 실행"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

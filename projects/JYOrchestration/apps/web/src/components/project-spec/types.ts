@@ -129,6 +129,10 @@ export type TaskDraftDto = {
   positionX: number;
   /** Workflow 캔버스 노드 좌표(px) */
   positionY: number;
+  /** Workflow 스윔레인 */
+  stage: string;
+  /** 생성 주체: AI | USER */
+  createdByType: string;
   status: string;
   sourceModel: string | null;
   promptTokens: number | null;

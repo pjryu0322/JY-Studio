@@ -133,6 +133,8 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
           acceptanceCriteria: t.acceptanceCriteria.length ? t.acceptanceCriteria : undefined,
           positionX: 0,
           positionY: i * 140,
+          stage: "Build",
+          createdByType: "AI",
           status: "DRAFT",
           sourceModel: ai.model,
           promptTokens: first ? (ai.usage?.promptTokens ?? null) : null,

@@ -16,6 +16,10 @@ function numberFromDb(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function stringFromDb(v: unknown): string {
+  return typeof v === "string" ? v : String(v ?? "");
+}
+
 export async function GET(
   request: NextRequest,
   segmentData: { params: Promise<{ projectId: string }> }
@@ -72,6 +76,8 @@ export async function GET(
         acceptanceCriteria: jsonArrayFromDb(r.acceptanceCriteria),
         positionX: numberFromDb((r as unknown as { positionX?: unknown }).positionX),
         positionY: numberFromDb((r as unknown as { positionY?: unknown }).positionY),
+        stage: stringFromDb((r as unknown as { stage?: unknown }).stage) || "Build",
+        createdByType: stringFromDb((r as unknown as { createdByType?: unknown }).createdByType) || "AI",
         status: r.status,
         sourceModel: r.sourceModel,
         promptTokens: r.promptTokens,
@@ -129,6 +135,7 @@ export async function POST(
       positionX?: number;
       positionY?: number;
       dependsOnIds?: string[];
+      stage?: string;
     };
     try {
       body = (await request.json()) as typeof body;
@@ -162,6 +169,8 @@ export async function POST(
           : [],
         positionX: Number.isFinite(Number(body.positionX)) ? Number(body.positionX) : 0,
         positionY: Number.isFinite(Number(body.positionY)) ? Number(body.positionY) : 0,
+        stage: String(body.stage ?? "Build").trim() || "Build",
+        createdByType: "USER",
         status: "DRAFT",
         createdByUserId: userId,
       },
@@ -184,6 +193,8 @@ export async function POST(
         acceptanceCriteria: jsonArrayFromDb(created.acceptanceCriteria),
         positionX: numberFromDb((created as unknown as { positionX?: unknown }).positionX),
         positionY: numberFromDb((created as unknown as { positionY?: unknown }).positionY),
+        stage: stringFromDb((created as unknown as { stage?: unknown }).stage) || "Build",
+        createdByType: stringFromDb((created as unknown as { createdByType?: unknown }).createdByType) || "USER",
         status: created.status,
         createdAt: created.createdAt.toISOString(),
         updatedAt: created.updatedAt.toISOString(),

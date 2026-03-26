@@ -22,6 +22,7 @@ type PatchBody = {
   acceptanceCriteria?: string[];
   positionX?: number;
   positionY?: number;
+  stage?: string;
 };
 
 export async function PATCH(
@@ -116,6 +117,13 @@ export async function PATCH(
       }
       data.positionY = n;
     }
+    if (body.stage !== undefined) {
+      const s = String(body.stage ?? "").trim();
+      if (!s) {
+        return NextResponse.json({ success: false, message: "stage는 비울 수 없습니다." }, { status: 400 });
+      }
+      data.stage = s.slice(0, 40);
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ success: false, message: "수정할 필드가 없습니다." }, { status: 400 });
@@ -149,6 +157,7 @@ export async function PATCH(
           : [],
         positionX: Number((updated as unknown as { positionX?: unknown }).positionX ?? 0),
         positionY: Number((updated as unknown as { positionY?: unknown }).positionY ?? 0),
+        stage: String((updated as unknown as { stage?: unknown }).stage ?? "Build"),
         status: updated.status,
         updatedAt: updated.updatedAt.toISOString(),
       },

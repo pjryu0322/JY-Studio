@@ -284,6 +284,10 @@ model TaskDraft {
   positionX          Float @default(0)
   /// Workflow 캔버스 노드 Y 좌표(px)
   positionY          Float @default(0)
+  /// Workflow 단계(스윔레인)
+  stage              String @default("Build")
+  /// 생성 주체: AI | USER
+  createdByType      String @default("AI")
   /// DRAFT | CONFIRMED | SUPERSEDED
   status      String   @default("DRAFT")
   sourceModel String?

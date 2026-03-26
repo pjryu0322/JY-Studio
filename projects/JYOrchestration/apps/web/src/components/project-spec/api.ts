@@ -209,6 +209,7 @@ export async function postProjectTaskDraftCreate(
     positionX?: number;
     positionY?: number;
     dependsOnIds?: string[];
+    stage?: string;
   }
 ) {
   const encoded = encodeURIComponent(projectId);
@@ -291,6 +292,7 @@ export async function patchProjectTaskDraft(
     acceptanceCriteria: string[];
     positionX: number;
     positionY: number;
+    stage: string;
   }>
 ) {
   const encoded = encodeURIComponent(projectId);
