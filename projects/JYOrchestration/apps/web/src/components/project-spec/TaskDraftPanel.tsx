@@ -5,7 +5,6 @@ import {
   deleteProjectTaskDraft,
   fetchProjectTaskDrafts,
   patchProjectTaskDraft,
-  postProjectTaskDraftCreate,
   postProjectTaskDraftsAiReorder,
   postProjectTaskDraftsConfirm,
   postProjectTaskDraftsGenerate,
@@ -14,29 +13,100 @@ import { formatTestedAt } from "@/components/project-spec/format";
 import type { TaskDraftDto, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { LabelTag } from "@/components/ui/LabelTag";
 import type { SpecWorkspaceAiModelId } from "@/lib/project-spec/specWorkspaceModels";
+import { synthesizeWorkflowDrafts } from "@/lib/project-spec/workflowDraftSynthesis";
+import {
+  WORKFLOW_STAGES,
+  LANE_LAYOUT,
+  laneBandTopY,
+  totalLaneCanvasHeightPx,
+  computeStageAwareLaneLayout,
+  clampNodeYToStageBand,
+  snapNodeYToLaneCenter,
+  normalizeWorkflowStage,
+  type WorkflowStage,
+} from "@/lib/project-spec/workflowLaneLayout";
 import ReactFlow, {
   Background,
   Controls,
   Handle,
   MiniMap,
   Position,
+  useStore,
   type Connection,
   type Edge,
   type Node,
   type NodeProps,
   type NodeTypes,
 } from "reactflow";
-import dagre from "dagre";
 
 import "reactflow/dist/style.css";
 
-const WORKFLOW_STAGES = ["Planning", "Build", "Test", "Review", "Apply"] as const;
-type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 type WorkflowStatus = "CONFIRMED" | "READY" | "BLOCKED" | "INVALID";
 
-function normalizeStage(s: string | null | undefined): WorkflowStage {
-  const v = String(s ?? "").trim();
-  return (WORKFLOW_STAGES as readonly string[]).includes(v) ? (v as WorkflowStage) : "Build";
+const SWIMLANE_BAND_COLORS = [
+  "rgba(2,132,199,0.09)",
+  "rgba(99,102,241,0.08)",
+  "rgba(16,185,129,0.08)",
+  "rgba(245,158,11,0.07)",
+  "rgba(239,68,68,0.06)",
+];
+
+/** viewport transform과 동일 — 스윔레인이 노드·엣지와 함께 패닝/줌됨 */
+function SwimlaneBands() {
+  const transform = useStore((s) => s.transform);
+  const [tx, ty, zoom] = transform;
+  const width = 9600;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: -1,
+        pointerEvents: "none",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          transform: `translate(${tx}px, ${ty}px) scale(${zoom})`,
+          transformOrigin: "0 0",
+        }}
+      >
+        {WORKFLOW_STAGES.map((stage, i) => (
+          <div
+            key={stage}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: laneBandTopY(stage),
+              width,
+              height: LANE_LAYOUT.BAND_HEIGHT,
+              background: SWIMLANE_BAND_COLORS[i] ?? SWIMLANE_BAND_COLORS[0],
+              borderBottom: "1px solid #e2e8f0",
+              boxSizing: "border-box",
+            }}
+          >
+            <span
+              style={{
+                position: "absolute",
+                left: 12,
+                top: 8,
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#64748b",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {stage}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function uniqueStrings(xs: string[]): string[] {
@@ -171,23 +241,13 @@ const TaskDraftNodeView = memo(function TaskDraftNodeView({
       }}
     >
       <Handle type="target" position={Position.Left} />
-      <div style={{ padding: "8px 10px", borderBottom: "1px solid #e2e8f0", background: statusBg }}>
+      <div style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0", background: statusBg }}>
         <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", lineHeight: 1.35 }}>{data.title}</div>
         <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <span style={badgeBase("#fff", "#334155")}>P:{data.priority}</span>
-          <span style={badgeBase("#fff", "#334155")}>{data.workflowStatus}</span>
-          <span style={badgeBase("#fff", "#334155")}>Spec v{data.specVersionNumber}</span>
+          <span style={badgeBase("#fff", "#334155")}>{data.priority}</span>
         </div>
       </div>
-      <div style={{ padding: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <span style={badgeBase("#f8fafc", "#475569")}>{data.stage}</span>
-        <span style={badgeBase(data.createdByType === "USER" ? "#fff7ed" : "#eff6ff", "#475569")}>
-          {data.createdByType === "USER" ? "USER" : "AI"}
-        </span>
-        {data.isStart ? <span style={badgeBase("#ecfeff", "#0e7490")}>START</span> : null}
-        {data.isTerminal ? <span style={badgeBase("#fef3c7", "#92400e")}>TERMINAL</span> : null}
-        {data.isParallelCandidate ? <span style={badgeBase("#dcfce7", "#166534")}>PARALLEL</span> : null}
-      </div>
+      {/* 노드 상세(READY/START/TERMINAL/stage/AI 등)는 Detail Panel에서만 표시 */}
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -218,7 +278,6 @@ export function TaskDraftPanel({
   projectId,
   canEdit,
   selectedModel,
-  currentSpecVersionId,
   refreshKey,
   lastAutoSync,
 }: TaskDraftPanelProps) {
@@ -231,10 +290,10 @@ export function TaskDraftPanel({
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState("MEDIUM");
   const [editCriteria, setEditCriteria] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const savingPositionsRef = useRef(new Map<string, number>());
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [executionPreviewOpen, setExecutionPreviewOpen] = useState(false);
+  const autoWireRanRef = useRef(false);
   const [aiSuggestion, setAiSuggestion] = useState<
     | null
     | {
@@ -274,6 +333,55 @@ export function TaskDraftPanel({
   useEffect(() => {
     void loadDrafts();
   }, [loadDrafts, refreshKey]);
+
+  const shouldAutoWire = useMemo(() => {
+    if (autoWireRanRef.current) return false;
+    const draftOnly = drafts.filter((d) => d.status === "DRAFT");
+    if (draftOnly.length < 2) return false;
+    return draftOnly.every((d) => (d.dependsOnIds ?? []).length === 0);
+  }, [drafts]);
+
+  // 기존 데이터(초기 연결이 없던 시점에 생성된 draft)도 "완성된 흐름"으로 보이도록 자동 연결/배치
+  useEffect(() => {
+    if (!canEdit || !projectId) return;
+    if (!shouldAutoWire) return;
+    autoWireRanRef.current = true;
+    void (async () => {
+      setBusy("auto-wire");
+      setMessage(null);
+      try {
+        const draftOnly = drafts.filter((d) => d.status === "DRAFT");
+        const synthesized = synthesizeWorkflowDrafts(
+          draftOnly.map((d) => ({
+            id: d.id,
+            title: d.title,
+            description: d.description,
+            priority: d.priority,
+            stage: d.stage,
+          }))
+        );
+        const byId = new Map(synthesized.map((x) => [x.id, x] as const));
+        for (const d of draftOnly) {
+          const s = byId.get(d.id);
+          if (!s) continue;
+          await patchProjectTaskDraft(projectId, d.id, {
+            dependsOnIds: s.dependsOnIds,
+            positionX: s.positionX,
+            positionY: s.positionY,
+            stage: s.stage,
+            // title 기반 dependsOn은 레거시 호환이지만, UX 혼란 방지를 위해 id 기반만 신뢰한다.
+            dependsOn: [],
+          });
+        }
+        await loadDrafts();
+      } catch (e) {
+        console.error(e);
+        setMessage("초기 워크플로우 자동 연결 중 오류가 발생했습니다.");
+      } finally {
+        setBusy(null);
+      }
+    })();
+  }, [canEdit, drafts, loadDrafts, projectId, shouldAutoWire]);
 
   const byId = useMemo(() => {
     const m = new Map<string, TaskDraftDto>();
@@ -392,9 +500,10 @@ export function TaskDraftPanel({
         title: d.title,
         priority: d.priority,
         workflowStatus: workflowStatusById.get(d.id) ?? "BLOCKED",
-        stage: normalizeStage(d.stage),
+        stage: normalizeWorkflowStage(d.stage),
         specVersionNumber: d.specVersionNumber,
         createdByType: d.createdByType,
+        // 노드 내부 표시를 최소화하기 위해 아래 값은 유지하되 Node UI에서는 숨김
         isStart: validation.startIds.includes(d.id),
         isTerminal: validation.terminalIds.includes(d.id),
         isParallelCandidate: parallelCandidateIds.has(d.id),
@@ -572,42 +681,6 @@ export function TaskDraftPanel({
     }
   }
 
-  async function handleAddDraft() {
-    if (!projectId || !canEdit) return;
-    if (!currentSpecVersionId) {
-      setMessage("확정된 Spec 버전이 없어 Task 초안을 추가할 수 없습니다. 먼저 Spec을 확정하세요.");
-      return;
-    }
-    setAddMenuOpen(false);
-    setBusy("add");
-    setMessage(null);
-    try {
-      const { res, json } = await postProjectTaskDraftCreate(projectId, {
-        specVersionId: currentSpecVersionId,
-        title: "새 Task",
-        description: null,
-        priority: "MEDIUM",
-        acceptanceCriteria: [],
-        positionX: 40,
-        positionY: drafts.length * 40,
-        dependsOnIds: [],
-        stage: "Build",
-      });
-      if (!res.ok || !json.success || !json.data) {
-        setMessage(json.message || "Task 초안 추가에 실패했습니다.");
-        return;
-      }
-      setSelectedId(json.data.id);
-      openEdit(json.data);
-      await loadDrafts();
-    } catch (e) {
-      console.error(e);
-      setMessage("Task 초안 추가 중 오류가 발생했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   async function persistDependsOnIds(targetId: string, nextDependsOnIds: string[]) {
     const titleById = new Map<string, string>();
     for (const d of drafts) titleById.set(d.id, d.title);
@@ -670,8 +743,11 @@ export function TaskDraftPanel({
     const last = savingPositionsRef.current.get(node.id) ?? 0;
     if (now - last < 250) return;
     savingPositionsRef.current.set(node.id, now);
+    const draft = byId.get(node.id);
+    const stage = draft ? normalizeWorkflowStage(draft.stage) : "Build";
+    const y = clampNodeYToStageBand(node.position.y, stage);
     try {
-      await patchProjectTaskDraft(projectId, node.id, { positionX: node.position.x, positionY: node.position.y });
+      await patchProjectTaskDraft(projectId, node.id, { positionX: node.position.x, positionY: y });
       await loadDrafts();
     } catch (e) {
       console.error(e);
@@ -679,30 +755,18 @@ export function TaskDraftPanel({
     }
   }
 
-  function computeDagreLayout(): { id: string; x: number; y: number }[] {
-    const g = new dagre.graphlib.Graph();
-    g.setDefaultEdgeLabel(() => ({}));
-    g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 120 });
-    for (const n of nodes) {
-      g.setNode(n.id, { width: 260, height: 120 });
-    }
-    for (const e of edges) {
-      g.setEdge(e.source, e.target);
-    }
-    dagre.layout(g);
-
-    return nodes.map((n) => {
-      const p = g.node(n.id);
-      if (!p) return { id: n.id, x: n.position.x, y: n.position.y };
-      return { id: n.id, x: p.x - 130, y: p.y - 60 };
-    });
+  function computeStageLaneLayout(): { id: string; x: number; y: number }[] {
+    return computeStageAwareLaneLayout(
+      drafts.map((d) => ({ id: d.id, stage: d.stage })),
+      edges.map((e) => ({ source: e.source, target: e.target }))
+    );
   }
 
   async function handleAutoLayoutPersist() {
     if (!canEdit || drafts.length === 0) return;
     setBusy("layout");
     setMessage(null);
-    const layout = computeDagreLayout();
+    const layout = computeStageLaneLayout();
     try {
       for (const p of layout) {
         await patchProjectTaskDraft(projectId, p.id, { positionX: p.x, positionY: p.y });
@@ -722,8 +786,11 @@ export function TaskDraftPanel({
     setBusy("stage");
     setMessage(null);
     try {
-      await patchProjectTaskDraft(projectId, editing.id, { stage: nextStage });
-      setEditing({ ...editing, stage: nextStage });
+      await patchProjectTaskDraft(projectId, editing.id, {
+        stage: nextStage,
+        positionY: snapNodeYToLaneCenter(nextStage),
+      });
+      setEditing({ ...editing, stage: nextStage, positionY: snapNodeYToLaneCenter(nextStage) });
       await loadDrafts();
     } catch (e) {
       console.error(e);
@@ -768,7 +835,12 @@ export function TaskDraftPanel({
     setMessage(null);
     try {
       for (const t of aiSuggestion.tasks) {
-        const patch: Record<string, unknown> = { positionX: t.positionX, positionY: t.positionY };
+        const dRow = byId.get(t.id);
+        const st = dRow ? normalizeWorkflowStage(dRow.stage) : "Build";
+        const patch: Record<string, unknown> = {
+          positionX: t.positionX,
+          positionY: clampNodeYToStageBand(t.positionY, st),
+        };
         if (Array.isArray(t.dependsOnIds)) {
           const deps = t.dependsOnIds;
           const titleById = new Map<string, string>();
@@ -839,190 +911,8 @@ export function TaskDraftPanel({
       ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, alignItems: "center" }}>
-        <button
-          type="button"
-          data-testid="task-draft-refresh"
-          disabled={loading}
-          onClick={() => void loadDrafts()}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #7c3aed",
-            background: "#fff",
-            fontWeight: 600,
-            cursor: loading ? "wait" : "pointer",
-            fontSize: 12,
-          }}
-        >
-          {loading ? "불러오는 중…" : "Task 초안 새로고침"}
-        </button>
         {canEdit ? (
           <>
-            <div style={{ position: "relative" }}>
-              <button
-                type="button"
-                data-testid="task-draft-add"
-                disabled={busy === "add"}
-                onClick={() => setAddMenuOpen((v) => !v)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #4f46e5",
-                  background: "#eef2ff",
-                  fontWeight: 900,
-                  cursor: busy === "add" ? "wait" : "pointer",
-                  fontSize: 12,
-                }}
-              >
-                {busy === "add" ? "추가 중…" : "+ Task 추가"}
-              </button>
-              {addMenuOpen ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    zIndex: 20,
-                    top: 40,
-                    left: 0,
-                    minWidth: 240,
-                    borderRadius: 10,
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    padding: 10,
-                    boxShadow: "0 8px 30px rgba(15,23,42,0.12)",
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => void handleAddDraft()}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #cbd5e1",
-                      background: "#fff",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      fontSize: 12,
-                      textAlign: "left",
-                    }}
-                  >
-                    독립 노드로 추가
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!selectedId}
-                    onClick={() => {
-                      const base = selectedId ? byId.get(selectedId) : null;
-                      const bx = base?.positionX ?? 0;
-                      const by = base?.positionY ?? 0;
-                      const stage = normalizeStage(base?.stage);
-                      void (async () => {
-                        if (!selectedId) return;
-                        setAddMenuOpen(false);
-                        setBusy("add");
-                        setMessage(null);
-                        try {
-                          const { res, json } = await postProjectTaskDraftCreate(projectId, {
-                            specVersionId: currentSpecVersionId ?? "",
-                            title: "새 Task",
-                            description: null,
-                            priority: "MEDIUM",
-                            acceptanceCriteria: [],
-                            positionX: bx + 340,
-                            positionY: by,
-                            dependsOnIds: [selectedId],
-                            stage,
-                          });
-                          if (!res.ok || !json.success || !json.data) {
-                            setMessage(json.message || "Task 초안 추가에 실패했습니다.");
-                            return;
-                          }
-                          setSelectedId(json.data.id);
-                          openEdit(json.data);
-                          await loadDrafts();
-                        } catch (e) {
-                          console.error(e);
-                          setMessage("Task 초안 추가 중 오류가 발생했습니다.");
-                        } finally {
-                          setBusy(null);
-                        }
-                      })();
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #cbd5e1",
-                      background: selectedId ? "#fff" : "#f8fafc",
-                      fontWeight: 800,
-                      cursor: selectedId ? "pointer" : "not-allowed",
-                      fontSize: 12,
-                      textAlign: "left",
-                      opacity: selectedId ? 1 : 0.65,
-                    }}
-                  >
-                    선택 노드 “뒤(후속)”로 추가 (새 노드가 선택 노드에 의존)
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!selectedId}
-                    onClick={() => {
-                      void (async () => {
-                        if (!selectedId) return;
-                        const base = byId.get(selectedId);
-                        const bx = base?.positionX ?? 0;
-                        const by = base?.positionY ?? 0;
-                        const stage = normalizeStage(base?.stage);
-                        setAddMenuOpen(false);
-                        setBusy("add");
-                        setMessage(null);
-                        try {
-                          const { res, json } = await postProjectTaskDraftCreate(projectId, {
-                            specVersionId: currentSpecVersionId ?? "",
-                            title: "새 Task",
-                            description: null,
-                            priority: "MEDIUM",
-                            acceptanceCriteria: [],
-                            positionX: bx - 340,
-                            positionY: by,
-                            dependsOnIds: [],
-                            stage,
-                          });
-                          if (!res.ok || !json.success || !json.data) {
-                            setMessage(json.message || "Task 초안 추가에 실패했습니다.");
-                            return;
-                          }
-                          const cur = uniqueStrings((byId.get(selectedId)?.dependsOnIds ?? []).slice());
-                          const next = uniqueStrings([...cur, json.data.id]);
-                          await persistDependsOnIds(selectedId, next);
-                          setSelectedId(json.data.id);
-                          openEdit(json.data);
-                          await loadDrafts();
-                        } catch (e) {
-                          console.error(e);
-                          setMessage("Task 초안 추가 중 오류가 발생했습니다.");
-                        } finally {
-                          setBusy(null);
-                        }
-                      })();
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #cbd5e1",
-                      background: selectedId ? "#fff" : "#f8fafc",
-                      fontWeight: 800,
-                      cursor: selectedId ? "pointer" : "not-allowed",
-                      fontSize: 12,
-                      textAlign: "left",
-                      opacity: selectedId ? 1 : 0.65,
-                    }}
-                  >
-                    선택 노드 “앞(선행)”으로 추가 (선택 노드가 새 노드에 의존)
-                  </button>
-                </div>
-              ) : null}
-            </div>
             <button
               type="button"
               data-testid="task-draft-regenerate"
@@ -1057,24 +947,6 @@ export function TaskDraftPanel({
               }}
             >
               {busy === "layout" ? "정렬 중…" : "자동 정렬"}
-            </button>
-            <button
-              type="button"
-              data-testid="task-draft-ai-reorder"
-              disabled={busy === "ai-reorder" || drafts.length === 0}
-              onClick={() => void handleAiReorder()}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #0f766e",
-                background: "#0d9488",
-                color: "#fff",
-                fontWeight: 900,
-                cursor: busy === "ai-reorder" ? "wait" : "pointer",
-                fontSize: 12,
-              }}
-            >
-              {busy === "ai-reorder" ? "요청 중…" : "AI로 Workflow 재정렬"}
             </button>
             <button
               type="button"
@@ -1228,72 +1100,60 @@ export function TaskDraftPanel({
         </div>
       ) : null}
 
+      {/* 상태 요약/실행 순서 텍스트는 Detail Panel로 이동 */}
+
       <div
+        data-testid="task-draft-workflow-canvas"
         style={{
-          margin: "0 0 10px 0",
-          padding: 10,
-          borderRadius: 10,
-          border: "1px solid #e2e8f0",
+          borderRadius: 12,
+          border: "1px solid #ddd6fe",
           background: "#fff",
-          fontSize: 12,
-          color: "#334155",
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
+          height: "70vh",
+          minHeight: Math.max(520, totalLaneCanvasHeightPx()),
+          overflow: "hidden",
+          position: "relative",
         }}
       >
-        <span>시작 가능 노드: {validation.startIds.length}</span>
-        <span>끝 노드: {validation.terminalIds.length}</span>
-        <span>고립 노드: {validation.isolatedIds.length}</span>
-        <span>READY: {[...workflowStatusById.values()].filter((s) => s === "READY").length}</span>
-        <span>BLOCKED: {[...workflowStatusById.values()].filter((s) => s === "BLOCKED").length}</span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12, alignItems: "start" }}>
-        <div
-          data-testid="task-draft-workflow-canvas"
-          style={{
-            borderRadius: 12,
-            border: "1px solid #ddd6fe",
-            background: "#fff",
-            height: 520,
-            overflow: "hidden",
-            position: "relative",
-          }}
-        >
-          {/* Swimlanes */}
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 0,
-              pointerEvents: "none",
-              background:
-                "linear-gradient(180deg, rgba(2,132,199,0.06) 0%, rgba(2,132,199,0.00) 18%, rgba(99,102,241,0.06) 20%, rgba(99,102,241,0.00) 38%, rgba(16,185,129,0.06) 40%, rgba(16,185,129,0.00) 58%, rgba(245,158,11,0.06) 60%, rgba(245,158,11,0.00) 78%, rgba(239,68,68,0.05) 80%, rgba(239,68,68,0.00) 100%)",
-            }}
-          />
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: 8,
-              left: 10,
-              zIndex: 1,
-              display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
-              fontSize: 11,
-              fontWeight: 900,
-              color: "#475569",
-            }}
-          >
-            {WORKFLOW_STAGES.map((s) => (
-              <span key={s} style={{ padding: "2px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                {s}
-              </span>
-            ))}
-          </div>
+          {/* Canvas corner actions */}
+          {canEdit ? (
+            <div style={{ position: "absolute", top: 10, right: 10, zIndex: 5, display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                data-testid="task-draft-refresh"
+                disabled={loading}
+                onClick={() => void loadDrafts()}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  fontWeight: 800,
+                  cursor: loading ? "wait" : "pointer",
+                  fontSize: 12,
+                }}
+              >
+                새로고침
+              </button>
+              <button
+                type="button"
+                data-testid="task-draft-ai-reorder"
+                disabled={busy === "ai-reorder" || drafts.length === 0}
+                onClick={() => void handleAiReorder()}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #0f766e",
+                  background: "#0d9488",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: busy === "ai-reorder" ? "wait" : "pointer",
+                  fontSize: 12,
+                }}
+              >
+                AI 재정렬
+              </button>
+            </div>
+          ) : null}
           {drafts.length === 0 && !loading ? (
             <div style={{ padding: 14, fontSize: 13, color: "#6b21b6" }}>
               아직 DRAFT 초안이 없습니다. Project Spec을 확정하면 자동 생성되거나, 위 버튼으로 수동 생성할 수 있습니다.
@@ -1306,7 +1166,6 @@ export function TaskDraftPanel({
               style={{ position: "relative", zIndex: 2 }}
               onConnect={(c) => void handleConnect(c)}
               onNodeClick={(_, n) => {
-                setSelectedId(n.id);
                 const d = byId.get(n.id);
                 if (d) openEdit(d);
               }}
@@ -1314,90 +1173,93 @@ export function TaskDraftPanel({
               onEdgeClick={(_, e) => void handleDeleteEdge(e)}
               fitView
             >
+              <SwimlaneBands />
               <Background />
               <MiniMap />
               <Controls />
             </ReactFlow>
           )}
-        </div>
+      </div>
 
-        <aside
+      {/* Detail drawer: 선택 시에만 표시 */}
+      {editing ? (
+        <div
           data-testid="task-draft-detail-panel"
           style={{
-            borderRadius: 12,
-            border: "1px solid #ddd6fe",
-            background: "#fff",
-            padding: 12,
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            pointerEvents: "none",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            <div style={{ fontWeight: 900, fontSize: 14, color: "#1e1b4b" }}>Detail</div>
-            {editing ? <div style={{ fontSize: 12, color: "#64748b" }}>Spec v{editing.specVersionNumber}</div> : null}
-          </div>
+          <div
+            onClick={() => setEditing(null)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(15,23,42,0.40)",
+              pointerEvents: "auto",
+            }}
+          />
+          <aside
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              height: "100%",
+              width: "min(420px, 92vw)",
+              background: "#fff",
+              borderLeft: "1px solid #e2e8f0",
+              boxShadow: "-8px 0 30px rgba(15,23,42,0.18)",
+              padding: 14,
+              overflow: "auto",
+              pointerEvents: "auto",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+              <div style={{ fontWeight: 900, fontSize: 14, color: "#1e1b4b" }}>Detail</div>
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                닫기
+              </button>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>Spec v{editing.specVersionNumber}</div>
 
-          {!editing ? (
-            <p style={{ margin: "10px 0 0 0", fontSize: 13, color: "#64748b" }}>
-              노드를 클릭하면 세부 정보를 수정할 수 있습니다. 연결(선행)은 노드에서 드래그로 만들고, 엣지를 클릭하면 삭제됩니다.
-            </p>
-          ) : (
             <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 900,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: "#f1f5f9",
-                    border: "1px solid #e2e8f0",
-                    color: "#334155",
-                  }}
-                >
-                  {workflowStatusById.get(editing.id) ?? "DRAFT"}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 900,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: "#fff",
-                    border: "1px solid #e2e8f0",
-                    color: "#334155",
-                  }}
-                >
-                  stage: {normalizeStage(editing.stage)}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 900,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: editing.createdByType === "USER" ? "#fff7ed" : "#eff6ff",
-                    border: "1px solid #e2e8f0",
-                    color: "#334155",
-                  }}
-                >
+                <span style={badgeBase("#f1f5f9", "#334155")}>{workflowStatusById.get(editing.id) ?? "DRAFT"}</span>
+                <span style={badgeBase("#fff", "#334155")}>stage: {normalizeWorkflowStage(editing.stage)}</span>
+                <span style={badgeBase(editing.createdByType === "USER" ? "#fff7ed" : "#eff6ff", "#334155")}>
                   {editing.createdByType === "USER" ? "사용자 추가" : "AI 생성"}
                 </span>
               </div>
 
               <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>제목</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>제목</span>
                 <input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                  style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                 />
               </label>
 
               <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>우선순위</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>우선순위</span>
                 <select
                   value={editPriority}
                   onChange={(e) => setEditPriority(e.target.value)}
-                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                  style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                 >
                   <option value="HIGH">HIGH</option>
                   <option value="MEDIUM">MEDIUM</option>
@@ -1406,12 +1268,12 @@ export function TaskDraftPanel({
               </label>
 
               <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Stage (Lane)</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>Stage (Lane)</span>
                 <select
-                  value={normalizeStage(editing.stage)}
+                  value={normalizeWorkflowStage(editing.stage)}
                   disabled={!canEdit || busy === "stage"}
-                  onChange={(e) => void handleStageChange(normalizeStage(e.target.value))}
-                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                  onChange={(e) => void handleStageChange(normalizeWorkflowStage(e.target.value))}
+                  style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                 >
                   {WORKFLOW_STAGES.map((s) => (
                     <option key={s} value={s}>
@@ -1422,22 +1284,22 @@ export function TaskDraftPanel({
               </label>
 
               <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>설명</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>설명</span>
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  rows={5}
-                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" }}
+                  rows={6}
+                  style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", resize: "vertical" }}
                 />
               </label>
 
               <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>수용 기준(줄바꿈 = 항목)</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>수용 기준(줄바꿈 = 항목)</span>
                 <textarea
                   value={editCriteria}
                   onChange={(e) => setEditCriteria(e.target.value)}
                   rows={6}
-                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" }}
+                  style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", resize: "vertical" }}
                 />
               </label>
 
@@ -1448,7 +1310,7 @@ export function TaskDraftPanel({
                   onClick={() => void saveEdit()}
                   style={{
                     padding: "8px 12px",
-                    borderRadius: 8,
+                    borderRadius: 10,
                     border: "1px solid #7c3aed",
                     background: "#7c3aed",
                     color: "#fff",
@@ -1459,21 +1321,6 @@ export function TaskDraftPanel({
                 >
                   {busy === "save-edit" ? "저장 중…" : "저장"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setEditing(null)}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  닫기
-                </button>
                 {canEdit ? (
                   <>
                     <button
@@ -1483,7 +1330,7 @@ export function TaskDraftPanel({
                       onClick={() => void handleConfirmOne(editing.id)}
                       style={{
                         padding: "8px 12px",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         border: "1px solid #15803d",
                         background: "#16a34a",
                         color: "#fff",
@@ -1500,7 +1347,7 @@ export function TaskDraftPanel({
                       onClick={() => void handleDelete(editing.id)}
                       style={{
                         padding: "8px 12px",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         border: "1px solid #dc2626",
                         background: "#fff",
                         color: "#dc2626",
@@ -1516,36 +1363,45 @@ export function TaskDraftPanel({
               </div>
 
               <div style={{ fontSize: 12, color: "#64748b" }}>updated: {formatTestedAt(editing.updatedAt)}</div>
-            </div>
-          )}
 
-          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
-            <div style={{ fontWeight: 900, fontSize: 13, color: "#1e1b4b", marginBottom: 8 }}>
-              실행 순서 미리보기 (DAG)
+              <button
+                type="button"
+                onClick={() => setExecutionPreviewOpen((v) => !v)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  fontSize: 12,
+                  textAlign: "left",
+                }}
+              >
+                {executionPreviewOpen ? "실행 순서(간이) 숨기기" : "실행 순서(간이) 보기"}
+              </button>
+              {executionPreviewOpen ? (
+                <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
+                  {executionLevels.length === 0 ? (
+                    <div style={{ color: "#64748b" }}>DRAFT 노드가 없습니다.</div>
+                  ) : (
+                    <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
+                      {executionLevels.slice(0, 10).map((level, idx) => (
+                        <li key={idx}>
+                          {level
+                            .map((id) => byId.get(id)?.title ?? id.slice(0, 8))
+                            .slice(0, 6)
+                            .join(" / ")}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              ) : null}
             </div>
-            {executionLevels.length === 0 ? (
-              <div style={{ fontSize: 12, color: "#64748b" }}>DRAFT 노드가 없습니다.</div>
-            ) : (
-              <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
-                {executionLevels.slice(0, 12).map((level, idx) => (
-                  <li key={idx} style={{ fontSize: 12, color: "#334155", lineHeight: 1.4 }}>
-                    {level
-                      .map((id) => byId.get(id)?.title ?? id.slice(0, 8))
-                      .slice(0, 6)
-                      .join(" / ")}
-                    {level.length > 6 ? ` 외 ${level.length - 6}개` : ""}
-                  </li>
-                ))}
-              </ol>
-            )}
-            {validation.isolatedIds.length > 0 ? (
-              <div style={{ marginTop: 10, fontSize: 12, color: "#b45309" }}>
-                고립 노드 {validation.isolatedIds.length}개 (연결 없음): 확정 전 흐름에 포함되는지 확인하세요.
-              </div>
-            ) : null}
-          </div>
-        </aside>
-      </div>
+          </aside>
+        </div>
+      ) : null}
 
       {confirmModalOpen ? (
         <div
