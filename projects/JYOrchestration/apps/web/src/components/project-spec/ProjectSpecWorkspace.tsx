@@ -13,13 +13,7 @@ import type { Project, ProjectSpecResponseRecord } from "@/components/project-sp
 import { formatTestedAt } from "@/components/project-spec/format";
 import { LabelTag } from "@/components/ui/LabelTag";
 import { parsePromptToSections, type ParsedPromptSections } from "@/lib/project-spec/parsePromptToSections";
-import { diffText } from "@/lib/diffText";
-import {
-  parseMarkdownSections,
-  mergeSectionBodiesByHeading,
-  bodyForHeading,
-  MARKDOWN_PREAMBLE_SECTION_KEY,
-} from "@/lib/project-spec/parseMarkdownSections";
+import { parseMarkdownToSections } from "@/lib/project-spec/parseMarkdownSections";
 import {
   DEFAULT_SPEC_WORKSPACE_AI_MODEL,
   SPEC_WORKSPACE_AI_MODELS,
@@ -159,46 +153,6 @@ function ProjectInfoPromptCard({ info }: { info: ParsedPromptSections["projectIn
   );
 }
 
-function DiffUnifiedBlock({ a, b }: { a: string; b: string }) {
-  const lines = useMemo(() => diffText(a, b), [a, b]);
-  return (
-    <div
-      style={{
-        marginTop: 8,
-        border: "1px dashed #cbd5e1",
-        borderRadius: 6,
-        padding: 8,
-        background: "#f8fafc",
-        fontSize: 12,
-        fontFamily: "ui-monospace, monospace",
-        overflow: "auto",
-        maxHeight: 220,
-      }}
-    >
-      {lines.map((l, i) => (
-        <div
-          key={i}
-          style={{
-            whiteSpace: "pre-wrap",
-            background: l.kind === "add" ? "#dcfce7" : l.kind === "del" ? "#fee2e2" : "transparent",
-            color: l.kind === "add" ? "#166534" : l.kind === "del" ? "#991b1b" : "#475569",
-          }}
-        >
-          {l.kind === "add" ? "+ " : l.kind === "del" ? "- " : "  "}
-          {l.text}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function sectionTitleForCompare(key: string): string {
-  if (key === MARKDOWN_PREAMBLE_SECTION_KEY) {
-    return "(머리말 · ## 없음)";
-  }
-  return key;
-}
-
 export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpdated }: ProjectSpecWorkspaceProps) {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
@@ -212,6 +166,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [promptPanelOpen, setPromptPanelOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [showDiffOnly, setShowDiffOnly] = useState(false);
+  const [selectedSections, setSelectedSections] = useState<Record<string, "A" | "B">>({});
   const [aiBadges, setAiBadges] = useState<Record<AiFieldKey, boolean>>(emptyAiBadges);
   const [generatingContext, setGeneratingContext] = useState(false);
   const isGeneratingRef = useRef(false);
@@ -388,6 +344,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       }
       return [prev[0], id];
     });
+    // 비교 모드가 바뀌면 섹션 선택/필터도 초기화합니다.
+    setSelectedSections({});
+    setShowDiffOnly(false);
   }
 
   function mergeWorkspaceProjectSlice(p: SpecWorkspaceSnapshot["project"]) {
@@ -405,9 +364,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       specScopeOut: p.specScopeOut ?? null,
       specTargetUsers: p.specTargetUsers ?? null,
       specSuccessCriteria: p.specSuccessCriteria ?? null,
-      confirmedSpecMarkdown: p.confirmedSpecMarkdown ?? project.confirmedSpecMarkdown,
-      confirmedSpecResponseId: p.confirmedSpecResponseId ?? project.confirmedSpecResponseId,
-      confirmedSpecAt: p.confirmedSpecAt ?? project.confirmedSpecAt,
+      confirmedSpecMarkdown: p.confirmedSpecMarkdown ?? null,
+      confirmedSpecResponseId: p.confirmedSpecResponseId ?? null,
+      confirmedSpecAt: p.confirmedSpecAt ?? null,
       status: project.status,
     });
   }
@@ -706,6 +665,43 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     }
   }
 
+  async function handleConfirmMerged(mergedMarkdown: string, responseAId: string, responseBId: string) {
+    if (!projectId || !canEdit) {
+      return;
+    }
+    setActionBusy("confirm-merged");
+    setMessage(null);
+    try {
+      const { res, json } = await postSpecWorkspaceAction(projectId, {
+        action: "confirmMerged",
+        responseAId,
+        responseBId,
+        mergedMarkdown,
+        selectedSections,
+      });
+      if (!res.ok || !json.success) {
+        setMessage((json as { message?: string }).message || "병합 확정에 실패했습니다.");
+        return;
+      }
+
+      const data = json.data as { project?: SpecWorkspaceSnapshot["project"] } | undefined;
+      if (data?.project && project) {
+        onProjectUpdated({
+          ...project,
+          ...data.project,
+          status: project.status,
+        });
+      }
+      setMessage("병합 결과를 공식 Project Spec으로 확정했습니다.");
+      await loadWorkspace();
+    } catch (e) {
+      console.error(e);
+      setMessage("병합 확정 처리 중 오류가 발생했습니다.");
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
   async function handleCopyPrompt() {
     const ok = await copyToClipboard(generatedPrompt);
     setCopyOk(ok);
@@ -756,7 +752,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <LabelTag label="[F-1-3-1] Workspace — Project Context (Editable)" />
+          <LabelTag label="[F-1-3-1] Workspace — Project Context" />
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>프로젝트 정보</h3>
         </div>
 
@@ -876,7 +872,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
           <div>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <LabelTag label="[F-1-3-1c] Workspace — AI Draft Fields (Editable)" />
+              <LabelTag label="[F-1-3-1c] Workspace — AI Draft Fields" />
               <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 생성 결과 · 수정 가능</p>
             </div>
             <div style={{ display: "grid", gap: 12 }}>
@@ -1242,7 +1238,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>AI 응답</h3>
         </div>
         <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b" }}>
-          응답 두 개를 「비교」로 선택하면 섹션별 나란히 보기와 줄 단위 diff가 표시됩니다.
+          응답 두 개를 「비교」로 선택하면 섹션 단위로 나란히 보이고, 차이 있는 섹션만 강조됩니다.
         </p>
 
         {compareLeft && compareRight ? (
@@ -1261,7 +1257,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               <button
                 type="button"
                 data-testid="spec-workspace-compare-clear"
-                onClick={() => setCompareIds([])}
+                onClick={() => {
+                  setCompareIds([]);
+                  setSelectedSections({});
+                  setShowDiffOnly(false);
+                }}
                 style={{
                   padding: "6px 12px",
                   borderRadius: 8,
@@ -1288,6 +1288,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               <div>
                 <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 A</div>
                 <div>모델: {compareLeft.model}</div>
+                <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
+                  토큰: 입력 {compareLeft.promptTokens ?? "-"} / 출력 {compareLeft.completionTokens ?? "-"} / 총{" "}
+                  {compareLeft.totalTokens ?? "-"}
+                </div>
                 <div>시간: {formatTestedAt(compareLeft.createdAt)}</div>
                 <div>
                   ID: <code>{compareLeft.id.slice(0, 10)}…</code>
@@ -1296,6 +1300,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               <div>
                 <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 B</div>
                 <div>모델: {compareRight.model}</div>
+                <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
+                  토큰: 입력 {compareRight.promptTokens ?? "-"} / 출력 {compareRight.completionTokens ?? "-"} / 총{" "}
+                  {compareRight.totalTokens ?? "-"}
+                </div>
                 <div>시간: {formatTestedAt(compareRight.createdAt)}</div>
                 <div>
                   ID: <code>{compareRight.id.slice(0, 10)}…</code>
@@ -1303,80 +1311,272 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               </div>
             </div>
             {(() => {
-              const secL = parseMarkdownSections(compareLeft.responseMarkdown);
-              const secR = parseMarkdownSections(compareRight.responseMarkdown);
-              const keys = mergeSectionBodiesByHeading(secL, secR).sort((x, y) => {
-                if (x === MARKDOWN_PREAMBLE_SECTION_KEY) {
-                  return -1;
-                }
-                if (y === MARKDOWN_PREAMBLE_SECTION_KEY) {
-                  return 1;
-                }
-                return x.localeCompare(y, "ko");
+              const a = parseMarkdownToSections(compareLeft.responseMarkdown).sections;
+              const b = parseMarkdownToSections(compareRight.responseMarkdown).sections;
+
+              const mapA = new Map(a.map((s) => [s.key, s]));
+              const mapB = new Map(b.map((s) => [s.key, s]));
+
+              const orderedKeys = [
+                ...a.map((s) => s.key),
+                ...b
+                  .map((s) => s.key)
+                  .filter((k) => !mapA.has(k)),
+              ];
+
+              const items = orderedKeys.map((key) => {
+                const secA = mapA.get(key);
+                const secB = mapB.get(key);
+                const title = secA?.title ?? secB?.title ?? key;
+                const contentA = secA?.content ?? "";
+                const contentB = secB?.content ?? "";
+                const isDifferent = contentA.trim() !== contentB.trim();
+                return { key, title, contentA, contentB, isDifferent };
               });
-              return keys.map((key) => {
-                const bodyA = bodyForHeading(secL, key);
-                const bodyB = bodyForHeading(secR, key);
-                return (
+
+              const filtered = showDiffOnly ? items.filter((x) => x.isDifferent) : items;
+
+              const adoptAll = (choice: "A" | "B") => {
+                const next: Record<string, "A" | "B"> = {};
+                for (const k of orderedKeys) {
+                  next[k] = choice;
+                }
+                setSelectedSections(next);
+              };
+
+              const mergedMarkdown = orderedKeys
+                .map((key) => {
+                  const it = items.find((x) => x.key === key);
+                  if (!it) return "";
+                  const chosen = selectedSections[key] ?? "A";
+                  const content = (chosen === "A" ? it.contentA : it.contentB).trim();
+                  if (!content) {
+                    return it.key === "preamble" ? "" : "";
+                  }
+                  if (it.key === "preamble") {
+                    return content;
+                  }
+                  return `## ${it.title}\n\n${content}`;
+                })
+                .filter(Boolean)
+                .join("\n\n");
+
+              return (
+                <>
                   <div
-                    key={key}
                     style={{
-                      marginBottom: 14,
-                      padding: 10,
-                      borderRadius: 8,
-                      border: "1px solid #bae6fd",
-                      background: "#fff",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      marginBottom: 12,
                     }}
                   >
-                    <div style={{ fontWeight: 800, marginBottom: 8, fontSize: 14 }}>{sectionTitleForCompare(key)}</div>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#0c4a6e", fontWeight: 700 }}>
+                      <input
+                        type="checkbox"
+                        checked={showDiffOnly}
+                        onChange={(e) => setShowDiffOnly(e.target.checked)}
+                      />
+                      차이만 보기
+                    </label>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <button
+                        type="button"
+                        data-testid="spec-workspace-compare-adopt-all-a"
+                        onClick={() => adoptAll("A")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #0369a1",
+                          background: "#fff",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontSize: 12,
+                        }}
+                      >
+                        응답 A 전체 채택
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="spec-workspace-compare-adopt-all-b"
+                        onClick={() => adoptAll("B")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #0369a1",
+                          background: "#fff",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          fontSize: 12,
+                        }}
+                      >
+                        응답 B 전체 채택
+                      </button>
+                    </div>
+                  </div>
+
+                  {filtered.map((it) => {
+                    const chosen = selectedSections[it.key] ?? "A";
+                    return (
+                      <div
+                        key={it.key}
+                        style={{
+                          marginBottom: 14,
+                          padding: 12,
+                          borderRadius: 10,
+                          border: "1px solid #93c5fd",
+                          background: it.isDifferent ? "rgba(255, 200, 0, 0.15)" : "#fff",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontWeight: 900,
+                            fontSize: 14,
+                            color: "#0f172a",
+                            padding: "8px 10px",
+                            borderTop: "1px solid #cbd5e1",
+                            borderBottom: "1px solid #cbd5e1",
+                            marginBottom: 12,
+                          }}
+                        >
+                          {it.title}
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 10,
+                            alignItems: "start",
+                          }}
+                        >
+                          <div
+                            style={{
+                              padding: 10,
+                              borderRadius: 8,
+                              background: chosen === "A" ? "rgba(59,130,246,0.10)" : "#f8fafc",
+                              color: "#0f172a",
+                              lineHeight: 1.65,
+                              fontSize: 13,
+                              whiteSpace: "pre-wrap",
+                              border: chosen === "A" ? "1px solid rgba(37,99,235,0.35)" : "1px solid transparent",
+                            }}
+                          >
+                            {it.contentA || "(없음)"}
+                          </div>
+
+                          <div
+                            style={{
+                              padding: 10,
+                              borderRadius: 8,
+                              background: chosen === "B" ? "rgba(59,130,246,0.10)" : "#f8fafc",
+                              color: "#0f172a",
+                              lineHeight: 1.65,
+                              fontSize: 13,
+                              whiteSpace: "pre-wrap",
+                              border: chosen === "B" ? "1px solid rgba(37,99,235,0.35)" : "1px solid transparent",
+                            }}
+                          >
+                            {it.contentB || "(없음)"}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            data-testid={`spec-workspace-compare-adopt-${it.key}-a`}
+                            onClick={() => setSelectedSections((prev) => ({ ...prev, [it.key]: "A" }))}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              border: chosen === "A" ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                              background: chosen === "A" ? "#2563eb" : "#e2e8f0",
+                              color: "#fff",
+                              fontWeight: 900,
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                          >
+                            [A 채택]
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`spec-workspace-compare-adopt-${it.key}-b`}
+                            onClick={() => setSelectedSections((prev) => ({ ...prev, [it.key]: "B" }))}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              border: chosen === "B" ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                              background: chosen === "B" ? "#2563eb" : "#e2e8f0",
+                              color: "#fff",
+                              fontWeight: 900,
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                          >
+                            [B 채택]
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      border: "1px solid rgba(59,130,246,0.35)",
+                      borderRadius: 12,
+                      background: "#eff6ff",
+                      padding: 12,
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a", marginBottom: 8 }}>
+                      병합 결과 미리보기
+                    </div>
                     <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 10,
-                        alignItems: "start",
+                        fontSize: 13,
+                        lineHeight: 1.65,
+                        color: "#0f172a",
+                        whiteSpace: "pre-wrap",
+                        background: "#fff",
+                        borderRadius: 10,
+                        border: "1px solid #93c5fd",
+                        padding: 12,
+                        maxHeight: 240,
+                        overflow: "auto",
                       }}
+                      data-testid="spec-workspace-merged-preview"
                     >
-                      <pre
-                        style={{
-                          margin: 0,
-                          fontSize: 11,
-                          lineHeight: 1.45,
-                          whiteSpace: "pre-wrap",
-                          fontFamily: "ui-monospace, monospace",
-                          color: "#334155",
-                          maxHeight: 200,
-                          overflow: "auto",
-                          padding: 8,
-                          background: "#f8fafc",
-                          borderRadius: 6,
-                        }}
-                      >
-                        {bodyA || "(없음)"}
-                      </pre>
-                      <pre
-                        style={{
-                          margin: 0,
-                          fontSize: 11,
-                          lineHeight: 1.45,
-                          whiteSpace: "pre-wrap",
-                          fontFamily: "ui-monospace, monospace",
-                          color: "#334155",
-                          maxHeight: 200,
-                          overflow: "auto",
-                          padding: 8,
-                          background: "#f8fafc",
-                          borderRadius: 6,
-                        }}
-                      >
-                        {bodyB || "(없음)"}
-                      </pre>
+                      {mergedMarkdown || "(선택된 섹션이 없습니다.)"}
                     </div>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>줄 단위 diff</p>
-                    <DiffUnifiedBlock a={bodyA} b={bodyB} />
+                    <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        data-testid="spec-workspace-merged-confirm"
+                        disabled={actionBusy === "confirm-merged"}
+                        onClick={() => void handleConfirmMerged(mergedMarkdown, compareLeft.id, compareRight.id)}
+                        style={{
+                          padding: "10px 16px",
+                          borderRadius: 8,
+                          border: "1px solid #2563eb",
+                          background: "#2563eb",
+                          color: "#fff",
+                          fontWeight: 900,
+                          cursor: actionBusy === "confirm-merged" ? "wait" : "pointer",
+                          fontSize: 13,
+                          boxShadow: "0 2px 10px rgba(37,99,235,0.25)",
+                        }}
+                      >
+                        {actionBusy === "confirm-merged" ? "확정 중…" : "이 내용으로 Project Spec 확정"}
+                      </button>
+                    </div>
                   </div>
-                );
-              });
+                </>
+              );
             })()}
           </div>
         ) : null}
@@ -1411,6 +1611,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                       <span style={{ color: "#64748b", marginLeft: 8 }}>
                         {r.provider} / {r.model}
                       </span>
+                      <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
+                        토큰: 입력 {r.promptTokens ?? "-"} / 출력 {r.completionTokens ?? "-"} / 총 {r.totalTokens ?? "-"}
+                      </div>
                       {selected ? (
                         <span style={{ marginLeft: 8, color: "#1d4ed8", fontWeight: 800 }}>확정됨</span>
                       ) : null}

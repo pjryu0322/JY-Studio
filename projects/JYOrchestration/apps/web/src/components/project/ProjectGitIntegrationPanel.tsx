@@ -13,7 +13,7 @@ export function ProjectGitIntegrationPanel({ project }: Props) {
   return (
     <section
       data-testid="project-git-integration-panel"
-      data-ui-label="[P-6-4] Git Tab Surface — Repo Connect | legacy [P-GIT] Git Integration"
+      data-ui-label="[P-6-4] Git Tab Surface — Repo Connect"
       style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}
     >
       <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12 }}>Git 연동</h2>

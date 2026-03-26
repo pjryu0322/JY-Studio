@@ -12,7 +12,7 @@ export function ProjectAdvancedSettingsPanel({ project }: Props) {
   return (
     <section
       data-testid="project-advanced-settings-panel"
-      data-ui-label="[P-6-5] Advanced Surface — Static Project Options | legacy [P-ADV] Advanced Settings"
+      data-ui-label="[P-6-5] Advanced Surface — Static Project Options"
       style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}
     >
       <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12 }}>고급 설정</h2>

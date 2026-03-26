@@ -40,6 +40,9 @@ export type ProjectSpecResponseRecord = {
   promptId: string;
   provider: string;
   model: string;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
   responseMarkdown: string;
   status: string;
   createdAt: string;

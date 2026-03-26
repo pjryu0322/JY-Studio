@@ -125,7 +125,11 @@ const WORKSPACE_SPEC_DEFAULT_MODEL = "gpt-4o";
 export async function completeWorkspaceSpecMarkdown(
   promptText: string,
   modelFromRequest?: string | null
-): Promise<{ markdown: string; model: string }> {
+): Promise<{
+  markdown: string;
+  model: string;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+}> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY_NOT_CONFIGURED");
@@ -162,11 +166,28 @@ export async function completeWorkspaceSpecMarkdown(
 
   const body = (await res.json()) as {
     choices?: Array<{ message?: { content?: string | null } }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
   };
   const markdown = body.choices?.[0]?.message?.content?.trim();
   if (!markdown) {
     throw new Error("OPENAI_EMPTY_RESPONSE");
   }
 
-  return { markdown, model };
+  const u = body.usage;
+  const usage =
+    typeof u?.prompt_tokens === "number" &&
+    typeof u?.completion_tokens === "number" &&
+    typeof u?.total_tokens === "number"
+      ? {
+          promptTokens: u.prompt_tokens,
+          completionTokens: u.completion_tokens,
+          totalTokens: u.total_tokens,
+        }
+      : null;
+
+  return { markdown, model, usage };
 }

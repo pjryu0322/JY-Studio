@@ -2537,7 +2537,7 @@ export default function ProjectDetailPage() {
 
   return (
     <main
-      data-ui-label="[P-1-1] Page Shell — Project Detail | legacy [P] Project Detail"
+      data-ui-label="[P-1-1] Page Shell — Project Detail"
       style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}
     >
       <ProjectSpecPageHeader />

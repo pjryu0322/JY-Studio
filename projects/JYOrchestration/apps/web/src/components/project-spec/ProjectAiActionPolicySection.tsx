@@ -107,7 +107,7 @@ export function ProjectAiActionPolicySection({ projectId, canEditPolicy }: Props
   return (
     <section
       data-testid="ai-action-policy-section"
-      data-ui-label="[P-6-3] Advanced Surface — AI Action Policy | legacy [P-A] AI Action Policy"
+      data-ui-label="[P-6-3] Advanced Surface — AI Action Policy"
       style={cardStyle}
     >
       <h3 style={{ margin: "0 0 4px 0", fontSize: 15, color: "#0f172a" }}>AI 승인 정책</h3>

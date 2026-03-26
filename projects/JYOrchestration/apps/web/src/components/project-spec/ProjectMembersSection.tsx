@@ -592,10 +592,10 @@ export function ProjectMembersSection({
       }
       data-ui-label={
         memberSurface === "human"
-          ? "[P-6-1] Members Surface — Human | legacy [P-MH] Human Members"
+          ? "[P-6-1] Members Surface — Human"
           : memberSurface === "ai"
-            ? "[P-6-2] Members Surface — AI | legacy [P-MA] AI Members"
-            : "[P-6-0] Members Surface — All | legacy [P-M] Project Members"
+            ? "[P-6-2] Members Surface — AI"
+            : "[P-6-0] Members Surface — All"
       }
       style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}
     >

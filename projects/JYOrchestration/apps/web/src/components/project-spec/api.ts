@@ -164,6 +164,13 @@ export async function postSpecWorkspaceAction(
     | { action: "regeneratePrompt" }
     | { action: "aiRequest"; promptId?: string; saveContext?: SpecWorkspaceAiRequestSaveContext; model?: string }
     | { action: "confirm"; responseId: string }
+    | {
+        action: "confirmMerged";
+        responseAId: string;
+        responseBId: string;
+        mergedMarkdown: string;
+        selectedSections: Record<string, "A" | "B">;
+      }
 ) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/spec-workspace`, {

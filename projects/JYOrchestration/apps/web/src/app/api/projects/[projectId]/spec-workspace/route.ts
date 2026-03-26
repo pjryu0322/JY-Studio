@@ -131,6 +131,9 @@ export async function GET(
           model: r.model,
           responseMarkdown: r.responseMarkdown,
           status: r.status,
+          promptTokens: r.promptTokens ?? null,
+          completionTokens: r.completionTokens ?? null,
+          totalTokens: r.totalTokens ?? null,
           createdAt: r.createdAt.toISOString(),
         })),
       },
@@ -282,7 +285,14 @@ type AiRequestSaveContext = {
 type PostBody =
   | { action: "regeneratePrompt" }
   | { action: "aiRequest"; promptId?: string; saveContext?: AiRequestSaveContext; model?: string }
-  | { action: "confirm"; responseId: string };
+  | { action: "confirm"; responseId: string }
+  | {
+      action: "confirmMerged";
+      responseAId: string;
+      responseBId: string;
+      mergedMarkdown: string;
+      selectedSections: Record<string, "A" | "B">;
+    };
 
 export async function POST(
   request: NextRequest,
@@ -521,10 +531,12 @@ export async function POST(
 
       let markdown: string;
       let modelUsed: string;
+      let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null = null;
       try {
         const out = await completeWorkspaceSpecMarkdown(promptRow.promptText, workspaceOpenAiModel);
         markdown = out.markdown;
         modelUsed = out.model;
+        usage = out.usage;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg === "OPENAI_API_KEY_NOT_CONFIGURED") {
@@ -556,6 +568,9 @@ export async function POST(
           model: modelUsed,
           responseMarkdown: markdown,
           status: "COMPLETED",
+          promptTokens: usage?.promptTokens ?? null,
+          completionTokens: usage?.completionTokens ?? null,
+          totalTokens: usage?.totalTokens ?? null,
         },
       });
 
@@ -568,6 +583,9 @@ export async function POST(
           model: string;
           responseMarkdown: string;
           status: string;
+          promptTokens: number | null;
+          completionTokens: number | null;
+          totalTokens: number | null;
           createdAt: string;
         };
         project?: ReturnType<typeof mapProject>;
@@ -580,6 +598,9 @@ export async function POST(
           model: responseRow.model,
           responseMarkdown: responseRow.responseMarkdown,
           status: responseRow.status,
+          promptTokens: responseRow.promptTokens ?? null,
+          completionTokens: responseRow.completionTokens ?? null,
+          totalTokens: responseRow.totalTokens ?? null,
           createdAt: responseRow.createdAt.toISOString(),
         },
       };
@@ -613,6 +634,8 @@ export async function POST(
           confirmedSpecMarkdown: resp.responseMarkdown,
           confirmedSpecResponseId: resp.id,
           confirmedSpecAt: new Date(),
+          confirmedSpecSourceType: "RESPONSE",
+          confirmedSpecSourceData: { responseId: resp.id },
         },
         select: {
           id: true,
@@ -633,6 +656,64 @@ export async function POST(
       return NextResponse.json({
         success: true,
         message: "이 응답을 공식 Project Spec으로 확정했습니다.",
+        data: { project: mapProject(updatedProject) },
+      });
+    }
+
+    if (body.action === "confirmMerged") {
+      const responseAId = String(body.responseAId ?? "").trim();
+      const responseBId = String(body.responseBId ?? "").trim();
+      const mergedMarkdown = String(body.mergedMarkdown ?? "");
+      const selectedSections = body.selectedSections ?? {};
+
+      if (!responseAId || !responseBId) {
+        return NextResponse.json({ success: false, message: "responseAId/responseBId가 필요합니다." }, { status: 400 });
+      }
+      if (!mergedMarkdown.trim()) {
+        return NextResponse.json({ success: false, message: "mergedMarkdown이 비어 있습니다." }, { status: 400 });
+      }
+
+      const [respA, respB] = await Promise.all([
+        prisma.projectSpecWorkspaceResponse.findFirst({ where: { id: responseAId, projectId: id } }),
+        prisma.projectSpecWorkspaceResponse.findFirst({ where: { id: responseBId, projectId: id } }),
+      ]);
+
+      if (!respA || !respB) {
+        return NextResponse.json({ success: false, message: "비교 응답을 찾을 수 없습니다." }, { status: 404 });
+      }
+
+      const updatedProject = await prisma.project.update({
+        where: { id },
+        data: {
+          confirmedSpecMarkdown: mergedMarkdown,
+          confirmedSpecResponseId: null,
+          confirmedSpecAt: new Date(),
+          confirmedSpecSourceType: "MERGED_SECTIONS",
+          confirmedSpecSourceData: {
+            responseAId: respA.id,
+            responseBId: respB.id,
+            selectedSections,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          projectType: true,
+          specCoreGoals: true,
+          specScopeIn: true,
+          specScopeOut: true,
+          specTargetUsers: true,
+          specSuccessCriteria: true,
+          confirmedSpecMarkdown: true,
+          confirmedSpecResponseId: true,
+          confirmedSpecAt: true,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "섹션 병합 결과를 공식 Project Spec으로 확정했습니다.",
         data: { project: mapProject(updatedProject) },
       });
     }

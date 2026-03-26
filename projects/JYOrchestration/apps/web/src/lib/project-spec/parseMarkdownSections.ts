@@ -59,3 +59,43 @@ export function bodyForHeading(sections: MarkdownSection[], key: string): string
   const found = sections.find((s) => sectionKey(s.heading) === key);
   return found?.body ?? "";
 }
+
+export type ParsedMarkdownToSections = {
+  sections: Array<{
+    key: string;
+    title: string;
+    content: string;
+  }>;
+};
+
+function titleToKey(title: string): string {
+  const t = title.trim().toLowerCase();
+  return t
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9가-힣_-]/g, "")
+    .replace(/_+/g, "_")
+    .slice(0, 60);
+}
+
+/**
+ * AI 응답 마크다운을 "섹션 단위 문서 비교용"으로 정규화한다.
+ *
+ * - `##`(또는 `#`) 헤더를 title로 사용
+ * - 본문은 content로 유지(렌더용)
+ * - 헤더가 없던 서문은 title을 `문서 시작`으로 치환
+ */
+export function parseMarkdownToSections(markdown: string): ParsedMarkdownToSections {
+  const secs = parseMarkdownSections(markdown);
+
+  const sections = secs
+    .map((s) => {
+      const key = sectionKey(s.heading);
+      const title = key === MARKDOWN_PREAMBLE_SECTION_KEY ? "문서 시작" : s.heading.trim();
+      const normalizedKey = key === MARKDOWN_PREAMBLE_SECTION_KEY ? "preamble" : titleToKey(title);
+      const content = (s.body ?? "").trim();
+      return { key: normalizedKey, title, content };
+    })
+    .filter((s) => Boolean(s.content));
+
+  return { sections };
+}

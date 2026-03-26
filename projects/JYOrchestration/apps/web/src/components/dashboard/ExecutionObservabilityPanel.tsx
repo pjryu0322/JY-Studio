@@ -68,7 +68,7 @@ export function ExecutionObservabilityPanel({
   return (
     <section
       data-testid="execution-observability-panel"
-      data-ui-label="[O-5] Observability — Execution Metrics | [P-4-3] Overview — Execution Observability Slot"
+      data-ui-label="[O-5] Observability — Execution Metrics"
       style={{
         marginTop: 20,
         marginBottom: 8,
