@@ -12,6 +12,10 @@ import {
   AUTO_HEALING_MAX_AUTO_RUN_ATTEMPTS_PER_TASK,
 } from "@/lib/execution/autoHealingExecutionPolicy";
 import type { SelfHealingAction } from "@/lib/execution/selfHealingStrategy";
+import {
+  formatSpecContextFromParsedJson,
+  formatSpecContextFromWorkspaceMarkdown,
+} from "@/lib/project-spec/taskSpecContextFormat";
 
 const AUTO_ACTOR_USER_ID = "demo-user-3";
 
@@ -32,38 +36,13 @@ function parseAutoHealingChangeReason(changeReason: string | null): {
   return {};
 }
 
-function formatSpecContext(parsedJson: unknown): string {
-  if (parsedJson == null || typeof parsedJson !== "object") {
-    return "(ProjectSpec 요약 없음 — Task 설명만 따르세요.)";
-  }
-  const p = parsedJson as Record<string, unknown>;
-  const overview = typeof p.projectOverview === "string" ? p.projectOverview.trim() : "";
-  const features = Array.isArray(p.mainFeatures)
-    ? p.mainFeatures.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
-    : [];
-  const constraints = Array.isArray(p.constraints)
-    ? p.constraints.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
-    : [];
-
-  const lines: string[] = [];
-  if (overview) {
-    lines.push(`- 제품·아이디어 요약: ${overview.slice(0, 800)}`);
-  }
-  if (features.length > 0) {
-    lines.push(`- 기능·문장 목록:\n${features.map((f) => `  - ${f}`).join("\n")}`);
-  }
-  if (constraints.length > 0) {
-    lines.push(`- 제약·주의:\n${constraints.map((c) => `  - ${c}`).join("\n")}`);
-  }
-  return lines.length > 0 ? lines.join("\n") : "(ProjectSpec 필드가 비어 있습니다.)";
-}
-
 function buildTaskExecutionPrompt(task: {
   id: string;
   name: string;
   description: string | null;
   projectId: string;
-  projectSpecUploadId: string;
+  projectSpecUploadId: string | null;
+  sourceSpecVersionId: string | null;
 }, specContext: string) {
   // NOTE: 기존 /api/task/prompt과 동일한 텍스트를 사용해 행동을 통일한다.
   return `# Task 실행 프롬프트 (Cursor에서 그대로 실행 가능하도록 작성됨)
@@ -74,7 +53,7 @@ ${task.name}
 ## 이번 Task에서 할 일
 ${task.description || "Task 설명이 비어 있으면, 아래 ProjectSpec 요약과 작업명만으로 목표를 구체화하세요."}
 
-## ProjectSpec 맥락 (사용자가 올린 아이디어에서 추출)
+## ProjectSpec 맥락
 ${specContext}
 
 ## 구현 위치 (이 저장소 기준)
@@ -94,7 +73,8 @@ ${specContext}
 
 ## 메타 (시스템 ID — 삭제 금지)
 - projectId: ${task.projectId}
-- projectSpecUploadId: ${task.projectSpecUploadId}
+- projectSpecUploadId: ${task.projectSpecUploadId ?? "(없음 — 워크스페이스 Spec)"}
+- sourceSpecVersionId: ${task.sourceSpecVersionId ?? "(없음)"}
 - taskId: ${task.id}
 `;
 }
@@ -102,18 +82,35 @@ ${specContext}
 async function generateTaskPromptForAutoHealing(taskId: string): Promise<{ promptId: string; projectId: string }> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { id: true, name: true, description: true, projectId: true, projectSpecUploadId: true },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      projectId: true,
+      projectSpecUploadId: true,
+      sourceSpecVersionId: true,
+    },
   });
   if (!task) {
     throw new Error(`task not found: ${taskId}`);
   }
 
-  const specUpload = await prisma.projectSpecUpload.findUnique({
-    where: { id: task.projectSpecUploadId },
-    select: { parsedJson: true },
-  });
-
-  const specContext = formatSpecContext(specUpload?.parsedJson ?? null);
+  let specContext: string;
+  if (task.projectSpecUploadId) {
+    const specUpload = await prisma.projectSpecUpload.findUnique({
+      where: { id: task.projectSpecUploadId },
+      select: { parsedJson: true },
+    });
+    specContext = formatSpecContextFromParsedJson(specUpload?.parsedJson ?? null);
+  } else if (task.sourceSpecVersionId) {
+    const ver = await prisma.projectSpecVersion.findUnique({
+      where: { id: task.sourceSpecVersionId },
+      select: { markdown: true },
+    });
+    specContext = formatSpecContextFromWorkspaceMarkdown(ver?.markdown ?? null);
+  } else {
+    specContext = formatSpecContextFromParsedJson(null);
+  }
   const promptText = buildTaskExecutionPrompt(task, specContext);
 
   const { created } = await prisma.$transaction(async (tx) => {

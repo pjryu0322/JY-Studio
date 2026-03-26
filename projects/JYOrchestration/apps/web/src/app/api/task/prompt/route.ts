@@ -8,6 +8,10 @@ import {
   requireTaskPermission,
 } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
+import {
+  formatSpecContextFromParsedJson,
+  formatSpecContextFromWorkspaceMarkdown,
+} from "@/lib/project-spec/taskSpecContextFormat";
 
 type CreateTaskPromptBody = {
   taskId?: string;
@@ -16,38 +20,14 @@ type CreateTaskPromptBody = {
 const DEMO_APP_ROOT = "apps/web/src/app/note-demo";
 const DEMO_COMPONENTS = "apps/web/src/components/note-demo";
 
-function formatSpecContext(parsedJson: unknown): string {
-  if (parsedJson == null || typeof parsedJson !== "object") {
-    return "(ProjectSpec ?�약 ?�음 ??Task ?�명�??�르?�요.)";
-  }
-  const p = parsedJson as Record<string, unknown>;
-  const overview = typeof p.projectOverview === "string" ? p.projectOverview.trim() : "";
-  const features = Array.isArray(p.mainFeatures)
-    ? p.mainFeatures.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
-    : [];
-  const constraints = Array.isArray(p.constraints)
-    ? p.constraints.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean)
-    : [];
-  const lines: string[] = [];
-  if (overview) {
-    lines.push(`- ?�품·?�이?�어 ?�약: ${overview.slice(0, 800)}`);
-  }
-  if (features.length > 0) {
-    lines.push(`- 기능·문장 목록:\n${features.map((f) => `  - ${f}`).join("\n")}`);
-  }
-  if (constraints.length > 0) {
-    lines.push(`- ?�약·주의:\n${constraints.map((c) => `  - ${c}`).join("\n")}`);
-  }
-  return lines.length > 0 ? lines.join("\n") : "(ProjectSpec ?�드가 비어 ?�습?�다.)";
-}
-
 function buildTaskExecutionPrompt(
   task: {
     id: string;
     name: string;
     description: string | null;
     projectId: string;
-    projectSpecUploadId: string;
+    projectSpecUploadId: string | null;
+    sourceSpecVersionId: string | null;
   },
   specContext: string
 ) {
@@ -79,7 +59,8 @@ ${specContext}
 
 ## 메�? (?�스??ID ????�� 금�?)
 - projectId: ${task.projectId}
-- projectSpecUploadId: ${task.projectSpecUploadId}
+- projectSpecUploadId: ${task.projectSpecUploadId ?? "(없음 — 워크스페이스 Spec)"}
+- sourceSpecVersionId: ${task.sourceSpecVersionId ?? "(없음)"}
 - taskId: ${task.id}
 `;
 }
@@ -177,15 +158,9 @@ export async function POST(request: Request) {
         description: true,
         projectId: true,
         projectSpecUploadId: true,
+        sourceSpecVersionId: true,
       },
     });
-
-    const specUpload = task
-      ? await prisma.projectSpecUpload.findUnique({
-          where: { id: task.projectSpecUploadId },
-          select: { parsedJson: true },
-        })
-      : null;
 
     if (!task) {
       return NextResponse.json(
@@ -207,7 +182,22 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const specContext = formatSpecContext(specUpload?.parsedJson ?? null);
+    let specContext: string;
+    if (task.projectSpecUploadId) {
+      const specUpload = await prisma.projectSpecUpload.findUnique({
+        where: { id: task.projectSpecUploadId },
+        select: { parsedJson: true },
+      });
+      specContext = formatSpecContextFromParsedJson(specUpload?.parsedJson ?? null);
+    } else if (task.sourceSpecVersionId) {
+      const ver = await prisma.projectSpecVersion.findUnique({
+        where: { id: task.sourceSpecVersionId },
+        select: { markdown: true },
+      });
+      specContext = formatSpecContextFromWorkspaceMarkdown(ver?.markdown ?? null);
+    } else {
+      specContext = formatSpecContextFromParsedJson(null);
+    }
     const promptText = buildTaskExecutionPrompt(task, specContext);
     const { saved, nextVersion, isRevision } = await prisma.$transaction(async (tx) => {
       const latest = await tx.taskPrompt.findFirst({

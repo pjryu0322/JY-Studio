@@ -9,6 +9,7 @@ import {
   appendProjectSpecVersionAndSetCurrent,
   rollbackProjectSpecToVersion,
 } from "@/lib/project-spec/appendProjectSpecVersion";
+import { trySyncTaskDraftsAfterSpecChange } from "@/lib/project-spec/trySyncTaskDraftsAfterSpecChange";
 import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
@@ -653,7 +654,7 @@ export async function POST(
         return NextResponse.json({ success: false, message: "응답을 찾을 수 없습니다." }, { status: 404 });
       }
 
-      await appendProjectSpecVersionAndSetCurrent({
+      const { id: newSpecVersionId } = await appendProjectSpecVersionAndSetCurrent({
         projectId: id,
         markdown: resp.responseMarkdown,
         sourceType: "RESPONSE",
@@ -669,10 +670,16 @@ export async function POST(
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
 
+      const taskDraftSync = await trySyncTaskDraftsAfterSpecChange({
+        projectId: id,
+        specVersionId: newSpecVersionId,
+        userId,
+      });
+
       return NextResponse.json({
         success: true,
         message: "이 응답을 공식 Project Spec으로 확정했습니다.",
-        data: { project: mapProject(updatedProject) },
+        data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
 
@@ -698,7 +705,7 @@ export async function POST(
         return NextResponse.json({ success: false, message: "비교 응답을 찾을 수 없습니다." }, { status: 404 });
       }
 
-      await appendProjectSpecVersionAndSetCurrent({
+      const { id: newSpecVersionId } = await appendProjectSpecVersionAndSetCurrent({
         projectId: id,
         markdown: mergedMarkdown,
         sourceType: "MERGED_SECTIONS",
@@ -718,10 +725,16 @@ export async function POST(
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
 
+      const taskDraftSync = await trySyncTaskDraftsAfterSpecChange({
+        projectId: id,
+        specVersionId: newSpecVersionId,
+        userId,
+      });
+
       return NextResponse.json({
         success: true,
         message: "섹션 병합 결과를 공식 Project Spec으로 확정했습니다.",
-        data: { project: mapProject(updatedProject) },
+        data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
 
@@ -730,7 +743,7 @@ export async function POST(
       if (!md) {
         return NextResponse.json({ success: false, message: "markdown이 비어 있습니다." }, { status: 400 });
       }
-      await appendProjectSpecVersionAndSetCurrent({
+      const { id: newSpecVersionId } = await appendProjectSpecVersionAndSetCurrent({
         projectId: id,
         markdown: md,
         sourceType: "MANUAL_EDIT",
@@ -744,10 +757,15 @@ export async function POST(
       if (!updatedProject) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
+      const taskDraftSync = await trySyncTaskDraftsAfterSpecChange({
+        projectId: id,
+        specVersionId: newSpecVersionId,
+        userId,
+      });
       return NextResponse.json({
         success: true,
         message: "수정 내용을 새 버전으로 저장했습니다.",
-        data: { project: mapProject(updatedProject) },
+        data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
 
@@ -813,7 +831,7 @@ export async function POST(
         );
       }
 
-      await appendProjectSpecVersionAndSetCurrent({
+      const { id: newSpecVersionId } = await appendProjectSpecVersionAndSetCurrent({
         projectId: id,
         markdown: refined,
         sourceType: "AI_REFINE",
@@ -832,10 +850,17 @@ export async function POST(
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
 
+      const taskDraftSync = await trySyncTaskDraftsAfterSpecChange({
+        projectId: id,
+        specVersionId: newSpecVersionId,
+        userId,
+        model: modelUsed,
+      });
+
       return NextResponse.json({
         success: true,
         message: "현재 스펙을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.",
-        data: { project: mapProject(updatedProject) },
+        data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
 
@@ -844,8 +869,9 @@ export async function POST(
       if (!versionId) {
         return NextResponse.json({ success: false, message: "versionId가 필요합니다." }, { status: 400 });
       }
+      let rolled: { id: string; version: number };
       try {
-        await rollbackProjectSpecToVersion({ projectId: id, versionId });
+        rolled = await rollbackProjectSpecToVersion({ projectId: id, versionId });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg === "SPEC_VERSION_NOT_FOUND") {
@@ -860,10 +886,15 @@ export async function POST(
       if (!updatedProject) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
       }
+      const taskDraftSync = await trySyncTaskDraftsAfterSpecChange({
+        projectId: id,
+        specVersionId: rolled.id,
+        userId,
+      });
       return NextResponse.json({
         success: true,
         message: "선택한 버전을 현재 활성 스펙으로 되돌렸습니다.",
-        data: { project: mapProject(updatedProject) },
+        data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
 

@@ -5,6 +5,7 @@ import {
   ProjectSpecPromptRecord,
   ProjectSpecResponseRecord,
   ProjectSpecVersionRecord,
+  TaskDraftDto,
   TaskItem,
   TaskGenerateResult,
   UploadHistoryItem,
@@ -184,6 +185,83 @@ export async function postSpecWorkspaceAction(
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<unknown>;
+  return { res, json };
+}
+
+export async function fetchProjectTaskDrafts(projectId: string, options?: { status?: string }) {
+  const encoded = encodeURIComponent(projectId);
+  const q = options?.status ? `?status=${encodeURIComponent(options.status)}` : "";
+  const res = await fetch(`/api/projects/${encoded}/task-drafts${q}`, { credentials: "include" });
+  const json = (await res.json()) as ApiResponse<TaskDraftDto[]>;
+  return { res, json };
+}
+
+export async function postProjectTaskDraftsGenerate(
+  projectId: string,
+  body: { specVersionId?: string; model?: string; mode?: "initial" | "regenerate" }
+) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-drafts/generate`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<{
+    createdCount: number;
+    supersededCount: number;
+    model: string;
+    usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null } | null;
+  }>;
+  return { res, json };
+}
+
+export async function postProjectTaskDraftsConfirm(
+  projectId: string,
+  body: { draftIds?: string[]; confirmAll?: boolean }
+) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-drafts/confirm`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<{ confirmedCount: number; taskIds: string[] }>;
+  return { res, json };
+}
+
+export async function patchProjectTaskDraft(
+  projectId: string,
+  draftId: string,
+  body: Partial<{
+    title: string;
+    description: string | null;
+    priority: string;
+    dependsOn: string[];
+    acceptanceCriteria: string[];
+  }>
+) {
+  const encoded = encodeURIComponent(projectId);
+  const did = encodeURIComponent(draftId);
+  const res = await fetch(`/api/projects/${encoded}/task-drafts/${did}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<TaskDraftDto>;
+  return { res, json };
+}
+
+export async function deleteProjectTaskDraft(projectId: string, draftId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const did = encodeURIComponent(draftId);
+  const res = await fetch(`/api/projects/${encoded}/task-drafts/${did}`, {
+    method: "DELETE",
+    credentials: "include",
   });
   const json = (await res.json()) as ApiResponse<unknown>;
   return { res, json };

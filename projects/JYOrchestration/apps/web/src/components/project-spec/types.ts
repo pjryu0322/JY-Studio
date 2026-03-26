@@ -112,10 +112,38 @@ export type TaskHistoryLiteItem = {
   detailJson?: unknown;
 };
 
+/** API: Spec 기반 Task 초안 */
+export type TaskDraftDto = {
+  id: string;
+  projectId: string;
+  specVersionId: string;
+  specVersionNumber: number;
+  title: string;
+  description: string | null;
+  priority: string;
+  dependsOn: string[];
+  acceptanceCriteria: string[];
+  status: string;
+  sourceModel: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TaskDraftSyncResultDto = {
+  ok: boolean;
+  createdCount?: number;
+  supersededCount?: number;
+  message?: string;
+};
+
 export type TaskItem = {
   id: string;
   projectId: string;
-  projectSpecUploadId: string;
+  projectSpecUploadId: string | null;
+  sourceSpecVersionId?: string | null;
   name: string;
   description: string | null;
   status: string;

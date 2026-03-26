@@ -9,7 +9,8 @@ import {
   postSpecWorkspaceAction,
   type SpecWorkspaceSnapshot,
 } from "@/components/project-spec/api";
-import type { Project, ProjectSpecResponseRecord } from "@/components/project-spec/types";
+import { TaskDraftPanel } from "@/components/project-spec/TaskDraftPanel";
+import type { Project, ProjectSpecResponseRecord, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { LabelTag } from "@/components/ui/LabelTag";
 import { parsePromptToSections, type ParsedPromptSections } from "@/lib/project-spec/parsePromptToSections";
@@ -64,6 +65,14 @@ function emptyAiBadges(): Record<AiFieldKey, boolean> {
 
 function allAiBadgesOn(): Record<AiFieldKey, boolean> {
   return { goals: true, in: true, out: true, users: true, success: true };
+}
+
+function readTaskDraftSyncFromPayload(data: unknown): TaskDraftSyncResultDto | null {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+  const d = data as { taskDraftSync?: TaskDraftSyncResultDto };
+  return d.taskDraftSync ?? null;
 }
 
 function projectToForm(p: Project | null): FormState {
@@ -173,6 +182,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [versionSelectedSections, setVersionSelectedSections] = useState<Record<string, "A" | "B">>({});
   const [specEditOpen, setSpecEditOpen] = useState(false);
   const [specDraftMarkdown, setSpecDraftMarkdown] = useState("");
+  const [draftRefreshKey, setDraftRefreshKey] = useState(0);
+  const [lastTaskDraftSync, setLastTaskDraftSync] = useState<TaskDraftSyncResultDto | null>(null);
   const [aiBadges, setAiBadges] = useState<Record<AiFieldKey, boolean>>(emptyAiBadges);
   const [generatingContext, setGeneratingContext] = useState(false);
   const isGeneratingRef = useRef(false);
@@ -234,6 +245,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (!lastTaskDraftSync) {
+      return;
+    }
+    const t = setTimeout(() => setLastTaskDraftSync(null), 10_000);
+    return () => clearTimeout(t);
+  }, [lastTaskDraftSync]);
 
   const draftProject = useMemo((): Project => {
     const base = project ?? {
@@ -430,6 +449,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           status: project.status,
         });
       }
+      const sync = readTaskDraftSyncFromPayload(json.data);
+      if (sync) {
+        setLastTaskDraftSync(sync);
+        setDraftRefreshKey((k) => k + 1);
+      }
       setMessage("수정 내용을 새 버전으로 저장했습니다.");
       setSpecEditOpen(false);
       await loadWorkspace();
@@ -461,6 +485,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           status: project.status,
         });
       }
+      const sync = readTaskDraftSyncFromPayload(json.data);
+      if (sync) {
+        setLastTaskDraftSync(sync);
+        setDraftRefreshKey((k) => k + 1);
+      }
       setMessage("현재 스펙을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.");
       await loadWorkspace();
     } catch (e) {
@@ -490,6 +519,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           ...data.project,
           status: project.status,
         });
+      }
+      const sync = readTaskDraftSyncFromPayload(json.data);
+      if (sync) {
+        setLastTaskDraftSync(sync);
+        setDraftRefreshKey((k) => k + 1);
       }
       setMessage("선택한 버전을 현재 활성 스펙으로 되돌렸습니다.");
       await loadWorkspace();
@@ -785,6 +819,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           status: project.status,
         });
       }
+      const sync = readTaskDraftSyncFromPayload(json.data);
+      if (sync) {
+        setLastTaskDraftSync(sync);
+        setDraftRefreshKey((k) => k + 1);
+      }
       setMessage("이 응답을 공식 Project Spec으로 확정했습니다.");
       await loadWorkspace();
     } catch (e) {
@@ -821,6 +860,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           ...data.project,
           status: project.status,
         });
+      }
+      const sync = readTaskDraftSyncFromPayload(json.data);
+      if (sync) {
+        setLastTaskDraftSync(sync);
+        setDraftRefreshKey((k) => k + 1);
       }
       setMessage("병합 결과를 공식 Project Spec으로 확정했습니다.");
       await loadWorkspace();
@@ -2343,6 +2387,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           </p>
         )}
       </div>
+
+      <TaskDraftPanel
+        projectId={projectId}
+        canEdit={canEdit}
+        selectedModel={selectedModel}
+        refreshKey={draftRefreshKey}
+        lastAutoSync={lastTaskDraftSync}
+      />
 
       {message ? (
         <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: "#334155" }} role="status">
