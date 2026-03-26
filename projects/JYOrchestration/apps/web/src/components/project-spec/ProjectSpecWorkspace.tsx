@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildWorkspacePromptText } from "@/lib/project-spec/buildWorkspacePromptText";
 import {
   fetchSpecWorkspace,
@@ -11,6 +11,11 @@ import {
 } from "@/components/project-spec/api";
 import type { Project, ProjectSpecResponseRecord } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
+
+/** 자동 초안 API 중복 호출 방지 (동시에 하나만) */
+const specAutoDraftInFlightByProject = new Map<string, boolean>();
+/** 자동 초안이 이미 성공한 프로젝트 (DB 저장 전에도 서버 스냅샷이 비어 재실행되는 것 방지) */
+const specAutoDraftSucceededByProject = new Map<string, boolean>();
 
 type ProjectSpecWorkspaceProps = {
   projectId: string;
@@ -105,6 +110,18 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [aiBadges, setAiBadges] = useState<Record<AiFieldKey, boolean>>(emptyAiBadges);
   const [generatingContext, setGeneratingContext] = useState(false);
+  const isGeneratingRef = useRef(false);
+  const prevProjectIdRef = useRef<string | null>(null);
+  const formRefForAutoGuard = useRef(form);
+  formRefForAutoGuard.current = form;
+
+  useEffect(() => {
+    const prev = prevProjectIdRef.current;
+    if (prev && prev !== projectId) {
+      specAutoDraftSucceededByProject.delete(prev);
+    }
+    prevProjectIdRef.current = projectId;
+  }, [projectId]);
 
   useEffect(() => {
     if (!workspace && project) {
@@ -194,6 +211,28 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const canAiDraftInitial = canEdit && baseInputsOk && allSpecFieldsEmpty;
   const canAiDraftRegenerate = canEdit && baseInputsOk;
 
+  const serverSpecFieldsEmpty = useMemo(() => {
+    if (!workspace?.project) {
+      return false;
+    }
+    const p = workspace.project;
+    return (
+      !(p.specCoreGoals?.trim()) &&
+      !(p.specScopeIn?.trim()) &&
+      !(p.specScopeOut?.trim()) &&
+      !(p.specTargetUsers?.trim()) &&
+      !(p.specSuccessCriteria?.trim())
+    );
+  }, [workspace]);
+
+  const serverBaseInputsOk = useMemo(() => {
+    if (!workspace?.project) {
+      return false;
+    }
+    const p = workspace.project;
+    return Boolean(p.name?.trim() && (p.description ?? "").trim() && p.projectType?.trim());
+  }, [workspace]);
+
   function mergeContextIntoProject(ctx: {
     name: string;
     description: string | null;
@@ -254,6 +293,128 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     }
   }
 
+  const runSpecContextAiGeneration = useCallback(
+    async (
+      input: {
+        name: string;
+        description: string;
+        projectType: string;
+        successMessage: string;
+      },
+      options?: { verifyFormSpecStillEmpty?: boolean }
+    ): Promise<boolean> => {
+      if (!projectId || !canEdit) {
+        return false;
+      }
+      if (isGeneratingRef.current) {
+        return false;
+      }
+      if (options?.verifyFormSpecStillEmpty) {
+        const f = formRefForAutoGuard.current;
+        const dirty =
+          f.specCoreGoals.trim() ||
+          f.specScopeIn.trim() ||
+          f.specScopeOut.trim() ||
+          f.specTargetUsers.trim() ||
+          f.specSuccessCriteria.trim();
+        if (dirty) {
+          return false;
+        }
+      }
+      isGeneratingRef.current = true;
+      setGeneratingContext(true);
+      setMessage(null);
+      try {
+        const { res, json } = await postGenerateSpecContext({
+          projectId,
+          name: input.name.trim(),
+          description: input.description.trim(),
+          projectType: input.projectType.trim(),
+        });
+        if (!res.ok || !json.success || !json.data?.formatted) {
+          setMessage(json.message || "AI 초안 생성에 실패했습니다.");
+          return false;
+        }
+        const f = json.data.formatted;
+        setForm((prev) => ({
+          ...prev,
+          specCoreGoals: f.specCoreGoals,
+          specScopeIn: f.specScopeIn,
+          specScopeOut: f.specScopeOut,
+          specTargetUsers: f.specTargetUsers,
+          specSuccessCriteria: f.specSuccessCriteria,
+        }));
+        setAiBadges(allAiBadgesOn());
+        setMessage(input.successMessage);
+        return true;
+      } catch (e) {
+        console.error(e);
+        setMessage("AI 초안 생성 중 오류가 발생했습니다.");
+        return false;
+      } finally {
+        isGeneratingRef.current = false;
+        setGeneratingContext(false);
+      }
+    },
+    [projectId, canEdit]
+  );
+
+  useEffect(() => {
+    if (!projectId || !canEdit) {
+      return;
+    }
+    if (loadingWs || loadError || !workspace) {
+      return;
+    }
+    if (!serverSpecFieldsEmpty || !serverBaseInputsOk) {
+      return;
+    }
+    if (specAutoDraftSucceededByProject.get(projectId)) {
+      return;
+    }
+    if (specAutoDraftInFlightByProject.get(projectId)) {
+      return;
+    }
+    if (isGeneratingRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    specAutoDraftInFlightByProject.set(projectId, true);
+    const p = workspace.project;
+
+    void (async () => {
+      const ok = await runSpecContextAiGeneration(
+        {
+          name: p.name,
+          description: (p.description ?? "").trim(),
+          projectType: p.projectType,
+          successMessage: "AI 초안이 생성되었습니다",
+        },
+        { verifyFormSpecStillEmpty: true }
+      );
+      if (!cancelled && ok) {
+        specAutoDraftSucceededByProject.set(projectId, true);
+      }
+    })().finally(() => {
+      specAutoDraftInFlightByProject.delete(projectId);
+    });
+
+    return () => {
+      cancelled = true;
+      specAutoDraftInFlightByProject.delete(projectId);
+    };
+  }, [
+    projectId,
+    canEdit,
+    loadingWs,
+    loadError,
+    workspace,
+    serverSpecFieldsEmpty,
+    serverBaseInputsOk,
+    runSpecContextAiGeneration,
+  ]);
+
   async function runAiContextGenerate(mode: "initial" | "regenerate") {
     if (!projectId || !canEdit) {
       return;
@@ -265,40 +426,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       return;
     }
 
-    setGeneratingContext(true);
-    setMessage(null);
-    try {
-      const { res, json } = await postGenerateSpecContext({
-        projectId,
-        name: form.name.trim(),
-        description: form.description.trim(),
-        projectType: form.projectType,
-      });
-      if (!res.ok || !json.success || !json.data?.formatted) {
-        setMessage(json.message || "AI 초안 생성에 실패했습니다.");
-        return;
-      }
-      const f = json.data.formatted;
-      setForm((prev) => ({
-        ...prev,
-        specCoreGoals: f.specCoreGoals,
-        specScopeIn: f.specScopeIn,
-        specScopeOut: f.specScopeOut,
-        specTargetUsers: f.specTargetUsers,
-        specSuccessCriteria: f.specSuccessCriteria,
-      }));
-      setAiBadges(allAiBadgesOn());
-      setMessage(
+    await runSpecContextAiGeneration({
+      name: form.name.trim(),
+      description: form.description.trim(),
+      projectType: form.projectType,
+      successMessage:
         mode === "initial"
-          ? "AI가 Project Spec 초안을 작성했습니다. 필요하면 수정한 뒤 저장하세요."
-          : "AI가 초안을 다시 생성했습니다. 검토 후 저장하세요."
-      );
-    } catch (e) {
-      console.error(e);
-      setMessage("AI 초안 생성 중 오류가 발생했습니다.");
-    } finally {
-      setGeneratingContext(false);
-    }
+          ? "AI 초안이 생성되었습니다"
+          : "AI가 초안을 다시 생성했습니다. 검토 후 저장하세요.",
+    });
   }
 
   async function handleRegeneratePrompt() {
@@ -459,13 +595,13 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             }}
             role="status"
           >
-            AI가 Project Spec 초안을 작성하고 있습니다…
+            AI가 Project Spec 초안을 생성하고 있습니다...
           </p>
         ) : null}
 
-        {baseInputsOk && allSpecFieldsEmpty && canEdit ? (
+        {baseInputsOk && allSpecFieldsEmpty && canEdit && !generatingContext ? (
           <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b" }}>
-            아래 「AI로 초안 생성」으로 목표·범위·사용자·성공 기준 초안을 먼저 받을 수 있습니다. 직접 입력을 원하면 필드에 바로 작성하세요.
+            조건이 맞으면 AI가 먼저 초안을 제안합니다. 직접 작성하려면 아래 필드에 입력하면 자동 생성은 건너뜁니다. 초안을 다시 받으려면 「다시 생성」을 사용하세요.
           </p>
         ) : null}
 
