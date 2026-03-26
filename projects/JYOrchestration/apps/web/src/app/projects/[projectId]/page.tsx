@@ -15,11 +15,10 @@ import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteCon
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
 import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
-import { ProjectSpecPromptSection } from "@/components/project-spec/ProjectSpecPromptSection";
+import { ProjectSpecWorkspace } from "@/components/project-spec/ProjectSpecWorkspace";
 import { ProjectSpecUploadHistorySection } from "@/components/project-spec/ProjectSpecUploadHistorySection";
 import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
 import { AiPipelineStatusPanel, type AiPipelineStatus } from "@/components/project-spec/AiPipelineStatusPanel";
-import { buildProjectSpecPrompt, fallbackProject } from "@/components/project-spec/prompt";
 import { Project, TaskItem, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
 import {
   GitChangeRequestItem,
@@ -609,11 +608,6 @@ export default function ProjectDetailPage() {
 
     void loadHistory();
   }, [projectId, auditTaskId]);
-
-  const projectSpecPrompt = useMemo(
-    () => buildProjectSpecPrompt(project ?? fallbackProject),
-    [project]
-  );
 
   const taskPromptMap = useMemo(
     () =>
@@ -2677,6 +2671,7 @@ export default function ProjectDetailPage() {
                 showOwnerDelete={projectRole === "OWNER"}
                 onRequestDelete={() => setDeleteModalOpen(true)}
                 compactOverview
+                hideLifecycleStatus
               />
               {rbac.canEditSpec ? (
                 <div id="guided-flow-upload">
@@ -2699,9 +2694,12 @@ export default function ProjectDetailPage() {
                   <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
                 </div>
               ) : null}
-              {rbac.canEditSpec ? (
-                <ProjectSpecPromptSection prompt={projectSpecPrompt} />
-              ) : null}
+              <ProjectSpecWorkspace
+                projectId={projectId}
+                project={project}
+                canEdit={rbac.canEditSpec}
+                onProjectUpdated={setProject}
+              />
               {rbac.canEditSpec ? (
                 <div
                   data-ui-label="[O-1] Orchestration — AI Analysis Start & Task Generation"

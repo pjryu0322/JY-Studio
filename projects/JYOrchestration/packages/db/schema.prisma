@@ -183,6 +183,21 @@ model Project {
   /// 수정일시
   updatedAt     DateTime           @updatedAt
 
+  /// Project Spec 정의 워크스페이스: 핵심 목표(문단)
+  specCoreGoals       String? @db.Text
+  /// In scope (불릿/텍스트)
+  specScopeIn         String? @db.Text
+  /// Out of scope (불릿/텍스트)
+  specScopeOut        String? @db.Text
+  /// 대상 사용자 (불릿/텍스트)
+  specTargetUsers     String? @db.Text
+  /// 성공 기준 (불릿/텍스트)
+  specSuccessCriteria String? @db.Text
+  /// 사용자가 확정한 공식 Project Spec (마크다운)
+  confirmedSpecMarkdown   String? @db.Text
+  confirmedSpecResponseId String?
+  confirmedSpecAt         DateTime?
+
   /// 업로드된 스펙 파일
   uploads       ProjectSpecUpload[]
   /// 태스크
@@ -203,9 +218,48 @@ model Project {
   memberActions ProjectMemberAction[]
   /// AI 멤버 액션 승인·적용 정책(액션 유형별)
   aiActionPolicies ProjectAiActionPolicy[]
+  /// Spec 정의 워크스페이스: 생성된 프롬프트 버전
+  specWorkspacePrompts ProjectSpecWorkspacePrompt[]
+  /// Spec 정의 워크스페이스: AI 응답
+  specWorkspaceResponses ProjectSpecWorkspaceResponse[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// Project Spec 정의 워크스페이스 — 생성·저장된 프롬프트(버전별)
+model ProjectSpecWorkspacePrompt {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version     Int
+  promptText  String   @db.Text
+  createdAt   DateTime @default(now())
+  createdByUserId String?
+
+  responses ProjectSpecWorkspaceResponse[]
+
+  @@unique([projectId, version])
+  @@index([projectId])
+  @@map("project_spec_workspace_prompts")
+}
+
+/// Project Spec 정의 워크스페이스 — AI 응답(프롬프트별 다중)
+model ProjectSpecWorkspaceResponse {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  promptId         String
+  prompt           ProjectSpecWorkspacePrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  provider         String
+  model            String
+  responseMarkdown String   @db.Text
+  status           String
+  createdAt        DateTime @default(now())
+
+  @@index([projectId])
+  @@index([promptId])
+  @@map("project_spec_workspace_responses")
 }
 
 /// 프로젝트·액션 유형별 AI 승인/적용 정책

@@ -13,6 +13,36 @@ export type Project = {
   gitApprovalMode?: string;
   /** push만: AUTO_PUSH | MANUAL_PUSH. 승인과 독립. */
   gitPushMode?: string;
+  /** Spec 정의 워크스페이스 필드 */
+  specCoreGoals?: string | null;
+  specScopeIn?: string | null;
+  specScopeOut?: string | null;
+  specTargetUsers?: string | null;
+  specSuccessCriteria?: string | null;
+  confirmedSpecMarkdown?: string | null;
+  confirmedSpecResponseId?: string | null;
+  confirmedSpecAt?: string | null;
+};
+
+/** API: ProjectSpecPrompt 엔터티 (DB: ProjectSpecWorkspacePrompt) */
+export type ProjectSpecPromptRecord = {
+  id: string;
+  projectId: string;
+  version: number;
+  promptText: string;
+  createdAt: string;
+};
+
+/** API: ProjectSpecResponse 엔터티 (DB: ProjectSpecWorkspaceResponse) */
+export type ProjectSpecResponseRecord = {
+  id: string;
+  projectId: string;
+  promptId: string;
+  provider: string;
+  model: string;
+  responseMarkdown: string;
+  status: string;
+  createdAt: string;
 };
 
 export type ApiResponse<T> = {

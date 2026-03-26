@@ -63,18 +63,15 @@ test.describe("E2E project", () => {
     await expect(page.getByRole("button", { name: /파싱 실행/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Task 생성$/i })).toHaveCount(0);
 
-    // Prompt Guide는 기본적으로 프롬프트 원문을 노출하지 않습니다.
-    await expect(page.getByTestId("project-spec-prompt-guide-content")).toHaveCount(0);
+    // Project Spec 정의 워크스페이스: 생성 프롬프트 미리보기 + 복사
+    await expect(page.getByTestId("project-spec-workspace")).toBeVisible();
+    await expect(page.getByTestId("spec-workspace-prompt-preview")).toBeVisible();
 
     // 실행 관측은 Task 관리/수행 영역에서만 보입니다.
     await expect(page.locator("#guided-flow-upload").getByTestId("execution-observability-panel")).toHaveCount(0);
     await expect(page.locator("#guided-flow-tasks").getByTestId("execution-observability-panel")).toHaveCount(1);
 
-    // Prompt Guide 버튼 동작 및 "원문 노출"은 클릭 후에만 발생합니다.
-    await page.getByTestId("project-spec-prompt-guide-open").click();
-    await expect(page.getByTestId("project-spec-prompt-guide-content")).toBeVisible();
-    // 다시 접기
-    await page.getByRole("button", { name: "닫기" }).click();
+    await page.getByTestId("spec-workspace-copy-prompt").click();
 
     const tmpMdPath = path.join(__dirname, `tmp-projectspec-${Date.now()}.md`);
     fs.writeFileSync(

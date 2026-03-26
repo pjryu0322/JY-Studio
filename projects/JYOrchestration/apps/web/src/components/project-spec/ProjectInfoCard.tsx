@@ -18,6 +18,8 @@ type ProjectInfoCardProps = {
   onRequestDelete?: () => void;
   /** Overview 탭: 유형·Git 행 숨김(별도 탭에서 표시) */
   compactOverview?: boolean;
+  /** 생명주기 상태 행 숨김 (Spec 워크스페이스와 중복 방지 등) */
+  hideLifecycleStatus?: boolean;
 };
 
 function formatProjectTypeLabel(type: string | null | undefined): string {
@@ -40,6 +42,7 @@ export function ProjectInfoCard({
   showOwnerDelete = false,
   onRequestDelete,
   compactOverview = false,
+  hideLifecycleStatus = false,
 }: ProjectInfoCardProps) {
   const [gitConnectNote, setGitConnectNote] = useState<string | null>(null);
   const isDeleted = project?.status === PROJECT_LIFECYCLE_DELETED;
@@ -91,9 +94,11 @@ export function ProjectInfoCard({
             <strong>유형:</strong> {formatProjectTypeLabel(project?.projectType)}
           </div>
         ) : null}
-        <div>
-          <strong>상태:</strong> {formatLifecycleStatus(project?.status)}
-        </div>
+        {!hideLifecycleStatus ? (
+          <div>
+            <strong>상태:</strong> {formatLifecycleStatus(project?.status)}
+          </div>
+        ) : null}
 
         {!compactOverview ? (
           <>
