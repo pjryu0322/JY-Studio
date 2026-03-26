@@ -147,11 +147,22 @@ export async function patchSpecWorkspace(
   return { res, json };
 }
 
+export type SpecWorkspaceAiRequestSaveContext = {
+  name: string;
+  description: string | null;
+  projectType: string;
+  coreGoals: string | null;
+  inScope: string | null;
+  outOfScope: string | null;
+  targetUsers: string | null;
+  successCriteria: string | null;
+};
+
 export async function postSpecWorkspaceAction(
   projectId: string,
   body:
     | { action: "regeneratePrompt" }
-    | { action: "aiRequest"; promptId?: string }
+    | { action: "aiRequest"; promptId?: string; saveContext?: SpecWorkspaceAiRequestSaveContext }
     | { action: "confirm"; responseId: string }
 ) {
   const encoded = encodeURIComponent(projectId);

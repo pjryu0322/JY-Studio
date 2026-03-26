@@ -267,9 +267,20 @@ export async function PATCH(
   }
 }
 
+type AiRequestSaveContext = {
+  name: string;
+  description: string | null;
+  projectType: string;
+  coreGoals: string | null;
+  inScope: string | null;
+  outOfScope: string | null;
+  targetUsers: string | null;
+  successCriteria: string | null;
+};
+
 type PostBody =
   | { action: "regeneratePrompt" }
-  | { action: "aiRequest"; promptId?: string }
+  | { action: "aiRequest"; promptId?: string; saveContext?: AiRequestSaveContext }
   | { action: "confirm"; responseId: string };
 
 export async function POST(
@@ -310,28 +321,28 @@ export async function POST(
       return NextResponse.json({ success: false, message: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
 
-    const projectFull = await prisma.project.findUnique({ where: { id } });
-    if (!projectFull) {
-      return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
-    }
-
-    const projectForPrompt: Project = {
-      id: projectFull.id,
-      name: projectFull.name,
-      description: projectFull.description,
-      projectType: projectFull.projectType,
-      status: projectFull.status,
-      specCoreGoals: projectFull.specCoreGoals,
-      specScopeIn: projectFull.specScopeIn,
-      specScopeOut: projectFull.specScopeOut,
-      specTargetUsers: projectFull.specTargetUsers,
-      specSuccessCriteria: projectFull.specSuccessCriteria,
-      confirmedSpecMarkdown: projectFull.confirmedSpecMarkdown,
-      confirmedSpecResponseId: projectFull.confirmedSpecResponseId,
-      confirmedSpecAt: projectFull.confirmedSpecAt?.toISOString() ?? null,
-    };
-
     if (body.action === "regeneratePrompt") {
+      const projectFull = await prisma.project.findUnique({ where: { id } });
+      if (!projectFull) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+
+      const projectForPrompt: Project = {
+        id: projectFull.id,
+        name: projectFull.name,
+        description: projectFull.description,
+        projectType: projectFull.projectType,
+        status: projectFull.status,
+        specCoreGoals: projectFull.specCoreGoals,
+        specScopeIn: projectFull.specScopeIn,
+        specScopeOut: projectFull.specScopeOut,
+        specTargetUsers: projectFull.specTargetUsers,
+        specSuccessCriteria: projectFull.specSuccessCriteria,
+        confirmedSpecMarkdown: projectFull.confirmedSpecMarkdown,
+        confirmedSpecResponseId: projectFull.confirmedSpecResponseId,
+        confirmedSpecAt: projectFull.confirmedSpecAt?.toISOString() ?? null,
+      };
+
       const promptText = buildWorkspacePromptText(projectForPrompt);
       const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
         where: { projectId: id },
@@ -362,8 +373,112 @@ export async function POST(
     }
 
     if (body.action === "aiRequest") {
+      let projectFull = await prisma.project.findUnique({ where: { id } });
+      if (!projectFull) {
+        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+      }
+
+      if (body.saveContext) {
+        const sc = body.saveContext;
+        const name = String(sc.name ?? "").trim();
+        if (!name) {
+          return NextResponse.json({ success: false, message: "프로젝트명이 필요합니다." }, { status: 400 });
+        }
+        const description =
+          sc.description === undefined ? projectFull.description : sc.description === null ? null : String(sc.description);
+        if (!String(description ?? "").trim()) {
+          return NextResponse.json(
+            { success: false, message: "프로젝트 설명이 필요합니다." },
+            { status: 400 }
+          );
+        }
+        const projectType = String(sc.projectType ?? "").trim();
+        if (!projectType) {
+          return NextResponse.json({ success: false, message: "프로젝트 유형이 필요합니다." }, { status: 400 });
+        }
+
+        const nm = (v: string | null | undefined) => String(v ?? "").trim();
+        const missing: string[] = [];
+        if (!nm(sc.coreGoals)) {
+          missing.push("핵심 목표");
+        }
+        if (!nm(sc.inScope)) {
+          missing.push("In scope");
+        }
+        if (!nm(sc.outOfScope)) {
+          missing.push("Out of scope");
+        }
+        if (!nm(sc.targetUsers)) {
+          missing.push("대상 사용자");
+        }
+        if (!nm(sc.successCriteria)) {
+          missing.push("성공 기준");
+        }
+        if (missing.length > 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `다음 항목을 입력한 뒤 AI Spec을 생성하세요: ${missing.join(", ")}`,
+            },
+            { status: 400 }
+          );
+        }
+
+        await prisma.project.update({
+          where: { id },
+          data: {
+            name,
+            description,
+            projectType,
+            specCoreGoals: nm(sc.coreGoals),
+            specScopeIn: nm(sc.inScope),
+            specScopeOut: nm(sc.outOfScope),
+            specTargetUsers: nm(sc.targetUsers),
+            specSuccessCriteria: nm(sc.successCriteria),
+          },
+        });
+
+        const reloaded = await prisma.project.findUnique({ where: { id } });
+        if (!reloaded) {
+          return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+        }
+        projectFull = reloaded;
+      }
+
+      const projectForPrompt: Project = {
+        id: projectFull.id,
+        name: projectFull.name,
+        description: projectFull.description,
+        projectType: projectFull.projectType,
+        status: projectFull.status,
+        specCoreGoals: projectFull.specCoreGoals,
+        specScopeIn: projectFull.specScopeIn,
+        specScopeOut: projectFull.specScopeOut,
+        specTargetUsers: projectFull.specTargetUsers,
+        specSuccessCriteria: projectFull.specSuccessCriteria,
+        confirmedSpecMarkdown: projectFull.confirmedSpecMarkdown,
+        confirmedSpecResponseId: projectFull.confirmedSpecResponseId,
+        confirmedSpecAt: projectFull.confirmedSpecAt?.toISOString() ?? null,
+      };
+
       let promptRow = null as Awaited<ReturnType<typeof prisma.projectSpecWorkspacePrompt.findFirst>> | null;
-      if (body.promptId) {
+
+      if (body.saveContext) {
+        const promptText = buildWorkspacePromptText(projectForPrompt);
+        const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
+          where: { projectId: id },
+          _max: { version: true },
+        });
+        const nextVersion = (agg._max.version ?? 0) + 1;
+        promptRow = await prisma.projectSpecWorkspacePrompt.create({
+          data: {
+            projectId: id,
+            version: nextVersion,
+            promptText,
+            createdByUserId: userId,
+          },
+        });
+      } else if (body.promptId) {
         promptRow = await prisma.projectSpecWorkspacePrompt.findFirst({
           where: { id: body.promptId, projectId: id },
         });
@@ -373,6 +488,7 @@ export async function POST(
           orderBy: { version: "desc" },
         });
       }
+
       if (!promptRow) {
         const promptText = buildWorkspacePromptText(projectForPrompt);
         const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
@@ -430,21 +546,39 @@ export async function POST(
         },
       });
 
+      const responsePayload: {
+        response: {
+          id: string;
+          projectId: string;
+          promptId: string;
+          provider: string;
+          model: string;
+          responseMarkdown: string;
+          status: string;
+          createdAt: string;
+        };
+        project?: ReturnType<typeof mapProject>;
+      } = {
+        response: {
+          id: responseRow.id,
+          projectId: responseRow.projectId,
+          promptId: responseRow.promptId,
+          provider: responseRow.provider,
+          model: responseRow.model,
+          responseMarkdown: responseRow.responseMarkdown,
+          status: responseRow.status,
+          createdAt: responseRow.createdAt.toISOString(),
+        },
+      };
+
+      if (body.saveContext) {
+        responsePayload.project = mapProject(projectFull);
+      }
+
       return NextResponse.json({
         success: true,
         message: "AI 응답이 생성되었습니다.",
-        data: {
-          response: {
-            id: responseRow.id,
-            projectId: responseRow.projectId,
-            promptId: responseRow.promptId,
-            provider: responseRow.provider,
-            model: responseRow.model,
-            responseMarkdown: responseRow.responseMarkdown,
-            status: responseRow.status,
-            createdAt: responseRow.createdAt.toISOString(),
-          },
-        },
+        data: responsePayload,
       });
     }
 

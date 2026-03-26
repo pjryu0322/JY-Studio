@@ -211,6 +211,20 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const canAiDraftInitial = canEdit && baseInputsOk && allSpecFieldsEmpty;
   const canAiDraftRegenerate = canEdit && baseInputsOk;
 
+  const allSpecFieldsFilledForAi = useMemo(
+    () =>
+      Boolean(
+        form.specCoreGoals.trim() &&
+          form.specScopeIn.trim() &&
+          form.specScopeOut.trim() &&
+          form.specTargetUsers.trim() &&
+          form.specSuccessCriteria.trim()
+      ),
+    [form]
+  );
+
+  const canRunAiProjectSpec = canEdit && baseInputsOk && allSpecFieldsFilledForAi;
+
   const serverSpecFieldsEmpty = useMemo(() => {
     if (!workspace?.project) {
       return false;
@@ -256,6 +270,28 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       specScopeOut: ctx.outOfScope,
       specTargetUsers: ctx.targetUsers,
       specSuccessCriteria: ctx.successCriteria,
+    });
+  }
+
+  function mergeWorkspaceProjectSlice(p: SpecWorkspaceSnapshot["project"]) {
+    if (!project) {
+      return;
+    }
+    onProjectUpdated({
+      ...project,
+      id: p.id,
+      name: p.name,
+      description: p.description ?? null,
+      projectType: p.projectType,
+      specCoreGoals: p.specCoreGoals ?? null,
+      specScopeIn: p.specScopeIn ?? null,
+      specScopeOut: p.specScopeOut ?? null,
+      specTargetUsers: p.specTargetUsers ?? null,
+      specSuccessCriteria: p.specSuccessCriteria ?? null,
+      confirmedSpecMarkdown: p.confirmedSpecMarkdown ?? project.confirmedSpecMarkdown,
+      confirmedSpecResponseId: p.confirmedSpecResponseId ?? project.confirmedSpecResponseId,
+      confirmedSpecAt: p.confirmedSpecAt ?? project.confirmedSpecAt,
+      status: project.status,
     });
   }
 
@@ -456,46 +492,64 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         successCriteria: form.specSuccessCriteria.trim() || null,
       });
       if (!patch.res.ok || !patch.json.success || !patch.json.data) {
-        setMessage(patch.json.message || "저장 후 재생성에 실패했습니다.");
+        setMessage(patch.json.message || "저장 후 프롬프트 갱신에 실패했습니다.");
         return;
       }
       mergeContextIntoProject(patch.json.data);
       const { res, json } = await postSpecWorkspaceAction(projectId, { action: "regeneratePrompt" });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "프롬프트 재생성에 실패했습니다.");
+        setMessage(json.message || "프롬프트 갱신에 실패했습니다.");
         return;
       }
-      setMessage("프롬프트가 재생성되어 버전으로 저장되었습니다.");
+      setMessage("현재 입력값을 반영해 프롬프트 버전을 저장했습니다. (OpenAI 호출 없음)");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("프롬프트 재생성 중 오류가 발생했습니다.");
+      setMessage("프롬프트 갱신 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
   }
 
-  async function handleAiRequest() {
+  async function handleAiProjectSpecGeneration() {
     if (!projectId || !canEdit) {
       return;
     }
-    setActionBusy("ai");
-    setMessage(null);
+    if (!canRunAiProjectSpec) {
+      setMessage("프로젝트명·설명·유형과 Spec 필드(핵심 목표·범위·사용자·성공 기준)를 모두 채워 주세요.");
+      return;
+    }
+    setActionBusy("ai-spec");
+    setMessage("현재 입력값을 저장하고 AI에 요청하는 중...");
     try {
-      const latestPromptId = workspace?.prompts?.[0]?.id;
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "aiRequest",
-        promptId: latestPromptId,
+        saveContext: {
+          name: form.name.trim(),
+          description: form.description.trim() ? form.description : null,
+          projectType: form.projectType,
+          coreGoals: form.specCoreGoals.trim() || null,
+          inScope: form.specScopeIn.trim() || null,
+          outOfScope: form.specScopeOut.trim() || null,
+          targetUsers: form.specTargetUsers.trim() || null,
+          successCriteria: form.specSuccessCriteria.trim() || null,
+        },
       });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "AI 요청에 실패했습니다.");
+        setMessage(json.message || "AI Spec 생성에 실패했습니다.");
         return;
       }
-      setMessage("AI 응답이 추가되었습니다.");
+      const data = json.data as {
+        project?: SpecWorkspaceSnapshot["project"];
+      };
+      if (data.project) {
+        mergeWorkspaceProjectSlice(data.project);
+      }
+      setMessage("AI Spec 초안이 응답 목록에 추가되었습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("AI 요청 중 오류가 발생했습니다.");
+      setMessage("AI Spec 생성 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -850,7 +904,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               type="button"
               data-testid="spec-workspace-save-project"
               onClick={() => void handleSaveProjectInfo()}
-              disabled={saving || generatingContext}
+              disabled={saving || generatingContext || actionBusy === "regen" || actionBusy === "ai-spec"}
               style={{
                 justifySelf: "start",
                 padding: "10px 16px",
@@ -859,7 +913,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                 background: "#2563eb",
                 color: "#fff",
                 fontWeight: 700,
-                cursor: saving || generatingContext ? "wait" : "pointer",
+                cursor:
+                  saving || generatingContext || actionBusy === "regen" || actionBusy === "ai-spec"
+                    ? "wait"
+                    : "pointer",
               }}
             >
               {saving ? "저장 중…" : "프로젝트 정보 저장"}
@@ -880,9 +937,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         }}
       >
         <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 8px 0" }}>Project Spec Prompt (자동 생성)</h3>
-        <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b" }}>
-          아래 텍스트는 현재 폼 값을 반영한 생성 결과입니다. 저장된 프롬프트 버전:{" "}
+        <p style={{ margin: "0 0 6px 0", fontSize: 13, color: "#64748b" }}>
+          미리보기는 서버와 동일한 <code style={{ fontSize: 12 }}>buildWorkspacePromptText</code> 규칙으로 현재 폼 값을
+          반영합니다. 저장된 프롬프트 버전:{" "}
           {latestSavedVersion != null ? <strong>v{latestSavedVersion}</strong> : "없음"}
+        </p>
+        <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b" }}>
+          「현재 값으로 프롬프트 갱신」은 DB에 반영한 뒤 새 프롬프트 버전만 만듭니다(OpenAI 호출 없음). 「AI로 Project Spec
+          생성」은 저장 → 최신 프롬프트 작성 → OpenAI 호출까지 한 번에 진행합니다.
         </p>
         <div
           data-testid="spec-workspace-prompt-preview"
@@ -929,7 +991,13 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             type="button"
             data-testid="spec-workspace-regenerate-prompt"
             onClick={() => void handleRegeneratePrompt()}
-            disabled={!canEdit || actionBusy === "regen" || saving || generatingContext}
+            disabled={
+              !canEdit ||
+              actionBusy === "regen" ||
+              actionBusy === "ai-spec" ||
+              saving ||
+              generatingContext
+            }
             style={{
               padding: "10px 14px",
               borderRadius: 8,
@@ -939,13 +1007,20 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               cursor: canEdit ? "pointer" : "not-allowed",
             }}
           >
-            {actionBusy === "regen" ? "처리 중…" : "프롬프트 재생성"}
+            {actionBusy === "regen" ? "저장·프롬프트 갱신 중…" : "현재 값으로 프롬프트 갱신"}
           </button>
           <button
             type="button"
             data-testid="spec-workspace-ai-request"
-            onClick={() => void handleAiRequest()}
-            disabled={!canEdit || actionBusy === "ai" || generatingContext}
+            onClick={() => void handleAiProjectSpecGeneration()}
+            disabled={
+              !canEdit ||
+              actionBusy === "ai-spec" ||
+              actionBusy === "regen" ||
+              saving ||
+              generatingContext ||
+              !canRunAiProjectSpec
+            }
             style={{
               padding: "10px 14px",
               borderRadius: 8,
@@ -953,12 +1028,25 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               background: "#0d9488",
               color: "#fff",
               fontWeight: 700,
-              cursor: canEdit ? "pointer" : "not-allowed",
+              cursor: canEdit && canRunAiProjectSpec ? "pointer" : "not-allowed",
             }}
           >
-            {actionBusy === "ai" ? "요청 중…" : "AI에게 요청"}
+            {actionBusy === "ai-spec" ? "저장 후 AI 요청 중…" : "AI로 Project Spec 생성"}
           </button>
         </div>
+        {canEdit && baseInputsOk && !allSpecFieldsFilledForAi ? (
+          <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
+            AI로 Spec을 만들려면 핵심 목표·In/Out scope·대상 사용자·성공 기준을 모두 입력하세요.
+          </p>
+        ) : null}
+        {actionBusy === "ai-spec" ? (
+          <p
+            data-testid="spec-workspace-ai-spec-progress"
+            style={{ margin: "10px 0 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}
+          >
+            현재 입력값을 저장하고 AI에 요청하는 중…
+          </p>
+        ) : null}
       </div>
 
       {/* [C] AI 응답 목록 */}
@@ -974,7 +1062,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       >
         <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 12px 0" }}>AI 응답</h3>
         {!workspace?.responses?.length ? (
-          <p style={{ color: "#64748b", margin: 0 }}>아직 응답이 없습니다. 프롬프트를 저장한 뒤 「AI에게 요청」을 실행하세요.</p>
+          <p style={{ color: "#64748b", margin: 0 }}>
+            아직 응답이 없습니다. Spec 필드를 채운 뒤 「AI로 Project Spec 생성」을 실행하세요.
+          </p>
         ) : (
           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
             {workspace.responses.map((r) => {
