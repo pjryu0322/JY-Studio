@@ -2453,6 +2453,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         projectId={projectId}
         canEdit={canEdit}
         selectedModel={selectedModel}
+        currentSpecVersionId={workspace?.project.currentSpecVersionId ?? null}
         refreshKey={draftRefreshKey}
         lastAutoSync={lastTaskDraftSync}
       />

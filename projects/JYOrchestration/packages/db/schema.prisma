@@ -276,8 +276,14 @@ model TaskDraft {
   priority    String   @default("MEDIUM")
   /// 선행 Task 제목 문자열 배열(JSON)
   dependsOn           Json?
+  /// 선행 TaskDraft id 배열(JSON) — Workflow 캔버스 연결용
+  dependsOnIds        Json?
   /// 수용 기준 문자열 배열(JSON)
   acceptanceCriteria  Json?
+  /// Workflow 캔버스 노드 X 좌표(px)
+  positionX          Float @default(0)
+  /// Workflow 캔버스 노드 Y 좌표(px)
+  positionY          Float @default(0)
   /// DRAFT | CONFIRMED | SUPERSEDED
   status      String   @default("DRAFT")
   sourceModel String?

@@ -18,7 +18,10 @@ type PatchBody = {
   description?: string | null;
   priority?: string;
   dependsOn?: string[];
+  dependsOnIds?: string[];
   acceptanceCriteria?: string[];
+  positionX?: number;
+  positionY?: number;
 };
 
 export async function PATCH(
@@ -89,10 +92,29 @@ export async function PATCH(
         ? body.dependsOn.map((x) => String(x).trim()).filter(Boolean).slice(0, 30)
         : [];
     }
+    if (body.dependsOnIds !== undefined) {
+      data.dependsOnIds = Array.isArray(body.dependsOnIds)
+        ? body.dependsOnIds.map((x) => String(x).trim()).filter(Boolean).slice(0, 50)
+        : [];
+    }
     if (body.acceptanceCriteria !== undefined) {
       data.acceptanceCriteria = Array.isArray(body.acceptanceCriteria)
         ? body.acceptanceCriteria.map((x) => String(x).trim()).filter(Boolean).slice(0, 20)
         : [];
+    }
+    if (body.positionX !== undefined) {
+      const n = Number(body.positionX);
+      if (!Number.isFinite(n)) {
+        return NextResponse.json({ success: false, message: "positionX는 숫자여야 합니다." }, { status: 400 });
+      }
+      data.positionX = n;
+    }
+    if (body.positionY !== undefined) {
+      const n = Number(body.positionY);
+      if (!Number.isFinite(n)) {
+        return NextResponse.json({ success: false, message: "positionY는 숫자여야 합니다." }, { status: 400 });
+      }
+      data.positionY = n;
     }
 
     if (Object.keys(data).length === 0) {
@@ -119,9 +141,14 @@ export async function PATCH(
         dependsOn: Array.isArray(updated.dependsOn)
           ? (updated.dependsOn as string[])
           : [],
+        dependsOnIds: Array.isArray((updated as unknown as { dependsOnIds?: unknown }).dependsOnIds)
+          ? ((updated as unknown as { dependsOnIds: unknown }).dependsOnIds as string[])
+          : [],
         acceptanceCriteria: Array.isArray(updated.acceptanceCriteria)
           ? (updated.acceptanceCriteria as string[])
           : [],
+        positionX: Number((updated as unknown as { positionX?: unknown }).positionX ?? 0),
+        positionY: Number((updated as unknown as { positionY?: unknown }).positionY ?? 0),
         status: updated.status,
         updatedAt: updated.updatedAt.toISOString(),
       },

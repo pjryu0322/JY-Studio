@@ -1,6 +1,50 @@
 import { prisma } from "@/lib/prisma";
 import { generateTaskDraftsWithOpenAI } from "@/lib/project-spec/generateTaskDraftsWithOpenAI";
 
+function clampDependsOnIds(ids: string[]): string[] {
+  return ids.map((x) => String(x).trim()).filter(Boolean).slice(0, 50);
+}
+
+function computeInitialPositions(input: {
+  ids: string[];
+  dependsOnIdsById: Map<string, string[]>;
+}): Map<string, { x: number; y: number }> {
+  // 간단한 DAG 레이아웃: topological layer(깊이)별로 좌→우, 같은 레이어는 위→아래
+  const { ids, dependsOnIdsById } = input;
+  const depthMemo = new Map<string, number>();
+  const visiting = new Set<string>();
+  const depthOf = (id: string): number => {
+    if (depthMemo.has(id)) return depthMemo.get(id)!;
+    if (visiting.has(id)) return 0; // 순환이 있으면 0으로 폴백
+    visiting.add(id);
+    const deps = dependsOnIdsById.get(id) ?? [];
+    const d = deps.length ? 1 + Math.max(...deps.map(depthOf)) : 0;
+    visiting.delete(id);
+    depthMemo.set(id, d);
+    return d;
+  };
+
+  const layers = new Map<number, string[]>();
+  for (const id of ids) {
+    const d = depthOf(id);
+    const arr = layers.get(d) ?? [];
+    arr.push(id);
+    layers.set(d, arr);
+  }
+
+  const out = new Map<string, { x: number; y: number }>();
+  const layerKeys = [...layers.keys()].sort((a, b) => a - b);
+  const X_GAP = 340;
+  const Y_GAP = 160;
+  for (const d of layerKeys) {
+    const arr = layers.get(d) ?? [];
+    arr.forEach((id, idx) => {
+      out.set(id, { x: d * X_GAP, y: idx * Y_GAP });
+    });
+  }
+  return out;
+}
+
 export type TaskDraftSyncResult = {
   supersededCount: number;
   createdCount: number;
@@ -73,10 +117,11 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
       data: { status: "SUPERSEDED" },
     });
 
+    const createdRows: { id: string; title: string }[] = [];
     for (let i = 0; i < ai.tasks.length; i++) {
       const t = ai.tasks[i];
       const first = i === 0;
-      await tx.taskDraft.create({
+      const row = await tx.taskDraft.create({
         data: {
           projectId,
           specVersionId,
@@ -84,13 +129,48 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
           description: t.description || null,
           priority: t.priority,
           dependsOn: t.dependsOn.length ? t.dependsOn : undefined,
+          dependsOnIds: [],
           acceptanceCriteria: t.acceptanceCriteria.length ? t.acceptanceCriteria : undefined,
+          positionX: 0,
+          positionY: i * 140,
           status: "DRAFT",
           sourceModel: ai.model,
           promptTokens: first ? (ai.usage?.promptTokens ?? null) : null,
           completionTokens: first ? (ai.usage?.completionTokens ?? null) : null,
           totalTokens: first ? (ai.usage?.totalTokens ?? null) : null,
           createdByUserId: userId,
+        },
+        select: { id: true, title: true },
+      });
+      createdRows.push(row);
+    }
+
+    // OpenAI 출력은 dependsOn을 title 문자열로 줌 → 같은 생성 배치 내 title→id 매핑으로 dependsOnIds 채움
+    const idByTitle = new Map<string, string>();
+    for (const r of createdRows) {
+      idByTitle.set(r.title, r.id);
+    }
+    const dependsOnIdsById = new Map<string, string[]>();
+    for (const t of ai.tasks) {
+      const id = idByTitle.get(t.title);
+      if (!id) continue;
+      const depIds = clampDependsOnIds(
+        (t.dependsOn ?? [])
+          .map((title) => idByTitle.get(title))
+          .filter((x): x is string => Boolean(x))
+      );
+      dependsOnIdsById.set(id, depIds);
+    }
+    const allIds = createdRows.map((r) => r.id);
+    const pos = computeInitialPositions({ ids: allIds, dependsOnIdsById });
+
+    for (const id of allIds) {
+      await tx.taskDraft.update({
+        where: { id },
+        data: {
+          dependsOnIds: dependsOnIdsById.get(id) ?? [],
+          positionX: pos.get(id)?.x ?? 0,
+          positionY: pos.get(id)?.y ?? 0,
         },
       });
     }

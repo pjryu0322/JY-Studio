@@ -198,6 +198,30 @@ export async function fetchProjectTaskDrafts(projectId: string, options?: { stat
   return { res, json };
 }
 
+export async function postProjectTaskDraftCreate(
+  projectId: string,
+  body: {
+    specVersionId: string;
+    title: string;
+    description?: string | null;
+    priority?: string;
+    acceptanceCriteria?: string[];
+    positionX?: number;
+    positionY?: number;
+    dependsOnIds?: string[];
+  }
+) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-drafts`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<TaskDraftDto>;
+  return { res, json };
+}
+
 export async function postProjectTaskDraftsGenerate(
   projectId: string,
   body: { specVersionId?: string; model?: string; mode?: "initial" | "regenerate" }
@@ -214,6 +238,28 @@ export async function postProjectTaskDraftsGenerate(
     supersededCount: number;
     model: string;
     usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null } | null;
+  }>;
+  return { res, json };
+}
+
+export async function postProjectTaskDraftsAiReorder(projectId: string, body?: { model?: string }) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-drafts/ai-reorder`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const json = (await res.json()) as ApiResponse<{
+    model: string;
+    usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null } | null;
+    cycleDetected: boolean;
+    tasks: Array<{
+      id: string;
+      dependsOnIds?: string[];
+      positionX: number;
+      positionY: number;
+    }>;
   }>;
   return { res, json };
 }
@@ -241,7 +287,10 @@ export async function patchProjectTaskDraft(
     description: string | null;
     priority: string;
     dependsOn: string[];
+    dependsOnIds: string[];
     acceptanceCriteria: string[];
+    positionX: number;
+    positionY: number;
   }>
 ) {
   const encoded = encodeURIComponent(projectId);

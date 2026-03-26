@@ -122,7 +122,13 @@ export type TaskDraftDto = {
   description: string | null;
   priority: string;
   dependsOn: string[];
+  /** 선행 TaskDraft id 배열 (Workflow 캔버스 엣지) */
+  dependsOnIds: string[];
   acceptanceCriteria: string[];
+  /** Workflow 캔버스 노드 좌표(px) */
+  positionX: number;
+  /** Workflow 캔버스 노드 좌표(px) */
+  positionY: number;
   status: string;
   sourceModel: string | null;
   promptTokens: number | null;

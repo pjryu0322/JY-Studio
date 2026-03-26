@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteProjectTaskDraft,
   fetchProjectTaskDrafts,
   patchProjectTaskDraft,
+  postProjectTaskDraftCreate,
+  postProjectTaskDraftsAiReorder,
   postProjectTaskDraftsConfirm,
   postProjectTaskDraftsGenerate,
 } from "@/components/project-spec/api";
@@ -12,11 +14,23 @@ import { formatTestedAt } from "@/components/project-spec/format";
 import type { TaskDraftDto, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { LabelTag } from "@/components/ui/LabelTag";
 import type { SpecWorkspaceAiModelId } from "@/lib/project-spec/specWorkspaceModels";
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  type Connection,
+  type Edge,
+  type Node,
+} from "reactflow";
+import dagre from "dagre";
+
+import "reactflow/dist/style.css";
 
 type TaskDraftPanelProps = {
   projectId: string;
   canEdit: boolean;
   selectedModel: SpecWorkspaceAiModelId;
+  currentSpecVersionId: string | null;
   refreshKey: number;
   lastAutoSync: TaskDraftSyncResultDto | null;
 };
@@ -25,6 +39,7 @@ export function TaskDraftPanel({
   projectId,
   canEdit,
   selectedModel,
+  currentSpecVersionId,
   refreshKey,
   lastAutoSync,
 }: TaskDraftPanelProps) {
@@ -32,12 +47,21 @@ export function TaskDraftPanel({
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<TaskDraftDto | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState("MEDIUM");
   const [editCriteria, setEditCriteria] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const savingPositionsRef = useRef(new Map<string, number>());
+  const [aiSuggestion, setAiSuggestion] = useState<
+    | null
+    | {
+        cycleDetected: boolean;
+        tasks: Array<{ id: string; dependsOnIds?: string[]; positionX: number; positionY: number }>;
+        model: string;
+      }
+  >(null);
 
   const loadDrafts = useCallback(async () => {
     if (!projectId) {
@@ -64,6 +88,47 @@ export function TaskDraftPanel({
   useEffect(() => {
     void loadDrafts();
   }, [loadDrafts, refreshKey]);
+
+  const byId = useMemo(() => {
+    const m = new Map<string, TaskDraftDto>();
+    for (const d of drafts) m.set(d.id, d);
+    return m;
+  }, [drafts]);
+
+  const nodes: Node[] = useMemo(() => {
+    return drafts.map((d) => ({
+      id: d.id,
+      position: { x: d.positionX ?? 0, y: d.positionY ?? 0 },
+      data: {
+        title: d.title,
+        priority: d.priority,
+      },
+      style: {
+        border: selectedId === d.id ? "2px solid #7c3aed" : "1px solid #ddd6fe",
+        borderRadius: 10,
+        padding: 10,
+        background: "#fff",
+        width: 260,
+        boxShadow: selectedId === d.id ? "0 2px 12px rgba(124,58,237,0.25)" : "none",
+      },
+    }));
+  }, [drafts, selectedId]);
+
+  const edges: Edge[] = useMemo(() => {
+    const out: Edge[] = [];
+    for (const d of drafts) {
+      for (const depId of d.dependsOnIds ?? []) {
+        if (!byId.has(depId)) continue;
+        out.push({
+          id: `${depId}__to__${d.id}`,
+          source: depId,
+          target: d.id,
+          type: "smoothstep",
+        });
+      }
+    }
+    return out;
+  }, [byId, drafts]);
 
   async function handleRegenerate() {
     if (!projectId || !canEdit) {
@@ -162,7 +227,7 @@ export function TaskDraftPanel({
     setEditTitle(d.title);
     setEditDescription(d.description ?? "");
     setEditPriority(d.priority);
-    setEditCriteria(d.acceptanceCriteria.join("\n"));
+    setEditCriteria((d.acceptanceCriteria ?? []).join("\n"));
   }
 
   async function saveEdit() {
@@ -192,6 +257,194 @@ export function TaskDraftPanel({
     } catch (e) {
       console.error(e);
       setMessage("저장 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleAddDraft() {
+    if (!projectId || !canEdit) return;
+    if (!currentSpecVersionId) {
+      setMessage("확정된 Spec 버전이 없어 Task 초안을 추가할 수 없습니다. 먼저 Spec을 확정하세요.");
+      return;
+    }
+    setBusy("add");
+    setMessage(null);
+    try {
+      const { res, json } = await postProjectTaskDraftCreate(projectId, {
+        specVersionId: currentSpecVersionId,
+        title: "새 Task",
+        description: null,
+        priority: "MEDIUM",
+        acceptanceCriteria: [],
+        positionX: 40,
+        positionY: drafts.length * 40,
+        dependsOnIds: [],
+      });
+      if (!res.ok || !json.success || !json.data) {
+        setMessage(json.message || "Task 초안 추가에 실패했습니다.");
+        return;
+      }
+      setSelectedId(json.data.id);
+      openEdit(json.data);
+      await loadDrafts();
+    } catch (e) {
+      console.error(e);
+      setMessage("Task 초안 추가 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function persistDependsOnIds(targetId: string, nextDependsOnIds: string[]) {
+    const titleById = new Map<string, string>();
+    for (const d of drafts) titleById.set(d.id, d.title);
+    const dependsOnTitles = nextDependsOnIds.map((id) => titleById.get(id) ?? "").filter(Boolean);
+    await patchProjectTaskDraft(projectId, targetId, {
+      dependsOnIds: nextDependsOnIds,
+      dependsOn: dependsOnTitles,
+    });
+  }
+
+  async function handleConnect(conn: Connection) {
+    if (!canEdit || !conn.source || !conn.target) return;
+    const target = byId.get(conn.target);
+    if (!target) return;
+    const cur = Array.isArray(target.dependsOnIds) ? target.dependsOnIds : [];
+    const next = [...new Set([...cur, conn.source])];
+    setBusy("edge");
+    setMessage(null);
+    try {
+      await persistDependsOnIds(conn.target, next);
+      await loadDrafts();
+    } catch (e) {
+      console.error(e);
+      setMessage("연결 생성 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDeleteEdge(edge: Edge) {
+    if (!canEdit) return;
+    const target = byId.get(edge.target);
+    if (!target) return;
+    const cur = Array.isArray(target.dependsOnIds) ? target.dependsOnIds : [];
+    const next = cur.filter((x) => x !== edge.source);
+    setBusy("edge-del");
+    setMessage(null);
+    try {
+      await persistDependsOnIds(edge.target, next);
+      await loadDrafts();
+    } catch (e) {
+      console.error(e);
+      setMessage("연결 삭제 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleNodeDragStop(node: Node) {
+    if (!canEdit) return;
+    const now = Date.now();
+    const last = savingPositionsRef.current.get(node.id) ?? 0;
+    if (now - last < 250) return;
+    savingPositionsRef.current.set(node.id, now);
+    try {
+      await patchProjectTaskDraft(projectId, node.id, { positionX: node.position.x, positionY: node.position.y });
+      await loadDrafts();
+    } catch (e) {
+      console.error(e);
+      setMessage("위치 저장 중 오류가 발생했습니다.");
+    }
+  }
+
+  function computeDagreLayout(): { id: string; x: number; y: number }[] {
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 120 });
+    for (const n of nodes) {
+      g.setNode(n.id, { width: 260, height: 120 });
+    }
+    for (const e of edges) {
+      g.setEdge(e.source, e.target);
+    }
+    dagre.layout(g);
+
+    return nodes.map((n) => {
+      const p = g.node(n.id);
+      if (!p) return { id: n.id, x: n.position.x, y: n.position.y };
+      return { id: n.id, x: p.x - 130, y: p.y - 60 };
+    });
+  }
+
+  async function handleAutoLayoutPersist() {
+    if (!canEdit || drafts.length === 0) return;
+    setBusy("layout");
+    setMessage(null);
+    const layout = computeDagreLayout();
+    try {
+      for (const p of layout) {
+        await patchProjectTaskDraft(projectId, p.id, { positionX: p.x, positionY: p.y });
+      }
+      setMessage("워크플로우를 자동 정렬했습니다.");
+      await loadDrafts();
+    } catch (e) {
+      console.error(e);
+      setMessage("자동 정렬 저장 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleAiReorder() {
+    if (!projectId || !canEdit || drafts.length === 0) return;
+    setBusy("ai-reorder");
+    setMessage(null);
+    setAiSuggestion(null);
+    try {
+      const { res, json } = await postProjectTaskDraftsAiReorder(projectId, { model: selectedModel });
+      if (!res.ok || !json.success || !json.data) {
+        setMessage(json.message || "AI 재정렬에 실패했습니다.");
+        return;
+      }
+      setAiSuggestion({
+        cycleDetected: json.data.cycleDetected,
+        tasks: json.data.tasks,
+        model: json.data.model,
+      });
+      setMessage(json.message || "AI 재정렬 추천을 생성했습니다.");
+    } catch (e) {
+      console.error(e);
+      setMessage("AI 재정렬 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function applyAiSuggestion() {
+    if (!aiSuggestion || !canEdit) return;
+    setBusy("apply-ai");
+    setMessage(null);
+    try {
+      for (const t of aiSuggestion.tasks) {
+        const patch: Record<string, unknown> = { positionX: t.positionX, positionY: t.positionY };
+        if (Array.isArray(t.dependsOnIds)) {
+          const deps = t.dependsOnIds;
+          const titleById = new Map<string, string>();
+          for (const d of drafts) titleById.set(d.id, d.title);
+          const dependsOnTitles = deps.map((id) => titleById.get(id) ?? "").filter(Boolean);
+          patch.dependsOnIds = deps;
+          patch.dependsOn = dependsOnTitles;
+        }
+        await patchProjectTaskDraft(projectId, t.id, patch as never);
+      }
+      setMessage("AI 추천을 적용했습니다.");
+      setAiSuggestion(null);
+      await loadDrafts();
+    } catch (e) {
+      console.error(e);
+      setMessage("AI 추천 적용 중 오류가 발생했습니다.");
     } finally {
       setBusy(null);
     }
@@ -267,6 +520,23 @@ export function TaskDraftPanel({
           <>
             <button
               type="button"
+              data-testid="task-draft-add"
+              disabled={busy === "add"}
+              onClick={() => void handleAddDraft()}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #4f46e5",
+                background: "#eef2ff",
+                fontWeight: 800,
+                cursor: busy === "add" ? "wait" : "pointer",
+                fontSize: 12,
+              }}
+            >
+              {busy === "add" ? "추가 중…" : "+ Task 초안 추가"}
+            </button>
+            <button
+              type="button"
               data-testid="task-draft-regenerate"
               disabled={busy === "regen"}
               onClick={() => void handleRegenerate()}
@@ -282,6 +552,41 @@ export function TaskDraftPanel({
               }}
             >
               {busy === "regen" ? "생성 중…" : "AI로 Task 초안 다시 생성"}
+            </button>
+            <button
+              type="button"
+              data-testid="task-draft-auto-layout"
+              disabled={busy === "layout" || drafts.length === 0}
+              onClick={() => void handleAutoLayoutPersist()}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #7c3aed",
+                background: "#fff",
+                fontWeight: 700,
+                cursor: busy === "layout" ? "wait" : "pointer",
+                fontSize: 12,
+              }}
+            >
+              {busy === "layout" ? "정렬 중…" : "자동 정렬"}
+            </button>
+            <button
+              type="button"
+              data-testid="task-draft-ai-reorder"
+              disabled={busy === "ai-reorder" || drafts.length === 0}
+              onClick={() => void handleAiReorder()}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #0f766e",
+                background: "#0d9488",
+                color: "#fff",
+                fontWeight: 900,
+                cursor: busy === "ai-reorder" ? "wait" : "pointer",
+                fontSize: 12,
+              }}
+            >
+              {busy === "ai-reorder" ? "요청 중…" : "AI로 Workflow 재정렬"}
             </button>
             <button
               type="button"
@@ -321,219 +626,238 @@ export function TaskDraftPanel({
         </p>
       ) : null}
 
-      <p style={{ margin: "0 0 8px 0", fontSize: 13, fontWeight: 700, color: "#4c1d95" }}>
-        DRAFT {drafts.length}개
-        {drafts[0]?.sourceModel ? ` · 모델: ${drafts[0].sourceModel}` : ""}
-      </p>
-
-      {drafts.length === 0 && !loading ? (
-        <p style={{ margin: 0, fontSize: 13, color: "#6b21a8" }}>
-          아직 DRAFT 초안이 없습니다. Project Spec을 확정하면 자동 생성되거나, 위 버튼으로 수동 생성할 수 있습니다.
-        </p>
-      ) : null}
-
-      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
-        {drafts.map((d) => {
-          const exp = expandedId === d.id;
-          const b = busy?.startsWith(`confirm-${d.id}`) || busy === `del-${d.id}`;
-          return (
-            <li
-              key={d.id}
-              data-testid={`task-draft-row-${d.id}`}
-              style={{
-                borderRadius: 10,
-                border: "1px solid #ddd6fe",
-                padding: 12,
-                background: "#fff",
-              }}
-            >
-              <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ flex: "1 1 200px" }}>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>
-                    Spec v{d.specVersionNumber} · {formatTestedAt(d.createdAt)} · 우선순위 {d.priority}
-                  </div>
-                  <strong style={{ fontSize: 14, color: "#1e1b4b" }}>{d.title}</strong>
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedId(exp ? null : d.id)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #cbd5e1",
-                      background: "#f8fafc",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {exp ? "접기" : "Task 초안 보기"}
-                  </button>
-                  {canEdit ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => openEdit(d)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #a78bfa",
-                          background: "#fff",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        수정
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`task-draft-confirm-one-${d.id}`}
-                        disabled={b}
-                        onClick={() => void handleConfirmOne(d.id)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #15803d",
-                          background: "#dcfce7",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          cursor: b ? "wait" : "pointer",
-                        }}
-                      >
-                        확정
-                      </button>
-                      <button
-                        type="button"
-                        disabled={b}
-                        onClick={() => void handleDelete(d.id)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #b91c1c",
-                          background: "#fef2f2",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: b ? "wait" : "pointer",
-                        }}
-                      >
-                        삭제
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-              {exp ? (
-                <div style={{ marginTop: 10, fontSize: 13, color: "#334155", lineHeight: 1.5 }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <span style={{ fontWeight: 800 }}>설명</span>
-                    <div style={{ whiteSpace: "pre-wrap" }}>{d.description || "(없음)"}</div>
-                  </div>
-                  {d.dependsOn.length > 0 ? (
-                    <div style={{ marginBottom: 8 }}>
-                      <span style={{ fontWeight: 800 }}>선행(Task 제목)</span>
-                      <ul style={{ margin: "4px 0 0 18px" }}>
-                        {d.dependsOn.map((t, i) => (
-                          <li key={i}>{t}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {d.acceptanceCriteria.length > 0 ? (
-                    <div>
-                      <span style={{ fontWeight: 800 }}>수용 기준</span>
-                      <ul style={{ margin: "4px 0 0 18px" }}>
-                        {d.acceptanceCriteria.map((t, i) => (
-                          <li key={i}>{t}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-
-      {editing ? (
+      {aiSuggestion ? (
         <div
+          data-testid="task-draft-ai-suggestion-banner"
           style={{
-            marginTop: 14,
-            padding: 12,
+            margin: "0 0 10px 0",
+            padding: 10,
             borderRadius: 10,
-            border: "2px solid #8b5cf6",
-            background: "#fff",
+            border: "1px solid #99f6e4",
+            background: "#f0fdfa",
+            color: "#134e4a",
+            fontSize: 13,
+            lineHeight: 1.5,
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>초안 수정</div>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>제목</label>
-          <input
-            value={editTitle}
-            onChange={(e) => setEditTitle(e.target.value)}
-            style={{ width: "100%", boxSizing: "border-box", padding: 8, marginBottom: 8, borderRadius: 6 }}
-          />
-          <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>설명</label>
-          <textarea
-            value={editDescription}
-            onChange={(e) => setEditDescription(e.target.value)}
-            rows={4}
-            style={{ width: "100%", boxSizing: "border-box", padding: 8, marginBottom: 8, borderRadius: 6 }}
-          />
-          <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>우선순위</label>
-          <select
-            value={editPriority}
-            onChange={(e) => setEditPriority(e.target.value)}
-            style={{ padding: 6, marginBottom: 8, borderRadius: 6 }}
-          >
-            <option value="HIGH">HIGH</option>
-            <option value="MEDIUM">MEDIUM</option>
-            <option value="LOW">LOW</option>
-          </select>
-          <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
-            수용 기준 (줄바꿈으로 구분)
-          </label>
-          <textarea
-            value={editCriteria}
-            onChange={(e) => setEditCriteria(e.target.value)}
-            rows={4}
-            style={{ width: "100%", boxSizing: "border-box", padding: 8, marginBottom: 8, borderRadius: 6 }}
-          />
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>
+            AI 추천 준비됨 {aiSuggestion.cycleDetected ? "(순환 감지: 의존성 변경 제외)" : ""}
+          </div>
+          <div style={{ marginBottom: 8, fontSize: 12, color: "#0f766e" }}>모델: {aiSuggestion.model}</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
-              disabled={busy === "save-edit"}
-              onClick={() => void saveEdit()}
+              disabled={busy === "apply-ai"}
+              onClick={() => void applyAiSuggestion()}
               style={{
-                padding: "8px 14px",
+                padding: "8px 12px",
                 borderRadius: 8,
-                border: "1px solid #7c3aed",
-                background: "#7c3aed",
+                border: "1px solid #0f766e",
+                background: "#0d9488",
                 color: "#fff",
-                fontWeight: 700,
-                cursor: busy === "save-edit" ? "wait" : "pointer",
+                fontWeight: 900,
+                cursor: busy === "apply-ai" ? "wait" : "pointer",
+                fontSize: 12,
               }}
             >
-              저장
+              {busy === "apply-ai" ? "적용 중…" : "적용"}
             </button>
             <button
               type="button"
-              onClick={() => setEditing(null)}
+              onClick={() => setAiSuggestion(null)}
               style={{
-                padding: "8px 14px",
+                padding: "8px 12px",
                 borderRadius: 8,
                 border: "1px solid #cbd5e1",
-                background: "#f1f5f9",
-                fontWeight: 600,
+                background: "#fff",
+                fontWeight: 700,
                 cursor: "pointer",
+                fontSize: 12,
               }}
             >
-              취소
+              무시
             </button>
           </div>
         </div>
       ) : null}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12, alignItems: "start" }}>
+        <div
+          data-testid="task-draft-workflow-canvas"
+          style={{
+            borderRadius: 12,
+            border: "1px solid #ddd6fe",
+            background: "#fff",
+            height: 520,
+            overflow: "hidden",
+          }}
+        >
+          {drafts.length === 0 && !loading ? (
+            <div style={{ padding: 14, fontSize: 13, color: "#6b21b6" }}>
+              아직 DRAFT 초안이 없습니다. Project Spec을 확정하면 자동 생성되거나, 위 버튼으로 수동 생성할 수 있습니다.
+            </div>
+          ) : (
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onConnect={(c) => void handleConnect(c)}
+              onNodeClick={(_, n) => {
+                setSelectedId(n.id);
+                const d = byId.get(n.id);
+                if (d) openEdit(d);
+              }}
+              onNodeDragStop={(_, n) => void handleNodeDragStop(n)}
+              onEdgeClick={(_, e) => void handleDeleteEdge(e)}
+              fitView
+            >
+              <Background />
+              <MiniMap />
+              <Controls />
+            </ReactFlow>
+          )}
+        </div>
+
+        <aside
+          data-testid="task-draft-detail-panel"
+          style={{
+            borderRadius: 12,
+            border: "1px solid #ddd6fe",
+            background: "#fff",
+            padding: 12,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <div style={{ fontWeight: 900, fontSize: 14, color: "#1e1b4b" }}>Detail</div>
+            {editing ? <div style={{ fontSize: 12, color: "#64748b" }}>Spec v{editing.specVersionNumber}</div> : null}
+          </div>
+
+          {!editing ? (
+            <p style={{ margin: "10px 0 0 0", fontSize: 13, color: "#64748b" }}>
+              노드를 클릭하면 세부 정보를 수정할 수 있습니다. 연결(선행)은 노드에서 드래그로 만들고, 엣지를 클릭하면 삭제됩니다.
+            </p>
+          ) : (
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>제목</span>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>우선순위</span>
+                <select
+                  value={editPriority}
+                  onChange={(e) => setEditPriority(e.target.value)}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+                >
+                  <option value="HIGH">HIGH</option>
+                  <option value="MEDIUM">MEDIUM</option>
+                  <option value="LOW">LOW</option>
+                </select>
+              </label>
+
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>설명</span>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={5}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>수용 기준(줄바꿈 = 항목)</span>
+                <textarea
+                  value={editCriteria}
+                  onChange={(e) => setEditCriteria(e.target.value)}
+                  rows={6}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" }}
+                />
+              </label>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button
+                  type="button"
+                  disabled={busy === "save-edit"}
+                  onClick={() => void saveEdit()}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #7c3aed",
+                    background: "#7c3aed",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: busy === "save-edit" ? "wait" : "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  {busy === "save-edit" ? "저장 중…" : "저장"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  닫기
+                </button>
+                {canEdit ? (
+                  <>
+                    <button
+                      type="button"
+                      data-testid={`task-draft-confirm-${editing.id}`}
+                      disabled={busy?.startsWith("confirm-") || busy === `del-${editing.id}`}
+                      onClick={() => void handleConfirmOne(editing.id)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #15803d",
+                        background: "#16a34a",
+                        color: "#fff",
+                        fontWeight: 900,
+                        cursor: busy?.startsWith("confirm-") ? "wait" : "pointer",
+                        fontSize: 12,
+                      }}
+                    >
+                      확정→Task
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy?.startsWith("confirm-") || busy === `del-${editing.id}`}
+                      onClick={() => void handleDelete(editing.id)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #dc2626",
+                        background: "#fff",
+                        color: "#dc2626",
+                        fontWeight: 900,
+                        cursor: busy === `del-${editing.id}` ? "wait" : "pointer",
+                        fontSize: 12,
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </>
+                ) : null}
+              </div>
+
+              <div style={{ fontSize: 12, color: "#64748b" }}>updated: {formatTestedAt(editing.updatedAt)}</div>
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
