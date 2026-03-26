@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { buildWorkspacePromptText } from "@/lib/project-spec/buildWorkspacePromptText";
 import { completeWorkspaceSpecMarkdown } from "@/lib/project-spec/generateSpecContextWithOpenAI";
+import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
@@ -280,7 +281,7 @@ type AiRequestSaveContext = {
 
 type PostBody =
   | { action: "regeneratePrompt" }
-  | { action: "aiRequest"; promptId?: string; saveContext?: AiRequestSaveContext }
+  | { action: "aiRequest"; promptId?: string; saveContext?: AiRequestSaveContext; model?: string }
   | { action: "confirm"; responseId: string };
 
 export async function POST(
@@ -373,6 +374,18 @@ export async function POST(
     }
 
     if (body.action === "aiRequest") {
+      let workspaceOpenAiModel: string | null = null;
+      const rawModel = typeof body.model === "string" ? body.model.trim() : "";
+      if (rawModel) {
+        if (!isAllowedSpecWorkspaceModel(rawModel)) {
+          return NextResponse.json(
+            { success: false, message: "지원하지 않는 모델입니다. gpt-4o, gpt-4.1, gpt-4o-mini 중에서 선택하세요." },
+            { status: 400 }
+          );
+        }
+        workspaceOpenAiModel = rawModel;
+      }
+
       let projectFull = await prisma.project.findUnique({ where: { id } });
       if (!projectFull) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
@@ -509,7 +522,7 @@ export async function POST(
       let markdown: string;
       let modelUsed: string;
       try {
-        const out = await completeWorkspaceSpecMarkdown(promptRow.promptText);
+        const out = await completeWorkspaceSpecMarkdown(promptRow.promptText, workspaceOpenAiModel);
         markdown = out.markdown;
         modelUsed = out.model;
       } catch (e) {

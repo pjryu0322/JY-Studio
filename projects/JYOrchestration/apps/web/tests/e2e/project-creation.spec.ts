@@ -66,6 +66,8 @@ test.describe("E2E project", () => {
     // Project Spec 정의 워크스페이스: 생성 프롬프트 미리보기 + 복사
     await expect(page.getByTestId("project-spec-workspace")).toBeVisible();
     await expect(page.getByTestId("spec-workspace-prompt-preview")).toBeVisible();
+    await page.getByTestId("spec-workspace-toggle-prompt").click();
+    await expect(page.getByTestId("spec-workspace-prompt-preview")).toContainText("프로젝트명");
 
     // 실행 관측은 Task 관리/수행 영역에서만 보입니다.
     await expect(page.locator("#guided-flow-upload").getByTestId("execution-observability-panel")).toHaveCount(0);

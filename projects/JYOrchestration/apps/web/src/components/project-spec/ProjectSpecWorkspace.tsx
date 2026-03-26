@@ -11,6 +11,20 @@ import {
 } from "@/components/project-spec/api";
 import type { Project, ProjectSpecResponseRecord } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
+import { LabelTag } from "@/components/ui/LabelTag";
+import { parsePromptToSections, type ParsedPromptSections } from "@/lib/project-spec/parsePromptToSections";
+import { diffText } from "@/lib/diffText";
+import {
+  parseMarkdownSections,
+  mergeSectionBodiesByHeading,
+  bodyForHeading,
+  MARKDOWN_PREAMBLE_SECTION_KEY,
+} from "@/lib/project-spec/parseMarkdownSections";
+import {
+  DEFAULT_SPEC_WORKSPACE_AI_MODEL,
+  SPEC_WORKSPACE_AI_MODELS,
+  type SpecWorkspaceAiModelId,
+} from "@/lib/project-spec/specWorkspaceModels";
 
 /** 자동 초안 API 중복 호출 방지 (동시에 하나만) */
 const specAutoDraftInFlightByProject = new Map<string, boolean>();
@@ -98,6 +112,93 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
+function PromptBulletCard({ title, items }: { title: string; items: string[] }) {
+  if (!items.length) {
+    return null;
+  }
+  return (
+    <div
+      style={{
+        border: "1px solid #e2e8f0",
+        borderRadius: 8,
+        padding: 12,
+        background: "#fff",
+      }}
+    >
+      <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{title}</h4>
+      <ul style={{ margin: 0, paddingLeft: 20, color: "#334155", fontSize: 13, lineHeight: 1.5 }}>
+        {items.map((t, i) => (
+          <li key={i}>{t}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ProjectInfoPromptCard({ info }: { info: ParsedPromptSections["projectInfo"] }) {
+  const rows = [
+    ["프로젝트명", info.name],
+    ["설명", info.description],
+    ["유형", info.projectType],
+  ].filter(([, v]) => Boolean(v && String(v).trim()));
+  if (!rows.length) {
+    return null;
+  }
+  return (
+    <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, background: "#fff" }}>
+      <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700 }}>프로젝트 정보</h4>
+      <dl style={{ margin: 0, display: "grid", gap: 8, fontSize: 13 }}>
+        {rows.map(([k, v]) => (
+          <div key={String(k)}>
+            <dt style={{ fontWeight: 700, color: "#64748b", fontSize: 12 }}>{k}</dt>
+            <dd style={{ margin: "4px 0 0 0", color: "#0f172a" }}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function DiffUnifiedBlock({ a, b }: { a: string; b: string }) {
+  const lines = useMemo(() => diffText(a, b), [a, b]);
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        border: "1px dashed #cbd5e1",
+        borderRadius: 6,
+        padding: 8,
+        background: "#f8fafc",
+        fontSize: 12,
+        fontFamily: "ui-monospace, monospace",
+        overflow: "auto",
+        maxHeight: 220,
+      }}
+    >
+      {lines.map((l, i) => (
+        <div
+          key={i}
+          style={{
+            whiteSpace: "pre-wrap",
+            background: l.kind === "add" ? "#dcfce7" : l.kind === "del" ? "#fee2e2" : "transparent",
+            color: l.kind === "add" ? "#166534" : l.kind === "del" ? "#991b1b" : "#475569",
+          }}
+        >
+          {l.kind === "add" ? "+ " : l.kind === "del" ? "- " : "  "}
+          {l.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function sectionTitleForCompare(key: string): string {
+  if (key === MARKDOWN_PREAMBLE_SECTION_KEY) {
+    return "(머리말 · ## 없음)";
+  }
+  return key;
+}
+
 export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpdated }: ProjectSpecWorkspaceProps) {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
@@ -108,6 +209,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [message, setMessage] = useState<string | null>(null);
   const [copyOk, setCopyOk] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [promptPanelOpen, setPromptPanelOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   const [aiBadges, setAiBadges] = useState<Record<AiFieldKey, boolean>>(emptyAiBadges);
   const [generatingContext, setGeneratingContext] = useState(false);
   const isGeneratingRef = useRef(false);
@@ -189,6 +293,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   }, [form, project, projectId]);
 
   const generatedPrompt = useMemo(() => buildWorkspacePromptText(draftProject), [draftProject]);
+  const parsedPrompt = useMemo(() => parsePromptToSections(generatedPrompt), [generatedPrompt]);
 
   const latestSavedVersion = workspace?.prompts?.[0]?.version ?? null;
   const confirmedId = workspace?.project.confirmedSpecResponseId ?? project?.confirmedSpecResponseId ?? null;
@@ -270,6 +375,18 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       specScopeOut: ctx.outOfScope,
       specTargetUsers: ctx.targetUsers,
       specSuccessCriteria: ctx.successCriteria,
+    });
+  }
+
+  function toggleCompareId(id: string) {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((x) => x !== id);
+      }
+      if (prev.length < 2) {
+        return [...prev, id];
+      }
+      return [prev[0], id];
     });
   }
 
@@ -524,6 +641,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "aiRequest",
+        model: selectedModel,
         saveContext: {
           name: form.name.trim(),
           description: form.description.trim() ? form.description : null,
@@ -598,9 +716,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     return null;
   }
 
+  const compareLeft = compareIds[0] ? workspace?.responses.find((r) => r.id === compareIds[0]) : undefined;
+  const compareRight = compareIds[1] ? workspace?.responses.find((r) => r.id === compareIds[1]) : undefined;
+
   return (
     <section
-      data-ui-label="[F-1-3] Function — Project Spec Definition Workspace"
       data-testid="project-spec-workspace"
       style={{
         border: "1px solid #cbd5e1",
@@ -610,7 +730,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         background: "#fafbff",
       }}
     >
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Project Spec 정의 워크스페이스</h2>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <LabelTag label="[F-1-3] Function — Project Spec Definition Workspace" />
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Project Spec 정의 워크스페이스</h2>
+      </div>
       <p style={{ margin: "0 0 16px 0", color: "#475569", lineHeight: 1.55, fontSize: 14 }}>
         프로젝트 정보를 다듬고, 생성된 프롬프트로 AI와 상호작용한 뒤, 응답 중 하나를 확정해 공식 Project Spec으로 저장합니다.
       </p>
@@ -624,7 +747,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
       {/* [A] 프로젝트 정보 */}
       <div
-        data-ui-label="[F-1-3-1] Workspace — Project Context (Editable)"
         style={{
           marginBottom: 20,
           padding: 16,
@@ -633,7 +755,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#fff",
         }}
       >
-        <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 12px 0" }}>프로젝트 정보</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <LabelTag label="[F-1-3-1] Workspace — Project Context (Editable)" />
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>프로젝트 정보</h3>
+        </div>
 
         {generatingContext ? (
           <p
@@ -660,8 +785,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         ) : null}
 
         <div style={{ display: "grid", gap: 12 }}>
-          <div data-ui-label="[F-1-3-1a] Workspace — Basic Project Fields">
-            <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 700, color: "#64748b" }}>기본 입력</p>
+          <div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <LabelTag label="[F-1-3-1a] Workspace — Basic Project Fields" />
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>기본 입력</p>
+            </div>
             <div style={{ display: "grid", gap: 12 }}>
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>프로젝트명</span>
@@ -699,8 +827,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             </div>
           </div>
 
-          <div data-ui-label="[F-1-3-1b] Workspace — AI Draft Actions">
-            <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 초안 생성</p>
+          <div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <LabelTag label="[F-1-3-1b] Workspace — AI Draft Actions" />
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 초안 생성</p>
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <button
                 type="button"
@@ -743,8 +874,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             </div>
           </div>
 
-          <div data-ui-label="[F-1-3-1c] Workspace — AI Draft Fields (Editable)">
-            <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 생성 결과 · 수정 가능</p>
+          <div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <LabelTag label="[F-1-3-1c] Workspace — AI Draft Fields (Editable)" />
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 생성 결과 · 수정 가능</p>
+            </div>
             <div style={{ display: "grid", gap: 12 }}>
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -927,7 +1061,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
       {/* [B] Prompt Builder */}
       <div
-        data-ui-label="[F-1-3-2] Workspace — Generated Prompt & AI Actions"
         style={{
           marginBottom: 20,
           padding: 16,
@@ -936,16 +1069,56 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#fff",
         }}
       >
-        <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 8px 0" }}>Project Spec Prompt (자동 생성)</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <LabelTag label="[F-1-3-2] Workspace — Generated Prompt & AI Actions" />
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Project Spec Prompt (자동 생성)</h3>
+        </div>
+
+        <label style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>AI 모델</span>
+          <select
+            data-testid="spec-workspace-ai-model"
+            value={selectedModel}
+            disabled={!canEdit || actionBusy === "ai-spec" || generatingContext}
+            onChange={(e) => setSelectedModel(e.target.value as SpecWorkspaceAiModelId)}
+            style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", minWidth: 160 }}
+          >
+            {SPEC_WORKSPACE_AI_MODELS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <p style={{ margin: "0 0 6px 0", fontSize: 13, color: "#64748b" }}>
           미리보기는 서버와 동일한 <code style={{ fontSize: 12 }}>buildWorkspacePromptText</code> 규칙으로 현재 폼 값을
           반영합니다. 저장된 프롬프트 버전:{" "}
           {latestSavedVersion != null ? <strong>v{latestSavedVersion}</strong> : "없음"}
         </p>
-        <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b" }}>
+        <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b" }}>
           「현재 값으로 프롬프트 갱신」은 DB에 반영한 뒤 새 프롬프트 버전만 만듭니다(OpenAI 호출 없음). 「AI로 Project Spec
-          생성」은 저장 → 최신 프롬프트 작성 → OpenAI 호출까지 한 번에 진행합니다.
+          생성」은 저장 → 최신 프롬프트 작성 → 선택한 모델로 OpenAI 호출까지 한 번에 진행합니다.
         </p>
+
+        <button
+          type="button"
+          data-testid="spec-workspace-toggle-prompt"
+          onClick={() => setPromptPanelOpen((o) => !o)}
+          style={{
+            marginBottom: 12,
+            padding: "10px 16px",
+            borderRadius: 8,
+            border: "1px solid #64748b",
+            background: "#f8fafc",
+            fontWeight: 700,
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          {promptPanelOpen ? "닫기" : "Project Spec Prompt 보기"}
+        </button>
+
         <div
           data-testid="spec-workspace-prompt-preview"
           style={{
@@ -953,22 +1126,27 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             borderRadius: 8,
             padding: 14,
             background: "#f8fafc",
-            maxHeight: 280,
-            overflow: "auto",
             marginBottom: 12,
+            minHeight: 48,
           }}
         >
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              margin: 0,
-              fontSize: 12,
-              lineHeight: 1.5,
-              fontFamily: "ui-monospace, monospace",
-            }}
-          >
-            {generatedPrompt}
-          </pre>
+          {!promptPanelOpen ? (
+            <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>
+              구조화된 프롬프트 미리보기는 접혀 있습니다. 「Project Spec Prompt 보기」를 눌러 카드 형태로 확인하세요.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: 12, maxHeight: 420, overflow: "auto" }}>
+              <ProjectInfoPromptCard info={parsedPrompt.projectInfo} />
+              <PromptBulletCard title="핵심 목표" items={parsedPrompt.coreGoals} />
+              <PromptBulletCard title="In Scope" items={parsedPrompt.inScope} />
+              <PromptBulletCard title="Out Of Scope" items={parsedPrompt.outOfScope} />
+              <PromptBulletCard title="대상 사용자" items={parsedPrompt.targetUsers} />
+              <PromptBulletCard title="성공 기준" items={parsedPrompt.successCriteria} />
+              {parsedPrompt.extraBlocks.map((blk, idx) => (
+                <PromptBulletCard key={`${blk.title}-${idx}`} title={blk.title} items={blk.bullets} />
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
           <button
@@ -1049,9 +1227,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         ) : null}
       </div>
 
-      {/* [C] AI 응답 목록 */}
+      {/* [C] AI 응답 목록 · 비교 */}
       <div
-        data-ui-label="[F-1-3-3] Workspace — AI Response List"
         style={{
           marginBottom: 20,
           padding: 16,
@@ -1060,7 +1237,150 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#fff",
         }}
       >
-        <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 12px 0" }}>AI 응답</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <LabelTag label="[F-1-3-3] Workspace — AI Response List" />
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>AI 응답</h3>
+        </div>
+        <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b" }}>
+          응답 두 개를 「비교」로 선택하면 섹션별 나란히 보기와 줄 단위 diff가 표시됩니다.
+        </p>
+
+        {compareLeft && compareRight ? (
+          <div
+            data-testid="spec-workspace-compare-panel"
+            style={{
+              marginBottom: 16,
+              padding: 14,
+              borderRadius: 10,
+              border: "2px solid #0ea5e9",
+              background: "#f0f9ff",
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+              <strong style={{ fontSize: 15 }}>응답 비교</strong>
+              <button
+                type="button"
+                data-testid="spec-workspace-compare-clear"
+                onClick={() => setCompareIds([])}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #0369a1",
+                  background: "#fff",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                비교 해제
+              </button>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+                marginBottom: 14,
+                fontSize: 12,
+                color: "#0c4a6e",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 A</div>
+                <div>모델: {compareLeft.model}</div>
+                <div>시간: {formatTestedAt(compareLeft.createdAt)}</div>
+                <div>
+                  ID: <code>{compareLeft.id.slice(0, 10)}…</code>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 B</div>
+                <div>모델: {compareRight.model}</div>
+                <div>시간: {formatTestedAt(compareRight.createdAt)}</div>
+                <div>
+                  ID: <code>{compareRight.id.slice(0, 10)}…</code>
+                </div>
+              </div>
+            </div>
+            {(() => {
+              const secL = parseMarkdownSections(compareLeft.responseMarkdown);
+              const secR = parseMarkdownSections(compareRight.responseMarkdown);
+              const keys = mergeSectionBodiesByHeading(secL, secR).sort((x, y) => {
+                if (x === MARKDOWN_PREAMBLE_SECTION_KEY) {
+                  return -1;
+                }
+                if (y === MARKDOWN_PREAMBLE_SECTION_KEY) {
+                  return 1;
+                }
+                return x.localeCompare(y, "ko");
+              });
+              return keys.map((key) => {
+                const bodyA = bodyForHeading(secL, key);
+                const bodyB = bodyForHeading(secR, key);
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      marginBottom: 14,
+                      padding: 10,
+                      borderRadius: 8,
+                      border: "1px solid #bae6fd",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, marginBottom: 8, fontSize: 14 }}>{sectionTitleForCompare(key)}</div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 10,
+                        alignItems: "start",
+                      }}
+                    >
+                      <pre
+                        style={{
+                          margin: 0,
+                          fontSize: 11,
+                          lineHeight: 1.45,
+                          whiteSpace: "pre-wrap",
+                          fontFamily: "ui-monospace, monospace",
+                          color: "#334155",
+                          maxHeight: 200,
+                          overflow: "auto",
+                          padding: 8,
+                          background: "#f8fafc",
+                          borderRadius: 6,
+                        }}
+                      >
+                        {bodyA || "(없음)"}
+                      </pre>
+                      <pre
+                        style={{
+                          margin: 0,
+                          fontSize: 11,
+                          lineHeight: 1.45,
+                          whiteSpace: "pre-wrap",
+                          fontFamily: "ui-monospace, monospace",
+                          color: "#334155",
+                          maxHeight: 200,
+                          overflow: "auto",
+                          padding: 8,
+                          background: "#f8fafc",
+                          borderRadius: 6,
+                        }}
+                      >
+                        {bodyB || "(없음)"}
+                      </pre>
+                    </div>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: "#64748b", margin: "10px 0 4px" }}>줄 단위 diff</p>
+                    <DiffUnifiedBlock a={bodyA} b={bodyB} />
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        ) : null}
+
         {!workspace?.responses?.length ? (
           <p style={{ color: "#64748b", margin: 0 }}>
             아직 응답이 없습니다. Spec 필드를 채운 뒤 「AI로 Project Spec 생성」을 실행하세요.
@@ -1070,19 +1390,23 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             {workspace.responses.map((r) => {
               const selected = confirmedId === r.id;
               const expanded = expandedId === r.id;
+              const inCompare = compareIds.includes(r.id);
               return (
                 <li
                   key={r.id}
                   data-testid={`spec-workspace-response-${r.id}`}
                   style={{
                     borderRadius: 10,
-                    border: selected ? "2px solid #2563eb" : "1px solid #e2e8f0",
+                    border: inCompare ? "2px solid #0ea5e9" : selected ? "2px solid #2563eb" : "1px solid #e2e8f0",
                     padding: 12,
-                    background: selected ? "#eff6ff" : "#fafafa",
+                    background: inCompare ? "#e0f2fe" : selected ? "#eff6ff" : "#fafafa",
                   }}
                 >
-                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontSize: 13 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                    <div style={{ fontSize: 13, flex: "1 1 200px" }}>
+                      <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: "#64748b", marginBottom: 4 }}>
+                        ID {r.id.slice(0, 12)}…
+                      </div>
                       <strong>{formatTestedAt(r.createdAt)}</strong>
                       <span style={{ color: "#64748b", marginLeft: 8 }}>
                         {r.provider} / {r.model}
@@ -1091,7 +1415,26 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                         <span style={{ marginLeft: 8, color: "#1d4ed8", fontWeight: 800 }}>확정됨</span>
                       ) : null}
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                      <label
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          userSelect: "none",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={inCompare}
+                          onChange={() => toggleCompareId(r.id)}
+                          aria-label={`비교에 포함: ${r.id.slice(0, 8)}`}
+                        />
+                        비교
+                      </label>
                       <button
                         type="button"
                         onClick={() => setExpandedId(expanded ? null : r.id)}
@@ -1105,7 +1448,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                           fontWeight: 600,
                         }}
                       >
-                        {expanded ? "접기" : "미리보기"}
+                        {expanded ? "접기" : "상세"}
                       </button>
                       {canEdit ? (
                         <button
@@ -1114,17 +1457,18 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                           onClick={() => void handleConfirm(r)}
                           disabled={actionBusy?.startsWith("confirm")}
                           style={{
-                            padding: "6px 12px",
+                            padding: "10px 16px",
                             borderRadius: 8,
-                            border: "1px solid #2563eb",
-                            background: "#2563eb",
+                            border: "2px solid #1d4ed8",
+                            background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
                             color: "#fff",
                             cursor: actionBusy?.startsWith("confirm") ? "wait" : "pointer",
-                            fontSize: 12,
-                            fontWeight: 700,
+                            fontSize: 13,
+                            fontWeight: 800,
+                            boxShadow: "0 2px 8px rgba(37,99,235,0.35)",
                           }}
                         >
-                          {actionBusy === `confirm-${r.id}` ? "…" : "확정"}
+                          {actionBusy === `confirm-${r.id}` ? "…" : "이 응답으로 확정"}
                         </button>
                       ) : null}
                     </div>
@@ -1156,7 +1500,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
       {/* [D] 확정된 Project Spec */}
       <div
-        data-ui-label="[F-1-3-4] Workspace — Confirmed Project Spec"
         style={{
           padding: 16,
           borderRadius: 10,
@@ -1164,7 +1507,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#f0fdf4",
         }}
       >
-        <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 8px 0" }}>확정된 Project Spec</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <LabelTag label="[F-1-3-4] Workspace — Confirmed Project Spec" />
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>확정된 Project Spec</h3>
+        </div>
         {workspace?.project.confirmedSpecMarkdown ? (
           <>
             <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#166534" }}>

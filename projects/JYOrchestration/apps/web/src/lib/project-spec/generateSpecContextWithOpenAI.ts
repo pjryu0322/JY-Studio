@@ -120,13 +120,20 @@ export function specContextToFormFields(r: SpecContextGenerateResult): {
  * 워크스페이스에 저장된 프롬프트 텍스트를 그대로 사용자 메시지로 전달해
  * Project Spec 마크다운 본문만 생성한다.
  */
-export async function completeWorkspaceSpecMarkdown(promptText: string): Promise<{ markdown: string; model: string }> {
+const WORKSPACE_SPEC_DEFAULT_MODEL = "gpt-4o";
+
+export async function completeWorkspaceSpecMarkdown(
+  promptText: string,
+  modelFromRequest?: string | null
+): Promise<{ markdown: string; model: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY_NOT_CONFIGURED");
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const trimmed = modelFromRequest?.trim();
+  const model =
+    trimmed && trimmed.length > 0 ? trimmed : process.env.OPENAI_MODEL?.trim() || WORKSPACE_SPEC_DEFAULT_MODEL;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",

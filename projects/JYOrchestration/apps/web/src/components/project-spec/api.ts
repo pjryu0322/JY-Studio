@@ -162,7 +162,7 @@ export async function postSpecWorkspaceAction(
   projectId: string,
   body:
     | { action: "regeneratePrompt" }
-    | { action: "aiRequest"; promptId?: string; saveContext?: SpecWorkspaceAiRequestSaveContext }
+    | { action: "aiRequest"; promptId?: string; saveContext?: SpecWorkspaceAiRequestSaveContext; model?: string }
     | { action: "confirm"; responseId: string }
 ) {
   const encoded = encodeURIComponent(projectId);
