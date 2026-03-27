@@ -29,7 +29,6 @@ import {
 import ReactFlow, {
   Background,
   Controls,
-  MiniMap,
   useReactFlow,
   useStore,
   type Connection,
@@ -129,6 +128,31 @@ function uniqueStrings(xs: string[]): string[] {
     out.push(v);
   }
   return out;
+}
+
+const EXECUTION_STAGE_ORDER = ["Planning", "Design", "Build", "Test", "Deploy"] as const;
+type ExecutionStage = (typeof EXECUTION_STAGE_ORDER)[number];
+
+function stageLabel(stage: ExecutionStage): string {
+  const labels: Record<ExecutionStage, string> = {
+    Planning: "기획",
+    Design: "설계",
+    Build: "개발",
+    Test: "테스트",
+    Deploy: "배포",
+  };
+  return labels[stage];
+}
+
+function toExecutionStage(raw: string | null | undefined): ExecutionStage | null {
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (!v) return null;
+  if (v === "planning" || v === "plan" || v === "기획") return "Planning";
+  if (v === "design" || v === "설계" || v === "review") return "Design";
+  if (v === "build" || v === "개발" || v === "implementation") return "Build";
+  if (v === "test" || v === "qa" || v === "테스트") return "Test";
+  if (v === "deploy" || v === "apply" || v === "release" || v === "배포") return "Deploy";
+  return null;
 }
 
 type CycleHit = { edge: { source: string; target: string }; cyclePath: string[] } | null;
@@ -243,6 +267,7 @@ export function TaskDraftPanel({
   const savingPositionsRef = useRef(new Map<string, number>());
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [executionPreviewOpen, setExecutionPreviewOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"stage" | "graph">("stage");
   const autoWireRanRef = useRef(false);
   const initialCanvasFitRef = useRef(false);
   const [canvasFitRevision, setCanvasFitRevision] = useState(0);
@@ -483,6 +508,50 @@ export function TaskDraftPanel({
     return computeExecutionLevels({ draftIds, depsById, confirmedIds });
   }, [confirmedIds, depsById, drafts]);
 
+  const inferredStageByDraftId = useMemo(() => {
+    const m = new Map<string, ExecutionStage>();
+    for (let i = 0; i < executionLevels.length; i++) {
+      const stage = EXECUTION_STAGE_ORDER[Math.min(i, EXECUTION_STAGE_ORDER.length - 1)];
+      for (const draftId of executionLevels[i] ?? []) {
+        m.set(draftId, stage);
+      }
+    }
+    return m;
+  }, [executionLevels]);
+
+  const groupedByExecutionStage = useMemo(() => {
+    const groups = new Map<ExecutionStage, TaskDraftDto[]>();
+    for (const s of EXECUTION_STAGE_ORDER) groups.set(s, []);
+    for (const d of drafts) {
+      const explicit = toExecutionStage(d.stage);
+      const inferred = inferredStageByDraftId.get(d.id);
+      const st = explicit ?? inferred ?? "Build";
+      groups.get(st)!.push(d);
+    }
+    for (const s of EXECUTION_STAGE_ORDER) {
+      groups.get(s)!.sort((a, b) => {
+        if (a.status !== b.status) {
+          if (a.status === "CONFIRMED") return -1;
+          if (b.status === "CONFIRMED") return 1;
+        }
+        const px = (a.positionX ?? 0) - (b.positionX ?? 0);
+        if (px !== 0) return px;
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+    }
+    return groups;
+  }, [drafts, inferredStageByDraftId]);
+
+  const flowPathText = useMemo(() => EXECUTION_STAGE_ORDER.map(stageLabel).join(" → "), []);
+
+  const activeStage = useMemo(() => {
+    for (const st of EXECUTION_STAGE_ORDER) {
+      const rows = groupedByExecutionStage.get(st) ?? [];
+      if (rows.some((d) => d.status !== "CONFIRMED")) return st;
+    }
+    return EXECUTION_STAGE_ORDER[EXECUTION_STAGE_ORDER.length - 1];
+  }, [groupedByExecutionStage]);
+
   const detailDependsTitles = useMemo(() => {
     if (!editing) return [];
     return (editing.dependsOnIds ?? []).map((id) => byId.get(id)?.title ?? id.slice(0, 8));
@@ -536,6 +605,32 @@ export function TaskDraftPanel({
     }
     return out;
   }, [byId, drafts]);
+
+  async function handleMoveInStage(draftId: string, direction: "up" | "down") {
+    if (!canEdit) return;
+    const target = byId.get(draftId);
+    if (!target) return;
+    const stage = toExecutionStage(target.stage) ?? inferredStageByDraftId.get(draftId) ?? "Build";
+    const rows = [...(groupedByExecutionStage.get(stage) ?? [])];
+    const idx = rows.findIndex((d) => d.id === draftId);
+    if (idx < 0) return;
+    const nextIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (nextIdx < 0 || nextIdx >= rows.length) return;
+    const a = rows[idx];
+    const b = rows[nextIdx];
+    setBusy("reorder");
+    setMessage(null);
+    try {
+      await patchProjectTaskDraft(projectId, a.id, { positionX: b.positionX ?? 0 });
+      await patchProjectTaskDraft(projectId, b.id, { positionX: a.positionX ?? 0 });
+      await loadDrafts({ clearMessage: false });
+    } catch (e) {
+      console.error(e);
+      setMessage("순서 변경 중 오류가 발생했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function handleRegenerate() {
     if (!projectId || !canEdit) {
@@ -943,6 +1038,57 @@ export function TaskDraftPanel({
         </div>
       ) : null}
 
+      <div
+        style={{
+          marginBottom: 12,
+          padding: 12,
+          borderRadius: 10,
+          border: "1px solid #ddd6fe",
+          background: "#fff",
+          display: "grid",
+          gap: 6,
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#1f2937" }}>
+          총 Task: {drafts.length}개 · 단계: {EXECUTION_STAGE_ORDER.length}단계
+        </div>
+        <div style={{ fontSize: 12, color: "#475569" }}>예상 흐름: [{flowPathText}]</div>
+        <div style={{ fontSize: 12, color: "#0f766e", fontWeight: 700 }}>현재 단계: {stageLabel(activeStage)} 진행 중</div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={() => setViewMode("stage")}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: viewMode === "stage" ? "1px solid #7c3aed" : "1px solid #cbd5e1",
+            background: viewMode === "stage" ? "#ede9fe" : "#fff",
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          단계 보기
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode("graph")}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: viewMode === "graph" ? "1px solid #7c3aed" : "1px solid #cbd5e1",
+            background: viewMode === "graph" ? "#ede9fe" : "#fff",
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          그래프 보기
+        </button>
+      </div>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, alignItems: "center" }}>
         {canEdit ? (
           <>
@@ -1178,7 +1324,7 @@ export function TaskDraftPanel({
             lineHeight: 1.45,
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>확정할 수 없음 · 그래프를 수정하세요</div>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>확정할 수 없음 · 선행관계를 확인하세요</div>
           {validation.cycle ? (
             <div style={{ marginBottom: 4 }}>
               순환: {validation.cycle.cyclePath.slice(0, 8).join(" → ")}
@@ -1192,18 +1338,135 @@ export function TaskDraftPanel({
 
       {/* 상태 요약/실행 순서 텍스트는 Detail Panel로 이동 */}
 
-      <div
-        data-testid="task-draft-workflow-canvas"
-        style={{
-          borderRadius: 12,
-          border: "1px solid #ddd6fe",
-          background: "#fff",
-          height: "70vh",
-          minHeight: Math.max(520, totalLaneCanvasHeightPx()),
-          overflow: "hidden",
-          position: "relative",
-        }}
-      >
+      {viewMode === "stage" ? (
+        <div
+          data-testid="task-draft-stage-board"
+          style={{
+            borderRadius: 12,
+            border: "1px solid #ddd6fe",
+            background: "#fff",
+            padding: 12,
+          }}
+        >
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            {EXECUTION_STAGE_ORDER.map((s, idx) => (
+              <div key={s} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>{stageLabel(s)}</span>
+                {idx < EXECUTION_STAGE_ORDER.length - 1 ? (
+                  <span aria-hidden style={{ color: "#94a3b8", fontWeight: 900 }}>
+                    →
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 10,
+              alignItems: "start",
+            }}
+          >
+            {EXECUTION_STAGE_ORDER.map((st) => {
+              const rows = groupedByExecutionStage.get(st) ?? [];
+              return (
+                <section key={st} style={{ border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", padding: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#334155", marginBottom: 8 }}>
+                    {stageLabel(st)} ({rows.length})
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {rows.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 2px" }}>Task 없음</div>
+                    ) : (
+                      rows.map((d, idx) => {
+                        const ws = workflowStatusById.get(d.id) ?? "BLOCKED";
+                        const opacity = ws === "BLOCKED" ? 0.55 : ws === "INVALID" ? 0.55 : 1;
+                        const leftColor =
+                          ws === "CONFIRMED" ? "#16a34a" : ws === "READY" ? "#2563eb" : ws === "INVALID" ? "#dc2626" : "#94a3b8";
+                        const icon = ws === "CONFIRMED" ? "✓" : ws === "READY" ? "●" : ws === "INVALID" ? "!" : "○";
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => openEdit(d)}
+                            style={{
+                              textAlign: "left",
+                              width: "100%",
+                              borderRadius: 10,
+                              border: "1px solid #e2e8f0",
+                              background: "#fff",
+                              padding: 10,
+                              cursor: "pointer",
+                              opacity,
+                              borderLeft: `4px solid ${leftColor}`,
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 8 }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.35 }}>{d.title}</div>
+                              <span aria-hidden style={{ color: leftColor, fontWeight: 900, fontSize: 12 }}>
+                                {icon}
+                              </span>
+                            </div>
+                            <div style={{ marginTop: 6, fontSize: 11, fontWeight: 900, color: "#7c3aed" }}>
+                              {priorityToPLabel(d.priority)}
+                            </div>
+                            {d.description?.trim() ? (
+                              <div style={{ marginTop: 6, fontSize: 12, color: "#475569", lineHeight: 1.4 }}>
+                                {d.description.trim().slice(0, 120)}
+                                {d.description.trim().length > 120 ? "…" : ""}
+                              </div>
+                            ) : null}
+                            {canEdit ? (
+                              <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleMoveInStage(d.id, "up");
+                                  }}
+                                  style={{ fontSize: 11, color: "#64748b", cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.35 : 1 }}
+                                >
+                                  ↑
+                                </span>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleMoveInStage(d.id, "down");
+                                  }}
+                                  style={{
+                                    fontSize: 11,
+                                    color: "#64748b",
+                                    cursor: idx === rows.length - 1 ? "default" : "pointer",
+                                    opacity: idx === rows.length - 1 ? 0.35 : 1,
+                                  }}
+                                >
+                                  ↓
+                                </span>
+                              </div>
+                            ) : null}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div
+          data-testid="task-draft-workflow-canvas"
+          style={{
+            borderRadius: 12,
+            border: "1px solid #ddd6fe",
+            background: "#fff",
+            height: "70vh",
+            minHeight: Math.max(520, totalLaneCanvasHeightPx()),
+            overflow: "hidden",
+            position: "relative",
+          }}
+        >
           {showDefaultFlowCta ? (
             <div style={{ position: "absolute", top: 10, left: 10, zIndex: 5, maxWidth: "min(100% - 20px, 320px)" }}>
               <button
@@ -1256,11 +1519,11 @@ export function TaskDraftPanel({
               <CanvasFitView revision={canvasFitRevision} />
               <SwimlaneBands />
               <Background gap={20} size={1.2} color="#cbd5e1" />
-              <MiniMap />
               <Controls />
             </ReactFlow>
           )}
-      </div>
+        </div>
+      )}
 
       {/* Detail drawer: 선택 시에만 표시 */}
       {editing ? (
@@ -1298,7 +1561,7 @@ export function TaskDraftPanel({
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-              <div style={{ fontWeight: 900, fontSize: 14, color: "#1e1b4b" }}>Detail</div>
+              <div style={{ fontWeight: 900, fontSize: 14, color: "#1e1b4b" }}>Task 상세</div>
               <button
                 type="button"
                 onClick={() => setEditing(null)}
@@ -1319,7 +1582,7 @@ export function TaskDraftPanel({
 
             <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 6 }}>실행</div>
+                <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 6 }}>실행 상태</div>
                 <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.55 }}>
                   상태:{" "}
                   {(() => {
@@ -1342,46 +1605,6 @@ export function TaskDraftPanel({
                     : "없음"}
                 </div>
               </div>
-
-              {aiSuggestion ? (
-                <div
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #e2e8f0",
-                    background: "#f8fafc",
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 6 }}>AI 분석</div>
-                  <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
-                    {aiSuggestion.reason || "—"}
-                  </div>
-                  {aiSuggestion.parallelGroups.length > 0 ? (
-                    <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>
-                      병렬 후보:{" "}
-                      {aiSuggestion.parallelGroups
-                        .slice(0, 6)
-                        .map((g) => g.map((id) => byId.get(id)?.title ?? id.slice(0, 6)).join(" / "))
-                        .join(" · ")}
-                    </div>
-                  ) : null}
-                  {aiSuggestion.cycleProblemEdge ? (
-                    <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 6 }}>
-                      순환 엣지: {aiSuggestion.cycleProblemEdge.source} → {aiSuggestion.cycleProblemEdge.target}
-                    </div>
-                  ) : null}
-                  {aiSuggestion.cycleCandidateEdges && aiSuggestion.cycleCandidateEdges.length > 0 ? (
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>
-                      잠재 순환 후보:{" "}
-                      {aiSuggestion.cycleCandidateEdges
-                        .slice(0, 5)
-                        .map((e) => `${e.source}→${e.target}`)
-                        .join(", ")}
-                    </div>
-                  ) : null}
-                  <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6 }}>{aiSuggestion.model}</div>
-                </div>
-              ) : null}
 
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>제목</span>
