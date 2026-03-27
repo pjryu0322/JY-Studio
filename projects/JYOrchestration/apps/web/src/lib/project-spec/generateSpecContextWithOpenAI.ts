@@ -270,3 +270,183 @@ ${currentMarkdown.trim()}
 
   return { markdown, model, usage };
 }
+
+/**
+ * 실행 계획 수준의 전체 프로젝트 플랜 문서(마크다운 한 편).
+ * Task Draft 등 후속 단계의 입력으로 쓰기 좋게 구체적으로 작성하도록 유도한다.
+ */
+export async function generateFullProjectPlanMarkdown(
+  input: {
+    name: string;
+    description: string;
+    projectType: string;
+  },
+  modelFromRequest: string
+): Promise<{
+  markdown: string;
+  model: string;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+}> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY_NOT_CONFIGURED");
+  }
+
+  const model = modelFromRequest.trim() || "gpt-4o-mini";
+
+  const userMessage = `아래 프로젝트 메타 정보를 바탕으로 **실행 가능한 수준의 프로젝트 실행 계획(Project Plan) 초안**을 마크다운 한 편으로 작성하라.
+마케팅 문구가 아니라, 실제 구현·아키텍처·운영 관점에서 구체적으로 작성하라.
+
+[입력]
+- 프로젝트명: ${input.name}
+- 설명: ${input.description?.trim() || "(없음)"}
+- 유형: ${input.projectType}
+
+[반드시 다룰 내용 — 제목·순서는 자연스럽게 조정해도 됨]
+1. 프로젝트 개요
+2. 목표 및 범위 (In scope / Out of scope를 명확히 구분)
+3. 사용자·이해관계자 및 핵심 유스케이스
+4. 기능 요구사항 (우선순위·의존성이 드러나게)
+5. 비기능 요구사항 (성능, 보안, 가용성, 규제 등)
+6. 시스템 아키텍처 개요
+7. 핵심 기술 스택 및 선정 이유
+8. 핵심 알고리즘·처리 흐름 (해당 시)
+9. 제약·가정·리스크
+10. 마일스톤 또는 구현 순서
+
+[출력 규칙]
+- 마크다운 본문만. 전체를 코드펜스로 감싸지 말 것.
+- 서론·요약 한 줄 없이 본문부터.
+- 한국어로 작성.`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.35,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a senior software architect and technical lead. Write a single coherent Markdown document. Be concrete and implementation-oriented. No fluff.",
+        },
+        { role: "user", content: userMessage },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+  }
+
+  const body = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  const markdown = body.choices?.[0]?.message?.content?.trim();
+  if (!markdown) {
+    throw new Error("OPENAI_EMPTY_RESPONSE");
+  }
+
+  const u = body.usage;
+  const usage =
+    typeof u?.prompt_tokens === "number" &&
+    typeof u?.completion_tokens === "number" &&
+    typeof u?.total_tokens === "number"
+      ? {
+          promptTokens: u.prompt_tokens,
+          completionTokens: u.completion_tokens,
+          totalTokens: u.total_tokens,
+        }
+      : null;
+
+  return { markdown, model, usage };
+}
+
+/**
+ * 현재 작업 중인 전체 문서에 대한 개선 제안(전체 마크다운). 자동 적용하지 않고 별도 표시용.
+ */
+export async function reviseProjectPlanMarkdown(input: {
+  document: string;
+  instruction?: string | null;
+  modelFromRequest: string;
+}): Promise<{
+  markdown: string;
+  model: string;
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+}> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY_NOT_CONFIGURED");
+  }
+
+  const model = input.modelFromRequest.trim() || "gpt-4o-mini";
+
+  const userMessage = `${input.instruction?.trim() ? `[사용자 지시]\n${input.instruction.trim()}\n\n` : ""}[현재 문서 — 마크다운]
+---
+${input.document.trim()}
+---
+
+위 문서 전체를 기준으로 개선된 **전체** 마크다운 버전을 제안하라. 구조는 유지하되 실행·구현 관점에서 구체화하라. 출력은 제안 본문만. 한국어. 코드펜스 금지.`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.35,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a senior software architect. Output only the full revised Markdown document. No preamble or explanation.",
+        },
+        { role: "user", content: userMessage },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+  }
+
+  const body = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
+  };
+  const markdown = body.choices?.[0]?.message?.content?.trim();
+  if (!markdown) {
+    throw new Error("OPENAI_EMPTY_RESPONSE");
+  }
+
+  const u = body.usage;
+  const usage =
+    typeof u?.prompt_tokens === "number" &&
+    typeof u?.completion_tokens === "number" &&
+    typeof u?.total_tokens === "number"
+      ? {
+          promptTokens: u.prompt_tokens,
+          completionTokens: u.completion_tokens,
+          totalTokens: u.total_tokens,
+        }
+      : null;
+
+  return { markdown, model, usage };
+}

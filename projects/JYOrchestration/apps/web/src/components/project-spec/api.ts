@@ -394,3 +394,51 @@ export async function postGenerateSpecContext(body: {
   const json = (await res.json()) as ApiResponse<GenerateSpecContextResponse>;
   return { res, json };
 }
+
+/** 전체 문서 후보 (모델별 비교) */
+export type AiDraftCandidate = {
+  id: string;
+  modelId: string;
+  content: string;
+  createdAt: string;
+};
+
+export async function postProjectPlanGenerate(body: {
+  projectId: string;
+  name: string;
+  description: string;
+  projectType: string;
+  models: string[];
+}) {
+  const res = await fetch("/api/project-spec/project-plan/generate", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<{
+    candidates: AiDraftCandidate[];
+    failures: Array<{ modelId: string; message: string }>;
+  }>;
+  return { res, json };
+}
+
+export async function postProjectPlanRevise(body: {
+  projectId: string;
+  document: string;
+  instruction?: string;
+  model: string;
+}) {
+  const res = await fetch("/api/project-spec/project-plan/revise", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<{
+    content: string;
+    model: string;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+  }>;
+  return { res, json };
+}

@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildWorkspacePromptText } from "@/lib/project-spec/buildWorkspacePromptText";
 import {
+  type AiDraftCandidate,
   fetchSpecWorkspace,
   patchProjectSpecContext,
-  postGenerateSpecContext,
+  postProjectPlanGenerate,
+  postProjectPlanRevise,
   postSpecWorkspaceAction,
   type SpecWorkspaceSnapshot,
 } from "@/components/project-spec/api";
+import { ProjectSpecAiDraftPlanSection } from "@/components/project-spec/ProjectSpecAiDraftPlanSection";
 import { TaskDraftPanel } from "@/components/project-spec/TaskDraftPanel";
 import type { Project, ProjectSpecResponseRecord, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
@@ -16,8 +19,13 @@ import { LabelTag } from "@/components/ui/LabelTag";
 import { parsePromptToSections, type ParsedPromptSections } from "@/lib/project-spec/parsePromptToSections";
 import { parseMarkdownToSections } from "@/lib/project-spec/parseMarkdownSections";
 import {
+  buildFallbackProjectPlanMarkdown,
+  parseProjectPlanMarkdownToForm,
+} from "@/lib/project-spec/parseProjectPlanMarkdown";
+import {
   DEFAULT_SPEC_WORKSPACE_AI_MODEL,
   SPEC_WORKSPACE_AI_MODELS,
+  SPEC_WORKSPACE_MODEL_LABELS,
   type SpecWorkspaceAiModelId,
 } from "@/lib/project-spec/specWorkspaceModels";
 
@@ -55,16 +63,6 @@ function emptyForm(): FormState {
     specTargetUsers: "",
     specSuccessCriteria: "",
   };
-}
-
-type AiFieldKey = "goals" | "in" | "out" | "users" | "success";
-
-function emptyAiBadges(): Record<AiFieldKey, boolean> {
-  return { goals: false, in: false, out: false, users: false, success: false };
-}
-
-function allAiBadgesOn(): Record<AiFieldKey, boolean> {
-  return { goals: true, in: true, out: true, users: true, success: true };
 }
 
 function readTaskDraftSyncFromPayload(data: unknown): TaskDraftSyncResultDto | null {
@@ -174,6 +172,23 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [promptPanelOpen, setPromptPanelOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
+  const [planRevisionModel, setPlanRevisionModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
+  const [selectedModelsForPlan, setSelectedModelsForPlan] = useState<SpecWorkspaceAiModelId[]>([
+    DEFAULT_SPEC_WORKSPACE_AI_MODEL,
+  ]);
+  const [planCandidates, setPlanCandidates] = useState<AiDraftCandidate[]>([]);
+  const [planFailures, setPlanFailures] = useState<Array<{ modelId: string; message: string }>>([]);
+  const [selectedPlanCandidateId, setSelectedPlanCandidateId] = useState<string | null>(null);
+  const [workingDocument, setWorkingDocument] = useState("");
+  const [lastSavedWorkingDocument, setLastSavedWorkingDocument] = useState("");
+  const [planDocumentDirty, setPlanDocumentDirty] = useState(false);
+  const [planRevisionSuggestion, setPlanRevisionSuggestion] = useState<{
+    instruction: string;
+    content: string;
+    createdAt: string;
+  } | null>(null);
+  const [planRevisionInstruction, setPlanRevisionInstruction] = useState("");
+  const planWorkspaceHydratedRef = useRef(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [showDiffOnly, setShowDiffOnly] = useState(false);
   const [selectedSections, setSelectedSections] = useState<Record<string, "A" | "B">>({});
@@ -184,7 +199,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [specDraftMarkdown, setSpecDraftMarkdown] = useState("");
   const [draftRefreshKey, setDraftRefreshKey] = useState(0);
   const [lastTaskDraftSync, setLastTaskDraftSync] = useState<TaskDraftSyncResultDto | null>(null);
-  const [aiBadges, setAiBadges] = useState<Record<AiFieldKey, boolean>>(emptyAiBadges);
   const [generatingContext, setGeneratingContext] = useState(false);
   const isGeneratingRef = useRef(false);
   const prevProjectIdRef = useRef<string | null>(null);
@@ -197,6 +211,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       specAutoDraftSucceededByProject.delete(prev);
     }
     prevProjectIdRef.current = projectId;
+  }, [projectId]);
+
+  useEffect(() => {
+    planWorkspaceHydratedRef.current = false;
   }, [projectId]);
 
   useEffect(() => {
@@ -233,7 +251,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         specTargetUsers: p.specTargetUsers ?? "",
         specSuccessCriteria: p.specSuccessCriteria ?? "",
       });
-      setAiBadges(emptyAiBadges());
     } catch (e) {
       console.error(e);
       setLoadError("워크스페이스 조회 중 오류가 발생했습니다.");
@@ -247,12 +264,57 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   }, [loadWorkspace]);
 
   useEffect(() => {
+    if (!workspace || planWorkspaceHydratedRef.current) {
+      return;
+    }
+    const slice = {
+      specCoreGoals: form.specCoreGoals,
+      specScopeIn: form.specScopeIn,
+      specScopeOut: form.specScopeOut,
+      specTargetUsers: form.specTargetUsers,
+      specSuccessCriteria: form.specSuccessCriteria,
+    };
+    const hasAny =
+      slice.specCoreGoals.trim() ||
+      slice.specScopeIn.trim() ||
+      slice.specScopeOut.trim() ||
+      slice.specTargetUsers.trim() ||
+      slice.specSuccessCriteria.trim();
+    if (hasAny) {
+      const md = buildFallbackProjectPlanMarkdown(slice);
+      setWorkingDocument(md);
+      setLastSavedWorkingDocument(md);
+    }
+    planWorkspaceHydratedRef.current = true;
+  }, [
+    workspace,
+    form.specCoreGoals,
+    form.specScopeIn,
+    form.specScopeOut,
+    form.specTargetUsers,
+    form.specSuccessCriteria,
+  ]);
+
+  useEffect(() => {
     if (!lastTaskDraftSync) {
       return;
     }
     const t = setTimeout(() => setLastTaskDraftSync(null), 10_000);
     return () => clearTimeout(t);
   }, [lastTaskDraftSync]);
+
+  const effectiveSpecSlice = useMemo(() => {
+    if (workingDocument.trim()) {
+      return parseProjectPlanMarkdownToForm(workingDocument);
+    }
+    return {
+      specCoreGoals: form.specCoreGoals,
+      specScopeIn: form.specScopeIn,
+      specScopeOut: form.specScopeOut,
+      specTargetUsers: form.specTargetUsers,
+      specSuccessCriteria: form.specSuccessCriteria,
+    };
+  }, [form, workingDocument]);
 
   const draftProject = useMemo((): Project => {
     const base = project ?? {
@@ -267,13 +329,13 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       name: form.name.trim() || base.name,
       description: form.description.trim() ? form.description : null,
       projectType: form.projectType,
-      specCoreGoals: form.specCoreGoals.trim() || null,
-      specScopeIn: form.specScopeIn.trim() || null,
-      specScopeOut: form.specScopeOut.trim() || null,
-      specTargetUsers: form.specTargetUsers.trim() || null,
-      specSuccessCriteria: form.specSuccessCriteria.trim() || null,
+      specCoreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
+      specScopeIn: effectiveSpecSlice.specScopeIn.trim() || null,
+      specScopeOut: effectiveSpecSlice.specScopeOut.trim() || null,
+      specTargetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
+      specSuccessCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
     };
-  }, [form, project, projectId]);
+  }, [form, project, projectId, effectiveSpecSlice]);
 
   const generatedPrompt = useMemo(() => buildWorkspacePromptText(draftProject), [draftProject]);
   const parsedPrompt = useMemo(() => parsePromptToSections(generatedPrompt), [generatedPrompt]);
@@ -296,19 +358,16 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     [form.name, form.description, form.projectType]
   );
 
-  const canAiDraftInitial = canEdit && baseInputsOk && allSpecFieldsEmpty;
-  const canAiDraftRegenerate = canEdit && baseInputsOk;
-
   const allSpecFieldsFilledForAi = useMemo(
     () =>
       Boolean(
-        form.specCoreGoals.trim() &&
-          form.specScopeIn.trim() &&
-          form.specScopeOut.trim() &&
-          form.specTargetUsers.trim() &&
-          form.specSuccessCriteria.trim()
+        effectiveSpecSlice.specCoreGoals.trim() &&
+          effectiveSpecSlice.specScopeIn.trim() &&
+          effectiveSpecSlice.specScopeOut.trim() &&
+          effectiveSpecSlice.specTargetUsers.trim() &&
+          effectiveSpecSlice.specSuccessCriteria.trim()
       ),
-    [form]
+    [effectiveSpecSlice]
   );
 
   const canRunAiProjectSpec = canEdit && baseInputsOk && allSpecFieldsFilledForAi;
@@ -547,17 +606,27 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         name: form.name.trim(),
         description: form.description.trim() ? form.description : null,
         projectType: form.projectType,
-        coreGoals: form.specCoreGoals.trim() || null,
-        inScope: form.specScopeIn.trim() || null,
-        outOfScope: form.specScopeOut.trim() || null,
-        targetUsers: form.specTargetUsers.trim() || null,
-        successCriteria: form.specSuccessCriteria.trim() || null,
+        coreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
+        inScope: effectiveSpecSlice.specScopeIn.trim() || null,
+        outOfScope: effectiveSpecSlice.specScopeOut.trim() || null,
+        targetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
+        successCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
       });
       if (!res.ok || !json.success || !json.data) {
         setMessage(json.message || "저장에 실패했습니다.");
         return;
       }
       const ctx = json.data;
+      setForm((prev) => ({
+        ...prev,
+        specCoreGoals: ctx.coreGoals ?? "",
+        specScopeIn: ctx.inScope ?? "",
+        specScopeOut: ctx.outOfScope ?? "",
+        specTargetUsers: ctx.targetUsers ?? "",
+        specSuccessCriteria: ctx.successCriteria ?? "",
+      }));
+      setLastSavedWorkingDocument(workingDocument);
+      setPlanDocumentDirty(false);
       setMessage("프로젝트 정보가 저장되었습니다.");
       mergeContextIntoProject(ctx);
       await loadWorkspace();
@@ -576,6 +645,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         description: string;
         projectType: string;
         successMessage: string;
+        models?: SpecWorkspaceAiModelId[];
       },
       options?: { verifyFormSpecStillEmpty?: boolean }
     ): Promise<boolean> => {
@@ -601,31 +671,42 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       setGeneratingContext(true);
       setMessage(null);
       try {
-        const { res, json } = await postGenerateSpecContext({
+        const models = input.models?.length ? input.models : (["gpt-4o-mini"] as SpecWorkspaceAiModelId[]);
+        const { res, json } = await postProjectPlanGenerate({
           projectId,
           name: input.name.trim(),
           description: input.description.trim(),
           projectType: input.projectType.trim(),
+          models,
         });
-        if (!res.ok || !json.success || !json.data?.formatted) {
-          setMessage(json.message || "AI 초안 생성에 실패했습니다.");
+        if (!res.ok || !json.success || !json.data?.candidates?.length) {
+          setMessage(json.message || "AI 실행 계획 초안 생성에 실패했습니다.");
           return false;
         }
-        const f = json.data.formatted;
+        const candidates = json.data.candidates;
+        const failures = json.data.failures ?? [];
+        setPlanCandidates(candidates);
+        setPlanFailures(failures);
+        setPlanRevisionSuggestion(null);
+        const first = candidates[0];
+        setSelectedPlanCandidateId(first.id);
+        setWorkingDocument(first.content);
+        setLastSavedWorkingDocument(first.content);
+        setPlanDocumentDirty(false);
+        const parsed = parseProjectPlanMarkdownToForm(first.content);
         setForm((prev) => ({
           ...prev,
-          specCoreGoals: f.specCoreGoals,
-          specScopeIn: f.specScopeIn,
-          specScopeOut: f.specScopeOut,
-          specTargetUsers: f.specTargetUsers,
-          specSuccessCriteria: f.specSuccessCriteria,
+          ...parsed,
         }));
-        setAiBadges(allAiBadgesOn());
-        setMessage(input.successMessage);
+        setMessage(
+          failures.length > 0
+            ? `${input.successMessage} (일부 모델 실패 — 상단 메시지 참고)`
+            : input.successMessage
+        );
         return true;
       } catch (e) {
         console.error(e);
-        setMessage("AI 초안 생성 중 오류가 발생했습니다.");
+        setMessage("AI 실행 계획 초안 생성 중 오류가 발생했습니다.");
         return false;
       } finally {
         isGeneratingRef.current = false;
@@ -665,7 +746,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           name: p.name,
           description: (p.description ?? "").trim(),
           projectType: p.projectType,
-          successMessage: "AI 초안이 생성되었습니다",
+          successMessage: "AI 실행 계획 초안이 생성되었습니다",
+          models: ["gpt-4o-mini"],
         },
         { verifyFormSpecStillEmpty: true }
       );
@@ -691,26 +773,118 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     runSpecContextAiGeneration,
   ]);
 
-  async function runAiContextGenerate(mode: "initial" | "regenerate") {
+  function toggleModelForPlan(m: SpecWorkspaceAiModelId) {
+    setSelectedModelsForPlan((prev) => {
+      const next = prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m];
+      if (next.length === 0) {
+        return [DEFAULT_SPEC_WORKSPACE_AI_MODEL];
+      }
+      return next;
+    });
+  }
+
+  async function handlePlanGenerate(mode: "initial" | "regenerate") {
     if (!projectId || !canEdit) {
       return;
     }
-    if (mode === "initial" && !canAiDraftInitial) {
+    if (!form.name.trim() || !form.description.trim() || !form.projectType.trim()) {
+      setMessage("프로젝트명·설명·유형을 입력하세요.");
       return;
     }
-    if (mode === "regenerate" && !canAiDraftRegenerate) {
+    if (selectedModelsForPlan.length === 0) {
+      setMessage("모델을 하나 이상 선택하세요.");
       return;
     }
-
+    if (mode === "regenerate") {
+      setPlanCandidates([]);
+      setPlanFailures([]);
+      setSelectedPlanCandidateId(null);
+    }
     await runSpecContextAiGeneration({
       name: form.name.trim(),
       description: form.description.trim(),
       projectType: form.projectType,
       successMessage:
         mode === "initial"
-          ? "AI 초안이 생성되었습니다"
-          : "AI가 초안을 다시 생성했습니다. 검토 후 저장하세요.",
+          ? "실행 계획 초안이 생성되었습니다."
+          : "실행 계획을 다시 생성했습니다. 검토 후 저장하세요.",
+      models: selectedModelsForPlan,
     });
+  }
+
+  function handleSelectPlanCandidate(id: string) {
+    if (
+      planDocumentDirty &&
+      workingDocument !== lastSavedWorkingDocument &&
+      !window.confirm(
+        "저장되지 않은 편집이 있습니다. 다른 후보로 바꾸면 편집 내용이 대체됩니다. 계속할까요?"
+      )
+    ) {
+      return;
+    }
+    const c = planCandidates.find((x) => x.id === id);
+    if (!c) {
+      return;
+    }
+    setSelectedPlanCandidateId(id);
+    setWorkingDocument(c.content);
+    setLastSavedWorkingDocument(c.content);
+    setPlanDocumentDirty(false);
+    const parsed = parseProjectPlanMarkdownToForm(c.content);
+    setForm((prev) => ({ ...prev, ...parsed }));
+    setPlanRevisionSuggestion(null);
+  }
+
+  function handleWorkingDocumentChange(next: string) {
+    setWorkingDocument(next);
+    setPlanDocumentDirty(true);
+  }
+
+  async function handleRequestPlanRevision() {
+    if (!projectId || !canEdit || !selectedPlanCandidateId || !workingDocument.trim()) {
+      return;
+    }
+    setActionBusy("plan-revise");
+    setMessage(null);
+    try {
+      const { res, json } = await postProjectPlanRevise({
+        projectId,
+        document: workingDocument,
+        instruction: planRevisionInstruction,
+        model: planRevisionModel,
+      });
+      if (!res.ok || !json.success || !json.data?.content) {
+        setMessage(json.message || "AI 개선 제안에 실패했습니다.");
+        return;
+      }
+      setPlanRevisionSuggestion({
+        instruction: planRevisionInstruction,
+        content: json.data.content,
+        createdAt: new Date().toISOString(),
+      });
+      setMessage("AI 개선 제안을 받았습니다. 적용 또는 무시를 선택하세요.");
+    } catch (e) {
+      console.error(e);
+      setMessage("AI 개선 제안 중 오류가 발생했습니다.");
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  function handleApplyPlanRevision() {
+    if (!planRevisionSuggestion) {
+      return;
+    }
+    const nextDoc = planRevisionSuggestion.content;
+    setWorkingDocument(nextDoc);
+    setPlanDocumentDirty(true);
+    setPlanRevisionSuggestion(null);
+    const parsed = parseProjectPlanMarkdownToForm(nextDoc);
+    setForm((prev) => ({ ...prev, ...parsed }));
+  }
+
+  function handleIgnorePlanRevision() {
+    setPlanRevisionSuggestion(null);
   }
 
   async function handleRegeneratePrompt() {
@@ -725,11 +899,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         name: form.name.trim(),
         description: form.description.trim() ? form.description : null,
         projectType: form.projectType,
-        coreGoals: form.specCoreGoals.trim() || null,
-        inScope: form.specScopeIn.trim() || null,
-        outOfScope: form.specScopeOut.trim() || null,
-        targetUsers: form.specTargetUsers.trim() || null,
-        successCriteria: form.specSuccessCriteria.trim() || null,
+        coreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
+        inScope: effectiveSpecSlice.specScopeIn.trim() || null,
+        outOfScope: effectiveSpecSlice.specScopeOut.trim() || null,
+        targetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
+        successCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
       });
       if (!patch.res.ok || !patch.json.success || !patch.json.data) {
         setMessage(patch.json.message || "저장 후 프롬프트 갱신에 실패했습니다.");
@@ -769,11 +943,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           name: form.name.trim(),
           description: form.description.trim() ? form.description : null,
           projectType: form.projectType,
-          coreGoals: form.specCoreGoals.trim() || null,
-          inScope: form.specScopeIn.trim() || null,
-          outOfScope: form.specScopeOut.trim() || null,
-          targetUsers: form.specTargetUsers.trim() || null,
-          successCriteria: form.specSuccessCriteria.trim() || null,
+          coreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
+          inScope: effectiveSpecSlice.specScopeIn.trim() || null,
+          outOfScope: effectiveSpecSlice.specScopeOut.trim() || null,
+          targetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
+          successCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
         },
       });
       if (!res.ok || !json.success) {
@@ -914,8 +1088,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Project Spec 정의 워크스페이스</h2>
       </div>
       <p style={{ margin: "0 0 16px 0", color: "#475569", lineHeight: 1.55, fontSize: 14 }}>
-        프로젝트 정보 → AI로 Spec 필드 초안 → 필드 수정·저장 → Project Spec Prompt로 AI 응답 생성 → 응답 비교·확정 → 아래 Task
-        초안 확인·확정 순으로 진행합니다.
+        프로젝트 정보 → AI로 실행 계획 전체 문서 생성·모델 비교 → 선택 후 편집·저장 → Project Spec Prompt로 AI 응답 생성 → 응답 비교·확정 → 아래 Task 초안 확인·확정 순으로 진행합니다.
       </p>
 
       {loadError ? (
@@ -954,13 +1127,13 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             }}
             role="status"
           >
-            AI가 Project Spec 초안을 생성하고 있습니다...
+            AI가 실행 계획 문서 초안을 생성하고 있습니다...
           </p>
         ) : null}
 
         {baseInputsOk && allSpecFieldsEmpty && canEdit && !generatingContext ? (
           <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b" }}>
-            조건이 맞으면 AI가 먼저 초안을 제안합니다. 직접 작성하려면 아래 필드에 입력하면 자동 생성은 건너뜁니다. 초안을 다시 받으려면 「다시 생성」을 사용하세요.
+            조건이 맞으면 AI가 먼저 실행 계획 전체 문서를 제안합니다. Spec 필드가 비어 있지 않으면 자동 생성은 건너뜁니다.
           </p>
         ) : null}
 
@@ -1007,228 +1180,43 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             </div>
           </div>
 
-          <div>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <LabelTag label="[F-1-3-1b] Workspace — AI Draft Actions" />
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 초안 생성</p>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-              <button
-                type="button"
-                data-testid="spec-workspace-ai-draft-generate"
-                disabled={!canAiDraftInitial || generatingContext}
-                onClick={() => void runAiContextGenerate("initial")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 8,
-                  border: "1px solid #7c3aed",
-                  background: canAiDraftInitial && !generatingContext ? "#7c3aed" : "#e9d5ff",
-                  color: canAiDraftInitial && !generatingContext ? "#fff" : "#6b21a8",
-                  fontWeight: 700,
-                  cursor: canAiDraftInitial && !generatingContext ? "pointer" : "not-allowed",
-                }}
-              >
-                AI로 초안 생성
-              </button>
-              <button
-                type="button"
-                data-testid="spec-workspace-ai-draft-regenerate"
-                disabled={!canAiDraftRegenerate || generatingContext}
-                onClick={() => void runAiContextGenerate("regenerate")}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 8,
-                  border: "1px solid #94a3b8",
-                  background: canAiDraftRegenerate && !generatingContext ? "#f1f5f9" : "#f8fafc",
-                  fontWeight: 700,
-                  cursor: canAiDraftRegenerate && !generatingContext ? "pointer" : "not-allowed",
-                }}
-              >
-                다시 생성
-              </button>
-              {!canAiDraftInitial && canEdit && baseInputsOk && !allSpecFieldsEmpty ? (
-                <span style={{ fontSize: 12, color: "#64748b" }}>
-                  초안이 이미 있습니다. 전부 비우면 「AI로 초안 생성」을 다시 쓸 수 있고, 덮어쓰려면 「다시 생성」을 사용하세요.
-                </span>
-              ) : null}
-            </div>
-            {generatingContext ? (
-              <p
-                role="status"
-                data-testid="spec-workspace-inline-ai-field-draft"
-                data-ui-label="[F-1-3-1b-s] Inline — AI spec field draft status"
-                style={{ margin: "10px 0 0 0", fontSize: 13, fontWeight: 600, color: "#5b21b6" }}
-              >
-                AI가 Spec 필드 초안을 생성하는 중입니다…
-              </p>
-            ) : null}
-          </div>
-
-          <div>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <LabelTag label="[F-1-3-1c] Workspace — AI Draft Fields" />
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 생성 결과 · 수정 가능</p>
-            </div>
-            <div style={{ display: "grid", gap: 12 }}>
-              <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>핵심 목표</span>
-                  {aiBadges.goals ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#1d4ed8",
-                        background: "#dbeafe",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      AI 초안
-                    </span>
-                  ) : null}
-                </span>
-                <textarea
-                  data-testid="spec-workspace-core-goals"
-                  value={form.specCoreGoals}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setAiBadges((b) => ({ ...b, goals: false }));
-                    setForm((f) => ({ ...f, specCoreGoals: e.target.value }));
-                  }}
-                  rows={3}
-                  style={{ padding: 8, borderRadius: 8, border: "1px solid #ccc", resize: "vertical" }}
-                />
-              </label>
-              <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>In scope</span>
-                  {aiBadges.in ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#1d4ed8",
-                        background: "#dbeafe",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      AI 초안
-                    </span>
-                  ) : null}
-                </span>
-                <textarea
-                  data-testid="spec-workspace-scope-in"
-                  value={form.specScopeIn}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setAiBadges((b) => ({ ...b, in: false }));
-                    setForm((f) => ({ ...f, specScopeIn: e.target.value }));
-                  }}
-                  rows={4}
-                  style={{ padding: 8, borderRadius: 8, border: "1px solid #ccc", resize: "vertical" }}
-                />
-              </label>
-              <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>Out of scope</span>
-                  {aiBadges.out ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#1d4ed8",
-                        background: "#dbeafe",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      AI 초안
-                    </span>
-                  ) : null}
-                </span>
-                <textarea
-                  data-testid="spec-workspace-scope-out"
-                  value={form.specScopeOut}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setAiBadges((b) => ({ ...b, out: false }));
-                    setForm((f) => ({ ...f, specScopeOut: e.target.value }));
-                  }}
-                  rows={4}
-                  style={{ padding: 8, borderRadius: 8, border: "1px solid #ccc", resize: "vertical" }}
-                />
-              </label>
-              <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>대상 사용자</span>
-                  {aiBadges.users ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#1d4ed8",
-                        background: "#dbeafe",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      AI 초안
-                    </span>
-                  ) : null}
-                </span>
-                <textarea
-                  data-testid="spec-workspace-target-users"
-                  value={form.specTargetUsers}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setAiBadges((b) => ({ ...b, users: false }));
-                    setForm((f) => ({ ...f, specTargetUsers: e.target.value }));
-                  }}
-                  rows={4}
-                  style={{ padding: 8, borderRadius: 8, border: "1px solid #ccc", resize: "vertical" }}
-                />
-              </label>
-              <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>성공 기준</span>
-                  {aiBadges.success ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#1d4ed8",
-                        background: "#dbeafe",
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                      }}
-                    >
-                      AI 초안
-                    </span>
-                  ) : null}
-                </span>
-                <textarea
-                  data-testid="spec-workspace-success-criteria"
-                  value={form.specSuccessCriteria}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setAiBadges((b) => ({ ...b, success: false }));
-                    setForm((f) => ({ ...f, specSuccessCriteria: e.target.value }));
-                  }}
-                  rows={4}
-                  style={{ padding: 8, borderRadius: 8, border: "1px solid #ccc", resize: "vertical" }}
-                />
-              </label>
-            </div>
-          </div>
+          <ProjectSpecAiDraftPlanSection
+            canEdit={canEdit}
+            baseInputsOk={baseInputsOk}
+            generatingContext={generatingContext}
+            selectedModelsForPlan={selectedModelsForPlan}
+            onToggleModel={toggleModelForPlan}
+            onGenerate={(mode) => void handlePlanGenerate(mode)}
+            planCandidates={planCandidates}
+            planFailures={planFailures}
+            selectedPlanCandidateId={selectedPlanCandidateId}
+            onSelectCandidate={handleSelectPlanCandidate}
+            workingDocument={workingDocument}
+            onWorkingDocumentChange={handleWorkingDocumentChange}
+            planDocumentDirty={planDocumentDirty}
+            revisionModel={planRevisionModel}
+            onRevisionModelChange={setPlanRevisionModel}
+            revisionInstruction={planRevisionInstruction}
+            onRevisionInstructionChange={setPlanRevisionInstruction}
+            revisionSuggestion={planRevisionSuggestion}
+            onRequestRevision={() => void handleRequestPlanRevision()}
+            onApplyRevision={handleApplyPlanRevision}
+            onIgnoreRevision={handleIgnorePlanRevision}
+            revisionBusy={actionBusy === "plan-revise"}
+          />
 
           {canEdit ? (
             <button
               type="button"
               data-testid="spec-workspace-save-project"
               onClick={() => void handleSaveProjectInfo()}
-              disabled={saving || generatingContext || actionBusy === "regen" || actionBusy === "ai-spec"}
+              disabled={
+                saving ||
+                generatingContext ||
+                actionBusy === "regen" ||
+                actionBusy === "ai-spec" ||
+                actionBusy === "plan-revise"
+              }
               style={{
                 justifySelf: "start",
                 padding: "10px 16px",
@@ -1238,7 +1226,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                 color: "#fff",
                 fontWeight: 700,
                 cursor:
-                  saving || generatingContext || actionBusy === "regen" || actionBusy === "ai-spec"
+                  saving ||
+                  generatingContext ||
+                  actionBusy === "regen" ||
+                  actionBusy === "ai-spec" ||
+                  actionBusy === "plan-revise"
                     ? "wait"
                     : "pointer",
               }}
@@ -1275,7 +1267,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           >
             {SPEC_WORKSPACE_AI_MODELS.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {SPEC_WORKSPACE_MODEL_LABELS[m]}
               </option>
             ))}
           </select>
