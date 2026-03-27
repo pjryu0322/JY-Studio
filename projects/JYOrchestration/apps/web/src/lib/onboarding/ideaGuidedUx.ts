@@ -235,6 +235,8 @@ function firstGitNeedingApply(gitRequests: GitChangeRequestItem[]): GitChangeReq
  */
 export function computeIdeaGuidedUxSnapshot(input: {
   uploadHistory: UploadHistoryItem[];
+  /** 워크스페이스에 Spec 관련 필드가 채워져 업로드 없이도 진행 가능한 상태 */
+  workspaceSpecStarted?: boolean;
   tasks: TaskItem[];
   taskRuns: TaskRunItem[];
   gitRequests: GitChangeRequestItem[];
@@ -246,6 +248,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
 }): IdeaGuidedUxSnapshot {
   const { uploadHistory, tasks, taskRuns, gitRequests, taskPromptMap, taskRunMap } =
     input;
+  const workspaceSpecStarted = input.workspaceSpecStarted ?? false;
 
   const achievements: IdeaUxAchievements = {
     taskRunReady: taskRuns.some(
@@ -256,8 +259,10 @@ export function computeIdeaGuidedUxSnapshot(input: {
   };
 
   const milestones: IdeaUxMilestones = {
-    specUploaded: uploadHistory.length > 0,
-    parsed: hasParsedSpec(uploadHistory),
+    specUploaded: uploadHistory.length > 0 || workspaceSpecStarted,
+    parsed:
+      hasParsedSpec(uploadHistory) ||
+      (uploadHistory.length === 0 && workspaceSpecStarted),
     tasksCreated: tasks.length > 0,
     promptsReady:
       tasks.length > 0 && tasks.every((t) => Boolean(taskPromptMap[t.id])),
@@ -270,29 +275,30 @@ export function computeIdeaGuidedUxSnapshot(input: {
   let allComplete = false;
   let primaryAction: IdeaUxPrimaryAction = {
     id: "scroll_upload",
-    label: "아이디어 입력",
-    description: "아이디어를 담은 문서를 올리면 다음 단계로 넘어갑니다.",
+    label: "프로젝트 계획 입력",
+    description: "워크스페이스에서 기본 정보와 실행 계획을 정리한 뒤 저장하고 이어서 진행하세요.",
   };
   let scrollAnchor = IDEA_UX_ANCHORS[1];
 
   // --- Determine current step (first incomplete) ---
-  if (uploadHistory.length === 0) {
+  if (uploadHistory.length === 0 && !workspaceSpecStarted) {
     currentStep = 1;
     scrollAnchor = IDEA_UX_ANCHORS[1];
     if (input.canRegisterSpec) {
       primaryAction = {
         id: "scroll_upload",
-        label: "스펙 업로드",
-        description: "아래에서 문서 파일을 선택해 올려 주세요.",
+        label: "프로젝트 계획·Spec 정의하기",
+        description:
+          "기본 정보 → AI 실행 계획 초안 → 편집·저장 순으로 워크스페이스에서 진행하세요. 파일 업로드는 필수가 아닙니다.",
       };
     } else {
       primaryAction = {
         id: "scroll_upload",
-        label: "업로드 영역 확인",
-        description: "문서를 올릴 수 있는 권한이 필요합니다. 담당자에게 부탁하세요.",
+        label: "워크스페이스 확인",
+        description: "Spec 편집 권한이 필요합니다. 담당자에게 부탁하세요.",
       };
     }
-  } else if (!hasParsedSpec(uploadHistory)) {
+  } else if (uploadHistory.length > 0 && !hasParsedSpec(uploadHistory)) {
     currentStep = 2;
     scrollAnchor = IDEA_UX_ANCHORS[2];
     const up = firstUnparsedUploadId(uploadHistory);
@@ -334,11 +340,18 @@ export function computeIdeaGuidedUxSnapshot(input: {
         description: "정리된 내용을 바탕으로 실제로 할 일 목록을 만듭니다.",
         uploadId: parsedId,
       };
+    } else if (workspaceSpecStarted) {
+      primaryAction = {
+        id: "scroll_tasks",
+        label: "할 일 목록 확인",
+        description:
+          "워크스페이스에서 Project Spec을 확정하면 Task 초안이 준비됩니다. 아래 할 일 목록에서 이어서 확인하세요.",
+      };
     } else {
       primaryAction = {
-        id: "scroll_history",
-        label: "업로드 이력으로 이동",
-        description: "목록에서 문서를 선택해 주세요.",
+        id: "scroll_upload",
+        label: "워크스페이스로 이동",
+        description: "업로드 문서를 정리하거나, 워크스페이스에서 계획을 저장해 주세요.",
       };
     }
   } else {

@@ -631,10 +631,24 @@ export default function ProjectDetailPage() {
     [taskRuns]
   );
 
+  const workspaceSpecStarted = useMemo(() => {
+    if (!project) {
+      return false;
+    }
+    return [
+      project.specCoreGoals,
+      project.specScopeIn,
+      project.specScopeOut,
+      project.specTargetUsers,
+      project.specSuccessCriteria,
+    ].some((f) => Boolean((f ?? "").trim()));
+  }, [project]);
+
   const ideaUxSnapshot = useMemo(
     () =>
       computeIdeaGuidedUxSnapshot({
         uploadHistory,
+        workspaceSpecStarted,
         tasks,
         taskRuns,
         gitRequests,
@@ -646,6 +660,7 @@ export default function ProjectDetailPage() {
       }),
     [
       uploadHistory,
+      workspaceSpecStarted,
       tasks,
       taskRuns,
       gitRequests,

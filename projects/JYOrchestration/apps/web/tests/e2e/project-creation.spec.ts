@@ -1,6 +1,4 @@
 import { expect, test } from "@playwright/test";
-import fs from "node:fs";
-import path from "node:path";
 
 test.describe("E2E project", () => {
   test.beforeEach(async ({ page }) => {
@@ -55,7 +53,7 @@ test.describe("E2E project", () => {
     await expect(page.getByText("Web Meeting MVP").first()).toBeVisible({ timeout: 15_000 });
   });
 
-  test("[E2E-PRJ-AI-001] AI 분석 시작: 업로드 → 분석 → Task 자동 생성", async ({ page }) => {
+  test("[E2E-PRJ-AI-001] Overview: 워크스페이스·저장 계획 기반 Spec 생성 UI (프롬프트 노출 없음)", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
 
@@ -63,37 +61,18 @@ test.describe("E2E project", () => {
     await expect(page.getByRole("button", { name: /파싱 실행/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Task 생성$/i })).toHaveCount(0);
 
-    // Project Spec 정의 워크스페이스: 생성 프롬프트 미리보기 + 복사
     await expect(page.getByTestId("project-spec-workspace")).toBeVisible();
-    await expect(page.getByTestId("spec-workspace-prompt-preview")).toBeVisible();
-    await page.getByTestId("spec-workspace-toggle-prompt").click();
-    await expect(page.getByTestId("spec-workspace-prompt-preview")).toContainText("프로젝트명");
+    await expect(page.getByTestId("spec-workspace-ai-model")).toBeVisible();
+    await expect(page.getByTestId("spec-workspace-ai-request")).toBeVisible();
+
+    await expect(page.getByTestId("spec-workspace-toggle-prompt")).toHaveCount(0);
+    await expect(page.getByTestId("spec-workspace-copy-prompt")).toHaveCount(0);
+    await expect(page.getByTestId("spec-workspace-regenerate-prompt")).toHaveCount(0);
 
     // 실행 관측은 Task 관리/수행 영역에서만 보입니다(워크스페이스에는 없음).
     await expect(page.getByTestId("project-spec-workspace").getByTestId("execution-observability-panel")).toHaveCount(0);
     await expect(page.locator("#guided-flow-tasks").getByTestId("execution-observability-panel")).toHaveCount(1);
 
-    await page.getByTestId("spec-workspace-copy-prompt").click();
-
-    const tmpMdPath = path.join(__dirname, `tmp-projectspec-${Date.now()}.md`);
-    fs.writeFileSync(
-      tmpMdPath,
-      `# Spec\n\n- 목표: E2E용 ProjectSpec 업로드\n- 기능: AI가 Task를 자동 생성\n- 제약: 없음\n`
-    );
-
-    const fileInput = page.locator("#projectspec-file-input");
-    await fileInput.setInputFiles(tmpMdPath);
-
-    const analyzeBtn = page.getByTestId("project-spec-ai-analyze-start");
-    await expect(analyzeBtn).toBeEnabled();
-    await analyzeBtn.click();
-
-    await expect(page.getByTestId("ai-pipeline-status-panel")).toContainText("Task 생성 완료", {
-      timeout: 60_000,
-    });
-    await expect(page.getByText(/AI가 .*개의 Task를 생성했습니다/)).toBeVisible({ timeout: 60_000 });
     await expect(page.locator("#guided-flow-tasks")).toBeVisible();
-
-    fs.unlinkSync(tmpMdPath);
   });
 });

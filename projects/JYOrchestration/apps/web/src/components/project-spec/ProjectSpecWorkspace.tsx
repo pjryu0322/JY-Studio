@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildWorkspacePromptText } from "@/lib/project-spec/buildWorkspacePromptText";
 import {
   type AiDraftCandidate,
   fetchSpecWorkspace,
@@ -16,7 +15,6 @@ import { TaskDraftPanel } from "@/components/project-spec/TaskDraftPanel";
 import type { Project, ProjectSpecResponseRecord, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { LabelTag } from "@/components/ui/LabelTag";
-import { parsePromptToSections, type ParsedPromptSections } from "@/lib/project-spec/parsePromptToSections";
 import { parseMarkdownToSections } from "@/lib/project-spec/parseMarkdownSections";
 import {
   buildFallbackProjectPlanMarkdown,
@@ -89,77 +87,6 @@ function projectToForm(p: Project | null): FormState {
   };
 }
 
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "true");
-    textarea.style.position = "fixed";
-    textarea.style.top = "-1000px";
-    textarea.style.left = "-1000px";
-    document.body.appendChild(textarea);
-    textarea.focus();
-    textarea.select();
-    textarea.setSelectionRange(0, textarea.value.length);
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return ok;
-  } catch {
-    return false;
-  }
-}
-
-function PromptBulletCard({ title, items }: { title: string; items: string[] }) {
-  if (!items.length) {
-    return null;
-  }
-  return (
-    <div
-      style={{
-        border: "1px solid #e2e8f0",
-        borderRadius: 8,
-        padding: 12,
-        background: "#fff",
-      }}
-    >
-      <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{title}</h4>
-      <ul style={{ margin: 0, paddingLeft: 20, color: "#334155", fontSize: 13, lineHeight: 1.5 }}>
-        {items.map((t, i) => (
-          <li key={i}>{t}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ProjectInfoPromptCard({ info }: { info: ParsedPromptSections["projectInfo"] }) {
-  const rows = [
-    ["프로젝트명", info.name],
-    ["설명", info.description],
-    ["유형", info.projectType],
-  ].filter(([, v]) => Boolean(v && String(v).trim()));
-  if (!rows.length) {
-    return null;
-  }
-  return (
-    <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 12, background: "#fff" }}>
-      <h4 style={{ margin: "0 0 8px 0", fontSize: 14, fontWeight: 700 }}>프로젝트 정보</h4>
-      <dl style={{ margin: 0, display: "grid", gap: 8, fontSize: 13 }}>
-        {rows.map(([k, v]) => (
-          <div key={String(k)}>
-            <dt style={{ fontWeight: 700, color: "#64748b", fontSize: 12 }}>{k}</dt>
-            <dd style={{ margin: "4px 0 0 0", color: "#0f172a" }}>{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
 export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpdated }: ProjectSpecWorkspaceProps) {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
@@ -168,9 +95,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [saving, setSaving] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [copyOk, setCopyOk] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [promptPanelOpen, setPromptPanelOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
   const [planRevisionModel, setPlanRevisionModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
   const [selectedModelsForPlan, setSelectedModelsForPlan] = useState<SpecWorkspaceAiModelId[]>([
@@ -316,31 +241,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     };
   }, [form, workingDocument]);
 
-  const draftProject = useMemo((): Project => {
-    const base = project ?? {
-      id: projectId,
-      name: form.name || "—",
-      description: null,
-      projectType: form.projectType,
-      status: "",
-    };
-    return {
-      ...base,
-      name: form.name.trim() || base.name,
-      description: form.description.trim() ? form.description : null,
-      projectType: form.projectType,
-      specCoreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
-      specScopeIn: effectiveSpecSlice.specScopeIn.trim() || null,
-      specScopeOut: effectiveSpecSlice.specScopeOut.trim() || null,
-      specTargetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
-      specSuccessCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
-    };
-  }, [form, project, projectId, effectiveSpecSlice]);
-
-  const generatedPrompt = useMemo(() => buildWorkspacePromptText(draftProject), [draftProject]);
-  const parsedPrompt = useMemo(() => parsePromptToSections(generatedPrompt), [generatedPrompt]);
-
-  const latestSavedVersion = workspace?.prompts?.[0]?.version ?? null;
   const confirmedId = workspace?.project.confirmedSpecResponseId ?? project?.confirmedSpecResponseId ?? null;
 
   const allSpecFieldsEmpty = useMemo(
@@ -627,7 +527,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       }));
       setLastSavedWorkingDocument(workingDocument);
       setPlanDocumentDirty(false);
-      setMessage("프로젝트 정보가 저장되었습니다.");
+      setMessage("프로젝트 정보가 저장되었습니다. 이후 「AI로 Project Spec 생성」에 사용됩니다.");
       mergeContextIntoProject(ctx);
       await loadWorkspace();
     } catch (e) {
@@ -887,44 +787,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     setPlanRevisionSuggestion(null);
   }
 
-  async function handleRegeneratePrompt() {
-    if (!projectId || !canEdit) {
-      return;
-    }
-    setActionBusy("regen");
-    setMessage(null);
-    try {
-      const patch = await patchProjectSpecContext({
-        projectId,
-        name: form.name.trim(),
-        description: form.description.trim() ? form.description : null,
-        projectType: form.projectType,
-        coreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
-        inScope: effectiveSpecSlice.specScopeIn.trim() || null,
-        outOfScope: effectiveSpecSlice.specScopeOut.trim() || null,
-        targetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
-        successCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
-      });
-      if (!patch.res.ok || !patch.json.success || !patch.json.data) {
-        setMessage(patch.json.message || "저장 후 프롬프트 갱신에 실패했습니다.");
-        return;
-      }
-      mergeContextIntoProject(patch.json.data);
-      const { res, json } = await postSpecWorkspaceAction(projectId, { action: "regeneratePrompt" });
-      if (!res.ok || !json.success) {
-        setMessage(json.message || "프롬프트 갱신에 실패했습니다.");
-        return;
-      }
-      setMessage("현재 입력값을 반영해 프롬프트 버전을 저장했습니다. (OpenAI 호출 없음)");
-      await loadWorkspace();
-    } catch (e) {
-      console.error(e);
-      setMessage("프롬프트 갱신 중 오류가 발생했습니다.");
-    } finally {
-      setActionBusy(null);
-    }
-  }
-
   async function handleAiProjectSpecGeneration() {
     if (!projectId || !canEdit) {
       return;
@@ -934,7 +796,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       return;
     }
     setActionBusy("ai-spec");
-    setMessage("현재 입력값을 저장하고 AI에 요청하는 중...");
+    setMessage("저장된 프로젝트 계획·Spec을 반영해 AI에 Project Spec 생성을 요청하는 중…");
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "aiRequest",
@@ -1050,12 +912,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     }
   }
 
-  async function handleCopyPrompt() {
-    const ok = await copyToClipboard(generatedPrompt);
-    setCopyOk(ok);
-    setTimeout(() => setCopyOk(false), 1500);
-  }
-
   if (!projectId) {
     return null;
   }
@@ -1088,7 +944,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Project Spec 정의 워크스페이스</h2>
       </div>
       <p style={{ margin: "0 0 16px 0", color: "#475569", lineHeight: 1.55, fontSize: 14 }}>
-        프로젝트 정보 → AI로 실행 계획 전체 문서 생성·모델 비교 → 선택 후 편집·저장 → Project Spec Prompt로 AI 응답 생성 → 응답 비교·확정 → 아래 Task 초안 확인·확정 순으로 진행합니다.
+        프로젝트 기본 정보 → AI 실행 계획 초안 후보 비교 → 작업 문서 편집·저장 → 저장된 계획을 바탕으로 AI Project Spec 생성 →
+        응답 비교·확정 → 아래 Task 초안 확인·확정 순으로 진행합니다. 프롬프트는 내부에서만 구성됩니다.
       </p>
 
       {loadError ? (
@@ -1133,7 +990,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
         {baseInputsOk && allSpecFieldsEmpty && canEdit && !generatingContext ? (
           <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b" }}>
-            조건이 맞으면 AI가 먼저 실행 계획 전체 문서를 제안합니다. Spec 필드가 비어 있지 않으면 자동 생성은 건너뜁니다.
+            조건이 맞으면 AI가 먼저 실행 계획 전체 문서를 제안합니다. Spec 필드가 이미 채워져 있으면 자동 생성은 건너뜁니다.
           </p>
         ) : null}
 
@@ -1206,42 +1063,43 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           />
 
           {canEdit ? (
-            <button
-              type="button"
-              data-testid="spec-workspace-save-project"
-              onClick={() => void handleSaveProjectInfo()}
-              disabled={
-                saving ||
-                generatingContext ||
-                actionBusy === "regen" ||
-                actionBusy === "ai-spec" ||
-                actionBusy === "plan-revise"
-              }
-              style={{
-                justifySelf: "start",
-                padding: "10px 16px",
-                borderRadius: 8,
-                border: "1px solid #2563eb",
-                background: "#2563eb",
-                color: "#fff",
-                fontWeight: 700,
-                cursor:
+            <div style={{ display: "grid", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+                현재 작업 중인 프로젝트 계획 문서와 아래 필드를 기준으로 저장합니다. 저장된 내용은 다음 단계의 「AI로 Project
+                Spec 생성」에 사용됩니다.
+              </p>
+              <button
+                type="button"
+                data-testid="spec-workspace-save-project"
+                onClick={() => void handleSaveProjectInfo()}
+                disabled={
                   saving ||
                   generatingContext ||
-                  actionBusy === "regen" ||
                   actionBusy === "ai-spec" ||
                   actionBusy === "plan-revise"
-                    ? "wait"
-                    : "pointer",
-              }}
-            >
-              {saving ? "저장 중…" : "프로젝트 정보 저장"}
-            </button>
+                }
+                style={{
+                  justifySelf: "start",
+                  padding: "10px 16px",
+                  borderRadius: 8,
+                  border: "1px solid #2563eb",
+                  background: "#2563eb",
+                  color: "#fff",
+                  fontWeight: 700,
+                  cursor:
+                    saving || generatingContext || actionBusy === "ai-spec" || actionBusy === "plan-revise"
+                      ? "wait"
+                      : "pointer",
+                }}
+              >
+                {saving ? "저장 중…" : "프로젝트 정보 저장"}
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
 
-      {/* [B] Prompt Builder */}
+      {/* [B] 저장된 계획 기반 Project Spec AI 생성 */}
       <div
         style={{
           marginBottom: 20,
@@ -1252,9 +1110,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <LabelTag label="[F-1-3-2] Workspace — Prompt & Spec AI request" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>Project Spec Prompt (자동 생성)</h3>
+          <LabelTag label="[F-1-3-2] Workspace — Project Spec from saved plan" />
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>저장된 계획으로 Project Spec 생성</h3>
         </div>
+
+        <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+          위에서 저장한 프로젝트 정보·실행 계획에서 추출한 Spec 필드를 바탕으로 AI가 Project Spec 초안을 만듭니다. 별도의
+          프롬프트 확인·복사·갱신 없이 버튼 한 번으로 진행합니다.
+        </p>
 
         <label style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>AI 모델</span>
@@ -1273,102 +1136,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           </select>
         </label>
 
-        <p style={{ margin: "0 0 6px 0", fontSize: 13, color: "#64748b" }}>
-          미리보기는 서버와 동일한 <code style={{ fontSize: 12 }}>buildWorkspacePromptText</code> 규칙으로 현재 폼 값을
-          반영합니다. 저장된 프롬프트 버전:{" "}
-          {latestSavedVersion != null ? <strong>v{latestSavedVersion}</strong> : "없음"}
-        </p>
-        <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b" }}>
-          「현재 값으로 프롬프트 갱신」은 DB에 반영한 뒤 새 프롬프트 버전만 만듭니다(OpenAI 호출 없음). 「AI로 Project Spec
-          생성」은 저장 → 최신 프롬프트 작성 → 선택한 모델로 OpenAI 호출까지 한 번에 진행합니다.
-        </p>
-
-        <button
-          type="button"
-          data-testid="spec-workspace-toggle-prompt"
-          onClick={() => setPromptPanelOpen((o) => !o)}
-          style={{
-            marginBottom: 12,
-            padding: "10px 16px",
-            borderRadius: 8,
-            border: "1px solid #64748b",
-            background: "#f8fafc",
-            fontWeight: 700,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
-        >
-          {promptPanelOpen ? "닫기" : "Project Spec Prompt 보기"}
-        </button>
-
-        <div
-          data-testid="spec-workspace-prompt-preview"
-          style={{
-            border: "1px solid #e0e0e0",
-            borderRadius: 8,
-            padding: 14,
-            background: "#f8fafc",
-            marginBottom: 12,
-            minHeight: 48,
-          }}
-        >
-          {!promptPanelOpen ? (
-            <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>
-              구조화된 프롬프트 미리보기는 접혀 있습니다. 「Project Spec Prompt 보기」를 눌러 카드 형태로 확인하세요.
-            </p>
-          ) : (
-            <div style={{ display: "grid", gap: 12, maxHeight: 420, overflow: "auto" }}>
-              <ProjectInfoPromptCard info={parsedPrompt.projectInfo} />
-              <PromptBulletCard title="핵심 목표" items={parsedPrompt.coreGoals} />
-              <PromptBulletCard title="In Scope" items={parsedPrompt.inScope} />
-              <PromptBulletCard title="Out Of Scope" items={parsedPrompt.outOfScope} />
-              <PromptBulletCard title="대상 사용자" items={parsedPrompt.targetUsers} />
-              <PromptBulletCard title="성공 기준" items={parsedPrompt.successCriteria} />
-              {parsedPrompt.extraBlocks.map((blk, idx) => (
-                <PromptBulletCard key={`${blk.title}-${idx}`} title={blk.title} items={blk.bullets} />
-              ))}
-            </div>
-          )}
-        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-          <button
-            type="button"
-            data-testid="spec-workspace-copy-prompt"
-            onClick={() => void handleCopyPrompt()}
-            disabled={!canEdit}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              border: "1px solid #ccc",
-              background: "#fff",
-              fontWeight: 700,
-              cursor: canEdit ? "pointer" : "not-allowed",
-            }}
-          >
-            {copyOk ? "복사됨" : "프롬프트 복사"}
-          </button>
-          <button
-            type="button"
-            data-testid="spec-workspace-regenerate-prompt"
-            onClick={() => void handleRegeneratePrompt()}
-            disabled={
-              !canEdit ||
-              actionBusy === "regen" ||
-              actionBusy === "ai-spec" ||
-              saving ||
-              generatingContext
-            }
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              border: "1px solid #94a3b8",
-              background: "#f1f5f9",
-              fontWeight: 700,
-              cursor: canEdit ? "pointer" : "not-allowed",
-            }}
-          >
-            {actionBusy === "regen" ? "저장·프롬프트 갱신 중…" : "현재 값으로 프롬프트 갱신"}
-          </button>
           <button
             type="button"
             data-testid="spec-workspace-ai-request"
@@ -1376,7 +1144,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             disabled={
               !canEdit ||
               actionBusy === "ai-spec" ||
-              actionBusy === "regen" ||
               saving ||
               generatingContext ||
               !canRunAiProjectSpec
@@ -1396,17 +1163,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         </div>
         {canEdit && baseInputsOk && !allSpecFieldsFilledForAi ? (
           <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
-            AI로 Spec을 만들려면 핵심 목표·In/Out scope·대상 사용자·성공 기준을 모두 입력하세요.
-          </p>
-        ) : null}
-        {actionBusy === "regen" ? (
-          <p
-            role="status"
-            data-testid="spec-workspace-inline-prompt-regen"
-            data-ui-label="[F-1-3-2-s1] Inline — prompt version refresh"
-            style={{ margin: "10px 0 0 0", fontSize: 13, color: "#334155", fontWeight: 600 }}
-          >
-            프로젝트 정보를 저장하고 프롬프트 버전을 갱신하는 중…
+            먼저 위 워크스페이스에서 핵심 목표·In/Out scope·대상 사용자·성공 기준을 모두 채우고 「프로젝트 정보 저장」을
+            해 주세요.
           </p>
         ) : null}
         {actionBusy === "ai-spec" ? (
@@ -1416,7 +1174,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             data-ui-label="[F-1-3-2-s2] Inline — Project Spec AI response request"
             style={{ margin: "10px 0 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}
           >
-            현재 입력값을 저장한 뒤 AI에 Project Spec 응답을 요청하는 중…
+            저장된 계획을 반영해 AI에 Project Spec 응답을 요청하는 중…
           </p>
         ) : null}
       </div>
@@ -1791,7 +1549,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
         {!workspace?.responses?.length ? (
           <p style={{ color: "#64748b", margin: 0 }}>
-            아직 응답이 없습니다. Spec 필드를 채운 뒤 「AI로 Project Spec 생성」을 실행하세요.
+            아직 응답이 없습니다. 위에서 계획을 저장한 뒤 「AI로 Project Spec 생성」을 실행하세요.
           </p>
         ) : (
           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>

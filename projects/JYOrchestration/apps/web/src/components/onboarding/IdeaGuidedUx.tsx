@@ -485,8 +485,8 @@ export function IdeaGuidedUx({
           }}
         >
           <span style={{ fontWeight: 600, color: "#546e7a", width: "100%" }}>지금까지 한 일</span>
-          <span>{m.specUploaded ? "✔" : "○"} 아이디어 문서 올림</span>
-          <span>{m.parsed ? "✔" : "○"} 문서 내용 정리됨</span>
+          <span>{m.specUploaded ? "✔" : "○"} 프로젝트 계획·Spec (워크스페이스)</span>
+          <span>{m.parsed ? "✔" : "○"} 계획·Spec 정리됨</span>
           <span>{m.tasksCreated ? "✔" : "○"} 할 일 목록 있음</span>
           <span>{m.promptsReady ? "✔" : "○"} 실행 지침 준비됨</span>
           <span>{m.runSucceeded ? "✔" : "○"} 실행 한 번 성공</span>

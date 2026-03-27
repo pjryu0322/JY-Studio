@@ -40,6 +40,19 @@ function docSizeLabel(content: string): string {
   return `${(n / 1024).toFixed(1)}KB`;
 }
 
+/** 전체 문서 수준 비교용: 앞부분만 잘라 카드에 표시 (섹션 diff 없음) */
+function documentPreviewSnippet(content: string, maxChars = 560): string {
+  const lines = content.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const head = lines.slice(0, 18).join("\n").trim();
+  if (!head) {
+    return "(비어 있음)";
+  }
+  if (head.length <= maxChars) {
+    return head;
+  }
+  return `${head.slice(0, maxChars)}…`;
+}
+
 export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSectionProps) {
   const {
     canEdit,
@@ -175,7 +188,7 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
           <p
             role="status"
             data-testid="spec-workspace-inline-ai-field-draft"
-            data-ui-label="[F-1-3-1b-s] Inline — AI spec field draft status"
+            data-ui-label="[F-1-3-1b-s] Inline — AI project plan document draft status"
             style={{ margin: "10px 0 0 0", fontSize: 13, fontWeight: 600, color: "#5b21b6" }}
           >
             선택한 모델별로 실행 계획 전체 문서를 생성하는 중입니다…
@@ -185,14 +198,14 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
 
       <div style={{ marginTop: 20 }}>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-1c] Workspace — AI Draft Fields" />
+          <LabelTag label="[F-1-3-1c] Workspace — AI Draft Candidates" />
           <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
             문서 후보 비교 · 작업 편집기 (전체 문서 단위)
           </p>
         </div>
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-          모델별로 생성된 <strong>전체 마크다운</strong>을 나란히 비교하고, 하나를 선택해 편집합니다. 섹션 단위 diff·병합 UI는
-          사용하지 않습니다.
+          모델별 <strong>AI Draft Candidates</strong>(전체 마크다운)를 비교하고, 하나를 골라 작업 문서로 삼습니다. 카드 미리보기는
+          앞부분만 보여 주며, 섹션 diff·줄 단위 비교 UI는 없습니다.
         </p>
 
         {planFailures.length > 0 ? (
@@ -250,6 +263,19 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
                   <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
                     {formatTestedAt(c.createdAt)} · {docSizeLabel(c.content)}
                   </div>
+                  <p
+                    style={{
+                      margin: "8px 0 0 0",
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      color: "#475569",
+                      maxHeight: 120,
+                      overflow: "hidden",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {documentPreviewSnippet(c.content)}
+                  </p>
                   <button
                     type="button"
                     data-testid={`spec-workspace-plan-use-${c.id}`}
@@ -280,13 +306,16 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
           <div style={{ flex: "2 1 320px", minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>작업 중인 문서 (마크다운)</span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>작업 중인 프로젝트 계획 문서 (마크다운)</span>
               {planDocumentDirty ? (
                 <span style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>편집 저장 전</span>
               ) : (
-                <span style={{ fontSize: 11, color: "#64748b" }}>저장 시 아래 필드에 반영됩니다</span>
+                <span style={{ fontSize: 11, color: "#64748b" }}>저장 시 아래 Spec 필드에 반영됩니다</span>
               )}
             </div>
+            <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
+              이 문서가 편집 기준이며, 「프로젝트 정보 저장」으로 추출한 내용이 이후 「AI로 Project Spec 생성」에 사용됩니다.
+            </p>
             <textarea
               data-testid="spec-workspace-plan-working-document"
               value={workingDocument}
@@ -352,16 +381,16 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
               alignSelf: "stretch",
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 8 }}>AI 개선 제안</div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#334155", marginBottom: 8 }}>AI 개선 제안 (참고만)</div>
             {!revisionSuggestion ? (
               <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-                제안이 없습니다. 후보를 선택하고 「AI 개선 제안 받기」를 누르면 여기에 별도로 표시됩니다. 자동으로 적용되지
-                않습니다.
+                제안이 없습니다. 후보를 선택한 뒤 「AI 개선 제안 받기」를 누르면 여기에 표시됩니다. 제안은 자동 반영되지 않으며,
+                적용 여부는 항상 사용자가 결정합니다.
               </p>
             ) : (
               <>
                 <p style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
-                  {formatTestedAt(revisionSuggestion.createdAt)}
+                  참고용 제안 · {formatTestedAt(revisionSuggestion.createdAt)}
                 </p>
                 <pre
                   style={{
