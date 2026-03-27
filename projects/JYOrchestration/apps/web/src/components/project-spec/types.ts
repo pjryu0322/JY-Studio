@@ -121,8 +121,12 @@ export type TaskDraftDto = {
   projectId: string;
   specVersionId: string;
   specVersionNumber: number;
+  /** requirement | design | feature | task */
+  nodeType?: "requirement" | "design" | "feature" | "task";
   title: string;
   description: string | null;
+  parentId?: string | null;
+  childrenIds?: string[];
   priority: string;
   dependsOn: string[];
   /** 선행 TaskDraft id 배열 (Workflow 캔버스 엣지) */
@@ -132,7 +136,7 @@ export type TaskDraftDto = {
   positionX: number;
   /** Workflow 캔버스 노드 좌표(px) */
   positionY: number;
-  /** Workflow 스윔레인 */
+  /** Workflow 스윔레인 (Requirement | Design | Development) */
   stage: string;
   /** 생성 주체: AI | USER */
   createdByType: string;

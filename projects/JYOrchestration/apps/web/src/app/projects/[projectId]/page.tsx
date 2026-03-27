@@ -1,11 +1,9 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
 import { fetchGeneratedTasks, fetchProjectById } from "@/components/project-spec/api";
-import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
-import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
 import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
 import { ProjectSpecWorkspace } from "@/components/project-spec/ProjectSpecWorkspace";
@@ -21,7 +19,6 @@ import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHist
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectAiActionPolicySection } from "@/components/project-spec/ProjectAiActionPolicySection";
 import { ProjectMembersSection, type ProjectMemberUiRow } from "@/components/project-spec/ProjectMembersSection";
-import { PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import {
   canEditSpec,
   canManageMembers,
@@ -39,16 +36,8 @@ import {
   GIT_PUSH_MODE_MANUAL_PUSH,
   normalizeGitApprovalModeForDisplay,
 } from "@/lib/git-apply/retry";
-import {
-  IdeaGuidedUx,
-  type IdeaUxFailureAssist,
-} from "@/components/onboarding/IdeaGuidedUx";
 import { ProjectGitIntegrationPanel } from "@/components/project/ProjectGitIntegrationPanel";
 import { ProjectAdvancedSettingsPanel } from "@/components/project/ProjectAdvancedSettingsPanel";
-import {
-  computeIdeaGuidedUxSnapshot,
-  type IdeaUxPrimaryAction,
-} from "@/lib/onboarding/ideaGuidedUx";
 // ProjectGuidedFlowPanel(단계 체크리스트)은 Project Spec 화면에서 제거했습니다.
 import { ExecutionTimeline } from "@/components/git/ExecutionTimeline";
 
@@ -65,7 +54,6 @@ function rbacForbiddenMessage(
 type ProjectMainTab = "overview" | "members" | "ai-members" | "git" | "advanced";
 
 export default function ProjectDetailPage() {
-  const router = useRouter();
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
   const [project, setProject] = useState<Project | null>(null);
@@ -108,10 +96,8 @@ export default function ProjectDetailPage() {
   const [execSummaryLoading, setExecSummaryLoading] = useState(false);
   const [execSummaryError, setExecSummaryError] = useState<string | null>(null);
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
-  const [ideaUxRecommended, setIdeaUxRecommended] = useState(true);
   const [mainTab, setMainTab] = useState<ProjectMainTab>("overview");
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     if (mainTab === "overview") {
@@ -200,25 +186,6 @@ export default function ProjectDetailPage() {
       cancelled = true;
     };
   }, [projectId, permissions.canViewProject, tasks.length, gitRequests.length]);
-
-  const aiActionReviewSummaryForCard = useMemo(() => {
-    let pendingReview = 0;
-    let approvedPendingApply = 0;
-    let rejected = 0;
-    for (const a of aiMemberActionsOverview) {
-      if (a.status !== "DONE") continue;
-      if (a.reviewStatus === "PENDING_REVIEW" || a.reviewStatus === "NEEDS_REVISION") {
-        pendingReview += 1;
-      }
-      if (a.reviewStatus === "APPROVED" && a.applyStatus !== "APPLIED") {
-        approvedPendingApply += 1;
-      }
-      if (a.reviewStatus === "REJECTED") {
-        rejected += 1;
-      }
-    }
-    return { pendingReview, approvedPendingApply, rejected };
-  }, [aiMemberActionsOverview]);
 
   const aiMemberTaskHints = useMemo(() => {
     const latest = new Map<string, { at: string; label: string }>();
@@ -583,114 +550,6 @@ export default function ProjectDetailPage() {
       }, {}),
     [taskRuns]
   );
-
-  const workspaceSpecStarted = useMemo(() => {
-    if (!project) {
-      return false;
-    }
-    return [
-      project.specCoreGoals,
-      project.specScopeIn,
-      project.specScopeOut,
-      project.specTargetUsers,
-      project.specSuccessCriteria,
-    ].some((f) => Boolean((f ?? "").trim()));
-  }, [project]);
-
-  const ideaUxSnapshot = useMemo(
-    () =>
-      computeIdeaGuidedUxSnapshot({
-        workspaceSpecStarted,
-        tasks,
-        taskRuns,
-        gitRequests,
-        taskPromptMap,
-        taskRunMap,
-        canReview: rbac.canReview,
-        canOperate: uiPermissions.canRun,
-      }),
-    [
-      workspaceSpecStarted,
-      tasks,
-      taskRuns,
-      gitRequests,
-      taskPromptMap,
-      taskRunMap,
-      rbac.canReview,
-      uiPermissions.canRun,
-    ]
-  );
-
-  const ideaUxFailureLines = useMemo(() => {
-    const lines: string[] = [];
-    if (gitApplyError) {
-      lines.push(gitApplyError);
-    }
-    if (promptMessage && /실패|오류|FAIL|실패했습니다/i.test(promptMessage)) {
-      lines.push(promptMessage);
-    }
-    return lines;
-  }, [gitApplyError, promptMessage]);
-
-  const ideaUxFailureAssist = useMemo((): IdeaUxFailureAssist | null => {
-    const failedRuns = taskRuns.filter((r) => r.status === "FAILED");
-    const latestFailed =
-      failedRuns.length === 0
-        ? null
-        : [...failedRuns].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
-    if (latestFailed) {
-      const t = tasks.find((x) => x.id === latestFailed.taskId);
-      const shortCause = t
-        ? `「${t.name}」을(를) 끝내지 못했습니다.`
-        : "자동 실행이 끝나지 않았습니다.";
-      const detailLines = [
-        ...ideaUxFailureLines,
-        ...(latestFailed.resultText?.trim()
-          ? [
-              `시스템 메시지(일부): ${latestFailed.resultText.slice(0, 240)}${latestFailed.resultText.length > 240 ? "…" : ""}`,
-            ]
-          : []),
-      ].filter(Boolean);
-      return {
-        kind: "run_failed",
-        headline: "실행이 끝나지 않았습니다",
-        shortCause,
-        detailLines,
-        taskId: latestFailed.taskId,
-      };
-    }
-    const failedGit = gitRequests.find((g) => g.applyStatus === "FAILED");
-    if (failedGit) {
-      const lines = [...ideaUxFailureLines];
-      if (gitApplyError) {
-        lines.push(gitApplyError);
-      }
-      return {
-        kind: "git_failed",
-        headline: "저장소에 반영하지 못했습니다",
-        shortCause: "아래에서 다시 시도하거나, 자세히 보기로 원인을 확인하세요.",
-        detailLines: lines,
-        gitChangeRequestId: failedGit.id,
-      };
-    }
-    if (ideaUxFailureLines.length > 0) {
-      return {
-        kind: "generic",
-        headline: "잠깐 확인이 필요합니다",
-        shortCause: ideaUxFailureLines[0].slice(0, 160),
-        detailLines: ideaUxFailureLines,
-      };
-    }
-    return null;
-  }, [taskRuns, tasks, gitRequests, ideaUxFailureLines, gitApplyError]);
-
-  const ideaUxActionBusy =
-    applyingGitRequestId !== null ||
-    registeringGitRequestRunId !== null ||
-    runningPromptId !== null ||
-    generatingPromptTaskId !== null ||
-    markingReadyTaskId !== null ||
-    gitPrBusyId !== null;
 
   const reloadTaskRuns = useCallback(async () => {
     if (!projectId) {
@@ -1550,101 +1409,6 @@ export default function ProjectDetailPage() {
     }
   }
 
-  function handleIdeaPrimaryAction(action: IdeaUxPrimaryAction) {
-    const scroll = (id: string) => {
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
-    switch (action.id) {
-      case "scroll_workspace":
-        scroll("guided-flow-spec-workspace");
-        return;
-      case "scroll_tasks":
-        scroll("guided-flow-tasks");
-        return;
-      case "scroll_git":
-        scroll("guided-flow-git");
-        return;
-      case "generate_prompt":
-        if (action.taskId) {
-          void handleGenerateTaskPrompt(action.taskId);
-        }
-        return;
-      case "run_task":
-        if (action.taskId) {
-          void handleRunTask(action.taskId);
-        }
-        return;
-      case "mark_ready_for_git":
-        if (action.taskId) {
-          void handleMarkReadyForGit(action.taskId);
-        }
-        return;
-      case "register_git_request":
-        if (action.taskId) {
-          void handleRegisterGitRequest(action.taskId);
-        }
-        return;
-      case "apply_git":
-        if (action.gitChangeRequestId) {
-          void handleApplyGitRequest(action.gitChangeRequestId);
-        }
-        return;
-      case "retry_git_apply":
-        if (action.gitChangeRequestId) {
-          void handleRetryGitApply(action.gitChangeRequestId);
-        }
-        return;
-      case "create_pr":
-        if (action.gitChangeRequestId) {
-          void handleGitHubPrAction(action.gitChangeRequestId, "create");
-        }
-        return;
-      case "sync_pr":
-        if (action.gitChangeRequestId) {
-          void handleGitHubPrAction(action.gitChangeRequestId, "sync");
-        }
-        return;
-      case "retry_run":
-        if (action.taskId) {
-          void handleRunTask(action.taskId);
-        }
-        return;
-      case "follow_up":
-        if (action.taskId) {
-          setMainTab("overview");
-          handleRequestFollowUp(action.taskId);
-          requestAnimationFrame(() => {
-            document.getElementById("guided-flow-tasks")?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
-          });
-        }
-        return;
-      case "none":
-      default:
-        return;
-    }
-  }
-
-  const handleIdeaUxBeforeAnchor = useCallback(
-    (anchorId: string) => {
-      if (!ideaUxRecommended) {
-        return;
-      }
-      setMainTab("overview");
-      if (anchorId === "guided-flow-git") {
-        requestAnimationFrame(() => {
-          document.getElementById("guided-flow-git")?.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        });
-      }
-    },
-    [ideaUxRecommended]
-  );
-
   const projectFlowTail = (
     <>
       {showTaskSection ? (
@@ -2414,24 +2178,6 @@ export default function ProjectDetailPage() {
 
           {mainTab === "overview" ? (
             <div data-ui-label="[P-4-1] Overview Region — Project Spec → AI Analysis → Execution">
-              <IdeaGuidedUx
-                snapshot={ideaUxSnapshot}
-                recommendedMode={ideaUxRecommended}
-                onRecommendedModeChange={setIdeaUxRecommended}
-                failureAssist={ideaUxFailureAssist}
-                actionBusy={ideaUxActionBusy}
-                onPrimaryAction={handleIdeaPrimaryAction}
-                onBeforeNavigateToAnchor={handleIdeaUxBeforeAnchor}
-              />
-              <ProjectInfoCard
-                project={project}
-                currentUserRoleLabel={projectRole && projectId ? projectRole : null}
-                aiActionReviewSummary={aiActionReviewSummaryForCard}
-                showOwnerDelete={projectRole === "OWNER"}
-                onRequestDelete={() => setDeleteModalOpen(true)}
-                compactOverview
-                hideLifecycleStatus
-              />
               <ProjectSpecWorkspace
                 projectId={projectId}
                 project={project}
@@ -2493,15 +2239,6 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
         </>
-      ) : null}
-      {project && projectId && project.status !== PROJECT_LIFECYCLE_DELETED ? (
-        <ProjectDeleteConfirmModal
-          open={deleteModalOpen}
-          projectId={projectId}
-          projectName={project.name}
-          onClose={() => setDeleteModalOpen(false)}
-          onDeleted={() => router.push("/")}
-        />
       ) : null}
     </main>
   );

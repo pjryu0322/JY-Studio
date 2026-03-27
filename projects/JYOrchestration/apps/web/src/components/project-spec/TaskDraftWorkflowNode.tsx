@@ -3,10 +3,13 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 import { priorityToPLabel } from "@/lib/project-spec/workflowDraftSynthesis";
+import { nodeTypeLabel, type TaskNodeType } from "@/lib/project-spec/taskDraftHierarchy";
 
 export type TaskDraftWorkflowNodeData = {
   title: string;
   priority: string;
+  nodeType: TaskNodeType;
+  highlighted?: boolean;
   /** 캔버스에는 텍스트 없이 시각만 */
   visualState: "blocked" | "ready" | "invalid" | "confirmed";
 };
@@ -24,14 +27,23 @@ export const TaskDraftWorkflowNode = memo(function TaskDraftWorkflowNode({
 }: NodeProps & { data: TaskDraftWorkflowNodeData }) {
   const pl = priorityToPLabel(data.priority);
   const badge = P_BADGE[pl];
+  const tn = data.nodeType as TaskNodeType;
   const opacity =
     data.visualState === "blocked" ? 0.5 : data.visualState === "invalid" ? 0.55 : 1;
   const border =
-    selected
+    data.highlighted
+      ? "2px solid #0f766e"
+      : selected
       ? "2px solid #7c3aed"
       : data.visualState === "invalid"
         ? "1px solid #f87171"
         : "1px solid #cbd5e1";
+  const typeColor: Record<TaskNodeType, string> = {
+    requirement: "#2563eb",
+    design: "#7c3aed",
+    feature: "#16a34a",
+    task: "#6b7280",
+  };
 
   return (
     <div
@@ -49,9 +61,22 @@ export const TaskDraftWorkflowNode = memo(function TaskDraftWorkflowNode({
       <Handle type="target" position={Position.Left} />
       <div style={{ padding: "10px 12px" }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.35, paddingRight: 28 }}>
-          {data.title}
+          {nodeTypeLabel(tn)} {data.title}
         </div>
         <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 900,
+              padding: "2px 7px",
+              borderRadius: 999,
+              background: `${typeColor[tn]}20`,
+              color: typeColor[tn],
+              border: `1px solid ${typeColor[tn]}55`,
+            }}
+          >
+            {nodeTypeLabel(tn)}
+          </span>
           <span
             style={{
               fontSize: 10,

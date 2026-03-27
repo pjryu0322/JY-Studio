@@ -89,6 +89,7 @@ function projectToForm(p: Project | null): FormState {
 }
 
 export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpdated }: ProjectSpecWorkspaceProps) {
+  const [projectInfoOpen, setProjectInfoOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -935,6 +936,52 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         프로젝트 기본 정보 → AI 실행 계획 초안 후보 비교 → 작업 문서 편집·저장 → 저장된 계획을 바탕으로 AI Project Spec 생성 →
         응답 비교·확정 → 아래 Task 초안 확인·확정 순으로 진행합니다. 프롬프트는 내부에서만 구성됩니다.
       </p>
+      <div style={{ marginBottom: 12 }}>
+        <button
+          type="button"
+          data-testid="spec-workspace-project-info-toggle"
+          onClick={() => setProjectInfoOpen((v) => !v)}
+          style={{
+            padding: "7px 12px",
+            borderRadius: 8,
+            border: "1px solid #cbd5e1",
+            background: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+            color: "#334155",
+          }}
+        >
+          {projectInfoOpen ? "프로젝트 정보 닫기" : "프로젝트 정보 보기"}
+        </button>
+        {projectInfoOpen ? (
+          <div
+            style={{
+              marginTop: 8,
+              padding: 10,
+              borderRadius: 8,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              fontSize: 12,
+              color: "#334155",
+              lineHeight: 1.55,
+            }}
+          >
+            <div>
+              <strong>이름:</strong> {workspace?.project.name ?? project?.name ?? "-"}
+            </div>
+            <div>
+              <strong>설명:</strong> {(workspace?.project.description ?? project?.description ?? "-") || "-"}
+            </div>
+            <div>
+              <strong>유형:</strong> {workspace?.project.projectType ?? project?.projectType ?? "-"}
+            </div>
+            <div>
+              <strong>상태:</strong> {project?.status ?? "-"}
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       {loadError ? (
         <p style={{ color: "#b91c1c", marginBottom: 12 }}>{loadError}</p>
@@ -943,10 +990,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         <p style={{ color: "#64748b" }}>불러오는 중…</p>
       ) : null}
 
-      {/* [A] 프로젝트 정보 */}
+      {/* [A] 실행 계획 입력 */}
       <div
         style={{
-          marginBottom: 20,
+          marginBottom: 16,
           padding: 16,
           borderRadius: 10,
           border: "1px solid #e2e8f0",
@@ -955,7 +1002,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       >
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <LabelTag label="[F-1-3-1] Workspace — Project Context" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>프로젝트 정보</h3>
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>실행 계획 입력</h3>
         </div>
 
         {generatingContext ? (

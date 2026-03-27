@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { generateTaskDraftsWithOpenAI } from "@/lib/project-spec/generateTaskDraftsWithOpenAI";
-import { synthesizeWorkflowDrafts } from "@/lib/project-spec/workflowDraftSynthesis";
+import { computeStageAwareLaneLayout, normalizeWorkflowStage } from "@/lib/project-spec/workflowLaneLayout";
+import { stageForNodeType, withNodeTypePrefix, stripNodeTypePrefix } from "@/lib/project-spec/taskDraftHierarchy";
 
 export type TaskDraftSyncResult = {
   supersededCount: number;
@@ -76,10 +77,12 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
 
     const createdRows: {
       id: string;
+      type: "requirement" | "design" | "feature" | "task";
       title: string;
       description: string | null;
       priority: string;
       createdAt: Date;
+      parentTitle: string | null;
     }[] = [];
     for (let i = 0; i < ai.tasks.length; i++) {
       const t = ai.tasks[i];
@@ -88,7 +91,7 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
         data: {
           projectId,
           specVersionId,
-          title: t.title,
+          title: withNodeTypePrefix(t.type, t.title),
           description: t.description || null,
           priority: t.priority,
           dependsOn: [],
@@ -96,7 +99,7 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
           acceptanceCriteria: t.acceptanceCriteria.length ? t.acceptanceCriteria : undefined,
           positionX: 0,
           positionY: i * 140,
-          stage: "Build",
+          stage: stageForNodeType(t.type),
           createdByType: "AI",
           status: "DRAFT",
           sourceModel: ai.model,
@@ -107,34 +110,50 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
         },
         select: { id: true, title: true, description: true, priority: true, createdAt: true },
       });
-      createdRows.push(row);
+      createdRows.push({
+        ...row,
+        type: t.type,
+        parentTitle: t.parentTitle,
+      });
     }
 
-    // 사용자 이해 중심의 기본 실행 흐름을 강제 합성 (고립 노드 방지)
-    const synthesized = synthesizeWorkflowDrafts(
-      createdRows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        description: r.description,
-        priority: r.priority,
-        stage: "Build",
-        createdAt: r.createdAt,
-        dependsOnIds: [],
-      }))
-    );
-    const byId = new Map(synthesized.map((x) => [x.id, x] as const));
-    const allIds = createdRows.map((r) => r.id);
+    // 계층 DAG: parent -> child (child dependsOn parent)
+    const edges: Array<{ source: string; target: string }> = [];
+    const dependsById = new Map<string, string[]>();
+    for (const r of createdRows) {
+      const deps: string[] = [];
+      if (r.parentTitle) {
+        const parentType =
+          r.type === "design" ? "requirement" : r.type === "feature" ? "design" : r.type === "task" ? "feature" : null;
+        if (parentType) {
+          const parentRow = createdRows.find(
+            (p) => p.type === parentType && stripNodeTypePrefix(p.title) === r.parentTitle
+          );
+          if (parentRow && parentRow.id !== r.id) {
+            deps.push(parentRow.id);
+            edges.push({ source: parentRow.id, target: r.id });
+          }
+        }
+      }
+      dependsById.set(r.id, deps);
+    }
 
-    for (const id of allIds) {
-      const s = byId.get(id);
+    const layout = computeStageAwareLaneLayout(
+      createdRows.map((r) => ({ id: r.id, stage: normalizeWorkflowStage(stageForNodeType(r.type)) })),
+      edges
+    );
+    const posById = new Map(layout.map((p) => [p.id, p] as const));
+
+    for (const row of createdRows) {
+      const p = posById.get(row.id);
       await tx.taskDraft.update({
-        where: { id },
+        where: { id: row.id },
         data: {
-          dependsOnIds: s?.dependsOnIds ?? [],
-          dependsOn: [], // 제목 기반 의존성은 혼란을 줄이기 위해 비워두고 id 기반만 유지
-          positionX: s?.positionX ?? 0,
-          positionY: s?.positionY ?? 0,
-          stage: s?.stage ?? "Build",
+          dependsOnIds: dependsById.get(row.id) ?? [],
+          dependsOn: [],
+          positionX: p?.x ?? 0,
+          positionY: p?.y ?? 0,
+          stage: stageForNodeType(row.type),
           createdByType: "AI",
         },
       });

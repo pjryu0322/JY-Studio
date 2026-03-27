@@ -3,6 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import { nodeTypeFromTitle, stripNodeTypePrefix, withNodeTypePrefix } from "@/lib/project-spec/taskDraftHierarchy";
 
 function jsonArrayFromDb(v: unknown): string[] {
   if (!Array.isArray(v)) {
@@ -18,6 +19,13 @@ function numberFromDb(v: unknown): number {
 
 function stringFromDb(v: unknown): string {
   return typeof v === "string" ? v : String(v ?? "");
+}
+
+function levelFromNodeType(nodeType: string): number {
+  if (nodeType === "requirement") return 0;
+  if (nodeType === "design") return 1;
+  if (nodeType === "feature") return 2;
+  return 3;
 }
 
 export async function GET(
@@ -59,6 +67,37 @@ export async function GET(
         specVersion: { select: { id: true, version: true } },
       },
     });
+    const byId = new Map<
+      string,
+      {
+        id: string;
+        nodeType: "requirement" | "design" | "feature" | "task";
+        dependsOnIds: string[];
+      }
+    >();
+    for (const r of rows) {
+      byId.set(r.id, {
+        id: r.id,
+        nodeType: nodeTypeFromTitle(stringFromDb(r.title)),
+        dependsOnIds: jsonArrayFromDb((r as unknown as { dependsOnIds?: unknown }).dependsOnIds),
+      });
+    }
+    const parentById = new Map<string, string | null>();
+    const childrenById = new Map<string, string[]>();
+    for (const r of rows) childrenById.set(r.id, []);
+    for (const r of rows) {
+      const meType = nodeTypeFromTitle(stringFromDb(r.title));
+      const deps = jsonArrayFromDb((r as unknown as { dependsOnIds?: unknown }).dependsOnIds);
+      const parent =
+        deps.find((id) => {
+          const p = byId.get(id);
+          return p && levelFromNodeType(p.nodeType) < levelFromNodeType(meType);
+        }) ?? null;
+      parentById.set(r.id, parent);
+      if (parent) {
+        childrenById.set(parent, [...(childrenById.get(parent) ?? []), r.id]);
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -68,8 +107,11 @@ export async function GET(
         projectId: r.projectId,
         specVersionId: r.specVersionId,
         specVersionNumber: r.specVersion.version,
-        title: r.title,
+        nodeType: nodeTypeFromTitle(stringFromDb(r.title)),
+        title: stripNodeTypePrefix(stringFromDb(r.title)),
         description: r.description,
+        parentId: parentById.get(r.id) ?? null,
+        childrenIds: childrenById.get(r.id) ?? [],
         priority: r.priority,
         dependsOn: jsonArrayFromDb(r.dependsOn),
         dependsOnIds: jsonArrayFromDb((r as unknown as { dependsOnIds?: unknown }).dependsOnIds),
@@ -129,6 +171,7 @@ export async function POST(
     let body: {
       specVersionId?: string;
       title?: string;
+      nodeType?: "requirement" | "design" | "feature" | "task";
       description?: string | null;
       priority?: string;
       acceptanceCriteria?: string[];
@@ -157,7 +200,7 @@ export async function POST(
       data: {
         projectId: pid,
         specVersionId,
-        title: title.slice(0, 500),
+        title: withNodeTypePrefix(body.nodeType ?? "task", title.slice(0, 500)),
         description: body.description === null ? null : String(body.description ?? "").slice(0, 8000) || null,
         priority: String(body.priority ?? "MEDIUM").toUpperCase().trim() || "MEDIUM",
         acceptanceCriteria: Array.isArray(body.acceptanceCriteria)
@@ -185,8 +228,11 @@ export async function POST(
         projectId: created.projectId,
         specVersionId: created.specVersionId,
         specVersionNumber: created.specVersion.version,
-        title: created.title,
+        nodeType: nodeTypeFromTitle(stringFromDb(created.title)),
+        title: stripNodeTypePrefix(stringFromDb(created.title)),
         description: created.description,
+        parentId: null,
+        childrenIds: [],
         priority: created.priority,
         dependsOn: jsonArrayFromDb(created.dependsOn),
         dependsOnIds: jsonArrayFromDb((created as unknown as { dependsOnIds?: unknown }).dependsOnIds),

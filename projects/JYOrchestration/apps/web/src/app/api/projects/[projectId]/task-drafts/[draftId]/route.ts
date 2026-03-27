@@ -4,6 +4,7 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { deleteTaskDraft } from "@/lib/project-spec/confirmTaskDraftsService";
+import { nodeTypeFromTitle, stripNodeTypePrefix, withNodeTypePrefix } from "@/lib/project-spec/taskDraftHierarchy";
 
 function normalizePriority(p: string): string {
   const u = p.toUpperCase().trim();
@@ -15,6 +16,7 @@ function normalizePriority(p: string): string {
 
 type PatchBody = {
   title?: string;
+  nodeType?: "requirement" | "design" | "feature" | "task";
   description?: string | null;
   priority?: string;
   dependsOn?: string[];
@@ -80,7 +82,11 @@ export async function PATCH(
       if (!t) {
         return NextResponse.json({ success: false, message: "title은 비울 수 없습니다." }, { status: 400 });
       }
-      data.title = t.slice(0, 500);
+      const currentNodeType = nodeTypeFromTitle(existing.title);
+      data.title = withNodeTypePrefix(body.nodeType ?? currentNodeType, t.slice(0, 500));
+    }
+    if (body.nodeType !== undefined && body.title === undefined) {
+      data.title = withNodeTypePrefix(body.nodeType, stripNodeTypePrefix(existing.title));
     }
     if (body.description !== undefined) {
       data.description = body.description === null ? null : String(body.description).slice(0, 8000);
@@ -143,8 +149,11 @@ export async function PATCH(
         projectId: updated.projectId,
         specVersionId: updated.specVersionId,
         specVersionNumber: updated.specVersion.version,
-        title: updated.title,
+        nodeType: nodeTypeFromTitle(String(updated.title)),
+        title: stripNodeTypePrefix(String(updated.title)),
         description: updated.description,
+        parentId: null,
+        childrenIds: [],
         priority: updated.priority,
         dependsOn: Array.isArray(updated.dependsOn)
           ? (updated.dependsOn as string[])

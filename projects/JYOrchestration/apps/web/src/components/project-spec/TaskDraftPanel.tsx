@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  deleteProjectTaskDraft,
   fetchProjectTaskDrafts,
   patchProjectTaskDraft,
   postProjectTaskDraftsAiReorder,
@@ -26,6 +25,7 @@ import {
   normalizeWorkflowStage,
   type WorkflowStage,
 } from "@/lib/project-spec/workflowLaneLayout";
+import { nodeTypeFromTitle, nodeTypeLabel, stageForNodeType, type TaskNodeType } from "@/lib/project-spec/taskDraftHierarchy";
 import ReactFlow, {
   Background,
   Controls,
@@ -130,16 +130,14 @@ function uniqueStrings(xs: string[]): string[] {
   return out;
 }
 
-const EXECUTION_STAGE_ORDER = ["Planning", "Design", "Build", "Test", "Deploy"] as const;
+const EXECUTION_STAGE_ORDER = ["Requirement", "Design", "Development"] as const;
 type ExecutionStage = (typeof EXECUTION_STAGE_ORDER)[number];
 
 function stageLabel(stage: ExecutionStage): string {
   const labels: Record<ExecutionStage, string> = {
-    Planning: "기획",
+    Requirement: "요구",
     Design: "설계",
-    Build: "개발",
-    Test: "테스트",
-    Deploy: "배포",
+    Development: "개발",
   };
   return labels[stage];
 }
@@ -147,11 +145,9 @@ function stageLabel(stage: ExecutionStage): string {
 function toExecutionStage(raw: string | null | undefined): ExecutionStage | null {
   const v = String(raw ?? "").trim().toLowerCase();
   if (!v) return null;
-  if (v === "planning" || v === "plan" || v === "기획") return "Planning";
-  if (v === "design" || v === "설계" || v === "review") return "Design";
-  if (v === "build" || v === "개발" || v === "implementation") return "Build";
-  if (v === "test" || v === "qa" || v === "테스트") return "Test";
-  if (v === "deploy" || v === "apply" || v === "release" || v === "배포") return "Deploy";
+  if (v === "requirement" || v === "요구" || v === "planning") return "Requirement";
+  if (v === "design" || v === "설계" || v === "feature") return "Design";
+  if (v === "development" || v === "개발" || v === "build" || v === "task") return "Development";
   return null;
 }
 
@@ -260,6 +256,7 @@ export function TaskDraftPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<TaskDraftDto | null>(null);
+  const [editNodeType, setEditNodeType] = useState<TaskNodeType>("task");
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState("MEDIUM");
@@ -267,6 +264,7 @@ export function TaskDraftPanel({
   const savingPositionsRef = useRef(new Map<string, number>());
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [executionPreviewOpen, setExecutionPreviewOpen] = useState(false);
+  const [childrenCollapsed, setChildrenCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"stage" | "graph">("stage");
   const autoWireRanRef = useRef(false);
   const initialCanvasFitRef = useRef(false);
@@ -417,6 +415,14 @@ export function TaskDraftPanel({
     return isolatedDraftCount >= 2 || draftDraftEdgeCount === 0;
   }, [byId, canEdit, drafts, validation.isolatedIds]);
 
+  const executableDraftCount = useMemo(() => {
+    return drafts.filter((d) => {
+      if (d.status !== "DRAFT") return false;
+      const t = (d.nodeType ?? nodeTypeFromTitle(d.title)) as TaskNodeType;
+      return t === "task";
+    }).length;
+  }, [drafts]);
+
   const showDefaultFlowCta = useMemo(() => {
     if (!canEdit || !needsDefaultFlowCta) return false;
     if (shouldAutoWire) return false;
@@ -525,7 +531,7 @@ export function TaskDraftPanel({
     for (const d of drafts) {
       const explicit = toExecutionStage(d.stage);
       const inferred = inferredStageByDraftId.get(d.id);
-      const st = explicit ?? inferred ?? "Build";
+      const st = explicit ?? inferred ?? "Development";
       groups.get(st)!.push(d);
     }
     for (const s of EXECUTION_STAGE_ORDER) {
@@ -564,8 +570,31 @@ export function TaskDraftPanel({
 
   const nodeTypes = useMemo<NodeTypes>(() => ({ taskDraftNode: TaskDraftWorkflowNode }), []);
 
+  const hierarchyHighlightIds = useMemo(() => {
+    if (!editing) return new Set<string>();
+    const hit = new Set<string>([editing.id]);
+    const stack = [editing.id];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      for (const dep of depsById.get(id) ?? []) {
+        if (!hit.has(dep)) {
+          hit.add(dep);
+          stack.push(dep);
+        }
+      }
+      for (const d of drafts) {
+        if ((d.dependsOnIds ?? []).includes(id) && !hit.has(d.id)) {
+          hit.add(d.id);
+          stack.push(d.id);
+        }
+      }
+    }
+    return hit;
+  }, [depsById, drafts, editing]);
+
   const nodes: Node[] = useMemo(() => {
     return drafts.map((d) => {
+      const nodeType = d.nodeType ?? nodeTypeFromTitle(d.title);
       const ws = workflowStatusById.get(d.id) ?? "BLOCKED";
       const visualState =
         ws === "CONFIRMED"
@@ -581,12 +610,14 @@ export function TaskDraftPanel({
         position: { x: d.positionX ?? 0, y: d.positionY ?? 0 },
         data: {
           title: d.title,
+          nodeType,
           priority: d.priority,
+          highlighted: hierarchyHighlightIds.has(d.id),
           visualState,
         },
       };
     });
-  }, [drafts, workflowStatusById]);
+  }, [drafts, workflowStatusById, hierarchyHighlightIds]);
 
   const edges: Edge[] = useMemo(() => {
     const out: Edge[] = [];
@@ -610,7 +641,7 @@ export function TaskDraftPanel({
     if (!canEdit) return;
     const target = byId.get(draftId);
     if (!target) return;
-    const stage = toExecutionStage(target.stage) ?? inferredStageByDraftId.get(draftId) ?? "Build";
+    const stage = toExecutionStage(target.stage) ?? inferredStageByDraftId.get(draftId) ?? "Development";
     const rows = [...(groupedByExecutionStage.get(stage) ?? [])];
     const idx = rows.findIndex((d) => d.id === draftId);
     if (idx < 0) return;
@@ -660,7 +691,7 @@ export function TaskDraftPanel({
   }
 
   async function handleConfirmAll() {
-    if (!projectId || !canEdit || drafts.length === 0) {
+    if (!projectId || !canEdit || executableDraftCount === 0) {
       return;
     }
     if (!validation.ok) {
@@ -672,7 +703,7 @@ export function TaskDraftPanel({
   }
 
   async function runConfirmAll() {
-    if (!projectId || !canEdit || drafts.length === 0) return;
+    if (!projectId || !canEdit || executableDraftCount === 0) return;
     setBusy("confirm-all");
     setMessage(null);
     try {
@@ -693,6 +724,12 @@ export function TaskDraftPanel({
 
   async function handleConfirmOne(draftId: string) {
     if (!projectId || !canEdit) {
+      return;
+    }
+    const row = byId.get(draftId);
+    const t = (row?.nodeType ?? nodeTypeFromTitle(row?.title ?? "")) as TaskNodeType;
+    if (t !== "task") {
+      setMessage("Task 노드만 확정→Task 할 수 있습니다.");
       return;
     }
     if (!validation.ok) {
@@ -717,30 +754,10 @@ export function TaskDraftPanel({
     }
   }
 
-  async function handleDelete(draftId: string) {
-    if (!projectId || !canEdit) {
-      return;
-    }
-    setBusy(`del-${draftId}`);
-    setMessage(null);
-    try {
-      const { res, json } = await deleteProjectTaskDraft(projectId, draftId);
-      if (!res.ok || !json.success) {
-        setMessage(json.message || "삭제에 실패했습니다.");
-        return;
-      }
-      setMessage("초안을 삭제했습니다.");
-      await loadDrafts();
-    } catch (e) {
-      console.error(e);
-      setMessage("삭제 중 오류가 발생했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
   function openEdit(d: TaskDraftDto) {
     setEditing(d);
+    setEditNodeType(d.nodeType ?? nodeTypeFromTitle(d.title));
+    setChildrenCollapsed(false);
     setEditTitle(d.title);
     setEditDescription(d.description ?? "");
     setEditPriority(d.priority);
@@ -760,9 +777,11 @@ export function TaskDraftPanel({
     try {
       const { res, json } = await patchProjectTaskDraft(projectId, editing.id, {
         title: editTitle.trim(),
+        nodeType: editNodeType,
         description: editDescription.trim() || null,
         priority: editPriority,
         acceptanceCriteria: criteria,
+        stage: stageForNodeType(editNodeType),
       });
       if (!res.ok || !json.success) {
         setMessage(json.message || "저장에 실패했습니다.");
@@ -793,6 +812,20 @@ export function TaskDraftPanel({
     if (!canEdit || !conn.source || !conn.target) return;
     const target = byId.get(conn.target);
     if (!target) return;
+    const source = byId.get(conn.source);
+    const sourceType = (source?.nodeType ?? nodeTypeFromTitle(source?.title ?? "")) as TaskNodeType;
+    const targetType = (target.nodeType ?? nodeTypeFromTitle(target.title)) as TaskNodeType;
+
+    // 계층을 건너뛰는 연결은 금지 (Requirement→Design→Feature→Task)
+    const allowed =
+      (sourceType === "requirement" && targetType === "design") ||
+      (sourceType === "design" && targetType === "feature") ||
+      (sourceType === "feature" && targetType === "task");
+    if (!allowed) {
+      setMessage("계층을 건너뛰는 연결은 허용되지 않습니다. (요구 → 설계 → 기능 → 개발 순서)");
+      return;
+    }
+
     const cur = Array.isArray(target.dependsOnIds) ? target.dependsOnIds : [];
     const next = uniqueStrings([...cur, conn.source]).filter((x) => x !== conn.target);
     // cycle 검증
@@ -842,7 +875,7 @@ export function TaskDraftPanel({
     if (now - last < 250) return;
     savingPositionsRef.current.set(node.id, now);
     const draft = byId.get(node.id);
-    const stage = draft ? normalizeWorkflowStage(draft.stage) : "Build";
+    const stage = draft ? normalizeWorkflowStage(draft.stage) : "Development";
     const y = clampNodeYToStageBand(node.position.y, stage);
     try {
       await patchProjectTaskDraft(projectId, node.id, { positionX: node.position.x, positionY: y });
@@ -880,24 +913,7 @@ export function TaskDraftPanel({
     }
   }
 
-  async function handleStageChange(nextStage: WorkflowStage) {
-    if (!editing || !canEdit) return;
-    setBusy("stage");
-    setMessage(null);
-    try {
-      await patchProjectTaskDraft(projectId, editing.id, {
-        stage: nextStage,
-        positionY: snapNodeYToLaneCenter(nextStage),
-      });
-      setEditing({ ...editing, stage: nextStage, positionY: snapNodeYToLaneCenter(nextStage) });
-      await loadDrafts();
-    } catch (e) {
-      console.error(e);
-      setMessage("stage 변경 중 오류가 발생했습니다.");
-    } finally {
-      setBusy(null);
-    }
-  }
+  // Node type 변경 시 stage는 자동 매핑되므로, 기존 stage(Lane) 직접 편집 UI/핸들러는 사용하지 않는다.
 
   async function handleAiReorder() {
     if (!projectId || !canEdit || drafts.length === 0) return;
@@ -964,7 +980,7 @@ export function TaskDraftPanel({
     try {
       for (const t of aiSuggestion.tasks) {
         const dRow = byId.get(t.id);
-        const st = dRow ? normalizeWorkflowStage(dRow.stage) : "Build";
+        const st = dRow ? normalizeWorkflowStage(dRow.stage) : "Development";
         const patch: Record<string, unknown> = {
           positionX: t.positionX,
           positionY: clampNodeYToStageBand(t.positionY, st),
@@ -1113,7 +1129,7 @@ export function TaskDraftPanel({
             <button
               type="button"
               data-testid="task-draft-confirm-all"
-              disabled={busy === "confirm-all" || drafts.length === 0 || !validation.ok}
+              disabled={busy === "confirm-all" || executableDraftCount === 0 || !validation.ok}
               onClick={() => void handleConfirmAll()}
               style={{
                 padding: "8px 12px",
@@ -1382,8 +1398,24 @@ export function TaskDraftPanel({
                       rows.map((d, idx) => {
                         const ws = workflowStatusById.get(d.id) ?? "BLOCKED";
                         const opacity = ws === "BLOCKED" ? 0.55 : ws === "INVALID" ? 0.55 : 1;
-                        const leftColor =
-                          ws === "CONFIRMED" ? "#16a34a" : ws === "READY" ? "#2563eb" : ws === "INVALID" ? "#dc2626" : "#94a3b8";
+                        const nodeType = (d.nodeType ?? nodeTypeFromTitle(d.title)) as TaskNodeType;
+                        const highlighted = hierarchyHighlightIds.has(d.id);
+                        const typeColor =
+                          nodeType === "requirement"
+                            ? "#2563eb"
+                            : nodeType === "design"
+                              ? "#7c3aed"
+                              : nodeType === "feature"
+                                ? "#16a34a"
+                                : "#6b7280";
+                        const typeBg =
+                          nodeType === "requirement"
+                            ? "#dbeafe"
+                            : nodeType === "design"
+                              ? "#ede9fe"
+                              : nodeType === "feature"
+                                ? "#dcfce7"
+                                : "#f1f5f9";
                         const icon = ws === "CONFIRMED" ? "✓" : ws === "READY" ? "●" : ws === "INVALID" ? "!" : "○";
                         return (
                           <button
@@ -1394,21 +1426,38 @@ export function TaskDraftPanel({
                               textAlign: "left",
                               width: "100%",
                               borderRadius: 10,
-                              border: "1px solid #e2e8f0",
-                              background: "#fff",
+                              border: highlighted ? "2px solid #0f766e" : "1px solid #e2e8f0",
+                              background: highlighted ? "#f0fdfa" : "#fff",
+                              boxShadow: highlighted ? "0 2px 12px rgba(13,148,136,0.10)" : "none",
                               padding: 10,
                               cursor: "pointer",
                               opacity,
-                              borderLeft: `4px solid ${leftColor}`,
+                              borderLeft: `4px solid ${typeColor}`,
                             }}
                           >
                             <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 8 }}>
                               <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.35 }}>{d.title}</div>
-                              <span aria-hidden style={{ color: leftColor, fontWeight: 900, fontSize: 12 }}>
-                                {icon}
-                              </span>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                <span
+                                  aria-hidden
+                                  style={{
+                                    fontSize: 10,
+                                    fontWeight: 900,
+                                    padding: "2px 7px",
+                                    borderRadius: 999,
+                                    background: typeBg,
+                                    color: typeColor,
+                                    border: `1px solid ${typeColor}55`,
+                                  }}
+                                >
+                                  {nodeTypeLabel(nodeType)}
+                                </span>
+                                <span aria-hidden style={{ color: typeColor, fontWeight: 900, fontSize: 12 }}>
+                                  {icon}
+                                </span>
+                              </div>
                             </div>
-                            <div style={{ marginTop: 6, fontSize: 11, fontWeight: 900, color: "#7c3aed" }}>
+                            <div style={{ marginTop: 6, fontSize: 11, fontWeight: 900, color: typeColor }}>
                               {priorityToPLabel(d.priority)}
                             </div>
                             {d.description?.trim() ? (
@@ -1583,6 +1632,12 @@ export function TaskDraftPanel({
             <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 6 }}>실행 상태</div>
+                <div style={{ fontSize: 12, color: "#334155", marginBottom: 6 }}>
+                  노드 타입:{" "}
+                  <span style={{ color: "#0f766e", fontWeight: 900 }}>
+                    {nodeTypeLabel(editNodeType)} {stageLabel(normalizeWorkflowStage(stageForNodeType(editNodeType)) as ExecutionStage)}
+                  </span>
+                </div>
                 <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.55 }}>
                   상태:{" "}
                   {(() => {
@@ -1595,14 +1650,36 @@ export function TaskDraftPanel({
                   })()}
                 </div>
                 <div style={{ fontSize: 12, color: "#334155", marginTop: 6 }}>
-                  선행(dependsOn):{" "}
+                  부모(선행):{" "}
                   {detailDependsTitles.length ? detailDependsTitles.join(", ") : "없음"}
                 </div>
                 <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>
-                  이 작업이 막는 후속:{" "}
-                  {detailBlockingDrafts.length
-                    ? detailBlockingDrafts.map((d) => d.title).join(", ")
-                    : "없음"}
+                  자식(후속):{" "}
+                  {detailBlockingDrafts.length === 0 ? (
+                    "없음"
+                  ) : childrenCollapsed ? (
+                    `${detailBlockingDrafts.length}개`
+                  ) : (
+                    detailBlockingDrafts.map((d) => d.title).join(", ")
+                  )}
+                  {detailBlockingDrafts.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setChildrenCollapsed((v) => !v)}
+                      style={{
+                        marginLeft: 10,
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                        background: "#fff",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontSize: 12,
+                      }}
+                    >
+                      {childrenCollapsed ? "펼치기" : "접기"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -1631,20 +1708,22 @@ export function TaskDraftPanel({
               </label>
 
               <label style={{ display: "grid", gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>Stage (Lane)</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>노드 타입</span>
                 <select
-                  value={normalizeWorkflowStage(editing.stage)}
+                  value={editNodeType}
                   disabled={!canEdit || busy === "stage"}
-                  onChange={(e) => void handleStageChange(normalizeWorkflowStage(e.target.value))}
+                  onChange={(e) => setEditNodeType(e.target.value as TaskNodeType)}
                   style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                 >
-                  {WORKFLOW_STAGES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  <option value="requirement">Requirement [R]</option>
+                  <option value="design">Design [D]</option>
+                  <option value="feature">Feature [F]</option>
+                  <option value="task">Task [T]</option>
                 </select>
               </label>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: -6 }}>
+                현재 Lane: {normalizeWorkflowStage(stageForNodeType(editNodeType))}
+              </div>
 
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>설명</span>
@@ -1689,7 +1768,7 @@ export function TaskDraftPanel({
                     <button
                       type="button"
                       data-testid={`task-draft-confirm-${editing.id}`}
-                      disabled={busy?.startsWith("confirm-") || busy === `del-${editing.id}`}
+                      disabled={editNodeType !== "task" || busy?.startsWith("confirm-")}
                       onClick={() => void handleConfirmOne(editing.id)}
                       style={{
                         padding: "8px 12px",
@@ -1703,23 +1782,6 @@ export function TaskDraftPanel({
                       }}
                     >
                       확정→Task
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy?.startsWith("confirm-") || busy === `del-${editing.id}`}
-                      onClick={() => void handleDelete(editing.id)}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 10,
-                        border: "1px solid #dc2626",
-                        background: "#fff",
-                        color: "#dc2626",
-                        fontWeight: 900,
-                        cursor: busy === `del-${editing.id}` ? "wait" : "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      삭제
                     </button>
                   </>
                 ) : null}
@@ -1792,7 +1854,7 @@ export function TaskDraftPanel({
           >
             <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 8 }}>전체 DRAFT 확정 → Task</div>
             <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.55 }}>
-              - DRAFT {drafts.filter((d) => d.status === "DRAFT").length}개를 실제 Task로 추가합니다.
+              - Task DRAFT {executableDraftCount}개를 실제 Task로 추가합니다.
               <br />
               - 기존 Task는 삭제되지 않습니다.
               {validation.isolatedIds.length > 0 ? (

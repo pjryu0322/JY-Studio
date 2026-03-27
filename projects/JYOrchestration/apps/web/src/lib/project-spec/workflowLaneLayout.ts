@@ -1,7 +1,7 @@
 import dagre from "dagre";
 
 /** TaskDraft Workflow — stage(lane) 좌표계 (캔버스·자동정렬·스냅 공통) */
-export const WORKFLOW_STAGES = ["Planning", "Build", "Test", "Review", "Apply"] as const;
+export const WORKFLOW_STAGES = ["Requirement", "Design", "Development"] as const;
 export type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 
 export const LANE_LAYOUT = {
@@ -15,11 +15,11 @@ export const LANE_LAYOUT = {
 } as const;
 
 export function normalizeWorkflowStage(raw: string | null | undefined): WorkflowStage {
-  const v = String(raw ?? "").trim();
-  if ((WORKFLOW_STAGES as readonly string[]).includes(v)) {
-    return v as WorkflowStage;
-  }
-  return "Build";
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (v === "requirement" || v === "planning" || v === "요구" || v === "기획") return "Requirement";
+  if (v === "design" || v === "설계" || v === "review" || v === "feature") return "Design";
+  if (v === "development" || v === "build" || v === "개발" || v === "task") return "Development";
+  return "Development";
 }
 
 export function laneBandTopY(stage: WorkflowStage): number {

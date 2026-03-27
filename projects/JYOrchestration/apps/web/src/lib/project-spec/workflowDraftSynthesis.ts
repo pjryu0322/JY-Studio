@@ -38,11 +38,9 @@ export function priorityToPLabel(p: string): "P0" | "P1" | "P2" | "P3" {
 
 function inferStageFromText(text: string): WorkflowStage {
   const t = text.toLowerCase();
-  if (/(기획|요구사항|설계|planning|scope|요약)/.test(t)) return "Planning";
-  if (/(test|qa|검증|테스트|e2e|unit)/.test(t)) return "Test";
-  if (/(review|검토|승인|pr|code review)/.test(t)) return "Review";
-  if (/(배포|적용|apply|release|rollout)/.test(t)) return "Apply";
-  return "Build";
+  if (/(요구|requirement|\[r\])/.test(t)) return "Requirement";
+  if (/(설계|design|feature|\[d\]|\[f\])/.test(t)) return "Design";
+  return "Development";
 }
 
 function priorityWeight(p: string): number {

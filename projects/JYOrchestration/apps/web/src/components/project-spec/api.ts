@@ -142,6 +142,7 @@ export async function postProjectTaskDraftCreate(
   body: {
     specVersionId: string;
     title: string;
+    nodeType?: "requirement" | "design" | "feature" | "task";
     description?: string | null;
     priority?: string;
     acceptanceCriteria?: string[];
@@ -228,6 +229,7 @@ export async function patchProjectTaskDraft(
   draftId: string,
   body: Partial<{
     title: string;
+    nodeType: "requirement" | "design" | "feature" | "task";
     description: string | null;
     priority: string;
     dependsOn: string[];

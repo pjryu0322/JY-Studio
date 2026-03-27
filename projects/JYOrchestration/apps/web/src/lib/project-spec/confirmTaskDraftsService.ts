@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { nodeTypeFromTitle, stripNodeTypePrefix } from "@/lib/project-spec/taskDraftHierarchy";
 
 export type ConfirmTaskDraftsResult = {
   confirmedCount: number;
@@ -36,6 +37,12 @@ export async function confirmTaskDraftsToTasks(params: {
     return { confirmedCount: 0, taskIds: [] };
   }
 
+  // 계층 노드 중 실제 실행 단위(task)만 Task로 확정한다.
+  const executableDrafts = drafts.filter((d) => nodeTypeFromTitle(d.title) === "task");
+  if (executableDrafts.length === 0) {
+    return { confirmedCount: 0, taskIds: [] };
+  }
+
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: { ownerUserId: true },
@@ -53,14 +60,14 @@ export async function confirmTaskDraftsToTasks(params: {
   const taskIds: string[] = [];
 
   await prisma.$transaction(async (tx) => {
-    for (const d of drafts) {
+    for (const d of executableDrafts) {
       const created = await tx.task.create({
         data: {
           projectId,
           ownerUserId: project.ownerUserId,
           projectSpecUploadId: null,
           sourceSpecVersionId: d.specVersionId,
-          name: d.title,
+          name: stripNodeTypePrefix(d.title),
           description: d.description,
           status: "TODO",
           order: nextOrder,
@@ -79,7 +86,7 @@ export async function confirmTaskDraftsToTasks(params: {
     }
   });
 
-  return { confirmedCount: drafts.length, taskIds };
+  return { confirmedCount: executableDrafts.length, taskIds };
 }
 
 export async function deleteTaskDraft(params: {
