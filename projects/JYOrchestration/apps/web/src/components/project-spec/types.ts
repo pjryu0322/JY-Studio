@@ -19,6 +19,9 @@ export type Project = {
   specScopeOut?: string | null;
   specTargetUsers?: string | null;
   specSuccessCriteria?: string | null;
+  /** F-1-3-1c 저장된 실행 계획(전체 마크다운). Spec AI 입력의 유일한 본문 */
+  executionPlanMarkdown?: string | null;
+  selectedPlanCandidateId?: string | null;
   confirmedSpecMarkdown?: string | null;
   confirmedSpecResponseId?: string | null;
   confirmedSpecAt?: string | null;

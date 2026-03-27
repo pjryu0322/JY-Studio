@@ -26,6 +26,7 @@ import {
   SPEC_WORKSPACE_MODEL_LABELS,
   type SpecWorkspaceAiModelId,
 } from "@/lib/project-spec/specWorkspaceModels";
+import { scoreSpecMarkdown } from "@/lib/project-spec/scoreSpecMarkdown";
 
 /** 자동 초안 API 중복 호출 방지 (동시에 하나만) */
 const specAutoDraftInFlightByProject = new Map<string, boolean>();
@@ -176,6 +177,33 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         specTargetUsers: p.specTargetUsers ?? "",
         specSuccessCriteria: p.specSuccessCriteria ?? "",
       });
+      if (p.executionPlanMarkdown?.trim()) {
+        setWorkingDocument(p.executionPlanMarkdown);
+        setLastSavedWorkingDocument(p.executionPlanMarkdown);
+      } else {
+        const slice = {
+          specCoreGoals: p.specCoreGoals ?? "",
+          specScopeIn: p.specScopeIn ?? "",
+          specScopeOut: p.specScopeOut ?? "",
+          specTargetUsers: p.specTargetUsers ?? "",
+          specSuccessCriteria: p.specSuccessCriteria ?? "",
+        };
+        const hasAny =
+          slice.specCoreGoals.trim() ||
+          slice.specScopeIn.trim() ||
+          slice.specScopeOut.trim() ||
+          slice.specTargetUsers.trim() ||
+          slice.specSuccessCriteria.trim();
+        if (hasAny) {
+          const md = buildFallbackProjectPlanMarkdown(slice);
+          setWorkingDocument(md);
+          setLastSavedWorkingDocument(md);
+        }
+      }
+      if (p.selectedPlanCandidateId) {
+        setSelectedPlanCandidateId(p.selectedPlanCandidateId);
+      }
+      planWorkspaceHydratedRef.current = true;
     } catch (e) {
       console.error(e);
       setLoadError("워크스페이스 조회 중 오류가 발생했습니다.");
@@ -187,38 +215,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
-
-  useEffect(() => {
-    if (!workspace || planWorkspaceHydratedRef.current) {
-      return;
-    }
-    const slice = {
-      specCoreGoals: form.specCoreGoals,
-      specScopeIn: form.specScopeIn,
-      specScopeOut: form.specScopeOut,
-      specTargetUsers: form.specTargetUsers,
-      specSuccessCriteria: form.specSuccessCriteria,
-    };
-    const hasAny =
-      slice.specCoreGoals.trim() ||
-      slice.specScopeIn.trim() ||
-      slice.specScopeOut.trim() ||
-      slice.specTargetUsers.trim() ||
-      slice.specSuccessCriteria.trim();
-    if (hasAny) {
-      const md = buildFallbackProjectPlanMarkdown(slice);
-      setWorkingDocument(md);
-      setLastSavedWorkingDocument(md);
-    }
-    planWorkspaceHydratedRef.current = true;
-  }, [
-    workspace,
-    form.specCoreGoals,
-    form.specScopeIn,
-    form.specScopeOut,
-    form.specTargetUsers,
-    form.specSuccessCriteria,
-  ]);
 
   useEffect(() => {
     if (!lastTaskDraftSync) {
@@ -258,19 +254,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     [form.name, form.description, form.projectType]
   );
 
-  const allSpecFieldsFilledForAi = useMemo(
-    () =>
-      Boolean(
-        effectiveSpecSlice.specCoreGoals.trim() &&
-          effectiveSpecSlice.specScopeIn.trim() &&
-          effectiveSpecSlice.specScopeOut.trim() &&
-          effectiveSpecSlice.specTargetUsers.trim() &&
-          effectiveSpecSlice.specSuccessCriteria.trim()
-      ),
-    [effectiveSpecSlice]
-  );
+  const savedExecutionPlanOk = Boolean(workspace?.project.executionPlanMarkdown?.trim());
 
-  const canRunAiProjectSpec = canEdit && baseInputsOk && allSpecFieldsFilledForAi;
+  const canRunAiProjectSpec = canEdit && baseInputsOk && savedExecutionPlanOk && !planDocumentDirty;
 
   const serverSpecFieldsEmpty = useMemo(() => {
     if (!workspace?.project) {
@@ -303,6 +289,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     outOfScope: string | null;
     targetUsers: string | null;
     successCriteria: string | null;
+    executionPlanMarkdown: string | null;
+    selectedPlanCandidateId: string | null;
   }): void {
     if (!project) {
       return;
@@ -317,6 +305,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       specScopeOut: ctx.outOfScope,
       specTargetUsers: ctx.targetUsers,
       specSuccessCriteria: ctx.successCriteria,
+      executionPlanMarkdown: ctx.executionPlanMarkdown,
+      selectedPlanCandidateId: ctx.selectedPlanCandidateId,
     });
   }
 
@@ -350,6 +340,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       specScopeOut: p.specScopeOut ?? null,
       specTargetUsers: p.specTargetUsers ?? null,
       specSuccessCriteria: p.specSuccessCriteria ?? null,
+      executionPlanMarkdown: p.executionPlanMarkdown ?? null,
+      selectedPlanCandidateId: p.selectedPlanCandidateId ?? null,
       confirmedSpecMarkdown: p.confirmedSpecMarkdown ?? null,
       confirmedSpecResponseId: p.confirmedSpecResponseId ?? null,
       confirmedSpecAt: p.confirmedSpecAt ?? null,
@@ -511,6 +503,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         outOfScope: effectiveSpecSlice.specScopeOut.trim() || null,
         targetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
         successCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
+        executionPlanMarkdown: workingDocument.trim() || null,
+        selectedPlanCandidateId: selectedPlanCandidateId,
       });
       if (!res.ok || !json.success || !json.data) {
         setMessage(json.message || "저장에 실패했습니다.");
@@ -527,7 +521,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       }));
       setLastSavedWorkingDocument(workingDocument);
       setPlanDocumentDirty(false);
-      setMessage("프로젝트 정보가 저장되었습니다. 이후 「AI로 Project Spec 생성」에 사용됩니다.");
+      setMessage("실행 계획이 저장되었습니다. 다음 단계 「AI로 Project Spec 생성」에 반영됩니다.");
       mergeContextIntoProject(ctx);
       await loadWorkspace();
     } catch (e) {
@@ -792,25 +786,19 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       return;
     }
     if (!canRunAiProjectSpec) {
-      setMessage("프로젝트명·설명·유형과 Spec 필드(핵심 목표·범위·사용자·성공 기준)를 모두 채워 주세요.");
+      setMessage(
+        planDocumentDirty
+          ? "실행 계획이 저장되지 않은 변경이 있습니다. 먼저 「실행계획 저장」을 실행하세요."
+          : "프로젝트명·설명·유형을 입력하고 실행 계획을 「실행계획 저장」으로 저장하세요."
+      );
       return;
     }
     setActionBusy("ai-spec");
-    setMessage("저장된 프로젝트 계획·Spec을 반영해 AI에 Project Spec 생성을 요청하는 중…");
+    setMessage("저장된 실행 계획만을 반영해 AI에 Project Spec 생성을 요청하는 중…");
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "aiRequest",
         model: selectedModel,
-        saveContext: {
-          name: form.name.trim(),
-          description: form.description.trim() ? form.description : null,
-          projectType: form.projectType,
-          coreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
-          inScope: effectiveSpecSlice.specScopeIn.trim() || null,
-          outOfScope: effectiveSpecSlice.specScopeOut.trim() || null,
-          targetUsers: effectiveSpecSlice.specTargetUsers.trim() || null,
-          successCriteria: effectiveSpecSlice.specSuccessCriteria.trim() || null,
-        },
       });
       if (!res.ok || !json.success) {
         setMessage(json.message || "AI Spec 생성에 실패했습니다.");
@@ -1065,8 +1053,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           {canEdit ? (
             <div style={{ display: "grid", gap: 8 }}>
               <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-                현재 작업 중인 프로젝트 계획 문서와 아래 필드를 기준으로 저장합니다. 저장된 내용은 다음 단계의 「AI로 Project
-                Spec 생성」에 사용됩니다.
+                현재 작업 중인 실행 계획을 저장합니다. 저장된 실행 계획은 다음 단계의 AI Project Spec 생성에만 사용됩니다
+                (최종 Spec이 아닙니다).
               </p>
               <button
                 type="button"
@@ -1092,7 +1080,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                       : "pointer",
                 }}
               >
-                {saving ? "저장 중…" : "프로젝트 정보 저장"}
+                {saving ? "저장 중…" : "실행계획 저장"}
               </button>
             </div>
           ) : null}
@@ -1115,8 +1103,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         </div>
 
         <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          위에서 저장한 프로젝트 정보·실행 계획에서 추출한 Spec 필드를 바탕으로 AI가 Project Spec 초안을 만듭니다. 별도의
-          프롬프트 확인·복사·갱신 없이 버튼 한 번으로 진행합니다.
+          저장된 실행계획을 기반으로 Project Spec을 생성합니다. 서버는 DB에 저장된 실행 계획만 사용하며, 클라이언트에서 임의로
+          넣은 프롬프트 텍스트는 반영하지 않습니다.
         </p>
 
         <label style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -1161,10 +1149,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             {actionBusy === "ai-spec" ? "저장 후 AI 요청 중…" : "AI로 Project Spec 생성"}
           </button>
         </div>
-        {canEdit && baseInputsOk && !allSpecFieldsFilledForAi ? (
+        {canEdit && baseInputsOk && !savedExecutionPlanOk ? (
           <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
-            먼저 위 워크스페이스에서 핵심 목표·In/Out scope·대상 사용자·성공 기준을 모두 채우고 「프로젝트 정보 저장」을
-            해 주세요.
+            실행 계획 문서를 작성한 뒤 「실행계획 저장」을 실행하세요. AI Spec은 저장된 실행 계획만을 근거로 생성됩니다.
+          </p>
+        ) : null}
+        {canEdit && baseInputsOk && savedExecutionPlanOk && planDocumentDirty ? (
+          <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
+            저장되지 않은 편집이 있습니다. 「실행계획 저장」 후 다시 시도하세요.
           </p>
         ) : null}
         {actionBusy === "ai-spec" ? (
@@ -1174,7 +1166,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             data-ui-label="[F-1-3-2-s2] Inline — Project Spec AI response request"
             style={{ margin: "10px 0 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}
           >
-            저장된 계획을 반영해 AI에 Project Spec 응답을 요청하는 중…
+            저장된 실행 계획을 반영해 AI에 Project Spec 응답을 요청하는 중…
           </p>
         ) : null}
       </div>
@@ -1194,7 +1186,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>AI 응답</h3>
         </div>
         <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b" }}>
-          응답 두 개를 「비교」로 선택하면 섹션 단위로 나란히 보이고, 차이 있는 섹션만 강조됩니다.
+          응답 두 개를 「비교」로 선택하면 섹션 단위로 나란히 보입니다. 아래 휴리스틱 Spec 품질 점수(완전성·구조·실행
+          준비도)로 후보를 빠르게 구분할 수 있습니다.
         </p>
         {actionBusy?.startsWith("confirm") ? (
           <p
@@ -1254,6 +1247,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               <div>
                 <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 A</div>
                 <div>모델: {compareLeft.model}</div>
+                {(() => {
+                  const s = scoreSpecMarkdown(compareLeft.responseMarkdown);
+                  return (
+                    <div style={{ fontSize: 11, color: "#0f172a", marginTop: 4, fontWeight: 700 }}>
+                      Spec 품질 점수: {s.overall} (완전성 {s.completeness} · 구조 {s.structureQuality} · 실행 준비{" "}
+                      {s.executionReadiness})
+                    </div>
+                  );
+                })()}
                 <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
                   토큰: 입력 {compareLeft.promptTokens ?? "-"} / 출력 {compareLeft.completionTokens ?? "-"} / 총{" "}
                   {compareLeft.totalTokens ?? "-"}
@@ -1266,6 +1268,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               <div>
                 <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 B</div>
                 <div>모델: {compareRight.model}</div>
+                {(() => {
+                  const s = scoreSpecMarkdown(compareRight.responseMarkdown);
+                  return (
+                    <div style={{ fontSize: 11, color: "#0f172a", marginTop: 4, fontWeight: 700 }}>
+                      Spec 품질 점수: {s.overall} (완전성 {s.completeness} · 구조 {s.structureQuality} · 실행 준비{" "}
+                      {s.executionReadiness})
+                    </div>
+                  );
+                })()}
                 <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
                   토큰: 입력 {compareRight.promptTokens ?? "-"} / 출력 {compareRight.completionTokens ?? "-"} / 총{" "}
                   {compareRight.totalTokens ?? "-"}
@@ -1580,6 +1591,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                       <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
                         토큰: 입력 {r.promptTokens ?? "-"} / 출력 {r.completionTokens ?? "-"} / 총 {r.totalTokens ?? "-"}
                       </div>
+                      {(() => {
+                        const s = scoreSpecMarkdown(r.responseMarkdown);
+                        return (
+                          <div style={{ fontSize: 11, color: "#334155", marginTop: 4, fontWeight: 700 }}>
+                            Spec 품질: {s.overall} · 완전성 {s.completeness} · 구조 {s.structureQuality} · 실행 준비{" "}
+                            {s.executionReadiness}
+                          </div>
+                        );
+                      })()}
                       {selected ? (
                         <span style={{ marginLeft: 8, color: "#1d4ed8", fontWeight: 800 }}>확정됨</span>
                       ) : null}

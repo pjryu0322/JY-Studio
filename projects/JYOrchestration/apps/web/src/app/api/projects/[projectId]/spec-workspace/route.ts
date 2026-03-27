@@ -26,6 +26,8 @@ const PROJECT_MAP_SELECT = {
   specScopeOut: true,
   specTargetUsers: true,
   specSuccessCriteria: true,
+  executionPlanMarkdown: true,
+  selectedPlanCandidateId: true,
   confirmedSpecMarkdown: true,
   confirmedSpecResponseId: true,
   confirmedSpecAt: true,
@@ -42,6 +44,8 @@ function mapProject(row: {
   specScopeOut: string | null;
   specTargetUsers: string | null;
   specSuccessCriteria: string | null;
+  executionPlanMarkdown: string | null;
+  selectedPlanCandidateId: string | null;
   confirmedSpecMarkdown: string | null;
   confirmedSpecResponseId: string | null;
   confirmedSpecAt: Date | null;
@@ -57,6 +61,8 @@ function mapProject(row: {
   | "specScopeOut"
   | "specTargetUsers"
   | "specSuccessCriteria"
+  | "executionPlanMarkdown"
+  | "selectedPlanCandidateId"
   | "confirmedSpecMarkdown"
   | "confirmedSpecResponseId"
   | "confirmedSpecAt"
@@ -72,6 +78,8 @@ function mapProject(row: {
     specScopeOut: row.specScopeOut,
     specTargetUsers: row.specTargetUsers,
     specSuccessCriteria: row.specSuccessCriteria,
+    executionPlanMarkdown: row.executionPlanMarkdown,
+    selectedPlanCandidateId: row.selectedPlanCandidateId,
     confirmedSpecMarkdown: row.confirmedSpecMarkdown,
     confirmedSpecResponseId: row.confirmedSpecResponseId,
     confirmedSpecAt: row.confirmedSpecAt?.toISOString() ?? null,
@@ -192,6 +200,8 @@ type PatchBody = {
   specScopeOut?: string | null;
   specTargetUsers?: string | null;
   specSuccessCriteria?: string | null;
+  executionPlanMarkdown?: string | null;
+  selectedPlanCandidateId?: string | null;
 };
 
 export async function PATCH(
@@ -265,6 +275,15 @@ export async function PATCH(
     if (body.specSuccessCriteria !== undefined) {
       data.specSuccessCriteria = body.specSuccessCriteria === null ? null : String(body.specSuccessCriteria);
     }
+    if (body.executionPlanMarkdown !== undefined) {
+      data.executionPlanMarkdown = body.executionPlanMarkdown === null ? null : String(body.executionPlanMarkdown);
+    }
+    if (body.selectedPlanCandidateId !== undefined) {
+      data.selectedPlanCandidateId =
+        body.selectedPlanCandidateId === null || body.selectedPlanCandidateId === ""
+          ? null
+          : String(body.selectedPlanCandidateId);
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ success: false, message: "수정할 필드가 없습니다." }, { status: 400 });
@@ -294,19 +313,8 @@ export async function PATCH(
   }
 }
 
-type AiRequestSaveContext = {
-  name: string;
-  description: string | null;
-  projectType: string;
-  coreGoals: string | null;
-  inScope: string | null;
-  outOfScope: string | null;
-  targetUsers: string | null;
-  successCriteria: string | null;
-};
-
 type PostBody =
-  | { action: "aiRequest"; saveContext?: AiRequestSaveContext; model?: string }
+  | { action: "aiRequest"; model?: string }
   | { action: "confirm"; responseId: string }
   | {
       action: "confirmMerged";
@@ -370,76 +378,9 @@ export async function POST(
         workspaceOpenAiModel = rawModel;
       }
 
-      let projectFull = await prisma.project.findUnique({ where: { id } });
+      const projectFull = await prisma.project.findUnique({ where: { id } });
       if (!projectFull) {
         return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
-      }
-
-      if (body.saveContext) {
-        const sc = body.saveContext;
-        const name = String(sc.name ?? "").trim();
-        if (!name) {
-          return NextResponse.json({ success: false, message: "프로젝트명이 필요합니다." }, { status: 400 });
-        }
-        const description =
-          sc.description === undefined ? projectFull.description : sc.description === null ? null : String(sc.description);
-        if (!String(description ?? "").trim()) {
-          return NextResponse.json(
-            { success: false, message: "프로젝트 설명이 필요합니다." },
-            { status: 400 }
-          );
-        }
-        const projectType = String(sc.projectType ?? "").trim();
-        if (!projectType) {
-          return NextResponse.json({ success: false, message: "프로젝트 유형이 필요합니다." }, { status: 400 });
-        }
-
-        const nm = (v: string | null | undefined) => String(v ?? "").trim();
-        const missing: string[] = [];
-        if (!nm(sc.coreGoals)) {
-          missing.push("핵심 목표");
-        }
-        if (!nm(sc.inScope)) {
-          missing.push("In scope");
-        }
-        if (!nm(sc.outOfScope)) {
-          missing.push("Out of scope");
-        }
-        if (!nm(sc.targetUsers)) {
-          missing.push("대상 사용자");
-        }
-        if (!nm(sc.successCriteria)) {
-          missing.push("성공 기준");
-        }
-        if (missing.length > 0) {
-          return NextResponse.json(
-            {
-              success: false,
-              message: `다음 항목을 입력한 뒤 AI Spec을 생성하세요: ${missing.join(", ")}`,
-            },
-            { status: 400 }
-          );
-        }
-
-        await prisma.project.update({
-          where: { id },
-          data: {
-            name,
-            description,
-            projectType,
-            specCoreGoals: nm(sc.coreGoals),
-            specScopeIn: nm(sc.inScope),
-            specScopeOut: nm(sc.outOfScope),
-            specTargetUsers: nm(sc.targetUsers),
-            specSuccessCriteria: nm(sc.successCriteria),
-          },
-        });
-
-        const reloaded = await prisma.project.findUnique({ where: { id } });
-        if (!reloaded) {
-          return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
-        }
-        projectFull = reloaded;
       }
 
       const projectForPrompt: Project = {
@@ -453,12 +394,29 @@ export async function POST(
         specScopeOut: projectFull.specScopeOut,
         specTargetUsers: projectFull.specTargetUsers,
         specSuccessCriteria: projectFull.specSuccessCriteria,
+        executionPlanMarkdown: projectFull.executionPlanMarkdown,
+        selectedPlanCandidateId: projectFull.selectedPlanCandidateId,
         confirmedSpecMarkdown: projectFull.confirmedSpecMarkdown,
         confirmedSpecResponseId: projectFull.confirmedSpecResponseId,
         confirmedSpecAt: projectFull.confirmedSpecAt?.toISOString() ?? null,
       };
 
-      const promptText = buildWorkspacePromptText(projectForPrompt);
+      let promptText: string;
+      try {
+        promptText = buildWorkspacePromptText(projectForPrompt, workspaceOpenAiModel);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === "EXECUTION_PLAN_REQUIRED") {
+          return NextResponse.json(
+            {
+              success: false,
+              message: "저장된 실행 계획이 없습니다. 「실행계획 저장」으로 먼저 저장하세요.",
+            },
+            { status: 400 }
+          );
+        }
+        throw e;
+      }
       const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
         where: { projectId: id },
         _max: { version: true },
@@ -549,8 +507,9 @@ export async function POST(
         },
       };
 
-      if (body.saveContext) {
-        responsePayload.project = mapProject(projectFull);
+      const mapped = await prisma.project.findUnique({ where: { id }, select: PROJECT_MAP_SELECT });
+      if (mapped) {
+        responsePayload.project = mapProject(mapped);
       }
 
       return NextResponse.json({

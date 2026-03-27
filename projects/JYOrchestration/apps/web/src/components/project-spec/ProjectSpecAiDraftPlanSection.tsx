@@ -306,15 +306,16 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
           <div style={{ flex: "2 1 320px", minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>작업 중인 프로젝트 계획 문서 (마크다운)</span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>실행 계획 초안 (마크다운)</span>
               {planDocumentDirty ? (
                 <span style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>편집 저장 전</span>
               ) : (
-                <span style={{ fontSize: 11, color: "#64748b" }}>저장 시 아래 Spec 필드에 반영됩니다</span>
+                <span style={{ fontSize: 11, color: "#64748b" }}>저장 시 아래 필드에 반영됩니다</span>
               )}
             </div>
             <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
-              이 문서가 편집 기준이며, 「프로젝트 정보 저장」으로 추출한 내용이 이후 「AI로 Project Spec 생성」에 사용됩니다.
+              이 문서는 실행 계획이며 최종 Spec이 아닙니다. 「실행계획 저장」으로 저장한 내용만 다음 단계 AI Spec 생성에
+              사용됩니다.
             </p>
             <textarea
               data-testid="spec-workspace-plan-working-document"

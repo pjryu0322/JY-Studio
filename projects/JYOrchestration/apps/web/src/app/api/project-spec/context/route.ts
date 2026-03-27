@@ -63,6 +63,8 @@ type PatchBody = {
   outOfScope?: string | null;
   targetUsers?: string | null;
   successCriteria?: string | null;
+  executionPlanMarkdown?: string | null;
+  selectedPlanCandidateId?: string | null;
 };
 
 export async function PATCH(request: NextRequest) {
@@ -121,6 +123,8 @@ export async function PATCH(request: NextRequest) {
       outOfScope: body.outOfScope,
       targetUsers: body.targetUsers,
       successCriteria: body.successCriteria,
+      executionPlanMarkdown: body.executionPlanMarkdown,
+      selectedPlanCandidateId: body.selectedPlanCandidateId,
     });
 
     if (!updated) {

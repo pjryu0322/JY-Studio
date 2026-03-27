@@ -122,6 +122,16 @@ export function specContextToFormFields(r: SpecContextGenerateResult): {
  */
 const WORKSPACE_SPEC_DEFAULT_MODEL = "gpt-4o";
 
+function workspaceSpecTemperature(model: string): number {
+  if (model.includes("4o-mini")) {
+    return 0.38;
+  }
+  if (model.includes("4.1")) {
+    return 0.48;
+  }
+  return 0.42;
+}
+
 export async function completeWorkspaceSpecMarkdown(
   promptText: string,
   modelFromRequest?: string | null
@@ -139,6 +149,12 @@ export async function completeWorkspaceSpecMarkdown(
   const model =
     trimmed && trimmed.length > 0 ? trimmed : process.env.OPENAI_MODEL?.trim() || WORKSPACE_SPEC_DEFAULT_MODEL;
 
+  const system =
+    "You are a senior software architect and requirements engineer. Follow the user's Korean instructions exactly. " +
+    "Output ONLY the Project Spec as Markdown body: fixed section headers (## 1. Project Overview … ## 7. Constraints & Assumptions), " +
+    "tables and bullets where requested, IDs like FR-01/UC-01, testable acceptance criteria. " +
+    "No narrative-only blobs. No markdown code fence wrapping the entire document. No preamble or epilogue.";
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -147,12 +163,11 @@ export async function completeWorkspaceSpecMarkdown(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.45,
+      temperature: workspaceSpecTemperature(model),
       messages: [
         {
           role: "system",
-          content:
-            "You are a senior software architect. Follow the user's instructions exactly. Output only the Project Spec document body as Markdown (Korean if the prompt is Korean). No markdown code fences wrapping the whole document, no preamble or epilogue.",
+          content: system,
         },
         { role: "user", content: promptText.trim() },
       ],
@@ -294,7 +309,15 @@ export async function generateFullProjectPlanMarkdown(
 
   const model = modelFromRequest.trim() || "gpt-4o-mini";
 
+  const lens =
+    model === "gpt-4o"
+      ? "\n[이 모델 관점] 데이터/API 경계·트랜잭션·장애 시나리오·관측성을 구체적으로."
+      : model === "gpt-4.1"
+        ? "\n[이 모델 관점] 사용자 가치·릴리즈 순서·비기능의 사용자 영향을 강조."
+        : "\n[이 모델 관점] MVP 경로·리스크·검증 우선순위를 간결히.";
+
   const userMessage = `아래 프로젝트 메타 정보를 바탕으로 **실행 가능한 수준의 프로젝트 실행 계획(Project Plan) 초안**을 마크다운 한 편으로 작성하라.
+${lens}
 마케팅 문구가 아니라, 실제 구현·아키텍처·운영 관점에서 구체적으로 작성하라.
 
 [입력]
@@ -327,7 +350,7 @@ export async function generateFullProjectPlanMarkdown(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.35,
+      temperature: model === "gpt-4.1" ? 0.48 : model === "gpt-4o-mini" ? 0.36 : 0.42,
       messages: [
         {
           role: "system",

@@ -135,9 +135,9 @@ export function guidedFlowNextHint(input: {
       return "이미 프로젝트가 열려 있습니다. 아래 단계로 진행하세요.";
     case 2:
       if (!input.canRegisterSpec) {
-        return "ProjectSpec 파일 등록은 PLANNER·OWNER 권한이 필요합니다. 담당자에게 요청하거나 역할을 확인하세요.";
+        return "Spec 워크스페이스 편집은 PLANNER·OWNER 권한이 필요합니다. 담당자에게 요청하거나 역할을 확인하세요.";
       }
-      return "아래에서 스펙 파일을 선택한 뒤 `AI 분석 시작`을 눌러 진행하세요.";
+      return "워크스페이스에서 실행 계획을 작성·저장한 뒤 AI Project Spec을 생성하세요.";
     case 3:
       if (!input.canReview) {
         return "AI 분석은 REVIEWER 이상에서 실행할 수 있습니다.";

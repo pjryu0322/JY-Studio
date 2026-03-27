@@ -10,6 +10,8 @@ export type ProjectSpecContextApi = {
   outOfScope: string | null;
   targetUsers: string | null;
   successCriteria: string | null;
+  executionPlanMarkdown: string | null;
+  selectedPlanCandidateId: string | null;
 };
 
 function mapRow(row: {
@@ -22,6 +24,8 @@ function mapRow(row: {
   specScopeOut: string | null;
   specTargetUsers: string | null;
   specSuccessCriteria: string | null;
+  executionPlanMarkdown: string | null;
+  selectedPlanCandidateId: string | null;
 }): ProjectSpecContextApi {
   return {
     projectId: row.id,
@@ -33,6 +37,8 @@ function mapRow(row: {
     outOfScope: row.specScopeOut,
     targetUsers: row.specTargetUsers,
     successCriteria: row.specSuccessCriteria,
+    executionPlanMarkdown: row.executionPlanMarkdown,
+    selectedPlanCandidateId: row.selectedPlanCandidateId,
   };
 }
 
@@ -49,6 +55,8 @@ export async function getProjectSpecContext(projectId: string): Promise<ProjectS
       specScopeOut: true,
       specTargetUsers: true,
       specSuccessCriteria: true,
+      executionPlanMarkdown: true,
+      selectedPlanCandidateId: true,
     },
   });
   return row ? mapRow(row) : null;
@@ -63,6 +71,8 @@ export type ProjectSpecContextPatchInput = {
   outOfScope?: string | null;
   targetUsers?: string | null;
   successCriteria?: string | null;
+  executionPlanMarkdown?: string | null;
+  selectedPlanCandidateId?: string | null;
 };
 
 export async function updateProjectSpecContext(
@@ -94,6 +104,15 @@ export async function updateProjectSpecContext(
   if (patch.successCriteria !== undefined) {
     data.specSuccessCriteria = patch.successCriteria;
   }
+  if (patch.executionPlanMarkdown !== undefined) {
+    data.executionPlanMarkdown = patch.executionPlanMarkdown === null ? null : String(patch.executionPlanMarkdown);
+  }
+  if (patch.selectedPlanCandidateId !== undefined) {
+    data.selectedPlanCandidateId =
+      patch.selectedPlanCandidateId === null || patch.selectedPlanCandidateId === ""
+        ? null
+        : String(patch.selectedPlanCandidateId);
+  }
 
   if (Object.keys(data).length === 0) {
     return getProjectSpecContext(projectId);
@@ -113,6 +132,8 @@ export async function updateProjectSpecContext(
         specScopeOut: true,
         specTargetUsers: true,
         specSuccessCriteria: true,
+        executionPlanMarkdown: true,
+        selectedPlanCandidateId: true,
       },
     });
     return mapRow(row);

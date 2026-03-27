@@ -57,6 +57,8 @@ export type SpecWorkspaceSnapshot = {
     | "specScopeOut"
     | "specTargetUsers"
     | "specSuccessCriteria"
+    | "executionPlanMarkdown"
+    | "selectedPlanCandidateId"
     | "confirmedSpecMarkdown"
     | "confirmedSpecResponseId"
     | "confirmedSpecAt"
@@ -85,6 +87,8 @@ export async function patchSpecWorkspace(
     specScopeOut: string | null;
     specTargetUsers: string | null;
     specSuccessCriteria: string | null;
+    executionPlanMarkdown: string | null;
+    selectedPlanCandidateId: string | null;
   }>
 ) {
   const encoded = encodeURIComponent(projectId);
@@ -98,21 +102,10 @@ export async function patchSpecWorkspace(
   return { res, json };
 }
 
-export type SpecWorkspaceAiRequestSaveContext = {
-  name: string;
-  description: string | null;
-  projectType: string;
-  coreGoals: string | null;
-  inScope: string | null;
-  outOfScope: string | null;
-  targetUsers: string | null;
-  successCriteria: string | null;
-};
-
 export async function postSpecWorkspaceAction(
   projectId: string,
   body:
-    | { action: "aiRequest"; saveContext?: SpecWorkspaceAiRequestSaveContext; model?: string }
+    | { action: "aiRequest"; model?: string }
     | { action: "confirm"; responseId: string }
     | {
         action: "confirmMerged";
@@ -279,6 +272,8 @@ export type ProjectSpecContextDto = {
   outOfScope: string | null;
   targetUsers: string | null;
   successCriteria: string | null;
+  executionPlanMarkdown: string | null;
+  selectedPlanCandidateId: string | null;
 };
 
 export async function fetchProjectSpecContext(projectId: string) {
@@ -298,6 +293,8 @@ export async function patchProjectSpecContext(body: {
   outOfScope?: string | null;
   targetUsers?: string | null;
   successCriteria?: string | null;
+  executionPlanMarkdown?: string | null;
+  selectedPlanCandidateId?: string | null;
 }) {
   const res = await fetch("/api/project-spec/context", {
     method: "PATCH",
