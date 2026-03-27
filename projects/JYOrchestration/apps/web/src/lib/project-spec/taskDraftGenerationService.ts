@@ -74,7 +74,13 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
       data: { status: "SUPERSEDED" },
     });
 
-    const createdRows: { id: string; title: string; description: string | null; priority: string }[] = [];
+    const createdRows: {
+      id: string;
+      title: string;
+      description: string | null;
+      priority: string;
+      createdAt: Date;
+    }[] = [];
     for (let i = 0; i < ai.tasks.length; i++) {
       const t = ai.tasks[i];
       const first = i === 0;
@@ -99,7 +105,7 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
           totalTokens: first ? (ai.usage?.totalTokens ?? null) : null,
           createdByUserId: userId,
         },
-        select: { id: true, title: true, description: true, priority: true },
+        select: { id: true, title: true, description: true, priority: true, createdAt: true },
       });
       createdRows.push(row);
     }
@@ -112,6 +118,8 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
         description: r.description,
         priority: r.priority,
         stage: "Build",
+        createdAt: r.createdAt,
+        dependsOnIds: [],
       }))
     );
     const byId = new Map(synthesized.map((x) => [x.id, x] as const));
