@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export type ProjectSpecContextApi = {
@@ -137,7 +138,11 @@ export async function updateProjectSpecContext(
       },
     });
     return mapRow(row);
-  } catch {
-    return null;
+  } catch (error) {
+    // P2025: target row does not exist.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return null;
+    }
+    throw error;
   }
 }
