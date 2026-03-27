@@ -2,7 +2,7 @@
  * 아이디어 기반 7단계 가이드 (순수 계산; API 무관).
  */
 
-import type { TaskItem, UploadHistoryItem } from "@/components/project-spec/types";
+import type { TaskItem } from "@/components/project-spec/types";
 import type {
   GitChangeRequestItem,
   TaskPromptItem,
@@ -55,12 +55,9 @@ function stepStatusFor(
 }
 
 export type IdeaUxActionId =
-  | "scroll_upload"
-  | "scroll_history"
+  | "scroll_workspace"
   | "scroll_tasks"
   | "scroll_git"
-  | "run_parse"
-  | "generate_tasks"
   | "generate_prompt"
   | "run_task"
   | "retry_run"
@@ -77,8 +74,6 @@ export type IdeaUxPrimaryAction = {
   id: IdeaUxActionId;
   label: string;
   description: string;
-  /** run_parse, generate_tasks 등에 사용 */
-  uploadId?: string;
   taskId?: string;
   gitChangeRequestId?: string;
 };
@@ -110,10 +105,6 @@ export type IdeaGuidedUxSnapshot = {
   scrollAnchor: string;
 };
 
-function hasParsedSpec(uploadHistory: UploadHistoryItem[]): boolean {
-  return uploadHistory.some((u) => u.hasParsedJson === true);
-}
-
 function hasGitApplyCompleted(gitRequests: GitChangeRequestItem[]): boolean {
   return gitRequests.some((g) => g.applyStatus === "DONE");
 }
@@ -129,16 +120,6 @@ function needsPrCollaboration(gitRequests: GitChangeRequestItem[]): boolean {
       applyLogHasGitPushOk(g.applyLog) &&
       g.pullRequestNumber == null
   );
-}
-
-function firstParsedUploadId(uploadHistory: UploadHistoryItem[]): string | null {
-  const row = uploadHistory.find((u) => u.hasParsedJson);
-  return row?.id ?? null;
-}
-
-function firstUnparsedUploadId(uploadHistory: UploadHistoryItem[]): string | null {
-  const row = uploadHistory.find((u) => !u.hasParsedJson);
-  return row?.id ?? null;
 }
 
 function firstTaskWithoutPrompt(
@@ -234,21 +215,18 @@ function firstGitNeedingApply(gitRequests: GitChangeRequestItem[]): GitChangeReq
  * 현재 단계 (1–7) 및 권장 다음 행동.
  */
 export function computeIdeaGuidedUxSnapshot(input: {
-  uploadHistory: UploadHistoryItem[];
-  /** 워크스페이스에 Spec 관련 필드가 채워져 업로드 없이도 진행 가능한 상태 */
-  workspaceSpecStarted?: boolean;
+  /** 워크스페이스에 Spec 관련 필드가 채워져 저장된 상태 */
+  workspaceSpecStarted: boolean;
   tasks: TaskItem[];
   taskRuns: TaskRunItem[];
   gitRequests: GitChangeRequestItem[];
   taskPromptMap: Record<string, TaskPromptItem | undefined>;
   taskRunMap: Record<string, TaskRunItem | undefined>;
-  canRegisterSpec: boolean;
   canReview: boolean;
   canOperate: boolean;
 }): IdeaGuidedUxSnapshot {
-  const { uploadHistory, tasks, taskRuns, gitRequests, taskPromptMap, taskRunMap } =
-    input;
-  const workspaceSpecStarted = input.workspaceSpecStarted ?? false;
+  const { tasks, taskRuns, gitRequests, taskPromptMap, taskRunMap } = input;
+  const workspaceSpecStarted = input.workspaceSpecStarted;
 
   const achievements: IdeaUxAchievements = {
     taskRunReady: taskRuns.some(
@@ -259,10 +237,8 @@ export function computeIdeaGuidedUxSnapshot(input: {
   };
 
   const milestones: IdeaUxMilestones = {
-    specUploaded: uploadHistory.length > 0 || workspaceSpecStarted,
-    parsed:
-      hasParsedSpec(uploadHistory) ||
-      (uploadHistory.length === 0 && workspaceSpecStarted),
+    specUploaded: workspaceSpecStarted,
+    parsed: workspaceSpecStarted,
     tasksCreated: tasks.length > 0,
     promptsReady:
       tasks.length > 0 && tasks.every((t) => Boolean(taskPromptMap[t.id])),
@@ -274,84 +250,43 @@ export function computeIdeaGuidedUxSnapshot(input: {
   let currentStep: IdeaUxStepId = 1;
   let allComplete = false;
   let primaryAction: IdeaUxPrimaryAction = {
-    id: "scroll_upload",
+    id: "scroll_workspace",
     label: "프로젝트 계획 입력",
     description: "워크스페이스에서 기본 정보와 실행 계획을 정리한 뒤 저장하고 이어서 진행하세요.",
   };
   let scrollAnchor = IDEA_UX_ANCHORS[1];
 
   // --- Determine current step (first incomplete) ---
-  if (uploadHistory.length === 0 && !workspaceSpecStarted) {
+  if (!workspaceSpecStarted) {
     currentStep = 1;
     scrollAnchor = IDEA_UX_ANCHORS[1];
-    if (input.canRegisterSpec) {
+    if (input.canReview) {
       primaryAction = {
-        id: "scroll_upload",
+        id: "scroll_workspace",
         label: "프로젝트 계획·Spec 정의하기",
-        description:
-          "기본 정보 → AI 실행 계획 초안 → 편집·저장 순으로 워크스페이스에서 진행하세요. 파일 업로드는 필수가 아닙니다.",
+        description: "기본 정보 → AI 실행 계획 초안 → 편집·저장 순으로 워크스페이스에서 진행하세요.",
       };
     } else {
       primaryAction = {
-        id: "scroll_upload",
+        id: "scroll_workspace",
         label: "워크스페이스 확인",
         description: "Spec 편집 권한이 필요합니다. 담당자에게 부탁하세요.",
-      };
-    }
-  } else if (uploadHistory.length > 0 && !hasParsedSpec(uploadHistory)) {
-    currentStep = 2;
-    scrollAnchor = IDEA_UX_ANCHORS[2];
-    const up = firstUnparsedUploadId(uploadHistory);
-    if (!input.canReview) {
-      primaryAction = {
-        id: "scroll_history",
-        label: "업로드 이력 보기",
-        description: "문서를 읽고 정리하는 작업은 검토 권한이 있는 분만 할 수 있습니다.",
-      };
-    } else if (up) {
-      primaryAction = {
-        id: "run_parse",
-        label: "문서 내용 정리하기",
-        description: "올린 문서를 읽어 기능 목록으로 정리합니다.",
-        uploadId: up,
-      };
-    } else {
-      primaryAction = {
-        id: "scroll_history",
-        label: "업로드 이력으로 이동",
-        description: "아직 정리되지 않은 문서가 있는지 목록에서 확인하세요.",
       };
     }
   } else if (tasks.length === 0) {
     currentStep = 3;
     scrollAnchor = IDEA_UX_ANCHORS[3];
-    const parsedId =
-      firstParsedUploadId(uploadHistory) ?? uploadHistory[0]?.id ?? null;
     if (!input.canReview) {
-      primaryAction = {
-        id: "scroll_history",
-        label: "업로드 이력 보기",
-        description: "할 일 목록 만들기는 검토 권한이 있는 분만 할 수 있습니다.",
-      };
-    } else if (parsedId) {
-      primaryAction = {
-        id: "generate_tasks",
-        label: "할 일 목록 만들기",
-        description: "정리된 내용을 바탕으로 실제로 할 일 목록을 만듭니다.",
-        uploadId: parsedId,
-      };
-    } else if (workspaceSpecStarted) {
       primaryAction = {
         id: "scroll_tasks",
         label: "할 일 목록 확인",
-        description:
-          "워크스페이스에서 Project Spec을 확정하면 Task 초안이 준비됩니다. 아래 할 일 목록에서 이어서 확인하세요.",
+        description: "워크스페이스에서 Project Spec을 확정하면 Task 초안이 준비됩니다.",
       };
     } else {
       primaryAction = {
-        id: "scroll_upload",
+        id: "scroll_workspace",
         label: "워크스페이스로 이동",
-        description: "업로드 문서를 정리하거나, 워크스페이스에서 계획을 저장해 주세요.",
+        description: "워크스페이스에서 계획을 저장해 주세요.",
       };
     }
   } else {

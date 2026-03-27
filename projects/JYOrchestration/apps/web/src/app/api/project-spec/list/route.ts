@@ -1,88 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireSessionUserId } from "@/lib/auth/requireSession";
-import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { prisma } from "@/lib/prisma";
-import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import { NextResponse } from "next/server";
 
-function mapUploadRecord(record: {
-  id: string;
-  projectId: string;
-  sourceType: string | null;
-  originalFileName: string;
-  fileType: string;
-  fileSize: number;
-  contentStored: boolean;
-  parseStatus: string | null;
-  parsedAt: Date | null;
-  parsedJson: unknown | null;
-  status: string;
-  createdAt: Date;
-}) {
-  return {
-    id: record.id,
-    projectId: record.projectId,
-    originalFileName: record.originalFileName,
-    fileType: record.fileType || "application/octet-stream",
-    fileSize: record.fileSize,
-    sourceType: record.sourceType || "document",
-    parseStatus: record.parseStatus || "PENDING",
-    parsedAt: record.parsedAt?.toISOString() || null,
-    hasParsedJson: Boolean(record.parsedJson),
-    status: record.status,
-    createdAt: record.createdAt.toISOString(),
-    contentStored: record.contentStored,
-  };
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const projectId = request.nextUrl.searchParams.get("projectId")?.trim() || "";
-    if (!projectId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "projectId? ?????.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const userId = await requireSessionUserId(request);
-    if (userId instanceof NextResponse) {
-      return userId;
-    }
-    try {
-      await requireProjectPermissionById(projectId, userId, "canViewProject", "GET /api/project-spec/list");
-    } catch (error) {
-      const denied = rbacErrorResponse(error);
-      if (denied) {
-        return denied;
-      }
-      throw error;
-    }
-
-    const uploads = await prisma.projectSpecUpload.findMany({
-      where: { projectId },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: uploads.map(mapUploadRecord),
-    });
-  } catch (error) {
-    const denied = rbacErrorResponse(error);
-    if (denied) {
-      return denied;
-    }
-    console.error("GET /api/project-spec/list error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        message: "??? ????? ?? ? ??? ??????.",
-      },
-      { status: 500 }
-    );
-  }
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      code: "LEGACY_UPLOAD_FLOW_DISABLED",
+      message: "업로드 이력 조회 API는 비활성화되었습니다.",
+      data: [],
+    },
+    { status: 410 }
+  );
 }

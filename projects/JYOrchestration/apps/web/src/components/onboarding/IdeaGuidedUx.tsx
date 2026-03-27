@@ -11,8 +11,6 @@ import {
 const STORAGE_RECOMMENDED = "jyorchestration-idea-ux-recommended";
 
 const AUTO_CHAIN_ACTIONS: IdeaUxActionId[] = [
-  "run_parse",
-  "generate_tasks",
   "generate_prompt",
 ];
 
@@ -134,7 +132,7 @@ export function IdeaGuidedUx({
     if (!AUTO_CHAIN_ACTIONS.includes(a.id)) {
       return;
     }
-    const key = `${a.id}:${a.uploadId ?? ""}:${a.taskId ?? ""}`;
+    const key = `${a.id}:${a.taskId ?? ""}`;
     if (lastAutoKeyRef.current === key) {
       return;
     }
@@ -145,8 +143,7 @@ export function IdeaGuidedUx({
 
   const primary = snapshot.primaryAction;
   const isScrollOnly =
-    primary.id === "scroll_upload" ||
-    primary.id === "scroll_history" ||
+    primary.id === "scroll_workspace" ||
     primary.id === "scroll_tasks" ||
     primary.id === "scroll_git";
 

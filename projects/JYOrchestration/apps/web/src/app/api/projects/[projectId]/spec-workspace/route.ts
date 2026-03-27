@@ -306,8 +306,7 @@ type AiRequestSaveContext = {
 };
 
 type PostBody =
-  | { action: "regeneratePrompt" }
-  | { action: "aiRequest"; promptId?: string; saveContext?: AiRequestSaveContext; model?: string }
+  | { action: "aiRequest"; saveContext?: AiRequestSaveContext; model?: string }
   | { action: "confirm"; responseId: string }
   | {
       action: "confirmMerged";
@@ -356,57 +355,6 @@ export async function POST(
       body = (await request.json()) as PostBody;
     } catch {
       return NextResponse.json({ success: false, message: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
-    }
-
-    if (body.action === "regeneratePrompt") {
-      const projectFull = await prisma.project.findUnique({ where: { id } });
-      if (!projectFull) {
-        return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
-      }
-
-      const projectForPrompt: Project = {
-        id: projectFull.id,
-        name: projectFull.name,
-        description: projectFull.description,
-        projectType: projectFull.projectType,
-        status: projectFull.status,
-        specCoreGoals: projectFull.specCoreGoals,
-        specScopeIn: projectFull.specScopeIn,
-        specScopeOut: projectFull.specScopeOut,
-        specTargetUsers: projectFull.specTargetUsers,
-        specSuccessCriteria: projectFull.specSuccessCriteria,
-        confirmedSpecMarkdown: projectFull.confirmedSpecMarkdown,
-        confirmedSpecResponseId: projectFull.confirmedSpecResponseId,
-        confirmedSpecAt: projectFull.confirmedSpecAt?.toISOString() ?? null,
-      };
-
-      const promptText = buildWorkspacePromptText(projectForPrompt);
-      const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
-        where: { projectId: id },
-        _max: { version: true },
-      });
-      const nextVersion = (agg._max.version ?? 0) + 1;
-      const created = await prisma.projectSpecWorkspacePrompt.create({
-        data: {
-          projectId: id,
-          version: nextVersion,
-          promptText,
-          createdByUserId: userId,
-        },
-      });
-      return NextResponse.json({
-        success: true,
-        message: "프롬프트가 재생성되어 저장되었습니다.",
-        data: {
-          prompt: {
-            id: created.id,
-            projectId: created.projectId,
-            version: created.version,
-            promptText: created.promptText,
-            createdAt: created.createdAt.toISOString(),
-          },
-        },
-      });
     }
 
     if (body.action === "aiRequest") {
@@ -510,50 +458,20 @@ export async function POST(
         confirmedSpecAt: projectFull.confirmedSpecAt?.toISOString() ?? null,
       };
 
-      let promptRow = null as Awaited<ReturnType<typeof prisma.projectSpecWorkspacePrompt.findFirst>> | null;
-
-      if (body.saveContext) {
-        const promptText = buildWorkspacePromptText(projectForPrompt);
-        const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
-          where: { projectId: id },
-          _max: { version: true },
-        });
-        const nextVersion = (agg._max.version ?? 0) + 1;
-        promptRow = await prisma.projectSpecWorkspacePrompt.create({
-          data: {
-            projectId: id,
-            version: nextVersion,
-            promptText,
-            createdByUserId: userId,
-          },
-        });
-      } else if (body.promptId) {
-        promptRow = await prisma.projectSpecWorkspacePrompt.findFirst({
-          where: { id: body.promptId, projectId: id },
-        });
-      } else {
-        promptRow = await prisma.projectSpecWorkspacePrompt.findFirst({
-          where: { projectId: id },
-          orderBy: { version: "desc" },
-        });
-      }
-
-      if (!promptRow) {
-        const promptText = buildWorkspacePromptText(projectForPrompt);
-        const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
-          where: { projectId: id },
-          _max: { version: true },
-        });
-        const nextVersion = (agg._max.version ?? 0) + 1;
-        promptRow = await prisma.projectSpecWorkspacePrompt.create({
-          data: {
-            projectId: id,
-            version: nextVersion,
-            promptText,
-            createdByUserId: userId,
-          },
-        });
-      }
+      const promptText = buildWorkspacePromptText(projectForPrompt);
+      const agg = await prisma.projectSpecWorkspacePrompt.aggregate({
+        where: { projectId: id },
+        _max: { version: true },
+      });
+      const nextVersion = (agg._max.version ?? 0) + 1;
+      const promptRow = await prisma.projectSpecWorkspacePrompt.create({
+        data: {
+          projectId: id,
+          version: nextVersion,
+          promptText,
+          createdByUserId: userId,
+        },
+      });
 
       let markdown: string;
       let modelUsed: string;

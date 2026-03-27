@@ -1,15 +1,11 @@
 import {
   ApiResponse,
-  ParseResult,
   Project,
   ProjectSpecPromptRecord,
   ProjectSpecResponseRecord,
   ProjectSpecVersionRecord,
   TaskDraftDto,
   TaskItem,
-  TaskGenerateResult,
-  UploadHistoryItem,
-  UploadResult,
 } from "./types";
 
 export async function fetchProjectById(projectId: string): Promise<{
@@ -38,55 +34,6 @@ export async function fetchProjectById(projectId: string): Promise<{
     project: json.data,
     errorMessage: null,
   };
-}
-
-export async function fetchProjectSpecUploadHistory(projectId: string) {
-  const encodedProjectId = encodeURIComponent(projectId);
-  const res = await fetch(`/api/project-spec/list?projectId=${encodedProjectId}`, {
-    credentials: "include",
-  });
-  const json = (await res.json()) as ApiResponse<UploadHistoryItem[]>;
-  return { res, json };
-}
-
-export async function uploadProjectSpecTestFile(formData: FormData, projectId: string) {
-  const encodedProjectId = encodeURIComponent(projectId);
-  const res = await fetch(`/api/project-spec/upload?projectId=${encodedProjectId}`, {
-    method: "POST",
-    credentials: "include",
-    body: formData,
-  });
-
-  const json = (await res.json()) as ApiResponse<UploadResult>;
-  return { res, json };
-}
-
-export async function runProjectSpecMockParse(projectSpecUploadId: string) {
-  const res = await fetch("/api/project-spec/parse", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ projectSpecUploadId }),
-  });
-
-  const json = (await res.json()) as ApiResponse<ParseResult>;
-  return { res, json };
-}
-
-export async function generateTasksFromParsedSpec(projectSpecUploadId: string) {
-  const res = await fetch("/api/task/generate", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ projectSpecUploadId }),
-  });
-
-  const json = (await res.json()) as ApiResponse<TaskGenerateResult>;
-  return { res, json };
 }
 
 export async function fetchGeneratedTasks(projectId: string) {
@@ -165,8 +112,7 @@ export type SpecWorkspaceAiRequestSaveContext = {
 export async function postSpecWorkspaceAction(
   projectId: string,
   body:
-    | { action: "regeneratePrompt" }
-    | { action: "aiRequest"; promptId?: string; saveContext?: SpecWorkspaceAiRequestSaveContext; model?: string }
+    | { action: "aiRequest"; saveContext?: SpecWorkspaceAiRequestSaveContext; model?: string }
     | { action: "confirm"; responseId: string }
     | {
         action: "confirmMerged";

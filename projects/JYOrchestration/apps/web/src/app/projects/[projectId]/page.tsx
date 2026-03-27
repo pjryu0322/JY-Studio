@@ -3,23 +3,13 @@
 import { useParams, useRouter } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
-import {
-  fetchGeneratedTasks,
-  fetchProjectById,
-  fetchProjectSpecUploadHistory,
-  generateTasksFromParsedSpec,
-  runProjectSpecMockParse,
-  uploadProjectSpecTestFile,
-} from "@/components/project-spec/api";
+import { fetchGeneratedTasks, fetchProjectById } from "@/components/project-spec/api";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { ProjectInfoCard } from "@/components/project-spec/ProjectInfoCard";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
 import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
 import { ProjectSpecWorkspace } from "@/components/project-spec/ProjectSpecWorkspace";
-import { ProjectSpecUploadHistorySection } from "@/components/project-spec/ProjectSpecUploadHistorySection";
-import { ProjectSpecUploadTestSection } from "@/components/project-spec/ProjectSpecUploadTestSection";
-import { AiPipelineStatusPanel, type AiPipelineStatus } from "@/components/project-spec/AiPipelineStatusPanel";
-import { Project, TaskItem, UploadHistoryItem, UploadResult, UploadStatus } from "@/components/project-spec/types";
+import { Project, TaskItem } from "@/components/project-spec/types";
 import {
   GitChangeRequestItem,
   TaskFollowUpDraft,
@@ -74,10 +64,6 @@ function rbacForbiddenMessage(
 
 type ProjectMainTab = "overview" | "members" | "ai-members" | "git" | "advanced";
 
-const LEGACY_SPEC_UPLOAD_UI_ENABLED =
-  typeof process.env.NEXT_PUBLIC_JY_SPEC_LEGACY_UPLOAD === "string" &&
-  process.env.NEXT_PUBLIC_JY_SPEC_LEGACY_UPLOAD.trim().toLowerCase() === "true";
-
 export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams<{ projectId: string }>();
@@ -85,21 +71,7 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
-  const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
-
-  const [aiPipelineStatus, setAiPipelineStatus] = useState<AiPipelineStatus>("idle");
-  const [aiPipelineProgressStep, setAiPipelineProgressStep] = useState<0 | 1 | 2 | 3>(0);
-  const [aiPipelineTopMessage, setAiPipelineTopMessage] = useState<string | null>(null);
-  const latestUploadIdRef = useRef<string | null>(null);
-
-  const [parseMessage, setParseMessage] = useState<string | null>(null);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [taskMessage, setTaskMessage] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [taskPrompts, setTaskPrompts] = useState<TaskPromptItem[]>([]);
   const [promptMessage, setPromptMessage] = useState<string | null>(null);
@@ -202,7 +174,6 @@ export default function ProjectDetailPage() {
     }),
     [projectRole]
   );
-  const showSpecUploadHistory = rbac.canEditSpec || rbac.canReview;
   const showTaskSection = rbac.canReview || rbac.canOperate || rbac.canEditSpec;
 
   useEffect(() => {
@@ -431,23 +402,6 @@ export default function ProjectDetailPage() {
       }
     }
 
-    async function loadUploadHistory() {
-      try {
-        const { res, json } = await fetchProjectSpecUploadHistory(projectId);
-        const denied = rbacForbiddenMessage(res, json);
-        if (denied) {
-          setErrorMessage(denied);
-          return;
-        }
-        if (!res.ok || !json.success || !Array.isArray(json.data)) {
-          return;
-        }
-        setUploadHistory(json.data);
-      } catch (error) {
-        console.error("Failed to load upload metadata history:", error);
-      }
-    }
-
     async function loadTasks() {
       try {
         setLoadingTasks(true);
@@ -556,7 +510,6 @@ export default function ProjectDetailPage() {
     }
 
     loadProjectDetail();
-    loadUploadHistory();
     loadTasks();
     loadTaskPrompts();
     loadTaskRuns();
@@ -647,26 +600,22 @@ export default function ProjectDetailPage() {
   const ideaUxSnapshot = useMemo(
     () =>
       computeIdeaGuidedUxSnapshot({
-        uploadHistory,
         workspaceSpecStarted,
         tasks,
         taskRuns,
         gitRequests,
         taskPromptMap,
         taskRunMap,
-        canRegisterSpec: rbac.canEditSpec,
         canReview: rbac.canReview,
         canOperate: uiPermissions.canRun,
       }),
     [
-      uploadHistory,
       workspaceSpecStarted,
       tasks,
       taskRuns,
       gitRequests,
       taskPromptMap,
       taskRunMap,
-      rbac.canEditSpec,
       rbac.canReview,
       uiPermissions.canRun,
     ]
@@ -677,20 +626,11 @@ export default function ProjectDetailPage() {
     if (gitApplyError) {
       lines.push(gitApplyError);
     }
-    if (uploadStatus === "error" && uploadMessage) {
-      lines.push(uploadMessage);
-    }
-    if (parseMessage && /실패|오류|denied|403|FAIL|실패했습니다/i.test(parseMessage)) {
-      lines.push(parseMessage);
-    }
-    if (taskMessage && /실패|오류|FAIL|실패했습니다/i.test(taskMessage)) {
-      lines.push(taskMessage);
-    }
     if (promptMessage && /실패|오류|FAIL|실패했습니다/i.test(promptMessage)) {
       lines.push(promptMessage);
     }
     return lines;
-  }, [gitApplyError, uploadStatus, uploadMessage, parseMessage, taskMessage, promptMessage]);
+  }, [gitApplyError, promptMessage]);
 
   const ideaUxFailureAssist = useMemo((): IdeaUxFailureAssist | null => {
     const failedRuns = taskRuns.filter((r) => r.status === "FAILED");
@@ -745,9 +685,6 @@ export default function ProjectDetailPage() {
   }, [taskRuns, tasks, gitRequests, ideaUxFailureLines, gitApplyError]);
 
   const ideaUxActionBusy =
-    aiPipelineStatus === "uploading" ||
-    aiPipelineStatus === "analyzing" ||
-    aiPipelineStatus === "generating_tasks" ||
     applyingGitRequestId !== null ||
     registeringGitRequestRunId !== null ||
     runningPromptId !== null ||
@@ -791,185 +728,6 @@ export default function ProjectDetailPage() {
       console.error("Failed to reload tasks:", error);
     }
   }, [projectId]);
-
-  function handleSelectFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setSelectedFile(null);
-      setSelectedFileName(null);
-      setUploadMessage(null);
-      setUploadResult(null);
-      setUploadStatus("idle");
-      return;
-    }
-
-    setSelectedFile(file);
-    setSelectedFileName(file.name);
-    setUploadMessage("md는 원문 저장을 시도하고, doc/docx는 메타데이터 중심으로 등록합니다.");
-    setUploadResult(null);
-    setUploadStatus("idle");
-  }
-
-  function getLatestUploadId(): string | null {
-    return latestUploadIdRef.current;
-  }
-
-  async function handleUploadAndAnalyze() {
-    setAiPipelineTopMessage(null);
-    setParseMessage(null);
-    setTaskMessage(null);
-
-    // 1) upload
-    setAiPipelineStatus("uploading");
-    setAiPipelineProgressStep(1);
-
-    await handleUploadTest();
-
-    const latestUploadId = getLatestUploadId();
-    if (!latestUploadId) {
-      setAiPipelineStatus("error");
-      return;
-    }
-
-    // 2) analyzing
-    setAiPipelineStatus("analyzing");
-    setAiPipelineProgressStep(2);
-    const parsedOk = await handleRunParse(latestUploadId);
-    if (!parsedOk) {
-      setAiPipelineStatus("error");
-      return;
-    }
-
-    // 3) generating tasks
-    setAiPipelineStatus("generating_tasks");
-    setAiPipelineProgressStep(3);
-    const taskCount = await handleGenerateTasks(latestUploadId);
-
-    setAiPipelineTopMessage(`AI가 ${taskCount}개의 Task를 생성했습니다`);
-    setAiPipelineStatus("done");
-
-    requestAnimationFrame(() => {
-      document.getElementById("guided-flow-tasks")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }
-
-  async function handleUploadTest(): Promise<void> {
-    if (!projectId) {
-      setUploadMessage("프로젝트 정보를 확인할 수 없습니다.");
-      setUploadResult(null);
-      setUploadStatus("error");
-      latestUploadIdRef.current = null;
-      return;
-    }
-
-    if (!selectedFile) {
-      setUploadMessage("분석할 ProjectSpec 파일을 먼저 선택해 주세요.");
-      setUploadResult(null);
-      setUploadStatus("error");
-      latestUploadIdRef.current = null;
-      return;
-    }
-
-    try {
-      setUploadMessage(null);
-      setUploadResult(null);
-      setUploadStatus("idle");
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("projectId", projectId);
-
-      const { res, json } = await uploadProjectSpecTestFile(formData, projectId);
-      if (!res.ok || !json.success || !json.data) {
-        setUploadMessage(json.message || "파일 업로드 요청에 실패했습니다.");
-        setUploadStatus("error");
-        latestUploadIdRef.current = null;
-        return;
-      }
-
-      setUploadResult(json.data);
-      setUploadMessage(json.message || "파일 업로드가 완료되었습니다. AI 분석을 시작합니다.");
-      setUploadStatus("success");
-      setParseMessage(null);
-      setTaskMessage(null);
-      latestUploadIdRef.current = json.data.id;
-      const historyResult = await fetchProjectSpecUploadHistory(projectId);
-      if (
-        historyResult.res.ok &&
-        historyResult.json.success &&
-        Array.isArray(historyResult.json.data)
-      ) {
-        setUploadHistory(historyResult.json.data);
-      }
-    } catch (error) {
-      console.error("Failed to upload project spec file:", error);
-      setUploadMessage("파일 업로드 중 오류가 발생했습니다.");
-      setUploadResult(null);
-      setUploadStatus("error");
-      latestUploadIdRef.current = null;
-    }
-  }
-
-  async function handleRunParse(uploadId: string): Promise<boolean> {
-    if (!projectId) {
-      setParseMessage("프로젝트 정보를 확인할 수 없습니다.");
-      return false;
-    }
-
-    try {
-      setParseMessage(null);
-
-      const { res, json } = await runProjectSpecMockParse(uploadId);
-      setParseMessage(json.message || (res.ok ? "AI 분석이 완료되었습니다." : "AI 분석에 실패했습니다."));
-
-      const historyResult = await fetchProjectSpecUploadHistory(projectId);
-      if (
-        historyResult.res.ok &&
-        historyResult.json.success &&
-        Array.isArray(historyResult.json.data)
-      ) {
-        setUploadHistory(historyResult.json.data);
-      }
-
-      return Boolean(res.ok && json.success);
-    } catch (error) {
-      console.error("Failed to run project spec mock parse:", error);
-      setParseMessage("AI 분석 중 오류가 발생했습니다.");
-      return false;
-    }
-  }
-
-  async function handleGenerateTasks(uploadId: string): Promise<number> {
-    if (!projectId) {
-      setTaskMessage("프로젝트 정보를 확인할 수 없습니다.");
-      return 0;
-    }
-
-    try {
-      setTaskMessage(null);
-
-      const { res, json } = await generateTasksFromParsedSpec(uploadId);
-      if (!res.ok || !json.success || !json.data || !Array.isArray(json.data.items)) {
-        setTaskMessage(json.message || "AI 작업 생성 요청에 실패했습니다.");
-        return 0;
-      }
-
-      const count = typeof json.data.count === "number" ? json.data.count : json.data.items.length;
-      setTaskMessage(json.message || "AI 작업 생성이 완료되었습니다.");
-      setPromptMessage(null);
-      const taskResult = await fetchGeneratedTasks(projectId);
-      if (taskResult.res.ok && taskResult.json.success && Array.isArray(taskResult.json.data)) {
-        setTasks(taskResult.json.data);
-      } else {
-        setTasks(json.data.items);
-      }
-
-      return count;
-    } catch (error) {
-      console.error("Failed to generate tasks from parsed spec:", error);
-      setTaskMessage("AI 작업 생성 중 오류가 발생했습니다.");
-      return 0;
-    }
-  }
 
   async function handleGenerateTaskPrompt(taskId: string) {
     try {
@@ -1797,10 +1555,7 @@ export default function ProjectDetailPage() {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
     };
     switch (action.id) {
-      case "scroll_upload":
-        scroll("guided-flow-spec-workspace");
-        return;
-      case "scroll_history":
+      case "scroll_workspace":
         scroll("guided-flow-spec-workspace");
         return;
       case "scroll_tasks":
@@ -1808,16 +1563,6 @@ export default function ProjectDetailPage() {
         return;
       case "scroll_git":
         scroll("guided-flow-git");
-        return;
-      case "run_parse":
-        if (action.uploadId) {
-          void handleRunParse(action.uploadId);
-        }
-        return;
-      case "generate_tasks":
-        if (action.uploadId) {
-          void handleGenerateTasks(action.uploadId);
-        }
         return;
       case "generate_prompt":
         if (action.taskId) {
@@ -1910,11 +1655,6 @@ export default function ProjectDetailPage() {
               loading={execSummaryLoading}
               errorMessage={execSummaryError}
             />
-          ) : null}
-          {aiPipelineTopMessage ? (
-            <p style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: 800, color: "#0b6b2a" }}>
-              {aiPipelineTopMessage}
-            </p>
           ) : null}
         <div data-ui-label="[O-3] Self-Healing Flow — Follow-up Retry Abort Auto-Heal">
         <TaskListSection
@@ -2698,66 +2438,6 @@ export default function ProjectDetailPage() {
                 canEdit={rbac.canEditSpec}
                 onProjectUpdated={setProject}
               />
-              {LEGACY_SPEC_UPLOAD_UI_ENABLED && rbac.canEditSpec ? (
-                <section
-                  aria-label="레거시 Project Spec 파일 업로드 파이프라인"
-                  data-ui-label="[F-1-L-0] Legacy — file upload pipeline region"
-                  style={{
-                    marginTop: 24,
-                    marginBottom: 16,
-                    padding: 16,
-                    borderRadius: 10,
-                    border: "1px dashed #94a3b8",
-                    background: "#f8fafc",
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 16, fontWeight: 800, color: "#334155" }}>
-                    고급: 파일 업로드 파이프라인 (레거시)
-                  </h3>
-                  <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-                    구 방식 업로드·mock 파싱·Task 자동 생성 UI입니다. 기본 경로는 위의 Project Spec 정의 워크스페이스입니다. 이
-                    영역은 환경 변수{" "}
-                    <code style={{ fontSize: 12 }}>NEXT_PUBLIC_JY_SPEC_LEGACY_UPLOAD=true</code> 로만 켭니다.
-                  </p>
-                  <div id="guided-flow-legacy-upload-anchor">
-                    <ProjectSpecUploadTestSection
-                      selectedFile={selectedFile}
-                      selectedFileName={selectedFileName}
-                      uploadMessage={uploadMessage}
-                      uploadResult={uploadResult}
-                      uploadStatus={uploadStatus}
-                      aiPipelineStatus={aiPipelineStatus}
-                      onSelectFile={handleSelectFile}
-                      onUploadAndAnalyze={handleUploadAndAnalyze}
-                      showFileInput
-                      showAnalyzeButton={false}
-                    />
-                  </div>
-                  {showSpecUploadHistory ? (
-                    <div id="guided-flow-history">
-                      <ProjectSpecUploadHistorySection uploadHistory={uploadHistory} />
-                    </div>
-                  ) : null}
-                  <div
-                    data-ui-label="[O-1] Orchestration — legacy AI analysis & task generation"
-                    style={{ marginTop: 12 }}
-                  >
-                    <AiPipelineStatusPanel status={aiPipelineStatus} progressStep={aiPipelineProgressStep} />
-                    <ProjectSpecUploadTestSection
-                      selectedFile={selectedFile}
-                      selectedFileName={selectedFileName}
-                      uploadMessage={uploadMessage}
-                      uploadResult={uploadResult}
-                      uploadStatus={uploadStatus}
-                      aiPipelineStatus={aiPipelineStatus}
-                      onSelectFile={handleSelectFile}
-                      onUploadAndAnalyze={handleUploadAndAnalyze}
-                      showFileInput={false}
-                      showAnalyzeButton
-                    />
-                  </div>
-                </section>
-              ) : null}
               {projectFlowTail}
             </div>
           ) : null}
