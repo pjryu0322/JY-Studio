@@ -263,6 +263,84 @@ export async function deleteProjectTaskDraft(projectId: string, draftId: string)
   return { res, json };
 }
 
+export type ExecutionSetupDto = {
+  id: string;
+  projectId: string;
+  gitRepoUrl: string;
+  gitRepoName: string | null;
+  baseBranch: string;
+  branchStrategy: "feature-per-workflow" | "feature-per-task" | "manual";
+  branchPrefix: string | null;
+  cursorApiUrl: string;
+  cursorApiTokenMasked: string | null;
+  hasCursorToken: boolean;
+  workspacePath: string;
+  projectRootPath: string;
+  autoCommit: boolean;
+  autoPush: boolean;
+  autoPr: boolean;
+  requireApprovalBeforeApply: boolean;
+  requireTestsBeforePush: boolean;
+  dryRunAllowed: boolean;
+  status: "draft" | "validated" | "invalid";
+  lastValidatedAt: string | null;
+  updatedAt: string;
+};
+
+export async function fetchExecutionSetup(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/execution-setup`, { credentials: "include" });
+  const json = (await res.json()) as ApiResponse<ExecutionSetupDto | null>;
+  return { res, json };
+}
+
+export async function patchExecutionSetup(
+  projectId: string,
+  body: Partial<{
+    gitRepoUrl: string;
+    gitRepoName: string | null;
+    baseBranch: string;
+    branchStrategy: "feature-per-workflow" | "feature-per-task" | "manual";
+    branchPrefix: string | null;
+    cursorApiUrl: string;
+    cursorApiToken: string | null;
+    workspacePath: string;
+    projectRootPath: string;
+    autoCommit: boolean;
+    autoPush: boolean;
+    autoPr: boolean;
+    requireApprovalBeforeApply: boolean;
+    requireTestsBeforePush: boolean;
+    dryRunAllowed: boolean;
+  }>
+) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/execution-setup`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<ExecutionSetupDto>;
+  return { res, json };
+}
+
+export async function postExecutionSetupValidate(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/execution-setup/validate`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json()) as ApiResponse<{
+    status: "draft" | "validated" | "invalid";
+    lastValidatedAt: string | null;
+    git: "ok" | "needs" | "error";
+    cursor: "ok" | "needs" | "error";
+    messages: string[];
+  }>;
+  return { res, json };
+}
+
 /** GET /api/project-spec/context */
 export type ProjectSpecContextDto = {
   projectId: string;

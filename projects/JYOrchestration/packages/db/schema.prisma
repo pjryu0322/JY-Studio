@@ -237,9 +237,52 @@ model Project {
   currentSpecVersion   ProjectSpecVersion? @relation("ProjectCurrentSpecVersion", fields: [currentSpecVersionId], references: [id], onDelete: SetNull)
   /// Spec 기반 Task 초안(AI 생성·검토 후 Task 확정)
   taskDrafts TaskDraft[]
+  /// 실행 환경 연결(프로젝트별)
+  executionSetup ExecutionSetup?
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// 프로젝트별 실행 환경 연결(Repo/Executor/Policy)
+model ExecutionSetup {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// Git
+  gitRepoUrl      String
+  gitRepoName     String?
+  baseBranch      String
+  /// feature-per-workflow | feature-per-task | manual
+  branchStrategy  String
+  branchPrefix    String?
+
+  /// Cursor executor
+  cursorApiUrl    String
+  /// 저장은 하되 API 응답으로는 절대 반환하지 않는다(마스킹만 노출)
+  cursorApiToken  String?  @db.Text
+  cursorApiTokenMasked String?
+  workspacePath   String
+  projectRootPath String
+
+  /// Execution policy
+  autoCommit  Boolean @default(true)
+  autoPush    Boolean @default(false)
+  autoPr      Boolean @default(false)
+  requireApprovalBeforeApply Boolean @default(true)
+  requireTestsBeforePush     Boolean @default(true)
+  dryRunAllowed Boolean @default(true)
+
+  /// draft | validated | invalid
+  status          String   @default("draft")
+  lastValidatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@map("execution_setups")
 }
 
 /// 확정 Project Spec의 버전(덮어쓰기 없음, 항상 append)

@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AiDraftCandidate,
+  fetchExecutionSetup,
   fetchSpecWorkspace,
+  patchExecutionSetup,
   patchProjectSpecContext,
+  postExecutionSetupValidate,
   postProjectPlanGenerate,
   postProjectPlanRevise,
   postSpecWorkspaceAction,
@@ -90,6 +93,11 @@ function projectToForm(p: Project | null): FormState {
 
 export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpdated }: ProjectSpecWorkspaceProps) {
   const [projectInfoOpen, setProjectInfoOpen] = useState(false);
+  const [executionSetup, setExecutionSetup] = useState<
+    Awaited<ReturnType<typeof fetchExecutionSetup>>["json"]["data"] | null
+  >(null);
+  const [executionSetupBusy, setExecutionSetupBusy] = useState<string | null>(null);
+  const [cursorTokenInput, setCursorTokenInput] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -216,6 +224,22 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  const loadExecutionSetup = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const { res, json } = await fetchExecutionSetup(projectId);
+      if (res.ok && json.success) {
+        setExecutionSetup(json.data ?? null);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void loadExecutionSetup();
+  }, [loadExecutionSetup]);
 
   useEffect(() => {
     if (!lastTaskDraftSync) {
@@ -2274,6 +2298,297 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         refreshKey={draftRefreshKey}
         lastAutoSync={lastTaskDraftSync}
       />
+
+      {/* [F-1-3-6] Workspace — Execution Setup */}
+      {(() => {
+        const ready = executionSetup?.status === "validated";
+        return (
+          <div
+            data-ui-label="[F-1-3-6] Workspace — Execution Setup"
+            style={{
+              marginTop: 16,
+              padding: 16,
+              borderRadius: 12,
+              border: ready ? "2px solid #22c55e" : "1px solid #e2e8f0",
+              background: ready ? "#f0fdf4" : "#fff",
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <LabelTag label="[F-1-3-6] Workspace — Execution Setup" />
+              <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>Execution Setup</h3>
+              <span style={{ fontSize: 12, fontWeight: 900, color: ready ? "#15803d" : "#b45309" }}>
+                {ready ? "execution-ready" : "연결 확인 필요"}
+              </span>
+            </div>
+            <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+              워크플로가 확정되었더라도 실제 실행 환경(Repo/Executor/Policy) 연결이 필요합니다. 연결 테스트로 준비 상태를 명확히
+              확인하세요.
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
+                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: "#0f172a" }}>Repository</div>
+                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Repository URL</span>
+                  <input
+                    value={executionSetup?.gitRepoUrl ?? ""}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), gitRepoUrl: e.target.value } as never))
+                    }
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Repository full name (optional)</span>
+                  <input
+                    value={executionSetup?.gitRepoName ?? ""}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), gitRepoName: e.target.value || null } as never))
+                    }
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Base branch</span>
+                    <input
+                      value={executionSetup?.baseBranch ?? "main"}
+                      disabled={!canEdit}
+                      onChange={(e) =>
+                        setExecutionSetup((p) => ({ ...(p ?? ({} as never)), baseBranch: e.target.value } as never))
+                      }
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Branch strategy</span>
+                    <select
+                      value={executionSetup?.branchStrategy ?? "manual"}
+                      disabled={!canEdit}
+                      onChange={(e) =>
+                        setExecutionSetup((p) => ({ ...(p ?? ({} as never)), branchStrategy: e.target.value as never } as never))
+                      }
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                    >
+                      <option value="feature-per-workflow">feature-per-workflow</option>
+                      <option value="feature-per-task">feature-per-task</option>
+                      <option value="manual">manual</option>
+                    </select>
+                  </label>
+                </div>
+                <label style={{ display: "grid", gap: 4, marginTop: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Working branch prefix (optional)</span>
+                  <input
+                    value={executionSetup?.branchPrefix ?? ""}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), branchPrefix: e.target.value || null } as never))
+                    }
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  />
+                </label>
+              </div>
+
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
+                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: "#0f172a" }}>Cursor Executor</div>
+                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Executor endpoint URL</span>
+                  <input
+                    value={executionSetup?.cursorApiUrl ?? ""}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), cursorApiUrl: e.target.value } as never))
+                    }
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>API token</span>
+                  <input
+                    value={cursorTokenInput}
+                    disabled={!canEdit}
+                    onChange={(e) => setCursorTokenInput(e.target.value)}
+                    placeholder={
+                      executionSetup?.cursorApiTokenMasked
+                        ? `저장됨 (${executionSetup.cursorApiTokenMasked})`
+                        : "토큰 입력"
+                    }
+                    type="password"
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  />
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                    저장 후에는 토큰 원문을 다시 표시하지 않습니다. (마스킹 값만 표시)
+                  </div>
+                </label>
+                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Workspace path</span>
+                  <input
+                    value={executionSetup?.workspacePath ?? ""}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), workspacePath: e.target.value } as never))
+                    }
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Project root path</span>
+                  <input
+                    value={executionSetup?.projectRootPath ?? ""}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), projectRootPath: e.target.value } as never))
+                    }
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  />
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                    모노레포에서는 project root path를 이 프로젝트 하위로 제한하세요.
+                  </div>
+                </label>
+              </div>
+
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
+                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: "#0f172a" }}>Execution Policy</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {(
+                    [
+                      ["autoCommit", "auto commit"],
+                      ["autoPush", "auto push"],
+                      ["autoPr", "auto PR"],
+                      ["requireApprovalBeforeApply", "require approval before apply"],
+                      ["requireTestsBeforePush", "require tests before push"],
+                      ["dryRunAllowed", "dry-run allowed"],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: "#334155" }}>
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit}
+                        checked={Boolean((executionSetup as never)?.[k])}
+                        onChange={(e) =>
+                          setExecutionSetup((p) => ({ ...(p ?? ({} as never)), [k]: e.target.checked } as never))
+                        }
+                      />
+                      <span style={{ fontWeight: 800 }}>{label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
+                  <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 8, color: "#0f172a" }}>Validation Status</div>
+                  <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
+                    상태:{" "}
+                    <strong
+                      style={{
+                        color:
+                          executionSetup?.status === "validated"
+                            ? "#15803d"
+                            : executionSetup?.status === "invalid"
+                              ? "#b91c1c"
+                              : "#b45309",
+                      }}
+                    >
+                      {executionSetup?.status ?? "draft"}
+                    </strong>
+                    {executionSetup?.lastValidatedAt ? (
+                      <span style={{ color: "#64748b" }}> · last: {formatTestedAt(executionSetup.lastValidatedAt)}</span>
+                    ) : null}
+                  </div>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                    <button
+                      type="button"
+                      disabled={!canEdit || executionSetupBusy === "save"}
+                      onClick={async () => {
+                        if (!projectId) return;
+                        setExecutionSetupBusy("save");
+                        try {
+                          const token = cursorTokenInput.trim();
+                          const { res, json } = await patchExecutionSetup(projectId, {
+                            ...(executionSetup ?? {}),
+                            ...(token ? { cursorApiToken: token } : {}),
+                          });
+                          if (!res.ok || !json.success) {
+                            setMessage(json.message || "설정 저장에 실패했습니다.");
+                            return;
+                          }
+                          setExecutionSetup(json.data);
+                          setCursorTokenInput("");
+                          setMessage("Execution setup이 저장되었습니다.");
+                        } finally {
+                          setExecutionSetupBusy(null);
+                        }
+                      }}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #2563eb",
+                        background: "#2563eb",
+                        color: "#fff",
+                        fontWeight: 900,
+                        cursor: !canEdit ? "not-allowed" : executionSetupBusy === "save" ? "wait" : "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      {executionSetupBusy === "save" ? "저장 중…" : "설정 저장"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canEdit || executionSetupBusy === "validate"}
+                      onClick={async () => {
+                        if (!projectId) return;
+                        setExecutionSetupBusy("validate");
+                        try {
+                          const { res, json } = await postExecutionSetupValidate(projectId);
+                          if (!res.ok || !json.success) {
+                            setMessage(json.message || "연결 테스트에 실패했습니다.");
+                            return;
+                          }
+                          setExecutionSetup((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  status: json.data?.status ?? p.status,
+                                  lastValidatedAt: json.data?.lastValidatedAt ?? p.lastValidatedAt,
+                                }
+                              : p
+                          );
+                          const detail = (json.data?.messages ?? []).join(" / ");
+                          const msg = json.message || "연결 테스트를 완료했습니다.";
+                          setMessage(detail ? `${msg} · ${detail}` : msg);
+                        } finally {
+                          setExecutionSetupBusy(null);
+                        }
+                      }}
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #0f766e",
+                        background: "#0d9488",
+                        color: "#fff",
+                        fontWeight: 900,
+                        cursor: !canEdit ? "not-allowed" : executionSetupBusy === "validate" ? "wait" : "pointer",
+                        fontSize: 13,
+                      }}
+                    >
+                      {executionSetupBusy === "validate" ? "테스트 중…" : "연결 테스트"}
+                    </button>
+                  </div>
+
+                  {!ready ? (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#b45309", lineHeight: 1.55 }}>
+                      워크플로 확정만으로는 실행 준비가 완료되지 않습니다. <strong>Execution Setup이 validated</strong> 상태가 되어야
+                      execution-ready로 간주합니다.
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {message ? (
         <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: "#334155" }} role="status">
