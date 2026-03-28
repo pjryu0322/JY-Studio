@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "db:generate": "prisma generate --schema=../../packages/db/schema.prisma",
+    "db:migrate": "dotenv -e ../../.env -e .env.local -- prisma migrate deploy --schema=../../packages/db/schema.prisma",
+    "db:migrate:status": "dotenv -e ../../.env -e .env.local -- prisma migrate status --schema=../../packages/db/schema.prisma",
     "postinstall": "prisma generate --schema=../../packages/db/schema.prisma",
     "build": "next build",
     "start": "next start",
@@ -24,6 +26,7 @@
     "reactflow": "^11.11.4"
   },
   "devDependencies": {
+    "dotenv-cli": "^8.0.0",
     "@playwright/test": "^1.49.1",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",

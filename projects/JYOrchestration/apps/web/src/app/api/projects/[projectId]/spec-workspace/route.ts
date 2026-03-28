@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
-import { buildWorkspacePromptText } from "@/lib/project-spec/buildWorkspacePromptText";
+import {
+  composeWorkspaceSpecUserMessage,
+  DEFAULT_SPEC_GENERATION_USER_TEMPLATE,
+} from "@/lib/project-spec/buildWorkspacePromptText";
+import { computeSpecCandidatePayload } from "@/lib/project-spec/specCandidatePayload";
+import {
+  normalizeSpecPromptPreset,
+  type SpecPromptPresetId,
+} from "@/lib/project-spec/specPromptPresets";
 import {
   completeWorkspaceSpecMarkdown,
   refineWorkspaceSpecMarkdown,
@@ -12,9 +20,95 @@ import {
 import { trySyncTaskDraftsAfterSpecChange } from "@/lib/project-spec/trySyncTaskDraftsAfterSpecChange";
 import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import type { Project } from "@/components/project-spec/types";
+
+async function getOrCreateSpecPromptConfig(projectId: string) {
+  const existing = await prisma.specPromptConfig.findUnique({ where: { projectId } });
+  if (existing) {
+    return existing;
+  }
+  return prisma.specPromptConfig.create({
+    data: {
+      projectId,
+      templatePrompt: DEFAULT_SPEC_GENERATION_USER_TEMPLATE,
+      preset: "default",
+    },
+  });
+}
+
+function mapSpecPromptConfigRow(r: {
+  id: string;
+  projectId: string;
+  templatePrompt: string;
+  preset: string;
+  updatedAt: Date;
+}) {
+  return {
+    id: r.id,
+    projectId: r.projectId,
+    templatePrompt: r.templatePrompt,
+    preset: normalizeSpecPromptPreset(r.preset) as SpecPromptPresetId,
+    lastEditedAt: r.updatedAt.toISOString(),
+  };
+}
+
+function isStoredCandidateScore(v: unknown): v is Record<string, unknown> {
+  return (
+    v !== null &&
+    typeof v === "object" &&
+    typeof (v as { total?: unknown }).total === "number" &&
+    typeof (v as { completeness?: unknown }).completeness === "number"
+  );
+}
+
+function isStoredCandidateMeta(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object" && Array.isArray((v as { sections?: unknown }).sections);
+}
+
+function mapResponseRow(r: {
+  id: string;
+  projectId: string;
+  promptId: string;
+  provider: string;
+  model: string;
+  responseMarkdown: string;
+  status: string;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  createdAt: Date;
+  specCandidateScore: unknown;
+  specCandidateMeta: unknown;
+}) {
+  let score: Record<string, unknown>;
+  let meta: Record<string, unknown>;
+  if (isStoredCandidateScore(r.specCandidateScore) && isStoredCandidateMeta(r.specCandidateMeta)) {
+    score = r.specCandidateScore;
+    meta = r.specCandidateMeta;
+  } else {
+    const p = computeSpecCandidatePayload(r.responseMarkdown);
+    score = p.score as unknown as Record<string, unknown>;
+    meta = p.meta as unknown as Record<string, unknown>;
+  }
+  return {
+    id: r.id,
+    projectId: r.projectId,
+    promptId: r.promptId,
+    provider: r.provider,
+    model: r.model,
+    responseMarkdown: r.responseMarkdown,
+    status: r.status,
+    promptTokens: r.promptTokens ?? null,
+    completionTokens: r.completionTokens ?? null,
+    totalTokens: r.totalTokens ?? null,
+    createdAt: r.createdAt.toISOString(),
+    specCandidateScore: score,
+    specCandidateMeta: meta,
+  };
+}
 
 const PROJECT_MAP_SELECT = {
   id: true,
@@ -133,6 +227,8 @@ export async function GET(
       take: 50,
     });
 
+    const specPromptConfigRow = await getOrCreateSpecPromptConfig(id);
+
     const specVersions = await prisma.projectSpecVersion.findMany({
       where: { projectId: id },
       orderBy: { version: "desc" },
@@ -167,23 +263,24 @@ export async function GET(
           promptText: p.promptText,
           createdAt: p.createdAt.toISOString(),
         })),
-        responses: responses.map((r) => ({
-          id: r.id,
-          projectId: r.projectId,
-          promptId: r.promptId,
-          provider: r.provider,
-          model: r.model,
-          responseMarkdown: r.responseMarkdown,
-          status: r.status,
-          promptTokens: r.promptTokens ?? null,
-          completionTokens: r.completionTokens ?? null,
-          totalTokens: r.totalTokens ?? null,
-          createdAt: r.createdAt.toISOString(),
-        })),
+        responses: responses.map((r) => mapResponseRow(r)),
+        specPromptConfig: mapSpecPromptConfigRow(specPromptConfigRow),
       },
     });
   } catch (error) {
     console.error("GET /api/projects/[projectId]/spec-workspace error:", error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2022") {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "DB_SCHEMA_OUT_OF_DATE",
+          message:
+            "DB에 최신 컬럼이 없어 워크스페이스를 불러올 수 없습니다. 프로젝트 루트에서 `npx prisma migrate deploy`(스키마: packages/db/schema.prisma)로 마이그레이션을 적용하세요. (실행계획 저장 자체는 성공했을 수 있습니다.)",
+          meta: error.meta,
+        },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { success: false, message: "Spec 워크스페이스 조회 중 오류가 발생했습니다." },
       { status: 500 }
@@ -202,6 +299,8 @@ type PatchBody = {
   specSuccessCriteria?: string | null;
   executionPlanMarkdown?: string | null;
   selectedPlanCandidateId?: string | null;
+  specPromptTemplate?: string | null;
+  specPromptPreset?: string | null;
 };
 
 export async function PATCH(
@@ -285,20 +384,51 @@ export async function PATCH(
           : String(body.selectedPlanCandidateId);
     }
 
-    if (Object.keys(data).length === 0) {
+    const hasPromptPatch = body.specPromptTemplate !== undefined || body.specPromptPreset !== undefined;
+
+    if (Object.keys(data).length === 0 && !hasPromptPatch) {
       return NextResponse.json({ success: false, message: "수정할 필드가 없습니다." }, { status: 400 });
     }
 
-    const updated = await prisma.project.update({
-      where: { id },
-      data: data as Parameters<typeof prisma.project.update>[0]["data"],
-      select: PROJECT_MAP_SELECT,
-    });
+    let updated = await prisma.project.findUnique({ where: { id }, select: PROJECT_MAP_SELECT });
+    if (!updated) {
+      return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    if (Object.keys(data).length > 0) {
+      updated = await prisma.project.update({
+        where: { id },
+        data: data as Parameters<typeof prisma.project.update>[0]["data"],
+        select: PROJECT_MAP_SELECT,
+      });
+    }
+
+    let specPromptConfigOut: ReturnType<typeof mapSpecPromptConfigRow> | null = null;
+    if (hasPromptPatch) {
+      const cfg = await getOrCreateSpecPromptConfig(id);
+      const nextTemplate =
+        body.specPromptTemplate !== undefined ? String(body.specPromptTemplate ?? "") : cfg.templatePrompt;
+      const nextPreset =
+        body.specPromptPreset !== undefined
+          ? normalizeSpecPromptPreset(body.specPromptPreset)
+          : normalizeSpecPromptPreset(cfg.preset);
+      if (!nextTemplate.trim()) {
+        return NextResponse.json({ success: false, message: "Spec 프롬프트 템플릿이 비어 있습니다." }, { status: 400 });
+      }
+      const saved = await prisma.specPromptConfig.update({
+        where: { projectId: id },
+        data: { templatePrompt: nextTemplate, preset: nextPreset },
+      });
+      specPromptConfigOut = mapSpecPromptConfigRow(saved);
+    }
 
     return NextResponse.json({
       success: true,
       message: "프로젝트 Spec 컨텍스트가 저장되었습니다.",
-      data: { project: mapProject(updated) },
+      data: {
+        project: mapProject(updated),
+        ...(specPromptConfigOut ? { specPromptConfig: specPromptConfigOut } : {}),
+      },
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -401,9 +531,13 @@ export async function POST(
         confirmedSpecAt: projectFull.confirmedSpecAt?.toISOString() ?? null,
       };
 
+      const promptCfg = await getOrCreateSpecPromptConfig(id);
       let promptText: string;
       try {
-        promptText = buildWorkspacePromptText(projectForPrompt, workspaceOpenAiModel);
+        promptText = composeWorkspaceSpecUserMessage(projectForPrompt, workspaceOpenAiModel, {
+          templatePrompt: promptCfg.templatePrompt,
+          preset: normalizeSpecPromptPreset(promptCfg.preset),
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg === "EXECUTION_PLAN_REQUIRED") {
@@ -462,6 +596,7 @@ export async function POST(
         );
       }
 
+      const candidatePayload = computeSpecCandidatePayload(markdown);
       const responseRow = await prisma.projectSpecWorkspaceResponse.create({
         data: {
           projectId: id,
@@ -473,38 +608,16 @@ export async function POST(
           promptTokens: usage?.promptTokens ?? null,
           completionTokens: usage?.completionTokens ?? null,
           totalTokens: usage?.totalTokens ?? null,
+          specCandidateScore: candidatePayload.score,
+          specCandidateMeta: candidatePayload.meta,
         },
       });
 
       const responsePayload: {
-        response: {
-          id: string;
-          projectId: string;
-          promptId: string;
-          provider: string;
-          model: string;
-          responseMarkdown: string;
-          status: string;
-          promptTokens: number | null;
-          completionTokens: number | null;
-          totalTokens: number | null;
-          createdAt: string;
-        };
+        response: ReturnType<typeof mapResponseRow>;
         project?: ReturnType<typeof mapProject>;
       } = {
-        response: {
-          id: responseRow.id,
-          projectId: responseRow.projectId,
-          promptId: responseRow.promptId,
-          provider: responseRow.provider,
-          model: responseRow.model,
-          responseMarkdown: responseRow.responseMarkdown,
-          status: responseRow.status,
-          promptTokens: responseRow.promptTokens ?? null,
-          completionTokens: responseRow.completionTokens ?? null,
-          totalTokens: responseRow.totalTokens ?? null,
-          createdAt: responseRow.createdAt.toISOString(),
-        },
+        response: mapResponseRow(responseRow),
       };
 
       const mapped = await prisma.project.findUnique({ where: { id }, select: PROJECT_MAP_SELECT });

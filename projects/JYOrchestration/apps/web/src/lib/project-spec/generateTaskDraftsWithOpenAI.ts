@@ -1,16 +1,32 @@
 /**
  * 확정 Project Spec을 R->D->F->T 계층으로 분해해 생성한다.
+ * Task 행은 Feature별로만 생성·검증한다 (Feature → Task).
  */
 
 import type { TaskNodeType } from "@/lib/project-spec/taskDraftHierarchy";
+import {
+  EXECUTION_TASK_KINDS,
+  ESTIMATED_SIZES,
+  TASK_PRIORITIES,
+  type GeneratedExecutionTask,
+} from "@/lib/project-spec/generatedExecutionTask";
+import { buildFallbackExecutionTasks, validateGeneratedExecutionTasks } from "@/lib/project-spec/validateGeneratedExecutionTasks";
 
 export type TaskDraftAiItem = {
   type: TaskNodeType;
   title: string;
   description: string;
-  priority: "HIGH" | "MEDIUM" | "LOW";
+  /** R/D/F: HIGH|MEDIUM|LOW · 실행 Task: P0|P1|P2 */
+  priority: string;
   parentTitle: string | null;
   acceptanceCriteria: string[];
+  taskInput?: string;
+  taskOutput?: string;
+  estimatedSize?: "S" | "M" | "L";
+  executionKind?: "api" | "logic" | "ui" | "infra" | "test";
+  /** Feature 내 로컬 ID → DB 저장 시 형제 Task 간 dependsOn 해석용 */
+  localTaskId?: string;
+  dependsOnLocalIds?: string[];
 };
 
 export type TaskDraftOpenAiUsage = {
@@ -111,30 +127,142 @@ ${lines}
 - JSON만 출력.`;
 }
 
-function buildTaskPrompt(features: Array<{ title: string; description: string; priority: string }>): string {
-  const lines = features.map((f, i) => `${i + 1}. ${f.title} (${f.priority}) — ${f.description}`).join("\n");
-  return `다음 feature를 실제 구현 단위 task로 분해하라.
+function buildExecutionTasksForSingleFeaturePrompt(feature: {
+  title: string;
+  description: string;
+  priority: string;
+}): string {
+  return `아래 **단일 Feature**에 대해서만 실행 가능한 개발 Task를 JSON으로 생성하라. (다른 Feature는 무시)
 
 [Feature]
-${lines}
+- 제목: ${feature.title}
+- 우선순위 힌트: ${feature.priority}
+- 설명:
+${feature.description.slice(0, 6000)}
 
-[출력 JSON]
+[출력 JSON — 키 이름을 정확히 맞출 것]
 {
   "tasks": [
     {
-      "title": "구현 단위 task",
-      "description": "완료 기준 중심",
-      "featureTitle": "상위 feature title 정확히 일치",
-      "priority": "HIGH|MEDIUM|LOW",
-      "acceptanceCriteria": ["검증 기준 1", "검증 기준 2"]
+      "localId": "영문_snake_또는_kebab (Feature 내 고유)",
+      "dependsOn": ["선행 task의 localId. 루트 Task만 []"],
+      "title": "구체적 실행 단위 (예: POST /orders API 엔드포인트 및 DTO 구현)",
+      "description": "무엇을 어느 레이어/모듈에서 구현하는지, 핵심 로직 요약",
+      "input": "이 Task가 사용하는 입력(필드·문서·환경 등)",
+      "output": "산출물(코드·스키마·응답 형식 등)",
+      "acceptanceCriteria": ["측정·검증 가능한 문장 3~5개"],
+      "estimatedSize": "S|M|L",
+      "priority": "P0|P1|P2",
+      "type": "api|logic|ui|infra|test"
     }
   ]
 }
 
-[규칙]
-- 각 feature당 1~4개 task.
-- featureTitle은 반드시 입력 목록 title과 정확히 일치.
-- JSON만 출력.`;
+[하드 규칙]
+- tasks 배열 길이는 반드시 3~7.
+- DAG: 순환 금지. dependsOn은 반드시 같은 배열 안의 다른 task의 localId만 참조.
+- **루트 Task는 정확히 1개**(dependsOn이 []). 나머지는 최소 1개 이상의 선행 Task를 가진다.
+- 그래프는 **약한 의미에서 연결**되어 있어야 함(고립된 Task/분리된 그룹 금지).
+- 권장 흐름: 계약/API·스키마(api/infra) → 비즈니스 로직(logic) → UI(ui, 필요 시) → 검증(test).
+- title은 모호한 표현 금지(예: "API 구현" 단독). 최소 14자 이상의 구체적 문장.
+- input·output은 각각 충분히 구체적으로(6자 이상).
+- JSON만 출력. 마크다운·설명 문장 금지.`;
+}
+
+function parseExecutionTasksFromJson(tasksUnknown: unknown): GeneratedExecutionTask[] {
+  if (!Array.isArray(tasksUnknown) || tasksUnknown.length === 0) {
+    throw new Error("EMPTY_EXECUTION_TASKS");
+  }
+  const out: GeneratedExecutionTask[] = [];
+  for (const item of tasksUnknown) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const localId = String(o.localId ?? "").trim();
+    const title = String(o.title ?? "").trim();
+    if (!localId || !title) continue;
+    const dependsRaw = Array.isArray(o.dependsOn) ? o.dependsOn : [];
+    const dependsOn = dependsRaw.map((x) => String(x ?? "").trim()).filter(Boolean);
+    const description = String(o.description ?? "").trim();
+    const input = String(o.input ?? "").trim();
+    const output = String(o.output ?? "").trim();
+    const criteria = Array.isArray(o.acceptanceCriteria)
+      ? o.acceptanceCriteria.map((x) => String(x ?? "").trim()).filter(Boolean)
+      : [];
+    const est = String(o.estimatedSize ?? "").toUpperCase().trim();
+    const estimatedSize = ESTIMATED_SIZES.includes(est as "S" | "M" | "L") ? (est as "S" | "M" | "L") : ("M" as const);
+    const pr = String(o.priority ?? "P1").toUpperCase().trim();
+    const priority = TASK_PRIORITIES.includes(pr as "P0" | "P1" | "P2") ? (pr as "P0" | "P1" | "P2") : "P1";
+    const kindRaw = String(o.type ?? o.taskKind ?? "logic").toLowerCase().trim();
+    const taskKind = EXECUTION_TASK_KINDS.includes(kindRaw as GeneratedExecutionTask["taskKind"])
+      ? (kindRaw as GeneratedExecutionTask["taskKind"])
+      : "logic";
+    out.push({
+      localId,
+      dependsOn,
+      title: title.slice(0, 500),
+      description: description.slice(0, 8000),
+      input: input.slice(0, 4000),
+      output: output.slice(0, 4000),
+      acceptanceCriteria: criteria.slice(0, 8),
+      estimatedSize,
+      priority,
+      taskKind,
+    });
+  }
+  return out;
+}
+
+async function generateValidatedExecutionTasksForFeature(params: {
+  apiKey: string;
+  model: string;
+  feature: { title: string; description: string; priority: string };
+}): Promise<{ tasks: GeneratedExecutionTask[]; usage: TaskDraftOpenAiUsage | null }> {
+  const { apiKey, model, feature } = params;
+  const MAX = 3;
+  let lastUsage: TaskDraftOpenAiUsage | null = null;
+  for (let attempt = 0; attempt < MAX; attempt++) {
+    const res = await completeJson({
+      apiKey,
+      model,
+      userMessage: buildExecutionTasksForSingleFeaturePrompt(feature),
+    });
+    lastUsage = res.usage;
+    let parsed: GeneratedExecutionTask[];
+    try {
+      const root = parseJson(res.text);
+      parsed = parseExecutionTasksFromJson(root.tasks);
+    } catch {
+      continue;
+    }
+    const v = validateGeneratedExecutionTasks(parsed);
+    if (v.ok) {
+      return { tasks: parsed, usage: res.usage };
+    }
+  }
+  return {
+    tasks: buildFallbackExecutionTasks(feature),
+    usage: lastUsage,
+  };
+}
+
+function executionTasksToAiItems(
+  featureTitle: string,
+  generated: GeneratedExecutionTask[]
+): TaskDraftAiItem[] {
+  return generated.map((t) => ({
+    type: "task",
+    title: t.title,
+    description: t.description,
+    priority: t.priority,
+    parentTitle: featureTitle,
+    acceptanceCriteria: t.acceptanceCriteria,
+    taskInput: t.input,
+    taskOutput: t.output,
+    estimatedSize: t.estimatedSize,
+    executionKind: t.taskKind,
+    localTaskId: t.localId,
+    dependsOnLocalIds: t.dependsOn,
+  }));
 }
 
 function normalizePriority(p: unknown): "HIGH" | "MEDIUM" | "LOW" {
@@ -143,13 +271,6 @@ function normalizePriority(p: unknown): "HIGH" | "MEDIUM" | "LOW" {
     return s;
   }
   return "MEDIUM";
-}
-
-function toStringArray(x: unknown): string[] {
-  if (!Array.isArray(x)) {
-    return [];
-  }
-  return x.map((v) => (typeof v === "string" ? v.trim() : "")).filter((item) => item.length > 0);
 }
 
 function parseJson(text: string): Record<string, unknown> {
@@ -324,50 +445,51 @@ export async function generateTaskDraftsWithOpenAI(input: {
     };
   });
 
-  const taskRes = await completeJson({
-    apiKey,
-    model,
-    userMessage: buildTaskPrompt(features),
-  });
-  const taskJson = parseJson(taskRes.text);
-  const featureTitleSet = new Set(features.map((f) => f.title));
-  const tasks = parseRows(taskJson.tasks, (o) => {
-    const title = String(o.title ?? "").trim();
-    const featureTitle = String(o.featureTitle ?? "").trim();
-    if (!title || !featureTitleSet.has(featureTitle)) return null;
-    return {
-      type: "task",
-      title: title.slice(0, 500),
-      description: String(o.description ?? "").trim().slice(0, 8000),
-      priority: normalizePriority(o.priority),
-      parentTitle: featureTitle,
-      acceptanceCriteria: toStringArray(o.acceptanceCriteria).slice(0, 20),
-    };
-  });
+  const executionTaskItems: TaskDraftAiItem[] = [];
+  let featureGenPrompt = 0;
+  let featureGenCompletion = 0;
+  let featureGenTotal = 0;
+  for (const f of features) {
+    const { tasks: execTasks, usage: fu } = await generateValidatedExecutionTasksForFeature({
+      apiKey,
+      model,
+      feature: {
+        title: f.title,
+        description: f.description,
+        priority: f.priority,
+      },
+    });
+    executionTaskItems.push(...executionTasksToAiItems(f.title, execTasks));
+    if (fu) {
+      featureGenPrompt += fu.promptTokens;
+      featureGenCompletion += fu.completionTokens;
+      featureGenTotal += fu.totalTokens;
+    }
+  }
 
-  const all = [...requirements, ...designTargets, ...features, ...tasks];
+  const all = [...requirements, ...designTargets, ...features, ...executionTaskItems];
   if (all.length === 0) {
     throw new Error("OPENAI_TASK_DRAFT_NO_VALID_TASKS");
   }
 
   const usage =
-    reqRes.usage || designRes.usage || featureRes.usage || taskRes.usage
+    reqRes.usage || designRes.usage || featureRes.usage || featureGenTotal > 0
       ? {
           promptTokens:
             (reqRes.usage?.promptTokens ?? 0) +
             (designRes.usage?.promptTokens ?? 0) +
             (featureRes.usage?.promptTokens ?? 0) +
-            (taskRes.usage?.promptTokens ?? 0),
+            featureGenPrompt,
           completionTokens:
             (reqRes.usage?.completionTokens ?? 0) +
             (designRes.usage?.completionTokens ?? 0) +
             (featureRes.usage?.completionTokens ?? 0) +
-            (taskRes.usage?.completionTokens ?? 0),
+            featureGenCompletion,
           totalTokens:
             (reqRes.usage?.totalTokens ?? 0) +
             (designRes.usage?.totalTokens ?? 0) +
             (featureRes.usage?.totalTokens ?? 0) +
-            (taskRes.usage?.totalTokens ?? 0),
+            featureGenTotal,
         }
       : null;
 

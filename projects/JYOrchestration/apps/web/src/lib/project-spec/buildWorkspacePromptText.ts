@@ -1,7 +1,12 @@
 import type { Project } from "@/components/project-spec/types";
+import {
+  normalizeSpecPromptPreset,
+  specPromptPresetPreamble,
+  type SpecPromptPresetId,
+} from "@/lib/project-spec/specPromptPresets";
 
 /** 모델별로 Spec 초안의 초점을 달리해 비교 가치를 높인다 */
-function modelSpecLens(modelId: string | null | undefined): string {
+export function modelSpecLens(modelId: string | null | undefined): string {
   const m = (modelId ?? "").trim();
   if (m === "gpt-4o") {
     return "이번 호출 초점: API·데이터 모델·컴포넌트 경계·트랜잭션·장애·관측성을 구체적으로.";
@@ -16,9 +21,101 @@ function modelSpecLens(modelId: string | null | undefined): string {
 }
 
 /**
- * DB에 저장된 실행 계획만을 본문 근거로 Project Spec 마크다운을 생성하도록 하는 사용자 메시지.
- * 클라이언트 임의 텍스트(prompt/content)는 사용하지 않는다.
+ * 사용자 편집 가능한 템플릿 기본값(실행 계획·프로젝트 메타·모델 렌즈는 서버가 뒤에 합친다).
+ * OpenAI 호출의 system 메시지에만 두는 안전 규칙은 여기 포함하지 않는다.
  */
+export const DEFAULT_SPEC_GENERATION_USER_TEMPLATE = `역할: 시니어 소프트웨어 아키텍트이자 요구사항 엔지니어.
+이 메시지 하단에 제공되는 [저장된 실행 계획]만을 근거로 **실행 가능한 Project Spec**을 마크다운으로 작성하라. 서술형 에세이가 아니라 구현·검증·운영에 바로 쓰이는 구조화 문서여야 한다.
+
+[필수 마크다운 구조 — 헤더 제목은 한국어로 유지, 하위 형식은 반드시 준수]
+
+## 1. Project Overview
+(2~5문단, 배경·목적·성공 정의)
+
+## 2. Scope
+### In Scope
+- (불릿, 구체적 산출물/기능 단위)
+
+### Out of Scope
+- (불릿, 명시적 제외)
+
+## 3. Use Cases
+| ID | Actor | Goal | Main flow |
+|----|-------|------|-----------|
+| UC-01 | ... | ... | ... |
+
+## 4. Functional Requirements
+각 항목은 표 또는 동일 정보를 담은 불릿 블록으로 작성:
+| ID | Description | Priority (P0/P1/P2) | Dependency | Acceptance criteria |
+|----|-------------|---------------------|------------|---------------------|
+| FR-01 | ... | P0 | (선택) | (검증 가능한 문장) |
+
+## 5. Non-Functional Requirements
+### Performance
+- (정량 목표 또는 측정 방법)
+
+### Security
+- (인증·권한·데이터 보호)
+
+### Scalability
+- (병목·확장 전략)
+
+### Availability
+- (SLO/복구)
+
+### Logging / Audit
+- (로그·감사 요건)
+
+## 6. System Architecture
+### Components
+- (책임·경계)
+
+### API
+- (주요 엔드포인트/계약 수준)
+
+### Storage
+- (데이터 저장·보존)
+
+### Client / Server
+- (배포·통신)
+
+## 7. Constraints & Assumptions
+- (제약·가정·외부 의존)
+
+[출력 규칙]
+- 위 섹션 번호·이름을 그대로 사용할 것.
+- 자유 텍스트 덩어리만 있는 답변 금지. 표·불릿·ID로 파싱 가능하게.
+- 한국어. 마크다운 본문만. 전체를 코드펜스로 감싸지 말 것. 서론 한 줄 없이 본문부터.`;
+
+export function composeWorkspaceSpecUserMessage(
+  project: Project,
+  modelId: string | null | undefined,
+  opts: { templatePrompt: string; preset: SpecPromptPresetId | string }
+): string {
+  const plan = project.executionPlanMarkdown?.trim();
+  if (!plan) {
+    throw new Error("EXECUTION_PLAN_REQUIRED");
+  }
+  const preset = normalizeSpecPromptPreset(opts.preset);
+  const preamble = specPromptPresetPreamble(preset);
+  const tmpl = (opts.templatePrompt ?? "").trim() || DEFAULT_SPEC_GENERATION_USER_TEMPLATE;
+  const parts = [
+    preamble.trim() || null,
+    tmpl.trim(),
+    "[프로젝트 기본]",
+    `- 제목: ${project.name.trim()}`,
+    `- 설명: ${(project.description ?? "").trim() || "(없음)"}`,
+    "",
+    "[저장된 실행 계획 — 유일한 본문 입력]",
+    plan,
+    "",
+    "[생성 관점]",
+    `- ${modelSpecLens(modelId)}`,
+  ];
+  return parts.filter((x) => x !== null).join("\n");
+}
+
+/** @deprecated 호환용 — composeWorkspaceSpecUserMessage + 기본 템플릿과 동일 */
 export function buildSpecPrompt(input: {
   title: string;
   description: string | null;
@@ -27,7 +124,6 @@ export function buildSpecPrompt(input: {
 }): string {
   const plan = input.planMarkdown.trim();
   const lens = modelSpecLens(input.modelId);
-
   return `역할: 시니어 소프트웨어 아키텍트이자 요구사항 엔지니어.
 아래 [저장된 실행 계획]만을 근거로 **실행 가능한 Project Spec**을 마크다운으로 작성하라. 서술형 에세이가 아니라 구현·검증·운영에 바로 쓰이는 구조화 문서여야 한다.
 
@@ -110,10 +206,8 @@ export function buildWorkspacePromptText(project: Project, modelId?: string | nu
   if (!plan) {
     throw new Error("EXECUTION_PLAN_REQUIRED");
   }
-  return buildSpecPrompt({
-    title: project.name,
-    description: project.description ?? null,
-    planMarkdown: plan,
-    modelId,
+  return composeWorkspaceSpecUserMessage(project, modelId, {
+    templatePrompt: DEFAULT_SPEC_GENERATION_USER_TEMPLATE,
+    preset: "default",
   });
 }

@@ -61,6 +61,23 @@ export async function confirmTaskDraftsToTasks(params: {
 
   await prisma.$transaction(async (tx) => {
     for (const d of executableDrafts) {
+      const descParts: string[] = [];
+      if (d.description?.trim()) descParts.push(d.description.trim());
+      const ti = (d as { taskInput?: string | null }).taskInput?.trim();
+      const to = (d as { taskOutput?: string | null }).taskOutput?.trim();
+      if (ti) descParts.push(`Input:\n${ti}`);
+      if (to) descParts.push(`Output:\n${to}`);
+      const ac = Array.isArray(d.acceptanceCriteria) ? (d.acceptanceCriteria as string[]) : [];
+      const acLines = ac.map((x) => String(x).trim()).filter(Boolean);
+      if (acLines.length) descParts.push(`Acceptance criteria:\n- ${acLines.join("\n- ")}`);
+      const sz = (d as { estimatedSize?: string | null }).estimatedSize?.trim();
+      const ek = (d as { executionKind?: string | null }).executionKind?.trim();
+      if (sz) descParts.push(`Estimated size: ${sz}`);
+      if (ek) descParts.push(`Execution kind: ${ek}`);
+      const merged =
+        descParts.length > 0 ? descParts.join("\n\n").slice(0, 16_000) : (d.description ?? null);
+      const mergedDescription = merged;
+
       const created = await tx.task.create({
         data: {
           projectId,
@@ -68,7 +85,7 @@ export async function confirmTaskDraftsToTasks(params: {
           projectSpecUploadId: null,
           sourceSpecVersionId: d.specVersionId,
           name: stripNodeTypePrefix(d.title),
-          description: d.description,
+          description: mergedDescription,
           status: "TODO",
           order: nextOrder,
           taskKind: "PRIMARY",

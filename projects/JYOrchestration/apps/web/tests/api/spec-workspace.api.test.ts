@@ -48,9 +48,13 @@ describe("spec workspace API", () => {
     expect(wsRes.status).toBe(200);
     const wsJson = (await wsRes.json()) as {
       success?: boolean;
-      data?: { prompts?: Array<{ promptText?: string }> };
+      data?: {
+        prompts?: Array<{ promptText?: string }>;
+        specPromptConfig?: { templatePrompt?: string; preset?: string };
+      };
     };
     expect(wsJson.success).toBe(true);
+    expect(wsJson.data?.specPromptConfig?.templatePrompt).toBeTruthy();
     expect(Array.isArray(wsJson.data?.prompts)).toBe(true);
     expect((wsJson.data?.prompts?.length ?? 0) > 0).toBe(true);
     const latestPrompt = wsJson.data?.prompts?.[0]?.promptText ?? "";

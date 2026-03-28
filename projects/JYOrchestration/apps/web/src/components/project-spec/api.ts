@@ -4,6 +4,7 @@ import {
   ProjectSpecPromptRecord,
   ProjectSpecResponseRecord,
   ProjectSpecVersionRecord,
+  SpecPromptConfigRecord,
   TaskDraftDto,
   TaskItem,
 } from "./types";
@@ -67,6 +68,7 @@ export type SpecWorkspaceSnapshot = {
   specVersions: ProjectSpecVersionRecord[];
   prompts: ProjectSpecPromptRecord[];
   responses: ProjectSpecResponseRecord[];
+  specPromptConfig: SpecPromptConfigRecord | null;
 };
 
 export async function fetchSpecWorkspace(projectId: string) {
@@ -89,6 +91,8 @@ export async function patchSpecWorkspace(
     specSuccessCriteria: string | null;
     executionPlanMarkdown: string | null;
     selectedPlanCandidateId: string | null;
+    specPromptTemplate?: string | null;
+    specPromptPreset?: string | null;
   }>
 ) {
   const encoded = encodeURIComponent(projectId);
@@ -98,7 +102,10 @@ export async function patchSpecWorkspace(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as ApiResponse<{ project: SpecWorkspaceSnapshot["project"] }>;
+  const json = (await res.json()) as ApiResponse<{
+    project: SpecWorkspaceSnapshot["project"];
+    specPromptConfig?: SpecPromptConfigRecord;
+  }>;
   return { res, json };
 }
 
@@ -235,6 +242,10 @@ export async function patchProjectTaskDraft(
     dependsOn: string[];
     dependsOnIds: string[];
     acceptanceCriteria: string[];
+    taskInput: string | null;
+    taskOutput: string | null;
+    estimatedSize: string | null;
+    executionKind: string | null;
     positionX: number;
     positionY: number;
     stage: string;
@@ -284,6 +295,9 @@ export type ExecutionSetupDto = {
   dryRunAllowed: boolean;
   status: "draft" | "validated" | "invalid";
   lastValidatedAt: string | null;
+  /** 구 서버 호환: 없으면 false로 간주 */
+  needsRevalidation?: boolean;
+  lastValidationError?: string | null;
   updatedAt: string;
 };
 
@@ -334,9 +348,13 @@ export async function postExecutionSetupValidate(projectId: string) {
   const json = (await res.json()) as ApiResponse<{
     status: "draft" | "validated" | "invalid";
     lastValidatedAt: string | null;
+    needsRevalidation?: boolean;
+    lastValidationError?: string | null;
     git: "ok" | "needs" | "error";
     cursor: "ok" | "needs" | "error";
     messages: string[];
+    probeGitOk?: boolean;
+    probeCursorOk?: boolean;
   }>;
   return { res, json };
 }

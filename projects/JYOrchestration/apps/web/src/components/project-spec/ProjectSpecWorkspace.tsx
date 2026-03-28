@@ -5,6 +5,7 @@ import {
   type AiDraftCandidate,
   fetchExecutionSetup,
   fetchSpecWorkspace,
+  patchSpecWorkspace,
   patchExecutionSetup,
   patchProjectSpecContext,
   postExecutionSetupValidate,
@@ -29,7 +30,15 @@ import {
   SPEC_WORKSPACE_MODEL_LABELS,
   type SpecWorkspaceAiModelId,
 } from "@/lib/project-spec/specWorkspaceModels";
-import { scoreSpecMarkdown } from "@/lib/project-spec/scoreSpecMarkdown";
+import { DEFAULT_SPEC_GENERATION_USER_TEMPLATE } from "@/lib/project-spec/buildWorkspacePromptText";
+import { getSpecCandidateDisplayScore } from "@/lib/project-spec/specCandidatePayload";
+import {
+  SPEC_PROMPT_PRESET_IDS,
+  SPEC_PROMPT_PRESET_LABELS,
+  type SpecPromptPresetId,
+} from "@/lib/project-spec/specPromptPresets";
+import { summarizeMarkdownSectionDiff } from "@/lib/project-spec/specCompareSummary";
+import { expectedProjectDirectoryRoot, PROJECT_ROOT_PATH_ERROR } from "@/lib/executionSetup/hardening";
 
 /** 자동 초안 API 중복 호출 방지 (동시에 하나만) */
 const specAutoDraftInFlightByProject = new Map<string, boolean>();
@@ -97,6 +106,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     Awaited<ReturnType<typeof fetchExecutionSetup>>["json"]["data"] | null
   >(null);
   const [executionSetupBusy, setExecutionSetupBusy] = useState<string | null>(null);
+  const [executionSetupOpen, setExecutionSetupOpen] = useState(false);
+  const [projectRootPathError, setProjectRootPathError] = useState<string | null>(null);
   const [cursorTokenInput, setCursorTokenInput] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
@@ -125,6 +136,16 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [planRevisionInstruction, setPlanRevisionInstruction] = useState("");
   const planWorkspaceHydratedRef = useRef(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [specCompareMode, setSpecCompareMode] = useState<"full" | "section">("full");
+  const [chosenSpecResponseId, setChosenSpecResponseId] = useState<string | null>(null);
+  const [specPromptDraft, setSpecPromptDraft] = useState<{ template: string; preset: SpecPromptPresetId }>({
+    template: "",
+    preset: "default",
+  });
+  const [specPromptUiBusy, setSpecPromptUiBusy] = useState(false);
+  const fullCompareLeftRef = useRef<HTMLPreElement>(null);
+  const fullCompareRightRef = useRef<HTMLPreElement>(null);
+  const fullCompareScrollLock = useRef(false);
   const [showDiffOnly, setShowDiffOnly] = useState(false);
   const [selectedSections, setSelectedSections] = useState<Record<string, "A" | "B">>({});
   const [versionCompareIds, setVersionCompareIds] = useState<string[]>([]);
@@ -174,6 +195,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       setWorkspace({
         ...json.data,
         specVersions: json.data.specVersions ?? [],
+        responses: json.data.responses ?? [],
+        specPromptConfig: json.data.specPromptConfig ?? null,
       });
       const p = json.data.project;
       setForm({
@@ -231,6 +254,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       const { res, json } = await fetchExecutionSetup(projectId);
       if (res.ok && json.success) {
         setExecutionSetup(json.data ?? null);
+        setProjectRootPathError(null);
       }
     } catch (e) {
       console.error(e);
@@ -242,12 +266,54 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   }, [loadExecutionSetup]);
 
   useEffect(() => {
+    setExecutionSetupOpen(false);
+    setProjectRootPathError(null);
+  }, [projectId]);
+
+  useEffect(() => {
+    setChosenSpecResponseId(null);
+  }, [projectId]);
+
+  useEffect(() => {
+    const c = workspace?.specPromptConfig;
+    if (c) {
+      const p = c.preset as SpecPromptPresetId;
+      setSpecPromptDraft({
+        template: c.templatePrompt,
+        preset: SPEC_PROMPT_PRESET_IDS.includes(p) ? p : "default",
+      });
+    }
+  }, [workspace?.specPromptConfig?.id, workspace?.specPromptConfig?.lastEditedAt]);
+
+  useEffect(() => {
     if (!lastTaskDraftSync) {
       return;
     }
     const t = setTimeout(() => setLastTaskDraftSync(null), 10_000);
     return () => clearTimeout(t);
   }, [lastTaskDraftSync]);
+
+  const specWorkflowConfirmed = useMemo(
+    () =>
+      Boolean(
+        workspace?.project?.currentSpecVersionId ||
+          project?.currentSpecVersionId ||
+          workspace?.project?.confirmedSpecAt ||
+          project?.confirmedSpecAt
+      ),
+    [
+      workspace?.project?.currentSpecVersionId,
+      project?.currentSpecVersionId,
+      workspace?.project?.confirmedSpecAt,
+      project?.confirmedSpecAt,
+    ]
+  );
+
+  const expectedProjectRootHint = useMemo(() => {
+    const ws = executionSetup?.workspacePath?.trim();
+    if (!ws || !projectId) return "";
+    return expectedProjectDirectoryRoot(ws, projectId);
+  }, [executionSetup?.workspacePath, projectId]);
 
   const effectiveSpecSlice = useMemo(() => {
     if (workingDocument.trim()) {
@@ -874,6 +940,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         setDraftRefreshKey((k) => k + 1);
       }
       setMessage("이 응답을 공식 Project Spec으로 확정했습니다.");
+      setChosenSpecResponseId(null);
       await loadWorkspace();
     } catch (e) {
       console.error(e);
@@ -916,12 +983,100 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         setDraftRefreshKey((k) => k + 1);
       }
       setMessage("병합 결과를 공식 Project Spec으로 확정했습니다.");
+      setChosenSpecResponseId(null);
       await loadWorkspace();
     } catch (e) {
       console.error(e);
       setMessage("병합 확정 처리 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
+    }
+  }
+
+  const specQuickBadgesById = useMemo(() => {
+    const list = workspace?.responses ?? [];
+    const m = new Map<string, string[]>();
+    if (list.length < 2) {
+      return m;
+    }
+    const scored = list.map((r) => ({ r, s: getSpecCandidateDisplayScore(r) }));
+    const maxStruct = Math.max(...scored.map((x) => x.s.structure), 0);
+    const maxComp = Math.max(...scored.map((x) => x.s.completeness), 0);
+    const maxExec = Math.max(...scored.map((x) => x.s.executionReadiness), 0);
+    for (const { r, s } of scored) {
+      const labels: string[] = [];
+      if (maxStruct > 0 && s.structure === maxStruct) {
+        labels.push("Best Structure");
+      }
+      if (maxComp > 0 && s.completeness === maxComp) {
+        labels.push("Most Complete");
+      }
+      if (maxExec > 0 && s.executionReadiness === maxExec) {
+        labels.push("Fastest to Implement");
+      }
+      if (labels.length) {
+        m.set(r.id, labels);
+      }
+    }
+    return m;
+  }, [workspace?.responses]);
+
+  const syncFullCompareScroll = useCallback((source: "left" | "right") => {
+    if (fullCompareScrollLock.current) {
+      return;
+    }
+    const L = fullCompareLeftRef.current;
+    const R = fullCompareRightRef.current;
+    if (!L || !R) {
+      return;
+    }
+    const src = source === "left" ? L : R;
+    const dst = source === "left" ? R : L;
+    const sr = src.scrollHeight - src.clientHeight;
+    const dr = dst.scrollHeight - dst.clientHeight;
+    if (sr <= 0 || dr <= 0) {
+      return;
+    }
+    fullCompareScrollLock.current = true;
+    const ratio = src.scrollTop / sr;
+    dst.scrollTop = ratio * dr;
+    requestAnimationFrame(() => {
+      fullCompareScrollLock.current = false;
+    });
+  }, []);
+
+  async function saveSpecPromptSettings() {
+    if (!projectId || !canEdit) {
+      return;
+    }
+    setSpecPromptUiBusy(true);
+    setMessage(null);
+    try {
+      const { res, json } = await patchSpecWorkspace(projectId, {
+        specPromptTemplate: specPromptDraft.template,
+        specPromptPreset: specPromptDraft.preset,
+      });
+      if (!res.ok || !json.success) {
+        setMessage(json.message || "프롬프트 설정 저장에 실패했습니다.");
+        return;
+      }
+      if (json.data?.specPromptConfig) {
+        setWorkspace((ws) =>
+          ws
+            ? {
+                ...ws,
+                specPromptConfig: json.data!.specPromptConfig!,
+              }
+            : ws
+        );
+      }
+      setMessage("Spec 생성 프롬프트 설정을 저장했습니다.");
+      await loadWorkspace();
+    } catch (e) {
+      console.error(e);
+      setMessage("프롬프트 설정 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSpecPromptUiBusy(false);
     }
   }
 
@@ -1168,14 +1323,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#fff",
         }}
       >
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
           <LabelTag label="[F-1-3-2] Workspace — Project Spec from saved plan" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>저장된 계획으로 Project Spec 생성</h3>
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, lineHeight: 1.35 }}>저장된 계획으로 Project Spec 생성</h3>
         </div>
 
         <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          저장된 실행계획을 기반으로 Project Spec을 생성합니다. 서버는 DB에 저장된 실행 계획만 사용하며, 클라이언트에서 임의로
-          넣은 프롬프트 텍스트는 반영하지 않습니다.
+          저장된 실행계획을 기반으로 Project Spec을 생성합니다. 실행 계획 본문은 항상 서버가 주입하고, 사용자 편집 가능한{" "}
+          <strong>템플릿 레이어</strong>와 <strong>프리셋</strong>은 아래 「[F-1-3-3] AI 응답」의 Spec Generation Settings에서
+          설정합니다.
         </p>
 
         <label style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -1256,10 +1412,149 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           <LabelTag label="[F-1-3-3] Workspace — AI responses & compare" />
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>AI 응답</h3>
         </div>
-        <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b" }}>
-          응답 두 개를 「비교」로 선택하면 섹션 단위로 나란히 보입니다. 아래 휴리스틱 Spec 품질 점수(완전성·구조·실행
-          준비도)로 후보를 빠르게 구분할 수 있습니다.
+        <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+          여러 Spec <strong>후보 중 하나를 선택</strong>해 공식 Project Spec으로 확정하는 단계입니다. 두 응답을 「비교」에 넣으면 기본은{" "}
+          <strong>전체 문서</strong> 나란히 보기이며, 섹션 단위 비교는 보조 모드로 전환할 수 있습니다.
         </p>
+        <div
+          data-testid="spec-workspace-spec-generation-settings"
+          data-ui-label="[F-1-3-3] Spec Generation Settings"
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 10,
+            border: "1px solid #c4b5fd",
+            background: "#f5f3ff",
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 14, color: "#4c1d95", marginBottom: 8 }}>Spec Generation Settings</div>
+          <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#5b21b6", lineHeight: 1.5 }}>
+            서버는 OpenAI <strong>system</strong> 안전 규칙 + 아래 <strong>템플릿</strong> + 저장된 <strong>실행 계획</strong>을
+            합쳐 생성합니다. System 층 내용은 UI에 노출하지 않습니다.
+          </p>
+          <label style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Preset</span>
+            <select
+              value={specPromptDraft.preset}
+              disabled={!canEdit || specPromptUiBusy}
+              onChange={(e) =>
+                setSpecPromptDraft((d) => ({ ...d, preset: e.target.value as SpecPromptPresetId }))
+              }
+              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", maxWidth: 280 }}
+            >
+              {SPEC_PROMPT_PRESET_IDS.map((pid) => (
+                <option key={pid} value={pid}>
+                  {SPEC_PROMPT_PRESET_LABELS[pid]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Prompt Template</span>
+            <textarea
+              value={specPromptDraft.template}
+              disabled={!canEdit || specPromptUiBusy}
+              onChange={(e) => setSpecPromptDraft((d) => ({ ...d, template: e.target.value }))}
+              rows={12}
+              style={{
+                width: "100%",
+                fontFamily: "ui-monospace, monospace",
+                fontSize: 12,
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid #cbd5e1",
+                lineHeight: 1.45,
+              }}
+            />
+          </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button
+              type="button"
+              data-testid="spec-workspace-prompt-save"
+              disabled={!canEdit || specPromptUiBusy}
+              onClick={() => void saveSpecPromptSettings()}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #6d28d9",
+                background: "#6d28d9",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: !canEdit || specPromptUiBusy ? "not-allowed" : "pointer",
+              }}
+            >
+              {specPromptUiBusy ? "저장 중…" : "설정 저장"}
+            </button>
+            <button
+              type="button"
+              data-testid="spec-workspace-prompt-reset"
+              disabled={!canEdit || specPromptUiBusy}
+              onClick={() =>
+                setSpecPromptDraft((d) => ({ ...d, template: DEFAULT_SPEC_GENERATION_USER_TEMPLATE }))
+              }
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #7c3aed",
+                background: "#fff",
+                color: "#5b21b6",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: !canEdit || specPromptUiBusy ? "not-allowed" : "pointer",
+              }}
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        {workspace?.responses?.length ? (
+          <div
+            style={{
+              marginBottom: 14,
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #bfdbfe",
+              background: "#eff6ff",
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#1e3a8a" }}>결정</div>
+            <span style={{ fontSize: 12, color: "#1e40af" }}>
+              후보 카드에서 「이 Spec 선택」 후 아래 버튼으로 확정하세요.
+            </span>
+            <button
+              type="button"
+              data-testid="spec-workspace-confirm-selected-spec"
+              disabled={!canEdit || !chosenSpecResponseId || Boolean(actionBusy?.startsWith("confirm"))}
+              onClick={() => {
+                const r = workspace?.responses.find((x) => x.id === chosenSpecResponseId);
+                if (r) {
+                  void handleConfirm(r);
+                }
+              }}
+              style={{
+                marginLeft: "auto",
+                padding: "10px 18px",
+                borderRadius: 8,
+                border: chosenSpecResponseId ? "2px solid #1d4ed8" : "1px solid #93c5fd",
+                background: chosenSpecResponseId ? "#2563eb" : "#e2e8f0",
+                color: chosenSpecResponseId ? "#fff" : "#64748b",
+                fontWeight: 900,
+                fontSize: 13,
+                cursor:
+                  !canEdit || !chosenSpecResponseId || actionBusy?.startsWith("confirm") ? "not-allowed" : "pointer",
+              }}
+            >
+              선택한 Spec 확정
+            </button>
+          </div>
+        ) : null}
+
         {actionBusy?.startsWith("confirm") ? (
           <p
             role="status"
@@ -1307,6 +1602,36 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             </div>
             <div
               style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 16,
+                marginBottom: 12,
+                fontSize: 12,
+              }}
+            >
+              <span style={{ fontWeight: 800, color: "#0c4a6e" }}>Compare Mode:</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  name="spec-compare-mode"
+                  checked={specCompareMode === "full"}
+                  onChange={() => setSpecCompareMode("full")}
+                />
+                Full Compare
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  name="spec-compare-mode"
+                  checked={specCompareMode === "section"}
+                  onChange={() => setSpecCompareMode("section")}
+                />
+                Section Compare
+              </label>
+            </div>
+            <div
+              style={{
                 display: "grid",
                 gridTemplateColumns: "1fr 1fr",
                 gap: 10,
@@ -1316,14 +1641,18 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               }}
             >
               <div>
-                <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 A</div>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>Candidate A</div>
                 <div>모델: {compareLeft.model}</div>
                 {(() => {
-                  const s = scoreSpecMarkdown(compareLeft.responseMarkdown);
+                  const s = getSpecCandidateDisplayScore(compareLeft);
                   return (
                     <div style={{ fontSize: 11, color: "#0f172a", marginTop: 4, fontWeight: 700 }}>
-                      Spec 품질 점수: {s.overall} (완전성 {s.completeness} · 구조 {s.structureQuality} · 실행 준비{" "}
-                      {s.executionReadiness})
+                      Spec Score: {s.total}
+                      <div style={{ fontWeight: 600, marginTop: 4 }}>
+                        · Completeness: {s.completeness}
+                        <br />· Structure: {s.structure}
+                        <br />· Execution Ready: {s.executionReadiness}
+                      </div>
                     </div>
                   );
                 })()}
@@ -1337,14 +1666,18 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                 </div>
               </div>
               <div>
-                <div style={{ fontWeight: 800, marginBottom: 4 }}>응답 B</div>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>Candidate B</div>
                 <div>모델: {compareRight.model}</div>
                 {(() => {
-                  const s = scoreSpecMarkdown(compareRight.responseMarkdown);
+                  const s = getSpecCandidateDisplayScore(compareRight);
                   return (
                     <div style={{ fontSize: 11, color: "#0f172a", marginTop: 4, fontWeight: 700 }}>
-                      Spec 품질 점수: {s.overall} (완전성 {s.completeness} · 구조 {s.structureQuality} · 실행 준비{" "}
-                      {s.executionReadiness})
+                      Spec Score: {s.total}
+                      <div style={{ fontWeight: 600, marginTop: 4 }}>
+                        · Completeness: {s.completeness}
+                        <br />· Structure: {s.structure}
+                        <br />· Execution Ready: {s.executionReadiness}
+                      </div>
                     </div>
                   );
                 })()}
@@ -1358,7 +1691,88 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                 </div>
               </div>
             </div>
-            {(() => {
+            {specCompareMode === "full" ? (
+              (() => {
+                const diffSummary = summarizeMarkdownSectionDiff(
+                  compareLeft.responseMarkdown,
+                  compareRight.responseMarkdown
+                );
+                const sL = getSpecCandidateDisplayScore(compareLeft);
+                const sR = getSpecCandidateDisplayScore(compareRight);
+                return (
+                  <>
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: 12,
+                        background: "#fff",
+                        borderRadius: 8,
+                        border: "1px solid #bae6fd",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, marginBottom: 6, color: "#0c4a6e" }}>변경 요약</div>
+                      <div style={{ fontSize: 13, color: "#0c4a6e" }}>
+                        + Added: {diffSummary.added} sections · ~ Modified: {diffSummary.modified} sections · - Removed:{" "}
+                        {diffSummary.removed} sections
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "start" }}>
+                      <div>
+                        <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 13, color: "#0f172a" }}>
+                          전체 문서 · A (Spec Score {sL.total})
+                        </div>
+                        <pre
+                          ref={fullCompareLeftRef}
+                          onScroll={() => syncFullCompareScroll("left")}
+                          style={{
+                            margin: 0,
+                            maxHeight: 440,
+                            overflow: "auto",
+                            padding: 10,
+                            borderRadius: 8,
+                            border: "1px solid #93c5fd",
+                            background: "#fff",
+                            fontSize: 12,
+                            lineHeight: 1.5,
+                            whiteSpace: "pre-wrap",
+                            fontFamily: "ui-monospace, monospace",
+                            color: "#0f172a",
+                          }}
+                        >
+                          {compareLeft.responseMarkdown}
+                        </pre>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 13, color: "#0f172a" }}>
+                          전체 문서 · B (Spec Score {sR.total})
+                        </div>
+                        <pre
+                          ref={fullCompareRightRef}
+                          onScroll={() => syncFullCompareScroll("right")}
+                          style={{
+                            margin: 0,
+                            maxHeight: 440,
+                            overflow: "auto",
+                            padding: 10,
+                            borderRadius: 8,
+                            border: "1px solid #93c5fd",
+                            background: "#fff",
+                            fontSize: 12,
+                            lineHeight: 1.5,
+                            whiteSpace: "pre-wrap",
+                            fontFamily: "ui-monospace, monospace",
+                            color: "#0f172a",
+                          }}
+                        >
+                          {compareRight.responseMarkdown}
+                        </pre>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()
+            ) : null}
+            {specCompareMode === "section" ? (() => {
               const a = parseMarkdownToSections(compareLeft.responseMarkdown).sections;
               const b = parseMarkdownToSections(compareRight.responseMarkdown).sections;
 
@@ -1625,7 +2039,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                   </div>
                 </>
               );
-            })()}
+            })() : null}
           </div>
         ) : null}
 
@@ -1639,15 +2053,26 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
               const selected = confirmedId === r.id;
               const expanded = expandedId === r.id;
               const inCompare = compareIds.includes(r.id);
+              const isChosen = chosenSpecResponseId === r.id;
+              const sc = getSpecCandidateDisplayScore(r);
+              const badges = specQuickBadgesById.get(r.id) ?? [];
+              const lowScore = sc.completeness < 50 || sc.total < 50;
               return (
                 <li
                   key={r.id}
                   data-testid={`spec-workspace-response-${r.id}`}
                   style={{
                     borderRadius: 10,
-                    border: inCompare ? "2px solid #0ea5e9" : selected ? "2px solid #2563eb" : "1px solid #e2e8f0",
+                    border: isChosen
+                      ? "3px solid #2563eb"
+                      : inCompare
+                        ? "2px solid #0ea5e9"
+                        : selected
+                          ? "2px solid #22c55e"
+                          : "1px solid #e2e8f0",
                     padding: 12,
-                    background: inCompare ? "#e0f2fe" : selected ? "#eff6ff" : "#fafafa",
+                    background: isChosen ? "#dbeafe" : inCompare ? "#e0f2fe" : selected ? "#f0fdf4" : "#fafafa",
+                    boxShadow: isChosen ? "0 0 0 3px rgba(37,99,235,0.15)" : undefined,
                   }}
                 >
                   <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
@@ -1659,20 +2084,53 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                       <span style={{ color: "#64748b", marginLeft: 8 }}>
                         {r.provider} / {r.model}
                       </span>
+                      {badges.length ? (
+                        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {badges.map((b) => (
+                            <span
+                              key={b}
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 800,
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                background: "#fef3c7",
+                                color: "#92400e",
+                                border: "1px solid #fcd34d",
+                              }}
+                            >
+                              {b}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
                         토큰: 입력 {r.promptTokens ?? "-"} / 출력 {r.completionTokens ?? "-"} / 총 {r.totalTokens ?? "-"}
                       </div>
-                      {(() => {
-                        const s = scoreSpecMarkdown(r.responseMarkdown);
-                        return (
-                          <div style={{ fontSize: 11, color: "#334155", marginTop: 4, fontWeight: 700 }}>
-                            Spec 품질: {s.overall} · 완전성 {s.completeness} · 구조 {s.structureQuality} · 실행 준비{" "}
-                            {s.executionReadiness}
-                          </div>
-                        );
-                      })()}
+                      <div style={{ fontSize: 12, color: "#334155", marginTop: 6, fontWeight: 800 }}>
+                        Spec Score: {sc.total}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#475569", marginTop: 2, lineHeight: 1.5 }}>
+                        · Completeness: {sc.completeness}
+                        <br />
+                        · Structure: {sc.structure}
+                        <br />
+                        · Execution Ready: {sc.executionReadiness}
+                      </div>
+                      {lowScore ? (
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#b45309", fontWeight: 700 }}>
+                          ⚠ Spec completeness is low (또는 총점이 낮음). 섹션 누락 가능성을 검토하세요.
+                        </div>
+                      ) : null}
                       {selected ? (
-                        <span style={{ marginLeft: 8, color: "#1d4ed8", fontWeight: 800 }}>확정됨</span>
+                        <span style={{ display: "inline-block", marginTop: 8, color: "#15803d", fontWeight: 800 }}>
+                          현재 공식 Spec 출처
+                        </span>
+                      ) : null}
+                      {isChosen ? (
+                        <span style={{ display: "inline-block", marginTop: 8, marginLeft: 8, color: "#1d4ed8", fontWeight: 900 }}>
+                          선택됨 — 아래 「선택한 Spec 확정」을 누르세요
+                        </span>
                       ) : null}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
@@ -1713,22 +2171,21 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                       {canEdit ? (
                         <button
                           type="button"
-                          data-testid={`spec-workspace-confirm-${r.id}`}
-                          onClick={() => void handleConfirm(r)}
-                          disabled={actionBusy?.startsWith("confirm")}
+                          data-testid={`spec-workspace-select-spec-${r.id}`}
+                          onClick={() => setChosenSpecResponseId(r.id)}
+                          disabled={Boolean(actionBusy?.startsWith("confirm"))}
                           style={{
                             padding: "10px 16px",
                             borderRadius: 8,
-                            border: "2px solid #1d4ed8",
-                            background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
-                            color: "#fff",
-                            cursor: actionBusy?.startsWith("confirm") ? "wait" : "pointer",
+                            border: isChosen ? "2px solid #1e40af" : "2px solid #3b82f6",
+                            background: isChosen ? "#1d4ed8" : "#fff",
+                            color: isChosen ? "#fff" : "#1d4ed8",
+                            cursor: actionBusy?.startsWith("confirm") ? "not-allowed" : "pointer",
                             fontSize: 13,
                             fontWeight: 800,
-                            boxShadow: "0 2px 8px rgba(37,99,235,0.35)",
                           }}
                         >
-                          {actionBusy === `confirm-${r.id}` ? "…" : "이 응답으로 확정"}
+                          이 Spec 선택
                         </button>
                       ) : null}
                     </div>
@@ -2300,32 +2757,126 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       />
 
       {/* [F-1-3-6] Workspace — Execution Setup */}
-      {(() => {
-        const ready = executionSetup?.status === "validated";
-        return (
-          <div
-            data-ui-label="[F-1-3-6] Workspace — Execution Setup"
-            style={{
-              marginTop: 16,
-              padding: 16,
-              borderRadius: 12,
-              border: ready ? "2px solid #22c55e" : "1px solid #e2e8f0",
-              background: ready ? "#f0fdf4" : "#fff",
-            }}
-          >
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <LabelTag label="[F-1-3-6] Workspace — Execution Setup" />
-              <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>Execution Setup</h3>
-              <span style={{ fontSize: 12, fontWeight: 900, color: ready ? "#15803d" : "#b45309" }}>
-                {ready ? "execution-ready" : "연결 확인 필요"}
-              </span>
-            </div>
-            <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-              워크플로가 확정되었더라도 실제 실행 환경(Repo/Executor/Policy) 연결이 필요합니다. 연결 테스트로 준비 상태를 명확히
-              확인하세요.
-            </p>
+      {!specWorkflowConfirmed ? (
+        <div
+          data-ui-label="[F-1-3-6] Workspace — Execution Setup (locked)"
+          style={{
+            marginTop: 16,
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid #e2e8f0",
+            background: "#f8fafc",
+          }}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            <LabelTag label="[F-1-3-6] Workspace — Execution Setup" />
+            <strong style={{ fontSize: 14 }}>Execution Setup</strong>
+            <span style={{ fontSize: 12, color: "#64748b" }}>
+              프로젝트 스펙이 확정된 뒤에 설정할 수 있습니다.
+            </span>
+          </div>
+        </div>
+      ) : (
+        (() => {
+          const nr = executionSetup?.needsRevalidation ?? false;
+          const ready = executionSetup?.status === "validated" && !nr;
+          const badgeLabel =
+            executionSetup?.status === "invalid" ? "INVALID" : ready ? "READY" : "NEEDS VALIDATION";
+          const badgeColors =
+            badgeLabel === "READY"
+              ? { bg: "#dcfce7", fg: "#166534", bd: "#86efac" }
+              : badgeLabel === "INVALID"
+                ? { bg: "#fee2e2", fg: "#991b1b", bd: "#fecaca" }
+                : { bg: "#ffedd5", fg: "#9a3412", bd: "#fdba74" };
+          const frameBorder =
+            ready ? "2px solid #22c55e" : executionSetup?.status === "invalid" ? "2px solid #f87171" : "1px solid #e2e8f0";
+          const frameBg = ready ? "#f0fdf4" : "#fff";
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+          return (
+            <div
+              data-ui-label="[F-1-3-6] Workspace — Execution Setup"
+              style={{
+                marginTop: 16,
+                padding: 16,
+                borderRadius: 12,
+                border: frameBorder,
+                background: frameBg,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: executionSetupOpen ? 10 : 6,
+                }}
+              >
+                <LabelTag label="[F-1-3-6] Workspace — Execution Setup" />
+                <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>Execution Setup</h3>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    letterSpacing: 0.4,
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                    border: `1px solid ${badgeColors.bd}`,
+                    background: badgeColors.bg,
+                    color: badgeColors.fg,
+                  }}
+                >
+                  {badgeLabel}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: ready ? "#15803d" : "#b45309" }}>
+                  {ready ? "execution-ready" : "연결 확인 필요"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setExecutionSetupOpen((o) => !o)}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  {executionSetupOpen ? "접기" : "펼치기"}
+                </button>
+              </div>
+
+              {!executionSetupOpen ? (
+                <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+                  기본 접힘입니다. Repo / Executor / 경로를 편집하거나 연결 검증을 하려면 「펼치기」를 누르세요.
+                </p>
+              ) : (
+                <>
+                  {nr ? (
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: 10,
+                        borderRadius: 10,
+                        background: "#fffbeb",
+                        border: "1px solid #fcd34d",
+                        color: "#92400e",
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Configuration changed. Re-validation required.
+                    </div>
+                  ) : null}
+                  <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+                    저장된 설정으로 Git 원격(info/refs)과 Executor URL에 HTTP 요청을 보내 실제 연결 가능 여부를 확인합니다. 구성 형식만
+                    검사하는 것이 아닙니다.
+                  </p>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
                 <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: "#0f172a" }}>Repository</div>
                 <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
@@ -2427,9 +2978,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                   <input
                     value={executionSetup?.workspacePath ?? ""}
                     disabled={!canEdit}
-                    onChange={(e) =>
-                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), workspacePath: e.target.value } as never))
-                    }
+                    onChange={(e) => {
+                      setProjectRootPathError(null);
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), workspacePath: e.target.value } as never));
+                    }}
                     style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                   />
                 </label>
@@ -2438,13 +2990,27 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                   <input
                     value={executionSetup?.projectRootPath ?? ""}
                     disabled={!canEdit}
-                    onChange={(e) =>
-                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), projectRootPath: e.target.value } as never))
-                    }
-                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                    aria-invalid={projectRootPathError ? true : undefined}
+                    onChange={(e) => {
+                      setProjectRootPathError(null);
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), projectRootPath: e.target.value } as never));
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: projectRootPathError ? "2px solid #dc2626" : "1px solid #cbd5e1",
+                      outline: projectRootPathError ? "1px solid #fecaca" : undefined,
+                    }}
                   />
+                  {projectRootPathError ? (
+                    <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 4, fontWeight: 700 }}>
+                      {projectRootPathError}
+                    </div>
+                  ) : null}
                   <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                    모노레포에서는 project root path를 이 프로젝트 하위로 제한하세요.
+                    현재 프로젝트 디렉터리는{" "}
+                    <code style={{ fontSize: 10 }}>{expectedProjectRootHint || "(workspace path 입력 후 표시)"}</code> 접두사
+                    아래여야 합니다.
                   </div>
                 </label>
               </div>
@@ -2511,9 +3077,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                             ...(token ? { cursorApiToken: token } : {}),
                           });
                           if (!res.ok || !json.success) {
-                            setMessage(json.message || "설정 저장에 실패했습니다.");
+                            const m = json.message || "설정 저장에 실패했습니다.";
+                            setMessage(m);
+                            if (m === PROJECT_ROOT_PATH_ERROR) {
+                              setProjectRootPathError(PROJECT_ROOT_PATH_ERROR);
+                            }
                             return;
                           }
+                          setProjectRootPathError(null);
                           setExecutionSetup(json.data);
                           setCursorTokenInput("");
                           setMessage("Execution setup이 저장되었습니다.");
@@ -2543,7 +3114,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                         try {
                           const { res, json } = await postExecutionSetupValidate(projectId);
                           if (!res.ok || !json.success) {
-                            setMessage(json.message || "연결 테스트에 실패했습니다.");
+                            setMessage(json.message || "연결 검증에 실패했습니다.");
                             return;
                           }
                           setExecutionSetup((p) =>
@@ -2552,11 +3123,13 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                                   ...p,
                                   status: json.data?.status ?? p.status,
                                   lastValidatedAt: json.data?.lastValidatedAt ?? p.lastValidatedAt,
+                                  needsRevalidation: json.data?.needsRevalidation ?? false,
+                                  lastValidationError: json.data?.lastValidationError ?? null,
                                 }
                               : p
                           );
                           const detail = (json.data?.messages ?? []).join(" / ");
-                          const msg = json.message || "연결 테스트를 완료했습니다.";
+                          const msg = json.message || "연결 검증을 완료했습니다.";
                           setMessage(detail ? `${msg} · ${detail}` : msg);
                         } finally {
                           setExecutionSetupBusy(null);
@@ -2573,22 +3146,30 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                         fontSize: 13,
                       }}
                     >
-                      {executionSetupBusy === "validate" ? "테스트 중…" : "연결 테스트"}
+                      {executionSetupBusy === "validate" ? "검증 중…" : "연결 검증"}
                     </button>
                   </div>
 
                   {!ready ? (
                     <div style={{ marginTop: 10, fontSize: 12, color: "#b45309", lineHeight: 1.55 }}>
-                      워크플로 확정만으로는 실행 준비가 완료되지 않습니다. <strong>Execution Setup이 validated</strong> 상태가 되어야
-                      execution-ready로 간주합니다.
+                      워크플로 확정만으로는 실행 준비가 완료되지 않습니다. 연결 검증이 성공했고{" "}
+                      <strong>설정 변경으로 재검증이 필요하지 않은 경우</strong>에만 execution-ready입니다.
+                    </div>
+                  ) : null}
+                  {executionSetup?.lastValidationError ? (
+                    <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c", lineHeight: 1.45 }}>
+                      {executionSetup.lastValidationError}
                     </div>
                   ) : null}
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+                  </>
+              )}
+            </div>
+          );
+        })()
+      )}
 
       {message ? (
         <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: "#334155" }} role="status">

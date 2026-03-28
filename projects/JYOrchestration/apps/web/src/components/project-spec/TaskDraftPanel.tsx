@@ -21,9 +21,7 @@ import {
   totalLaneCanvasHeightPx,
   computeStageAwareLaneLayout,
   clampNodeYToStageBand,
-  snapNodeYToLaneCenter,
   normalizeWorkflowStage,
-  type WorkflowStage,
 } from "@/lib/project-spec/workflowLaneLayout";
 import { nodeTypeFromTitle, nodeTypeLabel, stageForNodeType, type TaskNodeType } from "@/lib/project-spec/taskDraftHierarchy";
 import ReactFlow, {
@@ -128,6 +126,163 @@ function uniqueStrings(xs: string[]): string[] {
     out.push(v);
   }
   return out;
+}
+
+const EXECUTION_KIND_FILTERS = ["api", "logic", "ui", "infra", "test"] as const;
+type ExecutionKindFilter = (typeof EXECUTION_KIND_FILTERS)[number];
+
+function featureParentDraftId(d: TaskDraftDto, allById: Map<string, TaskDraftDto>): string | null {
+  for (const id of d.dependsOnIds ?? []) {
+    const p = allById.get(id);
+    const nt = (p?.nodeType ?? nodeTypeFromTitle(p?.title ?? "")) as TaskNodeType;
+    if (nt === "feature") return id;
+  }
+  return null;
+}
+
+function StageBoardTaskCard(params: {
+  d: TaskDraftDto;
+  rows: TaskDraftDto[];
+  workflowStatusById: Map<string, "CONFIRMED" | "READY" | "BLOCKED" | "INVALID">;
+  hierarchyHighlightIds: Set<string>;
+  canEdit: boolean;
+  onOpen: (d: TaskDraftDto) => void;
+  onMoveInStage: (draftId: string, direction: "up" | "down") => void;
+}) {
+  const { d, rows, workflowStatusById, hierarchyHighlightIds, canEdit, onOpen, onMoveInStage } = params;
+  const idx = rows.findIndex((x) => x.id === d.id);
+  const ws = workflowStatusById.get(d.id) ?? "BLOCKED";
+  const opacity = ws === "BLOCKED" ? 0.55 : ws === "INVALID" ? 0.55 : 1;
+  const nodeType = (d.nodeType ?? nodeTypeFromTitle(d.title)) as TaskNodeType;
+  const highlighted = hierarchyHighlightIds.has(d.id);
+  const typeColor =
+    nodeType === "requirement"
+      ? "#2563eb"
+      : nodeType === "design"
+        ? "#7c3aed"
+        : nodeType === "feature"
+          ? "#16a34a"
+          : "#6b7280";
+  const typeBg =
+    nodeType === "requirement"
+      ? "#dbeafe"
+      : nodeType === "design"
+        ? "#ede9fe"
+        : nodeType === "feature"
+          ? "#dcfce7"
+          : "#f1f5f9";
+  const icon = ws === "CONFIRMED" ? "✓" : ws === "READY" ? "●" : ws === "INVALID" ? "!" : "○";
+  const ek = String(d.executionKind ?? "").toLowerCase();
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(d)}
+      style={{
+        textAlign: "left",
+        width: "100%",
+        borderRadius: 10,
+        border: highlighted ? "2px solid #0f766e" : "1px solid #e2e8f0",
+        background: highlighted ? "#f0fdfa" : "#fff",
+        boxShadow: highlighted ? "0 2px 12px rgba(13,148,136,0.10)" : "none",
+        padding: 10,
+        cursor: "pointer",
+        opacity,
+        borderLeft: `4px solid ${typeColor}`,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.35 }}>{d.title}</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <span
+            aria-hidden
+            style={{
+              fontSize: 10,
+              fontWeight: 900,
+              padding: "2px 7px",
+              borderRadius: 999,
+              background: typeBg,
+              color: typeColor,
+              border: `1px solid ${typeColor}55`,
+            }}
+          >
+            {nodeTypeLabel(nodeType)}
+          </span>
+          {nodeType === "task" && ek && EXECUTION_KIND_FILTERS.includes(ek as ExecutionKindFilter) ? (
+            <span
+              aria-hidden
+              style={{
+                fontSize: 10,
+                fontWeight: 900,
+                padding: "2px 7px",
+                borderRadius: 999,
+                background: "#f1f5f9",
+                color: "#475569",
+                border: "1px solid #cbd5e1",
+                textTransform: "uppercase",
+              }}
+            >
+              {ek}
+            </span>
+          ) : null}
+          <span aria-hidden style={{ color: typeColor, fontWeight: 900, fontSize: 12 }}>
+            {icon}
+          </span>
+        </div>
+      </div>
+      <div style={{ marginTop: 6, fontSize: 11, fontWeight: 900, color: typeColor }}>
+        {priorityToPLabel(d.priority)}
+      </div>
+      {d.taskInput?.trim() || d.taskOutput?.trim() ? (
+        <div style={{ marginTop: 6, fontSize: 11, color: "#64748b", lineHeight: 1.45 }}>
+          {d.taskInput?.trim() ? (
+            <div>
+              <span style={{ fontWeight: 800 }}>In:</span> {d.taskInput.trim().slice(0, 100)}
+              {d.taskInput.trim().length > 100 ? "…" : ""}
+            </div>
+          ) : null}
+          {d.taskOutput?.trim() ? (
+            <div style={{ marginTop: 2 }}>
+              <span style={{ fontWeight: 800 }}>Out:</span> {d.taskOutput.trim().slice(0, 100)}
+              {d.taskOutput.trim().length > 100 ? "…" : ""}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {d.description?.trim() ? (
+        <div style={{ marginTop: 6, fontSize: 12, color: "#475569", lineHeight: 1.4 }}>
+          {d.description.trim().slice(0, 120)}
+          {d.description.trim().length > 120 ? "…" : ""}
+        </div>
+      ) : null}
+      {canEdit ? (
+        <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              void onMoveInStage(d.id, "up");
+            }}
+            style={{ fontSize: 11, color: "#64748b", cursor: idx <= 0 ? "default" : "pointer", opacity: idx <= 0 ? 0.35 : 1 }}
+          >
+            ↑
+          </span>
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              void onMoveInStage(d.id, "down");
+            }}
+            style={{
+              fontSize: 11,
+              color: "#64748b",
+              cursor: idx < 0 || idx >= rows.length - 1 ? "default" : "pointer",
+              opacity: idx < 0 || idx >= rows.length - 1 ? 0.35 : 1,
+            }}
+          >
+            ↓
+          </span>
+        </div>
+      ) : null}
+    </button>
+  );
 }
 
 const EXECUTION_STAGE_ORDER = ["Requirement", "Design", "Development"] as const;
@@ -261,6 +416,10 @@ export function TaskDraftPanel({
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState("MEDIUM");
   const [editCriteria, setEditCriteria] = useState("");
+  const [editTaskInput, setEditTaskInput] = useState("");
+  const [editTaskOutput, setEditTaskOutput] = useState("");
+  const [editEstimatedSize, setEditEstimatedSize] = useState("");
+  const [editExecutionKind, setEditExecutionKind] = useState("");
   const savingPositionsRef = useRef(new Map<string, number>());
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [executionPreviewOpen, setExecutionPreviewOpen] = useState(false);
@@ -270,6 +429,8 @@ export function TaskDraftPanel({
   const initialCanvasFitRef = useRef(false);
   const [canvasFitRevision, setCanvasFitRevision] = useState(0);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [executionKindFilter, setExecutionKindFilter] = useState<"" | ExecutionKindFilter>("");
+  const [collapsedFeatureIds, setCollapsedFeatureIds] = useState<Set<string>>(() => new Set());
   const [aiSuggestion, setAiSuggestion] = useState<
     | null
     | {
@@ -323,6 +484,18 @@ export function TaskDraftPanel({
     for (const d of drafts) m.set(d.id, d);
     return m;
   }, [drafts]);
+
+  const draftsForView = useMemo(() => {
+    if (!executionKindFilter) return drafts;
+    const f = executionKindFilter.toLowerCase();
+    return drafts.filter((d) => {
+      const nt = d.nodeType ?? nodeTypeFromTitle(d.title);
+      if (nt !== "task") return true;
+      return String(d.executionKind ?? "").toLowerCase() === f;
+    });
+  }, [drafts, executionKindFilter]);
+
+  const visibleDraftIdSet = useMemo(() => new Set(draftsForView.map((d) => d.id)), [draftsForView]);
 
   const confirmedIds = useMemo(() => {
     const s = new Set<string>();
@@ -548,6 +721,30 @@ export function TaskDraftPanel({
     return groups;
   }, [drafts, inferredStageByDraftId]);
 
+  const groupedByExecutionStageView = useMemo(() => {
+    const groups = new Map<ExecutionStage, TaskDraftDto[]>();
+    for (const s of EXECUTION_STAGE_ORDER) groups.set(s, []);
+    for (const d of drafts) {
+      if (!visibleDraftIdSet.has(d.id)) continue;
+      const explicit = toExecutionStage(d.stage);
+      const inferred = inferredStageByDraftId.get(d.id);
+      const st = explicit ?? inferred ?? "Development";
+      groups.get(st)!.push(d);
+    }
+    for (const s of EXECUTION_STAGE_ORDER) {
+      groups.get(s)!.sort((a, b) => {
+        if (a.status !== b.status) {
+          if (a.status === "CONFIRMED") return -1;
+          if (b.status === "CONFIRMED") return 1;
+        }
+        const px = (a.positionX ?? 0) - (b.positionX ?? 0);
+        if (px !== 0) return px;
+        return a.createdAt.localeCompare(b.createdAt);
+      });
+    }
+    return groups;
+  }, [drafts, inferredStageByDraftId, visibleDraftIdSet]);
+
   const flowPathText = useMemo(() => EXECUTION_STAGE_ORDER.map(stageLabel).join(" → "), []);
 
   const activeStage = useMemo(() => {
@@ -557,11 +754,6 @@ export function TaskDraftPanel({
     }
     return EXECUTION_STAGE_ORDER[EXECUTION_STAGE_ORDER.length - 1];
   }, [groupedByExecutionStage]);
-
-  const detailDependsTitles = useMemo(() => {
-    if (!editing) return [];
-    return (editing.dependsOnIds ?? []).map((id) => byId.get(id)?.title ?? id.slice(0, 8));
-  }, [byId, editing]);
 
   const detailBlockingDrafts = useMemo(() => {
     if (!editing) return [];
@@ -593,7 +785,7 @@ export function TaskDraftPanel({
   }, [depsById, drafts, editing]);
 
   const nodes: Node[] = useMemo(() => {
-    return drafts.map((d) => {
+    return draftsForView.map((d) => {
       const nodeType = d.nodeType ?? nodeTypeFromTitle(d.title);
       const ws = workflowStatusById.get(d.id) ?? "BLOCKED";
       const visualState =
@@ -612,18 +804,19 @@ export function TaskDraftPanel({
           title: d.title,
           nodeType,
           priority: d.priority,
+          executionKind: d.executionKind ?? null,
           highlighted: hierarchyHighlightIds.has(d.id),
           visualState,
         },
       };
     });
-  }, [drafts, workflowStatusById, hierarchyHighlightIds]);
+  }, [draftsForView, workflowStatusById, hierarchyHighlightIds]);
 
   const edges: Edge[] = useMemo(() => {
     const out: Edge[] = [];
-    for (const d of drafts) {
+    for (const d of draftsForView) {
       for (const depId of d.dependsOnIds ?? []) {
-        if (!byId.has(depId)) continue;
+        if (!byId.has(depId) || !visibleDraftIdSet.has(depId)) continue;
         const id = `${depId}__to__${d.id}`;
         out.push({
           id,
@@ -635,7 +828,7 @@ export function TaskDraftPanel({
       }
     }
     return out;
-  }, [byId, drafts]);
+  }, [byId, draftsForView, visibleDraftIdSet]);
 
   async function handleMoveInStage(draftId: string, direction: "up" | "down") {
     if (!canEdit) return;
@@ -762,6 +955,10 @@ export function TaskDraftPanel({
     setEditDescription(d.description ?? "");
     setEditPriority(d.priority);
     setEditCriteria((d.acceptanceCriteria ?? []).join("\n"));
+    setEditTaskInput(d.taskInput ?? "");
+    setEditTaskOutput(d.taskOutput ?? "");
+    setEditEstimatedSize(d.estimatedSize ?? "");
+    setEditExecutionKind(d.executionKind ?? "");
   }
 
   async function saveEdit() {
@@ -775,14 +972,23 @@ export function TaskDraftPanel({
     setBusy("save-edit");
     setMessage(null);
     try {
-      const { res, json } = await patchProjectTaskDraft(projectId, editing.id, {
+      const patch: Parameters<typeof patchProjectTaskDraft>[2] = {
         title: editTitle.trim(),
         nodeType: editNodeType,
         description: editDescription.trim() || null,
         priority: editPriority,
         acceptanceCriteria: criteria,
         stage: stageForNodeType(editNodeType),
-      });
+      };
+      if (editNodeType === "task") {
+        patch.taskInput = editTaskInput.trim() || null;
+        patch.taskOutput = editTaskOutput.trim() || null;
+        const es = editEstimatedSize.toUpperCase().trim();
+        patch.estimatedSize = es === "S" || es === "M" || es === "L" ? es : null;
+        const ek = editExecutionKind.toLowerCase().trim();
+        patch.executionKind = EXECUTION_KIND_FILTERS.includes(ek as ExecutionKindFilter) ? ek : null;
+      }
+      const { res, json } = await patchProjectTaskDraft(projectId, editing.id, patch);
       if (!res.ok || !json.success) {
         setMessage(json.message || "저장에 실패했습니다.");
         return;
@@ -820,9 +1026,12 @@ export function TaskDraftPanel({
     const allowed =
       (sourceType === "requirement" && targetType === "design") ||
       (sourceType === "design" && targetType === "feature") ||
-      (sourceType === "feature" && targetType === "task");
+      (sourceType === "feature" && targetType === "task") ||
+      (sourceType === "task" && targetType === "task");
     if (!allowed) {
-      setMessage("계층을 건너뛰는 연결은 허용되지 않습니다. (요구 → 설계 → 기능 → 개발 순서)");
+      setMessage(
+        "허용: 요구→설계→기능→Task, 또는 Task→Task(같은 개발 단계 내 선행 관계)만 연결할 수 있습니다."
+      );
       return;
     }
 
@@ -1105,6 +1314,44 @@ export function TaskDraftPanel({
         </button>
       </div>
 
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10, alignItems: "center" }}>
+        <span style={{ fontSize: 11, fontWeight: 900, color: "#64748b" }}>실행 Task 유형</span>
+        <button
+          type="button"
+          onClick={() => setExecutionKindFilter("")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: executionKindFilter === "" ? "1px solid #7c3aed" : "1px solid #e2e8f0",
+            background: executionKindFilter === "" ? "#ede9fe" : "#fff",
+            fontWeight: 800,
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          전체
+        </button>
+        {EXECUTION_KIND_FILTERS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setExecutionKindFilter(k)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: executionKindFilter === k ? "1px solid #7c3aed" : "1px solid #e2e8f0",
+              background: executionKindFilter === k ? "#ede9fe" : "#fff",
+              fontWeight: 800,
+              fontSize: 11,
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, alignItems: "center" }}>
         {canEdit ? (
           <>
@@ -1385,7 +1632,7 @@ export function TaskDraftPanel({
             }}
           >
             {EXECUTION_STAGE_ORDER.map((st) => {
-              const rows = groupedByExecutionStage.get(st) ?? [];
+              const rows = groupedByExecutionStageView.get(st) ?? [];
               return (
                 <section key={st} style={{ border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", padding: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 900, color: "#334155", marginBottom: 8 }}>
@@ -1394,108 +1641,109 @@ export function TaskDraftPanel({
                   <div style={{ display: "grid", gap: 8 }}>
                     {rows.length === 0 ? (
                       <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 2px" }}>Task 없음</div>
+                    ) : st !== "Development" ? (
+                      rows.map((d) => (
+                        <StageBoardTaskCard
+                          key={d.id}
+                          d={d}
+                          rows={rows}
+                          workflowStatusById={workflowStatusById}
+                          hierarchyHighlightIds={hierarchyHighlightIds}
+                          canEdit={canEdit}
+                          onOpen={openEdit}
+                          onMoveInStage={handleMoveInStage}
+                        />
+                      ))
                     ) : (
-                      rows.map((d, idx) => {
-                        const ws = workflowStatusById.get(d.id) ?? "BLOCKED";
-                        const opacity = ws === "BLOCKED" ? 0.55 : ws === "INVALID" ? 0.55 : 1;
-                        const nodeType = (d.nodeType ?? nodeTypeFromTitle(d.title)) as TaskNodeType;
-                        const highlighted = hierarchyHighlightIds.has(d.id);
-                        const typeColor =
-                          nodeType === "requirement"
-                            ? "#2563eb"
-                            : nodeType === "design"
-                              ? "#7c3aed"
-                              : nodeType === "feature"
-                                ? "#16a34a"
-                                : "#6b7280";
-                        const typeBg =
-                          nodeType === "requirement"
-                            ? "#dbeafe"
-                            : nodeType === "design"
-                              ? "#ede9fe"
-                              : nodeType === "feature"
-                                ? "#dcfce7"
-                                : "#f1f5f9";
-                        const icon = ws === "CONFIRMED" ? "✓" : ws === "READY" ? "●" : ws === "INVALID" ? "!" : "○";
-                        return (
-                          <button
-                            key={d.id}
-                            type="button"
-                            onClick={() => openEdit(d)}
-                            style={{
-                              textAlign: "left",
-                              width: "100%",
-                              borderRadius: 10,
-                              border: highlighted ? "2px solid #0f766e" : "1px solid #e2e8f0",
-                              background: highlighted ? "#f0fdfa" : "#fff",
-                              boxShadow: highlighted ? "0 2px 12px rgba(13,148,136,0.10)" : "none",
-                              padding: 10,
-                              cursor: "pointer",
-                              opacity,
-                              borderLeft: `4px solid ${typeColor}`,
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 8 }}>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.35 }}>{d.title}</div>
-                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                <span
-                                  aria-hidden
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: 900,
-                                    padding: "2px 7px",
-                                    borderRadius: 999,
-                                    background: typeBg,
-                                    color: typeColor,
-                                    border: `1px solid ${typeColor}55`,
-                                  }}
-                                >
-                                  {nodeTypeLabel(nodeType)}
-                                </span>
-                                <span aria-hidden style={{ color: typeColor, fontWeight: 900, fontSize: 12 }}>
-                                  {icon}
-                                </span>
-                              </div>
-                            </div>
-                            <div style={{ marginTop: 6, fontSize: 11, fontWeight: 900, color: typeColor }}>
-                              {priorityToPLabel(d.priority)}
-                            </div>
-                            {d.description?.trim() ? (
-                              <div style={{ marginTop: 6, fontSize: 12, color: "#475569", lineHeight: 1.4 }}>
-                                {d.description.trim().slice(0, 120)}
-                                {d.description.trim().length > 120 ? "…" : ""}
-                              </div>
-                            ) : null}
-                            {canEdit ? (
-                              <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void handleMoveInStage(d.id, "up");
-                                  }}
-                                  style={{ fontSize: 11, color: "#64748b", cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.35 : 1 }}
-                                >
-                                  ↑
-                                </span>
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void handleMoveInStage(d.id, "down");
-                                  }}
-                                  style={{
-                                    fontSize: 11,
-                                    color: "#64748b",
-                                    cursor: idx === rows.length - 1 ? "default" : "pointer",
-                                    opacity: idx === rows.length - 1 ? 0.35 : 1,
-                                  }}
-                                >
-                                  ↓
-                                </span>
-                              </div>
-                            ) : null}
-                          </button>
-                        );
-                      })
+                      <>
+                        {(() => {
+                          const nt = (x: TaskDraftDto) => (x.nodeType ?? nodeTypeFromTitle(x.title)) as TaskNodeType;
+                          const devNonTask = rows.filter((x) => nt(x) !== "task");
+                          const devTasks = rows.filter((x) => nt(x) === "task");
+                          const byF = new Map<string, TaskDraftDto[]>();
+                          for (const t of devTasks) {
+                            const fid = featureParentDraftId(t, byId) ?? "_ungrouped";
+                            if (!byF.has(fid)) byF.set(fid, []);
+                            byF.get(fid)!.push(t);
+                          }
+                          const keys = [...byF.keys()].sort((a, b) => {
+                            if (a === "_ungrouped") return 1;
+                            if (b === "_ungrouped") return -1;
+                            const ta = byId.get(a)?.title ?? a;
+                            const tb = byId.get(b)?.title ?? b;
+                            return ta.localeCompare(tb, "ko");
+                          });
+                          return (
+                            <>
+                              {devNonTask.map((d) => (
+                                <StageBoardTaskCard
+                                  key={d.id}
+                                  d={d}
+                                  rows={rows}
+                                  workflowStatusById={workflowStatusById}
+                                  hierarchyHighlightIds={hierarchyHighlightIds}
+                                  canEdit={canEdit}
+                                  onOpen={openEdit}
+                                  onMoveInStage={handleMoveInStage}
+                                />
+                              ))}
+                              {keys.map((fid) => {
+                                const tasks = byF.get(fid)!;
+                                const collapsed = fid !== "_ungrouped" && collapsedFeatureIds.has(fid);
+                                const feat = fid === "_ungrouped" ? null : byId.get(fid);
+                                return (
+                                  <div key={fid} style={{ display: "grid", gap: 6 }}>
+                                    {fid !== "_ungrouped" ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setCollapsedFeatureIds((prev) => {
+                                            const n = new Set(prev);
+                                            if (n.has(fid)) n.delete(fid);
+                                            else n.add(fid);
+                                            return n;
+                                          });
+                                        }}
+                                        style={{
+                                          textAlign: "left",
+                                          padding: "8px 10px",
+                                          borderRadius: 8,
+                                          border: "1px solid #bbf7d0",
+                                          background: "#f0fdf4",
+                                          fontWeight: 900,
+                                          fontSize: 12,
+                                          color: "#166534",
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        {collapsed ? "▶" : "▼"} Feature · {feat?.title ?? fid} · {tasks.length} Tasks
+                                      </button>
+                                    ) : null}
+                                    {fid === "_ungrouped" || !collapsed ? (
+                                      tasks.map((d) => (
+                                        <StageBoardTaskCard
+                                          key={d.id}
+                                          d={d}
+                                          rows={rows}
+                                          workflowStatusById={workflowStatusById}
+                                          hierarchyHighlightIds={hierarchyHighlightIds}
+                                          canEdit={canEdit}
+                                          onOpen={openEdit}
+                                          onMoveInStage={handleMoveInStage}
+                                        />
+                                      ))
+                                    ) : (
+                                      <div style={{ fontSize: 11, color: "#64748b", paddingLeft: 8 }}>
+                                        {tasks.length}개 접힘 — 헤더를 눌러 펼칩니다.
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </>
+                          );
+                        })()}
+                      </>
                     )}
                   </div>
                 </section>
@@ -1650,8 +1898,23 @@ export function TaskDraftPanel({
                   })()}
                 </div>
                 <div style={{ fontSize: 12, color: "#334155", marginTop: 6 }}>
-                  부모(선행):{" "}
-                  {detailDependsTitles.length ? detailDependsTitles.join(", ") : "없음"}
+                  선행(dependsOn):{" "}
+                  {(editing.dependsOnIds ?? []).length > 0 ? (
+                    <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, lineHeight: 1.5 }}>
+                      {(editing.dependsOnIds ?? []).map((id) => {
+                        const row = byId.get(id);
+                        const nt = row ? (row.nodeType ?? nodeTypeFromTitle(row.title)) as TaskNodeType : null;
+                        return (
+                          <li key={id}>
+                            {nt ? `${nodeTypeLabel(nt)} · ` : ""}
+                            {row?.title ?? id.slice(0, 10)}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    "없음"
+                  )}
                 </div>
                 <div style={{ fontSize: 12, color: "#334155", marginTop: 4 }}>
                   자식(후속):{" "}
@@ -1701,6 +1964,13 @@ export function TaskDraftPanel({
                   onChange={(e) => setEditPriority(e.target.value)}
                   style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                 >
+                  {editNodeType === "task" ? (
+                    <>
+                      <option value="P0">P0</option>
+                      <option value="P1">P1</option>
+                      <option value="P2">P2</option>
+                    </>
+                  ) : null}
                   <option value="HIGH">HIGH (P0)</option>
                   <option value="MEDIUM">MEDIUM (P1)</option>
                   <option value="LOW">LOW (P2)</option>
@@ -1734,6 +2004,57 @@ export function TaskDraftPanel({
                   style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", resize: "vertical" }}
                 />
               </label>
+
+              {editNodeType === "task" ? (
+                <>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>Input (무엇을 받는지)</span>
+                    <textarea
+                      value={editTaskInput}
+                      onChange={(e) => setEditTaskInput(e.target.value)}
+                      rows={4}
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", resize: "vertical" }}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>Output (무엇을 내는지)</span>
+                    <textarea
+                      value={editTaskOutput}
+                      onChange={(e) => setEditTaskOutput(e.target.value)}
+                      rows={4}
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", resize: "vertical" }}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>예상 크기</span>
+                    <select
+                      value={editEstimatedSize}
+                      onChange={(e) => setEditEstimatedSize(e.target.value)}
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                    >
+                      <option value="">(미지정)</option>
+                      <option value="S">S</option>
+                      <option value="M">M</option>
+                      <option value="L">L</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>실행 유형</span>
+                    <select
+                      value={editExecutionKind}
+                      onChange={(e) => setEditExecutionKind(e.target.value)}
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                    >
+                      <option value="">(미지정)</option>
+                      {EXECUTION_KIND_FILTERS.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
 
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>수용 기준(줄바꿈 = 항목)</span>

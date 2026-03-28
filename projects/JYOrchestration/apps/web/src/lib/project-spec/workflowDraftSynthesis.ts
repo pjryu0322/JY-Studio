@@ -27,12 +27,12 @@ export type WorkflowDraftSynthesized = {
   positionY: number;
 };
 
-/** UI: HIGH→P0 … (캔버스 노드에는 숫자 배지만) */
+/** UI: HIGH→P0 … 실행 Task는 DB에 P0|P1|P2로 저장될 수 있음 */
 export function priorityToPLabel(p: string): "P0" | "P1" | "P2" | "P3" {
   const u = String(p ?? "").toUpperCase().trim();
-  if (u === "HIGH") return "P0";
-  if (u === "MEDIUM") return "P1";
-  if (u === "LOW") return "P2";
+  if (u === "P0" || u === "HIGH") return "P0";
+  if (u === "P1" || u === "MEDIUM") return "P1";
+  if (u === "P2" || u === "LOW") return "P2";
   return "P3";
 }
 
@@ -45,9 +45,10 @@ function inferStageFromText(text: string): WorkflowStage {
 
 function priorityWeight(p: string): number {
   const u = String(p ?? "").toUpperCase().trim();
-  if (u === "HIGH") return 0;
-  if (u === "MEDIUM") return 1;
-  return 2;
+  if (u === "HIGH" || u === "P0") return 0;
+  if (u === "MEDIUM" || u === "P1") return 1;
+  if (u === "LOW" || u === "P2") return 2;
+  return 3;
 }
 
 function seedTime(s: WorkflowDraftSeed): number {

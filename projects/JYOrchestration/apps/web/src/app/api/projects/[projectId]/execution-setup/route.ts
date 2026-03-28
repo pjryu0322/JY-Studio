@@ -3,6 +3,10 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import {
+  assertProjectRootPathOrThrow,
+  PROJECT_ROOT_PATH_ERROR,
+} from "@/lib/executionSetup/hardening";
 
 const executionSetupRepo = (prisma as unknown as typeof prisma & { executionSetup: any }).executionSetup;
 
@@ -110,6 +114,8 @@ export async function GET(
         dryRunAllowed: row.dryRunAllowed,
         status: row.status,
         lastValidatedAt: row.lastValidatedAt ? row.lastValidatedAt.toISOString() : null,
+        needsRevalidation: Boolean(row.needsRevalidation),
+        lastValidationError: row.lastValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
       },
     });
@@ -190,12 +196,52 @@ export async function PATCH(
         ? { requireTestsBeforePush: Boolean(body.requireTestsBeforePush) }
         : {}),
       ...(toBoolOrUndefined(body.dryRunAllowed) !== undefined ? { dryRunAllowed: Boolean(body.dryRunAllowed) } : {}),
-      // status/lastValidatedAt는 validate에서만 갱신(저장 시 draft로 돌아가면 혼란)
     };
 
     if (tokenIn !== undefined) {
       data.cursorApiToken = tokenIn;
       data.cursorApiTokenMasked = tokenIn ? maskToken(tokenIn) : null;
+    }
+
+    const existing = await executionSetupRepo.findUnique({ where: { projectId: pid } });
+
+    const nextWorkspace =
+      body.workspacePath !== undefined ? String(body.workspacePath ?? "").trim() : (existing?.workspacePath ?? "");
+    const nextProjectRoot =
+      body.projectRootPath !== undefined
+        ? String(body.projectRootPath ?? "").trim()
+        : (existing?.projectRootPath ?? "");
+    try {
+      assertProjectRootPathOrThrow(nextProjectRoot, nextWorkspace, pid);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === PROJECT_ROOT_PATH_ERROR) {
+        return NextResponse.json({ success: false, message: PROJECT_ROOT_PATH_ERROR }, { status: 400 });
+      }
+      throw e;
+    }
+
+    const nextGitRepoUrl =
+      body.gitRepoUrl !== undefined ? String(body.gitRepoUrl ?? "").trim() : (existing?.gitRepoUrl ?? "");
+    const nextBaseBranch =
+      body.baseBranch !== undefined ? String(body.baseBranch ?? "").trim() : (existing?.baseBranch ?? "");
+    const nextCursorUrl =
+      body.cursorApiUrl !== undefined ? String(body.cursorApiUrl ?? "").trim() : (existing?.cursorApiUrl ?? "");
+    const nextToken = tokenIn !== undefined ? tokenIn : (existing?.cursorApiToken ?? null);
+    const tokenNorm = (t: string | null) => (t && String(t).trim() ? String(t).trim() : null);
+    const sensitivityChanged = Boolean(
+      existing &&
+        (nextGitRepoUrl !== (existing.gitRepoUrl ?? "") ||
+          nextBaseBranch !== (existing.baseBranch ?? "") ||
+          nextWorkspace !== (existing.workspacePath ?? "") ||
+          nextProjectRoot !== (existing.projectRootPath ?? "") ||
+          nextCursorUrl !== (existing.cursorApiUrl ?? "") ||
+          tokenNorm(nextToken) !== tokenNorm(existing.cursorApiToken ?? null))
+    );
+    if (sensitivityChanged) {
+      data.status = "draft";
+      data.needsRevalidation = true;
+      data.lastValidationError = null;
     }
 
     const defaults = {
@@ -218,6 +264,8 @@ export async function PATCH(
       dryRunAllowed: true,
       status: "draft",
       lastValidatedAt: null,
+      needsRevalidation: false,
+      lastValidationError: null,
     } as const;
 
     const row = await executionSetupRepo.upsert({
@@ -253,6 +301,8 @@ export async function PATCH(
         dryRunAllowed: row.dryRunAllowed,
         status: row.status,
         lastValidatedAt: row.lastValidatedAt ? row.lastValidatedAt.toISOString() : null,
+        needsRevalidation: Boolean(row.needsRevalidation),
+        lastValidationError: row.lastValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
       },
     });

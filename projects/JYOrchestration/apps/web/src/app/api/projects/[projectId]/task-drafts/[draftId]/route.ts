@@ -8,7 +8,7 @@ import { nodeTypeFromTitle, stripNodeTypePrefix, withNodeTypePrefix } from "@/li
 
 function normalizePriority(p: string): string {
   const u = p.toUpperCase().trim();
-  if (u === "HIGH" || u === "LOW" || u === "MEDIUM") {
+  if (u === "HIGH" || u === "LOW" || u === "MEDIUM" || u === "P0" || u === "P1" || u === "P2") {
     return u;
   }
   return "MEDIUM";
@@ -22,6 +22,10 @@ type PatchBody = {
   dependsOn?: string[];
   dependsOnIds?: string[];
   acceptanceCriteria?: string[];
+  taskInput?: string | null;
+  taskOutput?: string | null;
+  estimatedSize?: string | null;
+  executionKind?: string | null;
   positionX?: number;
   positionY?: number;
   stage?: string;
@@ -109,6 +113,23 @@ export async function PATCH(
         ? body.acceptanceCriteria.map((x) => String(x).trim()).filter(Boolean).slice(0, 20)
         : [];
     }
+    if (body.taskInput !== undefined) {
+      data.taskInput =
+        body.taskInput === null ? null : String(body.taskInput).slice(0, 8000) || null;
+    }
+    if (body.taskOutput !== undefined) {
+      data.taskOutput =
+        body.taskOutput === null ? null : String(body.taskOutput).slice(0, 8000) || null;
+    }
+    if (body.estimatedSize !== undefined) {
+      const s = String(body.estimatedSize ?? "").toUpperCase().trim();
+      data.estimatedSize = s === "S" || s === "M" || s === "L" ? s : null;
+    }
+    if (body.executionKind !== undefined) {
+      const k = String(body.executionKind ?? "").toLowerCase().trim();
+      const allowed = ["api", "logic", "ui", "infra", "test"];
+      data.executionKind = allowed.includes(k) ? k : null;
+    }
     if (body.positionX !== undefined) {
       const n = Number(body.positionX);
       if (!Number.isFinite(n)) {
@@ -164,6 +185,10 @@ export async function PATCH(
         acceptanceCriteria: Array.isArray(updated.acceptanceCriteria)
           ? (updated.acceptanceCriteria as string[])
           : [],
+        taskInput: (updated as { taskInput?: string | null }).taskInput ?? null,
+        taskOutput: (updated as { taskOutput?: string | null }).taskOutput ?? null,
+        estimatedSize: (updated as { estimatedSize?: string | null }).estimatedSize ?? null,
+        executionKind: (updated as { executionKind?: string | null }).executionKind ?? null,
         positionX: Number((updated as unknown as { positionX?: unknown }).positionX ?? 0),
         positionY: Number((updated as unknown as { positionY?: unknown }).positionY ?? 0),
         stage: String((updated as unknown as { stage?: unknown }).stage ?? "Build"),

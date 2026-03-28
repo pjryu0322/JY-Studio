@@ -48,6 +48,20 @@ export type ProjectSpecPromptRecord = {
   createdAt: string;
 };
 
+/** Spec 후보 품질 (F-1-3-3) */
+export type SpecCandidateScoreRecord = {
+  completeness: number;
+  structure: number;
+  executionReadiness: number;
+  total: number;
+};
+
+export type SpecCandidateMetaRecord = {
+  sections: string[];
+  requirementCount: number;
+  hasArchitecture: boolean;
+};
+
 /** API: ProjectSpecResponse 엔터티 (DB: ProjectSpecWorkspaceResponse) */
 export type ProjectSpecResponseRecord = {
   id: string;
@@ -61,6 +75,16 @@ export type ProjectSpecResponseRecord = {
   responseMarkdown: string;
   status: string;
   createdAt: string;
+  specCandidateScore?: SpecCandidateScoreRecord | null;
+  specCandidateMeta?: SpecCandidateMetaRecord | null;
+};
+
+export type SpecPromptConfigRecord = {
+  id: string;
+  projectId: string;
+  templatePrompt: string;
+  preset: string;
+  lastEditedAt: string;
 };
 
 export type ApiResponse<T> = {
@@ -132,6 +156,13 @@ export type TaskDraftDto = {
   /** 선행 TaskDraft id 배열 (Workflow 캔버스 엣지) */
   dependsOnIds: string[];
   acceptanceCriteria: string[];
+  /** 실행 Task 입력(무엇을 받는지) */
+  taskInput?: string | null;
+  /** 실행 Task 출력(무엇을 내는지) */
+  taskOutput?: string | null;
+  estimatedSize?: string | null;
+  /** api | logic | ui | infra | test */
+  executionKind?: string | null;
   /** Workflow 캔버스 노드 좌표(px) */
   positionX: number;
   /** Workflow 캔버스 노드 좌표(px) */

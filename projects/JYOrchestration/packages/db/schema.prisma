@@ -239,9 +239,25 @@ model Project {
   taskDrafts TaskDraft[]
   /// 실행 환경 연결(프로젝트별)
   executionSetup ExecutionSetup?
+  /// F-1-3-3 Spec AI 생성용 사용자 편집 프롬프트 템플릿
+  specPromptConfig SpecPromptConfig?
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// Project Spec AI 생성 — 사용자에게 노출되는 템플릿 레이어 + 프리셋
+model SpecPromptConfig {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  templatePrompt String   @db.Text
+  /// default | public-si | startup-mvp | ai-product
+  preset         String   @default("default")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("spec_prompt_configs")
 }
 
 /// 프로젝트별 실행 환경 연결(Repo/Executor/Policy)
@@ -277,6 +293,10 @@ model ExecutionSetup {
   /// draft | validated | invalid
   status          String   @default("draft")
   lastValidatedAt DateTime?
+  /// 연결 검증 이후 git/repo/cursor/경로 등이 바뀌면 true (재검증 필요)
+  needsRevalidation Boolean @default(false)
+  /// 마지막 연결/검증 실패 메시지(요약)
+  lastValidationError String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -327,6 +347,14 @@ model TaskDraft {
   dependsOnIds        Json?
   /// 수용 기준 문자열 배열(JSON)
   acceptanceCriteria  Json?
+  /// 실행 Task 입력(무엇을 받는지)
+  taskInput           String?  @db.Text
+  /// 실행 Task 출력(무엇을 내는지)
+  taskOutput          String?  @db.Text
+  /// S | M | L
+  estimatedSize       String?
+  /// api | logic | ui | infra | test
+  executionKind       String?
   /// Workflow 캔버스 노드 X 좌표(px)
   positionX          Float @default(0)
   /// Workflow 캔버스 노드 Y 좌표(px)
@@ -385,6 +413,10 @@ model ProjectSpecWorkspaceResponse {
   totalTokens Int?
   status           String
   createdAt        DateTime @default(now())
+  /// 후보 품질 점수 JSON: { completeness, structure, executionReadiness, total }
+  specCandidateScore Json?
+  /// 후보 메타 JSON: { sections, requirementCount, hasArchitecture }
+  specCandidateMeta  Json?
 
   @@index([projectId])
   @@index([promptId])

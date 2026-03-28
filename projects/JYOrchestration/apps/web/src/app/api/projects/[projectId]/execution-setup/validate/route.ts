@@ -3,6 +3,12 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import {
+  isProjectRootUnderCurrentProject,
+  probeCursorExecutor,
+  probeGitHttpRemote,
+  PROJECT_ROOT_PATH_ERROR,
+} from "@/lib/executionSetup/hardening";
 
 const executionSetupRepo = (prisma as unknown as typeof prisma & { executionSetup: any }).executionSetup;
 
@@ -20,16 +26,22 @@ type ValidateResult = {
   git: "ok" | "needs" | "error";
   cursor: "ok" | "needs" | "error";
   messages: string[];
+  /** 구조 검증만 통과한 경우에만 의미 있음 */
+  probeGitOk?: boolean;
+  probeCursorOk?: boolean;
 };
 
-function validateRow(row: {
-  gitRepoUrl: string;
-  baseBranch: string;
-  cursorApiUrl: string;
-  cursorApiToken: string | null;
-  workspacePath: string;
-  projectRootPath: string;
-}): ValidateResult {
+function validateStructure(
+  row: {
+    gitRepoUrl: string;
+    baseBranch: string;
+    cursorApiUrl: string;
+    cursorApiToken: string | null;
+    workspacePath: string;
+    projectRootPath: string;
+  },
+  projectId: string
+): ValidateResult {
   const messages: string[] = [];
 
   let git: ValidateResult["git"] = "ok";
@@ -65,6 +77,9 @@ function validateRow(row: {
     if (!root.startsWith(ws)) {
       cursor = "error";
       messages.push("Cursor: project root path는 workspace path 하위여야 합니다.");
+    } else if (!isProjectRootUnderCurrentProject(row.projectRootPath, row.workspacePath, projectId)) {
+      cursor = "error";
+      messages.push(`Cursor: ${PROJECT_ROOT_PATH_ERROR}`);
     }
   }
 
@@ -107,33 +122,72 @@ export async function POST(
       );
     }
 
-    const v = validateRow({
-      gitRepoUrl: row.gitRepoUrl,
-      baseBranch: row.baseBranch,
-      cursorApiUrl: row.cursorApiUrl,
-      cursorApiToken: row.cursorApiToken,
-      workspacePath: row.workspacePath,
-      projectRootPath: row.projectRootPath,
-    });
+    const v = validateStructure(
+      {
+        gitRepoUrl: row.gitRepoUrl,
+        baseBranch: row.baseBranch,
+        cursorApiUrl: row.cursorApiUrl,
+        cursorApiToken: row.cursorApiToken,
+        workspacePath: row.workspacePath,
+        projectRootPath: row.projectRootPath,
+      },
+      pid
+    );
 
-    const nextStatus = v.ok ? "validated" : "invalid";
+    let probeGitOk = false;
+    let probeCursorOk = false;
+    const probeMessages: string[] = [];
+
+    if (v.ok) {
+      const [gitProbe, cursorProbe] = await Promise.all([
+        probeGitHttpRemote(row.gitRepoUrl.trim()),
+        probeCursorExecutor(row.cursorApiUrl.trim(), row.cursorApiToken),
+      ]);
+      probeGitOk = gitProbe.ok;
+      probeCursorOk = cursorProbe.ok;
+      if (!gitProbe.ok) {
+        probeMessages.push(`Git: 원격 저장소에 연결할 수 없습니다. (${gitProbe.error ?? "unknown"})`);
+      }
+      if (!cursorProbe.ok) {
+        probeMessages.push(`Cursor: Executor에 연결할 수 없습니다. (${cursorProbe.error ?? "unknown"})`);
+      }
+    }
+
+    const probesPass = v.ok && probeGitOk && probeCursorOk;
+    const nextStatus = probesPass ? "validated" : "invalid";
+    const summaryError =
+      !v.ok ? v.messages.join(" · ") : probeMessages.length ? probeMessages.join(" · ") : null;
+
     const updated = await executionSetupRepo.update({
       where: { projectId: pid },
       data: {
         status: nextStatus,
         lastValidatedAt: new Date(),
+        needsRevalidation: false,
+        lastValidationError: probesPass ? null : summaryError,
       },
     });
 
+    const allMessages = [...v.messages, ...probeMessages];
+    const userMessage = probesPass
+      ? "연결 및 구성 검증에 성공했습니다."
+      : !v.ok
+        ? "구성 검증에 실패했습니다."
+        : "원격 연결 검증에 실패했습니다.";
+
     return NextResponse.json({
       success: true,
-      message: v.ok ? "연결이 확인되었습니다." : "연결에 문제가 있습니다.",
+      message: userMessage,
       data: {
         status: updated.status,
         lastValidatedAt: updated.lastValidatedAt ? updated.lastValidatedAt.toISOString() : null,
+        needsRevalidation: Boolean(updated.needsRevalidation),
+        lastValidationError: updated.lastValidationError ?? null,
         git: v.git,
         cursor: v.cursor,
-        messages: v.messages,
+        messages: allMessages,
+        probeGitOk: v.ok ? probeGitOk : undefined,
+        probeCursorOk: v.ok ? probeCursorOk : undefined,
       },
     });
   } catch (error) {
@@ -143,4 +197,3 @@ export async function POST(
     return NextResponse.json({ success: false, message: "연결 테스트 중 오류가 발생했습니다." }, { status: 500 });
   }
 }
-

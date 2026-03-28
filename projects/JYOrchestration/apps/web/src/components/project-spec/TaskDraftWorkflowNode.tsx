@@ -9,6 +9,8 @@ export type TaskDraftWorkflowNodeData = {
   title: string;
   priority: string;
   nodeType: TaskNodeType;
+  /** api | logic | ui | infra | test — 실행 Task 전용 */
+  executionKind?: string | null;
   highlighted?: boolean;
   /** 캔버스에는 텍스트 없이 시각만 */
   visualState: "blocked" | "ready" | "invalid" | "confirmed";
@@ -45,6 +47,22 @@ export const TaskDraftWorkflowNode = memo(function TaskDraftWorkflowNode({
     task: "#6b7280",
   };
 
+  const ek = String(data.executionKind ?? "").toLowerCase().trim();
+  const ekLabel =
+    ek && tn === "task"
+      ? ek === "api"
+        ? "API"
+        : ek === "ui"
+          ? "UI"
+          : ek === "logic"
+            ? "Logic"
+            : ek === "infra"
+              ? "Infra"
+              : ek === "test"
+                ? "Test"
+                : ek
+      : "";
+
   return (
     <div
       style={{
@@ -63,7 +81,7 @@ export const TaskDraftWorkflowNode = memo(function TaskDraftWorkflowNode({
         <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.35, paddingRight: 28 }}>
           {nodeTypeLabel(tn)} {data.title}
         </div>
-        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span
             style={{
               fontSize: 10,
@@ -77,6 +95,21 @@ export const TaskDraftWorkflowNode = memo(function TaskDraftWorkflowNode({
           >
             {nodeTypeLabel(tn)}
           </span>
+          {ekLabel ? (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 900,
+                padding: "2px 7px",
+                borderRadius: 999,
+                background: "#f1f5f9",
+                color: "#475569",
+                border: "1px solid #cbd5e1",
+              }}
+            >
+              {ekLabel}
+            </span>
+          ) : null}
           <span
             style={{
               fontSize: 10,
