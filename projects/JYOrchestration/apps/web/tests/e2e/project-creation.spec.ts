@@ -42,9 +42,9 @@ test.describe("E2E project", () => {
     await page.getByTestId("project-detail-tab-git").click();
     const gitPanel = page.getByTestId("project-git-integration-panel");
     await expect(gitPanel).toBeVisible();
-    await expect(gitPanel.getByText("연결 안됨")).toBeVisible();
+    await expect(gitPanel.getByText("등록된 저장소 없음")).toBeVisible();
     await page.getByTestId("project-git-connect-tab").click();
-    await expect(gitPanel.getByText(/Git 연결 기능은 준비 중입니다/)).toBeVisible();
+    await expect(gitPanel.getByText(/연결 마법사는 준비 중입니다/)).toBeVisible();
   });
 
   test("[E2E-PRJ-002] 시드 프로젝트 진입", async ({ page }) => {

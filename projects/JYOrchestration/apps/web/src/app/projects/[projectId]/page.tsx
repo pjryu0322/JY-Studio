@@ -2292,7 +2292,7 @@ export default function ProjectDetailPage() {
     { id: "overview", label: "Overview" },
     { id: "members", label: "Members" },
     { id: "ai-members", label: "AI Members" },
-    { id: "git", label: "Git Integration" },
+    { id: "git", label: "Git 연동" },
     { id: "advanced", label: "Advanced Settings" },
   ];
 
@@ -2464,7 +2464,9 @@ export default function ProjectDetailPage() {
                 />
               ) : null}
 
-              {mainTab === "git" ? <ProjectGitIntegrationPanel project={project} /> : null}
+              {mainTab === "git" ? (
+                <ProjectGitIntegrationPanel projectId={projectId} project={project} canEdit={rbac.canEditSpec} />
+              ) : null}
 
               {mainTab === "advanced" ? (
                 <>

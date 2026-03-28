@@ -173,7 +173,7 @@ export function ExecutionSetupPanel(props: {
   if (!specWorkflowConfirmed) {
     return (
       <div
-        data-ui-label="[F-1-3-6] Workspace — Execution Setup (locked)"
+        data-ui-label="[F-1-3-6] Git 연동 — 실행 환경 (스펙 미확정)"
         style={{
           marginTop: 16,
           padding: 12,
@@ -195,7 +195,7 @@ export function ExecutionSetupPanel(props: {
 
   return (
     <div
-      data-ui-label="[F-1-3-6] Workspace — Execution Setup"
+      data-ui-label="[F-1-3-6] Git 연동 — 실행 환경 설정"
       style={{
         marginTop: 16,
         padding: 16,
@@ -294,7 +294,7 @@ export function ExecutionSetupPanel(props: {
               ) : null}
             </div>
             <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
-              <strong>원격 실행(Relay) 상태:</strong>{" "}
+              <strong>원격 실행(릴레이) 상태:</strong>{" "}
               <span style={{ color: connectionToneColor(execS.tone), fontWeight: 800 }}>{execS.label}</span>
               {es?.executorValidatedAt ? (
                 <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.executorValidatedAt)}</span>
