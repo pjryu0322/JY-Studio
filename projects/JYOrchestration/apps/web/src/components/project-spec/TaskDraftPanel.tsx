@@ -11,7 +11,8 @@ import {
 import { formatTestedAt } from "@/components/project-spec/format";
 import { TaskDraftWorkflowNode } from "@/components/project-spec/TaskDraftWorkflowNode";
 import type { TaskDraftDto, TaskDraftSyncResultDto } from "@/components/project-spec/types";
-import { LabelTag } from "@/components/ui/LabelTag";
+import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
+import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 import type { SpecWorkspaceAiModelId } from "@/lib/project-spec/specWorkspaceModels";
 import { priorityToPLabel, synthesizeWorkflowDrafts } from "@/lib/project-spec/workflowDraftSynthesis";
 import {
@@ -1242,9 +1243,11 @@ export function TaskDraftPanel({
       }}
     >
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
-        <LabelTag label="[F-1-3-5] Workspace — Task drafts (Spec-linked)" />
+        <WorkspaceLabelBadge section="taskDrafts" />
         <div style={{ flex: "1 1 220px" }}>
-          <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: "#1e1b4b" }}>실행 워크플로</h3>
+          <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0, color: "#1e1b4b" }}>
+            {WORKSPACE_SECTION_META.taskDrafts.title}
+          </h3>
         </div>
       </div>
 

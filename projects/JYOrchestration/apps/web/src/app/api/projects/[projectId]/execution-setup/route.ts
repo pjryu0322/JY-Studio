@@ -2,17 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
+import {
+  executionSetupSchemaDriftResponse,
+  isExecutionSetupSchemaDriftError,
+} from "@/lib/prisma/executionSetupSchemaMismatch";
+import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
-const executionSetupRepo = (prisma as unknown as typeof prisma & { executionSetup: any }).executionSetup;
-
-function maskToken(token: string): string {
-  const t = token.trim();
-  if (!t) return "";
-  if (t.length <= 8) return "********";
-  const head = t.slice(0, 4);
-  const tail = t.slice(-2);
-  return `${head}${"*".repeat(Math.min(32, t.length - 6))}${tail}`;
-}
 
 function isLikelyUrl(s: string): boolean {
   try {
@@ -31,9 +26,6 @@ type PatchBody = Partial<{
   branchStrategy: "feature-per-workflow" | "feature-per-task" | "manual";
   branchPrefix: string | null;
 
-  cursorApiUrl: string;
-  cursorApiToken: string | null;
-  workspacePath: string;
   allowedPathGlobs: string[];
 
   autoCommit: boolean;
@@ -74,6 +66,17 @@ function toStringArrayOrUndefined(v: unknown): string[] | undefined {
   return a;
 }
 
+function normalizeGlobsJson(g: unknown): string {
+  const a = Array.isArray(g) ? g.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+  return JSON.stringify([...a].sort());
+}
+
+function executionSetupOverallStatus(repoOk: boolean | null, execOk: boolean | null): "draft" | "validated" | "invalid" {
+  if (repoOk === true && execOk === true) return "validated";
+  if (repoOk === false || execOk === false) return "invalid";
+  return "draft";
+}
+
 export async function GET(
   request: NextRequest,
   segmentData: { params: Promise<{ projectId: string }> }
@@ -96,7 +99,9 @@ export async function GET(
       throw error;
     }
 
-    const row = await executionSetupRepo.findUnique({ where: { projectId: pid } });
+    const row = await withExecutionSetupSchemaHealRetry(() =>
+      prisma.executionSetup.findUnique({ where: { projectId: pid } })
+    );
     if (!row) {
       return NextResponse.json({
         success: true,
@@ -117,10 +122,10 @@ export async function GET(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
-        cursorApiUrl: row.cursorApiUrl,
-        cursorApiTokenMasked: row.cursorApiTokenMasked,
-        hasCursorToken: Boolean(row.cursorApiToken && row.cursorApiToken.trim()),
-        workspacePath: row.workspacePath,
+        cursorApiUrl: "",
+        cursorApiTokenMasked: null,
+        hasCursorToken: false,
+        workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
         autoPush: row.autoPush,
@@ -138,12 +143,21 @@ export async function GET(
         lastValidatedAt: row.lastValidatedAt ? row.lastValidatedAt.toISOString() : null,
         needsRevalidation: Boolean(row.needsRevalidation),
         lastValidationError: row.lastValidationError ?? null,
+        repoConnectionOk: row.repoConnectionOk ?? null,
+        repoValidatedAt: row.repoValidatedAt ? row.repoValidatedAt.toISOString() : null,
+        repoValidationError: row.repoValidationError ?? null,
+        executorConnectionOk: row.executorConnectionOk ?? null,
+        executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
+        executorValidationError: row.executorValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
       },
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;
+    if (isExecutionSetupSchemaDriftError(error)) {
+      return executionSetupSchemaDriftResponse();
+    }
     console.error("GET /api/projects/[projectId]/execution-setup error:", error);
     return NextResponse.json({ success: false, message: "조회 중 오류가 발생했습니다." }, { status: 500 });
   }
@@ -183,13 +197,6 @@ export async function PATCH(
       return NextResponse.json({ success: false, message: "요청 본문이 올바른 JSON이 아닙니다." }, { status: 400 });
     }
 
-    const tokenIn = body.cursorApiToken !== undefined ? toStringOrNull(body.cursorApiToken) : undefined;
-    if (body.cursorApiUrl !== undefined) {
-      const url = String(body.cursorApiUrl ?? "").trim();
-      if (url && !isLikelyUrl(url)) {
-        return NextResponse.json({ success: false, message: "Cursor API URL이 올바른 URL 형식이 아닙니다." }, { status: 400 });
-      }
-    }
     if (body.gitRepoUrl !== undefined) {
       const url = String(body.gitRepoUrl ?? "").trim();
       if (url && !isLikelyUrl(url)) {
@@ -228,8 +235,6 @@ export async function PATCH(
       ...(body.branchStrategy !== undefined ? { branchStrategy: body.branchStrategy } : {}),
       ...(body.branchPrefix !== undefined ? { branchPrefix: toStringOrNull(body.branchPrefix) } : {}),
 
-      ...(body.cursorApiUrl !== undefined ? { cursorApiUrl: String(body.cursorApiUrl ?? "").trim() } : {}),
-      ...(body.workspacePath !== undefined ? { workspacePath: String(body.workspacePath ?? "").trim() } : {}),
       ...(globsIn !== undefined ? { allowedPathGlobs: globsIn } : {}),
 
       ...(toBoolOrUndefined(body.autoCommit) !== undefined ? { autoCommit: Boolean(body.autoCommit) } : {}),
@@ -260,34 +265,56 @@ export async function PATCH(
         : {}),
     };
 
-    if (tokenIn !== undefined) {
-      data.cursorApiToken = tokenIn;
-      data.cursorApiTokenMasked = tokenIn ? maskToken(tokenIn) : null;
-    }
-
-    const existing = await executionSetupRepo.findUnique({ where: { projectId: pid } });
-
-    const nextWorkspace =
-      body.workspacePath !== undefined ? String(body.workspacePath ?? "").trim() : (existing?.workspacePath ?? "");
+    const existing = await withExecutionSetupSchemaHealRetry(() =>
+      prisma.executionSetup.findUnique({ where: { projectId: pid } })
+    );
 
     const nextGitRepoUrl =
       body.gitRepoUrl !== undefined ? String(body.gitRepoUrl ?? "").trim() : (existing?.gitRepoUrl ?? "");
     const nextBaseBranch =
       body.baseBranch !== undefined ? String(body.baseBranch ?? "").trim() : (existing?.baseBranch ?? "");
-    const nextCursorUrl =
-      body.cursorApiUrl !== undefined ? String(body.cursorApiUrl ?? "").trim() : (existing?.cursorApiUrl ?? "");
-    const nextToken = tokenIn !== undefined ? tokenIn : (existing?.cursorApiToken ?? null);
-    const tokenNorm = (t: string | null) => (t && String(t).trim() ? String(t).trim() : null);
-    const sensitivityChanged = Boolean(
+    const nextGitRepoProvider =
+      body.gitRepoProvider !== undefined
+        ? String(body.gitRepoProvider ?? "").trim().toLowerCase() || "github"
+        : String(existing?.gitRepoProvider ?? "github")
+            .trim()
+            .toLowerCase() || "github";
+    const nextGitRepoName =
+      body.gitRepoName !== undefined ? toStringOrNull(body.gitRepoName) : (existing?.gitRepoName ?? null);
+    const nextBranchStrategy =
+      body.branchStrategy !== undefined ? body.branchStrategy : (existing?.branchStrategy ?? "manual");
+    const nextBranchPrefix =
+      body.branchPrefix !== undefined ? toStringOrNull(body.branchPrefix) : (existing?.branchPrefix ?? null);
+    const globsDirty =
+      Boolean(existing) &&
+      globsIn !== undefined &&
+      normalizeGlobsJson(globsIn) !== normalizeGlobsJson(existing?.allowedPathGlobs);
+
+    const repoDirty = Boolean(
       existing &&
-        (nextGitRepoUrl !== (existing.gitRepoUrl ?? "") ||
-          nextBaseBranch !== (existing.baseBranch ?? "") ||
-          nextWorkspace !== (existing.workspacePath ?? "") ||
-          nextCursorUrl !== (existing.cursorApiUrl ?? "") ||
-          tokenNorm(nextToken) !== tokenNorm(existing.cursorApiToken ?? null))
+        (nextGitRepoUrl !== String(existing.gitRepoUrl ?? "").trim() ||
+          nextBaseBranch !== String(existing.baseBranch ?? "").trim() ||
+          nextGitRepoProvider !== String(existing.gitRepoProvider ?? "github").trim().toLowerCase() ||
+          String(nextGitRepoName ?? "") !== String(existing.gitRepoName ?? "") ||
+          nextBranchStrategy !== existing.branchStrategy ||
+          String(nextBranchPrefix ?? "") !== String(existing.branchPrefix ?? ""))
     );
-    if (sensitivityChanged) {
-      data.status = "draft";
+    const executorDirty = Boolean(existing && globsDirty);
+
+    if (repoDirty) {
+      data.repoConnectionOk = null;
+      data.repoValidatedAt = null;
+      data.repoValidationError = null;
+    }
+    if (executorDirty) {
+      data.executorConnectionOk = null;
+      data.executorValidatedAt = null;
+      data.executorValidationError = null;
+    }
+    if (repoDirty || executorDirty) {
+      const mergeRepoOk = repoDirty ? null : (existing?.repoConnectionOk ?? null);
+      const mergeExecOk = executorDirty ? null : (existing?.executorConnectionOk ?? null);
+      data.status = executionSetupOverallStatus(mergeRepoOk, mergeExecOk);
       data.needsRevalidation = true;
       data.lastValidationError = null;
     }
@@ -323,16 +350,24 @@ export async function PATCH(
       lastValidatedAt: null,
       needsRevalidation: false,
       lastValidationError: null,
+      repoConnectionOk: null,
+      repoValidatedAt: null,
+      repoValidationError: null,
+      executorConnectionOk: null,
+      executorValidatedAt: null,
+      executorValidationError: null,
     } as const;
 
-    const row = await executionSetupRepo.upsert({
-      where: { projectId: pid },
-      create: {
-        ...defaults,
-        ...data,
-      },
-      update: data,
-    });
+    const row = await withExecutionSetupSchemaHealRetry(() =>
+      prisma.executionSetup.upsert({
+        where: { projectId: pid },
+        create: {
+          ...defaults,
+          ...data,
+        },
+        update: data,
+      })
+    );
 
     return NextResponse.json({
       success: true,
@@ -346,10 +381,10 @@ export async function PATCH(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
-        cursorApiUrl: row.cursorApiUrl,
-        cursorApiTokenMasked: row.cursorApiTokenMasked,
-        hasCursorToken: Boolean(row.cursorApiToken && row.cursorApiToken.trim()),
-        workspacePath: row.workspacePath,
+        cursorApiUrl: "",
+        cursorApiTokenMasked: null,
+        hasCursorToken: false,
+        workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
         autoPush: row.autoPush,
@@ -367,12 +402,21 @@ export async function PATCH(
         lastValidatedAt: row.lastValidatedAt ? row.lastValidatedAt.toISOString() : null,
         needsRevalidation: Boolean(row.needsRevalidation),
         lastValidationError: row.lastValidationError ?? null,
+        repoConnectionOk: row.repoConnectionOk ?? null,
+        repoValidatedAt: row.repoValidatedAt ? row.repoValidatedAt.toISOString() : null,
+        repoValidationError: row.repoValidationError ?? null,
+        executorConnectionOk: row.executorConnectionOk ?? null,
+        executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
+        executorValidationError: row.executorValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
       },
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;
+    if (isExecutionSetupSchemaDriftError(error)) {
+      return executionSetupSchemaDriftResponse();
+    }
     console.error("PATCH /api/projects/[projectId]/execution-setup error:", error);
     return NextResponse.json({ success: false, message: "저장 중 오류가 발생했습니다." }, { status: 500 });
   }

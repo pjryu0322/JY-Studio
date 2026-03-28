@@ -309,6 +309,12 @@ export type ExecutionSetupDto = {
   /** 구 서버 호환: 없으면 false로 간주 */
   needsRevalidation?: boolean;
   lastValidationError?: string | null;
+  repoConnectionOk?: boolean | null;
+  repoValidatedAt?: string | null;
+  repoValidationError?: string | null;
+  executorConnectionOk?: boolean | null;
+  executorValidatedAt?: string | null;
+  executorValidationError?: string | null;
   updatedAt: string;
 };
 
@@ -357,13 +363,19 @@ export async function patchExecutionSetup(
   return { res, json };
 }
 
-export async function postExecutionSetupValidate(projectId: string) {
+export async function postExecutionSetupValidate(
+  projectId: string,
+  body?: { scope?: "repository" | "cursor" | "all" }
+) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/execution-setup/validate`, {
     method: "POST",
     credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body?.scope ? { scope: body.scope } : {}),
   });
   const json = (await res.json()) as ApiResponse<{
+    scope?: "repository" | "cursor" | "all";
     status: "draft" | "validated" | "invalid";
     lastValidatedAt: string | null;
     needsRevalidation?: boolean;
@@ -373,6 +385,12 @@ export async function postExecutionSetupValidate(projectId: string) {
     messages: string[];
     probeGitOk?: boolean;
     probeCursorOk?: boolean;
+    repoConnectionOk?: boolean | null;
+    executorConnectionOk?: boolean | null;
+    repoValidatedAt?: string | null;
+    executorValidatedAt?: string | null;
+    repoValidationError?: string | null;
+    executorValidationError?: string | null;
   }>;
   return { res, json };
 }

@@ -16,7 +16,9 @@ import {
 import { pickNextReadyTask, type TaskForPick } from "./pickNextReadyTask";
 import type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 import { EXECUTION_WORKFLOW } from "./workflowConstants";
+import { resolveCursorRelayBaseUrl } from "@/lib/executionSetup/cursorRelayUrl";
 import { prisma } from "@/lib/prisma";
+import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 
 export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
@@ -41,7 +43,9 @@ export async function runExecutionLoop(params: {
   loopLocks.add(projectId);
 
   try {
-    const setup = await prisma.executionSetup.findUnique({ where: { projectId } });
+    const setup = await withExecutionSetupSchemaHealRetry(() =>
+      prisma.executionSetup.findUnique({ where: { projectId } })
+    );
     if (!setup) {
       return { ok: false, steps, message: "Execution setup 이 없습니다." };
     }
@@ -240,8 +244,8 @@ export async function runExecutionLoop(params: {
         projectId,
         workflowId: taskRow.sourceSpecVersionId ?? null,
         executionSetup: {
-          cursorApiUrl: setup.cursorApiUrl,
-          cursorApiToken: setup.cursorApiToken,
+          cursorApiUrl: resolveCursorRelayBaseUrl(setup.cursorApiUrl),
+          cursorApiToken: null,
           gitRepoUrl: repoUrl,
           baseBranch: setup.baseBranch,
           branchStrategy: setup.branchStrategy,

@@ -5,8 +5,8 @@ import {
   type AiDraftCandidate,
   fetchExecutionSetup,
   fetchSpecWorkspace,
-  patchSpecWorkspace,
   patchExecutionSetup,
+  patchSpecWorkspace,
   patchProjectSpecContext,
   postExecutionSetupValidate,
   postProjectPlanGenerate,
@@ -18,7 +18,9 @@ import { ProjectSpecAiDraftPlanSection } from "@/components/project-spec/Project
 import { TaskDraftPanel } from "@/components/project-spec/TaskDraftPanel";
 import type { Project, ProjectSpecResponseRecord, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
-import { LabelTag } from "@/components/ui/LabelTag";
+import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
+import { WorkspaceSectionHeader } from "@/components/project-spec/WorkspaceSectionHeader";
+import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 import { parseMarkdownToSections } from "@/lib/project-spec/parseMarkdownSections";
 import {
   buildFallbackProjectPlanMarkdown,
@@ -104,9 +106,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   const [executionSetup, setExecutionSetup] = useState<
     Awaited<ReturnType<typeof fetchExecutionSetup>>["json"]["data"] | null
   >(null);
-  const [executionSetupBusy, setExecutionSetupBusy] = useState<string | null>(null);
   const [executionSetupOpen, setExecutionSetupOpen] = useState(false);
-  const [cursorTokenInput, setCursorTokenInput] = useState("");
+  const [executionSetupBusy, setExecutionSetupBusy] = useState<"save" | "validate" | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -270,10 +271,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   useEffect(() => {
     void loadExecutionSetup();
   }, [loadExecutionSetup]);
-
-  useEffect(() => {
-    setExecutionSetupOpen(false);
-  }, [projectId]);
 
   useEffect(() => {
     setChosenSpecResponseId(null);
@@ -1162,10 +1159,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         background: "#fafbff",
       }}
     >
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <LabelTag label="[F-1-3] Workspace — Project Spec definition (AI-first)" />
-        <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Project Spec 정의 워크스페이스</h2>
-      </div>
+      <WorkspaceSectionHeader section="workspaceRoot" as="h2" marginBottom={8} />
       <p style={{ margin: "0 0 16px 0", color: "#475569", lineHeight: 1.55, fontSize: 14 }}>
         프로젝트 기본 정보 → AI 실행 계획 초안 후보 비교 → 작업 문서 편집·저장 →{" "}
         <strong>Spec Generation Settings</strong> → <strong>AI Project Spec 생성</strong> → 응답 비교·확정 → 아래 Task 초안
@@ -1235,10 +1229,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#fff",
         }}
       >
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <LabelTag label="[F-1-3-1] Workspace — Project Context" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>실행 계획 입력</h3>
-        </div>
+        <WorkspaceSectionHeader section="projectContext" marginBottom={12} />
 
         {generatingContext ? (
           <p
@@ -1266,10 +1257,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <LabelTag label="[F-1-3-1a] Workspace — Basic Project Fields" />
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>기본 입력</p>
-            </div>
+            <WorkspaceSectionHeader section="basicFields" marginBottom={8} />
             <div style={{ display: "grid", gap: 12 }}>
               <label style={{ display: "grid", gap: 4 }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>프로젝트명</span>
@@ -1379,14 +1367,11 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#fff",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
-          <LabelTag label="[F-1-3-2] Workspace — Project Spec from saved plan" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, lineHeight: 1.35 }}>저장된 계획으로 Project Spec 생성</h3>
-        </div>
+        <WorkspaceSectionHeader section="specFromSavedPlan" layout="column" marginBottom={10} />
 
         <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          순서: <strong>1. Spec Generation Settings</strong> → <strong>2. Generate Project Spec</strong> → 아래 카드의{" "}
-          <strong>3. Compare AI Responses</strong>. 실행 계획 본문은 서버가 주입합니다.
+          순서: <strong>1. Spec Generation Settings</strong> → <strong>2. Generate Project Spec</strong> → 아래{" "}
+          <strong>AI 응답</strong> 섹션에서 비교·확정. 실행 계획 본문은 서버가 주입합니다.
         </p>
 
         <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 8 }}>1. Spec Generation Settings</div>
@@ -1401,7 +1386,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             background: "#f5f3ff",
           }}
         >
-          <div style={{ fontWeight: 900, fontSize: 14, color: "#4c1d95", marginBottom: 8 }}>Spec Generation Settings</div>
           <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#5b21b6", lineHeight: 1.5 }}>
             서버는 OpenAI <strong>system</strong> 안전 규칙 + 아래 <strong>템플릿</strong> + 저장된 <strong>실행 계획</strong>을
             합쳐 생성합니다. System 층 내용은 UI에 노출하지 않습니다.
@@ -1582,10 +1566,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#fff",
         }}
       >
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-3] Workspace — AI responses & compare" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>3. Compare AI Responses</h3>
-        </div>
+        <WorkspaceSectionHeader section="aiResponsesCompare" marginBottom={8} />
         <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
           여러 Spec <strong>후보 중 하나를 선택</strong>해 공식 Project Spec으로 확정하는 단계입니다. 두 응답을 「비교」에 넣으면 기본은{" "}
           <strong>전체 문서</strong> 나란히 보기이며, 섹션 단위 비교는 보조 모드로 전환할 수 있습니다.
@@ -2306,10 +2287,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           background: "#f0fdf4",
         }}
       >
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-4] Workspace — Confirmed spec & versions" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>확정된 Project Spec</h3>
-        </div>
+        <WorkspaceSectionHeader section="confirmedSpecVersions" marginBottom={8} />
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#166534", lineHeight: 1.5 }}>
           확정 내용은 버전 행으로만 쌓이며 기존 버전은 수정·삭제되지 않습니다. 「현재」는 활성 포인터이며, 롤백은 과거 버전을 다시 가리킬
           뿐 이력을 지우지 않습니다.
@@ -2851,8 +2829,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           }}
         >
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-            <LabelTag label="[F-1-3-6] Workspace — Execution Setup" />
-            <strong style={{ fontSize: 14 }}>Execution Setup</strong>
+            <WorkspaceLabelBadge section="executionSetup" />
+            <strong style={{ fontSize: 14 }}>{WORKSPACE_SECTION_META.executionSetup.title}</strong>
             <span style={{ fontSize: 12, color: "#64748b" }}>
               프로젝트 스펙이 확정된 뒤에 설정할 수 있습니다.
             </span>
@@ -2894,8 +2872,10 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                   marginBottom: executionSetupOpen ? 10 : 6,
                 }}
               >
-                <LabelTag label="[F-1-3-6] Workspace — Execution Setup" />
-                <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>Execution Setup</h3>
+                <WorkspaceLabelBadge section="executionSetup" />
+                <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>
+                  {WORKSPACE_SECTION_META.executionSetup.title}
+                </h3>
                 <span
                   style={{
                     fontSize: 11,
@@ -2933,8 +2913,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
               {!executionSetupOpen ? (
                 <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-                  릴레이 모드: OpenAI가 프롬프트·검토, Cursor가 저장소에서 실행, GitHub가 코드 진실입니다. 이 패널에서는 URL·정책·Executor만
-                  설정합니다.
+                  Cursor는 지정된 Git 저장소를 기반으로 작업을 수행하며, 코드 수정 및 커밋/푸시는 원격 저장소에서 처리됩니다. 원격 실행
+                  릴레이 URL은 서버 환경 변수(CURSOR_RELAY_BASE_URL)로 설정합니다.
                 </p>
               ) : (
                 <>
@@ -2955,7 +2935,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                     </div>
                   ) : null}
                   <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-                    플랫폼은 코드를 실행하지 않습니다. 저장된 URL로 Git 원격(info/refs)과 Cursor Executor에 HTTP 프로브만 수행합니다.
+                    플랫폼은 로컬에서 코드를 실행하지 않습니다. Git 원격과 릴레이 task-execute 경로만 검증합니다.
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
@@ -3036,58 +3016,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                     style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                   />
                 </label>
-              </div>
-
-              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
-                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: "#0f172a" }}>Cursor Executor</div>
-                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Executor endpoint URL</span>
-                  <input
-                    value={executionSetup?.cursorApiUrl ?? ""}
-                    disabled={!canEdit}
-                    onChange={(e) =>
-                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), cursorApiUrl: e.target.value } as never))
-                    }
-                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-                  />
-                </label>
-                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>API token</span>
-                  <input
-                    value={cursorTokenInput}
-                    disabled={!canEdit}
-                    onChange={(e) => setCursorTokenInput(e.target.value)}
-                    placeholder={
-                      executionSetup?.cursorApiTokenMasked
-                        ? `저장됨 (${executionSetup.cursorApiTokenMasked})`
-                        : "토큰 입력"
-                    }
-                    type="password"
-                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-                  />
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                    저장 후에는 토큰 원문을 다시 표시하지 않습니다. (마스킹 값만 표시)
-                  </div>
-                </label>
-                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
-                    Workspace path (orchestrator / IDE 힌트, 선택)
-                  </span>
-                  <input
-                    value={executionSetup?.workspacePath ?? ""}
-                    disabled={!canEdit}
-                    onChange={(e) => {
-                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), workspacePath: e.target.value } as never));
-                    }}
-                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-                  />
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
-                    Cursor Background Agent가 이 URL의 저장소에서 작업합니다. 커밋·푸시 후 GitHub에 반영된 내용이 결과의 기준입니다.
-                  </div>
-                </label>
                 <label style={{ display: "grid", gap: 4, marginTop: 6 }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
-                    Allowed path globs (프롬프트 + stopOnOutOfScopeChange 검증, 쉼표/줄바꿈)
+                    Allowed path globs (optional; comma/newline)
                   </span>
                   <textarea
                     value={(executionSetup?.allowedPathGlobs ?? []).join("\n")}
@@ -3131,7 +3062,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                     [
                       ["autoAdvanceToNextTask", "auto-advance after review pass (DAG)"],
                       ["stopOnTestFailure", "fail on test/build hints in summary (eval)"],
-                      ["stopOnRepeatedFailure", "fail on same Cursor/eval error twice in a row"],
+                      ["stopOnRepeatedFailure", "fail on same execution/eval error twice in a row"],
                       ["stopOnOutOfScopeChange", "fail if reported paths violate globs or too many files"],
                       ["requireApprovalForSensitiveTasks", "gate auth/secret-like tasks for human approve"],
                     ] as const
@@ -3208,10 +3139,27 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                         if (!projectId) return;
                         setExecutionSetupBusy("save");
                         try {
-                          const token = cursorTokenInput.trim();
+                          if (!executionSetup) return;
                           const { res, json } = await patchExecutionSetup(projectId, {
-                            ...(executionSetup ?? {}),
-                            ...(token ? { cursorApiToken: token } : {}),
+                            gitRepoUrl: executionSetup.gitRepoUrl,
+                            gitRepoProvider: executionSetup.gitRepoProvider,
+                            gitRepoName: executionSetup.gitRepoName,
+                            baseBranch: executionSetup.baseBranch,
+                            branchStrategy: executionSetup.branchStrategy,
+                            branchPrefix: executionSetup.branchPrefix,
+                            allowedPathGlobs: executionSetup.allowedPathGlobs ?? [],
+                            autoCommit: executionSetup.autoCommit,
+                            autoPush: executionSetup.autoPush,
+                            autoPr: executionSetup.autoPr,
+                            requireApprovalBeforeApply: executionSetup.requireApprovalBeforeApply,
+                            requireTestsBeforePush: executionSetup.requireTestsBeforePush,
+                            dryRunAllowed: executionSetup.dryRunAllowed,
+                            autoAdvanceToNextTask: executionSetup.autoAdvanceToNextTask,
+                            maxAutoRetriesPerTask: executionSetup.maxAutoRetriesPerTask,
+                            stopOnTestFailure: executionSetup.stopOnTestFailure,
+                            stopOnRepeatedFailure: executionSetup.stopOnRepeatedFailure,
+                            stopOnOutOfScopeChange: executionSetup.stopOnOutOfScopeChange,
+                            requireApprovalForSensitiveTasks: executionSetup.requireApprovalForSensitiveTasks,
                           });
                           if (!res.ok || !json.success) {
                             const m = json.message || "설정 저장에 실패했습니다.";
@@ -3219,7 +3167,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                             return;
                           }
                           setExecutionSetup(json.data);
-                          setCursorTokenInput("");
                           setMessage("Execution setup이 저장되었습니다.");
                         } finally {
                           setExecutionSetupBusy(null);

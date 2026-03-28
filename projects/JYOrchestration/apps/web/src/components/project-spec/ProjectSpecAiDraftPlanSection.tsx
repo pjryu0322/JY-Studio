@@ -1,6 +1,6 @@
 "use client";
 
-import { LabelTag } from "@/components/ui/LabelTag";
+import { WorkspaceSectionHeader } from "@/components/project-spec/WorkspaceSectionHeader";
 import type { AiDraftCandidate } from "@/components/project-spec/api";
 import { formatTestedAt } from "@/components/project-spec/format";
 import {
@@ -92,10 +92,7 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
   return (
     <>
       <div>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-1b] Workspace — AI Draft Actions" />
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>AI 실행 계획 초안</p>
-        </div>
+        <WorkspaceSectionHeader section="draftActions" marginBottom={8} />
         {!baseInputsOk ? (
           <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#b45309" }}>
             프로젝트명·설명·유형을 입력한 뒤 생성할 수 있습니다.
@@ -197,12 +194,7 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
       </div>
 
       <div style={{ marginTop: 20 }}>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-1c] Workspace — AI Draft Candidates" />
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#64748b" }}>
-            문서 후보 비교 · 작업 편집기 (전체 문서 단위)
-          </p>
-        </div>
+        <WorkspaceSectionHeader section="draftCandidates" marginBottom={8} />
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
           모델별 <strong>AI Draft Candidates</strong>(전체 마크다운)를 비교하고, 하나를 골라 작업 문서로 삼습니다. 카드 미리보기는
           앞부분만 보여 주며, 섹션 diff·줄 단위 비교 UI는 없습니다.

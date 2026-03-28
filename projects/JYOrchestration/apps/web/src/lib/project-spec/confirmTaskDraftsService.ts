@@ -63,22 +63,50 @@ export async function confirmTaskDraftsInTransaction(
       descParts.length > 0 ? descParts.join("\n\n").slice(0, 16_000) : (d.description ?? null);
     const mergedDescription = merged;
 
-    const created = await tx.task.create({
-      data: {
-        projectId,
-        ownerUserId: project.ownerUserId,
-        projectSpecUploadId: null,
-        sourceSpecVersionId: d.specVersionId,
-        name: stripNodeTypePrefix(d.title),
-        description: mergedDescription,
-        acceptanceCriteria: acLines.length ? (acLines as Prisma.InputJsonValue) : Prisma.JsonNull,
-        status: "TODO",
-        order: nextOrder,
-        taskKind: "PRIMARY",
-        changeReason: `TASK_DRAFT_CONFIRM:${d.id}`,
-      },
-      select: { id: true },
-    });
+    // INSERT에 acceptanceCriteria를 넣지 않음: DB가 execution_loop 마이그레이션 전이면 P2022(컬럼 없음)가 난다.
+    // 수용 기준은 이미 mergedDescription에 포함됨. 컬럼이 있으면 생성 직후 update로만 채운다.
+    const baseCreate = {
+      projectId,
+      ownerUserId: project.ownerUserId,
+      projectSpecUploadId: null as string | null,
+      name: stripNodeTypePrefix(d.title),
+      description: mergedDescription,
+      status: "TODO" as const,
+      order: nextOrder,
+      taskKind: "PRIMARY" as const,
+      changeReason: `TASK_DRAFT_CONFIRM:${d.id}`,
+    };
+    let created: { id: string };
+    try {
+      created = await tx.task.create({
+        data: {
+          ...baseCreate,
+          sourceSpecVersionId: d.specVersionId,
+        },
+        select: { id: true },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022") {
+        created = await tx.task.create({
+          data: baseCreate,
+          select: { id: true },
+        });
+      } else {
+        throw e;
+      }
+    }
+    if (acLines.length > 0) {
+      try {
+        await tx.task.update({
+          where: { id: created.id },
+          data: { acceptanceCriteria: acLines as Prisma.InputJsonValue },
+        });
+      } catch (e) {
+        if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022")) {
+          throw e;
+        }
+      }
+    }
     nextOrder += 1;
     taskIds.push(created.id);
     draftIdToTaskId.set(d.id, created.id);
@@ -94,10 +122,16 @@ export async function confirmTaskDraftsInTransaction(
       ),
     ];
     if (resolved.length > 0) {
-      await tx.task.update({
-        where: { id: draftIdToTaskId.get(d.id)! },
-        data: { dependsOnTaskIds: resolved as Prisma.InputJsonValue },
-      });
+      try {
+        await tx.task.update({
+          where: { id: draftIdToTaskId.get(d.id)! },
+          data: { dependsOnTaskIds: resolved as Prisma.InputJsonValue },
+        });
+      } catch (e) {
+        if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022")) {
+          throw e;
+        }
+      }
     }
 
     await tx.taskDraft.update({

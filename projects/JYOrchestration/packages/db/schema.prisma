@@ -318,6 +318,15 @@ model ExecutionSetup {
   /// 마지막 연결/검증 실패 메시지(요약)
   lastValidationError String? @db.Text
 
+  /// 저장소( Git URL·브랜치 ) 연결 검증 성공 여부 — null 이면 아직 검증 안 함
+  repoConnectionOk     Boolean?
+  repoValidatedAt      DateTime?
+  repoValidationError  String?  @db.Text
+  /// Cursor 실행기( URL·토큰·경로 힌트 ) 연결 검증 성공 여부
+  executorConnectionOk     Boolean?
+  executorValidatedAt      DateTime?
+  executorValidationError    String?  @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
