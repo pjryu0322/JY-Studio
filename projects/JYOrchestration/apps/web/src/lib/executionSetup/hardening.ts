@@ -1,48 +1,4 @@
-/** Path + remote probes for Execution Setup (F-1-3-6 hardening). */
-
-const PATH_CASE_INSENSITIVE = process.platform === "win32";
-
-export function normalizeFsPath(p: string): string {
-  return p.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
-/** workspacePath + "/projects/{projectId}" (slug 미사용 시 project id) */
-export function expectedProjectDirectoryRoot(workspacePath: string, projectId: string): string {
-  const ws = normalizeFsPath(workspacePath);
-  const id = String(projectId ?? "").trim();
-  if (!ws || !id) return "";
-  return `${ws}/projects/${id}`;
-}
-
-export function isProjectRootUnderCurrentProject(
-  projectRootPath: string,
-  workspacePath: string,
-  projectId: string
-): boolean {
-  const root = normalizeFsPath(projectRootPath);
-  const expected = expectedProjectDirectoryRoot(workspacePath, projectId);
-  if (!root || !expected) return false;
-  const eq = (a: string, b: string) => (PATH_CASE_INSENSITIVE ? a.toLowerCase() === b.toLowerCase() : a === b);
-  const prefix = (a: string, b: string) =>
-    PATH_CASE_INSENSITIVE ? a.toLowerCase().startsWith(b.toLowerCase() + "/") : a.startsWith(b + "/");
-  return eq(root, expected) || prefix(root, expected);
-}
-
-export const PROJECT_ROOT_PATH_ERROR =
-  "projectRootPath must be inside the current project directory";
-
-export function assertProjectRootPathOrThrow(
-  projectRootPath: string,
-  workspacePath: string,
-  projectId: string
-): void {
-  const ws = workspacePath.trim();
-  const pr = projectRootPath.trim();
-  if (!ws || !pr) return;
-  if (!isProjectRootUnderCurrentProject(pr, ws, projectId)) {
-    throw new Error(PROJECT_ROOT_PATH_ERROR);
-  }
-}
+/** Remote probes for Execution Setup (relay: no local repo path checks). */
 
 function gitInfoRefsCandidates(repoUrl: string): string[] {
   const raw = repoUrl.trim().replace(/\/+$/, "");

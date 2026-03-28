@@ -32,14 +32,15 @@ export const TaskDraftWorkflowNode = memo(function TaskDraftWorkflowNode({
   const tn = data.nodeType as TaskNodeType;
   const opacity =
     data.visualState === "blocked" ? 0.5 : data.visualState === "invalid" ? 0.55 : 1;
-  const border =
-    data.highlighted
-      ? "2px solid #0f766e"
-      : selected
-      ? "2px solid #7c3aed"
+  const borderW =
+    data.highlighted || selected ? "2px" : data.visualState === "invalid" ? "1px" : "1px";
+  const borderC = data.highlighted
+    ? "#0f766e"
+    : selected
+      ? "#7c3aed"
       : data.visualState === "invalid"
-        ? "1px solid #f87171"
-        : "1px solid #cbd5e1";
+        ? "#f87171"
+        : "#cbd5e1";
   const typeColor: Record<TaskNodeType, string> = {
     requirement: "#2563eb",
     design: "#7c3aed",
@@ -68,7 +69,10 @@ export const TaskDraftWorkflowNode = memo(function TaskDraftWorkflowNode({
       style={{
         width: 280,
         borderRadius: 12,
-        border,
+        borderTop: `${borderW} solid ${borderC}`,
+        borderRight: `${borderW} solid ${borderC}`,
+        borderBottom: `${borderW} solid ${borderC}`,
+        borderLeft: `${borderW} solid ${borderC}`,
         background: "#fff",
         boxShadow: selected ? "0 2px 12px rgba(124,58,237,0.22)" : "0 1px 3px rgba(15,23,42,0.06)",
         overflow: "hidden",

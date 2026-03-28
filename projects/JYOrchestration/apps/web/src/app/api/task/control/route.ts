@@ -6,6 +6,8 @@ import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHi
 import { prisma } from "@/lib/prisma";
 import { requireTaskPermission } from "@/lib/service/taskOwnershipGuard";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
+import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
+import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
 
 type ControlBody = {
   taskId?: string;
@@ -142,6 +144,81 @@ export async function POST(request: NextRequest) {
         success: true,
         data: { task: serializeTask(updated) },
         message: "Task 차단???�제?�었?�니??",
+      });
+    }
+
+    if (action === "workflow-approve-sensitive") {
+      const full = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: {
+          id: true,
+          projectId: true,
+          executionWorkflowStatus: true,
+          lastEvalSummary: true,
+        },
+      });
+      if (!full) {
+        return NextResponse.json({ success: false, message: "Task를 찾을 수 없습니다." }, { status: 404 });
+      }
+      if (full.executionWorkflowStatus !== EXECUTION_WORKFLOW.AWAITING_HUMAN) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "awaiting_human 상태의 Task만 민감 작업 승인을 적용할 수 있습니다.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const prevSummary = full.lastEvalSummary?.trim() ?? "";
+      const updated = await prisma.task.update({
+        where: { id: task.id },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.DONE,
+          status: "DONE",
+          lastEvalResult: "done",
+          lastEvalSummary: prevSummary
+            ? `${prevSummary}\n(운영자 민감 작업 승인)`
+            : "(운영자 민감 작업 승인)",
+        },
+        select: taskSelect,
+      });
+
+      const latestRun = await prisma.taskExecutionRun.findFirst({
+        where: {
+          taskId: task.id,
+          status: "reviewing",
+          evaluationReason: { startsWith: "policy_sensitive_awaiting_human" },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      if (latestRun) {
+        await prisma.taskExecutionRun.update({
+          where: { id: latestRun.id },
+          data: { status: "done", evaluationDecision: "done" },
+        });
+      }
+
+      await refreshWorkflowStates(projectId);
+
+      try {
+        await appendTaskHistory({
+          projectId,
+          taskId: task.id,
+          actorType: TaskHistoryActorType.USER,
+          actorId: userId,
+          eventType: TaskHistoryEventType.WORKFLOW_SENSITIVE_HUMAN_APPROVED,
+          summary: "민감 Task 사람 승인 — DAG 진행 허용",
+          detailJson: { taskExecutionRunId: latestRun?.id ?? null },
+        });
+      } catch (historyError) {
+        console.error("WORKFLOW_SENSITIVE_HUMAN_APPROVED history append failed:", historyError);
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { task: serializeTask(updated) },
+        message: "민감 작업이 승인되었습니다. 실행 루프를 다시 돌리면 후속 Task가 진행됩니다.",
       });
     }
 

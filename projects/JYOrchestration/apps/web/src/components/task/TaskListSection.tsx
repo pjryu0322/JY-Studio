@@ -175,6 +175,10 @@ type TaskListSectionProps = {
   onSubmitFollowUp: () => void;
   /** taskId → AI 멤버 액션 검토/적용 한 줄 힌트 */
   aiMemberTaskHints?: Record<string, string>;
+  /** 민감 Task awaiting_human → 사람 승인 */
+  canApproveSensitiveWorkflow?: boolean;
+  onApproveSensitiveWorkflow?: (taskId: string) => void;
+  approvingSensitiveTaskId?: string | null;
 };
 
 const btnBase: CSSProperties = {
@@ -226,6 +230,9 @@ export function TaskListSection({
   onCancelFollowUp,
   onSubmitFollowUp,
   aiMemberTaskHints = {},
+  canApproveSensitiveWorkflow = false,
+  onApproveSensitiveWorkflow,
+  approvingSensitiveTaskId = null,
 }: TaskListSectionProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -536,7 +543,6 @@ export function TaskListSection({
                       ) : (
                         task.name
                       )}
-                      {!isAutoHealing ? task.name : null}
                     </strong>
                     <span
                       style={{
@@ -562,6 +568,67 @@ export function TaskListSection({
                       >
                         {aiMemberTaskHints[task.id]}
                       </span>
+                    ) : null}
+                    {taskKind === "PRIMARY" &&
+                    (task.executionWorkflowStatus ||
+                      task.lastLoopRunAt ||
+                      (task.loopRetryCount ?? 0) > 0 ||
+                      task.lastEvalResult ||
+                      task.lastOrchestrationBranch) ? (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "#0f766e",
+                          width: "100%",
+                          flexBasis: "100%",
+                          lineHeight: 1.45,
+                          fontWeight: 600,
+                        }}
+                      >
+                        실행 루프: {task.executionWorkflowStatus ?? "—"}
+                        {task.lastLoopRunAt ? ` · 마지막 실행 ${formatTestedAt(task.lastLoopRunAt)}` : ""}
+                        {(task.loopRetryCount ?? 0) > 0 ? ` · 재시도 ${task.loopRetryCount}` : ""}
+                        {task.lastEvalResult ? ` · 평가 ${task.lastEvalResult}` : ""}
+                        {task.lastOrchestrationBranch ? ` · 브랜치 ${task.lastOrchestrationBranch}` : ""}
+                        {task.lastOrchestrationChangedFileCount != null
+                          ? ` · 변경 파일 ${task.lastOrchestrationChangedFileCount}개`
+                          : ""}
+                        {task.lastOrchestrationCommitStatus
+                          ? ` · 커밋 ${task.lastOrchestrationCommitStatus}`
+                          : ""}
+                        {task.lastOrchestrationPushStatus
+                          ? ` · 푸시 ${task.lastOrchestrationPushStatus}`
+                          : ""}
+                        {task.lastOrchestrationCommitSha
+                          ? ` · ${task.lastOrchestrationCommitSha.slice(0, 7)}`
+                          : ""}
+                        {" · 실행 주체: Cursor"}
+                      </span>
+                    ) : null}
+                    {taskKind === "PRIMARY" &&
+                    task.executionWorkflowStatus === "awaiting_human" &&
+                    canApproveSensitiveWorkflow &&
+                    onApproveSensitiveWorkflow ? (
+                      <div style={{ width: "100%", flexBasis: "100%", marginTop: 6 }}>
+                        <button
+                          type="button"
+                          disabled={approvingSensitiveTaskId === task.id}
+                          onClick={() => onApproveSensitiveWorkflow(task.id)}
+                          style={{
+                            ...btnBase,
+                            border: "1px solid #b45309",
+                            color: "#9a3412",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {approvingSensitiveTaskId === task.id
+                            ? "승인 처리 중…"
+                            : "민감 작업 승인 (DAG 진행)"}
+                        </button>
+                        <div style={{ fontSize: 11, color: "#92400e", marginTop: 4, lineHeight: 1.45 }}>
+                          OpenAI 검토는 통과했습니다. 승인 후 실행 루프를 다시 돌리면 후속 Task가 진행됩니다.
+                        </div>
+                      </div>
                     ) : null}
                     {taskKind === "FOLLOW_UP" ? (
                       <span

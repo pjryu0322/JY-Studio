@@ -125,6 +125,23 @@ function stripCycles(
   }
 }
 
+/** If explicit-only edges still form a cycle, drop edges deterministically until acyclic. */
+function ensureAcyclicDepMap(allIds: string[], depMap: Map<string, Set<string>>): void {
+  let guard = 0;
+  while (hasDirectedCycle(allIds, depMap) && guard++ < 6000) {
+    const edges: Array<{ t: string; d: string }> = [];
+    for (const t of allIds) {
+      for (const d of depMap.get(t) ?? []) {
+        edges.push({ t, d });
+      }
+    }
+    if (edges.length === 0) break;
+    edges.sort((a, b) => (a.t === b.t ? a.d.localeCompare(b.d) : a.t.localeCompare(b.t)));
+    const e = edges[edges.length - 1]!;
+    depMap.get(e.t)?.delete(e.d);
+  }
+}
+
 function computeIndegOutdeg(allIds: string[], depMap: Map<string, Set<string>>) {
   const indeg = new Map<string, number>();
   const outdeg = new Map<string, number>();
@@ -242,6 +259,28 @@ export function synthesizeWorkflowDrafts(seeds: WorkflowDraftSeed[]): WorkflowDr
   }
 
   stripCycles([...allIds], depMap, explicitPairs);
+  ensureAcyclicDepMap([...allIds], depMap);
+
+  // Cycle breaks can leave isolates; link them back into the phase-ordered chain.
+  {
+    let { indeg, outdeg } = computeIndegOutdeg([...allIds], depMap);
+    for (const s of globalOrder) {
+      const id = s.id;
+      if ((indeg.get(id) ?? 0) === 0 && (outdeg.get(id) ?? 0) === 0) {
+        const idx = globalOrder.findIndex((x) => x.id === id);
+        if (idx > 0) {
+          depMap.get(id)!.add(globalOrder[idx - 1]!.id);
+        } else if (idx === 0 && globalOrder.length > 1) {
+          depMap.get(globalOrder[1]!.id)!.add(id);
+        }
+        const io = computeIndegOutdeg([...allIds], depMap);
+        indeg = io.indeg;
+        outdeg = io.outdeg;
+      }
+    }
+  }
+  stripCycles([...allIds], depMap, explicitPairs);
+  ensureAcyclicDepMap([...allIds], depMap);
 
   const draftRows = seeds.map((s) => ({ id: s.id, stage: normalizeStageForSeed(s) }));
   const laneEdges: Array<{ source: string; target: string }> = [];

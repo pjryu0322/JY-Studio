@@ -38,7 +38,6 @@ import {
   type SpecPromptPresetId,
 } from "@/lib/project-spec/specPromptPresets";
 import { summarizeMarkdownSectionDiff } from "@/lib/project-spec/specCompareSummary";
-import { expectedProjectDirectoryRoot, PROJECT_ROOT_PATH_ERROR } from "@/lib/executionSetup/hardening";
 
 /** 자동 초안 API 중복 호출 방지 (동시에 하나만) */
 const specAutoDraftInFlightByProject = new Map<string, boolean>();
@@ -107,7 +106,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
   >(null);
   const [executionSetupBusy, setExecutionSetupBusy] = useState<string | null>(null);
   const [executionSetupOpen, setExecutionSetupOpen] = useState(false);
-  const [projectRootPathError, setProjectRootPathError] = useState<string | null>(null);
   const [cursorTokenInput, setCursorTokenInput] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
@@ -142,6 +140,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     template: "",
     preset: "default",
   });
+  const [specGenFingerprintAtLastRun, setSpecGenFingerprintAtLastRun] = useState<string | null>(null);
   const [specPromptUiBusy, setSpecPromptUiBusy] = useState(false);
   const fullCompareLeftRef = useRef<HTMLPreElement>(null);
   const fullCompareRightRef = useRef<HTMLPreElement>(null);
@@ -253,8 +252,15 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     try {
       const { res, json } = await fetchExecutionSetup(projectId);
       if (res.ok && json.success) {
-        setExecutionSetup(json.data ?? null);
-        setProjectRootPathError(null);
+        const row = json.data;
+        setExecutionSetup(
+          row
+            ? {
+                ...row,
+                allowedPathGlobs: row.allowedPathGlobs ?? [],
+              }
+            : null
+        );
       }
     } catch (e) {
       console.error(e);
@@ -267,11 +273,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
   useEffect(() => {
     setExecutionSetupOpen(false);
-    setProjectRootPathError(null);
   }, [projectId]);
 
   useEffect(() => {
     setChosenSpecResponseId(null);
+  }, [projectId]);
+
+  useEffect(() => {
+    setSpecGenFingerprintAtLastRun(null);
   }, [projectId]);
 
   useEffect(() => {
@@ -309,12 +318,6 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
     ]
   );
 
-  const expectedProjectRootHint = useMemo(() => {
-    const ws = executionSetup?.workspacePath?.trim();
-    if (!ws || !projectId) return "";
-    return expectedProjectDirectoryRoot(ws, projectId);
-  }, [executionSetup?.workspacePath, projectId]);
-
   const effectiveSpecSlice = useMemo(() => {
     if (workingDocument.trim()) {
       return parseProjectPlanMarkdownToForm(workingDocument);
@@ -347,7 +350,47 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
   const savedExecutionPlanOk = Boolean(workspace?.project.executionPlanMarkdown?.trim());
 
-  const canRunAiProjectSpec = canEdit && baseInputsOk && savedExecutionPlanOk && !planDocumentDirty;
+  const specGenSettingsReady = useMemo(
+    () =>
+      SPEC_PROMPT_PRESET_IDS.includes(specPromptDraft.preset) && Boolean(specPromptDraft.template.trim()),
+    [specPromptDraft.preset, specPromptDraft.template]
+  );
+
+  const specModelSelectionReady = useMemo(
+    () => SPEC_WORKSPACE_AI_MODELS.includes(selectedModel),
+    [selectedModel]
+  );
+
+  const specGenFingerprint = useMemo(
+    () => `${specPromptDraft.preset}|${specPromptDraft.template.trim()}|${selectedModel}`,
+    [specPromptDraft.preset, specPromptDraft.template, selectedModel]
+  );
+
+  const showSpecGenStaleWarning = useMemo(
+    () =>
+      (workspace?.responses?.length ?? 0) > 0 &&
+      specGenFingerprintAtLastRun !== null &&
+      specGenFingerprint !== specGenFingerprintAtLastRun,
+    [workspace?.responses?.length, specGenFingerprint, specGenFingerprintAtLastRun]
+  );
+
+  const canRunAiProjectSpec = useMemo(
+    () =>
+      canEdit &&
+      baseInputsOk &&
+      savedExecutionPlanOk &&
+      !planDocumentDirty &&
+      specGenSettingsReady &&
+      specModelSelectionReady,
+    [
+      canEdit,
+      baseInputsOk,
+      savedExecutionPlanOk,
+      planDocumentDirty,
+      specGenSettingsReady,
+      specModelSelectionReady,
+    ]
+  );
 
   const serverSpecFieldsEmpty = useMemo(() => {
     if (!workspace?.project) {
@@ -880,16 +923,27 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       setMessage(
         planDocumentDirty
           ? "실행 계획이 저장되지 않은 변경이 있습니다. 먼저 「실행계획 저장」을 실행하세요."
-          : "프로젝트명·설명·유형을 입력하고 실행 계획을 「실행계획 저장」으로 저장하세요."
+          : !baseInputsOk
+            ? "프로젝트명·설명·유형을 입력하세요."
+            : !savedExecutionPlanOk
+              ? "실행 계획을 「실행계획 저장」으로 저장하세요."
+              : !specGenSettingsReady
+                ? "Spec Generation Settings에서 프리셋과 프롬프트 템플릿을 입력하세요."
+                : !specModelSelectionReady
+                  ? "AI 모델을 선택하세요."
+                  : "조건을 충족한 뒤 다시 시도하세요."
       );
       return;
     }
+    const fingerprintNow = `${specPromptDraft.preset}|${specPromptDraft.template.trim()}|${selectedModel}`;
     setActionBusy("ai-spec");
     setMessage("저장된 실행 계획만을 반영해 AI에 Project Spec 생성을 요청하는 중…");
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "aiRequest",
         model: selectedModel,
+        preset: specPromptDraft.preset,
+        templatePrompt: specPromptDraft.template,
       });
       if (!res.ok || !json.success) {
         setMessage(json.message || "AI Spec 생성에 실패했습니다.");
@@ -901,6 +955,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
       if (data.project) {
         mergeWorkspaceProjectSlice(data.project);
       }
+      setSpecGenFingerprintAtLastRun(fingerprintNow);
       setMessage("AI Spec 초안이 응답 목록에 추가되었습니다.");
       await loadWorkspace();
     } catch (e) {
@@ -1112,8 +1167,9 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Project Spec 정의 워크스페이스</h2>
       </div>
       <p style={{ margin: "0 0 16px 0", color: "#475569", lineHeight: 1.55, fontSize: 14 }}>
-        프로젝트 기본 정보 → AI 실행 계획 초안 후보 비교 → 작업 문서 편집·저장 → 저장된 계획을 바탕으로 AI Project Spec 생성 →
-        응답 비교·확정 → 아래 Task 초안 확인·확정 순으로 진행합니다. 프롬프트는 내부에서만 구성됩니다.
+        프로젝트 기본 정보 → AI 실행 계획 초안 후보 비교 → 작업 문서 편집·저장 →{" "}
+        <strong>Spec Generation Settings</strong> → <strong>AI Project Spec 생성</strong> → 응답 비교·확정 → 아래 Task 초안
+        확인·확정 순으로 진행합니다. 실행 계획 본문은 서버가 주입하고, 템플릿·프리셋은 생성 전에 설정합니다.
       </p>
       <div style={{ marginBottom: 12 }}>
         <button
@@ -1328,94 +1384,12 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
           <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, lineHeight: 1.35 }}>저장된 계획으로 Project Spec 생성</h3>
         </div>
 
-        <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          저장된 실행계획을 기반으로 Project Spec을 생성합니다. 실행 계획 본문은 항상 서버가 주입하고, 사용자 편집 가능한{" "}
-          <strong>템플릿 레이어</strong>와 <strong>프리셋</strong>은 아래 「[F-1-3-3] AI 응답」의 Spec Generation Settings에서
-          설정합니다.
+        <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+          순서: <strong>1. Spec Generation Settings</strong> → <strong>2. Generate Project Spec</strong> → 아래 카드의{" "}
+          <strong>3. Compare AI Responses</strong>. 실행 계획 본문은 서버가 주입합니다.
         </p>
 
-        <label style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>AI 모델</span>
-          <select
-            data-testid="spec-workspace-ai-model"
-            value={selectedModel}
-            disabled={!canEdit || actionBusy === "ai-spec" || generatingContext}
-            onChange={(e) => setSelectedModel(e.target.value as SpecWorkspaceAiModelId)}
-            style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", minWidth: 160 }}
-          >
-            {SPEC_WORKSPACE_AI_MODELS.map((m) => (
-              <option key={m} value={m}>
-                {SPEC_WORKSPACE_MODEL_LABELS[m]}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-          <button
-            type="button"
-            data-testid="spec-workspace-ai-request"
-            onClick={() => void handleAiProjectSpecGeneration()}
-            disabled={
-              !canEdit ||
-              actionBusy === "ai-spec" ||
-              saving ||
-              generatingContext ||
-              !canRunAiProjectSpec
-            }
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              border: "1px solid #0f766e",
-              background: "#0d9488",
-              color: "#fff",
-              fontWeight: 700,
-              cursor: canEdit && canRunAiProjectSpec ? "pointer" : "not-allowed",
-            }}
-          >
-            {actionBusy === "ai-spec" ? "저장 후 AI 요청 중…" : "AI로 Project Spec 생성"}
-          </button>
-        </div>
-        {canEdit && baseInputsOk && !savedExecutionPlanOk ? (
-          <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
-            실행 계획 문서를 작성한 뒤 「실행계획 저장」을 실행하세요. AI Spec은 저장된 실행 계획만을 근거로 생성됩니다.
-          </p>
-        ) : null}
-        {canEdit && baseInputsOk && savedExecutionPlanOk && planDocumentDirty ? (
-          <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
-            저장되지 않은 편집이 있습니다. 「실행계획 저장」 후 다시 시도하세요.
-          </p>
-        ) : null}
-        {actionBusy === "ai-spec" ? (
-          <p
-            data-testid="spec-workspace-ai-spec-progress"
-            role="status"
-            data-ui-label="[F-1-3-2-s2] Inline — Project Spec AI response request"
-            style={{ margin: "10px 0 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}
-          >
-            저장된 실행 계획을 반영해 AI에 Project Spec 응답을 요청하는 중…
-          </p>
-        ) : null}
-      </div>
-
-      {/* [C] AI 응답 목록 · 비교 */}
-      <div
-        style={{
-          marginBottom: 20,
-          padding: 16,
-          borderRadius: 10,
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-        }}
-      >
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <LabelTag label="[F-1-3-3] Workspace — AI responses & compare" />
-          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>AI 응답</h3>
-        </div>
-        <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-          여러 Spec <strong>후보 중 하나를 선택</strong>해 공식 Project Spec으로 확정하는 단계입니다. 두 응답을 「비교」에 넣으면 기본은{" "}
-          <strong>전체 문서</strong> 나란히 보기이며, 섹션 단위 비교는 보조 모드로 전환할 수 있습니다.
-        </p>
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 8 }}>1. Spec Generation Settings</div>
         <div
           data-testid="spec-workspace-spec-generation-settings"
           data-ui-label="[F-1-3-3] Spec Generation Settings"
@@ -1508,6 +1482,114 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
             </button>
           </div>
         </div>
+
+        {showSpecGenStaleWarning ? (
+          <p
+            role="status"
+            style={{
+              margin: "0 0 14px 0",
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid #fcd34d",
+              background: "#fffbeb",
+              fontSize: 13,
+              color: "#92400e",
+              lineHeight: 1.5,
+            }}
+          >
+            설정이 변경되었습니다. 다시 생성해야 반영됩니다.
+          </p>
+        ) : null}
+
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>2. Generate Project Spec</div>
+
+        <label style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>AI 모델</span>
+          <select
+            data-testid="spec-workspace-ai-model"
+            value={selectedModel}
+            disabled={!canEdit || actionBusy === "ai-spec" || generatingContext}
+            onChange={(e) => setSelectedModel(e.target.value as SpecWorkspaceAiModelId)}
+            style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", minWidth: 160 }}
+          >
+            {SPEC_WORKSPACE_AI_MODELS.map((m) => (
+              <option key={m} value={m}>
+                {SPEC_WORKSPACE_MODEL_LABELS[m]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          <button
+            type="button"
+            data-testid="spec-workspace-ai-request"
+            onClick={() => void handleAiProjectSpecGeneration()}
+            disabled={
+              !canEdit ||
+              actionBusy === "ai-spec" ||
+              saving ||
+              generatingContext ||
+              !canRunAiProjectSpec
+            }
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: "1px solid #0f766e",
+              background: "#0d9488",
+              color: "#fff",
+              fontWeight: 700,
+              cursor: canEdit && canRunAiProjectSpec ? "pointer" : "not-allowed",
+            }}
+          >
+            {actionBusy === "ai-spec" ? "저장 후 AI 요청 중…" : "AI로 Project Spec 생성"}
+          </button>
+        </div>
+        {canEdit && baseInputsOk && savedExecutionPlanOk && !planDocumentDirty && !specPromptDraft.template.trim() ? (
+          <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
+            프롬프트 템플릿을 입력한 뒤 생성할 수 있습니다.
+          </p>
+        ) : null}
+        {canEdit && baseInputsOk && !savedExecutionPlanOk ? (
+          <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
+            실행 계획 문서를 작성한 뒤 「실행계획 저장」을 실행하세요. AI Spec은 저장된 실행 계획만을 근거로 생성됩니다.
+          </p>
+        ) : null}
+        {canEdit && baseInputsOk && savedExecutionPlanOk && planDocumentDirty ? (
+          <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
+            저장되지 않은 편집이 있습니다. 「실행계획 저장」 후 다시 시도하세요.
+          </p>
+        ) : null}
+        {actionBusy === "ai-spec" ? (
+          <p
+            data-testid="spec-workspace-ai-spec-progress"
+            role="status"
+            data-ui-label="[F-1-3-2-s2] Inline — Project Spec AI response request"
+            style={{ margin: "10px 0 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}
+          >
+            저장된 실행 계획을 반영해 AI에 Project Spec 응답을 요청하는 중…
+          </p>
+        ) : null}
+      </div>
+
+      {/* [C] AI 응답 목록 · 비교 */}
+      <div
+        style={{
+          marginBottom: 20,
+          padding: 16,
+          borderRadius: 10,
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+        }}
+      >
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <LabelTag label="[F-1-3-3] Workspace — AI responses & compare" />
+          <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0 }}>3. Compare AI Responses</h3>
+        </div>
+        <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+          여러 Spec <strong>후보 중 하나를 선택</strong>해 공식 Project Spec으로 확정하는 단계입니다. 두 응답을 「비교」에 넣으면 기본은{" "}
+          <strong>전체 문서</strong> 나란히 보기이며, 섹션 단위 비교는 보조 모드로 전환할 수 있습니다.
+        </p>
 
         {workspace?.responses?.length ? (
           <div
@@ -2851,7 +2933,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
 
               {!executionSetupOpen ? (
                 <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-                  기본 접힘입니다. Repo / Executor / 경로를 편집하거나 연결 검증을 하려면 「펼치기」를 누르세요.
+                  릴레이 모드: OpenAI가 프롬프트·검토, Cursor가 저장소에서 실행, GitHub가 코드 진실입니다. 이 패널에서는 URL·정책·Executor만
+                  설정합니다.
                 </p>
               ) : (
                 <>
@@ -2872,15 +2955,14 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                     </div>
                   ) : null}
                   <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-                    저장된 설정으로 Git 원격(info/refs)과 Executor URL에 HTTP 요청을 보내 실제 연결 가능 여부를 확인합니다. 구성 형식만
-                    검사하는 것이 아닙니다.
+                    플랫폼은 코드를 실행하지 않습니다. 저장된 URL로 Git 원격(info/refs)과 Cursor Executor에 HTTP 프로브만 수행합니다.
                   </p>
 
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
                 <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10, color: "#0f172a" }}>Repository</div>
                 <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Repository URL</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Repository URL (Cursor가 클론·푸시할 대상)</span>
                   <input
                     value={executionSetup?.gitRepoUrl ?? ""}
                     disabled={!canEdit}
@@ -2889,6 +2971,20 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                     }
                     style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                   />
+                </label>
+                <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>호스팅 제공자 (요약용)</span>
+                  <select
+                    value={executionSetup?.gitRepoProvider ?? "github"}
+                    disabled={!canEdit}
+                    onChange={(e) =>
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), gitRepoProvider: e.target.value } as never))
+                    }
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                  >
+                    <option value="github">GitHub</option>
+                    <option value="other">기타</option>
+                  </select>
                 </label>
                 <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
                   <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Repository full name (optional)</span>
@@ -2974,44 +3070,35 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                   </div>
                 </label>
                 <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Workspace path</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+                    Workspace path (orchestrator / IDE 힌트, 선택)
+                  </span>
                   <input
                     value={executionSetup?.workspacePath ?? ""}
                     disabled={!canEdit}
                     onChange={(e) => {
-                      setProjectRootPathError(null);
                       setExecutionSetup((p) => ({ ...(p ?? ({} as never)), workspacePath: e.target.value } as never));
                     }}
                     style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
                   />
-                </label>
-                <label style={{ display: "grid", gap: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Project root path</span>
-                  <input
-                    value={executionSetup?.projectRootPath ?? ""}
-                    disabled={!canEdit}
-                    aria-invalid={projectRootPathError ? true : undefined}
-                    onChange={(e) => {
-                      setProjectRootPathError(null);
-                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), projectRootPath: e.target.value } as never));
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 10,
-                      border: projectRootPathError ? "2px solid #dc2626" : "1px solid #cbd5e1",
-                      outline: projectRootPathError ? "1px solid #fecaca" : undefined,
-                    }}
-                  />
-                  {projectRootPathError ? (
-                    <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 4, fontWeight: 700 }}>
-                      {projectRootPathError}
-                    </div>
-                  ) : null}
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
-                    현재 프로젝트 디렉터리는{" "}
-                    <code style={{ fontSize: 10 }}>{expectedProjectRootHint || "(workspace path 입력 후 표시)"}</code> 접두사
-                    아래여야 합니다.
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
+                    Cursor Background Agent가 이 URL의 저장소에서 작업합니다. 커밋·푸시 후 GitHub에 반영된 내용이 결과의 기준입니다.
                   </div>
+                </label>
+                <label style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+                    Allowed path globs (프롬프트 + stopOnOutOfScopeChange 검증, 쉼표/줄바꿈)
+                  </span>
+                  <textarea
+                    value={(executionSetup?.allowedPathGlobs ?? []).join("\n")}
+                    disabled={!canEdit}
+                    rows={2}
+                    onChange={(e) => {
+                      const raw = e.target.value.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as never)), allowedPathGlobs: raw } as never));
+                    }}
+                    style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", fontFamily: "monospace", fontSize: 12 }}
+                  />
                 </label>
               </div>
 
@@ -3040,6 +3127,56 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                       <span style={{ fontWeight: 800 }}>{label}</span>
                     </label>
                   ))}
+                  {(
+                    [
+                      ["autoAdvanceToNextTask", "auto-advance after review pass (DAG)"],
+                      ["stopOnTestFailure", "fail on test/build hints in summary (eval)"],
+                      ["stopOnRepeatedFailure", "fail on same Cursor/eval error twice in a row"],
+                      ["stopOnOutOfScopeChange", "fail if reported paths violate globs or too many files"],
+                      ["requireApprovalForSensitiveTasks", "gate auth/secret-like tasks for human approve"],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: "#334155" }}>
+                      <input
+                        type="checkbox"
+                        disabled={!canEdit}
+                        checked={
+                          k === "requireApprovalForSensitiveTasks"
+                            ? executionSetup?.requireApprovalForSensitiveTasks === true
+                            : executionSetup
+                              ? (executionSetup[k] !== false)
+                              : true
+                        }
+                        onChange={(e) =>
+                          setExecutionSetup((p) => ({ ...(p ?? ({} as never)), [k]: e.target.checked } as never))
+                        }
+                      />
+                      <span style={{ fontWeight: 800 }}>{label}</span>
+                    </label>
+                  ))}
+                  <label
+                    style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13, color: "#334155", flexWrap: "wrap" }}
+                  >
+                    <span style={{ fontWeight: 800 }}>max auto-retries per task</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20}
+                      disabled={!canEdit}
+                      value={executionSetup?.maxAutoRetriesPerTask ?? 2}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value, 10);
+                        const v = Number.isFinite(n) ? Math.min(20, Math.max(0, n)) : 2;
+                        setExecutionSetup((p) => ({ ...(p ?? ({} as never)), maxAutoRetriesPerTask: v } as never));
+                      }}
+                      style={{
+                        width: 72,
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                      }}
+                    />
+                  </label>
                 </div>
 
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
@@ -3079,12 +3216,8 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
                           if (!res.ok || !json.success) {
                             const m = json.message || "설정 저장에 실패했습니다.";
                             setMessage(m);
-                            if (m === PROJECT_ROOT_PATH_ERROR) {
-                              setProjectRootPathError(PROJECT_ROOT_PATH_ERROR);
-                            }
                             return;
                           }
-                          setProjectRootPathError(null);
                           setExecutionSetup(json.data);
                           setCursorTokenInput("");
                           setMessage("Execution setup이 저장되었습니다.");

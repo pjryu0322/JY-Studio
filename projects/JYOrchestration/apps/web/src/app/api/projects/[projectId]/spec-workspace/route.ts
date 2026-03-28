@@ -444,7 +444,7 @@ export async function PATCH(
 }
 
 type PostBody =
-  | { action: "aiRequest"; model?: string }
+  | { action: "aiRequest"; model?: string; preset?: string; templatePrompt?: string }
   | { action: "confirm"; responseId: string }
   | {
       action: "confirmMerged";
@@ -532,11 +532,35 @@ export async function POST(
       };
 
       const promptCfg = await getOrCreateSpecPromptConfig(id);
+      let templatePrompt = promptCfg.templatePrompt.trim();
+      let preset = normalizeSpecPromptPreset(promptCfg.preset);
+      if (typeof body.templatePrompt === "string") {
+        templatePrompt = body.templatePrompt.trim();
+      }
+      if (typeof body.preset === "string") {
+        preset = normalizeSpecPromptPreset(body.preset);
+      }
+      if (!templatePrompt) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "프롬프트 템플릿이 비어 있으면 Project Spec을 생성할 수 없습니다.",
+          },
+          { status: 400 }
+        );
+      }
+      if (typeof body.templatePrompt === "string" || typeof body.preset === "string") {
+        await prisma.specPromptConfig.update({
+          where: { projectId: id },
+          data: { templatePrompt, preset },
+        });
+      }
+
       let promptText: string;
       try {
         promptText = composeWorkspaceSpecUserMessage(projectForPrompt, workspaceOpenAiModel, {
-          templatePrompt: promptCfg.templatePrompt,
-          preset: normalizeSpecPromptPreset(promptCfg.preset),
+          templatePrompt,
+          preset,
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

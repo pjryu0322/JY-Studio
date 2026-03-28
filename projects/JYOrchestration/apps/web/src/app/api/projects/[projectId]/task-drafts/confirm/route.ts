@@ -66,17 +66,26 @@ export async function POST(
         ...(draftIds.length > 0 ? { draftIds } : { confirmAll: true }),
       });
 
-      if (r.confirmedCount === 0) {
+      if (r.confirmedCount === 0 && (r.promotedDraftRows ?? 0) === 0) {
         return NextResponse.json(
           { success: false, message: "확정할 DRAFT 상태의 초안이 없습니다." },
           { status: 400 }
         );
       }
 
+      const msg =
+        r.confirmedCount > 0
+          ? `${r.confirmedCount}개 Task 초안을 실제 Task로 반영했습니다.`
+          : `초안 ${r.promotedDraftRows ?? 0}개를 확정 처리했습니다.`;
+
       return NextResponse.json({
         success: true,
-        message: `${r.confirmedCount}개 Task 초안을 실제 Task로 반영했습니다.`,
-        data: { confirmedCount: r.confirmedCount, taskIds: r.taskIds },
+        message: msg,
+        data: {
+          confirmedCount: r.confirmedCount,
+          taskIds: r.taskIds,
+          promotedDraftRows: r.promotedDraftRows ?? 0,
+        },
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

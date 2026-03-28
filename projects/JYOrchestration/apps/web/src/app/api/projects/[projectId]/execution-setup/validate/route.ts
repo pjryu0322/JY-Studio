@@ -3,12 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
-import {
-  isProjectRootUnderCurrentProject,
-  probeCursorExecutor,
-  probeGitHttpRemote,
-  PROJECT_ROOT_PATH_ERROR,
-} from "@/lib/executionSetup/hardening";
+import { probeCursorExecutor, probeGitHttpRemote } from "@/lib/executionSetup/hardening";
 
 const executionSetupRepo = (prisma as unknown as typeof prisma & { executionSetup: any }).executionSetup;
 
@@ -26,22 +21,16 @@ type ValidateResult = {
   git: "ok" | "needs" | "error";
   cursor: "ok" | "needs" | "error";
   messages: string[];
-  /** 구조 검증만 통과한 경우에만 의미 있음 */
   probeGitOk?: boolean;
   probeCursorOk?: boolean;
 };
 
-function validateStructure(
-  row: {
-    gitRepoUrl: string;
-    baseBranch: string;
-    cursorApiUrl: string;
-    cursorApiToken: string | null;
-    workspacePath: string;
-    projectRootPath: string;
-  },
-  projectId: string
-): ValidateResult {
+function validateStructure(row: {
+  gitRepoUrl: string;
+  baseBranch: string;
+  cursorApiUrl: string;
+  cursorApiToken: string | null;
+}): ValidateResult {
   const messages: string[] = [];
 
   let git: ValidateResult["git"] = "ok";
@@ -62,25 +51,6 @@ function validateStructure(
   if (!row.cursorApiToken?.trim()) {
     cursor = cursor === "error" ? "error" : "needs";
     messages.push("Cursor: API 토큰이 필요합니다.");
-  }
-  if (!row.workspacePath.trim()) {
-    cursor = "error";
-    messages.push("Cursor: workspace path가 필요합니다.");
-  }
-  if (!row.projectRootPath.trim()) {
-    cursor = "error";
-    messages.push("Cursor: project root path가 필요합니다.");
-  }
-  if (row.workspacePath.trim() && row.projectRootPath.trim()) {
-    const ws = row.workspacePath.replace(/\\/g, "/").replace(/\/+$/, "");
-    const root = row.projectRootPath.replace(/\\/g, "/").replace(/\/+$/, "");
-    if (!root.startsWith(ws)) {
-      cursor = "error";
-      messages.push("Cursor: project root path는 workspace path 하위여야 합니다.");
-    } else if (!isProjectRootUnderCurrentProject(row.projectRootPath, row.workspacePath, projectId)) {
-      cursor = "error";
-      messages.push(`Cursor: ${PROJECT_ROOT_PATH_ERROR}`);
-    }
   }
 
   const ok = git !== "error" && cursor !== "error" && git !== "needs" && cursor !== "needs";
@@ -122,17 +92,12 @@ export async function POST(
       );
     }
 
-    const v = validateStructure(
-      {
-        gitRepoUrl: row.gitRepoUrl,
-        baseBranch: row.baseBranch,
-        cursorApiUrl: row.cursorApiUrl,
-        cursorApiToken: row.cursorApiToken,
-        workspacePath: row.workspacePath,
-        projectRootPath: row.projectRootPath,
-      },
-      pid
-    );
+    const v = validateStructure({
+      gitRepoUrl: row.gitRepoUrl,
+      baseBranch: row.baseBranch,
+      cursorApiUrl: row.cursorApiUrl,
+      cursorApiToken: row.cursorApiToken,
+    });
 
     let probeGitOk = false;
     let probeCursorOk = false;
@@ -155,8 +120,7 @@ export async function POST(
 
     const probesPass = v.ok && probeGitOk && probeCursorOk;
     const nextStatus = probesPass ? "validated" : "invalid";
-    const summaryError =
-      !v.ok ? v.messages.join(" · ") : probeMessages.length ? probeMessages.join(" · ") : null;
+    const summaryError = !v.ok ? v.messages.join(" · ") : probeMessages.length ? probeMessages.join(" · ") : null;
 
     const updated = await executionSetupRepo.update({
       where: { projectId: pid },

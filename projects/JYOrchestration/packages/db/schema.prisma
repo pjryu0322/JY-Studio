@@ -241,6 +241,8 @@ model Project {
   executionSetup ExecutionSetup?
   /// F-1-3-3 Spec AI 생성용 사용자 편집 프롬프트 템플릿
   specPromptConfig SpecPromptConfig?
+  /// 오케스트레이션 실행 루프 시도 기록
+  taskExecutionRuns TaskExecutionRun[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -268,6 +270,8 @@ model ExecutionSetup {
 
   /// Git
   gitRepoUrl      String
+  /// github | other (relay: URL이 진실, UI/정책 힌트용)
+  gitRepoProvider String   @default("github")
   gitRepoName     String?
   baseBranch      String
   /// feature-per-workflow | feature-per-task | manual
@@ -289,6 +293,22 @@ model ExecutionSetup {
   requireApprovalBeforeApply Boolean @default(true)
   requireTestsBeforePush     Boolean @default(true)
   dryRunAllowed Boolean @default(true)
+  /// DAG 실행 루프: Task 완료 시 다음 ready Task 자동 실행
+  autoAdvanceToNextTask   Boolean @default(true)
+  /// Cursor/OpenAI 루프에서 Task당 최대 자동 재시도(초과 시 failed)
+  maxAutoRetriesPerTask   Int     @default(2)
+  /// 평가 시 테스트/빌드 실패면 즉시 failed 처리
+  stopOnTestFailure       Boolean @default(true)
+  /// 동일 Cursor/평가 오류가 연속이면 즉시 failed (재시도 낭비 방지)
+  stopOnRepeatedFailure   Boolean @default(true)
+  /// 허용 glob 밖 변경이면 즉시 failed
+  stopOnOutOfScopeChange  Boolean @default(true)
+  /// 민감 키워드 Task는 OpenAI done 이어도 사람 승인 전까지 DAG 진행 안 함
+  requireApprovalForSensitiveTasks Boolean @default(false)
+  /// 대상 저장소에서 실행할 검증 커맨드 문자열 배열(JSON), 예: ["npm test","npm run build"]
+  repoValidationCommands Json?
+  /// Cursor/실행 프롬프트에 주입할 허용 경로 글로브(JSON 문자열 배열)
+  allowedPathGlobs        Json?
 
   /// draft | validated | invalid
   status          String   @default("draft")
@@ -303,6 +323,46 @@ model ExecutionSetup {
 
   @@index([projectId])
   @@map("execution_setups")
+}
+
+/// Task 단위 실제 실행(Cursor/Git/평가) 시도 기록
+model TaskExecutionRun {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 확정 Spec 버전 등 워크플로 계보(없으면 null)
+  workflowId String?
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// cursor (향후 github 확인 워커 등 확장)
+  provider  String   @default("cursor")
+  /// 실행 시점 저장소 URL 스냅샷(교차 저장소 감사)
+  repoUrlSnapshot String?
+  /// running | reviewing | done | retry_needed | failed | paused
+  status    String
+  branchName       String?
+  cursorRunId      String?
+  promptSnapshot   String?  @db.Text
+  cursorSummary    String?  @db.Text
+  changedFiles     Json?
+  gitSummary       String?  @db.Text
+  evaluationReason String?  @db.Text
+  /// done | retry | failed (OpenAI 평가 결과)
+  evaluationDecision String?
+  validationOutput String?  @db.Text
+  /// Cursor HTTP/실패 메시지
+  runError         String?  @db.Text
+  commitStatus     String?
+  pushStatus       String?
+  commitSha        String?
+  /// autoPr 미구현 시 pending_capability 등
+  prStatus         String?
+  retryCount       Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([projectId, taskId, createdAt])
+  @@map("task_execution_runs")
 }
 
 /// 확정 Project Spec의 버전(덮어쓰기 없음, 항상 append)
@@ -742,6 +802,22 @@ model Task {
   name                String
   /// 설명
   description         String?
+  /// 워크플로 DAG 선행 Task id 배열(JSON)
+  dependsOnTaskIds    Json?
+  /// 수용 기준(실행 루프 평가용, JSON 문자열 배열)
+  acceptanceCriteria  Json?
+  /// 실행 루프 상태: pending | ready | running | reviewing | done | failed
+  executionWorkflowStatus String?
+  loopRetryCount      Int               @default(0)
+  lastLoopRunAt       DateTime?
+  lastEvalResult      String?
+  lastEvalSummary     String?           @db.Text
+  /// 마지막 오케스트레이션 실행 UI용(비정규화)
+  lastOrchestrationBranch            String?
+  lastOrchestrationCommitStatus    String?
+  lastOrchestrationPushStatus       String?
+  lastOrchestrationCommitSha        String?
+  lastOrchestrationChangedFileCount Int?
   /// 상태
   status              String            @default("TODO")
   /// 정렬 순서
@@ -778,6 +854,8 @@ model Task {
   histories           TaskHistory[]
   /// 멤버 액션
   memberActions       ProjectMemberAction[]
+  /// 오케스트레이션 실행 기록
+  taskExecutionRuns   TaskExecutionRun[]
 
   @@index([projectId, order])
   @@index([projectSpecUploadId])

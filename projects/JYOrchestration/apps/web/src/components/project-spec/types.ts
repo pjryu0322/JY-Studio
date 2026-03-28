@@ -191,6 +191,7 @@ export type TaskItem = {
   id: string;
   projectId: string;
   projectSpecUploadId: string | null;
+  /** 확정 Spec 버전 — 실행 런 workflow 계보 */
   sourceSpecVersionId?: string | null;
   name: string;
   description: string | null;
@@ -202,6 +203,19 @@ export type TaskItem = {
   createdAt: string;
   updatedAt: string;
   histories?: TaskHistoryLiteItem[];
+  /** 실행 루프 DAG 선행 Task id */
+  dependsOnTaskIds?: string[] | null;
+  acceptanceCriteria?: string[] | null;
+  executionWorkflowStatus?: string | null;
+  loopRetryCount?: number;
+  lastLoopRunAt?: string | null;
+  lastEvalResult?: string | null;
+  lastEvalSummary?: string | null;
+  lastOrchestrationBranch?: string | null;
+  lastOrchestrationCommitStatus?: string | null;
+  lastOrchestrationPushStatus?: string | null;
+  lastOrchestrationCommitSha?: string | null;
+  lastOrchestrationChangedFileCount?: number | null;
 };
 
 export type TaskGenerateResult = {

@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { generateTaskDraftsWithOpenAI } from "@/lib/project-spec/generateTaskDraftsWithOpenAI";
-import { computeStageAwareLaneLayout, normalizeWorkflowStage } from "@/lib/project-spec/workflowLaneLayout";
 import { stageForNodeType, withNodeTypePrefix, stripNodeTypePrefix } from "@/lib/project-spec/taskDraftHierarchy";
 import type { TaskNodeType } from "@/lib/project-spec/taskDraftHierarchy";
+import { finalizeAiGeneratedTaskDraftGraph } from "@/lib/project-spec/taskDraftRegenerationGraph";
+import { confirmTaskDraftsInTransaction } from "@/lib/project-spec/confirmTaskDraftsService";
 
 export type TaskDraftSyncResult = {
   supersededCount: number;
@@ -13,6 +14,12 @@ export type TaskDraftSyncResult = {
     completionTokens: number | null;
     totalTokens: number | null;
   } | null;
+  /** true when deps/layout were adjusted after AI output to form a valid DAG */
+  graphAutoRepaired?: boolean;
+  /** [T] 노드에서 생성된 Task 수 */
+  autoConfirmedTaskCount?: number;
+  confirmedTaskIds?: string[];
+  promotedDraftRows?: number;
 };
 
 type CreatedRowMeta = {
@@ -225,37 +232,51 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
       depsById.set(r.id, deps);
     }
 
-    const edges: Array<{ source: string; target: string }> = [];
-    for (const r of createdRows) {
-      for (const dep of depsById.get(r.id) ?? []) {
-        if (dep && dep !== r.id) {
-          edges.push({ source: dep, target: r.id });
-        }
+    let graphAutoRepaired = false;
+    let autoConfirmedTaskCount = 0;
+    let confirmedTaskIds: string[] = [];
+    let promotedDraftRows = 0;
+    if (createdRows.length > 0) {
+      const fin = finalizeAiGeneratedTaskDraftGraph(createdRows, depsById);
+      graphAutoRepaired = fin.graphAutoRepaired;
+      for (const row of createdRows) {
+        const p = fin.positionById.get(row.id);
+        const stage = fin.stageById.get(row.id) ?? stageForNodeType(row.type);
+        await tx.taskDraft.update({
+          where: { id: row.id },
+          data: {
+            dependsOnIds: fin.finalDepsById.get(row.id) ?? [],
+            dependsOn: [],
+            positionX: p?.x ?? 0,
+            positionY: p?.y ?? 0,
+            stage,
+            createdByType: "AI",
+          },
+        });
       }
-    }
 
-    const layout = computeStageAwareLaneLayout(
-      createdRows.map((r) => ({ id: r.id, stage: normalizeWorkflowStage(stageForNodeType(r.type)) })),
-      edges
-    );
-    const posById = new Map(layout.map((p) => [p.id, p] as const));
-
-    for (const row of createdRows) {
-      const p = posById.get(row.id);
-      await tx.taskDraft.update({
-        where: { id: row.id },
-        data: {
-          dependsOnIds: depsById.get(row.id) ?? [],
-          dependsOn: [],
-          positionX: p?.x ?? 0,
-          positionY: p?.y ?? 0,
-          stage: stageForNodeType(row.type),
-          createdByType: "AI",
+      const toPromote = await tx.taskDraft.findMany({
+        where: {
+          projectId,
+          status: "DRAFT",
+          id: { in: createdRows.map((r) => r.id) },
         },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
+      const cr = await confirmTaskDraftsInTransaction(tx, { projectId, drafts: toPromote });
+      autoConfirmedTaskCount = cr.confirmedCount;
+      confirmedTaskIds = cr.taskIds;
+      promotedDraftRows = cr.promotedDraftRows ?? 0;
     }
 
-    return { supersededCount: sup.count, createdCount: createdRows.length };
+    return {
+      supersededCount: sup.count,
+      createdCount: createdRows.length,
+      graphAutoRepaired: createdRows.length > 0 ? graphAutoRepaired : false,
+      autoConfirmedTaskCount,
+      confirmedTaskIds,
+      promotedDraftRows,
+    };
   });
 
   return {
@@ -269,5 +290,9 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
           totalTokens: ai.usage.totalTokens,
         }
       : null,
+    graphAutoRepaired: result.graphAutoRepaired,
+    autoConfirmedTaskCount: result.autoConfirmedTaskCount,
+    confirmedTaskIds: result.confirmedTaskIds,
+    promotedDraftRows: result.promotedDraftRows,
   };
 }

@@ -5,6 +5,8 @@ export type TaskDraftSyncPayload = {
   createdCount?: number;
   supersededCount?: number;
   message?: string;
+  autoConfirmedTaskCount?: number;
+  graphAutoRepaired?: boolean;
 };
 
 export async function trySyncTaskDraftsAfterSpecChange(params: {
@@ -24,6 +26,8 @@ export async function trySyncTaskDraftsAfterSpecChange(params: {
       ok: true,
       createdCount: r.createdCount,
       supersededCount: r.supersededCount,
+      autoConfirmedTaskCount: r.autoConfirmedTaskCount,
+      graphAutoRepaired: r.graphAutoRepaired,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

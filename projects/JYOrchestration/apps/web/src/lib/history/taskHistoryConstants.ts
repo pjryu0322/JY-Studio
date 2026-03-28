@@ -64,6 +64,14 @@ export const TaskHistoryEventType = {
   AI_MEMBER_ACTION_AUTO_APPLIED: "AI_MEMBER_ACTION_AUTO_APPLIED",
   /** 프로젝트 AI 액션 승인/적용 정책 변경 */
   PROJECT_AI_ACTION_POLICY_UPDATED: "PROJECT_AI_ACTION_POLICY_UPDATED",
+  /** DAG 실행 루프 시작 */
+  EXECUTION_LOOP_STARTED: "EXECUTION_LOOP_STARTED",
+  /** 실행 루프에서 Task 단계 완료/실패 */
+  EXECUTION_LOOP_TASK_STEP: "EXECUTION_LOOP_TASK_STEP",
+  /** 실행 루프 종료(전체 완료 또는 중단) */
+  EXECUTION_LOOP_FINISHED: "EXECUTION_LOOP_FINISHED",
+  /** 민감 Task 사람 승인 후 DAG 진행 허용 */
+  WORKFLOW_SENSITIVE_HUMAN_APPROVED: "WORKFLOW_SENSITIVE_HUMAN_APPROVED",
 } as const;
 
 export type TaskHistoryEventTypeKey = keyof typeof TaskHistoryEventType;

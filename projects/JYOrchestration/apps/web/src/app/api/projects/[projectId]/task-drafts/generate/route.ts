@@ -91,21 +91,42 @@ export async function POST(
         userId,
         model,
       });
+      const tc = r.autoConfirmedTaskCount ?? 0;
+      const msg =
+        body.mode === "regenerate"
+          ? tc > 0
+            ? `Task 초안을 다시 생성하고 워크플로를 보정한 뒤 실행 Task ${tc}개를 전체 확정했습니다.`
+            : "새 Spec 기준으로 Task 초안을 다시 생성·보정·확정했습니다."
+          : tc > 0
+            ? `Task 초안을 생성하고 워크플로를 보정한 뒤 실행 Task ${tc}개를 전체 확정했습니다.`
+            : "Task 초안을 생성·보정·확정했습니다.";
+
       return NextResponse.json({
         success: true,
-        message:
-          body.mode === "regenerate"
-            ? "새 Spec 기준으로 Task 초안을 다시 생성했습니다."
-            : "Task 초안을 생성했습니다.",
+        message: msg,
         data: {
           createdCount: r.createdCount,
           supersededCount: r.supersededCount,
           model: r.model,
           usage: r.usage,
+          graphAutoRepaired: Boolean(r.graphAutoRepaired),
+          autoConfirmedTaskCount: r.autoConfirmedTaskCount ?? 0,
+          promotedDraftRows: r.promotedDraftRows ?? 0,
+          confirmedTaskIds: r.confirmedTaskIds ?? [],
         },
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      if (msg.startsWith("TASK_DRAFT_GRAPH_")) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "워크플로를 자동으로 완성하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            code: "TASK_DRAFT_GRAPH_REPAIR_FAILED",
+          },
+          { status: 502 }
+        );
+      }
       if (msg === "OPENAI_API_KEY_NOT_CONFIGURED") {
         return NextResponse.json(
           {

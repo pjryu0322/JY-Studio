@@ -1,9 +1,14 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
-import { fetchGeneratedTasks, fetchProjectById } from "@/components/project-spec/api";
+import {
+  fetchExecutionSetup,
+  fetchGeneratedTasks,
+  fetchProjectById,
+  postExecutionLoopRun,
+} from "@/components/project-spec/api";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
 import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
 import { ProjectSpecWorkspace } from "@/components/project-spec/ProjectSpecWorkspace";
@@ -98,6 +103,11 @@ export default function ProjectDetailPage() {
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
   const [mainTab, setMainTab] = useState<ProjectMainTab>("overview");
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  const [execSetupValidatedHint, setExecSetupValidatedHint] = useState<boolean | null>(null);
+  const [executionLoopBusy, setExecutionLoopBusy] = useState(false);
+  const [executionLoopBanner, setExecutionLoopBanner] = useState<string | null>(null);
+  const [singleExecutionTaskId, setSingleExecutionTaskId] = useState("");
+  const [approvingSensitiveTaskId, setApprovingSensitiveTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     if (mainTab === "overview") {
@@ -212,6 +222,24 @@ export default function ProjectDetailPage() {
     }
     return Object.fromEntries([...latest.entries()].map(([k, v]) => [k, v.label]));
   }, [aiMemberActionsOverview]);
+
+  const relayOrchestrationOverview = useMemo(() => {
+    const primary = tasks.filter((t) => t.taskKind === "PRIMARY");
+    const running = primary.find((t) => t.executionWorkflowStatus === "running");
+    const ready = primary
+      .filter((t) => t.status === "TODO" && t.executionWorkflowStatus === "ready")
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+    const awaitingHuman = primary.filter((t) => t.executionWorkflowStatus === "awaiting_human");
+    const failed = [...primary]
+      .filter((t) => t.executionWorkflowStatus === "failed")
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return {
+      running,
+      nextReady: ready[0],
+      awaitingHuman,
+      lastFailed: failed[0] ?? null,
+    };
+  }, [tasks]);
 
   const reloadSessionContext = useCallback(async () => {
     if (!projectId) {
@@ -587,6 +615,58 @@ export default function ProjectDetailPage() {
       console.error("Failed to reload tasks:", error);
     }
   }, [projectId]);
+
+  const handleApproveSensitiveWorkflow = useCallback(
+    async (taskId: string) => {
+      setApprovingSensitiveTaskId(taskId);
+      try {
+        const res = await fetch("/api/task/control", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId, action: "workflow-approve-sensitive" }),
+        });
+        const json = (await res.json()) as { success?: boolean; message?: string; code?: string };
+        const denied = rbacForbiddenMessage(res, json);
+        if (denied) {
+          setErrorMessage(denied);
+          return;
+        }
+        if (!res.ok || !json.success) {
+          setExecutionLoopBanner(json.message ?? "민감 작업 승인에 실패했습니다.");
+          return;
+        }
+        setExecutionLoopBanner(json.message ?? "민감 작업이 승인되었습니다.");
+        await reloadTasksList();
+      } catch (e) {
+        console.error(e);
+        setExecutionLoopBanner("민감 작업 승인 요청 중 오류가 발생했습니다.");
+      } finally {
+        setApprovingSensitiveTaskId(null);
+      }
+    },
+    [reloadTasksList]
+  );
+
+  useEffect(() => {
+    if (!projectId || !uiPermissions.canRun) {
+      setExecSetupValidatedHint(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { res, json } = await fetchExecutionSetup(projectId);
+      if (cancelled) return;
+      if (res.ok && json.success && json.data) {
+        setExecSetupValidatedHint(json.data.status === "validated");
+      } else {
+        setExecSetupValidatedHint(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, uiPermissions.canRun]);
 
   async function handleGenerateTaskPrompt(taskId: string) {
     try {
@@ -1421,6 +1501,161 @@ export default function ProjectDetailPage() {
             />
           ) : null}
         <div data-ui-label="[O-3] Self-Healing Flow — Follow-up Retry Abort Auto-Heal">
+        {uiPermissions.canRun ? (
+          <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #e2e8f0",
+                background: "#f8fafc",
+                fontSize: 12,
+                color: "#334155",
+                lineHeight: 1.55,
+              }}
+            >
+              <div style={{ fontWeight: 900, marginBottom: 6, color: "#0f172a" }}>릴레이 오케스트레이션</div>
+              <div>
+                <strong>OpenAI</strong>가 프롬프트·검토, <strong>Cursor</strong>가 저장소에서 실행, <strong>GitHub</strong>에 반영된 코드가
+                진실입니다. 플랫폼은 위임·기록·정책만 담당합니다.
+              </div>
+              <div style={{ marginTop: 8 }}>
+                현재 실행 중 Task: <strong>{relayOrchestrationOverview.running?.name ?? "—"}</strong>
+              </div>
+              <div>
+                다음 ready Task: <strong>{relayOrchestrationOverview.nextReady?.name ?? "—"}</strong>
+              </div>
+              {relayOrchestrationOverview.awaitingHuman.length ? (
+                <div style={{ marginTop: 6, color: "#b45309" }}>
+                  사람 승인 대기:{" "}
+                  {relayOrchestrationOverview.awaitingHuman.map((t) => t.name).join(", ") || "—"}
+                </div>
+              ) : null}
+              {relayOrchestrationOverview.lastFailed ? (
+                <div style={{ marginTop: 6, color: "#b91c1c" }}>
+                  최근 실패 Task: <strong>{relayOrchestrationOverview.lastFailed.name}</strong>
+                  {relayOrchestrationOverview.lastFailed.lastEvalSummary
+                    ? ` — ${relayOrchestrationOverview.lastFailed.lastEvalSummary.slice(0, 200)}`
+                    : ""}
+                </div>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+              <button
+                type="button"
+                disabled={executionLoopBusy || execSetupValidatedHint !== true}
+                onClick={async () => {
+                  if (!projectId) return;
+                  setExecutionLoopBusy(true);
+                  setExecutionLoopBanner(null);
+                  try {
+                    const tid = singleExecutionTaskId.trim();
+                    const { res, json } = await postExecutionLoopRun(
+                      projectId,
+                      tid ? { taskId: tid } : undefined
+                    );
+                    const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+                    if (denied) {
+                      setErrorMessage(denied);
+                      return;
+                    }
+                    setExecutionLoopBanner(
+                      json.message ??
+                        (json.success ? "실행 루프가 완료되었습니다." : "실행 루프가 중단되었습니다.")
+                    );
+                    await reloadTasksList();
+                  } catch (e) {
+                    console.error("execution loop:", e);
+                    setExecutionLoopBanner("실행 루프 요청 중 오류가 발생했습니다.");
+                  } finally {
+                    setExecutionLoopBusy(false);
+                  }
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #0f766e",
+                  background: execSetupValidatedHint === true ? "#0d9488" : "#e2e8f0",
+                  color: execSetupValidatedHint === true ? "#fff" : "#64748b",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor:
+                    executionLoopBusy || execSetupValidatedHint !== true ? "not-allowed" : "pointer",
+                }}
+              >
+                {executionLoopBusy ? "실행 중…" : singleExecutionTaskId.trim() ? "선택 Task 실행" : "실행 시작 (DAG)"}
+              </button>
+              <button
+                type="button"
+                disabled={executionLoopBusy}
+                onClick={async () => {
+                  if (!projectId) return;
+                  const { res, json } = await postExecutionLoopRun(projectId, { action: "pause" });
+                  if (res.ok && json.success) {
+                    setExecutionLoopBanner(json.message ?? "일시정지 요청됨.");
+                  }
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #94a3b8",
+                  background: "#f8fafc",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: executionLoopBusy ? "wait" : "pointer",
+                }}
+              >
+                일시정지
+              </button>
+              <button
+                type="button"
+                disabled={executionLoopBusy}
+                onClick={async () => {
+                  if (!projectId) return;
+                  const { res, json } = await postExecutionLoopRun(projectId, { action: "resume" });
+                  if (res.ok && json.success) {
+                    setExecutionLoopBanner(json.message ?? "재개됨.");
+                  }
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #94a3b8",
+                  background: "#f8fafc",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: executionLoopBusy ? "wait" : "pointer",
+                }}
+              >
+                재개
+              </button>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#334155" }}>
+                <span>Task ID (단일 실행)</span>
+                <input
+                  value={singleExecutionTaskId}
+                  onChange={(e) => setSingleExecutionTaskId(e.target.value)}
+                  placeholder="비우면 DAG 순서"
+                  style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cbd5e1", minWidth: 220 }}
+                />
+              </label>
+            </div>
+            {execSetupValidatedHint !== true ? (
+              <span style={{ fontSize: 13, color: "#b45309", lineHeight: 1.45 }}>
+                Spec 워크스페이스에서 Execution setup을 저장하고 연결 검증(validated)을 완료한 뒤 사용할 수 있습니다.
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
+                검토 통과 후에만 DAG가 진행됩니다. 정책(autoAdvance·재시도·범위·민감 승인)은 Execution setup을 따릅니다. PR 자동 생성은
+                pending_capability입니다.
+              </span>
+            )}
+          </div>
+        ) : null}
+        {executionLoopBanner && uiPermissions.canRun ? (
+          <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#334155" }} role="status">
+            {executionLoopBanner}
+          </p>
+        ) : null}
         <TaskListSection
           tasks={tasks}
           loadingTasks={loadingTasks}
@@ -1461,6 +1696,9 @@ export default function ProjectDetailPage() {
           onCancelFollowUp={() => setFollowUpDraft(null)}
           onSubmitFollowUp={() => void handleSubmitFollowUp()}
           aiMemberTaskHints={aiMemberTaskHints}
+          canApproveSensitiveWorkflow={rbac.canOperate}
+          onApproveSensitiveWorkflow={handleApproveSensitiveWorkflow}
+          approvingSensitiveTaskId={approvingSensitiveTaskId}
         />
         </div>
         </div>

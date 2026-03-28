@@ -3,11 +3,6 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
-import {
-  assertProjectRootPathOrThrow,
-  PROJECT_ROOT_PATH_ERROR,
-} from "@/lib/executionSetup/hardening";
-
 const executionSetupRepo = (prisma as unknown as typeof prisma & { executionSetup: any }).executionSetup;
 
 function maskToken(token: string): string {
@@ -30,6 +25,7 @@ function isLikelyUrl(s: string): boolean {
 
 type PatchBody = Partial<{
   gitRepoUrl: string;
+  gitRepoProvider: string;
   gitRepoName: string | null;
   baseBranch: string;
   branchStrategy: "feature-per-workflow" | "feature-per-task" | "manual";
@@ -38,7 +34,7 @@ type PatchBody = Partial<{
   cursorApiUrl: string;
   cursorApiToken: string | null;
   workspacePath: string;
-  projectRootPath: string;
+  allowedPathGlobs: string[];
 
   autoCommit: boolean;
   autoPush: boolean;
@@ -46,6 +42,13 @@ type PatchBody = Partial<{
   requireApprovalBeforeApply: boolean;
   requireTestsBeforePush: boolean;
   dryRunAllowed: boolean;
+
+  autoAdvanceToNextTask: boolean;
+  maxAutoRetriesPerTask: number;
+  stopOnTestFailure: boolean;
+  stopOnRepeatedFailure: boolean;
+  stopOnOutOfScopeChange: boolean;
+  requireApprovalForSensitiveTasks: boolean;
 }>;
 
 function toStringOrNull(v: unknown): string | null {
@@ -57,6 +60,18 @@ function toStringOrNull(v: unknown): string | null {
 function toBoolOrUndefined(v: unknown): boolean | undefined {
   if (typeof v === "boolean") return v;
   return undefined;
+}
+
+function toIntOrUndefined(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.trunc(v);
+  if (typeof v === "string" && v.trim() && /^-?\d+$/.test(v.trim())) return parseInt(v.trim(), 10);
+  return undefined;
+}
+
+function toStringArrayOrUndefined(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const a = v.map((x) => String(x ?? "").trim()).filter(Boolean);
+  return a;
 }
 
 export async function GET(
@@ -97,6 +112,7 @@ export async function GET(
         id: row.id,
         projectId: row.projectId,
         gitRepoUrl: row.gitRepoUrl,
+        gitRepoProvider: row.gitRepoProvider ?? "github",
         gitRepoName: row.gitRepoName,
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
@@ -105,13 +121,19 @@ export async function GET(
         cursorApiTokenMasked: row.cursorApiTokenMasked,
         hasCursorToken: Boolean(row.cursorApiToken && row.cursorApiToken.trim()),
         workspacePath: row.workspacePath,
-        projectRootPath: row.projectRootPath,
+        allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
         autoPush: row.autoPush,
         autoPr: row.autoPr,
         requireApprovalBeforeApply: row.requireApprovalBeforeApply,
         requireTestsBeforePush: row.requireTestsBeforePush,
         dryRunAllowed: row.dryRunAllowed,
+        autoAdvanceToNextTask: row.autoAdvanceToNextTask !== false,
+        maxAutoRetriesPerTask: typeof row.maxAutoRetriesPerTask === "number" ? row.maxAutoRetriesPerTask : 2,
+        stopOnTestFailure: row.stopOnTestFailure !== false,
+        stopOnRepeatedFailure: row.stopOnRepeatedFailure !== false,
+        stopOnOutOfScopeChange: row.stopOnOutOfScopeChange !== false,
+        requireApprovalForSensitiveTasks: row.requireApprovalForSensitiveTasks === true,
         status: row.status,
         lastValidatedAt: row.lastValidatedAt ? row.lastValidatedAt.toISOString() : null,
         needsRevalidation: Boolean(row.needsRevalidation),
@@ -174,9 +196,33 @@ export async function PATCH(
         return NextResponse.json({ success: false, message: "Repo URL이 올바른 URL 형식이 아닙니다." }, { status: 400 });
       }
     }
+    if (body.gitRepoProvider !== undefined) {
+      const p = String(body.gitRepoProvider ?? "").trim().toLowerCase();
+      if (p && p !== "github" && p !== "other") {
+        return NextResponse.json(
+          { success: false, message: "gitRepoProvider는 github 또는 other 만 허용됩니다." },
+          { status: 400 }
+        );
+      }
+    }
+
+    const maxRetriesIn = toIntOrUndefined(body.maxAutoRetriesPerTask);
+    if (maxRetriesIn !== undefined && (maxRetriesIn < 0 || maxRetriesIn > 20)) {
+      return NextResponse.json(
+        { success: false, message: "maxAutoRetriesPerTask는 0~20 사이여야 합니다." },
+        { status: 400 }
+      );
+    }
+
+    const globsIn = toStringArrayOrUndefined(body.allowedPathGlobs);
 
     const data: Record<string, unknown> = {
       ...(body.gitRepoUrl !== undefined ? { gitRepoUrl: String(body.gitRepoUrl ?? "").trim() } : {}),
+      ...(body.gitRepoProvider !== undefined
+        ? {
+            gitRepoProvider: String(body.gitRepoProvider ?? "").trim().toLowerCase() || "github",
+          }
+        : {}),
       ...(body.gitRepoName !== undefined ? { gitRepoName: toStringOrNull(body.gitRepoName) } : {}),
       ...(body.baseBranch !== undefined ? { baseBranch: String(body.baseBranch ?? "").trim() } : {}),
       ...(body.branchStrategy !== undefined ? { branchStrategy: body.branchStrategy } : {}),
@@ -184,7 +230,7 @@ export async function PATCH(
 
       ...(body.cursorApiUrl !== undefined ? { cursorApiUrl: String(body.cursorApiUrl ?? "").trim() } : {}),
       ...(body.workspacePath !== undefined ? { workspacePath: String(body.workspacePath ?? "").trim() } : {}),
-      ...(body.projectRootPath !== undefined ? { projectRootPath: String(body.projectRootPath ?? "").trim() } : {}),
+      ...(globsIn !== undefined ? { allowedPathGlobs: globsIn } : {}),
 
       ...(toBoolOrUndefined(body.autoCommit) !== undefined ? { autoCommit: Boolean(body.autoCommit) } : {}),
       ...(toBoolOrUndefined(body.autoPush) !== undefined ? { autoPush: Boolean(body.autoPush) } : {}),
@@ -196,6 +242,22 @@ export async function PATCH(
         ? { requireTestsBeforePush: Boolean(body.requireTestsBeforePush) }
         : {}),
       ...(toBoolOrUndefined(body.dryRunAllowed) !== undefined ? { dryRunAllowed: Boolean(body.dryRunAllowed) } : {}),
+      ...(toBoolOrUndefined(body.autoAdvanceToNextTask) !== undefined
+        ? { autoAdvanceToNextTask: Boolean(body.autoAdvanceToNextTask) }
+        : {}),
+      ...(maxRetriesIn !== undefined ? { maxAutoRetriesPerTask: maxRetriesIn } : {}),
+      ...(toBoolOrUndefined(body.stopOnTestFailure) !== undefined
+        ? { stopOnTestFailure: Boolean(body.stopOnTestFailure) }
+        : {}),
+      ...(toBoolOrUndefined(body.stopOnRepeatedFailure) !== undefined
+        ? { stopOnRepeatedFailure: Boolean(body.stopOnRepeatedFailure) }
+        : {}),
+      ...(toBoolOrUndefined(body.stopOnOutOfScopeChange) !== undefined
+        ? { stopOnOutOfScopeChange: Boolean(body.stopOnOutOfScopeChange) }
+        : {}),
+      ...(toBoolOrUndefined(body.requireApprovalForSensitiveTasks) !== undefined
+        ? { requireApprovalForSensitiveTasks: Boolean(body.requireApprovalForSensitiveTasks) }
+        : {}),
     };
 
     if (tokenIn !== undefined) {
@@ -207,19 +269,6 @@ export async function PATCH(
 
     const nextWorkspace =
       body.workspacePath !== undefined ? String(body.workspacePath ?? "").trim() : (existing?.workspacePath ?? "");
-    const nextProjectRoot =
-      body.projectRootPath !== undefined
-        ? String(body.projectRootPath ?? "").trim()
-        : (existing?.projectRootPath ?? "");
-    try {
-      assertProjectRootPathOrThrow(nextProjectRoot, nextWorkspace, pid);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === PROJECT_ROOT_PATH_ERROR) {
-        return NextResponse.json({ success: false, message: PROJECT_ROOT_PATH_ERROR }, { status: 400 });
-      }
-      throw e;
-    }
 
     const nextGitRepoUrl =
       body.gitRepoUrl !== undefined ? String(body.gitRepoUrl ?? "").trim() : (existing?.gitRepoUrl ?? "");
@@ -234,7 +283,6 @@ export async function PATCH(
         (nextGitRepoUrl !== (existing.gitRepoUrl ?? "") ||
           nextBaseBranch !== (existing.baseBranch ?? "") ||
           nextWorkspace !== (existing.workspacePath ?? "") ||
-          nextProjectRoot !== (existing.projectRootPath ?? "") ||
           nextCursorUrl !== (existing.cursorApiUrl ?? "") ||
           tokenNorm(nextToken) !== tokenNorm(existing.cursorApiToken ?? null))
     );
@@ -247,6 +295,7 @@ export async function PATCH(
     const defaults = {
       projectId: pid,
       gitRepoUrl: "",
+      gitRepoProvider: "github",
       gitRepoName: null,
       baseBranch: "main",
       branchStrategy: "manual",
@@ -256,12 +305,20 @@ export async function PATCH(
       cursorApiTokenMasked: null,
       workspacePath: "",
       projectRootPath: "",
+      repoValidationCommands: [],
+      allowedPathGlobs: [],
       autoCommit: true,
       autoPush: false,
       autoPr: false,
       requireApprovalBeforeApply: true,
       requireTestsBeforePush: true,
       dryRunAllowed: true,
+      autoAdvanceToNextTask: true,
+      maxAutoRetriesPerTask: 2,
+      stopOnTestFailure: true,
+      stopOnRepeatedFailure: true,
+      stopOnOutOfScopeChange: true,
+      requireApprovalForSensitiveTasks: false,
       status: "draft",
       lastValidatedAt: null,
       needsRevalidation: false,
@@ -284,6 +341,7 @@ export async function PATCH(
         id: row.id,
         projectId: row.projectId,
         gitRepoUrl: row.gitRepoUrl,
+        gitRepoProvider: row.gitRepoProvider ?? "github",
         gitRepoName: row.gitRepoName,
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
@@ -292,13 +350,19 @@ export async function PATCH(
         cursorApiTokenMasked: row.cursorApiTokenMasked,
         hasCursorToken: Boolean(row.cursorApiToken && row.cursorApiToken.trim()),
         workspacePath: row.workspacePath,
-        projectRootPath: row.projectRootPath,
+        allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
         autoPush: row.autoPush,
         autoPr: row.autoPr,
         requireApprovalBeforeApply: row.requireApprovalBeforeApply,
         requireTestsBeforePush: row.requireTestsBeforePush,
         dryRunAllowed: row.dryRunAllowed,
+        autoAdvanceToNextTask: row.autoAdvanceToNextTask !== false,
+        maxAutoRetriesPerTask: typeof row.maxAutoRetriesPerTask === "number" ? row.maxAutoRetriesPerTask : 2,
+        stopOnTestFailure: row.stopOnTestFailure !== false,
+        stopOnRepeatedFailure: row.stopOnRepeatedFailure !== false,
+        stopOnOutOfScopeChange: row.stopOnOutOfScopeChange !== false,
+        requireApprovalForSensitiveTasks: row.requireApprovalForSensitiveTasks === true,
         status: row.status,
         lastValidatedAt: row.lastValidatedAt ? row.lastValidatedAt.toISOString() : null,
         needsRevalidation: Boolean(row.needsRevalidation),

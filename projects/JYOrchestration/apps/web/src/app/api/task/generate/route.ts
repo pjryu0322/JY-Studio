@@ -51,8 +51,21 @@ export async function GET(request: NextRequest) {
         id: true,
         projectId: true,
         projectSpecUploadId: true,
+        sourceSpecVersionId: true,
         name: true,
         description: true,
+        dependsOnTaskIds: true,
+        acceptanceCriteria: true,
+        executionWorkflowStatus: true,
+        loopRetryCount: true,
+        lastLoopRunAt: true,
+        lastEvalResult: true,
+        lastEvalSummary: true,
+        lastOrchestrationBranch: true,
+        lastOrchestrationCommitStatus: true,
+        lastOrchestrationPushStatus: true,
+        lastOrchestrationCommitSha: true,
+        lastOrchestrationChangedFileCount: true,
         status: true,
         order: true,
         parentTaskId: true,
@@ -75,8 +88,30 @@ export async function GET(request: NextRequest) {
       success: true,
       data: tasks.map((task) => {
         const { histories, ...rest } = task;
+        const deps = Array.isArray(task.dependsOnTaskIds)
+          ? (task.dependsOnTaskIds as string[]).map((x) => String(x ?? "").trim()).filter(Boolean)
+          : null;
+        const ac = Array.isArray(task.acceptanceCriteria)
+          ? (task.acceptanceCriteria as unknown[]).map((x) => String(x ?? "").trim()).filter(Boolean)
+          : null;
         return {
           ...rest,
+          sourceSpecVersionId: task.sourceSpecVersionId ?? null,
+          dependsOnTaskIds: deps && deps.length ? deps : null,
+          acceptanceCriteria: ac && ac.length ? ac : null,
+          executionWorkflowStatus: task.executionWorkflowStatus ?? null,
+          loopRetryCount: task.loopRetryCount ?? 0,
+          lastLoopRunAt: task.lastLoopRunAt ? task.lastLoopRunAt.toISOString() : null,
+          lastEvalResult: task.lastEvalResult ?? null,
+          lastEvalSummary: task.lastEvalSummary ?? null,
+          lastOrchestrationBranch: task.lastOrchestrationBranch ?? null,
+          lastOrchestrationCommitStatus: task.lastOrchestrationCommitStatus ?? null,
+          lastOrchestrationPushStatus: task.lastOrchestrationPushStatus ?? null,
+          lastOrchestrationCommitSha: task.lastOrchestrationCommitSha ?? null,
+          lastOrchestrationChangedFileCount:
+            typeof task.lastOrchestrationChangedFileCount === "number"
+              ? task.lastOrchestrationChangedFileCount
+              : null,
           createdAt: task.createdAt.toISOString(),
           updatedAt: task.updatedAt.toISOString(),
           histories: histories.map((h) => ({

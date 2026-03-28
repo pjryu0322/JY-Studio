@@ -112,7 +112,7 @@ export async function patchSpecWorkspace(
 export async function postSpecWorkspaceAction(
   projectId: string,
   body:
-    | { action: "aiRequest"; model?: string }
+    | { action: "aiRequest"; model?: string; preset?: string; templatePrompt?: string }
     | { action: "confirm"; responseId: string }
     | {
         action: "confirmMerged";
@@ -186,6 +186,10 @@ export async function postProjectTaskDraftsGenerate(
     supersededCount: number;
     model: string;
     usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null } | null;
+    graphAutoRepaired?: boolean;
+    autoConfirmedTaskCount?: number;
+    promotedDraftRows?: number;
+    confirmedTaskIds?: string[];
   }>;
   return { res, json };
 }
@@ -278,6 +282,7 @@ export type ExecutionSetupDto = {
   id: string;
   projectId: string;
   gitRepoUrl: string;
+  gitRepoProvider: string;
   gitRepoName: string | null;
   baseBranch: string;
   branchStrategy: "feature-per-workflow" | "feature-per-task" | "manual";
@@ -286,13 +291,19 @@ export type ExecutionSetupDto = {
   cursorApiTokenMasked: string | null;
   hasCursorToken: boolean;
   workspacePath: string;
-  projectRootPath: string;
+  allowedPathGlobs?: string[];
   autoCommit: boolean;
   autoPush: boolean;
   autoPr: boolean;
   requireApprovalBeforeApply: boolean;
   requireTestsBeforePush: boolean;
   dryRunAllowed: boolean;
+  autoAdvanceToNextTask: boolean;
+  maxAutoRetriesPerTask: number;
+  stopOnTestFailure: boolean;
+  stopOnRepeatedFailure: boolean;
+  stopOnOutOfScopeChange: boolean;
+  requireApprovalForSensitiveTasks: boolean;
   status: "draft" | "validated" | "invalid";
   lastValidatedAt: string | null;
   /** 구 서버 호환: 없으면 false로 간주 */
@@ -312,6 +323,7 @@ export async function patchExecutionSetup(
   projectId: string,
   body: Partial<{
     gitRepoUrl: string;
+    gitRepoProvider?: string;
     gitRepoName: string | null;
     baseBranch: string;
     branchStrategy: "feature-per-workflow" | "feature-per-task" | "manual";
@@ -319,13 +331,19 @@ export async function patchExecutionSetup(
     cursorApiUrl: string;
     cursorApiToken: string | null;
     workspacePath: string;
-    projectRootPath: string;
+    allowedPathGlobs?: string[];
     autoCommit: boolean;
     autoPush: boolean;
     autoPr: boolean;
     requireApprovalBeforeApply: boolean;
     requireTestsBeforePush: boolean;
     dryRunAllowed: boolean;
+    autoAdvanceToNextTask: boolean;
+    maxAutoRetriesPerTask: number;
+    stopOnTestFailure: boolean;
+    stopOnRepeatedFailure?: boolean;
+    stopOnOutOfScopeChange?: boolean;
+    requireApprovalForSensitiveTasks?: boolean;
   }>
 ) {
   const encoded = encodeURIComponent(projectId);
@@ -356,6 +374,55 @@ export async function postExecutionSetupValidate(projectId: string) {
     probeGitOk?: boolean;
     probeCursorOk?: boolean;
   }>;
+  return { res, json };
+}
+
+export async function postExecutionLoopRun(
+  projectId: string,
+  body?: { action?: "pause" | "resume"; taskId?: string }
+) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/execution-loop`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const json = (await res.json()) as ApiResponse<{ steps?: unknown[] }>;
+  return { res, json };
+}
+
+export type TaskExecutionRunDto = {
+  id: string;
+  projectId: string;
+  taskId: string;
+  status: string;
+  branchName: string | null;
+  cursorRunId: string | null;
+  cursorSummary: string | null;
+  changedFiles: string[];
+  gitSummary: string | null;
+  evaluationReason: string | null;
+  validationOutput: string | null;
+  commitStatus: string | null;
+  pushStatus: string | null;
+  commitSha: string | null;
+  prStatus: string | null;
+  retryCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchExecutionRuns(projectId: string, opts?: { taskId?: string; take?: number }) {
+  const encoded = encodeURIComponent(projectId);
+  const q = new URLSearchParams();
+  if (opts?.taskId) q.set("taskId", opts.taskId);
+  if (opts?.take != null) q.set("take", String(opts.take));
+  const qs = q.toString();
+  const res = await fetch(`/api/projects/${encoded}/execution-runs${qs ? `?${qs}` : ""}`, {
+    credentials: "include",
+  });
+  const json = (await res.json()) as ApiResponse<TaskExecutionRunDto[]>;
   return { res, json };
 }
 

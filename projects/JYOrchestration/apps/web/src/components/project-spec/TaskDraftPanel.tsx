@@ -173,6 +173,8 @@ function StageBoardTaskCard(params: {
           : "#f1f5f9";
   const icon = ws === "CONFIRMED" ? "✓" : ws === "READY" ? "●" : ws === "INVALID" ? "!" : "○";
   const ek = String(d.executionKind ?? "").toLowerCase();
+  const edgeW = highlighted ? "2px" : "1px";
+  const edgeC = highlighted ? "#0f766e" : "#e2e8f0";
   return (
     <button
       type="button"
@@ -181,13 +183,15 @@ function StageBoardTaskCard(params: {
         textAlign: "left",
         width: "100%",
         borderRadius: 10,
-        border: highlighted ? "2px solid #0f766e" : "1px solid #e2e8f0",
+        borderTop: `${edgeW} solid ${edgeC}`,
+        borderRight: `${edgeW} solid ${edgeC}`,
+        borderBottom: `${edgeW} solid ${edgeC}`,
+        borderLeft: `4px solid ${typeColor}`,
         background: highlighted ? "#f0fdfa" : "#fff",
         boxShadow: highlighted ? "0 2px 12px rgba(13,148,136,0.10)" : "none",
         padding: 10,
         cursor: "pointer",
         opacity,
-        borderLeft: `4px solid ${typeColor}`,
       }}
     >
       <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 8 }}>
@@ -513,17 +517,28 @@ export function TaskDraftPanel({
     return m;
   }, [drafts]);
 
+  /** SUPERSEDED 등은 그래프 검증에서 제외 — 끊긴 참조로 확정 플로우가 막히지 않게 함 */
+  const validationScopeDrafts = useMemo(
+    () => drafts.filter((d) => d.status === "DRAFT" || d.status === "CONFIRMED"),
+    [drafts]
+  );
+
   const validation = useMemo(() => {
-    const allIds = drafts.map((d) => d.id);
+    const byVal = new Map(validationScopeDrafts.map((d) => [d.id, d] as const));
+    const depsVal = new Map<string, string[]>();
+    for (const d of validationScopeDrafts) {
+      depsVal.set(d.id, uniqueStrings(d.dependsOnIds ?? []).filter((x) => x !== d.id));
+    }
+    const allIds = validationScopeDrafts.map((d) => d.id);
     const missingDepEdges: Array<{ targetId: string; missingId: string }> = [];
-    for (const d of drafts) {
-      for (const dep of depsById.get(d.id) ?? []) {
-        if (!byId.has(dep)) {
+    for (const d of validationScopeDrafts) {
+      for (const dep of depsVal.get(d.id) ?? []) {
+        if (!byVal.has(dep)) {
           missingDepEdges.push({ targetId: d.id, missingId: dep });
         }
       }
     }
-    const cycle = detectCycle(allIds, depsById);
+    const cycle = detectCycle(allIds, depsVal);
 
     const incomingCount = new Map<string, number>();
     const outgoingCount = new Map<string, number>();
@@ -531,8 +546,8 @@ export function TaskDraftPanel({
       incomingCount.set(id, 0);
       outgoingCount.set(id, 0);
     }
-    for (const d of drafts) {
-      const deps = depsById.get(d.id) ?? [];
+    for (const d of validationScopeDrafts) {
+      const deps = depsVal.get(d.id) ?? [];
       outgoingCount.set(d.id, deps.length);
       for (const dep of deps) {
         incomingCount.set(dep, (incomingCount.get(dep) ?? 0) + 1);
@@ -552,7 +567,7 @@ export function TaskDraftPanel({
       terminalIds,
       isolatedIds,
     };
-  }, [byId, depsById, drafts]);
+  }, [validationScopeDrafts]);
 
   const shouldAutoWire = useMemo(() => {
     if (autoWireRanRef.current) return false;
@@ -871,8 +886,7 @@ export function TaskDraftPanel({
         setMessage(json.message || "Task 초안 재생성에 실패했습니다.");
         return;
       }
-      const n = json.data?.createdCount ?? 0;
-      setMessage(`Task 초안 ${n}개를(을) 생성했습니다.`);
+      setMessage(json.message ?? null);
       await loadDrafts({ clearMessage: false });
       setCanvasFitRevision((x) => x + 1);
     } catch (e) {
@@ -1371,7 +1385,7 @@ export function TaskDraftPanel({
                 fontSize: 12,
               }}
             >
-              {busy === "regen" ? "생성 중…" : "AI로 Task 초안 다시 생성"}
+              {busy === "regen" ? "생성·확정 중…" : "AI로 Task 초안 다시 생성 및 전체 확정"}
             </button>
             <button
               type="button"
@@ -1573,28 +1587,30 @@ export function TaskDraftPanel({
         </div>
       ) : null}
 
-      {!validation.ok ? (
+      {!validation.ok && validationScopeDrafts.some((d) => d.status === "DRAFT") ? (
         <div
           data-testid="task-draft-workflow-invalid-banner"
           style={{
             margin: "0 0 8px 0",
             padding: 10,
             borderRadius: 10,
-            border: "1px solid #fecaca",
-            background: "#fef2f2",
-            color: "#991b1b",
+            border: "1px solid #fde68a",
+            background: "#fffbeb",
+            color: "#92400e",
             fontSize: 12,
             lineHeight: 1.45,
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>확정할 수 없음 · 선행관계를 확인하세요</div>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>
+            워크플로 점검 · 수동 확정 전에 선행 관계를 정리해 주세요
+          </div>
           {validation.cycle ? (
             <div style={{ marginBottom: 4 }}>
               순환: {validation.cycle.cyclePath.slice(0, 8).join(" → ")}
             </div>
           ) : null}
           {validation.missingDepEdges.length > 0 ? (
-            <div>누락된 선행 Task 참조 {validation.missingDepEdges.length}개</div>
+            <div>유효하지 않은 선행 참조 {validation.missingDepEdges.length}개</div>
           ) : null}
         </div>
       ) : null}
@@ -1791,7 +1807,7 @@ export function TaskDraftPanel({
           {drafts.length === 0 && !loading ? (
             <div style={{ padding: 14, fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
               아직 표시할 흐름이 없습니다. Spec을 확정하면 AI가 Task 초안과 연결을 자동으로 만들거나, 위에서 「AI로 Task 초안 다시
-              생성」을 누를 수 있습니다.
+              생성 및 전체 확정」을 누를 수 있습니다.
             </div>
           ) : (
             <ReactFlow

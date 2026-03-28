@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_SPEC_GENERATION_USER_TEMPLATE } from "@/lib/project-spec/buildWorkspacePromptText";
 import {
   apiFetch,
   apiLogin,
@@ -25,6 +26,9 @@ describe("spec workspace API", () => {
         specScopeOut: "- out-scope-a",
         specTargetUsers: "- owner",
         specSuccessCriteria: "- success-metric",
+        executionPlanMarkdown: "## Saved plan\n\n- step for spec workspace test",
+        specPromptTemplate: DEFAULT_SPEC_GENERATION_USER_TEMPLATE,
+        specPromptPreset: "default",
       }),
     });
     expect(patchRes.status).toBe(200);

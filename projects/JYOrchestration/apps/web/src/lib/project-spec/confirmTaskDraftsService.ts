@@ -1,10 +1,124 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { nodeTypeFromTitle, stripNodeTypePrefix } from "@/lib/project-spec/taskDraftHierarchy";
 
 export type ConfirmTaskDraftsResult = {
+  /** 생성된 실행 Task 개수 ([T] 노드만) */
   confirmedCount: number;
   taskIds: string[];
+  /** CONFIRMED로 바뀐 TaskDraft 행 수(계층 노드 포함) */
+  promotedDraftRows?: number;
 };
+
+type TaskDraftRow = Prisma.TaskDraftGetPayload<object>;
+
+/**
+ * 동일 트랜잭션 안에서 DRAFT → Task 반영 및 계층 초안 CONFIRMED 처리.
+ * `drafts`는 모두 DRAFT 상태여야 한다.
+ */
+export async function confirmTaskDraftsInTransaction(
+  tx: Prisma.TransactionClient,
+  params: { projectId: string; drafts: TaskDraftRow[] }
+): Promise<ConfirmTaskDraftsResult> {
+  const { projectId, drafts } = params;
+  if (drafts.length === 0) {
+    return { confirmedCount: 0, taskIds: [], promotedDraftRows: 0 };
+  }
+
+  const executableDrafts = drafts.filter((d) => nodeTypeFromTitle(d.title) === "task");
+  const hierarchyDrafts = drafts.filter((d) => nodeTypeFromTitle(d.title) !== "task");
+
+  const project = await tx.project.findUnique({
+    where: { id: projectId },
+    select: { ownerUserId: true },
+  });
+  if (!project) {
+    throw new Error("PROJECT_NOT_FOUND");
+  }
+
+  const maxAgg = await tx.task.aggregate({
+    where: { projectId },
+    _max: { order: true },
+  });
+  let nextOrder = (maxAgg._max.order ?? 0) + 1;
+
+  const taskIds: string[] = [];
+  const draftIdToTaskId = new Map<string, string>();
+
+  for (const d of executableDrafts) {
+    const descParts: string[] = [];
+    if (d.description?.trim()) descParts.push(d.description.trim());
+    const ti = (d as { taskInput?: string | null }).taskInput?.trim();
+    const to = (d as { taskOutput?: string | null }).taskOutput?.trim();
+    if (ti) descParts.push(`Input:\n${ti}`);
+    if (to) descParts.push(`Output:\n${to}`);
+    const ac = Array.isArray(d.acceptanceCriteria) ? (d.acceptanceCriteria as string[]) : [];
+    const acLines = ac.map((x) => String(x).trim()).filter(Boolean);
+    if (acLines.length) descParts.push(`Acceptance criteria:\n- ${acLines.join("\n- ")}`);
+    const sz = (d as { estimatedSize?: string | null }).estimatedSize?.trim();
+    const ek = (d as { executionKind?: string | null }).executionKind?.trim();
+    if (sz) descParts.push(`Estimated size: ${sz}`);
+    if (ek) descParts.push(`Execution kind: ${ek}`);
+    const merged =
+      descParts.length > 0 ? descParts.join("\n\n").slice(0, 16_000) : (d.description ?? null);
+    const mergedDescription = merged;
+
+    const created = await tx.task.create({
+      data: {
+        projectId,
+        ownerUserId: project.ownerUserId,
+        projectSpecUploadId: null,
+        sourceSpecVersionId: d.specVersionId,
+        name: stripNodeTypePrefix(d.title),
+        description: mergedDescription,
+        acceptanceCriteria: acLines.length ? (acLines as Prisma.InputJsonValue) : Prisma.JsonNull,
+        status: "TODO",
+        order: nextOrder,
+        taskKind: "PRIMARY",
+        changeReason: `TASK_DRAFT_CONFIRM:${d.id}`,
+      },
+      select: { id: true },
+    });
+    nextOrder += 1;
+    taskIds.push(created.id);
+    draftIdToTaskId.set(d.id, created.id);
+  }
+
+  for (const d of executableDrafts) {
+    const rawDeps = Array.isArray(d.dependsOnIds) ? (d.dependsOnIds as unknown[]) : [];
+    const resolved = [
+      ...new Set(
+        rawDeps
+          .map((x) => draftIdToTaskId.get(String(x ?? "").trim()))
+          .filter((x): x is string => Boolean(x))
+      ),
+    ];
+    if (resolved.length > 0) {
+      await tx.task.update({
+        where: { id: draftIdToTaskId.get(d.id)! },
+        data: { dependsOnTaskIds: resolved as Prisma.InputJsonValue },
+      });
+    }
+
+    await tx.taskDraft.update({
+      where: { id: d.id },
+      data: { status: "CONFIRMED" },
+    });
+  }
+
+  for (const d of hierarchyDrafts) {
+    await tx.taskDraft.update({
+      where: { id: d.id },
+      data: { status: "CONFIRMED" },
+    });
+  }
+
+  return {
+    confirmedCount: executableDrafts.length,
+    taskIds,
+    promotedDraftRows: drafts.length,
+  };
+}
 
 /**
  * DRAFT 상태 Task 초안을 실제 Task로 반영한다. 기존 Task는 삭제하지 않는다.
@@ -28,82 +142,29 @@ export async function confirmTaskDraftsToTasks(params: {
     throw new Error("DRAFT_IDS_OR_CONFIRM_ALL_REQUIRED");
   }
 
-  const drafts = await prisma.taskDraft.findMany({
-    where,
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  });
+  return prisma.$transaction(async (tx) => {
+    const drafts = await tx.taskDraft.findMany({
+      where,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
 
-  if (drafts.length === 0) {
-    return { confirmedCount: 0, taskIds: [] };
-  }
-
-  // 계층 노드 중 실제 실행 단위(task)만 Task로 확정한다.
-  const executableDrafts = drafts.filter((d) => nodeTypeFromTitle(d.title) === "task");
-  if (executableDrafts.length === 0) {
-    return { confirmedCount: 0, taskIds: [] };
-  }
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { ownerUserId: true },
-  });
-  if (!project) {
-    throw new Error("PROJECT_NOT_FOUND");
-  }
-
-  const maxAgg = await prisma.task.aggregate({
-    where: { projectId },
-    _max: { order: true },
-  });
-  let nextOrder = (maxAgg._max.order ?? 0) + 1;
-
-  const taskIds: string[] = [];
-
-  await prisma.$transaction(async (tx) => {
-    for (const d of executableDrafts) {
-      const descParts: string[] = [];
-      if (d.description?.trim()) descParts.push(d.description.trim());
-      const ti = (d as { taskInput?: string | null }).taskInput?.trim();
-      const to = (d as { taskOutput?: string | null }).taskOutput?.trim();
-      if (ti) descParts.push(`Input:\n${ti}`);
-      if (to) descParts.push(`Output:\n${to}`);
-      const ac = Array.isArray(d.acceptanceCriteria) ? (d.acceptanceCriteria as string[]) : [];
-      const acLines = ac.map((x) => String(x).trim()).filter(Boolean);
-      if (acLines.length) descParts.push(`Acceptance criteria:\n- ${acLines.join("\n- ")}`);
-      const sz = (d as { estimatedSize?: string | null }).estimatedSize?.trim();
-      const ek = (d as { executionKind?: string | null }).executionKind?.trim();
-      if (sz) descParts.push(`Estimated size: ${sz}`);
-      if (ek) descParts.push(`Execution kind: ${ek}`);
-      const merged =
-        descParts.length > 0 ? descParts.join("\n\n").slice(0, 16_000) : (d.description ?? null);
-      const mergedDescription = merged;
-
-      const created = await tx.task.create({
-        data: {
-          projectId,
-          ownerUserId: project.ownerUserId,
-          projectSpecUploadId: null,
-          sourceSpecVersionId: d.specVersionId,
-          name: stripNodeTypePrefix(d.title),
-          description: mergedDescription,
-          status: "TODO",
-          order: nextOrder,
-          taskKind: "PRIMARY",
-          changeReason: `TASK_DRAFT_CONFIRM:${d.id}`,
-        },
-        select: { id: true },
-      });
-      nextOrder += 1;
-      taskIds.push(created.id);
-
-      await tx.taskDraft.update({
-        where: { id: d.id },
-        data: { status: "CONFIRMED" },
-      });
+    if (drafts.length === 0) {
+      return { confirmedCount: 0, taskIds: [], promotedDraftRows: 0 };
     }
-  });
 
-  return { confirmedCount: executableDrafts.length, taskIds };
+    const executableDrafts = drafts.filter((d) => nodeTypeFromTitle(d.title) === "task");
+    if (executableDrafts.length === 0) {
+      for (const d of drafts) {
+        await tx.taskDraft.update({
+          where: { id: d.id },
+          data: { status: "CONFIRMED" },
+        });
+      }
+      return { confirmedCount: 0, taskIds: [], promotedDraftRows: drafts.length };
+    }
+
+    return confirmTaskDraftsInTransaction(tx, { projectId, drafts });
+  });
 }
 
 export async function deleteTaskDraft(params: {
