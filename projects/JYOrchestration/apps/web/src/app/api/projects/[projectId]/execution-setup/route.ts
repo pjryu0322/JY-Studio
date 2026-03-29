@@ -8,6 +8,14 @@ import {
 } from "@/lib/prisma/executionSetupSchemaMismatch";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
+
+function maskCursorTokenForUi(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (t.length <= 8) return "••••••••";
+  return `${t.slice(0, 6)}…${t.slice(-4)}`;
+}
 
 function isLikelyUrl(s: string): boolean {
   try {
@@ -41,6 +49,9 @@ type PatchBody = Partial<{
   stopOnRepeatedFailure: boolean;
   stopOnOutOfScopeChange: boolean;
   requireApprovalForSensitiveTasks: boolean;
+
+  cursorApiUrl: string;
+  cursorApiToken: string | null;
 }>;
 
 function toStringOrNull(v: unknown): string | null {
@@ -122,9 +133,9 @@ export async function GET(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
-        cursorApiUrl: "",
-        cursorApiTokenMasked: null,
-        hasCursorToken: false,
+        cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
+        cursorApiTokenMasked: row.cursorApiTokenMasked ?? null,
+        hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
@@ -200,14 +211,24 @@ export async function PATCH(
     if (body.gitRepoUrl !== undefined) {
       const url = String(body.gitRepoUrl ?? "").trim();
       if (url && !isLikelyUrl(url)) {
-        return NextResponse.json({ success: false, message: "Repo URL이 올바른 URL 형식이 아닙니다." }, { status: 400 });
+        return NextResponse.json({ success: false, message: "저장소 URL이 올바른 http(s) 주소 형식이 아닙니다." }, { status: 400 });
       }
     }
     if (body.gitRepoProvider !== undefined) {
       const p = String(body.gitRepoProvider ?? "").trim().toLowerCase();
       if (p && p !== "github" && p !== "other") {
         return NextResponse.json(
-          { success: false, message: "gitRepoProvider는 github 또는 other 만 허용됩니다." },
+          { success: false, message: "호스팅 제공자는 github 또는 other 만 허용됩니다." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (body.cursorApiUrl !== undefined) {
+      const u = String(body.cursorApiUrl ?? "").trim();
+      if (u && !isLikelyUrl(u)) {
+        return NextResponse.json(
+          { success: false, message: "Cursor API URL이 올바른 http(s) 주소 형식이 아닙니다." },
           { status: 400 }
         );
       }
@@ -263,6 +284,27 @@ export async function PATCH(
       ...(toBoolOrUndefined(body.requireApprovalForSensitiveTasks) !== undefined
         ? { requireApprovalForSensitiveTasks: Boolean(body.requireApprovalForSensitiveTasks) }
         : {}),
+
+      ...(body.cursorApiUrl !== undefined
+        ? {
+            cursorApiUrl: normalizeCursorApiBaseUrl(
+              String(body.cursorApiUrl ?? "").trim() || DEFAULT_CURSOR_API_BASE
+            ),
+          }
+        : {}),
+      ...(body.cursorApiToken !== undefined
+        ? (() => {
+            const raw = body.cursorApiToken;
+            if (raw === null || raw === "") {
+              return { cursorApiToken: null, cursorApiTokenMasked: null };
+            }
+            const tok = String(raw).trim();
+            return {
+              cursorApiToken: tok,
+              cursorApiTokenMasked: maskCursorTokenForUi(tok),
+            };
+          })()
+        : {}),
     };
 
     const existing = await withExecutionSetupSchemaHealRetry(() =>
@@ -290,6 +332,10 @@ export async function PATCH(
       globsIn !== undefined &&
       normalizeGlobsJson(globsIn) !== normalizeGlobsJson(existing?.allowedPathGlobs);
 
+    const cursorDirty = Boolean(
+      existing && (body.cursorApiUrl !== undefined || body.cursorApiToken !== undefined)
+    );
+
     const repoDirty = Boolean(
       existing &&
         (nextGitRepoUrl !== String(existing.gitRepoUrl ?? "").trim() ||
@@ -306,14 +352,14 @@ export async function PATCH(
       data.repoValidatedAt = null;
       data.repoValidationError = null;
     }
-    if (executorDirty) {
+    if (executorDirty || cursorDirty) {
       data.executorConnectionOk = null;
       data.executorValidatedAt = null;
       data.executorValidationError = null;
     }
-    if (repoDirty || executorDirty) {
+    if (repoDirty || executorDirty || cursorDirty) {
       const mergeRepoOk = repoDirty ? null : (existing?.repoConnectionOk ?? null);
-      const mergeExecOk = executorDirty ? null : (existing?.executorConnectionOk ?? null);
+      const mergeExecOk = executorDirty || cursorDirty ? null : (existing?.executorConnectionOk ?? null);
       data.status = executionSetupOverallStatus(mergeRepoOk, mergeExecOk);
       data.needsRevalidation = true;
       data.lastValidationError = null;
@@ -327,7 +373,7 @@ export async function PATCH(
       baseBranch: "main",
       branchStrategy: "manual",
       branchPrefix: null,
-      cursorApiUrl: "",
+      cursorApiUrl: DEFAULT_CURSOR_API_BASE,
       cursorApiToken: null,
       cursorApiTokenMasked: null,
       workspacePath: "",
@@ -381,9 +427,9 @@ export async function PATCH(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
-        cursorApiUrl: "",
-        cursorApiTokenMasked: null,
-        hasCursorToken: false,
+        cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
+        cursorApiTokenMasked: row.cursorApiTokenMasked ?? null,
+        hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,

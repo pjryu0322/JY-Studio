@@ -13,6 +13,10 @@ export type ProjectMemberUiRow = {
   role: ProjectRole;
   memberType: "HUMAN" | "AI";
   aiProvider: string | null;
+  aiOrchestrationRole?: string | null;
+  orchestrationStage?: string | null;
+  aiModelOverride?: string | null;
+  orchestrationEnabled?: boolean;
   isOwner: boolean;
 };
 
@@ -74,6 +78,274 @@ type ProjectMembersSectionProps = {
 };
 
 const ROLE_OPTIONS: ProjectRole[] = ["OWNER", "EDITOR", "REVIEWER", "VIEWER"];
+
+const AI_ORCHESTRATION_ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "(오케스트레이션 역할 없음)" },
+  { value: "planner", label: "planner" },
+  { value: "reviewer", label: "reviewer (실행 리뷰)" },
+  { value: "security-reviewer", label: "security-reviewer (보안)" },
+  { value: "quality-reviewer", label: "quality-reviewer (품질)" },
+  { value: "spec-reviewer", label: "spec-reviewer" },
+  { value: "task-reviewer", label: "task-reviewer" },
+];
+
+const ORCHESTRATION_STAGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "(스테이지 없음)" },
+  { value: "spec", label: "spec" },
+  { value: "task", label: "task" },
+  { value: "execution-review", label: "execution-review (Cursor 실행 후)" },
+];
+
+const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> = {
+  reviewer: {
+    title: "실행 리뷰어",
+    description: "수용 기준 충족 여부, 관련 파일 변경, 불필요한 변경 여부를 검토합니다.",
+  },
+  "security-reviewer": {
+    title: "보안 리뷰어",
+    description: "인증·보안 위험, 시크릿 패턴, 위험한 코드 경로를 검토합니다.",
+  },
+  "quality-reviewer": {
+    title: "품질 리뷰어",
+    description: "리팩터링·테스트·문서·유지보수 관점의 개선점을 검토합니다.",
+  },
+  "spec-reviewer": {
+    title: "Spec 리뷰어",
+    description: "스펙·요구 정합성을 검토합니다.",
+  },
+  "task-reviewer": {
+    title: "Task 리뷰어",
+    description: "태스크 목표 대비 산출을 검토합니다.",
+  },
+  planner: {
+    title: "Planner",
+    description: "기획·분해 단계(스펙/태스크)에 참여하는 역할입니다.",
+  },
+};
+
+const EXECUTION_REVIEW_ROLES_UI = ["reviewer", "security-reviewer", "quality-reviewer"] as const;
+const PLANNING_ROLES_UI = ["planner", "spec-reviewer", "task-reviewer"] as const;
+
+function stageLabel(v: string | null | undefined): string {
+  if (!v?.trim()) return "—";
+  const o = ORCHESTRATION_STAGE_OPTIONS.find((x) => x.value === v);
+  return o?.label ?? v;
+}
+
+function AiOrchestrationControls({
+  member,
+  disabled,
+  onError,
+  onMessage,
+  onSaved,
+  layout = "inline",
+}: {
+  member: ProjectMemberUiRow;
+  disabled: boolean;
+  onError: (msg: string | null) => void;
+  onMessage: (msg: string) => void;
+  onSaved: () => Promise<void>;
+  layout?: "inline" | "card";
+}) {
+  const [role, setRole] = useState(member.aiOrchestrationRole ?? "");
+  const [stage, setStage] = useState(member.orchestrationStage ?? "");
+  const [model, setModel] = useState(member.aiModelOverride ?? "");
+  const [enabled, setEnabled] = useState(member.orchestrationEnabled !== false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setRole(member.aiOrchestrationRole ?? "");
+    setStage(member.orchestrationStage ?? "");
+    setModel(member.aiModelOverride ?? "");
+    setEnabled(member.orchestrationEnabled !== false);
+  }, [
+    member.memberId,
+    member.aiOrchestrationRole,
+    member.orchestrationStage,
+    member.aiModelOverride,
+    member.orchestrationEnabled,
+  ]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/project/members/${encodeURIComponent(member.memberId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aiOrchestrationRole: role.trim() ? role : null,
+          orchestrationStage: stage.trim() ? stage : null,
+          aiModelOverride: model.trim() ? model.trim() : null,
+          orchestrationEnabled: enabled,
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "저장에 실패했습니다.");
+      }
+      onMessage("오케스트레이션 설정을 저장했습니다.");
+      await onSaved();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "저장 중 오류입니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fields = (
+    <>
+      <label style={{ display: "grid", gap: 4, fontSize: 11, color: "#64748b" }}>
+        <span style={{ fontWeight: 700, color: "#334155" }}>오케스트레이션 역할</span>
+        <select
+          value={role}
+          disabled={disabled || saving}
+          onChange={(e) => setRole(e.target.value)}
+          style={{ fontSize: 12, padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          aria-label="ai-orchestration-role"
+        >
+          {AI_ORCHESTRATION_ROLE_OPTIONS.map((o) => (
+            <option key={o.value || "none"} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={{ display: "grid", gap: 4, fontSize: 11, color: "#64748b" }}>
+        <span style={{ fontWeight: 700, color: "#334155" }}>단계(stage)</span>
+        <select
+          value={stage}
+          disabled={disabled || saving}
+          onChange={(e) => setStage(e.target.value)}
+          style={{ fontSize: 12, padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          aria-label="orchestration-stage"
+        >
+          {ORCHESTRATION_STAGE_OPTIONS.map((o) => (
+            <option key={o.value || "none"} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={{ display: "grid", gap: 4, fontSize: 11, color: "#64748b" }}>
+        <span style={{ fontWeight: 700, color: "#334155" }}>모델</span>
+        <input
+          placeholder="비우면 환경 기본"
+          value={model}
+          disabled={disabled || saving}
+          onChange={(e) => setModel(e.target.value)}
+          style={{ fontSize: 12, padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          aria-label="ai-model-override"
+        />
+      </label>
+      <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={disabled || saving}
+          onChange={(e) => setEnabled(e.target.checked)}
+        />
+        활성
+      </label>
+      <button
+        type="button"
+        disabled={disabled || saving}
+        onClick={save}
+        style={{
+          padding: "6px 12px",
+          borderRadius: 8,
+          border: "1px solid #2563eb",
+          background: "#2563eb",
+          color: "#fff",
+          fontWeight: 700,
+          fontSize: 12,
+          justifySelf: "start",
+        }}
+      >
+        {saving ? "저장…" : "저장"}
+      </button>
+    </>
+  );
+
+  if (layout === "card") {
+    return (
+      <div
+        style={{
+          marginTop: 8,
+          paddingTop: 8,
+          borderTop: "1px solid #e2e8f0",
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        {fields}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        flexBasis: "100%",
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+        alignItems: "center",
+        padding: "8px 0 4px 0",
+        borderTop: "1px dashed #e2e8f0",
+        marginTop: 4,
+      }}
+    >
+      <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>오케스트레이션 (AI)</span>
+      <select
+        value={role}
+        disabled={disabled || saving}
+        onChange={(e) => setRole(e.target.value)}
+        style={{ fontSize: 12 }}
+        aria-label="ai-orchestration-role"
+      >
+        {AI_ORCHESTRATION_ROLE_OPTIONS.map((o) => (
+          <option key={o.value || "none"} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <select
+        value={stage}
+        disabled={disabled || saving}
+        onChange={(e) => setStage(e.target.value)}
+        style={{ fontSize: 12 }}
+        aria-label="orchestration-stage"
+      >
+        {ORCHESTRATION_STAGE_OPTIONS.map((o) => (
+          <option key={o.value || "none"} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <input
+        placeholder="모델 (비우면 기본)"
+        value={model}
+        disabled={disabled || saving}
+        onChange={(e) => setModel(e.target.value)}
+        style={{ fontSize: 12, minWidth: 140 }}
+        aria-label="ai-model-override"
+      />
+      <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={disabled || saving}
+          onChange={(e) => setEnabled(e.target.checked)}
+        />
+        활성
+      </label>
+      <button type="button" disabled={disabled || saving} onClick={save}>
+        {saving ? "저장…" : "오케 설정 저장"}
+      </button>
+    </div>
+  );
+}
 
 function statusBadgeStyle(status: string): CSSProperties {
   const base: CSSProperties = {
@@ -141,6 +413,10 @@ export function ProjectMembersSection({
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteAiProvider, setInviteAiProvider] = useState("");
   const [inviteAiAgentKey, setInviteAiAgentKey] = useState("");
+  const [inviteOrchRole, setInviteOrchRole] = useState("");
+  const [inviteOrchStage, setInviteOrchStage] = useState("execution-review");
+  const [inviteOrchModel, setInviteOrchModel] = useState("");
+  const [inviteOrchEnabled, setInviteOrchEnabled] = useState(true);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -232,6 +508,23 @@ export function ProjectMembersSection({
     if (memberSurface === "ai") return sortedMembers.filter((m) => m.memberType === "AI");
     return sortedMembers;
   }, [sortedMembers, memberSurface]);
+
+  const aiOrchestrationSplit = useMemo(() => {
+    const ai = sortedMembers.filter((m) => m.memberType === "AI");
+    const byRole = new Map<string, ProjectMemberUiRow[]>();
+    const others: ProjectMemberUiRow[] = [];
+    for (const m of ai) {
+      const r = m.aiOrchestrationRole?.trim();
+      if (!r) {
+        others.push(m);
+        continue;
+      }
+      const list = byRole.get(r) ?? [];
+      list.push(m);
+      byRole.set(r, list);
+    }
+    return { byRole, others };
+  }, [sortedMembers]);
 
   const actionOptionsForModal = useMemo(() => {
     const opts: { value: AiMemberActionTypeId; label: string }[] = [];
@@ -496,6 +789,11 @@ export function ProjectMembersSection({
               displayName: inviteDisplayName.trim(),
               aiProvider: inviteAiProvider.trim() || null,
               aiAgentKey: inviteAiAgentKey.trim() || null,
+              ...(inviteOrchRole.trim()
+                ? { aiOrchestrationRole: inviteOrchRole.trim(), orchestrationStage: inviteOrchStage.trim() || undefined }
+                : {}),
+              ...(inviteOrchModel.trim() ? { aiModelOverride: inviteOrchModel.trim() } : {}),
+              orchestrationEnabled: inviteOrchEnabled,
             };
       const res = await fetch("/api/project/members/invite", {
         method: "POST",
@@ -511,6 +809,10 @@ export function ProjectMembersSection({
       setInviteDisplayName("");
       setInviteAiProvider("");
       setInviteAiAgentKey("");
+      setInviteOrchRole("");
+      setInviteOrchStage("execution-review");
+      setInviteOrchModel("");
+      setInviteOrchEnabled(true);
       setMessage(json.message || "멤버가 추가되었습니다.");
       await onChanged();
     } catch (e) {
@@ -573,13 +875,256 @@ export function ProjectMembersSection({
   }, [taskPrompts, requestTaskId]);
 
   const title =
-    memberSurface === "human" ? "사람 멤버" : memberSurface === "ai" ? "AI 멤버" : "멤버 관리";
+    memberSurface === "human" ? "사람 멤버" : memberSurface === "ai" ? "AI 멤버 · 오케스트레이션" : "멤버 관리";
   const subtitle =
     memberSurface === "human"
       ? "프로젝트에 참여하는 사람 사용자를 초대·역할 변경합니다."
       : memberSurface === "ai"
-        ? "AI 멤버를 추가하고 액션을 요청·처리합니다."
+        ? "실행은 Cursor, 검토는 AI 멤버(역할·모델·단계)로 구성합니다."
         : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
+
+  function openPresetInviteForOrchRole(orchKey: string) {
+    setInviteOpen(true);
+    setInviteType("AI");
+    setInviteRole("REVIEWER");
+    setInviteOrchRole(orchKey);
+    const st =
+      orchKey === "reviewer" || orchKey === "security-reviewer" || orchKey === "quality-reviewer"
+        ? "execution-review"
+        : orchKey === "task-reviewer"
+          ? "task"
+          : "spec";
+    setInviteOrchStage(st);
+    const label = ORCH_ROLE_LABELS[orchKey]?.title ?? orchKey;
+    setInviteDisplayName((prev) => (prev.trim() ? prev : label));
+  }
+
+  function renderStandardMemberRow(m: ProjectMemberUiRow) {
+    return (
+      <li
+        key={m.memberId}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 8,
+          borderBottom: "1px solid #eee",
+          paddingBottom: 8,
+        }}
+      >
+        <span style={{ fontSize: 18 }}>{m.memberType === "AI" ? "🤖" : "👤"}</span>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: m.memberType === "AI" ? "#ede9fe" : "#eef2ff",
+            color: m.memberType === "AI" ? "#5b21b6" : "#1d4ed8",
+          }}
+        >
+          {m.memberType}
+        </span>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "2px 8px",
+            borderRadius: 999,
+            border: "1px solid #d0d5dd",
+            background: "#f8fafc",
+          }}
+        >
+          {m.role}
+        </span>
+        <strong>{m.displayName}</strong>
+        {m.aiProvider ? <span style={{ color: "#666", fontSize: 12 }}>({m.aiProvider})</span> : null}
+        {m.memberType === "AI" && canAnyAiRequest && actionOptionsForModal.length > 0 ? (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                openRequestModal(
+                  m.memberId,
+                  m.role === "REVIEWER"
+                    ? "REVIEW_REQUEST"
+                    : m.role === "EDITOR"
+                      ? "TASK_DRAFT_REQUEST"
+                      : "QA_CHECK_REQUEST"
+                )
+              }
+            >
+              AI 요청…
+            </button>
+            {m.role === "REVIEWER" && canRequestAiReviewAction ? (
+              <button type="button" onClick={() => openRequestModal(m.memberId, "REVIEW_REQUEST")}>
+                리뷰
+              </button>
+            ) : null}
+            {m.role === "EDITOR" && canRequestAiMemberAction ? (
+              <>
+                <button type="button" onClick={() => openRequestModal(m.memberId, "TASK_DRAFT_REQUEST")}>
+                  초안
+                </button>
+                <button type="button" onClick={() => openRequestModal(m.memberId, "SUMMARY_REQUEST")}>
+                  요약
+                </button>
+              </>
+            ) : null}
+            {(m.role === "VIEWER" || m.role === "EDITOR") && canRequestAiMemberAction ? (
+              <button type="button" onClick={() => openRequestModal(m.memberId, "QA_CHECK_REQUEST")}>
+                점검
+              </button>
+            ) : null}
+          </>
+        ) : null}
+        {canManageMembers ? (
+          <>
+            <select
+              disabled={busyMemberId === m.memberId || m.isOwner}
+              value={m.role}
+              onChange={(e) => handleRoleChange(m.memberId, e.target.value as ProjectRole)}
+            >
+              {ROLE_OPTIONS.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={busyMemberId === m.memberId || m.isOwner}
+              onClick={() => handleRemove(m.memberId)}
+            >
+              제거
+            </button>
+          </>
+        ) : null}
+        {m.memberType === "AI" && canManageMembers ? (
+          <AiOrchestrationControls
+            member={m}
+            disabled={busyMemberId === m.memberId}
+            onError={(msg) => setError(msg)}
+            onMessage={(msg) => setMessage(msg)}
+            onSaved={onChanged}
+          />
+        ) : null}
+      </li>
+    );
+  }
+
+  function renderOrchestrationRoleCard(orchKey: string) {
+    const meta = ORCH_ROLE_LABELS[orchKey];
+    if (!meta) return null;
+    const assigned = aiOrchestrationSplit.byRole.get(orchKey) ?? [];
+    return (
+      <div
+        key={orchKey}
+        style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: 10,
+          padding: 12,
+          background: "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{meta.title}</div>
+        <p style={{ margin: "4px 0 10px", fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>{meta.description}</p>
+        {assigned.length === 0 ? (
+          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>배정된 AI 멤버 없음</div>
+        ) : (
+          assigned.map((m, i) => (
+            <div
+              key={m.memberId}
+              style={{
+                marginTop: i === 0 ? 0 : 10,
+                paddingTop: i === 0 ? 0 : 10,
+                borderTop: i === 0 ? "none" : "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                <strong style={{ fontSize: 14 }}>{m.displayName}</strong>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    border: "1px solid #d0d5dd",
+                    background: "#fff",
+                  }}
+                >
+                  RBAC {m.role}
+                </span>
+                {canAnyAiRequest && actionOptionsForModal.length > 0 ? (
+                  <button type="button" onClick={() => openRequestModal(m.memberId, "SUMMARY_REQUEST")}>
+                    AI 요청…
+                  </button>
+                ) : null}
+                {canManageMembers ? (
+                  <>
+                    <select
+                      disabled={busyMemberId === m.memberId || m.isOwner}
+                      value={m.role}
+                      onChange={(e) => handleRoleChange(m.memberId, e.target.value as ProjectRole)}
+                      style={{ fontSize: 12 }}
+                    >
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={busyMemberId === m.memberId || m.isOwner}
+                      onClick={() => handleRemove(m.memberId)}
+                    >
+                      제거
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 12, color: "#475569", marginTop: 6, lineHeight: 1.5 }}>
+                <span style={{ color: "#64748b" }}>모델:</span>{" "}
+                {m.aiModelOverride?.trim() || "환경 기본(OPENAI_MODEL)"} ·{" "}
+                <span style={{ color: "#64748b" }}>단계:</span> {stageLabel(m.orchestrationStage)} ·{" "}
+                <span style={{ color: "#64748b" }}>활성:</span>{" "}
+                {m.orchestrationEnabled !== false ? "예" : "아니오"}
+              </div>
+              {canManageMembers ? (
+                <AiOrchestrationControls
+                  layout="card"
+                  member={m}
+                  disabled={busyMemberId === m.memberId}
+                  onError={(msg) => setError(msg)}
+                  onMessage={(msg) => setMessage(msg)}
+                  onSaved={onChanged}
+                />
+              ) : null}
+            </div>
+          ))
+        )}
+        {canManageMembers ? (
+          <button
+            type="button"
+            onClick={() => openPresetInviteForOrchRole(orchKey)}
+            style={{
+              marginTop: 10,
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #94a3b8",
+              background: "#fff",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            이 역할로 멤버 추가
+          </button>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <section
@@ -664,6 +1209,79 @@ export function ProjectMembersSection({
                   onChange={(e) => setInviteAiAgentKey(e.target.value)}
                   data-testid="invite-ai-agent-key"
                 />
+                <div style={{ flexBasis: "100%", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>실행 후 검토 AI 멤버 (선택)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInviteDisplayName("실행 리뷰어");
+                      setInviteOrchRole("reviewer");
+                      setInviteOrchStage("execution-review");
+                      setInviteRole("REVIEWER");
+                    }}
+                  >
+                    프리셋: 실행 리뷰어
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInviteDisplayName("보안 리뷰어");
+                      setInviteOrchRole("security-reviewer");
+                      setInviteOrchStage("execution-review");
+                      setInviteRole("REVIEWER");
+                    }}
+                  >
+                    프리셋: 보안 리뷰어
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInviteDisplayName("품질 리뷰어");
+                      setInviteOrchRole("quality-reviewer");
+                      setInviteOrchStage("execution-review");
+                      setInviteRole("REVIEWER");
+                    }}
+                  >
+                    프리셋: 품질 리뷰어
+                  </button>
+                  <select
+                    value={inviteOrchRole}
+                    onChange={(e) => setInviteOrchRole(e.target.value)}
+                    style={{ fontSize: 12 }}
+                    aria-label="invite-ai-orch-role"
+                  >
+                    {AI_ORCHESTRATION_ROLE_OPTIONS.map((o) => (
+                      <option key={o.value || "none"} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={inviteOrchStage}
+                    onChange={(e) => setInviteOrchStage(e.target.value)}
+                    style={{ fontSize: 12 }}
+                  >
+                    {ORCHESTRATION_STAGE_OPTIONS.filter((o) => o.value).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    placeholder="모델 (선택)"
+                    value={inviteOrchModel}
+                    onChange={(e) => setInviteOrchModel(e.target.value)}
+                    style={{ fontSize: 12, width: 160 }}
+                  />
+                  <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={inviteOrchEnabled}
+                      onChange={(e) => setInviteOrchEnabled(e.target.checked)}
+                    />
+                    활성
+                  </label>
+                </div>
               </>
             )}
             <button type="button" data-testid="invite-submit" disabled={inviteBusy} onClick={handleInviteSubmit}>
@@ -675,110 +1293,75 @@ export function ProjectMembersSection({
       {message ? <p style={{ color: "#0b6b0b", fontSize: 13 }}>{message}</p> : null}
       {error ? <p style={{ color: "#b42318", fontSize: 13 }}>{error}</p> : null}
 
-      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
-        {displayMembers.map((m) => (
-          <li
-            key={m.memberId}
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 8,
-              borderBottom: "1px solid #eee",
-              paddingBottom: 8,
-            }}
-          >
-            <span style={{ fontSize: 18 }}>{m.memberType === "AI" ? "🤖" : "👤"}</span>
-            <span
+      {memberSurface === "ai" ? (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>실행 담당</h3>
+            <div
               style={{
-                fontSize: 12,
-                fontWeight: 700,
-                padding: "2px 8px",
-                borderRadius: 999,
-                background: m.memberType === "AI" ? "#ede9fe" : "#eef2ff",
-                color: m.memberType === "AI" ? "#5b21b6" : "#1d4ed8",
+                border: "2px solid #0ea5e9",
+                borderRadius: 12,
+                padding: 14,
+                background: "linear-gradient(180deg, #f0f9ff 0%, #fff 100%)",
               }}
             >
-              {m.memberType}
-            </span>
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                padding: "2px 8px",
-                borderRadius: 999,
-                border: "1px solid #d0d5dd",
-                background: "#f8fafc",
-              }}
-            >
-              {m.role}
-            </span>
-            <strong>{m.displayName}</strong>
-            {m.aiProvider ? <span style={{ color: "#666", fontSize: 12 }}>({m.aiProvider})</span> : null}
-            {m.memberType === "AI" && canAnyAiRequest && actionOptionsForModal.length > 0 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    openRequestModal(
-                      m.memberId,
-                      m.role === "REVIEWER"
-                        ? "REVIEW_REQUEST"
-                        : m.role === "EDITOR"
-                          ? "TASK_DRAFT_REQUEST"
-                          : "QA_CHECK_REQUEST"
-                    )
-                  }
-                >
-                  AI 요청…
-                </button>
-                {m.role === "REVIEWER" && canRequestAiReviewAction ? (
-                  <button type="button" onClick={() => openRequestModal(m.memberId, "REVIEW_REQUEST")}>
-                    리뷰
-                  </button>
-                ) : null}
-                {m.role === "EDITOR" && canRequestAiMemberAction ? (
-                  <>
-                    <button type="button" onClick={() => openRequestModal(m.memberId, "TASK_DRAFT_REQUEST")}>
-                      초안
-                    </button>
-                    <button type="button" onClick={() => openRequestModal(m.memberId, "SUMMARY_REQUEST")}>
-                      요약
-                    </button>
-                  </>
-                ) : null}
-                {(m.role === "VIEWER" || m.role === "EDITOR") && canRequestAiMemberAction ? (
-                  <button type="button" onClick={() => openRequestModal(m.memberId, "QA_CHECK_REQUEST")}>
-                    점검
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-            {canManageMembers ? (
-              <>
-                <select
-                  disabled={busyMemberId === m.memberId || m.isOwner}
-                  value={m.role}
-                  onChange={(e) => handleRoleChange(m.memberId, e.target.value as ProjectRole)}
-                >
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role} value={role}>
-                      {role}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={busyMemberId === m.memberId || m.isOwner}
-                  onClick={() => handleRemove(m.memberId)}
-                >
-                  제거
-                </button>
-              </>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+              <div style={{ fontWeight: 900, fontSize: 16, color: "#0369a1" }}>Cursor</div>
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
+                코드 수정 및 저장소 반영을 담당하는 <strong>고정 실행기</strong>입니다. AI 멤버와 동일한 목록에 넣지
+                않습니다.
+              </p>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#64748b" }}>
+                실행 API·정책은 프로젝트 <strong>Git 연동</strong> 탭의 실행 환경 설정에서 연결합니다.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>검토 담당</h3>
+            <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
+              Cursor 실행 후 단계적으로 검토합니다. 실행 기록에는 리뷰어명·모델·판단이 남습니다.
+            </p>
+            <div style={{ display: "grid", gap: 12 }}>
+              {EXECUTION_REVIEW_ROLES_UI.map((k) => renderOrchestrationRoleCard(k))}
+            </div>
+          </div>
+
+          {PLANNING_ROLES_UI.some((k) => (aiOrchestrationSplit.byRole.get(k) ?? []).length > 0) ? (
+            <div>
+              <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>
+                기획·문서 담당
+              </h3>
+              <div style={{ display: "grid", gap: 12 }}>
+                {PLANNING_ROLES_UI.filter((k) => (aiOrchestrationSplit.byRole.get(k) ?? []).length > 0).map((k) =>
+                  renderOrchestrationRoleCard(k)
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", lineHeight: 1.45 }}>
+            추적: Task 실행 기록 화면에서 리뷰어별 요약·모델·판단을 확인할 수 있습니다.
+          </p>
+
+          {aiOrchestrationSplit.others.length > 0 ? (
+            <div>
+              <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>
+                기타 AI 멤버
+              </h3>
+              <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#64748b" }}>
+                오케스트레이션 역할이 없는 멤버입니다. 아래에서 역할·모델을 지정할 수 있습니다.
+              </p>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
+                {aiOrchestrationSplit.others.map((m) => renderStandardMemberRow(m))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
+          {displayMembers.map((m) => renderStandardMemberRow(m))}
+        </ul>
+      )}
 
       {requestOpen && requestMemberId ? (
         <div
@@ -852,7 +1435,9 @@ export function ProjectMembersSection({
             marginBottom: 8,
           }}
         >
-          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>AI 멤버 액션</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: "#0f172a" }}>
+            {memberSurface === "ai" ? "협업 액션 큐" : "AI 멤버 액션"}
+          </h3>
           {canDispatchAiMemberAction ? (
             <button
               type="button"
@@ -865,8 +1450,9 @@ export function ProjectMembersSection({
           ) : null}
         </div>
         <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px 0" }}>
-          백그라운드 처리는 환경 변수 <code style={{ fontSize: 11 }}>AI_ACTION_WORKER_ENABLED=true</code> 로 켤 수
-          있습니다. AI 결과는 자동으로 Git/Task에 반영되지 않으며, 완료 후 사람 검토·승인·「적용」 단계가 필요합니다.
+          {memberSurface === "ai"
+            ? "요청·디스패치·사람 검토·적용 워크플로입니다. 실행 루프(Cursor) 검토와는 별도입니다."
+            : "백그라운드 처리는 환경 변수 AI_ACTION_WORKER_ENABLED=true 로 켤 수 있습니다. 결과는 자동 반영되지 않으며 사람 검토·적용이 필요합니다."}
         </p>
         {actionsLoading ? (
           <p style={{ fontSize: 13, color: "#666" }}>불러오는 중…</p>

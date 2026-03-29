@@ -8,12 +8,17 @@ import {
 } from "@/lib/prisma/executionSetupSchemaMismatch";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
-import { resolveCursorRelayBaseUrl } from "@/lib/executionSetup/cursorRelayUrl";
+import {
+  formatCursorApiFailureForStorage,
+  formatCursorApiStepSummaryLines,
+  formatCursorApiSuccessForStorage,
+  runCursorApiValidation,
+  type CursorApiValidationStep,
+} from "@/lib/executionSetup/cursorApiValidation";
 import {
   parseGitHubRepoFullName,
   probeGitBaseBranchReachable,
   probeGitHttpRemote,
-  probeRelayTaskExecuteChannel,
 } from "@/lib/executionSetup/hardening";
 
 export type ValidateScope = "repository" | "cursor" | "all";
@@ -40,11 +45,11 @@ function validateRepoStructure(row: {
 
   if (!row.gitRepoUrl.trim() || !isLikelyUrl(row.gitRepoUrl.trim())) {
     git = row.gitRepoUrl.trim() ? "error" : "needs";
-    messages.push("저장소: Repository URL 형식을 확인하세요.");
+    messages.push("저장소: URL 형식을 확인하세요. (https:// 로 시작하는 주소)");
   }
   if (!row.baseBranch.trim()) {
     git = "error";
-    messages.push("저장소: Base branch가 필요합니다.");
+    messages.push("저장소: 베이스 브랜치 이름이 필요합니다.");
   }
 
   let host = "";
@@ -69,38 +74,6 @@ function validateRepoStructure(row: {
   }
 
   return { git, messages };
-}
-
-/** 원격 릴레이 채널(Git 기반 Background Agent). 로컬 경로·API 토큰 없음. */
-function validateRelayReadiness(row: {
-  storedCursorApiUrl: string;
-  allowedPathGlobs: unknown;
-}): { relay: Side; messages: string[] } {
-  const messages: string[] = [];
-  let relay: Side = "ok";
-  const base = resolveCursorRelayBaseUrl(row.storedCursorApiUrl);
-  if (!base) {
-    relay = "needs";
-    messages.push(
-      "실행기: 서버에 CURSOR_RELAY_BASE_URL(또는 JY_CURSOR_RELAY_URL) 환경 변수를 설정해야 원격 실행 요청 경로를 검증할 수 있습니다."
-    );
-  } else if (!isLikelyUrl(base)) {
-    relay = "error";
-    messages.push("실행기: 릴레이 기본 URL 형식이 올바르지 않습니다.");
-  }
-
-  const globs = Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [];
-  if (globs.length === 0) {
-    messages.push("실행기: 허용 경로 글로브를 입력하면 변경 범위 검증에 사용할 수 있습니다(선택).");
-  } else {
-    const bad = globs.some((g) => !String(g).trim() || String(g).includes(".."));
-    if (bad) {
-      relay = "error";
-      messages.push("실행기: 허용 경로 글로브에 비어 있거나 ‘..’ 가 포함된 항목이 있습니다.");
-    }
-  }
-
-  return { relay, messages };
 }
 
 function computeOverallStatus(repoOk: boolean | null, execOk: boolean | null): "draft" | "validated" | "invalid" {
@@ -165,8 +138,6 @@ export async function POST(
       );
     }
 
-    const allowedGlobs = Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [];
-
     const repoStruct = validateRepoStructure({
       gitRepoUrl: row.gitRepoUrl,
       baseBranch: row.baseBranch,
@@ -174,26 +145,22 @@ export async function POST(
       gitRepoName: row.gitRepoName,
     });
 
-    const relayStruct = validateRelayReadiness({
-      storedCursorApiUrl: row.cursorApiUrl,
-      allowedPathGlobs: allowedGlobs,
-    });
-
     const runRepoProbe = scope === "repository" || scope === "all" || scope === "cursor";
-    const runRelayProbe = scope === "cursor" || scope === "all";
+    const runCursorProbe = scope === "cursor" || scope === "all";
 
-    const messages: string[] = [...repoStruct.messages, ...relayStruct.messages];
+    const messages: string[] = [...repoStruct.messages];
     const probeMessages: string[] = [];
 
     let gitResult: Side = repoStruct.git;
-    let cursorResult: Side = relayStruct.relay;
+    let cursorResult: Side = storedSide(row.executorConnectionOk);
+    let cursorSteps: CursorApiValidationStep[] = [];
 
     if (runRepoProbe) {
       if (repoStruct.git === "ok") {
         const gitProbe = await probeGitHttpRemote(row.gitRepoUrl.trim());
         if (!gitProbe.ok) {
           gitResult = "error";
-          probeMessages.push(`저장소: 원격에 연결할 수 없습니다. (${gitProbe.error ?? "unknown"})`);
+          probeMessages.push(`저장소: 원격에 연결할 수 없습니다. (${gitProbe.error ?? "원인 불명"})`);
         } else {
           const branchProbe = await probeGitBaseBranchReachable(row.gitRepoUrl.trim(), row.baseBranch.trim());
           if (!branchProbe.ok) {
@@ -210,22 +177,19 @@ export async function POST(
       gitResult = storedSide(row.repoConnectionOk);
     }
 
-    if (runRelayProbe) {
-      if (relayStruct.relay !== "ok") {
-        cursorResult = relayStruct.relay;
-      } else if (gitResult !== "ok") {
-        cursorResult = "error";
-        probeMessages.push("실행기: 원격 실행 검증을 위해 저장소(Git) 연결 검증을 먼저 통과해야 합니다.");
-      } else {
-        const relayBase = resolveCursorRelayBaseUrl(row.cursorApiUrl);
-        const relayProbe = await probeRelayTaskExecuteChannel(relayBase);
-        if (!relayProbe.ok) {
-          cursorResult = "error";
-          probeMessages.push(`실행기: 실행 요청 경로(task-execute)에 연결할 수 없습니다. (${relayProbe.error ?? "unknown"})`);
-        } else {
-          cursorResult = "ok";
-        }
-      }
+    if (runCursorProbe) {
+      const cursorOutcome = await runCursorApiValidation({
+        cursorApiUrl: row.cursorApiUrl,
+        cursorApiToken: row.cursorApiToken ?? null,
+        gitRepoUrl: row.gitRepoUrl,
+        baseBranch: row.baseBranch,
+        branchStrategy: row.branchStrategy,
+      });
+      cursorSteps = cursorOutcome.steps;
+      cursorResult = cursorOutcome.overallOk ? "ok" : "error";
+      formatCursorApiStepSummaryLines(cursorOutcome.steps).forEach((line) => {
+        probeMessages.push(`Cursor API: ${line}`);
+      });
     } else {
       cursorResult = storedSide(row.executorConnectionOk);
     }
@@ -237,23 +201,31 @@ export async function POST(
     if (runRepoProbe) {
       nextRepoOk = gitResult === "ok" ? true : false;
     }
-    if (runRelayProbe) {
+    if (runCursorProbe) {
       nextExecOk = cursorResult === "ok" ? true : false;
     }
 
     const nextRepoAt = runRepoProbe ? now : row.repoValidatedAt ?? null;
-    const nextExecAt = runRelayProbe ? now : row.executorValidatedAt ?? null;
+    const nextExecAt = runCursorProbe ? now : row.executorValidatedAt ?? null;
 
     const repoErrMsgs = [...messages.filter((m) => m.startsWith("저장소:")), ...probeMessages.filter((m) => m.startsWith("저장소:"))];
-    const execErrMsgs = [...messages.filter((m) => m.startsWith("실행기:")), ...probeMessages.filter((m) => m.startsWith("실행기:"))];
+    const execErrMsgs = [
+      ...messages.filter((m) => m.startsWith("Cursor API:")),
+      ...probeMessages.filter((m) => m.startsWith("Cursor API:")),
+    ];
 
     let nextRepoErr: string | null = row.repoValidationError ?? null;
     let nextExecErr: string | null = row.executorValidationError ?? null;
     if (runRepoProbe) {
       nextRepoErr = gitResult === "ok" ? null : repoErrMsgs.join(" · ") || "저장소 검증 실패";
     }
-    if (runRelayProbe) {
-      nextExecErr = cursorResult === "ok" ? null : execErrMsgs.join(" · ") || "실행기 검증 실패";
+    if (runCursorProbe) {
+      nextExecErr =
+        cursorResult === "ok"
+          ? null
+          : cursorSteps.length
+            ? formatCursorApiFailureForStorage(cursorSteps)
+            : execErrMsgs.join(" · ") || "Cursor API 연결 검증 실패";
     }
 
     const nextStatus = computeOverallStatus(nextRepoOk, nextExecOk);
@@ -272,7 +244,7 @@ export async function POST(
       if (nextExecOk === false) {
         if (nextExecErr) parts.push(nextExecErr);
       } else if (nextExecOk === null) {
-        parts.push("원격 실행(릴레이) 연결을 검증해 주세요.");
+        parts.push("Cursor API 연결을 검증해 주세요.");
       }
       lastValidationError = parts.filter(Boolean).join(" · ") || "검증이 완료되지 않았습니다.";
     }
@@ -303,11 +275,11 @@ export async function POST(
           : "저장소 검증에 실패했습니다."
         : scope === "cursor"
           ? cursorResult === "ok"
-            ? "원격 실행(릴레이) 검증에 성공했습니다."
-            : "원격 실행 검증에 실패했습니다."
+            ? "Cursor API 연결 검증 완료"
+            : "Cursor API 연결 검증에 실패했습니다. 아래 상세를 확인하세요."
           : nextStatus === "validated"
-            ? "저장소·원격 실행 검증이 모두 완료되었습니다."
-            : "검증이 모두 끝나지 않았습니다. 저장소·원격 실행 상태를 확인하세요.";
+            ? "저장소·Cursor API 검증이 모두 완료되었습니다."
+            : "검증이 모두 끝나지 않았습니다. 저장소·Cursor API 상태를 확인하세요.";
 
     return NextResponse.json({
       success: true,
@@ -322,13 +294,31 @@ export async function POST(
         cursor: cursorResult,
         messages: allMessages,
         probeGitOk: runRepoProbe ? gitResult === "ok" : undefined,
-        probeCursorOk: runRelayProbe ? cursorResult === "ok" : undefined,
+        probeCursorOk: runCursorProbe ? cursorResult === "ok" : undefined,
         repoConnectionOk: nextRepoOk,
         executorConnectionOk: nextExecOk,
         repoValidatedAt: updated.repoValidatedAt ? updated.repoValidatedAt.toISOString() : null,
         executorValidatedAt: updated.executorValidatedAt ? updated.executorValidatedAt.toISOString() : null,
         repoValidationError: updated.repoValidationError ?? null,
         executorValidationError: updated.executorValidationError ?? null,
+        cursorApiValidation:
+          runCursorProbe && cursorSteps.length
+            ? {
+                overallOk: cursorResult === "ok",
+                stages: cursorSteps.map((s) => ({
+                  stage: s.stage,
+                  status: s.status,
+                  reason: s.reason,
+                  latencyMs: s.latencyMs,
+                  detail: s.detail,
+                })),
+                summaryKr:
+                  cursorResult === "ok"
+                    ? formatCursorApiSuccessForStorage(cursorSteps)
+                    : formatCursorApiFailureForStorage(cursorSteps),
+                detailLines: formatCursorApiStepSummaryLines(cursorSteps),
+              }
+            : undefined,
       },
     });
   } catch (error) {

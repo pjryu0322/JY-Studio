@@ -13,6 +13,10 @@ export type ProjectMemberListItem = {
   memberType: "HUMAN" | "AI";
   aiProvider: string | null;
   aiAgentKey: string | null;
+  aiOrchestrationRole: string | null;
+  orchestrationStage: string | null;
+  aiModelOverride: string | null;
+  orchestrationEnabled: boolean;
   invitedByUserId: string | null;
   invitedByName: string | null;
   createdAt: Date;
@@ -53,6 +57,10 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
       role: true,
       aiProvider: true,
       aiAgentKey: true,
+      aiOrchestrationRole: true,
+      orchestrationStage: true,
+      aiModelOverride: true,
+      orchestrationEnabled: true,
       invitedByUserId: true,
       createdAt: true,
       updatedAt: true,
@@ -71,6 +79,10 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
     memberType: row.memberType,
     aiProvider: row.aiProvider,
     aiAgentKey: row.aiAgentKey,
+    aiOrchestrationRole: row.aiOrchestrationRole,
+    orchestrationStage: row.orchestrationStage,
+    aiModelOverride: row.aiModelOverride,
+    orchestrationEnabled: row.orchestrationEnabled,
     invitedByUserId: row.invitedByUserId,
     invitedByName: row.invitedBy?.name ?? null,
     createdAt: row.createdAt,
@@ -132,6 +144,10 @@ export async function inviteAiProjectMember(input: {
   role: ProjectRole;
   aiProvider?: string | null;
   aiAgentKey?: string | null;
+  aiOrchestrationRole?: string | null;
+  orchestrationStage?: string | null;
+  aiModelOverride?: string | null;
+  orchestrationEnabled?: boolean;
   invitedByUserId: string;
 }) {
   return prisma.projectMember.create({
@@ -142,6 +158,10 @@ export async function inviteAiProjectMember(input: {
       displayName: input.displayName.trim(),
       aiProvider: input.aiProvider?.trim() || null,
       aiAgentKey: input.aiAgentKey?.trim() || null,
+      aiOrchestrationRole: input.aiOrchestrationRole?.trim() || null,
+      orchestrationStage: input.orchestrationStage?.trim() || null,
+      aiModelOverride: input.aiModelOverride?.trim() || null,
+      orchestrationEnabled: input.orchestrationEnabled ?? true,
       invitedByUserId: input.invitedByUserId,
     },
   });
@@ -151,10 +171,31 @@ export async function updateProjectMember(input: {
   memberId: string;
   role?: ProjectRole;
   displayName?: string | null;
+  aiOrchestrationRole?: string | null;
+  orchestrationStage?: string | null;
+  aiModelOverride?: string | null;
+  orchestrationEnabled?: boolean;
 }) {
-  const data: { role?: ProjectRole; displayName?: string | null } = {};
+  const data: {
+    role?: ProjectRole;
+    displayName?: string | null;
+    aiOrchestrationRole?: string | null;
+    orchestrationStage?: string | null;
+    aiModelOverride?: string | null;
+    orchestrationEnabled?: boolean;
+  } = {};
   if (input.role) data.role = input.role;
   if (input.displayName !== undefined) data.displayName = input.displayName?.trim() || null;
+  if (input.aiOrchestrationRole !== undefined) {
+    data.aiOrchestrationRole = input.aiOrchestrationRole?.trim() || null;
+  }
+  if (input.orchestrationStage !== undefined) {
+    data.orchestrationStage = input.orchestrationStage?.trim() || null;
+  }
+  if (input.aiModelOverride !== undefined) {
+    data.aiModelOverride = input.aiModelOverride?.trim() || null;
+  }
+  if (input.orchestrationEnabled !== undefined) data.orchestrationEnabled = input.orchestrationEnabled;
   return prisma.projectMember.update({
     where: { id: input.memberId },
     data,

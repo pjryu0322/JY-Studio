@@ -8,6 +8,7 @@ import {
   inviteHumanProjectMember,
   requireProjectOwnerMemberAdmin,
 } from "@/lib/service/projectMemberService";
+import { parseAiMemberRole, parseOrchestrationStage } from "@/lib/ai-member/aiMemberOrchestration";
 
 type InviteBody = {
   projectId?: string;
@@ -18,6 +19,10 @@ type InviteBody = {
   aiProvider?: string;
   aiAgentKey?: string;
   role?: ProjectRole;
+  aiOrchestrationRole?: string;
+  orchestrationStage?: string;
+  aiModelOverride?: string;
+  orchestrationEnabled?: boolean;
 };
 
 function normalizeRole(value: unknown): ProjectRole | null {
@@ -65,12 +70,39 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      const orchRoleRaw = body.aiOrchestrationRole;
+      const orchStageRaw = body.orchestrationStage;
+      const aiOrchestrationRole =
+        orchRoleRaw !== undefined && String(orchRoleRaw).trim()
+          ? parseAiMemberRole(orchRoleRaw)
+          : null;
+      if (orchRoleRaw !== undefined && String(orchRoleRaw).trim() && !aiOrchestrationRole) {
+        return NextResponse.json(
+          { success: false, message: "aiOrchestrationRole 값이 올바르지 않습니다." },
+          { status: 400 }
+        );
+      }
+      const orchestrationStage =
+        orchStageRaw !== undefined && String(orchStageRaw).trim()
+          ? parseOrchestrationStage(orchStageRaw)
+          : null;
+      if (orchStageRaw !== undefined && String(orchStageRaw).trim() && !orchestrationStage) {
+        return NextResponse.json(
+          { success: false, message: "orchestrationStage 값이 올바르지 않습니다." },
+          { status: 400 }
+        );
+      }
       const created = await inviteAiProjectMember({
         projectId,
         displayName,
         role,
         aiProvider: body.aiProvider ?? null,
         aiAgentKey: body.aiAgentKey ?? null,
+        aiOrchestrationRole: aiOrchestrationRole ?? undefined,
+        orchestrationStage: orchestrationStage ?? undefined,
+        aiModelOverride: body.aiModelOverride != null ? String(body.aiModelOverride) : undefined,
+        orchestrationEnabled:
+          typeof body.orchestrationEnabled === "boolean" ? body.orchestrationEnabled : undefined,
         invitedByUserId: userId,
       });
       return NextResponse.json({

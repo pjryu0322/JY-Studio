@@ -8,10 +8,15 @@ import {
   requireProjectOwnerMemberAdmin,
   updateProjectMember,
 } from "@/lib/service/projectMemberService";
+import { parseAiMemberRole, parseOrchestrationStage } from "@/lib/ai-member/aiMemberOrchestration";
 
 type PatchBody = {
   role?: ProjectRole;
   displayName?: string;
+  aiOrchestrationRole?: string | null;
+  orchestrationStage?: string | null;
+  aiModelOverride?: string | null;
+  orchestrationEnabled?: boolean;
 };
 
 function normalizeRole(value: unknown): ProjectRole | null {
@@ -35,7 +40,7 @@ export async function PATCH(
     const body = (await request.json()) as PatchBody;
     const target = await prisma.projectMember.findUnique({
       where: { id: memberId },
-      select: { projectId: true, userId: true, role: true },
+      select: { projectId: true, userId: true, role: true, memberType: true },
     });
     if (!target) {
       return NextResponse.json({ success: false, message: "멤버를 찾을 수 없습니다." }, { status: 404 });
@@ -67,10 +72,73 @@ export async function PATCH(
       return NextResponse.json({ success: false, message: "유효하지 않은 role 입니다." }, { status: 400 });
     }
 
+    if (target.memberType !== "AI") {
+      if (
+        body.aiOrchestrationRole !== undefined ||
+        body.orchestrationStage !== undefined ||
+        body.aiModelOverride !== undefined ||
+        body.orchestrationEnabled !== undefined
+      ) {
+        return NextResponse.json(
+          { success: false, message: "오케스트레이션 필드는 AI 멤버만 수정할 수 있습니다." },
+          { status: 400 }
+        );
+      }
+    }
+
+    let aiOrchestrationRole: string | null | undefined;
+    if (body.aiOrchestrationRole !== undefined) {
+      if (body.aiOrchestrationRole === null || String(body.aiOrchestrationRole).trim() === "") {
+        aiOrchestrationRole = null;
+      } else {
+        const parsed = parseAiMemberRole(body.aiOrchestrationRole);
+        if (!parsed) {
+          return NextResponse.json(
+            { success: false, message: "aiOrchestrationRole 값이 올바르지 않습니다." },
+            { status: 400 }
+          );
+        }
+        aiOrchestrationRole = parsed;
+      }
+    }
+
+    let orchestrationStage: string | null | undefined;
+    if (body.orchestrationStage !== undefined) {
+      if (body.orchestrationStage === null || String(body.orchestrationStage).trim() === "") {
+        orchestrationStage = null;
+      } else {
+        const parsed = parseOrchestrationStage(body.orchestrationStage);
+        if (!parsed) {
+          return NextResponse.json(
+            { success: false, message: "orchestrationStage 값이 올바르지 않습니다." },
+            { status: 400 }
+          );
+        }
+        orchestrationStage = parsed;
+      }
+    }
+
     const updated = await updateProjectMember({
       memberId,
       role: role ?? undefined,
       displayName: body.displayName,
+      ...(target.memberType === "AI"
+        ? {
+            ...(aiOrchestrationRole !== undefined ? { aiOrchestrationRole } : {}),
+            ...(orchestrationStage !== undefined ? { orchestrationStage } : {}),
+            ...(body.aiModelOverride !== undefined
+              ? {
+                  aiModelOverride:
+                    body.aiModelOverride === null || !String(body.aiModelOverride).trim()
+                      ? null
+                      : String(body.aiModelOverride).trim(),
+                }
+              : {}),
+            ...(body.orchestrationEnabled !== undefined
+              ? { orchestrationEnabled: body.orchestrationEnabled }
+              : {}),
+          }
+        : {}),
     });
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {

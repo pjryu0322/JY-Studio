@@ -270,7 +270,7 @@ model ExecutionSetup {
 
   /// Git
   gitRepoUrl      String
-  /// github | other (relay: URL이 진실, UI/정책 힌트용)
+  /// github | other (URL이 진실, UI/정책 힌트용)
   gitRepoProvider String   @default("github")
   gitRepoName     String?
   baseBranch      String
@@ -358,6 +358,8 @@ model TaskExecutionRun {
   evaluationReason String?  @db.Text
   /// done | retry | failed (OpenAI 평가 결과)
   evaluationDecision String?
+  /// AI 멤버(실행 후 검토) 단계별 결과 JSON 배열
+  evaluationReviewerSteps Json?
   validationOutput String?  @db.Text
   /// Cursor HTTP/실패 메시지
   runError         String?  @db.Text
@@ -611,6 +613,14 @@ model ProjectMember {
   aiProvider String?
   /// AI 에이전트 식별 키
   aiAgentKey String?
+  /// 오케스트레이션 AI 역할(planner·reviewer·security-reviewer 등, 사람 RBAC role 과 별개)
+  aiOrchestrationRole String?
+  /// 오케스트레이션이 참여하는 스테이지(spec·task·execution-review)
+  orchestrationStage String?
+  /// 이 멤버 전용 LLM 모델(비우면 프로젝트/환경 기본)
+  aiModelOverride String?
+  /// 오케스트레이션 파이프라인에 포함 여부(AI 멤버)
+  orchestrationEnabled Boolean @default(true)
   /// 초대한 사용자 ID
   invitedByUserId String?
   /// 프로젝트 내 역할

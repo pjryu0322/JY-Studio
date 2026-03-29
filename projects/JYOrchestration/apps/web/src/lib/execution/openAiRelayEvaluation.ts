@@ -1,5 +1,5 @@
 /**
- * 릴레이 모드: Cursor 보고 결과만으로 OpenAI JSON 평가.
+ * Cursor 실행 결과 보고만으로 OpenAI JSON 평가.
  */
 
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
@@ -130,6 +130,96 @@ ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하�
           content: "You are a strict reviewer. Output only valid JSON.",
         },
         { role: "user", content: userMessage },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    return {
+      result: {
+        decision: "retry",
+        reason: `OpenAI HTTP ${res.status}: ${t.slice(0, 200)}`,
+      },
+      usage: null,
+    };
+  }
+
+  const body = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+  };
+  const text = body.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    return { result: { decision: "retry", reason: "빈 OpenAI 응답" }, usage: null };
+  }
+
+  let decision: EvalVerdict = "retry";
+  let reason = text;
+  let score: number | undefined;
+  let missingCriteria: string[] | undefined;
+  let suspiciousChanges: string[] | undefined;
+  try {
+    const o = parseJson(text);
+    const d = String(o.decision ?? o.verdict ?? "")
+      .toLowerCase()
+      .trim();
+    if (d === "done" || d === "failed" || d === "retry") decision = d;
+    reason = String(o.reason ?? o.summary ?? reason).slice(0, 2500);
+    if (typeof o.score === "number" && Number.isFinite(o.score)) score = o.score;
+    missingCriteria = asStringArray(o.missingCriteria);
+    suspiciousChanges = asStringArray(o.suspiciousChanges);
+  } catch {
+    reason = text.slice(0, 2000);
+  }
+
+  const u = body.usage;
+  const usage =
+    typeof u?.prompt_tokens === "number" &&
+    typeof u?.completion_tokens === "number" &&
+    typeof u?.total_tokens === "number"
+      ? {
+          promptTokens: u.prompt_tokens,
+          completionTokens: u.completion_tokens,
+          totalTokens: u.total_tokens,
+        }
+      : null;
+
+  return { result: { decision, reason, score, missingCriteria, suspiciousChanges }, usage };
+}
+
+/** 임의 모델·사용자 메시지로 동일 JSON 스키마 평가(멀티 리뷰어용). */
+export async function runOpenAiChatJsonEvaluation(params: {
+  model: string;
+  systemContent: string;
+  userMessage: string;
+}): Promise<{ result: TaskEvaluationResult; usage: OpenAiRelayEvalUsage }> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return {
+      result: {
+        decision: "retry",
+        reason: "OPENAI_API_KEY 없음 — 평가 생략(retry)",
+      },
+      usage: null,
+    };
+  }
+
+  const model = params.model.trim() || DEFAULT_MODEL;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.15,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: params.systemContent },
+        { role: "user", content: params.userMessage },
       ],
     }),
   });

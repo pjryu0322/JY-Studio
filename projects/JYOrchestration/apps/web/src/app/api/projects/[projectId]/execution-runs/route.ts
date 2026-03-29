@@ -52,6 +52,9 @@ export async function GET(
         gitSummary: r.gitSummary,
         evaluationReason: r.evaluationReason,
         evaluationDecision: r.evaluationDecision,
+        evaluationReviewerSteps: Array.isArray(r.evaluationReviewerSteps)
+          ? r.evaluationReviewerSteps
+          : [],
         validationOutput: r.validationOutput,
         runError: r.runError,
         commitStatus: r.commitStatus,

@@ -391,6 +391,18 @@ export async function postExecutionSetupValidate(
     executorValidatedAt?: string | null;
     repoValidationError?: string | null;
     executorValidationError?: string | null;
+    cursorApiValidation?: {
+      overallOk: boolean;
+      stages: Array<{
+        stage: "config" | "connectivity" | "auth" | "readiness";
+        status: "pass" | "fail" | "skip";
+        reason?: string;
+        latencyMs?: number;
+        detail?: string;
+      }>;
+      summaryKr: string;
+      detailLines: string[];
+    };
   }>;
   return { res, json };
 }
@@ -410,6 +422,16 @@ export async function postExecutionLoopRun(
   return { res, json };
 }
 
+export type ExecutionReviewerStepDto = {
+  memberId: string;
+  name: string;
+  role: string;
+  model: string;
+  decision: string;
+  summary: string;
+  reviewedAt: string;
+};
+
 export type TaskExecutionRunDto = {
   id: string;
   projectId: string;
@@ -421,6 +443,8 @@ export type TaskExecutionRunDto = {
   changedFiles: string[];
   gitSummary: string | null;
   evaluationReason: string | null;
+  evaluationDecision?: string | null;
+  evaluationReviewerSteps?: ExecutionReviewerStepDto[];
   validationOutput: string | null;
   commitStatus: string | null;
   pushStatus: string | null;

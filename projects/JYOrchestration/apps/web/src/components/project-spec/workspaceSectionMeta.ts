@@ -40,8 +40,12 @@ export const WORKSPACE_SECTION_META = {
     title: "실행 워크플로",
   },
   executionSetup: {
-    fullLabel: "[F-1-3-6] Git 연동 — 실행 환경 · 원격 저장소",
-    title: "실행 환경 · Git 저장소",
+    fullLabel: "[F-1-3-6] Git 연동 — 실행 환경 설정",
+    title: "실행 환경 설정",
+  },
+  gitIntegration: {
+    fullLabel: "[P-6-4] Project — Git 저장소 연동",
+    title: "Git 연동",
   },
 } as const;
 

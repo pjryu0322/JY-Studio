@@ -4,10 +4,12 @@ import { useParams } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
 import {
+  fetchExecutionRuns,
   fetchExecutionSetup,
   fetchGeneratedTasks,
   fetchProjectById,
   postExecutionLoopRun,
+  type TaskExecutionRunDto,
 } from "@/components/project-spec/api";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
 import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
@@ -100,6 +102,9 @@ export default function ProjectDetailPage() {
   const [execSummary, setExecSummary] = useState<ProjectObservabilitySnapshot | null>(null);
   const [execSummaryLoading, setExecSummaryLoading] = useState(false);
   const [execSummaryError, setExecSummaryError] = useState<string | null>(null);
+  const [executionRuns, setExecutionRuns] = useState<TaskExecutionRunDto[]>([]);
+  const [executionRunsLoading, setExecutionRunsLoading] = useState(false);
+  const [executionRunsError, setExecutionRunsError] = useState<string | null>(null);
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
   const [mainTab, setMainTab] = useState<ProjectMainTab>("overview");
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
@@ -223,7 +228,7 @@ export default function ProjectDetailPage() {
     return Object.fromEntries([...latest.entries()].map(([k, v]) => [k, v.label]));
   }, [aiMemberActionsOverview]);
 
-  const relayOrchestrationOverview = useMemo(() => {
+  const orchestrationTaskOverview = useMemo(() => {
     const primary = tasks.filter((t) => t.taskKind === "PRIMARY");
     const running = primary.find((t) => t.executionWorkflowStatus === "running");
     const ready = primary
@@ -615,6 +620,41 @@ export default function ProjectDetailPage() {
       console.error("Failed to reload tasks:", error);
     }
   }, [projectId]);
+
+  const loadExecutionRuns = useCallback(async () => {
+    if (!projectId || !permissions.canViewProject) {
+      setExecutionRuns([]);
+      setExecutionRunsLoading(false);
+      setExecutionRunsError(null);
+      return;
+    }
+    setExecutionRunsLoading(true);
+    setExecutionRunsError(null);
+    try {
+      const { res, json } = await fetchExecutionRuns(projectId, { take: 15 });
+      const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+      if (denied) {
+        setExecutionRunsError(denied);
+        setExecutionRuns([]);
+        return;
+      }
+      if (!res.ok || !json.success || !Array.isArray(json.data)) {
+        setExecutionRunsError(json.message || "실행 기록을 불러오지 못했습니다.");
+        setExecutionRuns([]);
+        return;
+      }
+      setExecutionRuns(json.data);
+    } catch {
+      setExecutionRunsError("실행 기록 조회 중 오류가 발생했습니다.");
+      setExecutionRuns([]);
+    } finally {
+      setExecutionRunsLoading(false);
+    }
+  }, [projectId, permissions.canViewProject]);
+
+  useEffect(() => {
+    void loadExecutionRuns();
+  }, [loadExecutionRuns]);
 
   const handleApproveSensitiveWorkflow = useCallback(
     async (taskId: string) => {
@@ -1514,28 +1554,29 @@ export default function ProjectDetailPage() {
                 lineHeight: 1.55,
               }}
             >
-              <div style={{ fontWeight: 900, marginBottom: 6, color: "#0f172a" }}>릴레이 오케스트레이션</div>
+              <div style={{ fontWeight: 900, marginBottom: 6, color: "#0f172a" }}>실행 오케스트레이션</div>
               <div>
-                <strong>OpenAI</strong>가 프롬프트·검토, <strong>Cursor</strong>가 저장소에서 실행, <strong>GitHub</strong>에 반영된 코드가
-                진실입니다. 플랫폼은 위임·기록·정책만 담당합니다.
+                <strong>Cursor</strong>가 유일한 코드 실행기(Executor)이며, 저장소에서 실제 변경을 수행합니다. 실행이 끝나면 프로젝트에 등록한{" "}
+                <strong>AI 멤버(리뷰어)</strong>가 역할별로 OpenAI 모델을 통해 검토합니다(AI 멤버가 없으면 기본 단일 평가로 동작).{" "}
+                <strong>GitHub</strong>에 반영된 코드가 진실이며, 플랫폼은 위임·기록·정책만 담당합니다.
               </div>
               <div style={{ marginTop: 8 }}>
-                현재 실행 중 Task: <strong>{relayOrchestrationOverview.running?.name ?? "—"}</strong>
+                현재 실행 중 Task: <strong>{orchestrationTaskOverview.running?.name ?? "—"}</strong>
               </div>
               <div>
-                다음 ready Task: <strong>{relayOrchestrationOverview.nextReady?.name ?? "—"}</strong>
+                다음 ready Task: <strong>{orchestrationTaskOverview.nextReady?.name ?? "—"}</strong>
               </div>
-              {relayOrchestrationOverview.awaitingHuman.length ? (
+              {orchestrationTaskOverview.awaitingHuman.length ? (
                 <div style={{ marginTop: 6, color: "#b45309" }}>
                   사람 승인 대기:{" "}
-                  {relayOrchestrationOverview.awaitingHuman.map((t) => t.name).join(", ") || "—"}
+                  {orchestrationTaskOverview.awaitingHuman.map((t) => t.name).join(", ") || "—"}
                 </div>
               ) : null}
-              {relayOrchestrationOverview.lastFailed ? (
+              {orchestrationTaskOverview.lastFailed ? (
                 <div style={{ marginTop: 6, color: "#b91c1c" }}>
-                  최근 실패 Task: <strong>{relayOrchestrationOverview.lastFailed.name}</strong>
-                  {relayOrchestrationOverview.lastFailed.lastEvalSummary
-                    ? ` — ${relayOrchestrationOverview.lastFailed.lastEvalSummary.slice(0, 200)}`
+                  최근 실패 Task: <strong>{orchestrationTaskOverview.lastFailed.name}</strong>
+                  {orchestrationTaskOverview.lastFailed.lastEvalSummary
+                    ? ` — ${orchestrationTaskOverview.lastFailed.lastEvalSummary.slice(0, 200)}`
                     : ""}
                 </div>
               ) : null}
@@ -1564,6 +1605,7 @@ export default function ProjectDetailPage() {
                         (json.success ? "실행 루프가 완료되었습니다." : "실행 루프가 중단되었습니다.")
                     );
                     await reloadTasksList();
+                    await loadExecutionRuns();
                   } catch (e) {
                     console.error("execution loop:", e);
                     setExecutionLoopBanner("실행 루프 요청 중 오류가 발생했습니다.");
@@ -1648,6 +1690,74 @@ export default function ProjectDetailPage() {
                 검토 통과 후에만 DAG가 진행됩니다. 정책(autoAdvance·재시도·범위·민감 승인)은 Execution setup을 따릅니다. PR 자동 생성은
                 pending_capability입니다.
               </span>
+            )}
+          </div>
+        ) : null}
+        {permissions.canViewProject ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              fontSize: 12,
+              color: "#334155",
+              lineHeight: 1.5,
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>최근 Cursor 실행 기록 · AI 리뷰</div>
+            {executionRunsLoading ? (
+              <div style={{ color: "#64748b" }}>불러오는 중…</div>
+            ) : executionRunsError ? (
+              <div style={{ color: "#b91c1c" }}>{executionRunsError}</div>
+            ) : executionRuns.length === 0 ? (
+              <div style={{ color: "#64748b" }}>아직 기록이 없습니다.</div>
+            ) : (
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
+                {executionRuns.map((run) => {
+                  const taskLabel =
+                    tasks.find((t) => t.id === run.taskId)?.name ?? `Task ${run.taskId.slice(0, 8)}…`;
+                  const steps = run.evaluationReviewerSteps ?? [];
+                  return (
+                    <li
+                      key={run.id}
+                      style={{
+                        border: "1px solid #f1f5f9",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        background: "#fafafa",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>
+                        {taskLabel}{" "}
+                        <span style={{ fontWeight: 500, color: "#64748b" }}>
+                          · {run.status}
+                          {run.evaluationDecision ? ` · ${run.evaluationDecision}` : ""}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                        {run.createdAt} · branch {run.branchName ?? "—"}
+                      </div>
+                      {steps.length > 0 ? (
+                        <ul style={{ margin: "8px 0 0 0", paddingLeft: 16, fontSize: 11, color: "#475569" }}>
+                          {steps.map((s, i) => (
+                            <li key={`${run.id}-step-${i}`} style={{ marginBottom: 4 }}>
+                              <strong>{s.name}</strong> ({s.role}) · {s.model} ·{" "}
+                              <span style={{ fontWeight: 800 }}>{s.decision}</span>
+                              <div style={{ color: "#64748b", marginTop: 2 }}>{s.summary.slice(0, 280)}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
+                          AI 멤버 다단계 리뷰 없음(기본 평가 또는 정책 전처리만).
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </div>
         ) : null}

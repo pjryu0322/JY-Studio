@@ -4,9 +4,12 @@ import {
   runOpenAiRelayEvaluation,
   type TaskEvaluationResult,
 } from "@/lib/execution/openAiRelayEvaluation";
+import { tryRunExecutionReviewWithAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
+import type { ExecutionReviewerStepRecord } from "@/lib/execution/executionReviewWithAiMembers";
 import { filterPathsOutsideAllowedGlobs } from "@/lib/execution/pathGlobPolicy";
 
 export type { TaskEvaluationResult } from "@/lib/execution/openAiRelayEvaluation";
+export type { ExecutionReviewerStepRecord } from "@/lib/execution/executionReviewWithAiMembers";
 
 const MAX_CHANGED_FILES_BEFORE_FAIL = 80;
 
@@ -14,6 +17,7 @@ const MAX_CHANGED_FILES_BEFORE_FAIL = 80;
  * Cursor 결과 수집 후 정책 전처리 + OpenAI 평가. 로컬 git/diff 없음.
  */
 export async function evaluateExecutionResult(params: {
+  projectId?: string;
   task: {
     title: string;
     description: string | null;
@@ -30,6 +34,7 @@ export async function evaluateExecutionResult(params: {
 }): Promise<{
   result: TaskEvaluationResult;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+  reviewerSteps: ExecutionReviewerStepRecord[];
 }> {
   const summary = params.summary || params.cursorResult.summary;
   const files = params.changedFiles.length ? params.changedFiles : params.cursorResult.changedFiles;
@@ -42,6 +47,7 @@ export async function evaluateExecutionResult(params: {
         suspiciousChanges: ["executor_summary_or_status_failure_hint"],
       },
       usage: null,
+      reviewerSteps: [],
     };
   }
 
@@ -53,6 +59,7 @@ export async function evaluateExecutionResult(params: {
         suspiciousChanges: [`too_many_files:${files.length}`],
       },
       usage: null,
+      reviewerSteps: [],
     };
   }
 
@@ -66,19 +73,41 @@ export async function evaluateExecutionResult(params: {
           suspiciousChanges: bad.slice(0, 30),
         },
         usage: null,
+        reviewerSteps: [],
       };
     }
   }
 
-  return runOpenAiRelayEvaluation({
-    task: {
-      ...params.task,
-      acceptanceCriteria: params.acceptanceCriteria.length ? params.acceptanceCriteria : params.task.acceptanceCriteria,
-    },
-    cursorResult: { ...params.cursorResult, changedFiles: files, summary },
+  const taskPayload = {
+    ...params.task,
+    acceptanceCriteria: params.acceptanceCriteria.length ? params.acceptanceCriteria : params.task.acceptanceCriteria,
+  };
+  const cursorPayload = { ...params.cursorResult, changedFiles: files, summary };
+
+  if (params.projectId) {
+    const memberPack = await tryRunExecutionReviewWithAiMembers({
+      projectId: params.projectId,
+      task: taskPayload,
+      cursorResult: cursorPayload,
+      repoUrl: params.repoUrl,
+      stopOnTestFailure: params.stopOnTestFailure,
+    });
+    if (memberPack) {
+      return {
+        result: memberPack.result,
+        usage: memberPack.usage,
+        reviewerSteps: memberPack.steps,
+      };
+    }
+  }
+
+  const relay = await runOpenAiRelayEvaluation({
+    task: taskPayload,
+    cursorResult: cursorPayload,
     repoUrl: params.repoUrl,
     stopOnTestFailure: params.stopOnTestFailure,
   });
+  return { ...relay, reviewerSteps: [] };
 }
 
 /** @deprecated evaluateExecutionResult 사용 권장 */

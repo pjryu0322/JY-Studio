@@ -16,7 +16,7 @@ import {
 import { pickNextReadyTask, type TaskForPick } from "./pickNextReadyTask";
 import type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 import { EXECUTION_WORKFLOW } from "./workflowConstants";
-import { resolveCursorRelayBaseUrl } from "@/lib/executionSetup/cursorRelayUrl";
+import { normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
@@ -26,8 +26,8 @@ export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 const loopLocks = new Set<string>();
 
 /**
- * Relay 루프: Cursor 실행 → 결과 수신 → OpenAI 평가 → 전이.
- * 플랫폼은 코드/git을 실행하지 않는다.
+ * 실행 루프: Cursor Cloud Agent API 호출 → 결과 수신 → AI 멤버(또는 기본) 검토 평가 → 전이.
+ * 플랫폼은 로컬에서 코드/git을 실행하지 않습니다.
  */
 export async function runExecutionLoop(params: {
   projectId: string;
@@ -95,8 +95,8 @@ export async function runExecutionLoop(params: {
         actorType: TaskHistoryActorType.SYSTEM,
         actorId: actorUserId,
         eventType: TaskHistoryEventType.EXECUTION_LOOP_STARTED,
-        summary: singleTaskId ? "단일 Task 실행 (relay)" : "실행 루프 시작 (relay)",
-        detailJson: { projectId, singleTaskId, mode: "relay" },
+        summary: singleTaskId ? "단일 Task 실행 (Cursor API)" : "실행 루프 시작 (Cursor API)",
+        detailJson: { projectId, singleTaskId, mode: "cursor_api" },
       });
     }
 
@@ -244,14 +244,15 @@ export async function runExecutionLoop(params: {
         projectId,
         workflowId: taskRow.sourceSpecVersionId ?? null,
         executionSetup: {
-          cursorApiUrl: resolveCursorRelayBaseUrl(setup.cursorApiUrl),
-          cursorApiToken: null,
+          cursorApiUrl: normalizeCursorApiBaseUrl(setup.cursorApiUrl),
+          cursorApiToken: setup.cursorApiToken ?? null,
           gitRepoUrl: repoUrl,
           baseBranch: setup.baseBranch,
           branchStrategy: setup.branchStrategy,
           branchPrefix: setup.branchPrefix,
           autoCommit: setup.autoCommit !== false,
           autoPush: setup.autoPush === true,
+          autoPr: setup.autoPr === true,
           requireTestsBeforePush: setup.requireTestsBeforePush !== false,
         },
         task: {
@@ -358,6 +359,7 @@ export async function runExecutionLoop(params: {
       });
 
       const evalPack = await evaluateExecutionResult({
+        projectId,
         task: {
           title: taskRow.name,
           description: taskRow.description,
@@ -411,6 +413,9 @@ export async function runExecutionLoop(params: {
           evaluationReason: evalR.reason.slice(0, 8000),
           evaluationDecision: verdict,
           status: verdict === "done" ? "reviewing" : verdict === "retry" ? "retry_needed" : "failed",
+          ...(evalPack.reviewerSteps.length > 0
+            ? { evaluationReviewerSteps: evalPack.reviewerSteps as object }
+            : {}),
         },
       });
 
@@ -442,7 +447,7 @@ export async function runExecutionLoop(params: {
               executionWorkflowStatus: EXECUTION_WORKFLOW.AWAITING_HUMAN,
               lastEvalResult: "awaiting_human",
               lastEvalSummary:
-                "민감 Task 정책: OpenAI 평가는 통과했으나 사람 승인 후 DAG가 진행됩니다. Task에서 「민감 작업 승인」을 눌러 주세요.",
+                "민감 Task 정책: 자동 검토는 통과했으나 사람 승인 후 DAG가 진행됩니다. Task에서 「민감 작업 승인」을 눌러 주세요.",
             },
           });
           await prisma.taskExecutionRun.update({

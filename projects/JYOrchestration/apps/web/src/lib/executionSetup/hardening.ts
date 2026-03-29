@@ -1,4 +1,4 @@
-/** Remote probes for Execution Setup (relay: no local repo path checks). */
+/** 원격 Git 저장소 도달성 프로브(로컬 클론 없음). */
 
 function gitInfoRefsCandidates(repoUrl: string): string[] {
   const raw = repoUrl.trim().replace(/\/+$/, "");
@@ -123,73 +123,3 @@ export async function probeGitBaseBranchReachable(
   }
 }
 
-export async function probeCursorExecutor(
-  baseUrl: string,
-  token: string | null,
-  timeoutMs = 12_000
-): Promise<{ ok: boolean; error?: string }> {
-  const root = baseUrl.trim().replace(/\/+$/, "");
-  if (!root) return { ok: false, error: "empty executor URL" };
-
-  const headers: Record<string, string> = {
-    Accept: "*/*",
-    "User-Agent": "JYOrchestration-execution-setup/1",
-  };
-  const t = token?.trim();
-  if (t) headers.Authorization = `Bearer ${t}`;
-
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
-  let lastErr = "unreachable";
-  try {
-    for (const method of ["GET", "HEAD"] as const) {
-      try {
-        const res = await fetch(root, { method, headers, redirect: "follow", signal: ac.signal });
-        if (res.status < 500) {
-          return { ok: true };
-        }
-        lastErr = `HTTP ${res.status}`;
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        lastErr = msg.includes("abort") ? "timeout" : msg;
-      }
-    }
-    return { ok: false, error: lastErr };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Relay `POST {base}/task-execute` — no auth. 4xx means the channel exists; 5xx / network = fail.
- */
-export async function probeRelayTaskExecuteChannel(
-  baseUrl: string,
-  timeoutMs = 12_000
-): Promise<{ ok: boolean; error?: string }> {
-  const root = baseUrl.trim().replace(/\/+$/, "");
-  if (!root) return { ok: false, error: "empty relay URL" };
-  const url = `${root}/task-execute`;
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "User-Agent": "JYOrchestration-execution-setup/1",
-      },
-      body: JSON.stringify({ mode: "relay", ping: true }),
-      redirect: "follow",
-      signal: ac.signal,
-    });
-    if (res.status >= 500) return { ok: false, error: `HTTP ${res.status}` };
-    return { ok: true };
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, error: msg.includes("abort") ? "timeout" : msg };
-  } finally {
-    clearTimeout(timer);
-  }
-}
