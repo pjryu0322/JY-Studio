@@ -33,6 +33,13 @@ ALTER TABLE "task_execution_runs" ADD CONSTRAINT "task_execution_runs_projectId_
 
 ALTER TABLE "task_execution_runs" ADD CONSTRAINT "task_execution_runs_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "tasks"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- From relay_execution_policy_and_run_audit (must run after table exists; see 20260328230000)
+ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "workflowId" TEXT;
+ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "provider" TEXT NOT NULL DEFAULT 'cursor';
+ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "repoUrlSnapshot" TEXT;
+ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "evaluationDecision" TEXT;
+ALTER TABLE "task_execution_runs" ADD COLUMN IF NOT EXISTS "runError" TEXT;
+
 ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "lastOrchestrationBranch" TEXT;
 ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "lastOrchestrationCommitStatus" TEXT;
 ALTER TABLE "tasks" ADD COLUMN IF NOT EXISTS "lastOrchestrationPushStatus" TEXT;

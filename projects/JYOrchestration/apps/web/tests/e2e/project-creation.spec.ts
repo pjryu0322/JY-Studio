@@ -23,28 +23,27 @@ test.describe("E2E project", () => {
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
   });
 
-  test("[E2E-PRJ-003] 상세 — 고급 설정 탭에서 유형·저장소·브랜치 확인", async ({ page }) => {
+  test("[E2E-PRJ-003] 상세 — 실행 환경 탭은 런타임 연결·검증 중심(중복 프로젝트 요약 없음)", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-settings-toggle").click();
-    await page.getByTestId("project-detail-tab-advanced").click();
-    const panel = page.getByTestId("project-advanced-settings-panel");
-    await expect(panel).toBeVisible();
-    await expect(panel.getByRole("combobox")).toHaveValue("web-service");
-    await expect(panel.getByLabel("Repository URL")).toBeVisible();
-    await expect(panel.getByLabel("Default Branch")).toHaveValue("main");
+    await page.getByTestId("project-detail-tab-execution").click();
+    const env = page.getByTestId("project-execution-environment-panel");
+    await expect(env).toBeVisible();
+    await expect(env.getByTestId("project-advanced-settings-panel")).toHaveCount(0);
+    await expect(env.getByText("Project Type")).toHaveCount(0);
+    await expect(env.locator("#execution-setup-panel")).toBeVisible();
   });
 
-  test("[E2E-PRJ-004] 상세 — Git Integration 탭 연결 UI", async ({ page }) => {
+  test("[E2E-PRJ-004] 상세 — 실행 환경 탭 연결 UI", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-settings-toggle").click();
-    await page.getByTestId("project-detail-tab-git").click();
-    const gitPanel = page.getByTestId("project-git-integration-panel");
-    await expect(gitPanel).toBeVisible();
-    await expect(gitPanel.getByText("등록된 저장소 없음")).toBeVisible();
-    await page.getByTestId("project-git-connect-tab").click();
-    await expect(gitPanel.getByText(/연결 마법사는 준비 중입니다/)).toBeVisible();
+    await page.getByTestId("project-detail-tab-execution").click();
+    const envPanel = page.getByTestId("project-execution-environment-panel");
+    await expect(envPanel).toBeVisible();
+    await expect(envPanel.getByRole("heading", { name: /실행 환경/i })).toBeVisible();
+    await expect(envPanel.getByText("실행 준비 상태")).toBeVisible();
+    await expect(envPanel.getByRole("button", { name: "저장소 연결 검증" })).toBeVisible();
+    await expect(envPanel.getByRole("button", { name: "Cursor API 검증" })).toBeVisible();
   });
 
   test("[E2E-PRJ-002] 시드 프로젝트 진입", async ({ page }) => {

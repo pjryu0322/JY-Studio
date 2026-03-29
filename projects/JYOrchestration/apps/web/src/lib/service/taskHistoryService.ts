@@ -13,10 +13,15 @@ export type AppendTaskHistoryInput = {
 };
 
 export async function appendTaskHistory(input: AppendTaskHistoryInput) {
+  const taskId = String(input.taskId ?? "").trim();
+  if (!taskId) {
+    console.warn("[taskHistory] skip append: empty taskId", { eventType: input.eventType, projectId: input.projectId });
+    return null;
+  }
   return prisma.taskHistory.create({
     data: {
       projectId: input.projectId,
-      taskId: input.taskId,
+      taskId,
       actorType: input.actorType,
       actorId: input.actorId ?? null,
       eventType: input.eventType,

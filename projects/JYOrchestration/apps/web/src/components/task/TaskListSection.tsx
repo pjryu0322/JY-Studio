@@ -179,6 +179,12 @@ type TaskListSectionProps = {
   canApproveSensitiveWorkflow?: boolean;
   onApproveSensitiveWorkflow?: (taskId: string) => void;
   approvingSensitiveTaskId?: string | null;
+  /** Execution setup validated → Task「실행」이 Cursor 실행 루프로 연결됨(프롬프트 없이도 가능) */
+  cursorExecutionReady?: boolean;
+  /** 실행 루프 진행 중( DAG 또는 단일 Task ) */
+  executionLoopBusy?: boolean;
+  /** 단일 Task Cursor 실행 중인 taskId */
+  orchestrationRunningTaskId?: string | null;
 };
 
 const btnBase: CSSProperties = {
@@ -233,6 +239,9 @@ export function TaskListSection({
   canApproveSensitiveWorkflow = false,
   onApproveSensitiveWorkflow,
   approvingSensitiveTaskId = null,
+  cursorExecutionReady = false,
+  executionLoopBusy = false,
+  orchestrationRunningTaskId = null,
 }: TaskListSectionProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -330,6 +339,13 @@ export function TaskListSection({
           표시됩니다. 제어 결과는 Task 감사 이력에 기록됩니다.
         </p>
       ) : null}
+      {canRunTask && cursorExecutionReady ? (
+        <p style={{ margin: "0 0 10px 0", color: "#0f766e", fontSize: 13, lineHeight: 1.5 }}>
+          <strong>Cursor 오케스트레이션:</strong> Execution setup이 검증된 프로젝트에서는 「실행」이{" "}
+          <code style={{ fontSize: 12 }}>POST /api/projects/…/execution-loop</code>로 연결되어 Cursor Cloud
+          Agent·(원격) Git 반영·AI 검토까지 진행합니다. 프롬프트 생성 없이 실행할 수 있습니다.
+        </p>
+      ) : null}
       {promptMessage ? <p style={{ margin: "0 0 8px 0", color: "#333" }}>{promptMessage}</p> : null}
       {reorderSaving ? (
         <p style={{ margin: "0 0 8px 0", color: "#1565c0", fontSize: 14 }}>순서를 저장하는 중...</p>
@@ -360,18 +376,25 @@ export function TaskListSection({
               taskStatus: task.status,
               prompt,
               run,
-              isRunningClient: Boolean(prompt && runningPromptId === prompt.id),
+              isRunningClient: Boolean(
+                (prompt && runningPromptId === prompt.id) ||
+                  (cursorExecutionReady && orchestrationRunningTaskId === task.id)
+              ),
             });
             const runDisabled =
-              !taskPromptMap[task.id] ||
-              runningPromptId === taskPromptMap[task.id]?.id ||
-              task.status === "BLOCKED";
+              task.status === "BLOCKED" ||
+              (cursorExecutionReady
+                ? executionLoopBusy
+                : !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id);
             const runLabel = (() => {
+              if (cursorExecutionReady && orchestrationRunningTaskId === task.id && executionLoopBusy) {
+                return "Cursor 실행 중...";
+              }
               const p = taskPromptMap[task.id];
-              if (!p) {
+              if (!p && !cursorExecutionReady) {
                 return "실행";
               }
-              if (runningPromptId === p.id) {
+              if (p && runningPromptId === p.id) {
                 return "실행 중...";
               }
               if (flow === "FAILED") {

@@ -8,6 +8,10 @@ import {
   requireProjectOwnerMemberAdmin,
   updateProjectMember,
 } from "@/lib/service/projectMemberService";
+import {
+  parseProjectAiActionApprovalMode,
+  parseProjectAiActionApplyMode,
+} from "@/lib/ai-member/aiMemberActionApprovalPolicy";
 import { parseAiMemberRole, parseOrchestrationStage } from "@/lib/ai-member/aiMemberOrchestration";
 
 type PatchBody = {
@@ -17,6 +21,8 @@ type PatchBody = {
   orchestrationStage?: string | null;
   aiModelOverride?: string | null;
   orchestrationEnabled?: boolean;
+  aiActionApprovalModeOverride?: string | null;
+  aiActionApplyModeOverride?: string | null;
 };
 
 function normalizeRole(value: unknown): ProjectRole | null {
@@ -77,10 +83,12 @@ export async function PATCH(
         body.aiOrchestrationRole !== undefined ||
         body.orchestrationStage !== undefined ||
         body.aiModelOverride !== undefined ||
-        body.orchestrationEnabled !== undefined
+        body.orchestrationEnabled !== undefined ||
+        body.aiActionApprovalModeOverride !== undefined ||
+        body.aiActionApplyModeOverride !== undefined
       ) {
         return NextResponse.json(
-          { success: false, message: "오케스트레이션 필드는 AI 멤버만 수정할 수 있습니다." },
+          { success: false, message: "오케스트레이션·AI 액션 정책 필드는 AI 멤버만 수정할 수 있습니다." },
           { status: 400 }
         );
       }
@@ -99,6 +107,40 @@ export async function PATCH(
           );
         }
         aiOrchestrationRole = parsed;
+      }
+    }
+
+    let aiActionApprovalModeOverride: ReturnType<typeof parseProjectAiActionApprovalMode> | null | undefined;
+    if (body.aiActionApprovalModeOverride !== undefined) {
+      const raw = body.aiActionApprovalModeOverride;
+      if (raw === null || String(raw).trim() === "") {
+        aiActionApprovalModeOverride = null;
+      } else {
+        const parsed = parseProjectAiActionApprovalMode(raw);
+        if (!parsed) {
+          return NextResponse.json(
+            { success: false, message: "aiActionApprovalModeOverride 값이 올바르지 않습니다." },
+            { status: 400 }
+          );
+        }
+        aiActionApprovalModeOverride = parsed;
+      }
+    }
+
+    let aiActionApplyModeOverride: ReturnType<typeof parseProjectAiActionApplyMode> | null | undefined;
+    if (body.aiActionApplyModeOverride !== undefined) {
+      const raw = body.aiActionApplyModeOverride;
+      if (raw === null || String(raw).trim() === "") {
+        aiActionApplyModeOverride = null;
+      } else {
+        const parsed = parseProjectAiActionApplyMode(raw);
+        if (!parsed) {
+          return NextResponse.json(
+            { success: false, message: "aiActionApplyModeOverride 값이 올바르지 않습니다." },
+            { status: 400 }
+          );
+        }
+        aiActionApplyModeOverride = parsed;
       }
     }
 
@@ -137,6 +179,10 @@ export async function PATCH(
             ...(body.orchestrationEnabled !== undefined
               ? { orchestrationEnabled: body.orchestrationEnabled }
               : {}),
+            ...(aiActionApprovalModeOverride !== undefined
+              ? { aiActionApprovalModeOverride }
+              : {}),
+            ...(aiActionApplyModeOverride !== undefined ? { aiActionApplyModeOverride } : {}),
           }
         : {}),
     });

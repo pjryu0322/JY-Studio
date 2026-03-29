@@ -278,6 +278,27 @@ export async function deleteProjectTaskDraft(projectId: string, draftId: string)
   return { res, json };
 }
 
+export type CursorApiValidationStageDto =
+  | "config"
+  | "connectivity"
+  | "auth"
+  | "readiness"
+  | "repo_access";
+
+export type CursorApiValidationPayload = {
+  overallOk: boolean;
+  stages: Array<{
+    stage: CursorApiValidationStageDto;
+    status: "pass" | "fail" | "skip";
+    reason?: string;
+    latencyMs?: number;
+    detail?: string;
+    context?: { displayRepo: string; baseBranch: string };
+  }>;
+  summaryKr: string;
+  detailLines: string[];
+};
+
 export type ExecutionSetupDto = {
   id: string;
   projectId: string;
@@ -312,9 +333,14 @@ export type ExecutionSetupDto = {
   repoConnectionOk?: boolean | null;
   repoValidatedAt?: string | null;
   repoValidationError?: string | null;
+  cursorApiConnectionOk?: boolean | null;
+  cursorApiValidatedAt?: string | null;
+  cursorApiValidationError?: string | null;
   executorConnectionOk?: boolean | null;
   executorValidatedAt?: string | null;
   executorValidationError?: string | null;
+  /** 검증 API 응답을 병합한 클라이언트 전용(조회 API에는 없음) */
+  cursorApiValidation?: CursorApiValidationPayload | null;
   updatedAt: string;
 };
 
@@ -365,7 +391,7 @@ export async function patchExecutionSetup(
 
 export async function postExecutionSetupValidate(
   projectId: string,
-  body?: { scope?: "repository" | "cursor" | "all" }
+  body?: { scope?: "repository" | "cursor_api" | "cursor_execution" | "cursor" | "all" }
 ) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/execution-setup/validate`, {
@@ -375,35 +401,39 @@ export async function postExecutionSetupValidate(
     body: JSON.stringify(body?.scope ? { scope: body.scope } : {}),
   });
   const json = (await res.json()) as ApiResponse<{
-    scope?: "repository" | "cursor" | "all";
+    scope?: "repository" | "cursor_api" | "cursor_execution" | "cursor" | "all";
     status: "draft" | "validated" | "invalid";
     lastValidatedAt: string | null;
     needsRevalidation?: boolean;
     lastValidationError?: string | null;
     git: "ok" | "needs" | "error";
     cursor: "ok" | "needs" | "error";
+    cursorApi?: "ok" | "needs" | "error";
     messages: string[];
     probeGitOk?: boolean;
     probeCursorOk?: boolean;
     repoConnectionOk?: boolean | null;
+    cursorApiConnectionOk?: boolean | null;
     executorConnectionOk?: boolean | null;
     repoValidatedAt?: string | null;
+    cursorApiValidatedAt?: string | null;
     executorValidatedAt?: string | null;
     repoValidationError?: string | null;
+    cursorApiValidationError?: string | null;
     executorValidationError?: string | null;
-    cursorApiValidation?: {
-      overallOk: boolean;
-      stages: Array<{
-        stage: "config" | "connectivity" | "auth" | "readiness";
-        status: "pass" | "fail" | "skip";
-        reason?: string;
-        latencyMs?: number;
-        detail?: string;
-      }>;
-      summaryKr: string;
-      detailLines: string[];
-    };
+    cursorApiValidation?: CursorApiValidationPayload;
   }>;
+  return { res, json };
+}
+
+/** 프로젝트 소유자만 저장된 Cursor API 키 전체를 일시 확인합니다. */
+export async function postRevealCursorApiToken(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/execution-setup/cursor-token/reveal`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json()) as ApiResponse<{ plaintext: string }>;
   return { res, json };
 }
 
@@ -429,6 +459,7 @@ export type ExecutionReviewerStepDto = {
   model: string;
   decision: string;
   summary: string;
+  issues?: string[];
   reviewedAt: string;
 };
 
@@ -446,6 +477,7 @@ export type TaskExecutionRunDto = {
   evaluationDecision?: string | null;
   evaluationReviewerSteps?: ExecutionReviewerStepDto[];
   validationOutput: string | null;
+  runError?: string | null;
   commitStatus: string | null;
   pushStatus: string | null;
   commitSha: string | null;

@@ -9,7 +9,6 @@ test.describe("E2E members", () => {
     await page.waitForURL(/\/$/, { timeout: 30_000 });
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-settings-toggle").click();
     await page.getByTestId("project-detail-tab-members").click();
     await expect(page.getByTestId("project-members-human-section")).toBeVisible();
   });
@@ -19,7 +18,6 @@ test.describe("E2E members", () => {
   });
 
   test("[E2E-MEM-002] AI 멤버 추가", async ({ page }) => {
-    await page.getByTestId("project-detail-settings-toggle").click();
     await page.getByTestId("project-detail-tab-ai-members").click();
     const panel = page.getByTestId("project-members-ai-section");
     await page.getByTestId("member-invite-toggle").click();

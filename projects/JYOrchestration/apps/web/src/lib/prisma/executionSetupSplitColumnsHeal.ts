@@ -29,6 +29,10 @@ const EXECUTION_SETUP_ADD_COLUMNS_IF_NOT_EXISTS: readonly string[] = [
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorConnectionOk" BOOLEAN`,
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorValidatedAt" TIMESTAMP(3)`,
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorValidationError" TEXT`,
+  // 20260428120000_execution_setup_cursor_api_split
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiConnectionOk" BOOLEAN`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiValidatedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiValidationError" TEXT`,
 ];
 
 /** Wrong snake_case columns from an earlier mistaken script — merge into camelCase then drop. */

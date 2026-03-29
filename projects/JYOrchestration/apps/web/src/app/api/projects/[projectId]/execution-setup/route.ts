@@ -9,12 +9,11 @@ import {
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
+import { maskCursorTokenForUi } from "@/lib/executionSetup/cursorTokenMask";
 
-function maskCursorTokenForUi(raw: string): string {
-  const t = raw.trim();
-  if (!t) return "";
-  if (t.length <= 8) return "••••••••";
-  return `${t.slice(0, 6)}…${t.slice(-4)}`;
+function cursorTokenMaskedForApiResponse(cursorApiToken: string | null | undefined): string | null {
+  const t = String(cursorApiToken ?? "").trim();
+  return t ? maskCursorTokenForUi(t) : null;
 }
 
 function isLikelyUrl(s: string): boolean {
@@ -82,9 +81,13 @@ function normalizeGlobsJson(g: unknown): string {
   return JSON.stringify([...a].sort());
 }
 
-function executionSetupOverallStatus(repoOk: boolean | null, execOk: boolean | null): "draft" | "validated" | "invalid" {
-  if (repoOk === true && execOk === true) return "validated";
-  if (repoOk === false || execOk === false) return "invalid";
+function executionSetupOverallStatus(
+  repoOk: boolean | null,
+  cursorApiOk: boolean | null,
+  execOk: boolean | null
+): "draft" | "validated" | "invalid" {
+  if (repoOk === true && cursorApiOk === true && execOk === true) return "validated";
+  if (repoOk === false || cursorApiOk === false || execOk === false) return "invalid";
   return "draft";
 }
 
@@ -134,7 +137,7 @@ export async function GET(
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
-        cursorApiTokenMasked: row.cursorApiTokenMasked ?? null,
+        cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
         hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
@@ -157,6 +160,9 @@ export async function GET(
         repoConnectionOk: row.repoConnectionOk ?? null,
         repoValidatedAt: row.repoValidatedAt ? row.repoValidatedAt.toISOString() : null,
         repoValidationError: row.repoValidationError ?? null,
+        cursorApiConnectionOk: row.cursorApiConnectionOk ?? null,
+        cursorApiValidatedAt: row.cursorApiValidatedAt ? row.cursorApiValidatedAt.toISOString() : null,
+        cursorApiValidationError: row.cursorApiValidationError ?? null,
         executorConnectionOk: row.executorConnectionOk ?? null,
         executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
         executorValidationError: row.executorValidationError ?? null,
@@ -351,16 +357,23 @@ export async function PATCH(
       data.repoConnectionOk = null;
       data.repoValidatedAt = null;
       data.repoValidationError = null;
+      data.executorConnectionOk = null;
+      data.executorValidatedAt = null;
+      data.executorValidationError = null;
     }
     if (executorDirty || cursorDirty) {
+      data.cursorApiConnectionOk = null;
+      data.cursorApiValidatedAt = null;
+      data.cursorApiValidationError = null;
       data.executorConnectionOk = null;
       data.executorValidatedAt = null;
       data.executorValidationError = null;
     }
     if (repoDirty || executorDirty || cursorDirty) {
       const mergeRepoOk = repoDirty ? null : (existing?.repoConnectionOk ?? null);
+      const mergeCursorApiOk = executorDirty || cursorDirty ? null : (existing?.cursorApiConnectionOk ?? null);
       const mergeExecOk = executorDirty || cursorDirty ? null : (existing?.executorConnectionOk ?? null);
-      data.status = executionSetupOverallStatus(mergeRepoOk, mergeExecOk);
+      data.status = executionSetupOverallStatus(mergeRepoOk, mergeCursorApiOk, mergeExecOk);
       data.needsRevalidation = true;
       data.lastValidationError = null;
     }
@@ -399,6 +412,9 @@ export async function PATCH(
       repoConnectionOk: null,
       repoValidatedAt: null,
       repoValidationError: null,
+      cursorApiConnectionOk: null,
+      cursorApiValidatedAt: null,
+      cursorApiValidationError: null,
       executorConnectionOk: null,
       executorValidatedAt: null,
       executorValidationError: null,
@@ -428,7 +444,7 @@ export async function PATCH(
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
-        cursorApiTokenMasked: row.cursorApiTokenMasked ?? null,
+        cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
         hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
@@ -451,6 +467,9 @@ export async function PATCH(
         repoConnectionOk: row.repoConnectionOk ?? null,
         repoValidatedAt: row.repoValidatedAt ? row.repoValidatedAt.toISOString() : null,
         repoValidationError: row.repoValidationError ?? null,
+        cursorApiConnectionOk: row.cursorApiConnectionOk ?? null,
+        cursorApiValidatedAt: row.cursorApiValidatedAt ? row.cursorApiValidatedAt.toISOString() : null,
+        cursorApiValidationError: row.cursorApiValidationError ?? null,
         executorConnectionOk: row.executorConnectionOk ?? null,
         executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
         executorValidationError: row.executorValidationError ?? null,

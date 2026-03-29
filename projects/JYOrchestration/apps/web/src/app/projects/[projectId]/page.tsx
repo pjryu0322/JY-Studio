@@ -24,7 +24,6 @@ import {
 } from "@/components/task/TaskListSection";
 import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHistoryTimeline";
 import { formatTestedAt } from "@/components/project-spec/format";
-import { ProjectAiActionPolicySection } from "@/components/project-spec/ProjectAiActionPolicySection";
 import { ProjectMembersSection, type ProjectMemberUiRow } from "@/components/project-spec/ProjectMembersSection";
 import {
   canEditSpec,
@@ -43,10 +42,14 @@ import {
   GIT_PUSH_MODE_MANUAL_PUSH,
   normalizeGitApprovalModeForDisplay,
 } from "@/lib/git-apply/retry";
-import { ProjectGitIntegrationPanel } from "@/components/project/ProjectGitIntegrationPanel";
-import { ProjectAdvancedSettingsPanel } from "@/components/project/ProjectAdvancedSettingsPanel";
+import { ProjectDetailGearMenu } from "@/components/project/ProjectDetailGearMenu";
+import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
 // ProjectGuidedFlowPanel(단계 체크리스트)은 Project Spec 화면에서 제거했습니다.
 import { ExecutionTimeline } from "@/components/git/ExecutionTimeline";
+import {
+  isGitBranchConfigErrorMessage,
+  stripGitBranchConfigMarkerForDisplay,
+} from "@/lib/execution/gitBranchCursorError";
 
 function rbacForbiddenMessage(
   res: Response,
@@ -58,7 +61,7 @@ function rbacForbiddenMessage(
   return null;
 }
 
-type ProjectMainTab = "overview" | "members" | "ai-members" | "git" | "advanced";
+type ProjectMainTab = "overview" | "members" | "ai-members" | "execution";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -73,6 +76,7 @@ export default function ProjectDetailPage() {
   const [generatingPromptTaskId, setGeneratingPromptTaskId] = useState<string | null>(null);
   const [taskRuns, setTaskRuns] = useState<TaskRunItem[]>([]);
   const [runningPromptId, setRunningPromptId] = useState<string | null>(null);
+  const [orchestrationRunningTaskId, setOrchestrationRunningTaskId] = useState<string | null>(null);
   const [markingReadyTaskId, setMarkingReadyTaskId] = useState<string | null>(null);
   const [loadingTaskPrompts, setLoadingTaskPrompts] = useState(false);
   const [loadingTaskRuns, setLoadingTaskRuns] = useState(false);
@@ -107,18 +111,11 @@ export default function ProjectDetailPage() {
   const [executionRunsError, setExecutionRunsError] = useState<string | null>(null);
   const [executionSafeMode, setExecutionSafeMode] = useState(false);
   const [mainTab, setMainTab] = useState<ProjectMainTab>("overview");
-  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
   const [execSetupValidatedHint, setExecSetupValidatedHint] = useState<boolean | null>(null);
   const [executionLoopBusy, setExecutionLoopBusy] = useState(false);
   const [executionLoopBanner, setExecutionLoopBanner] = useState<string | null>(null);
   const [singleExecutionTaskId, setSingleExecutionTaskId] = useState("");
   const [approvingSensitiveTaskId, setApprovingSensitiveTaskId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (mainTab === "overview") {
-      setSettingsMenuOpen(false);
-    }
-  }, [mainTab]);
 
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -756,9 +753,49 @@ export default function ProjectDetailPage() {
   }
 
   async function handleRunTask(taskId: string) {
+    if (!projectId) return;
+
+    if (execSetupValidatedHint === true) {
+      try {
+        setOrchestrationRunningTaskId(taskId);
+        setExecutionLoopBusy(true);
+        setPromptMessage(null);
+        setExecutionLoopBanner(null);
+
+        const { res, json } = await postExecutionLoopRun(projectId, { taskId });
+        const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+        if (denied) {
+          setErrorMessage(denied);
+          return;
+        }
+
+        setExecutionLoopBanner(
+          json.message ?? (json.success ? "실행이 완료되었습니다." : "실행이 중단되었습니다.")
+        );
+        setPromptMessage(
+          json.message ??
+            (json.success ? "Cursor 실행 및 검토 단계가 반영되었습니다." : "실행에 실패했습니다.")
+        );
+        await reloadTasksList();
+        await loadExecutionRuns();
+        await reloadTaskRuns();
+      } catch (error) {
+        console.error("handleRunTask (orchestration):", error);
+        setPromptMessage("Cursor 실행 루프 요청 중 오류가 발생했습니다.");
+      } finally {
+        setOrchestrationRunningTaskId(null);
+        setExecutionLoopBusy(false);
+      }
+      return;
+    }
+
     const prompt = taskPromptMap[taskId];
     if (!prompt) {
-      setPromptMessage("먼저 프롬프트를 생성해 주세요.");
+      setPromptMessage(
+        execSetupValidatedHint === false
+          ? "Cursor 파이프라인을 쓰려면 Spec에서 Execution setup을 검증(validated)하거나, mock 실행을 위해 프롬프트를 생성하세요."
+          : "먼저 프롬프트를 생성해 주세요."
+      );
       return;
     }
 
@@ -1529,6 +1566,13 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const scrollToExecutionSetup = useCallback(() => {
+    setMainTab("overview");
+    window.requestAnimationFrame(() => {
+      document.getElementById("execution-setup-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
+
   const projectFlowTail = (
     <>
       {showTaskSection ? (
@@ -1556,8 +1600,9 @@ export default function ProjectDetailPage() {
             >
               <div style={{ fontWeight: 900, marginBottom: 6, color: "#0f172a" }}>실행 오케스트레이션</div>
               <div>
-                <strong>Cursor</strong>가 유일한 코드 실행기(Executor)이며, 저장소에서 실제 변경을 수행합니다. 실행이 끝나면 프로젝트에 등록한{" "}
-                <strong>AI 멤버(리뷰어)</strong>가 역할별로 OpenAI 모델을 통해 검토합니다(AI 멤버가 없으면 기본 단일 평가로 동작).{" "}
+                <strong>Cursor</strong>가 필수 실행기(Executor)이며, 저장소에서 실제 변경을 수행합니다.{" "}
+                <strong>AI 멤버(리뷰어)</strong>는 선택 사항이며, execution-review로 배정된 멤버가 있을 때만 다단계 리뷰가 실행됩니다. 없으면{" "}
+                <strong>리뷰 단계는 생략</strong>되고 Cursor 결과만으로 Task가 완료될 수 있습니다.{" "}
                 <strong>GitHub</strong>에 반영된 코드가 진실이며, 플랫폼은 위임·기록·정책만 담당합니다.
               </div>
               <div style={{ marginTop: 8 }}>
@@ -1576,8 +1621,28 @@ export default function ProjectDetailPage() {
                 <div style={{ marginTop: 6, color: "#b91c1c" }}>
                   최근 실패 Task: <strong>{orchestrationTaskOverview.lastFailed.name}</strong>
                   {orchestrationTaskOverview.lastFailed.lastEvalSummary
-                    ? ` — ${orchestrationTaskOverview.lastFailed.lastEvalSummary.slice(0, 200)}`
+                    ? ` — ${stripGitBranchConfigMarkerForDisplay(orchestrationTaskOverview.lastFailed.lastEvalSummary).slice(0, 200)}`
                     : ""}
+                  {isGitBranchConfigErrorMessage(orchestrationTaskOverview.lastFailed.lastEvalSummary) ? (
+                    <button
+                      type="button"
+                      onClick={() => scrollToExecutionSetup()}
+                      style={{
+                        display: "block",
+                        marginTop: 8,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #f97316",
+                        background: "#fff",
+                        fontWeight: 800,
+                        fontSize: 11,
+                        color: "#c2410c",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Git 설정 수정하기
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1600,9 +1665,19 @@ export default function ProjectDetailPage() {
                       setErrorMessage(denied);
                       return;
                     }
+                    if (!res.ok || !json.success) {
+                      const m =
+                        json.message ??
+                        "실행 루프를 완료하지 못했습니다. (Cursor API 키·Task 상태·선행 DAG를 확인하세요.)";
+                      setErrorMessage(m);
+                      setExecutionLoopBanner(m);
+                      await reloadTasksList();
+                      await loadExecutionRuns();
+                      return;
+                    }
+                    setErrorMessage(null);
                     setExecutionLoopBanner(
-                      json.message ??
-                        (json.success ? "실행 루프가 완료되었습니다." : "실행 루프가 중단되었습니다.")
+                      json.message ?? "실행 루프가 완료되었습니다."
                     );
                     await reloadTasksList();
                     await loadExecutionRuns();
@@ -1746,14 +1821,64 @@ export default function ProjectDetailPage() {
                               <strong>{s.name}</strong> ({s.role}) · {s.model} ·{" "}
                               <span style={{ fontWeight: 800 }}>{s.decision}</span>
                               <div style={{ color: "#64748b", marginTop: 2 }}>{s.summary.slice(0, 280)}</div>
+                              {s.issues && s.issues.length > 0 ? (
+                                <ul style={{ margin: "4px 0 0 0", paddingLeft: 14, color: "#64748b" }}>
+                                  {s.issues.slice(0, 8).map((iss, j) => (
+                                    <li key={j}>{iss}</li>
+                                  ))}
+                                </ul>
+                              ) : null}
                             </li>
                           ))}
                         </ul>
+                      ) : run.evaluationReason?.startsWith("review_skipped:") ? (
+                        <div style={{ fontSize: 11, color: "#475569", marginTop: 6, lineHeight: 1.45 }}>
+                          <strong>AI 리뷰어 없음 (기본 실행 모드)</strong>
+                          <div style={{ marginTop: 4, color: "#64748b" }}>리뷰 단계 생략됨 (AI 멤버 미설정)</div>
+                        </div>
                       ) : (
                         <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
-                          AI 멤버 다단계 리뷰 없음(기본 평가 또는 정책 전처리만).
+                          멀티 리뷰어 단계 없음(이전 단일 평가·정책 전처리만 적용된 기록일 수 있음).
                         </div>
                       )}
+                      {run.runError?.trim() ? (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            background: "#fff7ed",
+                            border: "1px solid #fed7aa",
+                            fontSize: 11,
+                            color: "#7c2d12",
+                            lineHeight: 1.5,
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, marginBottom: 4 }}>실행/오류 메시지</div>
+                          {stripGitBranchConfigMarkerForDisplay(run.runError.trim())}
+                          {isGitBranchConfigErrorMessage(run.runError) ? (
+                            <button
+                              type="button"
+                              onClick={() => scrollToExecutionSetup()}
+                              style={{
+                                display: "block",
+                                marginTop: 10,
+                                padding: "6px 12px",
+                                borderRadius: 8,
+                                border: "1px solid #ea580c",
+                                background: "#fff",
+                                fontWeight: 800,
+                                fontSize: 12,
+                                color: "#c2410c",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Git 설정 수정하기
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -1809,6 +1934,9 @@ export default function ProjectDetailPage() {
           canApproveSensitiveWorkflow={rbac.canOperate}
           onApproveSensitiveWorkflow={handleApproveSensitiveWorkflow}
           approvingSensitiveTaskId={approvingSensitiveTaskId}
+          cursorExecutionReady={execSetupValidatedHint === true}
+          executionLoopBusy={executionLoopBusy}
+          orchestrationRunningTaskId={orchestrationRunningTaskId}
         />
         </div>
         </div>
@@ -2398,12 +2526,15 @@ export default function ProjectDetailPage() {
 
   const showGuidedChrome = Boolean(!loading && project && !errorMessage);
 
-  const detailTabs: { id: ProjectMainTab; label: string }[] = [
-    { id: "overview", label: "Overview" },
-    { id: "members", label: "Members" },
-    { id: "ai-members", label: "AI Members" },
-    { id: "git", label: "Git 연동" },
-    { id: "advanced", label: "Advanced Settings" },
+  const detailTabs: { id: ProjectMainTab; label: string; uiLabel: string }[] = [
+    { id: "overview", label: "Overview", uiLabel: "[P-3-2-1] Tab — Overview" },
+    { id: "members", label: "Members", uiLabel: "[P-3-2-2] Tab — Members" },
+    { id: "ai-members", label: "AI Members", uiLabel: "[P-3-2-3] Tab — AI Members" },
+    {
+      id: "execution",
+      label: "실행 환경 (Execution Environment)",
+      uiLabel: "[P-3-2-4] Tab — Execution Environment",
+    },
   ];
 
   return (
@@ -2440,20 +2571,29 @@ export default function ProjectDetailPage() {
             style={{
               display: "flex",
               flexWrap: "wrap",
+              alignItems: "flex-start",
               gap: 8,
               marginBottom: 20,
               paddingBottom: 12,
               borderBottom: "1px solid #e5e5e5",
+              justifyContent: "space-between",
             }}
           >
-            {detailTabs
-              .filter((t) => t.id === "overview")
-              .map((t) => (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                flex: "1 1 auto",
+              }}
+            >
+              {detailTabs.map((t) => (
                 <button
                   key={t.id}
                   type="button"
                   data-testid={`project-detail-tab-${t.id}`}
-                  data-ui-label="[P-3-2-1] Tab — Overview"
+                  data-ui-label={t.uiLabel}
                   onClick={() => setMainTab(t.id)}
                   style={{
                     padding: "8px 14px",
@@ -2464,64 +2604,31 @@ export default function ProjectDetailPage() {
                     fontSize: 14,
                     fontWeight: mainTab === t.id ? 600 : 500,
                     color: mainTab === t.id ? "#1e40af" : "#333",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  {t.label}
+                  {t.id === "execution" && uiPermissions.canRun ? (
+                    <span
+                      title={
+                        execSetupValidatedHint === true
+                          ? "실행 환경 검증 완료"
+                          : execSetupValidatedHint === false
+                            ? "실행 환경 미검증 또는 검증 실패"
+                            : "실행 환경 상태 확인 중"
+                      }
+                      aria-hidden
+                      style={{ fontSize: 13, lineHeight: 1 }}
+                    >
+                      {execSetupValidatedHint === true ? "✔" : execSetupValidatedHint === false ? "❌" : "⚠"}
+                    </span>
+                  ) : null}
+                  <span>{t.label}</span>
                 </button>
               ))}
-
-            <button
-              type="button"
-              data-testid="project-detail-settings-toggle"
-              data-ui-label="[P-3-2-0] Tab — Settings Icon"
-              onClick={() => setSettingsMenuOpen((v) => !v)}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: settingsMenuOpen ? "1px solid #2563eb" : "1px solid #ccc",
-                background: settingsMenuOpen ? "#eff6ff" : "#fafafa",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: settingsMenuOpen ? 700 : 600,
-                color: settingsMenuOpen ? "#1e40af" : "#333",
-              }}
-            >
-              ⚙ 설정
-            </button>
-
-            {settingsMenuOpen
-              ? detailTabs
-                  .filter((t) => t.id !== "overview")
-                  .map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      data-testid={`project-detail-tab-${t.id}`}
-                      data-ui-label={
-                        t.id === "members"
-                          ? "[P-3-2-2] Tab — Members"
-                          : t.id === "ai-members"
-                            ? "[P-3-2-3] Tab — AI Members"
-                            : t.id === "git"
-                              ? "[P-3-2-4] Tab — Git Integration"
-                              : "[P-3-2-5] Tab — Advanced Settings"
-                      }
-                      onClick={() => setMainTab(t.id)}
-                      style={{
-                        padding: "8px 14px",
-                        borderRadius: 8,
-                        border: mainTab === t.id ? "1px solid #2563eb" : "1px solid #ccc",
-                        background: mainTab === t.id ? "#eff6ff" : "#fafafa",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        fontWeight: mainTab === t.id ? 600 : 500,
-                        color: mainTab === t.id ? "#1e40af" : "#333",
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  ))
-              : null}
+            </div>
+            <ProjectDetailGearMenu />
           </nav>
 
           {mainTab === "overview" ? (
@@ -2537,7 +2644,7 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {mainTab !== "overview" ? (
-            <div data-ui-label="[P-4-4] Settings Screen — Members / AI Members / Git / Advanced">
+            <div data-ui-label="[P-4-4] Project Region — Members / AI Members / Execution Environment">
               {mainTab === "members" ? (
                 <ProjectMembersSection
                   projectId={projectId}
@@ -2574,17 +2681,13 @@ export default function ProjectDetailPage() {
                 />
               ) : null}
 
-              {mainTab === "git" ? (
-                <ProjectGitIntegrationPanel projectId={projectId} project={project} canEdit={rbac.canEditSpec} />
-              ) : null}
-
-              {mainTab === "advanced" ? (
-                <>
-                  <ProjectAdvancedSettingsPanel project={project} />
-                  {projectId ? (
-                    <ProjectAiActionPolicySection projectId={projectId} canEditPolicy={rbac.canManageMembers} />
-                  ) : null}
-                </>
+              {mainTab === "execution" ? (
+                <ProjectExecutionEnvironmentPanel
+                  projectId={projectId}
+                  project={project}
+                  canEdit={rbac.canEditSpec}
+                  canRevealCursorApiKey={projectRole === "OWNER"}
+                />
               ) : null}
             </div>
           ) : null}

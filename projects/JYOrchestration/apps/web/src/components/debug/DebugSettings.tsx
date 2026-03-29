@@ -1,9 +1,11 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { readUiLabelsEnabled, writeUiLabelsEnabled, subscribe } from "@/lib/ui-label/useUiLabel";
 
 export default function DebugSettings() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [labelsOn, setLabelsOn] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -46,6 +48,10 @@ export default function DebugSettings() {
   }, [open]);
 
   if (!mounted) {
+    return null;
+  }
+
+  if (pathname?.startsWith("/projects/")) {
     return null;
   }
 

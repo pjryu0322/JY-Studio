@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
           orchestrationStage: m.orchestrationStage,
           aiModelOverride: m.aiModelOverride,
           orchestrationEnabled: m.orchestrationEnabled,
+          aiActionApprovalModeOverride: m.aiActionApprovalModeOverride,
+          aiActionApplyModeOverride: m.aiActionApplyModeOverride,
           isOwner: m.isOwner,
           canManageMembers: myRole === "OWNER",
         })),

@@ -9,6 +9,8 @@ import {
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import {
+  cursorValidationApiPhasesOk,
+  cursorValidationRepoAccessOk,
   formatCursorApiFailureForStorage,
   formatCursorApiStepSummaryLines,
   formatCursorApiSuccessForStorage,
@@ -21,7 +23,17 @@ import {
   probeGitHttpRemote,
 } from "@/lib/executionSetup/hardening";
 
-export type ValidateScope = "repository" | "cursor" | "all";
+/** 요청 scope. `cursor` 는 이전 클라이언트 호환용(= cursor_execution). */
+export type ValidateScope = "repository" | "cursor_api" | "cursor_execution" | "cursor" | "all";
+
+type NormalizedScope = "repository" | "cursor_api" | "cursor_execution" | "all";
+
+function normalizeValidateScope(raw: string | undefined): NormalizedScope {
+  if (raw === "repository") return "repository";
+  if (raw === "cursor_api") return "cursor_api";
+  if (raw === "cursor_execution" || raw === "cursor") return "cursor_execution";
+  return "all";
+}
 
 function isLikelyUrl(s: string): boolean {
   try {
@@ -76,9 +88,13 @@ function validateRepoStructure(row: {
   return { git, messages };
 }
 
-function computeOverallStatus(repoOk: boolean | null, execOk: boolean | null): "draft" | "validated" | "invalid" {
-  if (repoOk === true && execOk === true) return "validated";
-  if (repoOk === false || execOk === false) return "invalid";
+function computeOverallStatus(
+  repoOk: boolean | null,
+  cursorApiOk: boolean | null,
+  execOk: boolean | null
+): "draft" | "validated" | "invalid" {
+  if (repoOk === true && cursorApiOk === true && execOk === true) return "validated";
+  if (repoOk === false || cursorApiOk === false || execOk === false) return "invalid";
   return "draft";
 }
 
@@ -99,18 +115,27 @@ export async function POST(
       return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     }
 
-    let scope: ValidateScope = "all";
+    let requestedScope: ValidateScope = "all";
     try {
       const ct = request.headers.get("content-type") ?? "";
       if (ct.includes("application/json")) {
         const b = (await request.json()) as { scope?: string };
-        if (b?.scope === "repository" || b?.scope === "cursor" || b?.scope === "all") {
-          scope = b.scope;
+        const s = b?.scope;
+        if (
+          s === "repository" ||
+          s === "cursor_api" ||
+          s === "cursor_execution" ||
+          s === "cursor" ||
+          s === "all"
+        ) {
+          requestedScope = s;
         }
       }
     } catch {
       /* empty body → all */
     }
+
+    const scope = normalizeValidateScope(requestedScope);
 
     const userId = await requireSessionUserId(request);
     if (userId instanceof NextResponse) return userId;
@@ -145,15 +170,28 @@ export async function POST(
       gitRepoName: row.gitRepoName,
     });
 
-    const runRepoProbe = scope === "repository" || scope === "all" || scope === "cursor";
-    const runCursorProbe = scope === "cursor" || scope === "all";
+    const runRepoProbe = scope === "repository" || scope === "all";
+    const runCursorApiOnly = scope === "cursor_api";
+    const runCursorFull = scope === "cursor_execution" || scope === "all";
+    const now = new Date();
 
     const messages: string[] = [...repoStruct.messages];
     const probeMessages: string[] = [];
 
     let gitResult: Side = repoStruct.git;
-    let cursorResult: Side = storedSide(row.executorConnectionOk);
     let cursorSteps: CursorApiValidationStep[] = [];
+
+    let nextRepoOk: boolean | null = row.repoConnectionOk ?? null;
+    let nextRepoErr: string | null = row.repoValidationError ?? null;
+    let nextRepoAt: Date | null = row.repoValidatedAt ?? null;
+
+    let nextCursorApiOk: boolean | null = row.cursorApiConnectionOk ?? null;
+    let nextCursorApiErr: string | null = row.cursorApiValidationError ?? null;
+    let nextCursorApiAt: Date | null = row.cursorApiValidatedAt ?? null;
+
+    let nextExecOk: boolean | null = row.executorConnectionOk ?? null;
+    let nextExecErr: string | null = row.executorValidationError ?? null;
+    let nextExecAt: Date | null = row.executorValidatedAt ?? null;
 
     if (runRepoProbe) {
       if (repoStruct.git === "ok") {
@@ -173,62 +211,50 @@ export async function POST(
       } else {
         gitResult = repoStruct.git;
       }
+      nextRepoOk = gitResult === "ok" ? true : false;
+      const repoErrMsgs = [...messages.filter((m) => m.startsWith("저장소:")), ...probeMessages.filter((m) => m.startsWith("저장소:"))];
+      nextRepoErr = gitResult === "ok" ? null : repoErrMsgs.join(" · ") || "저장소 검증 실패";
+      nextRepoAt = now;
     } else {
       gitResult = storedSide(row.repoConnectionOk);
     }
 
-    if (runCursorProbe) {
-      const cursorOutcome = await runCursorApiValidation({
-        cursorApiUrl: row.cursorApiUrl,
-        cursorApiToken: row.cursorApiToken ?? null,
-        gitRepoUrl: row.gitRepoUrl,
-        baseBranch: row.baseBranch,
-        branchStrategy: row.branchStrategy,
-      });
-      cursorSteps = cursorOutcome.steps;
-      cursorResult = cursorOutcome.overallOk ? "ok" : "error";
-      formatCursorApiStepSummaryLines(cursorOutcome.steps).forEach((line) => {
+    const cursorArgs = {
+      cursorApiUrl: row.cursorApiUrl,
+      cursorApiToken: row.cursorApiToken ?? null,
+      gitRepoUrl: row.gitRepoUrl,
+      baseBranch: row.baseBranch,
+      branchStrategy: row.branchStrategy,
+    };
+
+    if (runCursorApiOnly) {
+      const outcome = await runCursorApiValidation(cursorArgs, { mode: "api_only" });
+      cursorSteps = outcome.steps;
+      nextCursorApiOk = outcome.overallOk;
+      nextCursorApiErr = outcome.overallOk ? null : formatCursorApiFailureForStorage(cursorSteps);
+      nextCursorApiAt = now;
+      formatCursorApiStepSummaryLines(outcome.steps).forEach((line) => {
         probeMessages.push(`Cursor API: ${line}`);
       });
-    } else {
-      cursorResult = storedSide(row.executorConnectionOk);
     }
 
-    const now = new Date();
-
-    let nextRepoOk: boolean | null = row.repoConnectionOk ?? null;
-    let nextExecOk: boolean | null = row.executorConnectionOk ?? null;
-    if (runRepoProbe) {
-      nextRepoOk = gitResult === "ok" ? true : false;
-    }
-    if (runCursorProbe) {
-      nextExecOk = cursorResult === "ok" ? true : false;
-    }
-
-    const nextRepoAt = runRepoProbe ? now : row.repoValidatedAt ?? null;
-    const nextExecAt = runCursorProbe ? now : row.executorValidatedAt ?? null;
-
-    const repoErrMsgs = [...messages.filter((m) => m.startsWith("저장소:")), ...probeMessages.filter((m) => m.startsWith("저장소:"))];
-    const execErrMsgs = [
-      ...messages.filter((m) => m.startsWith("Cursor API:")),
-      ...probeMessages.filter((m) => m.startsWith("Cursor API:")),
-    ];
-
-    let nextRepoErr: string | null = row.repoValidationError ?? null;
-    let nextExecErr: string | null = row.executorValidationError ?? null;
-    if (runRepoProbe) {
-      nextRepoErr = gitResult === "ok" ? null : repoErrMsgs.join(" · ") || "저장소 검증 실패";
-    }
-    if (runCursorProbe) {
-      nextExecErr =
-        cursorResult === "ok"
-          ? null
-          : cursorSteps.length
-            ? formatCursorApiFailureForStorage(cursorSteps)
-            : execErrMsgs.join(" · ") || "Cursor API 연결 검증 실패";
+    if (runCursorFull) {
+      const outcome = await runCursorApiValidation(cursorArgs, { mode: "full" });
+      cursorSteps = outcome.steps;
+      const apiPhases = cursorValidationApiPhasesOk(cursorSteps);
+      const ra = cursorValidationRepoAccessOk(cursorSteps);
+      nextCursorApiOk = apiPhases;
+      nextCursorApiErr = apiPhases ? null : formatCursorApiFailureForStorage(cursorSteps);
+      nextCursorApiAt = new Date();
+      nextExecOk = apiPhases && ra;
+      nextExecErr = apiPhases && ra ? null : formatCursorApiFailureForStorage(cursorSteps);
+      nextExecAt = now;
+      formatCursorApiStepSummaryLines(outcome.steps).forEach((line) => {
+        probeMessages.push(`실행 검증: ${line}`);
+      });
     }
 
-    const nextStatus = computeOverallStatus(nextRepoOk, nextExecOk);
+    const nextStatus = computeOverallStatus(nextRepoOk, nextCursorApiOk, nextExecOk);
     const needsRevalidation = nextStatus !== "validated";
 
     let lastValidationError: string | null = null;
@@ -239,15 +265,26 @@ export async function POST(
       if (nextRepoOk === false) {
         if (nextRepoErr) parts.push(nextRepoErr);
       } else if (nextRepoOk === null) {
-        parts.push("저장소 연결을 검증해 주세요.");
+        parts.push("① Git 저장소 연결 검증이 필요합니다.");
+      }
+      if (nextCursorApiOk === false) {
+        if (nextCursorApiErr) parts.push(nextCursorApiErr);
+      } else if (nextCursorApiOk === null) {
+        parts.push("② Cursor API 검증이 필요합니다.");
       }
       if (nextExecOk === false) {
         if (nextExecErr) parts.push(nextExecErr);
       } else if (nextExecOk === null) {
-        parts.push("Cursor API 연결을 검증해 주세요.");
+        parts.push("③ 실행 검증이 필요합니다.");
       }
       lastValidationError = parts.filter(Boolean).join(" · ") || "검증이 완료되지 않았습니다.";
     }
+
+    const cursorPayloadOverallOk = runCursorFull
+      ? nextExecOk === true
+      : runCursorApiOnly
+        ? nextCursorApiOk === true
+        : false;
 
     const updated = await withExecutionSetupSchemaHealRetry(() =>
       prisma.executionSetup.update({
@@ -260,6 +297,9 @@ export async function POST(
           repoConnectionOk: nextRepoOk,
           repoValidatedAt: nextRepoAt,
           repoValidationError: nextRepoErr,
+          cursorApiConnectionOk: nextCursorApiOk,
+          cursorApiValidatedAt: nextCursorApiAt,
+          cursorApiValidationError: nextCursorApiErr,
           executorConnectionOk: nextExecOk,
           executorValidatedAt: nextExecAt,
           executorValidationError: nextExecErr,
@@ -272,48 +312,58 @@ export async function POST(
       scope === "repository"
         ? gitResult === "ok"
           ? "저장소 연결 검증에 성공했습니다."
-          : "저장소 검증에 실패했습니다."
-        : scope === "cursor"
-          ? cursorResult === "ok"
-            ? "Cursor API 연결 검증 완료"
-            : "Cursor API 연결 검증에 실패했습니다. 아래 상세를 확인하세요."
-          : nextStatus === "validated"
-            ? "저장소·Cursor API 검증이 모두 완료되었습니다."
-            : "검증이 모두 끝나지 않았습니다. 저장소·Cursor API 상태를 확인하세요.";
+          : "저장소 연결 검증에 실패했습니다."
+        : scope === "cursor_api"
+          ? nextCursorApiOk
+            ? "Cursor API 검증에 성공했습니다."
+            : "Cursor API 검증에 실패했습니다."
+          : scope === "cursor_execution"
+            ? nextExecOk
+              ? "실행 검증에 성공했습니다."
+              : "실행 검증에 실패했습니다."
+            : nextStatus === "validated"
+              ? "세 단계 검증이 모두 완료되었습니다. 실행할 준비가 되었습니다."
+              : "아직 끝나지 않은 검증 단계가 있습니다. Git → Cursor API → 실행 순서로 확인하세요.";
 
     return NextResponse.json({
       success: true,
       message: userMessage,
       data: {
-        scope,
+        scope: requestedScope === "cursor" ? "cursor_execution" : scope,
         status: updated.status,
         lastValidatedAt: updated.lastValidatedAt ? updated.lastValidatedAt.toISOString() : null,
         needsRevalidation: Boolean(updated.needsRevalidation),
         lastValidationError: updated.lastValidationError ?? null,
         git: gitResult,
-        cursor: cursorResult,
+        cursor: storedSide(nextExecOk),
+        cursorApi: storedSide(nextCursorApiOk),
         messages: allMessages,
         probeGitOk: runRepoProbe ? gitResult === "ok" : undefined,
-        probeCursorOk: runCursorProbe ? cursorResult === "ok" : undefined,
+        probeCursorOk:
+          runCursorFull ? nextExecOk === true : runCursorApiOnly ? nextCursorApiOk === true : undefined,
         repoConnectionOk: nextRepoOk,
+        cursorApiConnectionOk: nextCursorApiOk,
         executorConnectionOk: nextExecOk,
         repoValidatedAt: updated.repoValidatedAt ? updated.repoValidatedAt.toISOString() : null,
+        cursorApiValidatedAt: updated.cursorApiValidatedAt ? updated.cursorApiValidatedAt.toISOString() : null,
         executorValidatedAt: updated.executorValidatedAt ? updated.executorValidatedAt.toISOString() : null,
         repoValidationError: updated.repoValidationError ?? null,
+        cursorApiValidationError: updated.cursorApiValidationError ?? null,
         executorValidationError: updated.executorValidationError ?? null,
         cursorApiValidation:
-          runCursorProbe && cursorSteps.length
+          (runCursorApiOnly || runCursorFull) && cursorSteps.length
             ? {
-                overallOk: cursorResult === "ok",
+                overallOk: cursorPayloadOverallOk,
                 stages: cursorSteps.map((s) => ({
                   stage: s.stage,
                   status: s.status,
                   reason: s.reason,
                   latencyMs: s.latencyMs,
                   detail: s.detail,
+                  context: s.context,
                 })),
                 summaryKr:
-                  cursorResult === "ok"
+                  cursorPayloadOverallOk
                     ? formatCursorApiSuccessForStorage(cursorSteps)
                     : formatCursorApiFailureForStorage(cursorSteps),
                 detailLines: formatCursorApiStepSummaryLines(cursorSteps),

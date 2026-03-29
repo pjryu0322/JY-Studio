@@ -158,7 +158,7 @@ export function ProjectInfoCard({
           </>
         ) : (
           <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-            Git·유형·브랜치는 상단의 <strong>Git 연동</strong> / <strong>고급 설정</strong> 탭에서 확인할 수 있습니다.
+            Git·유형·브랜치는 설정의 <strong>실행 환경</strong> 탭에서 확인할 수 있습니다.
           </p>
         )}
 

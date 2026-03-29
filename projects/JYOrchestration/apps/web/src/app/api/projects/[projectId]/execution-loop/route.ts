@@ -53,16 +53,20 @@ export async function POST(
     }
 
     const singleTaskId = typeof body.taskId === "string" ? body.taskId.trim() : undefined;
+    console.info("[api] POST execution-loop", { projectId: pid, singleTaskId: singleTaskId || null });
     const result = await runExecutionLoop({
       projectId: pid,
       actorUserId: userId,
       singleTaskId: singleTaskId || undefined,
     });
-    return NextResponse.json({
-      success: result.ok,
-      message: result.message,
-      data: { steps: result.steps },
-    });
+    return NextResponse.json(
+      {
+        success: result.ok,
+        message: result.message,
+        data: { steps: result.steps },
+      },
+      { status: result.ok ? 200 : 422 }
+    );
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;

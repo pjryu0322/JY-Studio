@@ -7,6 +7,9 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { validateCursorAgentLaunchPayload } from "@/lib/execution/cursorAgentLaunchValidation";
+import { enhanceCursorErrorIfBaseBranchRelated, repoDisplayForGitError } from "@/lib/execution/gitBranchCursorError";
+import { verifyBaseBranchBeforeCursorExecution } from "@/lib/execution/verifyBaseBranchBeforeCursor";
 import { cursorApiBasicAuthHeader, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 
 /** Cursor 실행 결과(플랫폼은 로컬 git/diff 없음). */
@@ -140,6 +143,11 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
   const t = params.task;
 
   if (process.env.EXECUTION_LOOP_STUB_CURSOR === "1") {
+    console.warn("[cursor-adapter] EXECUTION_LOOP_STUB_CURSOR=1 — 실제 Cursor API를 호출하지 않습니다.", {
+      repo: repoDisplayForGitError(setup.gitRepoUrl),
+      branch: setup.baseBranch.trim(),
+      taskId: params.task.id,
+    });
     const result: CursorRunResult = {
       runId: `stub-${randomUUID()}`,
       summary: "[STUB] Cursor 실행 생략 — EXECUTION_LOOP_STUB_CURSOR=1",
@@ -154,21 +162,55 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
   const base = normalizeCursorApiBaseUrl(setup.cursorApiUrl);
   const apiKey = setup.cursorApiToken?.trim();
   if (!apiKey) {
-    return { ok: false, error: "Cursor API 키가 없습니다. 실행 환경에서 키를 저장하세요.", logs };
+    console.error("[cursor-adapter] missing cursorApiToken — Execution setup에 API 키를 저장해야 합니다.");
+    return {
+      ok: false,
+      error: "Cursor API 설정이 필요합니다. Execution setup에 Cursor API 키를 저장하세요.",
+      logs,
+    };
   }
+
+  const executionPromptText = [
+    params.prompt,
+    params.allowedPaths?.length
+      ? `\n\n[허용 경로 glob]\n${params.allowedPaths.join("\n")}`
+      : "",
+    `\n\n[정책] autoCommit=${setup.autoCommit}, requireTestsBeforePush=${setup.requireTestsBeforePush}`,
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const payloadPre = validateCursorAgentLaunchPayload({
+    gitRepoUrl: setup.gitRepoUrl,
+    baseBranch: setup.baseBranch,
+    targetBranchName: params.suggestedBranchName,
+    promptText: executionPromptText,
+  });
+  if (!payloadPre.ok) {
+    logs.push("[cursor-adapter] Cloud Agent 페이로드 사전 검증 실패(Git 검증 전)");
+    return { ok: false, error: payloadPre.message, logs };
+  }
+
+  const branchCtx = { gitRepoUrl: setup.gitRepoUrl, baseBranch: setup.baseBranch };
+  const preBranch = await verifyBaseBranchBeforeCursorExecution({
+    gitRepoUrl: setup.gitRepoUrl,
+    baseBranch: setup.baseBranch,
+  });
+  if (!preBranch.ok) {
+    logs.push("[cursor-adapter] base branch 사전 검증 실패");
+    return { ok: false, error: preBranch.message, logs };
+  }
+
+  console.info("[cursor-adapter] Cloud Agent 요청 준비", {
+    repo: repoDisplayForGitError(setup.gitRepoUrl),
+    branch: setup.baseBranch.trim(),
+    taskId: params.task.id,
+  });
 
   const launchUrl = agentsBaseUrl(base);
   const body = {
     prompt: {
-      text: [
-        params.prompt,
-        params.allowedPaths?.length
-          ? `\n\n[허용 경로 glob]\n${params.allowedPaths.join("\n")}`
-          : "",
-        `\n\n[정책] autoCommit=${setup.autoCommit}, requireTestsBeforePush=${setup.requireTestsBeforePush}`,
-      ]
-        .filter(Boolean)
-        .join(""),
+      text: executionPromptText,
     },
     model: "default" as const,
     source: {
@@ -209,11 +251,12 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
     }
 
     if (!res.ok) {
+      const raw = launchJson?.error
+        ? String(launchJson.error)
+        : `Cloud Agent 시작 실패 HTTP ${res.status}`;
       return {
         ok: false,
-        error: launchJson?.error
-          ? String(launchJson.error)
-          : `Cloud Agent 시작 실패 HTTP ${res.status}`,
+        error: enhanceCursorErrorIfBaseBranchRelated(raw, branchCtx),
         logs,
       };
     }
@@ -243,7 +286,11 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         clearTimeout(pollTimer);
         const msg = e instanceof Error ? e.message : String(e);
         logs.push(`poll error: ${msg}`);
-        return { ok: false, error: `상태 조회 실패: ${msg}`, logs };
+        return {
+          ok: false,
+          error: enhanceCursorErrorIfBaseBranchRelated(`상태 조회 실패: ${msg}`, branchCtx),
+          logs,
+        };
       } finally {
         clearTimeout(pollTimer);
       }
@@ -253,7 +300,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         last = JSON.parse(pollText) as AgentJson;
       } catch {
         logs.push(`poll non-JSON: ${pollText.slice(0, 500)}`);
-        return { ok: false, error: "상태 응답 파싱 실패", logs };
+        return { ok: false, error: enhanceCursorErrorIfBaseBranchRelated("상태 응답 파싱 실패", branchCtx), logs };
       }
 
       const st = String(last.status ?? "").toUpperCase();
@@ -261,9 +308,10 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
 
       if (isTerminalFailure(st)) {
         const r = mapAgentToResult(last, params.suggestedBranchName);
+        const raw = r.error || r.summary || "Cloud Agent 실패";
         return {
           ok: false,
-          error: r.error || r.summary || "Cloud Agent 실패",
+          error: enhanceCursorErrorIfBaseBranchRelated(raw, branchCtx),
           logs,
         };
       }
@@ -271,16 +319,24 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
       if (isTerminalSuccess(st)) {
         const r = mapAgentToResult(last, params.suggestedBranchName);
         if (r.executionStatus === "failed" || r.error) {
-          return { ok: false, error: r.error || r.summary, logs };
+          const raw = r.error || r.summary || "Cloud Agent 실패";
+          return { ok: false, error: enhanceCursorErrorIfBaseBranchRelated(raw, branchCtx), logs };
         }
         return { ok: true, result: r, logs };
       }
     }
 
-    return { ok: false, error: "Cloud Agent 응답 시간 초과(폴링 한도). 대시보드에서 상태를 확인하세요.", logs };
+    return {
+      ok: false,
+      error: enhanceCursorErrorIfBaseBranchRelated(
+        "Cloud Agent 응답 시간 초과(폴링 한도). 대시보드에서 상태를 확인하세요.",
+        branchCtx
+      ),
+      logs,
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     logs.push(`fetch error: ${msg}`);
-    return { ok: false, error: msg, logs };
+    return { ok: false, error: enhanceCursorErrorIfBaseBranchRelated(msg, branchCtx), logs };
   }
 }

@@ -75,7 +75,7 @@ export async function processReviewAndOptionalAutoApplyAfterDone(actionId: strin
     return;
   }
 
-  const fromPolicy = await resolveAiActionPolicyModes(row.projectId, row.actionType);
+  const fromPolicy = await resolveAiActionPolicyModes(row.projectId, row.actionType, row.projectMemberId);
   const approvalMode = row.resolvedApprovalMode ?? fromPolicy.approvalMode;
   const applyMode = row.resolvedApplyMode ?? fromPolicy.applyMode;
 

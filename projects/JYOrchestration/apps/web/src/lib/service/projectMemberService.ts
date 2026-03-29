@@ -1,3 +1,4 @@
+import type { ProjectAiActionApprovalMode, ProjectAiActionApplyMode } from "@prisma/client";
 import type { ProjectRole } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
@@ -17,6 +18,8 @@ export type ProjectMemberListItem = {
   orchestrationStage: string | null;
   aiModelOverride: string | null;
   orchestrationEnabled: boolean;
+  aiActionApprovalModeOverride: string | null;
+  aiActionApplyModeOverride: string | null;
   invitedByUserId: string | null;
   invitedByName: string | null;
   createdAt: Date;
@@ -61,6 +64,8 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
       orchestrationStage: true,
       aiModelOverride: true,
       orchestrationEnabled: true,
+      aiActionApprovalModeOverride: true,
+      aiActionApplyModeOverride: true,
       invitedByUserId: true,
       createdAt: true,
       updatedAt: true,
@@ -83,6 +88,8 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
     orchestrationStage: row.orchestrationStage,
     aiModelOverride: row.aiModelOverride,
     orchestrationEnabled: row.orchestrationEnabled,
+    aiActionApprovalModeOverride: row.aiActionApprovalModeOverride,
+    aiActionApplyModeOverride: row.aiActionApplyModeOverride,
     invitedByUserId: row.invitedByUserId,
     invitedByName: row.invitedBy?.name ?? null,
     createdAt: row.createdAt,
@@ -175,6 +182,8 @@ export async function updateProjectMember(input: {
   orchestrationStage?: string | null;
   aiModelOverride?: string | null;
   orchestrationEnabled?: boolean;
+  aiActionApprovalModeOverride?: ProjectAiActionApprovalMode | null;
+  aiActionApplyModeOverride?: ProjectAiActionApplyMode | null;
 }) {
   const data: {
     role?: ProjectRole;
@@ -183,6 +192,8 @@ export async function updateProjectMember(input: {
     orchestrationStage?: string | null;
     aiModelOverride?: string | null;
     orchestrationEnabled?: boolean;
+    aiActionApprovalModeOverride?: ProjectAiActionApprovalMode | null;
+    aiActionApplyModeOverride?: ProjectAiActionApplyMode | null;
   } = {};
   if (input.role) data.role = input.role;
   if (input.displayName !== undefined) data.displayName = input.displayName?.trim() || null;
@@ -196,6 +207,12 @@ export async function updateProjectMember(input: {
     data.aiModelOverride = input.aiModelOverride?.trim() || null;
   }
   if (input.orchestrationEnabled !== undefined) data.orchestrationEnabled = input.orchestrationEnabled;
+  if (input.aiActionApprovalModeOverride !== undefined) {
+    data.aiActionApprovalModeOverride = input.aiActionApprovalModeOverride;
+  }
+  if (input.aiActionApplyModeOverride !== undefined) {
+    data.aiActionApplyModeOverride = input.aiActionApplyModeOverride;
+  }
   return prisma.projectMember.update({
     where: { id: input.memberId },
     data,

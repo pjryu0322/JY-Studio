@@ -9,11 +9,10 @@ import {
   type AiMemberRole,
   EXECUTION_REVIEW_ROLE_ORDER,
   type ExecutionReviewDecision,
+  resolveEffectiveReviewerModel,
   roleOrderIndex,
 } from "@/lib/ai-member/aiMemberOrchestration";
 import { prisma } from "@/lib/prisma";
-
-const DEFAULT_MODEL = "gpt-4o-mini";
 
 export type ExecutionReviewerStepRecord = {
   memberId: string;
@@ -22,12 +21,9 @@ export type ExecutionReviewerStepRecord = {
   model: string;
   decision: ExecutionReviewDecision;
   summary: string;
+  issues: string[];
   reviewedAt: string;
 };
-
-function envDefaultModel(): string {
-  return process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
-}
 
 function buildCommonContext(params: {
   task: { title: string; description: string | null; acceptanceCriteria: string[] };
@@ -71,33 +67,34 @@ ${cr.summary.slice(0, 14_000)}
 
 [공통 정책]
 - 출력은 반드시 JSON 한 객체만.
-- decision은 "done" | "retry" | "failed" 중 하나.
-- reason은 한국어 2~5문장.
-${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하면 failed.\n" : ""}`;
+- decision은 "pass" | "retry" | "fail" (레거시로 done/retry/failed 도 허용).
+- summary는 한국어 2~5문장.
+- issues는 문자열 배열(구체적 지적; 없으면 []).
+${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하면 fail.\n" : ""}`;
 }
 
 function roleSpecificInstructions(role: AiMemberRole): string {
   switch (role) {
     case "reviewer":
       return `[이번 단계 역할: 실행 리뷰어]
-- 수용 기준이 변경·요약과 어떻게 맞는지 평가한다.
+- 요구사항(수용 기준) 충족 여부를 검토한다.
 - 변경 파일이 과제와 관련 있는지, 불필요한 변경이 많은지 본다.
-- 모호하거나 무관한 대규모 변경이면 failed 또는 retry.`;
+- 모호하거나 무관한 대규모 변경이면 fail 또는 retry.`;
     case "security-reviewer":
       return `[이번 단계 역할: 보안 리뷰어]
-- 인증/인가·데이터 노출·주입·위험한 시스템 호출을 중심으로 본다.
-- 시크릿·토큰·키·비밀번호 패턴이 노출된 것처럼 보이면 failed.
-- 위험한 코드 경로(임의 실행, 셸 호출 등)를 지적한다.`;
+- 인증·인가 및 보안 위험을 검토한다.
+- 시크릿·토큰·키 노출이 보이면 fail.
+- 주입·위험한 시스템 호출·임의 실행 등을 issues에 적는다.`;
     case "quality-reviewer":
       return `[이번 단계 역할: 품질 리뷰어]
-- 리팩터링 필요성, 테스트·문서 공백, 유지보수성을 본다.
-- 치명적이지 않으면 done을 줄 수 있으나 개선점은 reason에 적는다.`;
+- 구조·테스트·유지보수성을 검토한다.
+- 치명적이지 않으면 pass를 줄 수 있으나 개선점은 issues에 적는다.`;
     case "spec-reviewer":
       return `[이번 단계 역할: 스펙 리뷰어]
-- 스펙/요구와의 정합성, 누락된 요구를 본다.`;
+- 스펙/요구 정합성·누락을 검토하고 issues에 적는다.`;
     case "task-reviewer":
       return `[이번 단계 역할: 태스크 리뷰어]
-- 태스크 목표 대비 산출이 충분한지 본다.`;
+- 태스크 목표 대비 산출 충분 여부를 검토한다.`;
     default:
       return `[이번 단계 역할: ${role}]`;
   }
@@ -113,12 +110,23 @@ ${roleSpecificInstructions(role)}
 
 [출력 JSON만]
 {
-  "decision": "done" | "retry" | "failed",
-  "reason": "한국어 2~5문장",
-  "score": 0-100 optional,
-  "missingCriteria": ["..."] optional,
-  "suspiciousChanges": ["..."] optional
+  "decision": "pass" | "retry" | "fail",
+  "summary": "한국어 2~5문장",
+  "issues": ["구체적 지적", "..."]
 }`;
+}
+
+/** execution-review 스테이지에 배정된 AI 멤버 수 (리뷰어 없음 판별용). */
+export async function countExecutionReviewAiMembers(projectId: string): Promise<number> {
+  return prisma.projectMember.count({
+    where: {
+      projectId,
+      memberType: "AI",
+      orchestrationEnabled: true,
+      orchestrationStage: "execution-review",
+      aiOrchestrationRole: { in: [...EXECUTION_REVIEW_ROLE_ORDER] },
+    },
+  });
 }
 
 export async function tryRunExecutionReviewWithAiMembers(params: {
@@ -160,7 +168,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
         id: r.id,
         name: r.displayName?.trim() || role,
         role,
-        model: (r.aiModelOverride?.trim() || envDefaultModel()).trim(),
+        model: resolveEffectiveReviewerModel(role, r.aiModelOverride),
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)
@@ -190,6 +198,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
 
     const decision = result.decision as ExecutionReviewDecision;
     decisions.push(decision);
+    const issues = (result.issues ?? []).map((x) => String(x).trim()).filter(Boolean).slice(0, 50);
     steps.push({
       memberId: m.id,
       name: m.name,
@@ -197,6 +206,7 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
       model: m.model,
       decision,
       summary: result.reason.slice(0, 4000),
+      issues,
       reviewedAt: new Date().toISOString(),
     });
 

@@ -36,6 +36,8 @@ const AI_MEMBERS = [
     role: "REVIEWER",
     aiProvider: "OPENAI",
     aiAgentKey: "openai-reviewer-01",
+    aiOrchestrationRole: "reviewer",
+    orchestrationStage: "execution-review",
   },
   {
     displayName: "Draft Assistant",
@@ -186,11 +188,15 @@ async function ensureAiMember(prisma, stats, projectId, spec, invitedByUserId) {
       aiAgentKey: spec.aiAgentKey,
     },
   });
+  const orchRole = spec.aiOrchestrationRole ?? null;
+  const orchStage = spec.orchestrationStage ?? null;
   if (existing) {
     if (
       existing.displayName !== spec.displayName ||
       existing.aiProvider !== spec.aiProvider ||
-      existing.role !== spec.role
+      existing.role !== spec.role ||
+      (existing.aiOrchestrationRole ?? null) !== orchRole ||
+      (existing.orchestrationStage ?? null) !== orchStage
     ) {
       await prisma.projectMember.update({
         where: { id: existing.id },
@@ -198,6 +204,8 @@ async function ensureAiMember(prisma, stats, projectId, spec, invitedByUserId) {
           displayName: spec.displayName,
           aiProvider: spec.aiProvider,
           role: spec.role,
+          aiOrchestrationRole: orchRole,
+          orchestrationStage: orchStage,
         },
       });
     }
@@ -214,6 +222,8 @@ async function ensureAiMember(prisma, stats, projectId, spec, invitedByUserId) {
       aiAgentKey: spec.aiAgentKey,
       role: spec.role,
       invitedByUserId,
+      aiOrchestrationRole: orchRole,
+      orchestrationStage: orchStage,
     },
   });
   bump(stats, "aiMembers", "created");

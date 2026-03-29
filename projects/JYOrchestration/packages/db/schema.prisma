@@ -280,7 +280,7 @@ model ExecutionSetup {
 
   /// Cursor executor
   cursorApiUrl    String
-  /// 저장은 하되 API 응답으로는 절대 반환하지 않는다(마스킹만 노출)
+  /// 평문 DB 저장(백업·접근 통제). 일반 GET/PATCH 응답에는 미포함·마스킹만. 소유자 일시 확인은 전용 reveal API만.
   cursorApiToken  String?  @db.Text
   cursorApiTokenMasked String?
   workspacePath   String
@@ -322,7 +322,11 @@ model ExecutionSetup {
   repoConnectionOk     Boolean?
   repoValidatedAt      DateTime?
   repoValidationError  String?  @db.Text
-  /// Cursor 실행기( URL·토큰·경로 힌트 ) 연결 검증 성공 여부
+  /// Cursor API URL·키·연결·인증·저장소 형식( readiness )까지 — 실행(Agent) 검증과 별도
+  cursorApiConnectionOk   Boolean?
+  cursorApiValidatedAt    DateTime?
+  cursorApiValidationError String? @db.Text
+  /// Cursor가 저장소에서 Agent 실행을 받아들이는지( Cloud Agent 검증 )
   executorConnectionOk     Boolean?
   executorValidatedAt      DateTime?
   executorValidationError    String?  @db.Text
@@ -494,7 +498,7 @@ model ProjectSpecWorkspaceResponse {
   @@map("project_spec_workspace_responses")
 }
 
-/// 프로젝트·액션 유형별 AI 승인/적용 정책
+/// 레거시: 앱은 더 이상 조회하지 않음(리뷰어 멤버 필드로 통합). 행은 보존될 수 있음.
 model ProjectAiActionPolicy {
   /// 정책 행 ID
   id             String                    @id @default(uuid())
@@ -621,6 +625,10 @@ model ProjectMember {
   aiModelOverride String?
   /// 오케스트레이션 파이프라인에 포함 여부(AI 멤버)
   orchestrationEnabled Boolean @default(true)
+  /// 실행 리뷰어 전용: 액션 승인 모드. null이면 시스템 기본(AUTO_APPROVE)
+  aiActionApprovalModeOverride ProjectAiActionApprovalMode?
+  /// 실행 리뷰어 전용: 액션 적용 모드. null이면 시스템 기본(MANUAL_APPLY)
+  aiActionApplyModeOverride ProjectAiActionApplyMode?
   /// 초대한 사용자 ID
   invitedByUserId String?
   /// 프로젝트 내 역할

@@ -1,10 +1,10 @@
 -- Split repository vs executor validation (Prisma default column names = camelCase on this table)
-ALTER TABLE "execution_setups" ADD COLUMN "repoConnectionOk" BOOLEAN;
-ALTER TABLE "execution_setups" ADD COLUMN "repoValidatedAt" TIMESTAMP(3);
-ALTER TABLE "execution_setups" ADD COLUMN "repoValidationError" TEXT;
-ALTER TABLE "execution_setups" ADD COLUMN "executorConnectionOk" BOOLEAN;
-ALTER TABLE "execution_setups" ADD COLUMN "executorValidatedAt" TIMESTAMP(3);
-ALTER TABLE "execution_setups" ADD COLUMN "executorValidationError" TEXT;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "repoConnectionOk" BOOLEAN;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "repoValidatedAt" TIMESTAMP(3);
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "repoValidationError" TEXT;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorConnectionOk" BOOLEAN;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorValidatedAt" TIMESTAMP(3);
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorValidationError" TEXT;
 
 UPDATE "execution_setups"
 SET

@@ -176,6 +176,7 @@ function StageBoardTaskCard(params: {
   const ek = String(d.executionKind ?? "").toLowerCase();
   const edgeW = highlighted ? "2px" : "1px";
   const edgeC = highlighted ? "#0f766e" : "#e2e8f0";
+  const doneCheck = d.status === "CONFIRMED" || ws === "CONFIRMED";
   return (
     <button
       type="button"
@@ -195,6 +196,22 @@ function StageBoardTaskCard(params: {
         opacity,
       }}
     >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <span
+          aria-hidden
+          style={{
+            flexShrink: 0,
+            fontSize: 15,
+            fontWeight: 800,
+            color: doneCheck ? "#15803d" : "#94a3b8",
+            lineHeight: 1.25,
+            marginTop: 1,
+            fontFamily: "ui-monospace, monospace",
+          }}
+        >
+          {doneCheck ? "[✓]" : "[ ]"}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.35 }}>{d.title}</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -286,6 +303,8 @@ function StageBoardTaskCard(params: {
           </span>
         </div>
       ) : null}
+        </div>
+      </div>
     </button>
   );
 }
@@ -308,6 +327,28 @@ function toExecutionStage(raw: string | null | undefined): ExecutionStage | null
   if (v === "requirement" || v === "요구" || v === "planning") return "Requirement";
   if (v === "design" || v === "설계" || v === "feature") return "Design";
   if (v === "development" || v === "개발" || v === "build" || v === "task") return "Development";
+  return null;
+}
+
+/** 스윔레인 배치: [T] Task는 항상 개발 단계. 위상 레벨로 요구 단계에 끼어 보이던 문제 방지. */
+function laneForTaskDraft(d: TaskDraftDto): ExecutionStage {
+  const nt = (d.nodeType ?? nodeTypeFromTitle(d.title)) as TaskNodeType;
+  if (nt === "task") return "Development";
+  const ex = toExecutionStage(d.stage);
+  if (ex) return ex;
+  return stageForNodeType(nt);
+}
+
+/** 할 일 보기 기준 "현재 단계": 보이는 초안 중 미확정이 있는 첫 단계 → 없으면 작업이 있는 가장 앞 단계 → 없으면 null */
+function pickFocusStage(viewGroups: Map<ExecutionStage, TaskDraftDto[]>): ExecutionStage | null {
+  for (const st of EXECUTION_STAGE_ORDER) {
+    const rows = viewGroups.get(st) ?? [];
+    if (rows.some((d) => d.status !== "CONFIRMED")) return st;
+  }
+  for (const st of EXECUTION_STAGE_ORDER) {
+    const rows = viewGroups.get(st) ?? [];
+    if (rows.length > 0) return st;
+  }
   return null;
 }
 
@@ -408,6 +449,7 @@ export function TaskDraftPanel({
   projectId,
   canEdit,
   selectedModel,
+  currentSpecVersionId,
   refreshKey,
   lastAutoSync,
 }: TaskDraftPanelProps) {
@@ -429,7 +471,8 @@ export function TaskDraftPanel({
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [executionPreviewOpen, setExecutionPreviewOpen] = useState(false);
   const [childrenCollapsed, setChildrenCollapsed] = useState(false);
-  const [viewMode, setViewMode] = useState<"stage" | "graph">("stage");
+  const [viewMode, setViewMode] = useState<"focus" | "graph">("focus");
+  const [advancedStagesOpen, setAdvancedStagesOpen] = useState(false);
   const autoWireRanRef = useRef(false);
   const initialCanvasFitRef = useRef(false);
   const [canvasFitRevision, setCanvasFitRevision] = useState(0);
@@ -703,24 +746,11 @@ export function TaskDraftPanel({
     return computeExecutionLevels({ draftIds, depsById, confirmedIds });
   }, [confirmedIds, depsById, drafts]);
 
-  const inferredStageByDraftId = useMemo(() => {
-    const m = new Map<string, ExecutionStage>();
-    for (let i = 0; i < executionLevels.length; i++) {
-      const stage = EXECUTION_STAGE_ORDER[Math.min(i, EXECUTION_STAGE_ORDER.length - 1)];
-      for (const draftId of executionLevels[i] ?? []) {
-        m.set(draftId, stage);
-      }
-    }
-    return m;
-  }, [executionLevels]);
-
   const groupedByExecutionStage = useMemo(() => {
     const groups = new Map<ExecutionStage, TaskDraftDto[]>();
     for (const s of EXECUTION_STAGE_ORDER) groups.set(s, []);
     for (const d of drafts) {
-      const explicit = toExecutionStage(d.stage);
-      const inferred = inferredStageByDraftId.get(d.id);
-      const st = explicit ?? inferred ?? "Development";
+      const st = laneForTaskDraft(d);
       groups.get(st)!.push(d);
     }
     for (const s of EXECUTION_STAGE_ORDER) {
@@ -735,16 +765,14 @@ export function TaskDraftPanel({
       });
     }
     return groups;
-  }, [drafts, inferredStageByDraftId]);
+  }, [drafts]);
 
   const groupedByExecutionStageView = useMemo(() => {
     const groups = new Map<ExecutionStage, TaskDraftDto[]>();
     for (const s of EXECUTION_STAGE_ORDER) groups.set(s, []);
     for (const d of drafts) {
       if (!visibleDraftIdSet.has(d.id)) continue;
-      const explicit = toExecutionStage(d.stage);
-      const inferred = inferredStageByDraftId.get(d.id);
-      const st = explicit ?? inferred ?? "Development";
+      const st = laneForTaskDraft(d);
       groups.get(st)!.push(d);
     }
     for (const s of EXECUTION_STAGE_ORDER) {
@@ -759,17 +787,100 @@ export function TaskDraftPanel({
       });
     }
     return groups;
-  }, [drafts, inferredStageByDraftId, visibleDraftIdSet]);
+  }, [drafts, visibleDraftIdSet]);
 
-  const flowPathText = useMemo(() => EXECUTION_STAGE_ORDER.map(stageLabel).join(" → "), []);
+  const focusStage = useMemo(
+    () => pickFocusStage(groupedByExecutionStageView),
+    [groupedByExecutionStageView]
+  );
 
-  const activeStage = useMemo(() => {
-    for (const st of EXECUTION_STAGE_ORDER) {
-      const rows = groupedByExecutionStage.get(st) ?? [];
-      if (rows.some((d) => d.status !== "CONFIRMED")) return st;
+  const nextStage = useMemo((): ExecutionStage | null => {
+    if (!focusStage) return null;
+    const i = EXECUTION_STAGE_ORDER.indexOf(focusStage);
+    if (i < 0 || i >= EXECUTION_STAGE_ORDER.length - 1) return null;
+    return EXECUTION_STAGE_ORDER[i + 1]!;
+  }, [focusStage]);
+
+  const focusStageRows = useMemo(() => {
+    if (!focusStage) return [];
+    return groupedByExecutionStageView.get(focusStage) ?? [];
+  }, [focusStage, groupedByExecutionStageView]);
+
+  const focusStageTotals = useMemo(() => {
+    const total = focusStageRows.length;
+    const done = focusStageRows.filter((d) => d.status === "CONFIRMED").length;
+    return { total, done, remaining: Math.max(0, total - done) };
+  }, [focusStageRows]);
+
+  const readyExecutableDrafts = useMemo(() => {
+    return draftsForView.filter((d) => {
+      if (d.status !== "DRAFT") return false;
+      const nt = (d.nodeType ?? nodeTypeFromTitle(d.title)) as TaskNodeType;
+      if (nt !== "task") return false;
+      return workflowStatusById.get(d.id) === "READY";
+    });
+  }, [draftsForView, workflowStatusById]);
+
+  const primaryExecutableTask = useMemo((): TaskDraftDto | null => {
+    if (readyExecutableDrafts.length === 0) return null;
+    if (focusStage) {
+      const inStage = readyExecutableDrafts.filter((d) => laneForTaskDraft(d) === focusStage);
+      if (inStage.length > 0) return inStage[0]!;
     }
-    return EXECUTION_STAGE_ORDER[EXECUTION_STAGE_ORDER.length - 1];
-  }, [groupedByExecutionStage]);
+    return readyExecutableDrafts[0]!;
+  }, [focusStage, readyExecutableDrafts]);
+
+  const specVersionNumberMax = useMemo(() => {
+    let m = 0;
+    for (const d of drafts) {
+      const n = d.specVersionNumber;
+      if (typeof n === "number" && n > m) m = n;
+    }
+    return m;
+  }, [drafts]);
+
+  const lastDraftActivityAt = useMemo(() => {
+    if (!drafts.length) return null as string | null;
+    let max = "";
+    for (const d of drafts) {
+      const t = d.updatedAt || d.createdAt;
+      if (t > max) max = t;
+    }
+    return max || null;
+  }, [drafts]);
+
+  const workflowHealth = useMemo(() => {
+    const hasConfirmedSpec = Boolean(currentSpecVersionId);
+    const tasksGenerated = drafts.length > 0;
+    const filterHidesAll = drafts.length > 0 && draftsForView.length === 0;
+    const hasDraftWorkLeft = drafts.some((d) => d.status === "DRAFT");
+    const stagesWithTasks = EXECUTION_STAGE_ORDER.filter(
+      (s) => (groupedByExecutionStageView.get(s) ?? []).length > 0
+    );
+    const focusStageValid = focusStage !== null && focusStageRows.length > 0;
+    return {
+      hasConfirmedSpec,
+      tasksGenerated,
+      filterHidesAll,
+      hasDraftWorkLeft,
+      stagesWithTasks,
+      focusStageValid,
+      readyExecutableCount: readyExecutableDrafts.length,
+    };
+  }, [
+    currentSpecVersionId,
+    drafts,
+    draftsForView.length,
+    focusStage,
+    focusStageRows.length,
+    groupedByExecutionStageView,
+    readyExecutableDrafts.length,
+  ]);
+
+  const nonEmptyStagesForAdvanced = useMemo(
+    () => EXECUTION_STAGE_ORDER.filter((s) => (groupedByExecutionStageView.get(s) ?? []).length > 0),
+    [groupedByExecutionStageView]
+  );
 
   const detailBlockingDrafts = useMemo(() => {
     if (!editing) return [];
@@ -850,7 +961,7 @@ export function TaskDraftPanel({
     if (!canEdit) return;
     const target = byId.get(draftId);
     if (!target) return;
-    const stage = toExecutionStage(target.stage) ?? inferredStageByDraftId.get(draftId) ?? "Development";
+    const stage = laneForTaskDraft(target);
     const rows = [...(groupedByExecutionStage.get(stage) ?? [])];
     const idx = rows.findIndex((d) => d.id === draftId);
     if (idx < 0) return;
@@ -974,6 +1085,116 @@ export function TaskDraftPanel({
     setEditTaskOutput(d.taskOutput ?? "");
     setEditEstimatedSize(d.estimatedSize ?? "");
     setEditExecutionKind(d.executionKind ?? "");
+  }
+
+  function renderStageTaskRows(st: ExecutionStage, rows: TaskDraftDto[]) {
+    if (rows.length === 0) {
+      return (
+        <div style={{ fontSize: 12, color: "#64748b", padding: "8px 4px", lineHeight: 1.55 }}>
+          <div style={{ fontWeight: 800, color: "#475569", marginBottom: 4 }}>이 단계에 표시할 작업이 없습니다.</div>
+          <div>다른 단계에 항목이 있는지 「전체 Task 보기」로 확인하거나, 필터·생성 상태를 점검해 주세요.</div>
+        </div>
+      );
+    }
+    if (st !== "Development") {
+      return rows.map((d) => (
+        <StageBoardTaskCard
+          key={d.id}
+          d={d}
+          rows={rows}
+          workflowStatusById={workflowStatusById}
+          hierarchyHighlightIds={hierarchyHighlightIds}
+          canEdit={canEdit}
+          onOpen={openEdit}
+          onMoveInStage={handleMoveInStage}
+        />
+      ));
+    }
+    const nt = (x: TaskDraftDto) => (x.nodeType ?? nodeTypeFromTitle(x.title)) as TaskNodeType;
+    const devNonTask = rows.filter((x) => nt(x) !== "task");
+    const devTasks = rows.filter((x) => nt(x) === "task");
+    const byF = new Map<string, TaskDraftDto[]>();
+    for (const t of devTasks) {
+      const fid = featureParentDraftId(t, byId) ?? "_ungrouped";
+      if (!byF.has(fid)) byF.set(fid, []);
+      byF.get(fid)!.push(t);
+    }
+    const keys = [...byF.keys()].sort((a, b) => {
+      if (a === "_ungrouped") return 1;
+      if (b === "_ungrouped") return -1;
+      const ta = byId.get(a)?.title ?? a;
+      const tb = byId.get(b)?.title ?? b;
+      return ta.localeCompare(tb, "ko");
+    });
+    return (
+      <>
+        {devNonTask.map((d) => (
+          <StageBoardTaskCard
+            key={d.id}
+            d={d}
+            rows={rows}
+            workflowStatusById={workflowStatusById}
+            hierarchyHighlightIds={hierarchyHighlightIds}
+            canEdit={canEdit}
+            onOpen={openEdit}
+            onMoveInStage={handleMoveInStage}
+          />
+        ))}
+        {keys.map((fid) => {
+          const tasks = byF.get(fid)!;
+          const collapsed = fid !== "_ungrouped" && collapsedFeatureIds.has(fid);
+          const feat = fid === "_ungrouped" ? null : byId.get(fid);
+          return (
+            <div key={fid} style={{ display: "grid", gap: 6 }}>
+              {fid !== "_ungrouped" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCollapsedFeatureIds((prev) => {
+                      const n = new Set(prev);
+                      if (n.has(fid)) n.delete(fid);
+                      else n.add(fid);
+                      return n;
+                    });
+                  }}
+                  style={{
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #bbf7d0",
+                    background: "#f0fdf4",
+                    fontWeight: 900,
+                    fontSize: 12,
+                    color: "#166534",
+                    cursor: "pointer",
+                  }}
+                >
+                  {collapsed ? "▶" : "▼"} Feature · {feat?.title ?? fid} · {tasks.length} Tasks
+                </button>
+              ) : null}
+              {fid === "_ungrouped" || !collapsed ? (
+                tasks.map((d) => (
+                  <StageBoardTaskCard
+                    key={d.id}
+                    d={d}
+                    rows={rows}
+                    workflowStatusById={workflowStatusById}
+                    hierarchyHighlightIds={hierarchyHighlightIds}
+                    canEdit={canEdit}
+                    onOpen={openEdit}
+                    onMoveInStage={handleMoveInStage}
+                  />
+                ))
+              ) : (
+                <div style={{ fontSize: 11, color: "#64748b", paddingLeft: 8 }}>
+                  {tasks.length}개 접힘 — 헤더를 눌러 펼칩니다.
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </>
+    );
   }
 
   async function saveEdit() {
@@ -1281,42 +1502,229 @@ export function TaskDraftPanel({
       ) : null}
 
       <div
+        data-testid="task-draft-workflow-summary"
         style={{
           marginBottom: 12,
-          padding: 12,
+          padding: 14,
           borderRadius: 10,
           border: "1px solid #ddd6fe",
           background: "#fff",
           display: "grid",
-          gap: 6,
+          gap: 12,
         }}
       >
-        <div style={{ fontSize: 13, fontWeight: 800, color: "#1f2937" }}>
-          총 Task: {drafts.length}개 · 단계: {EXECUTION_STAGE_ORDER.length}단계
+        <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", letterSpacing: "-0.02em" }}>
+          워크플로 요약
         </div>
-        <div style={{ fontSize: 12, color: "#475569" }}>예상 흐름: [{flowPathText}]</div>
-        <div style={{ fontSize: 12, color: "#0f766e", fontWeight: 700 }}>현재 단계: {stageLabel(activeStage)} 진행 중</div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+            gap: 8,
+            fontSize: 13,
+            color: "#334155",
+            lineHeight: 1.45,
+          }}
+        >
+          <div>
+            <span style={{ fontWeight: 800, color: "#64748b" }}>확정 Spec</span>
+            <div style={{ fontWeight: 700, marginTop: 2 }}>
+              {currentSpecVersionId
+                ? `버전 ${specVersionNumberMax > 0 ? `#${specVersionNumberMax}` : "(번호 조회 중)"}`
+                : "미연결"}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontWeight: 800, color: "#64748b" }}>전체 Task 초안</span>
+            <div style={{ fontWeight: 700, marginTop: 2 }}>{drafts.length}개</div>
+          </div>
+          <div>
+            <span style={{ fontWeight: 800, color: "#64748b" }}>표시 중</span>
+            <div style={{ fontWeight: 700, marginTop: 2 }}>
+              {draftsForView.length}개
+              {executionKindFilter ? (
+                <span style={{ fontWeight: 600, color: "#7c3aed" }}> · 필터 {executionKindFilter}</span>
+              ) : null}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontWeight: 800, color: "#64748b" }}>현재 단계 (할 일 보기)</span>
+            <div style={{ fontWeight: 800, marginTop: 2, color: focusStage ? "#0f766e" : "#b45309" }}>
+              {focusStage ? stageLabel(focusStage) : "미생성 · 표시할 단계 없음"}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontWeight: 800, color: "#64748b" }}>현재 단계 Task</span>
+            <div style={{ fontWeight: 700, marginTop: 2 }}>
+              {focusStage ? `${focusStageTotals.total}개 (미확정 ${focusStageTotals.remaining}개)` : "—"}
+            </div>
+          </div>
+          <div>
+            <span style={{ fontWeight: 800, color: "#64748b" }}>지금 실행 가능</span>
+            <div style={{ fontWeight: 700, marginTop: 2, color: readyExecutableDrafts.length > 0 ? "#15803d" : "#64748b" }}>
+              {readyExecutableDrafts.length}개
+              <span style={{ fontWeight: 500, fontSize: 12, color: "#94a3b8" }}> · Task 노드·선행 충족·DRAFT</span>
+            </div>
+          </div>
+          <div>
+            <span style={{ fontWeight: 800, color: "#64748b" }}>초안 마지막 갱신</span>
+            <div style={{ fontWeight: 600, marginTop: 2, fontSize: 12 }}>
+              {lastDraftActivityAt ? formatTestedAt(lastDraftActivityAt) : "—"}
+            </div>
+          </div>
+        </div>
+        {!workflowHealth.hasConfirmedSpec ? (
+          <div style={{ fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+            진단: 확정 Spec이 없어 Task 기준이 비어 있습니다. Spec을 확정한 뒤 초안을 생성하세요.
+          </div>
+        ) : !workflowHealth.tasksGenerated ? (
+          <div style={{ fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+            진단: Spec은 연결됐지만 Task 초안이 없습니다. 아래 「Task 다시 생성」을 사용하세요.
+          </div>
+        ) : workflowHealth.filterHidesAll ? (
+          <div style={{ fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+            진단: 실행 유형 필터 때문에 화면에서 Task가 모두 숨겨졌습니다. 필터를 해제하거나 「전체 Task 보기」를 누르세요.
+          </div>
+        ) : !workflowHealth.hasDraftWorkLeft ? (
+          <div style={{ fontSize: 12, color: "#166534", fontWeight: 600 }}>
+            진단: 남은 DRAFT가 없습니다. 확정이 끝났다면 프로젝트 Task 목록에서 실행을 진행할 수 있습니다.
+          </div>
+        ) : null}
+        <div
+          style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}
+          aria-label="복구 동작"
+        >
+          {canEdit ? (
+            <>
+              <button
+                type="button"
+                data-testid="task-draft-cta-regenerate"
+                disabled={busy === "regen"}
+                onClick={() => void handleRegenerate()}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #7c3aed",
+                  background: "#faf5ff",
+                  fontWeight: 800,
+                  fontSize: 11,
+                  cursor: busy === "regen" ? "wait" : "pointer",
+                }}
+              >
+                Task 다시 생성
+              </button>
+              <button
+                type="button"
+                data-testid="task-draft-cta-recalc-workflow"
+                disabled={busy === "auto-wire" || drafts.length < 2}
+                onClick={() => void runSynthesizeDefaultFlow()}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #0d9488",
+                  background: "#f0fdfa",
+                  fontWeight: 800,
+                  fontSize: 11,
+                  cursor: busy === "auto-wire" ? "wait" : "pointer",
+                }}
+              >
+                워크플로 재계산
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            data-testid="task-draft-cta-show-all"
+            onClick={() => {
+              setExecutionKindFilter("");
+              setAdvancedStagesOpen(true);
+              setViewMode("focus");
+            }}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              background: "#f8fafc",
+              fontWeight: 800,
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            전체 Task 보기
+          </button>
+          {primaryExecutableTask ? (
+            <button
+              type="button"
+              data-testid="task-draft-cta-run-current"
+              onClick={() => openEdit(primaryExecutableTask)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                border: "1px solid #15803d",
+                background: "#22c55e",
+                color: "#fff",
+                fontWeight: 900,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              현재 Task 실행
+            </button>
+          ) : null}
+        </div>
+        <div
+          style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, fontSize: 12, color: "#64748b" }}
+          aria-label="워크플로 단계 흐름"
+        >
+          <span style={{ fontWeight: 800, color: "#94a3b8", marginRight: 4 }}>흐름</span>
+          {EXECUTION_STAGE_ORDER.map((s, i) => {
+            const rowsAll = groupedByExecutionStage.get(s) ?? [];
+            const sealed = rowsAll.length > 0 && rowsAll.every((d) => d.status === "CONFIRMED");
+            const cur = focusStage !== null && s === focusStage;
+            return (
+              <span key={s} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                {i > 0 ? <span style={{ color: "#e2e8f0" }}>→</span> : null}
+                <span
+                  style={{
+                    fontWeight: cur ? 900 : 600,
+                    color: cur ? "#0f766e" : sealed ? "#94a3b8" : "#475569",
+                  }}
+                >
+                  {stageLabel(s)}
+                  {sealed && rowsAll.length > 0 ? " ✓" : ""}
+                  {cur ? " · 지금" : ""}
+                </span>
+              </span>
+            );
+          })}
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, alignItems: "center" }}>
         <button
           type="button"
-          onClick={() => setViewMode("stage")}
+          onClick={() => {
+            setViewMode("focus");
+            setAdvancedStagesOpen(false);
+          }}
           style={{
             padding: "6px 10px",
             borderRadius: 8,
-            border: viewMode === "stage" ? "1px solid #7c3aed" : "1px solid #cbd5e1",
-            background: viewMode === "stage" ? "#ede9fe" : "#fff",
+            border: viewMode === "focus" ? "1px solid #7c3aed" : "1px solid #cbd5e1",
+            background: viewMode === "focus" ? "#ede9fe" : "#fff",
             fontWeight: 800,
             fontSize: 12,
             cursor: "pointer",
           }}
         >
-          단계 보기
+          할 일 보기
         </button>
         <button
           type="button"
-          onClick={() => setViewMode("graph")}
+          onClick={() => {
+            setViewMode("graph");
+            setAdvancedStagesOpen(false);
+          }}
           style={{
             padding: "6px 10px",
             borderRadius: 8,
@@ -1329,45 +1737,74 @@ export function TaskDraftPanel({
         >
           그래프 보기
         </button>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10, alignItems: "center" }}>
-        <span style={{ fontSize: 11, fontWeight: 900, color: "#64748b" }}>실행 Task 유형</span>
         <button
           type="button"
-          onClick={() => setExecutionKindFilter("")}
+          disabled={viewMode === "graph"}
+          onClick={() => setAdvancedStagesOpen((v) => !v)}
           style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-            border: executionKindFilter === "" ? "1px solid #7c3aed" : "1px solid #e2e8f0",
-            background: executionKindFilter === "" ? "#ede9fe" : "#fff",
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: advancedStagesOpen ? "1px solid #0f766e" : "1px solid #cbd5e1",
+            background: advancedStagesOpen ? "#ecfdf5" : "#fff",
             fontWeight: 800,
-            fontSize: 11,
-            cursor: "pointer",
+            fontSize: 12,
+            cursor: viewMode === "graph" ? "not-allowed" : "pointer",
+            opacity: viewMode === "graph" ? 0.45 : 1,
           }}
         >
-          전체
+          {advancedStagesOpen ? "고급 보기 닫기" : "고급 보기"}
         </button>
-        {EXECUTION_KIND_FILTERS.map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => setExecutionKindFilter(k)}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: executionKindFilter === k ? "1px solid #7c3aed" : "1px solid #e2e8f0",
-              background: executionKindFilter === k ? "#ede9fe" : "#fff",
-              fontWeight: 800,
-              fontSize: 11,
-              cursor: "pointer",
-              textTransform: "uppercase",
-            }}
-          >
-            {k}
-          </button>
-        ))}
       </div>
+
+      {advancedStagesOpen && viewMode === "focus" ? (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid #e2e8f0",
+            background: "#f8fafc",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>실행 Task 유형 필터</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => setExecutionKindFilter("")}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 999,
+                border: executionKindFilter === "" ? "1px solid #7c3aed" : "1px solid #e2e8f0",
+                background: executionKindFilter === "" ? "#ede9fe" : "#fff",
+                fontWeight: 800,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              전체
+            </button>
+            {EXECUTION_KIND_FILTERS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setExecutionKindFilter(k)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  border: executionKindFilter === k ? "1px solid #7c3aed" : "1px solid #e2e8f0",
+                  background: executionKindFilter === k ? "#ede9fe" : "#fff",
+                  fontWeight: 800,
+                  fontSize: 11,
+                  cursor: "pointer",
+                  textTransform: "uppercase",
+                }}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8, alignItems: "center" }}>
         {canEdit ? (
@@ -1618,158 +2055,263 @@ export function TaskDraftPanel({
         </div>
       ) : null}
 
-      {/* 상태 요약/실행 순서 텍스트는 Detail Panel로 이동 */}
-
-      {viewMode === "stage" ? (
-        <div
-          data-testid="task-draft-stage-board"
-          style={{
-            borderRadius: 12,
-            border: "1px solid #ddd6fe",
-            background: "#fff",
-            padding: 12,
-          }}
-        >
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
-            {EXECUTION_STAGE_ORDER.map((s, idx) => (
-              <div key={s} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>{stageLabel(s)}</span>
-                {idx < EXECUTION_STAGE_ORDER.length - 1 ? (
-                  <span aria-hidden style={{ color: "#94a3b8", fontWeight: 900 }}>
-                    →
-                  </span>
-                ) : null}
-              </div>
-            ))}
-          </div>
+      {viewMode === "focus" ? (
+        <>
           <div
+            data-testid="task-draft-focus-board"
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 10,
-              alignItems: "start",
+              borderRadius: 12,
+              border: "1px solid #ddd6fe",
+              background: "#fff",
+              padding: 14,
             }}
           >
-            {EXECUTION_STAGE_ORDER.map((st) => {
-              const rows = groupedByExecutionStageView.get(st) ?? [];
-              return (
-                <section key={st} style={{ border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", padding: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#334155", marginBottom: 8 }}>
-                    {stageLabel(st)} ({rows.length})
-                  </div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {rows.length === 0 ? (
-                      <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 2px" }}>Task 없음</div>
-                    ) : st !== "Development" ? (
-                      rows.map((d) => (
-                        <StageBoardTaskCard
-                          key={d.id}
-                          d={d}
-                          rows={rows}
-                          workflowStatusById={workflowStatusById}
-                          hierarchyHighlightIds={hierarchyHighlightIds}
-                          canEdit={canEdit}
-                          onOpen={openEdit}
-                          onMoveInStage={handleMoveInStage}
-                        />
-                      ))
-                    ) : (
-                      <>
-                        {(() => {
-                          const nt = (x: TaskDraftDto) => (x.nodeType ?? nodeTypeFromTitle(x.title)) as TaskNodeType;
-                          const devNonTask = rows.filter((x) => nt(x) !== "task");
-                          const devTasks = rows.filter((x) => nt(x) === "task");
-                          const byF = new Map<string, TaskDraftDto[]>();
-                          for (const t of devTasks) {
-                            const fid = featureParentDraftId(t, byId) ?? "_ungrouped";
-                            if (!byF.has(fid)) byF.set(fid, []);
-                            byF.get(fid)!.push(t);
-                          }
-                          const keys = [...byF.keys()].sort((a, b) => {
-                            if (a === "_ungrouped") return 1;
-                            if (b === "_ungrouped") return -1;
-                            const ta = byId.get(a)?.title ?? a;
-                            const tb = byId.get(b)?.title ?? b;
-                            return ta.localeCompare(tb, "ko");
-                          });
-                          return (
-                            <>
-                              {devNonTask.map((d) => (
-                                <StageBoardTaskCard
-                                  key={d.id}
-                                  d={d}
-                                  rows={rows}
-                                  workflowStatusById={workflowStatusById}
-                                  hierarchyHighlightIds={hierarchyHighlightIds}
-                                  canEdit={canEdit}
-                                  onOpen={openEdit}
-                                  onMoveInStage={handleMoveInStage}
-                                />
-                              ))}
-                              {keys.map((fid) => {
-                                const tasks = byF.get(fid)!;
-                                const collapsed = fid !== "_ungrouped" && collapsedFeatureIds.has(fid);
-                                const feat = fid === "_ungrouped" ? null : byId.get(fid);
-                                return (
-                                  <div key={fid} style={{ display: "grid", gap: 6 }}>
-                                    {fid !== "_ungrouped" ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setCollapsedFeatureIds((prev) => {
-                                            const n = new Set(prev);
-                                            if (n.has(fid)) n.delete(fid);
-                                            else n.add(fid);
-                                            return n;
-                                          });
-                                        }}
-                                        style={{
-                                          textAlign: "left",
-                                          padding: "8px 10px",
-                                          borderRadius: 8,
-                                          border: "1px solid #bbf7d0",
-                                          background: "#f0fdf4",
-                                          fontWeight: 900,
-                                          fontSize: 12,
-                                          color: "#166534",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        {collapsed ? "▶" : "▼"} Feature · {feat?.title ?? fid} · {tasks.length} Tasks
-                                      </button>
-                                    ) : null}
-                                    {fid === "_ungrouped" || !collapsed ? (
-                                      tasks.map((d) => (
-                                        <StageBoardTaskCard
-                                          key={d.id}
-                                          d={d}
-                                          rows={rows}
-                                          workflowStatusById={workflowStatusById}
-                                          hierarchyHighlightIds={hierarchyHighlightIds}
-                                          canEdit={canEdit}
-                                          onOpen={openEdit}
-                                          onMoveInStage={handleMoveInStage}
-                                        />
-                                      ))
-                                    ) : (
-                                      <div style={{ fontSize: 11, color: "#64748b", paddingLeft: 8 }}>
-                                        {tasks.length}개 접힘 — 헤더를 눌러 펼칩니다.
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </>
-                          );
-                        })()}
-                      </>
-                    )}
-                  </div>
-                </section>
-              );
-            })}
+            <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>
+              지금 할 일 · {focusStage ? stageLabel(focusStage) : "미생성"}
+            </div>
+            <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+              항목을 눌러 상세 수정·확정합니다. 선행이 충족된 Task(●)는 아래에서 바로 열 수 있습니다.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12, alignItems: "center" }}>
+              {primaryExecutableTask ? (
+                <button
+                  type="button"
+                  data-testid="task-draft-focus-run-current"
+                  onClick={() => openEdit(primaryExecutableTask)}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    border: "1px solid #15803d",
+                    background: "#16a34a",
+                    color: "#fff",
+                    fontWeight: 900,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(22,163,74,0.25)",
+                  }}
+                >
+                  현재 Task 실행
+                </button>
+              ) : null}
+              {readyExecutableDrafts.length > 1 ? (
+                <button
+                  type="button"
+                  data-testid="task-draft-focus-show-ready"
+                  onClick={() => setAdvancedStagesOpen(true)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  다음 실행 가능 Task 보기
+                </button>
+              ) : null}
+              {canEdit && validation.ok && executableDraftCount > 0 ? (
+                <button
+                  type="button"
+                  data-testid="task-draft-focus-auto-confirm"
+                  disabled={busy === "confirm-all"}
+                  onClick={() => void handleConfirmAll()}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #15803d",
+                    background: "#f0fdf4",
+                    color: "#166534",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: busy === "confirm-all" ? "wait" : "pointer",
+                  }}
+                >
+                  자동 확정 시작…
+                </button>
+              ) : null}
+            </div>
+            {!focusStage && loading ? (
+              <div style={{ fontSize: 12, color: "#64748b" }}>불러오는 중…</div>
+            ) : !focusStage && !loading ? (
+              <div
+                data-testid="task-draft-focus-empty"
+                style={{
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "1px solid #fde68a",
+                  background: "#fffbeb",
+                  fontSize: 13,
+                  color: "#78350f",
+                  lineHeight: 1.55,
+                }}
+              >
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>표시할 Task가 없습니다</div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>가능한 원인</div>
+                <ul style={{ margin: "0 0 10px 1rem", padding: 0 }}>
+                  {!workflowHealth.hasConfirmedSpec ? <li>확정 Spec이 없어 초안 기준이 비어 있습니다.</li> : null}
+                  {workflowHealth.hasConfirmedSpec && !workflowHealth.tasksGenerated ? (
+                    <li>Task가 아직 생성되지 않았습니다.</li>
+                  ) : null}
+                  {workflowHealth.filterHidesAll ? <li>실행 유형 필터 때문에 모든 항목이 숨겨졌습니다.</li> : null}
+                  {workflowHealth.tasksGenerated && !workflowHealth.hasDraftWorkLeft ? (
+                    <li>남은 DRAFT가 없습니다. 이미 모두 확정되었을 수 있습니다.</li>
+                  ) : null}
+                  {workflowHealth.tasksGenerated &&
+                  workflowHealth.hasDraftWorkLeft &&
+                  !workflowHealth.filterHidesAll ? (
+                    <li>단계·연결 정보를 재계산하면 목록이 복구될 수 있습니다.</li>
+                  ) : null}
+                </ul>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>다음 작업</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      disabled={busy === "regen"}
+                      onClick={() => void handleRegenerate()}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #7c3aed",
+                        background: "#faf5ff",
+                        fontWeight: 800,
+                        fontSize: 12,
+                        cursor: busy === "regen" ? "wait" : "pointer",
+                      }}
+                    >
+                      Task 다시 생성
+                    </button>
+                  ) : null}
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      disabled={busy === "auto-wire" || drafts.length < 2}
+                      onClick={() => void runSynthesizeDefaultFlow()}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #0d9488",
+                        background: "#f0fdfa",
+                        fontWeight: 800,
+                        fontSize: 12,
+                        cursor: busy === "auto-wire" ? "wait" : "pointer",
+                      }}
+                    >
+                      워크플로 재계산
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExecutionKindFilter("");
+                      setAdvancedStagesOpen(true);
+                    }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    전체 Task 보기
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void loadDrafts()}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: loading ? "wait" : "pointer",
+                    }}
+                  >
+                    새로고침
+                  </button>
+                </div>
+              </div>
+            ) : focusStage ? (
+              <div style={{ display: "grid", gap: 10 }}>{renderStageTaskRows(focusStage, focusStageRows)}</div>
+            ) : null}
           </div>
-        </div>
+
+          {advancedStagesOpen ? (
+            <div
+              data-testid="task-draft-stage-board"
+              style={{
+                marginTop: 12,
+                borderRadius: 12,
+                border: "1px solid #c4b5fd",
+                background: "#faf5ff",
+                padding: 12,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#4c1d95", marginBottom: 10 }}>
+                고급 보기 · 단계별 전체 (작업이 있는 단계만)
+              </div>
+              {nonEmptyStagesForAdvanced.length === 0 ? (
+                <div style={{ fontSize: 12, color: "#64748b" }}>필터 또는 데이터 때문에 표시할 단계가 없습니다.</div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 10,
+                    alignItems: "start",
+                  }}
+                >
+                  {nonEmptyStagesForAdvanced.map((st) => {
+                    const rows = groupedByExecutionStageView.get(st) ?? [];
+                    return (
+                      <section
+                        key={st}
+                        style={{ border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff", padding: 8 }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 900, color: "#334155", marginBottom: 8 }}>
+                          {stageLabel(st)} ({rows.length})
+                        </div>
+                        <div style={{ display: "grid", gap: 8 }}>{renderStageTaskRows(st, rows)}</div>
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              marginTop: 14,
+              padding: 12,
+              borderRadius: 10,
+              border: "1px dashed #cbd5e1",
+              background: "#f8fafc",
+              fontSize: 13,
+              color: "#475569",
+              lineHeight: 1.5,
+            }}
+          >
+            {nextStage ? (
+              <>
+                <span style={{ fontWeight: 800, color: "#1e293b" }}>다음 단계:</span> {stageLabel(nextStage)}
+                <span style={{ color: "#94a3b8" }}> (이 단계를 마치면 진행 · AI 초안·연결은 자동 생성될 수 있음)</span>
+              </>
+            ) : (
+              <>
+                <span style={{ fontWeight: 800, color: "#1e293b" }}>마지막 단계입니다.</span>
+                <span style={{ color: "#94a3b8" }}> Task 확정 후 실행 파이프라인으로 이어집니다.</span>
+              </>
+            )}
+          </div>
+        </>
       ) : (
         <div
           data-testid="task-draft-workflow-canvas"

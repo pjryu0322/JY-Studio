@@ -4,12 +4,18 @@ import {
   runOpenAiRelayEvaluation,
   type TaskEvaluationResult,
 } from "@/lib/execution/openAiRelayEvaluation";
-import { tryRunExecutionReviewWithAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
+import {
+  countExecutionReviewAiMembers,
+  tryRunExecutionReviewWithAiMembers,
+} from "@/lib/execution/executionReviewWithAiMembers";
 import type { ExecutionReviewerStepRecord } from "@/lib/execution/executionReviewWithAiMembers";
 import { filterPathsOutsideAllowedGlobs } from "@/lib/execution/pathGlobPolicy";
 
 export type { TaskEvaluationResult } from "@/lib/execution/openAiRelayEvaluation";
 export type { ExecutionReviewerStepRecord } from "@/lib/execution/executionReviewWithAiMembers";
+
+/** 저장소·UI에서 리뷰 생략 여부 판별 */
+export const EXECUTION_REVIEW_SKIPPED_REASON_PREFIX = "review_skipped:";
 
 const MAX_CHANGED_FILES_BEFORE_FAIL = 80;
 
@@ -31,6 +37,8 @@ export async function evaluateExecutionResult(params: {
   stopOnOutOfScopeChange: boolean;
   allowedPathGlobs: string[];
   repoUrl: string;
+  /** 미전달 시 projectId로 조회. 0이면 AI 리뷰·OpenAI 릴레이 평가를 모두 생략하고 통과 처리 */
+  executionReviewerCount?: number;
 }): Promise<{
   result: TaskEvaluationResult;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
@@ -85,6 +93,23 @@ export async function evaluateExecutionResult(params: {
   const cursorPayload = { ...params.cursorResult, changedFiles: files, summary };
 
   if (params.projectId) {
+    const reviewerCount =
+      params.executionReviewerCount !== undefined
+        ? params.executionReviewerCount
+        : await countExecutionReviewAiMembers(params.projectId);
+
+    if (reviewerCount === 0) {
+      return {
+        result: {
+          decision: "done",
+          reason: `${EXECUTION_REVIEW_SKIPPED_REASON_PREFIX} 리뷰 단계 생략됨 (AI 멤버 미설정)`,
+          suspiciousChanges: [],
+        },
+        usage: null,
+        reviewerSteps: [],
+      };
+    }
+
     const memberPack = await tryRunExecutionReviewWithAiMembers({
       projectId: params.projectId,
       task: taskPayload,

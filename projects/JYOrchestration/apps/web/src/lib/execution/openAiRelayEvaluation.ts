@@ -10,6 +10,8 @@ const DEFAULT_MODEL = "gpt-4o-mini";
 export type TaskEvaluationResult = {
   decision: EvalVerdict;
   reason: string;
+  /** 멀티 리뷰어 JSON의 issues[] (단일 평가에서도 채울 수 있음) */
+  issues?: string[];
   score?: number;
   missingCriteria?: string[];
   suspiciousChanges?: string[];
@@ -31,6 +33,39 @@ function asStringArray(v: unknown): string[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const o = v.map((x) => String(x ?? "").trim()).filter(Boolean);
   return o.length ? o : undefined;
+}
+
+/** pass|fail|retry 및 레거시 done|failed|retry, summary|reason, issues */
+export function parseOpenAiEvaluationJsonObject(o: Record<string, unknown>): {
+  decision: EvalVerdict;
+  reason: string;
+  issues: string[];
+  score?: number;
+  missingCriteria?: string[];
+  suspiciousChanges?: string[];
+} {
+  const raw = String(o.decision ?? o.verdict ?? "")
+    .toLowerCase()
+    .trim();
+  let decision: EvalVerdict = "retry";
+  if (raw === "done" || raw === "pass") decision = "done";
+  else if (raw === "failed" || raw === "fail") decision = "failed";
+  else if (raw === "retry") decision = "retry";
+
+  const reason = String(o.summary ?? o.reason ?? "").trim().slice(0, 2500) || "응답 없음";
+  const issues = asStringArray(o.issues) ?? [];
+
+  let score: number | undefined;
+  if (typeof o.score === "number" && Number.isFinite(o.score)) score = o.score;
+
+  return {
+    decision,
+    reason,
+    issues,
+    score,
+    missingCriteria: asStringArray(o.missingCriteria),
+    suspiciousChanges: asStringArray(o.suspiciousChanges),
+  };
 }
 
 export function relaySummaryLooksLikeFailure(summary: string, cursor: CursorRunResult): boolean {
@@ -107,8 +142,9 @@ ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하�
 
 [출력 JSON만]
 {
-  "decision": "done" | "retry" | "failed",
-  "reason": "한국어 2~5문장",
+  "decision": "pass" | "retry" | "fail" (또는 레거시 "done" | "retry" | "failed"),
+  "summary": "한국어 2~5문장",
+  "issues": ["구체적 지적", "..."] (없으면 []),
   "score": 0-100 optional,
   "missingCriteria": ["..."] optional,
   "suspiciousChanges": ["..."] optional
@@ -156,19 +192,19 @@ ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하�
 
   let decision: EvalVerdict = "retry";
   let reason = text;
+  let issues: string[] | undefined;
   let score: number | undefined;
   let missingCriteria: string[] | undefined;
   let suspiciousChanges: string[] | undefined;
   try {
     const o = parseJson(text);
-    const d = String(o.decision ?? o.verdict ?? "")
-      .toLowerCase()
-      .trim();
-    if (d === "done" || d === "failed" || d === "retry") decision = d;
-    reason = String(o.reason ?? o.summary ?? reason).slice(0, 2500);
-    if (typeof o.score === "number" && Number.isFinite(o.score)) score = o.score;
-    missingCriteria = asStringArray(o.missingCriteria);
-    suspiciousChanges = asStringArray(o.suspiciousChanges);
+    const p = parseOpenAiEvaluationJsonObject(o);
+    decision = p.decision;
+    reason = p.reason;
+    issues = p.issues.length ? p.issues : undefined;
+    score = p.score;
+    missingCriteria = p.missingCriteria;
+    suspiciousChanges = p.suspiciousChanges;
   } catch {
     reason = text.slice(0, 2000);
   }
@@ -185,7 +221,7 @@ ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하�
         }
       : null;
 
-  return { result: { decision, reason, score, missingCriteria, suspiciousChanges }, usage };
+  return { result: { decision, reason, issues, score, missingCriteria, suspiciousChanges }, usage };
 }
 
 /** 임의 모델·사용자 메시지로 동일 JSON 스키마 평가(멀티 리뷰어용). */
@@ -246,19 +282,19 @@ export async function runOpenAiChatJsonEvaluation(params: {
 
   let decision: EvalVerdict = "retry";
   let reason = text;
+  let issues: string[] | undefined;
   let score: number | undefined;
   let missingCriteria: string[] | undefined;
   let suspiciousChanges: string[] | undefined;
   try {
     const o = parseJson(text);
-    const d = String(o.decision ?? o.verdict ?? "")
-      .toLowerCase()
-      .trim();
-    if (d === "done" || d === "failed" || d === "retry") decision = d;
-    reason = String(o.reason ?? o.summary ?? reason).slice(0, 2500);
-    if (typeof o.score === "number" && Number.isFinite(o.score)) score = o.score;
-    missingCriteria = asStringArray(o.missingCriteria);
-    suspiciousChanges = asStringArray(o.suspiciousChanges);
+    const p = parseOpenAiEvaluationJsonObject(o);
+    decision = p.decision;
+    reason = p.reason;
+    issues = p.issues.length ? p.issues : undefined;
+    score = p.score;
+    missingCriteria = p.missingCriteria;
+    suspiciousChanges = p.suspiciousChanges;
   } catch {
     reason = text.slice(0, 2000);
   }
@@ -275,5 +311,5 @@ export async function runOpenAiChatJsonEvaluation(params: {
         }
       : null;
 
-  return { result: { decision, reason, score, missingCriteria, suspiciousChanges }, usage };
+  return { result: { decision, reason, issues, score, missingCriteria, suspiciousChanges }, usage };
 }

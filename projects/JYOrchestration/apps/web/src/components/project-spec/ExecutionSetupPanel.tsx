@@ -1,16 +1,34 @@
 "use client";
 
-import { useState, type Dispatch, type SetStateAction } from "react";
-import { patchExecutionSetup, postExecutionSetupValidate, type ExecutionSetupDto } from "@/components/project-spec/api";
 import {
-  mergeValidateIntoSetup,
-  type CursorApiValidationPayload,
-  type ValidateResponseData,
-} from "@/components/project-spec/executionSetupValidateMerge";
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
+import {
+  patchExecutionSetup,
+  postExecutionSetupValidate,
+  postRevealCursorApiToken,
+  type ExecutionSetupDto,
+} from "@/components/project-spec/api";
+import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 
-type BusyKey = "save-cursor" | "save-exec-options" | "save-policy" | "val-executor" | "val-all" | null;
+type BusyKey =
+  | "save-cursor"
+  | "save-exec-options"
+  | "save-policy"
+  | "val-cursor-api"
+  | "val-cursor-exec"
+  | "val-all"
+  | "del-cursor"
+  | "reveal-cursor"
+  | null;
 
 const GLOB_PLACEHOLDER = "src/**\napp/**\ntests/**";
 const CURSOR_API_DEFAULT_URL = "https://api.cursor.com";
@@ -109,6 +127,14 @@ export function ExecutionSetupPanel(props: {
   formatTestedAt: (iso: string) => string;
   /** Git 탭 등: 펼침/접기 없이 한 화면에 표시, 저장소 참고 블록 생략 */
   flatLayout?: boolean;
+  /**
+   * 실행 환경 단일 탭: 섹션 A(연결)는 부모가 Git 폼을 두고, 여기서는 Cursor·정책·실행 상태만 구역으로 나눕니다.
+   */
+  unifiedExecutionEnvironment?: boolean;
+  /** unified + 연결 설정 상단에 Git 폼 삽입(부모 렌더) */
+  connectionSlotBeforeCursor?: ReactNode;
+  /** 프로젝트 OWNER만 저장된 키 전체를 일시 표시 */
+  canRevealCursorApiKey?: boolean;
 }) {
   const {
     projectId,
@@ -119,21 +145,76 @@ export function ExecutionSetupPanel(props: {
     setMessage,
     formatTestedAt,
     flatLayout = false,
+    unifiedExecutionEnvironment = false,
+    connectionSlotBeforeCursor,
+    canRevealCursorApiKey = false,
   } = props;
 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<BusyKey>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
-  const [cursorApiValidationResult, setCursorApiValidationResult] = useState<CursorApiValidationPayload | null>(null);
   const [cursorApiDetailOpen, setCursorApiDetailOpen] = useState(false);
   const [cursorHelpOpen, setCursorHelpOpen] = useState(false);
   const [cursorApiKeyDraft, setCursorApiKeyDraft] = useState("");
+  const [lastValidateKind, setLastValidateKind] = useState<"cursor_api" | "cursor_execution" | "all" | null>(null);
+  const [cursorKeyReplaceMode, setCursorKeyReplaceMode] = useState(false);
+  const [cursorKeyRevealPlaintext, setCursorKeyRevealPlaintext] = useState<string | null>(null);
+  const [cursorRevealSecondsRemaining, setCursorRevealSecondsRemaining] = useState<number | null>(null);
+  const revealCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (revealCountdownRef.current) clearInterval(revealCountdownRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!executionSetup?.hasCursorToken) {
+      setCursorKeyRevealPlaintext(null);
+      setCursorRevealSecondsRemaining(null);
+      setCursorKeyReplaceMode(false);
+      if (revealCountdownRef.current) {
+        clearInterval(revealCountdownRef.current);
+        revealCountdownRef.current = null;
+      }
+    }
+  }, [executionSetup?.hasCursorToken]);
+
+  function beginExecutionValidationRequest() {
+    setLastValidateKind(null);
+    setCursorApiDetailOpen(false);
+    setExecutionSetup((p) => (p ? { ...p, cursorApiValidation: null } : p));
+  }
+
+  function scheduleCursorRevealHide() {
+    if (revealCountdownRef.current) clearInterval(revealCountdownRef.current);
+    let remaining = 8;
+    setCursorRevealSecondsRemaining(8);
+    revealCountdownRef.current = setInterval(() => {
+      remaining -= 1;
+      setCursorRevealSecondsRemaining(remaining > 0 ? remaining : null);
+      if (remaining <= 0) {
+        if (revealCountdownRef.current) clearInterval(revealCountdownRef.current);
+        revealCountdownRef.current = null;
+        setCursorKeyRevealPlaintext(null);
+      }
+    }, 1000);
+  }
 
   const nr = executionSetup?.needsRevalidation ?? false;
   const repoOk = executionSetup?.repoConnectionOk;
+  const cursorApiOk = executionSetup?.cursorApiConnectionOk ?? null;
   const execOk = executionSetup?.executorConnectionOk;
-  const ready = executionSetup?.status === "validated" && !nr;
+  const ready =
+    executionSetup?.status === "validated" &&
+    !nr &&
+    repoOk === true &&
+    cursorApiOk === true &&
+    execOk === true;
+  /** 단일 진실 원천: 실행 준비 완료 여부(요약·상세·오류 표시 모두 이 값과 일치) */
+  const executionReady = ready;
   const repoAxis = axisStatus(repoOk);
+  const cursorApiAxis = axisStatus(cursorApiOk);
   const execAxis = axisStatus(execOk);
 
   const badgeLabelKr = executionSetup?.status === "invalid" ? "오류" : ready ? "준비됨" : "미완료";
@@ -155,6 +236,7 @@ export function ExecutionSetupPanel(props: {
   if (!specWorkflowConfirmed) {
     return (
       <div
+        id="execution-setup-panel"
         data-ui-label="[F-1-3-6] 실행 환경 설정 (스펙 미확정)"
         style={{
           marginTop: 16,
@@ -176,77 +258,1045 @@ export function ExecutionSetupPanel(props: {
   }
 
   const es = executionSetup ?? null;
+  const validationPayload = es?.cursorApiValidation ?? null;
+  const validatingExecutionSetup =
+    busy === "val-cursor-api" || busy === "val-cursor-exec" || busy === "val-all";
+  const showValidationFailureDetails = !executionReady && !validatingExecutionSetup;
+  const showCursorValidationCard =
+    Boolean(validationPayload) && (!executionReady || Boolean(validationPayload?.overallOk));
   const showBody = flatLayout || open;
   const showCursorHelp = flatLayout || cursorHelpOpen;
   const showExecExamples = flatLayout || examplesOpen;
   const showCursorApiDetail = flatLayout
-    ? Boolean(cursorApiValidationResult && !cursorApiValidationResult.overallOk)
+    ? Boolean(validationPayload && !validationPayload.overallOk && !executionReady)
     : cursorApiDetailOpen;
 
-  return (
-    <div
-      data-ui-label="[F-1-3-6] 실행 환경 설정"
+  const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
+
+  const sectionCard = (title: string, description: string | null, children: ReactNode) => (
+    <section
       style={{
-        marginTop: flatLayout ? 8 : 16,
+        marginBottom: 16,
         padding: 16,
         borderRadius: 12,
-        border: frameBorder,
-        background: frameBg,
+        border: "1px solid #e2e8f0",
+        background: "#fff",
       }}
     >
+      <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 4px 0", color: "#0f172a" }}>{title}</h2>
+      {description ? (
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>{description}</p>
+      ) : null}
+      {children}
+    </section>
+  );
+
+  const renderCursorConnectionBlock = (opts: { compactTitle: boolean }) => {
+    const showKeyInput = !es?.hasCursorToken || cursorKeyReplaceMode;
+    const cursorKeyBusy =
+      busy === "save-cursor" || busy === "val-cursor-api" || busy === "del-cursor" || busy === "reveal-cursor";
+    const saveLabel = (() => {
+      if (busy === "save-cursor") return "저장 중…";
+      if (cursorApiKeyDraft.trim() && cursorKeyReplaceMode) return "새 키 저장";
+      if (cursorApiKeyDraft.trim()) return "Cursor 연결 저장";
+      return "Cursor URL 저장";
+    })();
+    const ghostBtn: CSSProperties = {
+      padding: "8px 12px",
+      borderRadius: 10,
+      border: "1px solid #94a3b8",
+      background: "#fff",
+      color: "#334155",
+      fontWeight: 700,
+      fontSize: 12,
+      cursor: canEdit && es && !cursorKeyBusy ? "pointer" : "not-allowed",
+    };
+
+    return (
       <div
         style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: showBody ? 10 : 6,
+          marginBottom: 14,
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #c4b5fd",
+          background: "#faf5ff",
         }}
       >
-        <WorkspaceLabelBadge section="executionSetup" />
-        <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>{WORKSPACE_SECTION_META.executionSetup.title}</h3>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 900,
-            letterSpacing: 0.4,
-            padding: "4px 8px",
-            borderRadius: 8,
-            border: `1px solid ${badgeColors.bd}`,
-            background: badgeColors.bg,
-            color: badgeColors.fg,
-          }}
-        >
-          {badgeLabelKr}
-        </span>
-        <span style={{ fontSize: 12, fontWeight: 900, color: ready ? "#15803d" : "#b45309" }}>
-          {ready ? "실행 준비 완료" : "실행 준비 안 됨"}
-        </span>
+        <div style={{ fontWeight: 900, fontSize: 13, color: "#5b21b6", marginBottom: 4 }}>
+          {opts.compactTitle ? "Cursor API" : "2. Cursor 연결"}
+        </div>
+        <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+          검증(다시 검증)은 <strong>서버에 저장된 키</strong>로만 수행됩니다. 키를 다시 입력할 필요가 없습니다. 기본 URL:{" "}
+          {CURSOR_API_DEFAULT_URL}
+        </p>
         {!flatLayout ? (
           <button
             type="button"
-            onClick={() => setOpen((o) => !o)}
+            onClick={() => setCursorHelpOpen((v) => !v)}
             style={{
-              marginLeft: "auto",
+              marginBottom: 10,
               padding: "6px 10px",
               borderRadius: 8,
-              border: "1px solid #cbd5e1",
+              border: "1px solid #94a3b8",
               background: "#fff",
-              fontWeight: 800,
+              fontWeight: 700,
               fontSize: 12,
               cursor: "pointer",
             }}
           >
-            {open ? "접기" : "펼치기"}
+            {cursorHelpOpen ? "Cursor API 키 안내 접기" : "Cursor API 키 확인 방법"}
           </button>
         ) : null}
+        {showCursorHelp ? (
+          <ol
+            style={{
+              margin: "0 0 12px 0",
+              paddingLeft: 20,
+              fontSize: 12,
+              color: "#334155",
+              lineHeight: 1.6,
+            }}
+          >
+            <li>Cursor 대시보드(cursor.com)에 로그인합니다.</li>
+            <li>설정 → Integrations 또는 Cloud Agents 메뉴로 이동합니다.</li>
+            <li>API key를 생성합니다.</li>
+            <li>최초 1회 키를 저장한 뒤 「다시 검증」으로 연결을 확인합니다.</li>
+            <li>키 변경은 「새 키로 교체」에서 입력 후 저장합니다.</li>
+          </ol>
+        ) : null}
+        <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API URL</span>
+          <input
+            value={es?.cursorApiUrl?.trim() ? es.cursorApiUrl : CURSOR_API_DEFAULT_URL}
+            disabled={!canEdit || !es}
+            placeholder={CURSOR_API_DEFAULT_URL}
+            onChange={(e) =>
+              setExecutionSetup((p) => ({
+                ...(p ?? ({} as ExecutionSetupDto)),
+                cursorApiUrl: e.target.value.trim() || CURSOR_API_DEFAULT_URL,
+              }))
+            }
+            style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+
+        {showKeyInput ? (
+          <label style={{ display: "grid", gap: 4, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API 키</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={cursorApiKeyDraft}
+              disabled={!canEdit || !es}
+              placeholder={
+                cursorKeyReplaceMode
+                  ? "새 키를 붙여넣기 (crsr_… / key_…)"
+                  : "key_ 또는 crsr_ 로 시작하는 키를 붙여넣기"
+              }
+              onChange={(e) => setCursorApiKeyDraft(e.target.value)}
+              style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+            />
+          </label>
+        ) : (
+          <div style={{ marginBottom: 10, fontSize: 12, color: "#334155" }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>저장된 키</div>
+            <code
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#f5f3ff",
+                border: "1px solid #ddd6fe",
+                fontSize: 12,
+                wordBreak: "break-all",
+              }}
+            >
+              {cursorKeyRevealPlaintext ?? es?.cursorApiTokenMasked ?? "—"}
+            </code>
+            {cursorKeyRevealPlaintext && cursorRevealSecondsRemaining != null ? (
+              <div style={{ marginTop: 6, fontSize: 11, color: "#b45309" }}>
+                {cursorRevealSecondsRemaining}초 후 자동으로 숨깁니다.
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {es?.hasCursorToken && cursorKeyReplaceMode ? (
+          <div style={{ marginBottom: 10 }}>
+            <button
+              type="button"
+              disabled={!canEdit || cursorKeyBusy}
+              onClick={() => {
+                setCursorKeyReplaceMode(false);
+                setCursorApiKeyDraft("");
+              }}
+              style={{ ...ghostBtn, fontSize: 11, padding: "4px 10px" }}
+            >
+              키 교체 취소
+            </button>
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            disabled={!canEdit || !es || busy === "val-cursor-api" || !es?.hasCursorToken}
+            title={!es?.hasCursorToken ? "먼저 API 키를 저장하세요" : "저장된 키로 Cursor API 검증"}
+            onClick={async () => {
+              if (!projectId || !es) return;
+              beginExecutionValidationRequest();
+              setBusy("val-cursor-api");
+              try {
+                const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor_api" });
+                if (!res.ok || !json.success) {
+                  setMessage(json.message || "Cursor API 검증에 실패했습니다.");
+                  return;
+                }
+                if (json.data) {
+                  setLastValidateKind("cursor_api");
+                  setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+                  const d = json.data as ValidateResponseData;
+                  if (d.cursorApiValidation) {
+                    setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
+                  }
+                }
+                const detail = (json.data?.messages ?? []).join(" / ");
+                setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
+              } finally {
+                setBusy(null);
+              }
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #0f766e",
+              background: "#0d9488",
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor:
+                !canEdit || !es || !es.hasCursorToken || busy === "val-cursor-api" ? "not-allowed" : "pointer",
+            }}
+          >
+            {busy === "val-cursor-api" ? "검증 중…" : "다시 검증"}
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit || !es || busy === "save-cursor"}
+            onClick={async () => {
+              if (!projectId || !es) return;
+              setBusy("save-cursor");
+              const keyTouched = Boolean(cursorApiKeyDraft.trim());
+              try {
+                const body: Parameters<typeof patchExecutionSetup>[1] = {
+                  cursorApiUrl: es.cursorApiUrl?.trim() || CURSOR_API_DEFAULT_URL,
+                };
+                if (keyTouched) body.cursorApiToken = cursorApiKeyDraft.trim();
+                const { res, json } = await patchExecutionSetup(projectId, body);
+                if (!res.ok || !json.success || !json.data) {
+                  setMessage(json.message || "저장에 실패했습니다.");
+                  return;
+                }
+                setExecutionSetup(json.data);
+                setCursorApiKeyDraft("");
+                if (keyTouched) setCursorKeyReplaceMode(false);
+                setMessage(
+                  keyTouched
+                    ? "키를 저장했습니다. 「다시 검증」으로 연결을 확인할 수 있습니다."
+                    : "Cursor API URL을 저장했습니다."
+                );
+              } finally {
+                setBusy(null);
+              }
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #7c3aed",
+              background: "#7c3aed",
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: !canEdit || !es ? "not-allowed" : busy === "save-cursor" ? "wait" : "pointer",
+            }}
+          >
+            {saveLabel}
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit || !es || cursorKeyBusy}
+            onClick={() => {
+              setCursorKeyReplaceMode(true);
+              setCursorApiKeyDraft("");
+              setCursorKeyRevealPlaintext(null);
+              setCursorRevealSecondsRemaining(null);
+              if (revealCountdownRef.current) {
+                clearInterval(revealCountdownRef.current);
+                revealCountdownRef.current = null;
+              }
+            }}
+            style={ghostBtn}
+          >
+            새 키로 교체
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit || !es || !es.hasCursorToken || cursorKeyBusy}
+            onClick={async () => {
+              const ok = window.confirm("저장된 Cursor API 키를 삭제합니다. 계속할까요?");
+              if (!ok) return;
+              if (!projectId || !es) return;
+              setBusy("del-cursor");
+              try {
+                const { res, json } = await patchExecutionSetup(projectId, { cursorApiToken: null });
+                if (!res.ok || !json.success || !json.data) {
+                  setMessage(json.message || "키 삭제에 실패했습니다.");
+                  return;
+                }
+                setExecutionSetup(json.data);
+                setCursorApiKeyDraft("");
+                setCursorKeyReplaceMode(false);
+                setCursorKeyRevealPlaintext(null);
+                setCursorRevealSecondsRemaining(null);
+                if (revealCountdownRef.current) {
+                  clearInterval(revealCountdownRef.current);
+                  revealCountdownRef.current = null;
+                }
+                setMessage("저장된 Cursor API 키를 삭제했습니다.");
+              } finally {
+                setBusy(null);
+              }
+            }}
+            style={{ ...ghostBtn, color: "#b91c1c", borderColor: "#fecaca" }}
+          >
+            {busy === "del-cursor" ? "삭제 중…" : "삭제"}
+          </button>
+
+          {canRevealCursorApiKey ? (
+            <button
+              type="button"
+              disabled={
+                !es?.hasCursorToken || busy === "reveal-cursor" || busy === "val-cursor-api" || busy === "del-cursor"
+              }
+              onClick={async () => {
+                if (!projectId) return;
+                setBusy("reveal-cursor");
+                try {
+                  const { res, json } = await postRevealCursorApiToken(projectId);
+                  if (!res.ok || !json.success || !json.data?.plaintext) {
+                    setMessage(json.message || "키를 표시할 수 없습니다. (프로젝트 소유자만 가능합니다.)");
+                    return;
+                  }
+                  setCursorKeyRevealPlaintext(json.data.plaintext);
+                  scheduleCursorRevealHide();
+                } finally {
+                  setBusy(null);
+                }
+              }}
+              style={ghostBtn}
+            >
+              {busy === "reveal-cursor" ? "불러오는 중…" : "👁 키 보기"}
+            </button>
+          ) : null}
+        </div>
       </div>
+    );
+  };
+
+  return (
+    <div
+      id="execution-setup-panel"
+      data-ui-label="[F-1-3-6] 실행 환경 설정"
+      style={{
+        marginTop: unified ? 0 : flatLayout ? 8 : 16,
+        padding: unified ? 0 : 16,
+        borderRadius: unified ? 0 : 12,
+        border: unified ? "none" : frameBorder,
+        background: unified ? "transparent" : frameBg,
+      }}
+    >
+      {!unified ? (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: showBody ? 10 : 6,
+          }}
+        >
+          <WorkspaceLabelBadge section="executionSetup" />
+          <h3 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>{WORKSPACE_SECTION_META.executionSetup.title}</h3>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 0.4,
+              padding: "4px 8px",
+              borderRadius: 8,
+              border: `1px solid ${badgeColors.bd}`,
+              background: badgeColors.bg,
+              color: badgeColors.fg,
+            }}
+          >
+            {badgeLabelKr}
+          </span>
+          <span style={{ fontSize: 12, fontWeight: 900, color: ready ? "#15803d" : "#b45309" }}>
+            {ready ? "실행 준비 완료" : "실행 준비 안 됨"}
+          </span>
+          {!flatLayout ? (
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              style={{
+                marginLeft: "auto",
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #cbd5e1",
+                background: "#fff",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              {open ? "접기" : "펼치기"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {!showBody ? (
         <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          Git 연동에서 저장소를 연결하고, 여기서 Cursor API와 실행 옵션·정책을 설정한 뒤 연결 검증을 마치면 실행 준비가
-          완료됩니다.
+          {unified
+            ? "연결 설정에서 저장소를 저장한 뒤 Cursor API·실행 정책·검증을 같은 화면에서 마칩니다."
+            : "Git 연동에서 저장소를 연결하고, 여기서 Cursor API와 실행 옵션·정책을 설정한 뒤 연결 검증을 마치면 실행 준비가 완료됩니다."}
         </p>
+      ) : unified ? (
+        <>
+          {nr ? (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 10,
+                borderRadius: 10,
+                background: "#fffbeb",
+                border: "1px solid #fcd34d",
+                color: "#92400e",
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              설정이 바뀌었습니다. 해당 항목을 저장한 뒤 필요한 검증을 다시 실행해 주세요.
+            </div>
+          ) : null}
+          {sectionCard(
+            "연결 설정",
+            "Git 저장소와 Cursor API를 한곳에서 연결합니다. 저장소는 먼저 저장한 뒤 저장소 연결 검증을 실행하세요.",
+            <>
+              {connectionSlotBeforeCursor}
+              {renderCursorConnectionBlock({ compactTitle: true })}
+            </>
+          )}
+          {sectionCard(
+            "실행 정책",
+            "브랜치·경로·자동 반영·승인·재시도 등 실행 시 적용되는 규칙입니다.",
+            <>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={() => setExamplesOpen((v) => !v)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #94a3b8",
+                    background: "#fff",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: canEdit ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {examplesOpen ? "실행 옵션 예시 접기" : "실행 옵션 예시 보기"}
+                </button>
+                <button
+                  type="button"
+                  disabled={!canEdit || !es}
+                  onClick={() => {
+                    if (!es) return;
+                    setExecutionSetup({
+                      ...es,
+                      branchStrategy: "feature-per-workflow",
+                      branchPrefix: "jy/agent/",
+                      allowedPathGlobs: ["src/**", "app/**", "tests/**"],
+                    });
+                    setMessage("브랜치 전략·접두어·허용 경로에 예시 값을 채웠습니다.「실행 옵션 저장」으로 저장하세요.");
+                  }}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #7c3aed",
+                    background: canEdit && es ? "#f5f3ff" : "#f1f5f9",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: !canEdit || !es ? "not-allowed" : "pointer",
+                    color: "#5b21b6",
+                  }}
+                >
+                  실행 옵션 예시 적용
+                </button>
+              </div>
+              {showExecExamples ? (
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: 12,
+                    borderRadius: 10,
+                    border: "1px dashed #94a3b8",
+                    background: "#f8fafc",
+                    fontSize: 12,
+                    color: "#334155",
+                    lineHeight: 1.55,
+                    fontFamily: "ui-monospace, monospace",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {`브랜치 전략 예: 워크플로마다 기능 브랜치 / 작업마다 기능 브랜치 / 수동
+작업 브랜치 접두어 예: jy/agent/
+허용 경로 glob 예:
+${GLOB_PLACEHOLDER}`}
+                </div>
+              ) : null}
+              <div
+                style={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  padding: 12,
+                  background: "#fafafa",
+                  marginBottom: 12,
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6, color: "#0f172a" }}>실행 옵션</div>
+                <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+                  브랜치 전략·작업 브랜치 접두어·허용 경로를 저장합니다.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>브랜치 전략</span>
+                    <select
+                      value={es?.branchStrategy ?? "manual"}
+                      disabled={!canEdit || !es}
+                      onChange={(e) =>
+                        setExecutionSetup((p) => ({
+                          ...(p ?? ({} as ExecutionSetupDto)),
+                          branchStrategy: e.target.value as ExecutionSetupDto["branchStrategy"],
+                        }))
+                      }
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                    >
+                      <option value="feature-per-workflow">워크플로마다 기능 브랜치</option>
+                      <option value="feature-per-task">작업마다 기능 브랜치</option>
+                      <option value="manual">수동</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>작업 브랜치 접두어 (선택)</span>
+                    <input
+                      value={es?.branchPrefix ?? ""}
+                      disabled={!canEdit || !es}
+                      placeholder="jy/agent/"
+                      onChange={(e) =>
+                        setExecutionSetup((p) => ({
+                          ...(p ?? ({} as ExecutionSetupDto)),
+                          branchPrefix: e.target.value || null,
+                        }))
+                      }
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+                    />
+                  </label>
+                </div>
+                <label style={{ display: "grid", gap: 4, marginTop: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
+                    허용 경로 glob (선택, 줄바꿈으로 구분)
+                  </span>
+                  <textarea
+                    value={(es?.allowedPathGlobs ?? []).join("\n")}
+                    disabled={!canEdit || !es}
+                    placeholder={GLOB_PLACEHOLDER}
+                    rows={3}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                        .split(/[\n,]+/)
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), allowedPathGlobs: raw }));
+                    }}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: "1px solid #cbd5e1",
+                      fontFamily: "ui-monospace, monospace",
+                      fontSize: 12,
+                    }}
+                  />
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                  <button
+                    type="button"
+                    disabled={!canEdit || !es || busy === "save-exec-options"}
+                    onClick={async () => {
+                      if (!projectId || !es) return;
+                      setBusy("save-exec-options");
+                      try {
+                        const { res, json } = await patchExecutionSetup(projectId, {
+                          branchStrategy: es.branchStrategy,
+                          branchPrefix: es.branchPrefix,
+                          allowedPathGlobs: es.allowedPathGlobs ?? [],
+                        });
+                        if (!res.ok || !json.success || !json.data) {
+                          setMessage(json.message || "저장에 실패했습니다.");
+                          return;
+                        }
+                        setExecutionSetup(json.data);
+                        setMessage("실행 옵션을 저장했습니다.");
+                      } finally {
+                        setBusy(null);
+                      }
+                    }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #2563eb",
+                      background: "#2563eb",
+                      color: "#fff",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: !canEdit || !es ? "not-allowed" : busy === "save-exec-options" ? "wait" : "pointer",
+                    }}
+                  >
+                    {busy === "save-exec-options" ? "저장 중…" : "실행 옵션 저장"}
+                  </button>
+                </div>
+              </div>
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
+                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6, color: "#0f172a" }}>정책·승인·재시도</div>
+                <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+                  자동 반영·검증·승인 규칙입니다. 정책만 변경한 경우 저장소·Cursor API 검증 결과는 유지됩니다.
+                </p>
+
+                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "10px 0 6px" }}>자동 반영</div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  {POLICY_AUTO.map(({ key, label, help }) => (
+                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          type="checkbox"
+                          disabled={!canEdit || !es}
+                          checked={Boolean(es?.[key])}
+                          onChange={(e) =>
+                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
+                          }
+                        />
+                        <strong>{label}</strong>
+                      </span>
+                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "14px 0 6px" }}>검증·중단 조건</div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  {POLICY_GATES.map(({ key, label, help }) => (
+                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          type="checkbox"
+                          disabled={!canEdit || !es}
+                          checked={es ? es[key] !== false : true}
+                          onChange={(e) =>
+                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
+                          }
+                        />
+                        <strong>{label}</strong>
+                      </span>
+                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "14px 0 6px" }}>승인 정책</div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  {POLICY_APPROVAL.map(({ key, label, help }) => (
+                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          type="checkbox"
+                          disabled={!canEdit || !es}
+                          checked={
+                            key === "requireApprovalForSensitiveTasks"
+                              ? es?.requireApprovalForSensitiveTasks === true
+                              : es
+                                ? es[key] !== false
+                                : true
+                          }
+                          onChange={(e) =>
+                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
+                          }
+                        />
+                        <strong>{label}</strong>
+                      </span>
+                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "14px 0 6px" }}>추가 옵션</div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  {POLICY_EXTRA.map(({ key, label, help }) => (
+                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          type="checkbox"
+                          disabled={!canEdit || !es}
+                          checked={es ? es[key] !== false : true}
+                          onChange={(e) =>
+                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
+                          }
+                        />
+                        <strong>{label}</strong>
+                      </span>
+                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    fontSize: 13,
+                    color: "#334155",
+                    flexWrap: "wrap",
+                    marginTop: 12,
+                  }}
+                >
+                  <span style={{ fontWeight: 800 }}>작업당 최대 자동 재시도 횟수</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={20}
+                    disabled={!canEdit || !es}
+                    value={es?.maxAutoRetriesPerTask ?? 2}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      const v = Number.isFinite(n) ? Math.min(20, Math.max(0, n)) : 2;
+                      setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), maxAutoRetriesPerTask: v }));
+                    }}
+                    style={{
+                      width: 72,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                    }}
+                  />
+                  <span style={{ fontSize: 11, color: "#64748b", flex: "1 1 200px" }}>
+                    한 작업에서 오류가 날 때 자동으로 재시도하는 최대 횟수입니다.
+                  </span>
+                </label>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+                  <button
+                    type="button"
+                    disabled={!canEdit || !es || busy === "save-policy"}
+                    onClick={async () => {
+                      if (!projectId || !es) return;
+                      setBusy("save-policy");
+                      try {
+                        const { res, json } = await patchExecutionSetup(projectId, {
+                          autoCommit: es.autoCommit,
+                          autoPush: es.autoPush,
+                          autoPr: es.autoPr,
+                          requireApprovalBeforeApply: es.requireApprovalBeforeApply,
+                          requireTestsBeforePush: es.requireTestsBeforePush,
+                          dryRunAllowed: es.dryRunAllowed,
+                          autoAdvanceToNextTask: es.autoAdvanceToNextTask,
+                          maxAutoRetriesPerTask: es.maxAutoRetriesPerTask,
+                          stopOnTestFailure: es.stopOnTestFailure,
+                          stopOnRepeatedFailure: es.stopOnRepeatedFailure,
+                          stopOnOutOfScopeChange: es.stopOnOutOfScopeChange,
+                          requireApprovalForSensitiveTasks: es.requireApprovalForSensitiveTasks,
+                        });
+                        if (!res.ok || !json.success || !json.data) {
+                          setMessage(json.message || "정책 저장에 실패했습니다.");
+                          return;
+                        }
+                        setExecutionSetup(json.data);
+                        setMessage("실행 정책을 저장했습니다.");
+                      } finally {
+                        setBusy(null);
+                      }
+                    }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #475569",
+                      background: "#334155",
+                      color: "#fff",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: !canEdit || !es ? "not-allowed" : busy === "save-policy" ? "wait" : "pointer",
+                    }}
+                  >
+                    {busy === "save-policy" ? "저장 중…" : "실행 정책 저장"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {sectionCard(
+            "실행 상태",
+            "연결·검증 결과와 저장소 실행 가능 여부를 확인합니다. 실패 시 아래 사유를 참고하세요.",
+            <>
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "1px solid #bae6fd",
+                  background: "#f0f9ff",
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 13, color: "#0c4a6e", marginBottom: 8 }}>연결·실행 요약</div>
+                <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
+                  <div>
+                    <strong>Git 연결 상태</strong>{" "}
+                    <span style={{ color: connectionToneColor(repoAxis.tone), fontWeight: 800 }}>{repoAxis.label}</span>
+                    {es?.repoValidatedAt ? (
+                      <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.repoValidatedAt)}</span>
+                    ) : null}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <strong>Cursor 연결 상태</strong> (API 검증){" "}
+                    <span style={{ color: connectionToneColor(cursorApiAxis.tone), fontWeight: 800 }}>
+                      {cursorApiAxis.label}
+                    </span>
+                    {es?.cursorApiValidatedAt ? (
+                      <span style={{ color: "#64748b", fontWeight: 500 }}>
+                        {" "}
+                        · {formatTestedAt(es.cursorApiValidatedAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <strong>최종 실행 준비 상태</strong> (저장소 작업 검증){" "}
+                    <span style={{ color: connectionToneColor(execAxis.tone), fontWeight: 800 }}>{execAxis.label}</span>
+                    {es?.executorValidatedAt ? (
+                      <span style={{ color: "#64748b", fontWeight: 500 }}>
+                        {" "}
+                        · {formatTestedAt(es.executorValidatedAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <strong>실행 가능 여부</strong>{" "}
+                    <span style={{ color: ready ? "#15803d" : "#b45309", fontWeight: 800 }}>
+                      {ready ? "준비 완료" : "준비 안 됨"}
+                    </span>
+                  </div>
+                  {showValidationFailureDetails &&
+                    (es?.repoValidationError || es?.cursorApiValidationError || es?.executorValidationError) && (
+                    <div style={{ fontSize: 12, color: "#b91c1c", lineHeight: 1.45, whiteSpace: "pre-wrap", marginTop: 10 }}>
+                      {es?.repoValidationError ? (
+                        <div>
+                          <strong>Git</strong> {es.repoValidationError}
+                        </div>
+                      ) : null}
+                      {es?.cursorApiValidationError ? (
+                        <div style={{ marginTop: 6 }}>
+                          <strong>Cursor API</strong> {es.cursorApiValidationError}
+                        </div>
+                      ) : null}
+                      {es?.executorValidationError ? (
+                        <div style={{ marginTop: 6 }}>
+                          <strong>실행</strong> {es.executorValidationError}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid #a5b4fc",
+                  background: "#eef2ff",
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 13, color: "#3730a3", marginBottom: 4 }}>
+                  저장소 실행 검증
+                </div>
+                <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+                  Cursor가 이 저장소에서 작업 가능한지 확인합니다. 먼저 Cursor API 검증을 통과하세요.
+                </p>
+                <button
+                  type="button"
+                  disabled={!canEdit || !es || busy === "val-cursor-exec" || !es.hasCursorToken}
+                  onClick={async () => {
+                    if (!projectId || !es) return;
+                    beginExecutionValidationRequest();
+                    setBusy("val-cursor-exec");
+                    try {
+                      const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor_execution" });
+                      if (!res.ok || !json.success) {
+                        setMessage(json.message || "실행 검증에 실패했습니다.");
+                        return;
+                      }
+                      if (json.data) {
+                        setLastValidateKind("cursor_execution");
+                        setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+                        const d = json.data as ValidateResponseData;
+                        if (d.cursorApiValidation) {
+                          setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
+                        }
+                      }
+                      const detail = (json.data?.messages ?? []).join(" / ");
+                      setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
+                    } finally {
+                      setBusy(null);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #4338ca",
+                    background: "#4f46e5",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor:
+                      !canEdit || !es || !es.hasCursorToken ? "not-allowed" : busy === "val-cursor-exec" ? "wait" : "pointer",
+                  }}
+                >
+                  {busy === "val-cursor-exec" ? "검증 중…" : "Cursor 저장소 접근 검증"}
+                </button>
+              </div>
+              {showCursorValidationCard && validationPayload ? (
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: 12,
+                    borderRadius: 10,
+                    border: `1px solid ${validationPayload.overallOk ? "#86efac" : "#fecaca"}`,
+                    background: validationPayload.overallOk ? "#f0fdf4" : "#fef2f2",
+                  }}
+                >
+                  <div style={{ fontWeight: 900, fontSize: 13, color: "#0f172a", marginBottom: 8 }}>
+                    {(() => {
+                      const label =
+                        lastValidateKind === "cursor_api"
+                          ? "Cursor API 검증"
+                          : lastValidateKind === "all"
+                            ? "전체 검증"
+                            : "실행 검증";
+                      return `${label} — ${validationPayload.overallOk ? "성공" : "실패"}`;
+                    })()}
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      lineHeight: 1.55,
+                      color: "#334155",
+                      fontFamily: "inherit",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {validationPayload.summaryKr}
+                  </pre>
+                  {showCursorApiDetail ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        borderRadius: 8,
+                        background: "#fff",
+                        border: "1px solid #e2e8f0",
+                        fontSize: 12,
+                        lineHeight: 1.65,
+                        color: "#1e293b",
+                      }}
+                    >
+                      {validationPayload.detailLines.map((line, i) => (
+                        <div key={i} style={{ whiteSpace: "pre-wrap", fontFamily: "ui-monospace, monospace" }}>
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                <button
+                  type="button"
+                  disabled={!canEdit || !es || busy === "val-all"}
+                  onClick={async () => {
+                    if (!projectId || !es) return;
+                    beginExecutionValidationRequest();
+                    setBusy("val-all");
+                    try {
+                      const { res, json } = await postExecutionSetupValidate(projectId, { scope: "all" });
+                      if (!res.ok || !json.success) {
+                        setMessage(json.message || "검증에 실패했습니다.");
+                        return;
+                      }
+                      if (json.data) {
+                        setLastValidateKind("all");
+                        setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+                        const d = json.data as ValidateResponseData;
+                        if (d.cursorApiValidation) {
+                          setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
+                        }
+                      }
+                      const detail = (json.data?.messages ?? []).join(" / ");
+                      setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
+                    } finally {
+                      setBusy(null);
+                    }
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #0f766e",
+                    background: "#fff",
+                    color: "#0f766e",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: !canEdit || !es ? "not-allowed" : busy === "val-all" ? "wait" : "pointer",
+                  }}
+                >
+                  {busy === "val-all" ? "검증 중…" : "세 단계 한 번에 검증"}
+                </button>
+              </div>
+              {es?.lastValidatedAt ? (
+                <div style={{ marginTop: 10, fontSize: 11, color: "#64748b" }}>
+                  마지막 전체 검증 시각: {formatTestedAt(es.lastValidatedAt)}
+                </div>
+              ) : null}
+              {showValidationFailureDetails &&
+              es?.lastValidationError &&
+              !es.repoValidationError &&
+              !es.cursorApiValidationError &&
+              !es.executorValidationError ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>{es.lastValidationError}</div>
+              ) : null}
+            </>
+          )}
+        </>
       ) : (
         <>
           {nr ? (
@@ -266,244 +1316,150 @@ export function ExecutionSetupPanel(props: {
             </div>
           ) : null}
 
-          <div
-            style={{
-              marginBottom: 14,
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #bae6fd",
-              background: "#f0f9ff",
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 900, fontSize: 13, color: "#0c4a6e" }}>준비 상태 (요약)</div>
-            <p style={{ margin: 0, fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
-              {flatLayout
-                ? "저장소는 위 Git 연동에서 검증했습니다. Cursor API를 저장·검증하면 실행 준비가 완료됩니다."
-                : "저장소 연결은 Git 연동에서 설정·검증합니다. Cursor API는 아래에서 URL·API 키를 저장한 뒤「Cursor API 연결 검증」으로 확인합니다. 둘 다 성공해야 실행 준비가 완료됩니다."}
-            </p>
-            <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
-              <strong>저장소 연결 상태</strong> (Git 연동 기준){" "}
-              <span style={{ color: connectionToneColor(repoAxis.tone), fontWeight: 800 }}>{repoAxis.label}</span>
-              {es?.repoValidatedAt ? (
-                <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.repoValidatedAt)}</span>
-              ) : null}
-            </div>
-            <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
-              <strong>Cursor API 연결 상태</strong>{" "}
-              <span style={{ color: connectionToneColor(execAxis.tone), fontWeight: 800 }}>{execAxis.label}</span>
-              {es?.executorValidatedAt ? (
-                <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.executorValidatedAt)}</span>
-              ) : null}
-            </div>
-            <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
-              <strong>실행 준비 상태</strong>{" "}
-              <span style={{ color: ready ? "#15803d" : "#b45309", fontWeight: 800 }}>
-                {ready ? "준비 완료" : "준비 안 됨"}
-              </span>
-              <span style={{ color: "#64748b", fontWeight: 500 }}> (위 두 항목이 모두 성공해야 완료)</span>
-            </div>
-            {(es?.repoValidationError || es?.executorValidationError) && (
-              <div style={{ fontSize: 12, color: "#b91c1c", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
-                {es?.repoValidationError ? (
-                  <div>
-                    <strong>저장소</strong> {es.repoValidationError}
-                  </div>
-                ) : null}
-                {es?.executorValidationError ? (
-                  <div style={{ marginTop: 6 }}>
-                    <strong>Cursor API</strong> {es.executorValidationError}
-                  </div>
+          {!flatLayout ? (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: 12,
+                borderRadius: 10,
+                border: "1px solid #bae6fd",
+                background: "#f0f9ff",
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontWeight: 900, fontSize: 13, color: "#0c4a6e" }}>준비 상태 (요약)</div>
+              <p style={{ margin: 0, fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
+                Git 연동에서 저장소를, 이 패널에서 Cursor API·실행 검증을 순서대로 완료하세요.
+              </p>
+              <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
+                <strong>Git 상태</strong>{" "}
+                <span style={{ color: connectionToneColor(repoAxis.tone), fontWeight: 800 }}>{repoAxis.label}</span>
+                {es?.repoValidatedAt ? (
+                  <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.repoValidatedAt)}</span>
                 ) : null}
               </div>
-            )}
-          </div>
+              <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
+                <strong>Cursor 상태</strong> (API 검증){" "}
+                <span style={{ color: connectionToneColor(cursorApiAxis.tone), fontWeight: 800 }}>{cursorApiAxis.label}</span>
+                {es?.cursorApiValidatedAt ? (
+                  <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.cursorApiValidatedAt)}</span>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
+                <strong>실행 가능 상태</strong> (저장소 작업 검증){" "}
+                <span style={{ color: connectionToneColor(execAxis.tone), fontWeight: 800 }}>{execAxis.label}</span>
+                {es?.executorValidatedAt ? (
+                  <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.executorValidatedAt)}</span>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.55 }}>
+                <strong>전체</strong>{" "}
+                <span style={{ color: ready ? "#15803d" : "#b45309", fontWeight: 800 }}>
+                  {ready ? "준비 완료" : "준비 안 됨"}
+                </span>
+              </div>
+              {showValidationFailureDetails &&
+                (es?.repoValidationError || es?.cursorApiValidationError || es?.executorValidationError) && (
+                <div style={{ fontSize: 12, color: "#b91c1c", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>
+                  {es?.repoValidationError ? (
+                    <div>
+                      <strong>Git</strong> {es.repoValidationError}
+                    </div>
+                  ) : null}
+                  {es?.cursorApiValidationError ? (
+                    <div style={{ marginTop: 6 }}>
+                      <strong>Cursor API</strong> {es.cursorApiValidationError}
+                    </div>
+                  ) : null}
+                  {es?.executorValidationError ? (
+                    <div style={{ marginTop: 6 }}>
+                      <strong>실행</strong> {es.executorValidationError}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {renderCursorConnectionBlock({ compactTitle: false })}
 
           <div
             style={{
               marginBottom: 14,
               padding: 12,
               borderRadius: 12,
-              border: "1px solid #c4b5fd",
-              background: "#faf5ff",
+              border: "1px solid #a5b4fc",
+              background: "#eef2ff",
             }}
           >
-            <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6, color: "#0f172a" }}>Cursor API 연결</div>
-            <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-              {flatLayout
-                ? `Cloud Agents API · 기본 URL ${CURSOR_API_DEFAULT_URL}. 키는 서버에만 저장됩니다.`
-                : `JYOrchestration은 Cursor Cloud Agents API를 직접 호출합니다. 기본 URL은 ${CURSOR_API_DEFAULT_URL} 이며, 프로젝트마다 다른 주소로 바꿀 수 있습니다. API 키는 서버에만 저장되며 응답으로 전체 값이 내려가지 않습니다.`}
+            <div style={{ fontWeight: 900, fontSize: 13, color: "#3730a3", marginBottom: 4 }}>3. 실행 검증</div>
+            <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+              Cursor가 이 저장소에서 작업 가능한지 확인합니다. 먼저 위에서 Cursor API 검증을 통과하세요.
             </p>
-            {!flatLayout ? (
-              <button
-                type="button"
-                onClick={() => setCursorHelpOpen((v) => !v)}
-                style={{
-                  marginBottom: 10,
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #94a3b8",
-                  background: "#fff",
-                  fontWeight: 700,
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                {cursorHelpOpen ? "Cursor API 키 안내 접기" : "Cursor API 키 확인 방법"}
-              </button>
-            ) : null}
-            {showCursorHelp ? (
-              <ol
-                style={{
-                  margin: "0 0 12px 0",
-                  paddingLeft: 20,
-                  fontSize: 12,
-                  color: "#334155",
-                  lineHeight: 1.6,
-                }}
-              >
-                <li>Cursor 대시보드(cursor.com)에 로그인합니다.</li>
-                <li>설정 → Integrations 또는 Cloud Agents 메뉴로 이동합니다.</li>
-                <li>API key를 생성합니다.</li>
-                <li>생성한 키를 아래 입력란에 붙여넣고「Cursor 연결 저장」을 누릅니다.</li>
-                <li>「Cursor API 연결 검증」으로 연결·인증을 확인합니다.</li>
-              </ol>
-            ) : null}
-            <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API URL</span>
-              <input
-                value={es?.cursorApiUrl?.trim() ? es.cursorApiUrl : CURSOR_API_DEFAULT_URL}
-                disabled={!canEdit || !es}
-                placeholder={CURSOR_API_DEFAULT_URL}
-                onChange={(e) =>
-                  setExecutionSetup((p) => ({
-                    ...(p ?? ({} as ExecutionSetupDto)),
-                    cursorApiUrl: e.target.value.trim() || CURSOR_API_DEFAULT_URL,
-                  }))
-                }
-                style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-              />
-            </label>
-            <label style={{ display: "grid", gap: 4, marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API 키</span>
-              <input
-                type="password"
-                autoComplete="off"
-                value={cursorApiKeyDraft}
-                disabled={!canEdit || !es}
-                placeholder={
-                  es?.hasCursorToken
-                    ? "새 키를 입력하면 기존 키가 교체됩니다"
-                    : "key_ 로 시작하는 키를 붙여넣기"
-                }
-                onChange={(e) => setCursorApiKeyDraft(e.target.value)}
-                style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-              />
-            </label>
-            {es?.hasCursorToken && es?.cursorApiTokenMasked ? (
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 10 }}>
-                저장된 키(일부만 표시): {es.cursorApiTokenMasked}
-              </div>
-            ) : null}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <button
-                type="button"
-                disabled={!canEdit || !es || busy === "save-cursor"}
-                onClick={async () => {
-                  if (!projectId || !es) return;
-                  setBusy("save-cursor");
-                  const keyTouched = Boolean(cursorApiKeyDraft.trim());
-                  try {
-                    const body: Parameters<typeof patchExecutionSetup>[1] = {
-                      cursorApiUrl: es.cursorApiUrl?.trim() || CURSOR_API_DEFAULT_URL,
-                    };
-                    if (keyTouched) body.cursorApiToken = cursorApiKeyDraft.trim();
-                    const { res, json } = await patchExecutionSetup(projectId, body);
-                    if (!res.ok || !json.success || !json.data) {
-                      setMessage(json.message || "저장에 실패했습니다.");
-                      return;
-                    }
-                    setExecutionSetup(json.data);
-                    setCursorApiKeyDraft("");
-                    setMessage(
-                      keyTouched
-                        ? "Cursor API URL·키를 저장했습니다. 이어서 연결 검증을 실행할 수 있습니다."
-                        : "Cursor API URL을 저장했습니다."
-                    );
-                  } finally {
-                    setBusy(null);
+            <button
+              type="button"
+              disabled={!canEdit || !es || busy === "val-cursor-exec" || !es.hasCursorToken}
+              onClick={async () => {
+                if (!projectId || !es) return;
+                beginExecutionValidationRequest();
+                setBusy("val-cursor-exec");
+                try {
+                  const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor_execution" });
+                  if (!res.ok || !json.success) {
+                    setMessage(json.message || "실행 검증에 실패했습니다.");
+                    return;
                   }
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #7c3aed",
-                  background: "#7c3aed",
-                  color: "#fff",
-                  fontWeight: 800,
-                  fontSize: 12,
-                  cursor: !canEdit || !es ? "not-allowed" : busy === "save-cursor" ? "wait" : "pointer",
-                }}
-              >
-                {busy === "save-cursor" ? "저장 중…" : "Cursor 연결 저장"}
-              </button>
-              <button
-                type="button"
-                disabled={!canEdit || !es || busy === "val-executor"}
-                onClick={async () => {
-                  if (!projectId || !es) return;
-                  setBusy("val-executor");
-                  try {
-                    const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor" });
-                    if (!res.ok || !json.success) {
-                      setMessage(json.message || "Cursor API 연결 검증에 실패했습니다.");
-                      return;
+                  if (json.data) {
+                    setLastValidateKind("cursor_execution");
+                    setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+                    const d = json.data as ValidateResponseData;
+                    if (d.cursorApiValidation) {
+                      setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
                     }
-                    if (json.data) {
-                      setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
-                      const d = json.data as ValidateResponseData;
-                      if (d.cursorApiValidation) {
-                        setCursorApiValidationResult(d.cursorApiValidation);
-                        setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
-                      }
-                    }
-                    const detail = (json.data?.messages ?? []).join(" / ");
-                    setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
-                  } finally {
-                    setBusy(null);
                   }
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #0f766e",
-                  background: "#0d9488",
-                  color: "#fff",
-                  fontWeight: 800,
-                  fontSize: 12,
-                  cursor: !canEdit || !es ? "not-allowed" : busy === "val-executor" ? "wait" : "pointer",
-                }}
-              >
-                {busy === "val-executor" ? "검증 중…" : "Cursor API 연결 검증"}
-              </button>
-            </div>
+                  const detail = (json.data?.messages ?? []).join(" / ");
+                  setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
+                } finally {
+                  setBusy(null);
+                }
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #4338ca",
+                background: "#4f46e5",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor:
+                  !canEdit || !es || !es.hasCursorToken ? "not-allowed" : busy === "val-cursor-exec" ? "wait" : "pointer",
+              }}
+            >
+              {busy === "val-cursor-exec" ? "검증 중…" : "Cursor 저장소 접근 검증"}
+            </button>
           </div>
 
-          {cursorApiValidationResult ? (
+          {showCursorValidationCard && validationPayload ? (
             <div
               style={{
                 marginBottom: 14,
                 padding: 12,
                 borderRadius: 10,
-                border: `1px solid ${cursorApiValidationResult.overallOk ? "#86efac" : "#fecaca"}`,
-                background: cursorApiValidationResult.overallOk ? "#f0fdf4" : "#fef2f2",
+                border: `1px solid ${validationPayload.overallOk ? "#86efac" : "#fecaca"}`,
+                background: validationPayload.overallOk ? "#f0fdf4" : "#fef2f2",
               }}
             >
               <div style={{ fontWeight: 900, fontSize: 13, color: "#0f172a", marginBottom: 8 }}>
-                {cursorApiValidationResult.overallOk
-                  ? "Cursor API 연결 검증 — 성공"
-                  : "Cursor API 연결 검증 — 실패"}
+                {(() => {
+                  const label =
+                    lastValidateKind === "cursor_api"
+                      ? "Cursor API 검증"
+                      : lastValidateKind === "all"
+                        ? "전체 검증"
+                        : "실행 검증";
+                  return `${label} — ${validationPayload.overallOk ? "성공" : "실패"}`;
+                })()}
               </div>
               <pre
                 style={{
@@ -515,7 +1471,7 @@ export function ExecutionSetupPanel(props: {
                   whiteSpace: "pre-wrap",
                 }}
               >
-                {cursorApiValidationResult.summaryKr}
+                {validationPayload.summaryKr}
               </pre>
               {!flatLayout ? (
                 <button
@@ -548,7 +1504,7 @@ export function ExecutionSetupPanel(props: {
                     color: "#1e293b",
                   }}
                 >
-                  {cursorApiValidationResult.detailLines.map((line, i) => (
+                  {validationPayload.detailLines.map((line, i) => (
                     <div key={i} style={{ whiteSpace: "pre-wrap", fontFamily: "ui-monospace, monospace" }}>
                       {line}
                     </div>
@@ -560,14 +1516,9 @@ export function ExecutionSetupPanel(props: {
 
           {!flatLayout ? (
             <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-              검증 단계: (1) URL·API 키·실행 설정 확인 (2) Cursor API 연결 (3) API 키 인증{" "}
-              <code style={{ fontSize: 12 }}>GET /v0/me</code> (4) GitHub HTTPS 저장소 형식 확인
+              Git 연동 → Cursor API 검증 → 실행 검증 순서를 권장합니다.
             </p>
-          ) : (
-            <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
-              Cursor 검증: URL·키·<code>GET /v0/me</code>·저장소 형식
-            </p>
-          )}
+          ) : null}
 
           {!flatLayout ? (
             <div
@@ -962,6 +1913,7 @@ ${GLOB_PLACEHOLDER}`}
                 disabled={!canEdit || !es || busy === "val-all"}
                 onClick={async () => {
                   if (!projectId || !es) return;
+                  beginExecutionValidationRequest();
                   setBusy("val-all");
                   try {
                     const { res, json } = await postExecutionSetupValidate(projectId, { scope: "all" });
@@ -970,10 +1922,10 @@ ${GLOB_PLACEHOLDER}`}
                       return;
                     }
                     if (json.data) {
+                      setLastValidateKind("all");
                       setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
                       const d = json.data as ValidateResponseData;
                       if (d.cursorApiValidation) {
-                        setCursorApiValidationResult(d.cursorApiValidation);
                         setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
                       }
                     }
@@ -994,7 +1946,7 @@ ${GLOB_PLACEHOLDER}`}
                   cursor: !canEdit || !es ? "not-allowed" : busy === "val-all" ? "wait" : "pointer",
                 }}
               >
-                {busy === "val-all" ? "검증 중…" : "저장소·Cursor API 한 번에 검증"}
+                {busy === "val-all" ? "검증 중…" : "세 단계 한 번에 검증"}
               </button>
             </div>
 
@@ -1003,7 +1955,11 @@ ${GLOB_PLACEHOLDER}`}
                 마지막 전체 검증 시각: {formatTestedAt(es.lastValidatedAt)}
               </div>
             ) : null}
-            {es?.lastValidationError && !es.repoValidationError && !es.executorValidationError ? (
+            {showValidationFailureDetails &&
+            es?.lastValidationError &&
+            !es.repoValidationError &&
+            !es.cursorApiValidationError &&
+            !es.executorValidationError ? (
               <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>{es.lastValidationError}</div>
             ) : null}
           </div>

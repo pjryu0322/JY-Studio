@@ -2,6 +2,7 @@ import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHi
 import { buildCursorExecutionPrompt } from "@/lib/execution/buildCursorExecutionPrompt";
 import { executeCursorRun } from "@/lib/execution/cursorExecutionAdapter";
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
+import { countExecutionReviewAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
 import { taskLooksSensitive } from "@/lib/execution/taskSensitivity";
 import { computeExecutionBranchPlan } from "@/lib/execution/branchPolicy";
 import { assertGitRepoUrlConfiguredForRun } from "@/lib/execution/repoUrlPolicy";
@@ -26,7 +27,7 @@ export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 const loopLocks = new Set<string>();
 
 /**
- * 실행 루프: Cursor Cloud Agent API 호출 → 결과 수신 → AI 멤버(또는 기본) 검토 평가 → 전이.
+ * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (AI 리뷰어 있으면) 멀티 리뷰 → 전이. 리뷰어 없으면 리뷰 단계 생략.
  * 플랫폼은 로컬에서 코드/git을 실행하지 않습니다.
  */
 export async function runExecutionLoop(params: {
@@ -43,6 +44,14 @@ export async function runExecutionLoop(params: {
   loopLocks.add(projectId);
 
   try {
+    const stubCursor = process.env.EXECUTION_LOOP_STUB_CURSOR === "1";
+    console.info("[execution-loop] start", {
+      projectId,
+      actorUserId,
+      singleTaskId: singleTaskId ?? null,
+      stubCursor,
+    });
+
     const setup = await withExecutionSetupSchemaHealRetry(() =>
       prisma.executionSetup.findUnique({ where: { projectId } })
     );
@@ -50,7 +59,12 @@ export async function runExecutionLoop(params: {
       return { ok: false, steps, message: "Execution setup 이 없습니다." };
     }
     if (String(setup.status) !== "validated") {
-      return { ok: false, steps, message: "Execution setup 을 먼저 검증(validated)하세요." };
+      return {
+        ok: false,
+        steps,
+        message:
+          "저장소 연결 검증과 Cursor 저장소 접근 검증을 모두 통과해야 실행할 수 있습니다. Git 연동·실행 환경 설정에서 검증을 완료하세요. (Execution setup 상태: validated)",
+      };
     }
     if (setup.projectId !== projectId) {
       return { ok: false, steps, message: "Execution setup 프로젝트 불일치." };
@@ -70,12 +84,32 @@ export async function runExecutionLoop(params: {
       };
     }
 
+    const cursorConfigured = stubCursor || Boolean(String(setup.cursorApiToken ?? "").trim());
+    if (!cursorConfigured) {
+      return {
+        ok: false,
+        steps,
+        message:
+          "Cursor executor is required. 실행 환경 설정에 Cursor API 키를 저장하고 Cursor 저장소 접근 검증을 완료하세요.",
+      };
+    }
+
     const maxRetries = Math.max(0, setup.maxAutoRetriesPerTask ?? 2);
     const autoAdvance = setup.autoAdvanceToNextTask !== false;
     const stopOnTestFailure = setup.stopOnTestFailure !== false;
     const stopOnRepeatedFailure = setup.stopOnRepeatedFailure !== false;
     const stopOnOutOfScopeChange = setup.stopOnOutOfScopeChange !== false;
     const requireApprovalForSensitiveTasks = setup.requireApprovalForSensitiveTasks === true;
+
+    const executionReviewerCount = await countExecutionReviewAiMembers(projectId);
+    const noExecutionReviewers = executionReviewerCount === 0;
+    const effectiveAutoAdvance = noExecutionReviewers ? true : autoAdvance;
+    const effectiveRequireApprovalForSensitive = noExecutionReviewers ? false : requireApprovalForSensitiveTasks;
+    if (noExecutionReviewers) {
+      console.info(
+        "[execution-loop] AI execution-review 멤버 없음: 자동 진행 강제, 민감 작업 승인 게이트 비활성(리뷰어 없음 모드)"
+      );
+    }
     const allowedGlobs = parseStringArrayJson(setup.allowedPathGlobs);
     const repoUrl = setup.gitRepoUrl.trim();
 
@@ -112,16 +146,23 @@ export async function runExecutionLoop(params: {
       const todoRows = rows.filter((r) => r.status === "TODO");
       if (todoRows.length === 0) {
         steps.push({ phase: "stop", reason: "no_todo_tasks" });
-        await appendTaskHistory({
-          projectId,
-          taskId: rows[0]?.id ?? lastTaskId,
-          actorType: TaskHistoryActorType.SYSTEM,
-          actorId: actorUserId,
-          eventType: TaskHistoryEventType.EXECUTION_LOOP_FINISHED,
-          summary: "TODO Task 없음 — 루프 종료",
-          detailJson: {},
-        }).catch(() => {});
-        return { ok: true, steps, message: "실행할 TODO Task 가 없습니다." };
+        const anchorId = (rows[0]?.id ?? lastTaskId).trim();
+        if (anchorId) {
+          await appendTaskHistory({
+            projectId,
+            taskId: anchorId,
+            actorType: TaskHistoryActorType.SYSTEM,
+            actorId: actorUserId,
+            eventType: TaskHistoryEventType.EXECUTION_LOOP_FINISHED,
+            summary: "TODO Task 없음 — 루프 종료",
+            detailJson: {},
+          }).catch(() => {});
+        }
+        const msg =
+          rows.length === 0
+            ? "실행 루프 대상 Task가 없습니다. 워크스페이스에서 Task를 확정했는지, 상태가 취소·차단(BLOCKED/CANCELLED)이 아닌지 확인하세요."
+            : "실행할 TODO Task가 없습니다. 이미 완료되었거나 IN_PROGRESS 등 다른 상태일 수 있습니다.";
+        return { ok: true, steps, message: msg };
       }
 
       const pickRows: TaskForPick[] = rows.map((r) => ({
@@ -240,6 +281,13 @@ export async function runExecutionLoop(params: {
         },
       });
 
+      console.info("[execution-loop] cursor invoke", {
+        projectId,
+        taskId,
+        branch: branchPlan.branchName,
+        runRecordId: execRun.id,
+      });
+
       const cursorOutcome = await executeCursorRun({
         projectId,
         workflowId: taskRow.sourceSpecVersionId ?? null,
@@ -273,6 +321,24 @@ export async function runExecutionLoop(params: {
         runId: cursorOutcome.ok ? cursorOutcome.result.runId : undefined,
         error: cursorOutcome.ok ? undefined : cursorOutcome.error,
       });
+
+      if (cursorOutcome.ok) {
+        const cr0 = cursorOutcome.result;
+        console.info("[execution-loop] cursor done (git·커밋·푸시는 Cursor Agent에 위임)", {
+          taskId,
+          runId: cr0.runId,
+          branch: cr0.branchName,
+          commitHash: cr0.commitHash ?? null,
+          changedFiles: cr0.changedFiles.length,
+          executionStatus: cr0.executionStatus,
+        });
+      } else {
+        console.error("[execution-loop] cursor failed", {
+          taskId,
+          error: cursorOutcome.error,
+          logTail: cursorOutcome.logs?.slice(-5),
+        });
+      }
 
       if (!cursorOutcome.ok) {
         const errMsg = cursorOutcome.error ?? "cursor failed";
@@ -332,7 +398,7 @@ export async function runExecutionLoop(params: {
         });
         await refreshWorkflowStates(projectId);
         if (singleTaskId) break;
-        if (!autoAdvance) break;
+        if (!effectiveAutoAdvance) break;
         continue;
       }
 
@@ -358,6 +424,12 @@ export async function runExecutionLoop(params: {
         },
       });
 
+      if (noExecutionReviewers) {
+        console.info("[execution-loop] 리뷰 단계 생략됨 (AI 멤버 미설정)", { taskId, projectId });
+      } else {
+        console.info("[execution-loop] review start", { taskId, projectId });
+      }
+
       const evalPack = await evaluateExecutionResult({
         projectId,
         task: {
@@ -373,7 +445,21 @@ export async function runExecutionLoop(params: {
         stopOnOutOfScopeChange,
         allowedPathGlobs: allowedGlobs,
         repoUrl,
+        executionReviewerCount,
       });
+
+      if (noExecutionReviewers) {
+        console.info("[execution-loop] review skipped (cursor-only path)", {
+          taskId,
+          verdict: evalPack.result.decision,
+        });
+      } else {
+        console.info("[execution-loop] review done", {
+          taskId,
+          verdict: evalPack.result.decision,
+          reviewerSteps: evalPack.reviewerSteps.length,
+        });
+      }
 
       let evalR = evalPack.result;
       let verdict = evalR.decision;
@@ -425,15 +511,24 @@ export async function runExecutionLoop(params: {
         actorType: TaskHistoryActorType.LLM,
         actorId: actorUserId,
         eventType: TaskHistoryEventType.EXECUTION_LOOP_TASK_STEP,
-        summary: `평가: ${verdict}`,
-        detailJson: { verdict, reason: evalR.reason, score: evalR.score, runId: cr.runId },
+        summary:
+          noExecutionReviewers && verdict === "done"
+            ? `평가: ${verdict} (리뷰 생략 · AI 멤버 미설정)`
+            : `평가: ${verdict}`,
+        detailJson: {
+          verdict,
+          reason: evalR.reason,
+          score: evalR.score,
+          runId: cr.runId,
+          reviewSkipped: noExecutionReviewers,
+        },
       });
 
       const fileCount = cr.changedFiles.length;
 
       if (verdict === "done") {
         const sensitiveGate =
-          requireApprovalForSensitiveTasks &&
+          effectiveRequireApprovalForSensitive &&
           taskLooksSensitive({
             name: taskRow.name,
             description: taskRow.description,
@@ -511,17 +606,18 @@ export async function runExecutionLoop(params: {
         });
 
         await refreshWorkflowStates(projectId);
-        if (singleTaskId || !autoAdvance) {
+        if (singleTaskId || !effectiveAutoAdvance) {
           await appendTaskHistory({
             projectId,
             taskId,
             actorType: TaskHistoryActorType.SYSTEM,
             actorId: actorUserId,
             eventType: TaskHistoryEventType.EXECUTION_LOOP_FINISHED,
-            summary: singleTaskId || !autoAdvance ? "실행 종료(단일 또는 autoAdvance off)" : "continue",
+            summary:
+              singleTaskId || !effectiveAutoAdvance ? "실행 종료(단일 또는 autoAdvance off)" : "continue",
             detailJson: {},
           }).catch(() => {});
-          if (!autoAdvance && !singleTaskId) {
+          if (!effectiveAutoAdvance && !singleTaskId) {
             return { ok: true, steps, message: "Task 완료. 자동 진행이 꺼져 루프를 중단했습니다." };
           }
           if (singleTaskId) {

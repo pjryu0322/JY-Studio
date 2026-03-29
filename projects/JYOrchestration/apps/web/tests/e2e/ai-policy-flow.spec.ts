@@ -9,18 +9,19 @@ test.describe("E2E AI policy", () => {
     await page.waitForURL(/\/$/, { timeout: 30_000 });
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-settings-toggle").click();
-    await page.getByTestId("project-detail-tab-advanced").click();
-    await expect(page.getByTestId("ai-action-policy-section")).toBeVisible();
+    await page.getByTestId("project-detail-tab-ai-members").click();
+    await expect(page.getByTestId("ai-reviewer-policy-section").first()).toBeVisible();
   });
 
-  test("[E2E-POL-001] REVIEW_REQUEST 승인 정책을 MANUAL로 변경 후 복구", async ({ page }) => {
-    const sel = page.getByTestId("policy-approval-REVIEW_REQUEST");
+  test("[E2E-POL-001] 리뷰어 승인 정책을 검토 후 실행으로 변경 후 자동 실행으로 복구", async ({ page }) => {
+    const sel = page.getByTestId("ai-reviewer-policy-approval").first();
     await expect(sel).toBeVisible();
     await sel.selectOption("MANUAL_REVIEW");
+    await page.getByTestId("ai-reviewer-policy-save").first().click();
     await page.waitForTimeout(1500);
     await expect(sel).toHaveValue("MANUAL_REVIEW");
     await sel.selectOption("AUTO_APPROVE");
+    await page.getByTestId("ai-reviewer-policy-save").first().click();
     await page.waitForTimeout(1500);
     await expect(sel).toHaveValue("AUTO_APPROVE");
   });

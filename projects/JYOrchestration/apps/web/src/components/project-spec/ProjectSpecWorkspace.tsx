@@ -2784,7 +2784,7 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         lastAutoSync={lastTaskDraftSync}
       />
 
-      {/* 실행 환경·Git 저장소: 프로젝트 상세 → Git 연동 탭 [F-1-3-6] */}
+      {/* 실행 환경·Git 저장소: 프로젝트 상세 → 실행 환경 탭 [F-1-3-6] */}
 
       {message ? (
         <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: "#334155" }} role="status">

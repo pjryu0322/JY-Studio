@@ -76,18 +76,16 @@ describe("AI policy API", () => {
   it("[POL-002] MANUAL_REVIEW 전환 시 PENDING_REVIEW", async () => {
     await setupIsolation();
 
-    const put = await apiFetch("/api/ai-action-policy", {
-      method: "PUT",
+    const patch = await apiFetch(`/api/project/members/${encodeURIComponent(aiMemberId)}`, {
+      method: "PATCH",
       cookie: ownerCookie,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        projectId,
-        actionType: "REVIEW_REQUEST",
-        approvalMode: "MANUAL_REVIEW",
-        applyMode: "MANUAL_APPLY",
+        aiActionApprovalModeOverride: "MANUAL_REVIEW",
+        aiActionApplyModeOverride: "MANUAL_APPLY",
       }),
     });
-    expect(put.status).toBe(200);
+    expect(patch.status).toBe(200);
 
     const post = await apiFetch("/api/ai-member-actions", {
       method: "POST",
@@ -111,15 +109,13 @@ describe("AI policy API", () => {
     expect(row?.status).toBe("DONE");
     expect(row?.reviewStatus).toBe("PENDING_REVIEW");
 
-    const reset = await apiFetch("/api/ai-action-policy", {
-      method: "PUT",
+    const reset = await apiFetch(`/api/project/members/${encodeURIComponent(aiMemberId)}`, {
+      method: "PATCH",
       cookie: ownerCookie,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        projectId,
-        actionType: "REVIEW_REQUEST",
-        approvalMode: "AUTO_APPROVE",
-        applyMode: "MANUAL_APPLY",
+        aiActionApprovalModeOverride: null,
+        aiActionApplyModeOverride: null,
       }),
     });
     expect(reset.status).toBe(200);
