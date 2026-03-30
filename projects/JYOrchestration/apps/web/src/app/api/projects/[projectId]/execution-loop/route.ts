@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
+import { isExecutionLoopPaused } from "@/lib/executionLoop/loopControllerState";
 import {
   pauseExecutionLoop,
   resumeExecutionLoop,
@@ -12,6 +13,40 @@ type Body = {
   action?: string;
   taskId?: string;
 };
+
+export async function GET(
+  request: NextRequest,
+  segmentData: { params: Promise<{ projectId: string }> }
+) {
+  try {
+    const { projectId } = await segmentData.params;
+    const pid = String(projectId ?? "").trim();
+    if (!pid) {
+      return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
+    }
+
+    const userId = await requireSessionUserId(request);
+    if (userId instanceof NextResponse) return userId;
+
+    try {
+      await requireProjectPermissionById(pid, userId, "canRunTask", "GET /api/projects/[projectId]/execution-loop");
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) return denied;
+      throw error;
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: { paused: isExecutionLoopPaused(pid) },
+    });
+  } catch (error) {
+    const denied = rbacErrorResponse(error);
+    if (denied) return denied;
+    console.error("GET /api/projects/[projectId]/execution-loop error:", error);
+    return NextResponse.json({ success: false, message: "실행 루프 상태 조회 중 오류가 발생했습니다." }, { status: 500 });
+  }
+}
 
 export async function POST(
   request: NextRequest,

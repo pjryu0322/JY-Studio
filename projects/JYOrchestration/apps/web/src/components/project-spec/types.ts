@@ -193,6 +193,8 @@ export type TaskItem = {
   projectSpecUploadId: string | null;
   /** 확정 Spec 버전 — 실행 런 workflow 계보 */
   sourceSpecVersionId?: string | null;
+  /** 이전 스펙 TaskSet 보관 시각 */
+  archivedAt?: string | null;
   name: string;
   description: string | null;
   status: string;

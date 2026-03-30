@@ -12,7 +12,7 @@ import {
   type SpecWorkspaceSnapshot,
 } from "@/components/project-spec/api";
 import { ProjectSpecAiDraftPlanSection } from "@/components/project-spec/ProjectSpecAiDraftPlanSection";
-import { TaskDraftPanel } from "@/components/project-spec/TaskDraftPanel";
+import { TaskDraftPanel, type TaskDraftWorkflowExecutionProps } from "@/components/project-spec/TaskDraftPanel";
 import type { Project, ProjectSpecResponseRecord, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
@@ -48,6 +48,7 @@ type ProjectSpecWorkspaceProps = {
   project: Project | null;
   canEdit: boolean;
   onProjectUpdated: (next: Project) => void;
+  workflowExecution: TaskDraftWorkflowExecutionProps;
 };
 
 type FormState = {
@@ -98,7 +99,13 @@ function projectToForm(p: Project | null): FormState {
   };
 }
 
-export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpdated }: ProjectSpecWorkspaceProps) {
+export function ProjectSpecWorkspace({
+  projectId,
+  project,
+  canEdit,
+  onProjectUpdated,
+  workflowExecution,
+}: ProjectSpecWorkspaceProps) {
   const [projectInfoOpen, setProjectInfoOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
@@ -2779,9 +2786,12 @@ export function ProjectSpecWorkspace({ projectId, project, canEdit, onProjectUpd
         projectId={projectId}
         canEdit={canEdit}
         selectedModel={selectedModel}
-        currentSpecVersionId={workspace?.project.currentSpecVersionId ?? null}
+        currentSpecVersionId={
+          workspace?.project.currentSpecVersionId ?? project?.currentSpecVersionId ?? null
+        }
         refreshKey={draftRefreshKey}
         lastAutoSync={lastTaskDraftSync}
+        workflowExecution={workflowExecution}
       />
 
       {/* 실행 환경·Git 저장소: 프로젝트 상세 → 실행 환경 탭 [F-1-3-6] */}

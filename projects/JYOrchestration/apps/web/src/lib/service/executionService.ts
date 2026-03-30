@@ -674,18 +674,47 @@ export async function getProjectObservabilitySnapshot(
     return null;
   }
 
-  const [tasks, latestRuns, taskRunTotal, gitTotal, gitRows, retriedCount] = await Promise.all([
+  const projectRow = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { currentSpecVersionId: true },
+  });
+  const currentSpecVersionId = projectRow?.currentSpecVersionId ?? null;
+  const activeTaskWhere =
+    currentSpecVersionId != null
+      ? { projectId, archivedAt: null, sourceSpecVersionId: currentSpecVersionId }
+      : { projectId, id: { in: [] as string[] } };
+
+  const [
+    tasks,
+    latestRuns,
+    taskRunTotal,
+    archivedTaskCount,
+    historicalPromptRunCount,
+    cursorRunActive,
+    cursorRunArchived,
+    gitTotal,
+    gitRows,
+    retriedCount,
+  ] = await Promise.all([
     prisma.task.findMany({
-      where: { projectId },
+      where: activeTaskWhere,
       select: { id: true, status: true },
     }),
     prisma.taskRun.findMany({
-      where: { task: { projectId } },
+      where: { task: activeTaskWhere },
       orderBy: [{ taskId: "asc" }, { createdAt: "desc" }],
       distinct: ["taskId"],
       select: { taskId: true, status: true },
     }),
-    prisma.taskRun.count({ where: { task: { projectId } } }),
+    prisma.taskRun.count({ where: { task: activeTaskWhere } }),
+    prisma.task.count({ where: { projectId, archivedAt: { not: null } } }),
+    prisma.taskRun.count({ where: { task: { projectId, archivedAt: { not: null } } } }),
+    prisma.taskExecutionRun.count({
+      where: { projectId, archivedAt: null },
+    }),
+    prisma.taskExecutionRun.count({
+      where: { projectId, archivedAt: { not: null } },
+    }),
     prisma.gitChangeRequest.count({ where: { projectId } }),
     prisma.gitChangeRequest.findMany({
       where: { projectId },
@@ -755,6 +784,7 @@ export async function getProjectObservabilitySnapshot(
   }
 
   return {
+    currentSpecVersionId,
     task: {
       total: tasks.length,
       todo,
@@ -762,7 +792,13 @@ export async function getProjectObservabilitySnapshot(
       done,
       failed,
     },
+    historical: {
+      archivedTaskCount,
+      promptRunCount: historicalPromptRunCount,
+      cursorRunCount: cursorRunArchived,
+    },
     taskRun: { total: taskRunTotal },
+    cursorExecutionRun: { activeCount: cursorRunActive, archivedCount: cursorRunArchived },
     git: {
       total: gitTotal,
       requested: gitRequested,

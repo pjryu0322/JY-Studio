@@ -28,7 +28,7 @@ export type TaskDraftAiItem = {
   taskInput?: string;
   taskOutput?: string;
   estimatedSize?: "S" | "M" | "L";
-  executionKind?: "api" | "logic" | "ui" | "infra" | "test";
+  executionKind?: "api" | "logic" | "ui" | "data" | "infra" | "test";
   /** Feature 내 로컬 ID → DB 저장 시 형제 Task 간 dependsOn 해석용 */
   localTaskId?: string;
   dependsOnLocalIds?: string[];
@@ -56,7 +56,7 @@ function buildRequirementsPrompt(input: {
   projectType: string;
   specMarkdown: string;
 }): string {
-  return `다음 Project Spec에서 요구사항을 추출하라. **기능 요구사항(FR)** 과 **비기능 요구사항(NFR)** 을 구분한다.
+  return `Project Spec에서 요구사항을 추출한다. **반드시 기능(FR)과 비기능(NFR)을 분리**한다.
 
 [프로젝트]
 - 이름: ${input.projectName}
@@ -68,36 +68,46 @@ function buildRequirementsPrompt(input: {
 ${clipSpec(input.specMarkdown)}
 ---
 
-[출력 JSON 스키마 — 키 이름을 정확히 맞출 것]
+[하드 필터 — 위반 시 오답]
+- **tasks** 배열: **기능 요구사항(FR)만**. Cursor가 코드로 구현·검증할 수 있는 사용자/업무 동작·기능·규칙만 넣는다.
+- **다음은 절대 tasks에 넣지 말 것** (전부 nonFunctionalConstraints로만):
+  - type이 NON_FUNCTIONAL인 항목, 또는 nfr/비기능으로 분류되는 모든 항목
+  - 성능(performance)·보안 정책만·가용성·확장성·로깅·모니터링·운영/배포 제약만
+  - SLA, RTO/RPO, 감사·컴플라이언스 문구만, 인프라 관측만
+
+[출력 JSON — 키 이름 정확히]
 {
-  "requirements": [
+  "tasks": [
     {
-      "id": "FR-1",
-      "title": "요구사항 제목",
-      "description": "설명",
-      "priority": "HIGH|MEDIUM|LOW",
-      "requirementType": "FUNCTIONAL",
-      "nfrCategory": null
-    },
-    {
-      "id": "NFR-1",
-      "title": "비기능 요구 제목",
-      "description": "설명",
-      "priority": "HIGH|MEDIUM|LOW",
-      "requirementType": "NON_FUNCTIONAL",
-      "nfrCategory": "performance|security|quality|operational|policy"
+      "title": "기능 요구 한 덩어리(이후 파이프라인에서 레이어별 실행 Task로 쪼개짐)",
+      "description": "무엇을 구현해야 하는지 (한 번에 하나의 사용자/업무 목표)",
+      "input": "입력·전제·사용 데이터",
+      "output": "산출·결과",
+      "acceptanceCriteria": ["검증 가능한 문장"],
+      "executionKind": "api|ui|logic|data|test",
+      "priority": "HIGH|MEDIUM|LOW"
     }
-  ]
+  ],
+  "nonFunctionalConstraints": [
+    {
+      "title": "비기능 제약 제목 (NOT tasks)",
+      "description": "내용",
+      "nfrCategory": "performance|security|availability|scalability|logging|monitoring|operational|policy|quality"
+    }
+  ],
+  "dag": []
 }
 
+dag는 요구 추출 단계에서는 빈 배열로 두거나 생략해도 된다(실행 DAG는 Feature별 생성 단계에서 만든다).
+
 [분류 규칙]
-- requirementType은 반드시 "FUNCTIONAL" 또는 "NON_FUNCTIONAL" (대문자).
-- FUNCTIONAL: 사용자에게 보이는 동작·기능·업무 규칙(빌드 대상 Task로 쪼갤 수 있는 것).
-- NON_FUNCTIONAL: 성능·보안·품질 목표, 정책/컴플라이언스 문구만, 운영/배포 제약만 등 **구현 Task로 직접 쪼개지 않는** 항목.
-- NON_FUNCTIONAL일 때만 nfrCategory 필수: performance | security | quality 중 하나를 우선 사용. 정책·운영 제약은 policy 또는 operational.
-- FUNCTIONAL이면 nfrCategory는 null.
-- 총 4~14개 항목(기능 위주, NFR은 Spec에 있을 때만 포함).
-- JSON만 출력. 마크다운·설명 문장 금지.`;
+- tasks와 nonFunctionalConstraints에 **동일 항목을 중복 넣지 말 것**.
+- FR 한 건당 tasks에 한 객체. NFR 한 건당 nonFunctionalConstraints에 한 객체.
+- tasks가 비면 안 됨(Spec에 구현 가능한 기능이 없으면 최소한 핵심 사용자 시나리오 1건을 FR로 재해석).
+- 반환 전 검증: tasks의 어떤 항목도 비기능 전용이 아닌지 스스로 확인.
+- JSON만 출력. 마크다운·설명 문장 금지.
+
+[하위 호환] 동일 구조를 "functionalRequirements" + "nonFunctionalConstraints" 로만 출력해도 된다 (tasks 대신 functionalRequirements 배열 사용 가능).`;
 }
 
 function buildDesignPrompt(requirements: Array<{ title: string; description: string }>): string {
@@ -154,7 +164,12 @@ function buildExecutionTasksForSingleFeaturePrompt(feature: {
   description: string;
   priority: string;
 }): string {
-  return `아래 **단일 Feature**에 대해서만 실행 가능한 개발 Task를 JSON으로 생성하라. (다른 Feature는 무시)
+  return `STRICT EXECUTION MODE — 이 Feature만 대상으로 **자동 실행(Cursor+Git) 가능한** Task 파이프라인을 JSON으로 만든다.
+
+[목표]
+1) 구현 1사이클·1논리 커밋 단위로 끝나는 과제만
+2) 입력/출력 명확, 단독 검증 가능
+3) 의존성 DAG 정확 (순환 없음, 전 노드 도달 가능, 루트 1개 이상)
 
 [Feature]
 - 제목: ${feature.title}
@@ -162,33 +177,68 @@ function buildExecutionTasksForSingleFeaturePrompt(feature: {
 - 설명:
 ${feature.description.slice(0, 6000)}
 
-[출력 JSON — 키 이름을 정확히 맞출 것]
+[출력 JSON — 키 이름 정확히]
 {
   "tasks": [
     {
-      "localId": "영문_snake_또는_kebab (Feature 내 고유)",
-      "dependsOn": ["선행 task의 localId. 루트 Task만 []"],
-      "title": "구체적 실행 단위 (예: POST /orders API 엔드포인트 및 DTO 구현)",
-      "description": "무엇을 어느 레이어/모듈에서 구현하는지, 핵심 로직 요약",
-      "input": "이 Task가 사용하는 입력(필드·문서·환경 등)",
-      "output": "산출물(코드·스키마·응답 형식 등)",
-      "acceptanceCriteria": ["측정·검증 가능한 문장 3~5개"],
+      "id": "T-1",
+      "title": "구체적 구현 단위 (한 가지 책임만)",
+      "description": "어느 모듈/레이어에서 무엇을 하는지",
+      "input": "선행 산출물·환경·데이터",
+      "output": "커밋 단위 산출물",
+      "acceptanceCriteria": ["측정·검증 가능 3~5문장"],
+      "executionKind": "api|logic|ui|data|test",
+      "dependencies": ["선행 Task의 id. 루트는 []"],
       "estimatedSize": "S|M|L",
-      "priority": "P0|P1|P2",
-      "type": "api|logic|ui|infra|test"
+      "priority": "P0|P1|P2"
     }
-  ]
+  ],
+  "dag": []
 }
 
-[하드 규칙]
-- tasks 배열 길이는 반드시 3~7.
-- DAG: 순환 금지. dependsOn은 반드시 같은 배열 안의 다른 task의 localId만 참조.
-- **루트 Task는 정확히 1개**(dependsOn이 []). 나머지는 최소 1개 이상의 선행 Task를 가진다.
-- 그래프는 **약한 의미에서 연결**되어 있어야 함(고립된 Task/분리된 그룹 금지).
-- 권장 흐름: 계약/API·스키마(api/infra) → 비즈니스 로직(logic) → UI(ui, 필요 시) → 검증(test).
-- title은 모호한 표현 금지(예: "API 구현" 단독). 최소 14자 이상의 구체적 문장.
-- input·output은 각각 충분히 구체적으로(6자 이상).
-- JSON만 출력. 마크다운·설명 문장 금지.`;
+dag는 tasks와 동일 id·dependencies를 요약한 배열이어도 되고, 빈 배열이어도 된다. **의존성의 진실은 tasks[].dependencies** 이다.
+
+[레이어 분해 — Feature당 **4~8개** Task 권장]
+- **data**: DB 스키마/마이그레이션, 공유 DTO·타입
+- **logic**: 유효성·도메인 서비스 (DTO/스키마 정의 이후 가능하면 선행 반영)
+- **api**: HTTP/컨트롤러/라우트 (서비스·계약 준비 후)
+- **ui**: 필요할 때만 (API 또는 핵심 로직 이후)
+- **test**: 검증 대상 API·로직 **이후**에 의존
+
+[DAG 원칙]
+- Schema/DTO 병렬 루트 허용 → 이후 수렴(예: Service가 schema+dto/validation에 의존).
+- 검증(validation)은 해당 DTO/필드 정의 **이후**.
+- API는 서비스·계약 **이후**.
+- 테스트는 테스트 대상 구현 **이후**.
+- 순환 금지. 고립 노드·분리 컴포넌트 금지.
+
+[나쁜 예 — 절대 금지]
+- "사용자 기능 전부", "시스템 구축", "보안 적용(비기능만)" 같이 거대·모호·NFR 전용 Task
+
+[호환 필드]
+- id 대신 localId, dependencies 대신 dependsOn, executionKind 대신 type 사용 가능하나, 한 객체 안에서 일관되게.
+
+[출력 전 자가검증]
+순환 없음, 기능 구현 Task만, 과제가 과대하지 않음.
+
+JSON만 출력.`;
+}
+
+/** 모델이 NFR성 실행 Task를 섞었을 때 제거 (최소 Task 수 미만이 되면 원본 유지) */
+function filterExecutionTasksExcludingNonFunctional(tasks: GeneratedExecutionTask[]): GeneratedExecutionTask[] {
+  const blob = (t: GeneratedExecutionTask) => `${t.title}\n${t.description}\n${t.input}\n${t.output}`.toLowerCase();
+  const nfrLike =
+    /\b(nfr|non[-\s]?functional)\b|비기능\s*요구|비기능\s*전용|성능\s*튜닝\s*전용|보안\s*감사\s*만|로깅\s*인프라\s*만|모니터링\s*대시보드\s*만|sla\s*달성\s*만|rto\b|rpo\b|가용성\s*\d|스케일(아웃|링)\s*만|compliance[-\s]only/i;
+  const filtered = tasks.filter((t) => !nfrLike.test(blob(t)));
+  return filtered.length >= 4 ? filtered : tasks;
+}
+
+function parseExecutionTasksFromJsonRoot(root: Record<string, unknown>): GeneratedExecutionTask[] {
+  const tasksUnknown = root.tasks;
+  if (!Array.isArray(tasksUnknown) || tasksUnknown.length === 0) {
+    throw new Error("EMPTY_EXECUTION_TASKS");
+  }
+  return parseExecutionTasksFromJson(tasksUnknown);
 }
 
 function parseExecutionTasksFromJson(tasksUnknown: unknown): GeneratedExecutionTask[] {
@@ -199,10 +249,14 @@ function parseExecutionTasksFromJson(tasksUnknown: unknown): GeneratedExecutionT
   for (const item of tasksUnknown) {
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
-    const localId = String(o.localId ?? "").trim();
+    const localId = String(o.localId ?? o.id ?? "").trim();
     const title = String(o.title ?? "").trim();
     if (!localId || !title) continue;
-    const dependsRaw = Array.isArray(o.dependsOn) ? o.dependsOn : [];
+    const dependsRaw = Array.isArray(o.dependsOn)
+      ? o.dependsOn
+      : Array.isArray(o.dependencies)
+        ? o.dependencies
+        : [];
     const dependsOn = dependsRaw.map((x) => String(x ?? "").trim()).filter(Boolean);
     const description = String(o.description ?? "").trim();
     const input = String(o.input ?? "").trim();
@@ -214,7 +268,12 @@ function parseExecutionTasksFromJson(tasksUnknown: unknown): GeneratedExecutionT
     const estimatedSize = ESTIMATED_SIZES.includes(est as "S" | "M" | "L") ? (est as "S" | "M" | "L") : ("M" as const);
     const pr = String(o.priority ?? "P1").toUpperCase().trim();
     const priority = TASK_PRIORITIES.includes(pr as "P0" | "P1" | "P2") ? (pr as "P0" | "P1" | "P2") : "P1";
-    const kindRaw = String(o.type ?? o.taskKind ?? "logic").toLowerCase().trim();
+    let kindRaw = String(o.type ?? o.taskKind ?? o.executionKind ?? "logic")
+      .toLowerCase()
+      .trim();
+    if (kindRaw === "infra") {
+      kindRaw = "data";
+    }
     const taskKind = EXECUTION_TASK_KINDS.includes(kindRaw as GeneratedExecutionTask["taskKind"])
       ? (kindRaw as GeneratedExecutionTask["taskKind"])
       : "logic";
@@ -252,13 +311,14 @@ async function generateValidatedExecutionTasksForFeature(params: {
     let parsed: GeneratedExecutionTask[];
     try {
       const root = parseJson(res.text);
-      parsed = parseExecutionTasksFromJson(root.tasks);
+      parsed = parseExecutionTasksFromJsonRoot(root);
     } catch {
       continue;
     }
-    const v = validateGeneratedExecutionTasks(parsed);
+    const cleaned = filterExecutionTasksExcludingNonFunctional(parsed);
+    const v = validateGeneratedExecutionTasks(cleaned);
     if (v.ok) {
-      return { tasks: parsed, usage: res.usage };
+      return { tasks: cleaned, usage: res.usage };
     }
   }
   return {
@@ -301,6 +361,13 @@ type ParsedRequirementRow = {
   priority: "HIGH" | "MEDIUM" | "LOW";
   requirementType: StoredRequirementType;
   nfrCategory: NfrCategory | null;
+  /** FR 추출 단계에서만 채움 → 설계 프롬프트에 주입 */
+  functionalHints?: {
+    input?: string;
+    output?: string;
+    acceptanceCriteria?: string[];
+    executionKind?: string;
+  };
 };
 
 const NFR_CATEGORIES: readonly NfrCategory[] = [
@@ -310,6 +377,153 @@ const NFR_CATEGORIES: readonly NfrCategory[] = [
   "operational",
   "policy",
 ] as const;
+
+function normalizeNfrCategoryLabel(raw: string): NfrCategory {
+  const c = String(raw ?? "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_");
+  const aliases: Record<string, NfrCategory> = {
+    performance: "performance",
+    security: "security",
+    quality: "quality",
+    operational: "operational",
+    policy: "policy",
+    availability: "operational",
+    scalability: "operational",
+    logging: "operational",
+    monitoring: "operational",
+  };
+  if (aliases[c]) {
+    return aliases[c];
+  }
+  return NFR_CATEGORIES.includes(c as NfrCategory) ? (c as NfrCategory) : "operational";
+}
+
+function parseFunctionalRequirementFromShape(o: Record<string, unknown>): ParsedRequirementRow | null {
+  const title = String(o.title ?? "").trim();
+  if (!title) {
+    return null;
+  }
+  const desc = String(o.description ?? "").trim();
+  const input = String(o.input ?? "").trim();
+  const output = String(o.output ?? "").trim();
+  const ac = Array.isArray(o.acceptanceCriteria)
+    ? o.acceptanceCriteria.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+  const executionKind = String(o.executionKind ?? "").trim();
+  const rt = String(o.requirementType ?? o.type ?? "FUNCTIONAL")
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  if (
+    rt === "NON_FUNCTIONAL" ||
+    rt === "NONFUNCTIONAL" ||
+    rt === "NFR" ||
+    rt === "NON-FUNCTIONAL"
+  ) {
+    return null;
+  }
+  return {
+    title: title.slice(0, 500),
+    description: desc.slice(0, 8000),
+    priority: normalizePriority(o.priority),
+    requirementType: "FUNCTIONAL",
+    nfrCategory: null,
+    functionalHints: {
+      ...(input ? { input: input.slice(0, 4000) } : {}),
+      ...(output ? { output: output.slice(0, 4000) } : {}),
+      ...(ac.length ? { acceptanceCriteria: ac.slice(0, 12) } : {}),
+      ...(executionKind ? { executionKind: executionKind.slice(0, 64) } : {}),
+    },
+  };
+}
+
+function parseNonFunctionalConstraintFromShape(o: Record<string, unknown>): ParsedRequirementRow | null {
+  const title = String(o.title ?? "").trim();
+  if (!title) {
+    return null;
+  }
+  const cat = normalizeNfrCategoryLabel(String(o.nfrCategory ?? o.category ?? "operational"));
+  return {
+    title: title.slice(0, 500),
+    description: String(o.description ?? "").trim().slice(0, 8000),
+    priority: normalizePriority(o.priority),
+    requirementType: "NON_FUNCTIONAL",
+    nfrCategory: cat,
+  };
+}
+
+function requirementDescriptionForPipeline(r: ParsedRequirementRow): string {
+  if (r.requirementType !== "FUNCTIONAL") {
+    return r.description;
+  }
+  const h = r.functionalHints;
+  if (!h) {
+    return r.description;
+  }
+  const parts = [r.description.trim()];
+  if (h.input) {
+    parts.push(`입력(계약): ${h.input}`);
+  }
+  if (h.output) {
+    parts.push(`출력(계약): ${h.output}`);
+  }
+  if (h.acceptanceCriteria?.length) {
+    parts.push(`수용 기준(요구에서): ${h.acceptanceCriteria.join(" | ")}`);
+  }
+  if (h.executionKind) {
+    parts.push(`실행 종류 힌트: ${h.executionKind}`);
+  }
+  return parts.filter(Boolean).join("\n\n");
+}
+
+function parseAllRequirementsFromOpenAiRoot(reqJson: Record<string, unknown>): ParsedRequirementRow[] {
+  const legacy = reqJson.requirements;
+  if (Array.isArray(legacy)) {
+    const out: ParsedRequirementRow[] = [];
+    for (const item of legacy) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const row = parseRequirementFromOpenAiRow(item as Record<string, unknown>);
+      if (row) {
+        out.push(row);
+      }
+    }
+    return out;
+  }
+
+  const out: ParsedRequirementRow[] = [];
+  const frFrom: unknown[] = [];
+  if (Array.isArray(reqJson.functionalRequirements)) {
+    frFrom.push(...reqJson.functionalRequirements);
+  }
+  if (Array.isArray(reqJson.tasks)) {
+    frFrom.push(...reqJson.tasks);
+  }
+  for (const item of frFrom) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const row = parseFunctionalRequirementFromShape(item as Record<string, unknown>);
+    if (row) {
+      out.push(row);
+    }
+  }
+  const nfrArr = reqJson.nonFunctionalConstraints;
+  if (Array.isArray(nfrArr)) {
+    for (const item of nfrArr) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const row = parseNonFunctionalConstraintFromShape(item as Record<string, unknown>);
+      if (row) {
+        out.push(row);
+      }
+    }
+  }
+  return out;
+}
 
 function parseRequirementFromOpenAiRow(o: Record<string, unknown>): ParsedRequirementRow | null {
   const title = String(o.title ?? "").trim();
@@ -330,7 +544,7 @@ function parseRequirementFromOpenAiRow(o: Record<string, unknown>): ParsedRequir
   const catRaw = String(o.nfrCategory ?? o.nonFunctionalCategory ?? "").toLowerCase().trim();
   let nfrCategory: NfrCategory | null = null;
   if (requirementType === "NON_FUNCTIONAL") {
-    nfrCategory = NFR_CATEGORIES.includes(catRaw as NfrCategory) ? (catRaw as NfrCategory) : "operational";
+    nfrCategory = normalizeNfrCategoryLabel(catRaw || "operational");
   }
   return {
     title: title.slice(0, 500),
@@ -348,7 +562,7 @@ function parsedRowToHierarchyItem(r: ParsedRequirementRow): TaskDraftAiItem {
           requirementType: "NON_FUNCTIONAL",
           nfrCategory: r.nfrCategory,
         })
-      : r.description;
+      : requirementDescriptionForPipeline(r);
   return {
     type: "requirement",
     title: r.title,
@@ -452,7 +666,7 @@ export async function generateTaskDraftsWithOpenAI(input: {
   specSuccessCriteria: string | null;
   specMarkdown: string;
   modelFromRequest?: string | null;
-  /** true면 NFR도 설계→기능→실행 Task 파이프에 포함 (기본: 기능만) */
+  /** API 호환용. 설계→기능→실행 파이프라인은 항상 기능 요구(FR)만 사용 (NFR는 requirement 노드·nonFunctionalConstraints로만 유지). */
   includeNonFunctionalInExecutionPipeline?: boolean;
 }): Promise<{
   tasks: TaskDraftAiItem[];
@@ -478,21 +692,16 @@ export async function generateTaskDraftsWithOpenAI(input: {
       specMarkdown: input.specMarkdown,
     }),
   });
-  const reqJson = parseJson(reqRes.text);
-  const parsedRequirements: ParsedRequirementRow[] = [];
-  const reqArr = reqJson.requirements;
-  if (Array.isArray(reqArr)) {
-    for (const item of reqArr) {
-      if (!item || typeof item !== "object") continue;
-      const row = parseRequirementFromOpenAiRow(item as Record<string, unknown>);
-      if (row) parsedRequirements.push(row);
-    }
-  }
-  if (parsedRequirements.length === 0) throw new Error("OPENAI_TASK_DRAFT_EMPTY_TASKS");
+  void input.includeNonFunctionalInExecutionPipeline;
 
-  const includeNfr = Boolean(input.includeNonFunctionalInExecutionPipeline);
+  const reqJson = parseJson(reqRes.text);
+  const parsedRequirements = parseAllRequirementsFromOpenAiRoot(reqJson);
+  if (parsedRequirements.length === 0) {
+    throw new Error("OPENAI_TASK_DRAFT_EMPTY_TASKS");
+  }
+
   const functionalReqs = parsedRequirements.filter((r) => r.requirementType === "FUNCTIONAL");
-  const reqsForPipeline = includeNfr ? parsedRequirements : functionalReqs;
+  const reqsForPipeline = functionalReqs;
   if (reqsForPipeline.length === 0) {
     throw new Error("OPENAI_TASK_DRAFT_NO_FUNCTIONAL_REQUIREMENTS");
   }
@@ -502,7 +711,12 @@ export async function generateTaskDraftsWithOpenAI(input: {
   const designRes = await completeJson({
     apiKey,
     model,
-    userMessage: buildDesignPrompt(reqsForPipeline.map((r) => ({ title: r.title, description: r.description }))),
+    userMessage: buildDesignPrompt(
+      reqsForPipeline.map((r) => ({
+        title: r.title,
+        description: requirementDescriptionForPipeline(r),
+      }))
+    ),
   });
   const designJson = parseJson(designRes.text);
   const reqTitleSet = new Set(reqsForPipeline.map((r) => r.title));

@@ -323,8 +323,8 @@ export function TaskListSection({
         <>
           <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 6px 0" }}>Task 실행 상세</h3>
           <p style={{ margin: "0 0 10px 0", color: "#555", fontSize: 13, lineHeight: 1.55 }}>
-            주 실행은 위 <strong>실행 시작</strong>으로 진행합니다. 여기서는 프롬프트·개별 실행·순서·차단 등 세부
-            제어를 할 수 있습니다.
+            주 실행은 Overview의 <strong>실행 워크플로</strong>에서 시작합니다. 여기서는 프롬프트·개별 실행·순서·차단
+            등 세부 제어를 할 수 있습니다.
           </p>
         </>
       )}

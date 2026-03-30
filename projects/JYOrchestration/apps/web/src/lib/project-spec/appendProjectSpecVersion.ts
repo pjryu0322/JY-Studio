@@ -1,5 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  archiveTasksNotMatchingSpecVersion,
+  reconcileArchivedStateForActiveSpecVersion,
+} from "@/lib/project-spec/archiveTasksForSpecVersionTransition";
 import { projectUpdateDataFromSpecVersionRow } from "@/lib/project-spec/projectSpecVersionSync";
 
 export async function appendProjectSpecVersionAndSetCurrent(params: {
@@ -26,6 +30,7 @@ export async function appendProjectSpecVersionAndSetCurrent(params: {
         createdByUserId: createdByUserId ?? undefined,
       },
     });
+    await archiveTasksNotMatchingSpecVersion(tx, projectId, row.id);
     const patch = projectUpdateDataFromSpecVersionRow(row);
     await tx.project.update({
       where: { id: projectId },
@@ -57,6 +62,7 @@ export async function rollbackProjectSpecToVersion(params: {
     if (!row) {
       throw new Error("SPEC_VERSION_NOT_FOUND");
     }
+    await reconcileArchivedStateForActiveSpecVersion(tx, projectId, row.id);
     const patch = projectUpdateDataFromSpecVersionRow(row);
     await tx.project.update({
       where: { id: projectId },

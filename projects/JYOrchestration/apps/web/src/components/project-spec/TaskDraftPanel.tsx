@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   fetchProjectTaskDrafts,
   patchProjectTaskDraft,
@@ -157,12 +156,14 @@ function detectCycle(nodes: string[], depsById: Map<string, string[]>): CycleHit
   return null;
 }
 
-const EXECUTION_STEPS_UI = [
-  { key: "prep", label: "준비" },
-  { key: "run", label: "실행 중" },
-  { key: "git", label: "Git 반영" },
-  { key: "review", label: "리뷰" },
-] as const;
+export type TaskDraftWorkflowExecutionProps = {
+  hasPrimaryTasksForCurrentSpec: boolean;
+  canRunExecution: boolean;
+  execSetupReady: boolean;
+  executionLoopBusy: boolean;
+  /** 확정 Task가 있을 때 실행 루프 시작 */
+  onStartExecution: () => void;
+};
 
 type TaskDraftPanelProps = {
   projectId: string;
@@ -171,6 +172,8 @@ type TaskDraftPanelProps = {
   currentSpecVersionId: string | null;
   refreshKey: number;
   lastAutoSync: TaskDraftSyncResultDto | null;
+  /** 현재 스펙에 PRIMARY Task가 하나라도 있으면 true */
+  workflowExecution: TaskDraftWorkflowExecutionProps;
 };
 
 export function TaskDraftPanel({
@@ -180,8 +183,8 @@ export function TaskDraftPanel({
   currentSpecVersionId,
   refreshKey,
   lastAutoSync,
+  workflowExecution,
 }: TaskDraftPanelProps) {
-  const router = useRouter();
   const [drafts, setDrafts] = useState<TaskDraftDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -483,46 +486,48 @@ export function TaskDraftPanel({
     }
   }
 
-  const goExecute = useCallback(() => {
-    const path = `/projects/${encodeURIComponent(projectId)}#task-next-execution-panel`;
-    router.push(path);
-  }, [projectId, router]);
-
   const nextTaskTitle = primaryExecutableTask?.title?.trim() || null;
 
-  const stepUi = useMemo(() => {
-    const states: Array<"done" | "running" | "pending"> = ["pending", "pending", "pending", "pending"];
+  /** 확정 PRIMARY Task 없음 (실행 워크플로 최우선 상태) */
+  const isNoTaskState = Boolean(currentSpecVersionId) && !workflowExecution.hasPrimaryTasksForCurrentSpec;
+
+  const readinessLine = useMemo(() => {
     if (!currentSpecVersionId) {
-      states[0] = "running";
-      return states;
+      return "Spec을 확정하면 Task 초안·실행 준비를 진행할 수 있습니다.";
     }
-    if (!drafts.length) {
-      states[0] = "running";
-      return states;
+    if (!workflowExecution.hasPrimaryTasksForCurrentSpec) {
+      if (!canEdit) {
+        return "현재 스펙에 Task가 없습니다. Task 생성·확정은 편집 권한이 있는 멤버만 수행할 수 있습니다.";
+      }
+      return "현재 스펙에 Task가 없습니다.";
     }
-    if (primaryExecutableTask) {
-      states[0] = "done";
-      states[1] = "running";
-      return states;
+    if (!workflowExecution.canRunExecution) {
+      return "확정된 Task가 있습니다. 실행은 권한이 있는 멤버만 시작할 수 있습니다.";
     }
-    if (drafts.some((d) => d.status === "DRAFT")) {
-      states[0] = "running";
-    } else {
-      states[0] = "done";
-      states[1] = "done";
-      states[2] = "done";
-      states[3] = "done";
+    if (!workflowExecution.execSetupReady) {
+      return "실행 환경 탭에서 연결 검증을 완료하면 실행을 시작할 수 있습니다.";
     }
-    return states;
-  }, [currentSpecVersionId, drafts, primaryExecutableTask]);
+    return "실행 준비됨 — 실행 환경 검증 완료.";
+  }, [
+    canEdit,
+    currentSpecVersionId,
+    workflowExecution.canRunExecution,
+    workflowExecution.execSetupReady,
+    workflowExecution.hasPrimaryTasksForCurrentSpec,
+  ]);
 
-  function stepIcon(s: "done" | "running" | "pending"): string {
-    if (s === "done") return "✔";
-    if (s === "running") return "⏳";
-    return "·";
-  }
+  const aiCreateDisabled = !canEdit || busy === "regen" || busy === "auto-wire";
+  const showPrimaryAiCreate = isNoTaskState;
+  const showPrimaryStartExecution =
+    Boolean(currentSpecVersionId) && workflowExecution.hasPrimaryTasksForCurrentSpec;
+  const startExecutionDisabled =
+    !workflowExecution.canRunExecution ||
+    busy === "regen" ||
+    busy === "auto-wire" ||
+    !workflowExecution.execSetupReady ||
+    workflowExecution.executionLoopBusy;
 
-  const execDisabled = !currentSpecVersionId || busy === "regen" || busy === "auto-wire";
+  const statusSectionLabel = isNoTaskState ? "안내" : "실행 준비";
 
   return (
     <div
@@ -579,6 +584,10 @@ export function TaskDraftPanel({
           </div>
           {loading ? (
             <div style={{ fontSize: 15, color: "#64748b" }}>불러오는 중…</div>
+          ) : isNoTaskState ? (
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", lineHeight: 1.45 }}>
+              현재 스펙에 Task가 없습니다.
+            </div>
           ) : nextTaskTitle ? (
             <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", lineHeight: 1.35 }}>{nextTaskTitle}</div>
           ) : (
@@ -588,91 +597,73 @@ export function TaskDraftPanel({
           )}
         </div>
 
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid #e2e8f0",
-            background: "#fff",
-          }}
-        >
-          <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", letterSpacing: "0.05em", marginBottom: 8 }}>
-            실행 상태
-          </div>
-          <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>
-            {EXECUTION_STEPS_UI.map((step, i) => {
-              const st = stepUi[i] ?? "pending";
-              const isRunning = st === "running";
-              return (
-                <li
-                  key={step.key}
-                  style={{
-                    fontSize: 14,
-                    color: isRunning ? "#0f172a" : "#64748b",
-                    fontWeight: isRunning ? 800 : 500,
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: 8,
-                    lineHeight: 1.45,
-                  }}
-                >
-                  <span style={{ width: 22, textAlign: "center", flexShrink: 0 }} aria-hidden>
-                    {stepIcon(st)}
-                  </span>
-                  <span>{step.label}</span>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-          <button
-            type="button"
-            data-testid="task-draft-execute-start"
-            disabled={execDisabled}
-            onClick={() => goExecute()}
-            style={{
-              padding: "12px 22px",
-              borderRadius: 10,
-              border: "1px solid #0f766e",
-              background: execDisabled ? "#e2e8f0" : "#0d9488",
-              color: execDisabled ? "#94a3b8" : "#fff",
-              fontWeight: 900,
-              fontSize: 15,
-              cursor: execDisabled ? "not-allowed" : "pointer",
-              boxShadow: execDisabled ? "none" : "0 2px 8px rgba(13,148,136,0.25)",
-            }}
-          >
-            실행 시작
-          </button>
-          {canEdit ? (
+          {showPrimaryAiCreate ? (
             <button
               type="button"
               data-testid="task-draft-regenerate"
-              disabled={busy === "regen" || busy === "auto-wire"}
+              disabled={aiCreateDisabled}
               onClick={() => void handleRegenerate()}
               style={{
-                padding: "10px 16px",
+                padding: "12px 22px",
                 borderRadius: 10,
-                border: "1px solid #7c3aed",
-                background: "#7c3aed",
-                color: "#fff",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: busy === "regen" || busy === "auto-wire" ? "wait" : "pointer",
+                border: "1px solid #6d28d9",
+                background: aiCreateDisabled ? "#e9d5ff" : "#7c3aed",
+                color: aiCreateDisabled ? "#6b21a8" : "#fff",
+                fontWeight: 900,
+                fontSize: 15,
+                cursor: aiCreateDisabled ? (busy === "regen" || busy === "auto-wire" ? "wait" : "not-allowed") : "pointer",
+                boxShadow: aiCreateDisabled ? "none" : "0 2px 8px rgba(124,58,237,0.2)",
               }}
             >
-              {busy === "regen" ? "생성·확정 중…" : "AI로 Task 초안 다시 생성 및 전체 확정"}
+              {busy === "regen" ? "생성·확정 중…" : "AI로 Task 생성 및 확정"}
+            </button>
+          ) : null}
+          {showPrimaryStartExecution ? (
+            <button
+              type="button"
+              data-testid="task-draft-execute-start"
+              disabled={startExecutionDisabled}
+              onClick={() => workflowExecution.onStartExecution()}
+              style={{
+                padding: "12px 22px",
+                borderRadius: 10,
+                border: "1px solid #0f766e",
+                background: startExecutionDisabled ? "#e2e8f0" : "#0d9488",
+                color: startExecutionDisabled ? "#94a3b8" : "#fff",
+                fontWeight: 900,
+                fontSize: 15,
+                cursor: startExecutionDisabled ? "not-allowed" : "pointer",
+                boxShadow: startExecutionDisabled ? "none" : "0 2px 8px rgba(13,148,136,0.25)",
+              }}
+            >
+              {workflowExecution.executionLoopBusy ? "진행 중" : "실행 시작"}
             </button>
           ) : null}
           {!currentSpecVersionId ? (
             <span style={{ fontSize: 13, color: "#b45309", maxWidth: 360, lineHeight: 1.45 }}>
-              Spec을 확정한 뒤 실행 시작을 사용할 수 있습니다.
+              Spec을 확정한 뒤 Task·실행 흐름을 사용할 수 있습니다.
             </span>
           ) : null}
+        </div>
+
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            padding: "12px 14px",
+            borderRadius: 10,
+            border: "1px solid #e2e8f0",
+            background: "#f8fafc",
+            fontSize: 14,
+            color: "#334155",
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", letterSpacing: "0.05em", marginBottom: 6 }}>
+            {statusSectionLabel}
+          </div>
+          {readinessLine}
         </div>
       </div>
 
@@ -803,7 +794,9 @@ export function TaskDraftPanel({
           ) : null}
 
           <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-            실행 로그·실행 이력은 프로젝트 화면의 「상세 보기」에서 확인할 수 있습니다.
+            {isNoTaskState
+              ? "먼저 위의 「AI로 Task 생성 및 확정」으로 Task를 만든 뒤, 같은 영역의 「실행 시작」과 프로젝트 「상세 보기」의 실행 관측을 사용할 수 있습니다."
+              : "일시정지·진행 상세·기록·집계는 프로젝트 화면 아래 「상세 보기」의 실행 관측에서 확인할 수 있습니다."}
           </p>
         </div>
       </details>

@@ -8,6 +8,7 @@ import {
   fetchExecutionSetup,
   fetchGeneratedTasks,
   fetchProjectById,
+  fetchExecutionLoopStatus,
   postExecutionLoopRun,
   type TaskExecutionRunDto,
 } from "@/components/project-spec/api";
@@ -22,7 +23,6 @@ import {
   TaskPromptItem,
   TaskRunItem,
 } from "@/components/task/TaskListSection";
-import { TaskNextExecutionPanel } from "@/components/task/TaskNextExecutionPanel";
 import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHistoryTimeline";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectMembersSection, type ProjectMemberUiRow } from "@/components/project-spec/ProjectMembersSection";
@@ -115,6 +115,7 @@ export default function ProjectDetailPage() {
   const [execSetupValidatedHint, setExecSetupValidatedHint] = useState<boolean | null>(null);
   const [executionLoopBusy, setExecutionLoopBusy] = useState(false);
   const [executionLoopBanner, setExecutionLoopBanner] = useState<string | null>(null);
+  const [executionLoopPaused, setExecutionLoopPaused] = useState(false);
   const [singleExecutionTaskId, setSingleExecutionTaskId] = useState("");
   const [approvingSensitiveTaskId, setApprovingSensitiveTaskId] = useState<string | null>(null);
 
@@ -246,15 +247,18 @@ export default function ProjectDetailPage() {
     };
   }, [tasks]);
 
-  const primaryTaskCounts = useMemo(() => {
-    const prim = tasks.filter((t) => t.taskKind === "PRIMARY");
-    const completed = prim.filter(
-      (t) =>
-        t.status === "DONE" || String(t.executionWorkflowStatus ?? "").toLowerCase() === "done"
-    ).length;
-    const total = prim.length;
-    return { total, completed, pending: Math.max(0, total - completed) };
-  }, [tasks]);
+  const partitionedCursorRuns = useMemo(() => {
+    const active: TaskExecutionRunDto[] = [];
+    const historical: TaskExecutionRunDto[] = [];
+    for (const r of executionRuns) {
+      if (r.archivedAt) {
+        historical.push(r);
+      } else {
+        active.push(r);
+      }
+    }
+    return { active, historical };
+  }, [executionRuns]);
 
   const reloadSessionContext = useCallback(async () => {
     if (!projectId) {
@@ -698,6 +702,60 @@ export default function ProjectDetailPage() {
     [reloadTasksList]
   );
 
+  const refreshExecutionLoopPaused = useCallback(async () => {
+    if (!projectId || !uiPermissions.canRun) return;
+    const { res, json } = await fetchExecutionLoopStatus(projectId);
+    const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+    if (denied) return;
+    if (res.ok && json.success && json.data && typeof json.data.paused === "boolean") {
+      setExecutionLoopPaused(json.data.paused);
+    }
+  }, [projectId, uiPermissions.canRun]);
+
+  const handlePauseExecutionLoop = useCallback(async () => {
+    if (!projectId) return;
+    const { res, json } = await postExecutionLoopRun(projectId, { action: "pause" });
+    const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+    if (denied) {
+      setErrorMessage(denied);
+      return;
+    }
+    if (res.ok && json.success) {
+      setExecutionLoopPaused(true);
+      setExecutionLoopBanner(json.message ?? "일시정지 요청됨.");
+    }
+  }, [projectId]);
+
+  const handleResumeExecutionLoop = useCallback(async () => {
+    if (!projectId) return;
+    const { res, json } = await postExecutionLoopRun(projectId, { action: "resume" });
+    const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+    if (denied) {
+      setErrorMessage(denied);
+      return;
+    }
+    if (res.ok && json.success) {
+      setExecutionLoopPaused(false);
+      setExecutionLoopBanner(json.message ?? "재개됨.");
+    }
+  }, [projectId]);
+
+  const handleAbortExecutionLoop = useCallback(async () => {
+    if (!projectId) return;
+    const { res, json } = await postExecutionLoopRun(projectId, { action: "pause" });
+    const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+    if (denied) {
+      setErrorMessage(denied);
+      return;
+    }
+    if (res.ok && json.success) {
+      setExecutionLoopPaused(true);
+      setExecutionLoopBanner(
+        "중단 요청: 실행 루프는 다음 체크포인트에서 멈춥니다. 진행 중인 Cursor 호출은 끝날 때까지 이어질 수 있습니다."
+      );
+    }
+  }, [projectId]);
+
   const runExecutionLoopPrimary = useCallback(async () => {
     if (!projectId) return;
     setExecutionLoopBusy(true);
@@ -729,8 +787,24 @@ export default function ProjectDetailPage() {
       setExecutionLoopBanner("실행 루프 요청 중 오류가 발생했습니다.");
     } finally {
       setExecutionLoopBusy(false);
+      void refreshExecutionLoopPaused();
     }
-  }, [projectId, singleExecutionTaskId, reloadTasksList, loadExecutionRuns]);
+  }, [projectId, singleExecutionTaskId, reloadTasksList, loadExecutionRuns, refreshExecutionLoopPaused]);
+
+  useEffect(() => {
+    if (!projectId || !uiPermissions.canRun) return;
+    void refreshExecutionLoopPaused();
+  }, [projectId, uiPermissions.canRun, refreshExecutionLoopPaused]);
+
+  useEffect(() => {
+    if (!projectId || !uiPermissions.canRun) return;
+    const id = window.setInterval(() => {
+      void reloadTasksList();
+      void reloadTaskRuns();
+      void refreshExecutionLoopPaused();
+    }, 4500);
+    return () => window.clearInterval(id);
+  }, [projectId, uiPermissions.canRun, reloadTasksList, reloadTaskRuns, refreshExecutionLoopPaused]);
 
   useEffect(() => {
     if (!projectId || !uiPermissions.canRun) {
@@ -1625,29 +1699,6 @@ export default function ProjectDetailPage() {
       {showTaskSection ? (
         <div id="guided-flow-tasks" data-ui-label="[O-2] Execution Worker — Task Queue Runs Control">
         <div data-ui-label="[O-3] Self-Healing Flow — Follow-up Retry Abort Auto-Heal">
-        {uiPermissions.canRun ? (
-          <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-            <TaskNextExecutionPanel
-              tasks={tasks}
-              loading={loadingTasks}
-              orchestration={{
-                running: orchestrationTaskOverview.running,
-                pendingGitReflection: orchestrationTaskOverview.pendingGitReflection,
-                nextReady: orchestrationTaskOverview.nextReady,
-                awaitingHuman: orchestrationTaskOverview.awaitingHuman,
-                lastFailed: orchestrationTaskOverview.lastFailed,
-              }}
-              execSetupReady={execSetupValidatedHint === true}
-              executionLoopBusy={executionLoopBusy}
-              onStartExecution={() => void runExecutionLoopPrimary()}
-              onScrollToExecutionSetup={scrollToExecutionSetup}
-              lastFailedIsGitBranchError={Boolean(
-                orchestrationTaskOverview.lastFailed &&
-                  isGitBranchConfigErrorMessage(orchestrationTaskOverview.lastFailed.lastEvalSummary)
-              )}
-            />
-          </div>
-        ) : null}
         {permissions.canViewProject || uiPermissions.canRun ? (
           <details
             style={{
@@ -1679,30 +1730,42 @@ export default function ProjectDetailPage() {
             >
               {uiPermissions.canRun ? (
                 <>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#334155",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      background: "#fff",
-                      border: "1px solid #e2e8f0",
-                    }}
-                  >
-                    주요 Task · 전체 <strong>{primaryTaskCounts.total}</strong> · 완료{" "}
-                    <strong>{primaryTaskCounts.completed}</strong> · 대기 <strong>{primaryTaskCounts.pending}</strong>
-                  </div>
                   <ExecutionObservabilityPanel
                     data={execSummary}
                     loading={execSummaryLoading}
                     errorMessage={execSummaryError}
+                    live={
+                      uiPermissions.canRun
+                        ? {
+                            tasks,
+                            taskRunMap,
+                            loading: loadingTasks,
+                            orchestration: {
+                              running: orchestrationTaskOverview.running,
+                              pendingGitReflection: orchestrationTaskOverview.pendingGitReflection,
+                              nextReady: orchestrationTaskOverview.nextReady,
+                              awaitingHuman: orchestrationTaskOverview.awaitingHuman,
+                              lastFailed: orchestrationTaskOverview.lastFailed,
+                            },
+                            executionLoopBusy,
+                            executionLoopPaused,
+                            execSetupReady: execSetupValidatedHint === true,
+                            executionLoopBanner,
+                            onStartExecution: () => void runExecutionLoopPrimary(),
+                            onPauseLoop: handlePauseExecutionLoop,
+                            onResumeLoop: handleResumeExecutionLoop,
+                            onAbortLoop: handleAbortExecutionLoop,
+                            onScrollToExecutionSetup: scrollToExecutionSetup,
+                            lastFailedIsGitBranchError: Boolean(
+                              orchestrationTaskOverview.lastFailed &&
+                                isGitBranchConfigErrorMessage(
+                                  orchestrationTaskOverview.lastFailed.lastEvalSummary
+                                )
+                            ),
+                          }
+                        : null
+                    }
                   />
-                  {executionLoopBanner ? (
-                    <p style={{ margin: 0, fontSize: 13, color: "#334155" }} role="status">
-                      {executionLoopBanner}
-                    </p>
-                  ) : null}
                   <details
                     style={{
                       border: "1px solid #e2e8f0",
@@ -1712,53 +1775,9 @@ export default function ProjectDetailPage() {
                     }}
                   >
                     <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#334155" }}>
-                      고급 · 일시정지 · 재개 · 단일 Task ID
+                      고급 · 단일 Task ID
                     </summary>
                     <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                      <button
-                        type="button"
-                        disabled={executionLoopBusy}
-                        onClick={async () => {
-                          if (!projectId) return;
-                          const { res, json } = await postExecutionLoopRun(projectId, { action: "pause" });
-                          if (res.ok && json.success) {
-                            setExecutionLoopBanner(json.message ?? "일시정지 요청됨.");
-                          }
-                        }}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #94a3b8",
-                          background: "#f8fafc",
-                          fontWeight: 600,
-                          fontSize: 13,
-                          cursor: executionLoopBusy ? "wait" : "pointer",
-                        }}
-                      >
-                        일시정지
-                      </button>
-                      <button
-                        type="button"
-                        disabled={executionLoopBusy}
-                        onClick={async () => {
-                          if (!projectId) return;
-                          const { res, json } = await postExecutionLoopRun(projectId, { action: "resume" });
-                          if (res.ok && json.success) {
-                            setExecutionLoopBanner(json.message ?? "재개됨.");
-                          }
-                        }}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #94a3b8",
-                          background: "#f8fafc",
-                          fontWeight: 600,
-                          fontSize: 13,
-                          cursor: executionLoopBusy ? "wait" : "pointer",
-                        }}
-                      >
-                        재개
-                      </button>
                       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#334155" }}>
                         <span>Task ID (단일 실행)</span>
                         <input
@@ -1803,21 +1822,24 @@ export default function ProjectDetailPage() {
                   ) : executionRuns.length === 0 ? (
                     <div style={{ color: "#64748b" }}>아직 기록이 없습니다.</div>
                   ) : (
-                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
-                      {executionRuns.map((run) => {
-                        const taskLabel =
-                          tasks.find((t) => t.id === run.taskId)?.name ?? `Task ${run.taskId.slice(0, 8)}…`;
-                        const steps = run.evaluationReviewerSteps ?? [];
-                        return (
-                          <li
-                            key={run.id}
-                            style={{
-                              border: "1px solid #f1f5f9",
-                              borderRadius: 8,
-                              padding: "8px 10px",
-                              background: "#fafafa",
-                            }}
-                          >
+                    <div style={{ display: "grid", gap: 12 }}>
+                      {partitionedCursorRuns.active.length > 0 ? (
+                        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
+                          {partitionedCursorRuns.active.map((run) => {
+                            const taskLabel =
+                              tasks.find((t) => t.id === run.taskId)?.name ??
+                              `Task ${run.taskId.slice(0, 8)}…`;
+                            const steps = run.evaluationReviewerSteps ?? [];
+                            return (
+                              <li
+                                key={run.id}
+                                style={{
+                                  border: "1px solid #f1f5f9",
+                                  borderRadius: 8,
+                                  padding: "8px 10px",
+                                  background: "#fafafa",
+                                }}
+                              >
                             <div style={{ fontWeight: 700 }}>
                               {taskLabel}{" "}
                               <span style={{ fontWeight: 500, color: "#64748b" }}>
@@ -1896,7 +1918,101 @@ export default function ProjectDetailPage() {
                           </li>
                         );
                       })}
-                    </ul>
+                        </ul>
+                      ) : partitionedCursorRuns.historical.length > 0 ? (
+                        <div style={{ color: "#64748b", fontSize: 12 }}>
+                          현재 스펙·활성 Task에 대한 최근 Cursor 기록이 없습니다.
+                        </div>
+                      ) : null}
+                      {partitionedCursorRuns.historical.length > 0 ? (
+                        <>
+                          <div style={{ fontWeight: 800, fontSize: 11, color: "#92400e", letterSpacing: "0.02em" }}>
+                            보관 (이전 스펙 Task 실행 기록)
+                          </div>
+                          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
+                            {partitionedCursorRuns.historical.map((run) => {
+                              const taskLabel =
+                                tasks.find((t) => t.id === run.taskId)?.name ??
+                                `Task ${run.taskId.slice(0, 8)}…`;
+                              const steps = run.evaluationReviewerSteps ?? [];
+                              return (
+                                <li
+                                  key={`hist-${run.id}`}
+                                  style={{
+                                    border: "1px solid #fde68a",
+                                    borderRadius: 8,
+                                    padding: "8px 10px",
+                                    background: "#fffbeb",
+                                  }}
+                                >
+                                  <div style={{ fontWeight: 700 }}>
+                                    {taskLabel}{" "}
+                                    <span style={{ fontWeight: 500, color: "#64748b" }}>
+                                      · {run.status}
+                                      {run.evaluationDecision ? ` · ${run.evaluationDecision}` : ""}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                                    {run.createdAt} · branch {run.branchName ?? "—"}
+                                  </div>
+                                  {steps.length > 0 ? (
+                                    <ul
+                                      style={{ margin: "8px 0 0 0", paddingLeft: 16, fontSize: 11, color: "#475569" }}
+                                    >
+                                      {steps.map((s, i) => (
+                                        <li key={`${run.id}-hstep-${i}`} style={{ marginBottom: 4 }}>
+                                          <strong>{s.name}</strong> ({s.role}) · {s.model} ·{" "}
+                                          <span style={{ fontWeight: 800 }}>{s.decision}</span>
+                                          <div style={{ color: "#64748b", marginTop: 2 }}>{s.summary.slice(0, 280)}</div>
+                                          {s.issues && s.issues.length > 0 ? (
+                                            <ul style={{ margin: "4px 0 0 0", paddingLeft: 14, color: "#64748b" }}>
+                                              {s.issues.slice(0, 8).map((iss, j) => (
+                                                <li key={j}>{iss}</li>
+                                              ))}
+                                            </ul>
+                                          ) : null}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  ) : run.evaluationReason?.startsWith("review_skipped:") ? (
+                                    <div
+                                      style={{ fontSize: 11, color: "#475569", marginTop: 6, lineHeight: 1.45 }}
+                                    >
+                                      <strong>AI 리뷰어 없음 (기본 실행 모드)</strong>
+                                      <div style={{ marginTop: 4, color: "#64748b" }}>
+                                        리뷰 단계 생략됨 (AI 멤버 미설정)
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
+                                      멀티 리뷰어 단계 없음(이전 단일 평가·정책 전처리만 적용된 기록일 수 있음).
+                                    </div>
+                                  )}
+                                  {run.runError?.trim() ? (
+                                    <div
+                                      style={{
+                                        marginTop: 8,
+                                        padding: "8px 10px",
+                                        borderRadius: 8,
+                                        background: "#fff7ed",
+                                        border: "1px solid #fed7aa",
+                                        fontSize: 11,
+                                        color: "#7c2d12",
+                                        lineHeight: 1.5,
+                                        whiteSpace: "pre-wrap",
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 800, marginBottom: 4 }}>실행/오류 메시지</div>
+                                      {stripGitBranchConfigMarkerForDisplay(run.runError.trim())}
+                                    </div>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </>
+                      ) : null}
+                    </div>
                   )}
                 </div>
               ) : null}
@@ -2670,6 +2786,13 @@ export default function ProjectDetailPage() {
                 project={project}
                 canEdit={rbac.canEditSpec}
                 onProjectUpdated={setProject}
+                workflowExecution={{
+                  hasPrimaryTasksForCurrentSpec: tasks.some((t) => t.taskKind === "PRIMARY"),
+                  canRunExecution: uiPermissions.canRun,
+                  execSetupReady: execSetupValidatedHint === true,
+                  executionLoopBusy,
+                  onStartExecution: () => void runExecutionLoopPrimary(),
+                }}
               />
               {projectFlowTail}
             </div>

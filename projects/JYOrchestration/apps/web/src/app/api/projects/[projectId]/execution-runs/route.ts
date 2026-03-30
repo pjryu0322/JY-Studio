@@ -64,6 +64,7 @@ export async function GET(
         retryCount: r.retryCount,
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
+        archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
       })),
     });
   } catch (error) {

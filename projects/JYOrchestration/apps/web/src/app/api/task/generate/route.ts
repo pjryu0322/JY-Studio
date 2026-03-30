@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "projectId�? �??�??�?��??�?�.",
+          message: "projectId가 필요합니다.",
         },
         { status: 400 }
       );
@@ -44,14 +44,29 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    const proj = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { currentSpecVersionId: true },
+    });
+    const currentSpecId = proj?.currentSpecVersionId ?? null;
+
     const tasks = await prisma.task.findMany({
-      where: { projectId },
+      where: {
+        projectId,
+        archivedAt: null,
+        ...(currentSpecId
+          ? { sourceSpecVersionId: currentSpecId }
+          : {
+              id: { in: [] },
+            }),
+      },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
       select: {
         id: true,
         projectId: true,
         projectSpecUploadId: true,
         sourceSpecVersionId: true,
+        archivedAt: true,
         name: true,
         description: true,
         dependsOnTaskIds: true,
@@ -96,6 +111,7 @@ export async function GET(request: NextRequest) {
           : null;
         return {
           ...rest,
+          archivedAt: task.archivedAt ? task.archivedAt.toISOString() : null,
           sourceSpecVersionId: task.sourceSpecVersionId ?? null,
           dependsOnTaskIds: deps && deps.length ? deps : null,
           acceptanceCriteria: ac && ac.length ? ac : null,
@@ -130,7 +146,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message: "Task 목록 조�?? �? �?��?�? �?�?��??�?��??�?�.",
+        message: "Task 목록 조회 중 오류가 발생했습니다.",
       },
       { status: 500 }
     );

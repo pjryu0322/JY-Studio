@@ -10,7 +10,7 @@ type PostBody = {
   specVersionId?: string;
   model?: string;
   mode?: "initial" | "regenerate";
-  /** 비기능 요구를 실행 Task 파이프에 포함 (기본 false) */
+  /** 하위 호환 필드. 서버는 설계→실행 파이프라인에 기능 요구(FR)만 사용(비기능은 requirement·nonFunctionalConstraints로만 보관). */
   includeNonFunctionalRequirements?: boolean;
 };
 

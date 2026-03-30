@@ -7,12 +7,26 @@ import { computeWorkflowUpdates } from "@/lib/executionLoop/recomputeWorkflowRea
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { prisma } from "@/lib/prisma";
 
+async function currentWorkspaceSpecVersionId(projectId: string): Promise<string | null> {
+  const p = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { currentSpecVersionId: true },
+  });
+  return p?.currentSpecVersionId ?? null;
+}
+
 export async function loadWorkflowGraphTasks(projectId: string) {
+  const specId = await currentWorkspaceSpecVersionId(projectId);
+  if (!specId) {
+    return [];
+  }
   return prisma.task.findMany({
     where: {
       projectId,
       taskKind: "PRIMARY",
       status: { notIn: ["BLOCKED", "CANCELLED"] },
+      archivedAt: null,
+      sourceSpecVersionId: specId,
     },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     select: {
@@ -31,8 +45,18 @@ export async function loadWorkflowGraphTasks(projectId: string) {
 }
 
 async function ensureLinearFallbackDeps(projectId: string): Promise<void> {
+  const specId = await currentWorkspaceSpecVersionId(projectId);
+  if (!specId) {
+    return;
+  }
   const rows = await prisma.task.findMany({
-    where: { projectId, taskKind: "PRIMARY", status: "TODO" },
+    where: {
+      projectId,
+      taskKind: "PRIMARY",
+      status: "TODO",
+      archivedAt: null,
+      sourceSpecVersionId: specId,
+    },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],
     select: { id: true, dependsOnTaskIds: true },
   });
@@ -74,8 +98,18 @@ export async function refreshWorkflowStates(projectId: string): Promise<void> {
 
 export async function initializeLoopParticipants(projectId: string): Promise<void> {
   await ensureLinearFallbackDeps(projectId);
+  const specId = await currentWorkspaceSpecVersionId(projectId);
+  if (!specId) {
+    return;
+  }
   const rows = await prisma.task.findMany({
-    where: { projectId, taskKind: "PRIMARY", status: "TODO" },
+    where: {
+      projectId,
+      taskKind: "PRIMARY",
+      status: "TODO",
+      archivedAt: null,
+      sourceSpecVersionId: specId,
+    },
     orderBy: [{ order: "asc" }],
     select: { id: true, executionWorkflowStatus: true },
   });

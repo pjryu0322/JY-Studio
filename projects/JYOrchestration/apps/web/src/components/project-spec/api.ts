@@ -431,6 +431,16 @@ export async function postExecutionLoopRun(
   return { res, json };
 }
 
+export async function fetchExecutionLoopStatus(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/execution-loop`, {
+    method: "GET",
+    credentials: "include",
+  });
+  const json = (await res.json()) as ApiResponse<{ paused: boolean }>;
+  return { res, json };
+}
+
 export type ExecutionReviewerStepDto = {
   memberId: string;
   name: string;
@@ -464,6 +474,7 @@ export type TaskExecutionRunDto = {
   retryCount: number;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
 };
 
 export async function fetchExecutionRuns(projectId: string, opts?: { taskId?: string; take?: number }) {

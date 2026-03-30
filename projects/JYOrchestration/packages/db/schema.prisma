@@ -375,8 +375,11 @@ model TaskExecutionRun {
   retryCount       Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  /// 스펙 전환 등으로 소속 Task가 보관되면 함께 보관(현재 스펙 실행·관측 분리)
+  archivedAt       DateTime?
 
   @@index([projectId, taskId, createdAt])
+  @@index([projectId, archivedAt])
   @@map("task_execution_runs")
 }
 
@@ -859,6 +862,8 @@ model Task {
   createdAt           DateTime          @default(now())
   /// 수정일시
   updatedAt           DateTime          @updatedAt
+  /// 활성 스펙과 불일치·이전 세트 보관 시각(null이면 현재 스펙 TaskSet)
+  archivedAt          DateTime?
   /// 소속 프로젝트
   project             Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /// 소유 사용자(프로젝트 ownerUserId와 정합)
@@ -885,6 +890,7 @@ model Task {
   taskExecutionRuns   TaskExecutionRun[]
 
   @@index([projectId, order])
+  @@index([projectId, archivedAt])
   @@index([projectSpecUploadId])
   @@index([sourceSpecVersionId])
   @@index([parentTaskId])

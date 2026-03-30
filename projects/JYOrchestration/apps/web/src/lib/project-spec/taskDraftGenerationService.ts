@@ -53,7 +53,7 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
   specVersionId: string;
   userId: string;
   model?: string | null;
-  /** true면 비기능 요구도 설계→기능→실행 Task까지 생성 */
+  /** 하위 호환. 비기능은 실행 Task 파이프에 넣지 않음(요구 노드·제약 목록으로만 유지). */
   includeNonFunctionalInExecutionPipeline?: boolean;
 }): Promise<TaskDraftSyncResult> {
   const { projectId, specVersionId, userId, model, includeNonFunctionalInExecutionPipeline } = params;

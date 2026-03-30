@@ -67,8 +67,8 @@ function isWeaklyConnected(ids: Set<string>, edges: Array<[string, string]>): bo
 export function validateGeneratedExecutionTasks(tasks: GeneratedExecutionTask[]): TaskValidationResult {
   const errors: string[] = [];
 
-  if (tasks.length < 3 || tasks.length > 7) {
-    errors.push(`Task 개수는 3~7개여야 합니다 (현재 ${tasks.length}).`);
+  if (tasks.length < 4 || tasks.length > 8) {
+    errors.push(`Task 개수는 4~8개여야 합니다 (현재 ${tasks.length}).`);
   }
 
   const idSet = new Set(tasks.map((t) => t.localId));
@@ -148,9 +148,6 @@ export function validateGeneratedExecutionTasks(tasks: GeneratedExecutionTask[])
     if (roots.length === 0) {
       errors.push("의존성이 없는 루트 Task가 최소 1개 필요합니다.");
     }
-    if (roots.length > 1) {
-      errors.push("루트 Task는 1개만 허용됩니다 (API/계약 정의 등 단일 진입점).");
-    }
   }
 
   return { ok: errors.length === 0, errors };
@@ -161,9 +158,10 @@ export function buildFallbackExecutionTasks(feature: {
   description: string;
   priority: string;
 }): GeneratedExecutionTask[] {
-  const t0 = "t-contract";
-  const t1 = "t-impl";
-  const t2 = "t-test";
+  const t0 = "T-fb-data";
+  const t1 = "T-fb-logic";
+  const t2 = "T-fb-api";
+  const t3 = "T-fb-test";
   const p: "P0" | "P1" | "P2" =
     String(feature.priority).toUpperCase() === "HIGH" || String(feature.priority).toUpperCase() === "P0"
       ? "P0"
@@ -174,30 +172,30 @@ export function buildFallbackExecutionTasks(feature: {
     {
       localId: t0,
       dependsOn: [],
-      title: `${feature.title.slice(0, 70)} — API/데이터 계약 및 스키마 정의 (자동 폴백)`,
-      description: `${feature.description.slice(0, 400)}\n\n[자동 폴백] 검증 실패 시 최소 DAG(계약→구현→테스트)로 생성되었습니다.`,
-      input: "Project Spec, Feature 설명, 기존 API/DB 규칙",
-      output: "명시된 요청/응답 형식, 에러 코드, DB 마이그레이션 초안 또는 인터페이스 정의 문서",
+      title: `${feature.title.slice(0, 60)} — DB 스키마·DTO·데이터 계약 정의 (자동 폴백)`,
+      description: `${feature.description.slice(0, 400)}\n\n[자동 폴백] 검증 실패 시 data→logic→api→test 단일 체인으로 생성되었습니다.`,
+      input: "Project Spec, Feature 설명, 기존 DB/API 규칙",
+      output: "스키마·DTO·요청/응답 필드 정의가 코드 또는 문서로 정리됨",
       acceptanceCriteria: [
         "요청·응답 필드가 스펙과 모순되지 않는다",
-        "에러 응답 규칙이 문서화된다",
-        "리뷰어가 구현에 착수할 수 있는 수준의 계약이 있다",
+        "저장소 스키마 또는 마이그레이션 초안이 식별 가능하다",
+        "다음 Task(로직)가 이 계약만으로 구현을 시작할 수 있다",
       ],
       estimatedSize: "M",
       priority: p,
-      taskKind: "api",
+      taskKind: "data",
     },
     {
       localId: t1,
       dependsOn: [t0],
-      title: `${feature.title.slice(0, 70)} — 비즈니스 로직 및 연동 구현 (자동 폴백)`,
-      description: "정의된 계약에 따라 서비스 로직과 저장소/외부 연동을 구현한다.",
-      input: "확정된 API 계약, 환경 설정, 테스트 더블(필요 시)",
-      output: "배포 가능한 코드 변경(커밋), 로컬에서 검증 가능한 동작",
+      title: `${feature.title.slice(0, 60)} — 도메인 로직·유효성 검증 구현 (자동 폴백)`,
+      description: "확정된 데이터 계약에 따라 서비스·검증 로직과 저장소 연동을 구현한다.",
+      input: "데이터 계약(DTO/스키마), 환경 설정",
+      output: "커밋 가능한 로직 코드, 로컬에서 검증 가능한 동작",
       acceptanceCriteria: [
         "계약에 맞는 성공·실패 경로가 구현된다",
-        "로깅/관측 가능한 지점이 최소 1곳 이상 있다",
-        "보안상 민감 데이터가 로그에 노출되지 않는다",
+        "입력 유효성이 명시된 규칙과 일치한다",
+        "외부 의존은 인터페이스 뒤에 격리된다",
       ],
       estimatedSize: "L",
       priority: p === "P0" ? "P0" : "P1",
@@ -206,13 +204,29 @@ export function buildFallbackExecutionTasks(feature: {
     {
       localId: t2,
       dependsOn: [t1],
-      title: `${feature.title.slice(0, 60)} — 테스트 및 회귀 검증 (자동 폴백)`,
-      description: "구현에 대한 자동/수동 테스트를 추가하고 회귀를 확인한다.",
-      input: "구현 브랜치, 계약 문서, 샘플 페이로드",
-      output: "통과한 테스트 근거(명령/리포트), 알려진 한계 목록",
+      title: `${feature.title.slice(0, 60)} — HTTP API·컨트롤러 노출 (자동 폴백)`,
+      description: "로직을 REST/JSON 등 API 경계로 노출하고 라우팅·상태코드를 맞춘다.",
+      input: "서비스 계약, 라우팅 규칙, 에러 매핑 표",
+      output: "호출 가능한 엔드포인트, OpenAPI 또는 동등한 계약 힌트",
       acceptanceCriteria: [
-        "핵심 경로 테스트가 CI 또는 로컬에서 통과한다",
-        "실패 시 재현 절차가 남는다",
+        "엔드포인트가 스펙의 URL·메서드·본문과 일치한다",
+        "에러 응답이 공통 규칙을 따른다",
+        "인증·권한 훅이 필요 시 연결 지점이 명시된다",
+      ],
+      estimatedSize: "M",
+      priority: p === "P0" ? "P0" : "P1",
+      taskKind: "api",
+    },
+    {
+      localId: t3,
+      dependsOn: [t2],
+      title: `${feature.title.slice(0, 55)} — API·로직 자동 테스트 (자동 폴백)`,
+      description: "API 및 핵심 로직에 대한 테스트를 추가하고 회귀를 확인한다.",
+      input: "구현 브랜치, 샘플 페이로드, 계약 문서",
+      output: "통과한 테스트 근거, 실패 시 재현 절차",
+      acceptanceCriteria: [
+        "핵심 성공·실패 경로가 테스트로 검증된다",
+        "CI 또는 로컬에서 재현 가능한 명령이 남는다",
         "회귀 범위가 한 줄 이상 요약된다",
       ],
       estimatedSize: "S",
