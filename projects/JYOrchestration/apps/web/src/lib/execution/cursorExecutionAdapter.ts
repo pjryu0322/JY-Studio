@@ -70,6 +70,12 @@ type AgentJson = {
   error?: string;
   target?: { branchName?: string; prUrl?: string; url?: string };
   source?: { repository?: string; ref?: string };
+  commitSha?: string;
+  commitHash?: string;
+  headSha?: string;
+  changedFiles?: string[];
+  filesChanged?: string[];
+  result?: { commitSha?: string; commitHash?: string; changedFiles?: string[] };
 };
 
 function agentsBaseUrl(cursorApiUrl: string): string {
@@ -83,6 +89,22 @@ function authHeaders(apiKey: string): Record<string, string> {
     Authorization: cursorApiBasicAuthHeader(apiKey),
     "User-Agent": "JYOrchestration-cursor-agent/1",
   };
+}
+
+function pickCommitHash(agent: AgentJson): string | undefined {
+  const fromResult = agent.result?.commitHash ?? agent.result?.commitSha;
+  const raw =
+    (typeof agent.commitHash === "string" && agent.commitHash.trim() ? agent.commitHash.trim() : "") ||
+    (typeof agent.commitSha === "string" && agent.commitSha.trim() ? agent.commitSha.trim() : "") ||
+    (typeof agent.headSha === "string" && agent.headSha.trim() ? agent.headSha.trim() : "") ||
+    (typeof fromResult === "string" && fromResult.trim() ? fromResult.trim() : "");
+  return raw || undefined;
+}
+
+function pickChangedFiles(agent: AgentJson): string[] {
+  const a = agent.changedFiles ?? agent.filesChanged ?? agent.result?.changedFiles;
+  if (!Array.isArray(a)) return [];
+  return a.map((x) => String(x ?? "").trim()).filter(Boolean);
 }
 
 function mapAgentToResult(agent: AgentJson, fallbackBranch: string): CursorRunResult {
@@ -110,12 +132,14 @@ function mapAgentToResult(agent: AgentJson, fallbackBranch: string): CursorRunRe
       : failed
         ? `상태: ${st || "실패"}`
         : undefined;
+  const commitHash = pickCommitHash(agent);
+  const changedFiles = pickChangedFiles(agent);
   return {
     runId,
     summary,
-    changedFiles: [],
+    changedFiles,
     branchName,
-    commitHash: undefined,
+    commitHash,
     executionStatus: failed ? "failed" : "succeeded",
     error: err,
   };

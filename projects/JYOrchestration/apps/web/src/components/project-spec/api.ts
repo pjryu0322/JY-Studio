@@ -172,7 +172,12 @@ export async function postProjectTaskDraftCreate(
 
 export async function postProjectTaskDraftsGenerate(
   projectId: string,
-  body: { specVersionId?: string; model?: string; mode?: "initial" | "regenerate" }
+  body: {
+    specVersionId?: string;
+    model?: string;
+    mode?: "initial" | "regenerate";
+    includeNonFunctionalRequirements?: boolean;
+  }
 ) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/task-drafts/generate`, {
@@ -190,32 +195,6 @@ export async function postProjectTaskDraftsGenerate(
     autoConfirmedTaskCount?: number;
     promotedDraftRows?: number;
     confirmedTaskIds?: string[];
-  }>;
-  return { res, json };
-}
-
-export async function postProjectTaskDraftsAiReorder(projectId: string, body?: { model?: string }) {
-  const encoded = encodeURIComponent(projectId);
-  const res = await fetch(`/api/projects/${encoded}/task-drafts/ai-reorder`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body ?? {}),
-  });
-  const json = (await res.json()) as ApiResponse<{
-    model: string;
-    usage: { promptTokens: number | null; completionTokens: number | null; totalTokens: number | null } | null;
-    cycleDetected: boolean;
-    reason?: string;
-    parallelGroups?: string[][];
-    cycleProblemEdge?: { source: string; target: string } | null;
-    cycleCandidateEdges?: Array<{ source: string; target: string }>;
-    tasks: Array<{
-      id: string;
-      dependsOnIds?: string[];
-      positionX: number;
-      positionY: number;
-    }>;
   }>;
   return { res, json };
 }

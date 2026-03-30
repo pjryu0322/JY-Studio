@@ -10,6 +10,8 @@ type PostBody = {
   specVersionId?: string;
   model?: string;
   mode?: "initial" | "regenerate";
+  /** 비기능 요구를 실행 Task 파이프에 포함 (기본 false) */
+  includeNonFunctionalRequirements?: boolean;
 };
 
 export async function POST(
@@ -90,6 +92,7 @@ export async function POST(
         specVersionId,
         userId,
         model,
+        includeNonFunctionalInExecutionPipeline: Boolean(body.includeNonFunctionalRequirements),
       });
       const tc = r.autoConfirmedTaskCount ?? 0;
       const msg =
@@ -140,6 +143,17 @@ export async function POST(
       if (msg === "SPEC_MARKDOWN_EMPTY") {
         return NextResponse.json(
           { success: false, message: "Spec 본문이 비어 있어 Task 초안을 만들 수 없습니다." },
+          { status: 400 }
+        );
+      }
+      if (msg === "OPENAI_TASK_DRAFT_NO_FUNCTIONAL_REQUIREMENTS") {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "기능 요구사항(FUNCTIONAL)이 없어 실행 Task를 만들 수 없습니다. Spec에 FR을 추가하거나, 비기능만 있다면 「비기능 요구를 Task 파이프에 포함」을 켜 보세요.",
+            code: "NO_FUNCTIONAL_REQUIREMENTS",
+          },
           { status: 400 }
         );
       }

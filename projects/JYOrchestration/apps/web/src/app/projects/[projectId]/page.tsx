@@ -22,6 +22,7 @@ import {
   TaskPromptItem,
   TaskRunItem,
 } from "@/components/task/TaskListSection";
+import { TaskNextExecutionPanel } from "@/components/task/TaskNextExecutionPanel";
 import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHistoryTimeline";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { ProjectMembersSection, type ProjectMemberUiRow } from "@/components/project-spec/ProjectMembersSection";
@@ -228,6 +229,7 @@ export default function ProjectDetailPage() {
   const orchestrationTaskOverview = useMemo(() => {
     const primary = tasks.filter((t) => t.taskKind === "PRIMARY");
     const running = primary.find((t) => t.executionWorkflowStatus === "running");
+    const pendingGitReflection = primary.find((t) => t.executionWorkflowStatus === "pending_apply");
     const ready = primary
       .filter((t) => t.status === "TODO" && t.executionWorkflowStatus === "ready")
       .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
@@ -237,10 +239,21 @@ export default function ProjectDetailPage() {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return {
       running,
+      pendingGitReflection,
       nextReady: ready[0],
       awaitingHuman,
       lastFailed: failed[0] ?? null,
     };
+  }, [tasks]);
+
+  const primaryTaskCounts = useMemo(() => {
+    const prim = tasks.filter((t) => t.taskKind === "PRIMARY");
+    const completed = prim.filter(
+      (t) =>
+        t.status === "DONE" || String(t.executionWorkflowStatus ?? "").toLowerCase() === "done"
+    ).length;
+    const total = prim.length;
+    return { total, completed, pending: Math.max(0, total - completed) };
   }, [tasks]);
 
   const reloadSessionContext = useCallback(async () => {
@@ -684,6 +697,40 @@ export default function ProjectDetailPage() {
     },
     [reloadTasksList]
   );
+
+  const runExecutionLoopPrimary = useCallback(async () => {
+    if (!projectId) return;
+    setExecutionLoopBusy(true);
+    setExecutionLoopBanner(null);
+    try {
+      const tid = singleExecutionTaskId.trim();
+      const { res, json } = await postExecutionLoopRun(projectId, tid ? { taskId: tid } : undefined);
+      const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
+      if (denied) {
+        setErrorMessage(denied);
+        return;
+      }
+      if (!res.ok || !json.success) {
+        const m =
+          json.message ??
+          "실행 루프를 완료하지 못했습니다. (Cursor API 키·Task 상태·선행 DAG를 확인하세요.)";
+        setErrorMessage(m);
+        setExecutionLoopBanner(m);
+        await reloadTasksList();
+        await loadExecutionRuns();
+        return;
+      }
+      setErrorMessage(null);
+      setExecutionLoopBanner(json.message ?? "실행 루프가 완료되었습니다.");
+      await reloadTasksList();
+      await loadExecutionRuns();
+    } catch (e) {
+      console.error("execution loop:", e);
+      setExecutionLoopBanner("실행 루프 요청 중 오류가 발생했습니다.");
+    } finally {
+      setExecutionLoopBusy(false);
+    }
+  }, [projectId, singleExecutionTaskId, reloadTasksList, loadExecutionRuns]);
 
   useEffect(() => {
     if (!projectId || !uiPermissions.canRun) {
@@ -1577,367 +1624,352 @@ export default function ProjectDetailPage() {
     <>
       {showTaskSection ? (
         <div id="guided-flow-tasks" data-ui-label="[O-2] Execution Worker — Task Queue Runs Control">
-          {uiPermissions.canRun ? (
-            <ExecutionObservabilityPanel
-              data={execSummary}
-              loading={execSummaryLoading}
-              errorMessage={execSummaryError}
-            />
-          ) : null}
         <div data-ui-label="[O-3] Self-Healing Flow — Follow-up Retry Abort Auto-Heal">
         {uiPermissions.canRun ? (
           <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #e2e8f0",
-                background: "#f8fafc",
-                fontSize: 12,
-                color: "#334155",
-                lineHeight: 1.55,
+            <TaskNextExecutionPanel
+              tasks={tasks}
+              loading={loadingTasks}
+              orchestration={{
+                running: orchestrationTaskOverview.running,
+                pendingGitReflection: orchestrationTaskOverview.pendingGitReflection,
+                nextReady: orchestrationTaskOverview.nextReady,
+                awaitingHuman: orchestrationTaskOverview.awaitingHuman,
+                lastFailed: orchestrationTaskOverview.lastFailed,
               }}
-            >
-              <div style={{ fontWeight: 900, marginBottom: 6, color: "#0f172a" }}>실행 오케스트레이션</div>
-              <div>
-                <strong>Cursor</strong>가 필수 실행기(Executor)이며, 저장소에서 실제 변경을 수행합니다.{" "}
-                <strong>AI 멤버(리뷰어)</strong>는 선택 사항이며, execution-review로 배정된 멤버가 있을 때만 다단계 리뷰가 실행됩니다. 없으면{" "}
-                <strong>리뷰 단계는 생략</strong>되고 Cursor 결과만으로 Task가 완료될 수 있습니다.{" "}
-                <strong>GitHub</strong>에 반영된 코드가 진실이며, 플랫폼은 위임·기록·정책만 담당합니다.
-              </div>
-              <div style={{ marginTop: 8 }}>
-                현재 실행 중 Task: <strong>{orchestrationTaskOverview.running?.name ?? "—"}</strong>
-              </div>
-              <div>
-                다음 ready Task: <strong>{orchestrationTaskOverview.nextReady?.name ?? "—"}</strong>
-              </div>
-              {orchestrationTaskOverview.awaitingHuman.length ? (
-                <div style={{ marginTop: 6, color: "#b45309" }}>
-                  사람 승인 대기:{" "}
-                  {orchestrationTaskOverview.awaitingHuman.map((t) => t.name).join(", ") || "—"}
-                </div>
-              ) : null}
-              {orchestrationTaskOverview.lastFailed ? (
-                <div style={{ marginTop: 6, color: "#b91c1c" }}>
-                  최근 실패 Task: <strong>{orchestrationTaskOverview.lastFailed.name}</strong>
-                  {orchestrationTaskOverview.lastFailed.lastEvalSummary
-                    ? ` — ${stripGitBranchConfigMarkerForDisplay(orchestrationTaskOverview.lastFailed.lastEvalSummary).slice(0, 200)}`
-                    : ""}
-                  {isGitBranchConfigErrorMessage(orchestrationTaskOverview.lastFailed.lastEvalSummary) ? (
-                    <button
-                      type="button"
-                      onClick={() => scrollToExecutionSetup()}
-                      style={{
-                        display: "block",
-                        marginTop: 8,
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        border: "1px solid #f97316",
-                        background: "#fff",
-                        fontWeight: 800,
-                        fontSize: 11,
-                        color: "#c2410c",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Git 설정 수정하기
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-              <button
-                type="button"
-                disabled={executionLoopBusy || execSetupValidatedHint !== true}
-                onClick={async () => {
-                  if (!projectId) return;
-                  setExecutionLoopBusy(true);
-                  setExecutionLoopBanner(null);
-                  try {
-                    const tid = singleExecutionTaskId.trim();
-                    const { res, json } = await postExecutionLoopRun(
-                      projectId,
-                      tid ? { taskId: tid } : undefined
-                    );
-                    const denied = rbacForbiddenMessage(res, json as { code?: string; message?: string });
-                    if (denied) {
-                      setErrorMessage(denied);
-                      return;
-                    }
-                    if (!res.ok || !json.success) {
-                      const m =
-                        json.message ??
-                        "실행 루프를 완료하지 못했습니다. (Cursor API 키·Task 상태·선행 DAG를 확인하세요.)";
-                      setErrorMessage(m);
-                      setExecutionLoopBanner(m);
-                      await reloadTasksList();
-                      await loadExecutionRuns();
-                      return;
-                    }
-                    setErrorMessage(null);
-                    setExecutionLoopBanner(
-                      json.message ?? "실행 루프가 완료되었습니다."
-                    );
-                    await reloadTasksList();
-                    await loadExecutionRuns();
-                  } catch (e) {
-                    console.error("execution loop:", e);
-                    setExecutionLoopBanner("실행 루프 요청 중 오류가 발생했습니다.");
-                  } finally {
-                    setExecutionLoopBusy(false);
-                  }
-                }}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1px solid #0f766e",
-                  background: execSetupValidatedHint === true ? "#0d9488" : "#e2e8f0",
-                  color: execSetupValidatedHint === true ? "#fff" : "#64748b",
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor:
-                    executionLoopBusy || execSetupValidatedHint !== true ? "not-allowed" : "pointer",
-                }}
-              >
-                {executionLoopBusy ? "실행 중…" : singleExecutionTaskId.trim() ? "선택 Task 실행" : "실행 시작 (DAG)"}
-              </button>
-              <button
-                type="button"
-                disabled={executionLoopBusy}
-                onClick={async () => {
-                  if (!projectId) return;
-                  const { res, json } = await postExecutionLoopRun(projectId, { action: "pause" });
-                  if (res.ok && json.success) {
-                    setExecutionLoopBanner(json.message ?? "일시정지 요청됨.");
-                  }
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #94a3b8",
-                  background: "#f8fafc",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  cursor: executionLoopBusy ? "wait" : "pointer",
-                }}
-              >
-                일시정지
-              </button>
-              <button
-                type="button"
-                disabled={executionLoopBusy}
-                onClick={async () => {
-                  if (!projectId) return;
-                  const { res, json } = await postExecutionLoopRun(projectId, { action: "resume" });
-                  if (res.ok && json.success) {
-                    setExecutionLoopBanner(json.message ?? "재개됨.");
-                  }
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #94a3b8",
-                  background: "#f8fafc",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  cursor: executionLoopBusy ? "wait" : "pointer",
-                }}
-              >
-                재개
-              </button>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#334155" }}>
-                <span>Task ID (단일 실행)</span>
-                <input
-                  value={singleExecutionTaskId}
-                  onChange={(e) => setSingleExecutionTaskId(e.target.value)}
-                  placeholder="비우면 DAG 순서"
-                  style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cbd5e1", minWidth: 220 }}
-                />
-              </label>
-            </div>
-            {execSetupValidatedHint !== true ? (
-              <span style={{ fontSize: 13, color: "#b45309", lineHeight: 1.45 }}>
-                Spec 워크스페이스에서 Execution setup을 저장하고 연결 검증(validated)을 완료한 뒤 사용할 수 있습니다.
-              </span>
-            ) : (
-              <span style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
-                검토 통과 후에만 DAG가 진행됩니다. 정책(autoAdvance·재시도·범위·민감 승인)은 Execution setup을 따릅니다. PR 자동 생성은
-                pending_capability입니다.
-              </span>
-            )}
+              execSetupReady={execSetupValidatedHint === true}
+              executionLoopBusy={executionLoopBusy}
+              onStartExecution={() => void runExecutionLoopPrimary()}
+              onScrollToExecutionSetup={scrollToExecutionSetup}
+              lastFailedIsGitBranchError={Boolean(
+                orchestrationTaskOverview.lastFailed &&
+                  isGitBranchConfigErrorMessage(orchestrationTaskOverview.lastFailed.lastEvalSummary)
+              )}
+            />
           </div>
         ) : null}
-        {permissions.canViewProject ? (
-          <div
+        {permissions.canViewProject || uiPermissions.canRun ? (
+          <details
             style={{
               marginBottom: 12,
-              padding: "10px 12px",
-              borderRadius: 8,
               border: "1px solid #e2e8f0",
-              background: "#fff",
-              fontSize: 12,
-              color: "#334155",
-              lineHeight: 1.5,
+              borderRadius: 10,
+              padding: "8px 12px",
+              background: "#fafafa",
             }}
           >
-            <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>최근 Cursor 실행 기록 · AI 리뷰</div>
-            {executionRunsLoading ? (
-              <div style={{ color: "#64748b" }}>불러오는 중…</div>
-            ) : executionRunsError ? (
-              <div style={{ color: "#b91c1c" }}>{executionRunsError}</div>
-            ) : executionRuns.length === 0 ? (
-              <div style={{ color: "#64748b" }}>아직 기록이 없습니다.</div>
-            ) : (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
-                {executionRuns.map((run) => {
-                  const taskLabel =
-                    tasks.find((t) => t.id === run.taskId)?.name ?? `Task ${run.taskId.slice(0, 8)}…`;
-                  const steps = run.evaluationReviewerSteps ?? [];
-                  return (
-                    <li
-                      key={run.id}
-                      style={{
-                        border: "1px solid #f1f5f9",
-                        borderRadius: 8,
-                        padding: "8px 10px",
-                        background: "#fafafa",
-                      }}
-                    >
-                      <div style={{ fontWeight: 700 }}>
-                        {taskLabel}{" "}
-                        <span style={{ fontWeight: 500, color: "#64748b" }}>
-                          · {run.status}
-                          {run.evaluationDecision ? ` · ${run.evaluationDecision}` : ""}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                        {run.createdAt} · branch {run.branchName ?? "—"}
-                      </div>
-                      {steps.length > 0 ? (
-                        <ul style={{ margin: "8px 0 0 0", paddingLeft: 16, fontSize: 11, color: "#475569" }}>
-                          {steps.map((s, i) => (
-                            <li key={`${run.id}-step-${i}`} style={{ marginBottom: 4 }}>
-                              <strong>{s.name}</strong> ({s.role}) · {s.model} ·{" "}
-                              <span style={{ fontWeight: 800 }}>{s.decision}</span>
-                              <div style={{ color: "#64748b", marginTop: 2 }}>{s.summary.slice(0, 280)}</div>
-                              {s.issues && s.issues.length > 0 ? (
-                                <ul style={{ margin: "4px 0 0 0", paddingLeft: 14, color: "#64748b" }}>
-                                  {s.issues.slice(0, 8).map((iss, j) => (
-                                    <li key={j}>{iss}</li>
-                                  ))}
-                                </ul>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : run.evaluationReason?.startsWith("review_skipped:") ? (
-                        <div style={{ fontSize: 11, color: "#475569", marginTop: 6, lineHeight: 1.45 }}>
-                          <strong>AI 리뷰어 없음 (기본 실행 모드)</strong>
-                          <div style={{ marginTop: 4, color: "#64748b" }}>리뷰 단계 생략됨 (AI 멤버 미설정)</div>
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
-                          멀티 리뷰어 단계 없음(이전 단일 평가·정책 전처리만 적용된 기록일 수 있음).
-                        </div>
-                      )}
-                      {run.runError?.trim() ? (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            background: "#fff7ed",
-                            border: "1px solid #fed7aa",
-                            fontSize: 11,
-                            color: "#7c2d12",
-                            lineHeight: 1.5,
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          <div style={{ fontWeight: 800, marginBottom: 4 }}>실행/오류 메시지</div>
-                          {stripGitBranchConfigMarkerForDisplay(run.runError.trim())}
-                          {isGitBranchConfigErrorMessage(run.runError) ? (
-                            <button
-                              type="button"
-                              onClick={() => scrollToExecutionSetup()}
-                              style={{
-                                display: "block",
-                                marginTop: 10,
-                                padding: "6px 12px",
-                                borderRadius: 8,
-                                border: "1px solid #ea580c",
-                                background: "#fff",
-                                fontWeight: 800,
-                                fontSize: 12,
-                                color: "#c2410c",
-                                cursor: "pointer",
-                              }}
-                            >
-                              Git 설정 수정하기
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+            <summary
+              style={{
+                cursor: "pointer",
+                fontWeight: 800,
+                fontSize: 14,
+                color: "#334155",
+                listStyle: "none",
+              }}
+            >
+              상세 보기 ▾
+            </summary>
+            <div
+              style={{
+                marginTop: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              {uiPermissions.canRun ? (
+                <>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: "#334155",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "#fff",
+                      border: "1px solid #e2e8f0",
+                    }}
+                  >
+                    주요 Task · 전체 <strong>{primaryTaskCounts.total}</strong> · 완료{" "}
+                    <strong>{primaryTaskCounts.completed}</strong> · 대기 <strong>{primaryTaskCounts.pending}</strong>
+                  </div>
+                  <ExecutionObservabilityPanel
+                    data={execSummary}
+                    loading={execSummaryLoading}
+                    errorMessage={execSummaryError}
+                  />
+                  {executionLoopBanner ? (
+                    <p style={{ margin: 0, fontSize: 13, color: "#334155" }} role="status">
+                      {executionLoopBanner}
+                    </p>
+                  ) : null}
+                  <details
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      background: "#fff",
+                    }}
+                  >
+                    <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#334155" }}>
+                      고급 · 일시정지 · 재개 · 단일 Task ID
+                    </summary>
+                    <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                      <button
+                        type="button"
+                        disabled={executionLoopBusy}
+                        onClick={async () => {
+                          if (!projectId) return;
+                          const { res, json } = await postExecutionLoopRun(projectId, { action: "pause" });
+                          if (res.ok && json.success) {
+                            setExecutionLoopBanner(json.message ?? "일시정지 요청됨.");
+                          }
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #94a3b8",
+                          background: "#f8fafc",
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: executionLoopBusy ? "wait" : "pointer",
+                        }}
+                      >
+                        일시정지
+                      </button>
+                      <button
+                        type="button"
+                        disabled={executionLoopBusy}
+                        onClick={async () => {
+                          if (!projectId) return;
+                          const { res, json } = await postExecutionLoopRun(projectId, { action: "resume" });
+                          if (res.ok && json.success) {
+                            setExecutionLoopBanner(json.message ?? "재개됨.");
+                          }
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #94a3b8",
+                          background: "#f8fafc",
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: executionLoopBusy ? "wait" : "pointer",
+                        }}
+                      >
+                        재개
+                      </button>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#334155" }}>
+                        <span>Task ID (단일 실행)</span>
+                        <input
+                          value={singleExecutionTaskId}
+                          onChange={(e) => setSingleExecutionTaskId(e.target.value)}
+                          placeholder="비우면 DAG 순서"
+                          style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #cbd5e1", minWidth: 220 }}
+                        />
+                      </label>
+                    </div>
+                  </details>
+                  {execSetupValidatedHint !== true ? (
+                    <span style={{ fontSize: 13, color: "#b45309", lineHeight: 1.45 }}>
+                      실행 환경 탭에서 Execution setup을 저장하고 검증을 완료한 뒤 「실행 시작」을 사용할 수 있습니다.
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
+                      DAG·정책·민감 승인은 Execution setup을 따릅니다.
+                    </span>
+                  )}
+                </>
+              ) : null}
+              {permissions.canViewProject ? (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f0",
+                    background: "#fff",
+                    fontSize: 12,
+                    color: "#334155",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>
+                    최근 Cursor 실행 기록 · AI 리뷰
+                  </div>
+                  {executionRunsLoading ? (
+                    <div style={{ color: "#64748b" }}>불러오는 중…</div>
+                  ) : executionRunsError ? (
+                    <div style={{ color: "#b91c1c" }}>{executionRunsError}</div>
+                  ) : executionRuns.length === 0 ? (
+                    <div style={{ color: "#64748b" }}>아직 기록이 없습니다.</div>
+                  ) : (
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
+                      {executionRuns.map((run) => {
+                        const taskLabel =
+                          tasks.find((t) => t.id === run.taskId)?.name ?? `Task ${run.taskId.slice(0, 8)}…`;
+                        const steps = run.evaluationReviewerSteps ?? [];
+                        return (
+                          <li
+                            key={run.id}
+                            style={{
+                              border: "1px solid #f1f5f9",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#fafafa",
+                            }}
+                          >
+                            <div style={{ fontWeight: 700 }}>
+                              {taskLabel}{" "}
+                              <span style={{ fontWeight: 500, color: "#64748b" }}>
+                                · {run.status}
+                                {run.evaluationDecision ? ` · ${run.evaluationDecision}` : ""}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                              {run.createdAt} · branch {run.branchName ?? "—"}
+                            </div>
+                            {steps.length > 0 ? (
+                              <ul style={{ margin: "8px 0 0 0", paddingLeft: 16, fontSize: 11, color: "#475569" }}>
+                                {steps.map((s, i) => (
+                                  <li key={`${run.id}-step-${i}`} style={{ marginBottom: 4 }}>
+                                    <strong>{s.name}</strong> ({s.role}) · {s.model} ·{" "}
+                                    <span style={{ fontWeight: 800 }}>{s.decision}</span>
+                                    <div style={{ color: "#64748b", marginTop: 2 }}>{s.summary.slice(0, 280)}</div>
+                                    {s.issues && s.issues.length > 0 ? (
+                                      <ul style={{ margin: "4px 0 0 0", paddingLeft: 14, color: "#64748b" }}>
+                                        {s.issues.slice(0, 8).map((iss, j) => (
+                                          <li key={j}>{iss}</li>
+                                        ))}
+                                      </ul>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : run.evaluationReason?.startsWith("review_skipped:") ? (
+                              <div style={{ fontSize: 11, color: "#475569", marginTop: 6, lineHeight: 1.45 }}>
+                                <strong>AI 리뷰어 없음 (기본 실행 모드)</strong>
+                                <div style={{ marginTop: 4, color: "#64748b" }}>리뷰 단계 생략됨 (AI 멤버 미설정)</div>
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
+                                멀티 리뷰어 단계 없음(이전 단일 평가·정책 전처리만 적용된 기록일 수 있음).
+                              </div>
+                            )}
+                            {run.runError?.trim() ? (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  padding: "8px 10px",
+                                  borderRadius: 8,
+                                  background: "#fff7ed",
+                                  border: "1px solid #fed7aa",
+                                  fontSize: 11,
+                                  color: "#7c2d12",
+                                  lineHeight: 1.5,
+                                  whiteSpace: "pre-wrap",
+                                }}
+                              >
+                                <div style={{ fontWeight: 800, marginBottom: 4 }}>실행/오류 메시지</div>
+                                {stripGitBranchConfigMarkerForDisplay(run.runError.trim())}
+                                {isGitBranchConfigErrorMessage(run.runError) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => scrollToExecutionSetup()}
+                                    style={{
+                                      display: "block",
+                                      marginTop: 10,
+                                      padding: "6px 12px",
+                                      borderRadius: 8,
+                                      border: "1px solid #ea580c",
+                                      background: "#fff",
+                                      fontWeight: 800,
+                                      fontSize: 12,
+                                      color: "#c2410c",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Git 설정 수정하기
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </details>
         ) : null}
-        {executionLoopBanner && uiPermissions.canRun ? (
-          <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#334155" }} role="status">
-            {executionLoopBanner}
-          </p>
-        ) : null}
-        <TaskListSection
-          tasks={tasks}
-          loadingTasks={loadingTasks}
-          loadingTaskPrompts={loadingTaskPrompts}
-          loadingTaskRuns={loadingTaskRuns}
-          promptMessage={promptMessage}
-          generatingPromptTaskId={generatingPromptTaskId}
-          taskPromptMap={taskPromptMap}
-          runningPromptId={runningPromptId}
-          markingReadyTaskId={markingReadyTaskId}
-          registeringGitRequestRunId={registeringGitRequestRunId}
-          taskRunMap={taskRunMap}
-          canGeneratePrompt={rbac.canReview}
-          canRunTask={uiPermissions.canRun}
-          canMarkReadyForGit={uiPermissions.canRun}
-          canRegisterGitRequest={uiPermissions.canRun}
-          canReorderTasks={uiPermissions.canReorder}
-          reorderSaving={reorderSaving}
-          abortingTaskId={abortingTaskId}
-          blockingTaskId={blockingTaskId}
-          unblockingTaskId={unblockingTaskId}
-          forceCompletingTaskId={forceCompletingTaskId}
-          onGeneratePrompt={handleGenerateTaskPrompt}
-          onRunTask={handleRunTask}
-          onMarkReadyForGit={handleMarkReadyForGit}
-          onRegisterGitRequest={handleRegisterGitRequest}
-          onViewTaskHistory={(tid) => setAuditTaskId(tid)}
-          onReorderTasks={handleReorderTasks}
-          onAbortRun={handleAbortRun}
-          onForceCompleteRun={handleForceCompleteRun}
-          onBlockTask={handleBlockTask}
-          onUnblockTask={handleUnblockTask}
-          canCreateFollowUp={rbac.canReview}
-          followUpDraft={followUpDraft}
-          followUpSaving={followUpSaving}
-          onRequestFollowUp={handleRequestFollowUp}
-          onFollowUpDraftChange={setFollowUpDraft}
-          onCancelFollowUp={() => setFollowUpDraft(null)}
-          onSubmitFollowUp={() => void handleSubmitFollowUp()}
-          aiMemberTaskHints={aiMemberTaskHints}
-          canApproveSensitiveWorkflow={rbac.canOperate}
-          onApproveSensitiveWorkflow={handleApproveSensitiveWorkflow}
-          approvingSensitiveTaskId={approvingSensitiveTaskId}
-          cursorExecutionReady={execSetupValidatedHint === true}
-          executionLoopBusy={executionLoopBusy}
-          orchestrationRunningTaskId={orchestrationRunningTaskId}
-        />
+        <details
+          style={{
+            marginTop: 4,
+            borderTop: "1px solid #e5e5e5",
+            paddingTop: 10,
+          }}
+        >
+          <summary
+            style={{
+              cursor: "pointer",
+              fontWeight: 800,
+              fontSize: 15,
+              color: "#0f172a",
+              listStyle: "none",
+            }}
+          >
+            전체 Task
+          </summary>
+          <TaskListSection
+            tasks={tasks}
+            loadingTasks={loadingTasks}
+            loadingTaskPrompts={loadingTaskPrompts}
+            loadingTaskRuns={loadingTaskRuns}
+            promptMessage={promptMessage}
+            generatingPromptTaskId={generatingPromptTaskId}
+            taskPromptMap={taskPromptMap}
+            runningPromptId={runningPromptId}
+            markingReadyTaskId={markingReadyTaskId}
+            registeringGitRequestRunId={registeringGitRequestRunId}
+            taskRunMap={taskRunMap}
+            canGeneratePrompt={rbac.canReview}
+            canRunTask={uiPermissions.canRun}
+            canMarkReadyForGit={uiPermissions.canRun}
+            canRegisterGitRequest={uiPermissions.canRun}
+            canReorderTasks={uiPermissions.canReorder}
+            reorderSaving={reorderSaving}
+            abortingTaskId={abortingTaskId}
+            blockingTaskId={blockingTaskId}
+            unblockingTaskId={unblockingTaskId}
+            forceCompletingTaskId={forceCompletingTaskId}
+            onGeneratePrompt={handleGenerateTaskPrompt}
+            onRunTask={handleRunTask}
+            onMarkReadyForGit={handleMarkReadyForGit}
+            onRegisterGitRequest={handleRegisterGitRequest}
+            onViewTaskHistory={(tid) => setAuditTaskId(tid)}
+            onReorderTasks={handleReorderTasks}
+            onAbortRun={handleAbortRun}
+            onForceCompleteRun={handleForceCompleteRun}
+            onBlockTask={handleBlockTask}
+            onUnblockTask={handleUnblockTask}
+            canCreateFollowUp={rbac.canReview}
+            followUpDraft={followUpDraft}
+            followUpSaving={followUpSaving}
+            onRequestFollowUp={handleRequestFollowUp}
+            onFollowUpDraftChange={setFollowUpDraft}
+            onCancelFollowUp={() => setFollowUpDraft(null)}
+            onSubmitFollowUp={() => void handleSubmitFollowUp()}
+            aiMemberTaskHints={aiMemberTaskHints}
+            canApproveSensitiveWorkflow={rbac.canOperate}
+            onApproveSensitiveWorkflow={handleApproveSensitiveWorkflow}
+            approvingSensitiveTaskId={approvingSensitiveTaskId}
+            cursorExecutionReady={execSetupValidatedHint === true}
+            executionLoopBusy={executionLoopBusy}
+            orchestrationRunningTaskId={orchestrationRunningTaskId}
+            advancedEmbed
+          />
+        </details>
         </div>
         </div>
       ) : null}
@@ -2234,7 +2266,7 @@ export default function ProjectDetailPage() {
                           opacity: applyingGitRequestId === item.id ? 0.7 : 1,
                         }}
                       >
-                        {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
+                        {applyingGitRequestId === item.id ? "진행 중…" : "Git 반영 실행"}
                       </button>
                     ) : null}
                     {isManualGitItem(item) &&
@@ -2255,7 +2287,7 @@ export default function ProjectDetailPage() {
                           opacity: applyingGitRequestId === item.id ? 0.7 : 1,
                         }}
                       >
-                        {applyingGitRequestId === item.id ? "실행 중..." : "Git 반영 실행"}
+                        {applyingGitRequestId === item.id ? "진행 중…" : "Git 반영 실행"}
                       </button>
                     ) : null}
                     {!isManualGitItem(item) &&

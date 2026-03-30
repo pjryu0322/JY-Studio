@@ -23,8 +23,7 @@
     "jose": "^6.2.2",
     "next": "16.2.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "reactflow": "^11.11.4"
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
     "dotenv-cli": "^8.0.0",

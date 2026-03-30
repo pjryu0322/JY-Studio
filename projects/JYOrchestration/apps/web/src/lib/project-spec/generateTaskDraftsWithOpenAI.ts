@@ -11,6 +11,11 @@ import {
   type GeneratedExecutionTask,
 } from "@/lib/project-spec/generatedExecutionTask";
 import { buildFallbackExecutionTasks, validateGeneratedExecutionTasks } from "@/lib/project-spec/validateGeneratedExecutionTasks";
+import {
+  type NfrCategory,
+  type StoredRequirementType,
+  withRequirementMeta,
+} from "@/lib/project-spec/requirementDraftMeta";
 
 export type TaskDraftAiItem = {
   type: TaskNodeType;
@@ -27,6 +32,9 @@ export type TaskDraftAiItem = {
   /** Feature 내 로컬 ID → DB 저장 시 형제 Task 간 dependsOn 해석용 */
   localTaskId?: string;
   dependsOnLocalIds?: string[];
+  /** requirement 노드만 */
+  requirementType?: StoredRequirementType;
+  nfrCategory?: NfrCategory;
 };
 
 export type TaskDraftOpenAiUsage = {
@@ -48,7 +56,7 @@ function buildRequirementsPrompt(input: {
   projectType: string;
   specMarkdown: string;
 }): string {
-  return `다음 Project Spec에서 사용자 중심 Functional Requirement를 추출하라.
+  return `다음 Project Spec에서 요구사항을 추출하라. **기능 요구사항(FR)** 과 **비기능 요구사항(NFR)** 을 구분한다.
 
 [프로젝트]
 - 이름: ${input.projectName}
@@ -66,16 +74,30 @@ ${clipSpec(input.specMarkdown)}
     {
       "id": "FR-1",
       "title": "요구사항 제목",
-      "description": "사용자 가치 중심 설명",
-      "priority": "HIGH|MEDIUM|LOW"
+      "description": "설명",
+      "priority": "HIGH|MEDIUM|LOW",
+      "requirementType": "FUNCTIONAL",
+      "nfrCategory": null
+    },
+    {
+      "id": "NFR-1",
+      "title": "비기능 요구 제목",
+      "description": "설명",
+      "priority": "HIGH|MEDIUM|LOW",
+      "requirementType": "NON_FUNCTIONAL",
+      "nfrCategory": "performance|security|quality|operational|policy"
     }
   ]
 }
 
-[규칙]
-- 요구사항은 3~12개.
-- 반드시 사용자 중심(무엇을 위해 필요한가).
-- JSON만 출력. 마크다운 코드펜스나 설명 문장 금지.`;
+[분류 규칙]
+- requirementType은 반드시 "FUNCTIONAL" 또는 "NON_FUNCTIONAL" (대문자).
+- FUNCTIONAL: 사용자에게 보이는 동작·기능·업무 규칙(빌드 대상 Task로 쪼갤 수 있는 것).
+- NON_FUNCTIONAL: 성능·보안·품질 목표, 정책/컴플라이언스 문구만, 운영/배포 제약만 등 **구현 Task로 직접 쪼개지 않는** 항목.
+- NON_FUNCTIONAL일 때만 nfrCategory 필수: performance | security | quality 중 하나를 우선 사용. 정책·운영 제약은 policy 또는 operational.
+- FUNCTIONAL이면 nfrCategory는 null.
+- 총 4~14개 항목(기능 위주, NFR은 Spec에 있을 때만 포함).
+- JSON만 출력. 마크다운·설명 문장 금지.`;
 }
 
 function buildDesignPrompt(requirements: Array<{ title: string; description: string }>): string {
@@ -273,6 +295,72 @@ function normalizePriority(p: unknown): "HIGH" | "MEDIUM" | "LOW" {
   return "MEDIUM";
 }
 
+type ParsedRequirementRow = {
+  title: string;
+  description: string;
+  priority: "HIGH" | "MEDIUM" | "LOW";
+  requirementType: StoredRequirementType;
+  nfrCategory: NfrCategory | null;
+};
+
+const NFR_CATEGORIES: readonly NfrCategory[] = [
+  "performance",
+  "security",
+  "quality",
+  "operational",
+  "policy",
+] as const;
+
+function parseRequirementFromOpenAiRow(o: Record<string, unknown>): ParsedRequirementRow | null {
+  const title = String(o.title ?? "").trim();
+  if (!title) return null;
+  const rtRaw = String(o.requirementType ?? o.type ?? "FUNCTIONAL")
+    .toUpperCase()
+    .replace(/\s+/g, "_")
+    .trim();
+  let requirementType: StoredRequirementType = "FUNCTIONAL";
+  if (
+    rtRaw === "NON_FUNCTIONAL" ||
+    rtRaw === "NONFUNCTIONAL" ||
+    rtRaw === "NFR" ||
+    rtRaw === "NON-FUNCTIONAL"
+  ) {
+    requirementType = "NON_FUNCTIONAL";
+  }
+  const catRaw = String(o.nfrCategory ?? o.nonFunctionalCategory ?? "").toLowerCase().trim();
+  let nfrCategory: NfrCategory | null = null;
+  if (requirementType === "NON_FUNCTIONAL") {
+    nfrCategory = NFR_CATEGORIES.includes(catRaw as NfrCategory) ? (catRaw as NfrCategory) : "operational";
+  }
+  return {
+    title: title.slice(0, 500),
+    description: String(o.description ?? "").trim().slice(0, 8000),
+    priority: normalizePriority(o.priority),
+    requirementType,
+    nfrCategory,
+  };
+}
+
+function parsedRowToHierarchyItem(r: ParsedRequirementRow): TaskDraftAiItem {
+  const description =
+    r.requirementType === "NON_FUNCTIONAL"
+      ? withRequirementMeta(r.description, {
+          requirementType: "NON_FUNCTIONAL",
+          nfrCategory: r.nfrCategory,
+        })
+      : r.description;
+  return {
+    type: "requirement",
+    title: r.title,
+    description,
+    priority: r.priority,
+    parentTitle: null,
+    acceptanceCriteria: [],
+    requirementType: r.requirementType,
+    nfrCategory: r.nfrCategory ?? undefined,
+  };
+}
+
 function parseJson(text: string): Record<string, unknown> {
   let parsed: unknown;
   try {
@@ -364,6 +452,8 @@ export async function generateTaskDraftsWithOpenAI(input: {
   specSuccessCriteria: string | null;
   specMarkdown: string;
   modelFromRequest?: string | null;
+  /** true면 NFR도 설계→기능→실행 Task 파이프에 포함 (기본: 기능만) */
+  includeNonFunctionalInExecutionPipeline?: boolean;
 }): Promise<{
   tasks: TaskDraftAiItem[];
   model: string;
@@ -389,27 +479,33 @@ export async function generateTaskDraftsWithOpenAI(input: {
     }),
   });
   const reqJson = parseJson(reqRes.text);
-  const requirements = parseRows(reqJson.requirements, (o) => {
-    const title = String(o.title ?? "").trim();
-    if (!title) return null;
-    return {
-      type: "requirement",
-      title: title.slice(0, 500),
-      description: String(o.description ?? "").trim().slice(0, 8000),
-      priority: normalizePriority(o.priority),
-      parentTitle: null,
-      acceptanceCriteria: [],
-    };
-  });
-  if (requirements.length === 0) throw new Error("OPENAI_TASK_DRAFT_EMPTY_TASKS");
+  const parsedRequirements: ParsedRequirementRow[] = [];
+  const reqArr = reqJson.requirements;
+  if (Array.isArray(reqArr)) {
+    for (const item of reqArr) {
+      if (!item || typeof item !== "object") continue;
+      const row = parseRequirementFromOpenAiRow(item as Record<string, unknown>);
+      if (row) parsedRequirements.push(row);
+    }
+  }
+  if (parsedRequirements.length === 0) throw new Error("OPENAI_TASK_DRAFT_EMPTY_TASKS");
+
+  const includeNfr = Boolean(input.includeNonFunctionalInExecutionPipeline);
+  const functionalReqs = parsedRequirements.filter((r) => r.requirementType === "FUNCTIONAL");
+  const reqsForPipeline = includeNfr ? parsedRequirements : functionalReqs;
+  if (reqsForPipeline.length === 0) {
+    throw new Error("OPENAI_TASK_DRAFT_NO_FUNCTIONAL_REQUIREMENTS");
+  }
+
+  const hierarchyRequirementItems = parsedRequirements.map(parsedRowToHierarchyItem);
 
   const designRes = await completeJson({
     apiKey,
     model,
-    userMessage: buildDesignPrompt(requirements),
+    userMessage: buildDesignPrompt(reqsForPipeline.map((r) => ({ title: r.title, description: r.description }))),
   });
   const designJson = parseJson(designRes.text);
-  const reqTitleSet = new Set(requirements.map((r) => r.title));
+  const reqTitleSet = new Set(reqsForPipeline.map((r) => r.title));
   const designTargets = parseRows(designJson.designTargets, (o) => {
     const title = String(o.title ?? "").trim();
     const requirementTitle = String(o.requirementTitle ?? "").trim();
@@ -467,7 +563,7 @@ export async function generateTaskDraftsWithOpenAI(input: {
     }
   }
 
-  const all = [...requirements, ...designTargets, ...features, ...executionTaskItems];
+  const all = [...hierarchyRequirementItems, ...designTargets, ...features, ...executionTaskItems];
   if (all.length === 0) {
     throw new Error("OPENAI_TASK_DRAFT_NO_VALID_TASKS");
   }

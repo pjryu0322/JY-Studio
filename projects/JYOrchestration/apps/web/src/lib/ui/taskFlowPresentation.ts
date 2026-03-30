@@ -1,3 +1,5 @@
+import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
+
 export type TaskFlowStatus =
   | "TODO"
   | "READY"
@@ -6,6 +8,9 @@ export type TaskFlowStatus =
   | "FAILED"
   | "BLOCKED"
   | "CANCELLED";
+
+/** Task 실행 화면 4분면(준비/진행/막힘/완료) */
+export type ExecutionBoardBucket = "ready" | "running" | "blocked" | "completed";
 
 type TaskFlowPrompt = { taskId: string; status: string };
 type TaskFlowRun = { status: string };
@@ -46,6 +51,70 @@ export function deriveTaskFlowStatus(input: {
 
 export function taskFlowStatusLabel(status: TaskFlowStatus): string {
   return status;
+}
+
+export function executionBoardBucket(input: {
+  flow: TaskFlowStatus;
+  executionWorkflowStatus?: string | null;
+}): ExecutionBoardBucket {
+  const ew = (input.executionWorkflowStatus ?? "").toLowerCase();
+
+  if (input.flow === "RUNNING") {
+    return "running";
+  }
+  if (
+    ew === EXECUTION_WORKFLOW.RUNNING ||
+    ew === EXECUTION_WORKFLOW.REVIEWING ||
+    ew === EXECUTION_WORKFLOW.PENDING_APPLY
+  ) {
+    return "running";
+  }
+
+  if (input.flow === "DONE") {
+    return "completed";
+  }
+  if (ew === EXECUTION_WORKFLOW.DONE) {
+    return "completed";
+  }
+
+  if (input.flow === "BLOCKED" || input.flow === "FAILED" || input.flow === "CANCELLED") {
+    return "blocked";
+  }
+  if (ew === EXECUTION_WORKFLOW.FAILED || ew === EXECUTION_WORKFLOW.AWAITING_HUMAN) {
+    return "blocked";
+  }
+
+  return "ready";
+}
+
+export function executionBoardLabelKo(bucket: ExecutionBoardBucket): string {
+  switch (bucket) {
+    case "ready":
+      return "준비된 Task";
+    case "running":
+      return "실행 중인 Task";
+    case "blocked":
+      return "막힌 Task";
+    case "completed":
+      return "완료된 Task";
+    default:
+      return bucket;
+  }
+}
+
+export function executionBoardSortKey(bucket: ExecutionBoardBucket): number {
+  switch (bucket) {
+    case "running":
+      return 0;
+    case "ready":
+      return 1;
+    case "blocked":
+      return 2;
+    case "completed":
+      return 3;
+    default:
+      return 9;
+  }
 }
 
 export function taskFlowBadgeColors(status: TaskFlowStatus): {

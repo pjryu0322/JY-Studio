@@ -5,11 +5,7 @@ import { useMemo, useState } from "react";
 import { TaskItem } from "@/components/project-spec/types";
 import { TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { formatTestedAt } from "@/components/project-spec/format";
-import {
-  deriveTaskFlowStatus,
-  taskFlowBadgeColors,
-  taskFlowStatusLabel,
-} from "@/lib/ui/taskFlowPresentation";
+import { deriveTaskFlowStatus, taskFlowBadgeColors, taskFlowStatusLabel } from "@/lib/ui/taskFlowPresentation";
 
 function parseAutoHealingMeta(task: {
   name: string;
@@ -185,6 +181,8 @@ type TaskListSectionProps = {
   executionLoopBusy?: boolean;
   /** 단일 Task Cursor 실행 중인 taskId */
   orchestrationRunningTaskId?: string | null;
+  /** 프로젝트 페이지 고급(details) 안에 넣을 때 상단 안내/여백 축소 */
+  advancedEmbed?: boolean;
 };
 
 const btnBase: CSSProperties = {
@@ -242,6 +240,7 @@ export function TaskListSection({
   cursorExecutionReady = false,
   executionLoopBusy = false,
   orchestrationRunningTaskId = null,
+  advancedEmbed = false,
 }: TaskListSectionProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -315,35 +314,29 @@ export function TaskListSection({
   return (
     <section
       style={{
-        borderTop: "1px solid #e5e5e5",
-        marginTop: 16,
-        paddingTop: 12,
+        borderTop: advancedEmbed ? "none" : "1px solid #e5e5e5",
+        marginTop: advancedEmbed ? 8 : 16,
+        paddingTop: advancedEmbed ? 4 : 12,
       }}
     >
-      <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 6px 0" }}>Task 실행 흐름</h3>
-      <p style={{ margin: "0 0 10px 0", color: "#555", fontSize: 14, lineHeight: 1.55 }}>
-        번호는 저장된 <strong>order</strong> 기준 실행 순서입니다. 배지는 Task.status·프롬프트·최신 Run·클라이언트
-        실행 상태를 함께 봅니다 (TODO / READY / RUNNING / DONE / FAILED / BLOCKED / CANCELLED). 감사 이력은 읽기
-        전용입니다.
-      </p>
-      {canReorderTasks ? (
+      {advancedEmbed ? null : (
+        <>
+          <h3 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 6px 0" }}>Task 실행 상세</h3>
+          <p style={{ margin: "0 0 10px 0", color: "#555", fontSize: 13, lineHeight: 1.55 }}>
+            주 실행은 위 <strong>실행 시작</strong>으로 진행합니다. 여기서는 프롬프트·개별 실행·순서·차단 등 세부
+            제어를 할 수 있습니다.
+          </p>
+        </>
+      )}
+      {!advancedEmbed && canReorderTasks ? (
         <p style={{ margin: "0 0 10px 0", color: "#37474f", fontSize: 13, lineHeight: 1.5 }}>
           <strong>순서 변경:</strong> 왼쪽 ⋮⋮ 핸들을 잡아 다른 행 위에 놓으면{" "}
-          <code style={{ fontSize: 12 }}>POST /api/task/reorder</code>로 저장됩니다 (OPERATOR·REVIEWER·OWNER,
-          실행 권한과 동일).
+          <code style={{ fontSize: 12 }}>POST /api/task/reorder</code>로 저장됩니다.
         </p>
       ) : null}
-      {canRunTask ? (
+      {!advancedEmbed && canRunTask ? (
         <p style={{ margin: "0 0 10px 0", color: "#37474f", fontSize: 13, lineHeight: 1.5 }}>
-          <strong>실행 제어:</strong> 흐름 상태에 따라 실행·중단·재시도·강제완료·승인(Git 준비)·차단/해제가
-          표시됩니다. 제어 결과는 Task 감사 이력에 기록됩니다.
-        </p>
-      ) : null}
-      {canRunTask && cursorExecutionReady ? (
-        <p style={{ margin: "0 0 10px 0", color: "#0f766e", fontSize: 13, lineHeight: 1.5 }}>
-          <strong>Cursor 오케스트레이션:</strong> Execution setup이 검증된 프로젝트에서는 「실행」이{" "}
-          <code style={{ fontSize: 12 }}>POST /api/projects/…/execution-loop</code>로 연결되어 Cursor Cloud
-          Agent·(원격) Git 반영·AI 검토까지 진행합니다. 프롬프트 생성 없이 실행할 수 있습니다.
+          개별 Task 실행·중단·Git 승인·차단 등은 각 행의 버튼을 사용합니다.
         </p>
       ) : null}
       {promptMessage ? <p style={{ margin: "0 0 8px 0", color: "#333" }}>{promptMessage}</p> : null}
@@ -388,14 +381,14 @@ export function TaskListSection({
                 : !taskPromptMap[task.id] || runningPromptId === taskPromptMap[task.id]?.id);
             const runLabel = (() => {
               if (cursorExecutionReady && orchestrationRunningTaskId === task.id && executionLoopBusy) {
-                return "Cursor 실행 중...";
+                return "진행 중…";
               }
               const p = taskPromptMap[task.id];
               if (!p && !cursorExecutionReady) {
                 return "실행";
               }
               if (p && runningPromptId === p.id) {
-                return "실행 중...";
+                return "진행 중…";
               }
               if (flow === "FAILED") {
                 return "재시도";

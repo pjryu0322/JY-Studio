@@ -23,6 +23,7 @@ export function computeWorkflowUpdates(rows: Row[]): Map<string, string> {
     const cur = wf(t.executionWorkflowStatus);
     if (
       cur === EXECUTION_WORKFLOW.RUNNING ||
+      cur === EXECUTION_WORKFLOW.PENDING_APPLY ||
       cur === EXECUTION_WORKFLOW.REVIEWING ||
       cur === EXECUTION_WORKFLOW.AWAITING_HUMAN ||
       cur === EXECUTION_WORKFLOW.DONE ||
@@ -36,6 +37,11 @@ export function computeWorkflowUpdates(rows: Row[]): Map<string, string> {
     const anyFailed = ds.some((id) => depWf(id) === EXECUTION_WORKFLOW.FAILED);
     const anyAwaiting = ds.some((id) => depWf(id) === EXECUTION_WORKFLOW.AWAITING_HUMAN);
     if (anyAwaiting) {
+      next.set(t.id, EXECUTION_WORKFLOW.PENDING);
+      continue;
+    }
+    const anyPendingApply = ds.some((id) => depWf(id) === EXECUTION_WORKFLOW.PENDING_APPLY);
+    if (anyPendingApply) {
       next.set(t.id, EXECUTION_WORKFLOW.PENDING);
       continue;
     }

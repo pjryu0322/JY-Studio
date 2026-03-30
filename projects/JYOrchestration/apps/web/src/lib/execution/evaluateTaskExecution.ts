@@ -1,4 +1,5 @@
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
+import { isCursorCodeReflectionConfirmed } from "@/lib/execution/cursorReflectionPolicy";
 import {
   relaySummaryLooksLikeFailure,
   runOpenAiRelayEvaluation,
@@ -84,6 +85,24 @@ export async function evaluateExecutionResult(params: {
         reviewerSteps: [],
       };
     }
+  }
+
+  const mergedForReflection: Pick<CursorRunResult, "commitHash" | "changedFiles" | "summary"> = {
+    ...params.cursorResult,
+    changedFiles: files,
+    summary,
+  };
+  if (!isCursorCodeReflectionConfirmed(mergedForReflection)) {
+    return {
+      result: {
+        decision: "failed",
+        reason:
+          "git_reflection_unconfirmed: commitHash·변경 파일·요약 근거 없음 — 에이전트 수락만으로 완료할 수 없습니다.",
+        suspiciousChanges: ["no_commit_no_changed_files"],
+      },
+      usage: null,
+      reviewerSteps: [],
+    };
   }
 
   const taskPayload = {

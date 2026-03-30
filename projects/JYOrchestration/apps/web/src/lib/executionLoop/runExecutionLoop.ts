@@ -1,6 +1,7 @@
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { buildCursorExecutionPrompt } from "@/lib/execution/buildCursorExecutionPrompt";
 import { executeCursorRun } from "@/lib/execution/cursorExecutionAdapter";
+import { isCursorCodeReflectionConfirmed } from "@/lib/execution/cursorReflectionPolicy";
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
 import { countExecutionReviewAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
 import { taskLooksSensitive } from "@/lib/execution/taskSensitivity";
@@ -143,6 +144,22 @@ export async function runExecutionLoop(params: {
       }
 
       const rows = await loadWorkflowGraphTasks(projectId);
+
+      if (!singleTaskId) {
+        const blockedByReflection = rows.some(
+          (r) => r.executionWorkflowStatus === EXECUTION_WORKFLOW.PENDING_APPLY
+        );
+        if (blockedByReflection) {
+          steps.push({ phase: "stop", reason: "pending_git_reflection_blocks_loop" });
+          return {
+            ok: true,
+            steps,
+            message:
+              "Git 반영이 확인되지 않은 Task가 있어 자동 진행을 멈췄습니다. 상세 보기의 실행 기록을 확인하거나, 해당 Task ID로 단일 실행을 다시 시도하세요.",
+          };
+        }
+      }
+
       const todoRows = rows.filter((r) => r.status === "TODO");
       if (todoRows.length === 0) {
         steps.push({ phase: "stop", reason: "no_todo_tasks" });
@@ -179,11 +196,15 @@ export async function runExecutionLoop(params: {
         if (!forced || forced.status !== "TODO") {
           return { ok: false, steps, message: "지정한 Task를 찾을 수 없거나 TODO가 아닙니다." };
         }
-        if (forced.executionWorkflowStatus !== EXECUTION_WORKFLOW.READY) {
+        if (
+          forced.executionWorkflowStatus !== EXECUTION_WORKFLOW.READY &&
+          forced.executionWorkflowStatus !== EXECUTION_WORKFLOW.PENDING_APPLY
+        ) {
           return {
             ok: false,
             steps,
-            message: "지정한 Task가 ready 상태가 아닙니다. 선행 Task를 완료하세요.",
+            message:
+              "지정한 Task가 ready 또는 Git 반영 대기(pending_apply) 상태가 아닙니다. 선행 Task를 완료하세요.",
           };
         }
         next = forced;
@@ -324,7 +345,7 @@ export async function runExecutionLoop(params: {
 
       if (cursorOutcome.ok) {
         const cr0 = cursorOutcome.result;
-        console.info("[execution-loop] cursor done (git·커밋·푸시는 Cursor Agent에 위임)", {
+        console.info("[execution-loop] cursor agent terminal (Git 반영은 별도 게이트에서 검증)", {
           taskId,
           runId: cr0.runId,
           branch: cr0.branchName,
@@ -404,6 +425,111 @@ export async function runExecutionLoop(params: {
 
       const cr = cursorOutcome.result;
 
+      const reflectionOk = isCursorCodeReflectionConfirmed(cr);
+      if (!reflectionOk) {
+        const gateReason = "no_commit_and_no_changed_files";
+        console.info("[execution-loop][completion-gate] reflection not confirmed — pending_apply", {
+          taskId,
+          runId: cr.runId,
+          branch: cr.branchName,
+          commitHash: cr.commitHash ?? null,
+          changedFiles: cr.changedFiles.length,
+          executionStatus: cr.executionStatus,
+          finalCompletionReason: "blocked_no_git_evidence",
+        });
+
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.PENDING_APPLY,
+            lastEvalResult: "pending_apply",
+            lastEvalSummary:
+              "Cursor 에이전트는 종료되었으나 commit·변경 파일이 보고되지 않아 코드 반영을 확인할 수 없습니다. Cursor에서 실제 반영 여부를 확인한 뒤 이 Task만 다시 실행하세요.",
+          },
+        });
+
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: {
+            cursorRunId: cr.runId,
+            cursorSummary: cr.summary,
+            branchName: cr.branchName,
+            commitSha: cr.commitHash ?? null,
+            changedFiles: cr.changedFiles as unknown as object,
+            gitSummary: cr.summary.slice(0, 24_000),
+            validationOutput: null,
+            commitStatus: "no_commit_hash",
+            pushStatus: "delegated_to_cursor",
+            status: "awaiting_git_reflection",
+            evaluationReason:
+              "git_reflection_unconfirmed: commitHash 없음 · changedFiles=0 — Task 완료 처리 생략(pending_apply)",
+          },
+        });
+
+        await updateTaskOrchestrationSnapshot(taskId, {
+          branch: cr.branchName,
+          commitStatus: "no_commit_hash",
+          pushStatus: "delegated_to_cursor",
+          commitSha: cr.commitHash ?? null,
+          changedFileCount: cr.changedFiles.length,
+        });
+
+        await appendTaskHistory({
+          projectId,
+          taskId,
+          actorType: TaskHistoryActorType.SYSTEM,
+          actorId: actorUserId,
+          eventType: TaskHistoryEventType.EXECUTION_LOOP_TASK_STEP,
+          summary: "Git 반영 미확인 — pending_apply (에이전트 종료만으로 완료 처리 안 함)",
+          detailJson: {
+            runId: cr.runId,
+            branch: cr.branchName,
+            commitHash: cr.commitHash ?? null,
+            changedFiles: cr.changedFiles.length,
+            gateReason,
+          },
+        });
+
+        await refreshWorkflowStates(projectId);
+
+        steps.push({
+          phase: "git_reflection_gate",
+          taskId,
+          runId: cr.runId,
+          branch: cr.branchName,
+          commitHash: cr.commitHash ?? null,
+          changedFileCount: cr.changedFiles.length,
+          passed: false,
+          reason: gateReason,
+        });
+
+        return {
+          ok: true,
+          steps,
+          message:
+            "에이전트는 종료되었지만 Git 반영(commit·변경 파일)이 확인되지 않아 완료 처리하지 않았습니다. 상세 보기의 실행 기록을 확인하세요.",
+        };
+      }
+
+      steps.push({
+        phase: "git_reflection_gate",
+        taskId,
+        runId: cr.runId,
+        branch: cr.branchName,
+        commitHash: cr.commitHash ?? null,
+        changedFileCount: cr.changedFiles.length,
+        passed: true,
+        reason: "commit_or_changed_files_or_summary_evidence",
+      });
+
+      console.info("[execution-loop][completion-gate] reflection confirmed — proceeding to review/eval", {
+        taskId,
+        runId: cr.runId,
+        branch: cr.branchName,
+        commitHash: cr.commitHash ?? null,
+        changedFiles: cr.changedFiles.length,
+      });
+
       await prisma.task.update({
         where: { id: taskId },
         data: { executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEWING },
@@ -419,7 +545,7 @@ export async function runExecutionLoop(params: {
           changedFiles: cr.changedFiles as unknown as object,
           gitSummary: cr.summary.slice(0, 24_000),
           validationOutput: null,
-          commitStatus: cr.commitHash ? "reported_by_cursor" : "no_commit_hash",
+          commitStatus: cr.commitHash ? "reported_by_cursor" : "reported_changed_files",
           pushStatus: "delegated_to_cursor",
         },
       });
@@ -525,6 +651,11 @@ export async function runExecutionLoop(params: {
       });
 
       const fileCount = cr.changedFiles.length;
+      const commitSnapshotStatus = cr.commitHash
+        ? "cursor_committed"
+        : fileCount > 0
+          ? "cursor_changed_files_only"
+          : "reported_via_summary_evidence";
 
       if (verdict === "done") {
         const sensitiveGate =
@@ -556,7 +687,7 @@ export async function runExecutionLoop(params: {
           });
           await updateTaskOrchestrationSnapshot(taskId, {
             branch: cr.branchName,
-            commitStatus: cr.commitHash ? "cursor_committed" : "cursor_no_hash",
+            commitStatus: commitSnapshotStatus,
             pushStatus: "cursor",
             commitSha: cr.commitHash ?? null,
             changedFileCount: fileCount,
@@ -581,6 +712,17 @@ export async function runExecutionLoop(params: {
           });
         }
 
+        console.info("[execution-loop][completion]", {
+          taskId,
+          runId: cr.runId,
+          branch: cr.branchName,
+          commitHash: cr.commitHash ?? null,
+          changedFiles: fileCount,
+          finalCompletionReason: "task_marked_done_after_git_reflection_and_eval",
+          verdict,
+          reviewSkipped: noExecutionReviewers,
+        });
+
         await prisma.task.update({
           where: { id: taskId },
           data: {
@@ -599,7 +741,7 @@ export async function runExecutionLoop(params: {
 
         await updateTaskOrchestrationSnapshot(taskId, {
           branch: cr.branchName,
-          commitStatus: cr.commitHash ? "cursor_committed" : "cursor_no_hash",
+          commitStatus: commitSnapshotStatus,
           pushStatus: "cursor",
           commitSha: cr.commitHash ?? null,
           changedFileCount: fileCount,

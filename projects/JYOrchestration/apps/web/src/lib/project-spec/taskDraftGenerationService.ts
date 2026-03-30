@@ -53,8 +53,10 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
   specVersionId: string;
   userId: string;
   model?: string | null;
+  /** true면 비기능 요구도 설계→기능→실행 Task까지 생성 */
+  includeNonFunctionalInExecutionPipeline?: boolean;
 }): Promise<TaskDraftSyncResult> {
-  const { projectId, specVersionId, userId, model } = params;
+  const { projectId, specVersionId, userId, model, includeNonFunctionalInExecutionPipeline } = params;
 
   const [versionRow, projectRow] = await Promise.all([
     prisma.projectSpecVersion.findFirst({
@@ -97,6 +99,7 @@ export async function syncTaskDraftsForProjectSpecVersion(params: {
     specSuccessCriteria: projectRow.specSuccessCriteria,
     specMarkdown,
     modelFromRequest: model,
+    includeNonFunctionalInExecutionPipeline: Boolean(includeNonFunctionalInExecutionPipeline),
   });
 
   const hierarchyItems = ai.tasks.filter((t) => t.type !== "task");
