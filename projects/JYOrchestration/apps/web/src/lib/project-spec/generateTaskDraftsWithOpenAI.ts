@@ -16,6 +16,10 @@ import {
   type StoredRequirementType,
   withRequirementMeta,
 } from "@/lib/project-spec/requirementDraftMeta";
+import {
+  DEFAULT_TASK_DRAFT_GENERATION_REQUIREMENTS_PROMPT_TEMPLATE,
+  applyTaskDraftGenerationPromptTemplate,
+} from "@/lib/project-spec/taskDraftGenerationPromptTemplate";
 
 export type TaskDraftAiItem = {
   type: TaskNodeType;
@@ -55,59 +59,14 @@ function buildRequirementsPrompt(input: {
   projectDescription: string | null;
   projectType: string;
   specMarkdown: string;
-}): string {
-  return `Project Spec에서 요구사항을 추출한다. **반드시 기능(FR)과 비기능(NFR)을 분리**한다.
-
-[프로젝트]
-- 이름: ${input.projectName}
-- 유형: ${input.projectType}
-- 설명: ${input.projectDescription?.trim() || "(없음)"}
-
-[Project Spec]
----
-${clipSpec(input.specMarkdown)}
----
-
-[하드 필터 — 위반 시 오답]
-- **tasks** 배열: **기능 요구사항(FR)만**. Cursor가 코드로 구현·검증할 수 있는 사용자/업무 동작·기능·규칙만 넣는다.
-- **다음은 절대 tasks에 넣지 말 것** (전부 nonFunctionalConstraints로만):
-  - type이 NON_FUNCTIONAL인 항목, 또는 nfr/비기능으로 분류되는 모든 항목
-  - 성능(performance)·보안 정책만·가용성·확장성·로깅·모니터링·운영/배포 제약만
-  - SLA, RTO/RPO, 감사·컴플라이언스 문구만, 인프라 관측만
-
-[출력 JSON — 키 이름 정확히]
-{
-  "tasks": [
-    {
-      "title": "기능 요구 한 덩어리(이후 파이프라인에서 레이어별 실행 Task로 쪼개짐)",
-      "description": "무엇을 구현해야 하는지 (한 번에 하나의 사용자/업무 목표)",
-      "input": "입력·전제·사용 데이터",
-      "output": "산출·결과",
-      "acceptanceCriteria": ["검증 가능한 문장"],
-      "executionKind": "api|ui|logic|data|test",
-      "priority": "HIGH|MEDIUM|LOW"
-    }
-  ],
-  "nonFunctionalConstraints": [
-    {
-      "title": "비기능 제약 제목 (NOT tasks)",
-      "description": "내용",
-      "nfrCategory": "performance|security|availability|scalability|logging|monitoring|operational|policy|quality"
-    }
-  ],
-  "dag": []
-}
-
-dag는 요구 추출 단계에서는 빈 배열로 두거나 생략해도 된다(실행 DAG는 Feature별 생성 단계에서 만든다).
-
-[분류 규칙]
-- tasks와 nonFunctionalConstraints에 **동일 항목을 중복 넣지 말 것**.
-- FR 한 건당 tasks에 한 객체. NFR 한 건당 nonFunctionalConstraints에 한 객체.
-- tasks가 비면 안 됨(Spec에 구현 가능한 기능이 없으면 최소한 핵심 사용자 시나리오 1건을 FR로 재해석).
-- 반환 전 검증: tasks의 어떤 항목도 비기능 전용이 아닌지 스스로 확인.
-- JSON만 출력. 마크다운·설명 문장 금지.
-
-[하위 호환] 동일 구조를 "functionalRequirements" + "nonFunctionalConstraints" 로만 출력해도 된다 (tasks 대신 functionalRequirements 배열 사용 가능).`;
+}, taskPromptTemplate?: string | null): string {
+  const template = String(taskPromptTemplate ?? "").trim() || DEFAULT_TASK_DRAFT_GENERATION_REQUIREMENTS_PROMPT_TEMPLATE;
+  return applyTaskDraftGenerationPromptTemplate(template, {
+    projectName: input.projectName,
+    projectType: input.projectType,
+    projectDescription: input.projectDescription?.trim() || "(없음)",
+    specMarkdown: clipSpec(input.specMarkdown),
+  });
 }
 
 function buildDesignPrompt(requirements: Array<{ title: string; description: string }>): string {
@@ -666,6 +625,8 @@ export async function generateTaskDraftsWithOpenAI(input: {
   specSuccessCriteria: string | null;
   specMarkdown: string;
   modelFromRequest?: string | null;
+  /** project.taskPrompt override (요구사항 추출 단계 userMessage template) */
+  taskPromptTemplate?: string | null;
   /** API 호환용. 설계→기능→실행 파이프라인은 항상 기능 요구(FR)만 사용 (NFR는 requirement 노드·nonFunctionalConstraints로만 유지). */
   includeNonFunctionalInExecutionPipeline?: boolean;
 }): Promise<{
@@ -685,12 +646,15 @@ export async function generateTaskDraftsWithOpenAI(input: {
   const reqRes = await completeJson({
     apiKey,
     model,
-    userMessage: buildRequirementsPrompt({
+    userMessage: buildRequirementsPrompt(
+      {
       projectName: input.projectName,
       projectDescription: input.projectDescription,
       projectType: input.projectType,
       specMarkdown: input.specMarkdown,
-    }),
+      },
+      input.taskPromptTemplate
+    ),
   });
   void input.includeNonFunctionalInExecutionPipeline;
 

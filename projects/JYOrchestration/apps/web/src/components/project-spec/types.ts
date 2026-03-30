@@ -27,6 +27,8 @@ export type Project = {
   confirmedSpecAt?: string | null;
   /** 현재 활성 확정 Spec 버전 ID (project_spec_versions) */
   currentSpecVersionId?: string | null;
+  /** Task 생성(요구사항 추출) 사용자 프롬프트 템플릿 (null이면 기본값 사용) */
+  taskPrompt?: string | null;
 };
 
 /** 확정 Project Spec 버전 행 (append-only) */

@@ -535,6 +535,30 @@ export async function patchProjectSpecContext(body: {
   return { res, json };
 }
 
+export type ProjectTaskPromptDto = {
+  taskPrompt: string | null;
+  defaultPrompt: string;
+};
+
+export async function fetchProjectTaskPrompt(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-prompt`, { credentials: "include" });
+  const json = (await res.json()) as ApiResponse<ProjectTaskPromptDto>;
+  return { res, json };
+}
+
+export async function patchProjectTaskPrompt(projectId: string, body: { taskPrompt: string }) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-prompt`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<{ taskPrompt: string | null }>;
+  return { res, json };
+}
+
 export type GenerateSpecContextResponse = {
   projectId: string;
   coreGoals: string;

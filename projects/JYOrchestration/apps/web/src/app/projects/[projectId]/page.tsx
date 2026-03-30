@@ -635,6 +635,18 @@ export default function ProjectDetailPage() {
     }
   }, [projectId]);
 
+  const refreshTasksAfterDraftGenerate = useCallback(async () => {
+    await reloadTasksList();
+    await reloadTaskRuns();
+  }, [reloadTasksList, reloadTaskRuns]);
+
+  // 확정된 Spec 버전이 바뀌면 (스펙->Task 매핑이 달라지므로) confirmed Task 목록도 반드시 갱신한다.
+  useEffect(() => {
+    if (!projectId) return;
+    void reloadTasksList();
+    void reloadTaskRuns();
+  }, [projectId, project?.currentSpecVersionId, reloadTasksList, reloadTaskRuns]);
+
   const loadExecutionRuns = useCallback(async () => {
     if (!projectId || !permissions.canViewProject) {
       setExecutionRuns([]);
@@ -2786,8 +2798,11 @@ export default function ProjectDetailPage() {
                 project={project}
                 canEdit={rbac.canEditSpec}
                 onProjectUpdated={setProject}
+                onAfterTaskDraftsGenerate={refreshTasksAfterDraftGenerate}
                 workflowExecution={{
-                  hasPrimaryTasksForCurrentSpec: tasks.some((t) => t.taskKind === "PRIMARY"),
+                  hasPrimaryTasksForCurrentSpec: tasks.some(
+                    (t) => String(t.taskKind ?? "").toUpperCase() === "PRIMARY"
+                  ),
                   canRunExecution: uiPermissions.canRun,
                   execSetupReady: execSetupValidatedHint === true,
                   executionLoopBusy,

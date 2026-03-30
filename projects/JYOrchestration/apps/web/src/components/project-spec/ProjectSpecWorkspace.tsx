@@ -49,6 +49,8 @@ type ProjectSpecWorkspaceProps = {
   canEdit: boolean;
   onProjectUpdated: (next: Project) => void;
   workflowExecution: TaskDraftWorkflowExecutionProps;
+  /** Task 초안 생성·확정 성공 후 상세 페이지 Task/TaskRun 목록 갱신 */
+  onAfterTaskDraftsGenerate?: () => void | Promise<void>;
 };
 
 type FormState = {
@@ -105,6 +107,7 @@ export function ProjectSpecWorkspace({
   canEdit,
   onProjectUpdated,
   workflowExecution,
+  onAfterTaskDraftsGenerate,
 }: ProjectSpecWorkspaceProps) {
   const [projectInfoOpen, setProjectInfoOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -2787,11 +2790,12 @@ export function ProjectSpecWorkspace({
         canEdit={canEdit}
         selectedModel={selectedModel}
         currentSpecVersionId={
-          workspace?.project.currentSpecVersionId ?? project?.currentSpecVersionId ?? null
+          project?.currentSpecVersionId ?? workspace?.project.currentSpecVersionId ?? null
         }
         refreshKey={draftRefreshKey}
         lastAutoSync={lastTaskDraftSync}
         workflowExecution={workflowExecution}
+        onAfterTaskDraftsGenerate={onAfterTaskDraftsGenerate}
       />
 
       {/* 실행 환경·Git 저장소: 프로젝트 상세 → 실행 환경 탭 [F-1-3-6] */}
