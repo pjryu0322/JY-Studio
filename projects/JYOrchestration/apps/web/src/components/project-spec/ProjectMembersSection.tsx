@@ -97,6 +97,7 @@ const AI_ORCHESTRATION_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "quality-reviewer", label: "quality-reviewer (품질)" },
   { value: "spec-reviewer", label: "spec-reviewer" },
   { value: "task-reviewer", label: "task-reviewer" },
+  { value: "scm-manager", label: "scm-manager (PR/merge)" },
 ];
 
 const ORCHESTRATION_STAGE_OPTIONS: { value: string; label: string }[] = [
@@ -104,6 +105,7 @@ const ORCHESTRATION_STAGE_OPTIONS: { value: string; label: string }[] = [
   { value: "spec", label: "spec" },
   { value: "task", label: "task" },
   { value: "execution-review", label: "execution-review (Cursor 실행 후)" },
+  { value: "scm-manager", label: "scm-manager (PR/merge)" },
 ];
 
 const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> = {
@@ -131,9 +133,14 @@ const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> =
     title: "Planner",
     description: "기획·분해 단계(스펙/태스크)에 참여하는 역할입니다.",
   },
+  "scm-manager": {
+    title: "SCM Manager",
+    description: "Reviewer 승인 후 PR 생성·merge를 담당합니다.",
+  },
 };
 
 const EXECUTION_REVIEW_ROLES_UI = ["reviewer", "security-reviewer", "quality-reviewer"] as const;
+const SCM_MANAGER_ROLES_UI = ["scm-manager"] as const;
 const PLANNING_ROLES_UI = ["planner", "spec-reviewer", "task-reviewer"] as const;
 
 function stageLabel(v: string | null | undefined): string {
@@ -1231,7 +1238,7 @@ export function ProjectMembersSection({
     memberSurface === "human"
       ? "프로젝트에 참여하는 사람 사용자를 초대·역할 변경합니다."
       : memberSurface === "ai"
-        ? "실행은 Cursor가 필수입니다. 검토용 AI 멤버(역할·모델·단계)는 선택이며, 없으면 리뷰 단계가 생략됩니다."
+        ? "실행은 Cursor가 필수입니다. 실행 후에는 Reviewer 승인과 SCM Manager(PR/merge) 단계가 필요합니다."
         : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
 
   const collabSurfaceVisible = memberSurface !== "human";
@@ -1251,6 +1258,8 @@ export function ProjectMembersSection({
     const st =
       orchKey === "reviewer" || orchKey === "security-reviewer" || orchKey === "quality-reviewer"
         ? "execution-review"
+        : orchKey === "scm-manager"
+          ? "scm-manager"
         : orchKey === "task-reviewer"
           ? "task"
           : "spec";
@@ -1746,6 +1755,16 @@ export function ProjectMembersSection({
             </p>
             <div style={{ display: "grid", gap: 12 }}>
               {EXECUTION_REVIEW_ROLES_UI.map((k) => renderOrchestrationRoleCard(k))}
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>형상관리 담당</h3>
+            <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
+              Reviewer 승인 후 PR 생성 및 merge를 담당합니다.
+            </p>
+            <div style={{ display: "grid", gap: 12 }}>
+              {SCM_MANAGER_ROLES_UI.map((k) => renderOrchestrationRoleCard(k))}
             </div>
           </div>
 

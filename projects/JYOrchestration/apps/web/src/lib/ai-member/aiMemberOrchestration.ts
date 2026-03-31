@@ -8,9 +8,10 @@ export type AiMemberRole =
   | "security-reviewer"
   | "quality-reviewer"
   | "spec-reviewer"
-  | "task-reviewer";
+  | "task-reviewer"
+  | "scm-manager";
 
-export type OrchestrationStage = "spec" | "task" | "execution-review";
+export type OrchestrationStage = "spec" | "task" | "execution-review" | "scm-manager";
 
 export type AiMemberConfig = {
   id: string;
@@ -28,9 +29,10 @@ const AI_MEMBER_ROLES: ReadonlySet<string> = new Set([
   "quality-reviewer",
   "spec-reviewer",
   "task-reviewer",
+  "scm-manager",
 ]);
 
-const ORCHESTRATION_STAGES: ReadonlySet<string> = new Set(["spec", "task", "execution-review"]);
+const ORCHESTRATION_STAGES: ReadonlySet<string> = new Set(["spec", "task", "execution-review", "scm-manager"]);
 
 /** Cursor 실행 후 검토 파이프라인에 참여하는 역할(순서) */
 export const EXECUTION_REVIEW_ROLE_ORDER: readonly AiMemberRole[] = [

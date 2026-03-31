@@ -61,11 +61,26 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    const proj = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { currentSpecVersionId: true },
+    });
+    const currentSpecId = proj?.currentSpecVersionId ?? null;
+
+    const taskWhere =
+      currentSpecId != null
+        ? {
+            projectId,
+            taskKind: "PRIMARY",
+            archivedAt: null,
+            status: { notIn: ["BLOCKED", "CANCELLED"] },
+            sourceSpecVersionId: currentSpecId,
+          }
+        : { projectId, id: { in: [] as string[] } };
+
     const runs = await prisma.taskRun.findMany({
       where: {
-        task: {
-          projectId,
-        },
+        task: taskWhere,
       },
       orderBy: [{ taskId: "asc" }, { createdAt: "desc" }],
       distinct: ["taskId"],

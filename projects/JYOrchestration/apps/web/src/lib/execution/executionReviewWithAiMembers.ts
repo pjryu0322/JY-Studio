@@ -30,13 +30,37 @@ function buildCommonContext(params: {
   cursorResult: CursorRunResult;
   repoUrl: string;
   stopOnTestFailure: boolean;
+  /** GitHub compare 기반: push된 실제 변경 증거 */
+  gitEvidence?: {
+    baseBranch: string;
+    headBranch: string;
+    headSha: string | null;
+    changedFiles: string[];
+    diffSummary: string;
+  } | null;
 }): string {
   const criteria = params.task.acceptanceCriteria.length
     ? params.task.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")
     : "(수용 기준 없음 — 설명만으로 판단)";
   const cr = params.cursorResult;
-  return `오케스트레이션 플랫폼의 검토자다. 실행은 Cursor(원격)가 수행했고, 아래는 그 **보고 결과**뿐이다.
-플랫폼은 저장소를 클론하거나 git을 실행하지 않는다.
+  const ge = params.gitEvidence;
+  const gitSection = ge
+    ? `
+[Git 증거(실제 push된 변경분, GitHub API compare 기반)]
+- base: ${ge.baseBranch}
+- head(branch): ${ge.headBranch}
+- headSha: ${ge.headSha ?? "(없음)"}
+
+[변경 파일 목록(실측)]
+${ge.changedFiles.length ? ge.changedFiles.join("\n") : "(없음)"}
+
+[diff 요약/patch 일부(실측)]
+${ge.diffSummary.slice(0, 18_000)}
+`
+    : "";
+
+  return `오케스트레이션 플랫폼의 검토자다. 실행은 Cursor(원격)가 수행했고, 아래는 Cursor의 **보고** + GitHub의 **실제 변경 증거**다.
+플랫폼은 저장소를 클론하거나 git을 실행하지 않는다(원격 API 기반).
 
 [대상 저장소 URL]
 ${params.repoUrl}
@@ -64,6 +88,8 @@ ${cr.changedFiles.length ? cr.changedFiles.join("\n") : "(없음)"}
 
 [실행 요약 / 로그 성격의 본문]
 ${cr.summary.slice(0, 14_000)}
+
+${gitSection}
 
 [공통 정책]
 - 출력은 반드시 JSON 한 객체만.
@@ -139,6 +165,13 @@ export async function tryRunExecutionReviewWithAiMembers(params: {
   cursorResult: CursorRunResult;
   repoUrl: string;
   stopOnTestFailure: boolean;
+  gitEvidence?: {
+    baseBranch: string;
+    headBranch: string;
+    headSha: string | null;
+    changedFiles: string[];
+    diffSummary: string;
+  } | null;
 }): Promise<{
   result: TaskEvaluationResult;
   usage: OpenAiRelayEvalUsage;

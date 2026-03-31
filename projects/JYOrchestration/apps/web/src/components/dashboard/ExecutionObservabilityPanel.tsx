@@ -50,21 +50,31 @@ function primaryOnly(tasks: TaskItem[]) {
   return tasks.filter((t) => t.taskKind === "PRIMARY").sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 
+/** 실제로 Cursor/평가 HTTP가 도는 중인 워크플로만 (pending_apply는 ‘막힘’이지 서버가 돌고 있는 상태가 아님) */
 function hasActiveWorkflowOnPrimary(primary: TaskItem[]): boolean {
   return primary.some((t) => {
     const w = String(t.executionWorkflowStatus ?? "").toLowerCase();
-    return (
-      w === EXECUTION_WORKFLOW.RUNNING ||
-      w === EXECUTION_WORKFLOW.PENDING_APPLY ||
-      w === EXECUTION_WORKFLOW.REVIEWING
-    );
+    return w === EXECUTION_WORKFLOW.RUNNING || w === EXECUTION_WORKFLOW.REVIEWING;
   });
+}
+
+function hasPendingApplyOnPrimary(primary: TaskItem[]): boolean {
+  return primary.some(
+    (t) => String(t.executionWorkflowStatus ?? "").toLowerCase() === EXECUTION_WORKFLOW.PENDING_APPLY
+  );
 }
 
 /** 전부 워크플로 완료(done) — 실패만 있는 경우는 READY로 남겨 재실행 가능하게 함 */
 function allPrimaryWorkflowDone(primary: TaskItem[]): boolean {
   if (primary.length === 0) return false;
-  return primary.every((t) => String(t.executionWorkflowStatus ?? "").toLowerCase() === EXECUTION_WORKFLOW.DONE);
+  return primary.every((t) => {
+    const w = String(t.executionWorkflowStatus ?? "").toLowerCase();
+    return (
+      w === EXECUTION_WORKFLOW.MERGED ||
+      w === EXECUTION_WORKFLOW.DONE ||
+      w === EXECUTION_WORKFLOW.PR_OPENED
+    );
+  });
 }
 
 function deriveControlPhase(args: {
@@ -88,7 +98,15 @@ function deriveControlPhase(args: {
   return "READY";
 }
 
-type RowKind = "done" | "running" | "pending" | "failed";
+type RowKind =
+  | "done"
+  | "pr_opened"
+  | "running"
+  | "pending"
+  | "failed"
+  | "review_pending"
+  | "review_rejected"
+  | "merge_pending";
 
 function deriveTaskRow(
   task: TaskItem,
@@ -101,9 +119,15 @@ function deriveTaskRow(
   if (wf === EXECUTION_WORKFLOW.FAILED || runSt === "FAILED") {
     return "failed";
   }
-  if (wf === EXECUTION_WORKFLOW.DONE || task.status === "DONE") {
+  if (wf === EXECUTION_WORKFLOW.PR_OPENED) {
+    return "pr_opened";
+  }
+  if (wf === EXECUTION_WORKFLOW.MERGED || wf === EXECUTION_WORKFLOW.DONE || task.status === "DONE") {
     return "done";
   }
+  if (wf === EXECUTION_WORKFLOW.REVIEW_PENDING) return "review_pending";
+  if (wf === EXECUTION_WORKFLOW.REVIEW_REJECTED) return "review_rejected";
+  if (wf === EXECUTION_WORKFLOW.MERGE_PENDING) return "merge_pending";
 
   const activeWf =
     wf === EXECUTION_WORKFLOW.RUNNING ||
@@ -125,8 +149,16 @@ function rowIcon(kind: RowKind): string {
   switch (kind) {
     case "done":
       return "✔";
+    case "pr_opened":
+      return "P";
     case "running":
       return "→";
+    case "review_pending":
+      return "R";
+    case "review_rejected":
+      return "!";
+    case "merge_pending":
+      return "M";
     case "failed":
       return "❌";
     default:
@@ -137,7 +169,31 @@ function rowIcon(kind: RowKind): string {
 function wfLabel(wf: string | null | undefined): string {
   const v = String(wf ?? "").trim();
   if (!v) return "—";
-  return v;
+  const w = v.toLowerCase();
+  switch (w) {
+    case EXECUTION_WORKFLOW.READY:
+      return "READY";
+    case EXECUTION_WORKFLOW.RUNNING:
+      return "RUNNING (Cursor)";
+    case EXECUTION_WORKFLOW.REVIEW_PENDING:
+      return "REVIEW_PENDING";
+    case EXECUTION_WORKFLOW.REVIEW_REJECTED:
+      return "REVIEW_REJECTED";
+    case EXECUTION_WORKFLOW.REVIEW_APPROVED:
+      return "REVIEW_APPROVED";
+    case EXECUTION_WORKFLOW.MERGE_PENDING:
+      return "MERGE_PENDING";
+    case EXECUTION_WORKFLOW.MERGED:
+      return "MERGED";
+    case EXECUTION_WORKFLOW.PR_OPENED:
+      return "PR_OPENED";
+    case EXECUTION_WORKFLOW.PENDING_APPLY:
+      return "PENDING_APPLY";
+    case EXECUTION_WORKFLOW.FAILED:
+      return "FAILED";
+    default:
+      return v;
+  }
 }
 
 function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps["live"]>) {
@@ -160,6 +216,7 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
 
   const primary = primaryOnly(tasks);
   const phase = deriveControlPhase({ primary, executionLoopPaused, executionLoopBusy });
+  const pendingApplyHint = hasPendingApplyOnPrimary(primary);
 
   let currentTaskId: string | null =
     orchestration.running?.id ?? orchestration.pendingGitReflection?.id ?? null;
@@ -173,7 +230,7 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
     run: taskRunMap[t.id],
   }));
 
-  const completedCount = rows.filter((r) => r.kind === "done").length;
+  const completedCount = rows.filter((r) => r.kind === "done" || r.kind === "pr_opened").length;
   const totalCount = primary.length;
   const progressPct = totalCount > 0 ? Math.round((100 * completedCount) / totalCount) : 0;
 
@@ -336,6 +393,13 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
         {!execSetupReady && phase === "READY" ? (
           <span style={{ fontSize: 12, color: "#b45309", lineHeight: 1.45 }}>
             실행 환경 검증을 완료한 뒤 실행할 수 있습니다.
+          </span>
+        ) : null}
+
+        {pendingApplyHint && phase === "READY" && execSetupReady ? (
+          <span style={{ fontSize: 12, color: "#9a3412", lineHeight: 1.45, maxWidth: 520 }}>
+            Git 반영이 플랫폼에서 확인되지 않은 Task(pending_apply)가 있습니다. 아래 「실행 시작」으로 해당 Task를
+            다시 시도하세요. (PR/푸시는 되었어도 Cursor API 응답만으로는 막힐 수 있습니다.)
           </span>
         ) : null}
       </div>
