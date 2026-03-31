@@ -25,6 +25,32 @@ export async function confirmTaskDraftsInTransaction(
     return { confirmedCount: 0, taskIds: [], promotedDraftRows: 0 };
   }
 
+  const specVersionId = drafts[0].specVersionId;
+  // 동일 Spec 버전 기준으로 Task를 "재생성"할 때는, 기존 활성 Task를 먼저 ARCHIVED 처리해
+  // UI/Execution Observability가 이전 Task 누적으로 보이지 않게 한다.
+  // (Task는 삭제하지 않고 archivedAt만 갱신)
+  const now = new Date();
+  const idsToArchive = await tx.task.findMany({
+    where: {
+      projectId,
+      sourceSpecVersionId: specVersionId,
+      archivedAt: null,
+      taskKind: "PRIMARY",
+    },
+    select: { id: true },
+  });
+  if (idsToArchive.length > 0) {
+    const idList = idsToArchive.map((r) => r.id);
+    await tx.task.updateMany({
+      where: { id: { in: idList } },
+      data: { archivedAt: now },
+    });
+    await tx.taskExecutionRun.updateMany({
+      where: { taskId: { in: idList } },
+      data: { archivedAt: now },
+    });
+  }
+
   const executableDrafts = drafts.filter((d) => nodeTypeFromTitle(d.title) === "task");
   const hierarchyDrafts = drafts.filter((d) => nodeTypeFromTitle(d.title) !== "task");
 

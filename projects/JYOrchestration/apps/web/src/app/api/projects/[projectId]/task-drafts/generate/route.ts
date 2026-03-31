@@ -4,13 +4,16 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
+import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { syncTaskDraftsForProjectSpecVersion } from "@/lib/project-spec/taskDraftGenerationService";
 
 type PostBody = {
   specVersionId?: string;
   model?: string;
   mode?: "initial" | "regenerate";
-  /** 하위 호환 필드. 서버는 설계→실행 파이프라인에 기능 요구(FR)만 사용(비기능은 requirement·nonFunctionalConstraints로만 보관). */
+  /** 기본 `single_pass`. 레거시 다단계만 `legacy_pipeline`. */
+  generationMode?: "single_pass" | "legacy_pipeline";
+  /** legacy_pipeline 전용. 비기능 파이프라인 힌트 */
   includeNonFunctionalRequirements?: boolean;
 };
 
@@ -87,12 +90,55 @@ export async function POST(
     }
 
     try {
+      const startedAt = Date.now();
+      const generationMode = body.generationMode === "legacy_pipeline" ? "legacy_pipeline" : "single_pass";
+      appendTaskProgressLog({
+        kind: "task_drafts",
+        phase: "generate_request",
+        projectId: id,
+        specVersionId,
+        userId,
+        detail: {
+          uiMode: body.mode ?? "initial",
+          generationMode,
+          includeNonFunctionalRequirements: Boolean(body.includeNonFunctionalRequirements),
+        },
+      });
+      console.info("[task-drafts/generate] start", {
+        projectId: id,
+        specVersionId,
+        mode: body.mode ?? "initial",
+        generationMode,
+        includeNonFunctionalRequirements: Boolean(body.includeNonFunctionalRequirements),
+      });
       const r = await syncTaskDraftsForProjectSpecVersion({
         projectId: id,
         specVersionId,
         userId,
         model,
+        generationMode,
         includeNonFunctionalInExecutionPipeline: Boolean(body.includeNonFunctionalRequirements),
+      });
+      appendTaskProgressLog({
+        kind: "task_drafts",
+        phase: "generate_http_ok",
+        projectId: id,
+        specVersionId,
+        userId,
+        detail: {
+          elapsedMs: Date.now() - startedAt,
+          createdCount: r.createdCount,
+          autoConfirmedTaskCount: r.autoConfirmedTaskCount ?? 0,
+          graphAutoRepaired: Boolean(r.graphAutoRepaired),
+        },
+      });
+      console.info("[task-drafts/generate] done", {
+        projectId: id,
+        specVersionId,
+        createdCount: r.createdCount,
+        autoConfirmedTaskCount: r.autoConfirmedTaskCount ?? 0,
+        graphAutoRepaired: Boolean(r.graphAutoRepaired),
+        elapsedMs: Date.now() - startedAt,
       });
       const tc = r.autoConfirmedTaskCount ?? 0;
       const msg =
@@ -120,6 +166,14 @@ export async function POST(
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      appendTaskProgressLog({
+        kind: "task_drafts",
+        phase: "generate_error",
+        projectId: id,
+        specVersionId,
+        userId,
+        detail: { message: msg.slice(0, 2000) },
+      });
       if (msg.startsWith("TASK_DRAFT_GRAPH_")) {
         return NextResponse.json(
           {
@@ -153,6 +207,31 @@ export async function POST(
             message:
               "기능 요구사항(FUNCTIONAL)이 없어 실행 Task를 만들 수 없습니다. Spec에 FR을 추가하거나, 비기능만 있다면 「비기능 요구를 Task 파이프에 포함」을 켜 보세요.",
             code: "NO_FUNCTIONAL_REQUIREMENTS",
+          },
+          { status: 400 }
+        );
+      }
+      if (
+        msg === "OPENAI_SINGLE_PASS_JSON_PARSE_FAILED" ||
+        msg === "OPENAI_SINGLE_PASS_INVALID_ROOT" ||
+        msg === "OPENAI_SINGLE_PASS_MISSING_TASKS_ARRAY"
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "AI가 올바른 JSON 형식으로 응답하지 않았습니다. 프롬프트를 조정한 뒤 다시 시도하세요.",
+            code: "SINGLE_PASS_INVALID_JSON",
+          },
+          { status: 502 }
+        );
+      }
+      if (msg === "OPENAI_SINGLE_PASS_NO_VALID_TASKS") {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "유효한 실행 Task가 없습니다. Spec·프롬프트 범위를 확인하거나, 출력이 비기능만 담고 있지 않은지 확인하세요.",
+            code: "SINGLE_PASS_NO_VALID_TASKS",
           },
           { status: 400 }
         );

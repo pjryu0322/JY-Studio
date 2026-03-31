@@ -1,6 +1,6 @@
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
 import { buildCursorExecutionPrompt } from "@/lib/execution/buildCursorExecutionPrompt";
-import { executeCursorRun } from "@/lib/execution/cursorExecutionAdapter";
+import { executeCursorRun, type ExecuteCursorRunOutcome } from "@/lib/execution/cursorExecutionAdapter";
 import { isCursorCodeReflectionConfirmed } from "@/lib/execution/cursorReflectionPolicy";
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
 import { countExecutionReviewAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
@@ -15,17 +15,97 @@ import {
   refreshWorkflowStates,
   updateTaskOrchestrationSnapshot,
 } from "@/lib/executionLoop/workflowState";
+import { reclaimStaleRunningWorkflowTasks } from "@/lib/executionLoop/staleRunningRecovery";
 import { pickNextReadyTask, type TaskForPick } from "./pickNextReadyTask";
 import type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 import { EXECUTION_WORKFLOW } from "./workflowConstants";
 import { normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
+import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
+import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAutoMergeService";
+import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
+import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/execution/scmManagerWithAiMembers";
+import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
+import { resolveGithubRepositoryFromEnv } from "@/lib/integration/githubIntegrationHints";
 
 export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 
 const loopLocks = new Set<string>();
+
+function parsePrNumberFromUrl(prUrl: string): number | null {
+  const m = String(prUrl).match(/\/pull\/(\d+)(?:\/|$)/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function findOpenPullRequestByHeadBranch(input: {
+  repoUrl: string;
+  headBranch: string;
+}): Promise<{ prUrl: string; prNumber: number } | null> {
+  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
+  if (!token) return null;
+
+  const envRepo = resolveGithubRepositoryFromEnv();
+  let owner: string | null = envRepo?.owner ?? null;
+  let repo: string | null = envRepo?.repo ?? null;
+  if (!owner || !repo) {
+    try {
+      const u = new URL(input.repoUrl);
+      const seg = u.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+      if (seg.length >= 2) {
+        owner = seg[0] ?? null;
+        repo = (seg[1] ?? "").replace(/\.git$/i, "");
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (!owner || !repo) return null;
+
+  const base = process.env.GITHUB_API_URL?.trim()?.replace(/\/$/, "") || "https://api.github.com";
+  const head = `${owner}:${input.headBranch}`;
+  const url = `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&head=${encodeURIComponent(
+    head
+  )}`;
+
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": "JYOrchestration-pr-opened-detector/1",
+    },
+  });
+  if (!res.ok) return null;
+
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(json)) return null;
+
+  for (const item of json) {
+    if (!item || typeof item !== "object") continue;
+    const htmlUrl = (item as Record<string, unknown>).html_url;
+    const numberRaw = (item as Record<string, unknown>).number;
+    const prUrl = typeof htmlUrl === "string" ? htmlUrl : null;
+    const prNumber =
+      typeof numberRaw === "number"
+        ? numberRaw
+        : typeof numberRaw === "string" && /^\d+$/.test(numberRaw)
+          ? Number(numberRaw)
+          : null;
+    if (prUrl && prNumber != null) {
+      return { prUrl, prNumber };
+    }
+  }
+  return null;
+}
 
 /**
  * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (AI 리뷰어 있으면) 멀티 리뷰 → 전이. 리뷰어 없으면 리뷰 단계 생략.
@@ -46,6 +126,13 @@ export async function runExecutionLoop(params: {
 
   try {
     const stubCursor = process.env.EXECUTION_LOOP_STUB_CURSOR === "1";
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "loop_start",
+      projectId,
+      userId: actorUserId,
+      detail: { singleTaskId: singleTaskId ?? null, stubCursor },
+    });
     console.info("[execution-loop] start", {
       projectId,
       actorUserId,
@@ -129,6 +216,8 @@ export async function runExecutionLoop(params: {
 
     await initializeLoopParticipants(projectId);
 
+    await reclaimStaleRunningWorkflowTasks(projectId);
+
     const firstRow = (await loadWorkflowGraphTasks(projectId))[0];
     if (firstRow) {
       await appendTaskHistory({
@@ -143,26 +232,61 @@ export async function runExecutionLoop(params: {
     }
 
     let lastTaskId = "";
+    let lastTaskSetKey = "";
 
     while (true) {
       if (isExecutionLoopPaused(projectId)) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "loop_stop",
+          projectId,
+          userId: actorUserId,
+          detail: { reason: "paused" },
+        });
         steps.push({ phase: "stop", reason: "paused" });
         return { ok: true, steps, message: "실행 루프가 일시정지 상태입니다." };
       }
 
-      const rows = await loadWorkflowGraphTasks(projectId);
+      let rows = await loadWorkflowGraphTasks(projectId);
+      const taskSetKey = rows.map((r) => r.id).join("|");
+      const needsWorkflowResync = taskSetKey !== lastTaskSetKey || rows.some((r) => r.executionWorkflowStatus == null);
+      if (needsWorkflowResync) {
+        console.log("[execution-loop] tasks selected:", rows.length);
+        console.log("[execution-loop] specVersion:", project.currentSpecVersionId);
+        await refreshWorkflowStates(projectId);
+        // 리프레시 이후 새로 READY로 전이된 Task 정보를 다시 로드한다.
+        rows = await loadWorkflowGraphTasks(projectId);
+        lastTaskSetKey = taskSetKey;
+      }
 
       if (!singleTaskId) {
-        const blockedByReflection = rows.some(
-          (r) => r.executionWorkflowStatus === EXECUTION_WORKFLOW.PENDING_APPLY
-        );
-        if (blockedByReflection) {
+        const blockedByReflection = rows.some((r) => r.executionWorkflowStatus === EXECUTION_WORKFLOW.PENDING_APPLY);
+        const blockedByReviewOrMerge = rows.some((r) => {
+          const s = String(r.executionWorkflowStatus ?? "").trim();
+          return (
+            s === EXECUTION_WORKFLOW.COMMITTED ||
+            s === EXECUTION_WORKFLOW.REVIEW_PENDING ||
+            s === EXECUTION_WORKFLOW.REVIEW_REJECTED ||
+            s === EXECUTION_WORKFLOW.REVIEW_APPROVED ||
+            s === EXECUTION_WORKFLOW.MERGE_PENDING
+          );
+        });
+        if (blockedByReflection || blockedByReviewOrMerge) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "loop_stop",
+            projectId,
+            userId: actorUserId,
+            detail: { reason: blockedByReflection ? "pending_git_reflection_blocks_loop" : "review_or_merge_blocks_loop" },
+          });
           steps.push({ phase: "stop", reason: "pending_git_reflection_blocks_loop" });
           return {
             ok: true,
             steps,
             message:
-              "Git 반영이 확인되지 않은 Task가 있어 자동 진행을 멈췄습니다. 상세 보기의 실행 기록을 확인하거나, 해당 Task ID로 단일 실행을 다시 시도하세요.",
+              blockedByReflection
+                ? "Git 반영이 확인되지 않은 Task가 있어 자동 진행을 멈췄습니다. 상세 보기의 실행 기록을 확인하거나, 해당 Task ID로 단일 실행을 다시 시도하세요."
+                : "리뷰/머지 대기 상태의 Task가 있어 자동 진행을 멈췄습니다. 먼저 해당 Task를 리뷰/머지 완료하세요.",
           };
         }
       }
@@ -262,7 +386,26 @@ export async function runExecutionLoop(params: {
           sourceSpecVersionId: true,
         },
       });
-      if (!taskRow) break;
+      if (!taskRow) {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.READY,
+            lastEvalSummary: "Task 행을 찾을 수 없어 running 상태를 해제했습니다.",
+          },
+        });
+        await refreshWorkflowStates(projectId);
+        continue;
+      }
+
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "task_picked",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { taskName: taskRow.name },
+      });
 
       const criteria = parseCriteria(taskRow.acceptanceCriteria);
 
@@ -315,32 +458,85 @@ export async function runExecutionLoop(params: {
         branch: branchPlan.branchName,
         runRecordId: execRun.id,
       });
-
-      const cursorOutcome = await executeCursorRun({
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "cursor_invoke",
         projectId,
-        workflowId: taskRow.sourceSpecVersionId ?? null,
-        executionSetup: {
-          cursorApiUrl: normalizeCursorApiBaseUrl(setup.cursorApiUrl),
-          cursorApiToken: setup.cursorApiToken ?? null,
-          gitRepoUrl: repoUrl,
-          baseBranch: setup.baseBranch,
-          branchStrategy: setup.branchStrategy,
-          branchPrefix: setup.branchPrefix,
-          autoCommit: setup.autoCommit !== false,
-          autoPush: setup.autoPush === true,
-          autoPr: setup.autoPr === true,
-          requireTestsBeforePush: setup.requireTestsBeforePush !== false,
-        },
-        task: {
-          id: taskRow.id,
-          title: taskRow.name,
-          description: taskRow.description,
-          acceptanceCriteria: criteria,
-        },
-        suggestedBranchName: branchPlan.branchName,
-        prompt,
-        allowedPaths: allowedGlobs.length ? allowedGlobs : undefined,
+        taskId,
+        userId: actorUserId,
+        detail: { branch: branchPlan.branchName, runRecordId: execRun.id },
       });
+
+      let cursorOutcome: ExecuteCursorRunOutcome;
+      try {
+        cursorOutcome = await executeCursorRun({
+          projectId,
+          workflowId: taskRow.sourceSpecVersionId ?? null,
+          executionSetup: {
+            cursorApiUrl: normalizeCursorApiBaseUrl(setup.cursorApiUrl),
+            cursorApiToken: setup.cursorApiToken ?? null,
+            gitRepoUrl: repoUrl,
+            baseBranch: setup.baseBranch,
+            branchStrategy: setup.branchStrategy,
+            branchPrefix: setup.branchPrefix,
+            autoCommit: setup.autoCommit !== false,
+            autoPush: setup.autoPush === true,
+            autoPr: setup.autoPr === true,
+            requireTestsBeforePush: setup.requireTestsBeforePush !== false,
+          },
+          task: {
+            id: taskRow.id,
+            title: taskRow.name,
+            description: taskRow.description,
+            acceptanceCriteria: criteria,
+          },
+          suggestedBranchName: branchPlan.branchName,
+          prompt,
+          allowedPaths: allowedGlobs.length ? allowedGlobs : undefined,
+        });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.error("[execution-loop] cursor threw (abnormal)", { taskId, errMsg });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_abnormal",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { message: errMsg.slice(0, 2000) },
+        });
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: {
+            status: "failed",
+            runError: errMsg.slice(0, 8000),
+            evaluationDecision: "failed",
+            evaluationReason: `cursor_exception: ${errMsg.slice(0, 2000)}`,
+          },
+        });
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.READY,
+            lastEvalResult: "retry",
+            lastEvalSummary: `Cursor 단계 예외로 중단: ${errMsg.slice(0, 1500)}`,
+          },
+        });
+        await updateTaskOrchestrationSnapshot(taskId, {
+          branch: branchPlan.branchName,
+          commitStatus: "failed",
+          pushStatus: "n/a",
+        });
+        await refreshWorkflowStates(projectId);
+        steps.push({ phase: "cursor", taskId, ok: false, error: errMsg });
+        if (singleTaskId) {
+          return { ok: false, steps, message: errMsg };
+        }
+        if (!effectiveAutoAdvance) {
+          return { ok: false, steps, message: errMsg };
+        }
+        continue;
+      }
 
       steps.push({
         phase: "cursor",
@@ -352,6 +548,20 @@ export async function runExecutionLoop(params: {
 
       if (cursorOutcome.ok) {
         const cr0 = cursorOutcome.result;
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_terminal",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: {
+            runId: cr0.runId,
+            branch: cr0.branchName,
+            commitHash: cr0.commitHash ?? null,
+            changedFileCount: cr0.changedFiles.length,
+            executionStatus: cr0.executionStatus,
+          },
+        });
         console.info("[execution-loop] cursor agent terminal (Git 반영은 별도 게이트에서 검증)", {
           taskId,
           runId: cr0.runId,
@@ -361,6 +571,17 @@ export async function runExecutionLoop(params: {
           executionStatus: cr0.executionStatus,
         });
       } else {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_failed",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: {
+            error: (cursorOutcome.error ?? "").slice(0, 2000),
+            logTail: cursorOutcome.logs?.slice(-8),
+          },
+        });
         console.error("[execution-loop] cursor failed", {
           taskId,
           error: cursorOutcome.error,
@@ -443,6 +664,21 @@ export async function runExecutionLoop(params: {
           changedFiles: cr.changedFiles.length,
           executionStatus: cr.executionStatus,
           finalCompletionReason: "blocked_no_git_evidence",
+        });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "git_reflection_gate",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: {
+            passed: false,
+            gateReason,
+            runId: cr.runId,
+            commitHash: cr.commitHash ?? null,
+            changedFileCount: cr.changedFiles.length,
+            outcome: "pending_apply",
+          },
         });
 
         await prisma.task.update({
@@ -536,6 +772,19 @@ export async function runExecutionLoop(params: {
         commitHash: cr.commitHash ?? null,
         changedFiles: cr.changedFiles.length,
       });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "git_reflection_gate",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: {
+          passed: true,
+          runId: cr.runId,
+          commitHash: cr.commitHash ?? null,
+          changedFileCount: cr.changedFiles.length,
+        },
+      });
 
       await prisma.task.update({
         where: { id: taskId },
@@ -557,29 +806,434 @@ export async function runExecutionLoop(params: {
         },
       });
 
-      if (noExecutionReviewers) {
-        console.info("[execution-loop] 리뷰 단계 생략됨 (AI 멤버 미설정)", { taskId, projectId });
+      // ---- 역할 분리 실행 모델 ----
+      // 1) Cursor 종료 후: GitHub compare로 실제 push된 변경 증거를 수집하고, "구현 완료" 상태로 전이한다.
+      const compare = await fetchGithubCompareSnapshot({
+        repoUrl,
+        base: setup.baseBranch,
+        head: cr.branchName,
+        maxFiles: 80,
+      });
+      const gitEvidence = compare.ok
+        ? {
+            baseBranch: setup.baseBranch,
+            headBranch: cr.branchName,
+            headSha: compare.data.headSha,
+            changedFiles: compare.data.changedFiles,
+            diffSummary: compare.data.diffSummary,
+          }
+        : null;
+
+      if (compare.ok) {
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: {
+            commitSha: compare.data.headSha ?? cr.commitHash ?? null,
+            changedFiles: compare.data.changedFiles as unknown as object,
+            gitSummary: compare.data.diffSummary.slice(0, 24_000),
+            commitStatus: compare.data.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
+            pushStatus: "pushed_by_cursor",
+          },
+        });
       } else {
-        console.info("[execution-loop] review start", { taskId, projectId });
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: {
+            commitStatus: "pushed_commit_unknown",
+            pushStatus: "unknown",
+            evaluationReason: `github_compare_failed:${compare.code}:${compare.message}`.slice(0, 8000),
+          },
+        });
       }
 
-      const evalPack = await evaluateExecutionResult({
-        projectId,
-        task: {
-          title: taskRow.name,
-          description: taskRow.description,
-          acceptanceCriteria: criteria,
+      const commitDetected = Boolean(gitEvidence?.headSha ?? cr.commitHash ?? null);
+      const pushDetected = compare.ok;
+
+      // RUNNING -> COMMITTED (커밋/푸시 증거 수집 완료)
+      if (commitDetected) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "commit_detected",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { headSha: gitEvidence?.headSha ?? cr.commitHash ?? null },
+        });
+      }
+      if (pushDetected) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "push_detected",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { branch: cr.branchName },
+        });
+      }
+
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.COMMITTED,
+          lastEvalResult: "committed",
+          lastEvalSummary: "Cursor commit/push 완료. PR(Open) 감지 후 다음 Task로 진행합니다.",
         },
-        cursorResult: cr,
-        changedFiles: cr.changedFiles,
-        summary: cr.summary,
-        acceptanceCriteria: criteria,
-        stopOnTestFailure,
-        stopOnOutOfScopeChange,
-        allowedPathGlobs: allowedGlobs,
-        repoUrl,
-        executionReviewerCount,
       });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "state_transition: RUNNING → COMMITTED",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: {
+          branch: cr.branchName,
+          headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
+          changedFileCount: gitEvidence?.changedFiles.length ?? null,
+          compareOk: compare.ok,
+        },
+      });
+
+      // COMMITTED -> PR_OPENED (PR 생성/업데이트 감지 시 즉시 완료 처리)
+      let prUrl = typeof cr.prUrl === "string" ? cr.prUrl : null;
+      let prNumber = prUrl ? parsePrNumberFromUrl(prUrl) : null;
+
+      // Cursor 응답에 prUrl이 없을 수 있으므로, push 성공/브랜치 기준으로 open PR fallback 검색
+      if ((pushDetected && (!prUrl || prNumber == null)) || !prUrl || prNumber == null) {
+        const found = await findOpenPullRequestByHeadBranch({
+          repoUrl,
+          headBranch: cr.branchName,
+        });
+        if (found) {
+          prUrl = found.prUrl;
+          prNumber = found.prNumber;
+        }
+      }
+
+      if (prUrl && prNumber != null) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "pr_detected",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { prUrl, prNumber, branch: cr.branchName },
+        });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "state_transition: COMMITTED → PR_OPENED",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { prUrl, prNumber, branch: cr.branchName },
+        });
+
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: {
+            status: "done",
+            evaluationDecision: "done",
+            prStatus: `open:${prNumber}:${prUrl}`,
+            pushStatus: "pr_opened",
+          },
+        });
+
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.PR_OPENED,
+            status: "DONE",
+            lastEvalResult: "pr_opened",
+            lastEvalSummary: "PR이 생성/열림. 머지/리뷰 대기 없이 다음 Task로 진행합니다.",
+            loopRetryCount: 0,
+          },
+        });
+
+        await updateTaskOrchestrationSnapshot(taskId, {
+          branch: cr.branchName,
+          commitStatus: commitDetected ? "pushed_commit_detected" : "pushed_commit_unknown",
+          pushStatus: "pr_opened",
+          commitSha: (gitEvidence?.headSha ?? cr.commitHash ?? null) as string | null,
+          changedFileCount: (gitEvidence?.changedFiles.length ?? null) as number | null,
+        });
+
+        await refreshWorkflowStates(projectId);
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "next_task_triggered",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { prNumber, prUrl },
+        });
+        if (singleTaskId || !effectiveAutoAdvance) {
+          return { ok: true, steps, message: "PR이 열렸습니다(PR_OPENED). 자동 진행이 꺼져 루프를 종료합니다." };
+        }
+        continue;
+      }
+
+      // PR(Open) 감지 실패: 기존(리뷰/머지) 경로로 폴백한다.
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_PENDING,
+          lastEvalResult: "review_pending",
+          lastEvalSummary: "Cursor 구현 완료. PR(Open) 감지 실패: GitHub의 실제 변경분 기준으로 AI 리뷰 대기 중입니다.",
+        },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "review_pending",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: {
+          branch: cr.branchName,
+          headSha: gitEvidence?.headSha ?? null,
+          changedFileCount: gitEvidence?.changedFiles.length ?? null,
+          compareOk: compare.ok,
+          compareError: compare.ok ? null : `${compare.code}:${compare.message}`.slice(0, 400),
+          prDetected: false,
+        },
+      });
+
+      // 2) Reviewer 단계 (execution-review). 반드시 실제 GitHub compare 기반 증거를 포함한다.
+      if (executionReviewerCount === 0) {
+        // Reviewer가 없으면 정책상 진행 불가로 막는다 (역할 분리 강제).
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_REJECTED,
+            lastEvalResult: "review_rejected",
+            lastEvalSummary: "AI Reviewer가 설정되지 않아 자동 리뷰를 수행할 수 없습니다. Project Members에서 reviewer를 추가하세요.",
+          },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: false, steps, message: "AI Reviewer 미설정" };
+      }
+
+      console.info("[execution-loop] reviewer start", { taskId, projectId });
+      let evalPack: Awaited<ReturnType<typeof evaluateExecutionResult>>;
+      try {
+        evalPack = await evaluateExecutionResult({
+          projectId,
+          task: {
+            title: taskRow.name,
+            description: taskRow.description,
+            acceptanceCriteria: criteria,
+          },
+          cursorResult: cr,
+          changedFiles: gitEvidence?.changedFiles ?? cr.changedFiles,
+          summary: cr.summary,
+          acceptanceCriteria: criteria,
+          stopOnTestFailure,
+          stopOnOutOfScopeChange,
+          allowedPathGlobs: allowedGlobs,
+          repoUrl,
+          executionReviewerCount,
+          gitEvidence,
+        });
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_REJECTED,
+            lastEvalResult: "review_rejected",
+            lastEvalSummary: `리뷰 단계 예외: ${errMsg.slice(0, 1500)}`,
+          },
+        });
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: { status: "failed", evaluationDecision: "failed", evaluationReason: `review_exception:${errMsg}`.slice(0, 8000), runError: errMsg.slice(0, 8000) },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: false, steps, message: errMsg };
+      }
+
+      const reviewerVerdict = evalPack.result.decision;
+      await prisma.taskExecutionRun.update({
+        where: { id: execRun.id },
+        data: {
+          evaluationReason: evalPack.result.reason.slice(0, 8000),
+          evaluationDecision: reviewerVerdict,
+          status: "reviewing",
+          ...(evalPack.reviewerSteps.length > 0 ? { evaluationReviewerSteps: evalPack.reviewerSteps as object } : {}),
+        },
+      });
+
+      if (reviewerVerdict !== "done") {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_REJECTED,
+            lastEvalResult: "review_rejected",
+            lastEvalSummary: evalPack.result.reason,
+          },
+        });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "review_rejected",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { verdict: reviewerVerdict, reason: evalPack.result.reason.slice(0, 1200) },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: false, steps, message: "Reviewer rejected/retry" };
+      }
+
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_APPROVED,
+          lastEvalResult: "review_approved",
+          lastEvalSummary: evalPack.result.reason,
+        },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "review_approved",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { reason: evalPack.result.reason.slice(0, 1200) },
+      });
+
+      // 3) SCM Manager 단계: PR 생성 + merge (Cursor는 절대 PR/merge 하지 않음)
+      const scmCount = await countScmManagerAiMembers(projectId);
+      if (scmCount === 0) {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
+            lastEvalResult: "merge_pending",
+            lastEvalSummary: "SCM Manager 미설정: PR 생성/merge를 수행할 수 없습니다.",
+          },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: false, steps, message: "SCM Manager 미설정" };
+      }
+
+      const scmDecisionPack = await tryRunScmManagerWithAiMembers({
+        projectId,
+        repoUrl,
+        taskId,
+        taskTitle: taskRow.name,
+        taskDescription: taskRow.description,
+        branch: cr.branchName,
+        baseBranch: setup.baseBranch,
+        reviewerDecision: reviewerVerdict,
+        reviewerSummary: evalPack.result.reason,
+      });
+      if (!scmDecisionPack || scmDecisionPack.decision !== "approve_merge") {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
+            lastEvalResult: "merge_pending",
+            lastEvalSummary: scmDecisionPack?.summary || "SCM Manager 판단 대기/보류",
+          },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: true, steps, message: "SCM Manager hold" };
+      }
+
+      await prisma.task.update({
+        where: { id: taskId },
+        data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalResult: "merge_pending" },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "merge_pending",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { branch: cr.branchName },
+      });
+
+      const prCreate = await createGithubPullRequestFromBranch({
+        repoUrl,
+        baseBranch: setup.baseBranch,
+        headBranch: cr.branchName,
+        title: `[auto] ${taskRow.name}`.slice(0, 240),
+        body: `Automated by JYOrchestration SCM Manager.\n\nTask: ${taskId}\nBranch: ${cr.branchName}\n\nReviewer: approved\n\nSummary:\n${evalPack.result.reason}`.slice(0, 6000),
+      });
+      if (!prCreate.ok) {
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: { prStatus: `pr_create_failed:${prCreate.code}`.slice(0, 80) },
+        });
+        await prisma.task.update({
+          where: { id: taskId },
+          data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: prCreate.message },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: false, steps, message: prCreate.message };
+      }
+
+      await prisma.taskExecutionRun.update({
+        where: { id: execRun.id },
+        data: { prStatus: "open", pushStatus: "pushed_by_cursor" },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "pr_created",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { prUrl: prCreate.data.pullRequestUrl, prNumber: prCreate.data.pullRequestNumber },
+      });
+
+      if (!isAutoMergeEnabled()) {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: "PR 생성 완료. 자동 merge 비활성화." },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: true, steps, message: "PR created; merge pending" };
+      }
+
+      const mr = await autoMergePullRequest({ prUrl: prCreate.data.pullRequestUrl, commitTitle: `Auto-merge: ${taskRow.name}`.slice(0, 240) });
+      if (!mr.ok) {
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: { prStatus: `merge_failed:${mr.code}`.slice(0, 80) },
+        });
+        await prisma.task.update({
+          where: { id: taskId },
+          data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING, lastEvalSummary: mr.message },
+        });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "auto_merge_failed",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { prUrl: prCreate.data.pullRequestUrl, code: mr.code, message: mr.message, httpStatus: mr.httpStatus, ...(mr.detail ?? {}) },
+        });
+        await refreshWorkflowStates(projectId);
+        return { ok: false, steps, message: mr.message };
+      }
+
+      await prisma.taskExecutionRun.update({
+        where: { id: execRun.id },
+        data: { prStatus: "merged", status: "done", evaluationDecision: "done" },
+      });
+      await prisma.task.update({
+        where: { id: taskId },
+        data: { executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED, status: "DONE", lastEvalResult: "merged", lastEvalSummary: "Merged to main." },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "merged",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { prUrl: prCreate.data.pullRequestUrl },
+      });
+      await refreshWorkflowStates(projectId);
+
+      // merge 완료 이후에만 다음 Task를 진행할 수 있으므로, 루프는 계속 진행 가능
 
       if (noExecutionReviewers) {
         console.info("[execution-loop] review skipped (cursor-only path)", {
@@ -715,9 +1369,11 @@ export async function runExecutionLoop(params: {
         if (setup.autoPr) {
           await prisma.taskExecutionRun.update({
             where: { id: execRun.id },
-            data: { prStatus: "pending_capability" },
+            data: { prStatus: cr.prUrl ? "pr_reported_by_cursor" : "pending_capability" },
           });
         }
+
+        const prOpenedNow = Boolean(cr.prUrl);
 
         console.info("[execution-loop][completion]", {
           taskId,
@@ -729,14 +1385,84 @@ export async function runExecutionLoop(params: {
           verdict,
           reviewSkipped: noExecutionReviewers,
         });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "task_done",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: {
+            runId: cr.runId,
+            verdict,
+            branch: cr.branchName,
+            commitHash: cr.commitHash ?? null,
+            changedFileCount: fileCount,
+            reviewSkipped: noExecutionReviewers,
+          },
+        });
+
+        // PR_OPENED 단계에서는 “머지 완료”를 기다리지 않습니다.
+        // (자동 머지는 background로 시도; 다음 Task 진행은 PR_OPENED 기준)
+        if (setup.autoPr && isAutoMergeEnabled() && cr.prUrl) {
+          const prUrlNow = cr.prUrl;
+          void (async () => {
+            appendTaskProgressLog({
+              kind: "execution",
+              phase: "auto_merge_start",
+              projectId,
+              taskId,
+              userId: actorUserId,
+              detail: { prUrl: prUrlNow },
+            });
+            const mr = await autoMergePullRequest({
+              prUrl: prUrlNow,
+              commitTitle: `Auto-merge: ${taskRow.name}`.slice(0, 240),
+            });
+            if (mr.ok) {
+              await prisma.taskExecutionRun.update({
+                where: { id: execRun.id },
+                data: { prStatus: "merged" },
+              });
+              appendTaskProgressLog({
+                kind: "execution",
+                phase: "auto_merge_ok",
+                projectId,
+                taskId,
+                userId: actorUserId,
+                detail: { prUrl: prUrlNow, ...mr.detail },
+              });
+            } else {
+              await prisma.taskExecutionRun.update({
+                where: { id: execRun.id },
+                data: { prStatus: `merge_failed:${mr.code}`.slice(0, 80) },
+              });
+              appendTaskProgressLog({
+                kind: "execution",
+                phase: "auto_merge_failed",
+                projectId,
+                taskId,
+                userId: actorUserId,
+                detail: {
+                  prUrl: prUrlNow,
+                  code: mr.code,
+                  message: mr.message,
+                  httpStatus: mr.httpStatus,
+                  ...(mr.detail ?? {}),
+                },
+              });
+            }
+          })();
+        }
 
         await prisma.task.update({
           where: { id: taskId },
           data: {
-            executionWorkflowStatus: EXECUTION_WORKFLOW.DONE,
+            executionWorkflowStatus: prOpenedNow ? EXECUTION_WORKFLOW.PR_OPENED : EXECUTION_WORKFLOW.DONE,
             status: "DONE",
-            lastEvalResult: "done",
-            lastEvalSummary: evalR.reason,
+            lastEvalResult: prOpenedNow ? "pr_opened" : "done",
+            lastEvalSummary: prOpenedNow
+              ? "Cursor/플랫폼이 PR을 열었습니다. PR_OPENED 기반으로 다음 Task를 진행합니다."
+              : evalR.reason,
             loopRetryCount: 0,
           },
         });
@@ -749,7 +1475,7 @@ export async function runExecutionLoop(params: {
         await updateTaskOrchestrationSnapshot(taskId, {
           branch: cr.branchName,
           commitStatus: commitSnapshotStatus,
-          pushStatus: "cursor",
+          pushStatus: prOpenedNow ? "pr_opened" : "cursor",
           commitSha: cr.commitHash ?? null,
           changedFileCount: fileCount,
         });

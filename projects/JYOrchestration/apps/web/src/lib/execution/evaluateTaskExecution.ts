@@ -38,6 +38,13 @@ export async function evaluateExecutionResult(params: {
   stopOnOutOfScopeChange: boolean;
   allowedPathGlobs: string[];
   repoUrl: string;
+  gitEvidence?: {
+    baseBranch: string;
+    headBranch: string;
+    headSha: string | null;
+    changedFiles: string[];
+    diffSummary: string;
+  } | null;
   /** 미전달 시 projectId로 조회. 0이면 AI 리뷰·OpenAI 릴레이 평가를 모두 생략하고 통과 처리 */
   executionReviewerCount?: number;
 }): Promise<{
@@ -87,7 +94,7 @@ export async function evaluateExecutionResult(params: {
     }
   }
 
-  const mergedForReflection: Pick<CursorRunResult, "commitHash" | "changedFiles" | "summary"> = {
+  const mergedForReflection: Pick<CursorRunResult, "commitHash" | "changedFiles" | "summary" | "prUrl"> = {
     ...params.cursorResult,
     changedFiles: files,
     summary,
@@ -135,6 +142,7 @@ export async function evaluateExecutionResult(params: {
       cursorResult: cursorPayload,
       repoUrl: params.repoUrl,
       stopOnTestFailure: params.stopOnTestFailure,
+      gitEvidence: params.gitEvidence ?? null,
     });
     if (memberPack) {
       return {

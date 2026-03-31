@@ -70,10 +70,21 @@ export function executionBoardBucket(input: {
     return "running";
   }
 
+  // 리뷰/머지 단계는 "진행 중"이 아니라 "대기/차단"으로 분류(merge 전 다음 Task 금지)
+  if (
+    ew === EXECUTION_WORKFLOW.COMMITTED ||
+    ew === EXECUTION_WORKFLOW.REVIEW_PENDING ||
+    ew === EXECUTION_WORKFLOW.REVIEW_REJECTED ||
+    ew === EXECUTION_WORKFLOW.REVIEW_APPROVED ||
+    ew === EXECUTION_WORKFLOW.MERGE_PENDING
+  ) {
+    return "blocked";
+  }
+
   if (input.flow === "DONE") {
     return "completed";
   }
-  if (ew === EXECUTION_WORKFLOW.DONE) {
+  if (ew === EXECUTION_WORKFLOW.MERGED || ew === EXECUTION_WORKFLOW.DONE || ew === EXECUTION_WORKFLOW.PR_OPENED) {
     return "completed";
   }
 

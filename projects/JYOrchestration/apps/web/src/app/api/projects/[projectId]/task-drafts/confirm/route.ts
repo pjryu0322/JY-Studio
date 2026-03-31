@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
+import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { confirmTaskDraftsToTasks } from "@/lib/project-spec/confirmTaskDraftsService";
 
 type PostBody = {
@@ -78,6 +79,20 @@ export async function POST(
           ? `${r.confirmedCount}개 Task 초안을 실제 Task로 반영했습니다.`
           : `초안 ${r.promotedDraftRows ?? 0}개를 확정 처리했습니다.`;
 
+      appendTaskProgressLog({
+        kind: "task_drafts",
+        phase: "manual_confirm_ok",
+        projectId: id,
+        userId,
+        detail: {
+          confirmAll,
+          draftIdCount: draftIds.length,
+          confirmedCount: r.confirmedCount,
+          taskIds: r.taskIds,
+          promotedDraftRows: r.promotedDraftRows ?? 0,
+        },
+      });
+
       return NextResponse.json({
         success: true,
         message: msg,
@@ -89,6 +104,13 @@ export async function POST(
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      appendTaskProgressLog({
+        kind: "task_drafts",
+        phase: "manual_confirm_error",
+        projectId: id,
+        userId,
+        detail: { message: msg.slice(0, 2000) },
+      });
       if (msg === "DRAFT_IDS_OR_CONFIRM_ALL_REQUIRED") {
         return NextResponse.json(
           { success: false, message: "draftIds 또는 confirmAll이 필요합니다." },

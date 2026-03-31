@@ -29,6 +29,8 @@ export type Project = {
   currentSpecVersionId?: string | null;
   /** Task 생성(요구사항 추출) 사용자 프롬프트 템플릿 (null이면 기본값 사용) */
   taskPrompt?: string | null;
+  /** 단일 호출 Task 생성용 템플릿 (null이면 기본값) */
+  taskGenerationPrompt?: string | null;
 };
 
 /** 확정 Project Spec 버전 행 (append-only) */

@@ -22,6 +22,7 @@ import {
   countTaskRunsByProjectId,
   countTasksByProjectId,
 } from "@/lib/service/taskService";
+import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import {
   getExecutionQueueStatus,
   type ExecutionQueueStatusSnapshot,
@@ -681,7 +682,13 @@ export async function getProjectObservabilitySnapshot(
   const currentSpecVersionId = projectRow?.currentSpecVersionId ?? null;
   const activeTaskWhere =
     currentSpecVersionId != null
-      ? { projectId, archivedAt: null, sourceSpecVersionId: currentSpecVersionId }
+      ? {
+          projectId,
+          taskKind: "PRIMARY",
+          archivedAt: null,
+          status: { notIn: ["BLOCKED", "CANCELLED"] },
+          sourceSpecVersionId: currentSpecVersionId,
+        }
       : { projectId, id: { in: [] as string[] } };
 
   const [
@@ -698,7 +705,7 @@ export async function getProjectObservabilitySnapshot(
   ] = await Promise.all([
     prisma.task.findMany({
       where: activeTaskWhere,
-      select: { id: true, status: true },
+      select: { id: true, status: true, executionWorkflowStatus: true },
     }),
     prisma.taskRun.findMany({
       where: { task: activeTaskWhere },
@@ -744,7 +751,12 @@ export async function getProjectObservabilitySnapshot(
       running += 1;
     } else if (runStatus === "FAILED") {
       failed += 1;
-    } else if (t.status === "DONE") {
+    } else if (
+      t.status === "DONE" ||
+      String(t.executionWorkflowStatus ?? "").toLowerCase() === EXECUTION_WORKFLOW.PR_OPENED ||
+      String(t.executionWorkflowStatus ?? "").toLowerCase() === EXECUTION_WORKFLOW.MERGED ||
+      String(t.executionWorkflowStatus ?? "").toLowerCase() === EXECUTION_WORKFLOW.DONE
+    ) {
       done += 1;
     } else {
       todo += 1;

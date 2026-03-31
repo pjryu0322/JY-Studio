@@ -176,6 +176,7 @@ export async function postProjectTaskDraftsGenerate(
     specVersionId?: string;
     model?: string;
     mode?: "initial" | "regenerate";
+    generationMode?: "single_pass" | "legacy_pipeline";
     includeNonFunctionalRequirements?: boolean;
   }
 ) {
@@ -556,6 +557,34 @@ export async function patchProjectTaskPrompt(projectId: string, body: { taskProm
     body: JSON.stringify(body),
   });
   const json = (await res.json()) as ApiResponse<{ taskPrompt: string | null }>;
+  return { res, json };
+}
+
+/** F-1-3-5 단일 호출 Task 생성용 템플릿 */
+export type ProjectTaskGenerationPromptDto = {
+  taskGenerationPrompt: string | null;
+  defaultPrompt: string;
+};
+
+export async function fetchProjectTaskGenerationPrompt(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-generation-prompt`, { credentials: "include" });
+  const json = (await res.json()) as ApiResponse<ProjectTaskGenerationPromptDto>;
+  return { res, json };
+}
+
+export async function patchProjectTaskGenerationPrompt(
+  projectId: string,
+  body: { taskGenerationPrompt: string }
+) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/task-generation-prompt`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as ApiResponse<{ taskGenerationPrompt: string | null }>;
   return { res, json };
 }
 

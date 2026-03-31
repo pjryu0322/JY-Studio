@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
       where: {
         projectId,
         archivedAt: null,
+        taskKind: "PRIMARY",
+        status: { notIn: ["BLOCKED", "CANCELLED"] },
         ...(currentSpecId
           ? { sourceSpecVersionId: currentSpecId }
           : {
