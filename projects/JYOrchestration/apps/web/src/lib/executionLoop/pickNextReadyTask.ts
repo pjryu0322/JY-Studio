@@ -6,6 +6,8 @@ export type TaskForPick = {
   status: string;
   dependsOnTaskIds: unknown;
   executionWorkflowStatus: string | null;
+  /** ENV_TEST 등은 자동 실행 루프에서 제외(설정 화면에서 단일 실행만) */
+  taskKind?: string | null;
 };
 
 function depsOf(t: TaskForPick): string[] {
@@ -28,6 +30,7 @@ function wf(t: TaskForPick): ExecutionWorkflowStatus | null {
 export function pickNextReadyTask(tasks: TaskForPick[]): TaskForPick | undefined {
   const byId = new Map(tasks.map((t) => [t.id, t] as const));
   const candidates = tasks.filter((t) => {
+    if (String(t.taskKind ?? "").trim() === "ENV_TEST") return false;
     if (t.status !== "TODO") return false;
     if (wf(t) !== EXECUTION_WORKFLOW.READY) return false;
     // 다음 Task는 "PR_OPENED" 이후에만 가능

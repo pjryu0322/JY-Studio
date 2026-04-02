@@ -282,6 +282,15 @@ model ExecutionSetup {
   branchStrategy  String
   branchPrefix    String?
 
+  /// GitHub auth (platform-managed)
+  /// 평문 DB 저장(백업·접근 통제). 일반 GET/PATCH 응답에는 미포함·마스킹만. 소유자 일시 확인은 전용 reveal 엔드포인트로만.
+  githubAccessToken String? @db.Text
+  githubAccessTokenMasked String?
+  /// GitHub 토큰으로 API 접근이 가능한지 — null이면 아직 검증 안 함
+  githubAuthConnectionOk Boolean?
+  githubAuthValidatedAt DateTime?
+  githubAuthValidationError String? @db.Text
+
   /// Cursor executor
   cursorApiUrl    String
   /// 평문 DB 저장(백업·접근 통제). 일반 GET/PATCH 응답에는 미포함·마스킹만. 소유자 일시 확인은 전용 reveal API만.
@@ -379,6 +388,18 @@ model TaskExecutionRun {
   retryCount       Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  /// 터미널 성공/실패 등 확정 시각(ENV_TEST PR_OPENED 등)
+  completedAt      DateTime?
+  /// ENV_TEST 스모크: GitHub PR squash 머지 후 merge commit SHA
+  mergeCommitSha   String?
+  /// ENV_TEST 스모크: 머지 확정 시각
+  mergedAt         DateTime?
+  /// ENV_TEST 스모크: 원격 테스트 브랜치 삭제 완료 시각(옵션)
+  envTestRemoteBranchDeletedAt DateTime?
+  /// ENV_TEST 머지 스모크: 머지 차단(가드 실패 등) 사유
+  envTestMergeBlockedReason String?
+  /// ENV_TEST 머지 스모크: 머지 안전 가드 시작 시각(머지 진행 중 UI 표시에 사용)
+  envTestMergeStartedAt DateTime?
   /// 스펙 전환 등으로 소속 Task가 보관되면 함께 보관(현재 스펙 실행·관측 분리)
   archivedAt       DateTime?
 

@@ -33,6 +33,12 @@ const EXECUTION_SETUP_ADD_COLUMNS_IF_NOT_EXISTS: readonly string[] = [
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiConnectionOk" BOOLEAN`,
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiValidatedAt" TIMESTAMP(3)`,
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiValidationError" TEXT`,
+  // 20260402120000_execution_setup_github_token
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAccessToken" TEXT`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAccessTokenMasked" TEXT`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthConnectionOk" BOOLEAN`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidatedAt" TIMESTAMP(3)`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidationError" TEXT`,
 ];
 
 /** Wrong snake_case columns from an earlier mistaken script — merge into camelCase then drop. */

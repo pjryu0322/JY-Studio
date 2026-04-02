@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { fetchExecutionSetup, patchExecutionSetup, postExecutionSetupValidate } from "@/components/project-spec/api";
+import {
+  fetchEnvironmentTestLast,
+  fetchExecutionSetup,
+  patchExecutionSetup,
+  postEnvironmentTestRun,
+  postExecutionSetupValidate,
+  postRevealGithubAccessToken,
+  type EnvironmentTestLastDto,
+} from "@/components/project-spec/api";
+import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
 import { ExecutionSetupPanel } from "@/components/project-spec/ExecutionSetupPanel";
 import { formatTestedAt } from "@/components/project-spec/format";
@@ -40,6 +49,78 @@ function readinessTone(ok: boolean | null | undefined): "muted" | "ok" | "bad" |
   return "warn";
 }
 
+function normalizeWorkflowForUi(w: string | null | undefined): string {
+  return String(w ?? "").trim().toLowerCase();
+}
+
+function environmentTestWorkflowLabel(wf: string | null | undefined): string {
+  const w = normalizeWorkflowForUi(wf);
+  if (!w) return "알 수 없음";
+  if (w === EXECUTION_WORKFLOW.MERGED) return "테스트 PR 머지 완료";
+  if (w === EXECUTION_WORKFLOW.PR_OPENED) return "PR 생성 완료";
+  if (w === EXECUTION_WORKFLOW.PENDING_APPLY) return "GitHub 반영 확인 중";
+  if (w === EXECUTION_WORKFLOW.FAILED) return "실패";
+  if (w === EXECUTION_WORKFLOW.COMMITTED) return "푸시 확인됨 (PR 처리 중)";
+  if (w === EXECUTION_WORKFLOW.REVIEWING) return "검토·동기화 중";
+  if (w === EXECUTION_WORKFLOW.RUNNING) return "실행 중";
+  return wf ?? w;
+}
+
+/** 내부 워크플로 값(예: pr_opened) — 보조 표기용 */
+function environmentTestWorkflowInternalCode(wf: string | null | undefined): string | null {
+  const w = normalizeWorkflowForUi(wf);
+  if (w === EXECUTION_WORKFLOW.PR_OPENED) return "pr_opened";
+  if (w === EXECUTION_WORKFLOW.MERGED) return "merged";
+  return null;
+}
+
+function environmentTestTaskStatusKorean(taskStatus: string | undefined): string | null {
+  const s = String(taskStatus ?? "").trim();
+  if (!s || s === "TODO") return null;
+  if (s === "MERGED") return "머지됨";
+  if (s === "DONE") return "완료";
+  if (s === "IN_PROGRESS") return "진행 중";
+  return s;
+}
+
+function environmentTestStatusMessage(wf: string | null | undefined, taskStatus: string | undefined): string {
+  const w = normalizeWorkflowForUi(wf);
+  const ts = String(taskStatus ?? "").trim();
+  if (w === EXECUTION_WORKFLOW.FAILED) return "환경 연결 테스트에 실패했습니다";
+  if (w === EXECUTION_WORKFLOW.MERGED) return "테스트 PR 머지가 완료되었습니다";
+  if (w === EXECUTION_WORKFLOW.PR_OPENED) return "테스트 PR 생성이 완료되었습니다";
+  if (w === EXECUTION_WORKFLOW.PENDING_APPLY) {
+    return "GitHub 반영 확인 중";
+  }
+  if (w === EXECUTION_WORKFLOW.COMMITTED || w === EXECUTION_WORKFLOW.REVIEWING) {
+    return "PR 생성 중";
+  }
+  if (w === EXECUTION_WORKFLOW.RUNNING || w === normalizeWorkflowForUi(EXECUTION_WORKFLOW.REVIEW_PENDING)) {
+    return "테스트 Task를 실행 중입니다";
+  }
+  if (ts === "MERGED") return "테스트 PR 머지가 완료되었습니다";
+  if (ts === "DONE") return "테스트 PR 생성이 완료되었습니다";
+  return "마지막 연결 테스트 상태를 확인하세요.";
+}
+
+/** PR_OPENED 이후 후속 자동 진행 한 줄 요약(중복 '다음 Task' 문구 없음) */
+function environmentTestFollowUpLine(last: EnvironmentTestLastDto): string | null {
+  const wf = normalizeWorkflowForUi(last.workflowStatus);
+  if (wf !== EXECUTION_WORKFLOW.PR_OPENED && wf !== EXECUTION_WORKFLOW.MERGED) return null;
+  const mergeInProgress = wf === EXECUTION_WORKFLOW.PR_OPENED && Boolean(last.envTestMergeStartedAt) && !last.mergedAt;
+  if (mergeInProgress) return null;
+  if (last.nextTaskReady === true) {
+    return "후속 작업을 바로 시작할 수 있습니다.";
+  }
+  if (last.nextTaskBlockedReason) {
+    return last.nextTaskBlockedReason;
+  }
+  if (last.nextTaskId) {
+    return "후속 작업은 아직 시작 조건을 충족하지 않습니다.";
+  }
+  return "이어서 자동으로 시작할 작업이 없습니다.";
+}
+
 type GitLinkDraft = {
   gitRepoUrl: string;
   gitRepoProvider: string;
@@ -72,6 +153,12 @@ export function ProjectExecutionEnvironmentPanel({
     baseBranch: "main",
   });
   const [busyGit, setBusyGit] = useState<"save" | "validate-repo" | null>(null);
+  const [envTestLast, setEnvTestLast] = useState<EnvironmentTestLastDto | null>(null);
+  const [busyEnvTest, setBusyEnvTest] = useState(false);
+  const [busyGithubAuth, setBusyGithubAuth] = useState<"save" | "validate" | "delete" | "reveal" | null>(null);
+  const [githubTokenDraft, setGithubTokenDraft] = useState("");
+  const [githubReplaceMode, setGithubReplaceMode] = useState(false);
+  const [githubTokenRevealPlaintext, setGithubTokenRevealPlaintext] = useState<string | null>(null);
 
   const loadExecutionSetup = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -96,6 +183,22 @@ export function ProjectExecutionEnvironmentPanel({
   useEffect(() => {
     void loadExecutionSetup();
   }, [loadExecutionSetup]);
+
+  const loadEnvTestLast = useCallback(async () => {
+    if (!projectId.trim()) return;
+    try {
+      const { res, json } = await fetchEnvironmentTestLast(projectId);
+      if (res.ok && json.success && json.data) {
+        setEnvTestLast(json.data.last ?? null);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void loadEnvTestLast();
+  }, [loadEnvTestLast]);
 
   useEffect(() => {
     if (executionSetup) return;
@@ -182,6 +285,24 @@ export function ProjectExecutionEnvironmentPanel({
     }
   }, [projectId, gitVals]);
 
+  const handleEnvironmentTest = useCallback(async () => {
+    if (!projectId.trim()) return;
+    setBusyEnvTest(true);
+    try {
+      const { res, json } = await postEnvironmentTestRun(projectId);
+      if (json.data?.last != null) {
+        setEnvTestLast(json.data.last);
+      } else {
+        await loadEnvTestLast();
+      }
+      setExecutionMessage(
+        json.message || (res.ok ? "연결 테스트를 완료했습니다." : "연결 테스트에 실패했습니다.")
+      );
+    } finally {
+      setBusyEnvTest(false);
+    }
+  }, [projectId, loadEnvTestLast]);
+
   const handleValidateGit = useCallback(async () => {
     if (!projectId.trim()) return;
     if (!executionSetup) {
@@ -208,9 +329,10 @@ export function ProjectExecutionEnvironmentPanel({
   if (!projectId.trim()) return null;
 
   const repoOk = executionSetup?.repoConnectionOk ?? null;
+  const githubAuthOk = executionSetup?.githubAuthConnectionOk ?? null;
   const cursorApiOk = executionSetup?.cursorApiConnectionOk ?? null;
   const execOk = executionSetup?.executorConnectionOk ?? null;
-  const executionReady = repoOk === true && cursorApiOk === true && execOk === true;
+  const executionReady = repoOk === true && githubAuthOk === true && cursorApiOk === true && execOk === true;
 
   const canRunLabel = executionReady
     ? "준비 완료"
@@ -232,6 +354,200 @@ export function ProjectExecutionEnvironmentPanel({
     fontSize: 12,
     cursor: canEdit ? "pointer" : "not-allowed",
   };
+
+  const githubAuthSlot = (() => {
+    const es = executionSetup;
+    const hasTok = Boolean(es?.hasGithubAccessToken);
+    const showInput = !hasTok || githubReplaceMode;
+    const ghostBtn: CSSProperties = {
+      padding: "8px 12px",
+      borderRadius: 10,
+      border: "1px solid #cbd5e1",
+      background: "#fff",
+      fontWeight: 800,
+      fontSize: 12,
+      cursor: !canEdit || busyGithubAuth ? "not-allowed" : "pointer",
+    };
+    return (
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
+        <div style={{ fontWeight: 900, fontSize: 13, color: "#0f172a", marginBottom: 8 }}>GitHub 인증</div>
+        <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
+          검증(다시 검증)은 서버에 저장된 토큰으로 수행됩니다. 토큰을 다시 입력할 필요가 없습니다. 권한 변경 시에는
+          「새 토큰 교체」로 다시 저장하세요.
+        </p>
+        {showInput ? (
+          <label style={{ display: "grid", gap: 4, marginBottom: 8, maxWidth: 720 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>GitHub Access Token</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={githubTokenDraft}
+              disabled={!canEdit || !es}
+              placeholder={githubReplaceMode ? "새 토큰 붙여넣기" : "ghp_… / github_pat_…"}
+              onChange={(e) => setGithubTokenDraft(e.target.value)}
+              style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+            />
+          </label>
+        ) : (
+          <div style={{ marginBottom: 10, fontSize: 12, color: "#334155", maxWidth: 720 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>저장된 토큰</div>
+            <code
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#f0f9ff",
+                border: "1px solid #bae6fd",
+                fontSize: 12,
+                wordBreak: "break-all",
+              }}
+            >
+              {githubTokenRevealPlaintext ?? es?.githubAccessTokenMasked ?? "—"}
+            </code>
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup || busyGithubAuth === "validate" || !executionSetup?.hasGithubAccessToken}
+            title={!executionSetup?.hasGithubAccessToken ? "먼저 토큰을 저장하세요" : "저장된 토큰으로 GitHub 인증 검증"}
+            onClick={async () => {
+              if (!projectId.trim()) return;
+              setBusyGithubAuth("validate");
+              try {
+                const { res, json } = await postExecutionSetupValidate(projectId, { scope: "github_auth" });
+                if (!res.ok || !json.success) {
+                  setExecutionMessage(json.message || "GitHub 인증 검증에 실패했습니다.");
+                  return;
+                }
+                if (json.data) {
+                  setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+                }
+                const detail = (json.data?.messages ?? []).join(" / ");
+                setExecutionMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
+              } finally {
+                setBusyGithubAuth(null);
+              }
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #0f766e",
+              background: "#0d9488",
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: !canEdit ? "not-allowed" : busyGithubAuth === "validate" ? "wait" : "pointer",
+            }}
+          >
+            {busyGithubAuth === "validate" ? "검증 중…" : "다시 검증"}
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup || busyGithubAuth === "save"}
+            onClick={async () => {
+              if (!projectId.trim()) return;
+              setBusyGithubAuth("save");
+              try {
+                const body: Parameters<typeof patchExecutionSetup>[1] = {};
+                if (githubTokenDraft.trim()) body.githubAccessToken = githubTokenDraft.trim();
+                const { res, json } = await patchExecutionSetup(projectId, body);
+                if (!res.ok || !json.success || !json.data) {
+                  setExecutionMessage(json.message || "저장에 실패했습니다.");
+                  return;
+                }
+                setExecutionSetup(json.data);
+                setGithubTokenDraft("");
+                setGithubReplaceMode(false);
+                setGithubTokenRevealPlaintext(null);
+                setExecutionMessage("GitHub 토큰을 저장했습니다. 「다시 검증」으로 연결을 확인할 수 있습니다.");
+              } finally {
+                setBusyGithubAuth(null);
+              }
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #2563eb",
+              background: "#2563eb",
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: !canEdit ? "not-allowed" : busyGithubAuth === "save" ? "wait" : "pointer",
+            }}
+          >
+            {busyGithubAuth === "save" ? "저장 중…" : githubReplaceMode ? "새 토큰 저장" : "저장"}
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup || busyGithubAuth != null}
+            onClick={() => {
+              setGithubReplaceMode(true);
+              setGithubTokenDraft("");
+              setGithubTokenRevealPlaintext(null);
+            }}
+            style={ghostBtn}
+          >
+            새 토큰 교체
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            onClick={async () => {
+              const ok = window.confirm("저장된 GitHub 토큰을 삭제합니다. 계속할까요?");
+              if (!ok) return;
+              if (!projectId.trim()) return;
+              setBusyGithubAuth("delete");
+              try {
+                const { res, json } = await patchExecutionSetup(projectId, { githubAccessToken: null });
+                if (!res.ok || !json.success || !json.data) {
+                  setExecutionMessage(json.message || "삭제에 실패했습니다.");
+                  return;
+                }
+                setExecutionSetup(json.data);
+                setGithubTokenDraft("");
+                setGithubReplaceMode(false);
+                setGithubTokenRevealPlaintext(null);
+                setExecutionMessage("저장된 GitHub 토큰을 삭제했습니다.");
+              } finally {
+                setBusyGithubAuth(null);
+              }
+            }}
+            style={{ ...ghostBtn, color: "#b91c1c", borderColor: "#fecaca" }}
+          >
+            {busyGithubAuth === "delete" ? "삭제 중…" : "삭제"}
+          </button>
+
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            onClick={async () => {
+              if (!projectId.trim()) return;
+              setBusyGithubAuth("reveal");
+              try {
+                const { res, json } = await postRevealGithubAccessToken(projectId);
+                if (!res.ok || !json.success || !json.data?.plaintext) {
+                  setExecutionMessage(json.message || "토큰을 표시할 수 없습니다. (프로젝트 소유자만 가능합니다.)");
+                  return;
+                }
+                setGithubTokenRevealPlaintext(json.data.plaintext);
+                setTimeout(() => setGithubTokenRevealPlaintext(null), 8000);
+              } finally {
+                setBusyGithubAuth(null);
+              }
+            }}
+            style={ghostBtn}
+          >
+            {busyGithubAuth === "reveal" ? "불러오는 중…" : "보기 / 숨기기"}
+          </button>
+        </div>
+      </div>
+    );
+  })();
 
   const gitConnectionSlot = (
     <div style={{ ...stepBox, marginBottom: 0 }}>
@@ -323,6 +639,145 @@ export function ProjectExecutionEnvironmentPanel({
               GitHub 예시 적용
             </button>
           </div>
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
+            <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
+              AI, Cursor, Git 연동이 정상인지 간단한 테스트 Task와 PR 생성으로 확인합니다.
+            </p>
+            <button
+              type="button"
+              disabled={!canEdit || busyEnvTest || !specWorkflowConfirmed || !executionReady}
+              onClick={() => void handleEnvironmentTest()}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #7c3aed",
+                background: "#7c3aed",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor:
+                  !canEdit || busyEnvTest || !specWorkflowConfirmed || !executionReady ? "not-allowed" : "pointer",
+              }}
+              title={
+                !specWorkflowConfirmed
+                  ? "Spec 확정 후 사용"
+                  : !executionReady
+                    ? "저장소·Cursor 검증 완료 필요"
+                    : undefined
+              }
+            >
+              {busyEnvTest ? "실행 중…" : "연결 테스트 Task 생성"}
+            </button>
+            {!specWorkflowConfirmed ? (
+              <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>Spec 확정 후 사용할 수 있습니다.</p>
+            ) : null}
+            {specWorkflowConfirmed && !executionReady ? (
+              <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>
+                저장소·Cursor 검증을 모두 통과한 뒤 실행하세요.
+              </p>
+            ) : null}
+            {envTestLast ? (
+              <div style={{ marginTop: 12, fontSize: 11, color: "#334155", lineHeight: 1.65 }}>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>최근 결과</div>
+                <div>
+                  {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.PR_OPENED &&
+                  envTestLast.envTestMergeStartedAt &&
+                  !envTestLast.mergedAt
+                    ? "머지 진행 중"
+                    : environmentTestStatusMessage(envTestLast.workflowStatus, envTestLast.taskStatus)}
+                </div>
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ color: "#64748b" }}>작업 이름</span> {envTestLast.name}
+                </div>
+                <div>
+                  <span style={{ color: "#64748b" }}>상태</span>{" "}
+                  <span style={{ fontWeight: 700, color: "#0f172a" }}>
+                    {environmentTestWorkflowLabel(envTestLast.workflowStatus)}
+                  </span>
+                  {(() => {
+                    const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
+                    return code ? (
+                      <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}> · {code}</span>
+                    ) : null;
+                  })()}
+                  {(() => {
+                    const tk = environmentTestTaskStatusKorean(envTestLast.taskStatus);
+                    return tk ? (
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}> · 작업 {tk}</span>
+                    ) : null;
+                  })()}
+                </div>
+                {envTestLast.branchName ? (
+                  <div>
+                    <span style={{ color: "#64748b" }}>브랜치</span> {envTestLast.branchName}
+                  </div>
+                ) : null}
+                {envTestLast.prUrl ? (
+                  <div>
+                    <span style={{ color: "#64748b" }}>PR</span>{" "}
+                    <a href={envTestLast.prUrl} target="_blank" rel="noreferrer">
+                      링크 열기
+                    </a>
+                  </div>
+                ) : null}
+                {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.PR_OPENED ? (
+                  <div>
+                    <span style={{ color: "#64748b" }}>머지</span>{" "}
+                    {envTestLast.envTestMergeBlockedReason ? (
+                      <span style={{ fontWeight: 800, color: "#b91c1c" }}>차단됨</span>
+                    ) : envTestLast.envTestMergeStartedAt ? (
+                      <span style={{ fontWeight: 700 }}>진행 중</span>
+                    ) : (
+                      <span style={{ fontWeight: 600 }}>대기 (자동 머지 진행)</span>
+                    )}
+                    {envTestLast.envTestMergeBlockedReason ? (
+                      <div style={{ marginTop: 4, color: "#b91c1c", fontSize: 11, fontWeight: 600 }}>
+                        머지 차단 사유: {envTestLast.envTestMergeBlockedReason}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.MERGED ? (
+                  <div>
+                    <span style={{ color: "#64748b" }}>머지</span>{" "}
+                    <span style={{ fontWeight: 700, color: "#15803d" }}>완료</span>
+                    {envTestLast.mergeCommitSha ? (
+                      <span style={{ marginLeft: 6, color: "#64748b", fontFamily: "monospace", fontSize: 10 }}>
+                        {envTestLast.mergeCommitSha.slice(0, 7)}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {envTestLast.mergedAt ? (
+                  <div>
+                    <span style={{ color: "#64748b" }}>머지 시각</span> {formatTestedAt(envTestLast.mergedAt)}
+                  </div>
+                ) : null}
+                {envTestLast.envTestRemoteBranchDeletedAt ? (
+                  <div style={{ color: "#15803d", fontWeight: 700 }}>
+                    브랜치 정리가 완료되었습니다 ({formatTestedAt(envTestLast.envTestRemoteBranchDeletedAt)})
+                  </div>
+                ) : null}
+                {(() => {
+                  const line = environmentTestFollowUpLine(envTestLast);
+                  if (!line) return null;
+                  return (
+                    <div style={{ marginTop: 6 }}>
+                      <span style={{ color: "#64748b" }}>후속 진행</span>{" "}
+                      <span style={{ color: "#334155" }}>{line}</span>
+                      {envTestLast.nextTaskReady === true && envTestLast.nextTaskName ? (
+                        <span style={{ fontSize: 11, color: "#64748b" }}> · {envTestLast.nextTaskName}</span>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+                <div style={{ marginTop: 4, color: "#64748b" }}>
+                  업데이트 {formatTestedAt(envTestLast.updatedAt)}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          {githubAuthSlot}
     </div>
   );
 
@@ -355,6 +810,12 @@ export function ProjectExecutionEnvironmentPanel({
           <li>
             <span style={{ color: "#64748b" }}>저장소 연결:</span>{" "}
             <strong style={{ color: toneColor(readinessTone(repoOk)) }}>{readinessConnection(repoOk)}</strong>
+          </li>
+          <li>
+            <span style={{ color: "#64748b" }}>GitHub 인증:</span>{" "}
+            <strong style={{ color: toneColor(readinessTone(githubAuthOk)) }}>
+              {githubAuthOk === true ? "정상" : githubAuthOk === false ? "필요" : "미검증"}
+            </strong>
           </li>
           <li>
             <span style={{ color: "#64748b" }}>Cursor 연결:</span>{" "}
