@@ -47,7 +47,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
 
   const task = await prisma.task.findFirst({
     where: { projectId, taskKind: ENV_TEST_TASK_KIND, archivedAt: null },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: "asc" },
     select: {
       id: true,
       taskKind: true,
@@ -184,6 +184,21 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
   }
 
   const repoUrl = setup.gitRepoUrl.trim();
+  const requiredBaseRef = String(setup.baseBranch ?? "").trim();
+  if (!requiredBaseRef) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_base_branch_missing",
+      projectId,
+      taskId: task.id,
+      userId: actorUserId,
+      detail: { reasonCode: "BASE_BRANCH_MISSING", context: "merge_guard" },
+    });
+    const msg = "기본 브랜치 설정이 없어 ENV_TEST를 진행할 수 없습니다";
+    await persistMergeBlocked(msg, "BASE_BRANCH_MISSING");
+    return { ok: false, message: msg, blockedReason: msg };
+  }
+
   const token = resolveEnvTestMergeGithubToken(setup.githubAccessToken ?? null);
   if (!token) {
     return { ok: false, message: "GitHub 토큰(실행 설정 또는 GITHUB_TOKEN)이 필요합니다." };
@@ -238,11 +253,21 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     return { ok: false, message: filesRes.message, blockedReason: filesRes.code };
   }
 
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_merge_base_branch_used",
+    projectId,
+    taskId: task.id,
+    userId: actorUserId,
+    detail: { baseBranch: requiredBaseRef, prNumber: parsedPr.number },
+  });
+
   const guard = evaluateEnvTestMergeGuards({
     taskKind: task.taskKind,
     localBranchName: task.lastOrchestrationBranch ?? run.branchName,
     pr: pullDetail.pr,
     files: filesRes.files,
+    requiredBaseRef,
   });
 
   if (!guard.ok) {
@@ -294,6 +319,19 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
         mergeCommitSha: mergeCommitShaEarly,
         source: "already_merged_on_github",
         elapsedMsSincePrOpened: prOpenedAt ? Date.now() - prOpenedAt : null,
+      },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_finalize_after_verified_merge",
+      projectId,
+      taskId: task.id,
+      userId: actorUserId,
+      detail: {
+        prNumber: parsedPr.number,
+        mergeCommitSha: mergeCommitShaEarly,
+        baseBranch: requiredBaseRef,
+        source: "already_merged_on_github",
       },
     });
     await withTaskExecutionRunSchemaHealRetry(() =>
@@ -438,6 +476,19 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
       prNumber: parsedPr.number,
       mergeCommitSha: verified.mergeCommitSha ?? null,
       elapsedMsSincePrOpened: prOpenedAt ? Date.now() - prOpenedAt : null,
+    },
+  });
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_finalize_after_verified_merge",
+    projectId,
+    taskId: task.id,
+    userId: actorUserId,
+    detail: {
+      prNumber: parsedPr.number,
+      mergeCommitSha: verified.mergeCommitSha ?? null,
+      baseBranch: requiredBaseRef,
     },
   });
 

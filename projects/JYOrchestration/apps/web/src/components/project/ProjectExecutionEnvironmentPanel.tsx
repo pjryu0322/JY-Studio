@@ -56,7 +56,7 @@ function normalizeWorkflowForUi(w: string | null | undefined): string {
 function environmentTestWorkflowLabel(wf: string | null | undefined): string {
   const w = normalizeWorkflowForUi(wf);
   if (!w) return "알 수 없음";
-  if (w === EXECUTION_WORKFLOW.MERGED) return "테스트 PR 머지 완료";
+  if (w === EXECUTION_WORKFLOW.MERGED) return "머지 완료";
   if (w === EXECUTION_WORKFLOW.PR_OPENED) return "PR 생성 완료";
   if (w === EXECUTION_WORKFLOW.PENDING_APPLY) return "GitHub 반영 확인 중";
   if (w === EXECUTION_WORKFLOW.FAILED) return "실패";
@@ -87,7 +87,7 @@ function environmentTestStatusMessage(wf: string | null | undefined, taskStatus:
   const w = normalizeWorkflowForUi(wf);
   const ts = String(taskStatus ?? "").trim();
   if (w === EXECUTION_WORKFLOW.FAILED) return "환경 연결 테스트에 실패했습니다";
-  if (w === EXECUTION_WORKFLOW.MERGED) return "테스트 PR 머지가 완료되었습니다";
+  if (w === EXECUTION_WORKFLOW.MERGED) return "머지 완료";
   if (w === EXECUTION_WORKFLOW.PR_OPENED) return "테스트 PR 생성이 완료되었습니다";
   if (w === EXECUTION_WORKFLOW.PENDING_APPLY) {
     return "GitHub 반영 확인 중";
@@ -96,9 +96,9 @@ function environmentTestStatusMessage(wf: string | null | undefined, taskStatus:
     return "PR 생성 중";
   }
   if (w === EXECUTION_WORKFLOW.RUNNING || w === normalizeWorkflowForUi(EXECUTION_WORKFLOW.REVIEW_PENDING)) {
-    return "테스트 Task를 실행 중입니다";
+    return "실행 중";
   }
-  if (ts === "MERGED") return "테스트 PR 머지가 완료되었습니다";
+  if (ts === "MERGED") return "머지 완료";
   if (ts === "DONE") return "테스트 PR 생성이 완료되었습니다";
   return "마지막 연결 테스트 상태를 확인하세요.";
 }
@@ -333,6 +333,9 @@ export function ProjectExecutionEnvironmentPanel({
   const cursorApiOk = executionSetup?.cursorApiConnectionOk ?? null;
   const execOk = executionSetup?.executorConnectionOk ?? null;
   const executionReady = repoOk === true && githubAuthOk === true && cursorApiOk === true && execOk === true;
+  const baseBranchConfigured = Boolean(executionSetup?.baseBranch?.trim());
+  const autoPushOn = executionSetup?.autoPush === true;
+  const envTestStartOk = executionReady && baseBranchConfigured && autoPushOn;
 
   const canRunLabel = executionReady
     ? "준비 완료"
@@ -645,7 +648,7 @@ export function ProjectExecutionEnvironmentPanel({
             </p>
             <button
               type="button"
-              disabled={!canEdit || busyEnvTest || !specWorkflowConfirmed || !executionReady}
+              disabled={!canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk}
               onClick={() => void handleEnvironmentTest()}
               style={{
                 padding: "8px 14px",
@@ -656,17 +659,21 @@ export function ProjectExecutionEnvironmentPanel({
                 fontWeight: 800,
                 fontSize: 12,
                 cursor:
-                  !canEdit || busyEnvTest || !specWorkflowConfirmed || !executionReady ? "not-allowed" : "pointer",
+                  !canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk ? "not-allowed" : "pointer",
               }}
               title={
                 !specWorkflowConfirmed
                   ? "Spec 확정 후 사용"
                   : !executionReady
                     ? "저장소·Cursor 검증 완료 필요"
-                    : undefined
+                    : !baseBranchConfigured
+                      ? "기본 브랜치 설정이 필요합니다"
+                      : !autoPushOn
+                        ? "ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다"
+                        : undefined
               }
             >
-              {busyEnvTest ? "실행 중…" : "연결 테스트 Task 생성"}
+              {busyEnvTest ? "실행 중…" : "연결 테스트 실행"}
             </button>
             {!specWorkflowConfirmed ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>Spec 확정 후 사용할 수 있습니다.</p>
@@ -674,6 +681,14 @@ export function ProjectExecutionEnvironmentPanel({
             {specWorkflowConfirmed && !executionReady ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>
                 저장소·Cursor 검증을 모두 통과한 뒤 실행하세요.
+              </p>
+            ) : null}
+            {specWorkflowConfirmed && executionReady && !baseBranchConfigured ? (
+              <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>기본 브랜치 설정이 필요합니다.</p>
+            ) : null}
+            {specWorkflowConfirmed && executionReady && baseBranchConfigured && !autoPushOn ? (
+              <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>
+                ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다.
               </p>
             ) : null}
             {envTestLast ? (

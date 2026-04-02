@@ -9,9 +9,11 @@
 
 import { evaluateNextTaskReadiness } from "@/lib/executionLoop/nextTaskReadiness";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
+import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
+import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { prisma } from "@/lib/prisma";
 import { ensureTaskExecutionRunColumnsReady } from "@/lib/prisma/taskExecutionRunColumnsHeal";
-import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
+import { assertEnvTestStartReadiness } from "@/lib/service/envTestServerReadiness";
 
 export const ENV_TEST_TASK_KIND = "ENV_TEST" as const;
 
@@ -63,12 +65,41 @@ export function parsePrUrlFromRunPrStatus(prStatus: string | null | undefined): 
   return /^https?:\/\//i.test(url) ? url : null;
 }
 
+async function resetEnvTestTaskForNewRun(projectId: string, taskId: string): Promise<void> {
+  await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      status: "TODO",
+      executionWorkflowStatus: EXECUTION_WORKFLOW.READY,
+      lastEvalResult: null,
+      lastEvalSummary: null,
+      lastOrchestrationBranch: null,
+      lastOrchestrationCommitStatus: null,
+      lastOrchestrationPushStatus: null,
+      lastOrchestrationCommitSha: null,
+      lastOrchestrationChangedFileCount: null,
+      loopRetryCount: 0,
+    },
+  });
+  await refreshWorkflowStates(projectId);
+}
+
 export async function createEnvironmentTestTask(input: {
   projectId: string;
+  actorUserId: string;
 }): Promise<{ ok: true; taskId: string } | { ok: false; message: string }> {
   const projectId = String(input.projectId ?? "").trim();
+  const actorUserId = String(input.actorUserId ?? "").trim();
   if (!projectId) {
     return { ok: false, message: "projectId가 필요합니다." };
+  }
+  if (!actorUserId) {
+    return { ok: false, message: "사용자 인증이 필요합니다." };
+  }
+
+  const ready = await assertEnvTestStartReadiness({ projectId, userId: actorUserId });
+  if (!ready.ok) {
+    return { ok: false, message: ready.userMessage };
   }
 
   const project = await prisma.project.findUnique({
@@ -83,6 +114,40 @@ export async function createEnvironmentTestTask(input: {
   }
 
   const specId = project.currentSpecVersionId;
+
+  const allEnv = await prisma.task.findMany({
+    where: { projectId, taskKind: ENV_TEST_TASK_KIND, archivedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, sourceSpecVersionId: true },
+  });
+  const forCurrent = allEnv.filter((t) => t.sourceSpecVersionId === specId);
+  const canonicalId = forCurrent[0]?.id ?? null;
+  const now = new Date();
+
+  for (const t of allEnv) {
+    if (t.id !== canonicalId) {
+      await prisma.task.update({ where: { id: t.id }, data: { archivedAt: now } });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_archive_previous_task",
+        projectId,
+        userId: actorUserId,
+        detail: { archivedTaskId: t.id, reasonCode: "ENV_TEST_DEDUP" },
+      });
+    }
+  }
+
+  if (canonicalId) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_reuse_existing_task",
+      projectId,
+      userId: actorUserId,
+      detail: { taskId: canonicalId },
+    });
+    await resetEnvTestTaskForNewRun(projectId, canonicalId);
+    return { ok: true, taskId: canonicalId };
+  }
 
   const maxRow = await prisma.task.aggregate({
     where: { projectId, sourceSpecVersionId: specId, archivedAt: null },
@@ -138,51 +203,94 @@ export async function getLatestEnvironmentTestTask(
 
   await ensureTaskExecutionRunColumnsReady();
 
-  const row = await prisma.task.findFirst({
-    where: {
-      projectId: pid,
-      taskKind: ENV_TEST_TASK_KIND,
-      archivedAt: null,
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      status: true,
-      executionWorkflowStatus: true,
-      lastOrchestrationBranch: true,
-      updatedAt: true,
-      taskExecutionRuns: {
-        where: { archivedAt: null },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: {
-          prStatus: true,
-          branchName: true,
-          mergeCommitSha: true,
-          mergedAt: true,
-          envTestRemoteBranchDeletedAt: true,
-          envTestMergeBlockedReason: true,
-          envTestMergeStartedAt: true,
+  const project = await prisma.project.findUnique({
+    where: { id: pid },
+    select: { currentSpecVersionId: true },
+  });
+  const specId = project?.currentSpecVersionId ?? null;
+
+  const row =
+    specId != null
+      ? await prisma.task.findFirst({
+          where: {
+            projectId: pid,
+            taskKind: ENV_TEST_TASK_KIND,
+            archivedAt: null,
+            sourceSpecVersionId: specId,
+          },
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            executionWorkflowStatus: true,
+            lastOrchestrationBranch: true,
+            updatedAt: true,
+            taskExecutionRuns: {
+              where: { archivedAt: null },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                prStatus: true,
+                branchName: true,
+                mergeCommitSha: true,
+                mergedAt: true,
+                envTestRemoteBranchDeletedAt: true,
+                envTestMergeBlockedReason: true,
+                envTestMergeStartedAt: true,
+              },
+            },
+          },
+        })
+      : null;
+
+  const rowResolved =
+    row ??
+    (await prisma.task.findFirst({
+      where: {
+        projectId: pid,
+        taskKind: ENV_TEST_TASK_KIND,
+        archivedAt: null,
+      },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        executionWorkflowStatus: true,
+        lastOrchestrationBranch: true,
+        updatedAt: true,
+        taskExecutionRuns: {
+          where: { archivedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            prStatus: true,
+            branchName: true,
+            mergeCommitSha: true,
+            mergedAt: true,
+            envTestRemoteBranchDeletedAt: true,
+            envTestMergeBlockedReason: true,
+            envTestMergeStartedAt: true,
+          },
         },
       },
-    },
-  });
+    }));
 
-  if (!row) return null;
+  if (!rowResolved) return null;
 
-  const run0 = row.taskExecutionRuns[0];
+  const run0 = rowResolved.taskExecutionRuns[0];
   const prUrl = parsePrUrlFromRunPrStatus(run0?.prStatus ?? null);
-  const branchName = row.lastOrchestrationBranch ?? run0?.branchName ?? null;
+  const branchName = rowResolved.lastOrchestrationBranch ?? run0?.branchName ?? null;
 
   const base: EnvironmentTestLastDto = {
-    taskId: row.id,
-    name: row.name,
-    taskStatus: row.status,
-    workflowStatus: row.executionWorkflowStatus,
+    taskId: rowResolved.id,
+    name: rowResolved.name,
+    taskStatus: rowResolved.status,
+    workflowStatus: rowResolved.executionWorkflowStatus,
     branchName,
     prUrl,
-    updatedAt: row.updatedAt.toISOString(),
+    updatedAt: rowResolved.updatedAt.toISOString(),
     mergeCommitSha: run0?.mergeCommitSha ?? null,
     mergedAt: run0?.mergedAt?.toISOString() ?? null,
     envTestRemoteBranchDeletedAt: run0?.envTestRemoteBranchDeletedAt?.toISOString() ?? null,
@@ -190,7 +298,7 @@ export async function getLatestEnvironmentTestTask(
     envTestMergeStartedAt: run0?.envTestMergeStartedAt?.toISOString() ?? null,
   };
 
-  const wfNorm = String(row.executionWorkflowStatus ?? "").trim();
+  const wfNorm = String(rowResolved.executionWorkflowStatus ?? "").trim();
   const mergeInProgress = wfNorm === EXECUTION_WORKFLOW.PR_OPENED && Boolean(run0?.envTestMergeStartedAt) && !run0?.mergedAt;
   if (wfNorm === EXECUTION_WORKFLOW.MERGED || (!mergeInProgress && wfNorm === EXECUTION_WORKFLOW.PR_OPENED)) {
     const r = await evaluateNextTaskReadiness({ projectId: pid });
