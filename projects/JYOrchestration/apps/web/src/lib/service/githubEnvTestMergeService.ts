@@ -16,8 +16,6 @@ import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
 /** 머지 가드: PR에 허용되는 유일한 변경 경로(정규화 후 비교). */
 export const ENV_TEST_MERGE_ALLOWED_FILE_PATH = "orchestration-test/hello-world.md";
 
-export const ENV_TEST_MERGE_REQUIRED_BASE_REF = "main";
-
 export function resolveEnvTestMergeGithubToken(setupGithubAccessToken: string | null | undefined): string | null {
   const fromSetup = getGithubRestToken(setupGithubAccessToken ?? null);
   if (fromSetup) return fromSetup;
@@ -136,6 +134,8 @@ export function evaluateEnvTestMergeGuards(input: {
   localBranchName: string | null | undefined;
   pr: PullDetailJson;
   files: PullFileJson[];
+  /** 실행 설정(ExecutionSetup)의 baseBranch — ENV_TEST 머지 가드의 단일 근거 */
+  requiredBaseRef: string;
 }): EnvTestMergeGuardResult {
   if (String(input.taskKind ?? "").trim() !== "ENV_TEST") {
     return { ok: false, blockedCode: "NOT_ENV_TEST", blockedReason: "taskKind가 ENV_TEST가 아닙니다." };
@@ -164,12 +164,20 @@ export function evaluateEnvTestMergeGuards(input: {
       blockedReason: "PR 제목이 ENV_TEST 표준 제목과 일치하지 않습니다.",
     };
   }
+  const requiredBase = String(input.requiredBaseRef ?? "").trim();
+  if (!requiredBase) {
+    return {
+      ok: false,
+      blockedCode: "BASE_BRANCH_UNCONFIGURED",
+      blockedReason: "기본 브랜치 설정이 없어 ENV_TEST 머지 가드를 적용할 수 없습니다.",
+    };
+  }
   const baseRef = String(input.pr.base?.ref ?? "").trim();
-  if (baseRef !== ENV_TEST_MERGE_REQUIRED_BASE_REF) {
+  if (baseRef !== requiredBase) {
     return {
       ok: false,
       blockedCode: "BASE_BRANCH",
-      blockedReason: `베이스 브랜치는 ${ENV_TEST_MERGE_REQUIRED_BASE_REF}만 허용됩니다.`,
+      blockedReason: `PR 베이스 브랜치가 실행 설정의 기본 브랜치(${requiredBase})와 일치하지 않습니다.`,
     };
   }
   if (!input.files.length) {

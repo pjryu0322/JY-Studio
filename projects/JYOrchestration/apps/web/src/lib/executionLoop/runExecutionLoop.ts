@@ -172,6 +172,61 @@ export async function runExecutionLoop(params: {
 
     await initializeLoopParticipants(projectId);
 
+    if (singleTaskId) {
+      const forcedHead = await prisma.task.findUnique({
+        where: { id: singleTaskId },
+        select: { taskKind: true, projectId: true },
+      });
+      if (
+        forcedHead?.projectId === projectId &&
+        String(forcedHead.taskKind ?? "").trim() === "ENV_TEST"
+      ) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_push_policy_check_started",
+          projectId,
+          userId: actorUserId,
+          detail: { context: "execution_loop_gate" },
+        });
+        const baseTrim = String(setup.baseBranch ?? "").trim();
+        if (!baseTrim) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_base_branch_missing",
+            projectId,
+            userId: actorUserId,
+            detail: { reasonCode: "BASE_BRANCH_MISSING", context: "execution_loop_gate" },
+          });
+          return {
+            ok: false,
+            steps,
+            message: "기본 브랜치 설정이 없어 ENV_TEST를 진행할 수 없습니다",
+          };
+        }
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_base_branch_resolved",
+          projectId,
+          userId: actorUserId,
+          detail: { baseBranch: baseTrim, context: "execution_loop_gate" },
+        });
+        if (setup.autoPush !== true) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_push_policy_blocked",
+            projectId,
+            userId: actorUserId,
+            detail: { reasonCode: "AUTO_PUSH_OFF", context: "execution_loop_gate" },
+          });
+          return {
+            ok: false,
+            steps,
+            message: "ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다",
+          };
+        }
+      }
+    }
+
     await reclaimStaleRunningWorkflowTasks(projectId);
 
     const firstRow = (await loadWorkflowGraphTasks(projectId))[0];

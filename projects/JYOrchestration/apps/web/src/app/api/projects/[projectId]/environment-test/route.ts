@@ -62,7 +62,7 @@ export async function POST(
       throw error;
     }
 
-    const created = await createEnvironmentTestTask({ projectId: pid });
+    const created = await createEnvironmentTestTask({ projectId: pid, actorUserId: userId });
     if (!created.ok) {
       return NextResponse.json({ success: false, message: created.message }, { status: 422 });
     }
