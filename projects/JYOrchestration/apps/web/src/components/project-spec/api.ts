@@ -288,6 +288,11 @@ export type ExecutionSetupDto = {
   baseBranch: string;
   branchStrategy: "feature-per-workflow" | "feature-per-task" | "manual";
   branchPrefix: string | null;
+  githubAccessTokenMasked?: string | null;
+  hasGithubAccessToken?: boolean;
+  githubAuthConnectionOk?: boolean | null;
+  githubAuthValidatedAt?: string | null;
+  githubAuthValidationError?: string | null;
   cursorApiUrl: string;
   cursorApiTokenMasked: string | null;
   hasCursorToken: boolean;
@@ -342,6 +347,7 @@ export async function patchExecutionSetup(
     branchPrefix: string | null;
     cursorApiUrl: string;
     cursorApiToken: string | null;
+    githubAccessToken: string | null;
     workspacePath: string;
     allowedPathGlobs?: string[];
     autoCommit: boolean;
@@ -371,7 +377,7 @@ export async function patchExecutionSetup(
 
 export async function postExecutionSetupValidate(
   projectId: string,
-  body?: { scope?: "repository" | "cursor_api" | "cursor_execution" | "cursor" | "all" }
+  body?: { scope?: "repository" | "github_auth" | "cursor_api" | "cursor_execution" | "cursor" | "all" }
 ) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/execution-setup/validate`, {
@@ -381,7 +387,7 @@ export async function postExecutionSetupValidate(
     body: JSON.stringify(body?.scope ? { scope: body.scope } : {}),
   });
   const json = (await res.json()) as ApiResponse<{
-    scope?: "repository" | "cursor_api" | "cursor_execution" | "cursor" | "all";
+    scope?: "repository" | "github_auth" | "cursor_api" | "cursor_execution" | "cursor" | "all";
     status: "draft" | "validated" | "invalid";
     lastValidatedAt: string | null;
     needsRevalidation?: boolean;
@@ -417,6 +423,17 @@ export async function postRevealCursorApiToken(projectId: string) {
   return { res, json };
 }
 
+/** 프로젝트 소유자만 저장된 GitHub 토큰 전체를 일시 확인합니다. */
+export async function postRevealGithubAccessToken(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/execution-setup/github-token/reveal`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json()) as ApiResponse<{ plaintext: string }>;
+  return { res, json };
+}
+
 export async function postExecutionLoopRun(
   projectId: string,
   body?: { action?: "pause" | "resume"; taskId?: string }
@@ -439,6 +456,46 @@ export async function fetchExecutionLoopStatus(projectId: string) {
     credentials: "include",
   });
   const json = (await res.json()) as ApiResponse<{ paused: boolean }>;
+  return { res, json };
+}
+
+export type EnvironmentTestLastDto = {
+  taskId: string;
+  name: string;
+  taskStatus: string;
+  workflowStatus: string | null;
+  branchName: string | null;
+  prUrl: string | null;
+  updatedAt: string;
+  mergeCommitSha?: string | null;
+  mergedAt?: string | null;
+  envTestRemoteBranchDeletedAt?: string | null;
+  envTestMergeBlockedReason?: string | null;
+  envTestMergeStartedAt?: string | null;
+  nextTaskReady?: boolean | null;
+  nextTaskId?: string | null;
+  nextTaskName?: string | null;
+  nextTaskBlockedReason?: string | null;
+};
+
+export async function fetchEnvironmentTestLast(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/environment-test`, { credentials: "include" });
+  const json = (await res.json()) as ApiResponse<{ last: EnvironmentTestLastDto | null }>;
+  return { res, json };
+}
+
+export async function postEnvironmentTestRun(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/environment-test`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json()) as ApiResponse<{
+    taskId?: string;
+    steps?: unknown[];
+    last?: EnvironmentTestLastDto | null;
+  }>;
   return { res, json };
 }
 

@@ -23,7 +23,7 @@ export async function loadWorkflowGraphTasks(projectId: string) {
   return prisma.task.findMany({
     where: {
       projectId,
-      taskKind: "PRIMARY",
+      taskKind: { in: ["PRIMARY", "ENV_TEST"] },
       status: { notIn: ["BLOCKED", "CANCELLED"] },
       archivedAt: null,
       sourceSpecVersionId: specId,
@@ -40,6 +40,7 @@ export async function loadWorkflowGraphTasks(projectId: string) {
       acceptanceCriteria: true,
       executionWorkflowStatus: true,
       loopRetryCount: true,
+      taskKind: true,
     },
   });
 }

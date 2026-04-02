@@ -10,10 +10,16 @@ import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSp
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { maskCursorTokenForUi } from "@/lib/executionSetup/cursorTokenMask";
+import { maskGithubTokenForUi } from "@/lib/executionSetup/githubTokenMask";
 
 function cursorTokenMaskedForApiResponse(cursorApiToken: string | null | undefined): string | null {
   const t = String(cursorApiToken ?? "").trim();
   return t ? maskCursorTokenForUi(t) : null;
+}
+
+function githubTokenMaskedForApiResponse(githubAccessToken: string | null | undefined): string | null {
+  const t = String(githubAccessToken ?? "").trim();
+  return t ? maskGithubTokenForUi(t) : null;
 }
 
 function isLikelyUrl(s: string): boolean {
@@ -51,6 +57,7 @@ type PatchBody = Partial<{
 
   cursorApiUrl: string;
   cursorApiToken: string | null;
+  githubAccessToken: string | null;
 }>;
 
 function toStringOrNull(v: unknown): string | null {
@@ -83,11 +90,12 @@ function normalizeGlobsJson(g: unknown): string {
 
 function executionSetupOverallStatus(
   repoOk: boolean | null,
+  githubAuthOk: boolean | null,
   cursorApiOk: boolean | null,
   execOk: boolean | null
 ): "draft" | "validated" | "invalid" {
-  if (repoOk === true && cursorApiOk === true && execOk === true) return "validated";
-  if (repoOk === false || cursorApiOk === false || execOk === false) return "invalid";
+  if (repoOk === true && githubAuthOk === true && cursorApiOk === true && execOk === true) return "validated";
+  if (repoOk === false || githubAuthOk === false || cursorApiOk === false || execOk === false) return "invalid";
   return "draft";
 }
 
@@ -136,6 +144,11 @@ export async function GET(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
+        githubAccessTokenMasked: githubTokenMaskedForApiResponse(row.githubAccessToken),
+        hasGithubAccessToken: Boolean(String(row.githubAccessToken ?? "").trim()),
+        githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
+        githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
+        githubAuthValidationError: row.githubAuthValidationError ?? null,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
         hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
@@ -311,6 +324,19 @@ export async function PATCH(
             };
           })()
         : {}),
+      ...(body.githubAccessToken !== undefined
+        ? (() => {
+            const raw = body.githubAccessToken;
+            if (raw === null || raw === "") {
+              return { githubAccessToken: null, githubAccessTokenMasked: null };
+            }
+            const tok = String(raw).trim();
+            return {
+              githubAccessToken: tok,
+              githubAccessTokenMasked: maskGithubTokenForUi(tok),
+            };
+          })()
+        : {}),
     };
 
     const existing = await withExecutionSetupSchemaHealRetry(() =>
@@ -341,6 +367,7 @@ export async function PATCH(
     const cursorDirty = Boolean(
       existing && (body.cursorApiUrl !== undefined || body.cursorApiToken !== undefined)
     );
+    const githubDirty = Boolean(existing && body.githubAccessToken !== undefined);
 
     const repoDirty = Boolean(
       existing &&
@@ -369,11 +396,17 @@ export async function PATCH(
       data.executorValidatedAt = null;
       data.executorValidationError = null;
     }
-    if (repoDirty || executorDirty || cursorDirty) {
+    if (githubDirty) {
+      data.githubAuthConnectionOk = null;
+      data.githubAuthValidatedAt = null;
+      data.githubAuthValidationError = null;
+    }
+    if (repoDirty || executorDirty || cursorDirty || githubDirty) {
       const mergeRepoOk = repoDirty ? null : (existing?.repoConnectionOk ?? null);
+      const mergeGithubOk = githubDirty ? null : (existing?.githubAuthConnectionOk ?? null);
       const mergeCursorApiOk = executorDirty || cursorDirty ? null : (existing?.cursorApiConnectionOk ?? null);
       const mergeExecOk = executorDirty || cursorDirty ? null : (existing?.executorConnectionOk ?? null);
-      data.status = executionSetupOverallStatus(mergeRepoOk, mergeCursorApiOk, mergeExecOk);
+      data.status = executionSetupOverallStatus(mergeRepoOk, mergeGithubOk, mergeCursorApiOk, mergeExecOk);
       data.needsRevalidation = true;
       data.lastValidationError = null;
     }
@@ -386,6 +419,11 @@ export async function PATCH(
       baseBranch: "main",
       branchStrategy: "manual",
       branchPrefix: null,
+      githubAccessToken: null,
+      githubAccessTokenMasked: null,
+      githubAuthConnectionOk: null,
+      githubAuthValidatedAt: null,
+      githubAuthValidationError: null,
       cursorApiUrl: DEFAULT_CURSOR_API_BASE,
       cursorApiToken: null,
       cursorApiTokenMasked: null,
@@ -443,6 +481,11 @@ export async function PATCH(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
+        githubAccessTokenMasked: githubTokenMaskedForApiResponse(row.githubAccessToken),
+        hasGithubAccessToken: Boolean(String(row.githubAccessToken ?? "").trim()),
+        githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
+        githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
+        githubAuthValidationError: row.githubAuthValidationError ?? null,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
         hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),

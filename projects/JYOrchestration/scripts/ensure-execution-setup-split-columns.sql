@@ -8,6 +8,18 @@ ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorConnectionOk" B
 ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorValidatedAt" TIMESTAMP(3);
 ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "executorValidationError" TEXT;
 
+-- 20260428120000_execution_setup_cursor_api_split
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiConnectionOk" BOOLEAN;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiValidatedAt" TIMESTAMP(3);
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "cursorApiValidationError" TEXT;
+
+-- 20260402120000_execution_setup_github_token
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAccessToken" TEXT;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAccessTokenMasked" TEXT;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthConnectionOk" BOOLEAN;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidatedAt" TIMESTAMP(3);
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidationError" TEXT;
+
 -- If an older script added wrong snake_case columns, merge then drop them.
 UPDATE "execution_setups"
 SET
