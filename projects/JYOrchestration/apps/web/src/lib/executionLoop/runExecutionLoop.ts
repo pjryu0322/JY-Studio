@@ -504,17 +504,23 @@ export async function runExecutionLoop(params: {
             existingRunId: existingActiveRun.id,
             existingStatus: existingActiveRun.status,
             branch: existingActiveRun.branchName ?? null,
+            singleTaskId: singleTaskId ?? null,
           },
         });
         steps.push({
           phase: "stop",
           reason: "existing_active_run",
         });
+        const blockedMsg =
+          singleTaskId && isEnvTestTask
+            ? `연결 테스트를 시작할 수 없습니다. 이전 실행이 아직 끝나지 않았습니다(상태: ${existingActiveRun.status}). 잠시 후 다시 시도하세요.`
+            : singleTaskId
+              ? `이 Task에 대해 아직 진행 중인 실행이 있습니다(상태: ${existingActiveRun.status}). 끝난 뒤 다시 실행하세요.`
+              : "이 Task에 대해 아직 진행 중인 실행이 있습니다. 해당 실행이 끝난 뒤 다시 루프를 실행하세요.";
         return {
-          ok: true,
+          ok: singleTaskId ? false : true,
           steps,
-          message:
-            "이 Task에 대해 아직 진행 중인 실행이 있습니다. 해당 실행이 끝난 뒤 다시 루프를 실행하세요.",
+          message: blockedMsg,
         };
       }
 

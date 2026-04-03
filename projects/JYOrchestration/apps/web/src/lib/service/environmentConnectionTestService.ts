@@ -65,25 +65,6 @@ export function parsePrUrlFromRunPrStatus(prStatus: string | null | undefined): 
   return /^https?:\/\//i.test(url) ? url : null;
 }
 
-async function resetEnvTestTaskForNewRun(projectId: string, taskId: string): Promise<void> {
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      status: "TODO",
-      executionWorkflowStatus: EXECUTION_WORKFLOW.READY,
-      lastEvalResult: null,
-      lastEvalSummary: null,
-      lastOrchestrationBranch: null,
-      lastOrchestrationCommitStatus: null,
-      lastOrchestrationPushStatus: null,
-      lastOrchestrationCommitSha: null,
-      lastOrchestrationChangedFileCount: null,
-      loopRetryCount: 0,
-    },
-  });
-  await refreshWorkflowStates(projectId);
-}
-
 export async function createEnvironmentTestTask(input: {
   projectId: string;
   actorUserId: string;
@@ -114,39 +95,26 @@ export async function createEnvironmentTestTask(input: {
   }
 
   const specId = project.currentSpecVersionId;
-
-  const allEnv = await prisma.task.findMany({
-    where: { projectId, taskKind: ENV_TEST_TASK_KIND, archivedAt: null },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, sourceSpecVersionId: true },
-  });
-  const forCurrent = allEnv.filter((t) => t.sourceSpecVersionId === specId);
-  const canonicalId = forCurrent[0]?.id ?? null;
   const now = new Date();
 
-  for (const t of allEnv) {
-    if (t.id !== canonicalId) {
-      await prisma.task.update({ where: { id: t.id }, data: { archivedAt: now } });
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "env_test_archive_previous_task",
-        projectId,
-        userId: actorUserId,
-        detail: { archivedTaskId: t.id, reasonCode: "ENV_TEST_DEDUP" },
-      });
-    }
-  }
-
-  if (canonicalId) {
+  /** 이전 ENV_TEST는 재사용하지 않는다. 같은 Spec의 기존 ENV_TEST를 보관해 stuck run이 새 실행을 막지 않게 한다. */
+  const archived = await prisma.task.updateMany({
+    where: {
+      projectId,
+      taskKind: ENV_TEST_TASK_KIND,
+      archivedAt: null,
+      sourceSpecVersionId: specId,
+    },
+    data: { archivedAt: now },
+  });
+  if (archived.count > 0) {
     appendTaskProgressLog({
       kind: "execution",
-      phase: "env_test_reuse_existing_task",
+      phase: "env_test_archive_previous_tasks_for_fresh_run",
       projectId,
       userId: actorUserId,
-      detail: { taskId: canonicalId },
+      detail: { archivedCount: archived.count, sourceSpecVersionId: specId },
     });
-    await resetEnvTestTaskForNewRun(projectId, canonicalId);
-    return { ok: true, taskId: canonicalId };
   }
 
   const maxRow = await prisma.task.aggregate({
@@ -218,7 +186,7 @@ export async function getLatestEnvironmentTestTask(
             archivedAt: null,
             sourceSpecVersionId: specId,
           },
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "desc" },
           select: {
             id: true,
             name: true,
@@ -252,7 +220,7 @@ export async function getLatestEnvironmentTestTask(
         taskKind: ENV_TEST_TASK_KIND,
         archivedAt: null,
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         name: true,

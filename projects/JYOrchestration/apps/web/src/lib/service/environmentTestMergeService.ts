@@ -34,9 +34,20 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
   const projectId = String(input.projectId ?? "").trim();
   const actorUserId = String(input.actorUserId ?? "").trim();
 
+  const proj = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { currentSpecVersionId: true },
+  });
+  const currentSpecId = proj?.currentSpecVersionId ?? null;
+
   const task = await prisma.task.findFirst({
-    where: { projectId, taskKind: ENV_TEST_TASK_KIND, archivedAt: null },
-    orderBy: { createdAt: "asc" },
+    where: {
+      projectId,
+      taskKind: ENV_TEST_TASK_KIND,
+      archivedAt: null,
+      ...(currentSpecId ? { sourceSpecVersionId: currentSpecId } : {}),
+    },
+    orderBy: { createdAt: "desc" },
     select: {
       id: true,
       taskKind: true,
