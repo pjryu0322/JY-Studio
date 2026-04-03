@@ -27,6 +27,8 @@ export async function reclaimStaleRunningWorkflowTasks(projectId: string): Promi
       projectId,
       executionWorkflowStatus: EXECUTION_WORKFLOW.RUNNING,
       lastLoopRunAt: { lte: cutoff },
+      /** ENV_TEST는 Cursor 장시간 폴링으로 running이 길어질 수 있어 reclaim 대상에서 제외한다. */
+      taskKind: { not: "ENV_TEST" },
     },
     select: { id: true },
   });

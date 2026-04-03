@@ -33,12 +33,13 @@ import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAu
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/execution/scmManagerWithAiMembers";
 import {
-  envTestPrOpenedUserMessage,
-  logNextTaskReadinessForEnvTest,
   runEnvTestAfterGithubPushConfirmed,
   runEnvTestPlatformPrPhase,
 } from "@/lib/executionLoop/envTestExecutionHelpers";
-import type { NextTaskReadinessResult } from "@/lib/executionLoop/nextTaskReadiness";
+import {
+  evaluateNextTaskReadiness,
+  type NextTaskReadinessResult,
+} from "@/lib/executionLoop/nextTaskReadiness";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 import { GITHUB_REST_MISSING_TOKEN_USER_MESSAGE } from "@/lib/integration/githubRestCommon";
@@ -558,24 +559,7 @@ export async function runExecutionLoop(params: {
           taskKind: taskRow.taskKind ?? null,
         },
       });
-      if (isEnvTestTask) {
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_scope_guard_passed",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: { taskKind: "ENV_TEST" },
-        });
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_finalize_context_attached",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: { execRunId: execRun.id },
-        });
-      } else {
+      if (!isEnvTestTask) {
         appendTaskProgressLog({
           kind: "execution",
           phase: "normal_task_scope_guard_passed",
@@ -596,6 +580,16 @@ export async function runExecutionLoop(params: {
 
       let cursorOutcome: ExecuteCursorRunOutcome;
       try {
+        if (isEnvTestTask) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_cursor_invoke_started",
+            projectId,
+            taskId,
+            userId: actorUserId,
+            detail: { execRunId: execRun.id, branch: branchPlan.branchName },
+          });
+        }
         cursorOutcome = await executeCursorRun({
           projectId,
           workflowId: taskRow.sourceSpecVersionId ?? null,
@@ -725,6 +719,16 @@ export async function runExecutionLoop(params: {
           changedFiles: cr0.changedFiles.length,
           executionStatus: cr0.executionStatus,
         });
+        if (isEnvTestTask) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_cursor_invoke_succeeded",
+            projectId,
+            taskId,
+            userId: actorUserId,
+            detail: { runId: cr0.runId, branch: cr0.branchName },
+          });
+        }
       } else if (!cursorOutcome.ok) {
         appendTaskProgressLog({
           kind: "execution",
@@ -746,141 +750,6 @@ export async function runExecutionLoop(params: {
 
       if (!cursorOutcome.ok) {
         const errMsg = cursorOutcome.error ?? "cursor failed";
-        let recoveredByPr = false;
-
-        if (isEnvTestTask) {
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "github_branch_reflection_check",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: {
-              context: "cursor_error_recovery",
-              base: setup.baseBranch,
-              head: branchPlan.branchName,
-            },
-          });
-          const compareRecover = await fetchGithubCompareSnapshot({
-            repoUrl,
-            base: setup.baseBranch,
-            head: branchPlan.branchName,
-            maxFiles: 80,
-            githubAccessToken: setup.githubAccessToken ?? null,
-            allowUnauthenticated: true,
-          });
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "github_compare_ahead_by",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: compareRecover.ok
-              ? {
-                  context: "cursor_error_recovery",
-                  baseBranch: setup.baseBranch,
-                  branchName: branchPlan.branchName,
-                  compareStatus: compareRecover.data.compareStatus,
-                  aheadBy: compareRecover.data.aheadBy,
-                  behindBy: compareRecover.data.behindBy,
-                  headSha: compareRecover.data.headSha ?? null,
-                }
-              : {
-                  context: "cursor_error_recovery",
-                  baseBranch: setup.baseBranch,
-                  branchName: branchPlan.branchName,
-                  compareOk: false,
-                  code: compareRecover.code,
-                  message: compareRecover.message.slice(0, 400),
-                },
-          });
-          if (compareRecover.ok && compareRecover.data.aheadBy > 0) {
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "github_branch_reflection_confirmed",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: {
-                context: "cursor_error_recovery",
-                aheadBy: compareRecover.data.aheadBy,
-                compareStatus: compareRecover.data.compareStatus,
-                headSha: compareRecover.data.headSha ?? null,
-              },
-            });
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "env_test_push_reflected_by_github",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: { branch: branchPlan.branchName, source: "cursor_error_recovery" },
-            });
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "git_reflection_gate_passed_by_github_compare",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: {
-                runId: null,
-                branch: branchPlan.branchName,
-                base: setup.baseBranch,
-                aheadBy: compareRecover.data.aheadBy,
-                headSha: compareRecover.data.headSha ?? null,
-              },
-            });
-            const outRec = await runEnvTestAfterGithubPushConfirmed({
-              projectId,
-              taskId,
-              taskKind: taskRow.taskKind,
-              execRunId: execRun.id,
-              actorUserId,
-              branchName: branchPlan.branchName,
-              repoUrl,
-              baseBranch: setup.baseBranch,
-              githubAccessToken: setup.githubAccessToken ?? null,
-              compareData: {
-                headSha: compareRecover.data.headSha ?? null,
-                changedFiles: compareRecover.data.changedFiles,
-                diffSummary: compareRecover.data.diffSummary,
-              },
-              steps,
-              singleTaskId,
-              effectiveAutoAdvance,
-              cursorRunId: null,
-              via: "cursor_error_recovery",
-              pushDetectedSource: "cursor_error_recovery",
-              executionRunCreatedAt: execRun.createdAt,
-            });
-            if (outRec.kind === "return") {
-              recoveredByPr = true;
-              return outRec.result;
-            }
-            if (outRec.kind === "continue_loop") {
-              recoveredByPr = true;
-              continue;
-            }
-          }
-          if (!compareRecover.ok && compareRecover.code === "NO_GITHUB_TOKEN") {
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "github_compare_missing_token",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: { context: "cursor_error_recovery", branchName: branchPlan.branchName, baseBranch: setup.baseBranch },
-            });
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "env_test_compare_blocked_no_token",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: { branchName: branchPlan.branchName, baseBranch: setup.baseBranch },
-            });
-          }
-        }
 
         // PR도 없고 Cursor도 터미널을 못 내고 끝난 경우(특히 timeout)는 즉시 FAILED로 정리해 무한 재시도를 막는다.
         const isTimeout =
@@ -947,25 +816,23 @@ export async function runExecutionLoop(params: {
           if (singleTaskId) break;
           break;
         }
-        if (!recoveredByPr) {
-          await prisma.task.update({
-            where: { id: taskId },
-            data: {
-              loopRetryCount: cur + 1,
-              executionWorkflowStatus: EXECUTION_WORKFLOW.READY,
-              lastEvalResult: "retry",
-              lastEvalSummary: errMsg,
-            },
-          });
-          await prisma.taskExecutionRun.update({
-            where: { id: execRun.id },
-            data: { status: "retry_needed", evaluationReason: errMsg, evaluationDecision: "retry" },
-          });
-          await refreshWorkflowStates(projectId);
-          if (singleTaskId) break;
-          if (!effectiveAutoAdvance) break;
-          continue;
-        }
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            loopRetryCount: cur + 1,
+            executionWorkflowStatus: EXECUTION_WORKFLOW.READY,
+            lastEvalResult: "retry",
+            lastEvalSummary: errMsg,
+          },
+        });
+        await prisma.taskExecutionRun.update({
+          where: { id: execRun.id },
+          data: { status: "retry_needed", evaluationReason: errMsg, evaluationDecision: "retry" },
+        });
+        await refreshWorkflowStates(projectId);
+        if (singleTaskId) break;
+        if (!effectiveAutoAdvance) break;
+        continue;
       }
 
       if (!cursorOutcome.ok) {
@@ -984,15 +851,11 @@ export async function runExecutionLoop(params: {
         if (isEnvTestTask && headPending) {
           appendTaskProgressLog({
             kind: "execution",
-            phase: "github_branch_reflection_check",
+            phase: "env_test_branch_reflection_check_started",
             projectId,
             taskId,
             userId: actorUserId,
-            detail: {
-              context: "git_reflection_gate_env_test",
-              base: setup.baseBranch,
-              head: headPending,
-            },
+            detail: { base: setup.baseBranch, head: headPending, step: "reflection_bypass" },
           });
           const comparePa = await fetchGithubCompareSnapshot({
             repoUrl,
@@ -1002,81 +865,17 @@ export async function runExecutionLoop(params: {
             githubAccessToken: setup.githubAccessToken ?? null,
             allowUnauthenticated: true,
           });
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "github_compare_ahead_by",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: comparePa.ok
-              ? {
-                  context: "git_reflection_gate_env_test",
-                  baseBranch: setup.baseBranch,
-                  branchName: headPending,
-                  compareStatus: comparePa.data.compareStatus,
-                  aheadBy: comparePa.data.aheadBy,
-                  behindBy: comparePa.data.behindBy,
-                  headSha: comparePa.data.headSha ?? null,
-                }
-              : {
-                  context: "git_reflection_gate_env_test",
-                  baseBranch: setup.baseBranch,
-                  branchName: headPending,
-                  compareOk: false,
-                  code: comparePa.code,
-                  message: comparePa.message.slice(0, 400),
-                },
-          });
           if (comparePa.ok && comparePa.data.aheadBy > 0) {
             appendTaskProgressLog({
               kind: "execution",
-              phase: "github_branch_reflection_confirmed",
+              phase: "env_test_branch_reflection_confirmed",
               projectId,
               taskId,
               userId: actorUserId,
               detail: {
-                context: "git_reflection_gate_env_test",
-                aheadBy: comparePa.data.aheadBy,
-                compareStatus: comparePa.data.compareStatus,
-                headSha: comparePa.data.headSha ?? null,
-              },
-            });
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "env_test_push_reflected_by_github",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: { branch: headPending, source: "reflection_bypass_compare" },
-            });
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "git_reflection_gate",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: {
-                passed: true,
-                gateReason: "github_compare_ahead_by",
-                runId: cr.runId,
-                commitHash: cr.commitHash ?? null,
-                changedFileCount: cr.changedFiles.length,
-                aheadBy: comparePa.data.aheadBy,
-                outcome: "env_test_github_truth",
-              },
-            });
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "git_reflection_gate_passed_by_github_compare",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: {
-                runId: cr.runId,
-                branch: headPending,
-                base: setup.baseBranch,
                 aheadBy: comparePa.data.aheadBy,
                 headSha: comparePa.data.headSha ?? null,
+                step: "reflection_bypass",
               },
             });
             steps.push({
@@ -1366,16 +1165,15 @@ export async function runExecutionLoop(params: {
       if (isEnvTestTask) {
         appendTaskProgressLog({
           kind: "execution",
-          phase: "github_branch_reflection_check",
+          phase: "env_test_branch_reflection_check_started",
           projectId,
           taskId,
           userId: actorUserId,
           detail: {
-            context: "post_cursor_compare",
             base: setup.baseBranch,
             head: cr.branchName,
-            primaryTruth: "github_rest_compare",
             elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
+            step: "post_cursor",
           },
         });
       }
@@ -1387,78 +1185,19 @@ export async function runExecutionLoop(params: {
         githubAccessToken: setup.githubAccessToken ?? null,
         allowUnauthenticated: isEnvTestTask ? true : undefined,
       });
-      if (isEnvTestTask) {
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "github_compare_ahead_by",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: compare.ok
-            ? {
-                context: "post_cursor_compare",
-                baseBranch: setup.baseBranch,
-                branchName: cr.branchName,
-                compareStatus: compare.data.compareStatus,
-                aheadBy: compare.data.aheadBy,
-                behindBy: compare.data.behindBy,
-                headSha: compare.data.headSha ?? null,
-                elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
-              }
-            : {
-                context: "post_cursor_compare",
-                baseBranch: setup.baseBranch,
-                branchName: cr.branchName,
-                compareOk: false,
-                code: compare.code,
-                message: compare.message.slice(0, 400),
-                elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
-              },
-        });
-      }
       if (isEnvTestTask && compare.ok && compare.data.aheadBy > 0) {
         envTestCompareOkAtMs = Date.now();
         appendTaskProgressLog({
           kind: "execution",
-          phase: "github_branch_reflection_confirmed",
+          phase: "env_test_branch_reflection_confirmed",
           projectId,
           taskId,
           userId: actorUserId,
           detail: {
-            context: "post_cursor_compare",
-            aheadBy: compare.data.aheadBy,
-            compareStatus: compare.data.compareStatus,
-            headSha: compare.data.headSha ?? null,
-            elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
-            elapsedMsToCompareConfirmed: elapsedMsSinceExecRunStart,
-          },
-        });
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_push_reflected_by_github",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: {
-            branch: cr.branchName,
-            source: "post_cursor_compare",
-            elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
-          },
-        });
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "git_reflection_gate_passed_by_github_compare",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: {
-            context: "post_cursor_compare",
-            runId: cr.runId,
-            branch: cr.branchName,
-            base: setup.baseBranch,
             aheadBy: compare.data.aheadBy,
             headSha: compare.data.headSha ?? null,
             elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
+            step: "post_cursor",
           },
         });
       }
@@ -1502,7 +1241,7 @@ export async function runExecutionLoop(params: {
         Boolean(gitEvidence?.headSha ?? cr.commitHash ?? null) || (isEnvTestTask && pushDetected);
 
       // RUNNING -> COMMITTED (커밋/푸시 증거 수집 완료)
-      if (commitDetected) {
+      if (commitDetected && !isEnvTestTask) {
         appendTaskProgressLog({
           kind: "execution",
           phase: "commit_detected",
@@ -1512,7 +1251,7 @@ export async function runExecutionLoop(params: {
           detail: { headSha: gitEvidence?.headSha ?? cr.commitHash ?? null },
         });
       }
-      if (pushDetected) {
+      if (pushDetected && !isEnvTestTask) {
         appendTaskProgressLog({
           kind: "execution",
           phase: "push_detected",
@@ -1520,21 +1259,6 @@ export async function runExecutionLoop(params: {
           taskId,
           userId: actorUserId,
           detail: { branch: cr.branchName },
-        });
-      }
-      if (isEnvTestTask && pushDetected) {
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_push_detected",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: {
-            branch: cr.branchName,
-            source: "post_cursor_compare",
-            elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
-            elapsedMsToCompareConfirmed: elapsedMsSinceExecRunStart,
-          },
         });
       }
 
@@ -1711,76 +1435,29 @@ export async function runExecutionLoop(params: {
         let envReadinessCommitted: NextTaskReadinessResult | undefined;
         let envMergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>> | null = null;
         if (isEnvTestTask) {
-          const elapsedMsSinceRunStart = Date.now() - execRun.createdAt.getTime();
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "env_test_promoted_to_pr_opened",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: {
-              branchName: cr.branchName,
-              prUrl,
-              prNumber,
-              via: "committed_path",
-              elapsedMsSinceRunStart,
-            },
-          });
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "env_test_pr_opened_terminal_success",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: {
-              prUrl,
-              prNumber,
-              elapsedMsSinceRunStart,
-              via: "committed_path",
-            },
-          });
-
           // PR_OPENED 직후 ENV_TEST 전용 머지 자동 실행(스모크 테스트).
           envMergeRes = await executeEnvTestPrMergeSmokeTest({
             projectId,
             actorUserId,
           });
 
-          envReadinessCommitted = await logNextTaskReadinessForEnvTest({
-            projectId,
-            taskId,
-            actorUserId,
-            taskKind: taskRow.taskKind,
-            executionRunCreatedAt: execRun.createdAt,
-          });
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "env_test_finalize_completed",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: {
-              elapsedMsSinceRunStart,
-              elapsedMsToFinalizeCompleted: Date.now() - execRun.createdAt.getTime(),
-              nextTaskReady: envReadinessCommitted.nextTaskReady,
-              prNumber,
-              mergeOk: envMergeRes?.ok ?? null,
-              mergeBlockedReason: envMergeRes?.ok ? null : envMergeRes?.blockedReason ?? null,
-              via: "committed_path",
-            },
-          });
+          envReadinessCommitted = await evaluateNextTaskReadiness({ projectId });
         }
 
         if (
           singleTaskId ||
           !effectiveAutoAdvance ||
-          (isEnvTestTask && envMergeRes && envMergeRes.ok === false)
+          (isEnvTestTask && envMergeRes)
         ) {
           if (isEnvTestTask && envReadinessCommitted) {
+            const mergeOk = envMergeRes?.ok === true;
             return {
-              ok: true,
+              ok: mergeOk,
               steps,
-              message: envMergeRes?.message ?? envTestPrOpenedUserMessage(envReadinessCommitted),
+              message: mergeOk
+                ? (envMergeRes?.message ??
+                    "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.")
+                : (envMergeRes?.message ?? "환경 연결 테스트: 머지 단계에서 실패했습니다."),
               nextTaskReadiness: envReadinessCommitted,
             };
           }
