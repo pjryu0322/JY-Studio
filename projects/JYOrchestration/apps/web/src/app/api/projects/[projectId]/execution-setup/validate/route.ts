@@ -23,6 +23,7 @@ import {
   probeGitBaseBranchReachable,
   probeGitHttpRemote,
 } from "@/lib/executionSetup/hardening";
+import { sanitizeGithubPatForStorage } from "@/lib/integration/githubPatIntegrity";
 import { bumpGithubTokenValidationEpoch, logGithubTokenResolution } from "@/lib/integration/githubTokenTrace";
 import {
   runGithubPatCapabilityProbes,
@@ -241,7 +242,7 @@ export async function POST(
         scope === "github_auth" ? "execution_setup_validate_github_auth" : `execution_setup_validate_${scope}`
       );
       nextGithubCapabilityJson = (row.githubCapabilityValidation as Prisma.JsonValue | null) ?? null;
-      const tok = String(row.githubAccessToken ?? "").trim();
+      const tok = sanitizeGithubPatForStorage(String(row.githubAccessToken ?? ""));
       if (!tok) {
         logGithubTokenResolution({
           operation: "execution_setup_github_validate",

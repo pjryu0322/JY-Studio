@@ -311,7 +311,10 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
     actorUserId: input.actorUserId,
   });
 
-  const readiness = await evaluateNextTaskReadiness({ projectId: input.projectId });
+  const readiness = await evaluateNextTaskReadiness({
+    projectId: input.projectId,
+    excludeTaskExecutionRunId: input.execRunId,
+  });
 
   if (input.singleTaskId || !input.effectiveAutoAdvance || !mergeRes.ok) {
     const mergeOk = mergeRes.ok === true;

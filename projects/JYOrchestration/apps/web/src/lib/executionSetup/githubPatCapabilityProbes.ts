@@ -4,10 +4,22 @@
  */
 
 import {
+  githubTokenFingerprint,
+  githubTokenPrefixForLog,
   logGithubTokenBeforeFetch,
   logGithubTokenResolution,
   type GithubTokenSource,
 } from "@/lib/integration/githubTokenTrace";
+
+const GH_PAT_PROBE_LOG = "[github-pat-probe]";
+
+function logPatProbe(phase: string, detail: Record<string, unknown>): void {
+  try {
+    console.info(`${GH_PAT_PROBE_LOG} ${phase} ${JSON.stringify(detail)}`);
+  } catch {
+    console.info(`${GH_PAT_PROBE_LOG} ${phase}`, detail);
+  }
+}
 
 export type GithubCapabilityProbeStepName =
   | "repo_metadata"
@@ -84,8 +96,8 @@ function buildTokenMismatchHintKr(
     !raw.includes("pull_requests=");
   if (!weakMetaOnly) return null;
   return (
-    "GitHub가 허용 권한으로 metadata=read만 보고합니다. GitHub UI의 PAT와 다르게 DB에 남은 이전 토큰이 쓰이고 있을 수 있습니다. " +
-    "서버 로그의 TOKEN_SOURCE·TOKEN_HASH와 저장소 검증의 canonical X-Accepted-GitHub-Permissions를 확인한 뒤 토큰을 다시 저장하고 「다시 검증」하세요."
+    "GitHub가 허용 권한으로 metadata=read만 보고합니다. DB에 저장된 토큰이 GitHub UI에서 복사한 PAT와 일치하지 않을 가능성이 큽니다(이전 토큰이 남았거나 저장이 덮어쓰이지 않은 경우). " +
+    "Execution setup에서 「새 토큰 교체」로 다시 저장한 뒤 서버 로그의 TOKEN_PREFIX·TOKEN_LENGTH·TOKEN_HASH가 기대와 같은지 확인하고 「다시 검증」하세요."
   );
 }
 
@@ -298,6 +310,19 @@ export async function runGithubPatCapabilityProbes(input: {
     lastErrorMessage = `PR 생성 권한 확인 중 오류 HTTP ${createRes.status}`;
   }
 
+  logPatProbe("pr_create_probe_done", {
+    projectId,
+    validationEpoch,
+    owner,
+    repo,
+    httpStatus: createRes.status,
+    prCreateOk,
+    xAcceptedGitHubPermissions: createAccepted ?? null,
+    responseBodyHead: createTxt.slice(0, 400),
+    tokenFingerprint: githubTokenFingerprint(token),
+    tokenPrefix: githubTokenPrefixForLog(token),
+  });
+
   if (!prCreateOk) {
     return finalizeSnapshot(
       steps,
@@ -320,7 +345,33 @@ export async function runGithubPatCapabilityProbes(input: {
   /** 403 on merge PUT = definitive failure; do not override with collaborator API */
   let mergeProbeDefinitiveFailure = false;
 
+  const mergedPrCandidates = pullsJson.filter((p) => p.merged_at && typeof p.number === "number");
+  logPatProbe("pr_merge_phase_start", {
+    projectId,
+    validationEpoch,
+    owner,
+    repo,
+    baseBranch: baseBranch.trim() || "main",
+    pullsPageCount: pullsJson.length,
+    mergedPrCandidateCount: mergedPrCandidates.length,
+    mergedPrNumbersSample: mergedPrCandidates.slice(0, 8).map((p) => p.number),
+    selectedMergedPrNumber: mergedPr?.number ?? null,
+    tokenFingerprint: githubTokenFingerprint(token),
+    tokenPrefix: githubTokenPrefixForLog(token),
+  });
+
   if (mergedPr?.number != null) {
+    const mergePath = `/repos/${owner}/${repo}/pulls/${mergedPr.number}/merge`;
+    logPatProbe("pr_merge_probe_request", {
+      projectId,
+      validationEpoch,
+      method: "PUT",
+      mergePath,
+      mergeMethod: "merge",
+      prNumber: mergedPr.number,
+      prState: mergedPr.state ?? null,
+      mergedAt: mergedPr.merged_at ?? null,
+    });
     const mergeUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${mergedPr.number}/merge`;
     logGithubTokenBeforeFetch("pr_merge_probe_PUT", token, tokenSource, projectId);
     const mergeRes = await fetch(mergeUrl, {
@@ -332,6 +383,16 @@ export async function runGithubPatCapabilityProbes(input: {
     const mergeTxt = await readBodySnippet(mergeRes);
     if (mergeRes.status === 403) {
       mergeProbeDefinitiveFailure = true;
+      logPatProbe("pr_merge_probe_result", {
+        projectId,
+        validationEpoch,
+        outcome: "forbidden_no_merge_permission",
+        httpStatus: 403,
+        xAcceptedGitHubPermissions: mergeAccepted ?? null,
+        responseBodyHead: mergeTxt.slice(0, 600),
+        prMergeOk: false,
+        mergeProbeDefinitiveFailure: true,
+      });
       pushFail(
         "pr_merge_probe",
         mergeRes,
@@ -346,11 +407,43 @@ export async function runGithubPatCapabilityProbes(input: {
       }
     } else if (mergeRes.status === 200) {
       prMergeOk = true;
+      logPatProbe("pr_merge_probe_result", {
+        projectId,
+        validationEpoch,
+        outcome: "http200_treated_as_merge_api_ok",
+        httpStatus: 200,
+        xAcceptedGitHubPermissions: mergeAccepted ?? null,
+        responseBodyHead: mergeTxt.slice(0, 400),
+        prMergeOk: true,
+      });
       pushOk("pr_merge_probe", mergeRes, mergeAccepted);
     } else if (mergeRes.status === 405 || mergeRes.status === 422 || mergeRes.status === 404) {
       prMergeOk = true;
+      logPatProbe("pr_merge_probe_result", {
+        projectId,
+        validationEpoch,
+        outcome:
+          mergeRes.status === 422
+            ? "http422_expected_already_merged_or_invalid"
+            : mergeRes.status === 405
+              ? "http405_method_not_allowed_treated_ok"
+              : "http404_treated_ok",
+        httpStatus: mergeRes.status,
+        xAcceptedGitHubPermissions: mergeAccepted ?? null,
+        responseBodyHead: mergeTxt.slice(0, 600),
+        prMergeOk: true,
+      });
       pushOk("pr_merge_probe", mergeRes, mergeAccepted);
     } else {
+      logPatProbe("pr_merge_probe_result", {
+        projectId,
+        validationEpoch,
+        outcome: "unexpected_status_failure",
+        httpStatus: mergeRes.status,
+        xAcceptedGitHubPermissions: mergeAccepted ?? null,
+        responseBodyHead: mergeTxt.slice(0, 600),
+        prMergeOk: false,
+      });
       pushFail(
         "pr_merge_probe",
         mergeRes,
@@ -360,15 +453,42 @@ export async function runGithubPatCapabilityProbes(input: {
       lastHttpStatus = mergeRes.status;
       lastErrorMessage = `PR 머지 권한 확인 중 HTTP ${mergeRes.status}: ${mergeTxt.slice(0, 400)}`;
     }
+  } else {
+    logPatProbe("pr_merge_probe_skipped", {
+      projectId,
+      validationEpoch,
+      reason: "no_merged_pull_in_first_page",
+      pullsPageCount: pullsJson.length,
+      openOrOtherSample: pullsJson.slice(0, 6).map((p) => ({
+        number: p.number ?? null,
+        state: p.state ?? null,
+        hasMergedAt: Boolean(p.merged_at),
+      })),
+    });
   }
 
   // 6) 머지 결과가 불명확하거나(머지된 PR 없음·비-403 오류) 보조 확인 → 협업자 권한 API
   if (!prMergeOk && !mergeProbeDefinitiveFailure) {
+    logPatProbe("collaborator_fallback_enter", {
+      projectId,
+      validationEpoch,
+      prMergeOk,
+      mergeProbeDefinitiveFailure,
+      reason: "merge_api_unavailable_or_inconclusive",
+    });
     logGithubTokenBeforeFetch("collaborator_GET_user", token, tokenSource, projectId);
     const userRes = await fetch(`${api}/user`, { headers });
     const userAccepted = readAcceptedPermissions(userRes);
     if (!userRes.ok) {
       const body = await readBodySnippet(userRes);
+      logPatProbe("collaborator_GET_user_result", {
+        projectId,
+        validationEpoch,
+        httpStatus: userRes.status,
+        xAcceptedGitHubPermissions: userAccepted ?? null,
+        responseBodyHead: body.slice(0, 400),
+        ok: false,
+      });
       pushFail("collaborator_permission", userRes, `GET /user 실패 HTTP ${userRes.status}: ${body}`, userAccepted);
       lastHttpStatus = userRes.status;
       lastErrorMessage =
@@ -381,6 +501,14 @@ export async function runGithubPatCapabilityProbes(input: {
       } catch {
         login = "";
       }
+      logPatProbe("collaborator_GET_user_result", {
+        projectId,
+        validationEpoch,
+        httpStatus: userRes.status,
+        xAcceptedGitHubPermissions: userAccepted ?? null,
+        login: login || null,
+        ok: true,
+      });
       if (!login) {
         steps.push({
           step: "collaborator_permission",
@@ -388,19 +516,41 @@ export async function runGithubPatCapabilityProbes(input: {
           httpStatus: userRes.status,
           errorMessage: "사용자 login을 알 수 없습니다.",
         });
+        logPatProbe("collaborator_permission_skipped", {
+          projectId,
+          validationEpoch,
+          reason: "empty_login_after_user_json",
+        });
         lastErrorMessage =
           "머지된 PR이 없어 머지 API 검증을 건너뛰었습니다. 저장소에 Contents: write 및 PR 머지 권한을 부여했는지 확인하세요.";
       } else {
+        const collabPath = `/repos/${owner}/${repo}/collaborators/${login}/permission`;
         const collabUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/collaborators/${encodeURIComponent(login)}/permission`;
+        logPatProbe("collaborator_permission_request", {
+          projectId,
+          validationEpoch,
+          method: "GET",
+          collabPath,
+          login,
+        });
         logGithubTokenBeforeFetch("collaborator_permission_GET", token, tokenSource, projectId);
         const collabRes = await fetch(collabUrl, { headers });
         const collabAccepted = readAcceptedPermissions(collabRes);
-        const collabTxt = await readBodySnippet(collabRes);
+        const collabBodyText = await collabRes.text();
+        const collabTxtSnippet = collabBodyText.slice(0, 800);
         if (!collabRes.ok) {
+          logPatProbe("collaborator_permission_result", {
+            projectId,
+            validationEpoch,
+            httpStatus: collabRes.status,
+            xAcceptedGitHubPermissions: collabAccepted ?? null,
+            responseBodyHead: collabTxtSnippet.slice(0, 600),
+            ok: false,
+          });
           pushFail(
             "collaborator_permission",
             collabRes,
-            `협업자 권한 조회 실패 HTTP ${collabRes.status}: ${collabTxt}`,
+            `협업자 권한 조회 실패 HTTP ${collabRes.status}: ${collabTxtSnippet}`,
             collabAccepted
           );
           lastHttpStatus = collabRes.status;
@@ -409,12 +559,33 @@ export async function runGithubPatCapabilityProbes(input: {
           if (collabAccepted) lastErrorMessage += ` (힌트: ${collabAccepted})`;
         } else {
           try {
-            const cj = (await collabRes.json()) as { permission?: string };
+            const cj = JSON.parse(collabBodyText || "{}") as { permission?: string };
             const perm = String(cj.permission ?? "").toLowerCase();
+            const rawJsonHead = JSON.stringify(cj).slice(0, 500);
             if (perm === "admin" || perm === "maintain" || perm === "write") {
               prMergeOk = true;
+              logPatProbe("collaborator_permission_result", {
+                projectId,
+                validationEpoch,
+                httpStatus: collabRes.status,
+                xAcceptedGitHubPermissions: collabAccepted ?? null,
+                parsedPermission: perm,
+                rawJsonHead,
+                outcome: "merge_ok_via_collaborator_role",
+                ok: true,
+              });
               pushOk("collaborator_permission", collabRes, collabAccepted);
             } else {
+              logPatProbe("collaborator_permission_result", {
+                projectId,
+                validationEpoch,
+                httpStatus: collabRes.status,
+                xAcceptedGitHubPermissions: collabAccepted ?? null,
+                parsedPermission: perm || "(empty)",
+                rawJsonHead,
+                outcome: "insufficient_repo_role_for_merge",
+                ok: false,
+              });
               pushFail(
                 "collaborator_permission",
                 collabRes,
@@ -425,13 +596,35 @@ export async function runGithubPatCapabilityProbes(input: {
               lastErrorMessage = `GitHub 토큰에 Contents: write(저장소 write) 수준 권한이 필요합니다. 현재 권한: ${perm}`;
             }
           } catch {
-            pushFail("collaborator_permission", collabRes, `권한 JSON 파싱 실패: ${collabTxt}`, collabAccepted);
+            logPatProbe("collaborator_permission_result", {
+              projectId,
+              validationEpoch,
+              httpStatus: collabRes.status,
+              xAcceptedGitHubPermissions: collabAccepted ?? null,
+              outcome: "json_parse_failed",
+              responseBodyHead: collabTxtSnippet.slice(0, 600),
+              ok: false,
+            });
+            pushFail(
+              "collaborator_permission",
+              collabRes,
+              `권한 JSON 파싱 실패: ${collabTxtSnippet}`,
+              collabAccepted
+            );
             lastErrorMessage = "협업자 권한 응답을 해석하지 못했습니다. Contents: write 권한을 확인하세요.";
           }
         }
       }
     }
   }
+
+  logPatProbe("pr_merge_phase_end", {
+    projectId,
+    validationEpoch,
+    prMergeOk,
+    mergeProbeDefinitiveFailure,
+    githubOperableWillBe: prMergeOk && prCreateOk && prReadOk && repoAccessOk,
+  });
 
   return finalizeSnapshot(
     steps,

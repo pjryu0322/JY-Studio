@@ -72,9 +72,10 @@ export function logGithubTokenResolution(input: GithubTokenResolutionLogInput): 
 
   const fp = githubTokenFingerprint(input.token);
   const prefix = githubTokenPrefixForLog(input.token);
+  const len = input.token.length;
   console.info(
     `[GitHub token] op=${input.operation} TOKEN_SOURCE=DB TOKEN_CACHE=${JY_ORCH_GITHUB_TRACE_CACHE_LABEL} ` +
-      `TOKEN_PREFIX=${prefix} TOKEN_HASH=${fp}${pid} VALIDATION_EPOCH=${epoch}`
+      `TOKEN_PREFIX=${prefix} TOKEN_LENGTH=${len} TOKEN_HASH=${fp}${pid} VALIDATION_EPOCH=${epoch}`
   );
 }
 
@@ -88,6 +89,6 @@ export function logGithubTokenBeforeFetch(
   const pid = projectId?.trim() ? ` projectId=${projectId.trim()}` : "";
   console.info(
     `[GitHub token] pre_fetch op=${operation} TOKEN_SOURCE=DB ` +
-      `TOKEN_PREFIX=${githubTokenPrefixForLog(token)} TOKEN_HASH=${githubTokenFingerprint(token)}${pid}`
+      `TOKEN_PREFIX=${githubTokenPrefixForLog(token)} TOKEN_LENGTH=${token.length} TOKEN_HASH=${githubTokenFingerprint(token)}${pid}`
   );
 }

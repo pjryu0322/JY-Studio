@@ -1451,7 +1451,10 @@ export async function runExecutionLoop(params: {
             actorUserId,
           });
 
-          envReadinessCommitted = await evaluateNextTaskReadiness({ projectId });
+          envReadinessCommitted = await evaluateNextTaskReadiness({
+            projectId,
+            excludeTaskExecutionRunId: execRun.id,
+          });
         }
 
         if (

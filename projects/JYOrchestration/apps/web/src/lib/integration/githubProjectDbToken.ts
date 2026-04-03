@@ -1,3 +1,4 @@
+import { sanitizeGithubPatForStorage, logGithubPatDbLoad } from "@/lib/integration/githubPatIntegrity";
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { githubTokenFingerprint } from "@/lib/integration/githubTokenTrace";
@@ -27,7 +28,9 @@ export async function resolveProjectGithubToken(projectId: string): Promise<Proj
       select: { githubAccessToken: true },
     })
   );
-  const t = String(row?.githubAccessToken ?? "").trim();
+  const raw = String(row?.githubAccessToken ?? "");
+  const t = sanitizeGithubPatForStorage(raw);
+  logGithubPatDbLoad({ projectId: pid, token: t || null, operation: "resolveProjectGithubToken" });
   return {
     token: t || null,
     source: "DB",

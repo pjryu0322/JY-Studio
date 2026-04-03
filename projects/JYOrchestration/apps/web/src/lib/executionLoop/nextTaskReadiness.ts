@@ -1,4 +1,5 @@
 import { isExecutionLoopPaused } from "@/lib/executionLoop/loopControllerState";
+import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { loadWorkflowGraphTasks } from "@/lib/executionLoop/workflowState";
 import { pickNextReadyTask, type TaskForPick } from "@/lib/executionLoop/pickNextReadyTask";
 import { prisma } from "@/lib/prisma";
@@ -20,6 +21,8 @@ export type NextTaskReadinessResult = {
  */
 export async function evaluateNextTaskReadiness(input: {
   projectId: string;
+  /** 완료 직후 동일 run id가 일시적으로 blocking으로 잡히는 레이스 완화 */
+  excludeTaskExecutionRunId?: string | null;
 }): Promise<NextTaskReadinessResult> {
   const projectId = String(input.projectId ?? "").trim();
   if (!projectId) {
@@ -64,16 +67,26 @@ export async function evaluateNextTaskReadiness(input: {
   const nextName = nextMeta?.name ?? null;
 
   await ensureTaskExecutionRunColumnsReady();
+  const excludeRunId = String(input.excludeTaskExecutionRunId ?? "").trim();
   const activeBlocking = await withTaskExecutionRunSchemaHealRetry(() =>
     prisma.taskExecutionRun.findFirst({
       where: {
         projectId,
         archivedAt: null,
         status: { in: ["running", "awaiting_git_reflection", "reviewing"] },
+        ...(excludeRunId ? { id: { not: excludeRunId } } : {}),
+      },
+      include: {
+        task: { select: { taskKind: true, executionWorkflowStatus: true } },
       },
     })
   );
-  if (activeBlocking) {
+  const wfNorm = String(activeBlocking?.task?.executionWorkflowStatus ?? "").trim().toLowerCase();
+  const staleEnvTestMerged =
+    Boolean(activeBlocking) &&
+    String(activeBlocking!.task?.taskKind ?? "").trim() === "ENV_TEST" &&
+    wfNorm === EXECUTION_WORKFLOW.MERGED;
+  if (activeBlocking && !staleEnvTestMerged) {
     return {
       nextTaskReady: false,
       nextTaskId: next.id,
