@@ -597,6 +597,28 @@ export function ProjectExecutionEnvironmentPanel({
                   최종 GitHub 운영 가능: <strong>{cap.githubOperableOk ? "정상" : "실패"}</strong>
                 </li>
               </ul>
+              {cap.canonicalRepoGetAcceptedPermissions ? (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: 8,
+                    background: "#f8fafc",
+                    borderRadius: 8,
+                    fontSize: 10,
+                    fontFamily: "ui-monospace, monospace",
+                    wordBreak: "break-all",
+                    color: "#334155",
+                  }}
+                >
+                  GET /repos (기준) X-Accepted-GitHub-Permissions: {cap.canonicalRepoGetAcceptedPermissions}
+                </div>
+              ) : null}
+              {cap.tokenSourceUsed != null ? (
+                <div style={{ marginTop: 6, fontSize: 10, color: "#64748b" }}>
+                  검증 시 토큰 출처: <strong>{String(cap.tokenSourceUsed).toUpperCase()}</strong>
+                  {cap.validationEpoch != null ? ` · 검증 에포크: ${cap.validationEpoch}` : null}
+                </div>
+              ) : null}
               {!cap.githubOperableOk ? (
                 <div
                   style={{
@@ -609,6 +631,9 @@ export function ProjectExecutionEnvironmentPanel({
                     lineHeight: 1.55,
                   }}
                 >
+                  {cap.tokenMismatchHintKr ? (
+                    <div style={{ fontWeight: 800, marginBottom: 6 }}>{cap.tokenMismatchHintKr}</div>
+                  ) : null}
                   {cap.lastErrorMessage ? <div>{cap.lastErrorMessage}</div> : null}
                   {cap.lastHttpStatus != null ? <div style={{ marginTop: 4 }}>HTTP {cap.lastHttpStatus}</div> : null}
                   {cap.acceptedPermissionsHeader ? (

@@ -990,6 +990,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
   const preBranch = await verifyBaseBranchBeforeCursorExecution({
     gitRepoUrl: setup.gitRepoUrl,
     baseBranch: setup.baseBranch,
+    githubAccessToken: params.githubAccessToken ?? null,
   });
   if (!preBranch.ok) {
     logs.push("[cursor-adapter] base branch 사전 검증 실패");

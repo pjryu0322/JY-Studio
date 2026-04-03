@@ -12,6 +12,7 @@ import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { maskCursorTokenForUi } from "@/lib/executionSetup/cursorTokenMask";
 import { maskGithubTokenForUi } from "@/lib/executionSetup/githubTokenMask";
+import { githubTokenFingerprint, githubTokenPrefixForLog } from "@/lib/integration/githubTokenTrace";
 
 function cursorTokenMaskedForApiResponse(cursorApiToken: string | null | undefined): string | null {
   const t = String(cursorApiToken ?? "").trim();
@@ -472,6 +473,24 @@ export async function PATCH(
         update: data,
       })
     );
+
+    if (body.githubAccessToken !== undefined) {
+      const prevTok = String(existing?.githubAccessToken ?? "").trim();
+      const prevFp = prevTok ? githubTokenFingerprint(prevTok) : "(none)";
+      const prevPx = prevTok ? githubTokenPrefixForLog(prevTok) : "—";
+      const storedTok = String(row.githubAccessToken ?? "").trim();
+      const storedFp = storedTok ? githubTokenFingerprint(storedTok) : "(cleared)";
+      const storedPx = storedTok ? githubTokenPrefixForLog(storedTok) : "—";
+      const expectedClear = body.githubAccessToken === null || body.githubAccessToken === "";
+      const expectedTok = expectedClear ? "" : String(body.githubAccessToken).trim();
+      const dbMatches =
+        expectedClear ? storedTok === "" : storedTok === expectedTok && storedTok.length > 0;
+      console.info(
+        `[GitHub token] PATCH execution-setup projectId=${pid} DB_OVERWRITE ` +
+          `prev_hash=${prevFp} new_stored_hash=${storedFp} prev_prefix=${prevPx} new_prefix=${storedPx} ` +
+          `db_row_matches_request=${dbMatches}`
+      );
+    }
 
     return NextResponse.json({
       success: true,

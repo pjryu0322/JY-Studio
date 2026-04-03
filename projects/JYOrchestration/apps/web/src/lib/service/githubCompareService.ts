@@ -1,8 +1,8 @@
 /** GitHub REST compare — 호출 시점·스코프는 실행 루프/어댑터가 결정(함수 자체는 ENV_TEST 전용 아님). */
 import { resolveGithubRepositoryFromEnv } from "@/lib/integration/githubIntegrationHints";
 import {
-  getGithubRestToken,
   GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+  resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
 
 async function fetchBranchTipCommitSha(input: {
@@ -80,7 +80,9 @@ export async function fetchGithubBranchHeadExists(params: {
   if (!parsed) {
     return { ok: false, code: "REPO_NOT_GITHUB", message: "GitHub 저장소 URL이 아닙니다.", httpStatus: 400 };
   }
-  const token = getGithubRestToken(params.githubAccessToken ?? null);
+  const { token } = resolveGithubRestTokenAndLog("github_branch_head_exists", params.githubAccessToken ?? null, {
+    throttleKey: "github_branch_exists",
+  });
   if (!token && params.allowUnauthenticated !== true) {
     return {
       ok: false,
@@ -165,7 +167,9 @@ export async function fetchGithubCompareSnapshot(params: {
     }
   | { ok: false; code: string; message: string; httpStatus?: number; detail?: Record<string, unknown> }
 > {
-  const token = getGithubRestToken(params.githubAccessToken ?? null);
+  const { token } = resolveGithubRestTokenAndLog("github_compare_snapshot", params.githubAccessToken ?? null, {
+    throttleKey: "github_compare",
+  });
   // 웹 앱(플랫폼)에서는 execution setup의 repoUrl이 진실이다.
   // CI/런타임 env의 GITHUB_REPOSITORY 힌트가 다른 저장소를 가리키면 compare 결과가 틀어질 수 있어
   // repoUrl parse 실패 시에만 env 힌트를 사용한다.

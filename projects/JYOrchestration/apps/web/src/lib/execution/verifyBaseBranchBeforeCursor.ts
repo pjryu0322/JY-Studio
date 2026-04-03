@@ -1,10 +1,6 @@
 import { parseGitHubRepoFullName, probeGitBaseBranchReachable } from "@/lib/executionSetup/hardening";
 import { formatGitBaseBranchConfigError, repoDisplayForGitError } from "@/lib/execution/gitBranchCursorError";
-
-function githubToken(): string | null {
-  const t = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
-  return t || null;
-}
+import { resolveGithubRestTokenAndLog } from "@/lib/integration/githubRestCommon";
 
 const GITHUB_FETCH_MS = 15_000;
 
@@ -17,6 +13,8 @@ const GITHUB_FETCH_MS = 15_000;
 export async function verifyBaseBranchBeforeCursorExecution(params: {
   gitRepoUrl: string;
   baseBranch: string;
+  /** Execution setup에 저장된 GitHub 토큰(없으면 ENV 폴백 — 로그에 TOKEN_SOURCE 표시) */
+  githubAccessToken?: string | null;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const gitRepoUrl = params.gitRepoUrl.trim();
   const baseBranch = params.baseBranch.trim();
@@ -30,7 +28,10 @@ export async function verifyBaseBranchBeforeCursorExecution(params: {
   }
 
   const fullName = parseGitHubRepoFullName(gitRepoUrl);
-  const token = githubToken();
+  const { token } = resolveGithubRestTokenAndLog(
+    "verify_base_branch_before_cursor",
+    params.githubAccessToken ?? null
+  );
 
   if (fullName && token) {
     const [owner, repo] = fullName.split("/");
