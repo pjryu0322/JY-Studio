@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
@@ -149,6 +150,7 @@ export async function GET(
         githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
         githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
         githubAuthValidationError: row.githubAuthValidationError ?? null,
+        githubCapabilityValidation: row.githubCapabilityValidation ?? null,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
         hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
@@ -387,6 +389,7 @@ export async function PATCH(
       data.executorConnectionOk = null;
       data.executorValidatedAt = null;
       data.executorValidationError = null;
+      data.githubCapabilityValidation = Prisma.DbNull;
     }
     if (executorDirty || cursorDirty) {
       data.cursorApiConnectionOk = null;
@@ -400,6 +403,7 @@ export async function PATCH(
       data.githubAuthConnectionOk = null;
       data.githubAuthValidatedAt = null;
       data.githubAuthValidationError = null;
+      data.githubCapabilityValidation = Prisma.DbNull;
     }
     if (repoDirty || executorDirty || cursorDirty || githubDirty) {
       const mergeRepoOk = repoDirty ? null : (existing?.repoConnectionOk ?? null);
@@ -486,6 +490,7 @@ export async function PATCH(
         githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
         githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
         githubAuthValidationError: row.githubAuthValidationError ?? null,
+        githubCapabilityValidation: row.githubCapabilityValidation ?? null,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
         hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),

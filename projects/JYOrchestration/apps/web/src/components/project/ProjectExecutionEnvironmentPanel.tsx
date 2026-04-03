@@ -340,21 +340,25 @@ export function ProjectExecutionEnvironmentPanel({
 
   const repoOk = executionSetup?.repoConnectionOk ?? null;
   const githubAuthOk = executionSetup?.githubAuthConnectionOk ?? null;
+  const githubCap = executionSetup?.githubCapabilityValidation ?? null;
+  /** PR 머지까지 포함한 스냅샷이 있고 operable일 때만 실행 준비에 반영 */
+  const githubEffectiveOk =
+    githubAuthOk === true && githubCap != null && githubCap.githubOperableOk === true;
   const cursorApiOk = executionSetup?.cursorApiConnectionOk ?? null;
   const execOk = executionSetup?.executorConnectionOk ?? null;
-  const executionReady = repoOk === true && githubAuthOk === true && cursorApiOk === true && execOk === true;
+  const executionReady = repoOk === true && githubEffectiveOk && cursorApiOk === true && execOk === true;
   const baseBranchConfigured = Boolean(executionSetup?.baseBranch?.trim());
   const autoPushOn = executionSetup?.autoPush === true;
   const envTestStartOk = executionReady && baseBranchConfigured && autoPushOn;
 
   const canRunLabel = executionReady
     ? "준비 완료"
-    : repoOk === false || cursorApiOk === false || execOk === false
+    : repoOk === false || githubEffectiveOk === false || cursorApiOk === false || execOk === false
       ? "불가"
       : "미검증";
   const canRunTone: "ok" | "bad" | "warn" = executionReady
     ? "ok"
-    : repoOk === false || cursorApiOk === false || execOk === false
+    : repoOk === false || githubEffectiveOk === false || cursorApiOk === false || execOk === false
       ? "bad"
       : "warn";
 
@@ -558,6 +562,65 @@ export function ProjectExecutionEnvironmentPanel({
             {busyGithubAuth === "reveal" ? "불러오는 중…" : "보기 / 숨기기"}
           </button>
         </div>
+
+        {(() => {
+          const cap = es?.githubCapabilityValidation;
+          if (!cap) {
+            if (es?.githubAuthValidatedAt && hasTok) {
+              return (
+                <p style={{ marginTop: 14, fontSize: 11, color: "#b45309", lineHeight: 1.55 }}>
+                  세부 GitHub 권한(저장소/PR 조회/PR 생성/PR 머지) 스냅샷이 없습니다. 「다시 검증」으로 최신 권한을
+                  확인하세요.
+                </p>
+              );
+            }
+            return null;
+          }
+          const okLabel = (v: boolean) => (v ? "정상" : "실패");
+          return (
+            <div style={{ marginTop: 14, fontSize: 12, lineHeight: 1.65, color: "#334155" }}>
+              <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>권한 단계별 결과</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <li>
+                  저장소 접근: <strong>{okLabel(cap.repoAccessOk)}</strong>
+                </li>
+                <li>
+                  PR 조회: <strong>{okLabel(cap.prReadOk)}</strong>
+                </li>
+                <li>
+                  PR 생성 권한: <strong>{okLabel(cap.prCreateOk)}</strong>
+                </li>
+                <li>
+                  PR 머지 권한: <strong>{okLabel(cap.prMergeOk)}</strong>
+                </li>
+                <li>
+                  최종 GitHub 운영 가능: <strong>{cap.githubOperableOk ? "정상" : "실패"}</strong>
+                </li>
+              </ul>
+              {!cap.githubOperableOk ? (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: 10,
+                    background: "#fef2f2",
+                    borderRadius: 8,
+                    fontSize: 11,
+                    color: "#7f1d1d",
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {cap.lastErrorMessage ? <div>{cap.lastErrorMessage}</div> : null}
+                  {cap.lastHttpStatus != null ? <div style={{ marginTop: 4 }}>HTTP {cap.lastHttpStatus}</div> : null}
+                  {cap.acceptedPermissionsHeader ? (
+                    <div style={{ marginTop: 4, fontFamily: "ui-monospace, monospace", wordBreak: "break-all" }}>
+                      X-Accepted-GitHub-Permissions: {cap.acceptedPermissionsHeader}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
       </div>
     );
   })();
@@ -838,9 +901,36 @@ export function ProjectExecutionEnvironmentPanel({
           </li>
           <li>
             <span style={{ color: "#64748b" }}>GitHub 인증:</span>{" "}
-            <strong style={{ color: toneColor(readinessTone(githubAuthOk)) }}>
-              {githubAuthOk === true ? "정상" : githubAuthOk === false ? "필요" : "미검증"}
+            <strong
+              style={{
+                color: toneColor(
+                  githubEffectiveOk
+                    ? "ok"
+                    : githubAuthOk === false || (githubCap && !githubCap.githubOperableOk)
+                      ? "bad"
+                      : "warn"
+                ),
+              }}
+            >
+              {githubEffectiveOk
+                ? "정상 (머지 권한 포함)"
+                : githubAuthOk === false
+                  ? "필요"
+                  : githubAuthOk === true && !githubCap
+                    ? "재검증 필요"
+                    : githubCap && !githubCap.githubOperableOk
+                      ? "권한 부족"
+                      : "미검증"}
             </strong>
+            {githubCap ? (
+              <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, fontSize: 12, fontWeight: 500, color: "#334155" }}>
+                <li>저장소 접근: {githubCap.repoAccessOk ? "정상" : "실패"}</li>
+                <li>PR 조회: {githubCap.prReadOk ? "정상" : "실패"}</li>
+                <li>PR 생성 권한: {githubCap.prCreateOk ? "정상" : "실패"}</li>
+                <li>PR 머지 권한: {githubCap.prMergeOk ? "정상" : "실패"}</li>
+                <li>최종 GitHub 운영: {githubCap.githubOperableOk ? "정상" : "실패"}</li>
+              </ul>
+            ) : null}
           </li>
           <li>
             <span style={{ color: "#64748b" }}>Cursor 연결:</span>{" "}

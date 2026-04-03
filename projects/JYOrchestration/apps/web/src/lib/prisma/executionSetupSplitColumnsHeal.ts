@@ -39,6 +39,7 @@ const EXECUTION_SETUP_ADD_COLUMNS_IF_NOT_EXISTS: readonly string[] = [
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthConnectionOk" BOOLEAN`,
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidatedAt" TIMESTAMP(3)`,
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidationError" TEXT`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubCapabilityValidation" JSONB`,
 ];
 
 /** Wrong snake_case columns from an earlier mistaken script — merge into camelCase then drop. */

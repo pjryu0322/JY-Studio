@@ -290,6 +290,8 @@ model ExecutionSetup {
   githubAuthConnectionOk Boolean?
   githubAuthValidatedAt DateTime?
   githubAuthValidationError String? @db.Text
+  /// GitHub PAT 단계별 권한 프로브 결과(JSON): repo/prRead/prCreate/prMerge/operable, HTTP, X-Accepted-GitHub-Permissions
+  githubCapabilityValidation Json?
 
   /// Cursor executor
   cursorApiUrl    String
