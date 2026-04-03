@@ -18,7 +18,13 @@ export async function createGithubPullRequestFromBranch(params: {
   | { ok: false; code: string; message: string; httpStatus?: number; detail?: Record<string, unknown> }
 > {
   const { token } = resolveGithubRestTokenAndLog("github_pull_request_from_branch", params.githubAccessToken ?? null);
-  if (!token) return { ok: false, code: "NO_GITHUB_TOKEN", message: "GITHUB_TOKEN(GH_TOKEN)이 필요합니다.", httpStatus: 503 };
+  if (!token)
+    return {
+      ok: false,
+      code: "NO_GITHUB_TOKEN",
+      message: "실행 환경에 저장된 GitHub 토큰이 필요합니다.",
+      httpStatus: 503,
+    };
   const parsed = resolveGithubOwnerRepoStrict(params.repoUrl);
   if (!parsed) return { ok: false, code: "REPO_NOT_GITHUB", message: "GitHub 저장소 URL이 아닙니다.", httpStatus: 400 };
   const api = githubRestApiBase();

@@ -84,7 +84,7 @@ function buildTokenMismatchHintKr(
     !raw.includes("pull_requests=");
   if (!weakMetaOnly) return null;
   return (
-    "GitHub가 허용 권한으로 metadata=read만 보고합니다. GitHub UI의 PAT가 아니라 플랫폼이 다른 토큰(서버 GITHUB_TOKEN/GH_TOKEN 또는 DB에 남은 이전 토큰)을 쓰고 있을 가능성이 큽니다. " +
+    "GitHub가 허용 권한으로 metadata=read만 보고합니다. GitHub UI의 PAT와 다르게 DB에 남은 이전 토큰이 쓰이고 있을 수 있습니다. " +
     "서버 로그의 TOKEN_SOURCE·TOKEN_HASH와 저장소 검증의 canonical X-Accepted-GitHub-Permissions를 확인한 뒤 토큰을 다시 저장하고 「다시 검증」하세요."
   );
 }

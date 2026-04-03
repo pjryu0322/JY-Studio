@@ -1,43 +1,19 @@
 import { resolveGithubRepositoryFromEnv } from "@/lib/integration/githubIntegrationHints";
-import {
-  githubProcessEnvTokenInfo,
-  logGithubTokenResolution,
-  type GithubTokenSource,
-} from "@/lib/integration/githubTokenTrace";
+import { logGithubTokenResolution } from "@/lib/integration/githubTokenTrace";
 
-/** UI·lastEvalSummary용: 토큰 부재 시 원인을 숨기지 않는다. */
+/** UI·lastEvalSummary용: DB 토큰 부재 시 */
 export const GITHUB_REST_MISSING_TOKEN_USER_MESSAGE =
-  "GitHub 토큰이 없어 저장소 확인과 PR 생성을 진행할 수 없습니다. 실행 환경에서 GitHub 인증을 저장·검증한 뒤 다시 시도하세요. (개발 환경에서는 GITHUB_TOKEN 또는 GH_TOKEN을 설정할 수 있습니다.)";
+  "GitHub 토큰이 없습니다. 실행 환경(Execution setup)에 GitHub 토큰을 저장·검증한 뒤 다시 시도하세요.";
 
+/** 플랫폼은 Execution setup(DB) 토큰만 사용한다. */
 export type GithubRestTokenResolution = {
   token: string | null;
-  source: GithubTokenSource;
+  source: "db" | "none";
 };
 
-/** DB(Execution setup) 우선. ENV 폴백은 JY_ORCHESTRATION_GITHUB_DISABLE_ENV_TOKEN=1 이면 비활성화. */
 export function resolveGithubRestToken(preferredToken?: string | null): GithubRestTokenResolution {
   const dbToken = String(preferredToken ?? "").trim();
-  const envInfo = githubProcessEnvTokenInfo();
-  const disableEnv =
-    process.env.JY_ORCHESTRATION_GITHUB_DISABLE_ENV_TOKEN === "1" ||
-    process.env.JY_ORCHESTRATION_GITHUB_DISABLE_ENV_TOKEN === "true";
-
-  if (dbToken) {
-    return { token: dbToken, source: "db" };
-  }
-  if (disableEnv) {
-    if (envInfo.combined) {
-      console.warn(
-        `[GitHub token] WARN: JY_ORCHESTRATION_GITHUB_DISABLE_ENV_TOKEN 활성 — DB 토큰이 비어 있어 GitHub 호출 불가. ` +
-          `ENV 토큰은 사용하지 않습니다.`
-      );
-    }
-    return { token: null, source: "none" };
-  }
-  const envTok = envInfo.combined?.trim() ?? "";
-  if (envTok) {
-    return { token: envTok, source: "env" };
-  }
+  if (dbToken) return { token: dbToken, source: "db" };
   return { token: null, source: "none" };
 }
 
@@ -45,7 +21,6 @@ export function getGithubRestToken(preferredToken?: string | null): string | nul
   return resolveGithubRestToken(preferredToken).token;
 }
 
-/** 토큰 확정 + 감사 로그(논리 작업 단위로 1회 호출 권장). */
 export function resolveGithubRestTokenAndLog(
   operation: string,
   preferredToken?: string | null,

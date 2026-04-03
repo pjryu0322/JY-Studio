@@ -8,11 +8,6 @@ export const GITHUB_MERGE_ERROR_CODES = {
   NOT_MERGEABLE_YET: "GITHUB_MERGE_NOT_MERGEABLE_YET",
 } as const;
 
-function getGithubToken(): string | null {
-  const t = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
-  return t || null;
-}
-
 function githubApiBase(): string {
   const b = process.env.GITHUB_API_URL?.trim();
   if (b) return b.replace(/\/$/, "");
@@ -58,6 +53,8 @@ type PullJson = {
 
 export async function autoMergePullRequest(params: {
   prUrl: string;
+  /** Execution setup(DB)에 저장된 프로젝트 GitHub 토큰 */
+  githubAccessToken: string | null | undefined;
   mergeMethod?: "merge" | "squash" | "rebase";
   commitTitle?: string;
 }): Promise<
@@ -72,12 +69,12 @@ export async function autoMergePullRequest(params: {
   if (isExecutionSafeMode()) {
     return { ok: false, code: GITHUB_MERGE_ERROR_CODES.SAFE_MODE, message: "Safe mode에서 PR 자동 머지는 비활성화됩니다." };
   }
-  const token = getGithubToken();
+  const token = String(params.githubAccessToken ?? "").trim();
   if (!token) {
     return {
       ok: false,
       code: GITHUB_MERGE_ERROR_CODES.NO_TOKEN,
-      message: "GITHUB_TOKEN(GH_TOKEN)이 없어 PR 자동 머지를 수행할 수 없습니다.",
+      message: "실행 환경에 저장된 GitHub 토큰이 없어 PR 자동 머지를 수행할 수 없습니다.",
       httpStatus: 503,
     };
   }

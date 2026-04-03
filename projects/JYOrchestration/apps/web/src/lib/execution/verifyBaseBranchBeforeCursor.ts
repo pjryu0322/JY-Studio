@@ -6,14 +6,14 @@ const GITHUB_FETCH_MS = 15_000;
 
 /**
  * Cursor API 호출 전 base branch 존재 여부를 확인합니다.
- * - github.com + GITHUB_TOKEN: REST GET /repos/.../branches/{branch}
+ * - github.com + DB 저장 GitHub 토큰: REST GET /repos/.../branches/{branch}
  * - 그 외: git smart HTTP info/refs (공개 저장소·도달 가능 시)
  * - 비공개 저장소이고 토큰이 없으면 info/refs가 401이면 검증 생략(Cursor에 위임).
  */
 export async function verifyBaseBranchBeforeCursorExecution(params: {
   gitRepoUrl: string;
   baseBranch: string;
-  /** Execution setup에 저장된 GitHub 토큰(없으면 ENV 폴백 — 로그에 TOKEN_SOURCE 표시) */
+  /** Execution setup(DB)에 저장된 GitHub 토큰 */
   githubAccessToken?: string | null;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const gitRepoUrl = params.gitRepoUrl.trim();
