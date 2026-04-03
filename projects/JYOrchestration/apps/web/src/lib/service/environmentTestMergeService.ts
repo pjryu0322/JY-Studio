@@ -10,7 +10,6 @@ import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { refreshWorkflowStates, updateTaskOrchestrationSnapshot } from "@/lib/executionLoop/workflowState";
 import {
   assertEnvTestMergeNotSafeMode,
-  deleteEnvTestRemoteBranch,
   evaluateEnvTestMergeGuards,
   fetchEnvTestPullDetail,
   fetchEnvTestPullFiles,
@@ -24,8 +23,6 @@ import {
   parsePrUrlFromRunPrStatus,
 } from "@/lib/service/environmentConnectionTestService";
 
-const ENV_TEST_DELETE_BRANCH_AFTER_MERGE = process.env.ENV_TEST_MERGE_DELETE_BRANCH === "1";
-
 export type EnvTestMergeExecutionResult =
   | { ok: true; message: string; mergeCommitSha: string | null; branchDeleted: boolean }
   | { ok: false; message: string; blockedReason?: string };
@@ -36,14 +33,6 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
 }): Promise<EnvTestMergeExecutionResult> {
   const projectId = String(input.projectId ?? "").trim();
   const actorUserId = String(input.actorUserId ?? "").trim();
-
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_merge_requested",
-    projectId,
-    userId: actorUserId,
-    detail: {},
-  });
 
   const task = await prisma.task.findFirst({
     where: { projectId, taskKind: ENV_TEST_TASK_KIND, archivedAt: null },
@@ -63,7 +52,20 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
 
   const wf = String(task.executionWorkflowStatus ?? "").trim().toLowerCase();
   if (wf === EXECUTION_WORKFLOW.MERGED) {
-    return { ok: true, message: "이미 머지 완료된 ENV_TEST입니다.", mergeCommitSha: null, branchDeleted: false };
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_done",
+      projectId,
+      taskId: task.id,
+      userId: actorUserId,
+      detail: { reason: "already_merged_task_workflow" },
+    });
+    return {
+      ok: true,
+      message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
+      mergeCommitSha: null,
+      branchDeleted: false,
+    };
   }
   if (wf !== EXECUTION_WORKFLOW.PR_OPENED) {
     return {
@@ -94,7 +96,20 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
   }
 
   if (run.mergedAt) {
-    return { ok: true, message: "실행 기록상 이미 머지되었습니다.", mergeCommitSha: run.mergeCommitSha ?? null, branchDeleted: false };
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_done",
+      projectId,
+      taskId: task.id,
+      userId: actorUserId,
+      detail: { reason: "already_merged_run_record" },
+    });
+    return {
+      ok: true,
+      message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
+      mergeCommitSha: run.mergeCommitSha ?? null,
+      branchDeleted: false,
+    };
   }
 
   const safe = assertEnvTestMergeNotSafeMode();
@@ -293,15 +308,6 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     };
   }
 
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_merge_guard_passed",
-    projectId,
-    taskId: task.id,
-    userId: actorUserId,
-    detail: { prNumber: parsedPr.number, fileCount: filesRes.files.length },
-  });
-
   const prLive = guard.pr;
   const mergedEarly =
     prLive.merged === true || String(prLive.state ?? "").toUpperCase() === "MERGED";
@@ -319,19 +325,6 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
         mergeCommitSha: mergeCommitShaEarly,
         source: "already_merged_on_github",
         elapsedMsSincePrOpened: prOpenedAt ? Date.now() - prOpenedAt : null,
-      },
-    });
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_finalize_after_verified_merge",
-      projectId,
-      taskId: task.id,
-      userId: actorUserId,
-      detail: {
-        prNumber: parsedPr.number,
-        mergeCommitSha: mergeCommitShaEarly,
-        baseBranch: requiredBaseRef,
-        source: "already_merged_on_github",
       },
     });
     await withTaskExecutionRunSchemaHealRetry(() =>
@@ -354,40 +347,31 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
       where: { id: task.id },
       data: {
         executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED,
-        status: "MERGED",
+        status: "DONE",
         lastEvalResult: "merged",
-        lastEvalSummary: "ENV_TEST: PR이 이미 머지된 상태로 확인되었습니다.",
+        lastEvalSummary: "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.",
       },
     });
     await updateTaskOrchestrationSnapshot(task.id, {
       pushStatus: "pr_merged",
       commitSha: mergeCommitShaEarly,
     });
+    await refreshWorkflowStates(projectId);
     appendTaskProgressLog({
       kind: "execution",
-      phase: "env_test_promoted_to_merged",
+      phase: "env_test_done",
       projectId,
       taskId: task.id,
       userId: actorUserId,
       detail: {
         prNumber: parsedPr.number,
         mergeCommitSha: mergeCommitShaEarly,
-        branchName: String(prLive.head?.ref ?? run.branchName ?? "").trim() || null,
-        source: "sync_only",
+        source: "already_merged_on_github",
       },
-    });
-    await refreshWorkflowStates(projectId);
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_merge_finalize_completed",
-      projectId,
-      taskId: task.id,
-      userId: actorUserId,
-      detail: { mergeCommitSha: mergeCommitShaEarly, branchDeleted: false, source: "sync_only" },
     });
     return {
       ok: true,
-      message: "이미 GitHub에서 머지된 PR입니다. 상태만 동기화했습니다.",
+      message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
       mergeCommitSha: mergeCommitShaEarly,
       branchDeleted: false,
     };
@@ -395,7 +379,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
 
   appendTaskProgressLog({
     kind: "execution",
-    phase: "env_test_merge_api_started",
+    phase: "env_test_merge_started",
     projectId,
     taskId: task.id,
     userId: actorUserId,
@@ -429,15 +413,6 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     await persistMergeBlocked(mergePut.message, mergePut.code);
     return { ok: false, message: mergePut.message, blockedReason: mergePut.code };
   }
-
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_merge_api_succeeded",
-    projectId,
-    taskId: task.id,
-    userId: actorUserId,
-    detail: { prNumber: parsedPr.number, httpStatus: mergePut.httpStatus },
-  });
 
   const verified = await verifyEnvTestPullMergedWithRetry({
     repoUrl,
@@ -479,19 +454,6 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     },
   });
 
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_finalize_after_verified_merge",
-    projectId,
-    taskId: task.id,
-    userId: actorUserId,
-    detail: {
-      prNumber: parsedPr.number,
-      mergeCommitSha: verified.mergeCommitSha ?? null,
-      baseBranch: requiredBaseRef,
-    },
-  });
-
   const mergedAt = new Date();
   const headBranch = String(guard.pr.head?.ref ?? run.branchName ?? "").trim();
 
@@ -516,9 +478,9 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     where: { id: task.id },
     data: {
       executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED,
-      status: "MERGED",
+      status: "DONE",
       lastEvalResult: "merged",
-      lastEvalSummary: "ENV_TEST: 플랫폼 스모크 머지(squash)가 완료되었습니다.",
+      lastEvalSummary: "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.",
     },
   });
 
@@ -527,74 +489,25 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     commitSha: verified.mergeCommitSha ?? null,
   });
 
+  await refreshWorkflowStates(projectId);
+
   appendTaskProgressLog({
     kind: "execution",
-    phase: "env_test_promoted_to_merged",
+    phase: "env_test_done",
     projectId,
     taskId: task.id,
     userId: actorUserId,
     detail: {
       prNumber: parsedPr.number,
       mergeCommitSha: verified.mergeCommitSha ?? null,
-      branchName: headBranch || null,
-      elapsedMsSincePrOpened: prOpenedAt ? Date.now() - prOpenedAt : null,
-    },
-  });
-
-  let branchDeleted = false;
-  let branchDeletedAt: Date | null = null;
-  if (ENV_TEST_DELETE_BRANCH_AFTER_MERGE && headBranch) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_branch_delete_started",
-      projectId,
-      taskId: task.id,
-      userId: actorUserId,
-      detail: { branchName: headBranch },
-    });
-    const del = await deleteEnvTestRemoteBranch({ repoUrl, branchName: headBranch, token });
-    if (del.ok) {
-      branchDeleted = true;
-      branchDeletedAt = new Date();
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "env_test_branch_deleted",
-        projectId,
-        taskId: task.id,
-        userId: actorUserId,
-        detail: { branchName: headBranch },
-      });
-    }
-  }
-
-  await withTaskExecutionRunSchemaHealRetry(() =>
-    prisma.taskExecutionRun.update({
-      where: { id: run.id },
-      data: { envTestRemoteBranchDeletedAt: branchDeletedAt },
-    })
-  );
-
-  await refreshWorkflowStates(projectId);
-
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_merge_finalize_completed",
-    projectId,
-    taskId: task.id,
-    userId: actorUserId,
-    detail: {
-      mergeCommitSha: verified.mergeCommitSha ?? null,
-      branchDeleted,
-      elapsedMsSincePrOpened: prOpenedAt ? Date.now() - prOpenedAt : null,
+      headBranch: headBranch || null,
     },
   });
 
   return {
     ok: true,
-    message: branchDeleted
-      ? "테스트 PR 머지가 완료되었고 브랜치 정리가 완료되었습니다."
-      : "테스트 PR 머지가 완료되었습니다.",
+    message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
     mergeCommitSha: verified.mergeCommitSha ?? null,
-    branchDeleted,
+    branchDeleted: false,
   };
 }
