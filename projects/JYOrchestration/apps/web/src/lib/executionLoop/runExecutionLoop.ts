@@ -1658,6 +1658,7 @@ export async function runExecutionLoop(params: {
         headBranch: cr.branchName,
         title: `[auto] ${taskRow.name}`.slice(0, 240),
         body: `Automated by JYOrchestration SCM Manager.\n\nTask: ${taskId}\nBranch: ${cr.branchName}\n\nReviewer: approved\n\nSummary:\n${evalPack.result.reason}`.slice(0, 6000),
+        githubAccessToken: setup.githubAccessToken ?? null,
       });
       if (!prCreate.ok) {
         await prisma.taskExecutionRun.update({
@@ -1694,7 +1695,11 @@ export async function runExecutionLoop(params: {
         return { ok: true, steps, message: "PR created; merge pending" };
       }
 
-      const mr = await autoMergePullRequest({ prUrl: prCreate.data.pullRequestUrl, commitTitle: `Auto-merge: ${taskRow.name}`.slice(0, 240) });
+      const mr = await autoMergePullRequest({
+        prUrl: prCreate.data.pullRequestUrl,
+        githubAccessToken: setup.githubAccessToken ?? null,
+        commitTitle: `Auto-merge: ${taskRow.name}`.slice(0, 240),
+      });
       if (!mr.ok) {
         await prisma.taskExecutionRun.update({
           where: { id: execRun.id },
@@ -1917,6 +1922,7 @@ export async function runExecutionLoop(params: {
             });
             const mr = await autoMergePullRequest({
               prUrl: prUrlNow,
+              githubAccessToken: setup.githubAccessToken ?? null,
               commitTitle: `Auto-merge: ${taskRow.name}`.slice(0, 240),
             });
             if (mr.ok) {

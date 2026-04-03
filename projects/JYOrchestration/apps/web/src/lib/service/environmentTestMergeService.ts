@@ -227,7 +227,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
 
   const token = resolveEnvTestMergeGithubToken(setup.githubAccessToken ?? null);
   if (!token) {
-    return { ok: false, message: "GitHub 토큰(실행 설정 또는 GITHUB_TOKEN)이 필요합니다." };
+    return { ok: false, message: "실행 환경(Execution setup)에 저장된 GitHub 토큰이 필요합니다." };
   }
 
   appendTaskProgressLog({

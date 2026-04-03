@@ -250,7 +250,7 @@ export async function POST(
           validationEpoch: githubValidationEpoch,
         });
         nextGithubOk = false;
-        nextGithubErr = "GitHub 인증: 토큰이 없습니다. (GITHUB_TOKEN/GH_TOKEN이 아니라, 실행 환경 설정에 토큰을 저장하세요)";
+        nextGithubErr = "GitHub 인증: 실행 환경(Execution setup)에 저장된 토큰이 없습니다.";
         nextGithubAt = now;
         nextGithubCapabilityJson = null;
         messages.push("GitHub 인증: 토큰이 없습니다. GitHub 토큰을 저장한 뒤 다시 검증하세요.");
