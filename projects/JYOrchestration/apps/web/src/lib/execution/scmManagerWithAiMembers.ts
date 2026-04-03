@@ -72,6 +72,9 @@ export async function tryRunScmManagerWithAiMembers(params: {
   baseBranch: string;
   reviewerDecision: string;
   reviewerSummary: string;
+  /** ENV_TEST Stage 2 등: 멤버 기본 모델 대신 강제 */
+  openAiModelOverride?: string | null;
+  openAiTemperature?: number | null;
 }): Promise<{ decision: ScmManagerDecision; summary: string; steps: ScmManagerStepRecord[] } | null> {
   const rows = await prisma.projectMember.findMany({
     where: {
@@ -91,11 +94,17 @@ export async function tryRunScmManagerWithAiMembers(params: {
   if (rows.length === 0) return null;
 
   const m = rows[0];
-  const model = resolveEffectiveReviewerModel("reviewer", m.aiModelOverride);
+  const model =
+    String(params.openAiModelOverride ?? "").trim() || resolveEffectiveReviewerModel("reviewer", m.aiModelOverride);
   const userMessage = buildScmManagerContext({ ...params, projectId: params.projectId });
+  const temperature =
+    typeof params.openAiTemperature === "number" && Number.isFinite(params.openAiTemperature)
+      ? params.openAiTemperature
+      : undefined;
 
   const { result } = await runOpenAiChatJsonEvaluation({
     model,
+    temperature,
     systemContent: `You are AI member "${m.displayName?.trim() || "scm-manager"}" with orchestration role "scm-manager". Output only valid JSON.`,
     userMessage: `${userMessage}
 

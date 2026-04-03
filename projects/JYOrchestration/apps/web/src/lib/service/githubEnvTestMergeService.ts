@@ -10,11 +10,22 @@ import {
   resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
 import { isEnvTestHelloWorldBranchName } from "@/lib/execution/branchPolicy";
-import { ENV_TEST_PR_TITLE } from "@/lib/service/githubEnvTestPullRequestService";
+import { isEnvTestMergeFamilyTaskKind, isEnvTestStage2TaskKind } from "@/lib/execution/envTestTaskKind";
+import {
+  ENV_TEST_MERGE_ALLOWED_ROOT_PREFIX,
+  isEnvTestMergeWhitelistedPath,
+  normalizeEnvTestMergePrFilename,
+} from "@/lib/service/envTestMergeFilePolicy";
+import { ENV_TEST_PR_TITLE, ENV_TEST_STAGE2_PR_TITLE } from "@/lib/service/githubEnvTestPullRequestService";
 import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
 
-/** 머지 가드: PR에 허용되는 유일한 변경 경로(정규화 후 비교). */
-export const ENV_TEST_MERGE_ALLOWED_FILE_PATH = "orchestration-test/hello-world.md";
+export { isEnvTestMergeWhitelistedPath } from "@/lib/service/envTestMergeFilePolicy";
+
+/**
+ * Hello World ENV_TEST가 만드는 대표 파일(문서·UI 힌트용).
+ * 머지 허용 범위는 envTestMergeFilePolicy.isEnvTestMergeWhitelistedPath 로만 판정한다.
+ */
+export const ENV_TEST_MERGE_ALLOWED_FILE_PATH = `${ENV_TEST_MERGE_ALLOWED_ROOT_PREFIX}hello-world.md`;
 
 export function resolveEnvTestMergeGithubToken(
   setupGithubAccessToken: string | null | undefined,
@@ -24,13 +35,6 @@ export function resolveEnvTestMergeGithubToken(
     projectId,
   });
   return r.token;
-}
-
-function normalizePrFilePath(filename: string): string {
-  return String(filename ?? "")
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/^\/+/, "");
 }
 
 type PullDetailJson = {
@@ -126,7 +130,13 @@ export async function fetchEnvTestPullFiles(input: {
 }
 
 export type EnvTestMergeGuardResult =
-  | { ok: true; pr: PullDetailJson; files: PullFileJson[] }
+  | {
+      ok: true;
+      pr: PullDetailJson;
+      files: PullFileJson[];
+      /** 진단: 화이트리스트 통과 파일별 패턴 */
+      envTestFileWhitelistMatches: Array<{ filename: string; matchedPathPattern: string }>;
+    }
   | { ok: false; blockedReason: string; blockedCode: string };
 
 /**
@@ -140,8 +150,9 @@ export function evaluateEnvTestMergeGuards(input: {
   /** 실행 설정(ExecutionSetup)의 baseBranch — ENV_TEST 머지 가드의 단일 근거 */
   requiredBaseRef: string;
 }): EnvTestMergeGuardResult {
-  if (String(input.taskKind ?? "").trim() !== "ENV_TEST") {
-    return { ok: false, blockedCode: "NOT_ENV_TEST", blockedReason: "taskKind가 ENV_TEST가 아닙니다." };
+  const tk = String(input.taskKind ?? "").trim();
+  if (!isEnvTestMergeFamilyTaskKind(tk)) {
+    return { ok: false, blockedCode: "NOT_ENV_TEST", blockedReason: "taskKind가 ENV_TEST 계열이 아닙니다." };
   }
   const headRef = String(input.pr.head?.ref ?? "").trim();
   if (!isEnvTestHelloWorldBranchName(headRef)) {
@@ -160,11 +171,12 @@ export function evaluateEnvTestMergeGuards(input: {
     };
   }
   const title = String(input.pr.title ?? "").trim();
-  if (title !== ENV_TEST_PR_TITLE) {
+  const expectedTitle = isEnvTestStage2TaskKind(tk) ? ENV_TEST_STAGE2_PR_TITLE : ENV_TEST_PR_TITLE;
+  if (title !== expectedTitle) {
     return {
       ok: false,
       blockedCode: "PR_TITLE",
-      blockedReason: "PR 제목이 ENV_TEST 표준 제목과 일치하지 않습니다.",
+      blockedReason: "PR 제목이 해당 ENV_TEST 단계의 표준 제목과 일치하지 않습니다.",
     };
   }
   const requiredBase = String(input.requiredBaseRef ?? "").trim();
@@ -190,18 +202,20 @@ export function evaluateEnvTestMergeGuards(input: {
       blockedReason: "PR에 변경 파일이 없어 머지할 수 없습니다.",
     };
   }
-  const allowed = ENV_TEST_MERGE_ALLOWED_FILE_PATH;
+  const envTestFileWhitelistMatches: Array<{ filename: string; matchedPathPattern: string }> = [];
   for (const f of input.files) {
-    const fn = normalizePrFilePath(String(f.filename ?? ""));
-    if (fn !== allowed) {
+    const fn = normalizeEnvTestMergePrFilename(String(f.filename ?? ""));
+    const w = isEnvTestMergeWhitelistedPath(fn);
+    if (!w.ok || !w.matchedPathPattern) {
       return {
         ok: false,
         blockedCode: "FILE_OUT_OF_SCOPE",
         blockedReason: `변경 파일이 ENV_TEST 허용 범위를 벗어났습니다: ${fn}`,
       };
     }
+    envTestFileWhitelistMatches.push({ filename: fn, matchedPathPattern: w.matchedPathPattern });
   }
-  return { ok: true, pr: input.pr, files: input.files };
+  return { ok: true, pr: input.pr, files: input.files, envTestFileWhitelistMatches };
 }
 
 export async function putEnvTestSquashMerge(input: {

@@ -7,18 +7,32 @@ import {
 } from "@/lib/integration/githubRestCommon";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 
-/** ENV_TEST 플랫폼 PR 제목(머지 가드와 동일 문자열). */
+/** ENV_TEST Stage 1 플랫폼 PR 제목(머지 가드와 동일 문자열). */
 export const ENV_TEST_PR_TITLE = "[JYO][ENV_TEST] Hello World environment validation";
 
-function buildEnvTestPullRequestBody(branchName: string): string {
+/** ENV_TEST Stage 2 — 역할 분리 readiness PR 제목(머지 가드가 이 문자열과 일치해야 함) */
+export const ENV_TEST_STAGE2_PR_TITLE = "[JYO][ENV_TEST_STAGE2] Role-separated readiness validation";
+
+export type EnvTestPullRequestStage = "stage1" | "stage2";
+
+function buildEnvTestPullRequestBody(branchName: string, stage: EnvTestPullRequestStage): string {
+  const taskType = stage === "stage2" ? "ENV_TEST_STAGE2" : "ENV_TEST";
+  const taskName =
+    stage === "stage2"
+      ? "환경 연결 테스트 Stage 2 - 역할 분리 readiness"
+      : "환경 연결 테스트 - Hello World";
+  const purpose =
+    stage === "stage2"
+      ? "Platform hub: executor / reviewer / SCM separation readiness"
+      : "AI-Cursor-Git-PR environment validation";
   return `<!-- JY_ORCH_META
-taskType=ENV_TEST
-taskName=환경 연결 테스트 - Hello World
-purpose=AI-Cursor-Git-PR environment validation
+taskType=${taskType}
+taskName=${taskName}
+purpose=${purpose}
 branchName=${branchName}
 -->
 
-환경 연결 테스트(Hello World)용 PR입니다. JYOrchestration 플랫폼에서 생성·갱신됩니다.`;
+${stage === "stage2" ? "ENV_TEST Stage 2(readiness) PR — 플랫폼이 생성·갱신합니다." : "환경 연결 테스트(Hello World)용 PR입니다. JYOrchestration 플랫폼에서 생성·갱신됩니다."}`;
 }
 
 type PullRes = { html_url?: string; number?: number };
@@ -68,6 +82,8 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   headBranch: string;
   githubAccessToken?: string | null;
   projectId?: string | null;
+  /** 기본 stage1. Stage2는 별도 PR 제목·본문 메타 */
+  envTestStage?: EnvTestPullRequestStage;
 }): Promise<
   | {
       ok: true;
@@ -98,8 +114,9 @@ export async function createOrUpdateEnvTestPullRequest(params: {
     return { ok: false, code: "INVALID_BRANCH", message: "base/head 브랜치가 필요합니다.", httpStatus: 400 };
   }
 
-  const title = ENV_TEST_PR_TITLE;
-  const body = buildEnvTestPullRequestBody(headBranch);
+  const stage: EnvTestPullRequestStage = params.envTestStage === "stage2" ? "stage2" : "stage1";
+  const title = stage === "stage2" ? ENV_TEST_STAGE2_PR_TITLE : ENV_TEST_PR_TITLE;
+  const body = buildEnvTestPullRequestBody(headBranch, stage);
 
   const existing = await findOpenPullRequestByHeadBranch({
     repoUrl: params.repoUrl,

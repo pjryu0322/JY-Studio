@@ -12,8 +12,20 @@ export const EXECUTION_WORKFLOW = {
   REVIEW_PENDING: "review_pending",
   REVIEW_REJECTED: "review_rejected",
   REVIEW_APPROVED: "review_approved",
+  /** ENV_TEST Stage 2: Security 검증 대기 */
+  SECURITY_PENDING: "security_pending",
+  /** ENV_TEST Stage 2: Security 통과 */
+  SECURITY_PASSED: "security_passed",
+  /** ENV_TEST Stage 2: Security 실패 */
+  SECURITY_FAILED: "security_failed",
+  /** ENV_TEST Stage 2: SCM(형상관리) merge 게이트 대기 */
+  SCM_PENDING: "scm_pending",
   /** PR 생성/merge 대기(merge 전 자동 진행 금지) */
   MERGE_PENDING: "merge_pending",
+  /** ENV_TEST Stage 2: merge 차단 */
+  MERGE_BLOCKED: "merge_blocked",
+  /** ENV_TEST Stage 2: merge verify 실패 */
+  VERIFY_FAILED: "verify_failed",
   MERGED: "merged",
   /**
    * 에이전트는 종료되었으나 commitHash·변경 파일 등으로 코드 반영이 확인되지 않음.

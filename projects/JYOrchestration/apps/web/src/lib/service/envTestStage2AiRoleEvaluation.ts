@@ -1,0 +1,220 @@
+import { runOpenAiChatJsonEvaluation, type OpenAiRelayEvalUsage } from "@/lib/execution/openAiRelayEvaluation";
+import {
+  ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
+  resolveEnvTestStage2OpenAiModel,
+} from "@/lib/service/envTestStage2OpenAiConfig";
+import {
+  type ReviewerToPlatformResultPayload,
+  type SecurityToPlatformResultPayload,
+  type PlatformToReviewerRequestPayload,
+  type PlatformToSecurityRequestPayload,
+  type ExecutorToPlatformStatusPayload,
+} from "@/lib/service/envTestStage2Messages";
+import { getAiMemberByRole } from "@/lib/service/envTestStage2AiMemberLookup";
+import { tryRunScmManagerWithAiMembers, type ScmManagerDecision } from "@/lib/execution/scmManagerWithAiMembers";
+import {
+  appendStage2EventToTiming,
+  logStage2TelemetryEvent,
+  type EnvTestStage2TimingRecord,
+} from "@/lib/service/envTestStage2Telemetry";
+
+function maskSecretsForPrompt(raw: string): string {
+  const t = String(raw ?? "");
+  return t
+    .replace(/\bghp_[A-Za-z0-9]{8,}\b/g, (m) => `${m.slice(0, 4)}****${m.slice(-4)}`)
+    .replace(/\bgithub_pat_[A-Za-z0-9]{8,}\b/g, (m) => `${m.slice(0, 4)}****${m.slice(-4)}`)
+    .replace(/\bsk-[A-Za-z0-9]{8,}\b/g, (m) => `${m.slice(0, 3)}****${m.slice(-3)}`)
+    .slice(0, 6000);
+}
+
+function passFailFromEvalDecision(decision: string): "PASS" | "FAIL" {
+  const d = String(decision ?? "").toLowerCase().trim();
+  if (d === "done" || d === "pass") return "PASS";
+  return "FAIL";
+}
+
+function parseReason(result: { reason?: string }): string {
+  const r = String(result?.reason ?? "").trim();
+  return r ? r.slice(0, 450) : "reason_not_provided";
+}
+
+export async function runEnvTestStage2ExecutorOpenAiAck(input: {
+  projectId: string;
+  taskId: string;
+  execRunId: string;
+  actorUserId: string;
+}): Promise<{
+  ok: boolean;
+  elapsedMs: number;
+  payload: ExecutorToPlatformStatusPayload;
+  usage: OpenAiRelayEvalUsage;
+  timing: EnvTestStage2TimingRecord;
+}> {
+  const executionId = input.execRunId;
+  const start = Date.now();
+  const startIso = new Date(start).toISOString();
+  await getAiMemberByRole({ projectId: input.projectId, role: "executor" });
+  const model = resolveEnvTestStage2OpenAiModel();
+  const { result, usage } = await runOpenAiChatJsonEvaluation({
+    model,
+    temperature: ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
+    systemContent:
+      `You are ENV_TEST Stage2 Executor (OpenAI). Output ONLY JSON:\n` +
+      `{ "result": "PASS" | "FAIL", "reason": "short Korean" }\n` +
+      `PASS means executor ack for the following request.`,
+    userMessage: JSON.stringify({
+      type: "EXECUTE_ENV_TEST_STAGE2",
+      summary: "최소 변경 생성 후 push",
+      mode: "ENV_TEST_STAGE2",
+    }),
+  });
+  const end = Date.now();
+  const endIso = new Date(end).toISOString();
+  const elapsedMs = end - start;
+  const ok = passFailFromEvalDecision(result.decision) === "PASS";
+  const payload: ExecutorToPlatformStatusPayload = {
+    type: "EXECUTOR_STATUS",
+    status: ok ? "STARTED" : "RUNNING",
+  };
+  const ev = {
+    event: "EXECUTOR_OPENAI_ACK",
+    stage: "EXECUTOR" as const,
+    executionId,
+    startTime: startIso,
+    endTime: endIso,
+    elapsedMs,
+    result: ok ? "ok" : "retry",
+  };
+  logStage2TelemetryEvent({
+    ...ev,
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+  });
+  const timing: EnvTestStage2TimingRecord = appendStage2EventToTiming(
+    { executionId, executorTimeMs: elapsedMs },
+    ev
+  );
+  return { ok, elapsedMs, payload, usage, timing };
+}
+
+export async function runEnvTestStage2ReviewerWithAiMember(
+  input: {
+    projectId: string;
+    request: PlatformToReviewerRequestPayload;
+  },
+  opts?: { enableMasking?: boolean }
+): Promise<ReviewerToPlatformResultPayload> {
+  const member = await getAiMemberByRole({ projectId: input.projectId, role: "reviewer" });
+  if (!member.available) {
+    return { type: "REVIEW_RESULT", result: "PASS", reason: "Reviewer 미설정: 자동 PASS" };
+  }
+
+  const maskedDiff = opts?.enableMasking === false ? input.request.diffSummary : maskSecretsForPrompt(input.request.diffSummary);
+  const userPayload = {
+    type: input.request.type,
+    requestedIntent: input.request.requestedIntent,
+    allowedPaths: input.request.allowedPaths,
+    changedFiles: input.request.changedFiles.slice(0, 30),
+    fileCount: input.request.fileCount,
+    diffSummary: maskedDiff,
+  };
+
+  const model = resolveEnvTestStage2OpenAiModel();
+  const { result } = await runOpenAiChatJsonEvaluation({
+    model,
+    temperature: ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
+    systemContent:
+      `You are ENV_TEST Stage2 Reviewer (OpenAI). Output ONLY valid JSON:\n` +
+      `{ "result": "PASS" | "FAIL", "reason": "short Korean reason" }`,
+    userMessage:
+      `REVIEW_REQUEST JSON:\n${JSON.stringify(userPayload)}\n\n` +
+      `Checks: allowed paths, change size.\n`,
+  });
+
+  const passFail = passFailFromEvalDecision(result.decision);
+  return { type: "REVIEW_RESULT", result: passFail, reason: parseReason(result) };
+}
+
+export async function runEnvTestStage2SecurityWithAiMember(
+  input: {
+    projectId: string;
+    request: PlatformToSecurityRequestPayload;
+  },
+  opts?: { enableMasking?: boolean }
+): Promise<SecurityToPlatformResultPayload> {
+  const member = await getAiMemberByRole({ projectId: input.projectId, role: "security" });
+  if (!member.available) {
+    return { type: "SECURITY_RESULT", result: "PASS", reason: "Security 미설정: 자동 PASS" };
+  }
+
+  const maskedDiff = opts?.enableMasking === false ? input.request.diffSummary : maskSecretsForPrompt(input.request.diffSummary);
+  const userPayload = {
+    type: input.request.type,
+    changedFiles: input.request.changedFiles.slice(0, 30),
+    fileCount: input.request.fileCount,
+    diffSummary: maskedDiff,
+  };
+
+  const model = resolveEnvTestStage2OpenAiModel();
+  const { result } = await runOpenAiChatJsonEvaluation({
+    model,
+    temperature: ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
+    systemContent:
+      `You are ENV_TEST Stage2 Security (OpenAI). Output ONLY valid JSON:\n` +
+      `{ "result": "PASS" | "FAIL", "reason": "short Korean reason" }`,
+    userMessage:
+      `SECURITY_REQUEST JSON:\n${JSON.stringify(userPayload)}\n\n` +
+      `Checks: secrets/tokens, dangerous code patterns.\n`,
+  });
+
+  const passFail = passFailFromEvalDecision(result.decision);
+  return { type: "SECURITY_RESULT", result: passFail, reason: parseReason(result) };
+}
+
+export async function runEnvTestStage2ScmDecisionWithAiMembers(input: {
+  projectId: string;
+  repoUrl: string;
+  taskId: string;
+  taskTitle: string;
+  taskDescription: string | null;
+  branch: string;
+  baseBranch: string;
+  reviewResult: "PASS" | "FAIL";
+  securityResult: "PASS" | "FAIL";
+  reviewReason: string | null;
+  securityReason: string | null;
+}): Promise<{ available: boolean; decision: ScmManagerDecision | null; summary: string | null }> {
+  const member = await getAiMemberByRole({ projectId: input.projectId, role: "scm" });
+  if (!member.available) {
+    return { available: false, decision: null, summary: null };
+  }
+
+  const reviewDecision = input.reviewResult === "PASS" && input.securityResult === "PASS" ? "PASS" : "FAIL";
+  const reviewSummary = [
+    `reviewResult=${input.reviewResult}`,
+    `securityResult=${input.securityResult}`,
+    input.reviewReason ? `reviewReason=${input.reviewReason}` : null,
+    input.securityReason ? `securityReason=${input.securityReason}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 6000);
+
+  const pack = await tryRunScmManagerWithAiMembers({
+    projectId: input.projectId,
+    repoUrl: input.repoUrl,
+    taskId: input.taskId,
+    taskTitle: input.taskTitle,
+    taskDescription: input.taskDescription,
+    branch: input.branch,
+    baseBranch: input.baseBranch,
+    reviewerDecision: reviewDecision,
+    reviewerSummary: reviewSummary,
+    openAiModelOverride: resolveEnvTestStage2OpenAiModel(),
+    openAiTemperature: ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
+  });
+
+  if (!pack) return { available: true, decision: null, summary: null };
+  return { available: true, decision: pack.decision, summary: pack.summary };
+}

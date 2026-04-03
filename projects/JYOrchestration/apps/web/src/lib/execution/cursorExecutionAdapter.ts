@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { isEnvTestFamilyTaskKind } from "@/lib/execution/envTestTaskKind";
 import { validateCursorAgentLaunchPayload } from "@/lib/execution/cursorAgentLaunchValidation";
 import { enhanceCursorErrorIfBaseBranchRelated, repoDisplayForGitError } from "@/lib/execution/gitBranchCursorError";
 import { verifyBaseBranchBeforeCursorExecution } from "@/lib/execution/verifyBaseBranchBeforeCursor";
@@ -650,8 +651,6 @@ function shouldTreatPrAsTerminalSuccess(): boolean {
   return process.env.CURSOR_AGENT_EARLY_SUCCESS_ON_PR === "1";
 }
 
-const ENV_TEST_TASK_KIND = "ENV_TEST";
-
 /**
  * ENV_TEST-only poll shortcut: GitHub PR/compare로 터미널 전 조기 종료.
  * taskKind 방어: 일반 Task에서는 호출되지 않아야 하나, callee에서 한 번 더 막는다.
@@ -674,7 +673,7 @@ async function tryEnvTestCursorPollEarlySuccess(input: {
   /** compare 프로브 허용 판단용 완료 폴링 수(런치 직후 조기 호출이면 0) */
   completedAgentPollsForGithubProbe: number;
 }): Promise<CursorRunResult | null> {
-  if (String(input.taskKindForScope ?? "").trim() !== ENV_TEST_TASK_KIND) {
+  if (!isEnvTestFamilyTaskKind(input.taskKindForScope)) {
     return null;
   }
   const elapsedMs = Date.now() - input.pollStartedAt;
@@ -747,7 +746,7 @@ async function tryEnvTestGithubFullFinalizeDuringPoll(input: {
   | { kind: "continue_loop" }
   | null
 > {
-  if (String(input.params.taskKind ?? "").trim() !== ENV_TEST_TASK_KIND) {
+  if (!isEnvTestFamilyTaskKind(input.params.taskKind)) {
     return null;
   }
   const { params, ctx, agentId, pollStartedAt, agentPollCount, agentJson, logs, envTestGithubProbeState } =
@@ -965,7 +964,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
   const setup = params.executionSetup;
   const t = params.task;
   const adapterTaskKindNorm = String(params.taskKind ?? "").trim();
-  const isAdapterEnvTestKind = adapterTaskKindNorm === ENV_TEST_TASK_KIND;
+  const isAdapterEnvTestKind = isEnvTestFamilyTaskKind(adapterTaskKindNorm);
   // Callee 방어: finalize 컨텍스트는 ENV_TEST taskKind일 때만 유효.
   if (params.envTestPollFinalizeContext && !isAdapterEnvTestKind) {
     appendTaskProgressLog({
@@ -1129,7 +1128,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
     const started = Date.now();
     let last: AgentJson = launchJson ?? {};
     let completedAgentPolls = 0;
-    const isEnvTestKind = String(params.taskKind ?? "").trim() === ENV_TEST_TASK_KIND;
+    const isEnvTestKind = isEnvTestFamilyTaskKind(params.taskKind);
     /** 비 ENV_TEST 호출에서 잘못 넘어온 컨텍스트는 무시 (스코프 누수 방지). */
     const envTestPollFinalizeContextEffective =
       isEnvTestKind && params.envTestPollFinalizeContext ? params.envTestPollFinalizeContext : null;

@@ -4,6 +4,11 @@
  */
 
 import {
+  githubAcceptedPermissionsLogValue,
+  GITHUB_ACCEPTED_PERMISSIONS_HEADER_NAME,
+  readGithubAcceptedPermissionsHeader,
+} from "@/lib/integration/githubAcceptedPermissionsHeader";
+import {
   githubTokenFingerprint,
   githubTokenPrefixForLog,
   logGithubTokenBeforeFetch,
@@ -37,6 +42,18 @@ export type GithubCapabilityProbeStep = {
   acceptedPermissions?: string | null;
 };
 
+/** 단계별 프로브가 채운 플래그 — `computeGithubOperableOk` 로만 최종 operable 을 낸다. */
+export type GithubPatRestCapabilityFlags = {
+  repoAccessOk: boolean;
+  prReadOk: boolean;
+  prCreateOk: boolean;
+  prMergeOk: boolean;
+};
+
+export function computeGithubOperableOk(flags: GithubPatRestCapabilityFlags): boolean {
+  return flags.repoAccessOk && flags.prReadOk && flags.prCreateOk && flags.prMergeOk;
+}
+
 export type GithubCapabilityValidationSnapshot = {
   validatedAt: string;
   repoAccessOk: boolean;
@@ -45,7 +62,7 @@ export type GithubCapabilityValidationSnapshot = {
   prMergeOk: boolean;
   githubOperableOk: boolean;
   acceptedPermissionsHeader: string | null;
-  /** 권한 검증 기준: GET /repos/{owner}/{repo} 응답의 X-Accepted-GitHub-Permissions 전체 */
+  /** 권한 검증 기준: GET /repos/{owner}/{repo} 응답의 canonical 헤더 전체 */
   canonicalRepoGetAcceptedPermissions?: string | null;
   tokenSourceUsed?: GithubTokenSource;
   validationEpoch?: number;
@@ -57,12 +74,21 @@ export type GithubCapabilityValidationSnapshot = {
   summaryKr: string;
 };
 
-function readAcceptedPermissions(res: Response): string | null {
-  return (
-    res.headers.get("x-accepted-github-permissions") ||
-    res.headers.get("X-Accepted-GitHub-Permissions") ||
-    null
-  );
+/** validate API probeMessages 한 줄 — 헤더 이름은 GITHUB_ACCEPTED_PERMISSIONS_HEADER_NAME 과 동기 */
+export function formatGithubCapabilityProbeStepFailureLine(step: GithubCapabilityProbeStep): string {
+  const hint = step.acceptedPermissions
+    ? ` · ${GITHUB_ACCEPTED_PERMISSIONS_HEADER_NAME}: ${step.acceptedPermissions}`
+    : "";
+  const err = step.errorMessage ? ` · ${step.errorMessage}` : "";
+  return `GitHub ${step.step}: HTTP ${step.httpStatus}${hint}${err}`;
+}
+
+export function formatGithubCanonicalGetReposPermissionsLine(canonical: string): string {
+  return `GitHub GET /repos (canonical) ${GITHUB_ACCEPTED_PERMISSIONS_HEADER_NAME}: ${canonical}`;
+}
+
+export function formatGithubRecentAcceptedPermissionsLine(merged: string): string {
+  return `GitHub (최근) ${GITHUB_ACCEPTED_PERMISSIONS_HEADER_NAME}: ${merged}`;
 }
 
 async function readBodySnippet(res: Response, max = 800): Promise<string> {
@@ -168,11 +194,10 @@ export async function runGithubPatCapabilityProbes(input: {
   const repoUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
   logGithubTokenBeforeFetch("repo_metadata_GET", token, tokenSource, projectId);
   const repoRes = await fetch(repoUrl, { headers });
-  const repoAccepted = readAcceptedPermissions(repoRes);
+  const repoAccepted = readGithubAcceptedPermissionsHeader(repoRes);
   canonicalRepoGetAcceptedPermissions = repoAccepted;
   console.info(
-    `[GitHub REST] canonical GET /repos/${owner}/${repo} HTTP ${repoRes.status} ` +
-      `X-Accepted-GitHub-Permissions=${canonicalRepoGetAcceptedPermissions ?? "(header_absent)"}`
+    `[GitHub REST] canonical GET /repos/${owner}/${repo} HTTP ${repoRes.status} ${githubAcceptedPermissionsLogValue(repoAccepted)}`
   );
   if (!repoRes.ok) {
     const body = await readBodySnippet(repoRes);
@@ -203,7 +228,7 @@ export async function runGithubPatCapabilityProbes(input: {
   const cmpUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${baseEnc}...${baseEnc}`;
   logGithubTokenBeforeFetch("repo_compare_self", token, tokenSource, projectId);
   const cmpRes = await fetch(cmpUrl, { headers });
-  const cmpAccepted = readAcceptedPermissions(cmpRes);
+  const cmpAccepted = readGithubAcceptedPermissionsHeader(cmpRes);
   if (!cmpRes.ok) {
     const body = await readBodySnippet(cmpRes);
     pushFail(
@@ -234,7 +259,7 @@ export async function runGithubPatCapabilityProbes(input: {
   const pullsUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=all&per_page=30&sort=updated`;
   logGithubTokenBeforeFetch("pr_list", token, tokenSource, projectId);
   const pullsRes = await fetch(pullsUrl, { headers });
-  const pullsAccepted = readAcceptedPermissions(pullsRes);
+  const pullsAccepted = readGithubAcceptedPermissionsHeader(pullsRes);
   if (!pullsRes.ok) {
     const body = await readBodySnippet(pullsRes);
     pushFail("pr_list", pullsRes, `PR 목록 조회 실패 HTTP ${pullsRes.status}: ${body}`, pullsAccepted);
@@ -275,7 +300,7 @@ export async function runGithubPatCapabilityProbes(input: {
       base: baseBranch.trim() || "main",
     }),
   });
-  const createAccepted = readAcceptedPermissions(createRes);
+  const createAccepted = readGithubAcceptedPermissionsHeader(createRes);
   const createTxt = await readBodySnippet(createRes);
   let prCreateOk = false;
   if (createRes.status === 403) {
@@ -379,7 +404,7 @@ export async function runGithubPatCapabilityProbes(input: {
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify({ merge_method: "merge" }),
     });
-    const mergeAccepted = readAcceptedPermissions(mergeRes);
+    const mergeAccepted = readGithubAcceptedPermissionsHeader(mergeRes);
     const mergeTxt = await readBodySnippet(mergeRes);
     if (mergeRes.status === 403) {
       mergeProbeDefinitiveFailure = true;
@@ -478,7 +503,7 @@ export async function runGithubPatCapabilityProbes(input: {
     });
     logGithubTokenBeforeFetch("collaborator_GET_user", token, tokenSource, projectId);
     const userRes = await fetch(`${api}/user`, { headers });
-    const userAccepted = readAcceptedPermissions(userRes);
+    const userAccepted = readGithubAcceptedPermissionsHeader(userRes);
     if (!userRes.ok) {
       const body = await readBodySnippet(userRes);
       logPatProbe("collaborator_GET_user_result", {
@@ -535,7 +560,7 @@ export async function runGithubPatCapabilityProbes(input: {
         });
         logGithubTokenBeforeFetch("collaborator_permission_GET", token, tokenSource, projectId);
         const collabRes = await fetch(collabUrl, { headers });
-        const collabAccepted = readAcceptedPermissions(collabRes);
+        const collabAccepted = readGithubAcceptedPermissionsHeader(collabRes);
         const collabBodyText = await collabRes.text();
         const collabTxtSnippet = collabBodyText.slice(0, 800);
         if (!collabRes.ok) {
@@ -623,7 +648,7 @@ export async function runGithubPatCapabilityProbes(input: {
     validationEpoch,
     prMergeOk,
     mergeProbeDefinitiveFailure,
-    githubOperableWillBe: prMergeOk && prCreateOk && prReadOk && repoAccessOk,
+    githubOperableWillBe: computeGithubOperableOk({ repoAccessOk, prReadOk, prCreateOk, prMergeOk }),
   });
 
   return finalizeSnapshot(
@@ -654,7 +679,7 @@ function finalizeSnapshot(
   tokenSourceUsed: GithubTokenSource,
   validationEpoch: number
 ): GithubCapabilityValidationSnapshot {
-  const githubOperableOk = repoAccessOk && prReadOk && prCreateOk && prMergeOk;
+  const githubOperableOk = computeGithubOperableOk({ repoAccessOk, prReadOk, prCreateOk, prMergeOk });
   const tokenMismatchHintKr = buildTokenMismatchHintKr(
     githubOperableOk,
     canonicalRepoGetAcceptedPermissions,
