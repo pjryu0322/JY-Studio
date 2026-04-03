@@ -130,25 +130,55 @@ const POLL_INTERVAL_MS = parseEnvPositiveIntMs("CURSOR_AGENT_POLL_INTERVAL_MS", 
   max: 120_000,
 });
 
-/** ENV_TEST 전용: 첫 폴링 전 대기 (기본 1.5초). */
-const ENV_TEST_POLL_FIRST_DELAY_MS = parseEnvPositiveIntMs("CURSOR_AGENT_ENV_TEST_POLL_FIRST_DELAY_MS", 1_500, {
+/** ENV_TEST 전용: 첫 Cursor 폴링 전 짧은 대기(기본 400ms). GitHub 프로브는 별도로 더 일찍 시도한다. */
+const ENV_TEST_POLL_FIRST_DELAY_MS = parseEnvPositiveIntMs("CURSOR_AGENT_ENV_TEST_POLL_FIRST_DELAY_MS", 400, {
   min: 0,
   max: 60_000,
 });
-/** ENV_TEST 전용: 이후 폴링 간격 (기본 3초). */
-const ENV_TEST_POLL_INTERVAL_MS = parseEnvPositiveIntMs("CURSOR_AGENT_ENV_TEST_POLL_INTERVAL_MS", 3_000, {
+/** ENV_TEST: 런치 직후 GitHub compare 시도 전 최소 지연 (기본 250ms). */
+const ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS",
+  250,
+  { min: 0, max: 30_000 }
+);
+
+/** ENV_TEST: 폴링 간격 단계(경과 ms 기준). */
+const ENV_TEST_POLL_FAST_WINDOW_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_POLL_FAST_WINDOW_MS", 15_000, {
+  min: 5_000,
+  max: 120_000,
+});
+const ENV_TEST_POLL_MID_WINDOW_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_POLL_MID_WINDOW_MS", 40_000, {
+  min: 15_000,
+  max: 300_000,
+});
+const ENV_TEST_POLL_INTERVAL_FAST_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_POLL_INTERVAL_FAST_MS", 1_000, {
+  min: 500,
+  max: 5_000,
+});
+const ENV_TEST_POLL_INTERVAL_MID_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_POLL_INTERVAL_MID_MS", 2_000, {
   min: 1_000,
-  max: 30_000,
+  max: 8_000,
+});
+const ENV_TEST_POLL_INTERVAL_SLOW_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_POLL_INTERVAL_SLOW_MS", 3_000, {
+  min: 1_000,
+  max: 10_000,
 });
 
-/** ENV_TEST: 완료 폴링 중 GitHub 전체 마무리(compare→PR→PR_OPENED)를 시도하기 전 최소 완료된 에이전트 폴링 횟수. 기본 3. */
+function envTestCursorPollIntervalMs(elapsedSincePollLoopStartMs: number): number {
+  const e = Math.max(0, elapsedSincePollLoopStartMs);
+  if (e < ENV_TEST_POLL_FAST_WINDOW_MS) return ENV_TEST_POLL_INTERVAL_FAST_MS;
+  if (e < ENV_TEST_POLL_MID_WINDOW_MS) return ENV_TEST_POLL_INTERVAL_MID_MS;
+  return ENV_TEST_POLL_INTERVAL_SLOW_MS;
+}
+
+/** ENV_TEST: GitHub 전체 마무리(compare→PR) 시도 전 최소 완료 폴링 횟수. 기본 0(즉시 시도 가능). */
 const ENV_TEST_EARLY_FULL_MIN_POLL_ROUNDS = parseEnvPositiveInt(
   "CURSOR_ENV_TEST_EARLY_FULL_MIN_POLL_ROUNDS",
-  3,
-  { min: 1, max: 500 }
+  0,
+  { min: 0, max: 500 }
 );
-/** ENV_TEST: 위와 OR — 런 시작 후 경과 ms. 기본 2500. */
-const ENV_TEST_EARLY_FULL_MIN_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_EARLY_FULL_MIN_MS", 2_500, {
+/** ENV_TEST: 위와 OR — 런 시작 후 경과 ms. 기본 0(워밍업은 GitHub 프로브 쪽에서만 짧게 둠). */
+const ENV_TEST_EARLY_FULL_MIN_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_EARLY_FULL_MIN_MS", 0, {
   min: 0,
   max: 300_000,
 });
@@ -160,27 +190,31 @@ function envTestAllowEarlyGithubFullFinalize(agentPollCount: number, pollStarted
   );
 }
 
-/** compare/브랜치 프로브 전: 완료된 폴링 N회 이상 또는 런치 후 M ms 경과(OR). 기본 2회 / 12s. */
+/** compare/브랜치 프로브 전: 완료된 Cursor 폴링 N회 이상 또는 런치 후 M ms 경과(OR). ENV_TEST 기본 0회 / 350ms. */
 const ENV_TEST_GITHUB_COMPARE_MIN_COMPLETED_POLLS = parseEnvPositiveInt(
   "CURSOR_ENV_TEST_GITHUB_COMPARE_MIN_COMPLETED_POLLS",
-  3,
+  0,
   { min: 0, max: 100 }
 );
 const ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH",
-  15_000,
+  350,
   { min: 0, max: 300_000 }
 );
-const ENV_TEST_COMPARE_BACKOFF_FIRST_MS = parseEnvPositiveIntMs(
-  "CURSOR_ENV_TEST_COMPARE_BACKOFF_FIRST_MS",
-  6_000,
-  { min: 0, max: 120_000 }
+
+/** ENV_TEST: branch/compare 404 5회차 이후 백오프 상한(기본 5초, 10초 금지). */
+const ENV_TEST_COMPARE_404_BACKOFF_CAP_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_COMPARE_404_BACKOFF_CAP_MS",
+  5_000,
+  { min: 1_000, max: 10_000 }
 );
-const ENV_TEST_COMPARE_BACKOFF_SECOND_MS = parseEnvPositiveIntMs(
-  "CURSOR_ENV_TEST_COMPARE_BACKOFF_SECOND_MS",
-  10_000,
-  { min: 0, max: 120_000 }
-);
+
+function envTestCompare404BackoffDelayMs(zeroBasedAttemptIndex: number): number {
+  const steps = [1_000, 2_000, 3_000, 4_000];
+  const i = Math.max(0, zeroBasedAttemptIndex);
+  if (i < steps.length) return steps[i];
+  return ENV_TEST_COMPARE_404_BACKOFF_CAP_MS;
+}
 
 /** ENV_TEST-only: GitHub compare 시도 간격·404 백오프·브랜치 최초 확인 시각. */
 type EnvTestGithubProbeState = {
@@ -225,7 +259,7 @@ function envTestApplyGithubProbe404Backoff(
   httpStatus: number | undefined
 ): void {
   const idx = state.compare404AttemptIndex;
-  const delayMs = idx === 0 ? ENV_TEST_COMPARE_BACKOFF_FIRST_MS : ENV_TEST_COMPARE_BACKOFF_SECOND_MS;
+  const delayMs = envTestCompare404BackoffDelayMs(idx);
   state.compare404AttemptIndex = idx + 1;
   state.nextGithubCompareAllowedAt = Date.now() + delayMs;
   appendTaskProgressLog({
@@ -894,7 +928,14 @@ async function tryEnvTestGithubFullFinalizeDuringPoll(input: {
     projectId: params.projectId,
     taskId: ctx.taskId,
     userId: ctx.actorUserId,
-    detail: { elapsedMs, agentPollCount, agentStatus },
+    detail: {
+      elapsedMsSinceAgentLaunch: elapsedMs,
+      elapsedMsLaunchToBranchConfirmed: probed.elapsedMsLaunchToBranchConfirmed,
+      elapsedMsBranchConfirmedToCompareOk: probed.elapsedMsBranchConfirmedToCompareOk,
+      agentPollCount,
+      agentStatus,
+      compareOkAtMs: probed.compareOkAtMs,
+    },
   });
 
   logs.push("[cursor-adapter] ENV_TEST: GitHub compare during poll — PR_OPENED (Path B, no Cursor terminal wait)");
@@ -1102,13 +1143,14 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         }
       : null;
     const firstDelayMs = isEnvTestKind ? ENV_TEST_POLL_FIRST_DELAY_MS : POLL_FIRST_DELAY_MS;
-    const intervalMs = isEnvTestKind ? ENV_TEST_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
+    const normalIntervalMs = POLL_INTERVAL_MS;
     console.info("[cursor-adapter] agent poll schedule", {
       agentId,
       firstDelayMs,
-      intervalMs,
+      intervalMs: isEnvTestKind ? "tiered_1s_15s_then_2s_40s_then_3s" : normalIntervalMs,
       maxWaitMs: MAX_POLL_MS,
       envTestGithubEarlyExit: isEnvTestKind,
+      envTestGithubCompareMinMs: isEnvTestKind ? ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH : null,
     });
 
     if (isTaskProgressLogEnabled()) {
@@ -1121,7 +1163,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
           agentId,
           maxWaitMs: MAX_POLL_MS,
           firstDelayMs,
-          intervalMs,
+          intervalMsNote: isEnvTestKind ? "ENV_TEST_tiered_poll" : normalIntervalMs,
           envTestGithubEarlyExit: isEnvTestKind,
         },
       });
@@ -1159,6 +1201,44 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         logs.push("[cursor-adapter] ENV_TEST: GitHub 증거 확인 — 에이전트 폴링 생략·조기 종료");
         return { ok: true, result: earlyImmediate, logs };
       }
+
+      // 런치 직후 짧은 지연 뒤 compare/PR finalize 시도(Cursor 첫 폴링 전).
+      if (isEnvTestKind && envTestPollFinalizeContextEffective && envTestGithubProbeState) {
+        await new Promise((r) => setTimeout(r, ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS));
+        const elapsedLaunch = Date.now() - started;
+        if (isTaskProgressLogEnabled()) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_post_launch_github_probe_start",
+            projectId: params.projectId,
+            taskId: params.task.id,
+            userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+            detail: {
+              agentId,
+              elapsedMsSinceAgentLaunch: elapsedLaunch,
+              delayMs: ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS,
+            },
+          });
+        }
+        const finLaunch = await tryEnvTestGithubFullFinalizeDuringPoll({
+          params,
+          ctx: envTestPollFinalizeContextEffective,
+          agentId,
+          pollStartedAt: started,
+          agentPollCount: 0,
+          agentJson: launchJson ?? {},
+          logs,
+          envTestGithubProbeState,
+        });
+        if (finLaunch) {
+          return {
+            ok: true,
+            envTestGithubEarlyFinished: true,
+            envTestFinalizeOutcome: finLaunch,
+            logs,
+          };
+        }
+      }
     }
 
     while (Date.now() - started < MAX_POLL_MS) {
@@ -1188,7 +1268,27 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         }
       }
 
-      const prePollDelayMs = completedAgentPolls === 0 ? firstDelayMs : intervalMs;
+      const elapsedSinceStart = Date.now() - started;
+      const prePollDelayMs =
+        completedAgentPolls === 0
+          ? firstDelayMs
+          : isEnvTestKind
+            ? envTestCursorPollIntervalMs(elapsedSinceStart)
+            : normalIntervalMs;
+      if (isEnvTestKind && isTaskProgressLogEnabled()) {
+        appendTaskProgressLog({
+          kind: "cursor",
+          phase: "env_test_cursor_poll_delay",
+          projectId: params.projectId,
+          taskId: params.task.id,
+          detail: {
+            agentId,
+            prePollDelayMs,
+            elapsedMsSincePollLoopStart: elapsedSinceStart,
+            completedAgentPollsBeforeThisWait: completedAgentPolls,
+          },
+        });
+      }
       await new Promise((r) => setTimeout(r, prePollDelayMs));
 
       const pollAc = new AbortController();

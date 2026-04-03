@@ -12,6 +12,11 @@ import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { maskCursorTokenForUi } from "@/lib/executionSetup/cursorTokenMask";
 import { maskGithubTokenForUi } from "@/lib/executionSetup/githubTokenMask";
+import {
+  probeGithubPatAgainstExecutionRepo,
+  sanitizeGithubPatForStorage,
+  type GithubPatPostSaveRepoProbeResult,
+} from "@/lib/integration/githubPatIntegrity";
 import { githubTokenFingerprint, githubTokenPrefixForLog } from "@/lib/integration/githubTokenTrace";
 
 function cursorTokenMaskedForApiResponse(cursorApiToken: string | null | undefined): string | null {
@@ -333,7 +338,10 @@ export async function PATCH(
             if (raw === null || raw === "") {
               return { githubAccessToken: null, githubAccessTokenMasked: null };
             }
-            const tok = String(raw).trim();
+            const tok = sanitizeGithubPatForStorage(String(raw));
+            if (!tok) {
+              return { githubAccessToken: null, githubAccessTokenMasked: null };
+            }
             return {
               githubAccessToken: tok,
               githubAccessTokenMasked: maskGithubTokenForUi(tok),
@@ -474,27 +482,63 @@ export async function PATCH(
       })
     );
 
+    let githubPatPostSaveCheck: GithubPatPostSaveRepoProbeResult | undefined;
     if (body.githubAccessToken !== undefined) {
-      const prevTok = String(existing?.githubAccessToken ?? "").trim();
+      const prevTok = sanitizeGithubPatForStorage(String(existing?.githubAccessToken ?? ""));
       const prevFp = prevTok ? githubTokenFingerprint(prevTok) : "(none)";
       const prevPx = prevTok ? githubTokenPrefixForLog(prevTok) : "—";
-      const storedTok = String(row.githubAccessToken ?? "").trim();
+      const storedTok = sanitizeGithubPatForStorage(String(row.githubAccessToken ?? ""));
       const storedFp = storedTok ? githubTokenFingerprint(storedTok) : "(cleared)";
       const storedPx = storedTok ? githubTokenPrefixForLog(storedTok) : "—";
       const expectedClear = body.githubAccessToken === null || body.githubAccessToken === "";
-      const expectedTok = expectedClear ? "" : String(body.githubAccessToken).trim();
+      const expectedTok = expectedClear ? "" : sanitizeGithubPatForStorage(String(body.githubAccessToken));
       const dbMatches =
         expectedClear ? storedTok === "" : storedTok === expectedTok && storedTok.length > 0;
+      const fingerprintChanged = !expectedClear && prevFp !== "(none)" && storedFp !== "(cleared)" && prevFp !== storedFp;
+      const fingerprintUnchanged = !expectedClear && prevFp === storedFp && prevTok.length > 0;
       console.info(
         `[GitHub token] PATCH execution-setup projectId=${pid} DB_OVERWRITE ` +
-          `prev_hash=${prevFp} new_stored_hash=${storedFp} prev_prefix=${prevPx} new_prefix=${storedPx} ` +
-          `db_row_matches_request=${dbMatches}`
+          `TOKEN_SOURCE=DB prev_TOKEN_PREFIX=${prevPx} new_TOKEN_PREFIX=${storedPx} ` +
+          `prev_TOKEN_LENGTH=${prevTok.length} new_TOKEN_LENGTH=${storedTok.length} ` +
+          `prev_TOKEN_HASH=${prevFp} new_TOKEN_HASH=${storedFp} ` +
+          `fingerprint_changed=${fingerprintChanged} fingerprint_unchanged=${fingerprintUnchanged} ` +
+          `db_row_matches_sanitized_request=${dbMatches}`
       );
+
+      if (storedTok && !expectedClear) {
+        githubPatPostSaveCheck = await probeGithubPatAgainstExecutionRepo({
+          gitRepoUrl: row.gitRepoUrl,
+          token: storedTok,
+          projectId: pid,
+        });
+        const reread = await withExecutionSetupSchemaHealRetry(() =>
+          prisma.executionSetup.findUnique({
+            where: { projectId: pid },
+            select: { githubAccessToken: true },
+          })
+        );
+        const rereadTok = sanitizeGithubPatForStorage(String(reread?.githubAccessToken ?? ""));
+        const rereadFp = rereadTok ? githubTokenFingerprint(rereadTok) : "(cleared)";
+        console.info(
+          `[GitHub token] PATCH execution-setup projectId=${pid} DB_REREAD_AFTER_UPSERT ` +
+            `TOKEN_SOURCE=DB TOKEN_LENGTH=${rereadTok.length} TOKEN_HASH=${rereadFp} ` +
+            `matches_upsert_row_hash=${rereadFp === storedFp}`
+        );
+      } else {
+        githubPatPostSaveCheck = {
+          attempted: false,
+          skippedReason: "token_cleared_or_empty_after_sanitize",
+          httpStatus: null,
+          xAcceptedGitHubPermissions: null,
+          ok: false,
+        };
+      }
     }
 
     return NextResponse.json({
       success: true,
       message: "Execution setup을 저장했습니다.",
+      ...(githubPatPostSaveCheck !== undefined ? { githubPatPostSaveCheck } : {}),
       data: {
         id: row.id,
         projectId: row.projectId,

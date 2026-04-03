@@ -1,4 +1,5 @@
 import { resolveGithubRepositoryFromEnv } from "@/lib/integration/githubIntegrationHints";
+import { sanitizeGithubPatForStorage } from "@/lib/integration/githubPatIntegrity";
 import { logGithubTokenResolution } from "@/lib/integration/githubTokenTrace";
 
 /** UI·lastEvalSummary용: DB 토큰 부재 시 */
@@ -12,7 +13,7 @@ export type GithubRestTokenResolution = {
 };
 
 export function resolveGithubRestToken(preferredToken?: string | null): GithubRestTokenResolution {
-  const dbToken = String(preferredToken ?? "").trim();
+  const dbToken = sanitizeGithubPatForStorage(String(preferredToken ?? ""));
   if (dbToken) return { token: dbToken, source: "db" };
   return { token: null, source: "none" };
 }
