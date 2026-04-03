@@ -1,7 +1,7 @@
 import {
-  getGithubRestToken,
   githubRestApiBase,
   resolveGithubOwnerRepoLoose,
+  resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
 
 /**
@@ -12,7 +12,9 @@ export async function findOpenPullRequestByHeadBranch(input: {
   headBranch: string;
   githubAccessToken?: string | null;
 }): Promise<{ prUrl: string; prNumber: number } | null> {
-  const token = getGithubRestToken(input.githubAccessToken ?? null);
+  const { token } = resolveGithubRestTokenAndLog("github_find_open_pr_by_head", input.githubAccessToken ?? null, {
+    throttleKey: "find_open_pr_head",
+  });
   if (!token) return null;
 
   const resolved = resolveGithubOwnerRepoLoose(input.repoUrl);

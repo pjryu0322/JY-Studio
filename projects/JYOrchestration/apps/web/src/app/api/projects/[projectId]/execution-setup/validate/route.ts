@@ -23,6 +23,7 @@ import {
   probeGitBaseBranchReachable,
   probeGitHttpRemote,
 } from "@/lib/executionSetup/hardening";
+import { bumpGithubTokenValidationEpoch, logGithubTokenResolution } from "@/lib/integration/githubTokenTrace";
 import {
   runGithubPatCapabilityProbes,
   type GithubCapabilityValidationSnapshot,
@@ -236,9 +237,18 @@ export async function POST(
     // GitHub auth: 단계별 REST 프로브(메타·compare·PR 목록·PR 생성 시도·머지/협업자). githubAuthConnectionOk = 전체 운영 가능할 때만 true.
     const shouldRunGithubAuth = scope === "github_auth" || scope === "repository" || scope === "all";
     if (shouldRunGithubAuth) {
+      const githubValidationEpoch = bumpGithubTokenValidationEpoch(
+        scope === "github_auth" ? "execution_setup_validate_github_auth" : `execution_setup_validate_${scope}`
+      );
       nextGithubCapabilityJson = (row.githubCapabilityValidation as Prisma.JsonValue | null) ?? null;
       const tok = String(row.githubAccessToken ?? "").trim();
       if (!tok) {
+        logGithubTokenResolution({
+          operation: "execution_setup_github_validate",
+          token: null,
+          source: "none",
+          validationEpoch: githubValidationEpoch,
+        });
         nextGithubOk = false;
         nextGithubErr = "GitHub 인증: 토큰이 없습니다. (GITHUB_TOKEN/GH_TOKEN이 아니라, 실행 환경 설정에 토큰을 저장하세요)";
         nextGithubAt = now;
@@ -262,6 +272,8 @@ export async function POST(
               repo,
               baseBranch: row.baseBranch.trim() || "main",
               token: tok,
+              tokenSource: "db",
+              validationEpoch: githubValidationEpoch,
             });
             lastGithubCapabilitySnapshot = snapshot;
             nextGithubCapabilityJson = snapshot as unknown as Prisma.InputJsonValue;
@@ -277,8 +289,16 @@ export async function POST(
               const err = st.errorMessage ? ` · ${st.errorMessage}` : "";
               probeMessages.push(`GitHub ${st.step}: HTTP ${st.httpStatus}${hint}${err}`);
             }
+            if (snapshot.canonicalRepoGetAcceptedPermissions) {
+              probeMessages.push(
+                `GitHub GET /repos (canonical) X-Accepted-GitHub-Permissions: ${snapshot.canonicalRepoGetAcceptedPermissions}`
+              );
+            }
             if (!snapshot.githubOperableOk && snapshot.acceptedPermissionsHeader) {
               probeMessages.push(`GitHub (최근) X-Accepted-GitHub-Permissions: ${snapshot.acceptedPermissionsHeader}`);
+            }
+            if (snapshot.tokenMismatchHintKr) {
+              probeMessages.push(`GitHub: ${snapshot.tokenMismatchHintKr}`);
             }
           }
         } catch (e) {
@@ -445,6 +465,10 @@ export async function POST(
         prMergeOk: githubCapFromDb?.prMergeOk ?? null,
         githubOperableOk: githubCapFromDb?.githubOperableOk ?? null,
         acceptedPermissionsHeader: githubCapFromDb?.acceptedPermissionsHeader ?? null,
+        canonicalRepoGetAcceptedPermissions: githubCapFromDb?.canonicalRepoGetAcceptedPermissions ?? null,
+        tokenMismatchHintKr: githubCapFromDb?.tokenMismatchHintKr ?? null,
+        tokenSourceUsed: githubCapFromDb?.tokenSourceUsed ?? null,
+        validationEpoch: githubCapFromDb?.validationEpoch ?? null,
         lastHttpStatus: githubCapFromDb?.lastHttpStatus ?? null,
         lastErrorMessage: githubCapFromDb?.lastErrorMessage ?? null,
         cursorApiConnectionOk: nextCursorApiOk,

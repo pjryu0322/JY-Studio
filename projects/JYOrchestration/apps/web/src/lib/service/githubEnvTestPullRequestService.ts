@@ -1,8 +1,8 @@
 import {
-  getGithubRestToken,
   githubRestApiBase,
   GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
   resolveGithubOwnerRepoStrict,
+  resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 
@@ -73,7 +73,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
     }
   | { ok: false; code: string; message: string; httpStatus?: number }
 > {
-  const token = getGithubRestToken(params.githubAccessToken ?? null);
+  const { token } = resolveGithubRestTokenAndLog("github_env_test_pull_request", params.githubAccessToken ?? null);
   if (!token) {
     return { ok: false, code: "NO_GITHUB_TOKEN", message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE, httpStatus: 503 };
   }

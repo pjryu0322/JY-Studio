@@ -419,6 +419,10 @@ export async function postExecutionSetupValidate(
     prMergeOk?: boolean | null;
     githubOperableOk?: boolean | null;
     acceptedPermissionsHeader?: string | null;
+    canonicalRepoGetAcceptedPermissions?: string | null;
+    tokenMismatchHintKr?: string | null;
+    tokenSourceUsed?: string | null;
+    validationEpoch?: number | null;
     lastHttpStatus?: number | null;
     lastErrorMessage?: string | null;
   }>;

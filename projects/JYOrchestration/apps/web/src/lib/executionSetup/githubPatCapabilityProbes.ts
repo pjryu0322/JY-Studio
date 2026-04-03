@@ -3,6 +3,12 @@
  * 저장소 메타 → PR 목록 → PR 생성 시도(존재하지 않는 head로 422 유도) → 머지 API(이미 머지된 PR에 대해 422) 또는 협업자 권한.
  */
 
+import {
+  logGithubTokenBeforeFetch,
+  logGithubTokenResolution,
+  type GithubTokenSource,
+} from "@/lib/integration/githubTokenTrace";
+
 export type GithubCapabilityProbeStepName =
   | "repo_metadata"
   | "repo_compare_self"
@@ -27,6 +33,12 @@ export type GithubCapabilityValidationSnapshot = {
   prMergeOk: boolean;
   githubOperableOk: boolean;
   acceptedPermissionsHeader: string | null;
+  /** 권한 검증 기준: GET /repos/{owner}/{repo} 응답의 X-Accepted-GitHub-Permissions 전체 */
+  canonicalRepoGetAcceptedPermissions?: string | null;
+  tokenSourceUsed?: GithubTokenSource;
+  validationEpoch?: number;
+  /** metadata=read만 보이는데 운영 불가일 때 토큰 불일치 안내 */
+  tokenMismatchHintKr?: string | null;
   lastHttpStatus: number | null;
   lastErrorMessage: string | null;
   steps: GithubCapabilityProbeStep[];
@@ -58,16 +70,49 @@ function mergeAccepted(prev: string | null, next: string | null): string | null 
   return prev;
 }
 
+function buildTokenMismatchHintKr(
+  githubOperableOk: boolean,
+  canonicalRepoGetAccepted: string | null,
+  mergedAccepted: string | null
+): string | null {
+  if (githubOperableOk) return null;
+  const raw = (canonicalRepoGetAccepted ?? mergedAccepted ?? "").trim().toLowerCase();
+  if (!raw) return null;
+  const weakMetaOnly =
+    raw.includes("metadata=read") &&
+    !raw.includes("contents=") &&
+    !raw.includes("pull_requests=");
+  if (!weakMetaOnly) return null;
+  return (
+    "GitHub가 허용 권한으로 metadata=read만 보고합니다. GitHub UI의 PAT가 아니라 플랫폼이 다른 토큰(서버 GITHUB_TOKEN/GH_TOKEN 또는 DB에 남은 이전 토큰)을 쓰고 있을 가능성이 큽니다. " +
+    "서버 로그의 TOKEN_SOURCE·TOKEN_HASH와 저장소 검증의 canonical X-Accepted-GitHub-Permissions를 확인한 뒤 토큰을 다시 저장하고 「다시 검증」하세요."
+  );
+}
+
 export async function runGithubPatCapabilityProbes(input: {
   apiBase: string;
   owner: string;
   repo: string;
   baseBranch: string;
   token: string;
+  tokenSource: GithubTokenSource;
+  validationEpoch: number;
 }): Promise<GithubCapabilityValidationSnapshot> {
   const api = input.apiBase.replace(/\/$/, "");
   const { owner, repo, baseBranch } = input;
   const token = input.token.trim();
+  const tokenSource = input.tokenSource;
+  const validationEpoch = input.validationEpoch;
+
+  logGithubTokenResolution({
+    operation: "github_pat_capability_probes",
+    token,
+    source: tokenSource,
+    validationEpoch,
+  });
+
+  let canonicalRepoGetAcceptedPermissions: string | null = null;
+
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${token}`,
@@ -103,10 +148,16 @@ export async function runGithubPatCapabilityProbes(input: {
     steps.push({ step, ok: true, httpStatus: res.status, acceptedPermissions: accepted });
   };
 
-  // 1) Repo metadata (Metadata: read + 기본 repo 접근)
+  // 1) Repo metadata — 권한 검증 기준 단일 엔드포인트 (canonical X-Accepted-GitHub-Permissions)
   const repoUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  logGithubTokenBeforeFetch("repo_metadata_GET", token, tokenSource);
   const repoRes = await fetch(repoUrl, { headers });
   const repoAccepted = readAcceptedPermissions(repoRes);
+  canonicalRepoGetAcceptedPermissions = repoAccepted;
+  console.info(
+    `[GitHub REST] canonical GET /repos/${owner}/${repo} HTTP ${repoRes.status} ` +
+      `X-Accepted-GitHub-Permissions=${canonicalRepoGetAcceptedPermissions ?? "(header_absent)"}`
+  );
   if (!repoRes.ok) {
     const body = await readBodySnippet(repoRes);
     pushFail(
@@ -115,13 +166,26 @@ export async function runGithubPatCapabilityProbes(input: {
       `저장소 메타데이터 접근 실패 HTTP ${repoRes.status}: ${body}`,
       repoAccepted
     );
-    return finalizeSnapshot(steps, false, false, false, false, acceptedPermissionsHeader, lastHttpStatus, lastErrorMessage);
+    return finalizeSnapshot(
+      steps,
+      false,
+      false,
+      false,
+      false,
+      acceptedPermissionsHeader,
+      lastHttpStatus,
+      lastErrorMessage,
+      canonicalRepoGetAcceptedPermissions,
+      tokenSource,
+      validationEpoch
+    );
   }
   pushOk("repo_metadata", repoRes, repoAccepted);
 
   // 2) Compare self (ref 읽기 — 베이스 브랜치 존재)
   const baseEnc = encodeURIComponent(baseBranch.trim() || "main");
   const cmpUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${baseEnc}...${baseEnc}`;
+  logGithubTokenBeforeFetch("repo_compare_self", token, tokenSource);
   const cmpRes = await fetch(cmpUrl, { headers });
   const cmpAccepted = readAcceptedPermissions(cmpRes);
   if (!cmpRes.ok) {
@@ -132,7 +196,19 @@ export async function runGithubPatCapabilityProbes(input: {
       `베이스 브랜치 compare 실패 HTTP ${cmpRes.status}: ${body}`,
       cmpAccepted
     );
-    return finalizeSnapshot(steps, true, false, false, false, acceptedPermissionsHeader, lastHttpStatus, lastErrorMessage);
+    return finalizeSnapshot(
+      steps,
+      true,
+      false,
+      false,
+      false,
+      acceptedPermissionsHeader,
+      lastHttpStatus,
+      lastErrorMessage,
+      canonicalRepoGetAcceptedPermissions,
+      tokenSource,
+      validationEpoch
+    );
   }
   pushOk("repo_compare_self", cmpRes, cmpAccepted);
 
@@ -140,12 +216,25 @@ export async function runGithubPatCapabilityProbes(input: {
 
   // 3) PR 목록 읽기
   const pullsUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=all&per_page=30&sort=updated`;
+  logGithubTokenBeforeFetch("pr_list", token, tokenSource);
   const pullsRes = await fetch(pullsUrl, { headers });
   const pullsAccepted = readAcceptedPermissions(pullsRes);
   if (!pullsRes.ok) {
     const body = await readBodySnippet(pullsRes);
     pushFail("pr_list", pullsRes, `PR 목록 조회 실패 HTTP ${pullsRes.status}: ${body}`, pullsAccepted);
-    return finalizeSnapshot(steps, repoAccessOk, false, false, false, acceptedPermissionsHeader, lastHttpStatus, lastErrorMessage);
+    return finalizeSnapshot(
+      steps,
+      repoAccessOk,
+      false,
+      false,
+      false,
+      acceptedPermissionsHeader,
+      lastHttpStatus,
+      lastErrorMessage,
+      canonicalRepoGetAcceptedPermissions,
+      tokenSource,
+      validationEpoch
+    );
   }
   pushOk("pr_list", pullsRes, pullsAccepted);
 
@@ -160,6 +249,7 @@ export async function runGithubPatCapabilityProbes(input: {
   // 4) PR 생성 권한: 존재하지 않는 head → 422 등으로 “거절”이면 쓰기 경로는 통과한 것으로 본다
   const fakeHead = `jy-orch-pat-probe-${Date.now()}`;
   const createUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`;
+  logGithubTokenBeforeFetch("pr_create_probe_POST", token, tokenSource);
   const createRes = await fetch(createUrl, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
@@ -213,7 +303,10 @@ export async function runGithubPatCapabilityProbes(input: {
       false,
       acceptedPermissionsHeader,
       lastHttpStatus,
-      lastErrorMessage
+      lastErrorMessage,
+      canonicalRepoGetAcceptedPermissions,
+      tokenSource,
+      validationEpoch
     );
   }
 
@@ -225,6 +318,7 @@ export async function runGithubPatCapabilityProbes(input: {
 
   if (mergedPr?.number != null) {
     const mergeUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${mergedPr.number}/merge`;
+    logGithubTokenBeforeFetch("pr_merge_probe_PUT", token, tokenSource);
     const mergeRes = await fetch(mergeUrl, {
       method: "PUT",
       headers: { ...headers, "Content-Type": "application/json" },
@@ -266,6 +360,7 @@ export async function runGithubPatCapabilityProbes(input: {
 
   // 6) 머지 결과가 불명확하거나(머지된 PR 없음·비-403 오류) 보조 확인 → 협업자 권한 API
   if (!prMergeOk && !mergeProbeDefinitiveFailure) {
+    logGithubTokenBeforeFetch("collaborator_GET_user", token, tokenSource);
     const userRes = await fetch(`${api}/user`, { headers });
     const userAccepted = readAcceptedPermissions(userRes);
     if (!userRes.ok) {
@@ -293,6 +388,7 @@ export async function runGithubPatCapabilityProbes(input: {
           "머지된 PR이 없어 머지 API 검증을 건너뛰었습니다. 저장소에 Contents: write 및 PR 머지 권한을 부여했는지 확인하세요.";
       } else {
         const collabUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/collaborators/${encodeURIComponent(login)}/permission`;
+        logGithubTokenBeforeFetch("collaborator_permission_GET", token, tokenSource);
         const collabRes = await fetch(collabUrl, { headers });
         const collabAccepted = readAcceptedPermissions(collabRes);
         const collabTxt = await readBodySnippet(collabRes);
@@ -341,7 +437,10 @@ export async function runGithubPatCapabilityProbes(input: {
     prMergeOk,
     acceptedPermissionsHeader,
     lastHttpStatus,
-    lastErrorMessage
+    lastErrorMessage,
+    canonicalRepoGetAcceptedPermissions,
+    tokenSource,
+    validationEpoch
   );
 }
 
@@ -353,10 +452,24 @@ function finalizeSnapshot(
   prMergeOk: boolean,
   acceptedPermissionsHeader: string | null,
   lastHttpStatus: number | null,
-  lastErrorMessage: string | null
+  lastErrorMessage: string | null,
+  canonicalRepoGetAcceptedPermissions: string | null,
+  tokenSourceUsed: GithubTokenSource,
+  validationEpoch: number
 ): GithubCapabilityValidationSnapshot {
   const githubOperableOk = repoAccessOk && prReadOk && prCreateOk && prMergeOk;
-  const summaryKr = buildSummaryKr(repoAccessOk, prReadOk, prCreateOk, prMergeOk, lastErrorMessage);
+  const tokenMismatchHintKr = buildTokenMismatchHintKr(
+    githubOperableOk,
+    canonicalRepoGetAcceptedPermissions,
+    acceptedPermissionsHeader
+  );
+  let errOut = lastErrorMessage;
+  if (tokenMismatchHintKr && errOut && !errOut.includes("metadata=read")) {
+    errOut = `${errOut} · ${tokenMismatchHintKr}`;
+  } else if (tokenMismatchHintKr && !errOut) {
+    errOut = tokenMismatchHintKr;
+  }
+  const summaryKr = buildSummaryKr(repoAccessOk, prReadOk, prCreateOk, prMergeOk, errOut);
   return {
     validatedAt: new Date().toISOString(),
     repoAccessOk,
@@ -365,8 +478,12 @@ function finalizeSnapshot(
     prMergeOk,
     githubOperableOk,
     acceptedPermissionsHeader,
+    canonicalRepoGetAcceptedPermissions,
+    tokenSourceUsed,
+    validationEpoch,
+    tokenMismatchHintKr,
     lastHttpStatus,
-    lastErrorMessage,
+    lastErrorMessage: errOut,
     steps,
     summaryKr,
   };

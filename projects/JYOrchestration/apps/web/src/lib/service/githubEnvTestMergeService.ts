@@ -5,9 +5,9 @@
 
 import { isExecutionSafeMode } from "@/lib/production/safeMode";
 import {
-  getGithubRestToken,
   githubRestApiBase,
   resolveGithubOwnerRepoStrict,
+  resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
 import { isEnvTestHelloWorldBranchName } from "@/lib/execution/branchPolicy";
 import { ENV_TEST_PR_TITLE } from "@/lib/service/githubEnvTestPullRequestService";
@@ -17,10 +17,8 @@ import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
 export const ENV_TEST_MERGE_ALLOWED_FILE_PATH = "orchestration-test/hello-world.md";
 
 export function resolveEnvTestMergeGithubToken(setupGithubAccessToken: string | null | undefined): string | null {
-  const fromSetup = getGithubRestToken(setupGithubAccessToken ?? null);
-  if (fromSetup) return fromSetup;
-  const envTok = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || "";
-  return envTok || null;
+  const r = resolveGithubRestTokenAndLog("env_test_merge_github_api", setupGithubAccessToken ?? null);
+  return r.token;
 }
 
 function normalizePrFilePath(filename: string): string {
