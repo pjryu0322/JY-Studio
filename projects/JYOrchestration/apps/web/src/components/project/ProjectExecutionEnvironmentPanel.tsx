@@ -290,13 +290,23 @@ export function ProjectExecutionEnvironmentPanel({
     setBusyEnvTest(true);
     try {
       const { res, json } = await postEnvironmentTestRun(projectId);
+      const apiSuccess = Boolean(json.success);
       if (json.data?.last != null) {
         setEnvTestLast(json.data.last);
       } else {
         await loadEnvTestLast();
       }
+      if (!res.ok || !apiSuccess) {
+        setExecutionMessage(
+          (typeof json.message === "string" && json.message.trim()) ||
+            (res.status === 422
+              ? "연결 테스트를 시작하거나 완료하지 못했습니다."
+              : "연결 테스트 요청이 실패했습니다.")
+        );
+        return;
+      }
       setExecutionMessage(
-        json.message || (res.ok ? "연결 테스트를 완료했습니다." : "연결 테스트에 실패했습니다.")
+        (typeof json.message === "string" && json.message.trim()) || "연결 테스트를 완료했습니다."
       );
     } finally {
       setBusyEnvTest(false);
