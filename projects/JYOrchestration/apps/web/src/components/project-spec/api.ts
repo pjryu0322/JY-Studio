@@ -8,6 +8,9 @@ import {
   TaskDraftDto,
   TaskItem,
 } from "./types";
+import type { GithubCapabilityValidationSnapshot } from "@/lib/executionSetup/githubPatCapabilityProbes";
+
+export type { GithubCapabilityValidationSnapshot };
 
 export async function fetchProjectById(projectId: string): Promise<{
   project: Project | null;
@@ -293,6 +296,7 @@ export type ExecutionSetupDto = {
   githubAuthConnectionOk?: boolean | null;
   githubAuthValidatedAt?: string | null;
   githubAuthValidationError?: string | null;
+  githubCapabilityValidation?: GithubCapabilityValidationSnapshot | null;
   cursorApiUrl: string;
   cursorApiTokenMasked: string | null;
   hasCursorToken: boolean;
@@ -408,6 +412,15 @@ export async function postExecutionSetupValidate(
     cursorApiValidationError?: string | null;
     executorValidationError?: string | null;
     cursorApiValidation?: CursorApiValidationPayload;
+    githubCapabilityValidation?: GithubCapabilityValidationSnapshot | null;
+    repoAccessOk?: boolean | null;
+    prReadOk?: boolean | null;
+    prCreateOk?: boolean | null;
+    prMergeOk?: boolean | null;
+    githubOperableOk?: boolean | null;
+    acceptedPermissionsHeader?: string | null;
+    lastHttpStatus?: number | null;
+    lastErrorMessage?: string | null;
   }>;
   return { res, json };
 }

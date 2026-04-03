@@ -19,6 +19,7 @@ ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAccessTokenMasked
 ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthConnectionOk" BOOLEAN;
 ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidatedAt" TIMESTAMP(3);
 ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubAuthValidationError" TEXT;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "githubCapabilityValidation" JSONB;
 
 -- If an older script added wrong snake_case columns, merge then drop them.
 UPDATE "execution_setups"
