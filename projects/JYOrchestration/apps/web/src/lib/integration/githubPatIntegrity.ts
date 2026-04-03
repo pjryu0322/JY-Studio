@@ -3,6 +3,10 @@
  */
 
 import { parseGitHubRepoFullName } from "@/lib/executionSetup/hardening";
+import {
+  githubAcceptedPermissionsLogValue,
+  readGithubAcceptedPermissionsHeader,
+} from "@/lib/integration/githubAcceptedPermissionsHeader";
 import { githubTokenFingerprint, githubTokenPrefixForLog } from "@/lib/integration/githubTokenTrace";
 
 function githubApiBaseForProbe(): string {
@@ -108,15 +112,11 @@ export async function probeGithubPatAgainstExecutionRepo(input: {
         "User-Agent": "JYOrchestration/github-pat-post-save-probe/1",
       },
     });
-    const xAccepted =
-      res.headers.get("x-accepted-github-permissions") ||
-      res.headers.get("X-Accepted-GitHub-Permissions") ||
-      null;
+    const xAccepted = readGithubAcceptedPermissionsHeader(res);
     const bodySnippet = (await res.text()).slice(0, 400);
     console.info(
       `[GitHub token] op=github_pat_post_save_probe TOKEN_SOURCE=DB projectId=${pid} ` +
-        `GET /repos/${owner}/${repo} HTTP ${res.status} ` +
-        `X-Accepted-GitHub-Permissions=${xAccepted ?? "(header_absent)"} ` +
+        `GET /repos/${owner}/${repo} HTTP ${res.status} ${githubAcceptedPermissionsLogValue(xAccepted)} ` +
         `TOKEN_HASH=${githubTokenFingerprint(tok)} TOKEN_LENGTH=${tok.length}`
     );
     return {

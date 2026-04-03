@@ -1,3 +1,4 @@
+import { isEnvTestFamilyTaskKind } from "@/lib/execution/envTestTaskKind";
 import { isExecutionLoopPaused } from "@/lib/executionLoop/loopControllerState";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { loadWorkflowGraphTasks } from "@/lib/executionLoop/workflowState";
@@ -84,7 +85,7 @@ export async function evaluateNextTaskReadiness(input: {
   const wfNorm = String(activeBlocking?.task?.executionWorkflowStatus ?? "").trim().toLowerCase();
   const staleEnvTestMerged =
     Boolean(activeBlocking) &&
-    String(activeBlocking!.task?.taskKind ?? "").trim() === "ENV_TEST" &&
+    isEnvTestFamilyTaskKind(activeBlocking!.task?.taskKind) &&
     wfNorm === EXECUTION_WORKFLOW.MERGED;
   if (activeBlocking && !staleEnvTestMerged) {
     return {

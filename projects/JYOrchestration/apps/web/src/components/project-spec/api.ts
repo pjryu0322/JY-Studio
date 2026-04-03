@@ -493,20 +493,32 @@ export type EnvironmentTestLastDto = {
   nextTaskId?: string | null;
   nextTaskName?: string | null;
   nextTaskBlockedReason?: string | null;
+  stage2ReviewerResult?: "PASS" | "FAIL" | null;
+  stage2ReviewerReason?: string | null;
+  stage2SecurityResult?: "PASS" | "FAIL" | null;
+  stage2SecurityReason?: string | null;
+  stage2ScmResult?: "MERGED" | "BLOCKED" | "VERIFY_FAILED" | null;
+  stage2ScmReason?: string | null;
+  stage2TotalTimeMs?: number | null;
+  stage2TopBottleneckStage?: string | null;
+  stage2TopBottleneckMs?: number | null;
 };
 
-export async function fetchEnvironmentTestLast(projectId: string) {
+export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage?: 2 }) {
   const encoded = encodeURIComponent(projectId);
-  const res = await fetch(`/api/projects/${encoded}/environment-test`, { credentials: "include" });
+  const q = opts?.stage === 2 ? "?stage=2" : "";
+  const res = await fetch(`/api/projects/${encoded}/environment-test${q}`, { credentials: "include" });
   const json = (await res.json()) as ApiResponse<{ last: EnvironmentTestLastDto | null }>;
   return { res, json };
 }
 
-export async function postEnvironmentTestRun(projectId: string) {
+export async function postEnvironmentTestRun(projectId: string, opts?: { stage?: 2 }) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/environment-test`, {
     method: "POST",
     credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts?.stage === 2 ? { stage: 2 } : {}),
   });
   const json = (await res.json()) as ApiResponse<{
     taskId?: string;

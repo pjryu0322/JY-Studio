@@ -17,11 +17,16 @@ import {
   resolveEnvTestMergeGithubToken,
   verifyEnvTestPullMergedWithRetry,
 } from "@/lib/service/githubEnvTestMergeService";
-import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
 import {
+  ENV_TEST_STAGE2_TASK_KIND,
   ENV_TEST_TASK_KIND,
-  parsePrUrlFromRunPrStatus,
-} from "@/lib/service/environmentConnectionTestService";
+  isEnvTestStage2TaskKind,
+} from "@/lib/execution/envTestTaskKind";
+import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
+import { parsePrUrlFromRunPrStatus } from "@/lib/service/environmentConnectionTestService";
+
+const ENV_TEST_MERGE_VERIFIED_SUMMARY = "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.";
+const ENV_TEST_MERGE_SUCCESS_USER_MESSAGE = "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.";
 
 export type EnvTestMergeExecutionResult =
   | { ok: true; message: string; mergeCommitSha: string | null; branchDeleted: boolean }
@@ -30,9 +35,12 @@ export type EnvTestMergeExecutionResult =
 export async function executeEnvTestPrMergeSmokeTest(input: {
   projectId: string;
   actorUserId: string;
+  /** Stage 2: 리뷰 PASS 후 명시적 taskId 로 머지(최신 ENV_TEST 자동 선택과 구분) */
+  taskId?: string | null;
 }): Promise<EnvTestMergeExecutionResult> {
   const projectId = String(input.projectId ?? "").trim();
   const actorUserId = String(input.actorUserId ?? "").trim();
+  const explicitTaskId = String(input.taskId ?? "").trim();
 
   const proj = await prisma.project.findUnique({
     where: { id: projectId },
@@ -40,22 +48,40 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
   });
   const currentSpecId = proj?.currentSpecVersionId ?? null;
 
-  const task = await prisma.task.findFirst({
-    where: {
-      projectId,
-      taskKind: ENV_TEST_TASK_KIND,
-      archivedAt: null,
-      ...(currentSpecId ? { sourceSpecVersionId: currentSpecId } : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      taskKind: true,
-      executionWorkflowStatus: true,
-      name: true,
-      lastOrchestrationBranch: true,
-    },
-  });
+  const envKinds = [ENV_TEST_TASK_KIND, ENV_TEST_STAGE2_TASK_KIND] as string[];
+
+  const task = explicitTaskId
+    ? await prisma.task.findFirst({
+        where: {
+          id: explicitTaskId,
+          projectId,
+          archivedAt: null,
+          taskKind: { in: envKinds },
+        },
+        select: {
+          id: true,
+          taskKind: true,
+          executionWorkflowStatus: true,
+          name: true,
+          lastOrchestrationBranch: true,
+        },
+      })
+    : await prisma.task.findFirst({
+        where: {
+          projectId,
+          taskKind: ENV_TEST_TASK_KIND,
+          archivedAt: null,
+          ...(currentSpecId ? { sourceSpecVersionId: currentSpecId } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          taskKind: true,
+          executionWorkflowStatus: true,
+          name: true,
+          lastOrchestrationBranch: true,
+        },
+      });
 
   if (!task) {
     return { ok: false, message: "ENV_TEST 작업을 찾을 수 없습니다." };
@@ -73,15 +99,21 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     });
     return {
       ok: true,
-      message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
+      message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
       mergeCommitSha: null,
       branchDeleted: false,
     };
   }
-  if (wf !== EXECUTION_WORKFLOW.PR_OPENED) {
+  const stage2 = isEnvTestStage2TaskKind(task.taskKind);
+  const mergeAllowed = stage2
+    ? wf === EXECUTION_WORKFLOW.MERGE_PENDING
+    : wf === EXECUTION_WORKFLOW.PR_OPENED;
+  if (!mergeAllowed) {
     return {
       ok: false,
-      message: "PR_OPENED 상태에서만 테스트 머지를 실행할 수 있습니다.",
+      message: stage2
+        ? "Stage 2: 리뷰 통과 후 MERGE_PENDING 상태에서만 SCM 머지를 실행합니다."
+        : "PR_OPENED 상태에서만 테스트 머지를 실행할 수 있습니다.",
       blockedReason: `현재 워크플로: ${task.executionWorkflowStatus ?? "없음"}`,
     };
   }
@@ -117,7 +149,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     });
     return {
       ok: true,
-      message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
+      message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
       mergeCommitSha: run.mergeCommitSha ?? null,
       branchDeleted: false,
     };
@@ -319,6 +351,23 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     };
   }
 
+  const whitelistPatterns = [
+    ...new Set(guard.envTestFileWhitelistMatches.map((m) => m.matchedPathPattern)),
+  ];
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_merge_whitelist_passed",
+    projectId,
+    taskId: task.id,
+    userId: actorUserId,
+    detail: {
+      envTestWhitelistMatched: true,
+      matchedPathPattern:
+        whitelistPatterns.length === 1 ? whitelistPatterns[0] : whitelistPatterns.join(" | "),
+      envTestFileWhitelistMatches: guard.envTestFileWhitelistMatches,
+    },
+  });
+
   const prLive = guard.pr;
   const mergedEarly =
     prLive.merged === true || String(prLive.state ?? "").toUpperCase() === "MERGED";
@@ -360,7 +409,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
         executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED,
         status: "DONE",
         lastEvalResult: "merged",
-        lastEvalSummary: "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.",
+        lastEvalSummary: ENV_TEST_MERGE_VERIFIED_SUMMARY,
       },
     });
     await updateTaskOrchestrationSnapshot(task.id, {
@@ -382,7 +431,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     });
     return {
       ok: true,
-      message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
+      message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
       mergeCommitSha: mergeCommitShaEarly,
       branchDeleted: false,
     };
@@ -491,7 +540,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
       executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED,
       status: "DONE",
       lastEvalResult: "merged",
-      lastEvalSummary: "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.",
+      lastEvalSummary: ENV_TEST_MERGE_VERIFIED_SUMMARY,
     },
   });
 
@@ -517,7 +566,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
 
   return {
     ok: true,
-    message: "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.",
+    message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
     mergeCommitSha: verified.mergeCommitSha ?? null,
     branchDeleted: false,
   };

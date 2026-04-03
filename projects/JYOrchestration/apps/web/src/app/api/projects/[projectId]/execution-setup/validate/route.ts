@@ -23,9 +23,13 @@ import {
   probeGitBaseBranchReachable,
   probeGitHttpRemote,
 } from "@/lib/executionSetup/hardening";
+import { githubRestApiBase } from "@/lib/integration/githubRestCommon";
 import { sanitizeGithubPatForStorage } from "@/lib/integration/githubPatIntegrity";
 import { bumpGithubTokenValidationEpoch, logGithubTokenResolution } from "@/lib/integration/githubTokenTrace";
 import {
+  formatGithubCanonicalGetReposPermissionsLine,
+  formatGithubCapabilityProbeStepFailureLine,
+  formatGithubRecentAcceptedPermissionsLine,
   runGithubPatCapabilityProbes,
   type GithubCapabilityValidationSnapshot,
 } from "@/lib/executionSetup/githubPatCapabilityProbes";
@@ -266,7 +270,7 @@ export async function POST(
             nextGithubCapabilityJson = null;
             messages.push("GitHub 인증: 저장소 URL이 GitHub 형식이 아닙니다.");
           } else {
-            const api = process.env.GITHUB_API_URL?.trim().replace(/\/$/, "") || "https://api.github.com";
+            const api = githubRestApiBase();
             const [owner, repo] = parsed.split("/");
             const snapshot = await runGithubPatCapabilityProbes({
               apiBase: api,
@@ -288,17 +292,15 @@ export async function POST(
             messages.push(snapshot.summaryKr);
             for (const st of snapshot.steps) {
               if (st.ok) continue;
-              const hint = st.acceptedPermissions ? ` · X-Accepted-GitHub-Permissions: ${st.acceptedPermissions}` : "";
-              const err = st.errorMessage ? ` · ${st.errorMessage}` : "";
-              probeMessages.push(`GitHub ${st.step}: HTTP ${st.httpStatus}${hint}${err}`);
+              probeMessages.push(formatGithubCapabilityProbeStepFailureLine(st));
             }
             if (snapshot.canonicalRepoGetAcceptedPermissions) {
               probeMessages.push(
-                `GitHub GET /repos (canonical) X-Accepted-GitHub-Permissions: ${snapshot.canonicalRepoGetAcceptedPermissions}`
+                formatGithubCanonicalGetReposPermissionsLine(snapshot.canonicalRepoGetAcceptedPermissions)
               );
             }
             if (!snapshot.githubOperableOk && snapshot.acceptedPermissionsHeader) {
-              probeMessages.push(`GitHub (최근) X-Accepted-GitHub-Permissions: ${snapshot.acceptedPermissionsHeader}`);
+              probeMessages.push(formatGithubRecentAcceptedPermissionsLine(snapshot.acceptedPermissionsHeader));
             }
             if (snapshot.tokenMismatchHintKr) {
               probeMessages.push(`GitHub: ${snapshot.tokenMismatchHintKr}`);

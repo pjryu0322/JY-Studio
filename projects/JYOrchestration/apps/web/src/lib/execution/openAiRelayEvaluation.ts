@@ -23,10 +23,14 @@ export type OpenAiRelayEvalUsage = {
   totalTokens: number;
 } | null;
 
-function parseJson(text: string): Record<string, unknown> {
+export function parseOpenAiJsonText(text: string): Record<string, unknown> {
   const parsed = JSON.parse(text) as unknown;
   if (!parsed || typeof parsed !== "object") throw new Error("invalid json");
   return parsed as Record<string, unknown>;
+}
+
+function parseJson(text: string): Record<string, unknown> {
+  return parseOpenAiJsonText(text);
 }
 
 function asStringArray(v: unknown): string[] | undefined {
@@ -44,13 +48,18 @@ export function parseOpenAiEvaluationJsonObject(o: Record<string, unknown>): {
   missingCriteria?: string[];
   suspiciousChanges?: string[];
 } {
-  const raw = String(o.decision ?? o.verdict ?? "")
-    .toLowerCase()
-    .trim();
+  const passFail = String(o.result ?? "").toUpperCase().trim();
   let decision: EvalVerdict = "retry";
-  if (raw === "done" || raw === "pass") decision = "done";
-  else if (raw === "failed" || raw === "fail") decision = "failed";
-  else if (raw === "retry") decision = "retry";
+  if (passFail === "PASS") decision = "done";
+  else if (passFail === "FAIL") decision = "failed";
+  else {
+    const raw = String(o.decision ?? o.verdict ?? "")
+      .toLowerCase()
+      .trim();
+    if (raw === "done" || raw === "pass") decision = "done";
+    else if (raw === "failed" || raw === "fail") decision = "failed";
+    else if (raw === "retry") decision = "retry";
+  }
 
   const reason = String(o.summary ?? o.reason ?? "").trim().slice(0, 2500) || "응답 없음";
   const issues = asStringArray(o.issues) ?? [];
@@ -229,6 +238,8 @@ export async function runOpenAiChatJsonEvaluation(params: {
   model: string;
   systemContent: string;
   userMessage: string;
+  /** 기본 0.15 — ENV_TEST Stage 2 등에서 더 낮게 지정 가능 */
+  temperature?: number;
 }): Promise<{ result: TaskEvaluationResult; usage: OpenAiRelayEvalUsage }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -242,6 +253,7 @@ export async function runOpenAiChatJsonEvaluation(params: {
   }
 
   const model = params.model.trim() || DEFAULT_MODEL;
+  const temperature = typeof params.temperature === "number" && Number.isFinite(params.temperature) ? params.temperature : 0.15;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -251,7 +263,7 @@ export async function runOpenAiChatJsonEvaluation(params: {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.15,
+      temperature,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: params.systemContent },

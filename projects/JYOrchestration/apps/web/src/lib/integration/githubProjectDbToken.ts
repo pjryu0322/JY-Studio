@@ -38,9 +38,3 @@ export async function resolveProjectGithubToken(projectId: string): Promise<Proj
     projectId: pid,
   };
 }
-
-/** @deprecated 이름 선호: `resolveProjectGithubToken` */
-export async function fetchGithubAccessTokenForProject(projectId: string): Promise<string | null> {
-  const r = await resolveProjectGithubToken(projectId);
-  return r.token;
-}

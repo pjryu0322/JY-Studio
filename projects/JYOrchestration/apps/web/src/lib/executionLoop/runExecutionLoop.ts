@@ -1,4 +1,10 @@
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
+import {
+  ENV_TEST_TASK_KIND,
+  isEnvTestFamilyTaskKind,
+  isEnvTestStage1TaskKind,
+  isEnvTestStage2TaskKind,
+} from "@/lib/execution/envTestTaskKind";
 import { buildCursorExecutionPrompt } from "@/lib/execution/buildCursorExecutionPrompt";
 import {
   executeCursorRun,
@@ -36,6 +42,8 @@ import {
   runEnvTestAfterGithubPushConfirmed,
   runEnvTestPlatformPrPhase,
 } from "@/lib/executionLoop/envTestExecutionHelpers";
+import { runEnvTestStage2ExecutorOpenAiAck } from "@/lib/service/envTestStage2AiRoleEvaluation";
+import { patchTaskExecutionRunStage2Timing } from "@/lib/service/envTestStage2Telemetry";
 import {
   evaluateNextTaskReadiness,
   type NextTaskReadinessResult,
@@ -180,7 +188,7 @@ export async function runExecutionLoop(params: {
       });
       if (
         forcedHead?.projectId === projectId &&
-        String(forcedHead.taskKind ?? "").trim() === "ENV_TEST"
+        isEnvTestFamilyTaskKind(forcedHead.taskKind)
       ) {
         appendTaskProgressLog({
           kind: "execution",
@@ -413,7 +421,7 @@ export async function runExecutionLoop(params: {
       }
 
       /** 이후 분기 기준: true면 ENV_TEST 전용 헬퍼·로그·브랜치, false면 일반 Task 폴링/PR 경로만. */
-      const isEnvTestTask = String(taskRow.taskKind ?? "").trim() === "ENV_TEST";
+      const isEnvTestTask = isEnvTestFamilyTaskKind(taskRow.taskKind);
 
       appendTaskProgressLog({
         kind: "execution",
@@ -431,7 +439,7 @@ export async function runExecutionLoop(params: {
           projectId,
           taskId,
           userId: actorUserId,
-          detail: { taskName: taskRow.name, taskKind: "ENV_TEST" },
+          detail: { taskName: taskRow.name, taskKind: String(taskRow.taskKind ?? "").trim() },
         });
       }
 
@@ -538,6 +546,21 @@ export async function runExecutionLoop(params: {
         },
       });
 
+      if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
+        const ex = await runEnvTestStage2ExecutorOpenAiAck({
+          projectId,
+          taskId,
+          execRunId: execRun.id,
+          actorUserId,
+        });
+        await patchTaskExecutionRunStage2Timing(execRun.id, {
+          executionId: execRun.id,
+          pipelineStartedAtMs: Date.now(),
+          executorTimeMs: ex.elapsedMs,
+          events: ex.timing.events,
+        });
+      }
+
       console.info("[execution-loop] cursor invoke", {
         projectId,
         taskId,
@@ -561,7 +584,7 @@ export async function runExecutionLoop(params: {
         taskId,
         userId: actorUserId,
         detail: {
-          scope: isEnvTestTask ? "ENV_TEST" : "NORMAL_TASK",
+          scope: isEnvTestTask ? String(taskRow.taskKind ?? "").trim() || ENV_TEST_TASK_KIND : "NORMAL_TASK",
           taskKind: taskRow.taskKind ?? null,
         },
       });
@@ -596,6 +619,7 @@ export async function runExecutionLoop(params: {
             detail: { execRunId: execRun.id, branch: branchPlan.branchName },
           });
         }
+        const cursorStartedAt = Date.now();
         cursorOutcome = await executeCursorRun({
           projectId,
           workflowId: taskRow.sourceSpecVersionId ?? null,
@@ -637,6 +661,11 @@ export async function runExecutionLoop(params: {
               }
             : undefined,
         });
+        if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
+          await patchTaskExecutionRunStage2Timing(execRun.id, {
+            cursorTimeMs: Date.now() - cursorStartedAt,
+          });
+        }
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         console.error("[execution-loop] cursor threw (abnormal)", { taskId, errMsg });
@@ -863,6 +892,7 @@ export async function runExecutionLoop(params: {
             userId: actorUserId,
             detail: { base: setup.baseBranch, head: headPending, step: "reflection_bypass" },
           });
+          const branchCompareStartedAt = Date.now();
           const comparePa = await fetchGithubCompareSnapshot({
             repoUrl,
             base: setup.baseBranch,
@@ -872,6 +902,7 @@ export async function runExecutionLoop(params: {
             projectId,
             allowUnauthenticated: true,
           });
+          const branchDetectElapsedMs = Date.now() - branchCompareStartedAt;
           if (comparePa.ok && comparePa.data.aheadBy > 0) {
             appendTaskProgressLog({
               kind: "execution",
@@ -918,6 +949,7 @@ export async function runExecutionLoop(params: {
               via: "reflection_bypass",
               pushDetectedSource: "reflection_bypass_compare",
               executionRunCreatedAt: execRun.createdAt,
+              branchDetectElapsedMs,
             });
             if (outPa.kind === "return") {
               return outPa.result;
@@ -1445,11 +1477,12 @@ export async function runExecutionLoop(params: {
         let envReadinessCommitted: NextTaskReadinessResult | undefined;
         let envMergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>> | null = null;
         if (isEnvTestTask) {
-          // PR_OPENED 직후 ENV_TEST 전용 머지 자동 실행(스모크 테스트).
-          envMergeRes = await executeEnvTestPrMergeSmokeTest({
-            projectId,
-            actorUserId,
-          });
+          if (isEnvTestStage1TaskKind(taskRow.taskKind)) {
+            envMergeRes = await executeEnvTestPrMergeSmokeTest({
+              projectId,
+              actorUserId,
+            });
+          }
 
           envReadinessCommitted = await evaluateNextTaskReadiness({
             projectId,

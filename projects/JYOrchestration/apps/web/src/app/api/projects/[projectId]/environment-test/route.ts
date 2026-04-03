@@ -4,7 +4,9 @@ import { runExecutionLoop } from "@/lib/executionLoop/runExecutionLoop";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import {
+  createEnvironmentStage2TestTask,
   createEnvironmentTestTask,
+  getLatestEnvironmentStage2TestTask,
   getLatestEnvironmentTestTask,
 } from "@/lib/service/environmentConnectionTestService";
 
@@ -30,7 +32,11 @@ export async function GET(
       throw error;
     }
 
-    const last = await getLatestEnvironmentTestTask(pid);
+    const stage = request.nextUrl.searchParams.get("stage");
+    const last =
+      stage === "2"
+        ? await getLatestEnvironmentStage2TestTask(pid)
+        : await getLatestEnvironmentTestTask(pid);
     return NextResponse.json({ success: true, data: { last } });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -62,7 +68,20 @@ export async function POST(
       throw error;
     }
 
-    const created = await createEnvironmentTestTask({ projectId: pid, actorUserId: userId });
+    let runStage2 = false;
+    try {
+      const ct = request.headers.get("content-type") ?? "";
+      if (ct.includes("application/json")) {
+        const b = (await request.json()) as { stage?: number };
+        if (b?.stage === 2) runStage2 = true;
+      }
+    } catch {
+      /* empty body */
+    }
+
+    const created = runStage2
+      ? await createEnvironmentStage2TestTask({ projectId: pid, actorUserId: userId })
+      : await createEnvironmentTestTask({ projectId: pid, actorUserId: userId });
     if (!created.ok) {
       return NextResponse.json({ success: false, message: created.message }, { status: 422 });
     }
@@ -73,7 +92,9 @@ export async function POST(
       singleTaskId: created.taskId,
     });
 
-    const last = await getLatestEnvironmentTestTask(pid);
+    const last = runStage2
+      ? await getLatestEnvironmentStage2TestTask(pid)
+      : await getLatestEnvironmentTestTask(pid);
 
     return NextResponse.json(
       {
