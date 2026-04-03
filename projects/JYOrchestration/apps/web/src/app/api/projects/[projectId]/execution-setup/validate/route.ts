@@ -248,6 +248,7 @@ export async function POST(
           token: null,
           source: "none",
           validationEpoch: githubValidationEpoch,
+          projectId: pid,
         });
         nextGithubOk = false;
         nextGithubErr = "GitHub 인증: 실행 환경(Execution setup)에 저장된 토큰이 없습니다.";
@@ -274,6 +275,7 @@ export async function POST(
               token: tok,
               tokenSource: "db",
               validationEpoch: githubValidationEpoch,
+              projectId: pid,
             });
             lastGithubCapabilitySnapshot = snapshot;
             nextGithubCapabilityJson = snapshot as unknown as Prisma.InputJsonValue;

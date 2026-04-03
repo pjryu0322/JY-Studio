@@ -1,5 +1,6 @@
 /** GitHub REST compare — 호출 시점·스코프는 실행 루프/어댑터가 결정(함수 자체는 ENV_TEST 전용 아님). */
 import { resolveGithubRepositoryFromEnv } from "@/lib/integration/githubIntegrationHints";
+import { GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS } from "@/lib/integration/githubProjectDbToken";
 import {
   GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
   resolveGithubRestTokenAndLog,
@@ -67,6 +68,8 @@ export async function fetchGithubBranchHeadExists(params: {
   repoUrl: string;
   branch: string;
   githubAccessToken?: string | null;
+  /** 진단 로그용 */
+  projectId?: string | null;
   allowUnauthenticated?: boolean;
 }): Promise<
   | { ok: true }
@@ -82,11 +85,12 @@ export async function fetchGithubBranchHeadExists(params: {
   }
   const { token } = resolveGithubRestTokenAndLog("github_branch_head_exists", params.githubAccessToken ?? null, {
     throttleKey: "github_branch_exists",
+    projectId: params.projectId,
   });
   if (!token && params.allowUnauthenticated !== true) {
     return {
       ok: false,
-      code: "NO_GITHUB_TOKEN",
+      code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
       message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
       httpStatus: 503,
     };
@@ -142,8 +146,9 @@ export async function fetchGithubCompareSnapshot(params: {
   head: string;
   maxPatchCharsPerFile?: number;
   maxFiles?: number;
-  /** execution setup에 저장된 GitHub 토큰(1순위). 없으면 env fallback. */
+  /** Execution setup(DB) GitHub 토큰만. 없으면 인증 호출 안 함(allowUnauthenticated 시 공개 compare만). */
   githubAccessToken?: string | null;
+  projectId?: string | null;
   /**
    * 토큰이 없을 때(공개 저장소) unauthenticated compare를 시도할지.
    * ENV_TEST 전용 폴백에만 사용한다.
@@ -169,6 +174,7 @@ export async function fetchGithubCompareSnapshot(params: {
 > {
   const { token } = resolveGithubRestTokenAndLog("github_compare_snapshot", params.githubAccessToken ?? null, {
     throttleKey: "github_compare",
+    projectId: params.projectId,
   });
   // 웹 앱(플랫폼)에서는 execution setup의 repoUrl이 진실이다.
   // CI/런타임 env의 GITHUB_REPOSITORY 힌트가 다른 저장소를 가리키면 compare 결과가 틀어질 수 있어
@@ -184,7 +190,7 @@ export async function fetchGithubCompareSnapshot(params: {
     if (!token && params.allowUnauthenticated !== true) {
       return {
         ok: false,
-        code: "NO_GITHUB_TOKEN",
+        code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
         message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
         httpStatus: 503,
       };
@@ -203,7 +209,7 @@ export async function fetchGithubCompareSnapshot(params: {
       if (!token && params.allowUnauthenticated === true) {
         return {
           ok: false,
-          code: "NO_GITHUB_TOKEN",
+          code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
           message: `${GITHUB_REST_MISSING_TOKEN_USER_MESSAGE} (공개 저장소 무토큰 compare도 HTTP ${res.status}으로 실패했습니다.)`,
           httpStatus: res.status,
           detail: { body: txt.slice(0, 2000) },

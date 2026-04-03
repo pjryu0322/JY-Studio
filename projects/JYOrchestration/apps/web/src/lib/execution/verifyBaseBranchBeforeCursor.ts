@@ -15,6 +15,7 @@ export async function verifyBaseBranchBeforeCursorExecution(params: {
   baseBranch: string;
   /** Execution setup(DB)에 저장된 GitHub 토큰 */
   githubAccessToken?: string | null;
+  projectId?: string | null;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   const gitRepoUrl = params.gitRepoUrl.trim();
   const baseBranch = params.baseBranch.trim();
@@ -30,7 +31,8 @@ export async function verifyBaseBranchBeforeCursorExecution(params: {
   const fullName = parseGitHubRepoFullName(gitRepoUrl);
   const { token } = resolveGithubRestTokenAndLog(
     "verify_base_branch_before_cursor",
-    params.githubAccessToken ?? null
+    params.githubAccessToken ?? null,
+    { projectId: params.projectId }
   );
 
   if (fullName && token) {

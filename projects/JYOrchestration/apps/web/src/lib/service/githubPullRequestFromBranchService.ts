@@ -1,3 +1,4 @@
+import { GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS } from "@/lib/integration/githubProjectDbToken";
 import {
   githubRestApiBase,
   resolveGithubOwnerRepoStrict,
@@ -13,16 +14,19 @@ export async function createGithubPullRequestFromBranch(params: {
   title: string;
   body?: string;
   githubAccessToken?: string | null;
+  projectId?: string | null;
 }): Promise<
   | { ok: true; data: { pullRequestUrl: string; pullRequestNumber: number; pullRequestState: string } }
   | { ok: false; code: string; message: string; httpStatus?: number; detail?: Record<string, unknown> }
 > {
-  const { token } = resolveGithubRestTokenAndLog("github_pull_request_from_branch", params.githubAccessToken ?? null);
+  const { token } = resolveGithubRestTokenAndLog("github_pull_request_from_branch", params.githubAccessToken ?? null, {
+    projectId: params.projectId,
+  });
   if (!token)
     return {
       ok: false,
-      code: "NO_GITHUB_TOKEN",
-      message: "실행 환경에 저장된 GitHub 토큰이 필요합니다.",
+      code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
+      message: "프로젝트 설정에 GitHub 토큰이 저장되어 있지 않습니다. Execution setup에서 저장·검증하세요.",
       httpStatus: 503,
     };
   const parsed = resolveGithubOwnerRepoStrict(params.repoUrl);

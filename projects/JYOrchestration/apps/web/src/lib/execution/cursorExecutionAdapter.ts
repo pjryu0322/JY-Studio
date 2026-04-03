@@ -348,6 +348,7 @@ async function envTestProbeGithubAheadByCompare(input: {
     repoUrl: input.repoUrl,
     branch: input.headBranch,
     githubAccessToken: input.githubAccessToken ?? null,
+    projectId: input.projectId,
     allowUnauthenticated: true,
   });
 
@@ -409,6 +410,7 @@ async function envTestProbeGithubAheadByCompare(input: {
     head: input.headBranch,
     maxFiles: 80,
     githubAccessToken: input.githubAccessToken ?? null,
+    projectId: input.projectId,
     allowUnauthenticated: true,
   });
 
@@ -646,6 +648,7 @@ async function tryEnvTestCursorPollEarlySuccess(input: {
     repoUrl: input.gitRepoUrl,
     headBranch: input.headBranch,
     githubAccessToken: input.githubAccessToken ?? null,
+    projectId: input.projectId,
   });
   if (openPr) {
     if (isTaskProgressLogEnabled()) {
@@ -782,6 +785,7 @@ async function tryEnvTestGithubFullFinalizeDuringPoll(input: {
     repoUrl: ctx.repoUrl,
     headBranch: branchName,
     githubAccessToken: ctx.githubAccessToken ?? null,
+    projectId: params.projectId,
   });
 
   appendTaskProgressLog({
@@ -991,6 +995,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
     gitRepoUrl: setup.gitRepoUrl,
     baseBranch: setup.baseBranch,
     githubAccessToken: params.githubAccessToken ?? null,
+    projectId: params.projectId,
   });
   if (!preBranch.ok) {
     logs.push("[cursor-adapter] base branch 사전 검증 실패");

@@ -4,7 +4,10 @@
  */
 
 import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHistoryConstants";
-import { fetchGithubAccessTokenForProject } from "@/lib/integration/githubProjectDbToken";
+import {
+  GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
+  resolveProjectGithubToken,
+} from "@/lib/integration/githubProjectDbToken";
 import { isAutoGitPushMode } from "@/lib/git-apply/retry";
 import { prisma } from "@/lib/prisma";
 import { isExecutionSafeMode } from "@/lib/production/safeMode";
@@ -25,6 +28,8 @@ export const GITHUB_PR_ERROR_CODES = {
   NO_PUSH: "GITHUB_PR_PUSH_NOT_CONFIRMED",
   NO_AUTO_PUSH_POLICY: "GITHUB_PR_NOT_AUTO_PUSH_PROJECT",
   NO_CONFIG: "GITHUB_PR_MISSING_GITHUB_CONFIG",
+  /** Execution setup(DB)에 GitHub PAT 없음 — ENV PAT 미사용 */
+  MISSING_PROJECT_GITHUB_TOKEN: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
   API_ERROR: "GITHUB_PR_GITHUB_API_ERROR",
   NO_PR_NUMBER: "GITHUB_PR_NUMBER_MISSING",
 } as const;
@@ -434,14 +439,21 @@ export async function createPullRequestForGitChangeRequest(input: {
   }
 
   const repo = resolveGithubRepoForPr({ projectRepoUrl: row.project.repoUrl });
-  const token = await fetchGithubAccessTokenForProject(row.projectId);
-  if (!repo || !token) {
+  const auth = await resolveProjectGithubToken(row.projectId);
+  const token = auth.token;
+  if (!repo) {
     return {
       ok: false,
       code: GITHUB_PR_ERROR_CODES.NO_CONFIG,
-      message: !repo
-        ? "프로젝트 저장소 URL(repoUrl)이 github.com 형식이 아니거나 비어 있어 PR을 만들 수 없습니다."
-        : "실행 환경에 GitHub 토큰이 저장되어 있지 않습니다. Execution setup에서 토큰을 저장·검증하세요.",
+      message: "프로젝트 저장소 URL(repoUrl)이 github.com 형식이 아니거나 비어 있어 PR을 만들 수 없습니다.",
+      httpStatus: 400,
+    };
+  }
+  if (!token) {
+    return {
+      ok: false,
+      code: GITHUB_PR_ERROR_CODES.MISSING_PROJECT_GITHUB_TOKEN,
+      message: "프로젝트 설정에 GitHub 토큰이 저장되어 있지 않습니다. Execution setup에서 토큰을 저장·검증하세요.",
       httpStatus: 400,
     };
   }
@@ -574,14 +586,21 @@ export async function syncPullRequestStatus(input: {
   }
 
   const repo = resolveGithubRepoForPr({ projectRepoUrl: row.project.repoUrl });
-  const token = await fetchGithubAccessTokenForProject(row.projectId);
-  if (!repo || !token) {
+  const auth = await resolveProjectGithubToken(row.projectId);
+  const token = auth.token;
+  if (!repo) {
     return {
       ok: false,
       code: GITHUB_PR_ERROR_CODES.NO_CONFIG,
-      message: !repo
-        ? "프로젝트 저장소 URL(repoUrl)이 github.com 형식이 아니거나 비어 있습니다."
-        : "실행 환경에 GitHub 토큰이 저장되어 있지 않아 PR 상태를 동기화할 수 없습니다.",
+      message: "프로젝트 저장소 URL(repoUrl)이 github.com 형식이 아니거나 비어 있습니다.",
+      httpStatus: 400,
+    };
+  }
+  if (!token) {
+    return {
+      ok: false,
+      code: GITHUB_PR_ERROR_CODES.MISSING_PROJECT_GITHUB_TOKEN,
+      message: "프로젝트 설정에 GitHub 토큰이 저장되어 있지 않아 PR 상태를 동기화할 수 없습니다. Execution setup에서 토큰을 저장·검증하세요.",
       httpStatus: 400,
     };
   }

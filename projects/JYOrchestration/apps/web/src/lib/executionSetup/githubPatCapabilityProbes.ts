@@ -97,18 +97,22 @@ export async function runGithubPatCapabilityProbes(input: {
   token: string;
   tokenSource: GithubTokenSource;
   validationEpoch: number;
+  /** 검증·로그에 projectId 표시 */
+  projectId?: string | null;
 }): Promise<GithubCapabilityValidationSnapshot> {
   const api = input.apiBase.replace(/\/$/, "");
   const { owner, repo, baseBranch } = input;
   const token = input.token.trim();
   const tokenSource = input.tokenSource;
   const validationEpoch = input.validationEpoch;
+  const projectId = input.projectId?.trim() || null;
 
   logGithubTokenResolution({
     operation: "github_pat_capability_probes",
     token,
     source: tokenSource,
     validationEpoch,
+    projectId,
   });
 
   let canonicalRepoGetAcceptedPermissions: string | null = null;
@@ -150,7 +154,7 @@ export async function runGithubPatCapabilityProbes(input: {
 
   // 1) Repo metadata — 권한 검증 기준 단일 엔드포인트 (canonical X-Accepted-GitHub-Permissions)
   const repoUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
-  logGithubTokenBeforeFetch("repo_metadata_GET", token, tokenSource);
+  logGithubTokenBeforeFetch("repo_metadata_GET", token, tokenSource, projectId);
   const repoRes = await fetch(repoUrl, { headers });
   const repoAccepted = readAcceptedPermissions(repoRes);
   canonicalRepoGetAcceptedPermissions = repoAccepted;
@@ -185,7 +189,7 @@ export async function runGithubPatCapabilityProbes(input: {
   // 2) Compare self (ref 읽기 — 베이스 브랜치 존재)
   const baseEnc = encodeURIComponent(baseBranch.trim() || "main");
   const cmpUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${baseEnc}...${baseEnc}`;
-  logGithubTokenBeforeFetch("repo_compare_self", token, tokenSource);
+  logGithubTokenBeforeFetch("repo_compare_self", token, tokenSource, projectId);
   const cmpRes = await fetch(cmpUrl, { headers });
   const cmpAccepted = readAcceptedPermissions(cmpRes);
   if (!cmpRes.ok) {
@@ -216,7 +220,7 @@ export async function runGithubPatCapabilityProbes(input: {
 
   // 3) PR 목록 읽기
   const pullsUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=all&per_page=30&sort=updated`;
-  logGithubTokenBeforeFetch("pr_list", token, tokenSource);
+  logGithubTokenBeforeFetch("pr_list", token, tokenSource, projectId);
   const pullsRes = await fetch(pullsUrl, { headers });
   const pullsAccepted = readAcceptedPermissions(pullsRes);
   if (!pullsRes.ok) {
@@ -249,7 +253,7 @@ export async function runGithubPatCapabilityProbes(input: {
   // 4) PR 생성 권한: 존재하지 않는 head → 422 등으로 “거절”이면 쓰기 경로는 통과한 것으로 본다
   const fakeHead = `jy-orch-pat-probe-${Date.now()}`;
   const createUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`;
-  logGithubTokenBeforeFetch("pr_create_probe_POST", token, tokenSource);
+  logGithubTokenBeforeFetch("pr_create_probe_POST", token, tokenSource, projectId);
   const createRes = await fetch(createUrl, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
@@ -318,7 +322,7 @@ export async function runGithubPatCapabilityProbes(input: {
 
   if (mergedPr?.number != null) {
     const mergeUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${mergedPr.number}/merge`;
-    logGithubTokenBeforeFetch("pr_merge_probe_PUT", token, tokenSource);
+    logGithubTokenBeforeFetch("pr_merge_probe_PUT", token, tokenSource, projectId);
     const mergeRes = await fetch(mergeUrl, {
       method: "PUT",
       headers: { ...headers, "Content-Type": "application/json" },
@@ -360,7 +364,7 @@ export async function runGithubPatCapabilityProbes(input: {
 
   // 6) 머지 결과가 불명확하거나(머지된 PR 없음·비-403 오류) 보조 확인 → 협업자 권한 API
   if (!prMergeOk && !mergeProbeDefinitiveFailure) {
-    logGithubTokenBeforeFetch("collaborator_GET_user", token, tokenSource);
+    logGithubTokenBeforeFetch("collaborator_GET_user", token, tokenSource, projectId);
     const userRes = await fetch(`${api}/user`, { headers });
     const userAccepted = readAcceptedPermissions(userRes);
     if (!userRes.ok) {
@@ -388,7 +392,7 @@ export async function runGithubPatCapabilityProbes(input: {
           "머지된 PR이 없어 머지 API 검증을 건너뛰었습니다. 저장소에 Contents: write 및 PR 머지 권한을 부여했는지 확인하세요.";
       } else {
         const collabUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/collaborators/${encodeURIComponent(login)}/permission`;
-        logGithubTokenBeforeFetch("collaborator_permission_GET", token, tokenSource);
+        logGithubTokenBeforeFetch("collaborator_permission_GET", token, tokenSource, projectId);
         const collabRes = await fetch(collabUrl, { headers });
         const collabAccepted = readAcceptedPermissions(collabRes);
         const collabTxt = await readBodySnippet(collabRes);
