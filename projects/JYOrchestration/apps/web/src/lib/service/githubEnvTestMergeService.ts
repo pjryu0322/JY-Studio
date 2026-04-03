@@ -16,8 +16,13 @@ import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
 /** 머지 가드: PR에 허용되는 유일한 변경 경로(정규화 후 비교). */
 export const ENV_TEST_MERGE_ALLOWED_FILE_PATH = "orchestration-test/hello-world.md";
 
-export function resolveEnvTestMergeGithubToken(setupGithubAccessToken: string | null | undefined): string | null {
-  const r = resolveGithubRestTokenAndLog("env_test_merge_github_api", setupGithubAccessToken ?? null);
+export function resolveEnvTestMergeGithubToken(
+  setupGithubAccessToken: string | null | undefined,
+  projectId?: string | null
+): string | null {
+  const r = resolveGithubRestTokenAndLog("env_test_merge_github_api", setupGithubAccessToken ?? null, {
+    projectId,
+  });
   return r.token;
 }
 

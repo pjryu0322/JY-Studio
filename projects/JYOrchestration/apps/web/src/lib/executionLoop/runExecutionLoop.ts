@@ -869,6 +869,7 @@ export async function runExecutionLoop(params: {
             head: headPending,
             maxFiles: 80,
             githubAccessToken: setup.githubAccessToken ?? null,
+            projectId,
             allowUnauthenticated: true,
           });
           if (comparePa.ok && comparePa.data.aheadBy > 0) {
@@ -925,7 +926,7 @@ export async function runExecutionLoop(params: {
               continue;
             }
           }
-          if (!comparePa.ok && comparePa.code === "NO_GITHUB_TOKEN") {
+          if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
             appendTaskProgressLog({
               kind: "execution",
               phase: "github_compare_missing_token",
@@ -945,7 +946,7 @@ export async function runExecutionLoop(params: {
           }
           // ENV_TEST: 토큰 부재로 GitHub compare를 못 돌리면, 기존 no_commit_and_no_changed_files로 뭉개지 않고
           // 명확한 게이트 reason으로 pending_apply 처리한다.
-          if (!comparePa.ok && comparePa.code === "NO_GITHUB_TOKEN") {
+          if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
             const gateReason = "github_compare_unavailable_no_token";
             appendTaskProgressLog({
               kind: "execution",
@@ -1189,6 +1190,7 @@ export async function runExecutionLoop(params: {
         head: cr.branchName,
         maxFiles: 80,
         githubAccessToken: setup.githubAccessToken ?? null,
+        projectId,
         allowUnauthenticated: isEnvTestTask ? true : undefined,
       });
       if (isEnvTestTask && compare.ok && compare.data.aheadBy > 0) {
@@ -1377,6 +1379,8 @@ export async function runExecutionLoop(params: {
           const found = await findOpenPullRequestByHeadBranch({
             repoUrl,
             headBranch: cr.branchName,
+            githubAccessToken: setup.githubAccessToken ?? null,
+            projectId,
           });
           if (found) {
             prUrl = found.prUrl;
@@ -1659,6 +1663,7 @@ export async function runExecutionLoop(params: {
         title: `[auto] ${taskRow.name}`.slice(0, 240),
         body: `Automated by JYOrchestration SCM Manager.\n\nTask: ${taskId}\nBranch: ${cr.branchName}\n\nReviewer: approved\n\nSummary:\n${evalPack.result.reason}`.slice(0, 6000),
         githubAccessToken: setup.githubAccessToken ?? null,
+        projectId,
       });
       if (!prCreate.ok) {
         await prisma.taskExecutionRun.update({

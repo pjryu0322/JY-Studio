@@ -24,7 +24,7 @@ export function getGithubRestToken(preferredToken?: string | null): string | nul
 export function resolveGithubRestTokenAndLog(
   operation: string,
   preferredToken?: string | null,
-  opts?: { throttleKey?: string; validationEpoch?: number }
+  opts?: { throttleKey?: string; validationEpoch?: number; projectId?: string | null }
 ): GithubRestTokenResolution {
   const r = resolveGithubRestToken(preferredToken);
   logGithubTokenResolution({
@@ -33,6 +33,7 @@ export function resolveGithubRestTokenAndLog(
     source: r.source,
     validationEpoch: opts?.validationEpoch,
     throttleKey: opts?.throttleKey,
+    projectId: opts?.projectId,
   });
   return r;
 }

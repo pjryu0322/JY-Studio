@@ -76,6 +76,7 @@ export async function runEnvTestPlatformPrPhase(input: {
     baseBranch: input.baseBranch,
     headBranch: input.headBranch,
     githubAccessToken: input.githubAccessToken ?? null,
+    projectId: input.projectId,
   });
   if (!prRes.ok) {
     return { ok: false, message: prRes.message };

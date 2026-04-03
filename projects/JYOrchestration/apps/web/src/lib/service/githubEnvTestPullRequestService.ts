@@ -1,3 +1,4 @@
+import { GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS } from "@/lib/integration/githubProjectDbToken";
 import {
   githubRestApiBase,
   GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
@@ -66,6 +67,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   baseBranch: string;
   headBranch: string;
   githubAccessToken?: string | null;
+  projectId?: string | null;
 }): Promise<
   | {
       ok: true;
@@ -73,9 +75,16 @@ export async function createOrUpdateEnvTestPullRequest(params: {
     }
   | { ok: false; code: string; message: string; httpStatus?: number }
 > {
-  const { token } = resolveGithubRestTokenAndLog("github_env_test_pull_request", params.githubAccessToken ?? null);
+  const { token } = resolveGithubRestTokenAndLog("github_env_test_pull_request", params.githubAccessToken ?? null, {
+    projectId: params.projectId,
+  });
   if (!token) {
-    return { ok: false, code: "NO_GITHUB_TOKEN", message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE, httpStatus: 503 };
+    return {
+      ok: false,
+      code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
+      message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      httpStatus: 503,
+    };
   }
   const parsed = resolveGithubOwnerRepoStrict(params.repoUrl);
   if (!parsed) {
@@ -96,6 +105,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
     repoUrl: params.repoUrl,
     headBranch,
     githubAccessToken: token,
+    projectId: params.projectId,
   }).catch(() => null);
 
   if (existing) {

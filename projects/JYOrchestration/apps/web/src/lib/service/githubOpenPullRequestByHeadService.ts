@@ -11,9 +11,11 @@ export async function findOpenPullRequestByHeadBranch(input: {
   repoUrl: string;
   headBranch: string;
   githubAccessToken?: string | null;
+  projectId?: string | null;
 }): Promise<{ prUrl: string; prNumber: number } | null> {
   const { token } = resolveGithubRestTokenAndLog("github_find_open_pr_by_head", input.githubAccessToken ?? null, {
     throttleKey: "find_open_pr_head",
+    projectId: input.projectId,
   });
   if (!token) return null;
 

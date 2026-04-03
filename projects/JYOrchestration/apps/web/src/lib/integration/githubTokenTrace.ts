@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
-export const GITHUB_TOKEN_CACHE_LABEL = "unused";
+/** 메모리 캐시 미사용(진단용 라벨). PAT 환경변수와 무관 */
+export const JY_ORCH_GITHUB_TRACE_CACHE_LABEL = "unused";
 
 /** 플랫폼 GitHub 토큰 출처: DB(Execution setup)만. ENV 토큰은 사용하지 않음. */
 export type GithubTokenSource = "db" | "none";
@@ -44,6 +45,7 @@ export type GithubTokenResolutionLogInput = {
   source: GithubTokenSource;
   validationEpoch?: number;
   throttleKey?: string;
+  projectId?: string | null;
 };
 
 export function logGithubTokenResolution(input: GithubTokenResolutionLogInput): void {
@@ -58,10 +60,12 @@ export function logGithubTokenResolution(input: GithubTokenResolutionLogInput): 
     resolutionThrottle.set(k, now);
   }
 
+  const pid = input.projectId?.trim() ? ` projectId=${input.projectId!.trim()}` : "";
+
   if (!input.token) {
     console.info(
-      `[GitHub token] op=${input.operation} TOKEN_SOURCE=NONE TOKEN_CACHE=${GITHUB_TOKEN_CACHE_LABEL} ` +
-        `DB_TOKEN=missing VALIDATION_EPOCH=${epoch}`
+      `[GitHub token] op=${input.operation} TOKEN_SOURCE=NONE TOKEN_CACHE=${JY_ORCH_GITHUB_TRACE_CACHE_LABEL} ` +
+        `DB_TOKEN=missing${pid} VALIDATION_EPOCH=${epoch}`
     );
     return;
   }
@@ -69,15 +73,21 @@ export function logGithubTokenResolution(input: GithubTokenResolutionLogInput): 
   const fp = githubTokenFingerprint(input.token);
   const prefix = githubTokenPrefixForLog(input.token);
   console.info(
-    `[GitHub token] op=${input.operation} TOKEN_SOURCE=DB TOKEN_CACHE=${GITHUB_TOKEN_CACHE_LABEL} ` +
-      `TOKEN_PREFIX=${prefix} TOKEN_HASH=${fp} VALIDATION_EPOCH=${epoch}`
+    `[GitHub token] op=${input.operation} TOKEN_SOURCE=DB TOKEN_CACHE=${JY_ORCH_GITHUB_TRACE_CACHE_LABEL} ` +
+      `TOKEN_PREFIX=${prefix} TOKEN_HASH=${fp}${pid} VALIDATION_EPOCH=${epoch}`
   );
 }
 
-export function logGithubTokenBeforeFetch(operation: string, token: string, _source: GithubTokenSource): void {
-  if (process.env.JY_ORCHESTRATION_GITHUB_TOKEN_PER_FETCH_LOG !== "1") return;
+export function logGithubTokenBeforeFetch(
+  operation: string,
+  token: string,
+  _source: GithubTokenSource,
+  projectId?: string | null
+): void {
+  if (process.env.JY_ORCH_TRACE_EACH_GITHUB_FETCH !== "1") return;
+  const pid = projectId?.trim() ? ` projectId=${projectId.trim()}` : "";
   console.info(
     `[GitHub token] pre_fetch op=${operation} TOKEN_SOURCE=DB ` +
-      `TOKEN_PREFIX=${githubTokenPrefixForLog(token)} TOKEN_HASH=${githubTokenFingerprint(token)}`
+      `TOKEN_PREFIX=${githubTokenPrefixForLog(token)} TOKEN_HASH=${githubTokenFingerprint(token)}${pid}`
   );
 }
