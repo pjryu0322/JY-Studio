@@ -50,7 +50,7 @@ export function buildCursorExecutionPrompt(
       `Make a small change under:`,
       `orchestration-test/**`,
       ``,
-      `Ensure that your change results in at least one commit.`,
+      `Your work must result in at least one commit on the working branch.`,
       ``,
       `A simple approach is to create or update a small text file with a short "Hello World" line.`,
       ``,

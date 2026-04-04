@@ -321,6 +321,7 @@ export type EnvironmentTestLastDto = {
   cursorPromptPreview?: string | null;
   stage2CursorPromptRaw?: string | null;
   stage2CursorPromptCanViewRaw?: boolean | null;
+  stage2FailureMessage?: string | null;
 };
 
 export async function getLatestEnvironmentTestTask(
@@ -355,6 +356,7 @@ export async function getLatestEnvironmentTestTask(
             name: true,
             status: true,
             executionWorkflowStatus: true,
+            lastEvalSummary: true,
             lastOrchestrationBranch: true,
             updatedAt: true,
             taskExecutionRuns: {
@@ -390,6 +392,7 @@ export async function getLatestEnvironmentTestTask(
         name: true,
         status: true,
         executionWorkflowStatus: true,
+        lastEvalSummary: true,
         lastOrchestrationBranch: true,
         updatedAt: true,
         taskExecutionRuns: {
@@ -434,6 +437,10 @@ export async function getLatestEnvironmentTestTask(
     cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptCanViewRaw: canViewPromptRaw,
+    stage2FailureMessage:
+      String(rowResolved.lastEvalSummary ?? "").trim().startsWith("Stage 2 실패:")
+        ? String(rowResolved.lastEvalSummary ?? "").trim()
+        : null,
   };
 
   const wfNorm = String(rowResolved.executionWorkflowStatus ?? "").trim();
@@ -484,6 +491,7 @@ export async function getLatestEnvironmentStage2TestTask(
             name: true,
             status: true,
             executionWorkflowStatus: true,
+            lastEvalSummary: true,
             lastOrchestrationBranch: true,
             lastOrchestrationCommitStatus: true,
             lastOrchestrationPushStatus: true,
@@ -527,6 +535,7 @@ export async function getLatestEnvironmentStage2TestTask(
         name: true,
         status: true,
         executionWorkflowStatus: true,
+        lastEvalSummary: true,
         lastOrchestrationBranch: true,
         lastOrchestrationCommitStatus: true,
         lastOrchestrationPushStatus: true,
@@ -616,6 +625,10 @@ export async function getLatestEnvironmentStage2TestTask(
     cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptCanViewRaw: canViewPromptRaw,
+    stage2FailureMessage:
+      String(rowResolved.lastEvalSummary ?? "").trim().startsWith("Stage 2 실패:")
+        ? String(rowResolved.lastEvalSummary ?? "").trim()
+        : null,
   };
   if (runtimeMon) {
     const runtimeBreakdown = {

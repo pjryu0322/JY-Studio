@@ -538,6 +538,7 @@ export type EnvironmentTestLastDto = {
   cursorPromptPreview?: string | null;
   stage2CursorPromptRaw?: string | null;
   stage2CursorPromptCanViewRaw?: boolean | null;
+  stage2FailureMessage?: string | null;
 };
 
 export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage?: 2 }) {

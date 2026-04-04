@@ -62,6 +62,51 @@ const STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS = parsePositiveIntMs(
   { min: 0, max: 10_000 }
 );
 
+async function failEnvTestStage2WithCode(input: {
+  projectId: string;
+  taskId: string;
+  execRunId: string;
+  code: "STAGE2_NO_COMMIT" | "STAGE2_BRANCH_NOT_REFLECTED" | "STAGE2_PR_NOT_OPENED";
+  summaryKo: string;
+}): Promise<void> {
+  const rowVo = await prisma.taskExecutionRun.findUnique({
+    where: { id: input.execRunId },
+    select: { validationOutput: true },
+  });
+  const vo = mergeEnvTestStage2RunValidationOutput(rowVo?.validationOutput, {
+    stage2RunSummary: {
+      finalOutcome: "FAILED",
+      mergeVerified: false,
+    },
+  });
+  await prisma.taskExecutionRun.update({
+    where: { id: input.execRunId },
+    data: {
+      status: "failed",
+      evaluationDecision: "failed",
+      evaluationReason: input.code,
+      validationOutput: vo,
+    },
+  });
+  await prisma.task.update({
+    where: { id: input.taskId },
+    data: {
+      status: "FAILED",
+      executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+      lastEvalResult: input.code,
+      lastEvalSummary: input.summaryKo,
+    },
+  });
+  await refreshWorkflowStates(input.projectId);
+}
+
+function hasStage2CommitEvidence(input: { headSha: string | null | undefined; changedFiles: string[]; diffSummary: string }): boolean {
+  const headOk = Boolean(String(input.headSha ?? "").trim());
+  const filesOk = Array.isArray(input.changedFiles) && input.changedFiles.length > 0;
+  const diffOk = Boolean(String(input.diffSummary ?? "").trim());
+  return headOk && filesOk && diffOk;
+}
+
 /**
  * ENV_TEST 전용 헬퍼 진입 방어. 위반 시 로그 후 throw(부분 DB 갱신 없음).
  * Shared compare/PR 서비스는 그대로 두고, 이 모듈의 오케스트레이션만 게이트한다.
@@ -228,6 +273,30 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     taskId: input.taskId,
     actorUserId: input.actorUserId,
   });
+  if (
+    isEnvTestStage2TaskKind(input.taskKind) &&
+    !hasStage2CommitEvidence({
+      headSha: input.compareData.headSha,
+      changedFiles: input.compareData.changedFiles,
+      diffSummary: input.compareData.diffSummary,
+    })
+  ) {
+    await failEnvTestStage2WithCode({
+      projectId: input.projectId,
+      taskId: input.taskId,
+      execRunId: input.execRunId,
+      code: "STAGE2_NO_COMMIT",
+      summaryKo: "Stage 2 실패: commit 미발생",
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "Stage 2 실패: commit 미발생",
+      },
+    };
+  }
   const elapsedMsSinceRunStart = elapsedSinceRun(input.executionRunCreatedAt ?? undefined);
 
   const existingRunVo = await prisma.taskExecutionRun.findUnique({
@@ -463,29 +532,41 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
         userId: actorUserId,
         detail: { message: outSig.message.slice(0, 800), via: "reflection_bypass_signal" },
       });
-      await prisma.taskExecutionRun.update({
-        where: { id: execRunId },
-        data: {
-          status: "failed",
-          evaluationDecision: "failed",
-          evaluationReason: `env_test_platform_pr_failed:${outSig.message}`.slice(0, 8000),
-        },
-      });
-      await prisma.task.update({
-        where: { id: taskId },
-        data: {
-          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-          lastEvalResult: "failed",
-          lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outSig.message}`.slice(0, 1500),
-        },
-      });
-      await refreshWorkflowStates(projectId);
+      if (isEnvTestStage2TaskKind(input.taskKind)) {
+        await failEnvTestStage2WithCode({
+          projectId,
+          taskId,
+          execRunId,
+          code: "STAGE2_PR_NOT_OPENED",
+          summaryKo: "Stage 2 실패: PR 미생성",
+        });
+      } else {
+        await prisma.taskExecutionRun.update({
+          where: { id: execRunId },
+          data: {
+            status: "failed",
+            evaluationDecision: "failed",
+            evaluationReason: `env_test_platform_pr_failed:${outSig.message}`.slice(0, 8000),
+          },
+        });
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+            lastEvalResult: "failed",
+            lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outSig.message}`.slice(0, 1500),
+          },
+        });
+        await refreshWorkflowStates(projectId);
+      }
       return {
         kind: "return",
         result: {
           ok: false,
           steps: input.steps,
-          message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+          message: isEnvTestStage2TaskKind(input.taskKind)
+            ? "Stage 2 실패: PR 미생성"
+            : "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
         },
       };
     }
@@ -574,35 +655,64 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
         userId: actorUserId,
         detail: { message: outPa.message.slice(0, 800), via: "reflection_bypass" },
       });
-      await prisma.taskExecutionRun.update({
-        where: { id: execRunId },
-        data: {
-          status: "failed",
-          evaluationDecision: "failed",
-          evaluationReason: `env_test_platform_pr_failed:${outPa.message}`.slice(0, 8000),
-        },
-      });
-      await prisma.task.update({
-        where: { id: taskId },
-        data: {
-          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-          lastEvalResult: "failed",
-          lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outPa.message}`.slice(0, 1500),
-        },
-      });
-      await refreshWorkflowStates(projectId);
+      if (isEnvTestStage2TaskKind(input.taskKind)) {
+        await failEnvTestStage2WithCode({
+          projectId,
+          taskId,
+          execRunId,
+          code: "STAGE2_PR_NOT_OPENED",
+          summaryKo: "Stage 2 실패: PR 미생성",
+        });
+      } else {
+        await prisma.taskExecutionRun.update({
+          where: { id: execRunId },
+          data: {
+            status: "failed",
+            evaluationDecision: "failed",
+            evaluationReason: `env_test_platform_pr_failed:${outPa.message}`.slice(0, 8000),
+          },
+        });
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+            lastEvalResult: "failed",
+            lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outPa.message}`.slice(0, 1500),
+          },
+        });
+        await refreshWorkflowStates(projectId);
+      }
       return {
         kind: "return",
         result: {
           ok: false,
           steps: input.steps,
-          message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+          message: isEnvTestStage2TaskKind(input.taskKind)
+            ? "Stage 2 실패: PR 미생성"
+            : "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
         },
       };
     }
   }
 
   if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
+    if (isEnvTestStage2TaskKind(input.taskKind)) {
+      await failEnvTestStage2WithCode({
+        projectId: input.projectId,
+        taskId: input.taskId,
+        execRunId: input.execRunId,
+        code: "STAGE2_BRANCH_NOT_REFLECTED",
+        summaryKo: "Stage 2 실패: Git branch 미반영",
+      });
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "Stage 2 실패: Git branch 미반영",
+        },
+      };
+    }
     appendTaskProgressLog({
       kind: "execution",
       phase: "github_compare_missing_token",
@@ -860,29 +970,66 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   });
 
   if (!pushDetected) {
-    await prisma.taskExecutionRun.update({
-      where: { id: execRunId },
-      data: {
-        status: "failed",
-        evaluationDecision: "failed",
-        evaluationReason: "env_test_push_not_detected",
-      },
-    });
-    await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-        lastEvalResult: "failed",
-        lastEvalSummary: "ENV_TEST: GitHub compare로 원격 푸시를 확인하지 못했습니다.",
-      },
-    });
-    await refreshWorkflowStates(projectId);
+    if (isEnvTestStage2TaskKind(input.taskKind)) {
+      await failEnvTestStage2WithCode({
+        projectId,
+        taskId,
+        execRunId,
+        code: "STAGE2_BRANCH_NOT_REFLECTED",
+        summaryKo: "Stage 2 실패: Git branch 미반영",
+      });
+    } else {
+      await prisma.taskExecutionRun.update({
+        where: { id: execRunId },
+        data: {
+          status: "failed",
+          evaluationDecision: "failed",
+          evaluationReason: "env_test_push_not_detected",
+        },
+      });
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+          lastEvalResult: "failed",
+          lastEvalSummary: "ENV_TEST: GitHub compare로 원격 푸시를 확인하지 못했습니다.",
+        },
+      });
+      await refreshWorkflowStates(projectId);
+    }
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "환경 연결 테스트: 원격 푸시가 확인되지 않았습니다. Cursor 푸시·브랜치·토큰을 확인하세요.",
+        message: isEnvTestStage2TaskKind(input.taskKind)
+          ? "Stage 2 실패: Git branch 미반영"
+          : "환경 연결 테스트: 원격 푸시가 확인되지 않았습니다. Cursor 푸시·브랜치·토큰을 확인하세요.",
+      },
+    };
+  }
+
+  if (
+    isEnvTestStage2TaskKind(input.taskKind) &&
+    !hasStage2CommitEvidence({
+      headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
+      changedFiles: gitEvidence?.changedFiles ?? cr.changedFiles,
+      diffSummary: gitEvidence?.diffSummary ?? cr.summary,
+    })
+  ) {
+    await failEnvTestStage2WithCode({
+      projectId,
+      taskId,
+      execRunId,
+      code: "STAGE2_NO_COMMIT",
+      summaryKo: "Stage 2 실패: commit 미발생",
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "Stage 2 실패: commit 미발생",
       },
     };
   }
@@ -914,29 +1061,41 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       userId: actorUserId,
       detail: { message: prPhaseMain.message.slice(0, 800) },
     });
-    await prisma.taskExecutionRun.update({
-      where: { id: execRunId },
-      data: {
-        status: "failed",
-        evaluationDecision: "failed",
-        evaluationReason: `env_test_platform_pr_failed:${prPhaseMain.message}`.slice(0, 8000),
-      },
-    });
-    await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-        lastEvalResult: "failed",
-        lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${prPhaseMain.message}`.slice(0, 1500),
-      },
-    });
-    await refreshWorkflowStates(projectId);
+    if (isEnvTestStage2TaskKind(input.taskKind)) {
+      await failEnvTestStage2WithCode({
+        projectId,
+        taskId,
+        execRunId,
+        code: "STAGE2_PR_NOT_OPENED",
+        summaryKo: "Stage 2 실패: PR 미생성",
+      });
+    } else {
+      await prisma.taskExecutionRun.update({
+        where: { id: execRunId },
+        data: {
+          status: "failed",
+          evaluationDecision: "failed",
+          evaluationReason: `env_test_platform_pr_failed:${prPhaseMain.message}`.slice(0, 8000),
+        },
+      });
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+          lastEvalResult: "failed",
+          lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${prPhaseMain.message}`.slice(0, 1500),
+        },
+      });
+      await refreshWorkflowStates(projectId);
+    }
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+        message: isEnvTestStage2TaskKind(input.taskKind)
+          ? "Stage 2 실패: PR 미생성"
+          : "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
       },
     };
   }
