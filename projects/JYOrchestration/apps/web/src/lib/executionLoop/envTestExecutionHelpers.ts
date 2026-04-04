@@ -7,6 +7,8 @@ import { logStage2CatalogEvent } from "@/lib/service/envTestStage2CatalogEvents"
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { createOrUpdateEnvTestPullRequest } from "@/lib/service/githubEnvTestPullRequestService";
+import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
+import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
 import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
 import {
   buildEnvTestStage2ReviewRequest,
@@ -331,6 +333,301 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
   });
   if (fin.kind === "return") return { kind: "return", result: fin.result };
   return { kind: "continue_loop" };
+}
+
+/**
+ * Cursor 메타로 Git 반영이 확인된 뒤( reflection gate 통과 ) ENV_TEST 공통 파이프라인:
+ * GitHub compare → COMMITTED → 플랫폼 PR → finalizeEnvTestPrOpenedFromGithubOnly → PR_OPENED 이후 분기.
+ * reflection_bypass·cursor poll 경로는 `runEnvTestAfterGithubPushConfirmed`를 사용한다.
+ */
+export async function runEnvTestReflectionConfirmedPipeline(input: {
+  projectId: string;
+  taskId: string;
+  taskKind: string | null;
+  actorUserId: string;
+  execRunId: string;
+  repoUrl: string;
+  baseBranch: string;
+  githubAccessToken?: string | null;
+  execRunCreatedAt: Date;
+  cr: CursorRunResult;
+  steps: LoopStepRecord[];
+  singleTaskId?: string;
+  effectiveAutoAdvance: boolean;
+}): Promise<EnvTestGithubFinalizeReturn> {
+  requireEnvTestFamilyTaskKindForFinalize(input.taskKind, "runEnvTestReflectionConfirmedPipeline", {
+    projectId: input.projectId,
+    taskId: input.taskId,
+    actorUserId: input.actorUserId,
+  });
+
+  const cr = input.cr;
+  const { projectId, taskId, actorUserId, execRunId } = input;
+  // git_reflection_gate 단계 로그는 runExecutionLoop에서 이미 기록됨.
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEWING },
+  });
+
+  await prisma.taskExecutionRun.update({
+    where: { id: execRunId },
+    data: {
+      cursorRunId: cr.runId,
+      cursorSummary: cr.summary,
+      branchName: cr.branchName,
+      commitSha: cr.commitHash ?? null,
+      changedFiles: cr.changedFiles as unknown as object,
+      gitSummary: cr.summary.slice(0, 24_000),
+      validationOutput: null,
+      commitStatus: cr.commitHash ? "reported_by_cursor" : "reported_changed_files",
+      pushStatus: "delegated_to_cursor",
+    },
+  });
+
+  const elapsedMsSinceExecRunStart = Date.now() - input.execRunCreatedAt.getTime();
+  let envTestCompareOkAtMs: number | null = null;
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_branch_reflection_check_started",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: {
+      base: input.baseBranch,
+      head: cr.branchName,
+      elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
+      step: "post_cursor",
+      pipeline: "runEnvTestReflectionConfirmedPipeline",
+    },
+  });
+
+  const compare = await fetchGithubCompareSnapshot({
+    repoUrl: input.repoUrl,
+    base: input.baseBranch,
+    head: cr.branchName,
+    maxFiles: 80,
+    githubAccessToken: input.githubAccessToken ?? null,
+    projectId,
+    allowUnauthenticated: true,
+  });
+
+  if (isEnvTestStage2TaskKind(input.taskKind) && compare.ok && compare.data.aheadBy > 0) {
+    logStage2CatalogEvent({
+      phase: "branch_reflected",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      executionId: execRunId,
+      detail: { via: "post_cursor_reflection_confirmed" },
+    });
+  }
+
+  if (compare.ok && compare.data.aheadBy > 0) {
+    envTestCompareOkAtMs = Date.now();
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_branch_reflection_confirmed",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        aheadBy: compare.data.aheadBy,
+        headSha: compare.data.headSha ?? null,
+        elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
+        step: "post_cursor",
+        pipeline: "runEnvTestReflectionConfirmedPipeline",
+      },
+    });
+  }
+
+  const gitEvidence = compare.ok
+    ? {
+        baseBranch: input.baseBranch,
+        headBranch: cr.branchName,
+        headSha: compare.data.headSha,
+        changedFiles: compare.data.changedFiles,
+        diffSummary: compare.data.diffSummary,
+      }
+    : null;
+
+  if (compare.ok) {
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        commitSha: compare.data.headSha ?? cr.commitHash ?? null,
+        changedFiles: compare.data.changedFiles as unknown as object,
+        gitSummary: compare.data.diffSummary.slice(0, 24_000),
+        commitStatus: compare.data.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
+        pushStatus: compare.data.aheadBy > 0 ? "pushed_by_github_compare" : "pushed_by_cursor",
+      },
+    });
+  } else {
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        commitStatus: "pushed_commit_unknown",
+        pushStatus: "unknown",
+        evaluationReason: `github_compare_failed:${compare.code}:${compare.message}`.slice(0, 8000),
+      },
+    });
+  }
+
+  const pushDetected = compare.ok && compare.data.aheadBy > 0;
+  const commitDetected =
+    Boolean(gitEvidence?.headSha ?? cr.commitHash ?? null) || pushDetected;
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      executionWorkflowStatus: EXECUTION_WORKFLOW.COMMITTED,
+      lastEvalResult: "committed",
+      lastEvalSummary:
+        "ENV_TEST: 푸시 확인됨. 플랫폼이 GitHub PR을 생성·갱신합니다.".slice(0, 2000),
+    },
+  });
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "state_transition: RUNNING → COMMITTED",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: {
+      branch: cr.branchName,
+      headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
+      changedFileCount: gitEvidence?.changedFiles.length ?? null,
+      compareOk: compare.ok,
+      ...(compare.ok ? { aheadBy: compare.data.aheadBy, behindBy: compare.data.behindBy } : {}),
+      pipeline: "runEnvTestReflectionConfirmedPipeline",
+    },
+  });
+
+  if (!pushDetected) {
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        status: "failed",
+        evaluationDecision: "failed",
+        evaluationReason: "env_test_push_not_detected",
+      },
+    });
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+        lastEvalResult: "failed",
+        lastEvalSummary: "ENV_TEST: GitHub compare로 원격 푸시를 확인하지 못했습니다.",
+      },
+    });
+    await refreshWorkflowStates(projectId);
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "환경 연결 테스트: 원격 푸시가 확인되지 않았습니다. Cursor 푸시·브랜치·토큰을 확인하세요.",
+      },
+    };
+  }
+
+  const prPhaseMain = await runEnvTestPlatformPrPhase({
+    projectId,
+    taskId,
+    actorUserId,
+    taskKind: input.taskKind,
+    repoUrl: input.repoUrl,
+    baseBranch: input.baseBranch,
+    headBranch: cr.branchName,
+    githubAccessToken: input.githubAccessToken ?? null,
+    executionRunCreatedAt: input.execRunCreatedAt,
+    compareOkAtMs: envTestCompareOkAtMs,
+    execRunId,
+  });
+
+  if (!prPhaseMain.ok) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_pr_create_failed",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: { message: prPhaseMain.message.slice(0, 800) },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        status: "failed",
+        evaluationDecision: "failed",
+        evaluationReason: `env_test_platform_pr_failed:${prPhaseMain.message}`.slice(0, 8000),
+      },
+    });
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+        lastEvalResult: "failed",
+        lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${prPhaseMain.message}`.slice(0, 1500),
+      },
+    });
+    await refreshWorkflowStates(projectId);
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+      },
+    };
+  }
+
+  const prUrl = prPhaseMain.prUrl;
+  const prNumber = prPhaseMain.prNumber;
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "pr_detected",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: { prUrl, prNumber, branch: cr.branchName, pipeline: "runEnvTestReflectionConfirmedPipeline" },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "state_transition: COMMITTED → PR_OPENED",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: { prUrl, prNumber, branch: cr.branchName, pipeline: "runEnvTestReflectionConfirmedPipeline" },
+  });
+
+  return finalizeEnvTestPrOpenedFromGithubOnly({
+    projectId,
+    taskId,
+    taskKind: input.taskKind,
+    execRunId,
+    actorUserId,
+    branchName: cr.branchName,
+    prUrl,
+    prNumber,
+    steps: input.steps,
+    singleTaskId: input.singleTaskId,
+    effectiveAutoAdvance: input.effectiveAutoAdvance,
+    cursorRunId: cr.runId,
+    via: "post_cursor_reflection_confirmed",
+    runDataPatch: {
+      commitSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
+      changedFiles: (gitEvidence?.changedFiles ?? cr.changedFiles) as unknown as object,
+      gitSummary: (gitEvidence?.diffSummary ?? cr.summary).slice(0, 24_000),
+      commitStatus: gitEvidence?.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
+    },
+    snapshotPatch: {
+      commitSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
+      changedFileCount: gitEvidence?.changedFiles.length ?? cr.changedFiles.length,
+      commitStatus: commitDetected ? "pushed_commit_detected" : "pushed_commit_unknown",
+    },
+  });
 }
 
 /**

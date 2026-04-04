@@ -40,8 +40,7 @@ import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/execution/scmManagerWithAiMembers";
 import {
   runEnvTestAfterGithubPushConfirmed,
-  runEnvTestPlatformPrPhase,
-  runEnvTestPostPrOpenedMergeAndReadiness,
+  runEnvTestReflectionConfirmedPipeline,
 } from "@/lib/executionLoop/envTestExecutionHelpers";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
@@ -64,7 +63,9 @@ function parsePrNumberFromUrl(prUrl: string): number | null {
 }
 
 /**
- * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (AI 리뷰어 있으면) 멀티 리뷰 → 전이. 리뷰어 없으면 리뷰 단계 생략.
+ * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (일반 Task) AI 리뷰·SCM·머지 또는 종료.
+ * ENV_TEST family: compare·플랫폼 PR·PR_OPENED·merge/readiness는 `envTestExecutionHelpers`로 이관되어
+ * 본 파일에서는 루프 제어·Task 픽·커서 호출·reflection 분기만 유지한다.
  * 플랫폼은 로컬에서 코드/git을 실행하지 않습니다.
  */
 export async function runExecutionLoop(params: {
@@ -1232,6 +1233,28 @@ export async function runExecutionLoop(params: {
         },
       });
 
+      if (isEnvTestTask) {
+        const envOut = await runEnvTestReflectionConfirmedPipeline({
+          projectId,
+          taskId,
+          taskKind: taskRow.taskKind,
+          actorUserId,
+          execRunId: execRun.id,
+          repoUrl,
+          baseBranch: setup.baseBranch,
+          githubAccessToken: setup.githubAccessToken ?? null,
+          execRunCreatedAt: execRun.createdAt,
+          cr,
+          steps,
+          singleTaskId,
+          effectiveAutoAdvance,
+        });
+        if (envOut.kind === "return") {
+          return envOut.result;
+        }
+        continue;
+      }
+
       await prisma.task.update({
         where: { id: taskId },
         data: { executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEWING },
@@ -1252,25 +1275,8 @@ export async function runExecutionLoop(params: {
         },
       });
 
-      // ---- 역할 분리 실행 모델 ----
+      // ---- 역할 분리 실행 모델 (일반 Task 전용) ----
       // 1) Cursor 종료 후: GitHub compare로 실제 push된 변경 증거를 수집하고, "구현 완료" 상태로 전이한다.
-      const elapsedMsSinceExecRunStart = Date.now() - execRun.createdAt.getTime();
-      let envTestCompareOkAtMs: number | null = null;
-      if (isEnvTestTask) {
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_branch_reflection_check_started",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: {
-            base: setup.baseBranch,
-            head: cr.branchName,
-            elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
-            step: "post_cursor",
-          },
-        });
-      }
       const compare = await fetchGithubCompareSnapshot({
         repoUrl,
         base: setup.baseBranch,
@@ -1278,24 +1284,8 @@ export async function runExecutionLoop(params: {
         maxFiles: 80,
         githubAccessToken: setup.githubAccessToken ?? null,
         projectId,
-        allowUnauthenticated: isEnvTestTask ? true : undefined,
+        allowUnauthenticated: undefined,
       });
-      if (isEnvTestTask && compare.ok && compare.data.aheadBy > 0) {
-        envTestCompareOkAtMs = Date.now();
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_branch_reflection_confirmed",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: {
-            aheadBy: compare.data.aheadBy,
-            headSha: compare.data.headSha ?? null,
-            elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
-            step: "post_cursor",
-          },
-        });
-      }
       const gitEvidence = compare.ok
         ? {
             baseBranch: setup.baseBranch,
@@ -1314,8 +1304,7 @@ export async function runExecutionLoop(params: {
             changedFiles: compare.data.changedFiles as unknown as object,
             gitSummary: compare.data.diffSummary.slice(0, 24_000),
             commitStatus: compare.data.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
-            pushStatus:
-              isEnvTestTask && compare.data.aheadBy > 0 ? "pushed_by_github_compare" : "pushed_by_cursor",
+            pushStatus: "pushed_by_cursor",
           },
         });
       } else {
@@ -1329,14 +1318,10 @@ export async function runExecutionLoop(params: {
         });
       }
 
-      const pushDetected = isEnvTestTask
-        ? compare.ok && compare.data.aheadBy > 0
-        : compare.ok;
-      const commitDetected =
-        Boolean(gitEvidence?.headSha ?? cr.commitHash ?? null) || (isEnvTestTask && pushDetected);
+      const pushDetected = compare.ok;
+      const commitDetected = Boolean(gitEvidence?.headSha ?? cr.commitHash ?? null);
 
-      // RUNNING -> COMMITTED (커밋/푸시 증거 수집 완료)
-      if (commitDetected && !isEnvTestTask) {
+      if (commitDetected) {
         appendTaskProgressLog({
           kind: "execution",
           phase: "commit_detected",
@@ -1346,7 +1331,7 @@ export async function runExecutionLoop(params: {
           detail: { headSha: gitEvidence?.headSha ?? cr.commitHash ?? null },
         });
       }
-      if (pushDetected && !isEnvTestTask) {
+      if (pushDetected) {
         appendTaskProgressLog({
           kind: "execution",
           phase: "push_detected",
@@ -1362,9 +1347,7 @@ export async function runExecutionLoop(params: {
         data: {
           executionWorkflowStatus: EXECUTION_WORKFLOW.COMMITTED,
           lastEvalResult: "committed",
-          lastEvalSummary: isEnvTestTask
-            ? "ENV_TEST: 푸시 확인됨. 플랫폼이 GitHub PR을 생성·갱신합니다."
-            : "Cursor commit/push 완료. PR(Open) 감지 후 다음 Task로 진행합니다.",
+          lastEvalSummary: "Cursor commit/push 완료. PR(Open) 감지 후 다음 Task로 진행합니다.",
         },
       });
       appendTaskProgressLog({
@@ -1378,102 +1361,25 @@ export async function runExecutionLoop(params: {
           headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
           changedFileCount: gitEvidence?.changedFiles.length ?? null,
           compareOk: compare.ok,
-          ...(isEnvTestTask && compare.ok
-            ? { aheadBy: compare.data.aheadBy, behindBy: compare.data.behindBy }
-            : {}),
         },
       });
 
-      // COMMITTED -> PR_OPENED
+      // COMMITTED -> PR_OPENED (일반 Task)
       let prUrl: string | null = null;
       let prNumber: number | null = null;
 
-      if (isEnvTestTask) {
-        if (!pushDetected) {
-          await prisma.taskExecutionRun.update({
-            where: { id: execRun.id },
-            data: {
-              status: "failed",
-              evaluationDecision: "failed",
-              evaluationReason: "env_test_push_not_detected",
-            },
-          });
-          await prisma.task.update({
-            where: { id: taskId },
-            data: {
-              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-              lastEvalResult: "failed",
-              lastEvalSummary: "ENV_TEST: GitHub compare로 원격 푸시를 확인하지 못했습니다.",
-            },
-          });
-          await refreshWorkflowStates(projectId);
-          return {
-            ok: false,
-            steps,
-            message: "환경 연결 테스트: 원격 푸시가 확인되지 않았습니다. Cursor 푸시·브랜치·토큰을 확인하세요.",
-          };
-        }
-        const prPhaseMain = await runEnvTestPlatformPrPhase({
-          projectId,
-          taskId,
-          actorUserId,
-          taskKind: taskRow.taskKind,
+      prUrl = typeof cr.prUrl === "string" ? cr.prUrl : null;
+      prNumber = prUrl ? parsePrNumberFromUrl(prUrl) : null;
+      if ((pushDetected && (!prUrl || prNumber == null)) || !prUrl || prNumber == null) {
+        const found = await findOpenPullRequestByHeadBranch({
           repoUrl,
-          baseBranch: setup.baseBranch,
           headBranch: cr.branchName,
           githubAccessToken: setup.githubAccessToken ?? null,
-          executionRunCreatedAt: execRun.createdAt,
-          compareOkAtMs: envTestCompareOkAtMs,
-          execRunId: execRun.id,
+          projectId,
         });
-        if (!prPhaseMain.ok) {
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "env_test_pr_create_failed",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: { message: prPhaseMain.message.slice(0, 800) },
-          });
-          await prisma.taskExecutionRun.update({
-            where: { id: execRun.id },
-            data: {
-              status: "failed",
-              evaluationDecision: "failed",
-              evaluationReason: `env_test_platform_pr_failed:${prPhaseMain.message}`.slice(0, 8000),
-            },
-          });
-          await prisma.task.update({
-            where: { id: taskId },
-            data: {
-              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-              lastEvalResult: "failed",
-              lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${prPhaseMain.message}`.slice(0, 1500),
-            },
-          });
-          await refreshWorkflowStates(projectId);
-          return {
-            ok: false,
-            steps,
-            message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
-          };
-        }
-        prUrl = prPhaseMain.prUrl;
-        prNumber = prPhaseMain.prNumber;
-      } else {
-        prUrl = typeof cr.prUrl === "string" ? cr.prUrl : null;
-        prNumber = prUrl ? parsePrNumberFromUrl(prUrl) : null;
-        if ((pushDetected && (!prUrl || prNumber == null)) || !prUrl || prNumber == null) {
-          const found = await findOpenPullRequestByHeadBranch({
-            repoUrl,
-            headBranch: cr.branchName,
-            githubAccessToken: setup.githubAccessToken ?? null,
-            projectId,
-          });
-          if (found) {
-            prUrl = found.prUrl;
-            prNumber = found.prNumber;
-          }
+        if (found) {
+          prUrl = found.prUrl;
+          prNumber = found.prNumber;
         }
       }
 
@@ -1495,7 +1401,6 @@ export async function runExecutionLoop(params: {
           detail: { prUrl, prNumber, branch: cr.branchName },
         });
 
-        const prOpenedCompletedAt = new Date();
         await prisma.taskExecutionRun.update({
           where: { id: execRun.id },
           data: {
@@ -1503,7 +1408,6 @@ export async function runExecutionLoop(params: {
             evaluationDecision: "done",
             prStatus: `open:${prNumber}:${prUrl}`,
             pushStatus: "pr_opened",
-            ...(isEnvTestTask ? { completedAt: prOpenedCompletedAt } : {}),
           },
         });
 
@@ -1513,9 +1417,7 @@ export async function runExecutionLoop(params: {
             executionWorkflowStatus: EXECUTION_WORKFLOW.PR_OPENED,
             status: "DONE",
             lastEvalResult: "pr_opened",
-            lastEvalSummary: isEnvTestTask
-              ? "플랫폼이 ENV_TEST용 GitHub PR을 생성·갱신하고 PR_OPENED로 처리했습니다."
-              : "PR이 생성/열림. 머지/리뷰 대기 없이 다음 Task로 진행합니다.",
+            lastEvalSummary: "PR이 생성/열림. 머지/리뷰 대기 없이 다음 Task로 진행합니다.",
             loopRetryCount: 0,
           },
         });
@@ -1530,32 +1432,13 @@ export async function runExecutionLoop(params: {
 
         await refreshWorkflowStates(projectId);
 
-        if (isEnvTestTask) {
-          const post = await runEnvTestPostPrOpenedMergeAndReadiness({
-            projectId,
-            taskId,
-            taskKind: taskRow.taskKind,
-            execRunId: execRun.id,
-            actorUserId,
-            prNumber,
-            prUrl,
-            steps,
-            singleTaskId,
-            effectiveAutoAdvance,
-          });
-          if (post.kind === "return") {
-            return post.result;
-          }
-          continue;
-        }
-
         if (singleTaskId || !effectiveAutoAdvance) {
           return { ok: true, steps, message: "PR이 열렸습니다(PR_OPENED). 자동 진행이 꺼져 루프를 종료합니다." };
         }
         continue;
       }
 
-      // PR(Open) 감지 실패: 기존(리뷰/머지) 경로로 폴백한다.
+      // PR(Open) 감지 실패: 기존(리뷰/머지) 경로로 폴백한다. (일반 Task 전용 — ENV_TEST는 위에서 종료)
       await prisma.task.update({
         where: { id: taskId },
         data: {

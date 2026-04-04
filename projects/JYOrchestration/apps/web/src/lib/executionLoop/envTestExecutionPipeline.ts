@@ -5,7 +5,7 @@
  * - Stage 1: 이 모듈의 pre-cursor 게이트는 no-op.
  *
  * PR_OPENED 이후 Stage1(direct merge smoke) vs Stage2(reviewer→security→scm) 분기는
- * `runEnvTestPostPrOpenedMergeAndReadiness` (`envTestExecutionHelpers`)에서 처리한다.
+ * `finalizeEnvTestPrOpenedFromGithubOnly` → `runEnvTestPostPrOpenedMergeAndReadiness`에서 처리한다.
  */
 
 import { isEnvTestStage2TaskKind } from "@/lib/execution/envTestTaskKind";
