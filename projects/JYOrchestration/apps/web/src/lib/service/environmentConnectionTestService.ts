@@ -316,21 +316,29 @@ export type EnvironmentTestLastDto = {
   /** 진행 중 런 기준 경과 ms (서버 시각) */
   stage2RunElapsedMs?: number | null;
   stage2TimingBreakdown?: Record<string, number> | null;
+  cursorPromptRaw?: string | null;
+  cursorPromptLength?: number | null;
+  cursorPromptPreview?: string | null;
+  stage2CursorPromptRaw?: string | null;
+  stage2CursorPromptCanViewRaw?: boolean | null;
 };
 
 export async function getLatestEnvironmentTestTask(
-  projectId: string
+  projectId: string,
+  opts?: { viewerUserId?: string | null }
 ): Promise<EnvironmentTestLastDto | null> {
   const pid = String(projectId ?? "").trim();
   if (!pid) return null;
 
   await ensureTaskExecutionRunColumnsReady();
 
+  const viewerUserId = String(opts?.viewerUserId ?? "").trim() || null;
   const project = await prisma.project.findUnique({
     where: { id: pid },
-    select: { currentSpecVersionId: true },
+    select: { currentSpecVersionId: true, ownerUserId: true },
   });
   const specId = project?.currentSpecVersionId ?? null;
+  const canViewPromptRaw = Boolean(viewerUserId && project?.ownerUserId && viewerUserId === project.ownerUserId);
 
   const row =
     specId != null
@@ -356,6 +364,7 @@ export async function getLatestEnvironmentTestTask(
               select: {
                 prStatus: true,
                 branchName: true,
+                promptSnapshot: true,
                 mergeCommitSha: true,
                 mergedAt: true,
                 envTestRemoteBranchDeletedAt: true,
@@ -390,6 +399,7 @@ export async function getLatestEnvironmentTestTask(
           select: {
             prStatus: true,
             branchName: true,
+            promptSnapshot: true,
             mergeCommitSha: true,
             mergedAt: true,
             envTestRemoteBranchDeletedAt: true,
@@ -419,6 +429,11 @@ export async function getLatestEnvironmentTestTask(
     envTestRemoteBranchDeletedAt: run0?.envTestRemoteBranchDeletedAt?.toISOString() ?? null,
     envTestMergeBlockedReason: run0?.envTestMergeBlockedReason ?? null,
     envTestMergeStartedAt: run0?.envTestMergeStartedAt?.toISOString() ?? null,
+    cursorPromptLength: run0?.promptSnapshot?.length ?? null,
+    cursorPromptPreview: run0?.promptSnapshot ? run0.promptSnapshot.slice(0, 500) : null,
+    cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
+    stage2CursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
+    stage2CursorPromptCanViewRaw: canViewPromptRaw,
   };
 
   const wfNorm = String(rowResolved.executionWorkflowStatus ?? "").trim();
@@ -438,18 +453,21 @@ export async function getLatestEnvironmentTestTask(
 }
 
 export async function getLatestEnvironmentStage2TestTask(
-  projectId: string
+  projectId: string,
+  opts?: { viewerUserId?: string | null }
 ): Promise<EnvironmentTestLastDto | null> {
   const pid = String(projectId ?? "").trim();
   if (!pid) return null;
 
   await ensureTaskExecutionRunColumnsReady();
 
+  const viewerUserId = String(opts?.viewerUserId ?? "").trim() || null;
   const project = await prisma.project.findUnique({
     where: { id: pid },
-    select: { currentSpecVersionId: true },
+    select: { currentSpecVersionId: true, ownerUserId: true },
   });
   const specId = project?.currentSpecVersionId ?? null;
+  const canViewPromptRaw = Boolean(viewerUserId && project?.ownerUserId && viewerUserId === project.ownerUserId);
 
   const row =
     specId != null
@@ -480,6 +498,7 @@ export async function getLatestEnvironmentStage2TestTask(
                 pushStatus: true,
                 prStatus: true,
                 branchName: true,
+                promptSnapshot: true,
                 mergeCommitSha: true,
                 mergedAt: true,
                 envTestRemoteBranchDeletedAt: true,
@@ -522,6 +541,7 @@ export async function getLatestEnvironmentStage2TestTask(
             pushStatus: true,
             prStatus: true,
             branchName: true,
+            promptSnapshot: true,
             mergeCommitSha: true,
             mergedAt: true,
             envTestRemoteBranchDeletedAt: true,
@@ -591,6 +611,11 @@ export async function getLatestEnvironmentStage2TestTask(
     stage2CurrentBottleneckHint: live.stage2CurrentBottleneckHint,
     stage2RunElapsedMs,
     stage2TimingBreakdown: t2.breakdown,
+    cursorPromptLength: run0?.promptSnapshot?.length ?? null,
+    cursorPromptPreview: run0?.promptSnapshot ? run0.promptSnapshot.slice(0, 500) : null,
+    cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
+    stage2CursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
+    stage2CursorPromptCanViewRaw: canViewPromptRaw,
   };
   if (runtimeMon) {
     const runtimeBreakdown = {

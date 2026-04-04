@@ -532,7 +532,8 @@ export async function runExecutionLoop(params: {
           taskId,
           status: "running",
           branchName: branchPlan.branchName,
-          promptSnapshot: prompt.slice(0, 120_000),
+          // Cursor 전달 원문 프롬프트(raw) 보존: 사후 분석/패널 표시용.
+          promptSnapshot: prompt,
           retryCount: taskRow.loopRetryCount ?? 0,
           workflowId: taskRow.sourceSpecVersionId ?? null,
           provider: "cursor",
@@ -575,6 +576,28 @@ export async function runExecutionLoop(params: {
         taskId,
         userId: actorUserId,
         detail: { branch: branchPlan.branchName, runRecordId: execRun.id },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "cursor_prompt_length",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: {
+          runRecordId: execRun.id,
+          cursorPromptLength: prompt.length,
+        },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "cursor_prompt_preview",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: {
+          runRecordId: execRun.id,
+          cursorPromptPreview: prompt.slice(0, 500),
+        },
       });
 
       // 실행 스코프(ENV_TEST vs 일반 Task) — 로그로 경로 구분.

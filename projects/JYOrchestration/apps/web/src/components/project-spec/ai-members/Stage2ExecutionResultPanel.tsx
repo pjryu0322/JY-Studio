@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { EnvironmentTestLastDto } from "@/components/project-spec/api";
 import {
   mapEnvironmentTestLastToStage2Summary,
@@ -66,6 +67,7 @@ export function Stage2ExecutionResultPanel(props: {
   stage2ElapsedMs?: number | null;
 }) {
   const { last, busyStage2, stage2ElapsedMs } = props;
+  const [copied, setCopied] = useState(false);
   const s = mapEnvironmentTestLastToStage2Summary(last);
   const elapsedCombinedMs =
     busyStage2 && (typeof stage2ElapsedMs === "number" || (s?.runElapsedMsFromServer ?? null) != null)
@@ -265,6 +267,79 @@ export function Stage2ExecutionResultPanel(props: {
                 .join(" · ") || "—"}
             </div>
           ) : null}
+          {(last?.stage2CursorPromptRaw != null || last?.cursorPromptPreview != null) && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: "#334155", marginBottom: 6 }}>
+                <span style={{ color: "#64748b" }}>Cursor Prompt 보기</span>
+                {typeof last?.cursorPromptLength === "number" ? (
+                  <span style={{ marginLeft: 8, color: "#475569" }}>len={last.cursorPromptLength}</span>
+                ) : null}
+              </div>
+              {last?.stage2CursorPromptCanViewRaw && last?.stage2CursorPromptRaw ? (
+                <>
+                  <div style={{ marginBottom: 6 }}>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(last.stage2CursorPromptRaw ?? "");
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1200);
+                        } catch {
+                          setCopied(false);
+                        }
+                      }}
+                      style={{
+                        fontSize: 11,
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        borderRadius: 6,
+                        padding: "4px 8px",
+                        cursor: "pointer",
+                        color: "#334155",
+                      }}
+                    >
+                      {copied ? "복사됨" : "복사"}
+                    </button>
+                  </div>
+                  <pre
+                    style={{
+                      maxHeight: 220,
+                      overflow: "auto",
+                      margin: 0,
+                      padding: 10,
+                      borderRadius: 8,
+                      background: "#0f172a",
+                      color: "#e2e8f0",
+                      fontSize: 11,
+                      lineHeight: 1.45,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {last.stage2CursorPromptRaw}
+                  </pre>
+                </>
+              ) : (
+                <pre
+                  style={{
+                    maxHeight: 140,
+                    overflow: "auto",
+                    margin: 0,
+                    padding: 10,
+                    borderRadius: 8,
+                    background: "#f8fafc",
+                    color: "#334155",
+                    fontSize: 11,
+                    lineHeight: 1.45,
+                    whiteSpace: "pre-wrap",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  {last?.cursorPromptPreview ?? "(preview unavailable)"}
+                </pre>
+              )}
+            </div>
+          )}
         </>
       ) : null}
       <div style={{ marginTop: 10, fontSize: 10, color: "#94a3b8", lineHeight: 1.5 }}>
