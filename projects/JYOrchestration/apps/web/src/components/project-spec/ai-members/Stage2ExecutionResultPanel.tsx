@@ -52,6 +52,8 @@ function cursorSignalSummary(
   const parts: string[] = [];
   if (sig.branchNameHint?.trim()) parts.push(`branch=${sig.branchNameHint.trim()}`);
   if (sig.headShaHint?.trim()) parts.push(`head=${sig.headShaHint.trim().slice(0, 10)}…`);
+  if (sig.commitHashHint?.trim()) parts.push(`commit=${sig.commitHashHint.trim().slice(0, 10)}…`);
+  if (typeof sig.changedFilesCountHint === "number") parts.push(`files=${sig.changedFilesCountHint}`);
   if (typeof sig.pushCompletedHintAtMs === "number") parts.push("push-hint=done");
   else if (typeof sig.pushStartedAtMs === "number") parts.push("push-hint=started");
   else if (typeof sig.agentLaunchedAtMs === "number") parts.push("agent=launched");
