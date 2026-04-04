@@ -6,8 +6,8 @@
  * - REQUESTED → Task 준비·루프 진입 전
  * - EXECUTOR_RUNNING → Stage 2 전용 Executor(OpenAI) ACK 구간 (Stage 1은 생략)
  * - CURSOR_RUNNING → Cursor Cloud Agent 폴링(종료를 기다리지 않음; Git이 진행 기준)
- * - GIT_BRANCH_REFLECTED → 원격 브랜치·compare·HEAD 확인
- * - PR_OPENED → EXECUTION_WORKFLOW.PR_OPENED
+ * - GIT_BRANCH_REFLECTED → 원격 브랜치·compare·HEAD 확인 (`runEnvTestReflectionConfirmedPipeline` / `runEnvTestAfterGithubPushConfirmed`)
+ * - PR_OPENED → EXECUTION_WORKFLOW.PR_OPENED (`finalizeEnvTestPrOpenedFromGithubOnly` 단일 경로)
  * - Stage 1 종료: MERGED / MERGE_VERIFIED / COMPLETED (기존 워크플로)
  * - Stage 2 추가: REVIEW_* / SECURITY_* / SCM_* / MERGE_BLOCKED / MERGE_VERIFIED 등
  */
