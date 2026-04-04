@@ -24,6 +24,15 @@ import {
   stage2PhaseKeyForApi,
 } from "@/lib/service/envTestStage2RuntimeMonitor";
 
+function runtimePhaseElapsedMs(
+  phase: { startedAtMs?: number; endedAtMs?: number; status?: string } | undefined,
+  nowMs: number
+): number {
+  if (!phase?.startedAtMs) return 0;
+  const end = typeof phase.endedAtMs === "number" ? phase.endedAtMs : phase.status === "RUNNING" ? nowMs : phase.startedAtMs;
+  return Math.max(0, end - phase.startedAtMs);
+}
+
 export { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND };
 
 export const ENV_TEST_TASK_NAME = "환경 연결 테스트 - Hello World";
@@ -292,6 +301,13 @@ export type EnvironmentTestLastDto = {
   } | null;
   stage2GitStatus?: { branchDetected: boolean; branchReflected: boolean } | null;
   stage2PlatformStatus?: { prCreated: boolean } | null;
+  stage2CursorSignal?: {
+    agentLaunchedAtMs?: number;
+    pushStartedAtMs?: number;
+    pushCompletedHintAtMs?: number;
+    branchNameHint?: string;
+    headShaHint?: string;
+  } | null;
   stage2RuntimeBottleneckPhase?: string | null;
   stage2RuntimeBottleneckMs?: number | null;
   stage2CurrentBottleneckHint?: string | null;
@@ -525,6 +541,7 @@ export async function getLatestEnvironmentStage2TestTask(
   const s2 = parseEnvTestStage2UiFromValidationOutput(run0?.validationOutput ?? null);
   const t2 = parseEnvTestStage2TimingFromValidationOutput(run0?.validationOutput ?? null);
   const runtimeMon = parseStage2RuntimeMonitorFromValidationOutput(run0?.validationOutput ?? null);
+  const nowMs = Date.now();
 
   const wfNormPre = String(rowResolved.executionWorkflowStatus ?? "").trim();
   const runInFlight =
@@ -573,6 +590,23 @@ export async function getLatestEnvironmentStage2TestTask(
     stage2RunElapsedMs,
     stage2TimingBreakdown: t2.breakdown,
   };
+  if (runtimeMon) {
+    const runtimeBreakdown = {
+      cursorPrepare: runtimePhaseElapsedMs(runtimeMon.phases.cursor_prepare, nowMs),
+      cursorGenerate: runtimePhaseElapsedMs(runtimeMon.phases.cursor_generate, nowMs),
+      cursorCommit: runtimePhaseElapsedMs(runtimeMon.phases.cursor_commit, nowMs),
+      cursorPush: runtimePhaseElapsedMs(runtimeMon.phases.cursor_push, nowMs),
+      branchDetect: runtimePhaseElapsedMs(runtimeMon.phases.git_branch_detect, nowMs),
+      prCreation: runtimePhaseElapsedMs(runtimeMon.phases.platform_pr_create, nowMs),
+      review: runtimePhaseElapsedMs(runtimeMon.phases.review, nowMs),
+      security: runtimePhaseElapsedMs(runtimeMon.phases.security, nowMs),
+      scm: runtimePhaseElapsedMs(runtimeMon.phases.scm, nowMs),
+    } as Record<string, number>;
+    base.stage2TimingBreakdown = {
+      ...(base.stage2TimingBreakdown ?? {}),
+      ...runtimeBreakdown,
+    };
+  }
   if (runInFlight && runtimeMon) {
     const apiPhase = stage2PhaseKeyForApi(runtimeMon.currentPhase);
     const apiBn = runtimeMon.bottleneckPhase ? stage2PhaseKeyForApi(runtimeMon.bottleneckPhase) : null;
@@ -580,6 +614,7 @@ export async function getLatestEnvironmentStage2TestTask(
     base.stage2CursorStatus = runtimeMon.cursorStatus;
     base.stage2GitStatus = runtimeMon.gitStatus;
     base.stage2PlatformStatus = runtimeMon.platformStatus;
+    base.stage2CursorSignal = runtimeMon.cursorSignal ?? null;
     base.stage2RuntimeBottleneckPhase = apiBn;
     base.stage2RuntimeBottleneckMs = runtimeMon.bottleneckElapsedMs;
     base.stage2CurrentStep = apiPhase;
@@ -613,6 +648,7 @@ export async function getLatestEnvironmentStage2TestTask(
     base.stage2CursorStatus = null;
     base.stage2GitStatus = null;
     base.stage2PlatformStatus = null;
+    base.stage2CursorSignal = null;
     base.stage2RuntimeBottleneckPhase = null;
     base.stage2RuntimeBottleneckMs = null;
   }

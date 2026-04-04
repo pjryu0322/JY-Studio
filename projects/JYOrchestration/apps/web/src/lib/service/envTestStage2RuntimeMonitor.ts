@@ -9,6 +9,14 @@ export const ENV_TEST_STAGE2_RUNTIME_MONITOR_KEY = "stage2RuntimeMonitor" as con
 
 export type Stage2UiPhaseStatus = "PENDING" | "RUNNING" | "DONE";
 
+export type Stage2CursorSignal = {
+  agentLaunchedAtMs?: number;
+  pushStartedAtMs?: number;
+  pushCompletedHintAtMs?: number;
+  branchNameHint?: string;
+  headShaHint?: string;
+};
+
 export type Stage2RuntimeMonitorV1 = {
   version: 1;
   updatedAtMs: number;
@@ -31,6 +39,7 @@ export type Stage2RuntimeMonitorV1 = {
   platformStatus: {
     prCreated: boolean;
   };
+  cursorSignal?: Stage2CursorSignal;
   /** RUNNING 중 가장 오래 걸린 단계 (병목 추정) */
   bottleneckPhase: string | null;
   bottleneckElapsedMs: number | null;
@@ -68,6 +77,7 @@ export function createInitialStage2RuntimeMonitor(nowMs: number = Date.now()): S
     },
     gitStatus: { branchDetected: false, branchReflected: false },
     platformStatus: { prCreated: false },
+    cursorSignal: {},
     bottleneckPhase: null,
     bottleneckElapsedMs: null,
   };
@@ -266,6 +276,10 @@ export function monitorApplyCursorAgentHeuristics(
     if (m.phases.cursor_push.status === "PENDING") startPhase(m, "cursor_push", nowMs);
   }
 
+  if (m.phases.cursor_push.status === "RUNNING" && !m.cursorSignal?.pushStartedAtMs) {
+    m.cursorSignal = { ...(m.cursorSignal ?? {}), pushStartedAtMs: nowMs };
+  }
+
   return finalizeStage2RuntimeMonitor(m, nowMs);
 }
 
@@ -278,6 +292,9 @@ export function monitorFirstGitBranchCheck(m: Stage2RuntimeMonitorV1, nowMs: num
 
 export function monitorGitBranchDetected(m: Stage2RuntimeMonitorV1, nowMs: number): Stage2RuntimeMonitorV1 {
   m.gitStatus.branchDetected = true;
+  if (!m.cursorSignal?.pushCompletedHintAtMs) {
+    m.cursorSignal = { ...(m.cursorSignal ?? {}), pushCompletedHintAtMs: nowMs };
+  }
   if (m.phases.git_branch_detect.status === "RUNNING") finishPhase(m, "git_branch_detect", nowMs);
   return finalizeStage2RuntimeMonitor(m, nowMs);
 }
@@ -327,6 +344,25 @@ export function monitorScmStart(m: Stage2RuntimeMonitorV1, nowMs: number): Stage
 
 export function monitorScmDone(m: Stage2RuntimeMonitorV1, nowMs: number): Stage2RuntimeMonitorV1 {
   finishPhase(m, "scm", nowMs);
+  return finalizeStage2RuntimeMonitor(m, nowMs);
+}
+
+export function monitorCursorSignalPatch(
+  m: Stage2RuntimeMonitorV1,
+  patch: Partial<Stage2CursorSignal>,
+  nowMs: number
+): Stage2RuntimeMonitorV1 {
+  const next = { ...(m.cursorSignal ?? {}) };
+  if (typeof patch.agentLaunchedAtMs === "number") next.agentLaunchedAtMs = patch.agentLaunchedAtMs;
+  if (typeof patch.pushStartedAtMs === "number") next.pushStartedAtMs = patch.pushStartedAtMs;
+  if (typeof patch.pushCompletedHintAtMs === "number") next.pushCompletedHintAtMs = patch.pushCompletedHintAtMs;
+  if (typeof patch.branchNameHint === "string" && patch.branchNameHint.trim()) {
+    next.branchNameHint = patch.branchNameHint.trim();
+  }
+  if (typeof patch.headShaHint === "string" && patch.headShaHint.trim()) {
+    next.headShaHint = patch.headShaHint.trim();
+  }
+  m.cursorSignal = next;
   return finalizeStage2RuntimeMonitor(m, nowMs);
 }
 

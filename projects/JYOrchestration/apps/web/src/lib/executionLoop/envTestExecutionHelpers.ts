@@ -41,11 +41,26 @@ import {
   monitorSecurityStart,
   patchTaskExecutionRunStage2RuntimeMonitor,
 } from "@/lib/service/envTestStage2RuntimeMonitor";
+import { parseStage2RuntimeMonitorFromValidationOutput } from "@/lib/service/envTestStage2RuntimeMonitor";
 import { ENV_TEST_STAGE2_RUN_META_KEY } from "@/lib/service/envTestStage2Messages";
 import { evaluateNextTaskReadiness } from "@/lib/executionLoop/nextTaskReadiness";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
 import { refreshWorkflowStates, updateTaskOrchestrationSnapshot } from "@/lib/executionLoop/workflowState";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
+
+function parsePositiveIntMs(name: string, fallback: number, bounds: { min: number; max: number }): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(bounds.max, Math.max(bounds.min, n));
+}
+
+const STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS = parsePositiveIntMs(
+  "ENV_TEST_STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS",
+  300,
+  { min: 0, max: 10_000 }
+);
 
 /**
  * ENV_TEST 전용 헬퍼 진입 방어. 위반 시 로그 후 throw(부분 DB 갱신 없음).
@@ -269,6 +284,10 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     },
   });
 
+  if (isEnvTestStage2TaskKind(input.taskKind) && STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS > 0) {
+    await new Promise((r) => setTimeout(r, STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS));
+  }
+
   const prPhase = await runEnvTestPlatformPrPhase({
     projectId: input.projectId,
     taskId: input.taskId,
@@ -344,6 +363,8 @@ export type EnvTestReflectionNotConfirmedBypassResult =
 /**
  * reflection 미확인 시 ENV_TEST만: GitHub compare ahead_by면 `runEnvTestAfterGithubPushConfirmed`→finalize canonical 경로.
  * 토큰 부재는 pending_apply 즉시 반환. 처리 불가 시 fallthrough → 루프의 공통 pending_apply(no_commit) 경로.
+ *
+ * NOTE: 현재는 cursorSignal + polling hybrid(내부 신호 기반)이며, 이후 Cursor callback/webhook/socket 이벤트로 확장 가능.
  */
 export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   projectId: string;
@@ -367,12 +388,108 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     actorUserId: input.actorUserId,
   });
 
-  const headPending = input.headPending.trim();
+  const runMonRow = await prisma.taskExecutionRun.findUnique({
+    where: { id: input.execRunId },
+    select: { validationOutput: true },
+  });
+  const runtimeMon = parseStage2RuntimeMonitorFromValidationOutput(runMonRow?.validationOutput ?? null);
+  const signal = runtimeMon?.cursorSignal ?? null;
+
+  const hintedHeadSha = String(signal?.headShaHint ?? "").trim() || null;
+  const hintedBranchName = String(signal?.branchNameHint ?? "").trim() || null;
+  const headPending = (hintedBranchName || input.headPending || "").trim();
   if (!headPending) {
     return { kind: "fallthrough" };
   }
 
   const { projectId, taskId, actorUserId, execRunId, cr } = input;
+
+  if (hintedHeadSha) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "branch_detect_fastpath_hit",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        reflectedBy: "cursor_signal_head_sha_hint",
+        headBranch: headPending,
+        headShaHint: hintedHeadSha,
+      },
+    });
+    input.steps.push({
+      phase: "git_reflection_gate",
+      taskId,
+      runId: cr.runId,
+      branch: headPending,
+      commitHash: hintedHeadSha,
+      changedFileCount: cr.changedFiles.length,
+      passed: true,
+      reason: "cursor_signal_head_sha_hint",
+    });
+    const outSig = await runEnvTestAfterGithubPushConfirmed({
+      projectId,
+      taskId,
+      taskKind: input.taskKind,
+      execRunId,
+      actorUserId,
+      branchName: headPending,
+      repoUrl: input.repoUrl,
+      baseBranch: input.baseBranch,
+      githubAccessToken: input.githubAccessToken ?? null,
+      compareData: {
+        headSha: hintedHeadSha,
+        changedFiles: cr.changedFiles,
+        diffSummary: cr.summary.slice(0, 24_000),
+      },
+      steps: input.steps,
+      singleTaskId: input.singleTaskId,
+      effectiveAutoAdvance: input.effectiveAutoAdvance,
+      cursorRunId: cr.runId,
+      cursorSummary: cr.summary,
+      via: "reflection_bypass",
+      pushDetectedSource: "cursor_signal_head_sha_hint",
+      executionRunCreatedAt: input.execRunCreatedAt,
+      branchDetectElapsedMs: 0,
+    });
+    if (outSig.kind === "return") return { kind: "return", result: outSig.result };
+    if (outSig.kind === "continue_loop") return { kind: "continue_loop" };
+    if (outSig.kind === "pr_failed") {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_pr_create_failed",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { message: outSig.message.slice(0, 800), via: "reflection_bypass_signal" },
+      });
+      await prisma.taskExecutionRun.update({
+        where: { id: execRunId },
+        data: {
+          status: "failed",
+          evaluationDecision: "failed",
+          evaluationReason: `env_test_platform_pr_failed:${outSig.message}`.slice(0, 8000),
+        },
+      });
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+          lastEvalResult: "failed",
+          lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outSig.message}`.slice(0, 1500),
+        },
+      });
+      await refreshWorkflowStates(projectId);
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+        },
+      };
+    }
+  }
 
   appendTaskProgressLog({
     kind: "execution",
@@ -768,6 +885,10 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
         message: "환경 연결 테스트: 원격 푸시가 확인되지 않았습니다. Cursor 푸시·브랜치·토큰을 확인하세요.",
       },
     };
+  }
+
+  if (isEnvTestStage2TaskKind(input.taskKind) && STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS > 0) {
+    await new Promise((r) => setTimeout(r, STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS));
   }
 
   const prPhaseMain = await runEnvTestPlatformPrPhase({
