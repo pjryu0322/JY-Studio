@@ -16,6 +16,7 @@ export function logStage2CatalogEvent(input: {
   stage?: string;
   detail?: Record<string, unknown>;
 }): void {
+  const ts = new Date().toISOString();
   appendTaskProgressLog({
     kind: "execution",
     phase: input.phase,
@@ -23,8 +24,9 @@ export function logStage2CatalogEvent(input: {
     taskId: input.taskId,
     userId: input.userId ?? undefined,
     detail: {
+      ts,
       executionId: input.executionId ?? undefined,
-      stage: input.stage,
+      stage: input.stage ?? "ENV_TEST_STAGE2",
       startTime: input.startTime,
       endTime: input.endTime,
       elapsedMs: input.elapsedMs,

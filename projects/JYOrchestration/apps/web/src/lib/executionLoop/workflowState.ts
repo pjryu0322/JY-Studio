@@ -3,6 +3,7 @@
  * runExecutionLoop와 수동 승인 API 등에서 공유한다.
  */
 
+import { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
 import { computeWorkflowUpdates } from "@/lib/executionLoop/recomputeWorkflowReadiness";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { prisma } from "@/lib/prisma";
@@ -23,7 +24,7 @@ export async function loadWorkflowGraphTasks(projectId: string) {
   return prisma.task.findMany({
     where: {
       projectId,
-      taskKind: { in: ["PRIMARY", "ENV_TEST"] },
+      taskKind: { in: ["PRIMARY", ENV_TEST_TASK_KIND, ENV_TEST_STAGE2_TASK_KIND] },
       status: { notIn: ["BLOCKED", "CANCELLED"] },
       archivedAt: null,
       sourceSpecVersionId: specId,

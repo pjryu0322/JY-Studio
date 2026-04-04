@@ -1,3 +1,4 @@
+import { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
 import { CURSOR_AGENT_MAX_POLL_MS } from "@/lib/execution/cursorExecutionAdapter";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
@@ -27,8 +28,8 @@ export async function reclaimStaleRunningWorkflowTasks(projectId: string): Promi
       projectId,
       executionWorkflowStatus: EXECUTION_WORKFLOW.RUNNING,
       lastLoopRunAt: { lte: cutoff },
-      /** ENV_TEST는 Cursor 장시간 폴링으로 running이 길어질 수 있어 reclaim 대상에서 제외한다. */
-      taskKind: { not: "ENV_TEST" },
+      /** ENV_TEST 계열은 Cursor 장시간 폴링으로 running이 길어질 수 있어 reclaim 대상에서 제외한다. */
+      taskKind: { notIn: [ENV_TEST_TASK_KIND, ENV_TEST_STAGE2_TASK_KIND] },
     },
     select: { id: true },
   });

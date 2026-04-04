@@ -122,9 +122,8 @@ export function useAiMembersState(input: {
       const { res, json } = await postEnvironmentTestRun(projectId, { stage: 2 });
       if (json.data?.last != null) {
         setStage2Last(json.data.last);
-      } else {
-        await loadStage2();
       }
+      await loadStage2();
       setNote(
         (typeof json.message === "string" && json.message.trim()) ||
           (res.ok ? "Stage 2 실행이 완료되었습니다." : "Stage 2 실행에 실패했습니다.")
