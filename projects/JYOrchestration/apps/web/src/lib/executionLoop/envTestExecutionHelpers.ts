@@ -100,11 +100,60 @@ async function failEnvTestStage2WithCode(input: {
   await refreshWorkflowStates(input.projectId);
 }
 
-function hasStage2CommitEvidence(input: { headSha: string | null | undefined; changedFiles: string[]; diffSummary: string }): boolean {
-  const headOk = Boolean(String(input.headSha ?? "").trim());
+function hasStage2CommitEvidence(input: {
+  commitHash?: string | null | undefined;
+  headShaHint?: string | null | undefined;
+  changedFiles?: string[] | null | undefined;
+}): boolean {
+  const commitOk = Boolean(String(input.commitHash ?? "").trim());
+  const headHintOk = Boolean(String(input.headShaHint ?? "").trim());
   const filesOk = Array.isArray(input.changedFiles) && input.changedFiles.length > 0;
-  const diffOk = Boolean(String(input.diffSummary ?? "").trim());
-  return headOk && filesOk && diffOk;
+  return commitOk || headHintOk || filesOk;
+}
+
+function logStage2CommitCheck(
+  phase: "stage2_commit_check_started" | "stage2_commit_check_passed" | "stage2_commit_check_failed",
+  ctx: { projectId: string; taskId: string; actorUserId: string; detail?: Record<string, unknown> }
+): void {
+  appendTaskProgressLog({
+    kind: "execution",
+    phase,
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.actorUserId,
+    detail: ctx.detail ?? {},
+  });
+}
+
+function logStage2BranchReflectionCheck(
+  phase:
+    | "stage2_branch_reflection_started"
+    | "stage2_branch_reflection_passed"
+    | "stage2_branch_reflection_failed",
+  ctx: { projectId: string; taskId: string; actorUserId: string; detail?: Record<string, unknown> }
+): void {
+  appendTaskProgressLog({
+    kind: "execution",
+    phase,
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.actorUserId,
+    detail: ctx.detail ?? {},
+  });
+}
+
+function logStage2PrCreationCheck(
+  phase: "stage2_pr_creation_started" | "stage2_pr_creation_passed" | "stage2_pr_creation_failed",
+  ctx: { projectId: string; taskId: string; actorUserId: string; detail?: Record<string, unknown> }
+): void {
+  appendTaskProgressLog({
+    kind: "execution",
+    phase,
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.actorUserId,
+    detail: ctx.detail ?? {},
+  });
 }
 
 /**
@@ -273,30 +322,6 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     taskId: input.taskId,
     actorUserId: input.actorUserId,
   });
-  if (
-    isEnvTestStage2TaskKind(input.taskKind) &&
-    !hasStage2CommitEvidence({
-      headSha: input.compareData.headSha,
-      changedFiles: input.compareData.changedFiles,
-      diffSummary: input.compareData.diffSummary,
-    })
-  ) {
-    await failEnvTestStage2WithCode({
-      projectId: input.projectId,
-      taskId: input.taskId,
-      execRunId: input.execRunId,
-      code: "STAGE2_NO_COMMIT",
-      summaryKo: "Stage 2 실패: commit 미발생",
-    });
-    return {
-      kind: "return",
-      result: {
-        ok: false,
-        steps: input.steps,
-        message: "Stage 2 실패: commit 미발생",
-      },
-    };
-  }
   const elapsedMsSinceRunStart = elapsedSinceRun(input.executionRunCreatedAt ?? undefined);
 
   const existingRunVo = await prisma.taskExecutionRun.findUnique({
@@ -357,6 +382,14 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     await new Promise((r) => setTimeout(r, STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS));
   }
 
+  if (isEnvTestStage2TaskKind(input.taskKind)) {
+    logStage2PrCreationCheck("stage2_pr_creation_started", {
+      projectId: input.projectId,
+      taskId: input.taskId,
+      actorUserId: input.actorUserId,
+      detail: { headBranch: input.branchName },
+    });
+  }
   const prPhase = await runEnvTestPlatformPrPhase({
     projectId: input.projectId,
     taskId: input.taskId,
@@ -371,7 +404,23 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     execRunId: input.execRunId,
   });
   if (!prPhase.ok) {
+    if (isEnvTestStage2TaskKind(input.taskKind)) {
+      logStage2PrCreationCheck("stage2_pr_creation_failed", {
+        projectId: input.projectId,
+        taskId: input.taskId,
+        actorUserId: input.actorUserId,
+        detail: { message: prPhase.message.slice(0, 800) },
+      });
+    }
     return { kind: "pr_failed", message: prPhase.message };
+  }
+  if (isEnvTestStage2TaskKind(input.taskKind)) {
+    logStage2PrCreationCheck("stage2_pr_creation_passed", {
+      projectId: input.projectId,
+      taskId: input.taskId,
+      actorUserId: input.actorUserId,
+      detail: { prNumber: prPhase.prNumber, prUrl: prPhase.prUrl },
+    });
   }
 
   if (isEnvTestStage2TaskKind(input.taskKind)) {
@@ -467,13 +516,91 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   const hintedHeadSha = String(signal?.headShaHint ?? "").trim() || null;
   const hintedBranchName = String(signal?.branchNameHint ?? "").trim() || null;
   const headPending = (hintedBranchName || input.headPending || "").trim();
+
+  const { projectId, taskId, actorUserId, execRunId, cr } = input;
+  const isStage2 = isEnvTestStage2TaskKind(input.taskKind);
+
+  if (isStage2) {
+    logStage2CommitCheck("stage2_commit_check_started", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: {
+        commitHash: cr.commitHash ?? null,
+        headShaHint: hintedHeadSha,
+        changedFilesCount: cr.changedFiles.length,
+      },
+    });
+    const commitEvidenceOk = hasStage2CommitEvidence({
+      commitHash: cr.commitHash,
+      headShaHint: hintedHeadSha,
+      changedFiles: cr.changedFiles,
+    });
+    if (!commitEvidenceOk) {
+      logStage2CommitCheck("stage2_commit_check_failed", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: { reason: "no_commit_hash_no_head_sha_hint_no_changed_files" },
+      });
+      await failEnvTestStage2WithCode({
+        projectId,
+        taskId,
+        execRunId,
+        code: "STAGE2_NO_COMMIT",
+        summaryKo: "Stage 2 실패: commit 미발생",
+      });
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "Stage 2 실패: commit 미발생",
+        },
+      };
+    }
+    logStage2CommitCheck("stage2_commit_check_passed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { commitEvidence: "commitHash|headShaHint|changedFiles" },
+    });
+  }
+
   if (!headPending) {
+    if (isStage2) {
+      logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: { reason: "missing_head_branch" },
+      });
+      logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: { reason: "missing_head_branch" },
+      });
+      await failEnvTestStage2WithCode({
+        projectId,
+        taskId,
+        execRunId,
+        code: "STAGE2_BRANCH_NOT_REFLECTED",
+        summaryKo: "Stage 2 실패: Git branch 미반영",
+      });
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "Stage 2 실패: Git branch 미반영",
+        },
+      };
+    }
     return { kind: "fallthrough" };
   }
 
-  const { projectId, taskId, actorUserId, execRunId, cr } = input;
-
-  if (hintedHeadSha) {
+  if (hintedHeadSha && !isStage2) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "branch_detect_fastpath_hit",
@@ -580,6 +707,14 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     userId: actorUserId,
     detail: { base: input.baseBranch, head: headPending, step: "reflection_bypass" },
   });
+  if (isStage2) {
+    logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { base: input.baseBranch, head: headPending, step: "reflection_bypass" },
+    });
+  }
   const branchCompareStartedAt = Date.now();
   const comparePa = await fetchGithubCompareSnapshot({
     repoUrl: input.repoUrl,
@@ -593,6 +728,14 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   const branchDetectElapsedMs = Date.now() - branchCompareStartedAt;
 
   if (comparePa.ok && comparePa.data.aheadBy > 0) {
+    if (isStage2) {
+      logStage2BranchReflectionCheck("stage2_branch_reflection_passed", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: { aheadBy: comparePa.data.aheadBy, headSha: comparePa.data.headSha ?? null },
+      });
+    }
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_branch_reflection_confirmed",
@@ -797,6 +940,34 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     };
   }
 
+  if (isStage2) {
+    logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: {
+        compareOk: comparePa.ok,
+        compareCode: comparePa.ok ? null : comparePa.code,
+        aheadBy: comparePa.ok ? comparePa.data.aheadBy : null,
+      },
+    });
+    await failEnvTestStage2WithCode({
+      projectId,
+      taskId,
+      execRunId,
+      code: "STAGE2_BRANCH_NOT_REFLECTED",
+      summaryKo: "Stage 2 실패: Git branch 미반영",
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "Stage 2 실패: Git branch 미반영",
+      },
+    };
+  }
+
   return { kind: "fallthrough" };
 }
 
@@ -828,6 +999,61 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
 
   const cr = input.cr;
   const { projectId, taskId, actorUserId, execRunId } = input;
+  const isStage2 = isEnvTestStage2TaskKind(input.taskKind);
+  let stage2SignalHeadShaHint: string | null = null;
+  if (isStage2) {
+    const runMonRow = await prisma.taskExecutionRun.findUnique({
+      where: { id: execRunId },
+      select: { validationOutput: true },
+    });
+    const runtimeMon = parseStage2RuntimeMonitorFromValidationOutput(runMonRow?.validationOutput ?? null);
+    stage2SignalHeadShaHint = String(runtimeMon?.cursorSignal?.headShaHint ?? "").trim() || null;
+
+    logStage2CommitCheck("stage2_commit_check_started", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: {
+        commitHash: cr.commitHash ?? null,
+        headShaHint: stage2SignalHeadShaHint,
+        changedFilesCount: cr.changedFiles.length,
+      },
+    });
+    const commitEvidenceOk = hasStage2CommitEvidence({
+      commitHash: cr.commitHash,
+      headShaHint: stage2SignalHeadShaHint,
+      changedFiles: cr.changedFiles,
+    });
+    if (!commitEvidenceOk) {
+      logStage2CommitCheck("stage2_commit_check_failed", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: { reason: "no_commit_hash_no_head_sha_hint_no_changed_files" },
+      });
+      await failEnvTestStage2WithCode({
+        projectId,
+        taskId,
+        execRunId,
+        code: "STAGE2_NO_COMMIT",
+        summaryKo: "Stage 2 실패: commit 미발생",
+      });
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "Stage 2 실패: commit 미발생",
+        },
+      };
+    }
+    logStage2CommitCheck("stage2_commit_check_passed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { commitEvidence: "commitHash|headShaHint|changedFiles" },
+    });
+  }
   // git_reflection_gate 단계 로그는 runExecutionLoop에서 이미 기록됨.
 
   await prisma.task.update({
@@ -867,6 +1093,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       pipeline: "runEnvTestReflectionConfirmedPipeline",
     },
   });
+  if (isStage2) {
+    logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { base: input.baseBranch, head: cr.branchName, step: "post_cursor" },
+    });
+  }
 
   const compare = await fetchGithubCompareSnapshot({
     repoUrl: input.repoUrl,
@@ -878,7 +1112,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     allowUnauthenticated: true,
   });
 
-  if (isEnvTestStage2TaskKind(input.taskKind) && compare.ok && compare.data.aheadBy > 0) {
+  if (isStage2 && compare.ok && compare.data.aheadBy > 0) {
     logStage2CatalogEvent({
       phase: "branch_reflected",
       projectId,
@@ -890,6 +1124,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   }
 
   if (compare.ok && compare.data.aheadBy > 0) {
+    if (isStage2) {
+      logStage2BranchReflectionCheck("stage2_branch_reflection_passed", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: { aheadBy: compare.data.aheadBy, headSha: compare.data.headSha ?? null },
+      });
+    }
     envTestCompareOkAtMs = Date.now();
     appendTaskProgressLog({
       kind: "execution",
@@ -943,33 +1185,47 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   const commitDetected =
     Boolean(gitEvidence?.headSha ?? cr.commitHash ?? null) || pushDetected;
 
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      executionWorkflowStatus: EXECUTION_WORKFLOW.COMMITTED,
-      lastEvalResult: "committed",
-      lastEvalSummary:
-        "ENV_TEST: 푸시 확인됨. 플랫폼이 GitHub PR을 생성·갱신합니다.".slice(0, 2000),
-    },
-  });
+  if (!isStage2 || pushDetected) {
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.COMMITTED,
+        lastEvalResult: "committed",
+        lastEvalSummary:
+          "ENV_TEST: 푸시 확인됨. 플랫폼이 GitHub PR을 생성·갱신합니다.".slice(0, 2000),
+      },
+    });
 
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "state_transition: RUNNING → COMMITTED",
-    projectId,
-    taskId,
-    userId: actorUserId,
-    detail: {
-      branch: cr.branchName,
-      headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
-      changedFileCount: gitEvidence?.changedFiles.length ?? null,
-      compareOk: compare.ok,
-      ...(compare.ok ? { aheadBy: compare.data.aheadBy, behindBy: compare.data.behindBy } : {}),
-      pipeline: "runEnvTestReflectionConfirmedPipeline",
-    },
-  });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "state_transition: RUNNING → COMMITTED",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        branch: cr.branchName,
+        headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
+        changedFileCount: gitEvidence?.changedFiles.length ?? null,
+        compareOk: compare.ok,
+        ...(compare.ok ? { aheadBy: compare.data.aheadBy, behindBy: compare.data.behindBy } : {}),
+        pipeline: "runEnvTestReflectionConfirmedPipeline",
+      },
+    });
+  }
 
   if (!pushDetected) {
+    if (isStage2) {
+      logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: {
+          compareOk: compare.ok,
+          compareCode: compare.ok ? null : compare.code,
+          aheadBy: compare.ok ? compare.data.aheadBy : null,
+        },
+      });
+    }
     if (isEnvTestStage2TaskKind(input.taskKind)) {
       await failEnvTestStage2WithCode({
         projectId,
@@ -1009,35 +1265,18 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     };
   }
 
-  if (
-    isEnvTestStage2TaskKind(input.taskKind) &&
-    !hasStage2CommitEvidence({
-      headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
-      changedFiles: gitEvidence?.changedFiles ?? cr.changedFiles,
-      diffSummary: gitEvidence?.diffSummary ?? cr.summary,
-    })
-  ) {
-    await failEnvTestStage2WithCode({
-      projectId,
-      taskId,
-      execRunId,
-      code: "STAGE2_NO_COMMIT",
-      summaryKo: "Stage 2 실패: commit 미발생",
-    });
-    return {
-      kind: "return",
-      result: {
-        ok: false,
-        steps: input.steps,
-        message: "Stage 2 실패: commit 미발생",
-      },
-    };
-  }
-
   if (isEnvTestStage2TaskKind(input.taskKind) && STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS > 0) {
     await new Promise((r) => setTimeout(r, STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS));
   }
 
+  if (isStage2) {
+    logStage2PrCreationCheck("stage2_pr_creation_started", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { headBranch: cr.branchName },
+    });
+  }
   const prPhaseMain = await runEnvTestPlatformPrPhase({
     projectId,
     taskId,
@@ -1053,6 +1292,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   });
 
   if (!prPhaseMain.ok) {
+    if (isStage2) {
+      logStage2PrCreationCheck("stage2_pr_creation_failed", {
+        projectId,
+        taskId,
+        actorUserId,
+        detail: { message: prPhaseMain.message.slice(0, 800) },
+      });
+    }
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_pr_create_failed",
@@ -1098,6 +1345,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
           : "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
       },
     };
+  }
+  if (isStage2) {
+    logStage2PrCreationCheck("stage2_pr_creation_passed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { prNumber: prPhaseMain.prNumber, prUrl: prPhaseMain.prUrl },
+    });
   }
 
   const prUrl = prPhaseMain.prUrl;
