@@ -39,12 +39,11 @@ import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAu
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/execution/scmManagerWithAiMembers";
 import {
-  runEnvTestAfterGithubPushConfirmed,
   runEnvTestReflectionConfirmedPipeline,
+  runEnvTestReflectionNotConfirmedGithubBypass,
 } from "@/lib/executionLoop/envTestExecutionHelpers";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
-import { GITHUB_REST_MISSING_TOKEN_USER_MESSAGE } from "@/lib/integration/githubRestCommon";
 export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 
 const loopLocks = new Set<string>();
@@ -597,15 +596,7 @@ export async function runExecutionLoop(params: {
           projectId,
           taskId,
           userId: actorUserId,
-          detail: { taskKind: taskRow.taskKind ?? null },
-        });
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_finalize_context_skipped",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: { reason: "NORMAL_TASK", taskKind: taskRow.taskKind ?? null },
+          detail: { taskKind: taskRow.taskKind ?? null, envTestPollFinalize: "skipped" },
         });
       }
 
@@ -757,16 +748,6 @@ export async function runExecutionLoop(params: {
           changedFiles: cr0.changedFiles.length,
           executionStatus: cr0.executionStatus,
         });
-        if (isEnvTestTask) {
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "env_test_cursor_invoke_succeeded",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            detail: { runId: cr0.runId, branch: cr0.branchName },
-          });
-        }
       } else if (!cursorOutcome.ok) {
         appendTaskProgressLog({
           kind: "execution",
@@ -939,165 +920,28 @@ export async function runExecutionLoop(params: {
       const reflectionOk = isCursorCodeReflectionConfirmed(cr);
       if (!reflectionOk) {
         const headPending = (cr.branchName || branchPlan.branchName || "").trim();
-        if (isEnvTestTask && headPending) {
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "env_test_branch_reflection_check_started",
+        if (isEnvTestTask) {
+          const bypass = await runEnvTestReflectionNotConfirmedGithubBypass({
             projectId,
             taskId,
-            userId: actorUserId,
-            detail: { base: setup.baseBranch, head: headPending, step: "reflection_bypass" },
-          });
-          const branchCompareStartedAt = Date.now();
-          const comparePa = await fetchGithubCompareSnapshot({
+            taskKind: taskRow.taskKind,
+            actorUserId,
+            execRunId: execRun.id,
             repoUrl,
-            base: setup.baseBranch,
-            head: headPending,
-            maxFiles: 80,
+            baseBranch: setup.baseBranch,
             githubAccessToken: setup.githubAccessToken ?? null,
-            projectId,
-            allowUnauthenticated: true,
+            cr,
+            headPending,
+            execRunCreatedAt: execRun.createdAt,
+            steps,
+            singleTaskId,
+            effectiveAutoAdvance,
           });
-          const branchDetectElapsedMs = Date.now() - branchCompareStartedAt;
-          if (comparePa.ok && comparePa.data.aheadBy > 0) {
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "env_test_branch_reflection_confirmed",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: {
-                aheadBy: comparePa.data.aheadBy,
-                headSha: comparePa.data.headSha ?? null,
-                step: "reflection_bypass",
-              },
-            });
-            steps.push({
-              phase: "git_reflection_gate",
-              taskId,
-              runId: cr.runId,
-              branch: headPending,
-              commitHash: cr.commitHash ?? null,
-              changedFileCount: cr.changedFiles.length,
-              passed: true,
-              reason: "github_compare_ahead_by",
-            });
-            const outPa = await runEnvTestAfterGithubPushConfirmed({
-              projectId,
-              taskId,
-              taskKind: taskRow.taskKind,
-              execRunId: execRun.id,
-              actorUserId,
-              branchName: headPending,
-              repoUrl,
-              baseBranch: setup.baseBranch,
-              githubAccessToken: setup.githubAccessToken ?? null,
-              compareData: {
-                headSha: comparePa.data.headSha ?? cr.commitHash ?? null,
-                changedFiles: comparePa.data.changedFiles,
-                diffSummary: comparePa.data.diffSummary,
-              },
-              steps,
-              singleTaskId,
-              effectiveAutoAdvance,
-              cursorRunId: cr.runId,
-              cursorSummary: cr.summary,
-              via: "reflection_bypass",
-              pushDetectedSource: "reflection_bypass_compare",
-              executionRunCreatedAt: execRun.createdAt,
-              branchDetectElapsedMs,
-            });
-            if (outPa.kind === "return") {
-              return outPa.result;
-            }
-            if (outPa.kind === "continue_loop") {
-              continue;
-            }
+          if (bypass.kind === "return") {
+            return bypass.result;
           }
-          if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "github_compare_missing_token",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: { context: "git_reflection_gate_env_test", branchName: headPending, baseBranch: setup.baseBranch },
-            });
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "git_reflection_gate_blocked_no_token",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: { branchName: headPending, baseBranch: setup.baseBranch, gateReason: "github_compare_unavailable_no_token" },
-            });
-          }
-          // ENV_TEST: 토큰 부재로 GitHub compare를 못 돌리면, 기존 no_commit_and_no_changed_files로 뭉개지 않고
-          // 명확한 게이트 reason으로 pending_apply 처리한다.
-          if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
-            const gateReason = "github_compare_unavailable_no_token";
-            appendTaskProgressLog({
-              kind: "execution",
-              phase: "git_reflection_gate",
-              projectId,
-              taskId,
-              userId: actorUserId,
-              detail: {
-                passed: false,
-                gateReason,
-                runId: cr.runId,
-                commitHash: cr.commitHash ?? null,
-                changedFileCount: cr.changedFiles.length,
-                outcome: "pending_apply",
-              },
-            });
-            await prisma.task.update({
-              where: { id: taskId },
-              data: {
-                executionWorkflowStatus: EXECUTION_WORKFLOW.PENDING_APPLY,
-                lastEvalResult: "pending_apply",
-                lastEvalSummary: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
-              },
-            });
-            await prisma.taskExecutionRun.update({
-              where: { id: execRun.id },
-              data: {
-                cursorRunId: cr.runId,
-                cursorSummary: cr.summary,
-                branchName: headPending,
-                commitSha: cr.commitHash ?? null,
-                changedFiles: cr.changedFiles as unknown as object,
-                gitSummary: cr.summary.slice(0, 24_000),
-                validationOutput: null,
-                commitStatus: "github_compare_missing_token",
-                pushStatus: "delegated_to_cursor",
-                status: "awaiting_git_reflection",
-                evaluationReason: "git_reflection_gate_blocked: github_compare_unavailable_no_token",
-              },
-            });
-            await updateTaskOrchestrationSnapshot(taskId, {
-              branch: headPending,
-              commitStatus: "github_compare_missing_token",
-              pushStatus: "delegated_to_cursor",
-              commitSha: cr.commitHash ?? null,
-              changedFileCount: cr.changedFiles.length,
-            });
-            await refreshWorkflowStates(projectId);
-            steps.push({
-              phase: "git_reflection_gate",
-              taskId,
-              runId: cr.runId,
-              branch: headPending,
-              commitHash: cr.commitHash ?? null,
-              changedFileCount: cr.changedFiles.length,
-              passed: false,
-              reason: gateReason,
-            });
-            return {
-              ok: true,
-              steps,
-              message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
-            };
+          if (bypass.kind === "continue_loop") {
+            continue;
           }
         }
 
@@ -1438,7 +1282,8 @@ export async function runExecutionLoop(params: {
         continue;
       }
 
-      // PR(Open) 감지 실패: 기존(리뷰/머지) 경로로 폴백한다. (일반 Task 전용 — ENV_TEST는 위에서 종료)
+      /* 보조 경로(일반 Task만): PR(Open)이 URL/HEAD 조회로도 없을 때 execution-review → SCM 폴백.
+         ENV_TEST canonical 경로는 상위에서 이미 종료되며 이 블록에 진입하지 않는다. */
       await prisma.task.update({
         where: { id: taskId },
         data: {
