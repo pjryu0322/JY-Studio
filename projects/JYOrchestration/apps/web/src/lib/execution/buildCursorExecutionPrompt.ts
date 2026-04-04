@@ -41,14 +41,13 @@ export function buildCursorExecutionPrompt(
     const commitHint = setup.autoCommit ? "One commit." : "Commit if needed.";
     const pushHint = setup.autoPush ? "Push branch to origin." : "Do not push.";
     return [
-      `ENV_TEST Stage2 smoke. Repo ${setup.gitRepoUrl}`,
-      `Base ${setup.baseBranch} | use branch name exactly: ${setup.suggestedBranchName}`,
-      `Create ONE file only: orchestration-test/hello-world.md`,
-      `Body (markdown):`,
-      `# Hello`,
-      `smoke`,
+      `ENV_TEST smoke only. Repo ${setup.gitRepoUrl}`,
+      `Use base ${setup.baseBranch} and branch name exactly: ${setup.suggestedBranchName}`,
+      `Create or update exactly ONE file: orchestration-test/hello-world.md`,
+      `Allowed change only under orchestration-test/**`,
+      `File content must be 1-3 short lines of Hello World text.`,
       `${commitHint} ${pushHint}`,
-      `No other files. No PR. Report branchName + commitHash when done.`,
+      `No PR. No merge. No extra files. Report branchName + commitHash + changedFilesCount.`,
     ].join("\n");
   }
 

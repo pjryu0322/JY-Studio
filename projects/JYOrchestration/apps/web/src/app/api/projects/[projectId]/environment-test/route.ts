@@ -35,8 +35,8 @@ export async function GET(
     const stage = request.nextUrl.searchParams.get("stage");
     const last =
       stage === "2"
-        ? await getLatestEnvironmentStage2TestTask(pid)
-        : await getLatestEnvironmentTestTask(pid);
+        ? await getLatestEnvironmentStage2TestTask(pid, { viewerUserId: userId })
+        : await getLatestEnvironmentTestTask(pid, { viewerUserId: userId });
     return NextResponse.json({ success: true, data: { last } });
   } catch (error) {
     const denied = rbacErrorResponse(error);
@@ -93,8 +93,8 @@ export async function POST(
     });
 
     const last = runStage2
-      ? await getLatestEnvironmentStage2TestTask(pid)
-      : await getLatestEnvironmentTestTask(pid);
+      ? await getLatestEnvironmentStage2TestTask(pid, { viewerUserId: userId })
+      : await getLatestEnvironmentTestTask(pid, { viewerUserId: userId });
 
     return NextResponse.json(
       {

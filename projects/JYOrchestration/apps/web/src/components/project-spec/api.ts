@@ -533,6 +533,11 @@ export type EnvironmentTestLastDto = {
   stage2CurrentBottleneckHint?: string | null;
   stage2RunElapsedMs?: number | null;
   stage2TimingBreakdown?: Record<string, number> | null;
+  cursorPromptRaw?: string | null;
+  cursorPromptLength?: number | null;
+  cursorPromptPreview?: string | null;
+  stage2CursorPromptRaw?: string | null;
+  stage2CursorPromptCanViewRaw?: boolean | null;
 };
 
 export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage?: 2 }) {
