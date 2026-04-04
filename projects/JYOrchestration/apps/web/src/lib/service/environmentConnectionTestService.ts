@@ -17,6 +17,12 @@ import { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND } from "@/lib/execution/e
 import { assertEnvTestStartReadiness } from "@/lib/service/envTestServerReadiness";
 import { parseEnvTestStage2UiFromValidationOutput } from "@/lib/service/envTestStage2PlatformActors";
 import { parseEnvTestStage2TimingFromValidationOutput } from "@/lib/service/envTestStage2Telemetry";
+import { deriveStage2LiveHints } from "@/lib/service/envTestStage2LiveHints";
+import {
+  bottleneckLabelKo,
+  parseStage2RuntimeMonitorFromValidationOutput,
+  stage2PhaseKeyForApi,
+} from "@/lib/service/envTestStage2RuntimeMonitor";
 
 export { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND };
 
@@ -54,15 +60,16 @@ const ENV_TEST_CRITERIA = [
 
 export const ENV_TEST_STAGE2_TASK_NAME = "환경 연결 테스트 Stage 2 — 역할 분리 readiness";
 
-const ENV_TEST_STAGE2_DESCRIPTION = `Stage 1과 동일한 브랜치·파일 계약으로 \`orchestration-test/hello-world.md\` 를 생성/수정하고 커밋·푸시한다.
-PR 이후 플랫폼이 최소 리뷰(PASS/FAIL)를 거친 뒤, PASS일 때만 머지·검증한다. Executor·리뷰어·SCM은 서로 직접 통신하지 않는다.`;
+/** DB 표시용. 실제 Cursor 지시는 buildCursorExecutionPrompt(compactHelloWorld)가 단일 근원. */
+const ENV_TEST_STAGE2_DESCRIPTION = `브랜치 이름 준수. 파일 1개 \`orchestration-test/hello-world.md\` → 커밋 → 푸시.`;
 
+/** 리뷰/SCM 문구는 프롬프트에 넣지 않는다(Stage 1과 동일한 검증 항목만). */
 const ENV_TEST_STAGE2_CRITERIA = [
-  "platform branch name (same as Stage 1)",
-  "orchestration-test/hello-world.md",
-  "push; platform PR with Stage2 title",
-  "platform reviewer PASS",
-  "platform SCM merge + verify",
+  "test branch created (platform branch name)",
+  "hello world test file created or updated at orchestration-test/hello-world.md",
+  "commit created",
+  "push succeeded to remote branch",
+  "platform opens GitHub PR (not Cursor)",
 ];
 
 export function parsePrUrlFromRunPrStatus(prStatus: string | null | undefined): string | null {
@@ -269,6 +276,28 @@ export type EnvironmentTestLastDto = {
   stage2TotalTimeMs?: number | null;
   stage2TopBottleneckStage?: string | null;
   stage2TopBottleneckMs?: number | null;
+  /** 진행 중일 때 패널용(Reviewer 로그 전 등) */
+  stage2UiHint?: string | null;
+  stage2EstimatedBottleneck?: string | null;
+  stage2LivePhaseLabel?: string | null;
+  /** 패널 currentStep (git_reflect | cursor | review …) */
+  stage2CurrentStep?: string | null;
+  /** 세분화된 현재 단계 (예: cursor_push, git_branch_detect) */
+  stage2CurrentPhase?: string | null;
+  stage2CursorStatus?: {
+    prepare: "PENDING" | "RUNNING" | "DONE";
+    generate: "PENDING" | "RUNNING" | "DONE";
+    commit: "PENDING" | "RUNNING" | "DONE";
+    push: "PENDING" | "RUNNING" | "DONE";
+  } | null;
+  stage2GitStatus?: { branchDetected: boolean; branchReflected: boolean } | null;
+  stage2PlatformStatus?: { prCreated: boolean } | null;
+  stage2RuntimeBottleneckPhase?: string | null;
+  stage2RuntimeBottleneckMs?: number | null;
+  stage2CurrentBottleneckHint?: string | null;
+  /** 진행 중 런 기준 경과 ms (서버 시각) */
+  stage2RunElapsedMs?: number | null;
+  stage2TimingBreakdown?: Record<string, number> | null;
 };
 
 export async function getLatestEnvironmentTestTask(
@@ -420,12 +449,17 @@ export async function getLatestEnvironmentStage2TestTask(
             status: true,
             executionWorkflowStatus: true,
             lastOrchestrationBranch: true,
+            lastOrchestrationCommitStatus: true,
+            lastOrchestrationPushStatus: true,
             updatedAt: true,
             taskExecutionRuns: {
               where: { archivedAt: null },
               orderBy: { createdAt: "desc" },
               take: 1,
               select: {
+                status: true,
+                commitStatus: true,
+                pushStatus: true,
                 prStatus: true,
                 branchName: true,
                 mergeCommitSha: true,
@@ -434,6 +468,8 @@ export async function getLatestEnvironmentStage2TestTask(
                 envTestMergeBlockedReason: true,
                 envTestMergeStartedAt: true,
                 validationOutput: true,
+                createdAt: true,
+                completedAt: true,
               },
             },
           },
@@ -455,12 +491,17 @@ export async function getLatestEnvironmentStage2TestTask(
         status: true,
         executionWorkflowStatus: true,
         lastOrchestrationBranch: true,
+        lastOrchestrationCommitStatus: true,
+        lastOrchestrationPushStatus: true,
         updatedAt: true,
         taskExecutionRuns: {
           where: { archivedAt: null },
           orderBy: { createdAt: "desc" },
           take: 1,
           select: {
+            status: true,
+            commitStatus: true,
+            pushStatus: true,
             prStatus: true,
             branchName: true,
             mergeCommitSha: true,
@@ -469,6 +510,8 @@ export async function getLatestEnvironmentStage2TestTask(
             envTestMergeBlockedReason: true,
             envTestMergeStartedAt: true,
             validationOutput: true,
+            createdAt: true,
+            completedAt: true,
           },
         },
       },
@@ -481,6 +524,29 @@ export async function getLatestEnvironmentStage2TestTask(
   const branchName = rowResolved.lastOrchestrationBranch ?? run0?.branchName ?? null;
   const s2 = parseEnvTestStage2UiFromValidationOutput(run0?.validationOutput ?? null);
   const t2 = parseEnvTestStage2TimingFromValidationOutput(run0?.validationOutput ?? null);
+  const runtimeMon = parseStage2RuntimeMonitorFromValidationOutput(run0?.validationOutput ?? null);
+
+  const wfNormPre = String(rowResolved.executionWorkflowStatus ?? "").trim();
+  const runInFlight =
+    Boolean(run0?.createdAt) &&
+    run0?.status !== "done" &&
+    run0?.status !== "failed" &&
+    wfNormPre !== EXECUTION_WORKFLOW.MERGED &&
+    wfNormPre !== EXECUTION_WORKFLOW.FAILED;
+  const stage2RunElapsedMs =
+    runInFlight && run0?.createdAt ? Date.now() - run0.createdAt.getTime() : null;
+
+  const live = deriveStage2LiveHints({
+    executionWorkflowStatus: rowResolved.executionWorkflowStatus,
+    taskStatus: rowResolved.status,
+    runStatus: run0?.status ?? null,
+    commitStatus: run0?.commitStatus ?? null,
+    pushStatus: run0?.pushStatus ?? null,
+    prUrl,
+    lastOrchestrationCommitStatus: rowResolved.lastOrchestrationCommitStatus ?? null,
+    lastOrchestrationPushStatus: rowResolved.lastOrchestrationPushStatus ?? null,
+    stage2RunElapsedMs,
+  });
 
   const base: EnvironmentTestLastDto = {
     taskId: rowResolved.id,
@@ -499,7 +565,57 @@ export async function getLatestEnvironmentStage2TestTask(
     stage2TotalTimeMs: t2.totalTimeMs,
     stage2TopBottleneckStage: t2.topBottleneck?.stage ?? null,
     stage2TopBottleneckMs: t2.topBottleneck?.ms ?? null,
+    stage2UiHint: live.stage2UiHint,
+    stage2EstimatedBottleneck: live.stage2EstimatedBottleneck,
+    stage2LivePhaseLabel: live.stage2LivePhaseLabel,
+    stage2CurrentStep: live.stage2CurrentStep,
+    stage2CurrentBottleneckHint: live.stage2CurrentBottleneckHint,
+    stage2RunElapsedMs,
+    stage2TimingBreakdown: t2.breakdown,
   };
+  if (runInFlight && runtimeMon) {
+    const apiPhase = stage2PhaseKeyForApi(runtimeMon.currentPhase);
+    const apiBn = runtimeMon.bottleneckPhase ? stage2PhaseKeyForApi(runtimeMon.bottleneckPhase) : null;
+    base.stage2CurrentPhase = apiPhase;
+    base.stage2CursorStatus = runtimeMon.cursorStatus;
+    base.stage2GitStatus = runtimeMon.gitStatus;
+    base.stage2PlatformStatus = runtimeMon.platformStatus;
+    base.stage2RuntimeBottleneckPhase = apiBn;
+    base.stage2RuntimeBottleneckMs = runtimeMon.bottleneckElapsedMs;
+    base.stage2CurrentStep = apiPhase;
+    base.stage2LivePhaseLabel = bottleneckLabelKo(runtimeMon.currentPhase) ?? apiPhase;
+    base.stage2UiHint = null;
+    if (apiBn) {
+      base.stage2EstimatedBottleneck = apiBn;
+      base.stage2CurrentBottleneckHint = bottleneckLabelKo(runtimeMon.bottleneckPhase);
+      base.stage2TopBottleneckStage = apiBn;
+    }
+    if (typeof runtimeMon.bottleneckElapsedMs === "number") {
+      base.stage2TopBottleneckMs = runtimeMon.bottleneckElapsedMs;
+    }
+    const gd = runtimeMon.phases.git_branch_detect;
+    if (gd?.status === "RUNNING" && gd.startedAtMs != null && Date.now() - gd.startedAtMs > 5_000) {
+      base.stage2LivePhaseLabel = "Git 반영 대기";
+      const bnKey = stage2PhaseKeyForApi(runtimeMon.bottleneckPhase ?? "");
+      if (bnKey === "git_branch_detect" || apiPhase === "git_branch_detect") {
+        base.stage2CurrentBottleneckHint = "Git 반영 대기";
+      }
+    }
+  }
+  if (s2.stage2FinalOutcome) {
+    base.stage2UiHint = null;
+    base.stage2EstimatedBottleneck = null;
+    base.stage2LivePhaseLabel = null;
+    base.stage2CurrentStep = null;
+    base.stage2CurrentBottleneckHint = null;
+    base.stage2RunElapsedMs = null;
+    base.stage2CurrentPhase = null;
+    base.stage2CursorStatus = null;
+    base.stage2GitStatus = null;
+    base.stage2PlatformStatus = null;
+    base.stage2RuntimeBottleneckPhase = null;
+    base.stage2RuntimeBottleneckMs = null;
+  }
 
   const wfNorm = String(rowResolved.executionWorkflowStatus ?? "").trim();
   const mergeInProgress =

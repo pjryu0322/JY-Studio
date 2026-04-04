@@ -13,10 +13,74 @@ function outcomeColor(o: string): string {
   return "#64748b";
 }
 
-export function Stage2ExecutionResultPanel(props: { last: EnvironmentTestLastDto | null }) {
-  const { last } = props;
+function slotKo(s: "PENDING" | "RUNNING" | "DONE" | undefined): string {
+  if (s === "DONE") return "완료";
+  if (s === "RUNNING") return "진행";
+  return "대기";
+}
+
+function cursorStatusSummary(
+  cs: import("@/components/project-spec/api").EnvironmentTestLastDto["stage2CursorStatus"]
+): string | null {
+  if (!cs) return null;
+  return `준비 ${slotKo(cs.prepare)} · 생성 ${slotKo(cs.generate)} · 커밋 ${slotKo(cs.commit)} · 푸시 ${slotKo(cs.push)}`;
+}
+
+function gitStatusSummary(
+  g: import("@/components/project-spec/api").EnvironmentTestLastDto["stage2GitStatus"]
+): string | null {
+  if (!g) return null;
+  if (!g.branchDetected) return "branch 감지 대기";
+  if (!g.branchReflected) return "compare 반영 대기";
+  return "원격 브랜치 반영됨";
+}
+
+function platformStatusSummary(
+  p: import("@/components/project-spec/api").EnvironmentTestLastDto["stage2PlatformStatus"],
+  prUrl: string | null | undefined
+): string | null {
+  if (!p) return null;
+  if (prUrl?.trim()) return "PR 링크 확인됨";
+  if (!p.prCreated) return "PR 생성 대기";
+  return "PR 생성 처리됨";
+}
+
+export function Stage2ExecutionResultPanel(props: {
+  last: EnvironmentTestLastDto | null;
+  busyStage2?: boolean;
+  stage2ElapsedMs?: number | null;
+}) {
+  const { last, busyStage2, stage2ElapsedMs } = props;
   const s = mapEnvironmentTestLastToStage2Summary(last);
+  const elapsedCombinedMs =
+    busyStage2 && (typeof stage2ElapsedMs === "number" || (s?.runElapsedMsFromServer ?? null) != null)
+      ? Math.max(stage2ElapsedMs ?? 0, s?.runElapsedMsFromServer ?? 0)
+      : null;
   if (!last) {
+    if (busyStage2) {
+      return (
+        <div
+          data-testid="stage2-execution-result-panel"
+          style={{
+            padding: 14,
+            borderRadius: 12,
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 8 }}>Stage 2 실행 결과</div>
+          <strong style={{ fontSize: 12, color: "#1e3a8a" }}>실행 중</strong>
+          {typeof stage2ElapsedMs === "number" ? (
+            <span style={{ marginLeft: 8, fontSize: 12, color: "#1e3a8a" }}>
+              경과 {(stage2ElapsedMs / 1000).toFixed(0)}s
+            </span>
+          ) : null}
+          <p style={{ margin: "8px 0 0 0", fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
+            실행 중 (Cursor/Git 반영 대기). Task 생성 직후이면 잠시 후 여기에 진행 상태가 표시됩니다.
+          </p>
+        </div>
+      );
+    }
     return (
       <div
         data-testid="stage2-execution-result-panel"
@@ -44,12 +108,87 @@ export function Stage2ExecutionResultPanel(props: { last: EnvironmentTestLastDto
       }}
     >
       <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 10 }}>Stage 2 실행 결과</div>
+      {busyStage2 ? (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: 10,
+            borderRadius: 8,
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            fontSize: 12,
+            color: "#1e3a8a",
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>실행 중</strong>
+          {typeof elapsedCombinedMs === "number" ? (
+            <span style={{ marginLeft: 8 }}>경과 {(elapsedCombinedMs / 1000).toFixed(0)}s</span>
+          ) : null}
+          {s?.currentPhaseKey || s?.currentStepKey ? (
+            <div style={{ marginTop: 6, fontSize: 11, color: "#475569" }}>
+              <span style={{ color: "#64748b" }}>현재 단계</span>{" "}
+              <code style={{ fontSize: 11 }}>{s.currentPhaseKey ?? s.currentStepKey}</code>
+            </div>
+          ) : null}
+          {last?.stage2CursorStatus ? (
+            <div style={{ marginTop: 4, fontSize: 11, color: "#334155" }}>
+              <span style={{ color: "#64748b" }}>Cursor</span> {cursorStatusSummary(last.stage2CursorStatus)}
+            </div>
+          ) : null}
+          {last?.stage2GitStatus ? (
+            <div style={{ marginTop: 2, fontSize: 11, color: "#334155" }}>
+              <span style={{ color: "#64748b" }}>Git</span> {gitStatusSummary(last.stage2GitStatus)}
+            </div>
+          ) : null}
+          {last?.stage2PlatformStatus ? (
+            <div style={{ marginTop: 2, fontSize: 11, color: "#334155" }}>
+              <span style={{ color: "#64748b" }}>Platform</span>{" "}
+              {platformStatusSummary(last.stage2PlatformStatus, last?.prUrl ?? null)}
+            </div>
+          ) : null}
+          <div style={{ marginTop: 4 }}>
+            {last?.stage2LivePhaseLabel?.trim() ||
+              last?.stage2UiHint?.trim() ||
+              "Git 반영 대기 (Cursor 상태는 보조)"}
+          </div>
+          {s?.currentBottleneckHint ? (
+            <div style={{ marginTop: 4 }}>
+              <span style={{ color: "#64748b" }}>병목 힌트</span> <strong>{s.currentBottleneckHint}</strong>
+            </div>
+          ) : null}
+          <div style={{ marginTop: 4, fontSize: 11, color: "#334155" }}>
+            Reviewer·Security·SCM 로그는 브랜치가 GitHub에 반영된 뒤에만 이어집니다. 멈춘 것이 아니라 순서대로 대기 중일 수 있습니다.
+          </div>
+        </div>
+      ) : null}
       {s ? (
         <>
           <div style={{ marginBottom: 8 }}>
             <span style={{ color: "#64748b", fontSize: 12 }}>최종</span>{" "}
             <strong style={{ fontSize: 13, color: outcomeColor(s.finalOutcome) }}>{s.finalOutcome}</strong>
           </div>
+          {(s.currentPhaseLabel || s.uiHintLine || s.currentPhaseKey || s.currentStepKey) && !busyStage2 ? (
+            <div style={{ fontSize: 12, marginBottom: 8, color: "#334155", lineHeight: 1.45 }}>
+              {s.currentPhaseKey || s.currentStepKey ? (
+                <div style={{ marginBottom: 4 }}>
+                  <span style={{ color: "#64748b" }}>현재 단계</span>{" "}
+                  <code style={{ fontSize: 11 }}>{s.currentPhaseKey ?? s.currentStepKey}</code>
+                </div>
+              ) : null}
+              {s.currentPhaseLabel ? (
+                <div>
+                  <span style={{ color: "#64748b" }}>현재 단계</span> <strong>{s.currentPhaseLabel}</strong>
+                </div>
+              ) : null}
+              {s.uiHintLine ? <div style={{ marginTop: 2 }}>{s.uiHintLine}</div> : null}
+              {s.currentBottleneckHint ? (
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ color: "#64748b" }}>병목 힌트</span> <strong>{s.currentBottleneckHint}</strong>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div style={{ fontSize: 12, marginBottom: 4 }}>
             <span style={{ color: "#64748b" }}>Executor</span> <strong>{s.executor}</strong>
           </div>
@@ -76,19 +215,36 @@ export function Stage2ExecutionResultPanel(props: { last: EnvironmentTestLastDto
           </div>
           <div style={{ fontSize: 12, marginTop: 8 }}>
             <span style={{ color: "#64748b" }}>총 시간</span>{" "}
-            {s.totalTimeMs != null ? <strong>{`${(s.totalTimeMs / 1000).toFixed(1)}s`}</strong> : <span>—</span>}
-          </div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>
-            <span style={{ color: "#64748b" }}>병목 Top1</span>{" "}
-            {s.bottleneckStage ? (
-              <strong>
-                {stage2BottleneckLabel(s.bottleneckStage)}
-                {s.bottleneckMs != null ? ` (${s.bottleneckMs}ms)` : ""}
-              </strong>
+            {busyStage2 && typeof elapsedCombinedMs === "number" ? (
+              <strong>{`${(elapsedCombinedMs / 1000).toFixed(0)}s (진행 중)`}</strong>
+            ) : s.totalTimeMs != null ? (
+              <strong>{`${(s.totalTimeMs / 1000).toFixed(1)}s`}</strong>
             ) : (
               <span>—</span>
             )}
           </div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            <span style={{ color: "#64748b" }}>현재 병목 추정</span>{" "}
+            {s.bottleneckStage ? (
+              <strong>
+                {s.currentBottleneckHint ?? stage2BottleneckLabel(s.bottleneckStage)}
+                {s.bottleneckMs != null ? ` (${s.bottleneckMs}ms)` : ""}
+              </strong>
+            ) : s.currentBottleneckHint ? (
+              <strong>{s.currentBottleneckHint}</strong>
+            ) : (
+              <span>—</span>
+            )}
+          </div>
+          {last?.stage2TimingBreakdown && !busyStage2 ? (
+            <div style={{ marginTop: 8, fontSize: 10, color: "#64748b", lineHeight: 1.4 }}>
+              구간 ms(telemetry):{" "}
+              {Object.entries(last.stage2TimingBreakdown)
+                .filter(([, v]) => typeof v === "number" && v > 0)
+                .map(([k, v]) => `${k}:${v}`)
+                .join(" · ") || "—"}
+            </div>
+          ) : null}
         </>
       ) : null}
       <div style={{ marginTop: 10, fontSize: 10, color: "#94a3b8", lineHeight: 1.5 }}>

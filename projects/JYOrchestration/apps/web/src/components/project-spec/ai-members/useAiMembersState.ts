@@ -64,6 +64,8 @@ export function useAiMembersState(input: {
   const [stage2Last, setStage2Last] = useState<EnvironmentTestLastDto | null>(null);
   const [execSetupOk, setExecSetupOk] = useState<boolean | null>(null);
   const [busyStage2, setBusyStage2] = useState(false);
+  const [stage2BusySince, setStage2BusySince] = useState<number | null>(null);
+  const [stage2ElapsedMs, setStage2ElapsedMs] = useState<number | null>(null);
   const [busyDefaults, setBusyDefaults] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -98,6 +100,24 @@ export function useAiMembersState(input: {
     void loadExecutionSetup();
   }, [loadStage2, loadExecutionSetup]);
 
+  useEffect(() => {
+    if (!busyStage2 || stage2BusySince == null) {
+      setStage2ElapsedMs(null);
+      return;
+    }
+    const tick = () => setStage2ElapsedMs(Date.now() - stage2BusySince);
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [busyStage2, stage2BusySince]);
+
+  /** Stage 2 실행 중 서버 상태(워크플로·런) 갱신 — POST 대기 중에도 폴링 */
+  useEffect(() => {
+    if (!busyStage2 || !projectId.trim()) return;
+    const id = setInterval(() => void loadStage2(), 1_500);
+    return () => clearInterval(id);
+  }, [busyStage2, projectId, loadStage2]);
+
   const readiness = useMemo(() => {
     const executorReady = execSetupOk === true;
     const rev = slotStateForDbRole(members, "execution-review", "reviewer");
@@ -117,6 +137,7 @@ export function useAiMembersState(input: {
 
   async function runStage2() {
     setBusyStage2(true);
+    setStage2BusySince(Date.now());
     setNote(null);
     try {
       const { res, json } = await postEnvironmentTestRun(projectId, { stage: 2 });
@@ -131,6 +152,7 @@ export function useAiMembersState(input: {
       await onAfterMutation();
     } finally {
       setBusyStage2(false);
+      setStage2BusySince(null);
     }
   }
 
@@ -181,6 +203,7 @@ export function useAiMembersState(input: {
     execSetupOk,
     readiness,
     busyStage2,
+    stage2ElapsedMs,
     busyDefaults,
     note,
     setNote,

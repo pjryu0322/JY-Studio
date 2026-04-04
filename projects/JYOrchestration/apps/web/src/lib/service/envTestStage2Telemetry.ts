@@ -39,7 +39,11 @@ export function parseEnvTestStage2TimingFromValidationOutput(validationOutput: s
   topBottleneck: { stage: string; ms: number } | null;
   breakdown: Record<string, number> | null;
 } {
-  const empty = { totalTimeMs: null as number | null, topBottleneck: null as { stage: string; ms: number } | null, breakdown: null as Record<string, number> | null };
+  const empty: {
+    totalTimeMs: number | null;
+    topBottleneck: { stage: string; ms: number } | null;
+    breakdown: Record<string, number> | null;
+  } = { totalTimeMs: null, topBottleneck: null, breakdown: null };
   try {
     const j = JSON.parse(String(validationOutput ?? "")) as Record<string, unknown>;
     const t = j[ENV_TEST_STAGE2_TIMING_KEY] as EnvTestStage2TimingRecord | undefined;

@@ -19,6 +19,8 @@ import {
 } from "@/lib/service/envTestStage2Messages";
 
 const MAX_DIFF_SUMMARY_LEN = 8000;
+/** Stage 2 Reviewer/Security 스모크: diff 과대로 지연·토큰 낭비 방지 */
+const STAGE2_ROLE_DIFF_SUMMARY_CAP = 1200;
 
 export function buildPlatformToExecutorEnvTestStage2Stub(): {
   platformToExecutor: PlatformToExecutorEnvTestStage2Payload;
@@ -26,7 +28,7 @@ export function buildPlatformToExecutorEnvTestStage2Stub(): {
   return {
     platformToExecutor: {
       type: "EXECUTE_ENV_TEST_STAGE2",
-      summary: "허용 범위 내 최소 변경 생성 후 push",
+      summary: "hello-world 1파일 push",
       mode: "ENV_TEST_STAGE2",
     },
   };
@@ -40,11 +42,11 @@ export function buildEnvTestStage2ReviewRequest(input: {
   return {
     type: "REVIEW_REQUEST",
     mode: "ENV_TEST_STAGE2",
-    requestedIntent: input.requestedIntent.slice(0, 500),
+    requestedIntent: input.requestedIntent.slice(0, 200),
     allowedPaths: [ENV_TEST_MERGE_WHITELIST_PATTERN_TOP_LEVEL_MD, ENV_TEST_MERGE_WHITELIST_PATTERN_NESTED_MD],
-    changedFiles: input.changedFiles.map((f) => String(f).trim()).filter(Boolean),
-    fileCount: input.changedFiles.length,
-    diffSummary: input.diffSummary.slice(0, MAX_DIFF_SUMMARY_LEN),
+    changedFiles: input.changedFiles.map((f) => String(f).trim()).filter(Boolean).slice(0, 12),
+    fileCount: Math.min(input.changedFiles.length, 12),
+    diffSummary: input.diffSummary.slice(0, STAGE2_ROLE_DIFF_SUMMARY_CAP),
   };
 }
 
@@ -55,9 +57,9 @@ export function buildEnvTestStage2SecurityRequest(input: {
   return {
     type: "SECURITY_REQUEST",
     mode: "ENV_TEST_STAGE2",
-    changedFiles: input.changedFiles.map((f) => String(f).trim()).filter(Boolean),
-    fileCount: input.changedFiles.length,
-    diffSummary: input.diffSummary.slice(0, MAX_DIFF_SUMMARY_LEN),
+    changedFiles: input.changedFiles.map((f) => String(f).trim()).filter(Boolean).slice(0, 12),
+    fileCount: Math.min(input.changedFiles.length, 12),
+    diffSummary: input.diffSummary.slice(0, STAGE2_ROLE_DIFF_SUMMARY_CAP),
   };
 }
 

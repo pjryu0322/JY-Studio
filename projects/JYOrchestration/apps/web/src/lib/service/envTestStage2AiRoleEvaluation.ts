@@ -25,7 +25,7 @@ function maskSecretsForPrompt(raw: string): string {
     .replace(/\bghp_[A-Za-z0-9]{8,}\b/g, (m) => `${m.slice(0, 4)}****${m.slice(-4)}`)
     .replace(/\bgithub_pat_[A-Za-z0-9]{8,}\b/g, (m) => `${m.slice(0, 4)}****${m.slice(-4)}`)
     .replace(/\bsk-[A-Za-z0-9]{8,}\b/g, (m) => `${m.slice(0, 3)}****${m.slice(-3)}`)
-    .slice(0, 6000);
+    .slice(0, 1200);
 }
 
 function passFailFromEvalDecision(decision: string): "PASS" | "FAIL" {
@@ -59,15 +59,9 @@ export async function runEnvTestStage2ExecutorOpenAiAck(input: {
   const { result, usage } = await runOpenAiChatJsonEvaluation({
     model,
     temperature: ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
-    systemContent:
-      `You are ENV_TEST Stage2 Executor (OpenAI). Output ONLY JSON:\n` +
-      `{ "result": "PASS" | "FAIL", "reason": "short Korean" }\n` +
-      `PASS means executor ack for the following request.`,
-    userMessage: JSON.stringify({
-      type: "EXECUTE_ENV_TEST_STAGE2",
-      summary: "최소 변경 생성 후 push",
-      mode: "ENV_TEST_STAGE2",
-    }),
+    maxCompletionTokens: 80,
+    systemContent: `ENV_TEST Stage2 executor ack. Reply JSON only: {"result":"PASS"|"FAIL","reason":"short"}`,
+    userMessage: '{"type":"EXECUTE_ENV_TEST_STAGE2","mode":"ENV_TEST_STAGE2"}',
   });
   const end = Date.now();
   const endIso = new Date(end).toISOString();
@@ -121,24 +115,17 @@ export async function runEnvTestStage2ReviewerWithAiMember(
 
   const maskedDiff = opts?.enableMasking === false ? input.request.diffSummary : maskSecretsForPrompt(input.request.diffSummary);
   const userPayload = {
-    type: input.request.type,
-    requestedIntent: input.request.requestedIntent,
-    allowedPaths: input.request.allowedPaths,
-    changedFiles: input.request.changedFiles.slice(0, 30),
-    fileCount: input.request.fileCount,
-    diffSummary: maskedDiff,
+    files: input.request.changedFiles.slice(0, 8),
+    diff: maskedDiff,
   };
 
   const model = resolveEnvTestStage2OpenAiModel();
   const { result } = await runOpenAiChatJsonEvaluation({
     model,
     temperature: ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
-    systemContent:
-      `You are ENV_TEST Stage2 Reviewer (OpenAI). Output ONLY valid JSON:\n` +
-      `{ "result": "PASS" | "FAIL", "reason": "short Korean reason" }`,
-    userMessage:
-      `REVIEW_REQUEST JSON:\n${JSON.stringify(userPayload)}\n\n` +
-      `Checks: allowed paths, change size.\n`,
+    maxCompletionTokens: 96,
+    systemContent: `Stage2 smoke reviewer. JSON only: {"result":"PASS"|"FAIL","reason":"short"}. Whitelist paths only.`,
+    userMessage: JSON.stringify(userPayload),
   });
 
   const passFail = passFailFromEvalDecision(result.decision);
@@ -167,22 +154,17 @@ export async function runEnvTestStage2SecurityWithAiMember(
 
   const maskedDiff = opts?.enableMasking === false ? input.request.diffSummary : maskSecretsForPrompt(input.request.diffSummary);
   const userPayload = {
-    type: input.request.type,
-    changedFiles: input.request.changedFiles.slice(0, 30),
-    fileCount: input.request.fileCount,
-    diffSummary: maskedDiff,
+    files: input.request.changedFiles.slice(0, 8),
+    diff: maskedDiff,
   };
 
   const model = resolveEnvTestStage2OpenAiModel();
   const { result } = await runOpenAiChatJsonEvaluation({
     model,
     temperature: ENV_TEST_STAGE2_OPENAI_TEMPERATURE,
-    systemContent:
-      `You are ENV_TEST Stage2 Security (OpenAI). Output ONLY valid JSON:\n` +
-      `{ "result": "PASS" | "FAIL", "reason": "short Korean reason" }`,
-    userMessage:
-      `SECURITY_REQUEST JSON:\n${JSON.stringify(userPayload)}\n\n` +
-      `Checks: secrets/tokens, dangerous code patterns.\n`,
+    maxCompletionTokens: 96,
+    systemContent: `Stage2 smoke security. JSON only: {"result":"PASS"|"FAIL","reason":"short"}. Obvious secrets=FAIL.`,
+    userMessage: JSON.stringify(userPayload),
   });
 
   const passFail = passFailFromEvalDecision(result.decision);
@@ -217,7 +199,7 @@ export async function runEnvTestStage2ScmDecisionWithAiMembers(input: {
   ]
     .filter(Boolean)
     .join("\n")
-    .slice(0, 6000);
+    .slice(0, 400);
 
   const pack = await tryRunScmManagerWithAiMembers({
     projectId: input.projectId,

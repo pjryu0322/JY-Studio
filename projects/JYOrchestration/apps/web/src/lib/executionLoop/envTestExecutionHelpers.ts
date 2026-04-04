@@ -27,6 +27,17 @@ import {
   parseEnvTestStage2TimingFromValidationOutput,
   patchTaskExecutionRunStage2Timing,
 } from "@/lib/service/envTestStage2Telemetry";
+import {
+  monitorPlatformPrDone,
+  monitorPlatformPrStart,
+  monitorReviewDone,
+  monitorReviewStart,
+  monitorScmDone,
+  monitorScmStart,
+  monitorSecurityDone,
+  monitorSecurityStart,
+  patchTaskExecutionRunStage2RuntimeMonitor,
+} from "@/lib/service/envTestStage2RuntimeMonitor";
 import { ENV_TEST_STAGE2_RUN_META_KEY } from "@/lib/service/envTestStage2Messages";
 import { evaluateNextTaskReadiness } from "@/lib/executionLoop/nextTaskReadiness";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
@@ -76,6 +87,8 @@ export async function runEnvTestPlatformPrPhase(input: {
   executionRunCreatedAt?: Date | null;
   /** ENV_TEST compare ahed_by 확인 시각(밀리초). 있으면 compare→PR elapsed 로깅에 사용. */
   compareOkAtMs?: number | null;
+  /** Stage 2: 런타임 모니터(platform_pr_create) */
+  execRunId?: string | null;
 }): Promise<
   | { ok: true; prUrl: string; prNumber: number; reusedExisting: boolean; prElapsedMs: number }
   | { ok: false; message: string }
@@ -87,6 +100,17 @@ export async function runEnvTestPlatformPrPhase(input: {
   });
   const prPhaseStartedAt = Date.now();
   const elapsedMsSinceRunStart = elapsedSinceRun(input.executionRunCreatedAt ?? undefined);
+  if (isEnvTestStage2TaskKind(input.taskKind) && input.execRunId) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "pr_create_started",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: { headBranch: input.headBranch },
+    });
+    await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorPlatformPrStart(m, Date.now()));
+  }
   appendTaskProgressLog({
     kind: "execution",
     phase: "env_test_pr_lookup_started",
@@ -105,6 +129,17 @@ export async function runEnvTestPlatformPrPhase(input: {
   });
   if (!prRes.ok) {
     return { ok: false, message: prRes.message };
+  }
+  if (isEnvTestStage2TaskKind(input.taskKind) && input.execRunId) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "pr_create_finished",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: { prUrl: prRes.data.pullRequestUrl, prNumber: prRes.data.pullRequestNumber },
+    });
+    await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorPlatformPrDone(m, Date.now()));
   }
   const prElapsedMs = Date.now() - prPhaseStartedAt;
   const elapsedMsCompareToPr =
@@ -218,7 +253,9 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         ? "ENV_TEST: Cursor 메타 미확인, GitHub compare로 푸시 확인 후 플랫폼 PR."
         : input.via === "cursor_poll_early_github"
           ? "ENV_TEST: Cursor 폴링 중 GitHub compare로 푸시 확인 후 플랫폼 PR 처리."
-          : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
+          : input.via === "cursor_poll_stage2_branch_head"
+            ? "ENV_TEST Stage 2: GitHub 브랜치 HEAD 확인 후 플랫폼 PR 처리(Cursor 터미널 대기 없음)."
+            : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
 
   await prisma.task.update({
     where: { id: input.taskId },
@@ -240,6 +277,7 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     githubAccessToken: input.githubAccessToken ?? null,
     executionRunCreatedAt: input.executionRunCreatedAt ?? null,
     compareOkAtMs: input.compareData.compareOkAtMs ?? null,
+    execRunId: input.execRunId,
   });
   if (!prPhase.ok) {
     return { kind: "pr_failed", message: prPhase.message };
@@ -351,7 +389,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
   await refreshWorkflowStates(input.projectId);
 
   const reviewRequest = buildEnvTestStage2ReviewRequest({
-    requestedIntent: "허용 범위 내 최소 변경 후 PR — Stage2 readiness",
+    requestedIntent: "ENV_TEST Stage2 smoke",
     changedFiles,
     diffSummary,
   });
@@ -386,6 +424,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     userId: input.actorUserId,
     executionId: input.execRunId,
   });
+  await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorReviewStart(m, Date.now()));
 
   const reviewStarted = Date.now();
   const reviewStartIso = new Date(reviewStarted).toISOString();
@@ -408,6 +447,16 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     taskId: input.taskId,
     userId: input.actorUserId,
   });
+  logStage2CatalogEvent({
+    phase: "review_finished",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    executionId: input.execRunId,
+    elapsedMs: reviewMs,
+    detail: { result: reviewResult.result },
+  });
+  await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorReviewDone(m, Date.now()));
   vOut = mergeEnvTestStage2RunValidationOutput(vOut, { reviewResult });
   await prisma.taskExecutionRun.update({
     where: { id: input.execRunId },
@@ -548,6 +597,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     userId: input.actorUserId,
     executionId: input.execRunId,
   });
+  await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorSecurityStart(m, Date.now()));
 
   const secStarted = Date.now();
   const secStartIso = new Date(secStarted).toISOString();
@@ -570,6 +620,16 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     taskId: input.taskId,
     userId: input.actorUserId,
   });
+  logStage2CatalogEvent({
+    phase: "security_finished",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    executionId: input.execRunId,
+    elapsedMs: secMs,
+    detail: { result: securityResult.result },
+  });
+  await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorSecurityDone(m, Date.now()));
   vOut = mergeEnvTestStage2RunValidationOutput(vOut, { securityResult });
   await prisma.taskExecutionRun.update({
     where: { id: input.execRunId },
@@ -720,6 +780,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     executionId: input.execRunId,
     detail: { scmMemberAvailable: scmMember.available },
   });
+  await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorScmStart(m, Date.now()));
 
   let mergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>>;
 
@@ -810,6 +871,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
         executionId: input.execRunId,
         detail: { step: "scm_preflight", reason: "missing_repo_branch" },
       });
+      await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorScmDone(m, Date.now()));
       return { ok: false, message: "Stage 2: SCM 판단 불가(저장소/브랜치 정보 부족)", blockedReason: "SCM_BLOCKED" };
     }
 
@@ -892,6 +954,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
         executionId: input.execRunId,
         detail: { step: "scm_decision", blockedReason: "SCM_BLOCKED" },
       });
+      await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorScmDone(m, Date.now()));
       return {
         ok: false,
         message: `Stage 2: SCM 차단 — ${(scmDecision.summary ?? "hold/reject").slice(0, 800)}`,
@@ -1061,6 +1124,36 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
         bottleneck_top1: timing.topBottleneck,
       },
     });
+    logStage2CatalogEvent({
+      phase: "scm_finished",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { mergeOk: mergeRes.ok, finalOutcome },
+    });
+    logStage2CatalogEvent({
+      phase: "total_elapsed_ms",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      elapsedMs: typeof timing.totalTimeMs === "number" ? timing.totalTimeMs : undefined,
+      detail: {
+        total_elapsed_ms: timing.totalTimeMs,
+        executorTime: timing.breakdown?.["executor"],
+        cursorTime: timing.breakdown?.["cursor"],
+        branchDetectTime: timing.breakdown?.["branchDetect"],
+        prCreationTime: timing.breakdown?.["prCreation"],
+        reviewTime: timing.breakdown?.["review"],
+        securityTime: timing.breakdown?.["security"],
+        scmTime: timing.breakdown?.["scm"],
+        mergeTime: timing.breakdown?.["merge"],
+        mergeVerifyTime: timing.breakdown?.["mergeVerify"],
+        bottleneckTop1: timing.topBottleneck,
+      },
+    });
+    await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorScmDone(m, Date.now()));
   } else {
     if (scmResult.result === "VERIFY_FAILED") {
       logStage2CatalogEvent({
@@ -1080,6 +1173,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
       executionId: input.execRunId,
       detail: { mergeOk: false, scmResult: scmResult.result },
     });
+    await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorScmDone(m, Date.now()));
   }
 
   return mergeRes;

@@ -23,14 +23,35 @@ export type RelayPromptSetup = {
 
 const DEFAULT_ALLOWED = ["src/**", "app/**", "tests/**", "packages/**", "lib/**", "components/**"];
 
+export type BuildCursorExecutionPromptOptions = {
+  /** ENV_TEST_STAGE2: Stage 1과 동일한 최소 작업만 요청해 토큰·지연을 줄인다. */
+  compactHelloWorld?: boolean;
+};
+
 /**
  * Cursor Background Agent용 프롬프트. 로컬 경로 없음 — 원격 저장소 URL만 전달한다.
  */
 export function buildCursorExecutionPrompt(
   task: CursorPromptTask,
   project: CursorPromptProject,
-  setup: RelayPromptSetup
+  setup: RelayPromptSetup,
+  opts?: BuildCursorExecutionPromptOptions
 ): string {
+  if (opts?.compactHelloWorld) {
+    const commitHint = setup.autoCommit ? "One commit." : "Commit if needed.";
+    const pushHint = setup.autoPush ? "Push branch to origin." : "Do not push.";
+    return [
+      `ENV_TEST Stage2 smoke. Repo ${setup.gitRepoUrl}`,
+      `Base ${setup.baseBranch} | use branch name exactly: ${setup.suggestedBranchName}`,
+      `Create ONE file only: orchestration-test/hello-world.md`,
+      `Body (markdown):`,
+      `# Hello`,
+      `smoke`,
+      `${commitHint} ${pushHint}`,
+      `No other files. No PR. Report branchName + commitHash when done.`,
+    ].join("\n");
+  }
+
   const criteria = task.acceptanceCriteria.length
     ? task.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")
     : "(No explicit acceptance criteria — implement from title and description.)";

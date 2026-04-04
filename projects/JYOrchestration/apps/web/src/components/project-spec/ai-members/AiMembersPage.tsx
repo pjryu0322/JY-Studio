@@ -15,12 +15,14 @@ function recentLineForRole(
   last: ReturnType<typeof mapEnvironmentTestLastToStage2Summary>
 ): string | null {
   if (!last) return null;
-  if (roleKey === "executor") return last.executor !== "—" ? `결과: ${last.executor}` : null;
-  if (roleKey === "reviewer")
-    return last.reviewer.value !== "—" ? `결과: ${last.reviewer.value}` : null;
-  if (roleKey === "security")
-    return last.security.value !== "—" ? `결과: ${last.security.value}` : null;
-  return last.scm.value !== "—" ? `결과: ${last.scm.value}` : null;
+  const ex = last.executor;
+  const rev = last.reviewer.value;
+  const sec = last.security.value;
+  const scm = last.scm.value;
+  if (roleKey === "executor") return ex !== "—" ? `결과: ${ex}` : null;
+  if (roleKey === "reviewer") return rev !== "—" ? `결과: ${rev}` : null;
+  if (roleKey === "security") return sec !== "—" ? `결과: ${sec}` : null;
+  return scm !== "—" ? `결과: ${scm}` : null;
 }
 
 export function AiMembersPage(props: {
@@ -76,7 +78,11 @@ export function AiMembersPage(props: {
         onAddDefaults={() => st.addDefaultMembers()}
       />
 
-      <Stage2ExecutionResultPanel last={st.stage2Last} />
+      <Stage2ExecutionResultPanel
+        last={st.stage2Last}
+        busyStage2={st.busyStage2}
+        stage2ElapsedMs={st.stage2ElapsedMs}
+      />
 
       <div>
         <h3 style={{ fontSize: 16, fontWeight: 900, margin: "0 0 10px 0", color: "#0f172a" }}>역할 대시보드</h3>
