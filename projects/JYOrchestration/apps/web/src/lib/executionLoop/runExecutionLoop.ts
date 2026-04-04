@@ -7,10 +7,10 @@ import {
 } from "@/lib/execution/envTestTaskKind";
 import { buildCursorExecutionPrompt } from "@/lib/execution/buildCursorExecutionPrompt";
 import {
-  executeCursorRun,
   type CursorRunResult,
   type ExecuteCursorRunOutcome,
 } from "@/lib/execution/cursorExecutionAdapter";
+import { runEnvTestCursorToPrOpenedCore } from "@/lib/executionLoop/envTestExecutionCore";
 import { isCursorCodeReflectionConfirmed } from "@/lib/execution/cursorReflectionPolicy";
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
 import { countExecutionReviewAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
@@ -46,6 +46,11 @@ import {
 import { runEnvTestStage2ExecutorOpenAiAck } from "@/lib/service/envTestStage2AiRoleEvaluation";
 import { mergeEnvTestStage2RunValidationOutput } from "@/lib/service/envTestStage2PlatformActors";
 import { patchTaskExecutionRunStage2Timing } from "@/lib/service/envTestStage2Telemetry";
+import {
+  monitorExecutorDone,
+  monitorExecutorStart,
+  patchTaskExecutionRunStage2RuntimeMonitor,
+} from "@/lib/service/envTestStage2RuntimeMonitor";
 import {
   evaluateNextTaskReadiness,
   type NextTaskReadinessResult,
@@ -490,7 +495,8 @@ export async function runExecutionLoop(params: {
           autoPush: setup.autoPush === true,
           requireTestsBeforePush: setup.requireTestsBeforePush !== false,
           allowedPathGlobs: mergedAllowedGlobs,
-        }
+        },
+        isEnvTestStage2TaskKind(taskRow.taskKind) ? { compactHelloWorld: true } : undefined
       );
 
       // 동일 Task에 아직 active한 실행(run)이 남아 있으면 재실행을 막는다.
@@ -571,6 +577,7 @@ export async function runExecutionLoop(params: {
           userId: actorUserId,
           executionId: execRun.id,
         });
+        await patchTaskExecutionRunStage2RuntimeMonitor(execRun.id, (m) => monitorExecutorStart(m, Date.now()));
         const ex = await runEnvTestStage2ExecutorOpenAiAck({
           projectId,
           taskId,
@@ -595,6 +602,7 @@ export async function runExecutionLoop(params: {
           events: ex.timing.events,
         });
         if (!ex.ok) {
+          await patchTaskExecutionRunStage2RuntimeMonitor(execRun.id, (m) => monitorExecutorDone(m, Date.now()));
           const rowVo = await prisma.taskExecutionRun.findUnique({
             where: { id: execRun.id },
             select: { validationOutput: true },
@@ -671,6 +679,7 @@ export async function runExecutionLoop(params: {
           executionId: execRun.id,
           detail: { note: "cursor_invoke_next", roleKey: "executor" },
         });
+        await patchTaskExecutionRunStage2RuntimeMonitor(execRun.id, (m) => monitorExecutorDone(m, Date.now()));
       }
 
       console.info("[execution-loop] cursor invoke", {
@@ -679,6 +688,16 @@ export async function runExecutionLoop(params: {
         branch: branchPlan.branchName,
         runRecordId: execRun.id,
       });
+      if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_invoke_started",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { branch: branchPlan.branchName, runRecordId: execRun.id },
+        });
+      }
       appendTaskProgressLog({
         kind: "execution",
         phase: "cursor_invoke",
@@ -721,63 +740,64 @@ export async function runExecutionLoop(params: {
 
       let cursorOutcome: ExecuteCursorRunOutcome;
       try {
-        if (isEnvTestTask) {
-          appendTaskProgressLog({
-            kind: "execution",
-            phase: "env_test_cursor_invoke_started",
+        cursorOutcome = await runEnvTestCursorToPrOpenedCore({
+          executeParams: {
+            projectId,
+            workflowId: taskRow.sourceSpecVersionId ?? null,
+            executionSetup: {
+              cursorApiUrl: normalizeCursorApiBaseUrl(setup.cursorApiUrl),
+              cursorApiToken: setup.cursorApiToken ?? null,
+              gitRepoUrl: repoUrl,
+              baseBranch: setup.baseBranch,
+              branchStrategy: setup.branchStrategy,
+              branchPrefix: setup.branchPrefix,
+              autoCommit: setup.autoCommit !== false,
+              autoPush: setup.autoPush === true,
+              autoPr: setup.autoPr === true,
+              requireTestsBeforePush: setup.requireTestsBeforePush !== false,
+            },
+            task: {
+              id: taskRow.id,
+              title: taskRow.name,
+              description: taskRow.description,
+              acceptanceCriteria: criteria,
+            },
+            suggestedBranchName: branchPlan.branchName,
+            prompt,
+            allowedPaths: mergedAllowedGlobs.length ? mergedAllowedGlobs : undefined,
+            taskKind: taskRow.taskKind ?? null,
+            githubAccessToken: setup.githubAccessToken ?? null,
+            envTestPollFinalizeContext: isEnvTestTask
+              ? {
+                  execRunId: execRun.id,
+                  actorUserId,
+                  taskId,
+                  repoUrl,
+                  baseBranch: setup.baseBranch,
+                  githubAccessToken: setup.githubAccessToken ?? null,
+                  steps,
+                  singleTaskId,
+                  effectiveAutoAdvance,
+                  execRunCreatedAt: execRun.createdAt,
+                }
+              : undefined,
+            stage2RuntimeMonitor: isEnvTestFamilyTaskKind(taskRow.taskKind)
+              ? {
+                  execRunId: execRun.id,
+                  projectId,
+                  taskId,
+                  actorUserId,
+                }
+              : undefined,
+          },
+          ctx: {
             projectId,
             taskId,
-            userId: actorUserId,
-            detail: { execRunId: execRun.id, branch: branchPlan.branchName },
-          });
-        }
-        const cursorStartedAt = Date.now();
-        cursorOutcome = await executeCursorRun({
-          projectId,
-          workflowId: taskRow.sourceSpecVersionId ?? null,
-          executionSetup: {
-            cursorApiUrl: normalizeCursorApiBaseUrl(setup.cursorApiUrl),
-            cursorApiToken: setup.cursorApiToken ?? null,
-            gitRepoUrl: repoUrl,
-            baseBranch: setup.baseBranch,
-            branchStrategy: setup.branchStrategy,
-            branchPrefix: setup.branchPrefix,
-            autoCommit: setup.autoCommit !== false,
-            autoPush: setup.autoPush === true,
-            autoPr: setup.autoPr === true,
-            requireTestsBeforePush: setup.requireTestsBeforePush !== false,
+            actorUserId,
+            execRunId: execRun.id,
+            branchName: branchPlan.branchName,
           },
-          task: {
-            id: taskRow.id,
-            title: taskRow.name,
-            description: taskRow.description,
-            acceptanceCriteria: criteria,
-          },
-          suggestedBranchName: branchPlan.branchName,
-          prompt,
-          allowedPaths: mergedAllowedGlobs.length ? mergedAllowedGlobs : undefined,
-          taskKind: taskRow.taskKind ?? null,
-          githubAccessToken: setup.githubAccessToken ?? null,
-          envTestPollFinalizeContext: isEnvTestTask
-            ? {
-                execRunId: execRun.id,
-                actorUserId,
-                taskId,
-                repoUrl,
-                baseBranch: setup.baseBranch,
-                githubAccessToken: setup.githubAccessToken ?? null,
-                steps,
-                singleTaskId,
-                effectiveAutoAdvance,
-                execRunCreatedAt: execRun.createdAt,
-              }
-            : undefined,
         });
-        if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
-          await patchTaskExecutionRunStage2Timing(execRun.id, {
-            cursorTimeMs: Date.now() - cursorStartedAt,
-          });
-        }
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : String(e);
         console.error("[execution-loop] cursor threw (abnormal)", { taskId, errMsg });
@@ -898,10 +918,38 @@ export async function runExecutionLoop(params: {
       if (!cursorOutcome.ok) {
         const errMsg = cursorOutcome.error ?? "cursor failed";
 
+        const isEnvTestBranchWaitFail =
+          isEnvTestFamilyTaskKind(taskRow.taskKind) &&
+          errMsg.includes("Git 원격 브랜치가 제한 시간 내에");
+        if (isEnvTestBranchWaitFail) {
+          await prisma.task.update({
+            where: { id: taskId },
+            data: {
+              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+              lastEvalResult: "failed",
+              lastEvalSummary: errMsg.slice(0, 1500),
+            },
+          });
+          await prisma.taskExecutionRun.update({
+            where: { id: execRun.id },
+            data: {
+              status: "failed",
+              evaluationDecision: "failed",
+              evaluationReason: `stage2_branch_wait_timeout:${errMsg}`.slice(0, 8000),
+            },
+          });
+          await refreshWorkflowStates(projectId);
+          if (singleTaskId) {
+            return { ok: false, steps, message: errMsg };
+          }
+          continue;
+        }
+
         // PR도 없고 Cursor도 터미널을 못 내고 끝난 경우(특히 timeout)는 즉시 FAILED로 정리해 무한 재시도를 막는다.
+        // Stage 2는 Git 브랜치 대기 실패만 위에서 처리하고, Cursor 폴링 한도 문구로는 이 블록에 들어오지 않는다.
         const isTimeout =
           errMsg.includes("응답 시간 초과") || errMsg.toLowerCase().includes("timeout");
-        if (isTimeout) {
+        if (isTimeout && !isEnvTestStage2TaskKind(taskRow.taskKind)) {
           await prisma.task.update({
             where: { id: taskId },
             data: {
@@ -1481,6 +1529,7 @@ export async function runExecutionLoop(params: {
           githubAccessToken: setup.githubAccessToken ?? null,
           executionRunCreatedAt: execRun.createdAt,
           compareOkAtMs: envTestCompareOkAtMs,
+          execRunId: execRun.id,
         });
         if (!prPhaseMain.ok) {
           appendTaskProgressLog({

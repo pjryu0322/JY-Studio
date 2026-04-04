@@ -72,7 +72,7 @@ export async function fetchGithubBranchHeadExists(params: {
   projectId?: string | null;
   allowUnauthenticated?: boolean;
 }): Promise<
-  | { ok: true }
+  | { ok: true; headSha: string | null }
   | { ok: false; code: string; message: string; httpStatus?: number }
 > {
   const branch = String(params.branch ?? "").trim();
@@ -123,7 +123,16 @@ export async function fetchGithubBranchHeadExists(params: {
         httpStatus: res.status,
       };
     }
-    return { ok: true };
+    const txt = await res.text();
+    let headSha: string | null = null;
+    try {
+      const j = JSON.parse(txt) as { commit?: { sha?: string } };
+      const s = String(j?.commit?.sha ?? "").trim();
+      headSha = s || null;
+    } catch {
+      headSha = null;
+    }
+    return { ok: true, headSha };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, code: "GITHUB_BRANCH_EXCEPTION", message: msg, httpStatus: 502 };

@@ -8,6 +8,7 @@
 
 import { randomUUID } from "node:crypto";
 import { isEnvTestFamilyTaskKind } from "@/lib/execution/envTestTaskKind";
+import { logStage2CatalogEvent } from "@/lib/service/envTestStage2CatalogEvents";
 import { validateCursorAgentLaunchPayload } from "@/lib/execution/cursorAgentLaunchValidation";
 import { enhanceCursorErrorIfBaseBranchRelated, repoDisplayForGitError } from "@/lib/execution/gitBranchCursorError";
 import { verifyBaseBranchBeforeCursorExecution } from "@/lib/execution/verifyBaseBranchBeforeCursor";
@@ -22,6 +23,16 @@ import { runEnvTestAfterGithubPushConfirmed } from "@/lib/executionLoop/envTestE
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
 import { fetchGithubBranchHeadExists, fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
+import {
+  monitorApplyCursorAgentHeuristics,
+  monitorCursorPrepareDone,
+  monitorCursorPrepareStart,
+  monitorFirstGitBranchCheck,
+  monitorGitBranchDetected,
+  monitorGitBranchReflected,
+  patchTaskExecutionRunStage2RuntimeMonitor,
+  type Stage2RuntimeMonitorV1,
+} from "@/lib/service/envTestStage2RuntimeMonitor";
 
 /** Cursor 실행 결과(플랫폼은 로컬 git/diff 없음). */
 export type CursorRunResult = {
@@ -81,6 +92,16 @@ export type ExecuteCursorRelayParams = {
     singleTaskId?: string;
     effectiveAutoAdvance: boolean;
     execRunCreatedAt: Date;
+  } | null;
+  /**
+   * ENV_TEST(Stage 1·2) 공통: validationOutput.stage2RuntimeMonitor — Git 반영·병목 관측.
+   * 키 이름은 호환용이며 Stage 1 동일 파이프라인에서도 사용한다.
+   */
+  stage2RuntimeMonitor?: {
+    execRunId: string;
+    projectId: string;
+    taskId: string;
+    actorUserId?: string;
   } | null;
 };
 
@@ -165,8 +186,13 @@ const ENV_TEST_POLL_INTERVAL_SLOW_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_PO
   max: 10_000,
 });
 
-function envTestCursorPollIntervalMs(elapsedSincePollLoopStartMs: number): number {
+function envTestCursorPollIntervalMs(elapsedSincePollLoopStartMs: number, aggressive: boolean): number {
   const e = Math.max(0, elapsedSincePollLoopStartMs);
+  if (aggressive) {
+    if (e < ENV_TEST_STAGE2_POLL_FAST_WINDOW_MS) return ENV_TEST_STAGE2_POLL_INTERVAL_FAST_MS;
+    if (e < ENV_TEST_STAGE2_POLL_MID_WINDOW_MS) return ENV_TEST_STAGE2_POLL_INTERVAL_MID_MS;
+    return ENV_TEST_STAGE2_POLL_INTERVAL_SLOW_MS;
+  }
   if (e < ENV_TEST_POLL_FAST_WINDOW_MS) return ENV_TEST_POLL_INTERVAL_FAST_MS;
   if (e < ENV_TEST_POLL_MID_WINDOW_MS) return ENV_TEST_POLL_INTERVAL_MID_MS;
   return ENV_TEST_POLL_INTERVAL_SLOW_MS;
@@ -203,6 +229,72 @@ const ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH = parseEnvPositiveIntMs(
   { min: 0, max: 300_000 }
 );
 
+/** ENV_TEST_STAGE2: compare 워밍업을 더 짧게(기본 0ms) — branch reflected까지 GitHub 폴링을 빨리 시작한다. */
+const ENV_TEST_STAGE2_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH",
+  0,
+  { min: 0, max: 300_000 }
+);
+/** Stage 2: 런치 직후 첫 브랜치 존재 확인 전 지연(기본 500ms). */
+const ENV_TEST_STAGE2_POST_LAUNCH_GITHUB_PROBE_DELAY_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_POST_LAUNCH_GITHUB_PROBE_DELAY_MS",
+  500,
+  { min: 0, max: 30_000 }
+);
+/** Stage 2: 브랜치 404 재시도 간 최소 간격(기본 1000ms). */
+const ENV_TEST_STAGE2_EXISTS_CHECK_MIN_INTERVAL_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_EXISTS_CHECK_MIN_INTERVAL_MS",
+  1_000,
+  { min: 200, max: 10_000 }
+);
+/** Stage 2: 브랜치 미생성 상태가 길게 지속될 때 진단 로그(기본 30000ms, 동작은 계속). */
+const ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS",
+  30_000,
+  { min: 5_000, max: 120_000 }
+);
+const ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS = parseEnvPositiveIntMs("CURSOR_AGENT_ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS", 300, {
+  min: 0,
+  max: 60_000,
+});
+/** Stage 2 Cursor 폴링: 초기/중기/후기 윈도우(ms). */
+const ENV_TEST_STAGE2_POLL_FAST_WINDOW_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_STAGE2_POLL_FAST_WINDOW_MS", 10_000, {
+  min: 3_000,
+  max: 120_000,
+});
+const ENV_TEST_STAGE2_POLL_MID_WINDOW_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_STAGE2_POLL_MID_WINDOW_MS", 30_000, {
+  min: 10_000,
+  max: 300_000,
+});
+const ENV_TEST_STAGE2_POLL_INTERVAL_FAST_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_STAGE2_POLL_INTERVAL_FAST_MS", 800, {
+  min: 300,
+  max: 5_000,
+});
+const ENV_TEST_STAGE2_POLL_INTERVAL_MID_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_STAGE2_POLL_INTERVAL_MID_MS", 1_500, {
+  min: 500,
+  max: 8_000,
+});
+const ENV_TEST_STAGE2_POLL_INTERVAL_SLOW_MS = parseEnvPositiveIntMs("CURSOR_ENV_TEST_STAGE2_POLL_INTERVAL_SLOW_MS", 2_500, {
+  min: 800,
+  max: 10_000,
+});
+/** Stage 2: compare가 ahead≤0일 때 재시도 간격(기본 1200ms). */
+const ENV_TEST_STAGE2_REFLECTED_CHECK_INTERVAL_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_REFLECTED_CHECK_INTERVAL_MS",
+  1_200,
+  { min: 400, max: 10_000 }
+);
+const ENV_TEST_STAGE2_REFLECTED_SOFT_TIMEOUT_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_REFLECTED_SOFT_TIMEOUT_MS",
+  15_000,
+  { min: 3_000, max: 120_000 }
+);
+const ENV_TEST_STAGE2_REFLECTED_HARD_TIMEOUT_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_REFLECTED_HARD_TIMEOUT_MS",
+  30_000,
+  { min: 5_000, max: 120_000 }
+);
+
 /** ENV_TEST: branch/compare 404 5회차 이후 백오프 상한(기본 5초, 10초 금지). */
 const ENV_TEST_COMPARE_404_BACKOFF_CAP_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_COMPARE_404_BACKOFF_CAP_MS",
@@ -210,7 +302,13 @@ const ENV_TEST_COMPARE_404_BACKOFF_CAP_MS = parseEnvPositiveIntMs(
   { min: 1_000, max: 10_000 }
 );
 
-function envTestCompare404BackoffDelayMs(zeroBasedAttemptIndex: number): number {
+function envTestCompare404BackoffDelayMs(zeroBasedAttemptIndex: number, aggressive: boolean): number {
+  if (aggressive) {
+    const steps = [500, 1_000, 1_500, 2_000];
+    const i = Math.max(0, zeroBasedAttemptIndex);
+    if (i < steps.length) return steps[i];
+    return 3_000;
+  }
   const steps = [1_000, 2_000, 3_000, 4_000];
   const i = Math.max(0, zeroBasedAttemptIndex);
   if (i < steps.length) return steps[i];
@@ -224,6 +322,20 @@ type EnvTestGithubProbeState = {
   compare404AttemptIndex: number;
   branchConfirmedAtMs: number | null;
   warmupLogged?: boolean;
+  /** compare 게이트: Stage 2는 더 짧게(기본 0ms). */
+  compareMinMsAfterLaunch: number;
+  /** Stage 2: 폴링·404 백오프를 더 공격적으로. */
+  aggressiveGithubTiming: boolean;
+  stage2FirstBranchCheckCatalogEmitted?: boolean;
+  stage2FirstBranchReflectedCatalogEmitted?: boolean;
+  /** Stage 2: branch_detect_attempt 카운트 */
+  stage2BranchDetectAttemptSeq?: number;
+  /** Stage 2: compare ahead≤0 구간 진입 시각(재시도·소프트 타임아웃) */
+  stage2CompareAheadZeroSinceMs?: number | null;
+  stage2AheadZeroSoftLogged?: boolean;
+  stage2BranchExistsHardLogged?: boolean;
+  /** 마지막 성공한 GET /branches/{branch} 의 HEAD sha (Stage 2 Git 우선 종료용) */
+  lastBranchHeadSha?: string | null;
 };
 
 function envTestAllowGithubHeadProbe(
@@ -231,9 +343,9 @@ function envTestAllowGithubHeadProbe(
   completedAgentPolls: number
 ): { ok: true } | { ok: false; reason: "warmup" | "backoff"; retryAfterMs?: number } {
   const elapsed = Date.now() - state.agentLaunchStartedAt;
+  const minMs = state.compareMinMsAfterLaunch;
   const warmupDone =
-    completedAgentPolls >= ENV_TEST_GITHUB_COMPARE_MIN_COMPLETED_POLLS ||
-    elapsed >= ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH;
+    completedAgentPolls >= ENV_TEST_GITHUB_COMPARE_MIN_COMPLETED_POLLS || elapsed >= minMs;
   if (!warmupDone) {
     return { ok: false, reason: "warmup" };
   }
@@ -257,10 +369,14 @@ function envTestApplyGithubProbe404Backoff(
     headBranch: string;
     source: string;
   },
-  httpStatus: number | undefined
+  httpStatus: number | undefined,
+  variant: "branch" | "compare" = "compare"
 ): void {
   const idx = state.compare404AttemptIndex;
-  const delayMs = envTestCompare404BackoffDelayMs(idx);
+  let delayMs = envTestCompare404BackoffDelayMs(idx, state.aggressiveGithubTiming);
+  if (state.aggressiveGithubTiming && variant === "branch") {
+    delayMs = Math.max(delayMs, ENV_TEST_STAGE2_EXISTS_CHECK_MIN_INTERVAL_MS);
+  }
   state.compare404AttemptIndex = idx + 1;
   state.nextGithubCompareAllowedAt = Date.now() + delayMs;
   appendTaskProgressLog({
@@ -275,6 +391,7 @@ function envTestApplyGithubProbe404Backoff(
       attemptIndexAfter: state.compare404AttemptIndex,
       httpStatus: httpStatus ?? null,
       source: logCtx.source,
+      backoffVariant: variant,
     },
   });
 }
@@ -282,6 +399,97 @@ function envTestApplyGithubProbe404Backoff(
 /**
  * ENV_TEST-only: 브랜치 존재 → compare → ahead_by>0 까지. 실패 시 null(백오프는 state 갱신).
  */
+function logStage2CursorSubphaseTransitions(
+  prev: Stage2RuntimeMonitorV1 | null,
+  next: Stage2RuntimeMonitorV1,
+  ctx: { projectId: string; taskId: string; actorUserId?: string }
+): void {
+  const keys = ["cursor_prepare", "cursor_generate", "cursor_commit", "cursor_push"] as const;
+  for (const k of keys) {
+    const a = prev?.phases[k]?.status ?? "PENDING";
+    const b = next.phases[k]?.status ?? "PENDING";
+    if (a !== "RUNNING" && b === "RUNNING") {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: `${k}_started`,
+        projectId: ctx.projectId,
+        taskId: ctx.taskId,
+        userId: ctx.actorUserId,
+        detail: { stage2RuntimeMonitor: true },
+      });
+    }
+    if (a === "RUNNING" && b === "DONE") {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: `${k}_finished`,
+        projectId: ctx.projectId,
+        taskId: ctx.taskId,
+        userId: ctx.actorUserId,
+        detail: { stage2RuntimeMonitor: true },
+      });
+    }
+  }
+}
+
+async function emitStage2FirstBranchReflectedIfNeeded(ctx: {
+  probeState: EnvTestGithubProbeState;
+  stage2RuntimeMonitor: NonNullable<ExecuteCursorRelayParams["stage2RuntimeMonitor"]>;
+  projectId: string;
+  taskId: string;
+  userId?: string;
+  headBranch: string;
+  logSource: string;
+  headSha: string | null;
+  at: "branch_exists" | "compare_ahead";
+  elapsedMsSinceLaunch: number;
+  aheadBy?: number;
+}): Promise<void> {
+  if (ctx.probeState.stage2FirstBranchReflectedCatalogEmitted) return;
+  ctx.probeState.stage2FirstBranchReflectedCatalogEmitted = true;
+  logStage2CatalogEvent({
+    phase: "first_branch_reflected",
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.userId,
+    detail: {
+      at: ctx.at,
+      aheadBy: ctx.aheadBy ?? null,
+      headSha: ctx.headSha,
+      elapsedMsLaunchToReflected: ctx.elapsedMsSinceLaunch,
+      source: ctx.logSource,
+    },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "branch_reflected",
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.userId,
+    detail: {
+      at: ctx.at,
+      aheadBy: ctx.aheadBy ?? null,
+      headSha: ctx.headSha,
+      source: ctx.logSource,
+    },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "git_branch_reflected",
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.userId,
+    detail: {
+      at: ctx.at,
+      aheadBy: ctx.aheadBy ?? null,
+      headSha: ctx.headSha,
+      source: ctx.logSource,
+    },
+  });
+  await patchTaskExecutionRunStage2RuntimeMonitor(ctx.stage2RuntimeMonitor.execRunId, (m) =>
+    monitorGitBranchReflected(m, Date.now())
+  );
+}
+
 async function envTestProbeGithubAheadByCompare(input: {
   projectId: string;
   taskId: string;
@@ -294,6 +502,14 @@ async function envTestProbeGithubAheadByCompare(input: {
   completedAgentPolls: number;
   agentPollCountForLog: number;
   logSource: string;
+  taskKind?: string | null;
+  /** Stage 2 런타임 모니터 패치(첫 브랜치 체크·감지·반영) */
+  stage2RuntimeMonitor?: {
+    execRunId: string;
+    projectId: string;
+    taskId: string;
+    actorUserId?: string;
+  } | null;
 }): Promise<
   | null
   | {
@@ -310,6 +526,7 @@ async function envTestProbeGithubAheadByCompare(input: {
       compareOkAtMs: number;
     }
 > {
+  const envTestCatalog = isEnvTestFamilyTaskKind(input.taskKind);
   const gate = envTestAllowGithubHeadProbe(input.probeState, input.completedAgentPolls);
   if (!gate.ok) {
     if (gate.reason === "warmup") {
@@ -321,10 +538,10 @@ async function envTestProbeGithubAheadByCompare(input: {
           projectId: input.projectId,
           taskId: input.taskId,
           userId: input.userId,
-          detail: {
+            detail: {
             headBranch: input.headBranch,
             elapsedMsSinceLaunch: Date.now() - input.probeState.agentLaunchStartedAt,
-            warmupTargetMs: ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH,
+            warmupTargetMs: input.probeState.compareMinMsAfterLaunch,
             minCompletedAgentPolls: ENV_TEST_GITHUB_COMPARE_MIN_COMPLETED_POLLS,
             completedAgentPolls: input.completedAgentPolls,
             source: input.logSource,
@@ -366,6 +583,55 @@ async function envTestProbeGithubAheadByCompare(input: {
     },
   });
 
+  if (envTestCatalog && !input.probeState.stage2FirstBranchCheckCatalogEmitted) {
+    input.probeState.stage2FirstBranchCheckCatalogEmitted = true;
+    if (input.stage2RuntimeMonitor?.execRunId) {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "git_branch_check_started",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.userId,
+        detail: {
+          headBranch: input.headBranch,
+          elapsedMsSinceLaunch: Date.now() - input.probeState.agentLaunchStartedAt,
+          source: input.logSource,
+        },
+      });
+      await patchTaskExecutionRunStage2RuntimeMonitor(input.stage2RuntimeMonitor.execRunId, (m) =>
+        monitorFirstGitBranchCheck(m, Date.now())
+      );
+    }
+    logStage2CatalogEvent({
+      phase: "first_branch_check_started",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        headBranch: input.headBranch,
+        elapsedMsSinceLaunch: Date.now() - input.probeState.agentLaunchStartedAt,
+        source: input.logSource,
+      },
+    });
+  }
+
+  if (envTestCatalog) {
+    input.probeState.stage2BranchDetectAttemptSeq = (input.probeState.stage2BranchDetectAttemptSeq ?? 0) + 1;
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "branch_detect_attempt",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        attempt: input.probeState.stage2BranchDetectAttemptSeq,
+        headBranch: input.headBranch,
+        source: input.logSource,
+        completedAgentPolls: input.completedAgentPolls,
+      },
+    });
+  }
+
   appendTaskProgressLog({
     kind: "execution",
     phase: "env_test_branch_exists_check_started",
@@ -387,8 +653,31 @@ async function envTestProbeGithubAheadByCompare(input: {
     allowUnauthenticated: true,
   });
 
+  if (branchRes.ok) {
+    input.probeState.lastBranchHeadSha = branchRes.headSha ?? null;
+  }
+
   if (!branchRes.ok) {
     if (branchRes.httpStatus === 404) {
+      if (envTestCatalog) {
+        const elapsed = Date.now() - input.probeState.agentLaunchStartedAt;
+        if (elapsed > ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS && !input.probeState.stage2BranchExistsHardLogged) {
+          input.probeState.stage2BranchExistsHardLogged = true;
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_stage2_branch_exists_past_hard_window",
+            projectId: input.projectId,
+            taskId: input.taskId,
+            userId: input.userId,
+            detail: {
+              headBranch: input.headBranch,
+              elapsedMsSinceLaunch: elapsed,
+              hardTimeoutMs: ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS,
+              source: input.logSource,
+            },
+          });
+        }
+      }
       envTestApplyGithubProbe404Backoff(
         input.probeState,
         {
@@ -398,7 +687,8 @@ async function envTestProbeGithubAheadByCompare(input: {
           headBranch: input.headBranch,
           source: `${input.logSource}:branch_ref`,
         },
-        404
+        404,
+        "branch"
       );
     }
     return null;
@@ -410,6 +700,51 @@ async function envTestProbeGithubAheadByCompare(input: {
   }
   const elapsedMsLaunchToFirstBranchConfirmed =
     input.probeState.branchConfirmedAtMs - input.probeState.agentLaunchStartedAt;
+
+  if (envTestCatalog) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "branch_detect_success",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        headBranch: input.headBranch,
+        source: input.logSource,
+        elapsedMsSinceLaunch: branchConfirmedAt - input.probeState.agentLaunchStartedAt,
+      },
+    });
+    if (input.stage2RuntimeMonitor?.execRunId) {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "git_branch_detected",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.userId,
+        detail: {
+          headBranch: input.headBranch,
+          source: input.logSource,
+        },
+      });
+      await patchTaskExecutionRunStage2RuntimeMonitor(input.stage2RuntimeMonitor.execRunId, (m) =>
+        monitorGitBranchDetected(m, Date.now())
+      );
+      if (input.stage2RuntimeMonitor) {
+        await emitStage2FirstBranchReflectedIfNeeded({
+          probeState: input.probeState,
+          stage2RuntimeMonitor: input.stage2RuntimeMonitor,
+          projectId: input.projectId,
+          taskId: input.taskId,
+          userId: input.userId,
+          headBranch: input.headBranch,
+          logSource: input.logSource,
+          headSha: branchRes.headSha ?? null,
+          at: "branch_exists",
+          elapsedMsSinceLaunch: branchConfirmedAt - input.probeState.agentLaunchStartedAt,
+        });
+      }
+    }
+  }
 
   appendTaskProgressLog({
     kind: "execution",
@@ -460,18 +795,67 @@ async function envTestProbeGithubAheadByCompare(input: {
           headBranch: input.headBranch,
           source: `${input.logSource}:compare`,
         },
-        404
+        404,
+        "compare"
       );
     }
     return null;
   }
 
   if (compare.data.aheadBy <= 0) {
+    if (envTestCatalog) {
+      const now = Date.now();
+      if (input.probeState.stage2CompareAheadZeroSinceMs == null) {
+        input.probeState.stage2CompareAheadZeroSinceMs = now;
+      }
+      const z = input.probeState.stage2CompareAheadZeroSinceMs;
+      const elapsedZero = now - z;
+      if (elapsedZero >= ENV_TEST_STAGE2_REFLECTED_SOFT_TIMEOUT_MS && !input.probeState.stage2AheadZeroSoftLogged) {
+        input.probeState.stage2AheadZeroSoftLogged = true;
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_compare_ahead_zero_soft_timeout",
+          projectId: input.projectId,
+          taskId: input.taskId,
+          userId: input.userId,
+          detail: {
+            headBranch: input.headBranch,
+            elapsedMsSinceFirstAheadZero: elapsedZero,
+            softTimeoutMs: ENV_TEST_STAGE2_REFLECTED_SOFT_TIMEOUT_MS,
+            source: input.logSource,
+          },
+        });
+      }
+      let interval = ENV_TEST_STAGE2_REFLECTED_CHECK_INTERVAL_MS;
+      if (elapsedZero >= ENV_TEST_STAGE2_REFLECTED_HARD_TIMEOUT_MS) {
+        interval = Math.max(interval, ENV_TEST_STAGE2_POLL_INTERVAL_SLOW_MS);
+      }
+      input.probeState.nextGithubCompareAllowedAt = now + interval;
+    }
     return null;
   }
 
+  input.probeState.stage2CompareAheadZeroSinceMs = null;
+  input.probeState.stage2AheadZeroSoftLogged = false;
+
   const compareOkAt = Date.now();
   const elapsedMsBranchConfirmedToCompareOk = compareOkAt - branchConfirmedAt;
+
+  if (envTestCatalog && input.stage2RuntimeMonitor) {
+    await emitStage2FirstBranchReflectedIfNeeded({
+      probeState: input.probeState,
+      stage2RuntimeMonitor: input.stage2RuntimeMonitor,
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      headBranch: input.headBranch,
+      logSource: input.logSource,
+      headSha: compare.data.headSha ?? null,
+      at: "compare_ahead",
+      elapsedMsSinceLaunch: compareOkAt - input.probeState.agentLaunchStartedAt,
+      aheadBy: compare.data.aheadBy,
+    });
+  }
 
   appendTaskProgressLog({
     kind: "execution",
@@ -514,6 +898,15 @@ export const CURSOR_AGENT_MAX_POLL_MS = parseEnvPositiveIntMs(
   { min: 60_000, max: 24 * 60 * 60 * 1000 }
 );
 const MAX_POLL_MS = CURSOR_AGENT_MAX_POLL_MS;
+/**
+ * Stage 2: Git 원격 브랜치가 나타날 때까지 대기하는 상한(기본 15분).
+ * Cursor 에이전트 FINISHED/폴링 한도와 무관 — agent timeout으로 실패하지 않는다.
+ */
+const ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS",
+  15 * 60 * 1000,
+  { min: 120_000, max: 2 * 60 * 60 * 1000 }
+);
 const REQUEST_TIMEOUT_MS = 120_000;
 const POLL_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -728,6 +1121,148 @@ async function tryEnvTestCursorPollEarlySuccess(input: {
   return null;
 }
 
+type EnvTestOpenPrLookup = Awaited<ReturnType<typeof findOpenPullRequestByHeadBranch>>;
+
+/**
+ * GitHub compare 또는 브랜치 HEAD 확인 후 ENV_TEST PR_OPENED까지 공통 마무리.
+ */
+async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
+  params: ExecuteCursorRelayParams;
+  ctx: NonNullable<ExecuteCursorRelayParams["envTestPollFinalizeContext"]>;
+  agentId: string;
+  pollStartedAt: number;
+  agentPollCount: number;
+  agentJson: AgentJson;
+  logs: string[];
+  branchName: string;
+  compareData: { headSha: string | null; changedFiles: string[]; diffSummary: string };
+  compareOkAtMs: number;
+  elapsedMsLaunchToBranchConfirmed: number;
+  elapsedMsBranchConfirmedToCompareOk: number;
+  preExisting: EnvTestOpenPrLookup;
+  via: "cursor_poll_early_github" | "cursor_poll_stage2_branch_head";
+  pushDetectedSource: "cursor_poll_early_github_compare" | "cursor_poll_stage2_branch_head";
+  branchDetectElapsedMs?: number | null;
+  pollStopReason: "github_compare_during_poll" | "stage2_git_branch_head";
+}): Promise<
+  | { kind: "return"; result: RunExecutionLoopResult }
+  | { kind: "continue_loop" }
+  | null
+> {
+  const { params, ctx, agentId, pollStartedAt, agentPollCount, agentJson, logs, branchName } = input;
+  const elapsedMs = Date.now() - pollStartedAt;
+  const agentStatus = String(agentJson.status ?? "").trim();
+
+  const mapped = mapAgentToResult(agentJson, branchName);
+
+  const out = await runEnvTestAfterGithubPushConfirmed({
+    projectId: params.projectId,
+    taskId: ctx.taskId,
+    taskKind: params.taskKind ?? null,
+    execRunId: ctx.execRunId,
+    actorUserId: ctx.actorUserId,
+    branchName,
+    repoUrl: ctx.repoUrl,
+    baseBranch: ctx.baseBranch,
+    githubAccessToken: ctx.githubAccessToken ?? null,
+    compareData: {
+      headSha: input.compareData.headSha ?? null,
+      changedFiles: input.compareData.changedFiles,
+      diffSummary: input.compareData.diffSummary,
+      compareOkAtMs: input.compareOkAtMs,
+    },
+    steps: ctx.steps,
+    singleTaskId: ctx.singleTaskId,
+    effectiveAutoAdvance: ctx.effectiveAutoAdvance,
+    cursorRunId: agentId,
+    cursorSummary: mapped.summary.slice(0, 24_000),
+    via: input.via,
+    pushDetectedSource: input.pushDetectedSource,
+    executionRunCreatedAt: ctx.execRunCreatedAt,
+    branchDetectElapsedMs:
+      input.branchDetectElapsedMs ??
+      (input.elapsedMsLaunchToBranchConfirmed > 0 ? input.elapsedMsLaunchToBranchConfirmed : null),
+  });
+
+  if (out.kind === "pr_failed") {
+    return null;
+  }
+
+  ctx.steps.push({
+    phase: "cursor",
+    taskId: ctx.taskId,
+    ok: true,
+    runId: agentId,
+  });
+
+  if (!input.preExisting) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_early_pr_created",
+      projectId: params.projectId,
+      taskId: ctx.taskId,
+      userId: ctx.actorUserId,
+      detail: {
+        headBranch: branchName,
+        note: "platform_create_or_update_after_compare",
+        elapsedMs,
+        pollStopReason: input.pollStopReason,
+      },
+    });
+  }
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_early_pr_opened_terminal_success",
+    projectId: params.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.actorUserId,
+    detail: {
+      elapsedMs,
+      agentPollCount,
+      agentId,
+      beforeCursorTerminal: true,
+      pollStopReason: input.pollStopReason,
+    },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_poll_stopped_after_early_pr",
+    projectId: params.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.actorUserId,
+    detail: {
+      elapsedMs,
+      agentPollCount,
+      agentId,
+      reason: input.pollStopReason,
+    },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_early_exit_before_cursor_terminal",
+    projectId: params.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.actorUserId,
+    detail: {
+      elapsedMsSinceAgentLaunch: elapsedMs,
+      elapsedMsLaunchToBranchConfirmed: input.elapsedMsLaunchToBranchConfirmed,
+      elapsedMsBranchConfirmedToCompareOk: input.elapsedMsBranchConfirmedToCompareOk,
+      agentPollCount,
+      agentStatus,
+      compareOkAtMs: input.compareOkAtMs,
+      pollStopReason: input.pollStopReason,
+    },
+  });
+
+  logs.push(
+    `[cursor-adapter] ENV_TEST: GitHub 경로로 PR_OPENED (Path B, pollStop=${input.pollStopReason})`
+  );
+
+  if (out.kind === "return") return { kind: "return", result: out.result };
+  return { kind: "continue_loop" };
+}
+
 /**
  * ENV_TEST Path B: Cursor가 CREATING/RUNNING이어도 GitHub compare(ahead_by)로 푸시가 보이면
  * PR 생성·조회 후 PR_OPENED까지 즉시 마무리한다 (cursor_terminal 불필요).
@@ -768,9 +1303,65 @@ async function tryEnvTestGithubFullFinalizeDuringPoll(input: {
     completedAgentPolls: agentPollCount,
     agentPollCountForLog: agentPollCount,
     logSource: "cursor_poll_early_github_finalize",
+    taskKind: params.taskKind,
+    stage2RuntimeMonitor:
+      isEnvTestFamilyTaskKind(params.taskKind) && params.stage2RuntimeMonitor ? params.stage2RuntimeMonitor : null,
   });
 
   if (!probed) {
+    if (
+      isEnvTestFamilyTaskKind(params.taskKind) &&
+      envTestGithubProbeState.branchConfirmedAtMs != null
+    ) {
+      const headSha =
+        (envTestGithubProbeState.lastBranchHeadSha ?? pickCommitHash(agentJson) ?? "").trim() || null;
+      if (headSha) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "agent_status_ignored",
+          projectId: params.projectId,
+          taskId: ctx.taskId,
+          userId: ctx.actorUserId,
+          detail: {
+            agentStatus,
+            agentPollCount,
+            reason: "env_test_finalize_from_git_branch_head",
+            headSha,
+          },
+        });
+        const preExistingStage2 = await findOpenPullRequestByHeadBranch({
+          repoUrl: ctx.repoUrl,
+          headBranch: branchName,
+          githubAccessToken: ctx.githubAccessToken ?? null,
+          projectId: params.projectId,
+        });
+        const branchDetectElapsed =
+          envTestGithubProbeState.branchConfirmedAtMs - envTestGithubProbeState.agentLaunchStartedAt;
+        return finalizeEnvTestEarlyGithubPathFromCompareData({
+          params,
+          ctx,
+          agentId,
+          pollStartedAt,
+          agentPollCount,
+          agentJson,
+          logs,
+          branchName,
+          compareData: {
+            headSha,
+            changedFiles: [],
+            diffSummary: `(Stage 2 Git branch HEAD; agent status=${agentStatus})`,
+          },
+          compareOkAtMs: Date.now(),
+          elapsedMsLaunchToBranchConfirmed: branchDetectElapsed,
+          elapsedMsBranchConfirmedToCompareOk: 0,
+          preExisting: preExistingStage2,
+          via: "cursor_poll_stage2_branch_head",
+          pushDetectedSource: "cursor_poll_stage2_branch_head",
+          branchDetectElapsedMs: branchDetectElapsed,
+          pollStopReason: "stage2_git_branch_head",
+        });
+      }
+    }
     return null;
   }
 
@@ -850,97 +1441,29 @@ async function tryEnvTestGithubFullFinalizeDuringPoll(input: {
     });
   }
 
-  const mapped = mapAgentToResult(agentJson, branchName);
-
-  const out = await runEnvTestAfterGithubPushConfirmed({
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    taskKind: params.taskKind ?? null,
-    execRunId: ctx.execRunId,
-    actorUserId: ctx.actorUserId,
+  return finalizeEnvTestEarlyGithubPathFromCompareData({
+    params,
+    ctx,
+    agentId,
+    pollStartedAt,
+    agentPollCount,
+    agentJson,
+    logs,
     branchName,
-    repoUrl: ctx.repoUrl,
-    baseBranch: ctx.baseBranch,
-    githubAccessToken: ctx.githubAccessToken ?? null,
     compareData: {
       headSha: compareData.headSha ?? null,
       changedFiles: compareData.changedFiles,
       diffSummary: compareData.diffSummary,
-      compareOkAtMs: probed.compareOkAtMs,
     },
-    steps: ctx.steps,
-    singleTaskId: ctx.singleTaskId,
-    effectiveAutoAdvance: ctx.effectiveAutoAdvance,
-    cursorRunId: agentId,
-    cursorSummary: mapped.summary.slice(0, 24_000),
+    compareOkAtMs: probed.compareOkAtMs,
+    elapsedMsLaunchToBranchConfirmed: probed.elapsedMsLaunchToBranchConfirmed,
+    elapsedMsBranchConfirmedToCompareOk: probed.elapsedMsBranchConfirmedToCompareOk,
+    preExisting,
     via: "cursor_poll_early_github",
     pushDetectedSource: "cursor_poll_early_github_compare",
-    executionRunCreatedAt: ctx.execRunCreatedAt,
+    branchDetectElapsedMs: probed.elapsedMsLaunchToBranchConfirmed,
+    pollStopReason: "github_compare_during_poll",
   });
-
-  if (out.kind === "pr_failed") {
-    return null;
-  }
-
-  ctx.steps.push({
-    phase: "cursor",
-    taskId: ctx.taskId,
-    ok: true,
-    runId: agentId,
-  });
-
-  if (!preExisting) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_early_pr_created",
-      projectId: params.projectId,
-      taskId: ctx.taskId,
-      userId: ctx.actorUserId,
-      detail: { headBranch: branchName, note: "platform_create_or_update_after_compare", elapsedMs },
-    });
-  }
-
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_early_pr_opened_terminal_success",
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    userId: ctx.actorUserId,
-    detail: {
-      elapsedMs,
-      agentPollCount,
-      agentId,
-      beforeCursorTerminal: true,
-    },
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_poll_stopped_after_early_pr",
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    userId: ctx.actorUserId,
-    detail: { elapsedMs, agentPollCount, agentId, reason: "github_compare_during_poll" },
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_early_exit_before_cursor_terminal",
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    userId: ctx.actorUserId,
-    detail: {
-      elapsedMsSinceAgentLaunch: elapsedMs,
-      elapsedMsLaunchToBranchConfirmed: probed.elapsedMsLaunchToBranchConfirmed,
-      elapsedMsBranchConfirmedToCompareOk: probed.elapsedMsBranchConfirmedToCompareOk,
-      agentPollCount,
-      agentStatus,
-      compareOkAtMs: probed.compareOkAtMs,
-    },
-  });
-
-  logs.push("[cursor-adapter] ENV_TEST: GitHub compare during poll — PR_OPENED (Path B, no Cursor terminal wait)");
-
-  if (out.kind === "return") return { kind: "return", result: out.result };
-  return { kind: "continue_loop" };
 }
 
 function isTerminalSuccess(status: string): boolean {
@@ -1067,7 +1590,21 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
     },
   };
 
+  const stage2MonCtx =
+    isEnvTestFamilyTaskKind(params.taskKind) && params.stage2RuntimeMonitor ? params.stage2RuntimeMonitor : null;
+  let lastMonStage2: Stage2RuntimeMonitorV1 | null = null;
+  const patchStage2 = async (fn: (m: Stage2RuntimeMonitorV1) => Stage2RuntimeMonitorV1) => {
+    if (!stage2MonCtx) return null;
+    const next = await patchTaskExecutionRunStage2RuntimeMonitor(stage2MonCtx.execRunId, fn);
+    logStage2CursorSubphaseTransitions(lastMonStage2, next, stage2MonCtx);
+    lastMonStage2 = next;
+    return next;
+  };
+
   try {
+    if (stage2MonCtx) {
+      await patchStage2((m) => monitorCursorPrepareStart(m, Date.now()));
+    }
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
     let res: Response;
@@ -1108,6 +1645,10 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
       return { ok: false, error: "Cloud Agent 응답에 id가 없습니다.", logs };
     }
 
+    if (stage2MonCtx) {
+      await patchStage2((m) => monitorCursorPrepareDone(m, Date.now()));
+    }
+
     if (isTaskProgressLogEnabled()) {
       appendTaskProgressLog({
         kind: "cursor",
@@ -1116,19 +1657,25 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         taskId: params.task.id,
         detail: { agentId, branch: params.suggestedBranchName },
       });
-      appendTaskProgressLog({
-        kind: "cursor",
-        phase: "cursor_agent_launched",
-        projectId: params.projectId,
-        taskId: params.task.id,
-        detail: { agentId, branch: params.suggestedBranchName },
-      });
+      if (isEnvTestFamilyTaskKind(params.taskKind)) {
+        appendTaskProgressLog({
+          kind: "cursor",
+          phase: "cursor_agent_launched",
+          projectId: params.projectId,
+          taskId: params.task.id,
+          detail: { agentId, branch: params.suggestedBranchName },
+        });
+      }
     }
 
     const started = Date.now();
+    let lastStage2HeuristicWall = 0;
+    let stage2HeuristicPollSeq = 0;
     let last: AgentJson = launchJson ?? {};
     let completedAgentPolls = 0;
     const isEnvTestKind = isEnvTestFamilyTaskKind(params.taskKind);
+    const envTestGitFirstMode = isEnvTestFamilyTaskKind(params.taskKind);
+    const maxPollMsEffective = envTestGitFirstMode ? ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS : MAX_POLL_MS;
     /** 비 ENV_TEST 호출에서 잘못 넘어온 컨텍스트는 무시 (스코프 누수 방지). */
     const envTestPollFinalizeContextEffective =
       isEnvTestKind && params.envTestPollFinalizeContext ? params.envTestPollFinalizeContext : null;
@@ -1139,17 +1686,34 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
           nextGithubCompareAllowedAt: 0,
           compare404AttemptIndex: 0,
           branchConfirmedAtMs: null,
+          compareMinMsAfterLaunch: envTestGitFirstMode
+            ? ENV_TEST_STAGE2_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH
+            : ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH,
+          aggressiveGithubTiming: envTestGitFirstMode,
         }
       : null;
-    const firstDelayMs = isEnvTestKind ? ENV_TEST_POLL_FIRST_DELAY_MS : POLL_FIRST_DELAY_MS;
+    const firstDelayMs = isEnvTestKind
+      ? envTestGitFirstMode
+        ? ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS
+        : ENV_TEST_POLL_FIRST_DELAY_MS
+      : POLL_FIRST_DELAY_MS;
+    const postLaunchGithubProbeDelayMs = envTestGitFirstMode
+      ? ENV_TEST_STAGE2_POST_LAUNCH_GITHUB_PROBE_DELAY_MS
+      : ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS;
     const normalIntervalMs = POLL_INTERVAL_MS;
     console.info("[cursor-adapter] agent poll schedule", {
       agentId,
       firstDelayMs,
-      intervalMs: isEnvTestKind ? "tiered_1s_15s_then_2s_40s_then_3s" : normalIntervalMs,
-      maxWaitMs: MAX_POLL_MS,
+      intervalMs: isEnvTestKind
+        ? envTestGitFirstMode
+          ? "ENV_TEST_STAGE2_tiered_fast"
+          : "tiered_1s_15s_then_2s_40s_then_3s"
+        : normalIntervalMs,
+      maxWaitMs: maxPollMsEffective,
       envTestGithubEarlyExit: isEnvTestKind,
-      envTestGithubCompareMinMs: isEnvTestKind ? ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH : null,
+      envTestGithubCompareMinMs: isEnvTestKind
+        ? envTestGithubProbeState?.compareMinMsAfterLaunch ?? ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH
+        : null,
     });
 
     if (isTaskProgressLogEnabled()) {
@@ -1160,7 +1724,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         taskId: params.task.id,
         detail: {
           agentId,
-          maxWaitMs: MAX_POLL_MS,
+          maxWaitMs: maxPollMsEffective,
           firstDelayMs,
           intervalMsNote: isEnvTestKind ? "ENV_TEST_tiered_poll" : normalIntervalMs,
           envTestGithubEarlyExit: isEnvTestKind,
@@ -1203,7 +1767,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
 
       // 런치 직후 짧은 지연 뒤 compare/PR finalize 시도(Cursor 첫 폴링 전).
       if (isEnvTestKind && envTestPollFinalizeContextEffective && envTestGithubProbeState) {
-        await new Promise((r) => setTimeout(r, ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS));
+        await new Promise((r) => setTimeout(r, postLaunchGithubProbeDelayMs));
         const elapsedLaunch = Date.now() - started;
         if (isTaskProgressLogEnabled()) {
           appendTaskProgressLog({
@@ -1215,7 +1779,8 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
             detail: {
               agentId,
               elapsedMsSinceAgentLaunch: elapsedLaunch,
-              delayMs: ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS,
+              delayMs: postLaunchGithubProbeDelayMs,
+              envTestGitFirstMode: envTestGitFirstMode,
             },
           });
         }
@@ -1240,7 +1805,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
       }
     }
 
-    while (Date.now() - started < MAX_POLL_MS) {
+    while (Date.now() - started < maxPollMsEffective) {
       if (
         isEnvTestKind &&
         envTestPollFinalizeContextEffective &&
@@ -1272,7 +1837,10 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
         completedAgentPolls === 0
           ? firstDelayMs
           : isEnvTestKind
-            ? envTestCursorPollIntervalMs(elapsedSinceStart)
+            ? envTestCursorPollIntervalMs(
+                elapsedSinceStart,
+                envTestGithubProbeState?.aggressiveGithubTiming ?? false
+              )
             : normalIntervalMs;
       if (isEnvTestKind && isTaskProgressLogEnabled()) {
         appendTaskProgressLog({
@@ -1323,6 +1891,25 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
 
       const st = String(last.status ?? "").toUpperCase();
       completedAgentPolls += 1;
+      if (stage2MonCtx) {
+        const nowH = Date.now();
+        stage2HeuristicPollSeq++;
+        if (stage2HeuristicPollSeq % 2 === 0 || nowH - lastStage2HeuristicWall > 1_000) {
+          lastStage2HeuristicWall = nowH;
+          await patchStage2((m) =>
+            monitorApplyCursorAgentHeuristics(
+              m,
+              {
+                agentStatusUpper: st,
+                hasCommitHash: Boolean(pickCommitHash(last)),
+                hasChangedFiles: pickChangedFiles(last).length > 0,
+                isTerminalSuccess: isTerminalSuccess(st),
+              },
+              nowH
+            )
+          );
+        }
+      }
       logs.push(`agent ${agentId} status=${st}`);
       if (isTaskProgressCursorPollEnabled()) {
         appendTaskProgressLog({
@@ -1384,11 +1971,39 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
           );
           return { ok: true, result: earlyGithub, logs };
         }
+
+        /** Stage 2: 에이전트 RUNNING 중에도 루프 후반에 한 번 더 compare(푸시 감지 지연 최소화). */
+        if (
+          envTestGitFirstMode &&
+          envTestPollFinalizeContextEffective &&
+          envTestGithubProbeState &&
+          (st === "RUNNING" || st === "CREATING" || st === "QUEUED" || st === "PENDING" || st === "THINKING")
+        ) {
+          const finMid = await tryEnvTestGithubFullFinalizeDuringPoll({
+            params,
+            ctx: envTestPollFinalizeContextEffective,
+            agentId,
+            pollStartedAt: started,
+            agentPollCount: completedAgentPolls,
+            agentJson: last,
+            logs,
+            envTestGithubProbeState,
+          });
+          if (finMid) {
+            return {
+              ok: true,
+              envTestGithubEarlyFinished: true,
+              envTestFinalizeOutcome: finMid,
+              logs,
+            };
+          }
+        }
       }
 
       // 일부 케이스에서 Cursor가 PR/commit을 이미 만들었는데 status가 RUNNING으로 오래 유지될 수 있다.
       // 이 모드에서는 PR(또는 commit hash) 증거가 있으면 조기 성공으로 처리한다(옵트인).
-      if (!isTerminalSuccess(st) && shouldTreatPrAsTerminalSuccess()) {
+      // Stage 2: Git/브랜치 경로만으로 종료 — 에이전트 메타 조기 성공은 사용하지 않는다.
+      if (!envTestGitFirstMode && !isTerminalSuccess(st) && shouldTreatPrAsTerminalSuccess()) {
         const hasPr = agentHasPrEvidence(last);
         const hasCommit = Boolean(pickCommitHash(last));
         if (hasPr || hasCommit) {
@@ -1430,11 +2045,44 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
               },
             });
           }
+          if (stage2MonCtx) {
+            const nowH = Date.now();
+            await patchStage2((m) =>
+              monitorApplyCursorAgentHeuristics(
+                m,
+                {
+                  agentStatusUpper: st,
+                  hasCommitHash: Boolean(pickCommitHash(last)),
+                  hasChangedFiles: pickChangedFiles(last).length > 0,
+                  isTerminalSuccess: true,
+                },
+                nowH
+              )
+            );
+          }
           return { ok: true, result: r, logs };
         }
       }
 
       if (isTerminalSuccess(st)) {
+        if (envTestGitFirstMode) {
+          if (isTaskProgressLogEnabled()) {
+            appendTaskProgressLog({
+              kind: "execution",
+              phase: "agent_status_ignored",
+              projectId: params.projectId,
+              taskId: params.task.id,
+              userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+              detail: {
+                agentId,
+                agentStatus: st,
+                pollRound: completedAgentPolls,
+                reason: "stage2_does_not_wait_for_cursor_terminal",
+              },
+            });
+          }
+          continue;
+        }
         const r = mapAgentToResult(last, params.suggestedBranchName);
         if (r.executionStatus === "failed" || r.error) {
           const raw = r.error || r.summary || "Cloud Agent 실패";
@@ -1463,18 +2111,77 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
             detail: { prUrl: r.prUrl ?? null },
           });
         }
+        if (stage2MonCtx) {
+          const nowH = Date.now();
+          await patchStage2((m) =>
+            monitorApplyCursorAgentHeuristics(
+              m,
+              {
+                agentStatusUpper: st,
+                hasCommitHash: Boolean(pickCommitHash(last)),
+                hasChangedFiles: pickChangedFiles(last).length > 0,
+                isTerminalSuccess: true,
+              },
+              nowH
+            )
+          );
+        }
         return { ok: true, result: r, logs };
+      }
+    }
+
+    if (
+      envTestGitFirstMode &&
+      envTestPollFinalizeContextEffective &&
+      envTestGithubProbeState
+    ) {
+      const finLast = await tryEnvTestGithubFullFinalizeDuringPoll({
+        params,
+        ctx: envTestPollFinalizeContextEffective,
+        agentId,
+        pollStartedAt: started,
+        agentPollCount: completedAgentPolls,
+        agentJson: last,
+        logs,
+        envTestGithubProbeState,
+      });
+      if (finLast) {
+        return {
+          ok: true,
+          envTestGithubEarlyFinished: true,
+          envTestFinalizeOutcome: finLast,
+          logs,
+        };
       }
     }
 
     if (isTaskProgressLogEnabled()) {
       appendTaskProgressLog({
         kind: "cursor",
-        phase: MAX_POLL_MS === 300_000 ? "agent_poll_timeout_5m" : "agent_poll_timeout",
+        phase: envTestGitFirstMode
+          ? "env_test_stage2_branch_wait_timeout"
+          : maxPollMsEffective === 300_000
+            ? "agent_poll_timeout_5m"
+            : "agent_poll_timeout",
         projectId: params.projectId,
         taskId: params.task.id,
-        detail: { agentId, maxWaitMs: MAX_POLL_MS },
+        detail: {
+          agentId,
+          maxWaitMs: maxPollMsEffective,
+          stage2GitBranchWait: envTestGitFirstMode,
+        },
       });
+    }
+
+    if (envTestGitFirstMode) {
+      return {
+        ok: false,
+        error: enhanceCursorErrorIfBaseBranchRelated(
+          "ENV_TEST Stage 2: Git 원격 브랜치가 제한 시간 내에 확인되지 않았습니다. 대시보드에서 Cursor 상태를 참고할 수 있습니다.",
+          branchCtx
+        ),
+        logs,
+      };
     }
 
     return {

@@ -506,6 +506,24 @@ export type EnvironmentTestLastDto = {
   stage2TotalTimeMs?: number | null;
   stage2TopBottleneckStage?: string | null;
   stage2TopBottleneckMs?: number | null;
+  stage2UiHint?: string | null;
+  stage2EstimatedBottleneck?: string | null;
+  stage2LivePhaseLabel?: string | null;
+  stage2CurrentStep?: string | null;
+  stage2CurrentPhase?: string | null;
+  stage2CursorStatus?: {
+    prepare: "PENDING" | "RUNNING" | "DONE";
+    generate: "PENDING" | "RUNNING" | "DONE";
+    commit: "PENDING" | "RUNNING" | "DONE";
+    push: "PENDING" | "RUNNING" | "DONE";
+  } | null;
+  stage2GitStatus?: { branchDetected: boolean; branchReflected: boolean } | null;
+  stage2PlatformStatus?: { prCreated: boolean } | null;
+  stage2RuntimeBottleneckPhase?: string | null;
+  stage2RuntimeBottleneckMs?: number | null;
+  stage2CurrentBottleneckHint?: string | null;
+  stage2RunElapsedMs?: number | null;
+  stage2TimingBreakdown?: Record<string, number> | null;
 };
 
 export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage?: 2 }) {

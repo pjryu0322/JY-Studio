@@ -240,6 +240,8 @@ export async function runOpenAiChatJsonEvaluation(params: {
   userMessage: string;
   /** 기본 0.15 — ENV_TEST Stage 2 등에서 더 낮게 지정 가능 */
   temperature?: number;
+  /** Stage 2 초경량 PASS/FAIL 전용: 완성 토큰 상한으로 지연·비용 억제 */
+  maxCompletionTokens?: number;
 }): Promise<{ result: TaskEvaluationResult; usage: OpenAiRelayEvalUsage }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -269,6 +271,9 @@ export async function runOpenAiChatJsonEvaluation(params: {
         { role: "system", content: params.systemContent },
         { role: "user", content: params.userMessage },
       ],
+      ...(typeof params.maxCompletionTokens === "number" && Number.isFinite(params.maxCompletionTokens)
+        ? { max_tokens: Math.max(16, Math.min(256, Math.floor(params.maxCompletionTokens))) }
+        : {}),
     }),
   });
 
