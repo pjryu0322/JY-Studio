@@ -24,9 +24,11 @@ export type RelayPromptSetup = {
 const DEFAULT_ALLOWED = ["src/**", "app/**", "tests/**", "packages/**", "lib/**", "components/**"];
 
 export type BuildCursorExecutionPromptOptions = {
-  /** ENV_TEST_STAGE2: Stage 1과 동일한 최소 작업만 요청해 토큰·지연을 줄인다. */
+  /** ENV_TEST family(Stage 1/2): 최소 Hello World 변경만 요청해 토큰·지연을 줄인다. */
   compactHelloWorld?: boolean;
 };
+
+const ENV_TEST_COMPACT_PROMPT_MAX_CHARS = 800;
 
 /**
  * Cursor Background Agent용 프롬프트. 로컬 경로 없음 — 원격 저장소 URL만 전달한다.
@@ -40,7 +42,7 @@ export function buildCursorExecutionPrompt(
   if (opts?.compactHelloWorld) {
     const commitHint = setup.autoCommit ? "One commit." : "Commit if needed.";
     const pushHint = setup.autoPush ? "Push branch to origin." : "Do not push.";
-    return [
+    const compact = [
       `ENV_TEST smoke only. Repo ${setup.gitRepoUrl}`,
       `Use base ${setup.baseBranch} and branch name exactly: ${setup.suggestedBranchName}`,
       `Create or update exactly ONE file: orchestration-test/hello-world.md`,
@@ -49,6 +51,18 @@ export function buildCursorExecutionPrompt(
       `${commitHint} ${pushHint}`,
       `No PR. No merge. No extra files. Report branchName + commitHash + changedFilesCount.`,
     ].join("\n");
+    if (compact.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compact;
+
+    const compactFallback = [
+      `ENV_TEST smoke.`,
+      `Base ${setup.baseBranch} | branch=${setup.suggestedBranchName}`,
+      `One file only: orchestration-test/hello-world.md`,
+      `1-3 lines Hello World.`,
+      `${commitHint} ${pushHint}`,
+      `No PR. No merge. No extra files.`,
+    ].join("\n");
+    if (compactFallback.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compactFallback;
+    return compactFallback.slice(0, ENV_TEST_COMPACT_PROMPT_MAX_CHARS);
   }
 
   const criteria = task.acceptanceCriteria.length

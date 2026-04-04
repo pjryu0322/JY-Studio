@@ -482,7 +482,7 @@ export async function runExecutionLoop(params: {
           requireTestsBeforePush: setup.requireTestsBeforePush !== false,
           allowedPathGlobs: mergedAllowedGlobs,
         },
-        isEnvTestStage2TaskKind(taskRow.taskKind) ? { compactHelloWorld: true } : undefined
+        isEnvTestFamilyTaskKind(taskRow.taskKind) ? { compactHelloWorld: true } : undefined
       );
 
       // 동일 Task에 아직 active한 실행(run)이 남아 있으면 재실행을 막는다.
