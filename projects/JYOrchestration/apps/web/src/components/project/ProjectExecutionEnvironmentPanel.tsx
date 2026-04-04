@@ -76,24 +76,6 @@ function environmentTestWorkflowLabel(wf: string | null | undefined): string {
   return wf ?? w;
 }
 
-/** 내부 워크플로 값(예: pr_opened) — 보조 표기용 */
-function stage2BottleneckLabel(stage: string | null | undefined): string {
-  const s = String(stage ?? "").trim();
-  if (!s) return "—";
-  const map: Record<string, string> = {
-    executor: "Executor(OpenAI)",
-    cursor: "Cursor",
-    branchDetect: "브랜치 반영",
-    prCreation: "PR 생성",
-    review: "Reviewer",
-    security: "Security",
-    scm: "SCM",
-    merge: "Merge+Verify",
-    mergeVerify: "Merge verify",
-  };
-  return map[s] ?? s;
-}
-
 function environmentTestWorkflowInternalCode(wf: string | null | undefined): string | null {
   const w = normalizeWorkflowForUi(wf);
   if (w === EXECUTION_WORKFLOW.PR_OPENED) return "pr_opened";
@@ -181,9 +163,7 @@ export function ProjectExecutionEnvironmentPanel({
   });
   const [busyGit, setBusyGit] = useState<"save" | "validate-repo" | null>(null);
   const [envTestLast, setEnvTestLast] = useState<EnvironmentTestLastDto | null>(null);
-  const [envTestLastStage2, setEnvTestLastStage2] = useState<EnvironmentTestLastDto | null>(null);
   const [busyEnvTest, setBusyEnvTest] = useState(false);
-  const [busyEnvTestStage2, setBusyEnvTestStage2] = useState(false);
   const [busyGithubAuth, setBusyGithubAuth] = useState<"save" | "validate" | "delete" | "reveal" | null>(null);
   const [githubTokenDraft, setGithubTokenDraft] = useState("");
   const [githubReplaceMode, setGithubReplaceMode] = useState(false);
@@ -225,22 +205,9 @@ export function ProjectExecutionEnvironmentPanel({
     }
   }, [projectId]);
 
-  const loadEnvTestLastStage2 = useCallback(async () => {
-    if (!projectId.trim()) return;
-    try {
-      const { res, json } = await fetchEnvironmentTestLast(projectId, { stage: 2 });
-      if (res.ok && json.success && json.data) {
-        setEnvTestLastStage2(json.data.last ?? null);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  }, [projectId]);
-
   useEffect(() => {
     void loadEnvTestLast();
-    void loadEnvTestLastStage2();
-  }, [loadEnvTestLast, loadEnvTestLastStage2]);
+  }, [loadEnvTestLast]);
 
   useEffect(() => {
     if (executionSetup) return;
@@ -354,34 +321,6 @@ export function ProjectExecutionEnvironmentPanel({
       setBusyEnvTest(false);
     }
   }, [projectId, loadEnvTestLast]);
-
-  const handleEnvironmentTestStage2 = useCallback(async () => {
-    if (!projectId.trim()) return;
-    setBusyEnvTestStage2(true);
-    try {
-      const { res, json } = await postEnvironmentTestRun(projectId, { stage: 2 });
-      const apiSuccess = Boolean(json.success);
-      if (json.data?.last != null) {
-        setEnvTestLastStage2(json.data.last);
-      } else {
-        await loadEnvTestLastStage2();
-      }
-      if (!res.ok || !apiSuccess) {
-        setExecutionMessage(
-          (typeof json.message === "string" && json.message.trim()) ||
-            (res.status === 422
-              ? "Stage 2 테스트를 시작하거나 완료하지 못했습니다."
-              : "Stage 2 요청이 실패했습니다.")
-        );
-        return;
-      }
-      setExecutionMessage(
-        (typeof json.message === "string" && json.message.trim()) || "Stage 2 테스트가 완료되었습니다."
-      );
-    } finally {
-      setBusyEnvTestStage2(false);
-    }
-  }, [projectId, loadEnvTestLastStage2]);
 
   const handleValidateGit = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -816,7 +755,7 @@ export function ProjectExecutionEnvironmentPanel({
             </p>
             <button
               type="button"
-              disabled={!canEdit || busyEnvTest || busyEnvTestStage2 || !specWorkflowConfirmed || !envTestStartOk}
+              disabled={!canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk}
               onClick={() => void handleEnvironmentTest()}
               style={{
                 padding: "8px 14px",
@@ -827,7 +766,7 @@ export function ProjectExecutionEnvironmentPanel({
                 fontWeight: 800,
                 fontSize: 12,
                 cursor:
-                  !canEdit || busyEnvTest || busyEnvTestStage2 || !specWorkflowConfirmed || !envTestStartOk
+                  !canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk
                     ? "not-allowed"
                     : "pointer",
               }}
@@ -845,28 +784,9 @@ export function ProjectExecutionEnvironmentPanel({
             >
               {busyEnvTest ? "실행 중…" : "연결 테스트 실행 (Stage 1)"}
             </button>
-            <button
-              type="button"
-              disabled={!canEdit || busyEnvTest || busyEnvTestStage2 || !specWorkflowConfirmed || !envTestStartOk}
-              onClick={() => void handleEnvironmentTestStage2()}
-              style={{
-                marginLeft: 8,
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #5b21b6",
-                background: "#6d28d9",
-                color: "#fff",
-                fontWeight: 800,
-                fontSize: 12,
-                cursor:
-                  !canEdit || busyEnvTest || busyEnvTestStage2 || !specWorkflowConfirmed || !envTestStartOk
-                    ? "not-allowed"
-                    : "pointer",
-              }}
-              title="리뷰 PASS 후에만 머지되는 Stage 2 readiness"
-            >
-              {busyEnvTestStage2 ? "실행 중…" : "Stage 2 (리뷰→SCM)"}
-            </button>
+            <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
+              Stage 2(역할 분리) 환경 테스트는 <strong>AI Members</strong> 탭에서 실행합니다.
+            </p>
             {!specWorkflowConfirmed ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>Spec 확정 후 사용할 수 있습니다.</p>
             ) : null}
@@ -981,81 +901,6 @@ export function ProjectExecutionEnvironmentPanel({
                 <div style={{ marginTop: 4, color: "#64748b" }}>
                   업데이트 {formatTestedAt(envTestLast.updatedAt)}
                 </div>
-              </div>
-            ) : null}
-            {envTestLastStage2 ? (
-              <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed #cbd5e1", fontSize: 11, color: "#334155" }}>
-                <div style={{ fontWeight: 800, marginBottom: 4 }}>Stage 2 (역할 분리)</div>
-                <div>
-                  <span style={{ color: "#64748b" }}>단계</span>{" "}
-                  <span style={{ fontWeight: 700 }}>{environmentTestWorkflowLabel(envTestLastStage2.workflowStatus)}</span>
-                </div>
-                <div>
-                  <span style={{ color: "#64748b" }}>리뷰</span>{" "}
-                  {envTestLastStage2.stage2ReviewerResult ? (
-                    <span style={{ fontWeight: 800, color: envTestLastStage2.stage2ReviewerResult === "PASS" ? "#15803d" : "#b91c1c" }}>
-                      {envTestLastStage2.stage2ReviewerResult}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#94a3b8" }}>—</span>
-                  )}
-                  {envTestLastStage2.stage2ReviewerReason ? (
-                    <span style={{ marginLeft: 6, color: "#64748b" }}>{envTestLastStage2.stage2ReviewerReason}</span>
-                  ) : null}
-                </div>
-                <div>
-                  <span style={{ color: "#64748b" }}>Security</span>{" "}
-                  {envTestLastStage2.stage2SecurityResult ? (
-                    <span
-                      style={{
-                        fontWeight: 800,
-                        color: envTestLastStage2.stage2SecurityResult === "PASS" ? "#15803d" : "#b91c1c",
-                      }}
-                    >
-                      {envTestLastStage2.stage2SecurityResult}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#94a3b8" }}>—</span>
-                  )}
-                  {envTestLastStage2.stage2SecurityReason ? (
-                    <span style={{ marginLeft: 6, color: "#64748b" }}>{envTestLastStage2.stage2SecurityReason}</span>
-                  ) : null}
-                </div>
-                <div>
-                  <span style={{ color: "#64748b" }}>SCM</span>{" "}
-                  {envTestLastStage2.stage2ScmResult ? (
-                    <span style={{ fontWeight: 800 }}>{envTestLastStage2.stage2ScmResult}</span>
-                  ) : (
-                    <span style={{ color: "#94a3b8" }}>—</span>
-                  )}
-                  {envTestLastStage2.stage2ScmReason ? (
-                    <span style={{ marginLeft: 6, color: "#64748b" }}>{envTestLastStage2.stage2ScmReason}</span>
-                  ) : null}
-                </div>
-                <div>
-                  <span style={{ color: "#64748b" }}>총 시간</span>{" "}
-                  {typeof envTestLastStage2.stage2TotalTimeMs === "number" ? (
-                    <span style={{ fontWeight: 700 }}>{`${(envTestLastStage2.stage2TotalTimeMs / 1000).toFixed(1)}s`}</span>
-                  ) : (
-                    <span style={{ color: "#94a3b8" }}>—</span>
-                  )}
-                </div>
-                <div>
-                  <span style={{ color: "#64748b" }}>병목 Top1</span>{" "}
-                  {envTestLastStage2.stage2TopBottleneckStage ? (
-                    <span style={{ fontWeight: 700 }}>
-                      {stage2BottleneckLabel(envTestLastStage2.stage2TopBottleneckStage)}
-                      {typeof envTestLastStage2.stage2TopBottleneckMs === "number"
-                        ? ` (${envTestLastStage2.stage2TopBottleneckMs}ms)`
-                        : ""}
-                    </span>
-                  ) : (
-                    <span style={{ color: "#94a3b8" }}>—</span>
-                  )}
-                </div>
-                {normalizeWorkflowForUi(envTestLastStage2.workflowStatus) === EXECUTION_WORKFLOW.MERGED ? (
-                  <div style={{ marginTop: 4, color: "#15803d", fontWeight: 700 }}>Stage 2 완료</div>
-                ) : null}
               </div>
             ) : null}
           </div>

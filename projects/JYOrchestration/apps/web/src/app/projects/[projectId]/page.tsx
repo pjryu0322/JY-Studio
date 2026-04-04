@@ -2848,6 +2848,8 @@ export default function ProjectDetailPage() {
                   currentProjectRole={projectRole}
                   currentUserId={currentUserId}
                   memberSurface="ai"
+                  canRunStage2EnvTest={permissions.canEditProject}
+                  isProjectOwner={projectRole === "OWNER"}
                 />
               ) : null}
 

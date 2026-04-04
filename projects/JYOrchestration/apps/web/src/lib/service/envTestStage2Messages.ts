@@ -13,8 +13,12 @@ export type PlatformToExecutorEnvTestStage2Payload = {
 
 export type ExecutorToPlatformStatusPayload = {
   type: "EXECUTOR_STATUS";
-  status: "STARTED" | "RUNNING";
+  status: "STARTED" | "RUNNING" | "FAILED";
+  /** 실패 또는 보조 설명(선택) */
+  reason?: string;
 };
+
+export type Stage2RoleOutcome = "PASS" | "FAIL" | "MISSING" | "DISABLED";
 
 export type PlatformToReviewerRequestPayload = {
   type: "REVIEW_REQUEST";
@@ -28,7 +32,7 @@ export type PlatformToReviewerRequestPayload = {
 
 export type ReviewerToPlatformResultPayload = {
   type: "REVIEW_RESULT";
-  result: "PASS" | "FAIL";
+  result: Stage2RoleOutcome;
   reason: string;
 };
 
@@ -42,7 +46,7 @@ export type PlatformToSecurityRequestPayload = {
 
 export type SecurityToPlatformResultPayload = {
   type: "SECURITY_RESULT";
-  result: "PASS" | "FAIL";
+  result: Stage2RoleOutcome;
   reason: string;
 };
 
@@ -51,8 +55,8 @@ export type PlatformToScmRequestPayload = {
   mode: EnvTestStage2Mode;
   prNumber: number;
   prState: string;
-  reviewResult: "PASS" | "FAIL";
-  securityResult: "PASS" | "FAIL";
+  reviewResult: Stage2RoleOutcome;
+  securityResult: Stage2RoleOutcome;
 };
 
 export type ScmToPlatformResultPayload = {
@@ -64,8 +68,25 @@ export type ScmToPlatformResultPayload = {
 /** TaskExecutionRun.validationOutput JSON 상단 키 */
 export const ENV_TEST_STAGE2_RUN_META_KEY = "envTestStage2Meta" as const;
 
+export type EnvTestStage2ExecutorAckMeta = {
+  result: "PASS" | "FAIL";
+  reason?: string;
+};
+
+export type EnvTestStage2RunSummaryMeta = {
+  executorResult?: "PASS" | "FAIL";
+  reviewOutcome?: Stage2RoleOutcome;
+  securityOutcome?: Stage2RoleOutcome;
+  scmParticipant?: "AI" | "PLATFORM";
+  scmMergeResult?: "MERGED" | "BLOCKED" | "VERIFY_FAILED";
+  finalOutcome?: "COMPLETED" | "PARTIAL" | "FAILED";
+  mergeVerified?: boolean;
+};
+
 export type EnvTestStage2RunMetaJson = {
   [ENV_TEST_STAGE2_RUN_META_KEY]: {
+    executorAck?: EnvTestStage2ExecutorAckMeta;
+    stage2RunSummary?: EnvTestStage2RunSummaryMeta;
     reviewRequest?: PlatformToReviewerRequestPayload;
     reviewResult?: ReviewerToPlatformResultPayload;
     securityRequest?: PlatformToSecurityRequestPayload;

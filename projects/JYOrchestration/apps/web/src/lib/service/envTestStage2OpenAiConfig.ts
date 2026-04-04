@@ -3,7 +3,10 @@
  * (일반 Task / Stage 1 OpenAI 평가와 분리)
  */
 
-const DEFAULT_LIGHTWEIGHT = "gpt-4o-mini";
+/** Stage 2 기본 멤버 초대·표시용(경량 OpenAI 모델) */
+export const ENV_TEST_STAGE2_DEFAULT_MODEL_ID = "gpt-4o-mini" as const;
+
+const DEFAULT_LIGHTWEIGHT = ENV_TEST_STAGE2_DEFAULT_MODEL_ID;
 
 /** 환경변수로 덮어쓸 수 있음 — 전 역할 공통 */
 export function resolveEnvTestStage2OpenAiModel(): string {
