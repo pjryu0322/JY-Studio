@@ -254,6 +254,18 @@ const ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS = parseEnvPositiveIntMs(
   20_000,
   { min: 5_000, max: 120_000 }
 );
+/** Stage 2: 브랜치 404가 20초 이상 지속되면 조기 경고. */
+const ENV_TEST_STAGE2_BRANCH_EXISTS_WARN_TIMEOUT_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_BRANCH_EXISTS_WARN_TIMEOUT_MS",
+  20_000,
+  { min: 5_000, max: 120_000 }
+);
+/** Stage 2: 브랜치 404가 60초 이상 지속되면 Cursor push 미확인으로 실패 처리. */
+const ENV_TEST_STAGE2_BRANCH_EXISTS_FAIL_TIMEOUT_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE2_BRANCH_EXISTS_FAIL_TIMEOUT_MS",
+  60_000,
+  { min: 20_000, max: 300_000 }
+);
 const ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS = parseEnvPositiveIntMs("CURSOR_AGENT_ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS", 300, {
   min: 0,
   max: 60_000,
@@ -335,10 +347,16 @@ type EnvTestGithubProbeState = {
   stage2CompareAheadZeroSinceMs?: number | null;
   stage2AheadZeroSoftLogged?: boolean;
   stage2BranchExistsHardLogged?: boolean;
+  stage2BranchExistsWarnLogged?: boolean;
+  stage2BranchExistsFailLogged?: boolean;
+  stage2PushUnconfirmedFatal?: boolean;
   /** 마지막 성공한 GET /branches/{branch} 의 HEAD sha (Stage 2 Git 우선 종료용) */
   lastBranchHeadSha?: string | null;
   signalBranchHintLogged?: boolean;
   signalHeadShaHintLogged?: boolean;
+  signalCommitHashHintLogged?: boolean;
+  signalChangedFilesHintLogged?: boolean;
+  signalPushCompletedHintLogged?: boolean;
 };
 
 function envTestAllowGithubHeadProbe(
@@ -728,6 +746,23 @@ async function envTestProbeGithubAheadByCompare(input: {
     if (branchRes.httpStatus === 404) {
       if (envTestCatalog) {
         const elapsed = Date.now() - input.probeState.agentLaunchStartedAt;
+        if (elapsed > ENV_TEST_STAGE2_BRANCH_EXISTS_WARN_TIMEOUT_MS && !input.probeState.stage2BranchExistsWarnLogged) {
+          input.probeState.stage2BranchExistsWarnLogged = true;
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_stage2_branch_exists_warning",
+            projectId: input.projectId,
+            taskId: input.taskId,
+            userId: input.userId,
+            detail: {
+              headBranch: input.headBranch,
+              elapsedMsSinceLaunch: elapsed,
+              warnTimeoutMs: ENV_TEST_STAGE2_BRANCH_EXISTS_WARN_TIMEOUT_MS,
+              note: "platform detect 정상, Cursor push 미확인 가능성",
+              source: input.logSource,
+            },
+          });
+        }
         if (elapsed > ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS && !input.probeState.stage2BranchExistsHardLogged) {
           input.probeState.stage2BranchExistsHardLogged = true;
           appendTaskProgressLog({
@@ -740,6 +775,24 @@ async function envTestProbeGithubAheadByCompare(input: {
               headBranch: input.headBranch,
               elapsedMsSinceLaunch: elapsed,
               hardTimeoutMs: ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS,
+              source: input.logSource,
+            },
+          });
+        }
+        if (elapsed > ENV_TEST_STAGE2_BRANCH_EXISTS_FAIL_TIMEOUT_MS && !input.probeState.stage2BranchExistsFailLogged) {
+          input.probeState.stage2BranchExistsFailLogged = true;
+          input.probeState.stage2PushUnconfirmedFatal = true;
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_stage2_cursor_push_unconfirmed_timeout",
+            projectId: input.projectId,
+            taskId: input.taskId,
+            userId: input.userId,
+            detail: {
+              headBranch: input.headBranch,
+              elapsedMsSinceLaunch: elapsed,
+              failTimeoutMs: ENV_TEST_STAGE2_BRANCH_EXISTS_FAIL_TIMEOUT_MS,
+              note: "branch 404 지속 — 플랫폼 detect 병목 아님, Cursor push 미확인",
               source: input.logSource,
             },
           });
@@ -1050,6 +1103,18 @@ function pickCommitHash(agent: AgentJson): string | undefined {
   return raw || undefined;
 }
 
+function pickHeadSha(agent: AgentJson): string | undefined {
+  const raw =
+    (typeof agent.headSha === "string" && agent.headSha.trim() ? agent.headSha.trim() : "") ||
+    (typeof (agent as { head_sha?: unknown }).head_sha === "string" &&
+    String((agent as { head_sha?: unknown }).head_sha).trim()
+      ? String((agent as { head_sha?: unknown }).head_sha).trim()
+      : "") ||
+    pickCommitHash(agent) ||
+    "";
+  return raw || undefined;
+}
+
 function pickChangedFiles(agent: AgentJson): string[] {
   const a = agent.changedFiles ?? agent.filesChanged ?? agent.result?.changedFiles;
   if (!Array.isArray(a)) return [];
@@ -1124,6 +1189,7 @@ function extractPrUrlCandidatesForDump(agent: AgentJson): Record<string, unknown
   const candidates: Record<string, unknown> = {
     agentId: safePreview(agent.id),
     status: safePreview(agent.status),
+    executionStatus: safePreview((agent as any).executionStatus ?? (agent as any).execution_status),
     targetKeys,
     target_branchName: safePreview(t?.branchName ?? t?.branch_name),
     target_prUrl: safePreview(t?.prUrl ?? t?.pr_url),
@@ -1135,6 +1201,9 @@ function extractPrUrlCandidatesForDump(agent: AgentJson): Record<string, unknown
     changedFiles_len: Array.isArray((agent as any).changedFiles) ? (agent as any).changedFiles.length : null,
     filesChanged_len: Array.isArray((agent as any).filesChanged) ? (agent as any).filesChanged.length : null,
     result_changedFiles_len: Array.isArray((agent as any).result?.changedFiles) ? (agent as any).result.changedFiles.length : null,
+    changedFiles_sample: Array.isArray((agent as any).changedFiles)
+      ? ((agent as any).changedFiles as unknown[]).slice(0, 3).map((x) => String(x))
+      : null,
   };
   return candidates;
 }
@@ -2017,19 +2086,33 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
 
       const st = String(last.status ?? "").toUpperCase();
       completedAgentPolls += 1;
+      const commitHashHint = pickCommitHash(last);
+      const headShaHint = pickHeadSha(last);
+      const changedFilesNow = pickChangedFiles(last);
       if (stage2MonCtx) {
         const nowH = Date.now();
         stage2HeuristicPollSeq++;
         if (stage2HeuristicPollSeq % 2 === 0 || nowH - lastStage2HeuristicWall > 1_000) {
           lastStage2HeuristicWall = nowH;
           await patchStage2((m) =>
-            monitorApplyCursorAgentHeuristics(
-              m,
+            monitorCursorSignalPatch(
+              monitorApplyCursorAgentHeuristics(
+                m,
+                {
+                  agentStatusUpper: st,
+                  hasCommitHash: Boolean(commitHashHint),
+                  hasChangedFiles: changedFilesNow.length > 0,
+                  isTerminalSuccess: isTerminalSuccess(st),
+                },
+                nowH
+              ),
               {
-                agentStatusUpper: st,
-                hasCommitHash: Boolean(pickCommitHash(last)),
-                hasChangedFiles: pickChangedFiles(last).length > 0,
-                isTerminalSuccess: isTerminalSuccess(st),
+                branchNameHint: params.suggestedBranchName,
+                commitHashHint: commitHashHint ?? undefined,
+                headShaHint: headShaHint ?? undefined,
+                changedFilesCountHint: changedFilesNow.length,
+                ...(commitHashHint || changedFilesNow.length > 0 ? { pushStartedAtMs: nowH } : {}),
+                ...(headShaHint ? { pushCompletedHintAtMs: nowH } : {}),
               },
               nowH
             )
@@ -2060,7 +2143,67 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
             pollRound: completedAgentPolls,
             // Only small, safe subset for debugging PR/commit mapping.
             ...extractPrUrlCandidatesForDump(last),
+            targetBranch: params.suggestedBranchName,
+            executionStatusMapped: isTerminalFailure(st)
+              ? "failed"
+              : isTerminalSuccess(st)
+                ? "succeeded"
+                : "running",
           },
+        });
+      }
+      if (isEnvTestKind && envTestGithubProbeState && commitHashHint && !envTestGithubProbeState.signalCommitHashHintLogged) {
+        envTestGithubProbeState.signalCommitHashHintLogged = true;
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_commit_hash_hint",
+          projectId: params.projectId,
+          taskId: params.task.id,
+          userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+          detail: { commitHashHint: commitHashHint.slice(0, 16), pollRound: completedAgentPolls },
+        });
+      }
+      if (
+        isEnvTestKind &&
+        envTestGithubProbeState &&
+        changedFilesNow.length > 0 &&
+        !envTestGithubProbeState.signalChangedFilesHintLogged
+      ) {
+        envTestGithubProbeState.signalChangedFilesHintLogged = true;
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_changed_files_hint",
+          projectId: params.projectId,
+          taskId: params.task.id,
+          userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+          detail: { changedFilesCountHint: changedFilesNow.length, pollRound: completedAgentPolls },
+        });
+      }
+      if (
+        isEnvTestKind &&
+        envTestGithubProbeState &&
+        headShaHint &&
+        !envTestGithubProbeState.signalPushCompletedHintLogged
+      ) {
+        envTestGithubProbeState.signalPushCompletedHintLogged = true;
+        if (!envTestGithubProbeState.signalHeadShaHintLogged) {
+          envTestGithubProbeState.signalHeadShaHintLogged = true;
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "cursor_signal_head_sha_hint",
+            projectId: params.projectId,
+            taskId: params.task.id,
+            userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+            detail: { headShaHint: headShaHint.slice(0, 16), pollRound: completedAgentPolls, source: "agent_poll" },
+          });
+        }
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_push_completed_hint",
+          projectId: params.projectId,
+          taskId: params.task.id,
+          userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+          detail: { headShaHint: headShaHint.slice(0, 16), pollRound: completedAgentPolls, source: "agent_poll" },
         });
       }
 
@@ -2075,6 +2218,16 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
       }
 
       if (isEnvTestKind && envTestGithubProbeState) {
+        if (envTestGithubProbeState.stage2PushUnconfirmedFatal) {
+          return {
+            ok: false,
+            error: enhanceCursorErrorIfBaseBranchRelated(
+              "ENV_TEST Stage 2: GitHub 브랜치가 60초 이상 생성되지 않았습니다. 플랫폼 detect는 정상이며 Cursor push 미확인 상태입니다.",
+              branchCtx
+            ),
+            logs,
+          };
+        }
         const earlyGithub = await tryEnvTestCursorPollEarlySuccess({
           taskKindForScope: params.taskKind,
           projectId: params.projectId,

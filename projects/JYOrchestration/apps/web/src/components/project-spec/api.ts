@@ -525,6 +525,8 @@ export type EnvironmentTestLastDto = {
     pushCompletedHintAtMs?: number;
     branchNameHint?: string;
     headShaHint?: string;
+    commitHashHint?: string;
+    changedFilesCountHint?: number;
   } | null;
   stage2RuntimeBottleneckPhase?: string | null;
   stage2RuntimeBottleneckMs?: number | null;

@@ -15,6 +15,8 @@ export type Stage2CursorSignal = {
   pushCompletedHintAtMs?: number;
   branchNameHint?: string;
   headShaHint?: string;
+  commitHashHint?: string;
+  changedFilesCountHint?: number;
 };
 
 export type Stage2RuntimeMonitorV1 = {
@@ -361,6 +363,12 @@ export function monitorCursorSignalPatch(
   }
   if (typeof patch.headShaHint === "string" && patch.headShaHint.trim()) {
     next.headShaHint = patch.headShaHint.trim();
+  }
+  if (typeof patch.commitHashHint === "string" && patch.commitHashHint.trim()) {
+    next.commitHashHint = patch.commitHashHint.trim();
+  }
+  if (typeof patch.changedFilesCountHint === "number" && Number.isFinite(patch.changedFilesCountHint)) {
+    next.changedFilesCountHint = Math.max(0, Math.floor(patch.changedFilesCountHint));
   }
   m.cursorSignal = next;
   return finalizeStage2RuntimeMonitor(m, nowMs);
