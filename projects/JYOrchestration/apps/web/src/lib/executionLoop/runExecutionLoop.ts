@@ -922,6 +922,17 @@ export async function runExecutionLoop(params: {
           isEnvTestFamilyTaskKind(taskRow.taskKind) &&
           errMsg.includes("Git 원격 브랜치가 제한 시간 내에");
         if (isEnvTestBranchWaitFail) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_failure_git_branch_not_reflected",
+            projectId,
+            taskId,
+            userId: actorUserId,
+            detail: {
+              reason: "branch_wait_exceeded",
+              taskKind: taskRow.taskKind ?? null,
+            },
+          });
           await prisma.task.update({
             where: { id: taskId },
             data: {
@@ -935,7 +946,7 @@ export async function runExecutionLoop(params: {
             data: {
               status: "failed",
               evaluationDecision: "failed",
-              evaluationReason: `stage2_branch_wait_timeout:${errMsg}`.slice(0, 8000),
+              evaluationReason: `env_test_branch_wait_timeout:${errMsg}`.slice(0, 8000),
             },
           });
           await refreshWorkflowStates(projectId);
@@ -946,10 +957,24 @@ export async function runExecutionLoop(params: {
         }
 
         // PR도 없고 Cursor도 터미널을 못 내고 끝난 경우(특히 timeout)는 즉시 FAILED로 정리해 무한 재시도를 막는다.
-        // Stage 2는 Git 브랜치 대기 실패만 위에서 처리하고, Cursor 폴링 한도 문구로는 이 블록에 들어오지 않는다.
+        // ENV_TEST(Stage 1·2 공통): Cursor agent 폴링 timeout은 실패 기준이 아님. Git 브랜치 미반영만 위에서 FAILED.
+        // 일반 Task만 timeout → 즉시 FAILED.
         const isTimeout =
           errMsg.includes("응답 시간 초과") || errMsg.toLowerCase().includes("timeout");
-        if (isTimeout && !isEnvTestStage2TaskKind(taskRow.taskKind)) {
+        if (isTimeout && isEnvTestFamilyTaskKind(taskRow.taskKind)) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_cursor_timeout_not_failure_criterion",
+            projectId,
+            taskId,
+            userId: actorUserId,
+            detail: {
+              note: "retry_or_max_retries; completion is Git branch reflected / PR opened",
+              taskKind: taskRow.taskKind ?? null,
+            },
+          });
+        }
+        if (isTimeout && !isEnvTestFamilyTaskKind(taskRow.taskKind)) {
           await prisma.task.update({
             where: { id: taskId },
             data: {

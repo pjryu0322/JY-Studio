@@ -1,6 +1,9 @@
 /**
  * ENV_TEST Stage 1·Stage 2 공통 실행 코어: Cursor invoke → Git 반영 → PR_OPENED 까지 동일 경로.
  * (Stage 2만 Executor ACK + PR 이후 Reviewer/Security/SCM — runExecutionLoop 에서 분기)
+ *
+ * 실패 기준(루프): Cursor agent 폴링 timeout만으로는 FAILED 하지 않음.
+ * Git 원격 브랜치 미반영(제한 시간)만 즉시 FAILED. 그 외 ENV_TEST 오류는 재시도 경로.
  */
 
 import { isEnvTestFamilyTaskKind } from "@/lib/execution/envTestTaskKind";
