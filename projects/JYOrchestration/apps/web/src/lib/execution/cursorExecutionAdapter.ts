@@ -27,6 +27,7 @@ import {
   monitorApplyCursorAgentHeuristics,
   monitorCursorPrepareDone,
   monitorCursorPrepareStart,
+  monitorCursorSignalPatch,
   monitorFirstGitBranchCheck,
   monitorGitBranchDetected,
   monitorGitBranchReflected,
@@ -250,7 +251,7 @@ const ENV_TEST_STAGE2_EXISTS_CHECK_MIN_INTERVAL_MS = parseEnvPositiveIntMs(
 /** Stage 2: 브랜치 미생성 상태가 길게 지속될 때 진단 로그(기본 30000ms, 동작은 계속). */
 const ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE2_BRANCH_EXISTS_HARD_TIMEOUT_MS",
-  30_000,
+  20_000,
   { min: 5_000, max: 120_000 }
 );
 const ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS = parseEnvPositiveIntMs("CURSOR_AGENT_ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS", 300, {
@@ -286,20 +287,20 @@ const ENV_TEST_STAGE2_REFLECTED_CHECK_INTERVAL_MS = parseEnvPositiveIntMs(
 );
 const ENV_TEST_STAGE2_REFLECTED_SOFT_TIMEOUT_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE2_REFLECTED_SOFT_TIMEOUT_MS",
-  15_000,
+  10_000,
   { min: 3_000, max: 120_000 }
 );
 const ENV_TEST_STAGE2_REFLECTED_HARD_TIMEOUT_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE2_REFLECTED_HARD_TIMEOUT_MS",
-  30_000,
+  20_000,
   { min: 5_000, max: 120_000 }
 );
 
 /** ENV_TEST: branch/compare 404 5회차 이후 백오프 상한(기본 5초, 10초 금지). */
 const ENV_TEST_COMPARE_404_BACKOFF_CAP_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_COMPARE_404_BACKOFF_CAP_MS",
-  5_000,
-  { min: 1_000, max: 10_000 }
+  3_000,
+  { min: 500, max: 3_000 }
 );
 
 function envTestCompare404BackoffDelayMs(zeroBasedAttemptIndex: number, aggressive: boolean): number {
@@ -336,6 +337,8 @@ type EnvTestGithubProbeState = {
   stage2BranchExistsHardLogged?: boolean;
   /** 마지막 성공한 GET /branches/{branch} 의 HEAD sha (Stage 2 Git 우선 종료용) */
   lastBranchHeadSha?: string | null;
+  signalBranchHintLogged?: boolean;
+  signalHeadShaHintLogged?: boolean;
 };
 
 function envTestAllowGithubHeadProbe(
@@ -417,6 +420,16 @@ function logStage2CursorSubphaseTransitions(
         userId: ctx.actorUserId,
         detail: { stage2RuntimeMonitor: true },
       });
+      if (k === "cursor_push") {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_push_started",
+          projectId: ctx.projectId,
+          taskId: ctx.taskId,
+          userId: ctx.actorUserId,
+          detail: { source: "stage2_runtime_monitor" },
+        });
+      }
     }
     if (a === "RUNNING" && b === "DONE") {
       appendTaskProgressLog({
@@ -485,8 +498,24 @@ async function emitStage2FirstBranchReflectedIfNeeded(ctx: {
       source: ctx.logSource,
     },
   });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "cursor_signal_push_completed_hint",
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.userId,
+    detail: {
+      reflectedAt: ctx.at,
+      headShaHint: ctx.headSha,
+      source: ctx.logSource,
+    },
+  });
   await patchTaskExecutionRunStage2RuntimeMonitor(ctx.stage2RuntimeMonitor.execRunId, (m) =>
-    monitorGitBranchReflected(m, Date.now())
+    monitorCursorSignalPatch(
+      monitorGitBranchReflected(m, Date.now()),
+      { headShaHint: ctx.headSha ?? undefined, pushCompletedHintAtMs: Date.now() },
+      Date.now()
+    )
   );
 }
 
@@ -521,6 +550,7 @@ async function envTestProbeGithubAheadByCompare(input: {
         behindBy: number;
         compareStatus: string;
       };
+      reflectedBy: "head_sha" | "branch_exists" | "compare";
       elapsedMsLaunchToBranchConfirmed: number;
       elapsedMsBranchConfirmedToCompareOk: number;
       compareOkAtMs: number;
@@ -655,6 +685,43 @@ async function envTestProbeGithubAheadByCompare(input: {
 
   if (branchRes.ok) {
     input.probeState.lastBranchHeadSha = branchRes.headSha ?? null;
+    if (input.stage2RuntimeMonitor?.execRunId) {
+      const nowSig = Date.now();
+      if (!input.probeState.signalBranchHintLogged) {
+        input.probeState.signalBranchHintLogged = true;
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_branch_hint",
+          projectId: input.projectId,
+          taskId: input.taskId,
+          userId: input.userId,
+          detail: { branchNameHint: input.headBranch, source: input.logSource },
+        });
+      }
+      await patchTaskExecutionRunStage2RuntimeMonitor(input.stage2RuntimeMonitor.execRunId, (m) =>
+        monitorCursorSignalPatch(m, { branchNameHint: input.headBranch }, nowSig)
+      );
+      if (branchRes.headSha && !input.probeState.signalHeadShaHintLogged) {
+        input.probeState.signalHeadShaHintLogged = true;
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_head_sha_hint",
+          projectId: input.projectId,
+          taskId: input.taskId,
+          userId: input.userId,
+          detail: { headShaHint: branchRes.headSha, source: input.logSource },
+        });
+      }
+      if (branchRes.headSha) {
+        await patchTaskExecutionRunStage2RuntimeMonitor(input.stage2RuntimeMonitor.execRunId, (m) =>
+          monitorCursorSignalPatch(
+            m,
+            { headShaHint: branchRes.headSha ?? undefined, pushCompletedHintAtMs: nowSig },
+            nowSig
+          )
+        );
+      }
+    }
   }
 
   if (!branchRes.ok) {
@@ -744,6 +811,37 @@ async function envTestProbeGithubAheadByCompare(input: {
         });
       }
     }
+  }
+
+  if (input.probeState.aggressiveGithubTiming) {
+    const reflectedBy = branchRes.headSha ? "head_sha" : "branch_exists";
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "branch_detect_fastpath_hit",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        reflectedBy,
+        headBranch: input.headBranch,
+        headSha: branchRes.headSha ?? null,
+        source: input.logSource,
+      },
+    });
+    return {
+      data: {
+        headSha: branchRes.headSha ?? null,
+        changedFiles: [],
+        diffSummary: reflectedBy === "head_sha" ? "fast-path: head sha detected" : "fast-path: branch exists",
+        aheadBy: 1,
+        behindBy: 0,
+        compareStatus: reflectedBy === "head_sha" ? "head_sha_hint" : "branch_exists_hint",
+      },
+      reflectedBy,
+      elapsedMsLaunchToBranchConfirmed: elapsedMsLaunchToFirstBranchConfirmed,
+      elapsedMsBranchConfirmedToCompareOk: 0,
+      compareOkAtMs: Date.now(),
+    };
   }
 
   appendTaskProgressLog({
@@ -885,6 +983,7 @@ async function envTestProbeGithubAheadByCompare(input: {
       behindBy: compare.data.behindBy,
       compareStatus: compare.data.compareStatus,
     },
+    reflectedBy: "compare",
     elapsedMsLaunchToBranchConfirmed: elapsedMsLaunchToFirstBranchConfirmed,
     elapsedMsBranchConfirmedToCompareOk,
     compareOkAtMs: compareOkAt,
@@ -904,8 +1003,8 @@ const MAX_POLL_MS = CURSOR_AGENT_MAX_POLL_MS;
  */
 const ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS",
-  15 * 60 * 1000,
-  { min: 120_000, max: 2 * 60 * 60 * 1000 }
+  120_000,
+  { min: 60_000, max: 30 * 60 * 1000 }
 );
 const REQUEST_TIMEOUT_MS = 120_000;
 const POLL_REQUEST_TIMEOUT_MS = 60_000;
@@ -1647,6 +1746,17 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
 
     if (stage2MonCtx) {
       await patchStage2((m) => monitorCursorPrepareDone(m, Date.now()));
+      const nowSig = Date.now();
+      await patchStage2((m) =>
+        monitorCursorSignalPatch(
+          m,
+          {
+            agentLaunchedAtMs: nowSig,
+            branchNameHint: params.suggestedBranchName,
+          },
+          nowSig
+        )
+      );
     }
 
     if (isTaskProgressLogEnabled()) {
@@ -1664,6 +1774,22 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
           projectId: params.projectId,
           taskId: params.task.id,
           detail: { agentId, branch: params.suggestedBranchName },
+        });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_agent_launched",
+          projectId: params.projectId,
+          taskId: params.task.id,
+          userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+          detail: { agentId, branchNameHint: params.suggestedBranchName },
+        });
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "cursor_signal_branch_hint",
+          projectId: params.projectId,
+          taskId: params.task.id,
+          userId: params.envTestPollFinalizeContext?.actorUserId ?? undefined,
+          detail: { branchNameHint: params.suggestedBranchName, source: "agent_launch" },
         });
       }
     }

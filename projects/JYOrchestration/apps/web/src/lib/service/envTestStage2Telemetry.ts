@@ -12,6 +12,10 @@ export type EnvTestStage2TimingRecord = {
   pipelineFinishedAtMs?: number;
   executorTimeMs?: number;
   cursorTimeMs?: number;
+  cursorPrepareTimeMs?: number;
+  cursorGenerateTimeMs?: number;
+  cursorCommitTimeMs?: number;
+  cursorPushTimeMs?: number;
   branchDetectTimeMs?: number;
   prCreationTimeMs?: number;
   reviewTimeMs?: number;
@@ -62,6 +66,10 @@ export function parseEnvTestStage2TimingFromValidationOutput(validationOutput: s
 const BD_KEYS = [
   "executor",
   "cursor",
+  "cursorPrepare",
+  "cursorGenerate",
+  "cursorCommit",
+  "cursorPush",
   "branchDetect",
   "prCreation",
   "review",
@@ -88,9 +96,18 @@ export function mergeEnvTestStage2TimingOutput(
 }
 
 export function recomputeStage2TimingBreakdown(t: EnvTestStage2TimingRecord): EnvTestStage2TimingRecord {
+  const cursorPrepare = t.cursorPrepareTimeMs ?? 0;
+  const cursorGenerate = t.cursorGenerateTimeMs ?? 0;
+  const cursorCommit = t.cursorCommitTimeMs ?? 0;
+  const cursorPush = t.cursorPushTimeMs ?? 0;
+  const cursorTotal = t.cursorTimeMs ?? cursorPrepare + cursorGenerate + cursorCommit + cursorPush;
   const breakdown: Record<string, number> = {
     executor: t.executorTimeMs ?? 0,
-    cursor: t.cursorTimeMs ?? 0,
+    cursor: cursorTotal,
+    cursorPrepare,
+    cursorGenerate,
+    cursorCommit,
+    cursorPush,
     branchDetect: t.branchDetectTimeMs ?? 0,
     prCreation: t.prCreationTimeMs ?? 0,
     review: t.reviewTimeMs ?? 0,

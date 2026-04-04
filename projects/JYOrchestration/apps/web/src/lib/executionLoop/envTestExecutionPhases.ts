@@ -16,7 +16,13 @@ export const ENV_TEST_RUN_PHASE = {
   REQUESTED: "REQUESTED",
   EXECUTOR_RUNNING: "EXECUTOR_RUNNING",
   CURSOR_RUNNING: "CURSOR_RUNNING",
+  CURSOR_PREPARE: "cursor_prepare",
+  CURSOR_GENERATE: "cursor_generate",
+  CURSOR_COMMIT: "cursor_commit",
+  CURSOR_PUSH: "cursor_push",
+  GIT_BRANCH_DETECT: "git_branch_detect",
   GIT_BRANCH_REFLECTED: "GIT_BRANCH_REFLECTED",
+  PLATFORM_PR_CREATE: "platform_pr_create",
   PR_OPENED: "PR_OPENED",
   /** Stage 1 (기존 성공 경로) */
   STAGE1_MERGED: "MERGED",

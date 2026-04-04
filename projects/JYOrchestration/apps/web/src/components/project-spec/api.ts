@@ -519,6 +519,13 @@ export type EnvironmentTestLastDto = {
   } | null;
   stage2GitStatus?: { branchDetected: boolean; branchReflected: boolean } | null;
   stage2PlatformStatus?: { prCreated: boolean } | null;
+  stage2CursorSignal?: {
+    agentLaunchedAtMs?: number;
+    pushStartedAtMs?: number;
+    pushCompletedHintAtMs?: number;
+    branchNameHint?: string;
+    headShaHint?: string;
+  } | null;
   stage2RuntimeBottleneckPhase?: string | null;
   stage2RuntimeBottleneckMs?: number | null;
   stage2CurrentBottleneckHint?: string | null;

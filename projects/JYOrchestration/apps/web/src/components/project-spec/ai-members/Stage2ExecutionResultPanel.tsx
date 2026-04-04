@@ -45,6 +45,19 @@ function platformStatusSummary(
   return "PR 생성 처리됨";
 }
 
+function cursorSignalSummary(
+  sig: import("@/components/project-spec/api").EnvironmentTestLastDto["stage2CursorSignal"]
+): string | null {
+  if (!sig) return null;
+  const parts: string[] = [];
+  if (sig.branchNameHint?.trim()) parts.push(`branch=${sig.branchNameHint.trim()}`);
+  if (sig.headShaHint?.trim()) parts.push(`head=${sig.headShaHint.trim().slice(0, 10)}…`);
+  if (typeof sig.pushCompletedHintAtMs === "number") parts.push("push-hint=done");
+  else if (typeof sig.pushStartedAtMs === "number") parts.push("push-hint=started");
+  else if (typeof sig.agentLaunchedAtMs === "number") parts.push("agent=launched");
+  return parts.length ? parts.join(" · ") : null;
+}
+
 export function Stage2ExecutionResultPanel(props: {
   last: EnvironmentTestLastDto | null;
   busyStage2?: boolean;
@@ -145,6 +158,11 @@ export function Stage2ExecutionResultPanel(props: {
             <div style={{ marginTop: 2, fontSize: 11, color: "#334155" }}>
               <span style={{ color: "#64748b" }}>Platform</span>{" "}
               {platformStatusSummary(last.stage2PlatformStatus, last?.prUrl ?? null)}
+            </div>
+          ) : null}
+          {last?.stage2CursorSignal ? (
+            <div style={{ marginTop: 2, fontSize: 11, color: "#334155" }}>
+              <span style={{ color: "#64748b" }}>Cursor signal</span> {cursorSignalSummary(last.stage2CursorSignal)}
             </div>
           ) : null}
           <div style={{ marginTop: 4 }}>
