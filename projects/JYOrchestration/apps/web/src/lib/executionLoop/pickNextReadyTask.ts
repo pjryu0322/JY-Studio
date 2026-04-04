@@ -30,7 +30,8 @@ function wf(t: TaskForPick): ExecutionWorkflowStatus | null {
 export function pickNextReadyTask(tasks: TaskForPick[]): TaskForPick | undefined {
   const byId = new Map(tasks.map((t) => [t.id, t] as const));
   const candidates = tasks.filter((t) => {
-    if (String(t.taskKind ?? "").trim() === "ENV_TEST") return false;
+    const tk = String(t.taskKind ?? "").trim();
+    if (tk === "ENV_TEST" || tk === "ENV_TEST_STAGE2") return false;
     if (t.status !== "TODO") return false;
     if (wf(t) !== EXECUTION_WORKFLOW.READY) return false;
     // 다음 Task는 "PR_OPENED" 이후에만 가능

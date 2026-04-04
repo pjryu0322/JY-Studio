@@ -654,12 +654,22 @@ export async function runExecutionLoop(params: {
           };
         }
         logStage2CatalogEvent({
+          phase: "executor_finished",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          executionId: execRun.id,
+          elapsedMs: ex.elapsedMs,
+          stage: "ENV_TEST_STAGE2",
+          detail: { roleKey: "executor", result: "PASS", reason: "Executor(OpenAI) ACK PASS" },
+        });
+        logStage2CatalogEvent({
           phase: "executor_running",
           projectId,
           taskId,
           userId: actorUserId,
           executionId: execRun.id,
-          detail: { note: "cursor_invoke_next" },
+          detail: { note: "cursor_invoke_next", roleKey: "executor" },
         });
       }
 
