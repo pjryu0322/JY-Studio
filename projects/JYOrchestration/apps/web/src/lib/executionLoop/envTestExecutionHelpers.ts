@@ -1183,6 +1183,82 @@ export type EnvTestGithubFinalizeReturn =
   | { kind: "return"; result: RunExecutionLoopResult }
   | { kind: "continue_loop" };
 
+/**
+ * PR_OPENED DB 반영 이후 고정 분기: Stage 1은 direct merge smoke, Stage 2는 reviewer→security→scm.
+ * `finalizeEnvTestPrOpenedFromGithubOnly`와 `runExecutionLoop` 메인 PR 경로가 동일 로직을 공유한다.
+ */
+export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
+  projectId: string;
+  taskId: string;
+  taskKind: string | null;
+  execRunId: string;
+  actorUserId: string;
+  prNumber: number;
+  /** Stage 2 카탈로그 `pr_opened` 로그용(선택). */
+  prUrl?: string | null;
+  steps: LoopStepRecord[];
+  singleTaskId?: string;
+  effectiveAutoAdvance: boolean;
+}): Promise<EnvTestGithubFinalizeReturn> {
+  requireEnvTestFamilyTaskKindForFinalize(input.taskKind, "runEnvTestPostPrOpenedMergeAndReadiness", {
+    projectId: input.projectId,
+    taskId: input.taskId,
+    actorUserId: input.actorUserId,
+  });
+
+  if (isEnvTestStage2TaskKind(input.taskKind)) {
+    logStage2CatalogEvent({
+      phase: "pr_opened",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: {
+        prNumber: input.prNumber,
+        prUrl: input.prUrl ?? undefined,
+      },
+    });
+  }
+
+  const readiness = await evaluateNextTaskReadiness({
+    projectId: input.projectId,
+    excludeTaskExecutionRunId: input.execRunId,
+  });
+
+  let mergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>>;
+
+  if (isEnvTestStage2TaskKind(input.taskKind)) {
+    mergeRes = await runEnvTestStage2ReviewScmAfterPrOpened({
+      projectId: input.projectId,
+      taskId: input.taskId,
+      execRunId: input.execRunId,
+      actorUserId: input.actorUserId,
+      prNumber: input.prNumber,
+    });
+  } else {
+    mergeRes = await executeEnvTestPrMergeSmokeTest({
+      projectId: input.projectId,
+      actorUserId: input.actorUserId,
+    });
+  }
+
+  if (input.singleTaskId || !input.effectiveAutoAdvance || !mergeRes.ok) {
+    const mergeOk = mergeRes.ok === true;
+    return {
+      kind: "return",
+      result: {
+        ok: mergeOk,
+        steps: input.steps,
+        message: mergeOk
+          ? (mergeRes.message ?? "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.")
+          : (mergeRes.message ?? "환경 연결 테스트: 머지 단계에서 실패했습니다."),
+        nextTaskReadiness: readiness,
+      },
+    };
+  }
+  return { kind: "continue_loop" };
+}
+
 /** ENV_TEST 전용: GitHub API 기준 PR_OPENED·run 완료 정리. */
 export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
   projectId: string;
@@ -1255,52 +1331,16 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
 
   await refreshWorkflowStates(input.projectId);
 
-  if (isEnvTestStage2TaskKind(input.taskKind)) {
-    logStage2CatalogEvent({
-      phase: "pr_opened",
-      projectId: input.projectId,
-      taskId: input.taskId,
-      userId: input.actorUserId,
-      executionId: input.execRunId,
-      detail: { prNumber: input.prNumber, prUrl: input.prUrl },
-    });
-  }
-
-  const readiness = await evaluateNextTaskReadiness({
+  return runEnvTestPostPrOpenedMergeAndReadiness({
     projectId: input.projectId,
-    excludeTaskExecutionRunId: input.execRunId,
+    taskId: input.taskId,
+    taskKind: input.taskKind,
+    execRunId: input.execRunId,
+    actorUserId: input.actorUserId,
+    prNumber: input.prNumber,
+    prUrl: input.prUrl,
+    steps: input.steps,
+    singleTaskId: input.singleTaskId,
+    effectiveAutoAdvance: input.effectiveAutoAdvance,
   });
-
-  let mergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>>;
-
-  if (isEnvTestStage2TaskKind(input.taskKind)) {
-    mergeRes = await runEnvTestStage2ReviewScmAfterPrOpened({
-      projectId: input.projectId,
-      taskId: input.taskId,
-      execRunId: input.execRunId,
-      actorUserId: input.actorUserId,
-      prNumber: input.prNumber,
-    });
-  } else {
-    mergeRes = await executeEnvTestPrMergeSmokeTest({
-      projectId: input.projectId,
-      actorUserId: input.actorUserId,
-    });
-  }
-
-  if (input.singleTaskId || !input.effectiveAutoAdvance || !mergeRes.ok) {
-    const mergeOk = mergeRes.ok === true;
-    return {
-      kind: "return",
-      result: {
-        ok: mergeOk,
-        steps: input.steps,
-        message: mergeOk
-          ? (mergeRes.message ?? "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.")
-          : (mergeRes.message ?? "환경 연결 테스트: 머지 단계에서 실패했습니다."),
-        nextTaskReadiness: readiness,
-      },
-    };
-  }
-  return { kind: "continue_loop" };
 }
