@@ -258,6 +258,11 @@ export function Stage2ExecutionResultPanel(props: {
               <span>—</span>
             )}
           </div>
+          {last?.stage2FailureMessage ? (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>
+              {last.stage2FailureMessage}
+            </div>
+          ) : null}
           {last?.stage2TimingBreakdown && !busyStage2 ? (
             <div style={{ marginTop: 8, fontSize: 10, color: "#64748b", lineHeight: 1.4 }}>
               구간 ms(telemetry):{" "}

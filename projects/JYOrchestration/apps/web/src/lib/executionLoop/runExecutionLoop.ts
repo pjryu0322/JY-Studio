@@ -797,6 +797,7 @@ export async function runExecutionLoop(params: {
           isEnvTestFamilyTaskKind(taskRow.taskKind) &&
           errMsg.includes("Git 원격 브랜치가 제한 시간 내에");
         if (isEnvTestBranchWaitFail) {
+          const isStage2 = isEnvTestStage2TaskKind(taskRow.taskKind);
           appendTaskProgressLog({
             kind: "execution",
             phase: "env_test_failure_git_branch_not_reflected",
@@ -811,9 +812,10 @@ export async function runExecutionLoop(params: {
           await prisma.task.update({
             where: { id: taskId },
             data: {
+              ...(isStage2 ? { status: "FAILED" as const } : {}),
               executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-              lastEvalResult: "failed",
-              lastEvalSummary: errMsg.slice(0, 1500),
+              lastEvalResult: isStage2 ? "STAGE2_BRANCH_NOT_REFLECTED" : "failed",
+              lastEvalSummary: isStage2 ? "Stage 2 실패: Git branch 미반영" : errMsg.slice(0, 1500),
             },
           });
           await prisma.taskExecutionRun.update({
@@ -821,7 +823,9 @@ export async function runExecutionLoop(params: {
             data: {
               status: "failed",
               evaluationDecision: "failed",
-              evaluationReason: `env_test_branch_wait_timeout:${errMsg}`.slice(0, 8000),
+              evaluationReason: isStage2
+                ? "STAGE2_BRANCH_NOT_REFLECTED"
+                : `env_test_branch_wait_timeout:${errMsg}`.slice(0, 8000),
             },
           });
           await refreshWorkflowStates(projectId);
@@ -966,6 +970,51 @@ export async function runExecutionLoop(params: {
           if (bypass.kind === "continue_loop") {
             continue;
           }
+        }
+
+        if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
+          const hasCommit = Boolean(String(cr.commitHash ?? "").trim());
+          const hasChangedFiles = Array.isArray(cr.changedFiles) && cr.changedFiles.length > 0;
+          const hasDiff = Boolean(String(cr.summary ?? "").trim());
+          const stage2FailCode =
+            hasCommit && hasChangedFiles && hasDiff ? "STAGE2_BRANCH_NOT_REFLECTED" : "STAGE2_NO_COMMIT";
+          const stage2FailSummary =
+            stage2FailCode === "STAGE2_NO_COMMIT"
+              ? "Stage 2 실패: commit 미발생"
+              : "Stage 2 실패: Git branch 미반영";
+          await prisma.task.update({
+            where: { id: taskId },
+            data: {
+              status: "FAILED",
+              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+              lastEvalResult: stage2FailCode,
+              lastEvalSummary: stage2FailSummary,
+            },
+          });
+          await prisma.taskExecutionRun.update({
+            where: { id: execRun.id },
+            data: {
+              status: "failed",
+              evaluationDecision: "failed",
+              evaluationReason: stage2FailCode,
+            },
+          });
+          await refreshWorkflowStates(projectId);
+          steps.push({
+            phase: "git_reflection_gate",
+            taskId,
+            runId: cr.runId,
+            branch: cr.branchName,
+            commitHash: cr.commitHash ?? null,
+            changedFileCount: cr.changedFiles.length,
+            passed: false,
+            reason: stage2FailCode,
+          });
+          return {
+            ok: false,
+            steps,
+            message: stage2FailSummary,
+          };
         }
 
         const gateReason = "no_commit_and_no_changed_files";
