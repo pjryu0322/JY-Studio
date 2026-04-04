@@ -256,9 +256,13 @@ export type EnvironmentTestLastDto = {
   nextTaskName?: string | null;
   nextTaskBlockedReason?: string | null;
   /** Stage 2 전용(UI): validationOutput 에서 파생 */
-  stage2ReviewerResult?: "PASS" | "FAIL" | null;
+  stage2ExecutorResult?: "PASS" | "FAIL" | null;
+  stage2FinalOutcome?: "COMPLETED" | "PARTIAL" | "FAILED" | null;
+  stage2ScmParticipant?: "AI" | "PLATFORM" | null;
+  stage2ScmDisplay?: "PASS" | "BLOCKED" | "PLATFORM_FALLBACK" | "VERIFY_FAILED" | null;
+  stage2ReviewerResult?: "PASS" | "FAIL" | "MISSING" | "DISABLED" | null;
   stage2ReviewerReason?: string | null;
-  stage2SecurityResult?: "PASS" | "FAIL" | null;
+  stage2SecurityResult?: "PASS" | "FAIL" | "MISSING" | "DISABLED" | null;
   stage2SecurityReason?: string | null;
   stage2ScmResult?: "MERGED" | "BLOCKED" | "VERIFY_FAILED" | null;
   stage2ScmReason?: string | null;

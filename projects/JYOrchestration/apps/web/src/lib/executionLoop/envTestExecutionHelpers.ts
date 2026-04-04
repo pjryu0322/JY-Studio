@@ -3,6 +3,7 @@ import {
   isEnvTestStage2TaskKind,
 } from "@/lib/execution/envTestTaskKind";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
+import { logStage2CatalogEvent } from "@/lib/service/envTestStage2CatalogEvents";
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { createOrUpdateEnvTestPullRequest } from "@/lib/service/githubEnvTestPullRequestService";
@@ -23,8 +24,10 @@ import {
 } from "@/lib/service/envTestStage2AiRoleEvaluation";
 import {
   logStage2TelemetryEvent,
+  parseEnvTestStage2TimingFromValidationOutput,
   patchTaskExecutionRunStage2Timing,
 } from "@/lib/service/envTestStage2Telemetry";
+import { ENV_TEST_STAGE2_RUN_META_KEY } from "@/lib/service/envTestStage2Messages";
 import { evaluateNextTaskReadiness } from "@/lib/executionLoop/nextTaskReadiness";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
 import { refreshWorkflowStates, updateTaskOrchestrationSnapshot } from "@/lib/executionLoop/workflowState";
@@ -197,6 +200,17 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     },
   });
 
+  if (isEnvTestStage2TaskKind(input.taskKind)) {
+    logStage2CatalogEvent({
+      phase: "branch_reflected",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { via: input.via },
+    });
+  }
+
   const committedSummary =
     input.via === "cursor_error_recovery"
       ? "ENV_TEST: GitHub compare로 푸시 확인 후 플랫폼 PR 처리."
@@ -357,6 +371,22 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     detail: { payload: reviewRequest, reviewerMember },
   });
 
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage2_review_started",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: { executionId: input.execRunId },
+  });
+  logStage2CatalogEvent({
+    phase: "review_started",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    executionId: input.execRunId,
+  });
+
   const reviewStarted = Date.now();
   const reviewStartIso = new Date(reviewStarted).toISOString();
   const reviewResult = await runEnvTestStage2ReviewerWithAiMember({
@@ -393,7 +423,39 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     detail: { payload: reviewResult },
   });
 
-  if (reviewResult.result !== "PASS") {
+  const reviewPhase =
+    reviewResult.result === "PASS"
+      ? "env_test_stage2_review_passed"
+      : reviewResult.result === "FAIL"
+        ? "env_test_stage2_review_failed"
+        : reviewResult.result === "MISSING"
+          ? "env_test_stage2_review_missing"
+          : "env_test_stage2_review_disabled";
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: reviewPhase,
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: { result: reviewResult.result, reason: reviewResult.reason.slice(0, 500) },
+  });
+  logStage2CatalogEvent({
+    phase:
+      reviewResult.result === "PASS"
+        ? "review_passed"
+        : reviewResult.result === "FAIL"
+          ? "review_failed"
+          : reviewResult.result === "MISSING"
+            ? "review_missing"
+            : "review_disabled",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    executionId: input.execRunId,
+    detail: { result: reviewResult.result, reason: reviewResult.reason.slice(0, 500) },
+  });
+
+  if (reviewResult.result === "FAIL") {
     await prisma.task.update({
       where: { id: input.taskId },
       data: {
@@ -404,6 +466,21 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
       },
     });
     await refreshWorkflowStates(input.projectId);
+    vOut = mergeEnvTestStage2RunValidationOutput(vOut, {
+      stage2RunSummary: { finalOutcome: "FAILED", reviewOutcome: reviewResult.result },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: input.execRunId },
+      data: { validationOutput: vOut },
+    });
+    logStage2CatalogEvent({
+      phase: "stage2_failed",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { step: "review", result: "FAIL" },
+    });
     return {
       ok: false,
       message: `Stage 2: 리뷰 실패 — ${reviewResult.reason}`,
@@ -411,15 +488,27 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     };
   }
 
-  await prisma.task.update({
-    where: { id: input.taskId },
-    data: {
-      executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_APPROVED,
-      lastEvalResult: "review_passed",
-      lastEvalSummary: reviewResult.reason.slice(0, 1500),
-    },
-  });
-  await refreshWorkflowStates(input.projectId);
+  if (reviewResult.result === "PASS") {
+    await prisma.task.update({
+      where: { id: input.taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEW_APPROVED,
+        lastEvalResult: "review_passed",
+        lastEvalSummary: reviewResult.reason.slice(0, 1500),
+      },
+    });
+    await refreshWorkflowStates(input.projectId);
+  } else {
+    await prisma.task.update({
+      where: { id: input.taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.SECURITY_PENDING,
+        lastEvalResult: reviewResult.result === "MISSING" ? "review_missing" : "review_disabled",
+        lastEvalSummary: reviewResult.reason.slice(0, 1500),
+      },
+    });
+    await refreshWorkflowStates(input.projectId);
+  }
 
   await prisma.task.update({
     where: { id: input.taskId },
@@ -442,6 +531,22 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     taskId: input.taskId,
     userId: input.actorUserId,
     detail: { payload: securityRequest, securityMember },
+  });
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage2_security_started",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: { executionId: input.execRunId },
+  });
+  logStage2CatalogEvent({
+    phase: "security_started",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    executionId: input.execRunId,
   });
 
   const secStarted = Date.now();
@@ -480,7 +585,39 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     detail: { payload: securityResult },
   });
 
-  if (securityResult.result !== "PASS") {
+  const secPhase =
+    securityResult.result === "PASS"
+      ? "env_test_stage2_security_passed"
+      : securityResult.result === "FAIL"
+        ? "env_test_stage2_security_failed"
+        : securityResult.result === "MISSING"
+          ? "env_test_stage2_security_missing"
+          : "env_test_stage2_security_disabled";
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: secPhase,
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: { result: securityResult.result, reason: securityResult.reason.slice(0, 500) },
+  });
+  logStage2CatalogEvent({
+    phase:
+      securityResult.result === "PASS"
+        ? "security_passed"
+        : securityResult.result === "FAIL"
+          ? "security_failed"
+          : securityResult.result === "MISSING"
+            ? "security_missing"
+            : "security_disabled",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    executionId: input.execRunId,
+    detail: { result: securityResult.result, reason: securityResult.reason.slice(0, 500) },
+  });
+
+  if (securityResult.result === "FAIL") {
     await prisma.task.update({
       where: { id: input.taskId },
       data: {
@@ -491,6 +628,25 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
       },
     });
     await refreshWorkflowStates(input.projectId);
+    vOut = mergeEnvTestStage2RunValidationOutput(vOut, {
+      stage2RunSummary: {
+        finalOutcome: "FAILED",
+        reviewOutcome: reviewResult.result,
+        securityOutcome: securityResult.result,
+      },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: input.execRunId },
+      data: { validationOutput: vOut },
+    });
+    logStage2CatalogEvent({
+      phase: "stage2_failed",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { step: "security", result: "FAIL" },
+    });
     return {
       ok: false,
       message: `Stage 2: Security 실패 — ${securityResult.reason}`,
@@ -498,15 +654,27 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     };
   }
 
-  await prisma.task.update({
-    where: { id: input.taskId },
-    data: {
-      executionWorkflowStatus: EXECUTION_WORKFLOW.SECURITY_PASSED,
-      lastEvalResult: "security_passed",
-      lastEvalSummary: securityResult.reason.slice(0, 1500),
-    },
-  });
-  await refreshWorkflowStates(input.projectId);
+  if (securityResult.result === "PASS") {
+    await prisma.task.update({
+      where: { id: input.taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.SECURITY_PASSED,
+        lastEvalResult: "security_passed",
+        lastEvalSummary: securityResult.reason.slice(0, 1500),
+      },
+    });
+    await refreshWorkflowStates(input.projectId);
+  } else {
+    await prisma.task.update({
+      where: { id: input.taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.SCM_PENDING,
+        lastEvalResult: securityResult.result === "MISSING" ? "security_missing" : "security_disabled",
+        lastEvalSummary: securityResult.reason.slice(0, 1500),
+      },
+    });
+    await refreshWorkflowStates(input.projectId);
+  }
 
   await prisma.task.update({
     where: { id: input.taskId },
@@ -536,9 +704,42 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     detail: { payload: scmRequest, scmMember },
   });
 
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage2_scm_started",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: { executionId: input.execRunId, scmMemberAvailable: scmMember.available },
+  });
+  logStage2CatalogEvent({
+    phase: "scm_started",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    executionId: input.execRunId,
+    detail: { scmMemberAvailable: scmMember.available },
+  });
+
   let mergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>>;
 
   if (!scmMember.available) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage2_scm_platform_fallback",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: { message: "SCM 미등록 — 플랫폼이 merge·verify 수행" },
+    });
+    logStage2CatalogEvent({
+      phase: "scm_platform_fallback",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { platform_fallback: true },
+    });
     await prisma.task.update({
       where: { id: input.taskId },
       data: {
@@ -577,6 +778,20 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     });
   } else {
     if (!repoUrl || !baseBranch || !headBranch || !taskRow?.name) {
+      vOut = mergeEnvTestStage2RunValidationOutput(vOut, {
+        stage2RunSummary: {
+          finalOutcome: "FAILED",
+          reviewOutcome: reviewResult.result,
+          securityOutcome: securityResult.result,
+          scmParticipant: "AI",
+          scmMergeResult: "BLOCKED",
+          mergeVerified: false,
+        },
+      });
+      await prisma.taskExecutionRun.update({
+        where: { id: input.execRunId },
+        data: { validationOutput: vOut },
+      });
       await prisma.task.update({
         where: { id: input.taskId },
         data: {
@@ -587,6 +802,14 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
         },
       });
       await refreshWorkflowStates(input.projectId);
+      logStage2CatalogEvent({
+        phase: "stage2_failed",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        executionId: input.execRunId,
+        detail: { step: "scm_preflight", reason: "missing_repo_branch" },
+      });
       return { ok: false, message: "Stage 2: SCM 판단 불가(저장소/브랜치 정보 부족)", blockedReason: "SCM_BLOCKED" };
     }
 
@@ -621,6 +844,36 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     });
 
     if (scmDecision.decision && scmDecision.decision !== "approve_merge") {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_stage2_scm_blocked",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: { decision: scmDecision.decision, summary: (scmDecision.summary ?? "").slice(0, 500) },
+      });
+      logStage2CatalogEvent({
+        phase: "scm_blocked",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        executionId: input.execRunId,
+        detail: { decision: scmDecision.decision },
+      });
+      vOut = mergeEnvTestStage2RunValidationOutput(vOut, {
+        stage2RunSummary: {
+          finalOutcome: "FAILED",
+          reviewOutcome: reviewResult.result,
+          securityOutcome: securityResult.result,
+          scmParticipant: "AI",
+          scmMergeResult: "BLOCKED",
+          mergeVerified: false,
+        },
+      });
+      await prisma.taskExecutionRun.update({
+        where: { id: input.execRunId },
+        data: { validationOutput: vOut },
+      });
       await prisma.task.update({
         where: { id: input.taskId },
         data: {
@@ -631,6 +884,14 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
         },
       });
       await refreshWorkflowStates(input.projectId);
+      logStage2CatalogEvent({
+        phase: "stage2_failed",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        executionId: input.execRunId,
+        detail: { step: "scm_decision", blockedReason: "SCM_BLOCKED" },
+      });
       return {
         ok: false,
         message: `Stage 2: SCM 차단 — ${(scmDecision.summary ?? "hold/reject").slice(0, 800)}`,
@@ -677,7 +938,8 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
 
   const scmResult = scmResultFromMergeOk(
     mergeRes.ok,
-    !mergeRes.ok && "blockedReason" in mergeRes ? mergeRes.blockedReason : undefined
+    !mergeRes.ok && "blockedReason" in mergeRes ? mergeRes.blockedReason : undefined,
+    { platformScmFallback: !scmMember.available }
   );
   vOut = mergeEnvTestStage2RunValidationOutput(vOut, { scmResult });
   await prisma.taskExecutionRun.update({
@@ -697,6 +959,128 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
   await patchTaskExecutionRunStage2Timing(input.execRunId, {
     pipelineFinishedAtMs: Date.now(),
   });
+
+  const runFresh = await prisma.taskExecutionRun.findUnique({
+    where: { id: input.execRunId },
+    select: { validationOutput: true },
+  });
+  const voFresh = runFresh?.validationOutput ?? vOut;
+  const timing = parseEnvTestStage2TimingFromValidationOutput(voFresh);
+  const finalOutcome = !mergeRes.ok
+    ? "FAILED"
+    : reviewResult.result === "PASS" && securityResult.result === "PASS" && scmMember.available
+      ? "COMPLETED"
+      : "PARTIAL";
+  const executorFromMeta = (() => {
+    try {
+      const j = JSON.parse(String(voFresh ?? "{}")) as Record<string, unknown>;
+      const m = j[ENV_TEST_STAGE2_RUN_META_KEY] as Record<string, unknown> | undefined;
+      const e = m?.executorAck as { result?: string } | undefined;
+      return e?.result === "PASS" || e?.result === "FAIL" ? (e.result as "PASS" | "FAIL") : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  const scmMergeSummary =
+    scmResult.result === "MERGED" ? "MERGED" : scmResult.result === "VERIFY_FAILED" ? "VERIFY_FAILED" : "BLOCKED";
+  const nextVo = mergeEnvTestStage2RunValidationOutput(voFresh, {
+    stage2RunSummary: {
+      executorResult: executorFromMeta,
+      reviewOutcome: reviewResult.result,
+      securityOutcome: securityResult.result,
+      scmParticipant: scmMember.available ? "AI" : "PLATFORM",
+      scmMergeResult: scmMergeSummary,
+      finalOutcome,
+      mergeVerified: mergeRes.ok,
+    },
+  });
+  await prisma.taskExecutionRun.update({
+    where: { id: input.execRunId },
+    data: { validationOutput: nextVo },
+  });
+
+  if (mergeRes.ok) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage2_scm_merged",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: { platformScmFallback: !scmMember.available },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage2_merge_verified",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: { ok: true },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage2_total_elapsed_ms",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        total_elapsed_ms: timing.totalTimeMs,
+        bottleneck_top1: timing.topBottleneck,
+      },
+    });
+    logStage2CatalogEvent({
+      phase: "scm_merged",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { platformScmFallback: !scmMember.available },
+    });
+    logStage2CatalogEvent({
+      phase: "merge_verified",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { ok: true },
+    });
+    const completionPhase =
+      finalOutcome === "COMPLETED"
+        ? "stage2_completed"
+        : finalOutcome === "PARTIAL"
+          ? "stage2_partial"
+          : "stage2_failed";
+    logStage2CatalogEvent({
+      phase: completionPhase,
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: {
+        finalOutcome,
+        total_elapsed_ms: timing.totalTimeMs,
+        bottleneck_top1: timing.topBottleneck,
+      },
+    });
+  } else {
+    if (scmResult.result === "VERIFY_FAILED") {
+      logStage2CatalogEvent({
+        phase: "scm_verify_failed",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        executionId: input.execRunId,
+        detail: { scmResult: scmResult.result },
+      });
+    }
+    logStage2CatalogEvent({
+      phase: "stage2_failed",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { mergeOk: false, scmResult: scmResult.result },
+    });
+  }
 
   return mergeRes;
 }
@@ -776,6 +1160,17 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
   });
 
   await refreshWorkflowStates(input.projectId);
+
+  if (isEnvTestStage2TaskKind(input.taskKind)) {
+    logStage2CatalogEvent({
+      phase: "pr_opened",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      executionId: input.execRunId,
+      detail: { prNumber: input.prNumber, prUrl: input.prUrl },
+    });
+  }
 
   const readiness = await evaluateNextTaskReadiness({
     projectId: input.projectId,

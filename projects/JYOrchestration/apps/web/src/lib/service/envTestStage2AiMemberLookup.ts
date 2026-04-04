@@ -12,8 +12,10 @@ export type Stage2AiMemberPublicConfig = {
   enabled: boolean;
 };
 
+export type Stage2MemberUnavailableReason = "missing" | "disabled";
+
 export type Stage2AiMemberConfig =
-  | { role: EnvTestStage2AiRole; available: false; config?: Stage2AiMemberPublicConfig }
+  | { role: EnvTestStage2AiRole; available: false; unavailableReason?: Stage2MemberUnavailableReason; config?: Stage2AiMemberPublicConfig }
   | {
       role: EnvTestStage2AiRole;
       available: true;
@@ -79,7 +81,23 @@ export async function getAiMemberByRole(params: {
     orderBy: { createdAt: "asc" },
   });
 
-  if (!row) return { role: params.role, available: false };
+  if (!row) {
+    const disabledProbe = await prisma.projectMember.findFirst({
+      where: {
+        projectId,
+        memberType: "AI",
+        orchestrationStage: mapped.orchestrationStage,
+        aiOrchestrationRole: mapped.aiOrchestrationRole,
+      },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    return {
+      role: params.role,
+      available: false,
+      unavailableReason: disabledProbe ? "disabled" : "missing",
+    };
+  }
 
   return {
     role: params.role,

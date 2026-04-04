@@ -493,9 +493,13 @@ export type EnvironmentTestLastDto = {
   nextTaskId?: string | null;
   nextTaskName?: string | null;
   nextTaskBlockedReason?: string | null;
-  stage2ReviewerResult?: "PASS" | "FAIL" | null;
+  stage2ExecutorResult?: "PASS" | "FAIL" | null;
+  stage2FinalOutcome?: "COMPLETED" | "PARTIAL" | "FAILED" | null;
+  stage2ScmParticipant?: "AI" | "PLATFORM" | null;
+  stage2ScmDisplay?: "PASS" | "BLOCKED" | "PLATFORM_FALLBACK" | "VERIFY_FAILED" | null;
+  stage2ReviewerResult?: "PASS" | "FAIL" | "MISSING" | "DISABLED" | null;
   stage2ReviewerReason?: string | null;
-  stage2SecurityResult?: "PASS" | "FAIL" | null;
+  stage2SecurityResult?: "PASS" | "FAIL" | "MISSING" | "DISABLED" | null;
   stage2SecurityReason?: string | null;
   stage2ScmResult?: "MERGED" | "BLOCKED" | "VERIFY_FAILED" | null;
   stage2ScmReason?: string | null;
@@ -525,6 +529,16 @@ export async function postEnvironmentTestRun(projectId: string, opts?: { stage?:
     steps?: unknown[];
     last?: EnvironmentTestLastDto | null;
   }>;
+  return { res, json };
+}
+
+export async function postStage2DefaultAiMembers(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await fetch(`/api/projects/${encoded}/stage2-default-ai-members`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const json = (await res.json()) as ApiResponse<{ created: string[]; skipped: string[] }>;
   return { res, json };
 }
 

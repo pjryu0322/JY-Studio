@@ -9,6 +9,7 @@ import {
   type PlatformToReviewerRequestPayload,
   type PlatformToSecurityRequestPayload,
   type ExecutorToPlatformStatusPayload,
+  type Stage2RoleOutcome,
 } from "@/lib/service/envTestStage2Messages";
 import { getAiMemberByRole } from "@/lib/service/envTestStage2AiMemberLookup";
 import { tryRunScmManagerWithAiMembers, type ScmManagerDecision } from "@/lib/execution/scmManagerWithAiMembers";
@@ -107,7 +108,15 @@ export async function runEnvTestStage2ReviewerWithAiMember(
 ): Promise<ReviewerToPlatformResultPayload> {
   const member = await getAiMemberByRole({ projectId: input.projectId, role: "reviewer" });
   if (!member.available) {
-    return { type: "REVIEW_RESULT", result: "PASS", reason: "Reviewer 미설정: 자동 PASS" };
+    const reason =
+      member.unavailableReason === "disabled"
+        ? "review disabled: Reviewer 멤버가 비활성화되어 있습니다."
+        : "review member missing: 등록된 Reviewer AI 멤버가 없습니다.";
+    return {
+      type: "REVIEW_RESULT",
+      result: member.unavailableReason === "disabled" ? "DISABLED" : "MISSING",
+      reason,
+    };
   }
 
   const maskedDiff = opts?.enableMasking === false ? input.request.diffSummary : maskSecretsForPrompt(input.request.diffSummary);
@@ -145,7 +154,15 @@ export async function runEnvTestStage2SecurityWithAiMember(
 ): Promise<SecurityToPlatformResultPayload> {
   const member = await getAiMemberByRole({ projectId: input.projectId, role: "security" });
   if (!member.available) {
-    return { type: "SECURITY_RESULT", result: "PASS", reason: "Security 미설정: 자동 PASS" };
+    const reason =
+      member.unavailableReason === "disabled"
+        ? "security disabled: Security 멤버가 비활성화되어 있습니다."
+        : "security member missing: 등록된 Security AI 멤버가 없습니다.";
+    return {
+      type: "SECURITY_RESULT",
+      result: member.unavailableReason === "disabled" ? "DISABLED" : "MISSING",
+      reason,
+    };
   }
 
   const maskedDiff = opts?.enableMasking === false ? input.request.diffSummary : maskSecretsForPrompt(input.request.diffSummary);
@@ -180,8 +197,8 @@ export async function runEnvTestStage2ScmDecisionWithAiMembers(input: {
   taskDescription: string | null;
   branch: string;
   baseBranch: string;
-  reviewResult: "PASS" | "FAIL";
-  securityResult: "PASS" | "FAIL";
+  reviewResult: Stage2RoleOutcome;
+  securityResult: Stage2RoleOutcome;
   reviewReason: string | null;
   securityReason: string | null;
 }): Promise<{ available: boolean; decision: ScmManagerDecision | null; summary: string | null }> {
@@ -190,7 +207,8 @@ export async function runEnvTestStage2ScmDecisionWithAiMembers(input: {
     return { available: false, decision: null, summary: null };
   }
 
-  const reviewDecision = input.reviewResult === "PASS" && input.securityResult === "PASS" ? "PASS" : "FAIL";
+  const reviewDecision =
+    input.reviewResult === "PASS" && input.securityResult === "PASS" ? "PASS" : "FAIL";
   const reviewSummary = [
     `reviewResult=${input.reviewResult}`,
     `securityResult=${input.securityResult}`,
