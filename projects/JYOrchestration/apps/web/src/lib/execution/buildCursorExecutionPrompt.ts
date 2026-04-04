@@ -40,26 +40,33 @@ export function buildCursorExecutionPrompt(
   opts?: BuildCursorExecutionPromptOptions
 ): string {
   if (opts?.compactHelloWorld) {
-    const commitHint = setup.autoCommit ? "One commit." : "Commit if needed.";
-    const pushHint = setup.autoPush ? "Push branch to origin." : "Do not push.";
     const compact = [
-      `ENV_TEST smoke only. Repo ${setup.gitRepoUrl}`,
-      `Use base ${setup.baseBranch} and branch name exactly: ${setup.suggestedBranchName}`,
-      `Create or update exactly ONE file: orchestration-test/hello-world.md`,
-      `Allowed change only under orchestration-test/**`,
-      `File content must be 1-3 short lines of Hello World text.`,
-      `${commitHint} ${pushHint}`,
-      `No PR. No merge. No extra files. Report branchName + commitHash + changedFilesCount.`,
+      `You are executing a minimal ENV_TEST task.`,
+      ``,
+      `Repository: ${setup.gitRepoUrl}`,
+      `Base branch: ${setup.baseBranch}`,
+      `Working branch: ${setup.suggestedBranchName}`,
+      ``,
+      `Make a very small change under:`,
+      `orchestration-test/**`,
+      ``,
+      `A single small text file is enough.`,
+      `For example, create or update one simple text file with a short "Hello World" line.`,
+      ``,
+      `Commit the change and push the branch to origin.`,
+      ``,
+      `Do not create a pull request.`,
+      `Do not modify files outside orchestration-test/**.`,
     ].join("\n");
     if (compact.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compact;
 
     const compactFallback = [
-      `ENV_TEST smoke.`,
-      `Base ${setup.baseBranch} | branch=${setup.suggestedBranchName}`,
-      `One file only: orchestration-test/hello-world.md`,
-      `1-3 lines Hello World.`,
-      `${commitHint} ${pushHint}`,
-      `No PR. No merge. No extra files.`,
+      `Minimal ENV_TEST task.`,
+      `Repo ${setup.gitRepoUrl}`,
+      `Base ${setup.baseBranch} | Branch ${setup.suggestedBranchName}`,
+      `Change only orchestration-test/** (one small text file).`,
+      `Commit and push branch to origin.`,
+      `No PR. No changes outside orchestration-test/**.`,
     ].join("\n");
     if (compactFallback.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compactFallback;
     return compactFallback.slice(0, ENV_TEST_COMPACT_PROMPT_MAX_CHARS);
