@@ -1,6 +1,7 @@
 /**
- * ENV_TEST Stage 1·Stage 2 공통 실행 코어: Cursor invoke → Git 반영 → PR_OPENED 까지 동일 경로.
- * (Stage 2만 Executor ACK + PR 이후 Reviewer/Security/SCM — runExecutionLoop 에서 분기)
+ * ENV_TEST Stage 1·Stage 2 공통 실행 코어: Cursor invoke(+ 타이밍) — Git 반영·PR 은 cursorExecutionAdapter·헬퍼와 연동.
+ * - Stage 2 전용 Cursor 이전 단계: `envTestExecutionPipeline.runEnvTestStage2PreCursorExecutorGate`
+ * - PR_OPENED 이후: `envTestExecutionHelpers.runEnvTestPostPrOpenedMergeAndReadiness` (Stage1 merge vs Stage2 reviewer→scm)
  *
  * 실패 기준(루프): Cursor agent 폴링 timeout만으로는 FAILED 하지 않음.
  * Git 원격 브랜치 미반영(제한 시간)만 즉시 FAILED. 그 외 ENV_TEST 오류는 재시도 경로.

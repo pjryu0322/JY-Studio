@@ -2,7 +2,6 @@ import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHi
 import {
   ENV_TEST_TASK_KIND,
   isEnvTestFamilyTaskKind,
-  isEnvTestStage1TaskKind,
   isEnvTestStage2TaskKind,
 } from "@/lib/execution/envTestTaskKind";
 import { buildCursorExecutionPrompt } from "@/lib/execution/buildCursorExecutionPrompt";
@@ -11,6 +10,7 @@ import {
   type ExecuteCursorRunOutcome,
 } from "@/lib/execution/cursorExecutionAdapter";
 import { runEnvTestCursorToPrOpenedCore } from "@/lib/executionLoop/envTestExecutionCore";
+import { runEnvTestStage2PreCursorExecutorGate } from "@/lib/executionLoop/envTestExecutionPipeline";
 import { isCursorCodeReflectionConfirmed } from "@/lib/execution/cursorReflectionPolicy";
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
 import { countExecutionReviewAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
@@ -34,7 +34,6 @@ import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { ensureTaskExecutionRunColumnsReady } from "@/lib/prisma/taskExecutionRunColumnsHeal";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
-import { logStage2CatalogEvent } from "@/lib/service/envTestStage2CatalogEvents";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAutoMergeService";
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
@@ -42,24 +41,11 @@ import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/e
 import {
   runEnvTestAfterGithubPushConfirmed,
   runEnvTestPlatformPrPhase,
+  runEnvTestPostPrOpenedMergeAndReadiness,
 } from "@/lib/executionLoop/envTestExecutionHelpers";
-import { runEnvTestStage2ExecutorOpenAiAck } from "@/lib/service/envTestStage2AiRoleEvaluation";
-import { mergeEnvTestStage2RunValidationOutput } from "@/lib/service/envTestStage2PlatformActors";
-import { patchTaskExecutionRunStage2Timing } from "@/lib/service/envTestStage2Telemetry";
-import {
-  monitorExecutorDone,
-  monitorExecutorStart,
-  patchTaskExecutionRunStage2RuntimeMonitor,
-} from "@/lib/service/envTestStage2RuntimeMonitor";
-import {
-  evaluateNextTaskReadiness,
-  type NextTaskReadinessResult,
-} from "@/lib/executionLoop/nextTaskReadiness";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 import { GITHUB_REST_MISSING_TOKEN_USER_MESSAGE } from "@/lib/integration/githubRestCommon";
-import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
-
 export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
 
 const loopLocks = new Set<string>();
@@ -554,132 +540,16 @@ export async function runExecutionLoop(params: {
         },
       });
 
-      if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
-        logStage2CatalogEvent({
-          phase: "stage2_started",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          executionId: execRun.id,
-        });
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_stage2_executor_started",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: { execRunId: execRun.id },
-        });
-        logStage2CatalogEvent({
-          phase: "executor_started",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          executionId: execRun.id,
-        });
-        await patchTaskExecutionRunStage2RuntimeMonitor(execRun.id, (m) => monitorExecutorStart(m, Date.now()));
-        const ex = await runEnvTestStage2ExecutorOpenAiAck({
-          projectId,
-          taskId,
-          execRunId: execRun.id,
-          actorUserId,
-        });
-        await prisma.taskExecutionRun.update({
-          where: { id: execRun.id },
-          data: {
-            validationOutput: mergeEnvTestStage2RunValidationOutput(null, {
-              executorAck: {
-                result: ex.ok ? "PASS" : "FAIL",
-                reason: ex.ok ? "Executor(OpenAI) ACK PASS" : "Executor(OpenAI) ACK FAIL",
-              },
-            }),
-          },
-        });
-        await patchTaskExecutionRunStage2Timing(execRun.id, {
-          executionId: execRun.id,
-          pipelineStartedAtMs: Date.now(),
-          executorTimeMs: ex.elapsedMs,
-          events: ex.timing.events,
-        });
-        if (!ex.ok) {
-          await patchTaskExecutionRunStage2RuntimeMonitor(execRun.id, (m) => monitorExecutorDone(m, Date.now()));
-          const rowVo = await prisma.taskExecutionRun.findUnique({
-            where: { id: execRun.id },
-            select: { validationOutput: true },
-          });
-          const voFail = mergeEnvTestStage2RunValidationOutput(rowVo?.validationOutput, {
-            stage2RunSummary: {
-              finalOutcome: "FAILED",
-              executorResult: "FAIL",
-              mergeVerified: false,
-            },
-          });
-          await prisma.taskExecutionRun.update({
-            where: { id: execRun.id },
-            data: {
-              status: "failed",
-              evaluationDecision: "failed",
-              evaluationReason: "env_test_stage2_executor_ack_failed",
-              validationOutput: voFail,
-            },
-          });
-          await prisma.task.update({
-            where: { id: taskId },
-            data: {
-              status: "FAILED",
-              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-              lastEvalResult: "env_test_stage2_executor_ack_failed",
-              lastEvalSummary: "Stage 2: Executor(OpenAI) 준비 확인이 PASS가 아닙니다.",
-            },
-          });
-          await refreshWorkflowStates(projectId);
-          logStage2CatalogEvent({
-            phase: "executor_failed",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            executionId: execRun.id,
-            detail: { reason: "executor_ack_failed" },
-          });
-          logStage2CatalogEvent({
-            phase: "stage2_failed",
-            projectId,
-            taskId,
-            userId: actorUserId,
-            executionId: execRun.id,
-            detail: { step: "executor" },
-          });
-          steps.push({
-            phase: "cursor",
-            taskId,
-            ok: false,
-            error: "env_test_stage2_executor_ack_failed",
-          });
-          return {
-            ok: false,
-            steps,
-            message: "Stage 2 Executor(OpenAI) ACK가 통과하지 못했습니다.",
-          };
-        }
-        logStage2CatalogEvent({
-          phase: "executor_finished",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          executionId: execRun.id,
-          elapsedMs: ex.elapsedMs,
-          stage: "ENV_TEST_STAGE2",
-          detail: { roleKey: "executor", result: "PASS", reason: "Executor(OpenAI) ACK PASS" },
-        });
-        logStage2CatalogEvent({
-          phase: "executor_running",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          executionId: execRun.id,
-          detail: { note: "cursor_invoke_next", roleKey: "executor" },
-        });
-        await patchTaskExecutionRunStage2RuntimeMonitor(execRun.id, (m) => monitorExecutorDone(m, Date.now()));
+      const stage2Pre = await runEnvTestStage2PreCursorExecutorGate({
+        projectId,
+        taskId,
+        actorUserId,
+        execRunId: execRun.id,
+        taskKind: taskRow.taskKind,
+        steps,
+      });
+      if (!stage2Pre.ok) {
+        return stage2Pre.result;
       }
 
       console.info("[execution-loop] cursor invoke", {
@@ -1660,39 +1530,26 @@ export async function runExecutionLoop(params: {
 
         await refreshWorkflowStates(projectId);
 
-        let envReadinessCommitted: NextTaskReadinessResult | undefined;
-        let envMergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>> | null = null;
         if (isEnvTestTask) {
-          if (isEnvTestStage1TaskKind(taskRow.taskKind)) {
-            envMergeRes = await executeEnvTestPrMergeSmokeTest({
-              projectId,
-              actorUserId,
-            });
-          }
-
-          envReadinessCommitted = await evaluateNextTaskReadiness({
+          const post = await runEnvTestPostPrOpenedMergeAndReadiness({
             projectId,
-            excludeTaskExecutionRunId: execRun.id,
+            taskId,
+            taskKind: taskRow.taskKind,
+            execRunId: execRun.id,
+            actorUserId,
+            prNumber,
+            prUrl,
+            steps,
+            singleTaskId,
+            effectiveAutoAdvance,
           });
+          if (post.kind === "return") {
+            return post.result;
+          }
+          continue;
         }
 
-        if (
-          singleTaskId ||
-          !effectiveAutoAdvance ||
-          (isEnvTestTask && envMergeRes)
-        ) {
-          if (isEnvTestTask && envReadinessCommitted) {
-            const mergeOk = envMergeRes?.ok === true;
-            return {
-              ok: mergeOk,
-              steps,
-              message: mergeOk
-                ? (envMergeRes?.message ??
-                    "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.")
-                : (envMergeRes?.message ?? "환경 연결 테스트: 머지 단계에서 실패했습니다."),
-              nextTaskReadiness: envReadinessCommitted,
-            };
-          }
+        if (singleTaskId || !effectiveAutoAdvance) {
           return { ok: true, steps, message: "PR이 열렸습니다(PR_OPENED). 자동 진행이 꺼져 루프를 종료합니다." };
         }
         continue;
