@@ -9,6 +9,7 @@ import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSp
 import { createOrUpdateEnvTestPullRequest } from "@/lib/service/githubEnvTestPullRequestService";
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
+import { GITHUB_REST_MISSING_TOKEN_USER_MESSAGE } from "@/lib/integration/githubRestCommon";
 import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
 import {
   buildEnvTestStage2ReviewRequest,
@@ -335,6 +336,243 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
   return { kind: "continue_loop" };
 }
 
+export type EnvTestReflectionNotConfirmedBypassResult =
+  | { kind: "return"; result: RunExecutionLoopResult }
+  | { kind: "continue_loop" }
+  | { kind: "fallthrough" };
+
+/**
+ * reflection 미확인 시 ENV_TEST만: GitHub compare ahead_by면 `runEnvTestAfterGithubPushConfirmed`→finalize canonical 경로.
+ * 토큰 부재는 pending_apply 즉시 반환. 처리 불가 시 fallthrough → 루프의 공통 pending_apply(no_commit) 경로.
+ */
+export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
+  projectId: string;
+  taskId: string;
+  taskKind: string | null;
+  actorUserId: string;
+  execRunId: string;
+  repoUrl: string;
+  baseBranch: string;
+  githubAccessToken?: string | null;
+  cr: CursorRunResult;
+  headPending: string;
+  execRunCreatedAt: Date;
+  steps: LoopStepRecord[];
+  singleTaskId?: string;
+  effectiveAutoAdvance: boolean;
+}): Promise<EnvTestReflectionNotConfirmedBypassResult> {
+  requireEnvTestFamilyTaskKindForFinalize(input.taskKind, "runEnvTestReflectionNotConfirmedGithubBypass", {
+    projectId: input.projectId,
+    taskId: input.taskId,
+    actorUserId: input.actorUserId,
+  });
+
+  const headPending = input.headPending.trim();
+  if (!headPending) {
+    return { kind: "fallthrough" };
+  }
+
+  const { projectId, taskId, actorUserId, execRunId, cr } = input;
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_branch_reflection_check_started",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: { base: input.baseBranch, head: headPending, step: "reflection_bypass" },
+  });
+  const branchCompareStartedAt = Date.now();
+  const comparePa = await fetchGithubCompareSnapshot({
+    repoUrl: input.repoUrl,
+    base: input.baseBranch,
+    head: headPending,
+    maxFiles: 80,
+    githubAccessToken: input.githubAccessToken ?? null,
+    projectId,
+    allowUnauthenticated: true,
+  });
+  const branchDetectElapsedMs = Date.now() - branchCompareStartedAt;
+
+  if (comparePa.ok && comparePa.data.aheadBy > 0) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_branch_reflection_confirmed",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        aheadBy: comparePa.data.aheadBy,
+        headSha: comparePa.data.headSha ?? null,
+        step: "reflection_bypass",
+      },
+    });
+    input.steps.push({
+      phase: "git_reflection_gate",
+      taskId,
+      runId: cr.runId,
+      branch: headPending,
+      commitHash: cr.commitHash ?? null,
+      changedFileCount: cr.changedFiles.length,
+      passed: true,
+      reason: "github_compare_ahead_by",
+    });
+    const outPa = await runEnvTestAfterGithubPushConfirmed({
+      projectId,
+      taskId,
+      taskKind: input.taskKind,
+      execRunId,
+      actorUserId,
+      branchName: headPending,
+      repoUrl: input.repoUrl,
+      baseBranch: input.baseBranch,
+      githubAccessToken: input.githubAccessToken ?? null,
+      compareData: {
+        headSha: comparePa.data.headSha ?? cr.commitHash ?? null,
+        changedFiles: comparePa.data.changedFiles,
+        diffSummary: comparePa.data.diffSummary,
+      },
+      steps: input.steps,
+      singleTaskId: input.singleTaskId,
+      effectiveAutoAdvance: input.effectiveAutoAdvance,
+      cursorRunId: cr.runId,
+      cursorSummary: cr.summary,
+      via: "reflection_bypass",
+      pushDetectedSource: "reflection_bypass_compare",
+      executionRunCreatedAt: input.execRunCreatedAt,
+      branchDetectElapsedMs,
+    });
+    if (outPa.kind === "return") {
+      return { kind: "return", result: outPa.result };
+    }
+    if (outPa.kind === "continue_loop") {
+      return { kind: "continue_loop" };
+    }
+    if (outPa.kind === "pr_failed") {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_pr_create_failed",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { message: outPa.message.slice(0, 800), via: "reflection_bypass" },
+      });
+      await prisma.taskExecutionRun.update({
+        where: { id: execRunId },
+        data: {
+          status: "failed",
+          evaluationDecision: "failed",
+          evaluationReason: `env_test_platform_pr_failed:${outPa.message}`.slice(0, 8000),
+        },
+      });
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+          lastEvalResult: "failed",
+          lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outPa.message}`.slice(0, 1500),
+        },
+      });
+      await refreshWorkflowStates(projectId);
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+        },
+      };
+    }
+  }
+
+  if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "github_compare_missing_token",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: { context: "git_reflection_gate_env_test", branchName: headPending, baseBranch: input.baseBranch },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "git_reflection_gate_blocked_no_token",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: { branchName: headPending, baseBranch: input.baseBranch, gateReason: "github_compare_unavailable_no_token" },
+    });
+    const gateReason = "github_compare_unavailable_no_token";
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "git_reflection_gate",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        passed: false,
+        gateReason,
+        runId: cr.runId,
+        commitHash: cr.commitHash ?? null,
+        changedFileCount: cr.changedFiles.length,
+        outcome: "pending_apply",
+      },
+    });
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.PENDING_APPLY,
+        lastEvalResult: "pending_apply",
+        lastEvalSummary: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        cursorRunId: cr.runId,
+        cursorSummary: cr.summary,
+        branchName: headPending,
+        commitSha: cr.commitHash ?? null,
+        changedFiles: cr.changedFiles as unknown as object,
+        gitSummary: cr.summary.slice(0, 24_000),
+        validationOutput: null,
+        commitStatus: "github_compare_missing_token",
+        pushStatus: "delegated_to_cursor",
+        status: "awaiting_git_reflection",
+        evaluationReason: "git_reflection_gate_blocked: github_compare_unavailable_no_token",
+      },
+    });
+    await updateTaskOrchestrationSnapshot(taskId, {
+      branch: headPending,
+      commitStatus: "github_compare_missing_token",
+      pushStatus: "delegated_to_cursor",
+      commitSha: cr.commitHash ?? null,
+      changedFileCount: cr.changedFiles.length,
+    });
+    await refreshWorkflowStates(projectId);
+    input.steps.push({
+      phase: "git_reflection_gate",
+      taskId,
+      runId: cr.runId,
+      branch: headPending,
+      commitHash: cr.commitHash ?? null,
+      changedFileCount: cr.changedFiles.length,
+      passed: false,
+      reason: gateReason,
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: true,
+        steps: input.steps,
+        message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      },
+    };
+  }
+
+  return { kind: "fallthrough" };
+}
+
 /**
  * Cursor 메타로 Git 반영이 확인된 뒤( reflection gate 통과 ) ENV_TEST 공통 파이프라인:
  * GitHub compare → COMMITTED → 플랫폼 PR → finalizeEnvTestPrOpenedFromGithubOnly → PR_OPENED 이후 분기.
@@ -591,15 +829,13 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     projectId,
     taskId,
     userId: actorUserId,
-    detail: { prUrl, prNumber, branch: cr.branchName, pipeline: "runEnvTestReflectionConfirmedPipeline" },
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "state_transition: COMMITTED → PR_OPENED",
-    projectId,
-    taskId,
-    userId: actorUserId,
-    detail: { prUrl, prNumber, branch: cr.branchName, pipeline: "runEnvTestReflectionConfirmedPipeline" },
+    detail: {
+      prUrl,
+      prNumber,
+      branch: cr.branchName,
+      pipeline: "runEnvTestReflectionConfirmedPipeline",
+      transition: "COMMITTED_TO_PR_OPENED",
+    },
   });
 
   return finalizeEnvTestPrOpenedFromGithubOnly({
