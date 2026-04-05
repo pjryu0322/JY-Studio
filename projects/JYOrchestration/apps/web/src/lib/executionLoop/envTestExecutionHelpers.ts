@@ -1,5 +1,7 @@
 import {
+  ENV_TEST_TASK_KIND,
   isEnvTestFamilyTaskKind,
+  isEnvTestStage1TaskKind,
   isEnvTestStage2TaskKind,
 } from "@/lib/execution/envTestTaskKind";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
@@ -168,6 +170,35 @@ function pickEnvTestHeadBranch(input: {
     String(input.signalBranchNameHint ?? "").trim() ||
     String(input.fallbackBranchName ?? "").trim()
   );
+}
+
+function logEnvTestBranchSourceOfTruth(ctx: {
+  projectId: string;
+  taskId: string;
+  actorUserId: string;
+  plannedBranchName: string;
+  promptBranchName: string;
+  trackedBranchName: string | null;
+  cursorReportedBranch: string | null | undefined;
+  signalBranchNameHint: string | null;
+  effectiveGithubHead: string;
+}): void {
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_branch_name_alignment",
+    projectId: ctx.projectId,
+    taskId: ctx.taskId,
+    userId: ctx.actorUserId,
+    detail: {
+      plannedBranchName: ctx.plannedBranchName || null,
+      promptBranchName: ctx.promptBranchName || null,
+      trackedBranchName: ctx.trackedBranchName,
+      cursorReportedBranch: ctx.cursorReportedBranch ?? null,
+      signalBranchNameHint: ctx.signalBranchNameHint,
+      effectiveGithubHead: ctx.effectiveGithubHead,
+      prHeadBranchResolved: ctx.effectiveGithubHead,
+    },
+  });
 }
 
 /**
@@ -383,7 +414,11 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
           ? "ENV_TEST: Cursor 폴링 중 GitHub compare로 푸시 확인 후 플랫폼 PR 처리."
           : input.via === "cursor_poll_stage2_branch_head"
             ? "ENV_TEST Stage 2: GitHub 브랜치 HEAD 확인 후 플랫폼 PR 처리(Cursor 터미널 대기 없음)."
-            : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
+            : input.via === "stage1_post_cursor_compare"
+              ? "ENV_TEST(Stage1): GitHub compare로 원격 변경(ahead_by) 확인. 플랫폼이 PR을 생성·갱신합니다."
+              : input.via === "stage1_post_cursor_branch_exists"
+                ? "ENV_TEST(Stage1): 원격 브랜치 존재 확인. 플랫폼이 PR을 생성·갱신합니다."
+                : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
 
   await prisma.task.update({
     where: { id: input.taskId },
@@ -489,16 +524,466 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
   return { kind: "continue_loop" };
 }
 
-export type EnvTestReflectionNotConfirmedBypassResult =
+/**
+ * Stage 1 (ENV_TEST) 전용: Cursor reflection 게이트 없이 GitHub compare·브랜치 HEAD로 원격 반영을 확인한 뒤
+ * 플랫폼 PR → PR_OPENED → merge/readiness.
+ * - 브랜치 단일 근원: 플랫폼 `plannedBranchName` 우선(GitHub probe·PR head), 없을 때만 Cursor·runtime signal.
+ * - Cursor: commit/push만. PR 생성·Stage1 merge는 플랫폼.
+ */
+export async function runStage1EnvTestBranchToPrPipeline(input: {
+  projectId: string;
+  taskId: string;
+  taskKind: string | null;
+  actorUserId: string;
+  execRunId: string;
+  repoUrl: string;
+  baseBranch: string;
+  githubAccessToken?: string | null;
+  execRunCreatedAt: Date;
+  plannedBranchName: string;
+  promptBranchName: string;
+  cr: CursorRunResult;
+  steps: LoopStepRecord[];
+  singleTaskId?: string;
+  effectiveAutoAdvance: boolean;
+}): Promise<
   | { kind: "return"; result: RunExecutionLoopResult }
   | { kind: "continue_loop" }
-  | { kind: "fallthrough" };
+> {
+  requireEnvTestFamilyTaskKindForFinalize(input.taskKind, "runStage1EnvTestBranchToPrPipeline", {
+    projectId: input.projectId,
+    taskId: input.taskId,
+    actorUserId: input.actorUserId,
+  });
+  if (!isEnvTestStage1TaskKind(input.taskKind)) {
+    throw new Error(
+      "[runStage1EnvTestBranchToPrPipeline] taskKind must be ENV_TEST (Stage 1); Stage 2 uses reflection/bypass pipelines."
+    );
+  }
+
+  const { projectId, taskId, actorUserId, execRunId, cr } = input;
+  const runMonRow = await prisma.taskExecutionRun.findUnique({
+    where: { id: execRunId },
+    select: { validationOutput: true, branchName: true },
+  });
+  const runtimeMon = parseStage2RuntimeMonitorFromValidationOutput(runMonRow?.validationOutput ?? null);
+  const signalBranchNameHint = String(runtimeMon?.cursorSignal?.branchNameHint ?? "").trim() || null;
+  const trackedBranchName = String(runMonRow?.branchName ?? "").trim();
+
+  const planned = String(input.plannedBranchName ?? "").trim();
+  const promptBr = String(input.promptBranchName ?? "").trim();
+  const effectiveGithubHead =
+    planned ||
+    pickEnvTestHeadBranch({
+      cursorBranchName: cr.branchName,
+      signalBranchNameHint,
+      fallbackBranchName: null,
+    });
+
+  if (!effectiveGithubHead) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_branch_unknown",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: { plannedBranchName: planned || null, cursorReportedBranch: cr.branchName ?? null },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        status: "failed",
+        evaluationDecision: "failed",
+        evaluationReason: "env_test_stage1_branch_unknown",
+      },
+    });
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+        lastEvalResult: "failed",
+        lastEvalSummary: "ENV_TEST(Stage1): 플랫폼이 부여한 브랜치 이름을 확인할 수 없습니다.",
+      },
+    });
+    await refreshWorkflowStates(projectId);
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "ENV_TEST(Stage1): 브랜치 이름을 확인할 수 없습니다.",
+      },
+    };
+  }
+
+  logEnvTestBranchSourceOfTruth({
+    projectId,
+    taskId,
+    actorUserId,
+    plannedBranchName: planned,
+    promptBranchName: promptBr,
+    trackedBranchName: trackedBranchName || null,
+    cursorReportedBranch: cr.branchName,
+    signalBranchNameHint,
+    effectiveGithubHead,
+  });
+
+  if (planned && trackedBranchName && planned !== trackedBranchName) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_branch_name_mismatch_warning",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        plannedBranchName: planned,
+        trackedBranchName,
+        note: "TaskExecutionRun.branchName differs from planned branch at pipeline entry",
+      },
+    });
+  }
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage1_github_probe_started",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: { base: input.baseBranch, head: effectiveGithubHead },
+  });
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEWING },
+  });
+
+  await prisma.taskExecutionRun.update({
+    where: { id: execRunId },
+    data: {
+      cursorRunId: cr.runId,
+      cursorSummary: cr.summary,
+      branchName: effectiveGithubHead,
+      commitSha: cr.commitHash ?? null,
+      changedFiles: cr.changedFiles as unknown as object,
+      gitSummary: cr.summary.slice(0, 24_000),
+      validationOutput: null,
+      commitStatus: cr.commitHash ? "reported_by_cursor" : "reported_changed_files",
+      pushStatus: "delegated_to_cursor",
+    },
+  });
+
+  input.steps.push({
+    phase: "git_reflection_gate",
+    taskId,
+    runId: cr.runId,
+    branch: effectiveGithubHead,
+    commitHash: cr.commitHash ?? null,
+    changedFileCount: cr.changedFiles.length,
+    passed: true,
+    reason: "stage1_platform_github_probe_after_cursor",
+  });
+
+  const branchProbeStartedAt = Date.now();
+  const compare = await fetchGithubCompareSnapshot({
+    repoUrl: input.repoUrl,
+    base: input.baseBranch,
+    head: effectiveGithubHead,
+    maxFiles: 80,
+    githubAccessToken: input.githubAccessToken ?? null,
+    projectId,
+    allowUnauthenticated: true,
+  });
+  const branchDetectElapsedMs = Date.now() - branchProbeStartedAt;
+
+  if (!compare.ok && compare.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_github_compare_missing_token",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: { head: effectiveGithubHead, baseBranch: input.baseBranch },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "git_reflection_gate_blocked_no_token",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        branchName: effectiveGithubHead,
+        baseBranch: input.baseBranch,
+        gateReason: "github_compare_unavailable_no_token",
+        pipeline: "runStage1EnvTestBranchToPrPipeline",
+      },
+    });
+    const gateReason = "github_compare_unavailable_no_token";
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.PENDING_APPLY,
+        lastEvalResult: "pending_apply",
+        lastEvalSummary: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        cursorRunId: cr.runId,
+        cursorSummary: cr.summary,
+        branchName: effectiveGithubHead,
+        commitSha: cr.commitHash ?? null,
+        changedFiles: cr.changedFiles as unknown as object,
+        gitSummary: cr.summary.slice(0, 24_000),
+        validationOutput: null,
+        commitStatus: "github_compare_missing_token",
+        pushStatus: "delegated_to_cursor",
+        status: "awaiting_git_reflection",
+        evaluationReason: "git_reflection_gate_blocked: github_compare_unavailable_no_token",
+      },
+    });
+    await updateTaskOrchestrationSnapshot(taskId, {
+      branch: effectiveGithubHead,
+      commitStatus: "github_compare_missing_token",
+      pushStatus: "delegated_to_cursor",
+      commitSha: cr.commitHash ?? null,
+      changedFileCount: cr.changedFiles.length,
+    });
+    await refreshWorkflowStates(projectId);
+    input.steps.push({
+      phase: "git_reflection_gate",
+      taskId,
+      runId: cr.runId,
+      branch: effectiveGithubHead,
+      commitHash: cr.commitHash ?? null,
+      changedFileCount: cr.changedFiles.length,
+      passed: false,
+      reason: gateReason,
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: true,
+        steps: input.steps,
+        message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      },
+    };
+  }
+
+  const handleStage1PushOutcome = async (
+    out: Awaited<ReturnType<typeof runEnvTestAfterGithubPushConfirmed>>
+  ): Promise<
+    | { kind: "return"; result: RunExecutionLoopResult }
+    | { kind: "continue_loop" }
+  > => {
+    if (out.kind === "pr_failed") {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_stage1_pr_create_failed",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { message: out.message.slice(0, 800) },
+      });
+      await prisma.taskExecutionRun.update({
+        where: { id: execRunId },
+        data: {
+          status: "failed",
+          evaluationDecision: "failed",
+          evaluationReason: `env_test_stage1_platform_pr_failed:${out.message}`.slice(0, 8000),
+        },
+      });
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+          lastEvalResult: "failed",
+          lastEvalSummary: `ENV_TEST(Stage1): 플랫폼 PR 실패 — ${out.message}`.slice(0, 1500),
+        },
+      });
+      await refreshWorkflowStates(projectId);
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "ENV_TEST(Stage1): 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+        },
+      };
+    }
+    if (out.kind === "return") return { kind: "return", result: out.result };
+    return { kind: "continue_loop" };
+  };
+
+  if (compare.ok && compare.data.aheadBy > 0) {
+    const compareOkAtMs = Date.now();
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_compare_ahead_confirmed",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        aheadBy: compare.data.aheadBy,
+        headSha: compare.data.headSha ?? null,
+        detectedRemoteBranchName: effectiveGithubHead,
+        branchDetectElapsedMs,
+      },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        commitSha: compare.data.headSha ?? cr.commitHash ?? null,
+        changedFiles: compare.data.changedFiles as unknown as object,
+        gitSummary: compare.data.diffSummary.slice(0, 24_000),
+        commitStatus: compare.data.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
+        pushStatus: "pushed_by_github_compare",
+      },
+    });
+    const outAhead = await runEnvTestAfterGithubPushConfirmed({
+      projectId,
+      taskId,
+      taskKind: ENV_TEST_TASK_KIND,
+      execRunId,
+      actorUserId,
+      branchName: effectiveGithubHead,
+      repoUrl: input.repoUrl,
+      baseBranch: input.baseBranch,
+      githubAccessToken: input.githubAccessToken ?? null,
+      compareData: {
+        headSha: compare.data.headSha ?? cr.commitHash ?? null,
+        changedFiles: compare.data.changedFiles,
+        diffSummary: compare.data.diffSummary,
+        compareOkAtMs,
+      },
+      steps: input.steps,
+      singleTaskId: input.singleTaskId,
+      effectiveAutoAdvance: input.effectiveAutoAdvance,
+      cursorRunId: cr.runId,
+      cursorSummary: cr.summary,
+      via: "stage1_post_cursor_compare",
+      pushDetectedSource: "stage1_compare_ahead_by",
+      executionRunCreatedAt: input.execRunCreatedAt,
+      branchDetectElapsedMs,
+    });
+    return handleStage1PushOutcome(outAhead);
+  }
+
+  const branchExists = await fetchGithubBranchHeadExists({
+    repoUrl: input.repoUrl,
+    branch: effectiveGithubHead,
+    githubAccessToken: input.githubAccessToken ?? null,
+    projectId,
+    allowUnauthenticated: true,
+  });
+
+  if (branchExists.ok) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_remote_branch_exists",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        headBranch: effectiveGithubHead,
+        headSha: branchExists.headSha ?? null,
+        detectedRemoteBranchName: effectiveGithubHead,
+        branchDetectElapsedMs,
+      },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        commitSha: branchExists.headSha ?? cr.commitHash ?? null,
+        commitStatus: branchExists.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
+        pushStatus: "pushed_by_cursor",
+      },
+    });
+    const outExists = await runEnvTestAfterGithubPushConfirmed({
+      projectId,
+      taskId,
+      taskKind: ENV_TEST_TASK_KIND,
+      execRunId,
+      actorUserId,
+      branchName: effectiveGithubHead,
+      repoUrl: input.repoUrl,
+      baseBranch: input.baseBranch,
+      githubAccessToken: input.githubAccessToken ?? null,
+      compareData: {
+        headSha: branchExists.headSha ?? cr.commitHash ?? null,
+        changedFiles: cr.changedFiles,
+        diffSummary: cr.summary.slice(0, 24_000),
+      },
+      steps: input.steps,
+      singleTaskId: input.singleTaskId,
+      effectiveAutoAdvance: input.effectiveAutoAdvance,
+      cursorRunId: cr.runId,
+      cursorSummary: cr.summary,
+      via: "stage1_post_cursor_branch_exists",
+      pushDetectedSource: "stage1_remote_branch_exists",
+      executionRunCreatedAt: input.execRunCreatedAt,
+      branchDetectElapsedMs,
+    });
+    return handleStage1PushOutcome(outExists);
+  }
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage1_remote_branch_not_visible",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: {
+      compareOk: compare.ok,
+      compareCode: compare.ok ? null : compare.code,
+      aheadBy: compare.ok ? compare.data.aheadBy : null,
+      head: effectiveGithubHead,
+      branchDetectElapsedMs,
+    },
+  });
+  await prisma.taskExecutionRun.update({
+    where: { id: execRunId },
+    data: {
+      status: "failed",
+      evaluationDecision: "failed",
+      evaluationReason: compare.ok
+        ? "env_test_stage1_remote_branch_not_visible"
+        : `env_test_stage1_remote_branch_not_visible:${compare.code}:${compare.message}`.slice(0, 8000),
+      commitStatus: "pushed_commit_unknown",
+      pushStatus: "unknown",
+    },
+  });
+  await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+      lastEvalResult: "failed",
+      lastEvalSummary:
+        "ENV_TEST(Stage1): GitHub에서 계획 브랜치를 확인하지 못했습니다. Cursor 푸시·저장소 URL·베이스 브랜치·토큰을 확인하세요.".slice(
+          0,
+          2000
+        ),
+    },
+  });
+  await refreshWorkflowStates(projectId);
+  return {
+    kind: "return",
+    result: {
+      ok: false,
+      steps: input.steps,
+      message:
+        "ENV_TEST(Stage1): 원격 브랜치가 GitHub에서 보이지 않습니다. 푸시·브랜치 이름·토큰을 확인하세요.",
+    },
+  };
+}
+
+export type EnvTestReflectionNotConfirmedBypassResult =
+  | { kind: "return"; result: RunExecutionLoopResult }
+  | { kind: "continue_loop" };
 
 /**
- * reflection 미확인 시 ENV_TEST만: GitHub compare ahead_by면 `runEnvTestAfterGithubPushConfirmed`→finalize canonical 경로.
- * 토큰 부재는 pending_apply 즉시 반환. 처리 불가 시 fallthrough → 루프의 공통 pending_apply(no_commit) 경로.
- *
- * NOTE: 현재는 cursorSignal + polling hybrid(내부 신호 기반)이며, 이후 Cursor callback/webhook/socket 이벤트로 확장 가능.
+ * Stage 2 (ENV_TEST_STAGE2) 전용: reflection 미확인 시 GitHub compare·Stage2 게이트로 PR 경로 시도.
+ * Stage 1은 `runStage1EnvTestBranchToPrPipeline`(플랫폼 브랜치 우선, reflection 비의존).
  */
 export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   projectId: string;
@@ -521,6 +1006,11 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     taskId: input.taskId,
     actorUserId: input.actorUserId,
   });
+  if (!isEnvTestStage2TaskKind(input.taskKind)) {
+    throw new Error(
+      "[runEnvTestReflectionNotConfirmedGithubBypass] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestBranchToPrPipeline"
+    );
+  }
 
   const runMonRow = await prisma.taskExecutionRun.findUnique({
     where: { id: input.execRunId },
@@ -538,185 +1028,80 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   });
 
   const { projectId, taskId, actorUserId, execRunId, cr } = input;
-  const isStage2 = isEnvTestStage2TaskKind(input.taskKind);
 
-  if (isStage2) {
-    logStage2CommitCheck("stage2_commit_check_started", {
-      projectId,
-      taskId,
-      actorUserId,
-      detail: {
-        commitHash: cr.commitHash ?? null,
-        headShaHint: hintedHeadSha,
-        changedFilesCount: cr.changedFiles.length,
-      },
-    });
-    const commitEvidenceOk = hasStage2CommitEvidence({
-      commitHash: cr.commitHash,
+  logStage2CommitCheck("stage2_commit_check_started", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: {
+      commitHash: cr.commitHash ?? null,
       headShaHint: hintedHeadSha,
-      changedFiles: cr.changedFiles,
-    });
-    if (!commitEvidenceOk) {
-      logStage2CommitCheck("stage2_commit_check_failed", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: { reason: "no_commit_hash_no_head_sha_hint_no_changed_files" },
-      });
-      await failEnvTestStage2WithCode({
-        projectId,
-        taskId,
-        execRunId,
-        code: "NO_COMMIT",
-        summaryKo: "Stage 2 실패: commit 미발생",
-      });
-      return {
-        kind: "return",
-        result: {
-          ok: false,
-          steps: input.steps,
-          message: "Stage 2 실패: commit 미발생",
-        },
-      };
-    }
-    logStage2CommitCheck("stage2_commit_check_passed", {
+      changedFilesCount: cr.changedFiles.length,
+    },
+  });
+  const commitEvidenceOk = hasStage2CommitEvidence({
+    commitHash: cr.commitHash,
+    headShaHint: hintedHeadSha,
+    changedFiles: cr.changedFiles,
+  });
+  if (!commitEvidenceOk) {
+    logStage2CommitCheck("stage2_commit_check_failed", {
       projectId,
       taskId,
       actorUserId,
-      detail: { commitEvidence: "commitHash|headShaHint|changedFiles" },
+      detail: { reason: "no_commit_hash_no_head_sha_hint_no_changed_files" },
     });
+    await failEnvTestStage2WithCode({
+      projectId,
+      taskId,
+      execRunId,
+      code: "NO_COMMIT",
+      summaryKo: "Stage 2 실패: commit 미발생",
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "Stage 2 실패: commit 미발생",
+      },
+    };
   }
+  logStage2CommitCheck("stage2_commit_check_passed", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: { commitEvidence: "commitHash|headShaHint|changedFiles" },
+  });
 
   if (!headPending) {
-    if (isStage2) {
-      logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: { reason: "missing_head_branch" },
-      });
-      logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: { reason: "missing_head_branch" },
-      });
-      await failEnvTestStage2WithCode({
-        projectId,
-        taskId,
-        execRunId,
-        code: "BRANCH_NOT_REFLECTED",
-        summaryKo: "Stage 2 실패: Git branch 미반영",
-      });
-      return {
-        kind: "return",
-        result: {
-          ok: false,
-          steps: input.steps,
-          message: "Stage 2 실패: Git branch 미반영",
-        },
-      };
-    }
-    return { kind: "fallthrough" };
-  }
-
-  if (hintedHeadSha && !isStage2) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "branch_detect_fastpath_hit",
+    logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
       projectId,
       taskId,
-      userId: actorUserId,
-      detail: {
-        reflectedBy: "cursor_signal_head_sha_hint",
-        headBranch: headPending,
-        headShaHint: hintedHeadSha,
-      },
-    });
-    input.steps.push({
-      phase: "git_reflection_gate",
-      taskId,
-      runId: cr.runId,
-      branch: headPending,
-      commitHash: hintedHeadSha,
-      changedFileCount: cr.changedFiles.length,
-      passed: true,
-      reason: "cursor_signal_head_sha_hint",
-    });
-    const outSig = await runEnvTestAfterGithubPushConfirmed({
-      projectId,
-      taskId,
-      taskKind: input.taskKind,
-      execRunId,
       actorUserId,
-      branchName: headPending,
-      repoUrl: input.repoUrl,
-      baseBranch: input.baseBranch,
-      githubAccessToken: input.githubAccessToken ?? null,
-      compareData: {
-        headSha: hintedHeadSha,
-        changedFiles: cr.changedFiles,
-        diffSummary: cr.summary.slice(0, 24_000),
-      },
-      steps: input.steps,
-      singleTaskId: input.singleTaskId,
-      effectiveAutoAdvance: input.effectiveAutoAdvance,
-      cursorRunId: cr.runId,
-      cursorSummary: cr.summary,
-      via: "reflection_bypass",
-      pushDetectedSource: "cursor_signal_head_sha_hint",
-      executionRunCreatedAt: input.execRunCreatedAt,
-      branchDetectElapsedMs: 0,
+      detail: { reason: "missing_head_branch" },
     });
-    if (outSig.kind === "return") return { kind: "return", result: outSig.result };
-    if (outSig.kind === "continue_loop") return { kind: "continue_loop" };
-    if (outSig.kind === "pr_failed") {
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "env_test_pr_create_failed",
-        projectId,
-        taskId,
-        userId: actorUserId,
-        detail: { message: outSig.message.slice(0, 800), via: "reflection_bypass_signal" },
-      });
-      if (isEnvTestStage2TaskKind(input.taskKind)) {
-        await failEnvTestStage2WithCode({
-          projectId,
-          taskId,
-          execRunId,
-          code: "PR_NOT_OPENED",
-          summaryKo: "Stage 2 실패: PR 미생성",
-        });
-      } else {
-        await prisma.taskExecutionRun.update({
-          where: { id: execRunId },
-          data: {
-            status: "failed",
-            evaluationDecision: "failed",
-            evaluationReason: `env_test_platform_pr_failed:${outSig.message}`.slice(0, 8000),
-          },
-        });
-        await prisma.task.update({
-          where: { id: taskId },
-          data: {
-            executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-            lastEvalResult: "failed",
-            lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outSig.message}`.slice(0, 1500),
-          },
-        });
-        await refreshWorkflowStates(projectId);
-      }
-      return {
-        kind: "return",
-        result: {
-          ok: false,
-          steps: input.steps,
-          message: isEnvTestStage2TaskKind(input.taskKind)
-            ? "Stage 2 실패: PR 미생성"
-            : "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
-        },
-      };
-    }
+    logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { reason: "missing_head_branch" },
+    });
+    await failEnvTestStage2WithCode({
+      projectId,
+      taskId,
+      execRunId,
+      code: "BRANCH_NOT_REFLECTED",
+      summaryKo: "Stage 2 실패: Git branch 미반영",
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "Stage 2 실패: Git branch 미반영",
+      },
+    };
   }
 
   appendTaskProgressLog({
@@ -727,14 +1112,12 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     userId: actorUserId,
     detail: { base: input.baseBranch, head: headPending, step: "reflection_bypass" },
   });
-  if (isStage2) {
-    logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
-      projectId,
-      taskId,
-      actorUserId,
-      detail: { base: input.baseBranch, head: headPending, step: "reflection_bypass" },
-    });
-  }
+  logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: { base: input.baseBranch, head: headPending, step: "reflection_bypass" },
+  });
   const branchCompareStartedAt = Date.now();
   const comparePa = await fetchGithubCompareSnapshot({
     repoUrl: input.repoUrl,
@@ -748,14 +1131,12 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   const branchDetectElapsedMs = Date.now() - branchCompareStartedAt;
 
   if (comparePa.ok && comparePa.data.aheadBy > 0) {
-    if (isStage2) {
-      logStage2BranchReflectionCheck("stage2_branch_reflection_passed", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: { aheadBy: comparePa.data.aheadBy, headSha: comparePa.data.headSha ?? null },
-      });
-    }
+    logStage2BranchReflectionCheck("stage2_branch_reflection_passed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { aheadBy: comparePa.data.aheadBy, headSha: comparePa.data.headSha ?? null },
+    });
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_branch_reflection_confirmed",
@@ -818,252 +1199,29 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
         userId: actorUserId,
         detail: { message: outPa.message.slice(0, 800), via: "reflection_bypass" },
       });
-      if (isEnvTestStage2TaskKind(input.taskKind)) {
-        await failEnvTestStage2WithCode({
-          projectId,
-          taskId,
-          execRunId,
-          code: "PR_NOT_OPENED",
-          summaryKo: "Stage 2 실패: PR 미생성",
-        });
-      } else {
-        await prisma.taskExecutionRun.update({
-          where: { id: execRunId },
-          data: {
-            status: "failed",
-            evaluationDecision: "failed",
-            evaluationReason: `env_test_platform_pr_failed:${outPa.message}`.slice(0, 8000),
-          },
-        });
-        await prisma.task.update({
-          where: { id: taskId },
-          data: {
-            executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-            lastEvalResult: "failed",
-            lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outPa.message}`.slice(0, 1500),
-          },
-        });
-        await refreshWorkflowStates(projectId);
-      }
+      await failEnvTestStage2WithCode({
+        projectId,
+        taskId,
+        execRunId,
+        code: "PR_NOT_OPENED",
+        summaryKo: "Stage 2 실패: PR 미생성",
+      });
       return {
         kind: "return",
         result: {
           ok: false,
           steps: input.steps,
-          message: isEnvTestStage2TaskKind(input.taskKind)
-            ? "Stage 2 실패: PR 미생성"
-            : "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+          message: "Stage 2 실패: PR 미생성",
         },
       };
-    }
-  }
-
-  // Stage1 전용 fallback:
-  // compare ahead_by가 즉시 잡히지 않아도, 실제 원격 브랜치 존재가 확인되면
-  // 플랫폼 PR 생성 경로로 진행한다(브랜치 전파 지연 완화).
-  if (!isStage2) {
-    const branchExists = await fetchGithubBranchHeadExists({
-      repoUrl: input.repoUrl,
-      branch: headPending,
-      githubAccessToken: input.githubAccessToken ?? null,
-      projectId,
-      allowUnauthenticated: true,
-    });
-    if (branchExists.ok) {
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "env_test_branch_exists_fallback",
-        projectId,
-        taskId,
-        userId: actorUserId,
-        detail: {
-          headBranch: headPending,
-          headSha: branchExists.headSha ?? null,
-          step: "reflection_bypass",
-        },
-      });
-      const outByBranch = await runEnvTestAfterGithubPushConfirmed({
-        projectId,
-        taskId,
-        taskKind: input.taskKind,
-        execRunId,
-        actorUserId,
-        branchName: headPending,
-        repoUrl: input.repoUrl,
-        baseBranch: input.baseBranch,
-        githubAccessToken: input.githubAccessToken ?? null,
-        compareData: {
-          headSha: branchExists.headSha ?? cr.commitHash ?? null,
-          changedFiles: cr.changedFiles,
-          diffSummary: cr.summary.slice(0, 24_000),
-        },
-        steps: input.steps,
-        singleTaskId: input.singleTaskId,
-        effectiveAutoAdvance: input.effectiveAutoAdvance,
-        cursorRunId: cr.runId,
-        cursorSummary: cr.summary,
-        via: "reflection_bypass",
-        pushDetectedSource: "reflection_bypass_branch_exists",
-        executionRunCreatedAt: input.execRunCreatedAt,
-        branchDetectElapsedMs,
-      });
-      if (outByBranch.kind === "return") return { kind: "return", result: outByBranch.result };
-      if (outByBranch.kind === "continue_loop") return { kind: "continue_loop" };
-      if (outByBranch.kind === "pr_failed") {
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_pr_create_failed",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: { message: outByBranch.message.slice(0, 800), via: "reflection_bypass_branch_exists" },
-        });
-        await prisma.taskExecutionRun.update({
-          where: { id: execRunId },
-          data: {
-            status: "failed",
-            evaluationDecision: "failed",
-            evaluationReason: `env_test_platform_pr_failed:${outByBranch.message}`.slice(0, 8000),
-          },
-        });
-        await prisma.task.update({
-          where: { id: taskId },
-          data: {
-            executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-            lastEvalResult: "failed",
-            lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outByBranch.message}`.slice(0, 1500),
-          },
-        });
-        await refreshWorkflowStates(projectId);
-        return {
-          kind: "return",
-          result: {
-            ok: false,
-            steps: input.steps,
-            message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
-          },
-        };
-      }
     }
   }
 
   if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
-    if (isEnvTestStage2TaskKind(input.taskKind)) {
-      await failEnvTestStage2WithCode({
-        projectId: input.projectId,
-        taskId: input.taskId,
-        execRunId: input.execRunId,
-        code: "BRANCH_NOT_REFLECTED",
-        summaryKo: "Stage 2 실패: Git branch 미반영",
-      });
-      return {
-        kind: "return",
-        result: {
-          ok: false,
-          steps: input.steps,
-          message: "Stage 2 실패: Git branch 미반영",
-        },
-      };
-    }
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "github_compare_missing_token",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: { context: "git_reflection_gate_env_test", branchName: headPending, baseBranch: input.baseBranch },
-    });
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "git_reflection_gate_blocked_no_token",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: { branchName: headPending, baseBranch: input.baseBranch, gateReason: "github_compare_unavailable_no_token" },
-    });
-    const gateReason = "github_compare_unavailable_no_token";
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "git_reflection_gate",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: {
-        passed: false,
-        gateReason,
-        runId: cr.runId,
-        commitHash: cr.commitHash ?? null,
-        changedFileCount: cr.changedFiles.length,
-        outcome: "pending_apply",
-      },
-    });
-    await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        executionWorkflowStatus: EXECUTION_WORKFLOW.PENDING_APPLY,
-        lastEvalResult: "pending_apply",
-        lastEvalSummary: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
-      },
-    });
-    await prisma.taskExecutionRun.update({
-      where: { id: execRunId },
-      data: {
-        cursorRunId: cr.runId,
-        cursorSummary: cr.summary,
-        branchName: headPending,
-        commitSha: cr.commitHash ?? null,
-        changedFiles: cr.changedFiles as unknown as object,
-        gitSummary: cr.summary.slice(0, 24_000),
-        validationOutput: null,
-        commitStatus: "github_compare_missing_token",
-        pushStatus: "delegated_to_cursor",
-        status: "awaiting_git_reflection",
-        evaluationReason: "git_reflection_gate_blocked: github_compare_unavailable_no_token",
-      },
-    });
-    await updateTaskOrchestrationSnapshot(taskId, {
-      branch: headPending,
-      commitStatus: "github_compare_missing_token",
-      pushStatus: "delegated_to_cursor",
-      commitSha: cr.commitHash ?? null,
-      changedFileCount: cr.changedFiles.length,
-    });
-    await refreshWorkflowStates(projectId);
-    input.steps.push({
-      phase: "git_reflection_gate",
-      taskId,
-      runId: cr.runId,
-      branch: headPending,
-      commitHash: cr.commitHash ?? null,
-      changedFileCount: cr.changedFiles.length,
-      passed: false,
-      reason: gateReason,
-    });
-    return {
-      kind: "return",
-      result: {
-        ok: true,
-        steps: input.steps,
-        message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
-      },
-    };
-  }
-
-  if (isStage2) {
-    logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
-      projectId,
-      taskId,
-      actorUserId,
-      detail: {
-        compareOk: comparePa.ok,
-        compareCode: comparePa.ok ? null : comparePa.code,
-        aheadBy: comparePa.ok ? comparePa.data.aheadBy : null,
-      },
-    });
     await failEnvTestStage2WithCode({
-      projectId,
-      taskId,
-      execRunId,
+      projectId: input.projectId,
+      taskId: input.taskId,
+      execRunId: input.execRunId,
       code: "BRANCH_NOT_REFLECTED",
       summaryKo: "Stage 2 실패: Git branch 미반영",
     });
@@ -1077,13 +1235,36 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     };
   }
 
-  return { kind: "fallthrough" };
+  logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: {
+      compareOk: comparePa.ok,
+      compareCode: comparePa.ok ? null : comparePa.code,
+      aheadBy: comparePa.ok ? comparePa.data.aheadBy : null,
+    },
+  });
+  await failEnvTestStage2WithCode({
+    projectId,
+    taskId,
+    execRunId,
+    code: "BRANCH_NOT_REFLECTED",
+    summaryKo: "Stage 2 실패: Git branch 미반영",
+  });
+  return {
+    kind: "return",
+    result: {
+      ok: false,
+      steps: input.steps,
+      message: "Stage 2 실패: Git branch 미반영",
+    },
+  };
 }
 
 /**
- * Cursor 메타로 Git 반영이 확인된 뒤( reflection gate 통과 ) ENV_TEST 공통 파이프라인:
- * GitHub compare → COMMITTED → 플랫폼 PR → finalizeEnvTestPrOpenedFromGithubOnly → PR_OPENED 이후 분기.
- * reflection_bypass·cursor poll 경로는 `runEnvTestAfterGithubPushConfirmed`를 사용한다.
+ * Stage 2 (ENV_TEST_STAGE2) 전용: Cursor reflection 게이트 통과 후 compare → COMMITTED → 플랫폼 PR → finalize → PR_OPENED.
+ * Stage 1은 `runStage1EnvTestBranchToPrPipeline` (플랫폼 브랜치 우선·reflection 비의존).
  */
 export async function runEnvTestReflectionConfirmedPipeline(input: {
   projectId: string;
@@ -1105,6 +1286,11 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     taskId: input.taskId,
     actorUserId: input.actorUserId,
   });
+  if (!isEnvTestStage2TaskKind(input.taskKind)) {
+    throw new Error(
+      "[runEnvTestReflectionConfirmedPipeline] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestBranchToPrPipeline"
+    );
+  }
 
   const cr = input.cr;
   const { projectId, taskId, actorUserId, execRunId } = input;
@@ -1120,56 +1306,52 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     signalBranchNameHint,
     fallbackBranchName: null,
   });
-  const isStage2 = isEnvTestStage2TaskKind(input.taskKind);
-  let stage2SignalHeadShaHint: string | null = null;
-  if (isStage2) {
-    stage2SignalHeadShaHint = signalHeadShaHint;
+  const stage2SignalHeadShaHint = signalHeadShaHint;
 
-    logStage2CommitCheck("stage2_commit_check_started", {
-      projectId,
-      taskId,
-      actorUserId,
-      detail: {
-        commitHash: cr.commitHash ?? null,
-        headShaHint: stage2SignalHeadShaHint,
-        changedFilesCount: cr.changedFiles.length,
-      },
-    });
-    const commitEvidenceOk = hasStage2CommitEvidence({
-      commitHash: cr.commitHash,
+  logStage2CommitCheck("stage2_commit_check_started", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: {
+      commitHash: cr.commitHash ?? null,
       headShaHint: stage2SignalHeadShaHint,
-      changedFiles: cr.changedFiles,
-    });
-    if (!commitEvidenceOk) {
-      logStage2CommitCheck("stage2_commit_check_failed", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: { reason: "no_commit_hash_no_head_sha_hint_no_changed_files" },
-      });
-      await failEnvTestStage2WithCode({
-        projectId,
-        taskId,
-        execRunId,
-        code: "NO_COMMIT",
-        summaryKo: "Stage 2 실패: commit 미발생",
-      });
-      return {
-        kind: "return",
-        result: {
-          ok: false,
-          steps: input.steps,
-          message: "Stage 2 실패: commit 미발생",
-        },
-      };
-    }
-    logStage2CommitCheck("stage2_commit_check_passed", {
+      changedFilesCount: cr.changedFiles.length,
+    },
+  });
+  const commitEvidenceOk = hasStage2CommitEvidence({
+    commitHash: cr.commitHash,
+    headShaHint: stage2SignalHeadShaHint,
+    changedFiles: cr.changedFiles,
+  });
+  if (!commitEvidenceOk) {
+    logStage2CommitCheck("stage2_commit_check_failed", {
       projectId,
       taskId,
       actorUserId,
-      detail: { commitEvidence: "commitHash|headShaHint|changedFiles" },
+      detail: { reason: "no_commit_hash_no_head_sha_hint_no_changed_files" },
     });
+    await failEnvTestStage2WithCode({
+      projectId,
+      taskId,
+      execRunId,
+      code: "NO_COMMIT",
+      summaryKo: "Stage 2 실패: commit 미발생",
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: false,
+        steps: input.steps,
+        message: "Stage 2 실패: commit 미발생",
+      },
+    };
   }
+  logStage2CommitCheck("stage2_commit_check_passed", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: { commitEvidence: "commitHash|headShaHint|changedFiles" },
+  });
   // git_reflection_gate 단계 로그는 runExecutionLoop에서 이미 기록됨.
 
   await prisma.task.update({
@@ -1209,14 +1391,12 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       pipeline: "runEnvTestReflectionConfirmedPipeline",
     },
   });
-  if (isStage2) {
-    logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
-      projectId,
-      taskId,
-      actorUserId,
-      detail: { base: input.baseBranch, head: effectiveHeadBranch || cr.branchName, step: "post_cursor" },
-    });
-  }
+  logStage2BranchReflectionCheck("stage2_branch_reflection_started", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: { base: input.baseBranch, head: effectiveHeadBranch || cr.branchName, step: "post_cursor" },
+  });
 
   const compare = await fetchGithubCompareSnapshot({
     repoUrl: input.repoUrl,
@@ -1228,7 +1408,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     allowUnauthenticated: true,
   });
 
-  if (isStage2 && compare.ok && compare.data.aheadBy > 0) {
+  if (compare.ok && compare.data.aheadBy > 0) {
     logStage2CatalogEvent({
       phase: "branch_reflected",
       projectId,
@@ -1237,17 +1417,12 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       executionId: execRunId,
       detail: { via: "post_cursor_reflection_confirmed" },
     });
-  }
-
-  if (compare.ok && compare.data.aheadBy > 0) {
-    if (isStage2) {
-      logStage2BranchReflectionCheck("stage2_branch_reflection_passed", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: { aheadBy: compare.data.aheadBy, headSha: compare.data.headSha ?? null },
-      });
-    }
+    logStage2BranchReflectionCheck("stage2_branch_reflection_passed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { aheadBy: compare.data.aheadBy, headSha: compare.data.headSha ?? null },
+    });
     envTestCompareOkAtMs = Date.now();
     appendTaskProgressLog({
       kind: "execution",
@@ -1301,7 +1476,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   const commitDetected =
     Boolean(gitEvidence?.headSha ?? cr.commitHash ?? null) || pushDetected;
 
-  if (!isStage2 || pushDetected) {
+  if (pushDetected) {
     await prisma.task.update({
       where: { id: taskId },
       data: {
@@ -1330,130 +1505,29 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   }
 
   if (!pushDetected) {
-    if (isStage2) {
-      logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: {
-          compareOk: compare.ok,
-          compareCode: compare.ok ? null : compare.code,
-          aheadBy: compare.ok ? compare.data.aheadBy : null,
-        },
-      });
-    }
-    if (!isStage2 && (effectiveHeadBranch || "").trim()) {
-      const branchExists = await fetchGithubBranchHeadExists({
-        repoUrl: input.repoUrl,
-        branch: effectiveHeadBranch,
-        githubAccessToken: input.githubAccessToken ?? null,
-        projectId,
-        allowUnauthenticated: true,
-      });
-      if (branchExists.ok) {
-        appendTaskProgressLog({
-          kind: "execution",
-          phase: "env_test_branch_exists_fallback",
-          projectId,
-          taskId,
-          userId: actorUserId,
-          detail: {
-            headBranch: effectiveHeadBranch,
-            headSha: branchExists.headSha ?? null,
-            step: "post_cursor",
-          },
-        });
-        const outByBranch = await runEnvTestAfterGithubPushConfirmed({
-          projectId,
-          taskId,
-          taskKind: input.taskKind,
-          execRunId,
-          actorUserId,
-          branchName: effectiveHeadBranch,
-          repoUrl: input.repoUrl,
-          baseBranch: input.baseBranch,
-          githubAccessToken: input.githubAccessToken ?? null,
-          compareData: {
-            headSha: branchExists.headSha ?? cr.commitHash ?? null,
-            changedFiles: cr.changedFiles,
-            diffSummary: cr.summary.slice(0, 24_000),
-          },
-          steps: input.steps,
-          singleTaskId: input.singleTaskId,
-          effectiveAutoAdvance: input.effectiveAutoAdvance,
-          cursorRunId: cr.runId,
-          cursorSummary: cr.summary,
-          via: "post_cursor_compare",
-          pushDetectedSource: "post_cursor_branch_exists",
-          executionRunCreatedAt: input.execRunCreatedAt,
-          branchDetectElapsedMs: null,
-        });
-        if (outByBranch.kind === "return") return outByBranch;
-        if (outByBranch.kind === "continue_loop") return outByBranch;
-        if (outByBranch.kind === "pr_failed") {
-          await prisma.taskExecutionRun.update({
-            where: { id: execRunId },
-            data: {
-              status: "failed",
-              evaluationDecision: "failed",
-              evaluationReason: `env_test_platform_pr_failed:${outByBranch.message}`.slice(0, 8000),
-            },
-          });
-          await prisma.task.update({
-            where: { id: taskId },
-            data: {
-              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-              lastEvalResult: "failed",
-              lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outByBranch.message}`.slice(0, 1500),
-            },
-          });
-          await refreshWorkflowStates(projectId);
-          return {
-            kind: "return",
-            result: {
-              ok: false,
-              steps: input.steps,
-              message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
-            },
-          };
-        }
-      }
-    }
-    if (isEnvTestStage2TaskKind(input.taskKind)) {
-      await failEnvTestStage2WithCode({
-        projectId,
-        taskId,
-        execRunId,
-        code: "BRANCH_NOT_REFLECTED",
-        summaryKo: "Stage 2 실패: Git branch 미반영",
-      });
-    } else {
-      await prisma.taskExecutionRun.update({
-        where: { id: execRunId },
-        data: {
-          status: "failed",
-          evaluationDecision: "failed",
-          evaluationReason: "env_test_push_not_detected",
-        },
-      });
-      await prisma.task.update({
-        where: { id: taskId },
-        data: {
-          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-          lastEvalResult: "failed",
-          lastEvalSummary: "ENV_TEST: GitHub compare로 원격 푸시를 확인하지 못했습니다.",
-        },
-      });
-      await refreshWorkflowStates(projectId);
-    }
+    logStage2BranchReflectionCheck("stage2_branch_reflection_failed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: {
+        compareOk: compare.ok,
+        compareCode: compare.ok ? null : compare.code,
+        aheadBy: compare.ok ? compare.data.aheadBy : null,
+      },
+    });
+    await failEnvTestStage2WithCode({
+      projectId,
+      taskId,
+      execRunId,
+      code: "BRANCH_NOT_REFLECTED",
+      summaryKo: "Stage 2 실패: Git branch 미반영",
+    });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: isEnvTestStage2TaskKind(input.taskKind)
-          ? "Stage 2 실패: Git branch 미반영"
-          : "환경 연결 테스트: 원격 푸시가 확인되지 않았습니다. Cursor 푸시·브랜치·토큰을 확인하세요.",
+        message: "Stage 2 실패: Git branch 미반영",
       },
     };
   }
@@ -1462,14 +1536,12 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     await new Promise((r) => setTimeout(r, STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS));
   }
 
-  if (isStage2) {
-    logStage2PrCreationCheck("stage2_pr_creation_started", {
-      projectId,
-      taskId,
-      actorUserId,
-      detail: { headBranch: effectiveHeadBranch || cr.branchName },
-    });
-  }
+  logStage2PrCreationCheck("stage2_pr_creation_started", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: { headBranch: effectiveHeadBranch || cr.branchName },
+  });
   const prPhaseMain = await runEnvTestPlatformPrPhase({
     projectId,
     taskId,
@@ -1485,14 +1557,12 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   });
 
   if (!prPhaseMain.ok) {
-    if (isStage2) {
-      logStage2PrCreationCheck("stage2_pr_creation_failed", {
-        projectId,
-        taskId,
-        actorUserId,
-        detail: { message: prPhaseMain.message.slice(0, 800) },
-      });
-    }
+    logStage2PrCreationCheck("stage2_pr_creation_failed", {
+      projectId,
+      taskId,
+      actorUserId,
+      detail: { message: prPhaseMain.message.slice(0, 800) },
+    });
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_pr_create_failed",
@@ -1501,52 +1571,28 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       userId: actorUserId,
       detail: { message: prPhaseMain.message.slice(0, 800) },
     });
-    if (isEnvTestStage2TaskKind(input.taskKind)) {
-      await failEnvTestStage2WithCode({
-        projectId,
-        taskId,
-        execRunId,
-        code: "PR_NOT_OPENED",
-        summaryKo: "Stage 2 실패: PR 미생성",
-      });
-    } else {
-      await prisma.taskExecutionRun.update({
-        where: { id: execRunId },
-        data: {
-          status: "failed",
-          evaluationDecision: "failed",
-          evaluationReason: `env_test_platform_pr_failed:${prPhaseMain.message}`.slice(0, 8000),
-        },
-      });
-      await prisma.task.update({
-        where: { id: taskId },
-        data: {
-          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-          lastEvalResult: "failed",
-          lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${prPhaseMain.message}`.slice(0, 1500),
-        },
-      });
-      await refreshWorkflowStates(projectId);
-    }
+    await failEnvTestStage2WithCode({
+      projectId,
+      taskId,
+      execRunId,
+      code: "PR_NOT_OPENED",
+      summaryKo: "Stage 2 실패: PR 미생성",
+    });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: isEnvTestStage2TaskKind(input.taskKind)
-          ? "Stage 2 실패: PR 미생성"
-          : "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+        message: "Stage 2 실패: PR 미생성",
       },
     };
   }
-  if (isStage2) {
-    logStage2PrCreationCheck("stage2_pr_creation_passed", {
-      projectId,
-      taskId,
-      actorUserId,
-      detail: { prNumber: prPhaseMain.prNumber, prUrl: prPhaseMain.prUrl },
-    });
-  }
+  logStage2PrCreationCheck("stage2_pr_creation_passed", {
+    projectId,
+    taskId,
+    actorUserId,
+    detail: { prNumber: prPhaseMain.prNumber, prUrl: prPhaseMain.prUrl },
+  });
 
   const prUrl = prPhaseMain.prUrl;
   const prNumber = prPhaseMain.prNumber;

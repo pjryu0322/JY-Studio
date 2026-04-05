@@ -1,8 +1,9 @@
 /**
  * ENV_TEST Stage 1·Stage 2 공통 실행 코어: Cursor invoke(+ 타이밍) — Git 반영·PR 은 cursorExecutionAdapter·헬퍼와 연동.
  * - Stage 2 전용 Cursor 이전 단계: `envTestExecutionPipeline.runEnvTestStage2PreCursorExecutorGate`
- * - Reflection 통과 후 compare→PR→finalize: `envTestExecutionHelpers.runEnvTestReflectionConfirmedPipeline`
- * - Reflection 미통과·GitHub compare 우회: `runEnvTestReflectionNotConfirmedGithubBypass` → `runEnvTestAfterGithubPushConfirmed` → finalize
+ * - Stage 1 Cursor 종료 후 GitHub→PR: `runStage1EnvTestBranchToPrPipeline` (runExecutionLoop에서 dispatch)
+ * - Stage 2·reflection 통과 후 compare→PR→finalize: `runEnvTestReflectionConfirmedPipeline`
+ * - Stage 2·reflection 미통과: `runEnvTestReflectionNotConfirmedGithubBypass` → `runEnvTestAfterGithubPushConfirmed` → finalize
  * - Cursor 폴링 우회: `runEnvTestAfterGithubPushConfirmed` → `finalizeEnvTestPrOpenedFromGithubOnly`
  * - PR_OPENED 이후: `runEnvTestPostPrOpenedMergeAndReadiness` (Stage1 merge vs Stage2 reviewer→scm)
  * - 책임 분리: Cursor는 코드 변경/commit/push까지만 담당, PR 생성/merge는 플랫폼(및 Stage2 SCM 분기)에서만 수행
