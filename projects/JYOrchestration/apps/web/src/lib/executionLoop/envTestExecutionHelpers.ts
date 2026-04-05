@@ -172,6 +172,19 @@ function pickEnvTestHeadBranch(input: {
   );
 }
 
+/** Stage1 전용: GitHub HEAD 조회 시도 순서(중복 제거). */
+function uniqueNonEmptyBranchCandidates(...parts: (string | null | undefined)[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const s = String(p ?? "").trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
 function logEnvTestBranchSourceOfTruth(ctx: {
   projectId: string;
   taskId: string;
@@ -525,10 +538,10 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
 }
 
 /**
- * Stage 1 (ENV_TEST) 전용: Cursor reflection 게이트 없이 GitHub compare·브랜치 HEAD로 원격 반영을 확인한 뒤
- * 플랫폼 PR → PR_OPENED → merge/readiness.
- * - 브랜치 단일 근원: 플랫폼 `plannedBranchName` 우선(GitHub probe·PR head), 없을 때만 Cursor·runtime signal.
- * - Cursor: commit/push만. PR 생성·Stage1 merge는 플랫폼.
+ * Stage 1 (ENV_TEST) 전용: 원격 브랜치 HEAD 존재만 확인하면 즉시 플랫폼 PR → PR_OPENED → merge/readiness.
+ * - compare / ahead_by / Stage2식 커밋 증거는 요구하지 않음.
+ * - 후보 순서: TaskExecutionRun.branchName(추적) → 계획 브랜치 → Cursor·signal; 첫 성공 ref로 PR head.
+ * - Cursor: commit/push만. PR·Stage1 merge는 플랫폼.
  */
 export async function runStage1EnvTestBranchToPrPipeline(input: {
   projectId: string;
@@ -572,22 +585,26 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
 
   const planned = String(input.plannedBranchName ?? "").trim();
   const promptBr = String(input.promptBranchName ?? "").trim();
-  const effectiveGithubHead =
-    planned ||
-    pickEnvTestHeadBranch({
-      cursorBranchName: cr.branchName,
-      signalBranchNameHint,
-      fallbackBranchName: null,
-    });
+  const cursorPick = pickEnvTestHeadBranch({
+    cursorBranchName: cr.branchName,
+    signalBranchNameHint,
+    fallbackBranchName: null,
+  });
+  const candidates = uniqueNonEmptyBranchCandidates(trackedBranchName, planned, cursorPick);
+  const primaryHead = candidates[0] ?? "";
 
-  if (!effectiveGithubHead) {
+  if (!primaryHead) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_stage1_branch_unknown",
       projectId,
       taskId,
       userId: actorUserId,
-      detail: { plannedBranchName: planned || null, cursorReportedBranch: cr.branchName ?? null },
+      detail: {
+        plannedBranchName: planned || null,
+        trackedBranchName: trackedBranchName || null,
+        cursorReportedBranch: cr.branchName ?? null,
+      },
     });
     await prisma.taskExecutionRun.update({
       where: { id: execRunId },
@@ -625,7 +642,16 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     trackedBranchName: trackedBranchName || null,
     cursorReportedBranch: cr.branchName,
     signalBranchNameHint,
-    effectiveGithubHead,
+    effectiveGithubHead: primaryHead,
+  });
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage1_branch_probe_candidates",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: { candidateBranches: candidates, primaryHead },
   });
 
   if (planned && trackedBranchName && planned !== trackedBranchName) {
@@ -649,7 +675,7 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     projectId,
     taskId,
     userId: actorUserId,
-    detail: { base: input.baseBranch, head: effectiveGithubHead },
+    detail: { base: input.baseBranch, primaryHead, candidateBranches: candidates },
   });
 
   await prisma.task.update({
@@ -662,7 +688,7 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     data: {
       cursorRunId: cr.runId,
       cursorSummary: cr.summary,
-      branchName: effectiveGithubHead,
+      branchName: primaryHead,
       commitSha: cr.commitHash ?? null,
       changedFiles: cr.changedFiles as unknown as object,
       gitSummary: cr.summary.slice(0, 24_000),
@@ -676,99 +702,12 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     phase: "git_reflection_gate",
     taskId,
     runId: cr.runId,
-    branch: effectiveGithubHead,
+    branch: primaryHead,
     commitHash: cr.commitHash ?? null,
     changedFileCount: cr.changedFiles.length,
     passed: true,
-    reason: "stage1_platform_github_probe_after_cursor",
+    reason: "stage1_remote_branch_head_probe",
   });
-
-  const branchProbeStartedAt = Date.now();
-  const compare = await fetchGithubCompareSnapshot({
-    repoUrl: input.repoUrl,
-    base: input.baseBranch,
-    head: effectiveGithubHead,
-    maxFiles: 80,
-    githubAccessToken: input.githubAccessToken ?? null,
-    projectId,
-    allowUnauthenticated: true,
-  });
-  const branchDetectElapsedMs = Date.now() - branchProbeStartedAt;
-
-  if (!compare.ok && compare.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_stage1_github_compare_missing_token",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: { head: effectiveGithubHead, baseBranch: input.baseBranch },
-    });
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "git_reflection_gate_blocked_no_token",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: {
-        branchName: effectiveGithubHead,
-        baseBranch: input.baseBranch,
-        gateReason: "github_compare_unavailable_no_token",
-        pipeline: "runStage1EnvTestBranchToPrPipeline",
-      },
-    });
-    const gateReason = "github_compare_unavailable_no_token";
-    await prisma.task.update({
-      where: { id: taskId },
-      data: {
-        executionWorkflowStatus: EXECUTION_WORKFLOW.PENDING_APPLY,
-        lastEvalResult: "pending_apply",
-        lastEvalSummary: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
-      },
-    });
-    await prisma.taskExecutionRun.update({
-      where: { id: execRunId },
-      data: {
-        cursorRunId: cr.runId,
-        cursorSummary: cr.summary,
-        branchName: effectiveGithubHead,
-        commitSha: cr.commitHash ?? null,
-        changedFiles: cr.changedFiles as unknown as object,
-        gitSummary: cr.summary.slice(0, 24_000),
-        validationOutput: null,
-        commitStatus: "github_compare_missing_token",
-        pushStatus: "delegated_to_cursor",
-        status: "awaiting_git_reflection",
-        evaluationReason: "git_reflection_gate_blocked: github_compare_unavailable_no_token",
-      },
-    });
-    await updateTaskOrchestrationSnapshot(taskId, {
-      branch: effectiveGithubHead,
-      commitStatus: "github_compare_missing_token",
-      pushStatus: "delegated_to_cursor",
-      commitSha: cr.commitHash ?? null,
-      changedFileCount: cr.changedFiles.length,
-    });
-    await refreshWorkflowStates(projectId);
-    input.steps.push({
-      phase: "git_reflection_gate",
-      taskId,
-      runId: cr.runId,
-      branch: effectiveGithubHead,
-      commitHash: cr.commitHash ?? null,
-      changedFileCount: cr.changedFiles.length,
-      passed: false,
-      reason: gateReason,
-    });
-    return {
-      kind: "return",
-      result: {
-        ok: true,
-        steps: input.steps,
-        message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
-      },
-    };
-  }
 
   const handleStage1PushOutcome = async (
     out: Awaited<ReturnType<typeof runEnvTestAfterGithubPushConfirmed>>
@@ -815,69 +754,36 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     return { kind: "continue_loop" };
   };
 
-  if (compare.ok && compare.data.aheadBy > 0) {
-    const compareOkAtMs = Date.now();
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_stage1_compare_ahead_confirmed",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: {
-        aheadBy: compare.data.aheadBy,
-        headSha: compare.data.headSha ?? null,
-        detectedRemoteBranchName: effectiveGithubHead,
-        branchDetectElapsedMs,
-      },
-    });
-    await prisma.taskExecutionRun.update({
-      where: { id: execRunId },
-      data: {
-        commitSha: compare.data.headSha ?? cr.commitHash ?? null,
-        changedFiles: compare.data.changedFiles as unknown as object,
-        gitSummary: compare.data.diffSummary.slice(0, 24_000),
-        commitStatus: compare.data.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
-        pushStatus: "pushed_by_github_compare",
-      },
-    });
-    const outAhead = await runEnvTestAfterGithubPushConfirmed({
-      projectId,
-      taskId,
-      taskKind: ENV_TEST_TASK_KIND,
-      execRunId,
-      actorUserId,
-      branchName: effectiveGithubHead,
+  const branchProbeStartedAt = Date.now();
+  let resolvedHead: string | null = null;
+  let resolvedHeadSha: string | null = null;
+  for (const name of candidates) {
+    const ex = await fetchGithubBranchHeadExists({
       repoUrl: input.repoUrl,
-      baseBranch: input.baseBranch,
+      branch: name,
       githubAccessToken: input.githubAccessToken ?? null,
-      compareData: {
-        headSha: compare.data.headSha ?? cr.commitHash ?? null,
-        changedFiles: compare.data.changedFiles,
-        diffSummary: compare.data.diffSummary,
-        compareOkAtMs,
-      },
-      steps: input.steps,
-      singleTaskId: input.singleTaskId,
-      effectiveAutoAdvance: input.effectiveAutoAdvance,
-      cursorRunId: cr.runId,
-      cursorSummary: cr.summary,
-      via: "stage1_post_cursor_compare",
-      pushDetectedSource: "stage1_compare_ahead_by",
-      executionRunCreatedAt: input.execRunCreatedAt,
-      branchDetectElapsedMs,
+      projectId,
+      allowUnauthenticated: true,
     });
-    return handleStage1PushOutcome(outAhead);
+    if (ex.ok) {
+      resolvedHead = name;
+      resolvedHeadSha = ex.headSha ?? null;
+      break;
+    }
   }
+  const branchDetectElapsedMs = Date.now() - branchProbeStartedAt;
 
-  const branchExists = await fetchGithubBranchHeadExists({
-    repoUrl: input.repoUrl,
-    branch: effectiveGithubHead,
-    githubAccessToken: input.githubAccessToken ?? null,
-    projectId,
-    allowUnauthenticated: true,
-  });
-
-  if (branchExists.ok) {
+  if (resolvedHead) {
+    if (resolvedHead !== primaryHead) {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_stage1_branch_resolved_via_alternate_candidate",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: { primaryHead, resolvedHead, candidateBranches: candidates },
+      });
+    }
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_stage1_remote_branch_exists",
@@ -885,18 +791,19 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
       taskId,
       userId: actorUserId,
       detail: {
-        headBranch: effectiveGithubHead,
-        headSha: branchExists.headSha ?? null,
-        detectedRemoteBranchName: effectiveGithubHead,
+        headBranch: resolvedHead,
+        headSha: resolvedHeadSha,
+        candidateBranchesProbed: candidates,
         branchDetectElapsedMs,
       },
     });
     await prisma.taskExecutionRun.update({
       where: { id: execRunId },
       data: {
-        commitSha: branchExists.headSha ?? cr.commitHash ?? null,
-        commitStatus: branchExists.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
+        commitSha: resolvedHeadSha ?? cr.commitHash ?? null,
+        commitStatus: resolvedHeadSha ? "pushed_commit_detected" : "pushed_commit_unknown",
         pushStatus: "pushed_by_cursor",
+        branchName: resolvedHead,
       },
     });
     const outExists = await runEnvTestAfterGithubPushConfirmed({
@@ -905,12 +812,12 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
       taskKind: ENV_TEST_TASK_KIND,
       execRunId,
       actorUserId,
-      branchName: effectiveGithubHead,
+      branchName: resolvedHead,
       repoUrl: input.repoUrl,
       baseBranch: input.baseBranch,
       githubAccessToken: input.githubAccessToken ?? null,
       compareData: {
-        headSha: branchExists.headSha ?? cr.commitHash ?? null,
+        headSha: resolvedHeadSha ?? cr.commitHash ?? null,
         changedFiles: cr.changedFiles,
         diffSummary: cr.summary.slice(0, 24_000),
       },
@@ -920,11 +827,96 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
       cursorRunId: cr.runId,
       cursorSummary: cr.summary,
       via: "stage1_post_cursor_branch_exists",
-      pushDetectedSource: "stage1_remote_branch_exists",
+      pushDetectedSource: "stage1_remote_branch_head_exists",
       executionRunCreatedAt: input.execRunCreatedAt,
       branchDetectElapsedMs,
     });
     return handleStage1PushOutcome(outExists);
+  }
+
+  const compareProbe = await fetchGithubCompareSnapshot({
+    repoUrl: input.repoUrl,
+    base: input.baseBranch,
+    head: primaryHead,
+    maxFiles: 80,
+    githubAccessToken: input.githubAccessToken ?? null,
+    projectId,
+    allowUnauthenticated: true,
+  });
+
+  if (!compareProbe.ok && compareProbe.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_github_compare_missing_token",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: { head: primaryHead, baseBranch: input.baseBranch, candidateBranches: candidates },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "git_reflection_gate_blocked_no_token",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        branchName: primaryHead,
+        baseBranch: input.baseBranch,
+        gateReason: "github_compare_unavailable_no_token",
+        pipeline: "runStage1EnvTestBranchToPrPipeline",
+      },
+    });
+    const gateReason = "github_compare_unavailable_no_token";
+    await prisma.task.update({
+      where: { id: taskId },
+      data: {
+        executionWorkflowStatus: EXECUTION_WORKFLOW.PENDING_APPLY,
+        lastEvalResult: "pending_apply",
+        lastEvalSummary: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      },
+    });
+    await prisma.taskExecutionRun.update({
+      where: { id: execRunId },
+      data: {
+        cursorRunId: cr.runId,
+        cursorSummary: cr.summary,
+        branchName: primaryHead,
+        commitSha: cr.commitHash ?? null,
+        changedFiles: cr.changedFiles as unknown as object,
+        gitSummary: cr.summary.slice(0, 24_000),
+        validationOutput: null,
+        commitStatus: "github_compare_missing_token",
+        pushStatus: "delegated_to_cursor",
+        status: "awaiting_git_reflection",
+        evaluationReason: "git_reflection_gate_blocked: github_compare_unavailable_no_token",
+      },
+    });
+    await updateTaskOrchestrationSnapshot(taskId, {
+      branch: primaryHead,
+      commitStatus: "github_compare_missing_token",
+      pushStatus: "delegated_to_cursor",
+      commitSha: cr.commitHash ?? null,
+      changedFileCount: cr.changedFiles.length,
+    });
+    await refreshWorkflowStates(projectId);
+    input.steps.push({
+      phase: "git_reflection_gate",
+      taskId,
+      runId: cr.runId,
+      branch: primaryHead,
+      commitHash: cr.commitHash ?? null,
+      changedFileCount: cr.changedFiles.length,
+      passed: false,
+      reason: gateReason,
+    });
+    return {
+      kind: "return",
+      result: {
+        ok: true,
+        steps: input.steps,
+        message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+      },
+    };
   }
 
   appendTaskProgressLog({
@@ -934,10 +926,11 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     taskId,
     userId: actorUserId,
     detail: {
-      compareOk: compare.ok,
-      compareCode: compare.ok ? null : compare.code,
-      aheadBy: compare.ok ? compare.data.aheadBy : null,
-      head: effectiveGithubHead,
+      candidateBranchesTried: candidates,
+      primaryHead,
+      compareOk: compareProbe.ok,
+      compareCode: compareProbe.ok ? null : compareProbe.code,
+      aheadBy: compareProbe.ok ? compareProbe.data.aheadBy : null,
       branchDetectElapsedMs,
     },
   });
@@ -946,9 +939,9 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     data: {
       status: "failed",
       evaluationDecision: "failed",
-      evaluationReason: compare.ok
+      evaluationReason: compareProbe.ok
         ? "env_test_stage1_remote_branch_not_visible"
-        : `env_test_stage1_remote_branch_not_visible:${compare.code}:${compare.message}`.slice(0, 8000),
+        : `env_test_stage1_remote_branch_not_visible:${compareProbe.code}:${compareProbe.message}`.slice(0, 8000),
       commitStatus: "pushed_commit_unknown",
       pushStatus: "unknown",
     },
