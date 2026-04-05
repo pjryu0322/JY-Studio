@@ -30,6 +30,18 @@ import { parsePrUrlFromRunPrStatus } from "@/lib/service/environmentConnectionTe
 
 const ENV_TEST_MERGE_VERIFIED_SUMMARY = "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.";
 const ENV_TEST_MERGE_SUCCESS_USER_MESSAGE = "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.";
+const ENV_TEST_STAGE1_MERGE_VERIFIED_SUMMARY = "Stage1: 브랜치·PR·머지 확인 완료.";
+const ENV_TEST_STAGE1_MERGE_SUCCESS_USER_MESSAGE = "환경 연결 테스트가 정상 완료되었습니다.";
+
+function envTestMergeVerifiedSummaryForTaskKind(taskKind: string | null | undefined): string {
+  return isEnvTestStage2TaskKind(taskKind) ? ENV_TEST_MERGE_VERIFIED_SUMMARY : ENV_TEST_STAGE1_MERGE_VERIFIED_SUMMARY;
+}
+
+function envTestMergeSuccessUserMessageForTaskKind(taskKind: string | null | undefined): string {
+  return isEnvTestStage2TaskKind(taskKind)
+    ? ENV_TEST_MERGE_SUCCESS_USER_MESSAGE
+    : ENV_TEST_STAGE1_MERGE_SUCCESS_USER_MESSAGE;
+}
 
 export type EnvTestMergeExecutionResult =
   | { ok: true; message: string; mergeCommitSha: string | null; branchDeleted: boolean }
@@ -102,7 +114,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     });
     return {
       ok: true,
-      message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
+      message: envTestMergeSuccessUserMessageForTaskKind(task.taskKind),
       mergeCommitSha: null,
       branchDeleted: false,
     };
@@ -152,7 +164,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     });
     return {
       ok: true,
-      message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
+      message: envTestMergeSuccessUserMessageForTaskKind(task.taskKind),
       mergeCommitSha: run.mergeCommitSha ?? null,
       branchDeleted: false,
     };
@@ -512,7 +524,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
         executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED,
         status: "DONE",
         lastEvalResult: "merged",
-        lastEvalSummary: ENV_TEST_MERGE_VERIFIED_SUMMARY,
+        lastEvalSummary: envTestMergeVerifiedSummaryForTaskKind(task.taskKind),
       },
     });
     await updateTaskOrchestrationSnapshot(task.id, {
@@ -534,7 +546,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     });
     return {
       ok: true,
-      message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
+      message: envTestMergeSuccessUserMessageForTaskKind(task.taskKind),
       mergeCommitSha: mergeCommitShaEarly,
       branchDeleted: false,
     };
@@ -581,8 +593,9 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     repoUrl,
     pullNumber: parsedPr.number,
     token,
-    maxAttempts: 10,
-    delayMs: 500,
+    ...(stage2
+      ? { maxAttempts: 10, delayMs: 500, envTestMergeVerifyPreset: "default" as const }
+      : { envTestMergeVerifyPreset: "stage1_fast" as const }),
   });
   if (!verified.ok || !verified.merged) {
     appendTaskProgressLog({
@@ -643,7 +656,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
       executionWorkflowStatus: EXECUTION_WORKFLOW.MERGED,
       status: "DONE",
       lastEvalResult: "merged",
-      lastEvalSummary: ENV_TEST_MERGE_VERIFIED_SUMMARY,
+      lastEvalSummary: envTestMergeVerifiedSummaryForTaskKind(task.taskKind),
     },
   });
 
@@ -669,7 +682,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
 
   return {
     ok: true,
-    message: ENV_TEST_MERGE_SUCCESS_USER_MESSAGE,
+    message: envTestMergeSuccessUserMessageForTaskKind(task.taskKind),
     mergeCommitSha: verified.mergeCommitSha ?? null,
     branchDeleted: false,
   };

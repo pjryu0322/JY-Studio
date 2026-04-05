@@ -345,6 +345,8 @@ export async function runEnvTestPlatformPrPhase(input: {
         prUrl: prRes.data.pullRequestUrl,
         prNumber: prRes.data.pullRequestNumber,
         reusedExisting: prRes.data.reusedExisting,
+        prCreationElapsedMs: prElapsedMs,
+        elapsedMsSinceRunStart: elapsedMsSinceRunStart ?? null,
       },
     });
   }
@@ -831,6 +833,21 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
         branchDetectElapsedMs,
         detectedRemoteBranchName: resolvedHead,
         prHeadBranchName: resolvedHead,
+      },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_branch_reflected",
+      projectId,
+      taskId,
+      userId: actorUserId,
+      detail: {
+        executionId: execRunId,
+        headBranch: resolvedHead,
+        headSha: resolvedHeadSha ?? null,
+        source: "github_remote_branch_head",
+        branchReflectElapsedMs: branchDetectElapsedMs,
+        totalElapsedSinceRunMs: Date.now() - input.execRunCreatedAt.getTime(),
       },
     });
     await prisma.taskExecutionRun.update({
@@ -2577,7 +2594,7 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
   } else {
     const stage1RunBranch = await prisma.taskExecutionRun.findUnique({
       where: { id: input.execRunId },
-      select: { branchName: true },
+      select: { branchName: true, createdAt: true },
     });
     appendTaskProgressLog({
       kind: "execution",
@@ -2592,11 +2609,45 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
         prNumber: input.prNumber,
       },
     });
+    const mergePhaseStartedAt = Date.now();
     // Stage1: PR_OPENED 이후 즉시 플랫폼 merge smoke 수행.
     mergeRes = await executeEnvTestPrMergeSmokeTest({
       projectId: input.projectId,
       actorUserId: input.actorUserId,
     });
+    const mergeElapsedMs = Date.now() - mergePhaseStartedAt;
+    if (mergeRes.ok === true) {
+      const totalElapsedSinceRunMs =
+        stage1RunBranch?.createdAt != null ? Date.now() - stage1RunBranch.createdAt.getTime() : null;
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_stage1_merge_completed",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: {
+          executionId: input.execRunId,
+          mergeElapsedMs,
+          mergeCommitSha: mergeRes.mergeCommitSha ?? null,
+          prNumber: input.prNumber,
+          totalElapsedSinceRunMs,
+        },
+      });
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_stage1_finished",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: {
+          executionId: input.execRunId,
+          mergeElapsedMs,
+          totalElapsedSinceRunMs,
+          prNumber: input.prNumber,
+          outcome: "success",
+        },
+      });
+    }
   }
 
   if (input.singleTaskId || !input.effectiveAutoAdvance || !mergeRes.ok) {
@@ -2607,7 +2658,7 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
         ok: mergeOk,
         steps: input.steps,
         message: mergeOk
-          ? (mergeRes.message ?? "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.")
+          ? (mergeRes.message ?? "환경 연결 테스트가 정상 완료되었습니다.")
           : (mergeRes.message ?? "환경 연결 테스트: 머지 단계에서 실패했습니다."),
         nextTaskReadiness: readiness,
       },
@@ -2656,6 +2707,8 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
     select: { createdAt: true },
   });
   const completedAt = new Date();
+  const elapsedMsSinceRunStart =
+    runMeta?.createdAt != null ? completedAt.getTime() - runMeta.createdAt.getTime() : null;
   await prisma.taskExecutionRun.update({
     where: { id: input.execRunId },
     data: {
@@ -2687,6 +2740,23 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
   });
 
   await refreshWorkflowStates(input.projectId);
+
+  if (isEnvTestStage1TaskKind(input.taskKind)) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_pr_opened",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        executionId: input.execRunId,
+        prNumber: input.prNumber,
+        prUrl: input.prUrl,
+        branchName: input.branchName,
+        elapsedMsSinceRunStart,
+      },
+    });
+  }
 
   return runEnvTestPostPrOpenedMergeAndReadiness({
     projectId: input.projectId,

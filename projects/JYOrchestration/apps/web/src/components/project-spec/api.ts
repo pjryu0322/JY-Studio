@@ -478,6 +478,7 @@ export async function fetchExecutionLoopStatus(projectId: string) {
 
 export type EnvironmentTestLastDto = {
   taskId: string;
+  taskKind?: string | null;
   name: string;
   taskStatus: string;
   workflowStatus: string | null;

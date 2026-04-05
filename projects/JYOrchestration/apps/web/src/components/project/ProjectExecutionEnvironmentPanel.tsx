@@ -10,6 +10,7 @@ import {
   postRevealGithubAccessToken,
   type EnvironmentTestLastDto,
 } from "@/components/project-spec/api";
+import { ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
 import { ExecutionSetupPanel } from "@/components/project-spec/ExecutionSetupPanel";
@@ -92,12 +93,26 @@ function environmentTestTaskStatusKorean(taskStatus: string | undefined): string
   return s;
 }
 
-function environmentTestStatusMessage(wf: string | null | undefined, taskStatus: string | undefined): string {
+function isStage1EnvironmentTestLast(last: Pick<EnvironmentTestLastDto, "taskKind">): boolean {
+  const tk = String(last.taskKind ?? "").trim();
+  return tk === "" || tk === ENV_TEST_TASK_KIND;
+}
+
+function environmentTestStatusMessage(
+  wf: string | null | undefined,
+  taskStatus: string | undefined,
+  taskKind?: string | null
+): string {
   const w = normalizeWorkflowForUi(wf);
   const ts = String(taskStatus ?? "").trim();
+  const stage1 = !taskKind || String(taskKind).trim() === ENV_TEST_TASK_KIND;
   if (w === EXECUTION_WORKFLOW.FAILED) return "환경 연결 테스트에 실패했습니다";
-  if (w === EXECUTION_WORKFLOW.MERGED) return "머지 완료";
-  if (w === EXECUTION_WORKFLOW.PR_OPENED) return "테스트 PR 생성이 완료되었습니다";
+  if (w === EXECUTION_WORKFLOW.MERGED) {
+    return stage1 ? "환경 연결 테스트가 정상 완료되었습니다." : "머지 완료";
+  }
+  if (w === EXECUTION_WORKFLOW.PR_OPENED) {
+    return stage1 ? "PR이 생성되었습니다. 머지를 진행합니다." : "테스트 PR 생성이 완료되었습니다";
+  }
   if (w === EXECUTION_WORKFLOW.PENDING_APPLY) {
     return "GitHub 반영 확인 중";
   }
@@ -107,13 +122,14 @@ function environmentTestStatusMessage(wf: string | null | undefined, taskStatus:
   if (w === EXECUTION_WORKFLOW.RUNNING || w === normalizeWorkflowForUi(EXECUTION_WORKFLOW.REVIEW_PENDING)) {
     return "실행 중";
   }
-  if (ts === "MERGED") return "머지 완료";
-  if (ts === "DONE") return "테스트 PR 생성이 완료되었습니다";
+  if (ts === "MERGED") return stage1 ? "환경 연결 테스트가 정상 완료되었습니다." : "머지 완료";
+  if (ts === "DONE") return stage1 ? "PR이 생성되었습니다. 머지를 진행합니다." : "테스트 PR 생성이 완료되었습니다";
   return "마지막 연결 테스트 상태를 확인하세요.";
 }
 
-/** PR_OPENED 이후 후속 자동 진행 한 줄 요약(중복 '다음 Task' 문구 없음) */
+/** PR_OPENED 이후 후속 자동 진행 한 줄 요약(중복 '다음 Task' 문구 없음). Stage1 스모크 패널에서는 숨긴다. */
 function environmentTestFollowUpLine(last: EnvironmentTestLastDto): string | null {
+  if (isStage1EnvironmentTestLast(last)) return null;
   const wf = normalizeWorkflowForUi(last.workflowStatus);
   if (wf !== EXECUTION_WORKFLOW.PR_OPENED && wf !== EXECUTION_WORKFLOW.MERGED) return null;
   const mergeInProgress = wf === EXECUTION_WORKFLOW.PR_OPENED && Boolean(last.envTestMergeStartedAt) && !last.mergedAt;
@@ -811,8 +827,28 @@ export function ProjectExecutionEnvironmentPanel({
                   envTestLast.envTestMergeStartedAt &&
                   !envTestLast.mergedAt
                     ? "머지 진행 중"
-                    : environmentTestStatusMessage(envTestLast.workflowStatus, envTestLast.taskStatus)}
+                    : environmentTestStatusMessage(
+                        envTestLast.workflowStatus,
+                        envTestLast.taskStatus,
+                        envTestLast.taskKind
+                      )}
                 </div>
+                {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.MERGED &&
+                isStage1EnvironmentTestLast(envTestLast) ? (
+                  <ul
+                    style={{
+                      margin: "8px 0 0 0",
+                      paddingLeft: 18,
+                      color: "#334155",
+                      fontSize: 11,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    <li>브랜치 생성 확인</li>
+                    <li>PR 생성 확인</li>
+                    <li>머지 완료 확인</li>
+                  </ul>
+                ) : null}
                 <div style={{ marginTop: 4 }}>
                   <span style={{ color: "#64748b" }}>작업 이름</span> {envTestLast.name}
                 </div>
