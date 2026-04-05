@@ -5,6 +5,7 @@
  * - Reflection 미통과·GitHub compare 우회: `runEnvTestReflectionNotConfirmedGithubBypass` → `runEnvTestAfterGithubPushConfirmed` → finalize
  * - Cursor 폴링 우회: `runEnvTestAfterGithubPushConfirmed` → `finalizeEnvTestPrOpenedFromGithubOnly`
  * - PR_OPENED 이후: `runEnvTestPostPrOpenedMergeAndReadiness` (Stage1 merge vs Stage2 reviewer→scm)
+ * - 책임 분리: Cursor는 코드 변경/commit/push까지만 담당, PR 생성/merge는 플랫폼(및 Stage2 SCM 분기)에서만 수행
  *
  * 실패 기준(루프): Cursor agent 폴링 timeout만으로는 FAILED 하지 않음.
  * Git 원격 브랜치 미반영(제한 시간)만 즉시 FAILED. 그 외 ENV_TEST 오류는 재시도 경로.
