@@ -284,6 +284,20 @@ export async function runEnvTestPlatformPrPhase(input: {
     });
     await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorPlatformPrStart(m, Date.now()));
   }
+  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_pr_create_started",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        executionId: input.execRunId,
+        headBranch: input.headBranch,
+        branchName: input.headBranch,
+      },
+    });
+  }
   appendTaskProgressLog({
     kind: "execution",
     phase: "env_test_pr_lookup_started",
@@ -317,6 +331,23 @@ export async function runEnvTestPlatformPrPhase(input: {
   const prElapsedMs = Date.now() - prPhaseStartedAt;
   const elapsedMsCompareToPr =
     typeof input.compareOkAtMs === "number" ? Date.now() - input.compareOkAtMs : null;
+  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_pr_create_passed",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        executionId: input.execRunId,
+        headBranch: input.headBranch,
+        branchName: input.headBranch,
+        prUrl: prRes.data.pullRequestUrl,
+        prNumber: prRes.data.pullRequestNumber,
+        reusedExisting: prRes.data.reusedExisting,
+      },
+    });
+  }
   appendTaskProgressLog({
     kind: "execution",
     phase: "env_test_pr_created_or_found",
@@ -2544,6 +2575,23 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
       prNumber: input.prNumber,
     });
   } else {
+    const stage1RunBranch = await prisma.taskExecutionRun.findUnique({
+      where: { id: input.execRunId },
+      select: { branchName: true },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_merge_started",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        executionId: input.execRunId,
+        taskKind: input.taskKind,
+        branchName: stage1RunBranch?.branchName ?? null,
+        prNumber: input.prNumber,
+      },
+    });
     // Stage1: PR_OPENED 이후 즉시 플랫폼 merge smoke 수행.
     mergeRes = await executeEnvTestPrMergeSmokeTest({
       projectId: input.projectId,
