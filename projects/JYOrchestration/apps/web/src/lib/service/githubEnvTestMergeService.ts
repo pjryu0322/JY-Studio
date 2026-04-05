@@ -10,22 +10,33 @@ import {
   resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
 import { isEnvTestHelloWorldBranchName } from "@/lib/execution/branchPolicy";
-import { isEnvTestMergeFamilyTaskKind, isEnvTestStage2TaskKind } from "@/lib/execution/envTestTaskKind";
+import {
+  isEnvTestMergeFamilyTaskKind,
+  isEnvTestStage1TaskKind,
+  isEnvTestStage2TaskKind,
+} from "@/lib/execution/envTestTaskKind";
 import {
   ENV_TEST_MERGE_ALLOWED_ROOT_PREFIX,
+  ENV_TEST_MERGE_WHITELIST_PATTERN_NESTED_MD,
+  ENV_TEST_MERGE_WHITELIST_PATTERN_TOP_LEVEL_MD,
+  ENV_TEST_STAGE1_MERGE_ALLOWED_RULE,
+  envTestStage1AllowedPathGlobs,
   isEnvTestMergeWhitelistedPath,
+  isEnvTestStage1MergeWhitelistedPath,
   normalizeEnvTestMergePrFilename,
 } from "@/lib/service/envTestMergeFilePolicy";
 import { ENV_TEST_PR_TITLE, ENV_TEST_STAGE2_PR_TITLE } from "@/lib/service/githubEnvTestPullRequestService";
 import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
 
-export { isEnvTestMergeWhitelistedPath } from "@/lib/service/envTestMergeFilePolicy";
+export { isEnvTestMergeWhitelistedPath, isEnvTestStage1MergeWhitelistedPath } from "@/lib/service/envTestMergeFilePolicy";
 
 /**
- * Hello World ENV_TEST가 만드는 대표 파일(문서·UI 힌트용).
- * 머지 허용 범위는 envTestMergeFilePolicy.isEnvTestMergeWhitelistedPath 로만 판정한다.
+ * Stage1 대표 경로(문서·UI 힌트). 머지 허용 범위는 isEnvTestStage1MergeWhitelistedPath 와 동일하게 orchestration-test 트리 전체.
+ * Stage2는 orchestration-test 아래의 .md 파일만 허용(대표 경로 hello-world.md).
  */
-export const ENV_TEST_MERGE_ALLOWED_FILE_PATH = `${ENV_TEST_MERGE_ALLOWED_ROOT_PREFIX}hello-world.md`;
+export const ENV_TEST_MERGE_ALLOWED_FILE_PATH = `${ENV_TEST_MERGE_ALLOWED_ROOT_PREFIX}hello.txt`;
+
+export const ENV_TEST_STAGE2_MERGE_DOCUMENT_FILE_PATH = `${ENV_TEST_MERGE_ALLOWED_ROOT_PREFIX}hello-world.md`;
 
 export function resolveEnvTestMergeGithubToken(
   setupGithubAccessToken: string | null | undefined,
@@ -129,6 +140,18 @@ export async function fetchEnvTestPullFiles(input: {
   return { ok: true, files: arr };
 }
 
+export type EnvTestMergeGuardDiagnostics = {
+  taskKind: string;
+  guardStage: "stage1" | "stage2";
+  blockedFiles?: string[];
+  /** @deprecated 로그 호환용 — allowedRule / allowedPathGlobs 사용 권장 */
+  allowedPaths: string[];
+  allowedRule: string;
+  allowedPathGlobs: string[];
+  evaluatedScopeRule: string;
+  ruleEvaluation: string;
+};
+
 export type EnvTestMergeGuardResult =
   | {
       ok: true;
@@ -137,7 +160,37 @@ export type EnvTestMergeGuardResult =
       /** 진단: 화이트리스트 통과 파일별 패턴 */
       envTestFileWhitelistMatches: Array<{ filename: string; matchedPathPattern: string }>;
     }
-  | { ok: false; blockedReason: string; blockedCode: string };
+  | {
+      ok: false;
+      blockedReason: string;
+      blockedCode: string;
+      diagnostics?: EnvTestMergeGuardDiagnostics;
+    };
+
+export function envTestMergeGuardAllowedPathsForTaskKind(taskKind: string | null | undefined): string[] {
+  const tk = String(taskKind ?? "").trim();
+  if (isEnvTestStage1TaskKind(tk)) {
+    return [...envTestStage1AllowedPathGlobs()];
+  }
+  return [ENV_TEST_MERGE_WHITELIST_PATTERN_TOP_LEVEL_MD, ENV_TEST_MERGE_WHITELIST_PATTERN_NESTED_MD];
+}
+
+/** Stage1·Stage2 공통: 머지 가드가 사용하는 허용 규칙(사람이 읽기 쉬운 문장). */
+export function envTestMergeGuardAllowedRuleForTaskKind(taskKind: string | null | undefined): string {
+  const tk = String(taskKind ?? "").trim();
+  if (isEnvTestStage1TaskKind(tk)) {
+    return ENV_TEST_STAGE1_MERGE_ALLOWED_RULE;
+  }
+  return `${ENV_TEST_MERGE_WHITELIST_PATTERN_TOP_LEVEL_MD}, ${ENV_TEST_MERGE_WHITELIST_PATTERN_NESTED_MD}`;
+}
+
+export function envTestMergeGuardAllowedPathGlobsForTaskKind(taskKind: string | null | undefined): string[] {
+  const tk = String(taskKind ?? "").trim();
+  if (isEnvTestStage1TaskKind(tk)) {
+    return [...envTestStage1AllowedPathGlobs()];
+  }
+  return [ENV_TEST_MERGE_WHITELIST_PATTERN_TOP_LEVEL_MD, ENV_TEST_MERGE_WHITELIST_PATTERN_NESTED_MD];
+}
 
 /**
  * ENV_TEST 머지 전 안전 가드(전부 통과해야 머지 가능).
@@ -202,15 +255,65 @@ export function evaluateEnvTestMergeGuards(input: {
       blockedReason: "PR에 변경 파일이 없어 머지할 수 없습니다.",
     };
   }
+  const guardStage: "stage1" | "stage2" = isEnvTestStage2TaskKind(tk) ? "stage2" : "stage1";
+  const allowedPathGlobs = envTestMergeGuardAllowedPathGlobsForTaskKind(tk);
+  const allowedRule = envTestMergeGuardAllowedRuleForTaskKind(tk);
+  const allowedPaths = envTestMergeGuardAllowedPathsForTaskKind(tk);
+
+  const fileScopeDiagnostics = (blockedFiles: string[], ruleEvaluation: string): EnvTestMergeGuardDiagnostics => ({
+    taskKind: tk,
+    guardStage,
+    blockedFiles,
+    allowedPaths,
+    allowedRule,
+    allowedPathGlobs,
+    evaluatedScopeRule: allowedRule,
+    ruleEvaluation,
+  });
+
   const envTestFileWhitelistMatches: Array<{ filename: string; matchedPathPattern: string }> = [];
+
+  if (isEnvTestStage1TaskKind(tk)) {
+    for (const f of input.files) {
+      const fn = normalizeEnvTestMergePrFilename(String(f.filename ?? ""));
+      if (!fn) {
+        const blockedReason = `Stage1 merge blocked by scope rule. Blocked file: (empty path). Allowed rule: ${ENV_TEST_STAGE1_MERGE_ALLOWED_RULE}.`;
+        return {
+          ok: false,
+          blockedCode: "FILE_OUT_OF_SCOPE",
+          blockedReason,
+          diagnostics: fileScopeDiagnostics(
+            input.files.map((x) => normalizeEnvTestMergePrFilename(String(x.filename ?? ""))),
+            "stage1_empty_filename"
+          ),
+        };
+      }
+      const w = isEnvTestStage1MergeWhitelistedPath(fn);
+      if (!w.ok || !w.matchedPathPattern) {
+        const blockedReason = `Stage1 merge blocked by scope rule. Blocked file: ${fn}. Allowed rule: ${ENV_TEST_STAGE1_MERGE_ALLOWED_RULE}.`;
+        return {
+          ok: false,
+          blockedCode: "FILE_OUT_OF_SCOPE",
+          blockedReason,
+          diagnostics: fileScopeDiagnostics([fn], "stage1_path_not_under_orchestration_test"),
+        };
+      }
+      envTestFileWhitelistMatches.push({ filename: fn, matchedPathPattern: w.matchedPathPattern });
+    }
+    return { ok: true, pr: input.pr, files: input.files, envTestFileWhitelistMatches };
+  }
+
   for (const f of input.files) {
     const fn = normalizeEnvTestMergePrFilename(String(f.filename ?? ""));
     const w = isEnvTestMergeWhitelistedPath(fn);
     if (!w.ok || !w.matchedPathPattern) {
+      const stage2Rule = `${ENV_TEST_MERGE_WHITELIST_PATTERN_TOP_LEVEL_MD} or ${ENV_TEST_MERGE_WHITELIST_PATTERN_NESTED_MD}`;
+      const blockedReason = `Stage2 merge blocked by scope rule. Blocked file: ${fn}. Allowed rule: ${stage2Rule}.`;
       return {
         ok: false,
         blockedCode: "FILE_OUT_OF_SCOPE",
-        blockedReason: `변경 파일이 ENV_TEST 허용 범위를 벗어났습니다: ${fn}`,
+        blockedReason,
+        diagnostics: fileScopeDiagnostics([fn], "stage2_path_must_be_markdown_under_orchestration_test"),
       };
     }
     envTestFileWhitelistMatches.push({ filename: fn, matchedPathPattern: w.matchedPathPattern });

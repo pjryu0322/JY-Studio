@@ -16,6 +16,7 @@ import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
 import { countExecutionReviewAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
 import { taskLooksSensitive } from "@/lib/execution/taskSensitivity";
 import { computeExecutionBranchPlan } from "@/lib/execution/branchPolicy";
+import { envTestStage1AllowedPathGlobs } from "@/lib/service/envTestMergeFilePolicy";
 import { assertGitRepoUrlConfiguredForRun } from "@/lib/execution/repoUrlPolicy";
 import { isExecutionLoopPaused, setExecutionLoopPaused } from "@/lib/executionLoop/loopControllerState";
 import { parseCriteria, parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
@@ -440,10 +441,15 @@ export async function runExecutionLoop(params: {
 
       const criteria = parseCriteria(taskRow.acceptanceCriteria);
 
-      const mergedAllowedGlobs =
-        isEnvTestTask && !allowedGlobs.includes("orchestration-test/**")
-          ? ["orchestration-test/**", ...allowedGlobs]
-          : allowedGlobs;
+      const mergedAllowedGlobs = (() => {
+        if (isEnvTestStage1TaskKind(taskRow.taskKind)) {
+          return [...envTestStage1AllowedPathGlobs()];
+        }
+        if (isEnvTestTask && !allowedGlobs.includes("orchestration-test/**")) {
+          return ["orchestration-test/**", ...allowedGlobs];
+        }
+        return allowedGlobs;
+      })();
 
       const branchPlan = computeExecutionBranchPlan({
         branchStrategy: setup.branchStrategy,
@@ -484,7 +490,12 @@ export async function runExecutionLoop(params: {
           requireTestsBeforePush: setup.requireTestsBeforePush !== false,
           allowedPathGlobs: mergedAllowedGlobs,
         },
-        isEnvTestFamilyTaskKind(taskRow.taskKind) ? { compactHelloWorld: true } : undefined
+        isEnvTestFamilyTaskKind(taskRow.taskKind)
+          ? {
+              compactHelloWorld: true,
+              envTestCompactVariant: isEnvTestStage2TaskKind(taskRow.taskKind) ? "stage2" : "stage1",
+            }
+          : undefined
       );
 
       // 동일 Task에 아직 active한 실행(run)이 남아 있으면 재실행을 막는다.
