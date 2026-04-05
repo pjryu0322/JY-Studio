@@ -66,7 +66,7 @@ async function failEnvTestStage2WithCode(input: {
   projectId: string;
   taskId: string;
   execRunId: string;
-  code: "STAGE2_NO_COMMIT" | "STAGE2_BRANCH_NOT_REFLECTED" | "STAGE2_PR_NOT_OPENED";
+  code: "NO_COMMIT" | "BRANCH_NOT_REFLECTED" | "PR_NOT_OPENED";
   summaryKo: string;
 }): Promise<void> {
   const rowVo = await prisma.taskExecutionRun.findUnique({
@@ -205,6 +205,8 @@ export async function runEnvTestPlatformPrPhase(input: {
   | { ok: true; prUrl: string; prNumber: number; reusedExisting: boolean; prElapsedMs: number }
   | { ok: false; message: string }
 > {
+  // ENV_TEST(Stage1/2) PR 책임: 항상 플랫폼(createOrUpdateEnvTestPullRequest).
+  // Cursor는 PR 생성/merge를 수행하지 않는다.
   requireEnvTestFamilyTaskKindForFinalize(input.taskKind, "runEnvTestPlatformPrPhase", {
     projectId: input.projectId,
     taskId: input.taskId,
@@ -547,7 +549,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
         projectId,
         taskId,
         execRunId,
-        code: "STAGE2_NO_COMMIT",
+        code: "NO_COMMIT",
         summaryKo: "Stage 2 실패: commit 미발생",
       });
       return {
@@ -585,7 +587,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
         projectId,
         taskId,
         execRunId,
-        code: "STAGE2_BRANCH_NOT_REFLECTED",
+        code: "BRANCH_NOT_REFLECTED",
         summaryKo: "Stage 2 실패: Git branch 미반영",
       });
       return {
@@ -664,7 +666,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
           projectId,
           taskId,
           execRunId,
-          code: "STAGE2_PR_NOT_OPENED",
+          code: "PR_NOT_OPENED",
           summaryKo: "Stage 2 실패: PR 미생성",
         });
       } else {
@@ -803,7 +805,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
           projectId,
           taskId,
           execRunId,
-          code: "STAGE2_PR_NOT_OPENED",
+          code: "PR_NOT_OPENED",
           summaryKo: "Stage 2 실패: PR 미생성",
         });
       } else {
@@ -844,7 +846,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
         projectId: input.projectId,
         taskId: input.taskId,
         execRunId: input.execRunId,
-        code: "STAGE2_BRANCH_NOT_REFLECTED",
+        code: "BRANCH_NOT_REFLECTED",
         summaryKo: "Stage 2 실패: Git branch 미반영",
       });
       return {
@@ -955,7 +957,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
       projectId,
       taskId,
       execRunId,
-      code: "STAGE2_BRANCH_NOT_REFLECTED",
+      code: "BRANCH_NOT_REFLECTED",
       summaryKo: "Stage 2 실패: Git branch 미반영",
     });
     return {
@@ -1035,7 +1037,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
         projectId,
         taskId,
         execRunId,
-        code: "STAGE2_NO_COMMIT",
+        code: "NO_COMMIT",
         summaryKo: "Stage 2 실패: commit 미발생",
       });
       return {
@@ -1231,7 +1233,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
         projectId,
         taskId,
         execRunId,
-        code: "STAGE2_BRANCH_NOT_REFLECTED",
+        code: "BRANCH_NOT_REFLECTED",
         summaryKo: "Stage 2 실패: Git branch 미반영",
       });
     } else {
@@ -1313,7 +1315,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
         projectId,
         taskId,
         execRunId,
-        code: "STAGE2_PR_NOT_OPENED",
+        code: "PR_NOT_OPENED",
         summaryKo: "Stage 2 실패: PR 미생성",
       });
     } else {
@@ -2296,6 +2298,9 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
   let mergeRes: Awaited<ReturnType<typeof executeEnvTestPrMergeSmokeTest>>;
 
   if (isEnvTestStage2TaskKind(input.taskKind)) {
+    // Stage2: PR_OPENED 이후에만 Reviewer→Security→SCM.
+    // - SCM 멤버가 있으면 SCM 의사결정이 merge 진행/차단을 결정
+    // - SCM 멤버가 없으면 플랫폼 merge fallback
     mergeRes = await runEnvTestStage2ReviewScmAfterPrOpened({
       projectId: input.projectId,
       taskId: input.taskId,
@@ -2304,6 +2309,7 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
       prNumber: input.prNumber,
     });
   } else {
+    // Stage1: PR_OPENED 이후 즉시 플랫폼 merge smoke 수행.
     mergeRes = await executeEnvTestPrMergeSmokeTest({
       projectId: input.projectId,
       actorUserId: input.actorUserId,

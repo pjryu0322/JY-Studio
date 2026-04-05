@@ -10,7 +10,6 @@ import {
   type ExecuteCursorRunOutcome,
 } from "@/lib/execution/cursorExecutionAdapter";
 import { runEnvTestCursorToPrOpenedCore } from "@/lib/executionLoop/envTestExecutionCore";
-import { runEnvTestStage2PreCursorExecutorGate } from "@/lib/executionLoop/envTestExecutionPipeline";
 import { isCursorCodeReflectionConfirmed } from "@/lib/execution/cursorReflectionPolicy";
 import { evaluateExecutionResult } from "@/lib/execution/evaluateTaskExecution";
 import { countExecutionReviewAiMembers } from "@/lib/execution/executionReviewWithAiMembers";
@@ -541,18 +540,6 @@ export async function runExecutionLoop(params: {
         },
       });
 
-      const stage2Pre = await runEnvTestStage2PreCursorExecutorGate({
-        projectId,
-        taskId,
-        actorUserId,
-        execRunId: execRun.id,
-        taskKind: taskRow.taskKind,
-        steps,
-      });
-      if (!stage2Pre.ok) {
-        return stage2Pre.result;
-      }
-
       console.info("[execution-loop] cursor invoke", {
         projectId,
         taskId,
@@ -638,7 +625,9 @@ export async function runExecutionLoop(params: {
               branchPrefix: setup.branchPrefix,
               autoCommit: setup.autoCommit !== false,
               autoPush: setup.autoPush === true,
-              autoPr: setup.autoPr === true,
+              // ENV_TEST(Stage1/2)에서는 PR/merge 책임이 플랫폼(또는 Stage2 SCM 경로)에 있으므로
+              // Cursor가 PR 생성을 시도하지 않도록 강제한다.
+              autoPr: isEnvTestTask ? false : setup.autoPr === true,
               requireTestsBeforePush: setup.requireTestsBeforePush !== false,
             },
             task: {
@@ -792,6 +781,51 @@ export async function runExecutionLoop(params: {
 
       if (!cursorOutcome.ok) {
         const errMsg = cursorOutcome.error ?? "cursor failed";
+        const isStage2Task = isEnvTestStage2TaskKind(taskRow.taskKind);
+        const pollStatuses = (cursorOutcome.logs ?? [])
+          .map((line) => {
+            const m = /status=([A-Z_]+)/i.exec(String(line));
+            return m?.[1]?.toUpperCase() ?? null;
+          })
+          .filter((s): s is string => Boolean(s));
+        const creatingOnly = pollStatuses.length > 0 && pollStatuses.every((s) => s === "CREATING");
+        const creatingStuckLikely = creatingOnly && pollStatuses.length >= 8;
+
+        if (isStage2Task && creatingStuckLikely) {
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "cursor_not_started",
+            projectId,
+            taskId,
+            userId: actorUserId,
+            detail: {
+              reason: "agent_creating_over_20s",
+              pollStatusCount: pollStatuses.length,
+            },
+          });
+          await prisma.task.update({
+            where: { id: taskId },
+            data: {
+              status: "FAILED",
+              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+              lastEvalResult: "CURSOR_NOT_STARTED",
+              lastEvalSummary: "Stage 2 실패: Cursor가 시작되지 않았습니다(CREATING 지속).",
+            },
+          });
+          await prisma.taskExecutionRun.update({
+            where: { id: execRun.id },
+            data: {
+              status: "failed",
+              evaluationDecision: "failed",
+              evaluationReason: "CURSOR_NOT_STARTED",
+            },
+          });
+          await refreshWorkflowStates(projectId);
+          if (singleTaskId) {
+            return { ok: false, steps, message: "Stage 2 실패: Cursor가 시작되지 않았습니다(CREATING 지속)." };
+          }
+          continue;
+        }
 
         const isEnvTestBranchWaitFail =
           isEnvTestFamilyTaskKind(taskRow.taskKind) &&
@@ -814,7 +848,7 @@ export async function runExecutionLoop(params: {
             data: {
               ...(isStage2 ? { status: "FAILED" as const } : {}),
               executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-              lastEvalResult: isStage2 ? "STAGE2_BRANCH_NOT_REFLECTED" : "failed",
+              lastEvalResult: isStage2 ? "BRANCH_NOT_REFLECTED" : "failed",
               lastEvalSummary: isStage2 ? "Stage 2 실패: Git branch 미반영" : errMsg.slice(0, 1500),
             },
           });
@@ -824,7 +858,7 @@ export async function runExecutionLoop(params: {
               status: "failed",
               evaluationDecision: "failed",
               evaluationReason: isStage2
-                ? "STAGE2_BRANCH_NOT_REFLECTED"
+                ? "BRANCH_NOT_REFLECTED"
                 : `env_test_branch_wait_timeout:${errMsg}`.slice(0, 8000),
             },
           });
@@ -977,9 +1011,9 @@ export async function runExecutionLoop(params: {
           const hasChangedFiles = Array.isArray(cr.changedFiles) && cr.changedFiles.length > 0;
           const hasDiff = Boolean(String(cr.summary ?? "").trim());
           const stage2FailCode =
-            hasCommit && hasChangedFiles && hasDiff ? "STAGE2_BRANCH_NOT_REFLECTED" : "STAGE2_NO_COMMIT";
+            hasCommit && hasChangedFiles && hasDiff ? "BRANCH_NOT_REFLECTED" : "NO_COMMIT";
           const stage2FailSummary =
-            stage2FailCode === "STAGE2_NO_COMMIT"
+            stage2FailCode === "NO_COMMIT"
               ? "Stage 2 실패: commit 미발생"
               : "Stage 2 실패: Git branch 미반영";
           await prisma.task.update({
@@ -1756,7 +1790,7 @@ export async function runExecutionLoop(params: {
           };
         }
 
-        if (setup.autoPr) {
+        if (!isEnvTestTask && setup.autoPr) {
           await prisma.taskExecutionRun.update({
             where: { id: execRun.id },
             data: { prStatus: cr.prUrl ? "pr_reported_by_cursor" : "pending_capability" },
@@ -1793,7 +1827,7 @@ export async function runExecutionLoop(params: {
 
         // PR_OPENED 단계에서는 “머지 완료”를 기다리지 않습니다.
         // (자동 머지는 background로 시도; 다음 Task 진행은 PR_OPENED 기준)
-        if (setup.autoPr && isAutoMergeEnabled() && cr.prUrl) {
+        if (!isEnvTestTask && setup.autoPr && isAutoMergeEnabled() && cr.prUrl) {
           const prUrlNow = cr.prUrl;
           void (async () => {
             appendTaskProgressLog({
