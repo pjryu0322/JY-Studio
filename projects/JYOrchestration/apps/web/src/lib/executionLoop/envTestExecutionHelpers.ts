@@ -7,7 +7,7 @@ import { logStage2CatalogEvent } from "@/lib/service/envTestStage2CatalogEvents"
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { createOrUpdateEnvTestPullRequest } from "@/lib/service/githubEnvTestPullRequestService";
-import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
+import { fetchGithubBranchHeadExists, fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
 import { GITHUB_REST_MISSING_TOKEN_USER_MESSAGE } from "@/lib/integration/githubRestCommon";
 import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
@@ -154,6 +154,20 @@ function logStage2PrCreationCheck(
     userId: ctx.actorUserId,
     detail: ctx.detail ?? {},
   });
+}
+
+function pickEnvTestHeadBranch(input: {
+  cursorBranchName?: string | null;
+  signalBranchNameHint?: string | null;
+  fallbackBranchName?: string | null;
+}): string {
+  // Branch source of truth priority:
+  // 1) Cursor 결과(branchName) 2) runtime signal hint 3) loop fallback(계획 브랜치)
+  return (
+    String(input.cursorBranchName ?? "").trim() ||
+    String(input.signalBranchNameHint ?? "").trim() ||
+    String(input.fallbackBranchName ?? "").trim()
+  );
 }
 
 /**
@@ -517,7 +531,11 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
 
   const hintedHeadSha = String(signal?.headShaHint ?? "").trim() || null;
   const hintedBranchName = String(signal?.branchNameHint ?? "").trim() || null;
-  const headPending = (hintedBranchName || input.headPending || "").trim();
+  const headPending = pickEnvTestHeadBranch({
+    cursorBranchName: input.cr.branchName,
+    signalBranchNameHint: hintedBranchName,
+    fallbackBranchName: input.headPending,
+  });
 
   const { projectId, taskId, actorUserId, execRunId, cr } = input;
   const isStage2 = isEnvTestStage2TaskKind(input.taskKind);
@@ -840,6 +858,95 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     }
   }
 
+  // Stage1 전용 fallback:
+  // compare ahead_by가 즉시 잡히지 않아도, 실제 원격 브랜치 존재가 확인되면
+  // 플랫폼 PR 생성 경로로 진행한다(브랜치 전파 지연 완화).
+  if (!isStage2) {
+    const branchExists = await fetchGithubBranchHeadExists({
+      repoUrl: input.repoUrl,
+      branch: headPending,
+      githubAccessToken: input.githubAccessToken ?? null,
+      projectId,
+      allowUnauthenticated: true,
+    });
+    if (branchExists.ok) {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_branch_exists_fallback",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: {
+          headBranch: headPending,
+          headSha: branchExists.headSha ?? null,
+          step: "reflection_bypass",
+        },
+      });
+      const outByBranch = await runEnvTestAfterGithubPushConfirmed({
+        projectId,
+        taskId,
+        taskKind: input.taskKind,
+        execRunId,
+        actorUserId,
+        branchName: headPending,
+        repoUrl: input.repoUrl,
+        baseBranch: input.baseBranch,
+        githubAccessToken: input.githubAccessToken ?? null,
+        compareData: {
+          headSha: branchExists.headSha ?? cr.commitHash ?? null,
+          changedFiles: cr.changedFiles,
+          diffSummary: cr.summary.slice(0, 24_000),
+        },
+        steps: input.steps,
+        singleTaskId: input.singleTaskId,
+        effectiveAutoAdvance: input.effectiveAutoAdvance,
+        cursorRunId: cr.runId,
+        cursorSummary: cr.summary,
+        via: "reflection_bypass",
+        pushDetectedSource: "reflection_bypass_branch_exists",
+        executionRunCreatedAt: input.execRunCreatedAt,
+        branchDetectElapsedMs,
+      });
+      if (outByBranch.kind === "return") return { kind: "return", result: outByBranch.result };
+      if (outByBranch.kind === "continue_loop") return { kind: "continue_loop" };
+      if (outByBranch.kind === "pr_failed") {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_pr_create_failed",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: { message: outByBranch.message.slice(0, 800), via: "reflection_bypass_branch_exists" },
+        });
+        await prisma.taskExecutionRun.update({
+          where: { id: execRunId },
+          data: {
+            status: "failed",
+            evaluationDecision: "failed",
+            evaluationReason: `env_test_platform_pr_failed:${outByBranch.message}`.slice(0, 8000),
+          },
+        });
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+            lastEvalResult: "failed",
+            lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outByBranch.message}`.slice(0, 1500),
+          },
+        });
+        await refreshWorkflowStates(projectId);
+        return {
+          kind: "return",
+          result: {
+            ok: false,
+            steps: input.steps,
+            message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+          },
+        };
+      }
+    }
+  }
+
   if (!comparePa.ok && comparePa.code === "GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS") {
     if (isEnvTestStage2TaskKind(input.taskKind)) {
       await failEnvTestStage2WithCode({
@@ -1001,15 +1108,22 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
 
   const cr = input.cr;
   const { projectId, taskId, actorUserId, execRunId } = input;
+  const runMonRow = await prisma.taskExecutionRun.findUnique({
+    where: { id: execRunId },
+    select: { validationOutput: true },
+  });
+  const runtimeMon = parseStage2RuntimeMonitorFromValidationOutput(runMonRow?.validationOutput ?? null);
+  const signalHeadShaHint = String(runtimeMon?.cursorSignal?.headShaHint ?? "").trim() || null;
+  const signalBranchNameHint = String(runtimeMon?.cursorSignal?.branchNameHint ?? "").trim() || null;
+  const effectiveHeadBranch = pickEnvTestHeadBranch({
+    cursorBranchName: cr.branchName,
+    signalBranchNameHint,
+    fallbackBranchName: null,
+  });
   const isStage2 = isEnvTestStage2TaskKind(input.taskKind);
   let stage2SignalHeadShaHint: string | null = null;
   if (isStage2) {
-    const runMonRow = await prisma.taskExecutionRun.findUnique({
-      where: { id: execRunId },
-      select: { validationOutput: true },
-    });
-    const runtimeMon = parseStage2RuntimeMonitorFromValidationOutput(runMonRow?.validationOutput ?? null);
-    stage2SignalHeadShaHint = String(runtimeMon?.cursorSignal?.headShaHint ?? "").trim() || null;
+    stage2SignalHeadShaHint = signalHeadShaHint;
 
     logStage2CommitCheck("stage2_commit_check_started", {
       projectId,
@@ -1068,7 +1182,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     data: {
       cursorRunId: cr.runId,
       cursorSummary: cr.summary,
-      branchName: cr.branchName,
+      branchName: effectiveHeadBranch || cr.branchName,
       commitSha: cr.commitHash ?? null,
       changedFiles: cr.changedFiles as unknown as object,
       gitSummary: cr.summary.slice(0, 24_000),
@@ -1089,7 +1203,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     userId: actorUserId,
     detail: {
       base: input.baseBranch,
-      head: cr.branchName,
+      head: effectiveHeadBranch || cr.branchName,
       elapsedMsSinceRunStart: elapsedMsSinceExecRunStart,
       step: "post_cursor",
       pipeline: "runEnvTestReflectionConfirmedPipeline",
@@ -1100,14 +1214,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       projectId,
       taskId,
       actorUserId,
-      detail: { base: input.baseBranch, head: cr.branchName, step: "post_cursor" },
+      detail: { base: input.baseBranch, head: effectiveHeadBranch || cr.branchName, step: "post_cursor" },
     });
   }
 
   const compare = await fetchGithubCompareSnapshot({
     repoUrl: input.repoUrl,
     base: input.baseBranch,
-    head: cr.branchName,
+    head: effectiveHeadBranch || cr.branchName,
     maxFiles: 80,
     githubAccessToken: input.githubAccessToken ?? null,
     projectId,
@@ -1154,7 +1268,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   const gitEvidence = compare.ok
     ? {
         baseBranch: input.baseBranch,
-        headBranch: cr.branchName,
+        headBranch: effectiveHeadBranch || cr.branchName,
         headSha: compare.data.headSha,
         changedFiles: compare.data.changedFiles,
         diffSummary: compare.data.diffSummary,
@@ -1205,7 +1319,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       taskId,
       userId: actorUserId,
       detail: {
-        branch: cr.branchName,
+        branch: effectiveHeadBranch || cr.branchName,
         headSha: gitEvidence?.headSha ?? cr.commitHash ?? null,
         changedFileCount: gitEvidence?.changedFiles.length ?? null,
         compareOk: compare.ok,
@@ -1227,6 +1341,83 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
           aheadBy: compare.ok ? compare.data.aheadBy : null,
         },
       });
+    }
+    if (!isStage2 && (effectiveHeadBranch || "").trim()) {
+      const branchExists = await fetchGithubBranchHeadExists({
+        repoUrl: input.repoUrl,
+        branch: effectiveHeadBranch,
+        githubAccessToken: input.githubAccessToken ?? null,
+        projectId,
+        allowUnauthenticated: true,
+      });
+      if (branchExists.ok) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_branch_exists_fallback",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: {
+            headBranch: effectiveHeadBranch,
+            headSha: branchExists.headSha ?? null,
+            step: "post_cursor",
+          },
+        });
+        const outByBranch = await runEnvTestAfterGithubPushConfirmed({
+          projectId,
+          taskId,
+          taskKind: input.taskKind,
+          execRunId,
+          actorUserId,
+          branchName: effectiveHeadBranch,
+          repoUrl: input.repoUrl,
+          baseBranch: input.baseBranch,
+          githubAccessToken: input.githubAccessToken ?? null,
+          compareData: {
+            headSha: branchExists.headSha ?? cr.commitHash ?? null,
+            changedFiles: cr.changedFiles,
+            diffSummary: cr.summary.slice(0, 24_000),
+          },
+          steps: input.steps,
+          singleTaskId: input.singleTaskId,
+          effectiveAutoAdvance: input.effectiveAutoAdvance,
+          cursorRunId: cr.runId,
+          cursorSummary: cr.summary,
+          via: "post_cursor_compare",
+          pushDetectedSource: "post_cursor_branch_exists",
+          executionRunCreatedAt: input.execRunCreatedAt,
+          branchDetectElapsedMs: null,
+        });
+        if (outByBranch.kind === "return") return outByBranch;
+        if (outByBranch.kind === "continue_loop") return outByBranch;
+        if (outByBranch.kind === "pr_failed") {
+          await prisma.taskExecutionRun.update({
+            where: { id: execRunId },
+            data: {
+              status: "failed",
+              evaluationDecision: "failed",
+              evaluationReason: `env_test_platform_pr_failed:${outByBranch.message}`.slice(0, 8000),
+            },
+          });
+          await prisma.task.update({
+            where: { id: taskId },
+            data: {
+              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+              lastEvalResult: "failed",
+              lastEvalSummary: `ENV_TEST: 플랫폼 PR 실패 — ${outByBranch.message}`.slice(0, 1500),
+            },
+          });
+          await refreshWorkflowStates(projectId);
+          return {
+            kind: "return",
+            result: {
+              ok: false,
+              steps: input.steps,
+              message: "환경 연결 테스트에 실패했습니다. 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+            },
+          };
+        }
+      }
     }
     if (isEnvTestStage2TaskKind(input.taskKind)) {
       await failEnvTestStage2WithCode({
@@ -1276,7 +1467,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       projectId,
       taskId,
       actorUserId,
-      detail: { headBranch: cr.branchName },
+      detail: { headBranch: effectiveHeadBranch || cr.branchName },
     });
   }
   const prPhaseMain = await runEnvTestPlatformPrPhase({
@@ -1286,7 +1477,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     taskKind: input.taskKind,
     repoUrl: input.repoUrl,
     baseBranch: input.baseBranch,
-    headBranch: cr.branchName,
+    headBranch: effectiveHeadBranch || cr.branchName,
     githubAccessToken: input.githubAccessToken ?? null,
     executionRunCreatedAt: input.execRunCreatedAt,
     compareOkAtMs: envTestCompareOkAtMs,
@@ -1369,7 +1560,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     detail: {
       prUrl,
       prNumber,
-      branch: cr.branchName,
+      branch: effectiveHeadBranch || cr.branchName,
       pipeline: "runEnvTestReflectionConfirmedPipeline",
       transition: "COMMITTED_TO_PR_OPENED",
     },
@@ -1381,7 +1572,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
     taskKind: input.taskKind,
     execRunId,
     actorUserId,
-    branchName: cr.branchName,
+    branchName: effectiveHeadBranch || cr.branchName,
     prUrl,
     prNumber,
     steps: input.steps,
