@@ -247,6 +247,8 @@ export async function createEnvironmentStage2TestTask(input: {
 
 export type EnvironmentTestLastDto = {
   taskId: string;
+  /** Stage 1 패널 구분용(기본 연결 테스트 API). */
+  taskKind?: string | null;
   name: string;
   taskStatus: string;
   workflowStatus: string | null;
@@ -412,6 +414,7 @@ export async function getLatestEnvironmentTestTask(
 
   const base: EnvironmentTestLastDto = {
     taskId: rowResolved.id,
+    taskKind: ENV_TEST_TASK_KIND,
     name: rowResolved.name,
     taskStatus: rowResolved.status,
     workflowStatus: rowResolved.executionWorkflowStatus,
@@ -589,6 +592,7 @@ export async function getLatestEnvironmentStage2TestTask(
 
   const base: EnvironmentTestLastDto = {
     taskId: rowResolved.id,
+    taskKind: ENV_TEST_STAGE2_TASK_KIND,
     name: rowResolved.name,
     taskStatus: rowResolved.status,
     workflowStatus: rowResolved.executionWorkflowStatus,

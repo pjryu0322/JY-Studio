@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 import {
   isEnvTestFamilyTaskKind,
+  isEnvTestStage1TaskKind,
   isEnvTestStage2TaskKind,
 } from "@/lib/execution/envTestTaskKind";
 import { logStage2CatalogEvent } from "@/lib/service/envTestStage2CatalogEvents";
@@ -1063,6 +1064,24 @@ const ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS = parseEnvPositiveIntMs(
   120_000,
   { min: 60_000, max: 30 * 60 * 1000 }
 );
+/** Stage1 스모크: GitHub 조기 종료·짧은 폴링 상한(기본 2.5분). 일반 Task 45분 폴링과 분리. */
+const ENV_TEST_STAGE1_BRANCH_WAIT_MAX_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE1_BRANCH_WAIT_MAX_MS",
+  150_000,
+  { min: 45_000, max: 15 * 60 * 1000 }
+);
+/** Stage1: 첫 Cursor 폴링 전 지연(기본 150ms). */
+const ENV_TEST_STAGE1_POLL_FIRST_DELAY_MS = parseEnvPositiveIntMs(
+  "CURSOR_AGENT_ENV_TEST_STAGE1_POLL_FIRST_DELAY_MS",
+  150,
+  { min: 0, max: 30_000 }
+);
+/** Stage1: 런치 직후 GitHub 프로브 전 지연(기본 80ms). */
+const ENV_TEST_STAGE1_POST_LAUNCH_GITHUB_PROBE_DELAY_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE1_POST_LAUNCH_GITHUB_PROBE_DELAY_MS",
+  80,
+  { min: 0, max: 30_000 }
+);
 const REQUEST_TIMEOUT_MS = 120_000;
 const POLL_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -1883,7 +1902,14 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
     const isEnvTestKind = isEnvTestFamilyTaskKind(params.taskKind);
     /** Stage2만: Git-first 폴링·FINISHED 무시·브랜치 404 소프트 타임아웃. Stage1은 Cursor 터미널까지 대기 후 플랫폼이 브랜치→PR 처리. */
     const envTestGitFirstMode = isEnvTestStage2TaskKind(params.taskKind);
-    const maxPollMsEffective = envTestGitFirstMode ? ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS : MAX_POLL_MS;
+    const envTestStage1GithubFastLoop = isEnvTestStage1TaskKind(params.taskKind);
+    /** Stage1: Stage2와 동일하게 RUNNING 중에도 GitHub로 PR 경로 조기 시도(폴링 대기 단축). */
+    const envTestGithubMidPollFinalize = envTestGitFirstMode || envTestStage1GithubFastLoop;
+    const maxPollMsEffective = envTestGitFirstMode
+      ? ENV_TEST_STAGE2_BRANCH_WAIT_MAX_MS
+      : envTestStage1GithubFastLoop
+        ? ENV_TEST_STAGE1_BRANCH_WAIT_MAX_MS
+        : MAX_POLL_MS;
     /** 비 ENV_TEST 호출에서 잘못 넘어온 컨텍스트는 무시 (스코프 누수 방지). */
     const envTestPollFinalizeContextEffective =
       isEnvTestKind && params.envTestPollFinalizeContext ? params.envTestPollFinalizeContext : null;
@@ -1896,25 +1922,31 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
           branchConfirmedAtMs: null,
           compareMinMsAfterLaunch: envTestGitFirstMode
             ? ENV_TEST_STAGE2_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH
-            : ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH,
-          aggressiveGithubTiming: envTestGitFirstMode,
+            : envTestStage1GithubFastLoop
+              ? 0
+              : ENV_TEST_GITHUB_COMPARE_MIN_MS_AFTER_LAUNCH,
+          aggressiveGithubTiming: envTestGitFirstMode || envTestStage1GithubFastLoop,
         }
       : null;
     const firstDelayMs = isEnvTestKind
       ? envTestGitFirstMode
         ? ENV_TEST_STAGE2_POLL_FIRST_DELAY_MS
-        : ENV_TEST_POLL_FIRST_DELAY_MS
+        : envTestStage1GithubFastLoop
+          ? ENV_TEST_STAGE1_POLL_FIRST_DELAY_MS
+          : ENV_TEST_POLL_FIRST_DELAY_MS
       : POLL_FIRST_DELAY_MS;
     const postLaunchGithubProbeDelayMs = envTestGitFirstMode
       ? ENV_TEST_STAGE2_POST_LAUNCH_GITHUB_PROBE_DELAY_MS
-      : ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS;
+      : envTestStage1GithubFastLoop
+        ? ENV_TEST_STAGE1_POST_LAUNCH_GITHUB_PROBE_DELAY_MS
+        : ENV_TEST_POST_LAUNCH_GITHUB_PROBE_DELAY_MS;
     const normalIntervalMs = POLL_INTERVAL_MS;
     console.info("[cursor-adapter] agent poll schedule", {
       agentId,
       firstDelayMs,
       intervalMs: isEnvTestKind
-        ? envTestGitFirstMode
-          ? "ENV_TEST_STAGE2_tiered_fast"
+        ? envTestGitFirstMode || envTestStage1GithubFastLoop
+          ? "ENV_TEST_tiered_fast_github"
           : "tiered_1s_15s_then_2s_40s_then_3s"
         : normalIntervalMs,
       maxWaitMs: maxPollMsEffective,
@@ -2264,9 +2296,9 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
           return { ok: true, result: earlyGithub, logs };
         }
 
-        /** Stage 2: 에이전트 RUNNING 중에도 루프 후반에 한 번 더 compare(푸시 감지 지연 최소화). */
+        /** Stage2·Stage1 스모크: 에이전트 RUNNING 중에도 GitHub compare/PR 조기 종료. */
         if (
-          envTestGitFirstMode &&
+          envTestGithubMidPollFinalize &&
           envTestPollFinalizeContextEffective &&
           envTestGithubProbeState &&
           (st === "RUNNING" || st === "CREATING" || st === "QUEUED" || st === "PENDING" || st === "THINKING")
@@ -2423,7 +2455,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
     }
 
     if (
-      envTestGitFirstMode &&
+      envTestGithubMidPollFinalize &&
       envTestPollFinalizeContextEffective &&
       envTestGithubProbeState
     ) {
@@ -2448,19 +2480,23 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
     }
 
     if (isTaskProgressLogEnabled()) {
-      appendTaskProgressLog({
-        kind: "cursor",
-        phase: envTestGitFirstMode
-          ? "env_test_stage2_branch_wait_timeout"
+      const timeoutPhase = envTestGitFirstMode
+        ? "env_test_stage2_branch_wait_timeout"
+        : envTestStage1GithubFastLoop
+          ? "env_test_stage1_poll_timeout_github_fast_loop"
           : maxPollMsEffective === 300_000
             ? "agent_poll_timeout_5m"
-            : "agent_poll_timeout",
+            : "agent_poll_timeout";
+      appendTaskProgressLog({
+        kind: "cursor",
+        phase: timeoutPhase,
         projectId: params.projectId,
         taskId: params.task.id,
         detail: {
           agentId,
           maxWaitMs: maxPollMsEffective,
           stage2GitBranchWait: envTestGitFirstMode,
+          stage1GithubFastLoop: envTestStage1GithubFastLoop,
         },
       });
     }

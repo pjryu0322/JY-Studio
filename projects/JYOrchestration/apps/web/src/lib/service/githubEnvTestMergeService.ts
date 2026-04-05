@@ -397,12 +397,17 @@ export async function verifyEnvTestPullMergedWithRetry(input: {
   token: string;
   maxAttempts?: number;
   delayMs?: number;
+  /** Stage1 스모크: 짧은 간격·적은 재시도로 머지 반영 확인 */
+  envTestMergeVerifyPreset?: "stage1_fast" | "default";
 }): Promise<
   | { ok: true; mergeCommitSha: string | null; merged: boolean }
   | { ok: false; code: string; message: string; httpStatus?: number }
 > {
-  const maxAttempts = Math.max(1, Math.min(20, input.maxAttempts ?? 8));
-  const delayMs = Math.max(100, Math.min(5000, input.delayMs ?? 450));
+  const preset = input.envTestMergeVerifyPreset ?? "default";
+  const defaultAttempts = preset === "stage1_fast" ? 6 : 8;
+  const defaultDelay = preset === "stage1_fast" ? 200 : 450;
+  const maxAttempts = Math.max(1, Math.min(20, input.maxAttempts ?? defaultAttempts));
+  const delayMs = Math.max(100, Math.min(5000, input.delayMs ?? defaultDelay));
   let last: Awaited<ReturnType<typeof verifyEnvTestPullMerged>> | null = null;
   for (let i = 0; i < maxAttempts; i++) {
     const r = await verifyEnvTestPullMerged({
