@@ -382,7 +382,9 @@ function envTestAllowGithubHeadProbe(
   const elapsed = Date.now() - state.agentLaunchStartedAt;
   const minMs = state.compareMinMsAfterLaunch;
   const warmupDone =
-    completedAgentPolls >= ENV_TEST_GITHUB_COMPARE_MIN_COMPLETED_POLLS || elapsed >= minMs;
+    state.stage1FastBranchPath ||
+    completedAgentPolls >= ENV_TEST_GITHUB_COMPARE_MIN_COMPLETED_POLLS ||
+    elapsed >= minMs;
   if (!warmupDone) {
     return { ok: false, reason: "warmup" };
   }
@@ -414,7 +416,7 @@ function envTestApplyGithubProbe404Backoff(
   const idx = state.compare404AttemptIndex;
   let delayMs: number;
   if (state.stage1FastBranchPath) {
-    const steps = [40, 80, 120, 200, 320, 500];
+    const steps = [0, 0, 50, 100, 200, 350, 500];
     delayMs = steps[Math.min(idx, steps.length - 1)];
   } else {
     delayMs = envTestCompare404BackoffDelayMs(idx, state.aggressiveGithubTiming);
@@ -941,7 +943,84 @@ async function envTestProbeGithubAheadByCompare(input: {
     }
   }
 
-  if (input.probeState.aggressiveGithubTiming || input.probeState.stage1FastBranchPath) {
+  if (input.probeState.stage1FastBranchPath) {
+    const reflectedBy = branchRes.headSha ? "head_sha" : "branch_exists";
+    const stage1DetailBase = {
+      trackedBranchName: input.headBranch,
+      checkedRef: input.headBranch,
+      checkedApi: "GET /repos/{owner}/{repo}/branches/{branch}" as const,
+      httpStatus: 200,
+      headSha: branchRes.headSha ?? null,
+      executionId: input.executionId ?? null,
+      elapsedMsSinceLaunch: Date.now() - input.probeState.agentLaunchStartedAt,
+      elapsedMsLaunchToBranchConfirmed: elapsedMsLaunchToFirstBranchConfirmed,
+      source: input.logSource,
+    };
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_branch_exists_detected",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        ...stage1DetailBase,
+        reflectedBy,
+      },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_compare_skipped",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        reason: "stage1_branch_exists_primary_path",
+        baseBranch: input.baseBranch,
+        headBranch: input.headBranch,
+        ...stage1DetailBase,
+      },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "branch_detect_fastpath_hit",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        reflectedBy,
+        headBranch: input.headBranch,
+        headSha: branchRes.headSha ?? null,
+        source: input.logSource,
+      },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_stage1_fastpath_taken",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.userId,
+      detail: {
+        ...stage1DetailBase,
+        reflectedBy,
+      },
+    });
+    return {
+      data: {
+        headSha: branchRes.headSha ?? null,
+        changedFiles: [],
+        diffSummary: reflectedBy === "head_sha" ? "fast-path: head sha detected" : "fast-path: branch exists",
+        aheadBy: 1,
+        behindBy: 0,
+        compareStatus: reflectedBy === "head_sha" ? "head_sha_hint" : "branch_exists_hint",
+      },
+      reflectedBy,
+      elapsedMsLaunchToBranchConfirmed: elapsedMsLaunchToFirstBranchConfirmed,
+      elapsedMsBranchConfirmedToCompareOk: 0,
+      compareOkAtMs: Date.now(),
+    };
+  }
+
+  if (input.probeState.aggressiveGithubTiming) {
     const reflectedBy = branchRes.headSha ? "head_sha" : "branch_exists";
     appendTaskProgressLog({
       kind: "execution",
@@ -956,27 +1035,6 @@ async function envTestProbeGithubAheadByCompare(input: {
         source: input.logSource,
       },
     });
-    if (input.probeState.stage1FastBranchPath) {
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "env_test_stage1_fastpath_taken",
-        projectId: input.projectId,
-        taskId: input.taskId,
-        userId: input.userId,
-        detail: {
-          trackedBranchName: input.headBranch,
-          checkedRef: input.headBranch,
-          checkedApi: "GET /repos/{owner}/{repo}/branches/{branch}",
-          httpStatus: 200,
-          reflectedBy,
-          headSha: branchRes.headSha ?? null,
-          executionId: input.executionId ?? null,
-          elapsedMsSinceLaunch: Date.now() - input.probeState.agentLaunchStartedAt,
-          elapsedMsLaunchToBranchConfirmed: elapsedMsLaunchToFirstBranchConfirmed,
-          source: input.logSource,
-        },
-      });
-    }
     return {
       data: {
         headSha: branchRes.headSha ?? null,
@@ -1163,17 +1221,28 @@ const ENV_TEST_STAGE1_BRANCH_WAIT_MAX_MS = parseEnvPositiveIntMs(
   90_000,
   { min: 30_000, max: 10 * 60 * 1000 }
 );
-/** Stage1: 첫 Cursor 폴링 전 지연(기본 80ms). */
+/** Stage1: 첫 Cursor 폴링 전 지연(기본 500ms, 이후 구간과 동일 500~1000ms 티어). */
 const ENV_TEST_STAGE1_POLL_FIRST_DELAY_MS = parseEnvPositiveIntMs(
   "CURSOR_AGENT_ENV_TEST_STAGE1_POLL_FIRST_DELAY_MS",
-  80,
+  500,
   { min: 0, max: 30_000 }
 );
-/** Stage1: 런치 직후 GitHub 프로브 전 지연(기본 40ms). */
+/** Stage1: 런치 직후 GitHub 프로브 전 지연(기본 0 — 브랜치 조회 즉시). */
 const ENV_TEST_STAGE1_POST_LAUNCH_GITHUB_PROBE_DELAY_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE1_POST_LAUNCH_GITHUB_PROBE_DELAY_MS",
-  40,
+  0,
   { min: 0, max: 30_000 }
+);
+/** Stage1: 런치 직후 첫 finalize 실패 시 GitHub만 짧게 재시도(커서 폴링 전, 기본 2.5s 상한). */
+const ENV_TEST_STAGE1_POST_LAUNCH_PROBE_SPIN_MAX_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE1_POST_LAUNCH_PROBE_SPIN_MAX_MS",
+  2_500,
+  { min: 0, max: 15_000 }
+);
+const ENV_TEST_STAGE1_POST_LAUNCH_PROBE_SPIN_INTERVAL_MS = parseEnvPositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE1_POST_LAUNCH_PROBE_SPIN_INTERVAL_MS",
+  100,
+  { min: 50, max: 2_000 }
 );
 /** Stage1 Cursor 폴링: 초기/중기/후기 윈도우(ms) — Stage2보다 짧은 간격. */
 const ENV_TEST_STAGE1_POLL_FAST_WINDOW_MS = parseEnvPositiveIntMs(
@@ -1188,18 +1257,18 @@ const ENV_TEST_STAGE1_POLL_MID_WINDOW_MS = parseEnvPositiveIntMs(
 );
 const ENV_TEST_STAGE1_POLL_INTERVAL_FAST_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE1_POLL_INTERVAL_FAST_MS",
-  350,
-  { min: 200, max: 5_000 }
+  500,
+  { min: 500, max: 1_000 }
 );
 const ENV_TEST_STAGE1_POLL_INTERVAL_MID_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE1_POLL_INTERVAL_MID_MS",
-  700,
-  { min: 300, max: 8_000 }
+  750,
+  { min: 500, max: 1_000 }
 );
 const ENV_TEST_STAGE1_POLL_INTERVAL_SLOW_MS = parseEnvPositiveIntMs(
   "CURSOR_ENV_TEST_STAGE1_POLL_INTERVAL_SLOW_MS",
-  1_100,
-  { min: 500, max: 10_000 }
+  1_000,
+  { min: 500, max: 1_000 }
 );
 const REQUEST_TIMEOUT_MS = 120_000;
 const POLL_REQUEST_TIMEOUT_MS = 60_000;
@@ -2150,7 +2219,7 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
             },
           });
         }
-        const finLaunch = await tryEnvTestGithubFullFinalizeDuringPoll({
+        let finLaunch = await tryEnvTestGithubFullFinalizeDuringPoll({
           params,
           ctx: envTestPollFinalizeContextEffective,
           agentId,
@@ -2160,6 +2229,27 @@ export async function executeCursorRun(params: ExecuteCursorRelayParams): Promis
           logs,
           envTestGithubProbeState,
         });
+        if (
+          !finLaunch &&
+          envTestStage1GithubFastLoop &&
+          ENV_TEST_STAGE1_POST_LAUNCH_PROBE_SPIN_MAX_MS > 0
+        ) {
+          const spinUntil = Date.now() + ENV_TEST_STAGE1_POST_LAUNCH_PROBE_SPIN_MAX_MS;
+          while (Date.now() < spinUntil) {
+            await new Promise((r) => setTimeout(r, ENV_TEST_STAGE1_POST_LAUNCH_PROBE_SPIN_INTERVAL_MS));
+            finLaunch = await tryEnvTestGithubFullFinalizeDuringPoll({
+              params,
+              ctx: envTestPollFinalizeContextEffective,
+              agentId,
+              pollStartedAt: started,
+              agentPollCount: 0,
+              agentJson: launchJson ?? {},
+              logs,
+              envTestGithubProbeState,
+            });
+            if (finLaunch) break;
+          }
+        }
         if (finLaunch) {
           return {
             ok: true,
