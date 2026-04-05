@@ -1,5 +1,6 @@
 /**
  * ENV_TEST Stage 1·Stage 2 공통 실행 코어: Cursor invoke(+ 타이밍) — Git 반영·PR 은 cursorExecutionAdapter·헬퍼와 연동.
+ * - `executeCursorRun`: Git-first·브랜치 404 소프트 실패·FINISHED 무시는 **ENV_TEST_STAGE2만**. Stage1은 터미널까지 폴링 후 `runStage1EnvTestBranchToPrPipeline`이 브랜치→PR.
  * - Stage 2 전용 Cursor 이전 단계: `envTestExecutionPipeline.runEnvTestStage2PreCursorExecutorGate`
  * - Stage 1 Cursor 종료 후 GitHub→PR: `runStage1EnvTestBranchToPrPipeline` (runExecutionLoop에서 dispatch)
  * - Stage 2·reflection 통과 후 compare→PR→finalize: `runEnvTestReflectionConfirmedPipeline`

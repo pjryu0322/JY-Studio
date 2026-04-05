@@ -64,8 +64,9 @@ function parsePrNumberFromUrl(prUrl: string): number | null {
 
 /**
  * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (일반 Task) AI 리뷰·SCM·머지 또는 종료.
- * ENV_TEST family: compare·플랫폼 PR·PR_OPENED·merge/readiness는 `envTestExecutionHelpers`로 이관되어
- * 본 파일에서는 루프 제어·Task 픽·커서 호출·reflection 분기만 유지한다.
+ * ENV_TEST family: compare·플랫폼 PR·PR_OPENED·merge/readiness는 `envTestExecutionHelpers`로 이관.
+ * - Stage1(`ENV_TEST`): Cursor 성공 직후 `runStage1EnvTestBranchToPrPipeline`만 (reflection·Stage2 bypass 없음).
+ * - Stage2(`ENV_TEST_STAGE2`): reflection 게이트·`runEnvTestReflectionNotConfirmedGithubBypass`·`runEnvTestReflectionConfirmedPipeline`.
  * 플랫폼은 로컬에서 코드/git을 실행하지 않습니다.
  */
 export async function runExecutionLoop(params: {

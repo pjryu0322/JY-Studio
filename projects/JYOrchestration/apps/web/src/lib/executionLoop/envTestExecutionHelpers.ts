@@ -210,6 +210,7 @@ function logEnvTestBranchSourceOfTruth(ctx: {
       signalBranchNameHint: ctx.signalBranchNameHint,
       effectiveGithubHead: ctx.effectiveGithubHead,
       prHeadBranchResolved: ctx.effectiveGithubHead,
+      prHeadBranchName: ctx.effectiveGithubHead,
     },
   });
 }
@@ -425,13 +426,15 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         ? "ENV_TEST: Cursor 메타 미확인, GitHub compare로 푸시 확인 후 플랫폼 PR."
         : input.via === "cursor_poll_early_github"
           ? "ENV_TEST: Cursor 폴링 중 GitHub compare로 푸시 확인 후 플랫폼 PR 처리."
-          : input.via === "cursor_poll_stage2_branch_head"
-            ? "ENV_TEST Stage 2: GitHub 브랜치 HEAD 확인 후 플랫폼 PR 처리(Cursor 터미널 대기 없음)."
-            : input.via === "stage1_post_cursor_compare"
-              ? "ENV_TEST(Stage1): GitHub compare로 원격 변경(ahead_by) 확인. 플랫폼이 PR을 생성·갱신합니다."
-              : input.via === "stage1_post_cursor_branch_exists"
-                ? "ENV_TEST(Stage1): 원격 브랜치 존재 확인. 플랫폼이 PR을 생성·갱신합니다."
-                : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
+          : input.via === "cursor_poll_stage1_branch_head"
+            ? "ENV_TEST(Stage1): Cursor 폴링 중 원격 브랜치 HEAD 확인 후 플랫폼 PR 처리."
+            : input.via === "cursor_poll_stage2_branch_head"
+              ? "ENV_TEST Stage 2: GitHub 브랜치 HEAD 확인 후 플랫폼 PR 처리(Cursor 터미널 대기 없음)."
+              : input.via === "stage1_post_cursor_compare"
+                ? "ENV_TEST(Stage1): GitHub compare로 원격 변경(ahead_by) 확인. 플랫폼이 PR을 생성·갱신합니다."
+                : input.via === "stage1_post_cursor_branch_exists"
+                  ? "ENV_TEST(Stage1): 원격 브랜치 존재 확인. 플랫폼이 PR을 생성·갱신합니다."
+                  : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
 
   await prisma.task.update({
     where: { id: input.taskId },
@@ -795,6 +798,8 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
         headSha: resolvedHeadSha,
         candidateBranchesProbed: candidates,
         branchDetectElapsedMs,
+        detectedRemoteBranchName: resolvedHead,
+        prHeadBranchName: resolvedHead,
       },
     });
     await prisma.taskExecutionRun.update({
