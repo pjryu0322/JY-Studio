@@ -2,6 +2,7 @@ import { TaskHistoryActorType, TaskHistoryEventType } from "@/lib/history/taskHi
 import {
   ENV_TEST_TASK_KIND,
   isEnvTestFamilyTaskKind,
+  isEnvTestStage1TaskKind,
   isEnvTestStage2TaskKind,
 } from "@/lib/execution/envTestTaskKind";
 import { buildCursorExecutionPrompt } from "@/lib/execution/buildCursorExecutionPrompt";
@@ -40,6 +41,7 @@ import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/e
 import {
   runEnvTestReflectionConfirmedPipeline,
   runEnvTestReflectionNotConfirmedGithubBypass,
+  runStage1EnvTestBranchToPrPipeline,
 } from "@/lib/executionLoop/envTestExecutionHelpers";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
@@ -564,6 +566,21 @@ export async function runExecutionLoop(params: {
         userId: actorUserId,
         detail: { branch: branchPlan.branchName, runRecordId: execRun.id },
       });
+      if (isEnvTestFamilyTaskKind(taskRow.taskKind)) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_branch_name_alignment",
+          projectId,
+          taskId,
+          userId: actorUserId,
+          detail: {
+            plannedBranchName: branchPlan.branchName,
+            promptBranchName: branchPlan.branchName,
+            trackedBranchName: execRun.branchName ?? null,
+            note: "pre_cursor_invoke",
+          },
+        });
+      }
       appendTaskProgressLog({
         kind: "execution",
         phase: "cursor_prompt_length",
@@ -978,10 +995,34 @@ export async function runExecutionLoop(params: {
       }
       const { result: cr } = cursorOutcome;
 
+      if (isEnvTestStage1TaskKind(taskRow.taskKind)) {
+        const envOutStage1 = await runStage1EnvTestBranchToPrPipeline({
+          projectId,
+          taskId,
+          taskKind: taskRow.taskKind,
+          actorUserId,
+          execRunId: execRun.id,
+          repoUrl,
+          baseBranch: setup.baseBranch,
+          githubAccessToken: setup.githubAccessToken ?? null,
+          execRunCreatedAt: execRun.createdAt,
+          plannedBranchName: branchPlan.branchName,
+          promptBranchName: branchPlan.branchName,
+          cr,
+          steps,
+          singleTaskId,
+          effectiveAutoAdvance,
+        });
+        if (envOutStage1.kind === "return") {
+          return envOutStage1.result;
+        }
+        continue;
+      }
+
       const reflectionOk = isCursorCodeReflectionConfirmed(cr);
       if (!reflectionOk) {
         const headPending = (cr.branchName || branchPlan.branchName || "").trim();
-        if (isEnvTestTask) {
+        if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
           const bypass = await runEnvTestReflectionNotConfirmedGithubBypass({
             projectId,
             taskId,
@@ -1183,7 +1224,7 @@ export async function runExecutionLoop(params: {
         },
       });
 
-      if (isEnvTestTask) {
+      if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
         const envOut = await runEnvTestReflectionConfirmedPipeline({
           projectId,
           taskId,
