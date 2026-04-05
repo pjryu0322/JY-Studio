@@ -44,23 +44,14 @@ const ENV_TEST_DESCRIPTION = `AI-Cursor-Git 연동 상태를 확인하기 위해
 - **Pull Request는 생성하지 않는다.** PR은 플랫폼이 GitHub API로 연다.
 - 할 일: 아래 파일을 생성/수정 → 커밋 → 원격 브랜치로 **푸시**까지 완료한다(실행 환경에서 자동 푸시가 켜진 경우).
 
-반드시 다음 파일을 생성하거나 내용을 아래와 같이 맞춘다:
+변경은 반드시 다음 범위 안에서만 수행한다:
 
-- 경로: \`orchestration-test/hello-world.md\`
-- 내용:
-
-\`\`\`markdown
-# Hello World
-
-이 파일은 JYOrchestration 환경 연결 테스트를 통해 자동 생성되었습니다.
-
-- 목적: AI → Cursor → Git → PR 흐름 점검
-- 상태: 자동 생성
-\`\`\``;
+- 허용 경로: \`orchestration-test/**\` (이 디렉터리 트리만)
+- 권장: 작은 텍스트 파일 한 개, 짧은 한 줄(예: \`Hello World\`)`;
 
 const ENV_TEST_CRITERIA = [
   "test branch created (platform branch name)",
-  "hello world test file created or updated at orchestration-test/hello-world.md",
+  "smoke change under orchestration-test/** only (merge guard matches this scope)",
   "commit created",
   "push succeeded to remote branch",
   "platform opens GitHub PR (not Cursor)",

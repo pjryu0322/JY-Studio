@@ -26,6 +26,8 @@ const DEFAULT_ALLOWED = ["src/**", "app/**", "tests/**", "packages/**", "lib/**"
 export type BuildCursorExecutionPromptOptions = {
   /** ENV_TEST family(Stage 1/2): 최소 Hello World 변경만 요청해 토큰·지연을 줄인다. */
   compactHelloWorld?: boolean;
+  /** Stage1은 orchestration-test 트리, Stage2는 hello-world.md 단일 파일(머지 규칙과 정합). */
+  envTestCompactVariant?: "stage1" | "stage2";
 };
 
 const ENV_TEST_COMPACT_PROMPT_MAX_CHARS = 800;
@@ -40,35 +42,62 @@ export function buildCursorExecutionPrompt(
   opts?: BuildCursorExecutionPromptOptions
 ): string {
   if (opts?.compactHelloWorld) {
+    const variant = opts.envTestCompactVariant ?? "stage1";
+    if (variant === "stage1") {
+      const compact = [
+        `You are executing a minimal Stage 1 ENV_TEST (smoke) task.`,
+        ``,
+        `Repository: ${setup.gitRepoUrl}`,
+        `Base branch: ${setup.baseBranch}`,
+        `Working branch: ${setup.suggestedBranchName}`,
+        ``,
+        `Make a small change only under this path prefix:`,
+        `orchestration-test/**`,
+        ``,
+        `Prefer a single small text file with a short line such as "Hello World".`,
+        `Your work should result in at least one commit on the working branch.`,
+        ``,
+        `After the edit, commit and push the branch to origin.`,
+        ``,
+        `Do not create a pull request.`,
+        `Do not modify files outside orchestration-test/**.`,
+      ].join("\n");
+      if (compact.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compact;
+      const compactFallback = [
+        `Stage1 ENV_TEST smoke.`,
+        `Repo ${setup.gitRepoUrl} | Base ${setup.baseBranch} | Branch ${setup.suggestedBranchName}`,
+        `Change only under orchestration-test/** (e.g. one small text file, Hello World line).`,
+        `Commit and push. No PR.`,
+      ].join("\n");
+      if (compactFallback.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compactFallback;
+      return compactFallback.slice(0, ENV_TEST_COMPACT_PROMPT_MAX_CHARS);
+    }
+
     const compact = [
-      `You are executing a minimal ENV_TEST task.`,
+      `You are executing a minimal Stage 2 ENV_TEST task.`,
       ``,
       `Repository: ${setup.gitRepoUrl}`,
       `Base branch: ${setup.baseBranch}`,
       `Working branch: ${setup.suggestedBranchName}`,
       ``,
-      `Make a small change under:`,
-      `orchestration-test/**`,
+      `Change exactly one Markdown file at:`,
+      `orchestration-test/hello-world.md`,
       ``,
-      `Your work must result in at least one commit on the working branch.`,
+      `Keep the document small (for example a short heading and one line of body text).`,
       ``,
-      `A simple approach is to create or update a small text file with a short "Hello World" line.`,
+      `Do not add or modify any other paths. At least one commit on the working branch.`,
       ``,
-      `After making the change, commit it and push the branch to origin.`,
+      `Commit and push the branch to origin.`,
       ``,
       `Do not create a pull request.`,
-      `Do not modify files outside orchestration-test/**.`,
     ].join("\n");
     if (compact.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compact;
 
     const compactFallback = [
-      `Minimal ENV_TEST task.`,
-      `Repo ${setup.gitRepoUrl}`,
-      `Base ${setup.baseBranch} | Branch ${setup.suggestedBranchName}`,
-      `Change only orchestration-test/**.`,
-      `Create/update one small text file and produce at least one commit.`,
-      `Commit and push branch to origin.`,
-      `No PR. No changes outside orchestration-test/**.`,
+      `Stage2 ENV_TEST.`,
+      `Repo ${setup.gitRepoUrl} | Base ${setup.baseBranch} | Branch ${setup.suggestedBranchName}`,
+      `Only orchestration-test/hello-world.md (small Markdown).`,
+      `Commit and push. No PR.`,
     ].join("\n");
     if (compactFallback.length <= ENV_TEST_COMPACT_PROMPT_MAX_CHARS) return compactFallback;
     return compactFallback.slice(0, ENV_TEST_COMPACT_PROMPT_MAX_CHARS);

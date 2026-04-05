@@ -10,6 +10,9 @@ import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { refreshWorkflowStates, updateTaskOrchestrationSnapshot } from "@/lib/executionLoop/workflowState";
 import {
   assertEnvTestMergeNotSafeMode,
+  envTestMergeGuardAllowedPathGlobsForTaskKind,
+  envTestMergeGuardAllowedPathsForTaskKind,
+  envTestMergeGuardAllowedRuleForTaskKind,
   evaluateEnvTestMergeGuards,
   fetchEnvTestPullDetail,
   fetchEnvTestPullFiles,
@@ -320,6 +323,31 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     detail: { baseBranch: requiredBaseRef, prNumber: parsedPr.number },
   });
 
+  const branchNameForGuard = String(task.lastOrchestrationBranch ?? run.branchName ?? "").trim();
+  const allowedPaths = envTestMergeGuardAllowedPathsForTaskKind(task.taskKind);
+  const allowedPathGlobs = envTestMergeGuardAllowedPathGlobsForTaskKind(task.taskKind);
+  const allowedRule = envTestMergeGuardAllowedRuleForTaskKind(task.taskKind);
+  const guardStage = isEnvTestStage2TaskKind(task.taskKind) ? "stage2" : "stage1";
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "merge_scope_guard_started",
+    projectId,
+    taskId: task.id,
+    userId: actorUserId,
+    detail: {
+      executionId: run.id,
+      taskKind: task.taskKind,
+      branchName: branchNameForGuard || null,
+      envTestGuardStage: guardStage,
+      allowedPaths,
+      allowedPathGlobs,
+      allowedRule,
+      evaluatedScopeRule: allowedRule,
+      prFileCount: filesRes.files.length,
+    },
+  });
+
   const guard = evaluateEnvTestMergeGuards({
     taskKind: task.taskKind,
     localBranchName: task.lastOrchestrationBranch ?? run.branchName,
@@ -329,6 +357,42 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
   });
 
   if (!guard.ok) {
+    const scopeFailDetail =
+      guard.blockedCode === "FILE_OUT_OF_SCOPE" && guard.diagnostics
+        ? {
+            blockedFiles: guard.diagnostics.blockedFiles ?? null,
+            allowedPaths: guard.diagnostics.allowedPaths,
+            allowedPathGlobs: guard.diagnostics.allowedPathGlobs,
+            allowedRule: guard.diagnostics.allowedRule,
+            evaluatedScopeRule: guard.diagnostics.evaluatedScopeRule,
+            ruleEvaluation: guard.diagnostics.ruleEvaluation,
+            envTestGuardStage: guard.diagnostics.guardStage,
+          }
+        : null;
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "merge_scope_guard_failed",
+      projectId,
+      taskId: task.id,
+      userId: actorUserId,
+      detail: {
+        executionId: run.id,
+        taskKind: task.taskKind,
+        branchName: branchNameForGuard || null,
+        blockedCode: guard.blockedCode,
+        blockedReason: guard.blockedReason,
+        blockedFiles: scopeFailDetail?.blockedFiles ?? null,
+        allowedPaths: scopeFailDetail?.allowedPaths ?? allowedPaths,
+        allowedPathGlobs: scopeFailDetail?.allowedPathGlobs ?? allowedPathGlobs,
+        allowedRule: scopeFailDetail?.allowedRule ?? allowedRule,
+        evaluatedScopeRule: scopeFailDetail?.evaluatedScopeRule ?? allowedRule,
+        ruleEvaluation: scopeFailDetail?.ruleEvaluation ?? null,
+        envTestGuardStage: scopeFailDetail?.envTestGuardStage ?? guardStage,
+        prTitle: pullDetail.pr.title ?? null,
+        baseRef: pullDetail.pr.base?.ref ?? null,
+        headRef: pullDetail.pr.head?.ref ?? null,
+      },
+    });
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_merge_guard_blocked",
@@ -336,17 +400,31 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
       taskId: task.id,
       userId: actorUserId,
       detail: {
+        executionId: run.id,
+        taskKind: task.taskKind,
+        branchName: branchNameForGuard || null,
         blockedCode: guard.blockedCode,
         blockedReason: guard.blockedReason,
+        blockedFiles: scopeFailDetail?.blockedFiles ?? null,
+        allowedPaths: scopeFailDetail?.allowedPaths ?? allowedPaths,
+        allowedPathGlobs: scopeFailDetail?.allowedPathGlobs ?? allowedPathGlobs,
+        allowedRule: scopeFailDetail?.allowedRule ?? allowedRule,
+        evaluatedScopeRule: scopeFailDetail?.evaluatedScopeRule ?? allowedRule,
+        ruleEvaluation: scopeFailDetail?.ruleEvaluation ?? null,
+        envTestGuardStage: scopeFailDetail?.envTestGuardStage ?? guardStage,
         prTitle: pullDetail.pr.title ?? null,
         baseRef: pullDetail.pr.base?.ref ?? null,
         headRef: pullDetail.pr.head?.ref ?? null,
       },
     });
     await persistMergeBlocked(guard.blockedReason, guard.blockedCode);
+    const userMsg =
+      guard.blockedCode === "FILE_OUT_OF_SCOPE"
+        ? guard.blockedReason
+        : `테스트 PR은 안전 조건을 충족하지 않아 머지할 수 없습니다. (${guard.blockedReason})`;
     return {
       ok: false,
-      message: `테스트 PR은 안전 조건을 충족하지 않아 머지할 수 없습니다. (${guard.blockedReason})`,
+      message: userMsg,
       blockedReason: guard.blockedReason,
     };
   }
@@ -356,12 +434,37 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
   ];
   appendTaskProgressLog({
     kind: "execution",
+    phase: "merge_scope_guard_passed",
+    projectId,
+    taskId: task.id,
+    userId: actorUserId,
+    detail: {
+      executionId: run.id,
+      taskKind: task.taskKind,
+      branchName: branchNameForGuard || null,
+      envTestGuardStage: guardStage,
+      blockedFiles: [],
+      allowedRule,
+      allowedPathGlobs,
+      evaluatedScopeRule: allowedRule,
+      prFileCount: filesRes.files.length,
+      matchedPathPattern:
+        whitelistPatterns.length === 1 ? whitelistPatterns[0] : whitelistPatterns.join(" | "),
+    },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
     phase: "env_test_merge_whitelist_passed",
     projectId,
     taskId: task.id,
     userId: actorUserId,
     detail: {
+      executionId: run.id,
+      taskKind: task.taskKind,
+      branchName: branchNameForGuard || null,
       envTestWhitelistMatched: true,
+      allowedRule,
+      allowedPathGlobs,
       matchedPathPattern:
         whitelistPatterns.length === 1 ? whitelistPatterns[0] : whitelistPatterns.join(" | "),
       envTestFileWhitelistMatches: guard.envTestFileWhitelistMatches,
