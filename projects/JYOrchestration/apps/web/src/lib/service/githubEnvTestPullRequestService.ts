@@ -39,9 +39,9 @@ ${stage === "stage2" ? "ENV_TEST Stage 2(readiness) PR — 플랫폼이 생성·
 type PullRes = { html_url?: string; number?: number };
 
 /**
- * GitHub `POST /repos/{owner}/{repo}/pulls` (동일 저장소)는 `head`에 브랜치 이름만 넣는다 (`owner:branch` 아님).
- * `refs/heads/x` 접두어·저장소 owner와 동일한 `owner:branch` 중복 접두어는 제거한다.
- * 포크 간 PR은 `head`에 `forkOwner:branch`가 필요하지만, ENV_TEST 플랫폼 PR은 동일 repo 가정.
+ * GitHub `POST /repos/{owner}/{repo}/pulls`: 동일 저장소일 때는 보통 `head`=브랜치명만.
+ * `refs/heads/x`·저장소 owner와 동일한 `owner:branch` 중복 접두어는 제거한다.
+ * 일부 토큰/설치 환경에서 브랜치명만이 422 `head` invalid이면, 호출부에서 `owner:branch`로 1회 보정 POST한다.
  */
 export function normalizeGithubPrHeadForSameRepoCreate(
   repoOwner: string,
@@ -155,6 +155,8 @@ export type EnvTestPrCreateFailed = {
   headBranchNormalized?: string;
   githubHeadFieldInvalid?: boolean;
   githubHeadBranchNotFoundish?: boolean;
+  /** 동일 저장소에서 브랜치명만으로 422 head invalid일 때 `owner:branch` 1회 시도 여부 */
+  triedOwnerPrefixedHeadFallback?: boolean;
 };
 
 /**
@@ -167,6 +169,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   githubAccessToken?: string | null;
   projectId?: string | null;
   taskId?: string | null;
+  execRunId?: string | null;
   /** 기본 stage1. Stage2는 별도 PR 제목·본문 메타 */
   envTestStage?: EnvTestPullRequestStage;
 }): Promise<
@@ -206,6 +209,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   const stage: EnvTestPullRequestStage = params.envTestStage === "stage2" ? "stage2" : "stage1";
   const title = stage === "stage2" ? ENV_TEST_STAGE2_PR_TITLE : ENV_TEST_PR_TITLE;
   const body = buildEnvTestPullRequestBody(headSentToGithub, stage);
+  const executionId = params.execRunId ?? null;
 
   appendTaskProgressLog({
     kind: "execution",
@@ -219,6 +223,8 @@ export async function createOrUpdateEnvTestPullRequest(params: {
       headBranchRaw,
       headBranchNormalized,
       headSentToGithub,
+      executionId,
+      httpStatus: null,
       envTestStage: stage,
       step: "lookup_open_pr",
     },
@@ -260,13 +266,15 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   }
 
   const url = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`;
-  const postBody = {
-    title,
-    head: headSentToGithub,
-    base: baseBranch,
-    body,
-    maintainer_can_modify: true,
-  };
+
+  const buildPullJson = (headVal: string) =>
+    JSON.stringify({
+      title,
+      head: headVal,
+      base: baseBranch,
+      body,
+      maintainer_can_modify: true,
+    });
 
   appendTaskProgressLog({
     kind: "execution",
@@ -280,27 +288,75 @@ export async function createOrUpdateEnvTestPullRequest(params: {
       headBranchRaw,
       headBranchNormalized,
       headSentToGithub,
+      executionId,
+      httpStatus: null,
       envTestStage: stage,
       step: "post_create_pull",
-      postBodyHead: postBody.head,
-      postBodyBase: postBody.base,
+      postBodyHead: headSentToGithub,
+      postBodyBase: baseBranch,
     },
   });
 
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${token}`,
-        "User-Agent": "JYOrchestration/env-test-pr",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      body: JSON.stringify(postBody),
-    });
-    const txt = await res.text();
+    const postHeaders = {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "User-Agent": "JYOrchestration/env-test-pr",
+      "X-GitHub-Api-Version": "2022-11-28",
+    };
+
+    const doPost = async (headVal: string) => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: postHeaders,
+        body: buildPullJson(headVal),
+      });
+      const txt = await res.text();
+      return { res, txt, headVal };
+    };
+
+    let { res, txt, headVal } = await doPost(headSentToGithub);
+    let parsedErr = parseGithubPullRequestCreateError(txt);
+    let triedOwnerPrefixedHeadFallback = false;
+
+    if (
+      !res.ok &&
+      res.status === 422 &&
+      parsedErr.headFieldInvalid &&
+      !headSentToGithub.includes(":") &&
+      headSentToGithub.length > 0
+    ) {
+      const altHead = `${owner}:${headSentToGithub}`;
+      triedOwnerPrefixedHeadFallback = true;
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_pr_create_request_built",
+        projectId: params.projectId ?? "",
+        taskId: params.taskId ?? undefined,
+        detail: {
+          repoOwner: owner,
+          repoName: repo,
+          baseBranch,
+          headBranchRaw,
+          headBranchNormalized,
+          headSentToGithub: altHead,
+          executionId,
+          httpStatus: 422,
+          envTestStage: stage,
+          step: "post_create_pull_owner_prefixed_fallback",
+          postBodyHead: altHead,
+          postBodyBase: baseBranch,
+          reason: "github_422_head_invalid_try_owner_colon_branch",
+        },
+      });
+      const second = await doPost(altHead);
+      res = second.res;
+      txt = second.txt;
+      headVal = second.headVal;
+      parsedErr = parseGithubPullRequestCreateError(txt);
+    }
+
     if (!res.ok) {
-      const parsedErr = parseGithubPullRequestCreateError(txt);
       appendTaskProgressLog({
         kind: "execution",
         phase: "env_test_pr_create_github_error",
@@ -312,11 +368,13 @@ export async function createOrUpdateEnvTestPullRequest(params: {
           baseBranch,
           headBranchRaw,
           headBranchNormalized,
-          headSentToGithub,
+          headSentToGithub: headVal,
+          executionId,
           httpStatus: res.status,
           githubErrorBody: txt.slice(0, 8000),
           githubHeadFieldInvalid: parsedErr.headFieldInvalid,
           githubHeadBranchNotFoundish: parsedErr.headBranchNotFoundish,
+          triedOwnerPrefixedHeadFallback,
         },
       });
       return {
@@ -325,11 +383,12 @@ export async function createOrUpdateEnvTestPullRequest(params: {
         message: `PR 생성 실패 (HTTP ${res.status}): ${txt.slice(0, 800)}`,
         httpStatus: res.status,
         githubErrorBody: txt.slice(0, 8000),
-        headSentToGithub,
+        headSentToGithub: headVal,
         headBranchRaw,
         headBranchNormalized,
         githubHeadFieldInvalid: parsedErr.headFieldInvalid,
         githubHeadBranchNotFoundish: parsedErr.headBranchNotFoundish,
+        triedOwnerPrefixedHeadFallback,
       };
     }
     const json = JSON.parse(txt) as PullRes;

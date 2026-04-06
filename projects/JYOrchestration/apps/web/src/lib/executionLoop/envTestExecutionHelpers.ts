@@ -11,10 +11,14 @@ import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSp
 import {
   createOrUpdateEnvTestPullRequest,
   isEnvTestPullRequestCreateRetryableForStage1HeadDelay,
+  type EnvTestPrCreateFailed,
 } from "@/lib/service/githubEnvTestPullRequestService";
 import { fetchGithubBranchHeadExists, fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
-import { GITHUB_REST_MISSING_TOKEN_USER_MESSAGE } from "@/lib/integration/githubRestCommon";
+import {
+  GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
+  resolveGithubOwnerRepoStrict,
+} from "@/lib/integration/githubRestCommon";
 import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
 import {
   buildEnvTestStage2ReviewRequest,
@@ -92,6 +96,87 @@ export function getEnvTestStage1PrFirstRetryConfig(): { intervalMs: number; maxA
     intervalMs: ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS,
     maxAttempts: ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX,
   };
+}
+
+/**
+ * Stage1: 플랫폼 PR 생성 실패 직후 DB·워크플로를 FAILED로 고정.
+ * `runEnvTestAfterGithubPushConfirmed`가 COMMITTED까지 올린 뒤 PR 단계에서만 실패하는 경우(조기 PR-first 경로 등) UI가 "PR 처리 중"에 고착되지 않게 한다.
+ */
+export async function applyStage1EnvTestPrCreateTerminalFailure(input: {
+  projectId: string;
+  taskId: string;
+  execRunId: string;
+  actorUserId: string;
+  message: string;
+  httpStatus?: number | null;
+  headBranch?: string | null;
+  headBranchRaw?: string | null;
+  headBranchNormalized?: string | null;
+  headSentToGithub?: string | null;
+  repoUrl?: string | null;
+  baseBranch?: string | null;
+  githubPrCode?: string | null;
+}): Promise<void> {
+  const http = input.httpStatus != null && Number.isFinite(input.httpStatus) ? input.httpStatus : null;
+  const head = String(input.headBranch ?? "").trim() || null;
+  const headRaw = String(input.headBranchRaw ?? "").trim() || head;
+  const headNorm = String(input.headBranchNormalized ?? "").trim() || head;
+  const headSent = String(input.headSentToGithub ?? "").trim() || headNorm || head;
+  const ghCode = String(input.githubPrCode ?? "").trim();
+  const summaryPrefix = http != null ? `ENV_TEST(Stage1) PR 실패 [http=${http}]` : `ENV_TEST(Stage1) PR 실패`;
+  const ghPart = ghCode ? ` [gh=${ghCode}]` : "";
+  const branchPart = head ? ` 브랜치=${head}` : "";
+  const lastEvalSummary = `${summaryPrefix}${ghPart}${branchPart}: ${input.message}`.slice(0, 2000);
+  const repoParsed = input.repoUrl ? resolveGithubOwnerRepoStrict(input.repoUrl) : null;
+
+  await prisma.taskExecutionRun.update({
+    where: { id: input.execRunId },
+    data: {
+      status: "failed",
+      evaluationDecision: "failed",
+      evaluationReason: `env_test_stage1_platform_pr_failed:${input.message}`.slice(0, 8000),
+    },
+  });
+  await prisma.task.update({
+    where: { id: input.taskId },
+    data: {
+      executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
+      lastEvalResult: "failed",
+      lastEvalSummary,
+      status: "FAILED",
+    },
+  });
+  await refreshWorkflowStates(input.projectId);
+
+  const detail = {
+    executionId: input.execRunId,
+    repoOwner: repoParsed?.owner ?? null,
+    repoName: repoParsed?.repo ?? null,
+    baseBranch: input.baseBranch ?? null,
+    httpStatus: http,
+    headBranch: head,
+    headBranchRaw: headRaw || null,
+    headBranchNormalized: headNorm || null,
+    headSentToGithub: headSent || null,
+    githubPrCode: ghCode || null,
+    messageExcerpt: input.message.slice(0, 800),
+  };
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "stage1_terminal_failure_applied",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail,
+  });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "execution_timer_stopped_due_to_terminal_state",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: { ...detail, note: "Stage1 PR create terminal FAILED" },
+  });
 }
 
 async function failEnvTestStage2WithCode(input: {
@@ -294,7 +379,16 @@ export async function runEnvTestPlatformPrPhase(input: {
   stage1PrCreateRetry?: { intervalMs: number; maxAttempts: number } | null;
 }): Promise<
   | { ok: true; prUrl: string; prNumber: number; reusedExisting: boolean; prElapsedMs: number }
-  | { ok: false; message: string }
+  | {
+      ok: false;
+      message: string;
+      httpStatus?: number;
+      githubPrCode?: string;
+      headSentToGithub?: string | null;
+      headBranchRaw?: string | null;
+      headBranchNormalized?: string | null;
+      githubHeadFieldInvalid?: boolean | null;
+    }
 > {
   // ENV_TEST(Stage1/2) PR 책임: 항상 플랫폼(createOrUpdateEnvTestPullRequest).
   // Cursor는 PR 생성/merge를 수행하지 않는다.
@@ -350,6 +444,7 @@ export async function runEnvTestPlatformPrPhase(input: {
     githubAccessToken: input.githubAccessToken ?? null,
     projectId: input.projectId,
     taskId: input.taskId,
+    execRunId: input.execRunId ?? null,
     envTestStage: isEnvTestStage2TaskKind(input.taskKind) ? ("stage2" as const) : ("stage1" as const),
   };
 
@@ -465,9 +560,19 @@ export async function runEnvTestPlatformPrPhase(input: {
 
   if (!prRes.ok) {
     const suffix = stage1PrFailureSuffix ?? "";
+    const httpStatus = "httpStatus" in prRes && typeof prRes.httpStatus === "number" ? prRes.httpStatus : undefined;
+    const githubPrCode = "code" in prRes && typeof prRes.code === "string" ? prRes.code : undefined;
+    const prCreateFailed =
+      prRes.ok === false && prRes.code === "ENV_TEST_PR_CREATE_FAILED" ? (prRes as EnvTestPrCreateFailed) : null;
     return {
       ok: false,
       message: `${prRes.message}${suffix}`.slice(0, 4000),
+      httpStatus,
+      githubPrCode,
+      headSentToGithub: prCreateFailed?.headSentToGithub ?? null,
+      headBranchRaw: prCreateFailed?.headBranchRaw ?? null,
+      headBranchNormalized: prCreateFailed?.headBranchNormalized ?? null,
+      githubHeadFieldInvalid: prCreateFailed?.githubHeadFieldInvalid ?? null,
     };
   }
   if (isEnvTestStage2TaskKind(input.taskKind) && input.execRunId) {
@@ -670,6 +775,23 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         taskId: input.taskId,
         actorUserId: input.actorUserId,
         detail: { message: prPhase.message.slice(0, 800) },
+      });
+    }
+    if (isEnvTestStage1TaskKind(input.taskKind)) {
+      await applyStage1EnvTestPrCreateTerminalFailure({
+        projectId: input.projectId,
+        taskId: input.taskId,
+        execRunId: input.execRunId,
+        actorUserId: input.actorUserId,
+        message: prPhase.message,
+        httpStatus: prPhase.httpStatus ?? null,
+        headBranch: input.branchName,
+        headBranchRaw: prPhase.headBranchRaw ?? null,
+        headBranchNormalized: prPhase.headBranchNormalized ?? null,
+        headSentToGithub: prPhase.headSentToGithub ?? null,
+        repoUrl: input.repoUrl,
+        baseBranch: input.baseBranch,
+        githubPrCode: prPhase.githubPrCode ?? null,
       });
     }
     return { kind: "pr_failed", message: prPhase.message };
@@ -918,31 +1040,7 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     | { kind: "continue_loop" }
   > => {
     if (out.kind === "pr_failed") {
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "env_test_stage1_pr_create_failed",
-        projectId,
-        taskId,
-        userId: actorUserId,
-        detail: { message: out.message.slice(0, 800) },
-      });
-      await prisma.taskExecutionRun.update({
-        where: { id: execRunId },
-        data: {
-          status: "failed",
-          evaluationDecision: "failed",
-          evaluationReason: `env_test_stage1_platform_pr_failed:${out.message}`.slice(0, 8000),
-        },
-      });
-      await prisma.task.update({
-        where: { id: taskId },
-        data: {
-          executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-          lastEvalResult: "failed",
-          lastEvalSummary: `ENV_TEST(Stage1): 플랫폼 PR 실패 — ${out.message}`.slice(0, 1500),
-        },
-      });
-      await refreshWorkflowStates(projectId);
+      // DB·워크플로 FAILED는 `runEnvTestAfterGithubPushConfirmed`에서 이미 반영됨(applyStage1EnvTestPrCreateTerminalFailure).
       return {
         kind: "return",
         result: {
