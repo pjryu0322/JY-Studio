@@ -76,7 +76,8 @@ function deriveStage1CurrentPhase(input: {
     const br = typeof bd.branchDetect === "number" ? bd.branchDetect : 0;
     if (pr > 0) return "merge";
     if (br > 0) return "prCreation";
-    return "branchDetect";
+    // 푸시는 이미 반영된 상태; breakdown 아직 비어 있어도 플랫폼 PR 단계(재시도 포함)로 표시
+    return "prCreation";
   }
   if (
     w === EXECUTION_WORKFLOW.RUNNING ||

@@ -79,15 +79,15 @@ const STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS = parsePositiveIntMs(
   { min: 0, max: 10_000 }
 );
 
-/** Stage1 PR-first: createOrUpdate 재시도 간격·횟수(브랜치/compare 대기 대신). */
+/** Stage1 PR-first: PR POST 전파 재시도(별도 head 게이트 없음; 1s×N ≈ 수십 초 상한). */
 const ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS = parsePositiveIntMs(
   "CURSOR_ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS",
-  500,
+  1000,
   { min: 100, max: 5000 }
 );
 const ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX = parsePositiveInt(
   "CURSOR_ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX",
-  2,
+  10,
   { min: 1, max: 25 }
 );
 
@@ -779,7 +779,7 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
       userId: input.actorUserId,
       detail: {
         executionId: input.execRunId,
-        currentPhase: "branchDetect",
+        currentPhase: "prCreation",
         workflowStatus: taskAfterCommitted.executionWorkflowStatus,
         taskStatus: taskAfterCommitted.status,
       },
