@@ -8,7 +8,10 @@ import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { logStage2CatalogEvent } from "@/lib/service/envTestStage2CatalogEvents";
 import { prisma } from "@/lib/prisma";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
-import { createOrUpdateEnvTestPullRequest } from "@/lib/service/githubEnvTestPullRequestService";
+import {
+  createOrUpdateEnvTestPullRequest,
+  isEnvTestPullRequestCreateRetryableForStage1HeadDelay,
+} from "@/lib/service/githubEnvTestPullRequestService";
 import { fetchGithubBranchHeadExists, fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
 import { GITHUB_REST_MISSING_TOKEN_USER_MESSAGE } from "@/lib/integration/githubRestCommon";
@@ -58,11 +61,38 @@ function parsePositiveIntMs(name: string, fallback: number, bounds: { min: numbe
   return Math.min(bounds.max, Math.max(bounds.min, n));
 }
 
+function parsePositiveInt(name: string, fallback: number, bounds: { min: number; max: number }): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(bounds.max, Math.max(bounds.min, n));
+}
+
 const STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS = parsePositiveIntMs(
   "ENV_TEST_STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS",
   300,
   { min: 0, max: 10_000 }
 );
+
+/** Stage1 PR-first: createOrUpdate 재시도 간격·횟수(브랜치/compare 대기 대신). */
+const ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS = parsePositiveIntMs(
+  "CURSOR_ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS",
+  500,
+  { min: 100, max: 5000 }
+);
+const ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX = parsePositiveInt(
+  "CURSOR_ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX",
+  2,
+  { min: 1, max: 25 }
+);
+
+export function getEnvTestStage1PrFirstRetryConfig(): { intervalMs: number; maxAttempts: number } {
+  return {
+    intervalMs: ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS,
+    maxAttempts: ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX,
+  };
+}
 
 async function failEnvTestStage2WithCode(input: {
   projectId: string;
@@ -260,6 +290,8 @@ export async function runEnvTestPlatformPrPhase(input: {
   compareOkAtMs?: number | null;
   /** Stage 2: 런타임 모니터(platform_pr_create) */
   execRunId?: string | null;
+  /** Stage1 PR-first: createOrUpdate 실패 시 재시도(브랜치 반영 지연 흡수). */
+  stage1PrCreateRetry?: { intervalMs: number; maxAttempts: number } | null;
 }): Promise<
   | { ok: true; prUrl: string; prNumber: number; reusedExisting: boolean; prElapsedMs: number }
   | { ok: false; message: string }
@@ -306,16 +338,137 @@ export async function runEnvTestPlatformPrPhase(input: {
     userId: input.actorUserId,
     detail: { headBranch: input.headBranch, elapsedMsSinceRunStart },
   });
-  const prRes = await createOrUpdateEnvTestPullRequest({
+  const retryCfg =
+    isEnvTestStage1TaskKind(input.taskKind) && input.stage1PrCreateRetry
+      ? input.stage1PrCreateRetry
+      : null;
+  const maxAttempts = retryCfg?.maxAttempts ?? 1;
+  const prArgs = {
     repoUrl: input.repoUrl,
     baseBranch: input.baseBranch,
     headBranch: input.headBranch,
     githubAccessToken: input.githubAccessToken ?? null,
     projectId: input.projectId,
-    envTestStage: isEnvTestStage2TaskKind(input.taskKind) ? "stage2" : "stage1",
-  });
+    taskId: input.taskId,
+    envTestStage: isEnvTestStage2TaskKind(input.taskKind) ? ("stage2" as const) : ("stage1" as const),
+  };
+
+  let prRes: Awaited<ReturnType<typeof createOrUpdateEnvTestPullRequest>>;
+  let stage1PrFailureSuffix: string | null = null;
+
+  if (retryCfg) {
+    let attemptCount = 0;
+    while (true) {
+      attemptCount += 1;
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_pr_create_attempt",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: {
+          attemptCount,
+          maxAttempts: retryCfg.maxAttempts,
+          headBranch: input.headBranch,
+          executionId: input.execRunId ?? null,
+        },
+      });
+
+      prRes = await createOrUpdateEnvTestPullRequest(prArgs);
+
+      if (prRes.ok) {
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_pr_create_success",
+          projectId: input.projectId,
+          taskId: input.taskId,
+          userId: input.actorUserId,
+          detail: {
+            attemptCount,
+            errorType: null,
+            httpStatus: null,
+            prUrl: prRes.data.pullRequestUrl,
+            prNumber: prRes.data.pullRequestNumber,
+            reusedExisting: prRes.data.reusedExisting,
+            headBranch: input.headBranch,
+            executionId: input.execRunId ?? null,
+          },
+        });
+        break;
+      }
+
+      const retryable = isEnvTestPullRequestCreateRetryableForStage1HeadDelay(prRes);
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_pr_create_failed",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: {
+          attemptCount,
+          errorType: prRes.code,
+          httpStatus: prRes.httpStatus ?? null,
+          retryable,
+          message: prRes.message.slice(0, 1200),
+          headBranch: input.headBranch,
+          executionId: input.execRunId ?? null,
+        },
+      });
+
+      const stop =
+        !retryable || attemptCount >= retryCfg.maxAttempts;
+      if (stop) {
+        stage1PrFailureSuffix =
+          attemptCount >= retryCfg.maxAttempts
+            ? ` (${retryCfg.maxAttempts}회 시도 후 중단)`
+            : " (재시도 불가 오류)";
+        appendTaskProgressLog({
+          kind: "execution",
+          phase: "env_test_pr_create_giveup",
+          projectId: input.projectId,
+          taskId: input.taskId,
+          userId: input.actorUserId,
+          detail: {
+            attemptCount,
+            maxAttempts: retryCfg.maxAttempts,
+            reason: !retryable ? "non_retryable_error" : "max_attempts_exhausted",
+            errorType: prRes.code,
+            httpStatus: prRes.httpStatus ?? null,
+            headBranch: input.headBranch,
+            executionId: input.execRunId ?? null,
+          },
+        });
+        break;
+      }
+
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_pr_create_retry",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: {
+          attemptCount,
+          nextAttempt: attemptCount + 1,
+          intervalMs: retryCfg.intervalMs,
+          errorType: prRes.code,
+          httpStatus: prRes.httpStatus ?? null,
+          headBranch: input.headBranch,
+          executionId: input.execRunId ?? null,
+        },
+      });
+      await new Promise((r) => setTimeout(r, retryCfg.intervalMs));
+    }
+  } else {
+    prRes = await createOrUpdateEnvTestPullRequest(prArgs);
+  }
+
   if (!prRes.ok) {
-    return { ok: false, message: prRes.message };
+    const suffix = stage1PrFailureSuffix ?? "";
+    return {
+      ok: false,
+      message: `${prRes.message}${suffix}`.slice(0, 4000),
+    };
   }
   if (isEnvTestStage2TaskKind(input.taskKind) && input.execRunId) {
     appendTaskProgressLog({
@@ -406,6 +559,8 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
   executionRunCreatedAt?: Date | null;
   /** Stage 2: GitHub compare(브랜치 반영) 구간 ms — runExecutionLoop 등에서 전달 */
   branchDetectElapsedMs?: number | null;
+  /** Stage1 PR-first: 플랫폼 PR API 재시도 */
+  stage1PrCreateRetry?: { intervalMs: number; maxAttempts: number } | null;
 }): Promise<
   | { kind: "return"; result: RunExecutionLoopResult }
   | { kind: "continue_loop" }
@@ -422,7 +577,9 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     where: { id: input.execRunId },
     select: { validationOutput: true },
   });
-  const preserveValidationOutput = isEnvTestStage2TaskKind(input.taskKind) ? existingRunVo?.validationOutput : null;
+  const preserveValidationOutput = isEnvTestFamilyTaskKind(input.taskKind)
+    ? existingRunVo?.validationOutput
+    : null;
 
   await prisma.taskExecutionRun.update({
     where: { id: input.execRunId },
@@ -459,7 +616,9 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         ? "ENV_TEST: Cursor 메타 미확인, GitHub compare로 푸시 확인 후 플랫폼 PR."
         : input.via === "cursor_poll_early_github"
           ? "ENV_TEST: Cursor 폴링 중 GitHub compare로 푸시 확인 후 플랫폼 PR 처리."
-          : input.via === "cursor_poll_stage1_branch_head"
+          : input.via === "cursor_poll_stage1_pr_first"
+            ? "ENV_TEST(Stage1): PR 우선 재시도로 GitHub 반영을 기다린 뒤 플랫폼이 PR을 생성·갱신합니다."
+            : input.via === "cursor_poll_stage1_branch_head"
             ? "ENV_TEST(Stage1): Cursor 폴링 중 원격 브랜치 HEAD 확인 후 플랫폼 PR 처리."
             : input.via === "cursor_poll_stage2_branch_head"
               ? "ENV_TEST Stage 2: GitHub 브랜치 HEAD 확인 후 플랫폼 PR 처리(Cursor 터미널 대기 없음)."
@@ -502,6 +661,7 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     executionRunCreatedAt: input.executionRunCreatedAt ?? null,
     compareOkAtMs: input.compareData.compareOkAtMs ?? null,
     execRunId: input.execRunId,
+    stage1PrCreateRetry: input.stage1PrCreateRetry ?? null,
   });
   if (!prPhase.ok) {
     if (isEnvTestStage2TaskKind(input.taskKind)) {
@@ -540,6 +700,12 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         branchDetectElapsedMs: input.branchDetectElapsedMs ?? null,
         prCreationElapsedMs: prPhase.prElapsedMs,
       },
+    });
+  } else if (isEnvTestStage1TaskKind(input.taskKind)) {
+    await patchTaskExecutionRunStage2Timing(input.execRunId, {
+      executionId: input.execRunId,
+      branchDetectTimeMs: input.branchDetectElapsedMs ?? undefined,
+      prCreationTimeMs: prPhase.prElapsedMs,
     });
   }
 
@@ -728,7 +894,7 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
       commitSha: cr.commitHash ?? null,
       changedFiles: cr.changedFiles as unknown as object,
       gitSummary: cr.summary.slice(0, 24_000),
-      validationOutput: null,
+      validationOutput: runMonRow?.validationOutput ?? null,
       commitStatus: cr.commitHash ? "reported_by_cursor" : "reported_changed_files",
       pushStatus: "delegated_to_cursor",
     },
@@ -2616,6 +2782,7 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
       actorUserId: input.actorUserId,
     });
     const mergeElapsedMs = Date.now() - mergePhaseStartedAt;
+    await patchTaskExecutionRunStage2Timing(input.execRunId, { mergeTimeMs: mergeElapsedMs });
     if (mergeRes.ok === true) {
       const totalElapsedSinceRunMs =
         stage1RunBranch?.createdAt != null ? Date.now() - stage1RunBranch.createdAt.getTime() : null;

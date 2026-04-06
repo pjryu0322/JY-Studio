@@ -5,6 +5,7 @@ import {
   resolveGithubOwnerRepoStrict,
   resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
+import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 
 /** ENV_TEST Stage 1 플랫폼 PR 제목(머지 가드와 동일 문자열). */
@@ -36,6 +37,76 @@ ${stage === "stage2" ? "ENV_TEST Stage 2(readiness) PR — 플랫폼이 생성·
 }
 
 type PullRes = { html_url?: string; number?: number };
+
+/**
+ * GitHub `POST /repos/{owner}/{repo}/pulls` (동일 저장소)는 `head`에 브랜치 이름만 넣는다 (`owner:branch` 아님).
+ * `refs/heads/x` 접두어·저장소 owner와 동일한 `owner:branch` 중복 접두어는 제거한다.
+ * 포크 간 PR은 `head`에 `forkOwner:branch`가 필요하지만, ENV_TEST 플랫폼 PR은 동일 repo 가정.
+ */
+export function normalizeGithubPrHeadForSameRepoCreate(
+  repoOwner: string,
+  headBranchRaw: string
+): { headBranchRaw: string; headBranchNormalized: string; headSentToGithub: string } {
+  const raw = String(headBranchRaw ?? "").trim();
+  let s = raw.replace(/^refs\/heads\//i, "").trim();
+  const colonIdx = s.indexOf(":");
+  if (colonIdx > 0) {
+    const ns = s.slice(0, colonIdx).trim();
+    const rest = s.slice(colonIdx + 1).trim();
+    if (ns.toLowerCase() === String(repoOwner).toLowerCase() && rest.length > 0) {
+      s = rest;
+    }
+  }
+  s = s.replace(/^\/+|\/+$/g, "").trim();
+  return {
+    headBranchRaw: raw,
+    headBranchNormalized: s,
+    headSentToGithub: s,
+  };
+}
+
+function parseGithubPullRequestCreateError(bodyText: string): {
+  headFieldInvalid: boolean;
+  headBranchNotFoundish: boolean;
+} {
+  let headFieldInvalid = false;
+  let headBranchNotFoundish = false;
+  const lower = bodyText.toLowerCase();
+  try {
+    const j = JSON.parse(bodyText) as {
+      errors?: Array<{ field?: string; code?: string; message?: string }>;
+      message?: string;
+    };
+    const errors = j.errors;
+    if (Array.isArray(errors)) {
+      for (const e of errors) {
+        const field = String(e?.field ?? "").toLowerCase();
+        const code = String(e?.code ?? "").toLowerCase();
+        const em = String(e?.message ?? "").toLowerCase();
+        if (field === "head") {
+          if (code === "invalid" || code === "missing_field" || code === "empty") {
+            headFieldInvalid = true;
+          }
+          if (code === "not_found" || /unknown|does not exist|could not be resolved/i.test(em)) {
+            headBranchNotFoundish = true;
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore JSON parse
+  }
+  if (!headFieldInvalid && /"field"\s*:\s*"head"/i.test(bodyText) && /"code"\s*:\s*"invalid"/i.test(bodyText)) {
+    headFieldInvalid = true;
+  }
+  if (!headFieldInvalid && /pullrequest.*head.*invalid|field head.*invalid/i.test(lower)) {
+    headFieldInvalid = true;
+  }
+  if (!headBranchNotFoundish && /head branch.*not found|unknown ref|does not exist/i.test(lower)) {
+    headBranchNotFoundish = true;
+  }
+  return { headFieldInvalid, headBranchNotFoundish };
+}
 
 async function patchPullRequest(input: {
   api: string;
@@ -73,6 +144,19 @@ async function patchPullRequest(input: {
   }
 }
 
+export type EnvTestPrCreateFailed = {
+  ok: false;
+  code: "ENV_TEST_PR_CREATE_FAILED";
+  message: string;
+  httpStatus: number;
+  githubErrorBody?: string;
+  headSentToGithub?: string;
+  headBranchRaw?: string;
+  headBranchNormalized?: string;
+  githubHeadFieldInvalid?: boolean;
+  githubHeadBranchNotFoundish?: boolean;
+};
+
 /**
  * ENV_TEST 전용: head 브랜치 기준 열린 PR이 있으면 제목·본문 갱신, 없으면 생성.
  */
@@ -82,6 +166,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   headBranch: string;
   githubAccessToken?: string | null;
   projectId?: string | null;
+  taskId?: string | null;
   /** 기본 stage1. Stage2는 별도 PR 제목·본문 메타 */
   envTestStage?: EnvTestPullRequestStage;
 }): Promise<
@@ -90,6 +175,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
       data: { pullRequestUrl: string; pullRequestNumber: number; reusedExisting: boolean };
     }
   | { ok: false; code: string; message: string; httpStatus?: number }
+  | EnvTestPrCreateFailed
 > {
   const { token } = resolveGithubRestTokenAndLog("github_env_test_pull_request", params.githubAccessToken ?? null, {
     projectId: params.projectId,
@@ -108,19 +194,39 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   }
   const api = githubRestApiBase();
   const { owner, repo } = parsed;
-  const headBranch = String(params.headBranch ?? "").trim();
   const baseBranch = String(params.baseBranch ?? "").trim();
-  if (!headBranch || !baseBranch) {
+  const { headBranchRaw, headBranchNormalized, headSentToGithub } = normalizeGithubPrHeadForSameRepoCreate(
+    owner,
+    params.headBranch
+  );
+  if (!headSentToGithub || !baseBranch) {
     return { ok: false, code: "INVALID_BRANCH", message: "base/head 브랜치가 필요합니다.", httpStatus: 400 };
   }
 
   const stage: EnvTestPullRequestStage = params.envTestStage === "stage2" ? "stage2" : "stage1";
   const title = stage === "stage2" ? ENV_TEST_STAGE2_PR_TITLE : ENV_TEST_PR_TITLE;
-  const body = buildEnvTestPullRequestBody(headBranch, stage);
+  const body = buildEnvTestPullRequestBody(headSentToGithub, stage);
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_pr_create_request_built",
+    projectId: params.projectId ?? "",
+    taskId: params.taskId ?? undefined,
+    detail: {
+      repoOwner: owner,
+      repoName: repo,
+      baseBranch,
+      headBranchRaw,
+      headBranchNormalized,
+      headSentToGithub,
+      envTestStage: stage,
+      step: "lookup_open_pr",
+    },
+  });
 
   const existing = await findOpenPullRequestByHeadBranch({
     repoUrl: params.repoUrl,
-    headBranch,
+    headBranch: headSentToGithub,
     githubAccessToken: token,
     projectId: params.projectId,
   }).catch(() => null);
@@ -154,6 +260,33 @@ export async function createOrUpdateEnvTestPullRequest(params: {
   }
 
   const url = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`;
+  const postBody = {
+    title,
+    head: headSentToGithub,
+    base: baseBranch,
+    body,
+    maintainer_can_modify: true,
+  };
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_pr_create_request_built",
+    projectId: params.projectId ?? "",
+    taskId: params.taskId ?? undefined,
+    detail: {
+      repoOwner: owner,
+      repoName: repo,
+      baseBranch,
+      headBranchRaw,
+      headBranchNormalized,
+      headSentToGithub,
+      envTestStage: stage,
+      step: "post_create_pull",
+      postBodyHead: postBody.head,
+      postBodyBase: postBody.base,
+    },
+  });
+
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -163,21 +296,40 @@ export async function createOrUpdateEnvTestPullRequest(params: {
         "User-Agent": "JYOrchestration/env-test-pr",
         "X-GitHub-Api-Version": "2022-11-28",
       },
-      body: JSON.stringify({
-        title,
-        head: headBranch,
-        base: baseBranch,
-        body,
-        maintainer_can_modify: true,
-      }),
+      body: JSON.stringify(postBody),
     });
     const txt = await res.text();
     if (!res.ok) {
+      const parsedErr = parseGithubPullRequestCreateError(txt);
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_pr_create_github_error",
+        projectId: params.projectId ?? "",
+        taskId: params.taskId ?? undefined,
+        detail: {
+          repoOwner: owner,
+          repoName: repo,
+          baseBranch,
+          headBranchRaw,
+          headBranchNormalized,
+          headSentToGithub,
+          httpStatus: res.status,
+          githubErrorBody: txt.slice(0, 8000),
+          githubHeadFieldInvalid: parsedErr.headFieldInvalid,
+          githubHeadBranchNotFoundish: parsedErr.headBranchNotFoundish,
+        },
+      });
       return {
         ok: false,
         code: "ENV_TEST_PR_CREATE_FAILED",
         message: `PR 생성 실패 (HTTP ${res.status}): ${txt.slice(0, 800)}`,
         httpStatus: res.status,
+        githubErrorBody: txt.slice(0, 8000),
+        headSentToGithub,
+        headBranchRaw,
+        headBranchNormalized,
+        githubHeadFieldInvalid: parsedErr.headFieldInvalid,
+        githubHeadBranchNotFoundish: parsedErr.headBranchNotFoundish,
       };
     }
     const json = JSON.parse(txt) as PullRes;
@@ -203,4 +355,53 @@ export async function createOrUpdateEnvTestPullRequest(params: {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, code: "ENV_TEST_PR_EXCEPTION", message: msg, httpStatus: 502 };
   }
+}
+
+export type EnvTestPullRequestErrorResult = Exclude<
+  Awaited<ReturnType<typeof createOrUpdateEnvTestPullRequest>>,
+  { ok: true }
+>;
+
+/**
+ * Stage1 PR-first 재시도: 브랜치가 아직 GitHub에 안 보이는 경우(404·일시 오류)만 짧게 재시도.
+ * 422 `head` invalid·형식 오류는 재시도하지 않는다.
+ */
+export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
+  res: EnvTestPullRequestErrorResult
+): boolean {
+  const st = res.httpStatus;
+  const code = res.code;
+  const msg = res.message.toLowerCase();
+
+  if (res.ok === false && res.code === "ENV_TEST_PR_CREATE_FAILED") {
+    const r = res as EnvTestPrCreateFailed;
+    if (r.githubHeadFieldInvalid === true) return false;
+    if (r.githubHeadBranchNotFoundish === true) return true;
+    if (st === 422) {
+      if (/no commits between/.test(msg)) return false;
+      if (/already exists|pull request already exists/.test(msg)) return false;
+      return false;
+    }
+  }
+
+  if (
+    code === GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS ||
+    code === "REPO_NOT_GITHUB" ||
+    code === "INVALID_BRANCH" ||
+    code === "ENV_TEST_PR_INVALID_RESPONSE"
+  ) {
+    return false;
+  }
+  if (code === "ENV_TEST_PR_PATCH_FAILED") return false;
+  if (st === 401 || st === 403) return false;
+  if (st === 400) return false;
+  if (st === 502 || st === 503 || st === 504) return true;
+  if (st === 404) return true;
+  if (st === 422) {
+    if (/no commits between/.test(msg)) return false;
+    if (/already exists|pull request already exists/.test(msg)) return false;
+    return false;
+  }
+  if (code === "ENV_TEST_PR_EXCEPTION") return true;
+  return false;
 }
