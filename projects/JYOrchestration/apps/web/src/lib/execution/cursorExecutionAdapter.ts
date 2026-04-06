@@ -24,9 +24,12 @@ import {
 } from "@/lib/observability/taskProgressLog";
 import { cursorApiBasicAuthHeader, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import {
+  applyStage1EnvTestPrCreateTerminalFailure,
   getEnvTestStage1PrFirstRetryConfig,
   runEnvTestAfterGithubPushConfirmed,
+  runStage1EnvTestPrSmokePath,
 } from "@/lib/executionLoop/envTestExecutionHelpers";
+import { normalizeStage1EnvTestHeadBranch } from "@/lib/service/githubEnvTestPullRequestService";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
 import {
   buildGithubBranchHeadProbePlan,
@@ -1447,7 +1450,8 @@ async function tryEnvTestCursorPollEarlySuccess(input: {
 type EnvTestOpenPrLookup = Awaited<ReturnType<typeof findOpenPullRequestByHeadBranch>>;
 
 /**
- * GitHub compare 또는 브랜치 HEAD 확인 후 ENV_TEST PR_OPENED까지 공통 마무리.
+ * ENV_TEST 조기 종료: Stage2·기타 경로는 compare/HEAD 확인 후 `runEnvTestAfterGithubPushConfirmed`.
+ * Stage1 PR-first는 `runStage1EnvTestPrSmokePath`(compare 없음).
  */
 async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
   params: ExecuteCursorRelayParams;
@@ -1462,7 +1466,7 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
   compareOkAtMs: number;
   elapsedMsLaunchToBranchConfirmed: number;
   elapsedMsBranchConfirmedToCompareOk: number;
-  preExisting: EnvTestOpenPrLookup;
+  preExisting: EnvTestOpenPrLookup | null;
   via:
     | "cursor_poll_early_github"
     | "cursor_poll_stage2_branch_head"
@@ -1493,41 +1497,83 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
 
   const mapped = mapAgentToResult(agentJson, branchName);
 
-  const out = await runEnvTestAfterGithubPushConfirmed({
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    taskKind: params.taskKind ?? null,
-    execRunId: ctx.execRunId,
-    actorUserId: ctx.actorUserId,
-    branchName,
-    repoUrl: ctx.repoUrl,
-    baseBranch: ctx.baseBranch,
-    githubAccessToken: ctx.githubAccessToken ?? null,
-    compareData: {
+  let out: Awaited<ReturnType<typeof runEnvTestAfterGithubPushConfirmed>>;
+
+  if (input.via === "cursor_poll_stage1_pr_first") {
+    const headNorm = normalizeStage1EnvTestHeadBranch(ctx.repoUrl, branchName);
+    if (!headNorm) {
+      await applyStage1EnvTestPrCreateTerminalFailure({
+        projectId: params.projectId,
+        taskId: ctx.taskId,
+        execRunId: ctx.execRunId,
+        actorUserId: ctx.actorUserId,
+        message: "브랜치 이름을 정규화할 수 없습니다.",
+        httpStatus: 400,
+        headBranch: branchName,
+        repoUrl: ctx.repoUrl,
+        baseBranch: ctx.baseBranch,
+      });
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: ctx.steps,
+          message: "ENV_TEST(Stage1): 브랜치 이름을 정규화할 수 없습니다.",
+        },
+      };
+    }
+    out = await runStage1EnvTestPrSmokePath({
+      projectId: params.projectId,
+      taskId: ctx.taskId,
+      actorUserId: ctx.actorUserId,
+      execRunId: ctx.execRunId,
+      branchName: headNorm,
+      repoUrl: ctx.repoUrl,
+      baseBranch: ctx.baseBranch,
+      githubAccessToken: ctx.githubAccessToken ?? null,
+      execRunCreatedAt: ctx.execRunCreatedAt,
+      cursorRunId: agentId,
+      cursorSummary: mapped.summary.slice(0, 24_000),
       headSha: input.compareData.headSha ?? null,
       changedFiles: input.compareData.changedFiles,
       diffSummary: input.compareData.diffSummary,
-      compareOkAtMs: input.compareOkAtMs,
-    },
-    steps: ctx.steps,
-    singleTaskId: ctx.singleTaskId,
-    effectiveAutoAdvance: ctx.effectiveAutoAdvance,
-    cursorRunId: agentId,
-    cursorSummary: mapped.summary.slice(0, 24_000),
-    via: input.via,
-    pushDetectedSource: input.pushDetectedSource,
-    executionRunCreatedAt: ctx.execRunCreatedAt,
-    branchDetectElapsedMs:
-      input.branchDetectElapsedMs ??
-      (input.elapsedMsLaunchToBranchConfirmed > 0 ? input.elapsedMsLaunchToBranchConfirmed : null),
-    stage1PrCreateRetry: input.stage1PrCreateRetry ?? null,
-    ...(input.via === "cursor_poll_stage1_pr_first"
-      ? {
-          execRunPushStatusAfterReflect: "pushed_by_cursor" as const,
-          stage1MinimalExecutionLogs: true,
-        }
-      : {}),
-  });
+      steps: ctx.steps,
+      singleTaskId: ctx.singleTaskId,
+      effectiveAutoAdvance: ctx.effectiveAutoAdvance,
+      via: "cursor_poll_stage1_pr_first",
+      stage1PrCreateRetry: input.stage1PrCreateRetry ?? getEnvTestStage1PrFirstRetryConfig(),
+    });
+  } else {
+    out = await runEnvTestAfterGithubPushConfirmed({
+      projectId: params.projectId,
+      taskId: ctx.taskId,
+      taskKind: params.taskKind ?? null,
+      execRunId: ctx.execRunId,
+      actorUserId: ctx.actorUserId,
+      branchName,
+      repoUrl: ctx.repoUrl,
+      baseBranch: ctx.baseBranch,
+      githubAccessToken: ctx.githubAccessToken ?? null,
+      compareData: {
+        headSha: input.compareData.headSha ?? null,
+        changedFiles: input.compareData.changedFiles,
+        diffSummary: input.compareData.diffSummary,
+        compareOkAtMs: input.compareOkAtMs,
+      },
+      steps: ctx.steps,
+      singleTaskId: ctx.singleTaskId,
+      effectiveAutoAdvance: ctx.effectiveAutoAdvance,
+      cursorRunId: agentId,
+      cursorSummary: mapped.summary.slice(0, 24_000),
+      via: input.via,
+      pushDetectedSource: input.pushDetectedSource,
+      executionRunCreatedAt: ctx.execRunCreatedAt,
+      branchDetectElapsedMs:
+        input.branchDetectElapsedMs ??
+        (input.elapsedMsLaunchToBranchConfirmed > 0 ? input.elapsedMsLaunchToBranchConfirmed : null),
+      stage1PrCreateRetry: input.stage1PrCreateRetry ?? null,
+    });
+  }
 
   if (out.kind === "pr_failed") {
     if (input.failClosedOnPrFailure) {
@@ -1550,65 +1596,68 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
     runId: agentId,
   });
 
-  if (!input.preExisting) {
+  const skipStage1PollExtraLogs = input.via === "cursor_poll_stage1_pr_first";
+  if (!skipStage1PollExtraLogs) {
+    if (!input.preExisting) {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_early_pr_created",
+        projectId: params.projectId,
+        taskId: ctx.taskId,
+        userId: ctx.actorUserId,
+        detail: {
+          headBranch: branchName,
+          note: "platform_create_or_update_after_compare",
+          elapsedMs,
+          pollStopReason: input.pollStopReason,
+        },
+      });
+    }
+
     appendTaskProgressLog({
       kind: "execution",
-      phase: "env_test_early_pr_created",
+      phase: "env_test_early_pr_opened_terminal_success",
       projectId: params.projectId,
       taskId: ctx.taskId,
       userId: ctx.actorUserId,
       detail: {
-        headBranch: branchName,
-        note: "platform_create_or_update_after_compare",
         elapsedMs,
+        agentPollCount,
+        agentId,
+        beforeCursorTerminal: true,
+        pollStopReason: input.pollStopReason,
+      },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_poll_stopped_after_early_pr",
+      projectId: params.projectId,
+      taskId: ctx.taskId,
+      userId: ctx.actorUserId,
+      detail: {
+        elapsedMs,
+        agentPollCount,
+        agentId,
+        reason: input.pollStopReason,
+      },
+    });
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_early_exit_before_cursor_terminal",
+      projectId: params.projectId,
+      taskId: ctx.taskId,
+      userId: ctx.actorUserId,
+      detail: {
+        elapsedMsSinceAgentLaunch: elapsedMs,
+        elapsedMsLaunchToBranchConfirmed: input.elapsedMsLaunchToBranchConfirmed,
+        elapsedMsBranchConfirmedToCompareOk: input.elapsedMsBranchConfirmedToCompareOk,
+        agentPollCount,
+        agentStatus,
+        compareOkAtMs: input.compareOkAtMs,
         pollStopReason: input.pollStopReason,
       },
     });
   }
-
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_early_pr_opened_terminal_success",
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    userId: ctx.actorUserId,
-    detail: {
-      elapsedMs,
-      agentPollCount,
-      agentId,
-      beforeCursorTerminal: true,
-      pollStopReason: input.pollStopReason,
-    },
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_poll_stopped_after_early_pr",
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    userId: ctx.actorUserId,
-    detail: {
-      elapsedMs,
-      agentPollCount,
-      agentId,
-      reason: input.pollStopReason,
-    },
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_early_exit_before_cursor_terminal",
-    projectId: params.projectId,
-    taskId: ctx.taskId,
-    userId: ctx.actorUserId,
-    detail: {
-      elapsedMsSinceAgentLaunch: elapsedMs,
-      elapsedMsLaunchToBranchConfirmed: input.elapsedMsLaunchToBranchConfirmed,
-      elapsedMsBranchConfirmedToCompareOk: input.elapsedMsBranchConfirmedToCompareOk,
-      agentPollCount,
-      agentStatus,
-      compareOkAtMs: input.compareOkAtMs,
-      pollStopReason: input.pollStopReason,
-    },
-  });
 
   logs.push(
     `[cursor-adapter] ENV_TEST: GitHub 경로로 PR_OPENED (Path B, pollStop=${input.pollStopReason})`
@@ -1641,12 +1690,6 @@ async function tryStage1PrFirstFinalizeDuringPoll(input: {
   const agentStatus = String(agentJson.status ?? "").trim();
   const headSha = pickCommitHash(agentJson) ?? null;
   const retry = getEnvTestStage1PrFirstRetryConfig();
-  const preExisting = await findOpenPullRequestByHeadBranch({
-    repoUrl: ctx.repoUrl,
-    headBranch: branchName,
-    githubAccessToken: ctx.githubAccessToken ?? null,
-    projectId: params.projectId,
-  });
   return finalizeEnvTestEarlyGithubPathFromCompareData({
     params,
     ctx,
@@ -1664,7 +1707,7 @@ async function tryStage1PrFirstFinalizeDuringPoll(input: {
     compareOkAtMs: Date.now(),
     elapsedMsLaunchToBranchConfirmed: 0,
     elapsedMsBranchConfirmedToCompareOk: 0,
-    preExisting,
+    preExisting: null,
     via: "cursor_poll_stage1_pr_first",
     pushDetectedSource: "cursor_poll_stage1_pr_first_retry",
     branchDetectElapsedMs: null,
