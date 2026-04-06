@@ -108,14 +108,6 @@ function parseGithubPullRequestCreateError(bodyText: string): {
   return { headFieldInvalid, headBranchNotFoundish };
 }
 
-/** 422 재시도(전파 지연)로 해결되지 않는 응답 — 짧은 head 재시도에서 제외 */
-function isEnvTestPrCreate422NonPropagatable(bodyText: string): boolean {
-  const t = bodyText.toLowerCase();
-  if (/no commits between/.test(t)) return true;
-  if (/already exists|pull request already exists|a pull request already exists/.test(t)) return true;
-  return false;
-}
-
 async function patchPullRequest(input: {
   api: string;
   token: string;
@@ -462,47 +454,16 @@ export type EnvTestPullRequestErrorResult = Exclude<
 >;
 
 /**
- * Stage1 PR 생성 외부 재시도: PR POST 자체를 전파/준비 지연 프로브로 쓴다.
- * 재시도: 404, 422(전파형 head·일시 오류), 502/503/504. 비재시도: 400/401/403, 설정·토큰, 비전파 422.
+ * Stage1 PR 생성 외부 재시도: `ENV_TEST_PR_CREATE_FAILED` 만 판별. 그 외 코드는 재시도하지 않음.
  */
 export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
   res: EnvTestPullRequestErrorResult
 ): boolean {
-  const st = res.httpStatus;
-  const code = res.code;
-  const msg = res.message.toLowerCase();
-
-  if (res.ok === false && res.code === "ENV_TEST_PR_CREATE_FAILED") {
-    const r = res as EnvTestPrCreateFailed;
-    const body = `${r.githubErrorBody ?? ""}\n${r.message}`;
-    if (st === 400 || st === 401 || st === 403) return false;
-    if (st === 502 || st === 503 || st === 504) return true;
-    if (st === 404) return true;
-    if (st === 422) {
-      if (isEnvTestPrCreate422NonPropagatable(body)) return false;
-      return true;
-    }
-    return false;
-  }
-
-  if (
-    code === GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS ||
-    code === "REPO_NOT_GITHUB" ||
-    code === "INVALID_BRANCH" ||
-    code === "ENV_TEST_PR_INVALID_RESPONSE"
-  ) {
-    return false;
-  }
-  if (code === "ENV_TEST_PR_PATCH_FAILED") return false;
-  if (st === 401 || st === 403) return false;
-  if (st === 400) return false;
-  if (st === 502 || st === 503 || st === 504) return true;
-  if (st === 404) return true;
-  if (st === 422) {
-    if (/no commits between/.test(msg)) return false;
-    if (/already exists|pull request already exists/.test(msg)) return false;
-    return false;
-  }
-  if (code === "ENV_TEST_PR_EXCEPTION") return true;
+  if (res.ok !== false || res.code !== "ENV_TEST_PR_CREATE_FAILED") return false;
+  const r = res as EnvTestPrCreateFailed;
+  const http = r.httpStatus;
+  if (http === 404) return true;
+  if (http === 422 && r.githubHeadFieldInvalid === true) return true;
+  if (http === 502 || http === 503 || http === 504) return true;
   return false;
 }
