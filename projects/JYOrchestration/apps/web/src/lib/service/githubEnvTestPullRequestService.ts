@@ -39,9 +39,9 @@ ${stage === "stage2" ? "ENV_TEST Stage 2(readiness) PR — 플랫폼이 생성·
 type PullRes = { html_url?: string; number?: number };
 
 /**
- * GitHub `POST /repos/{owner}/{repo}/pulls`: 동일 저장소에서는 보통 `head`=브랜치 ref 이름만.
+ * GitHub `POST /repos/{owner}/{repo}/pulls`: 동일 저장소에서는 `head`=브랜치 ref 이름만.
  * `refs/heads/x`·저장소 owner와 동일한 `owner:branch` 중복 접두어는 정규화에서 제거한다.
- * PR 생성 시에는 먼저 브랜치명만 시도하고, 422 `head` invalid이면 `owner:branch`로 한 번 더 시도한다.
+ * Stage1 동일 저장소 스모크는 브랜치명만 POST. Stage2에서만 422 `head` invalid 시 `owner:branch` 폴백을 시도한다.
  */
 export function normalizeGithubPrHeadForSameRepoCreate(
   repoOwner: string,
@@ -327,6 +327,7 @@ export async function createOrUpdateEnvTestPullRequest(params: {
     let parsedErr = parseGithubPullRequestCreateError(txt);
 
     if (
+      stage === "stage2" &&
       !res.ok &&
       res.status === 422 &&
       parsedErr.headFieldInvalid &&
@@ -454,16 +455,18 @@ export type EnvTestPullRequestErrorResult = Exclude<
 >;
 
 /**
- * Stage1 PR 생성 외부 재시도: `ENV_TEST_PR_CREATE_FAILED` 만 판별. 그 외 코드는 재시도하지 않음.
+ * Stage1 PR 외부 재시도: `ENV_TEST_PR_CREATE_FAILED` 만.
+ * 422 `head` invalid는 **첫 실패(attemptCount===1)에서만** 1회 재시도, 이후 동일 422 반복 금지.
  */
 export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
-  res: EnvTestPullRequestErrorResult
+  res: EnvTestPullRequestErrorResult,
+  ctx: { attemptCount: number }
 ): boolean {
   if (res.ok !== false || res.code !== "ENV_TEST_PR_CREATE_FAILED") return false;
   const r = res as EnvTestPrCreateFailed;
   const http = r.httpStatus;
   if (http === 404) return true;
-  if (http === 422 && r.githubHeadFieldInvalid === true) return true;
   if (http === 502 || http === 503 || http === 504) return true;
+  if (http === 422 && r.githubHeadFieldInvalid === true && ctx.attemptCount === 1) return true;
   return false;
 }

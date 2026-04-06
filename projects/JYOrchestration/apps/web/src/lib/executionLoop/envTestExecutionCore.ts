@@ -2,7 +2,7 @@
  * ENV_TEST Stage 1·Stage 2 공통 실행 코어: Cursor invoke(+ 타이밍) — Git 반영·PR 은 cursorExecutionAdapter·헬퍼와 연동.
  * - `executeCursorRun`: Git-first·RUNNING 중 GitHub 조기 PR 종료는 **Stage1·Stage2** 공통(Stage1은 짧은 폴링 상한·공격적 간격). FINISHED 무시·Stage2 전용 브랜치 타임아웃은 **ENV_TEST_STAGE2만**.
  * - Stage 2 전용 Cursor 이전 단계: `envTestExecutionPipeline.runEnvTestStage2PreCursorExecutorGate`
- * - Stage 1 Cursor 종료 후 GitHub→PR: `runStage1EnvTestBranchToPrPipeline` (runExecutionLoop에서 dispatch)
+ * - Stage 1 Cursor 종료 후 PR 스모크: `runStage1EnvTestSimplePipeline` (runExecutionLoop에서 dispatch)
  * - Stage 2·reflection 통과 후 compare→PR→finalize: `runEnvTestReflectionConfirmedPipeline`
  * - Stage 2·reflection 미통과: `runEnvTestReflectionNotConfirmedGithubBypass` → `runEnvTestAfterGithubPushConfirmed` → finalize
  * - Cursor 폴링 우회: `runEnvTestAfterGithubPushConfirmed` → `finalizeEnvTestPrOpenedFromGithubOnly`

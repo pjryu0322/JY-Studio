@@ -1606,6 +1606,12 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
       input.branchDetectElapsedMs ??
       (input.elapsedMsLaunchToBranchConfirmed > 0 ? input.elapsedMsLaunchToBranchConfirmed : null),
     stage1PrCreateRetry: input.stage1PrCreateRetry ?? null,
+    ...(input.via === "cursor_poll_stage1_pr_first"
+      ? {
+          execRunPushStatusAfterReflect: "pushed_by_cursor" as const,
+          stage1MinimalExecutionLogs: true,
+        }
+      : {}),
   });
 
   if (out.kind === "pr_failed") {
