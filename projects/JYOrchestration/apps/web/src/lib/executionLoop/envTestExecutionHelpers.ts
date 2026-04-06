@@ -311,19 +311,6 @@ function pickEnvTestHeadBranch(input: {
   );
 }
 
-/** Stage1 전용: GitHub HEAD 조회 시도 순서(중복 제거). */
-function uniqueNonEmptyBranchCandidates(...parts: (string | null | undefined)[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const p of parts) {
-    const s = String(p ?? "").trim();
-    if (!s || seen.has(s)) continue;
-    seen.add(s);
-    out.push(s);
-  }
-  return out;
-}
-
 /**
  * ENV_TEST 전용 헬퍼 진입 방어. 위반 시 로그 후 throw(부분 DB 갱신 없음).
  * Shared compare/PR 서비스는 그대로 두고, 이 모듈의 오케스트레이션만 게이트한다.
@@ -490,7 +477,9 @@ export async function runEnvTestPlatformPrPhase(input: {
         break;
       }
 
-      const retryable = isEnvTestPullRequestCreateRetryableForStage1HeadDelay(prRes, { attemptCount });
+      const retryable = isEnvTestPullRequestCreateRetryableForStage1HeadDelay(prRes, {
+        attemptCount,
+      });
       appendTaskProgressLog({
         kind: "execution",
         phase: "env_test_pr_create_failed",
@@ -594,7 +583,7 @@ export async function runEnvTestPlatformPrPhase(input: {
   const prElapsedMs = Date.now() - prPhaseStartedAt;
   const elapsedMsCompareToPr =
     typeof input.compareOkAtMs === "number" ? Date.now() - input.compareOkAtMs : null;
-  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId) {
+  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId && !input.stage1MinimalExecutionLogs) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_stage1_pr_create_passed",
@@ -613,21 +602,23 @@ export async function runEnvTestPlatformPrPhase(input: {
       },
     });
   }
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_pr_created_or_found",
-    projectId: input.projectId,
-    taskId: input.taskId,
-    userId: input.actorUserId,
-    detail: {
-      prUrl: prRes.data.pullRequestUrl,
-      prNumber: prRes.data.pullRequestNumber,
-      headBranch: input.headBranch,
-      reusedExisting: prRes.data.reusedExisting,
-      elapsedMsSinceRunStart,
-      elapsedMsCompareOkToPrFoundOrCreated: elapsedMsCompareToPr,
-    },
-  });
+  if (!input.stage1MinimalExecutionLogs || !isEnvTestStage1TaskKind(input.taskKind)) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_pr_created_or_found",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        prUrl: prRes.data.pullRequestUrl,
+        prNumber: prRes.data.pullRequestNumber,
+        headBranch: input.headBranch,
+        reusedExisting: prRes.data.reusedExisting,
+        elapsedMsSinceRunStart,
+        elapsedMsCompareOkToPrFoundOrCreated: elapsedMsCompareToPr,
+      },
+    });
+  }
   return {
     ok: true,
     prUrl: prRes.data.pullRequestUrl,
@@ -879,6 +870,7 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     effectiveAutoAdvance: input.effectiveAutoAdvance,
     cursorRunId: input.cursorRunId ?? undefined,
     via: input.via,
+    stage1MinimalExecutionLogs: input.stage1MinimalExecutionLogs ?? false,
     runDataPatch: {
       commitSha: input.compareData.headSha ?? null,
       changedFiles: input.compareData.changedFiles as unknown as object,
@@ -944,8 +936,7 @@ export async function runStage1EnvTestSimplePipeline(input: {
     signalBranchNameHint,
     fallbackBranchName: null,
   });
-  const candidates = uniqueNonEmptyBranchCandidates(trackedBranchName, planned, cursorPick);
-  const primaryHead = candidates[0] ?? "";
+  const primaryHead = String(trackedBranchName || planned || cursorPick).trim();
 
   if (!primaryHead) {
     await prisma.taskExecutionRun.update({
@@ -2657,7 +2648,7 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
         stage1RunBranch?.createdAt != null ? Date.now() - stage1RunBranch.createdAt.getTime() : null;
       appendTaskProgressLog({
         kind: "execution",
-        phase: "env_test_stage1_done",
+        phase: "env_test_stage1_finished",
         projectId: input.projectId,
         taskId: input.taskId,
         userId: input.actorUserId,
@@ -2705,6 +2696,8 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
   effectiveAutoAdvance: boolean;
   cursorRunId?: string | null;
   via?: string;
+  /** Stage1 스모크: `stage1_phase_transition` 등 보조 로그 생략 */
+  stage1MinimalExecutionLogs?: boolean;
   runDataPatch?: {
     commitSha?: string | null;
     changedFiles?: object;
@@ -2757,7 +2750,7 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
     select: { status: true, executionWorkflowStatus: true },
   });
 
-  if (isEnvTestStage1TaskKind(input.taskKind)) {
+  if (isEnvTestStage1TaskKind(input.taskKind) && !input.stage1MinimalExecutionLogs) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "stage1_phase_transition",
