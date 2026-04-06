@@ -478,15 +478,14 @@ export type EnvTestPullRequestErrorResult = Exclude<
 
 /**
  * Stage1 PR 외부 재시도: `ENV_TEST_PR_CREATE_FAILED` 만.
- * 422 `head` invalid는 재시도하지 않음(동일 저장소 스모크에서 반복해도 동일 결과인 경우가 많음).
+ * 재시도 허용: 404(전파 지연), 502/503/504. 그 외(422 `head` invalid 포함)는 재시도하지 않음.
  */
 export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
   res: EnvTestPullRequestErrorResult,
-  _ctx: { attemptCount: number }
+  _attemptMeta: { attemptCount: number }
 ): boolean {
   if (res.ok !== false || res.code !== "ENV_TEST_PR_CREATE_FAILED") return false;
-  const r = res as EnvTestPrCreateFailed;
-  const http = r.httpStatus;
+  const http = (res as EnvTestPrCreateFailed).httpStatus;
   if (http === 404) return true;
   if (http === 502 || http === 503 || http === 504) return true;
   return false;

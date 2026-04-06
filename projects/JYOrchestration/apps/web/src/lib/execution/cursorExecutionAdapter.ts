@@ -1496,7 +1496,7 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
 
   let out: Awaited<ReturnType<typeof runEnvTestAfterGithubPushConfirmed>>;
 
-  if (input.via === "cursor_poll_stage1_pr_first") {
+  if (isEnvTestStage1TaskKind(params.taskKind)) {
     const headNorm = normalizeStage1EnvTestHeadBranch(ctx.repoUrl, branchName);
     if (!headNorm) {
       await applyStage1EnvTestPrCreateTerminalFailure({
@@ -1537,7 +1537,6 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
       steps: ctx.steps,
       singleTaskId: ctx.singleTaskId,
       effectiveAutoAdvance: ctx.effectiveAutoAdvance,
-      via: "cursor_poll_stage1_pr_first",
       stage1PrCreateRetry: input.stage1PrCreateRetry ?? getEnvTestStage1PrFirstRetryConfig(),
     });
   } else {
@@ -1592,7 +1591,7 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
     runId: agentId,
   });
 
-  const skipStage1PollExtraLogs = input.via === "cursor_poll_stage1_pr_first";
+  const skipStage1PollExtraLogs = isEnvTestStage1TaskKind(params.taskKind);
   if (!skipStage1PollExtraLogs) {
     if (!input.preExisting) {
       appendTaskProgressLog({
@@ -1698,7 +1697,7 @@ async function tryStage1PrFirstFinalizeDuringPoll(input: {
     compareData: {
       headSha,
       changedFiles: [],
-      diffSummary: `(ENV_TEST Stage1 PR-first; GitHub 브랜치/compare 프로브 생략; agent status=${agentStatus})`,
+      diffSummary: `(ENV_TEST Stage1 PR smoke; agent status=${agentStatus})`,
     },
     compareOkAtMs: Date.now(),
     elapsedMsLaunchToBranchConfirmed: 0,
