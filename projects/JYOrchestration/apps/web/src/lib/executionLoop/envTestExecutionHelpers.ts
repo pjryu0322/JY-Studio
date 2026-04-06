@@ -171,6 +171,33 @@ export async function applyStage1EnvTestPrCreateTerminalFailure(input: {
   });
   appendTaskProgressLog({
     kind: "execution",
+    phase: "stage1_execution_terminal_applied",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: {
+      ...detail,
+      currentPhase: null,
+      workflowStatus: EXECUTION_WORKFLOW.FAILED,
+      taskStatus: "FAILED",
+    },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "stage1_timer_stopped_reason",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: {
+      executionId: input.execRunId,
+      reason: "stage1_pr_create_terminal_failure",
+      currentPhase: null,
+      workflowStatus: EXECUTION_WORKFLOW.FAILED,
+      taskStatus: "FAILED",
+    },
+  });
+  appendTaskProgressLog({
+    kind: "execution",
     phase: "execution_timer_stopped_due_to_terminal_state",
     projectId: input.projectId,
     taskId: input.taskId,
@@ -733,14 +760,31 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
                   ? "ENV_TEST(Stage1): 원격 브랜치 존재 확인. 플랫폼이 PR을 생성·갱신합니다."
                   : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
 
-  await prisma.task.update({
+  const taskAfterCommitted = await prisma.task.update({
     where: { id: input.taskId },
     data: {
       executionWorkflowStatus: EXECUTION_WORKFLOW.COMMITTED,
       lastEvalResult: "committed",
       lastEvalSummary: committedSummary.slice(0, 2000),
     },
+    select: { status: true, executionWorkflowStatus: true },
   });
+
+  if (isEnvTestStage1TaskKind(input.taskKind)) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "stage1_phase_transition",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        executionId: input.execRunId,
+        currentPhase: "branchDetect",
+        workflowStatus: taskAfterCommitted.executionWorkflowStatus,
+        taskStatus: taskAfterCommitted.status,
+      },
+    });
+  }
 
   if (isEnvTestStage2TaskKind(input.taskKind) && STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS > 0) {
     await new Promise((r) => setTimeout(r, STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS));
@@ -2987,7 +3031,7 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
     },
   });
 
-  await prisma.task.update({
+  const taskAfterPrOpened = await prisma.task.update({
     where: { id: input.taskId },
     data: {
       executionWorkflowStatus: EXECUTION_WORKFLOW.PR_OPENED,
@@ -2996,7 +3040,24 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
       lastEvalSummary: lastEvalSummary.slice(0, 2000),
       loopRetryCount: 0,
     },
+    select: { status: true, executionWorkflowStatus: true },
   });
+
+  if (isEnvTestStage1TaskKind(input.taskKind)) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "stage1_phase_transition",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        executionId: input.execRunId,
+        currentPhase: "merge",
+        workflowStatus: taskAfterPrOpened.executionWorkflowStatus,
+        taskStatus: taskAfterPrOpened.status,
+      },
+    });
+  }
 
   await updateTaskOrchestrationSnapshot(input.taskId, {
     branch: input.branchName,

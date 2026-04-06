@@ -16,7 +16,10 @@ import { ensureTaskExecutionRunColumnsReady } from "@/lib/prisma/taskExecutionRu
 import { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
 import { assertEnvTestStartReadiness } from "@/lib/service/envTestServerReadiness";
 import { parseEnvTestStage2UiFromValidationOutput } from "@/lib/service/envTestStage2PlatformActors";
-import { parseEnvTestStage2TimingFromValidationOutput } from "@/lib/service/envTestStage2Telemetry";
+import {
+  parseEnvTestStage2TimingFromValidationOutput,
+  readEnvTestStage2TimingRecord,
+} from "@/lib/service/envTestStage2Telemetry";
 import { deriveStage2LiveHints } from "@/lib/service/envTestStage2LiveHints";
 import {
   bottleneckLabelKo,
@@ -51,6 +54,40 @@ function parseStage1PrCreateFailureFields(lastEvalSummary: string | null): {
     stage1PrCreateFailureBranch,
     stage1PrCreateFailureGithubCode,
   };
+}
+
+/** Stage1 패널 페이즈(타이밍 행 키와 동일 계열) */
+export type Stage1UiPhase = "cursor" | "branchDetect" | "prCreation" | "merge";
+
+const STAGE1_POLL_STALE_THRESHOLD_MS = 10_000;
+
+function deriveStage1CurrentPhase(input: {
+  workflowNorm: string;
+  isTerminal: boolean;
+  breakdown: Record<string, number> | null;
+}): Stage1UiPhase | null {
+  if (input.isTerminal) return null;
+  const w = input.workflowNorm;
+  if (w === EXECUTION_WORKFLOW.PR_OPENED) return "merge";
+  if (w === EXECUTION_WORKFLOW.COMMITTED) {
+    const bd = input.breakdown ?? {};
+    const pr = typeof bd.prCreation === "number" ? bd.prCreation : 0;
+    const br = typeof bd.branchDetect === "number" ? bd.branchDetect : 0;
+    if (pr > 0) return "merge";
+    if (br > 0) return "prCreation";
+    return "branchDetect";
+  }
+  if (
+    w === EXECUTION_WORKFLOW.RUNNING ||
+    w === EXECUTION_WORKFLOW.PENDING_APPLY ||
+    w === EXECUTION_WORKFLOW.REVIEWING ||
+    w === EXECUTION_WORKFLOW.REVIEW_PENDING ||
+    w === EXECUTION_WORKFLOW.READY ||
+    w === EXECUTION_WORKFLOW.PENDING
+  ) {
+    return "cursor";
+  }
+  return "cursor";
 }
 
 function envTestStage1FailureOneLine(input: {
@@ -383,6 +420,17 @@ export type EnvironmentTestLastDto = {
   stage1PrCreateFailureHttpStatus?: number | null;
   stage1PrCreateFailureBranch?: string | null;
   stage1PrCreateFailureGithubCode?: string | null;
+  /** 서버가 계산한 Stage1 실행 상태(폴링 UI 동기화) */
+  isRunning?: boolean | null;
+  isTerminal?: boolean | null;
+  stage1CurrentPhase?: Stage1UiPhase | null;
+  stage1CurrentPhaseStartedAt?: string | null;
+  /** GET 응답 생성 시각(서버 ms) — 클라이언트 경과 = 스냅샷 + (클라 now - 폴링 수신 시각) */
+  stage1SnapshotAtMs?: number | null;
+  /** 스냅샷 시점 총 경과(ms). 터미널이면 totalTimeMs와 동일 우선 */
+  stage1ElapsedMsAtSnapshot?: number | null;
+  stage1PollStaleThresholdMs?: number | null;
+  stage1ExecutionRunId?: string | null;
 };
 
 export async function getLatestEnvironmentTestTask(
@@ -425,6 +473,7 @@ export async function getLatestEnvironmentTestTask(
               orderBy: { createdAt: "desc" },
               take: 1,
               select: {
+                id: true,
                 status: true,
                 createdAt: true,
                 prStatus: true,
@@ -465,6 +514,7 @@ export async function getLatestEnvironmentTestTask(
           orderBy: { createdAt: "desc" },
           take: 1,
           select: {
+            id: true,
             status: true,
             createdAt: true,
             prStatus: true,
@@ -489,6 +539,74 @@ export async function getLatestEnvironmentTestTask(
   const branchName = rowResolved.lastOrchestrationBranch ?? run0?.branchName ?? null;
   const t1 = parseEnvTestStage2TimingFromValidationOutput(run0?.validationOutput ?? null);
   const stage1PrFail = parseStage1PrCreateFailureFields(rowResolved.lastEvalSummary);
+  const wfNorm = String(rowResolved.executionWorkflowStatus ?? "").trim().toLowerCase();
+  const tsU = String(rowResolved.status ?? "").trim().toUpperCase();
+  const failureLine = envTestStage1FailureOneLine({
+    workflowStatus: rowResolved.executionWorkflowStatus,
+    taskStatus: rowResolved.status,
+    lastEvalSummary: rowResolved.lastEvalSummary,
+    envTestMergeBlockedReason: run0?.envTestMergeBlockedReason ?? null,
+    runEvaluationReason: run0?.evaluationReason ?? null,
+  });
+  const wfTerminal =
+    wfNorm === EXECUTION_WORKFLOW.MERGED ||
+    wfNorm === EXECUTION_WORKFLOW.FAILED ||
+    wfNorm === EXECUTION_WORKFLOW.VERIFY_FAILED;
+  const taskTerminal = tsU === "DONE" || tsU === "FAILED" || tsU === "MERGED";
+  const isTerminal = Boolean(
+    wfTerminal ||
+      taskTerminal ||
+      stage1PrFail.stage1PrCreateFailureHttpStatus != null ||
+      (failureLine != null && failureLine.trim().length > 0)
+  );
+  const runSt = String(run0?.status ?? "").trim().toLowerCase();
+  const runFailed = runSt === "failed";
+  const isRunning = Boolean(
+    !isTerminal &&
+      !runFailed &&
+      (tsU === "IN_PROGRESS" || runSt === "running") &&
+      (wfNorm === EXECUTION_WORKFLOW.RUNNING ||
+        wfNorm === EXECUTION_WORKFLOW.COMMITTED ||
+        wfNorm === EXECUTION_WORKFLOW.PENDING_APPLY ||
+        wfNorm === EXECUTION_WORKFLOW.PR_OPENED ||
+        wfNorm === EXECUTION_WORKFLOW.REVIEWING ||
+        wfNorm === EXECUTION_WORKFLOW.REVIEW_PENDING ||
+        wfNorm === EXECUTION_WORKFLOW.READY)
+  );
+  const stage1CurrentPhase = deriveStage1CurrentPhase({
+    workflowNorm: wfNorm,
+    isTerminal,
+    breakdown: t1.breakdown,
+  });
+  const rawTiming = readEnvTestStage2TimingRecord(run0?.validationOutput ?? null);
+  const pipeMs = rawTiming?.pipelineStartedAtMs;
+  let stage1CurrentPhaseStartedAt: string | null = null;
+  if (stage1CurrentPhase === "cursor") {
+    if (typeof pipeMs === "number" && pipeMs > 0) {
+      stage1CurrentPhaseStartedAt = new Date(pipeMs).toISOString();
+    } else if (run0?.createdAt) {
+      stage1CurrentPhaseStartedAt = run0.createdAt.toISOString();
+    }
+  }
+  const stage1SnapshotAtMs = Date.now();
+  const runStartedAtMs = run0?.createdAt ? run0.createdAt.getTime() : null;
+  let stage1ElapsedMsAtSnapshot: number | null = null;
+  if (runStartedAtMs != null) {
+    if (isTerminal) {
+      stage1ElapsedMsAtSnapshot =
+        typeof t1.totalTimeMs === "number" && t1.totalTimeMs >= 0
+          ? t1.totalTimeMs
+          : Math.max(0, stage1SnapshotAtMs - runStartedAtMs);
+    } else if (isRunning) {
+      stage1ElapsedMsAtSnapshot = Math.max(0, stage1SnapshotAtMs - runStartedAtMs);
+    } else {
+      stage1ElapsedMsAtSnapshot =
+        typeof t1.totalTimeMs === "number" && t1.totalTimeMs >= 0
+          ? t1.totalTimeMs
+          : Math.max(0, stage1SnapshotAtMs - runStartedAtMs);
+    }
+  }
+
   const base: EnvironmentTestLastDto = {
     taskId: rowResolved.id,
     taskKind: ENV_TEST_TASK_KIND,
@@ -508,16 +626,18 @@ export async function getLatestEnvironmentTestTask(
     stage1TopBottleneckStage: t1.topBottleneck?.stage ?? null,
     stage1TopBottleneckMs: t1.topBottleneck?.ms ?? null,
     stage1RunCreatedAt: run0?.createdAt?.toISOString() ?? null,
-    envTestStage1FailureLine: envTestStage1FailureOneLine({
-      workflowStatus: rowResolved.executionWorkflowStatus,
-      taskStatus: rowResolved.status,
-      lastEvalSummary: rowResolved.lastEvalSummary,
-      envTestMergeBlockedReason: run0?.envTestMergeBlockedReason ?? null,
-      runEvaluationReason: run0?.evaluationReason ?? null,
-    }),
+    envTestStage1FailureLine: failureLine,
     stage1PrCreateFailureHttpStatus: stage1PrFail.stage1PrCreateFailureHttpStatus,
     stage1PrCreateFailureBranch: stage1PrFail.stage1PrCreateFailureBranch,
     stage1PrCreateFailureGithubCode: stage1PrFail.stage1PrCreateFailureGithubCode,
+    isRunning,
+    isTerminal,
+    stage1CurrentPhase,
+    stage1CurrentPhaseStartedAt,
+    stage1SnapshotAtMs,
+    stage1ElapsedMsAtSnapshot,
+    stage1PollStaleThresholdMs: STAGE1_POLL_STALE_THRESHOLD_MS,
+    stage1ExecutionRunId: run0?.id ?? null,
     cursorPromptLength: run0?.promptSnapshot?.length ?? null,
     cursorPromptPreview: run0?.promptSnapshot ? run0.promptSnapshot.slice(0, 500) : null,
     cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
@@ -529,9 +649,10 @@ export async function getLatestEnvironmentTestTask(
         : null,
   };
 
-  const wfNorm = String(rowResolved.executionWorkflowStatus ?? "").trim();
-  const mergeInProgress = wfNorm === EXECUTION_WORKFLOW.PR_OPENED && Boolean(run0?.envTestMergeStartedAt) && !run0?.mergedAt;
-  if (wfNorm === EXECUTION_WORKFLOW.MERGED || (!mergeInProgress && wfNorm === EXECUTION_WORKFLOW.PR_OPENED)) {
+  const wfNormMerge = String(rowResolved.executionWorkflowStatus ?? "").trim().toLowerCase();
+  const mergeInProgress =
+    wfNormMerge === EXECUTION_WORKFLOW.PR_OPENED && Boolean(run0?.envTestMergeStartedAt) && !run0?.mergedAt;
+  if (wfNormMerge === EXECUTION_WORKFLOW.MERGED || (!mergeInProgress && wfNormMerge === EXECUTION_WORKFLOW.PR_OPENED)) {
     const r = await evaluateNextTaskReadiness({ projectId: pid });
     return {
       ...base,
