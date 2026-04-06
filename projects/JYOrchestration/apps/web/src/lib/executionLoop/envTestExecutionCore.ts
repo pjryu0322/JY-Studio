@@ -13,14 +13,15 @@
  * Git 원격 브랜치 미반영(제한 시간)만 즉시 FAILED. 그 외 ENV_TEST 오류는 재시도 경로.
  */
 
-import { isEnvTestFamilyTaskKind } from "@/lib/execution/envTestTaskKind";
+import { isEnvTestFamilyTaskKind, isEnvTestStage1TaskKind } from "@/lib/execution/envTestTaskKind";
 import {
   executeCursorRun,
   type ExecuteCursorRelayParams,
   type ExecuteCursorRunOutcome,
 } from "@/lib/execution/cursorExecutionAdapter";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
-import { patchTaskExecutionRunStage2Timing } from "@/lib/service/envTestStage2Telemetry";
+import { patchTaskExecutionRunStage2Timing, readEnvTestStage2TimingRecord } from "@/lib/service/envTestStage2Telemetry";
+import { prisma } from "@/lib/prisma";
 
 export type EnvTestCursorToPrOpenedCoreContext = {
   projectId: string;
@@ -61,9 +62,24 @@ export async function runEnvTestCursorToPrOpenedCore(input: {
   const cursorOutcome = await executeCursorRun(executeParams);
 
   if (isEnvTestFamilyTaskKind(tk)) {
+    const wallMs = Date.now() - cursorStartedAt;
+    let cursorMs = wallMs;
+    // Stage1: 폴링 중 PR 생성·재시도가 executeCursorRun 안에서 끝나면 wall 시간에 PR 구간이 포함된다.
+    // prCreationTimeMs(이미 patch됨)를 빼 실제 Cursor 구간만 남긴다.
+    if (isEnvTestStage1TaskKind(tk)) {
+      const row = await prisma.taskExecutionRun.findUnique({
+        where: { id: ctx.execRunId },
+        select: { validationOutput: true },
+      });
+      const timing = readEnvTestStage2TimingRecord(row?.validationOutput ?? null);
+      const prMs = typeof timing?.prCreationTimeMs === "number" ? timing.prCreationTimeMs : 0;
+      if (prMs > 0) {
+        cursorMs = Math.max(0, wallMs - prMs);
+      }
+    }
     await patchTaskExecutionRunStage2Timing(ctx.execRunId, {
       executionId: ctx.execRunId,
-      cursorTimeMs: Date.now() - cursorStartedAt,
+      cursorTimeMs: cursorMs,
     });
   }
 

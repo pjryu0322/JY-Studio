@@ -456,17 +456,17 @@ export type EnvTestPullRequestErrorResult = Exclude<
 
 /**
  * Stage1 PR 외부 재시도: `ENV_TEST_PR_CREATE_FAILED` 만.
- * 422 `head` invalid는 **첫 실패(attemptCount===1)에서만** 1회 재시도, 이후 동일 422 반복 금지.
+ * 동일 저장소 스모크에서 422 `head` invalid는 재시도해도 같은 결과인 경우가 많아 **재시도하지 않는다**.
+ * (전파 지연은 404·5xx 쪽에서만 짧게 재시도.)
  */
 export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
   res: EnvTestPullRequestErrorResult,
-  ctx: { attemptCount: number }
+  _ctx: { attemptCount: number }
 ): boolean {
   if (res.ok !== false || res.code !== "ENV_TEST_PR_CREATE_FAILED") return false;
   const r = res as EnvTestPrCreateFailed;
   const http = r.httpStatus;
   if (http === 404) return true;
   if (http === 502 || http === 503 || http === 504) return true;
-  if (http === 422 && r.githubHeadFieldInvalid === true && ctx.attemptCount === 1) return true;
   return false;
 }
