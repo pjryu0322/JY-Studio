@@ -236,6 +236,54 @@ function computeStage1DisplayedTotalMs(input: {
   return { totalMs: base + add, extending: !staleLocal, staleLocal };
 }
 
+/** 총 경과와 동일한 폴링·스테일·syncLost 규칙으로 임의 스냅샷 base(ms) 확장 */
+function computeStage1DisplayedDerivedMs(input: {
+  baseMs: number | null | undefined;
+  nowMs: number;
+  pollOkAtClientMs: number | null;
+  syncLost: boolean;
+  terminal: boolean;
+  isRunning: boolean;
+  pollStaleThresholdMs?: number | null;
+}): { totalMs: number | null; extending: boolean; staleLocal: boolean } {
+  if (input.syncLost) {
+    const m = input.baseMs;
+    return {
+      totalMs: m != null && Number.isFinite(m) ? m : null,
+      extending: false,
+      staleLocal: true,
+    };
+  }
+  if (input.terminal) {
+    const m = input.baseMs;
+    return {
+      totalMs: m != null && Number.isFinite(m) ? m : null,
+      extending: false,
+      staleLocal: false,
+    };
+  }
+  if (!input.isRunning) {
+    return { totalMs: input.baseMs ?? null, extending: false, staleLocal: false };
+  }
+  const base = input.baseMs;
+  const pollAt = input.pollOkAtClientMs;
+  const staleMs = input.pollStaleThresholdMs ?? 10_000;
+  if (base == null || !Number.isFinite(base) || pollAt == null) {
+    return { totalMs: base ?? null, extending: false, staleLocal: false };
+  }
+  const delta = input.nowMs - pollAt;
+  const staleLocal = delta > staleMs;
+  const add = staleLocal ? 0 : delta;
+  return { totalMs: base + add, extending: !staleLocal, staleLocal };
+}
+
+function stage1PollSyncHealthBannerText(streak: number, syncStopped: boolean): string | null {
+  if (syncStopped) return null;
+  if (streak >= 2) return "서버 응답 지연";
+  if (streak === 1) return "서버 응답 확인 중…";
+  return null;
+}
+
 function stage1EnvironmentHeadline(
   last: EnvironmentTestLastDto,
   opts: { mergeInProgress: boolean; syncLost: boolean }
@@ -362,7 +410,8 @@ export function ProjectExecutionEnvironmentPanel({
   const [stage1ElapsedTick, setStage1ElapsedTick] = useState(0);
   const [stage1PollSyncStopped, setStage1PollSyncStopped] = useState(false);
   const [stage1PollSyncFrozenElapsedMs, setStage1PollSyncFrozenElapsedMs] = useState<number | null>(null);
-  const stage1PollFailCountRef = useRef(0);
+  const [stage1PollFailureStreak, setStage1PollFailureStreak] = useState(0);
+  const stage1PollFailureStreakRef = useRef(0);
   const envTestLastRef = useRef<EnvironmentTestLastDto | null>(null);
   const stage1TimerSessionRef = useRef<{ taskId: string; startMs: number } | null>(null);
   /** 성공 폴링 수신 시각 — 서버 스냅샷 경과 + 클라 델타(스테일 임계 초과 시 델타 0) */
@@ -416,7 +465,7 @@ export function ProjectExecutionEnvironmentPanel({
         currentPhase: lastRef?.stage1CurrentPhase ?? null,
         workflowStatus: lastRef?.workflowStatus ?? null,
         taskStatus: lastRef?.taskStatus ?? null,
-        consecutiveFailures: stage1PollFailCountRef.current,
+        consecutiveFailures: stage1PollFailureStreakRef.current,
         frozenElapsedMs: frozen,
       };
       console.warn(
@@ -436,26 +485,47 @@ export function ProjectExecutionEnvironmentPanel({
         })
       );
     };
+    const recordPollFailure = () => {
+      stage1PollFailureStreakRef.current = Math.min(stage1PollFailureStreakRef.current + 1, 4);
+      const n = stage1PollFailureStreakRef.current;
+      setStage1PollFailureStreak(n);
+      const lastRef = envTestLastRef.current;
+      const healthBase = {
+        projectId: pid,
+        executionId: lastRef?.stage1ExecutionRunId ?? null,
+        currentPhase: lastRef?.stage1CurrentPhase ?? null,
+        workflowStatus: lastRef?.workflowStatus ?? null,
+        taskStatus: lastRef?.taskStatus ?? null,
+        consecutiveFailures: n,
+        frozenElapsedMs: null as number | null,
+      };
+      if (n === 1) {
+        console.warn(
+          "[jy-orch]",
+          JSON.stringify({ phase: "stage1_polling_check_failed_once", ...healthBase })
+        );
+      } else if (n === 2) {
+        console.warn("[jy-orch]", JSON.stringify({ phase: "stage1_polling_delayed", ...healthBase }));
+      }
+      if (n >= STAGE1_POLL_SYNC_FAILURE_THRESHOLD) {
+        onPollDisconnect();
+      }
+    };
     try {
       const { res, json } = await fetchEnvironmentTestLast(projectId);
       if (res.ok && json.success && json.data) {
-        stage1PollFailCountRef.current = 0;
+        stage1PollFailureStreakRef.current = 0;
+        setStage1PollFailureStreak(0);
         setStage1PollSyncStopped(false);
         setStage1PollSyncFrozenElapsedMs(null);
         stage1LastPollOkAtClientRef.current = Date.now();
         setEnvTestLast(json.data.last ?? null);
         return;
       }
-      stage1PollFailCountRef.current += 1;
-      if (stage1PollFailCountRef.current >= STAGE1_POLL_SYNC_FAILURE_THRESHOLD) {
-        onPollDisconnect();
-      }
+      recordPollFailure();
     } catch (e) {
       console.error(e);
-      stage1PollFailCountRef.current += 1;
-      if (stage1PollFailCountRef.current >= STAGE1_POLL_SYNC_FAILURE_THRESHOLD) {
-        onPollDisconnect();
-      }
+      recordPollFailure();
     }
   }, [projectId]);
 
@@ -598,7 +668,8 @@ export function ProjectExecutionEnvironmentPanel({
   const handleEnvironmentTest = useCallback(async () => {
     if (!projectId.trim()) return;
     const startMs = Date.now();
-    stage1PollFailCountRef.current = 0;
+    stage1PollFailureStreakRef.current = 0;
+    setStage1PollFailureStreak(0);
     stage1LastPollOkAtClientRef.current = null;
     setStage1PollSyncStopped(false);
     setStage1PollSyncFrozenElapsedMs(null);
@@ -1130,6 +1201,25 @@ export function ProjectExecutionEnvironmentPanel({
                 <div style={{ fontWeight: 600, color: "#1e293b" }}>
                   {stage1PollSyncStopped ? "서버와 상태를 동기화하지 못했습니다." : "연결 테스트를 시작하는 중입니다…"}
                 </div>
+                {(() => {
+                  const hint = stage1PollSyncHealthBannerText(stage1PollFailureStreak, stage1PollSyncStopped);
+                  return hint ? (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        background: "#fffbeb",
+                        border: "1px solid #fcd34d",
+                        fontSize: 11,
+                        color: "#92400e",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {hint}
+                    </div>
+                  ) : null;
+                })()}
                 {stage1PollSyncStopped ? (
                   <div
                     style={{
@@ -1204,6 +1294,18 @@ export function ProjectExecutionEnvironmentPanel({
                     const liveElapsedMs = totalMs;
                     const showRunningSuffix =
                       extending && !stage1PollSyncStopped && !terminal && liveElapsedMs != null;
+                    const phaseBase = envTestLast.stage1CurrentPhaseElapsedMsAtSnapshot;
+                    const phaseDerived = computeStage1DisplayedDerivedMs({
+                      baseMs: phaseBase,
+                      nowMs: Date.now(),
+                      pollOkAtClientMs: stage1LastPollOkAtClientRef.current,
+                      syncLost: stage1PollSyncStopped,
+                      terminal,
+                      isRunning: envTestLast.isRunning === true,
+                      pollStaleThresholdMs: envTestLast.stage1PollStaleThresholdMs,
+                    });
+                    const syncHealthHint =
+                      !terminal && stage1PollSyncHealthBannerText(stage1PollFailureStreak, stage1PollSyncStopped);
                     const stage1PrCreateFailedUi =
                       wf === EXECUTION_WORKFLOW.FAILED &&
                       (envTestLast.stage1PrCreateFailureHttpStatus != null ||
@@ -1211,6 +1313,22 @@ export function ProjectExecutionEnvironmentPanel({
                     return (
                       <>
                         <div style={{ fontWeight: 600, color: "#1e293b" }}>{statusHeadline}</div>
+                        {syncHealthHint ? (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              background: "#fffbeb",
+                              border: "1px solid #fcd34d",
+                              fontSize: 11,
+                              color: "#92400e",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {syncHealthHint}
+                          </div>
+                        ) : null}
                         {stage1PollSyncStopped && !isStage1TerminalFromDto(envTestLast) ? (
                           <div
                             style={{
@@ -1322,17 +1440,33 @@ export function ProjectExecutionEnvironmentPanel({
                               </span>
                             </div>
                             {STAGE1_TIMING_ROW_KEYS.map((k) => {
-                              const ms = computeStage1BreakdownRowMsFromServerPhase(
-                                k,
-                                bd,
-                                envTestLast.stage1CurrentPhase ?? null,
-                                terminal ? null : liveElapsedMs
-                              );
+                              const committedRow =
+                                typeof bd?.[k] === "number" && bd[k]! > 0 ? bd[k]! : null;
+                              const phaseSnapOk =
+                                typeof phaseBase === "number" &&
+                                Number.isFinite(phaseBase) &&
+                                k === envTestLast.stage1CurrentPhase;
+                              let ms: number | null = committedRow;
+                              if (ms == null && phaseSnapOk) {
+                                ms = phaseDerived.totalMs;
+                              }
+                              if (ms == null) {
+                                ms = computeStage1BreakdownRowMsFromServerPhase(
+                                  k,
+                                  bd,
+                                  envTestLast.stage1CurrentPhase ?? null,
+                                  terminal ? null : liveElapsedMs
+                                );
+                              }
+                              const usesPhaseSnap = phaseSnapOk && committedRow == null;
                               const isLiveRow =
                                 !terminal &&
                                 envTestLast.isRunning === true &&
                                 envTestLast.stage1CurrentPhase === k &&
-                                ms != null;
+                                ms != null &&
+                                committedRow == null &&
+                                !stage1PollSyncStopped &&
+                                (usesPhaseSnap ? phaseDerived.extending : true);
                               return (
                                 <div
                                   key={k}
