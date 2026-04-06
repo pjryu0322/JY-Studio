@@ -16,6 +16,7 @@ import { ensureTaskExecutionRunColumnsReady } from "@/lib/prisma/taskExecutionRu
 import { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
 import { assertEnvTestStartReadiness } from "@/lib/service/envTestServerReadiness";
 import { parseEnvTestStage2UiFromValidationOutput } from "@/lib/service/envTestStage2PlatformActors";
+import type { EnvTestStage2TimingRecord } from "@/lib/service/envTestStage2Telemetry";
 import {
   parseEnvTestStage2TimingFromValidationOutput,
   readEnvTestStage2TimingRecord,
@@ -88,6 +89,91 @@ function deriveStage1CurrentPhase(input: {
     return "cursor";
   }
   return "cursor";
+}
+
+function msToIsoFromEpoch(ms: number | null | undefined): string | null {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return null;
+  return new Date(ms).toISOString();
+}
+
+/** timing.events 에서 stage 매칭되는 가장 이른 startTime */
+function minIsoFromTelemetryEvents(
+  events: EnvTestStage2TimingRecord["events"],
+  matchStage: (stageUpper: string) => boolean
+): string | null {
+  if (!events?.length) return null;
+  let minMs = Infinity;
+  for (const e of events) {
+    const st = String(e?.stage ?? "").trim().toUpperCase();
+    if (!matchStage(st)) continue;
+    const t = Date.parse(String(e?.startTime ?? ""));
+    if (Number.isFinite(t) && t < minMs) minMs = t;
+  }
+  return minMs < Infinity ? new Date(minMs).toISOString() : null;
+}
+
+/**
+ * Stage1 현재 페이즈 시작 시각(ISO). 런타임 모니터 → telemetry events → breakdown 누적 추정 순.
+ */
+function deriveStage1CurrentPhaseStartedAtIso(input: {
+  currentPhase: Stage1UiPhase | null;
+  rawTiming: EnvTestStage2TimingRecord | null;
+  validationOutput: string | null | undefined;
+  runCreatedAt: Date | null | undefined;
+  mergeStartedAt: Date | null | undefined;
+  breakdown: Record<string, number> | null;
+}): string | null {
+  if (!input.currentPhase) return null;
+  const runMs = input.runCreatedAt?.getTime() ?? null;
+  const bd = input.breakdown ?? {};
+  const cursorMs = typeof bd.cursor === "number" && bd.cursor > 0 ? bd.cursor : 0;
+  const brMs = typeof bd.branchDetect === "number" && bd.branchDetect > 0 ? bd.branchDetect : 0;
+  const prMs = typeof bd.prCreation === "number" && bd.prCreation > 0 ? bd.prCreation : 0;
+  const mon = parseStage2RuntimeMonitorFromValidationOutput(input.validationOutput ?? null);
+
+  if (input.currentPhase === "cursor") {
+    const pipe = input.rawTiming?.pipelineStartedAtMs;
+    if (typeof pipe === "number" && pipe > 0) return new Date(pipe).toISOString();
+    if (input.runCreatedAt) return input.runCreatedAt.toISOString();
+    return null;
+  }
+
+  if (input.currentPhase === "branchDetect") {
+    const gd = mon?.phases?.git_branch_detect?.startedAtMs;
+    const gr = mon?.phases?.git_branch_reflected?.startedAtMs;
+    const g0 =
+      gd != null && gr != null
+        ? Math.min(gd, gr)
+        : gd ?? gr ?? null;
+    const fromMon = msToIsoFromEpoch(g0);
+    if (fromMon) return fromMon;
+    const ev = minIsoFromTelemetryEvents(input.rawTiming?.events, (st) => st === "BRANCH");
+    if (ev) return ev;
+    if (runMs != null && cursorMs > 0) return new Date(runMs + cursorMs).toISOString();
+    return input.runCreatedAt?.toISOString() ?? null;
+  }
+
+  if (input.currentPhase === "prCreation") {
+    const fromMon = msToIsoFromEpoch(mon?.phases?.platform_pr_create?.startedAtMs);
+    if (fromMon) return fromMon;
+    const ev = minIsoFromTelemetryEvents(input.rawTiming?.events, (st) => st === "PR");
+    if (ev) return ev;
+    if (runMs != null) return new Date(runMs + cursorMs + brMs).toISOString();
+    return input.runCreatedAt?.toISOString() ?? null;
+  }
+
+  if (input.currentPhase === "merge") {
+    if (input.mergeStartedAt) return input.mergeStartedAt.toISOString();
+    const ev = minIsoFromTelemetryEvents(
+      input.rawTiming?.events,
+      (st) => st === "MERGE" || st === "MERGE_VERIFY" || st === "SCM"
+    );
+    if (ev) return ev;
+    if (runMs != null) return new Date(runMs + cursorMs + brMs + prMs).toISOString();
+    return null;
+  }
+
+  return null;
 }
 
 function envTestStage1FailureOneLine(input: {
@@ -425,6 +511,8 @@ export type EnvironmentTestLastDto = {
   isTerminal?: boolean | null;
   stage1CurrentPhase?: Stage1UiPhase | null;
   stage1CurrentPhaseStartedAt?: string | null;
+  /** 스냅샷 시점 현재 페이즈 경과(ms) — UI가 총 경과와 동일한 폴링·스테일 규칙으로 표시 */
+  stage1CurrentPhaseElapsedMsAtSnapshot?: number | null;
   /** GET 응답 생성 시각(서버 ms) — 클라이언트 경과 = 스냅샷 + (클라 now - 폴링 수신 시각) */
   stage1SnapshotAtMs?: number | null;
   /** 스냅샷 시점 총 경과(ms). 터미널이면 totalTimeMs와 동일 우선 */
@@ -579,16 +667,22 @@ export async function getLatestEnvironmentTestTask(
     breakdown: t1.breakdown,
   });
   const rawTiming = readEnvTestStage2TimingRecord(run0?.validationOutput ?? null);
-  const pipeMs = rawTiming?.pipelineStartedAtMs;
-  let stage1CurrentPhaseStartedAt: string | null = null;
-  if (stage1CurrentPhase === "cursor") {
-    if (typeof pipeMs === "number" && pipeMs > 0) {
-      stage1CurrentPhaseStartedAt = new Date(pipeMs).toISOString();
-    } else if (run0?.createdAt) {
-      stage1CurrentPhaseStartedAt = run0.createdAt.toISOString();
+  const stage1CurrentPhaseStartedAt = deriveStage1CurrentPhaseStartedAtIso({
+    currentPhase: stage1CurrentPhase,
+    rawTiming,
+    validationOutput: run0?.validationOutput ?? null,
+    runCreatedAt: run0?.createdAt ?? null,
+    mergeStartedAt: run0?.envTestMergeStartedAt ?? null,
+    breakdown: t1.breakdown,
+  });
+  const stage1SnapshotAtMs = Date.now();
+  let stage1CurrentPhaseElapsedMsAtSnapshot: number | null = null;
+  if (stage1CurrentPhaseStartedAt) {
+    const t0 = Date.parse(stage1CurrentPhaseStartedAt);
+    if (Number.isFinite(t0)) {
+      stage1CurrentPhaseElapsedMsAtSnapshot = Math.max(0, stage1SnapshotAtMs - t0);
     }
   }
-  const stage1SnapshotAtMs = Date.now();
   const runStartedAtMs = run0?.createdAt ? run0.createdAt.getTime() : null;
   let stage1ElapsedMsAtSnapshot: number | null = null;
   if (runStartedAtMs != null) {
@@ -634,6 +728,7 @@ export async function getLatestEnvironmentTestTask(
     isTerminal,
     stage1CurrentPhase,
     stage1CurrentPhaseStartedAt,
+    stage1CurrentPhaseElapsedMsAtSnapshot,
     stage1SnapshotAtMs,
     stage1ElapsedMsAtSnapshot,
     stage1PollStaleThresholdMs: STAGE1_POLL_STALE_THRESHOLD_MS,

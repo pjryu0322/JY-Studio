@@ -553,6 +553,7 @@ export type EnvironmentTestLastDto = {
   isTerminal?: boolean | null;
   stage1CurrentPhase?: "cursor" | "branchDetect" | "prCreation" | "merge" | null;
   stage1CurrentPhaseStartedAt?: string | null;
+  stage1CurrentPhaseElapsedMsAtSnapshot?: number | null;
   stage1SnapshotAtMs?: number | null;
   stage1ElapsedMsAtSnapshot?: number | null;
   stage1PollStaleThresholdMs?: number | null;

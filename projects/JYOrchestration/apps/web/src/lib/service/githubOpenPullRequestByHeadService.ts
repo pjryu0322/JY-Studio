@@ -5,10 +5,14 @@ import {
 } from "@/lib/integration/githubRestCommon";
 
 /**
- * GitHub REST: 열린 PR 중 head 가 owner:branch 인 항목 검색.
+ * 동일 저장소 ENV_TEST PR 조회.
+ * GitHub `GET .../pulls?head=owner:ref` 는 POST 본문의 `head`(브랜치명만)와 표기가 달라질 수 있어,
+ * `state=open` 목록을 받은 뒤 `head.ref` 가 일치하고 head 저장소가 대상 repo 인 PR만 고른다.
+ * (POST `createPull` 과 동일하게 브랜치 식별자는 ref 이름만 사용.)
  */
 export async function findOpenPullRequestByHeadBranch(input: {
   repoUrl: string;
+  /** normalizeGithubPrHeadForSameRepoCreate 등으로 정규화된 ref 이름 */
   headBranch: string;
   githubAccessToken?: string | null;
   projectId?: string | null;
@@ -22,14 +26,14 @@ export async function findOpenPullRequestByHeadBranch(input: {
   const resolved = resolveGithubOwnerRepoLoose(input.repoUrl);
   if (!resolved) return null;
   const { owner, repo } = resolved;
+  const wantRef = String(input.headBranch ?? "").trim();
+  if (!wantRef) return null;
 
+  const targetFull = `${owner}/${repo}`.toLowerCase();
   const base = githubRestApiBase();
-  const head = `${owner}:${input.headBranch}`;
-  const url = `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&head=${encodeURIComponent(
-    head
-  )}`;
+  const listUrl = `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=100`;
 
-  const res = await fetch(url, {
+  const res = await fetch(listUrl, {
     headers: {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
@@ -49,8 +53,17 @@ export async function findOpenPullRequestByHeadBranch(input: {
 
   for (const item of json) {
     if (!item || typeof item !== "object") continue;
-    const htmlUrl = (item as Record<string, unknown>).html_url;
-    const numberRaw = (item as Record<string, unknown>).number;
+    const rec = item as Record<string, unknown>;
+    const head = rec.head as Record<string, unknown> | undefined;
+    const ref = typeof head?.ref === "string" ? head.ref : null;
+    if (!ref || ref !== wantRef) continue;
+
+    const headRepo = head?.repo as Record<string, unknown> | undefined;
+    const fullName = typeof headRepo?.full_name === "string" ? headRepo.full_name.toLowerCase() : null;
+    if (fullName != null && fullName !== targetFull) continue;
+
+    const htmlUrl = rec.html_url;
+    const numberRaw = rec.number;
     const prUrl = typeof htmlUrl === "string" ? htmlUrl : null;
     const prNumber =
       typeof numberRaw === "number"
