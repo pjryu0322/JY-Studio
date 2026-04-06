@@ -41,6 +41,70 @@ function githubApiBase(): string {
   return "https://api.github.com";
 }
 
+/** `refs/heads/foo/bar` → `foo/bar` (REST 브랜치·ref 경로에 동일하게 사용). */
+export function normalizeGithubBranchNameForRestApi(branch: string): string {
+  const t = String(branch ?? "").trim();
+  if (!t) return t;
+  const prefix = "refs/heads/";
+  if (t.length >= prefix.length && t.slice(0, prefix.length).toLowerCase() === prefix.toLowerCase()) {
+    return t.slice(prefix.length);
+  }
+  return t;
+}
+
+export type GithubBranchHeadProbePlan = {
+  repoUrl: string;
+  headBranchRaw: string;
+  headBranchNormalized: string;
+  /** `/branches/{branch}` 경로 세그먼트용(슬래시 → %2F). */
+  headBranchEncodedForBranchesPath: string;
+  /** `/git/ref/{ref}` 한 세그먼트: `heads%2F...` */
+  refsHeadPathEncoded: string;
+  branchesRequestUrl: string;
+  gitRefRequestUrl: string;
+  /** 슬래시 포함 브랜치는 git ref API를 먼저 시도(일부 환경에서 branches 경로가 잘못 해석되는 경우 대비). */
+  tryGitRefFirst: boolean;
+};
+
+export type GithubBranchHeadExistsDiagnostics = {
+  headBranchRaw: string;
+  headBranchNormalized: string;
+  headBranchEncodedForBranchesPath: string;
+  refsHeadPathEncoded: string;
+  requestUrlsTried: string[];
+  resolvedVia: "branches_rest" | "git_ref" | null;
+  repoUrl: string;
+  winningRequestUrl: string | null;
+};
+
+/**
+ * 로그·프로브 계획용: 실제 호출 전 URL/인코딩을 한곳에서 계산한다.
+ */
+export function buildGithubBranchHeadProbePlan(params: {
+  repoUrl: string;
+  branch: string;
+}): GithubBranchHeadProbePlan | null {
+  const parsed = parseGithubRepoFullNameFromUrl(params.repoUrl) ?? resolveGithubRepositoryFromEnv();
+  if (!parsed) return null;
+  const { owner, repo } = parsed;
+  const api = githubApiBase();
+  const base = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  const headBranchRaw = String(params.branch ?? "").trim();
+  const headBranchNormalized = normalizeGithubBranchNameForRestApi(headBranchRaw);
+  const headBranchEncodedForBranchesPath = encodeURIComponent(headBranchNormalized);
+  const refsHeadPathEncoded = encodeURIComponent(`heads/${headBranchNormalized}`);
+  return {
+    repoUrl: params.repoUrl,
+    headBranchRaw,
+    headBranchNormalized,
+    headBranchEncodedForBranchesPath,
+    refsHeadPathEncoded,
+    branchesRequestUrl: `${base}/branches/${headBranchEncodedForBranchesPath}`,
+    gitRefRequestUrl: `${base}/git/ref/${refsHeadPathEncoded}`,
+    tryGitRefFirst: headBranchNormalized.includes("/"),
+  };
+}
+
 function parseGithubRepoFullNameFromUrl(repoUrl: string): { owner: string; repo: string } | null {
   const url = String(repoUrl ?? "").trim();
   if (!url) return null;
@@ -72,15 +136,15 @@ export async function fetchGithubBranchHeadExists(params: {
   projectId?: string | null;
   allowUnauthenticated?: boolean;
 }): Promise<
-  | { ok: true; headSha: string | null }
-  | { ok: false; code: string; message: string; httpStatus?: number }
+  | { ok: true; headSha: string | null; requestDiagnostics: GithubBranchHeadExistsDiagnostics }
+  | { ok: false; code: string; message: string; httpStatus?: number; requestDiagnostics?: GithubBranchHeadExistsDiagnostics }
 > {
-  const branch = String(params.branch ?? "").trim();
-  if (!branch) {
+  const branchRaw = String(params.branch ?? "").trim();
+  if (!branchRaw) {
     return { ok: false, code: "BRANCH_EMPTY", message: "branch 이름이 없습니다." };
   }
-  const parsed = parseGithubRepoFullNameFromUrl(params.repoUrl) ?? resolveGithubRepositoryFromEnv();
-  if (!parsed) {
+  const plan = buildGithubBranchHeadProbePlan({ repoUrl: params.repoUrl, branch: branchRaw });
+  if (!plan) {
     return { ok: false, code: "REPO_NOT_GITHUB", message: "GitHub 저장소 URL이 아닙니다.", httpStatus: 400 };
   }
   const { token } = resolveGithubRestTokenAndLog("github_branch_head_exists", params.githubAccessToken ?? null, {
@@ -93,49 +157,118 @@ export async function fetchGithubBranchHeadExists(params: {
       code: GITHUB_TOKEN_MISSING_IN_PROJECT_SETTINGS,
       message: GITHUB_REST_MISSING_TOKEN_USER_MESSAGE,
       httpStatus: 503,
+      requestDiagnostics: {
+        headBranchRaw: plan.headBranchRaw,
+        headBranchNormalized: plan.headBranchNormalized,
+        headBranchEncodedForBranchesPath: plan.headBranchEncodedForBranchesPath,
+        refsHeadPathEncoded: plan.refsHeadPathEncoded,
+        requestUrlsTried: [],
+        resolvedVia: null,
+        repoUrl: plan.repoUrl,
+        winningRequestUrl: null,
+      },
     };
   }
-  const { owner, repo } = parsed;
-  const api = githubApiBase();
-  const url = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches/${encodeURIComponent(branch)}`;
+
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    "User-Agent": "JYOrchestration/github-branch-exists",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  const urlsToTry = plan.tryGitRefFirst
+    ? [plan.gitRefRequestUrl, plan.branchesRequestUrl]
+    : [plan.branchesRequestUrl];
+
+  const requestUrlsTried: string[] = [];
+  const baseDiagnostics: Omit<GithubBranchHeadExistsDiagnostics, "requestUrlsTried" | "resolvedVia" | "winningRequestUrl"> =
+    {
+      headBranchRaw: plan.headBranchRaw,
+      headBranchNormalized: plan.headBranchNormalized,
+      headBranchEncodedForBranchesPath: plan.headBranchEncodedForBranchesPath,
+      refsHeadPathEncoded: plan.refsHeadPathEncoded,
+      repoUrl: plan.repoUrl,
+    };
+
+  function parseSuccessfulBody(txt: string, url: string): string | null {
+    try {
+      const j = JSON.parse(txt) as {
+        commit?: { sha?: string };
+        object?: { sha?: string; type?: string };
+      };
+      if (url.includes("/git/ref/")) {
+        const s = String(j?.object?.sha ?? "").trim();
+        return s || null;
+      }
+      const s = String(j?.commit?.sha ?? "").trim();
+      return s || null;
+    } catch {
+      return null;
+    }
+  }
+
   try {
-    const res = await fetch(url, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        "User-Agent": "JYOrchestration/github-branch-exists",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-    if (res.status === 404) {
+    let lastStatus = 404;
+    for (const url of urlsToTry) {
+      requestUrlsTried.push(url);
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const txt = await res.text();
+        const headSha = parseSuccessfulBody(txt, url);
+        const resolvedVia: "branches_rest" | "git_ref" = url.includes("/git/ref/") ? "git_ref" : "branches_rest";
+        return {
+          ok: true,
+          headSha,
+          requestDiagnostics: {
+            ...baseDiagnostics,
+            requestUrlsTried: [...requestUrlsTried],
+            resolvedVia,
+            winningRequestUrl: url,
+          },
+        };
+      }
+      await res.text().catch(() => {});
+      lastStatus = res.status;
+    }
+
+    const requestDiagnostics: GithubBranchHeadExistsDiagnostics = {
+      ...baseDiagnostics,
+      requestUrlsTried: [...requestUrlsTried],
+      resolvedVia: null,
+      winningRequestUrl: null,
+    };
+
+    if (lastStatus === 404) {
       return {
         ok: false,
         code: "GITHUB_BRANCH_NOT_FOUND",
         message: "브랜치 없음 또는 아직 원격에 반영되지 않음",
         httpStatus: 404,
+        requestDiagnostics,
       };
     }
-    if (!res.ok) {
-      return {
-        ok: false,
-        code: "GITHUB_BRANCH_ERROR",
-        message: `브랜치 조회 실패 HTTP ${res.status}`,
-        httpStatus: res.status,
-      };
-    }
-    const txt = await res.text();
-    let headSha: string | null = null;
-    try {
-      const j = JSON.parse(txt) as { commit?: { sha?: string } };
-      const s = String(j?.commit?.sha ?? "").trim();
-      headSha = s || null;
-    } catch {
-      headSha = null;
-    }
-    return { ok: true, headSha };
+    return {
+      ok: false,
+      code: "GITHUB_BRANCH_ERROR",
+      message: `브랜치 조회 실패 HTTP ${lastStatus}`,
+      httpStatus: lastStatus,
+      requestDiagnostics,
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, code: "GITHUB_BRANCH_EXCEPTION", message: msg, httpStatus: 502 };
+    return {
+      ok: false,
+      code: "GITHUB_BRANCH_EXCEPTION",
+      message: msg,
+      httpStatus: 502,
+      requestDiagnostics: {
+        ...baseDiagnostics,
+        requestUrlsTried: [...requestUrlsTried],
+        resolvedVia: null,
+        winningRequestUrl: null,
+      },
+    };
   }
 }
 

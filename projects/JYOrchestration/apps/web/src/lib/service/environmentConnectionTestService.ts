@@ -24,6 +24,32 @@ import {
   stage2PhaseKeyForApi,
 } from "@/lib/service/envTestStage2RuntimeMonitor";
 
+function envTestStage1FailureOneLine(input: {
+  workflowStatus: string | null;
+  taskStatus: string;
+  lastEvalSummary: string | null;
+  envTestMergeBlockedReason: string | null;
+  runEvaluationReason: string | null;
+}): string | null {
+  const collapse = (s: string | null | undefined, max: number): string | null => {
+    const t = String(s ?? "").replace(/\s+/g, " ").trim();
+    if (!t) return null;
+    return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+  };
+  const w = String(input.workflowStatus ?? "").trim().toLowerCase();
+  if (w === EXECUTION_WORKFLOW.PR_OPENED && input.envTestMergeBlockedReason?.trim()) {
+    return collapse(input.envTestMergeBlockedReason, 220);
+  }
+  if (w === EXECUTION_WORKFLOW.FAILED || w === EXECUTION_WORKFLOW.VERIFY_FAILED) {
+    return collapse(input.lastEvalSummary, 220) ?? collapse(input.runEvaluationReason, 220);
+  }
+  const ts = String(input.taskStatus ?? "").trim().toUpperCase();
+  if (ts === "FAILED") {
+    return collapse(input.lastEvalSummary, 220) ?? collapse(input.runEvaluationReason, 220);
+  }
+  return null;
+}
+
 function runtimePhaseElapsedMs(
   phase: { startedAtMs?: number; endedAtMs?: number; status?: string } | undefined,
   nowMs: number
@@ -315,6 +341,15 @@ export type EnvironmentTestLastDto = {
   stage2CursorPromptRaw?: string | null;
   stage2CursorPromptCanViewRaw?: boolean | null;
   stage2FailureMessage?: string | null;
+  /** Stage 1 패널: validationOutput envTestStage2Timing 기반(키 이름은 Stage2와 동일 저장소 사용) */
+  stage1TotalTimeMs?: number | null;
+  stage1TimingBreakdown?: Record<string, number> | null;
+  stage1TopBottleneckStage?: string | null;
+  stage1TopBottleneckMs?: number | null;
+  /** 클라이언트 경과 계산용(진행 중 런 생성 시각). 스냅샷 elapsed는 보내지 않는다. */
+  stage1RunCreatedAt?: string | null;
+  /** 실패·차단 시 한 줄 요약(UI) */
+  envTestStage1FailureLine?: string | null;
 };
 
 export async function getLatestEnvironmentTestTask(
@@ -357,6 +392,8 @@ export async function getLatestEnvironmentTestTask(
               orderBy: { createdAt: "desc" },
               take: 1,
               select: {
+                status: true,
+                createdAt: true,
                 prStatus: true,
                 branchName: true,
                 promptSnapshot: true,
@@ -365,6 +402,8 @@ export async function getLatestEnvironmentTestTask(
                 envTestRemoteBranchDeletedAt: true,
                 envTestMergeBlockedReason: true,
                 envTestMergeStartedAt: true,
+                validationOutput: true,
+                evaluationReason: true,
               },
             },
           },
@@ -393,6 +432,8 @@ export async function getLatestEnvironmentTestTask(
           orderBy: { createdAt: "desc" },
           take: 1,
           select: {
+            status: true,
+            createdAt: true,
             prStatus: true,
             branchName: true,
             promptSnapshot: true,
@@ -401,6 +442,8 @@ export async function getLatestEnvironmentTestTask(
             envTestRemoteBranchDeletedAt: true,
             envTestMergeBlockedReason: true,
             envTestMergeStartedAt: true,
+            validationOutput: true,
+            evaluationReason: true,
           },
         },
       },
@@ -411,7 +454,7 @@ export async function getLatestEnvironmentTestTask(
   const run0 = rowResolved.taskExecutionRuns[0];
   const prUrl = parsePrUrlFromRunPrStatus(run0?.prStatus ?? null);
   const branchName = rowResolved.lastOrchestrationBranch ?? run0?.branchName ?? null;
-
+  const t1 = parseEnvTestStage2TimingFromValidationOutput(run0?.validationOutput ?? null);
   const base: EnvironmentTestLastDto = {
     taskId: rowResolved.id,
     taskKind: ENV_TEST_TASK_KIND,
@@ -426,6 +469,18 @@ export async function getLatestEnvironmentTestTask(
     envTestRemoteBranchDeletedAt: run0?.envTestRemoteBranchDeletedAt?.toISOString() ?? null,
     envTestMergeBlockedReason: run0?.envTestMergeBlockedReason ?? null,
     envTestMergeStartedAt: run0?.envTestMergeStartedAt?.toISOString() ?? null,
+    stage1TotalTimeMs: t1.totalTimeMs,
+    stage1TimingBreakdown: t1.breakdown,
+    stage1TopBottleneckStage: t1.topBottleneck?.stage ?? null,
+    stage1TopBottleneckMs: t1.topBottleneck?.ms ?? null,
+    stage1RunCreatedAt: run0?.createdAt?.toISOString() ?? null,
+    envTestStage1FailureLine: envTestStage1FailureOneLine({
+      workflowStatus: rowResolved.executionWorkflowStatus,
+      taskStatus: rowResolved.status,
+      lastEvalSummary: rowResolved.lastEvalSummary,
+      envTestMergeBlockedReason: run0?.envTestMergeBlockedReason ?? null,
+      runEvaluationReason: run0?.evaluationReason ?? null,
+    }),
     cursorPromptLength: run0?.promptSnapshot?.length ?? null,
     cursorPromptPreview: run0?.promptSnapshot ? run0.promptSnapshot.slice(0, 500) : null,
     cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,

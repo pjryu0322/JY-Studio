@@ -98,6 +98,72 @@ function isStage1EnvironmentTestLast(last: Pick<EnvironmentTestLastDto, "taskKin
   return tk === "" || tk === ENV_TEST_TASK_KIND;
 }
 
+function formatStage1DurationMs(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "—";
+  if (ms === 0) return "0ms";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const sec = ms / 1000;
+  if (sec < 60) {
+    const digits = sec >= 10 ? 0 : 1;
+    return `${sec.toFixed(digits)}초`;
+  }
+  const minutes = Math.floor(sec / 60);
+  const rest = sec - minutes * 60;
+  const restLabel = rest < 0.5 ? "" : ` ${rest < 10 ? rest.toFixed(1) : Math.round(rest)}초`;
+  return `${minutes}분${restLabel}`;
+}
+
+function stage1TimingLabel(key: string): string {
+  const map: Record<string, string> = {
+    branchDetect: "브랜치 확인",
+    prCreation: "PR 생성",
+    merge: "머지",
+    cursor: "Cursor 실행",
+    executor: "실행 준비",
+  };
+  return map[key] ?? key;
+}
+
+const STAGE1_TIMING_ROW_KEYS = ["branchDetect", "prCreation", "merge", "cursor"] as const;
+
+/** 실제 파이프라인 순서(누적 경과에서 “현재 단계” 한 줄을 나눌 때 사용) */
+const STAGE1_PIPELINE_ORDER = ["cursor", "branchDetect", "prCreation", "merge"] as const;
+
+function isStage1TerminalWorkflow(wfNorm: string): boolean {
+  return (
+    wfNorm === EXECUTION_WORKFLOW.MERGED ||
+    wfNorm === EXECUTION_WORKFLOW.FAILED ||
+    wfNorm === EXECUTION_WORKFLOW.VERIFY_FAILED
+  );
+}
+
+function computeStage1BreakdownRowMs(
+  k: (typeof STAGE1_TIMING_ROW_KEYS)[number],
+  bd: Record<string, number> | null | undefined,
+  liveTotalMs: number | null
+): number | null {
+  const b = bd ?? null;
+  let sumCommitted = 0;
+  let open: (typeof STAGE1_PIPELINE_ORDER)[number] | null = null;
+  for (const step of STAGE1_PIPELINE_ORDER) {
+    const ms = typeof b?.[step] === "number" && b[step]! > 0 ? b[step]! : 0;
+    if (ms > 0) sumCommitted += ms;
+    else {
+      open = step;
+      break;
+    }
+  }
+  if (open == null) {
+    const v = typeof b?.[k] === "number" && b[k]! > 0 ? b[k]! : null;
+    return v;
+  }
+  const committed = typeof b?.[k] === "number" && b[k]! > 0 ? b[k]! : null;
+  if (committed != null) return committed;
+  if (k !== open) return null;
+  if (liveTotalMs == null || !Number.isFinite(liveTotalMs)) return null;
+  return Math.max(0, liveTotalMs - sumCommitted);
+}
+
 function environmentTestStatusMessage(
   wf: string | null | undefined,
   taskStatus: string | undefined,
@@ -184,6 +250,14 @@ export function ProjectExecutionEnvironmentPanel({
   const [githubTokenDraft, setGithubTokenDraft] = useState("");
   const [githubReplaceMode, setGithubReplaceMode] = useState(false);
   const [githubTokenRevealPlaintext, setGithubTokenRevealPlaintext] = useState<string | null>(null);
+  const [stage1DetailsOpen, setStage1DetailsOpen] = useState(false);
+  /** Stage1 경과: 클릭 시각 기준(실행 시작 리셋). `pending`은 POST 응답 전까지 */
+  const [stage1TimerSession, setStage1TimerSession] = useState<{
+    taskId: string;
+    startMs: number;
+  } | null>(null);
+  /** 1초마다 증가 — 경과 시간 표시용 리렌더 트리거 */
+  const [stage1ElapsedTick, setStage1ElapsedTick] = useState(0);
 
   const loadExecutionSetup = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -224,6 +298,45 @@ export function ProjectExecutionEnvironmentPanel({
   useEffect(() => {
     void loadEnvTestLast();
   }, [loadEnvTestLast]);
+
+  useEffect(() => {
+    if (!projectId.trim()) return;
+    const wf = envTestLast ? normalizeWorkflowForUi(envTestLast.workflowStatus) : "";
+    const inFlightStage1 =
+      envTestLast != null &&
+      isStage1EnvironmentTestLast(envTestLast) &&
+      !isStage1TerminalWorkflow(wf);
+    const active = busyEnvTest || stage1TimerSession?.taskId === "pending" || inFlightStage1;
+    if (!active) return;
+    const id = setInterval(() => {
+      setStage1ElapsedTick((x) => x + 1);
+      void loadEnvTestLast();
+    }, 1000);
+    return () => clearInterval(id);
+  }, [
+    projectId,
+    busyEnvTest,
+    stage1TimerSession?.taskId,
+    envTestLast?.taskId,
+    envTestLast?.taskKind,
+    envTestLast?.workflowStatus,
+    loadEnvTestLast,
+  ]);
+
+  useEffect(() => {
+    if (!stage1TimerSession || stage1TimerSession.taskId === "pending") return;
+    if (!envTestLast?.taskId) return;
+    if (envTestLast.taskId !== stage1TimerSession.taskId) {
+      setStage1TimerSession(null);
+    }
+  }, [envTestLast?.taskId, stage1TimerSession]);
+
+  useEffect(() => {
+    if (!envTestLast || !isStage1EnvironmentTestLast(envTestLast)) return;
+    if (!isStage1TerminalWorkflow(normalizeWorkflowForUi(envTestLast.workflowStatus))) return;
+    const tid = envTestLast.taskId;
+    setStage1TimerSession((s) => (s && s.taskId !== "pending" && s.taskId === tid ? null : s));
+  }, [envTestLast?.taskId, envTestLast?.workflowStatus, envTestLast?.taskKind]);
 
   useEffect(() => {
     if (executionSetup) return;
@@ -312,16 +425,31 @@ export function ProjectExecutionEnvironmentPanel({
 
   const handleEnvironmentTest = useCallback(async () => {
     if (!projectId.trim()) return;
+    const startMs = Date.now();
+    setStage1TimerSession({ taskId: "pending", startMs });
     setBusyEnvTest(true);
     try {
       const { res, json } = await postEnvironmentTestRun(projectId);
       const apiSuccess = Boolean(json.success);
+      const tidFromData =
+        typeof json.data?.taskId === "string" && json.data.taskId.trim()
+          ? json.data.taskId.trim()
+          : null;
       if (json.data?.last != null) {
         setEnvTestLast(json.data.last);
       } else {
         await loadEnvTestLast();
       }
+      const tid =
+        tidFromData ??
+        (json.data?.last && typeof json.data.last.taskId === "string" ? json.data.last.taskId : null);
+      if (tid) {
+        setStage1TimerSession((s) =>
+          s && s.taskId === "pending" ? { taskId: tid, startMs: s.startMs } : s
+        );
+      }
       if (!res.ok || !apiSuccess) {
+        setStage1TimerSession(null);
         setExecutionMessage(
           (typeof json.message === "string" && json.message.trim()) ||
             (res.status === 422
@@ -819,125 +947,383 @@ export function ProjectExecutionEnvironmentPanel({
                 ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다.
               </p>
             ) : null}
-            {envTestLast ? (
-              <div style={{ marginTop: 12, fontSize: 11, color: "#334155", lineHeight: 1.65 }}>
-                <div style={{ fontWeight: 800, marginBottom: 4 }}>최근 결과</div>
-                <div>
-                  {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.PR_OPENED &&
-                  envTestLast.envTestMergeStartedAt &&
-                  !envTestLast.mergedAt
-                    ? "머지 진행 중"
-                    : environmentTestStatusMessage(
-                        envTestLast.workflowStatus,
-                        envTestLast.taskStatus,
-                        envTestLast.taskKind
-                      )}
-                </div>
-                {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.MERGED &&
-                isStage1EnvironmentTestLast(envTestLast) ? (
-                  <ul
-                    style={{
-                      margin: "8px 0 0 0",
-                      paddingLeft: 18,
-                      color: "#334155",
-                      fontSize: 11,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    <li>브랜치 생성 확인</li>
-                    <li>PR 생성 확인</li>
-                    <li>머지 완료 확인</li>
-                  </ul>
-                ) : null}
-                <div style={{ marginTop: 4 }}>
-                  <span style={{ color: "#64748b" }}>작업 이름</span> {envTestLast.name}
-                </div>
-                <div>
-                  <span style={{ color: "#64748b" }}>상태</span>{" "}
-                  <span style={{ fontWeight: 700, color: "#0f172a" }}>
-                    {environmentTestWorkflowLabel(envTestLast.workflowStatus)}
-                  </span>
-                  {(() => {
-                    const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
-                    return code ? (
-                      <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}> · {code}</span>
-                    ) : null;
-                  })()}
-                  {(() => {
-                    const tk = environmentTestTaskStatusKorean(envTestLast.taskStatus);
-                    return tk ? (
-                      <span style={{ fontSize: 11, color: "#94a3b8" }}> · 작업 {tk}</span>
-                    ) : null;
-                  })()}
-                </div>
-                {envTestLast.branchName ? (
-                  <div>
-                    <span style={{ color: "#64748b" }}>브랜치</span> {envTestLast.branchName}
+            {stage1TimerSession?.taskId === "pending" ? (
+              <div style={{ marginTop: 12, fontSize: 12, color: "#334155", lineHeight: 1.65 }}>
+                <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>현재 실행 결과</div>
+                <div style={{ fontWeight: 600, color: "#1e293b" }}>연결 테스트를 시작하는 중입니다…</div>
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 10px",
+                    borderRadius: 8,
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    fontSize: 11,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ color: "#64748b" }}>경과 시간</span>
+                    <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                      {(() => {
+                        void stage1ElapsedTick;
+                        const ms = stage1TimerSession
+                          ? Math.max(0, Date.now() - stage1TimerSession.startMs)
+                          : 0;
+                        return formatStage1DurationMs(ms);
+                      })()}
+                      <span style={{ fontWeight: 500, color: "#94a3b8" }}> (진행 중)</span>
+                    </span>
                   </div>
-                ) : null}
-                {envTestLast.prUrl ? (
-                  <div>
-                    <span style={{ color: "#64748b" }}>PR</span>{" "}
-                    <a href={envTestLast.prUrl} target="_blank" rel="noreferrer">
-                      링크 열기
-                    </a>
-                  </div>
-                ) : null}
-                {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.PR_OPENED ? (
-                  <div>
-                    <span style={{ color: "#64748b" }}>머지</span>{" "}
-                    {envTestLast.envTestMergeBlockedReason ? (
-                      <span style={{ fontWeight: 800, color: "#b91c1c" }}>차단됨</span>
-                    ) : envTestLast.envTestMergeStartedAt ? (
-                      <span style={{ fontWeight: 700 }}>진행 중</span>
-                    ) : (
-                      <span style={{ fontWeight: 600 }}>대기 (자동 머지 진행)</span>
-                    )}
-                    {envTestLast.envTestMergeBlockedReason ? (
-                      <div style={{ marginTop: 4, color: "#b91c1c", fontSize: 11, fontWeight: 600 }}>
-                        머지 차단 사유: {envTestLast.envTestMergeBlockedReason}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.MERGED ? (
-                  <div>
-                    <span style={{ color: "#64748b" }}>머지</span>{" "}
-                    <span style={{ fontWeight: 700, color: "#15803d" }}>완료</span>
-                    {envTestLast.mergeCommitSha ? (
-                      <span style={{ marginLeft: 6, color: "#64748b", fontFamily: "monospace", fontSize: 10 }}>
-                        {envTestLast.mergeCommitSha.slice(0, 7)}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-                {envTestLast.mergedAt ? (
-                  <div>
-                    <span style={{ color: "#64748b" }}>머지 시각</span> {formatTestedAt(envTestLast.mergedAt)}
-                  </div>
-                ) : null}
-                {envTestLast.envTestRemoteBranchDeletedAt ? (
-                  <div style={{ color: "#15803d", fontWeight: 700 }}>
-                    브랜치 정리가 완료되었습니다 ({formatTestedAt(envTestLast.envTestRemoteBranchDeletedAt)})
-                  </div>
-                ) : null}
-                {(() => {
-                  const line = environmentTestFollowUpLine(envTestLast);
-                  if (!line) return null;
-                  return (
-                    <div style={{ marginTop: 6 }}>
-                      <span style={{ color: "#64748b" }}>후속 진행</span>{" "}
-                      <span style={{ color: "#334155" }}>{line}</span>
-                      {envTestLast.nextTaskReady === true && envTestLast.nextTaskName ? (
-                        <span style={{ fontSize: 11, color: "#64748b" }}> · {envTestLast.nextTaskName}</span>
-                      ) : null}
-                    </div>
-                  );
-                })()}
-                <div style={{ marginTop: 4, color: "#64748b" }}>
-                  업데이트 {formatTestedAt(envTestLast.updatedAt)}
                 </div>
               </div>
+            ) : envTestLast ? (
+              isStage1EnvironmentTestLast(envTestLast) ? (
+                <div style={{ marginTop: 12, fontSize: 12, color: "#334155", lineHeight: 1.65 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>현재 실행 결과</div>
+                  {(() => {
+                    const wf = normalizeWorkflowForUi(envTestLast.workflowStatus);
+                    const mergeInProgress =
+                      wf === EXECUTION_WORKFLOW.PR_OPENED &&
+                      Boolean(envTestLast.envTestMergeStartedAt) &&
+                      !envTestLast.mergedAt;
+                    const statusHeadline = mergeInProgress
+                      ? "머지 진행 중"
+                      : environmentTestStatusMessage(
+                          envTestLast.workflowStatus,
+                          envTestLast.taskStatus,
+                          envTestLast.taskKind
+                        );
+                    const bd = envTestLast.stage1TimingBreakdown ?? null;
+                    const terminal = isStage1TerminalWorkflow(wf);
+                    let liveElapsedMs: number | null = null;
+                    if (!terminal) {
+                      let anchor: number | null = null;
+                      if (
+                        stage1TimerSession &&
+                        stage1TimerSession.taskId === envTestLast.taskId
+                      ) {
+                        anchor = stage1TimerSession.startMs;
+                      }
+                      if (anchor == null && envTestLast.stage1RunCreatedAt) {
+                        const p = Date.parse(envTestLast.stage1RunCreatedAt);
+                        if (Number.isFinite(p)) anchor = p;
+                      }
+                      if (anchor != null) {
+                        void stage1ElapsedTick;
+                        liveElapsedMs = Math.max(0, Date.now() - anchor);
+                      }
+                    }
+                    const totalMs = terminal
+                      ? typeof envTestLast.stage1TotalTimeMs === "number" &&
+                        envTestLast.stage1TotalTimeMs >= 0
+                        ? envTestLast.stage1TotalTimeMs
+                        : null
+                      : liveElapsedMs;
+                    const showRunningSuffix = !terminal && liveElapsedMs != null;
+                    return (
+                      <>
+                        <div style={{ fontWeight: 600, color: "#1e293b" }}>{statusHeadline}</div>
+                        <div style={{ marginTop: 6, fontSize: 11 }}>
+                          <span style={{ color: "#64748b" }}>현재 상태</span>{" "}
+                          <strong style={{ color: "#0f172a" }}>
+                            {environmentTestWorkflowLabel(envTestLast.workflowStatus)}
+                          </strong>
+                        </div>
+                        {envTestLast.envTestStage1FailureLine ? (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              color: "#b91c1c",
+                              fontWeight: 600,
+                              fontSize: 11,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {envTestLast.envTestStage1FailureLine}
+                          </div>
+                        ) : null}
+                        <div
+                          style={{
+                            marginTop: 10,
+                            padding: "10px 10px",
+                            borderRadius: 8,
+                            background: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                            fontSize: 11,
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>수행 시간</div>
+                          <div style={{ display: "grid", gap: 4 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                              <span style={{ color: "#64748b" }}>총 수행 시간</span>
+                              <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                                {formatStage1DurationMs(totalMs)}
+                                {showRunningSuffix ? (
+                                  <span style={{ fontWeight: 500, color: "#94a3b8" }}> (진행 중)</span>
+                                ) : null}
+                              </span>
+                            </div>
+                            {STAGE1_TIMING_ROW_KEYS.map((k) => {
+                              const ms = computeStage1BreakdownRowMs(
+                                k,
+                                bd,
+                                terminal ? null : liveElapsedMs
+                              );
+                              return (
+                                <div
+                                  key={k}
+                                  style={{ display: "flex", justifyContent: "space-between", gap: 12 }}
+                                >
+                                  <span style={{ color: "#64748b" }}>{stage1TimingLabel(k)}</span>
+                                  <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                                    {formatStage1DurationMs(ms)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {terminal &&
+                          typeof envTestLast.stage1TopBottleneckMs === "number" &&
+                          envTestLast.stage1TopBottleneckMs > 0 &&
+                          envTestLast.stage1TopBottleneckStage ? (
+                            <div style={{ marginTop: 8, fontSize: 10, color: "#64748b" }}>
+                              가장 긴 단계:{" "}
+                              <strong style={{ color: "#334155" }}>
+                                {stage1TimingLabel(envTestLast.stage1TopBottleneckStage)}
+                              </strong>{" "}
+                              ({formatStage1DurationMs(envTestLast.stage1TopBottleneckMs)})
+                            </div>
+                          ) : null}
+                        </div>
+                        <div style={{ marginTop: 10, fontSize: 11 }}>
+                          {envTestLast.branchName ? (
+                            <div>
+                              <span style={{ color: "#64748b" }}>브랜치</span>{" "}
+                              <code style={{ fontSize: 11 }}>{envTestLast.branchName}</code>
+                            </div>
+                          ) : null}
+                          {envTestLast.prUrl ? (
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ color: "#64748b" }}>PR</span>{" "}
+                              <a href={envTestLast.prUrl} target="_blank" rel="noreferrer">
+                                링크 열기
+                              </a>
+                            </div>
+                          ) : null}
+                          {wf === EXECUTION_WORKFLOW.MERGED && envTestLast.mergeCommitSha ? (
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ color: "#64748b" }}>머지 커밋</span>{" "}
+                              <code style={{ fontSize: 11 }}>{envTestLast.mergeCommitSha.slice(0, 7)}</code>
+                            </div>
+                          ) : null}
+                          {wf === EXECUTION_WORKFLOW.PR_OPENED ? (
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ color: "#64748b" }}>머지 상태</span>{" "}
+                              {envTestLast.envTestMergeBlockedReason ? (
+                                <span style={{ fontWeight: 800, color: "#b91c1c" }}>차단됨</span>
+                              ) : envTestLast.envTestMergeStartedAt ? (
+                                <span style={{ fontWeight: 700 }}>진행 중</span>
+                              ) : (
+                                <span style={{ fontWeight: 600 }}>대기 (자동 머지)</span>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setStage1DetailsOpen((o) => !o)}
+                          style={{
+                            marginTop: 10,
+                            padding: 0,
+                            border: "none",
+                            background: "none",
+                            color: "#2563eb",
+                            fontWeight: 700,
+                            fontSize: 11,
+                            cursor: "pointer",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          {stage1DetailsOpen ? "추가 정보 접기" : "추가 정보 펼치기 (작업명·타임스탬프 등)"}
+                        </button>
+                        {stage1DetailsOpen ? (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: 10,
+                              borderRadius: 8,
+                              border: "1px dashed #cbd5e1",
+                              background: "#fff",
+                              fontSize: 11,
+                              color: "#475569",
+                            }}
+                          >
+                            <div>
+                              <span style={{ color: "#64748b" }}>작업 이름</span> {envTestLast.name}
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <span style={{ color: "#64748b" }}>업데이트</span>{" "}
+                              {formatTestedAt(envTestLast.updatedAt)}
+                            </div>
+                            {envTestLast.mergedAt ? (
+                              <div style={{ marginTop: 4 }}>
+                                <span style={{ color: "#64748b" }}>머지 시각</span>{" "}
+                                {formatTestedAt(envTestLast.mergedAt)}
+                              </div>
+                            ) : null}
+                            {(() => {
+                              const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
+                              return code ? (
+                                <div style={{ marginTop: 4, fontSize: 10, color: "#94a3b8" }}>
+                                  워크플로 코드 · {code}
+                                </div>
+                              ) : null;
+                            })()}
+                            {(() => {
+                              const tk = environmentTestTaskStatusKorean(envTestLast.taskStatus);
+                              return tk ? (
+                                <div style={{ marginTop: 4 }}>
+                                  <span style={{ color: "#64748b" }}>작업 상태</span> {tk}
+                                </div>
+                              ) : null;
+                            })()}
+                            {envTestLast.envTestRemoteBranchDeletedAt ? (
+                              <div style={{ marginTop: 6, color: "#15803d", fontWeight: 700 }}>
+                                브랜치 정리 완료 ({formatTestedAt(envTestLast.envTestRemoteBranchDeletedAt)})
+                              </div>
+                            ) : null}
+                            {envTestLast.envTestMergeBlockedReason &&
+                            envTestLast.envTestMergeBlockedReason !== envTestLast.envTestStage1FailureLine ? (
+                              <div style={{ marginTop: 6, color: "#b91c1c", lineHeight: 1.5 }}>
+                                머지 차단 사유(전체): {envTestLast.envTestMergeBlockedReason}
+                              </div>
+                            ) : null}
+                            {(() => {
+                              const line = environmentTestFollowUpLine(envTestLast);
+                              if (!line) return null;
+                              return (
+                                <div style={{ marginTop: 6 }}>
+                                  <span style={{ color: "#64748b" }}>후속 진행</span>{" "}
+                                  <span style={{ color: "#334155" }}>{line}</span>
+                                  {envTestLast.nextTaskReady === true && envTestLast.nextTaskName ? (
+                                    <span style={{ fontSize: 11, color: "#64748b" }}>
+                                      {" "}
+                                      · {envTestLast.nextTaskName}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div style={{ marginTop: 12, fontSize: 11, color: "#334155", lineHeight: 1.65 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 4 }}>최근 결과</div>
+                  <div>
+                    {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.PR_OPENED &&
+                    envTestLast.envTestMergeStartedAt &&
+                    !envTestLast.mergedAt
+                      ? "머지 진행 중"
+                      : environmentTestStatusMessage(
+                          envTestLast.workflowStatus,
+                          envTestLast.taskStatus,
+                          envTestLast.taskKind
+                        )}
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <span style={{ color: "#64748b" }}>작업 이름</span> {envTestLast.name}
+                  </div>
+                  <div>
+                    <span style={{ color: "#64748b" }}>상태</span>{" "}
+                    <span style={{ fontWeight: 700, color: "#0f172a" }}>
+                      {environmentTestWorkflowLabel(envTestLast.workflowStatus)}
+                    </span>
+                    {(() => {
+                      const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
+                      return code ? (
+                        <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}> · {code}</span>
+                      ) : null;
+                    })()}
+                    {(() => {
+                      const tk = environmentTestTaskStatusKorean(envTestLast.taskStatus);
+                      return tk ? (
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}> · 작업 {tk}</span>
+                      ) : null;
+                    })()}
+                  </div>
+                  {envTestLast.branchName ? (
+                    <div>
+                      <span style={{ color: "#64748b" }}>브랜치</span> {envTestLast.branchName}
+                    </div>
+                  ) : null}
+                  {envTestLast.prUrl ? (
+                    <div>
+                      <span style={{ color: "#64748b" }}>PR</span>{" "}
+                      <a href={envTestLast.prUrl} target="_blank" rel="noreferrer">
+                        링크 열기
+                      </a>
+                    </div>
+                  ) : null}
+                  {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.PR_OPENED ? (
+                    <div>
+                      <span style={{ color: "#64748b" }}>머지</span>{" "}
+                      {envTestLast.envTestMergeBlockedReason ? (
+                        <span style={{ fontWeight: 800, color: "#b91c1c" }}>차단됨</span>
+                      ) : envTestLast.envTestMergeStartedAt ? (
+                        <span style={{ fontWeight: 700 }}>진행 중</span>
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>대기 (자동 머지 진행)</span>
+                      )}
+                      {envTestLast.envTestMergeBlockedReason ? (
+                        <div style={{ marginTop: 4, color: "#b91c1c", fontSize: 11, fontWeight: 600 }}>
+                          머지 차단 사유: {envTestLast.envTestMergeBlockedReason}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {normalizeWorkflowForUi(envTestLast.workflowStatus) === EXECUTION_WORKFLOW.MERGED ? (
+                    <div>
+                      <span style={{ color: "#64748b" }}>머지</span>{" "}
+                      <span style={{ fontWeight: 700, color: "#15803d" }}>완료</span>
+                      {envTestLast.mergeCommitSha ? (
+                        <span style={{ marginLeft: 6, color: "#64748b", fontFamily: "monospace", fontSize: 10 }}>
+                          {envTestLast.mergeCommitSha.slice(0, 7)}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {envTestLast.mergedAt ? (
+                    <div>
+                      <span style={{ color: "#64748b" }}>머지 시각</span> {formatTestedAt(envTestLast.mergedAt)}
+                    </div>
+                  ) : null}
+                  {envTestLast.envTestRemoteBranchDeletedAt ? (
+                    <div style={{ color: "#15803d", fontWeight: 700 }}>
+                      브랜치 정리가 완료되었습니다 ({formatTestedAt(envTestLast.envTestRemoteBranchDeletedAt)})
+                    </div>
+                  ) : null}
+                  {(() => {
+                    const line = environmentTestFollowUpLine(envTestLast);
+                    if (!line) return null;
+                    return (
+                      <div style={{ marginTop: 6 }}>
+                        <span style={{ color: "#64748b" }}>후속 진행</span>{" "}
+                        <span style={{ color: "#334155" }}>{line}</span>
+                        {envTestLast.nextTaskReady === true && envTestLast.nextTaskName ? (
+                          <span style={{ fontSize: 11, color: "#64748b" }}> · {envTestLast.nextTaskName}</span>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+                  <div style={{ marginTop: 4, color: "#64748b" }}>
+                    업데이트 {formatTestedAt(envTestLast.updatedAt)}
+                  </div>
+                </div>
+              )
             ) : null}
           </div>
           {githubAuthSlot}
