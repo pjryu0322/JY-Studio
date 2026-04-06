@@ -38,6 +38,20 @@ export type EnvTestStage2TimingRecord = {
   topBottleneck?: { stage: string; ms: number } | null;
 };
 
+/** validationOutput JSON에서 타이밍 레코드만 읽기(파이프라인 시작 ms 등) */
+export function readEnvTestStage2TimingRecord(
+  validationOutput: string | null | undefined
+): EnvTestStage2TimingRecord | null {
+  try {
+    const j = JSON.parse(String(validationOutput ?? "")) as Record<string, unknown>;
+    const t = j[ENV_TEST_STAGE2_TIMING_KEY] as EnvTestStage2TimingRecord | undefined;
+    if (!t || typeof t !== "object") return null;
+    return t;
+  } catch {
+    return null;
+  }
+}
+
 export function parseEnvTestStage2TimingFromValidationOutput(validationOutput: string | null | undefined): {
   totalTimeMs: number | null;
   topBottleneck: { stage: string; ms: number } | null;

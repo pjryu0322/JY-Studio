@@ -549,6 +549,14 @@ export type EnvironmentTestLastDto = {
   stage1PrCreateFailureHttpStatus?: number | null;
   stage1PrCreateFailureBranch?: string | null;
   stage1PrCreateFailureGithubCode?: string | null;
+  isRunning?: boolean | null;
+  isTerminal?: boolean | null;
+  stage1CurrentPhase?: "cursor" | "branchDetect" | "prCreation" | "merge" | null;
+  stage1CurrentPhaseStartedAt?: string | null;
+  stage1SnapshotAtMs?: number | null;
+  stage1ElapsedMsAtSnapshot?: number | null;
+  stage1PollStaleThresholdMs?: number | null;
+  stage1ExecutionRunId?: string | null;
 };
 
 export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage?: 2 }) {
