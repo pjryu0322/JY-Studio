@@ -76,7 +76,7 @@ const STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS = parsePositiveIntMs(
   { min: 0, max: 10_000 }
 );
 
-/** Stage1 PR-first: PR POST 전파 재시도(별도 head 게이트 없음; 1s×N ≈ 수십 초 상한). */
+/** Stage1 스모크: PR 단일 프로브 재시도(1s×최대 8회, env 상한 8). */
 const ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS = parsePositiveIntMs(
   "CURSOR_ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS",
   1000,
@@ -84,8 +84,8 @@ const ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS = parsePositiveIntMs(
 );
 const ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX = parsePositiveInt(
   "CURSOR_ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX",
-  10,
-  { min: 1, max: 25 }
+  6,
+  { min: 1, max: 8 }
 );
 
 export function getEnvTestStage1PrFirstRetryConfig(): { intervalMs: number; maxAttempts: number } {
@@ -324,36 +324,6 @@ function uniqueNonEmptyBranchCandidates(...parts: (string | null | undefined)[])
   return out;
 }
 
-function logEnvTestBranchSourceOfTruth(ctx: {
-  projectId: string;
-  taskId: string;
-  actorUserId: string;
-  plannedBranchName: string;
-  promptBranchName: string;
-  trackedBranchName: string | null;
-  cursorReportedBranch: string | null | undefined;
-  signalBranchNameHint: string | null;
-  effectiveGithubHead: string;
-}): void {
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_branch_name_alignment",
-    projectId: ctx.projectId,
-    taskId: ctx.taskId,
-    userId: ctx.actorUserId,
-    detail: {
-      plannedBranchName: ctx.plannedBranchName || null,
-      promptBranchName: ctx.promptBranchName || null,
-      trackedBranchName: ctx.trackedBranchName,
-      cursorReportedBranch: ctx.cursorReportedBranch ?? null,
-      signalBranchNameHint: ctx.signalBranchNameHint,
-      effectiveGithubHead: ctx.effectiveGithubHead,
-      prHeadBranchResolved: ctx.effectiveGithubHead,
-      prHeadBranchName: ctx.effectiveGithubHead,
-    },
-  });
-}
-
 /**
  * ENV_TEST 전용 헬퍼 진입 방어. 위반 시 로그 후 throw(부분 DB 갱신 없음).
  * Shared compare/PR 서비스는 그대로 두고, 이 모듈의 오케스트레이션만 게이트한다.
@@ -401,6 +371,8 @@ export async function runEnvTestPlatformPrPhase(input: {
   execRunId?: string | null;
   /** Stage1 PR-first: createOrUpdate 실패 시 재시도(브랜치 반영 지연 흡수). */
   stage1PrCreateRetry?: { intervalMs: number; maxAttempts: number } | null;
+  /** Stage1 스모크: `env_test_stage1_pr_create_started`·`env_test_pr_lookup_started` 생략 */
+  stage1MinimalExecutionLogs?: boolean;
 }): Promise<
   | { ok: true; prUrl: string; prNumber: number; reusedExisting: boolean; prElapsedMs: number }
   | {
@@ -434,7 +406,7 @@ export async function runEnvTestPlatformPrPhase(input: {
     });
     await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorPlatformPrStart(m, Date.now()));
   }
-  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId) {
+  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId && !input.stage1MinimalExecutionLogs) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_stage1_pr_create_started",
@@ -448,14 +420,16 @@ export async function runEnvTestPlatformPrPhase(input: {
       },
     });
   }
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_pr_lookup_started",
-    projectId: input.projectId,
-    taskId: input.taskId,
-    userId: input.actorUserId,
-    detail: { headBranch: input.headBranch, elapsedMsSinceRunStart },
-  });
+  if (!input.stage1MinimalExecutionLogs || !isEnvTestStage1TaskKind(input.taskKind)) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_pr_lookup_started",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: { headBranch: input.headBranch, elapsedMsSinceRunStart },
+    });
+  }
   const retryCfg =
     isEnvTestStage1TaskKind(input.taskKind) && input.stage1PrCreateRetry
       ? input.stage1PrCreateRetry
@@ -516,7 +490,7 @@ export async function runEnvTestPlatformPrPhase(input: {
         break;
       }
 
-      const retryable = isEnvTestPullRequestCreateRetryableForStage1HeadDelay(prRes);
+      const retryable = isEnvTestPullRequestCreateRetryableForStage1HeadDelay(prRes, { attemptCount });
       appendTaskProgressLog({
         kind: "execution",
         phase: "env_test_pr_create_failed",
@@ -583,6 +557,13 @@ export async function runEnvTestPlatformPrPhase(input: {
   }
 
   if (!prRes.ok) {
+    const prElapsedMsOnFailure = Date.now() - prPhaseStartedAt;
+    if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId) {
+      await patchTaskExecutionRunStage2Timing(input.execRunId, {
+        executionId: input.execRunId,
+        prCreationTimeMs: prElapsedMsOnFailure,
+      });
+    }
     const suffix = stage1PrFailureSuffix ?? "";
     const httpStatus = "httpStatus" in prRes && typeof prRes.httpStatus === "number" ? prRes.httpStatus : undefined;
     const githubPrCode = "code" in prRes && typeof prRes.code === "string" ? prRes.code : undefined;
@@ -695,6 +676,8 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
    * 미지정 시 `pushed_by_github_compare`.
    */
   execRunPushStatusAfterReflect?: "pushed_by_github_compare" | "pushed_by_cursor";
+  /** Stage1 스모크: `stage1_phase_transition`·`env_test_pr_lookup_started` 등 보조 로그 생략 */
+  stage1MinimalExecutionLogs?: boolean;
 }): Promise<
   | { kind: "return"; result: RunExecutionLoopResult }
   | { kind: "continue_loop" }
@@ -762,7 +745,9 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
                   ? "ENV_TEST(Stage1): 원격 브랜치 존재 확인. 플랫폼이 PR을 생성·갱신합니다."
                   : input.via === "stage1_post_cursor_pr_probe"
                     ? "ENV_TEST(Stage1): Cursor 푸시 후 PR 생성(재시도)으로 GitHub 반영을 확인합니다."
-                    : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
+                    : input.via === "stage1_simple_smoke"
+                      ? "ENV_TEST(Stage1): 스모크 — PR 생성·머지."
+                      : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
 
   const taskAfterCommitted = await prisma.task.update({
     where: { id: input.taskId },
@@ -774,7 +759,7 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     select: { status: true, executionWorkflowStatus: true },
   });
 
-  if (isEnvTestStage1TaskKind(input.taskKind)) {
+  if (isEnvTestStage1TaskKind(input.taskKind) && !input.stage1MinimalExecutionLogs) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "stage1_phase_transition",
@@ -815,6 +800,7 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     compareOkAtMs: input.compareData.compareOkAtMs ?? null,
     execRunId: input.execRunId,
     stage1PrCreateRetry: input.stage1PrCreateRetry ?? null,
+    stage1MinimalExecutionLogs: input.stage1MinimalExecutionLogs ?? false,
   });
   if (!prPhase.ok) {
     if (isEnvTestStage2TaskKind(input.taskKind)) {
@@ -910,10 +896,9 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
 }
 
 /**
- * Stage 1 (ENV_TEST) 전용: Cursor 푸시 후 **PR 생성(짧은 재시도)** 만으로 GitHub 준비 여부를 본다.
- * 별도 원격 브랜치 HEAD/compare 프로브 없음. head 브랜치 이름만 후보에서 고른 뒤 `runEnvTestPlatformPrPhase`가 단일 프로브.
+ * Stage 1 (ENV_TEST) 스모크: **push → PR(단일 프로브) → merge**. compare·원격 HEAD·head 게이트 없음.
  */
-export async function runStage1EnvTestBranchToPrPipeline(input: {
+export async function runStage1EnvTestSimplePipeline(input: {
   projectId: string;
   taskId: string;
   taskKind: string | null;
@@ -933,14 +918,14 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
   | { kind: "return"; result: RunExecutionLoopResult }
   | { kind: "continue_loop" }
 > {
-  requireEnvTestFamilyTaskKindForFinalize(input.taskKind, "runStage1EnvTestBranchToPrPipeline", {
+  requireEnvTestFamilyTaskKindForFinalize(input.taskKind, "runStage1EnvTestSimplePipeline", {
     projectId: input.projectId,
     taskId: input.taskId,
     actorUserId: input.actorUserId,
   });
   if (!isEnvTestStage1TaskKind(input.taskKind)) {
     throw new Error(
-      "[runStage1EnvTestBranchToPrPipeline] taskKind must be ENV_TEST (Stage 1); Stage 2 uses reflection/bypass pipelines."
+      "[runStage1EnvTestSimplePipeline] taskKind must be ENV_TEST (Stage 1); Stage 2 uses reflection/bypass pipelines."
     );
   }
 
@@ -954,7 +939,6 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
   const trackedBranchName = String(runMonRow?.branchName ?? "").trim();
 
   const planned = String(input.plannedBranchName ?? "").trim();
-  const promptBr = String(input.promptBranchName ?? "").trim();
   const cursorPick = pickEnvTestHeadBranch({
     cursorBranchName: cr.branchName,
     signalBranchNameHint,
@@ -964,18 +948,6 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
   const primaryHead = candidates[0] ?? "";
 
   if (!primaryHead) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_stage1_branch_unknown",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: {
-        plannedBranchName: planned || null,
-        trackedBranchName: trackedBranchName || null,
-        cursorReportedBranch: cr.branchName ?? null,
-      },
-    });
     await prisma.taskExecutionRun.update({
       where: { id: execRunId },
       data: {
@@ -1003,36 +975,17 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     };
   }
 
-  logEnvTestBranchSourceOfTruth({
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage1_started",
     projectId,
     taskId,
-    actorUserId,
-    plannedBranchName: planned,
-    promptBranchName: promptBr,
-    trackedBranchName: trackedBranchName || null,
-    cursorReportedBranch: cr.branchName,
-    signalBranchNameHint,
-    effectiveGithubHead: primaryHead,
-  });
-
-  if (planned && trackedBranchName && planned !== trackedBranchName) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_branch_name_mismatch_warning",
-      projectId,
-      taskId,
-      userId: actorUserId,
-      detail: {
-        plannedBranchName: planned,
-        trackedBranchName,
-        note: "TaskExecutionRun.branchName differs from planned branch at pipeline entry",
-      },
-    });
-  }
-
-  await prisma.task.update({
-    where: { id: taskId },
-    data: { executionWorkflowStatus: EXECUTION_WORKFLOW.REVIEWING },
+    userId: actorUserId,
+    detail: {
+      executionId: execRunId,
+      branchName: primaryHead,
+      cursorRunId: cr.runId,
+    },
   });
 
   await prisma.taskExecutionRun.update({
@@ -1051,14 +1004,14 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
   });
 
   input.steps.push({
-    phase: "git_reflection_gate",
+    phase: "stage1_smoke",
     taskId,
     runId: cr.runId,
     branch: primaryHead,
     commitHash: cr.commitHash ?? null,
     changedFileCount: cr.changedFiles.length,
     passed: true,
-    reason: "stage1_pr_creation_probe",
+    reason: "stage1_simple_smoke_pr",
   });
 
   const outPr = await runEnvTestAfterGithubPushConfirmed({
@@ -1082,12 +1035,13 @@ export async function runStage1EnvTestBranchToPrPipeline(input: {
     effectiveAutoAdvance: input.effectiveAutoAdvance,
     cursorRunId: cr.runId,
     cursorSummary: cr.summary,
-    via: "stage1_post_cursor_pr_probe",
-    pushDetectedSource: "stage1_pr_creation_probe",
+    via: "stage1_simple_smoke",
+    pushDetectedSource: "stage1_simple_smoke",
     executionRunCreatedAt: input.execRunCreatedAt,
     branchDetectElapsedMs: null,
     stage1PrCreateRetry: getEnvTestStage1PrFirstRetryConfig(),
     execRunPushStatusAfterReflect: "pushed_by_cursor",
+    stage1MinimalExecutionLogs: true,
   });
 
   if (outPr.kind === "pr_failed") {
@@ -1110,7 +1064,7 @@ export type EnvTestReflectionNotConfirmedBypassResult =
 
 /**
  * Stage 2 (ENV_TEST_STAGE2) 전용: reflection 미확인 시 GitHub compare·Stage2 게이트로 PR 경로 시도.
- * Stage 1은 `runStage1EnvTestBranchToPrPipeline`(플랫폼 브랜치 우선, reflection 비의존).
+ * Stage 1은 `runStage1EnvTestSimplePipeline`(스모크: PR 단일 프로브).
  */
 export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   projectId: string;
@@ -1135,7 +1089,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   });
   if (!isEnvTestStage2TaskKind(input.taskKind)) {
     throw new Error(
-      "[runEnvTestReflectionNotConfirmedGithubBypass] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestBranchToPrPipeline"
+      "[runEnvTestReflectionNotConfirmedGithubBypass] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestSimplePipeline"
     );
   }
 
@@ -1391,7 +1345,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
 
 /**
  * Stage 2 (ENV_TEST_STAGE2) 전용: Cursor reflection 게이트 통과 후 compare → COMMITTED → 플랫폼 PR → finalize → PR_OPENED.
- * Stage 1은 `runStage1EnvTestBranchToPrPipeline` (플랫폼 브랜치 우선·reflection 비의존).
+ * Stage 1은 `runStage1EnvTestSimplePipeline` (스모크 파이프라인).
  */
 export async function runEnvTestReflectionConfirmedPipeline(input: {
   projectId: string;
@@ -1415,7 +1369,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   });
   if (!isEnvTestStage2TaskKind(input.taskKind)) {
     throw new Error(
-      "[runEnvTestReflectionConfirmedPipeline] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestBranchToPrPipeline"
+      "[runEnvTestReflectionConfirmedPipeline] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestSimplePipeline"
     );
   }
 
@@ -2703,7 +2657,7 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
         stage1RunBranch?.createdAt != null ? Date.now() - stage1RunBranch.createdAt.getTime() : null;
       appendTaskProgressLog({
         kind: "execution",
-        phase: "env_test_stage1_merge_completed",
+        phase: "env_test_stage1_done",
         projectId: input.projectId,
         taskId: input.taskId,
         userId: input.actorUserId,
@@ -2713,19 +2667,6 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
           mergeCommitSha: mergeRes.mergeCommitSha ?? null,
           prNumber: input.prNumber,
           totalElapsedSinceRunMs,
-        },
-      });
-      appendTaskProgressLog({
-        kind: "execution",
-        phase: "env_test_stage1_finished",
-        projectId: input.projectId,
-        taskId: input.taskId,
-        userId: input.actorUserId,
-        detail: {
-          executionId: input.execRunId,
-          mergeElapsedMs,
-          totalElapsedSinceRunMs,
-          prNumber: input.prNumber,
           outcome: "success",
         },
       });
