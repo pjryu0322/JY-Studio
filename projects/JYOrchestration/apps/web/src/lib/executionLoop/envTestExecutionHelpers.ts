@@ -16,7 +16,6 @@ import {
 } from "@/lib/service/githubEnvTestPullRequestService";
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
-import { resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
 import {
   buildEnvTestStage2ReviewRequest,
@@ -117,15 +116,11 @@ export async function applyStage1EnvTestPrCreateTerminalFailure(input: {
 }): Promise<void> {
   const http = input.httpStatus != null && Number.isFinite(input.httpStatus) ? input.httpStatus : null;
   const head = String(input.headBranch ?? "").trim() || null;
-  const headRaw = String(input.headBranchRaw ?? "").trim() || head;
-  const headNorm = String(input.headBranchNormalized ?? "").trim() || head;
-  const headSent = String(input.headSentToGithub ?? "").trim() || headNorm || head;
   const ghCode = String(input.githubPrCode ?? "").trim();
   const summaryPrefix = http != null ? `ENV_TEST(Stage1) PR 실패 [http=${http}]` : `ENV_TEST(Stage1) PR 실패`;
   const ghPart = ghCode ? ` [gh=${ghCode}]` : "";
   const branchPart = head ? ` 브랜치=${head}` : "";
   const lastEvalSummary = `${summaryPrefix}${ghPart}${branchPart}: ${input.message}`.slice(0, 2000);
-  const repoParsed = input.repoUrl ? resolveGithubOwnerRepoStrict(input.repoUrl) : null;
 
   await prisma.taskExecutionRun.update({
     where: { id: input.execRunId },
@@ -146,62 +141,6 @@ export async function applyStage1EnvTestPrCreateTerminalFailure(input: {
   });
   await refreshWorkflowStates(input.projectId);
 
-  const detail = {
-    executionId: input.execRunId,
-    repoOwner: repoParsed?.owner ?? null,
-    repoName: repoParsed?.repo ?? null,
-    baseBranch: input.baseBranch ?? null,
-    httpStatus: http,
-    headBranch: head,
-    headBranchRaw: headRaw || null,
-    headBranchNormalized: headNorm || null,
-    headSentToGithub: headSent || null,
-    githubPrCode: ghCode || null,
-    messageExcerpt: input.message.slice(0, 800),
-  };
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "stage1_terminal_failure_applied",
-    projectId: input.projectId,
-    taskId: input.taskId,
-    userId: input.actorUserId,
-    detail,
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "stage1_execution_terminal_applied",
-    projectId: input.projectId,
-    taskId: input.taskId,
-    userId: input.actorUserId,
-    detail: {
-      ...detail,
-      currentPhase: null,
-      workflowStatus: EXECUTION_WORKFLOW.FAILED,
-      taskStatus: "FAILED",
-    },
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "stage1_timer_stopped_reason",
-    projectId: input.projectId,
-    taskId: input.taskId,
-    userId: input.actorUserId,
-    detail: {
-      executionId: input.execRunId,
-      reason: "stage1_pr_create_terminal_failure",
-      currentPhase: null,
-      workflowStatus: EXECUTION_WORKFLOW.FAILED,
-      taskStatus: "FAILED",
-    },
-  });
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "execution_timer_stopped_due_to_terminal_state",
-    projectId: input.projectId,
-    taskId: input.taskId,
-    userId: input.actorUserId,
-    detail: { ...detail, note: "Stage1 PR create terminal FAILED" },
-  });
 }
 
 async function failEnvTestStage2WithCode(input: {
@@ -642,18 +581,6 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     actorUserId: input.actorUserId,
   });
   if (isEnvTestStage1TaskKind(input.taskKind)) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "execution_scope_guard_blocked",
-      projectId: input.projectId,
-      taskId: input.taskId,
-      userId: input.actorUserId,
-      detail: {
-        callee: "runEnvTestAfterGithubPushConfirmed",
-        reason: "ENV_TEST (Stage1) must use runStage1EnvTestPrSmokePath only",
-        taskKind: input.taskKind,
-      },
-    });
     throw new Error(
       "[runEnvTestAfterGithubPushConfirmed] Stage1 (ENV_TEST) must use runStage1EnvTestPrSmokePath / runStage1EnvTestSimplePipeline only"
     );
@@ -833,7 +760,6 @@ export async function runStage1EnvTestPrSmokePath(input: {
   steps: LoopStepRecord[];
   singleTaskId?: string;
   effectiveAutoAdvance: boolean;
-  via: "stage1_simple_smoke" | "cursor_poll_stage1_pr_first";
   stage1PrCreateRetry?: { intervalMs: number; maxAttempts: number } | null;
 }): Promise<
   | { kind: "return"; result: RunExecutionLoopResult }
@@ -844,6 +770,19 @@ export async function runStage1EnvTestPrSmokePath(input: {
     projectId: input.projectId,
     taskId: input.taskId,
     actorUserId: input.actorUserId,
+  });
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "env_test_stage1_started",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: {
+      executionId: input.execRunId,
+      branchName: input.branchName,
+      cursorRunId: input.cursorRunId ?? null,
+    },
   });
 
   const existingRunVo = await prisma.taskExecutionRun.findUnique({
@@ -869,10 +808,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
     },
   });
 
-  const committedSummary =
-    input.via === "cursor_poll_stage1_pr_first"
-      ? "ENV_TEST(Stage1): Cursor 폴링 중 PR 스모크(PR만)."
-      : "ENV_TEST(Stage1): 스모크 — PR 생성·머지.";
+  const committedSummary = "ENV_TEST(Stage1): 스모크 — 플랫폼 PR 생성·머지.";
 
   await prisma.task.update({
     where: { id: input.taskId },
@@ -937,7 +873,6 @@ export async function runStage1EnvTestPrSmokePath(input: {
     singleTaskId: input.singleTaskId,
     effectiveAutoAdvance: input.effectiveAutoAdvance,
     cursorRunId: input.cursorRunId ?? undefined,
-    via: input.via,
     runDataPatch: {
       commitSha: input.headSha ?? null,
       changedFiles: input.changedFiles as unknown as object,
@@ -1034,19 +969,6 @@ export async function runStage1EnvTestSimplePipeline(input: {
     };
   }
 
-  appendTaskProgressLog({
-    kind: "execution",
-    phase: "env_test_stage1_started",
-    projectId,
-    taskId,
-    userId: actorUserId,
-    detail: {
-      executionId: execRunId,
-      branchName: primaryHead,
-      cursorRunId: cr.runId,
-    },
-  });
-
   input.steps.push({
     phase: "stage1_smoke",
     taskId,
@@ -1077,7 +999,6 @@ export async function runStage1EnvTestSimplePipeline(input: {
     steps: input.steps,
     singleTaskId: input.singleTaskId,
     effectiveAutoAdvance: input.effectiveAutoAdvance,
-    via: "stage1_simple_smoke",
     stage1PrCreateRetry: getEnvTestStage1PrFirstRetryConfig(),
   });
 

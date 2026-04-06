@@ -42,7 +42,7 @@ export async function runEnvTestCursorToPrOpenedCore(input: {
   const { executeParams, ctx } = input;
   const tk = executeParams.taskKind ?? null;
 
-  if (isEnvTestFamilyTaskKind(tk)) {
+  if (isEnvTestFamilyTaskKind(tk) && !isEnvTestStage1TaskKind(tk)) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_cursor_invoke_started",
