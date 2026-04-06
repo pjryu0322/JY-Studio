@@ -5,7 +5,7 @@
  * - Stage 1 Cursor 종료 후 PR 스모크: `runStage1EnvTestSimplePipeline` (runExecutionLoop에서 dispatch)
  * - Stage 2·reflection 통과 후 compare→PR→finalize: `runEnvTestReflectionConfirmedPipeline`
  * - Stage 2·reflection 미통과: `runEnvTestReflectionNotConfirmedGithubBypass` → `runEnvTestAfterGithubPushConfirmed` → finalize
- * - Cursor 폴링 우회: `runEnvTestAfterGithubPushConfirmed` → `finalizeEnvTestPrOpenedFromGithubOnly`
+ * - Cursor 폴링 우회(Stage2 등): `runEnvTestAfterGithubPushConfirmed` → `finalizeEnvTestPrOpenedFromGithubOnly` (Stage1 제외)
  * - PR_OPENED 이후: `runEnvTestPostPrOpenedMergeAndReadiness` (Stage1 merge vs Stage2 reviewer→scm)
  * - 책임 분리: Cursor는 코드 변경/commit/push까지만 담당, PR 생성/merge는 플랫폼(및 Stage2 SCM 분기)에서만 수행
  *

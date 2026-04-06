@@ -1470,18 +1470,15 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
   via:
     | "cursor_poll_early_github"
     | "cursor_poll_stage2_branch_head"
-    | "cursor_poll_stage1_branch_head"
     | "cursor_poll_stage1_pr_first";
   pushDetectedSource:
     | "cursor_poll_early_github_compare"
     | "cursor_poll_stage2_branch_head"
-    | "cursor_poll_stage1_remote_branch_head"
     | "cursor_poll_stage1_pr_first_retry";
   branchDetectElapsedMs?: number | null;
   pollStopReason:
     | "github_compare_during_poll"
     | "stage2_git_branch_head"
-    | "stage1_git_branch_head"
     | "stage1_pr_first";
   /** Stage1 PR-first: PR 실패 시 null 반환 대신 즉시 실패 반환(무한 폴링 방지). */
   failClosedOnPrFailure?: boolean;
@@ -1571,7 +1568,6 @@ async function finalizeEnvTestEarlyGithubPathFromCompareData(input: {
       branchDetectElapsedMs:
         input.branchDetectElapsedMs ??
         (input.elapsedMsLaunchToBranchConfirmed > 0 ? input.elapsedMsLaunchToBranchConfirmed : null),
-      stage1PrCreateRetry: input.stage1PrCreateRetry ?? null,
     });
   }
 

@@ -98,7 +98,7 @@ export function getEnvTestStage1PrFirstRetryConfig(): { intervalMs: number; maxA
 
 /**
  * Stage1: 플랫폼 PR 생성 실패 직후 DB·워크플로를 FAILED로 고정.
- * `runEnvTestAfterGithubPushConfirmed`가 COMMITTED까지 올린 뒤 PR 단계에서만 실패하는 경우(조기 PR-first 경로 등) UI가 "PR 처리 중"에 고착되지 않게 한다.
+ * Stage1 PR 실패 시 DB·워크플로를 FAILED로 고정해 UI가 "PR 처리 중"에 고착되지 않게 한다.
  */
 export async function applyStage1EnvTestPrCreateTerminalFailure(input: {
   projectId: string;
@@ -359,9 +359,7 @@ export async function runEnvTestPlatformPrPhase(input: {
   execRunId?: string | null;
   /** Stage1 PR-first: createOrUpdate 실패 시 재시도(브랜치 반영 지연 흡수). */
   stage1PrCreateRetry?: { intervalMs: number; maxAttempts: number } | null;
-  /** Stage1 스모크: `env_test_stage1_pr_create_started`·`env_test_pr_lookup_started` 생략 */
-  stage1MinimalExecutionLogs?: boolean;
-  /** Stage1: GitHub PR 서비스 내부 progress 로그 생략 */
+  /** Stage1: GitHub PR 서비스 내부 progress 로그 생략(스모크는 항상 생략) */
   suppressPrServiceLogs?: boolean;
 }): Promise<
   | { ok: true; prUrl: string; prNumber: number; reusedExisting: boolean; prElapsedMs: number }
@@ -396,21 +394,7 @@ export async function runEnvTestPlatformPrPhase(input: {
     });
     await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorPlatformPrStart(m, Date.now()));
   }
-  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId && !input.stage1MinimalExecutionLogs) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_stage1_pr_create_started",
-      projectId: input.projectId,
-      taskId: input.taskId,
-      userId: input.actorUserId,
-      detail: {
-        executionId: input.execRunId,
-        headBranch: input.headBranch,
-        branchName: input.headBranch,
-      },
-    });
-  }
-  if (!input.stage1MinimalExecutionLogs || !isEnvTestStage1TaskKind(input.taskKind)) {
+  if (!isEnvTestStage1TaskKind(input.taskKind)) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_pr_lookup_started",
@@ -426,8 +410,7 @@ export async function runEnvTestPlatformPrPhase(input: {
       : null;
   const maxAttempts = retryCfg?.maxAttempts ?? 1;
   const suppressGithubPrServiceLogs =
-    input.suppressPrServiceLogs === true ||
-    (isEnvTestStage1TaskKind(input.taskKind) && Boolean(input.stage1MinimalExecutionLogs));
+    input.suppressPrServiceLogs === true || isEnvTestStage1TaskKind(input.taskKind);
   const prArgs = {
     repoUrl: input.repoUrl,
     baseBranch: input.baseBranch,
@@ -590,26 +573,7 @@ export async function runEnvTestPlatformPrPhase(input: {
   const prElapsedMs = Date.now() - prPhaseStartedAt;
   const elapsedMsCompareToPr =
     typeof input.compareOkAtMs === "number" ? Date.now() - input.compareOkAtMs : null;
-  if (isEnvTestStage1TaskKind(input.taskKind) && input.execRunId && !input.stage1MinimalExecutionLogs) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_stage1_pr_create_passed",
-      projectId: input.projectId,
-      taskId: input.taskId,
-      userId: input.actorUserId,
-      detail: {
-        executionId: input.execRunId,
-        headBranch: input.headBranch,
-        branchName: input.headBranch,
-        prUrl: prRes.data.pullRequestUrl,
-        prNumber: prRes.data.pullRequestNumber,
-        reusedExisting: prRes.data.reusedExisting,
-        prCreationElapsedMs: prElapsedMs,
-        elapsedMsSinceRunStart: elapsedMsSinceRunStart ?? null,
-      },
-    });
-  }
-  if (!input.stage1MinimalExecutionLogs || !isEnvTestStage1TaskKind(input.taskKind)) {
+  if (!isEnvTestStage1TaskKind(input.taskKind)) {
     appendTaskProgressLog({
       kind: "execution",
       phase: "env_test_pr_created_or_found",
@@ -636,8 +600,8 @@ export async function runEnvTestPlatformPrPhase(input: {
 }
 
 /**
- * GitHub compare로 푸시가 확인된 뒤 ENV_TEST 전용: run 메타 갱신 → 플랫폼 PR → PR_OPENED.
- * (Cursor payload에 commit/files가 없어도 동일)
+ * **Stage2(`ENV_TEST_STAGE2`) 전용 경로**(compare·HEAD 확인 후): run 메타 갱신 → 플랫폼 PR → PR_OPENED.
+ * `ENV_TEST`(Stage1)는 호출하지 않는다 — `runStage1EnvTestPrSmokePath`만 사용.
  */
 export async function runEnvTestAfterGithubPushConfirmed(input: {
   projectId: string;
@@ -667,15 +631,6 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
   executionRunCreatedAt?: Date | null;
   /** Stage 2: GitHub compare(브랜치 반영) 구간 ms — runExecutionLoop 등에서 전달 */
   branchDetectElapsedMs?: number | null;
-  /** Stage1 PR-first: 플랫폼 PR API 재시도 */
-  stage1PrCreateRetry?: { intervalMs: number; maxAttempts: number } | null;
-  /**
-   * Stage1 PR-only 경로: compare 없이 Cursor 푸시 직후 PR 시도 시 run.pushStatus.
-   * 미지정 시 `pushed_by_github_compare`.
-   */
-  execRunPushStatusAfterReflect?: "pushed_by_github_compare" | "pushed_by_cursor";
-  /** Stage1 스모크: `stage1_phase_transition`·`env_test_pr_lookup_started` 등 보조 로그 생략 */
-  stage1MinimalExecutionLogs?: boolean;
 }): Promise<
   | { kind: "return"; result: RunExecutionLoopResult }
   | { kind: "continue_loop" }
@@ -686,6 +641,23 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     taskId: input.taskId,
     actorUserId: input.actorUserId,
   });
+  if (isEnvTestStage1TaskKind(input.taskKind)) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "execution_scope_guard_blocked",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        callee: "runEnvTestAfterGithubPushConfirmed",
+        reason: "ENV_TEST (Stage1) must use runStage1EnvTestPrSmokePath only",
+        taskKind: input.taskKind,
+      },
+    });
+    throw new Error(
+      "[runEnvTestAfterGithubPushConfirmed] Stage1 (ENV_TEST) must use runStage1EnvTestPrSmokePath / runStage1EnvTestSimplePipeline only"
+    );
+  }
   const elapsedMsSinceRunStart = elapsedSinceRun(input.executionRunCreatedAt ?? undefined);
 
   const existingRunVo = await prisma.taskExecutionRun.findUnique({
@@ -707,7 +679,7 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
       gitSummary: input.compareData.diffSummary.slice(0, 24_000),
       validationOutput: preserveValidationOutput ?? null,
       commitStatus: input.compareData.headSha ? "pushed_commit_detected" : "pushed_commit_unknown",
-      pushStatus: input.execRunPushStatusAfterReflect ?? "pushed_by_github_compare",
+      pushStatus: "pushed_by_github_compare",
       status: "running",
       evaluationReason: null,
     },
@@ -731,47 +703,18 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         ? "ENV_TEST: Cursor 메타 미확인, GitHub compare로 푸시 확인 후 플랫폼 PR."
         : input.via === "cursor_poll_early_github"
           ? "ENV_TEST: Cursor 폴링 중 GitHub compare로 푸시 확인 후 플랫폼 PR 처리."
-          : input.via === "cursor_poll_stage1_pr_first"
-            ? "ENV_TEST(Stage1): PR 우선 재시도로 GitHub 반영을 기다린 뒤 플랫폼이 PR을 생성·갱신합니다."
-            : input.via === "cursor_poll_stage1_branch_head"
-            ? "ENV_TEST(Stage1): Cursor 폴링 중 원격 브랜치 HEAD 확인 후 플랫폼 PR 처리."
-            : input.via === "cursor_poll_stage2_branch_head"
-              ? "ENV_TEST Stage 2: GitHub 브랜치 HEAD 확인 후 플랫폼 PR 처리(Cursor 터미널 대기 없음)."
-              : input.via === "stage1_post_cursor_compare"
-                ? "ENV_TEST(Stage1): GitHub compare로 원격 변경(ahead_by) 확인. 플랫폼이 PR을 생성·갱신합니다."
-                : input.via === "stage1_post_cursor_branch_exists"
-                  ? "ENV_TEST(Stage1): 원격 브랜치 존재 확인. 플랫폼이 PR을 생성·갱신합니다."
-                  : input.via === "stage1_post_cursor_pr_probe"
-                    ? "ENV_TEST(Stage1): Cursor 푸시 후 PR 생성(재시도)으로 GitHub 반영을 확인합니다."
-                    : input.via === "stage1_simple_smoke"
-                      ? "ENV_TEST(Stage1): 스모크 — PR 생성·머지."
-                      : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
+          : input.via === "cursor_poll_stage2_branch_head"
+            ? "ENV_TEST Stage 2: GitHub 브랜치 HEAD 확인 후 플랫폼 PR 처리(Cursor 터미널 대기 없음)."
+            : "ENV_TEST: GitHub에서 브랜치가 베이스보다 앞서 있음(ahead_by). 플랫폼이 PR을 처리합니다.";
 
-  const taskAfterCommitted = await prisma.task.update({
+  await prisma.task.update({
     where: { id: input.taskId },
     data: {
       executionWorkflowStatus: EXECUTION_WORKFLOW.COMMITTED,
       lastEvalResult: "committed",
       lastEvalSummary: committedSummary.slice(0, 2000),
     },
-    select: { status: true, executionWorkflowStatus: true },
   });
-
-  if (isEnvTestStage1TaskKind(input.taskKind) && !input.stage1MinimalExecutionLogs) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "stage1_phase_transition",
-      projectId: input.projectId,
-      taskId: input.taskId,
-      userId: input.actorUserId,
-      detail: {
-        executionId: input.execRunId,
-        currentPhase: "prCreation",
-        workflowStatus: taskAfterCommitted.executionWorkflowStatus,
-        taskStatus: taskAfterCommitted.status,
-      },
-    });
-  }
 
   if (isEnvTestStage2TaskKind(input.taskKind) && STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS > 0) {
     await new Promise((r) => setTimeout(r, STAGE2_PR_CREATE_IMMEDIATE_AFTER_REFLECT_MS));
@@ -797,8 +740,6 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     executionRunCreatedAt: input.executionRunCreatedAt ?? null,
     compareOkAtMs: input.compareData.compareOkAtMs ?? null,
     execRunId: input.execRunId,
-    stage1PrCreateRetry: input.stage1PrCreateRetry ?? null,
-    stage1MinimalExecutionLogs: input.stage1MinimalExecutionLogs ?? false,
   });
   if (!prPhase.ok) {
     if (isEnvTestStage2TaskKind(input.taskKind)) {
@@ -807,23 +748,6 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         taskId: input.taskId,
         actorUserId: input.actorUserId,
         detail: { message: prPhase.message.slice(0, 800) },
-      });
-    }
-    if (isEnvTestStage1TaskKind(input.taskKind)) {
-      await applyStage1EnvTestPrCreateTerminalFailure({
-        projectId: input.projectId,
-        taskId: input.taskId,
-        execRunId: input.execRunId,
-        actorUserId: input.actorUserId,
-        message: prPhase.message,
-        httpStatus: prPhase.httpStatus ?? null,
-        headBranch: input.branchName,
-        headBranchRaw: prPhase.headBranchRaw ?? null,
-        headBranchNormalized: prPhase.headBranchNormalized ?? null,
-        headSentToGithub: prPhase.headSentToGithub ?? null,
-        repoUrl: input.repoUrl,
-        baseBranch: input.baseBranch,
-        githubPrCode: prPhase.githubPrCode ?? null,
       });
     }
     return { kind: "pr_failed", message: prPhase.message };
@@ -855,12 +779,6 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
         prCreationElapsedMs: prPhase.prElapsedMs,
       },
     });
-  } else if (isEnvTestStage1TaskKind(input.taskKind)) {
-    await patchTaskExecutionRunStage2Timing(input.execRunId, {
-      executionId: input.execRunId,
-      branchDetectTimeMs: input.branchDetectElapsedMs ?? undefined,
-      prCreationTimeMs: prPhase.prElapsedMs,
-    });
   }
 
   const fin = await finalizeEnvTestPrOpenedFromGithubOnly({
@@ -877,7 +795,6 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
     effectiveAutoAdvance: input.effectiveAutoAdvance,
     cursorRunId: input.cursorRunId ?? undefined,
     via: input.via,
-    stage1MinimalExecutionLogs: input.stage1MinimalExecutionLogs ?? false,
     runDataPatch: {
       commitSha: input.compareData.headSha ?? null,
       changedFiles: input.compareData.changedFiles as unknown as object,
@@ -979,7 +896,6 @@ export async function runStage1EnvTestPrSmokePath(input: {
     compareOkAtMs: null,
     execRunId: input.execRunId,
     stage1PrCreateRetry: input.stage1PrCreateRetry ?? getEnvTestStage1PrFirstRetryConfig(),
-    stage1MinimalExecutionLogs: true,
     suppressPrServiceLogs: true,
   });
 
@@ -1022,7 +938,6 @@ export async function runStage1EnvTestPrSmokePath(input: {
     effectiveAutoAdvance: input.effectiveAutoAdvance,
     cursorRunId: input.cursorRunId ?? undefined,
     via: input.via,
-    stage1MinimalExecutionLogs: true,
     runDataPatch: {
       commitSha: input.headSha ?? null,
       changedFiles: input.changedFiles as unknown as object,
@@ -2827,8 +2742,6 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
   effectiveAutoAdvance: boolean;
   cursorRunId?: string | null;
   via?: string;
-  /** Stage1 스모크: `stage1_phase_transition` 등 보조 로그 생략 */
-  stage1MinimalExecutionLogs?: boolean;
   runDataPatch?: {
     commitSha?: string | null;
     changedFiles?: object;
@@ -2869,7 +2782,7 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
     },
   });
 
-  const taskAfterPrOpened = await prisma.task.update({
+  await prisma.task.update({
     where: { id: input.taskId },
     data: {
       executionWorkflowStatus: EXECUTION_WORKFLOW.PR_OPENED,
@@ -2878,24 +2791,7 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
       lastEvalSummary: lastEvalSummary.slice(0, 2000),
       loopRetryCount: 0,
     },
-    select: { status: true, executionWorkflowStatus: true },
   });
-
-  if (isEnvTestStage1TaskKind(input.taskKind) && !input.stage1MinimalExecutionLogs) {
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "stage1_phase_transition",
-      projectId: input.projectId,
-      taskId: input.taskId,
-      userId: input.actorUserId,
-      detail: {
-        executionId: input.execRunId,
-        currentPhase: "merge",
-        workflowStatus: taskAfterPrOpened.executionWorkflowStatus,
-        taskStatus: taskAfterPrOpened.status,
-      },
-    });
-  }
 
   await updateTaskOrchestrationSnapshot(input.taskId, {
     branch: input.branchName,
