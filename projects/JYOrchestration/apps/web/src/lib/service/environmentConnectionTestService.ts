@@ -24,6 +24,35 @@ import {
   stage2PhaseKeyForApi,
 } from "@/lib/service/envTestStage2RuntimeMonitor";
 
+/** `applyStage1EnvTestPrCreateTerminalFailure`가 심는 lastEvalSummary에서 UI용 필드 추출 */
+function parseStage1PrCreateFailureFields(lastEvalSummary: string | null): {
+  stage1PrCreateFailureHttpStatus: number | null;
+  stage1PrCreateFailureBranch: string | null;
+  stage1PrCreateFailureGithubCode: string | null;
+} {
+  const s = String(lastEvalSummary ?? "").trim();
+  if (!s.startsWith("ENV_TEST(Stage1) PR 실패")) {
+    return {
+      stage1PrCreateFailureHttpStatus: null,
+      stage1PrCreateFailureBranch: null,
+      stage1PrCreateFailureGithubCode: null,
+    };
+  }
+  const httpM = /\[http=(\d{3})\]/.exec(s);
+  const stage1PrCreateFailureHttpStatus =
+    httpM && Number.isFinite(Number(httpM[1])) ? Number(httpM[1]) : null;
+  const brM = /\s브랜치=([^:]+):\s/.exec(s);
+  const stage1PrCreateFailureBranch = brM?.[1]?.trim() || null;
+  const ghM = /\[gh=([A-Za-z0-9_]+)\]/.exec(s);
+  const codeM = /\b(ENV_TEST_PR_[A-Z_]+)\b/.exec(s);
+  const stage1PrCreateFailureGithubCode = ghM?.[1] ?? codeM?.[1] ?? null;
+  return {
+    stage1PrCreateFailureHttpStatus,
+    stage1PrCreateFailureBranch,
+    stage1PrCreateFailureGithubCode,
+  };
+}
+
 function envTestStage1FailureOneLine(input: {
   workflowStatus: string | null;
   taskStatus: string;
@@ -350,6 +379,10 @@ export type EnvironmentTestLastDto = {
   stage1RunCreatedAt?: string | null;
   /** 실패·차단 시 한 줄 요약(UI) */
   envTestStage1FailureLine?: string | null;
+  /** Stage1 플랫폼 PR 생성 실패 시(lastEvalSummary 파싱) */
+  stage1PrCreateFailureHttpStatus?: number | null;
+  stage1PrCreateFailureBranch?: string | null;
+  stage1PrCreateFailureGithubCode?: string | null;
 };
 
 export async function getLatestEnvironmentTestTask(
@@ -455,6 +488,7 @@ export async function getLatestEnvironmentTestTask(
   const prUrl = parsePrUrlFromRunPrStatus(run0?.prStatus ?? null);
   const branchName = rowResolved.lastOrchestrationBranch ?? run0?.branchName ?? null;
   const t1 = parseEnvTestStage2TimingFromValidationOutput(run0?.validationOutput ?? null);
+  const stage1PrFail = parseStage1PrCreateFailureFields(rowResolved.lastEvalSummary);
   const base: EnvironmentTestLastDto = {
     taskId: rowResolved.id,
     taskKind: ENV_TEST_TASK_KIND,
@@ -481,6 +515,9 @@ export async function getLatestEnvironmentTestTask(
       envTestMergeBlockedReason: run0?.envTestMergeBlockedReason ?? null,
       runEvaluationReason: run0?.evaluationReason ?? null,
     }),
+    stage1PrCreateFailureHttpStatus: stage1PrFail.stage1PrCreateFailureHttpStatus,
+    stage1PrCreateFailureBranch: stage1PrFail.stage1PrCreateFailureBranch,
+    stage1PrCreateFailureGithubCode: stage1PrFail.stage1PrCreateFailureGithubCode,
     cursorPromptLength: run0?.promptSnapshot?.length ?? null,
     cursorPromptPreview: run0?.promptSnapshot ? run0.promptSnapshot.slice(0, 500) : null,
     cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,

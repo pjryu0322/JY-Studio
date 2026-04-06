@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   fetchEnvironmentTestLast,
   fetchExecutionSetup,
@@ -137,6 +137,28 @@ function isStage1TerminalWorkflow(wfNorm: string): boolean {
   );
 }
 
+/** 연속 폴링 실패 시 마지막으로 알려진 경과(ms)를 고정할 때 사용 */
+const STAGE1_POLL_SYNC_FAILURE_THRESHOLD = 3;
+
+function computeStage1PollDisconnectFreezeMs(
+  last: EnvironmentTestLastDto | null | undefined,
+  sess: { taskId: string; startMs: number } | null | undefined
+): number | null {
+  if (sess?.taskId === "pending") {
+    return Math.max(0, Date.now() - sess.startMs);
+  }
+  if (!last || !isStage1EnvironmentTestLast(last)) return null;
+  if (isStage1TerminalWorkflow(normalizeWorkflowForUi(last.workflowStatus))) return null;
+  const tid = last.taskId;
+  let anchor: number | null = null;
+  if (sess && sess.taskId === tid) anchor = sess.startMs;
+  else if (last.stage1RunCreatedAt) {
+    const p = Date.parse(last.stage1RunCreatedAt);
+    if (Number.isFinite(p)) anchor = p;
+  }
+  return anchor != null ? Math.max(0, Date.now() - anchor) : null;
+}
+
 function computeStage1BreakdownRowMs(
   k: (typeof STAGE1_TIMING_ROW_KEYS)[number],
   bd: Record<string, number> | null | undefined,
@@ -258,6 +280,18 @@ export function ProjectExecutionEnvironmentPanel({
   } | null>(null);
   /** 1초마다 증가 — 경과 시간 표시용 리렌더 트리거 */
   const [stage1ElapsedTick, setStage1ElapsedTick] = useState(0);
+  const [stage1PollSyncStopped, setStage1PollSyncStopped] = useState(false);
+  const [stage1PollSyncFrozenElapsedMs, setStage1PollSyncFrozenElapsedMs] = useState<number | null>(null);
+  const stage1PollFailCountRef = useRef(0);
+  const envTestLastRef = useRef<EnvironmentTestLastDto | null>(null);
+  const stage1TimerSessionRef = useRef<{ taskId: string; startMs: number } | null>(null);
+
+  useEffect(() => {
+    envTestLastRef.current = envTestLast;
+  }, [envTestLast]);
+  useEffect(() => {
+    stage1TimerSessionRef.current = stage1TimerSession;
+  }, [stage1TimerSession]);
 
   const loadExecutionSetup = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -285,13 +319,44 @@ export function ProjectExecutionEnvironmentPanel({
 
   const loadEnvTestLast = useCallback(async () => {
     if (!projectId.trim()) return;
+    const pid = projectId.trim();
+    const onPollDisconnect = () => {
+      setStage1PollSyncStopped(true);
+      let frozen = computeStage1PollDisconnectFreezeMs(envTestLastRef.current, stage1TimerSessionRef.current);
+      if (frozen == null && stage1TimerSessionRef.current?.startMs != null) {
+        frozen = Math.max(0, Date.now() - stage1TimerSessionRef.current.startMs);
+      }
+      setStage1PollSyncFrozenElapsedMs(frozen);
+      console.warn(
+        "[jy-orch]",
+        JSON.stringify({
+          phase: "execution_timer_stopped_due_to_poll_disconnect",
+          projectId: pid,
+          taskId: envTestLastRef.current?.taskId ?? null,
+          consecutiveFailures: stage1PollFailCountRef.current,
+          frozenElapsedMs: frozen,
+        })
+      );
+    };
     try {
       const { res, json } = await fetchEnvironmentTestLast(projectId);
       if (res.ok && json.success && json.data) {
+        stage1PollFailCountRef.current = 0;
+        setStage1PollSyncStopped(false);
+        setStage1PollSyncFrozenElapsedMs(null);
         setEnvTestLast(json.data.last ?? null);
+        return;
+      }
+      stage1PollFailCountRef.current += 1;
+      if (stage1PollFailCountRef.current >= STAGE1_POLL_SYNC_FAILURE_THRESHOLD) {
+        onPollDisconnect();
       }
     } catch (e) {
       console.error(e);
+      stage1PollFailCountRef.current += 1;
+      if (stage1PollFailCountRef.current >= STAGE1_POLL_SYNC_FAILURE_THRESHOLD) {
+        onPollDisconnect();
+      }
     }
   }, [projectId]);
 
@@ -305,8 +370,11 @@ export function ProjectExecutionEnvironmentPanel({
     const inFlightStage1 =
       envTestLast != null &&
       isStage1EnvironmentTestLast(envTestLast) &&
-      !isStage1TerminalWorkflow(wf);
-    const active = busyEnvTest || stage1TimerSession?.taskId === "pending" || inFlightStage1;
+      !isStage1TerminalWorkflow(wf) &&
+      !stage1PollSyncStopped;
+    const pendingPoll =
+      stage1TimerSession?.taskId === "pending" && !stage1PollSyncStopped;
+    const active = busyEnvTest || pendingPoll || inFlightStage1;
     if (!active) return;
     const id = setInterval(() => {
       setStage1ElapsedTick((x) => x + 1);
@@ -320,6 +388,7 @@ export function ProjectExecutionEnvironmentPanel({
     envTestLast?.taskId,
     envTestLast?.taskKind,
     envTestLast?.workflowStatus,
+    stage1PollSyncStopped,
     loadEnvTestLast,
   ]);
 
@@ -426,6 +495,9 @@ export function ProjectExecutionEnvironmentPanel({
   const handleEnvironmentTest = useCallback(async () => {
     if (!projectId.trim()) return;
     const startMs = Date.now();
+    stage1PollFailCountRef.current = 0;
+    setStage1PollSyncStopped(false);
+    setStage1PollSyncFrozenElapsedMs(null);
     setStage1TimerSession({ taskId: "pending", startMs });
     setBusyEnvTest(true);
     try {
@@ -950,7 +1022,25 @@ export function ProjectExecutionEnvironmentPanel({
             {stage1TimerSession?.taskId === "pending" ? (
               <div style={{ marginTop: 12, fontSize: 12, color: "#334155", lineHeight: 1.65 }}>
                 <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>현재 실행 결과</div>
-                <div style={{ fontWeight: 600, color: "#1e293b" }}>연결 테스트를 시작하는 중입니다…</div>
+                <div style={{ fontWeight: 600, color: "#1e293b" }}>
+                  {stage1PollSyncStopped ? "서버와 상태를 동기화하지 못했습니다." : "연결 테스트를 시작하는 중입니다…"}
+                </div>
+                {stage1PollSyncStopped ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "#fff7ed",
+                      border: "1px solid #fdba74",
+                      fontSize: 11,
+                      color: "#9a3412",
+                      fontWeight: 600,
+                    }}
+                  >
+                    상태 동기화 중단 — 새로고침하거나 잠시 후 다시 확인하세요.
+                  </div>
+                ) : null}
                 <div
                   style={{
                     marginTop: 10,
@@ -966,12 +1056,18 @@ export function ProjectExecutionEnvironmentPanel({
                     <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
                       {(() => {
                         void stage1ElapsedTick;
-                        const ms = stage1TimerSession
-                          ? Math.max(0, Date.now() - stage1TimerSession.startMs)
-                          : 0;
+                        const ms = (() => {
+                          if (stage1PollSyncStopped) {
+                            const f = stage1PollSyncFrozenElapsedMs;
+                            return f != null && Number.isFinite(f) ? f : 0;
+                          }
+                          return stage1TimerSession ? Math.max(0, Date.now() - stage1TimerSession.startMs) : 0;
+                        })();
                         return formatStage1DurationMs(ms);
                       })()}
-                      <span style={{ fontWeight: 500, color: "#94a3b8" }}> (진행 중)</span>
+                      <span style={{ fontWeight: 500, color: "#94a3b8" }}>
+                        {stage1PollSyncStopped ? " (동기화 중단)" : " (진행 중)"}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -997,20 +1093,27 @@ export function ProjectExecutionEnvironmentPanel({
                     const terminal = isStage1TerminalWorkflow(wf);
                     let liveElapsedMs: number | null = null;
                     if (!terminal) {
-                      let anchor: number | null = null;
-                      if (
-                        stage1TimerSession &&
-                        stage1TimerSession.taskId === envTestLast.taskId
-                      ) {
-                        anchor = stage1TimerSession.startMs;
-                      }
-                      if (anchor == null && envTestLast.stage1RunCreatedAt) {
-                        const p = Date.parse(envTestLast.stage1RunCreatedAt);
-                        if (Number.isFinite(p)) anchor = p;
-                      }
-                      if (anchor != null) {
-                        void stage1ElapsedTick;
-                        liveElapsedMs = Math.max(0, Date.now() - anchor);
+                      if (stage1PollSyncStopped) {
+                        liveElapsedMs =
+                          stage1PollSyncFrozenElapsedMs != null && Number.isFinite(stage1PollSyncFrozenElapsedMs)
+                            ? stage1PollSyncFrozenElapsedMs
+                            : null;
+                      } else {
+                        let anchor: number | null = null;
+                        if (
+                          stage1TimerSession &&
+                          stage1TimerSession.taskId === envTestLast.taskId
+                        ) {
+                          anchor = stage1TimerSession.startMs;
+                        }
+                        if (anchor == null && envTestLast.stage1RunCreatedAt) {
+                          const p = Date.parse(envTestLast.stage1RunCreatedAt);
+                          if (Number.isFinite(p)) anchor = p;
+                        }
+                        if (anchor != null) {
+                          void stage1ElapsedTick;
+                          liveElapsedMs = Math.max(0, Date.now() - anchor);
+                        }
                       }
                     }
                     const totalMs = terminal
@@ -1019,17 +1122,82 @@ export function ProjectExecutionEnvironmentPanel({
                         ? envTestLast.stage1TotalTimeMs
                         : null
                       : liveElapsedMs;
-                    const showRunningSuffix = !terminal && liveElapsedMs != null;
+                    const showRunningSuffix = !terminal && liveElapsedMs != null && !stage1PollSyncStopped;
+                    const stage1PrCreateFailedUi =
+                      wf === EXECUTION_WORKFLOW.FAILED &&
+                      (envTestLast.stage1PrCreateFailureHttpStatus != null ||
+                        /\bPR 실패\b/.test(String(envTestLast.envTestStage1FailureLine ?? "")));
                     return (
                       <>
                         <div style={{ fontWeight: 600, color: "#1e293b" }}>{statusHeadline}</div>
+                        {stage1PollSyncStopped && !terminal ? (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              background: "#fff7ed",
+                              border: "1px solid #fdba74",
+                              fontSize: 11,
+                              color: "#9a3412",
+                              fontWeight: 600,
+                            }}
+                          >
+                            상태 동기화 중단 — 새로고침하거나 잠시 후 다시 확인하세요.
+                          </div>
+                        ) : null}
                         <div style={{ marginTop: 6, fontSize: 11 }}>
                           <span style={{ color: "#64748b" }}>현재 상태</span>{" "}
                           <strong style={{ color: "#0f172a" }}>
-                            {environmentTestWorkflowLabel(envTestLast.workflowStatus)}
+                            {stage1PollSyncStopped && !terminal
+                              ? "동기화 중단 (마지막으로 받은 상태)"
+                              : environmentTestWorkflowLabel(envTestLast.workflowStatus)}
                           </strong>
                         </div>
-                        {envTestLast.envTestStage1FailureLine ? (
+                        {stage1PrCreateFailedUi ? (
+                          <div
+                            style={{
+                              marginTop: 10,
+                              padding: "10px 12px",
+                              borderRadius: 8,
+                              background: "#fef2f2",
+                              border: "1px solid #fecaca",
+                              fontSize: 11,
+                              lineHeight: 1.55,
+                            }}
+                          >
+                            <div style={{ fontWeight: 800, color: "#991b1b", marginBottom: 6 }}>
+                              Stage1 PR 생성 실패
+                            </div>
+                            {envTestLast.stage1PrCreateFailureHttpStatus != null ? (
+                              <div style={{ color: "#7f1d1d" }}>
+                                <span style={{ color: "#64748b" }}>HTTP</span>{" "}
+                                <strong>{envTestLast.stage1PrCreateFailureHttpStatus}</strong>
+                                {envTestLast.stage1PrCreateFailureGithubCode ? (
+                                  <>
+                                    {" "}
+                                    · <span style={{ color: "#64748b" }}>코드</span>{" "}
+                                    <code style={{ fontSize: 10 }}>{envTestLast.stage1PrCreateFailureGithubCode}</code>
+                                  </>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {(envTestLast.stage1PrCreateFailureBranch ?? envTestLast.branchName) ? (
+                              <div style={{ marginTop: 4, color: "#7f1d1d" }}>
+                                <span style={{ color: "#64748b" }}>브랜치(head)</span>{" "}
+                                <code style={{ fontSize: 10 }}>
+                                  {envTestLast.stage1PrCreateFailureBranch ?? envTestLast.branchName}
+                                </code>
+                              </div>
+                            ) : null}
+                            {envTestLast.envTestStage1FailureLine ? (
+                              <div style={{ marginTop: 6, color: "#450a0a", fontWeight: 600 }}>
+                                {envTestLast.envTestStage1FailureLine}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {envTestLast.envTestStage1FailureLine && !stage1PrCreateFailedUi ? (
                           <div
                             style={{
                               marginTop: 6,
@@ -1060,6 +1228,9 @@ export function ProjectExecutionEnvironmentPanel({
                                 {formatStage1DurationMs(totalMs)}
                                 {showRunningSuffix ? (
                                   <span style={{ fontWeight: 500, color: "#94a3b8" }}> (진행 중)</span>
+                                ) : null}
+                                {stage1PollSyncStopped && !terminal && liveElapsedMs != null ? (
+                                  <span style={{ fontWeight: 500, color: "#94a3b8" }}> (동기화 중단)</span>
                                 ) : null}
                               </span>
                             </div>

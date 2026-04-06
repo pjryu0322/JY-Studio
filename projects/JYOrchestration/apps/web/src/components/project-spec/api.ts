@@ -546,6 +546,9 @@ export type EnvironmentTestLastDto = {
   stage1TopBottleneckMs?: number | null;
   stage1RunCreatedAt?: string | null;
   envTestStage1FailureLine?: string | null;
+  stage1PrCreateFailureHttpStatus?: number | null;
+  stage1PrCreateFailureBranch?: string | null;
+  stage1PrCreateFailureGithubCode?: string | null;
 };
 
 export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage?: 2 }) {
