@@ -19,6 +19,8 @@ import {
   type ExecuteCursorRelayParams,
   type ExecuteCursorRunOutcome,
 } from "@/lib/execution/cursorExecutionAdapter";
+import { executeStage1CursorRunWithGithubFinalize } from "@/lib/execution/stage1/stage1CursorFinalizeHelper";
+import { verifyBaseBranchBeforeCursorExecution } from "@/lib/execution/verifyBaseBranchBeforeCursor";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { patchTaskExecutionRunStage2Timing, readEnvTestStage2TimingRecord } from "@/lib/service/envTestStage2Telemetry";
 import { prisma } from "@/lib/prisma";
@@ -59,7 +61,18 @@ export async function runEnvTestCursorToPrOpenedCore(input: {
   }
 
   const cursorStartedAt = Date.now();
-  const cursorOutcome = await executeCursorRun(executeParams);
+  const preBranch = await verifyBaseBranchBeforeCursorExecution({
+    gitRepoUrl: executeParams.executionSetup.gitRepoUrl,
+    baseBranch: executeParams.executionSetup.baseBranch,
+    githubAccessToken: executeParams.githubAccessToken ?? null,
+    projectId: ctx.projectId,
+  });
+  if (!preBranch.ok) {
+    return { ok: false, error: preBranch.message, logs: ["[envTestExecutionCore] base branch preflight failed"] };
+  }
+  const cursorOutcome = isEnvTestStage1TaskKind(tk)
+    ? await executeStage1CursorRunWithGithubFinalize(executeParams)
+    : await executeCursorRun(executeParams);
 
   if (isEnvTestFamilyTaskKind(tk)) {
     const wallMs = Date.now() - cursorStartedAt;
