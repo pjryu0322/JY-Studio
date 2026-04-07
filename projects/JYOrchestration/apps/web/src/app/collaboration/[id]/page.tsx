@@ -5,12 +5,19 @@ import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { DiscussionInput } from "@/components/workflow/DiscussionInput";
 import { DiscussionTimeline, type DiscussionItem } from "@/components/workflow/DiscussionTimeline";
+import { ActionResultPanel } from "@/components/workflow/ActionResultPanel";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
 import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
+import {
+  buildMockActionResult,
+  type CollaborationActionResult,
+  type CollaborationActionType,
+} from "@/lib/workflow/collaborationActionContract";
 import { getCollaborationWorkspaceView } from "@/lib/workflow/workflowViewModel";
 
 export default function CollaborationWorkspacePage() {
@@ -35,7 +42,18 @@ export default function CollaborationWorkspacePage() {
     },
   ]);
 
-  const [actionLog, setActionLog] = useState<string | null>(null);
+  const [actionState, setActionState] = useState<{
+    status: "idle" | "running" | "success" | "error";
+    latest: CollaborationActionResult | null;
+  }>({ status: "idle", latest: null });
+
+  const runAction = async (actionType: CollaborationActionType) => {
+    setActionState({ status: "running", latest: { actionType, status: "running", atIso: new Date().toISOString(), message: "Running…", payload: null } });
+    // Local/mock contract for now. Next phase can replace this with a real API call.
+    await new Promise((r) => setTimeout(r, 250));
+    const out = buildMockActionResult(actionType);
+    setActionState({ status: out.status, latest: out });
+  };
 
   return (
     <div>
@@ -55,6 +73,13 @@ export default function CollaborationWorkspacePage() {
 
       {/* Top area */}
       <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+        {!vm.session ? (
+          <WorkflowEmptyState
+            title="Session not found"
+            message="Please check the URL. This page will not show unrelated mock minutes/features for invalid sessions."
+          />
+        ) : null}
+
         <WorkflowCard>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <div style={{ minWidth: 0 }}>
@@ -94,33 +119,21 @@ export default function CollaborationWorkspacePage() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <WorkflowActionButton
               label="회의록 작성"
-              onClick={() => setActionLog("회의록 작성 (mock) — minutes generation will be wired in next phase.")}
+              onClick={() => void runAction("GENERATE_MINUTES")}
             />
             <WorkflowActionButton
               label="분석 요청"
-              onClick={() => setActionLog("분석 요청 (mock) — analysis workflow will be wired in next phase.")}
+              onClick={() => void runAction("REQUEST_ANALYSIS")}
             />
             <WorkflowActionButton
               label="아이디어 요청"
-              onClick={() => setActionLog("아이디어 요청 (mock) — idea generation will be wired in next phase.")}
+              onClick={() => void runAction("REQUEST_IDEAS")}
             />
           </div>
-          {actionLog ? (
-            <div
-              role="status"
-              style={{
-                border: "1px solid #bfdbfe",
-                background: "#eff6ff",
-                color: "#1e40af",
-                borderRadius: 12,
-                padding: 12,
-                fontSize: 13,
-                lineHeight: 1.55,
-              }}
-            >
-              {actionLog}
-            </div>
-          ) : null}
+
+          <WorkflowCard padding={12}>
+            <ActionResultPanel result={actionState.latest} />
+          </WorkflowCard>
 
           <DiscussionInput
             onAdd={(item) => {

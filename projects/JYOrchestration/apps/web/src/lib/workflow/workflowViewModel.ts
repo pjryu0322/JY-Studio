@@ -35,6 +35,25 @@ export function getCollaborationListView(): CollaborationListView {
   };
 }
 
+/**
+ * Latest session policy (explicit & deterministic):
+ * - Prefer OPEN sessions
+ * - Then sort by createdAt descending (YYYY-MM-DD)
+ * - Tie-breaker by id desc (stable)
+ */
+export function pickLatestSession(sessions: CollaborationSessionMock[]): CollaborationSessionMock | null {
+  if (!Array.isArray(sessions) || sessions.length === 0) return null;
+  const sorted = [...sessions].sort((a, b) => {
+    const aOpen = a.status === "OPEN" ? 1 : 0;
+    const bOpen = b.status === "OPEN" ? 1 : 0;
+    if (aOpen !== bOpen) return bOpen - aOpen;
+    if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+    if (a.id !== b.id) return a.id < b.id ? 1 : -1;
+    return 0;
+  });
+  return sorted[0] ?? null;
+}
+
 export type RequirementDetailView = {
   requirementId: string;
   requirement: RequirementMock | null;
@@ -48,7 +67,7 @@ export type RequirementDetailView = {
 export function getRequirementDetailView(requirementId: string): RequirementDetailView {
   const requirement = getMockRequirement(requirementId);
   const sessions = requirement ? getMockSessionsForRequirement(requirementId) : [];
-  const latestSession = sessions[0] ?? null;
+  const latestSession = pickLatestSession(sessions);
   const minutes = latestSession ? getMockMinutesForSession(latestSession.id) : null;
   const features = latestSession ? getMockFeaturesForSession(latestSession.id) : [];
   return {

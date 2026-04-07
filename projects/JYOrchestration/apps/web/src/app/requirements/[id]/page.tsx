@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
+import { WorkflowTabs } from "@/components/workflow/WorkflowTabs";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
 import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
 import { getRequirementDetailView } from "@/lib/workflow/workflowViewModel";
 
@@ -84,41 +86,27 @@ export default function RequirementDetailPage() {
         </WorkflowCard>
       </div>
 
-      <nav aria-label="Requirement tabs" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: tab === t.id ? "1px solid #2563eb" : "1px solid #d1d5db",
-              background: tab === t.id ? "#eff6ff" : "#fafafa",
-              color: tab === t.id ? "#1e40af" : "#111827",
-              fontWeight: tab === t.id ? 700 : 600,
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <WorkflowTabs
+        ariaLabel="Requirement tabs"
+        tabs={tabs}
+        activeId={tab}
+        onChange={(id) => setTab(id)}
+      />
 
       {tab === "overview" ? (
-        <div style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Overview</div>
-          {vm.requirement ? (
+        vm.requirement ? (
+          <WorkflowCard>
+            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Overview</div>
             <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.6 }}>
               This is a UI skeleton. Next phase will bind real requirement data, sessions, minutes generation, and feature derivation.
             </div>
-          ) : (
-            <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.6 }}>
-              Requirement not found. Please check the URL.
+            <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
+              Suggested next step: open the latest session and create minutes → derive features.
             </div>
-          )}
-        </div>
+          </WorkflowCard>
+        ) : (
+          <WorkflowEmptyState title="Requirement not found" message="Please check the URL. This page will not show unrelated mock content." />
+        )
       ) : null}
 
       {tab === "sessions" ? (
