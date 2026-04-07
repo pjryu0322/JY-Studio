@@ -7,39 +7,16 @@ import { DiscussionInput } from "@/components/workflow/DiscussionInput";
 import { DiscussionTimeline, type DiscussionItem } from "@/components/workflow/DiscussionTimeline";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
-import {
-  getMockFeaturesForSession,
-  getMockMinutesForSession,
-  getMockRequirement,
-  getMockSession,
-} from "@/lib/mock/workflowMock";
-
-function ActionButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        padding: "8px 12px",
-        borderRadius: 10,
-        border: "1px solid #d1d5db",
-        background: "#fafafa",
-        cursor: "pointer",
-        fontSize: 13,
-        fontWeight: 900,
-        color: "#111827",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
+import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
+import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
+import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
+import { getCollaborationWorkspaceView } from "@/lib/workflow/workflowViewModel";
 
 export default function CollaborationWorkspacePage() {
   const params = useParams<{ id: string }>();
   const sessionId = typeof params?.id === "string" ? params.id : "";
-  const session = getMockSession(sessionId);
-  const req = session ? getMockRequirement(session.requirementId) : null;
+  const vm = useMemo(() => getCollaborationWorkspaceView(sessionId), [sessionId]);
 
   const [discussion, setDiscussion] = useState<DiscussionItem[]>(() => [
     {
@@ -58,74 +35,72 @@ export default function CollaborationWorkspacePage() {
     },
   ]);
 
-  const minutes = useMemo(() => getMockMinutesForSession(sessionId || "sess-201"), [sessionId]);
-  const features = useMemo(() => getMockFeaturesForSession(sessionId || "sess-201"), [sessionId]);
-
   const [actionLog, setActionLog] = useState<string | null>(null);
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>{session?.title ?? "Collaboration Session"}</div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            {session ? `${session.createdAt} · ${session.status} · ${session.id}` : "Unknown session id."}
-          </div>
-        </div>
-        <div style={{ flex: "0 0 auto", display: "flex", gap: 10, alignItems: "center" }}>
-          <Link href="/collaboration" style={{ fontSize: 13, textDecoration: "underline" }}>
-            Back to sessions
-          </Link>
-        </div>
-      </div>
+      <WorkflowPageHeader
+        title={vm.session?.title ?? "Collaboration Session"}
+        subtitle={
+          vm.session
+            ? `${vm.session.createdAt} · ${vm.session.id}`
+            : sessionId
+              ? `Unknown session id: ${sessionId}`
+              : "Unknown session id."
+        }
+        backHref="/collaboration"
+        backLabel="Back to sessions"
+        right={vm.session ? <WorkflowBadge>{vm.session.status}</WorkflowBadge> : <WorkflowBadge>UNKNOWN</WorkflowBadge>}
+      />
 
       {/* Top area */}
-      <section
-        aria-label="Requirement summary"
-        style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14, marginTop: 14 }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Linked Requirement</div>
-            {req ? (
-              <>
-                <div style={{ fontSize: 14, fontWeight: 900 }}>{req.title}</div>
-                <div style={{ fontSize: 13, color: "#111827", marginTop: 6, lineHeight: 1.55 }}>{req.description}</div>
-              </>
-            ) : (
-              <div style={{ fontSize: 13, color: "#6b7280" }}>(no requirement linked)</div>
-            )}
+      <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+        <WorkflowCard>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Linked Requirement</div>
+              {vm.requirement ? (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 900 }}>{vm.requirement.title}</div>
+                  <div style={{ fontSize: 13, color: "#111827", marginTop: 6, lineHeight: 1.55 }}>
+                    {vm.requirement.description}
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 13, color: "#6b7280" }}>(no requirement linked)</div>
+              )}
+            </div>
+            {vm.requirement ? (
+              <Link
+                href={`/requirements/${encodeURIComponent(vm.requirement.id)}?tab=sessions`}
+                style={{ fontSize: 13, textDecoration: "underline", alignSelf: "center" }}
+              >
+                Open requirement
+              </Link>
+            ) : null}
           </div>
-          {req ? (
-            <Link
-              href={`/requirements/${encodeURIComponent(req.id)}?tab=sessions`}
-              style={{ fontSize: 13, textDecoration: "underline", alignSelf: "center" }}
-            >
-              Open requirement
-            </Link>
-          ) : null}
-        </div>
+        </WorkflowCard>
 
-        <div style={{ marginTop: 12, borderTop: "1px dashed #e5e5e5", paddingTop: 12 }}>
+        <WorkflowCard>
           <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Related materials</div>
           <div style={{ fontSize: 13, color: "#6b7280" }}>(placeholder) Attach links/docs in the next phase.</div>
-        </div>
-      </section>
+        </WorkflowCard>
+      </div>
 
       {/* Main layout */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 14, marginTop: 14 }}>
         {/* Center discussion */}
         <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <ActionButton
+            <WorkflowActionButton
               label="회의록 작성"
               onClick={() => setActionLog("회의록 작성 (mock) — minutes generation will be wired in next phase.")}
             />
-            <ActionButton
+            <WorkflowActionButton
               label="분석 요청"
               onClick={() => setActionLog("분석 요청 (mock) — analysis workflow will be wired in next phase.")}
             />
-            <ActionButton
+            <WorkflowActionButton
               label="아이디어 요청"
               onClick={() => setActionLog("아이디어 요청 (mock) — idea generation will be wired in next phase.")}
             />
@@ -161,21 +136,25 @@ export default function CollaborationWorkspacePage() {
 
         {/* Right panel */}
         <aside aria-label="Results panel" style={{ display: "grid", gap: 12, alignContent: "start" }}>
-          <div style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 12 }}>
+          <WorkflowCard padding={12}>
             <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Latest minutes</div>
-            <MeetingMinutesPanel minutes={minutes} />
-          </div>
+            <MeetingMinutesPanel minutes={vm.minutes} emptyLabel="No meeting minutes available" />
+          </WorkflowCard>
 
-          <div style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 12 }}>
-            <FeatureSummaryPanel title="Derived features (session)" features={features} />
-          </div>
+          <WorkflowCard padding={12}>
+            <FeatureSummaryPanel
+              title="Derived features (session)"
+              features={vm.features}
+              emptyLabel="No derived features available"
+            />
+          </WorkflowCard>
 
-          <div style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 12 }}>
+          <WorkflowCard padding={12}>
             <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Non-functional summary</div>
             <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.55 }}>
               (placeholder) Consolidated non-functional constraints will appear here later.
             </div>
-          </div>
+          </WorkflowCard>
         </aside>
       </div>
     </div>

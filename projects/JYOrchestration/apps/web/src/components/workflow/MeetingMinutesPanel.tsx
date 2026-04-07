@@ -1,4 +1,6 @@
 import type { MeetingMinutesMock } from "@/lib/mock/workflowMock";
+import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 
 function ListBlock({ title, items }: { title: string; items: string[] }) {
   return (
@@ -19,13 +21,26 @@ function ListBlock({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-export function MeetingMinutesPanel({ minutes }: { minutes: MeetingMinutesMock }) {
+export function MeetingMinutesPanel({
+  minutes,
+  emptyLabel = "No meeting minutes available",
+}: {
+  minutes: MeetingMinutesMock | null;
+  emptyLabel?: string;
+}) {
+  if (!minutes) {
+    return (
+      <section aria-label="Meeting minutes">
+        <WorkflowEmptyState title="Meeting Minutes" message={emptyLabel} />
+      </section>
+    );
+  }
   return (
     <section aria-label="Meeting minutes" style={{ display: "grid", gap: 10 }}>
-      <div style={{ border: "1px solid #e5e5e5", borderRadius: 10, padding: 12 }}>
+      <WorkflowCard padding={12}>
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Meeting Minutes</div>
         <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{minutes.summary}</div>
-      </div>
+      </WorkflowCard>
       <div style={{ display: "grid", gap: 10 }}>
         <ListBlock title="Decisions" items={minutes.decisions} />
         <ListBlock title="Pending" items={minutes.pending} />
