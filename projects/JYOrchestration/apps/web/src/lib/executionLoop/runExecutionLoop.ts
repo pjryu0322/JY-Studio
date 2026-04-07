@@ -44,6 +44,7 @@ import {
   runEnvTestReflectionConfirmedPipeline,
   runEnvTestReflectionNotConfirmedGithubBypass,
 } from "@/lib/executionLoop/envTestStage2Pipeline";
+import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2EnvTestPipeline";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
@@ -641,58 +642,100 @@ export async function runExecutionLoop(params: {
 
       let cursorOutcome: ExecuteCursorRunOutcome;
       try {
-        cursorOutcome = await runEnvTestCursorToPrOpenedCore({
-          executeParams: {
-            projectId,
-            workflowId: taskRow.sourceSpecVersionId ?? null,
-            executionSetup: {
-              cursorApiUrl: normalizeCursorApiBaseUrl(setup.cursorApiUrl),
-              cursorApiToken: setup.cursorApiToken ?? null,
-              gitRepoUrl: repoUrl,
-              baseBranch: setup.baseBranch,
-              branchStrategy: setup.branchStrategy,
-              branchPrefix: setup.branchPrefix,
-              autoCommit: setup.autoCommit !== false,
-              autoPush: setup.autoPush === true,
-              // ENV_TEST(Stage1/2)에서는 PR/merge 책임이 플랫폼(또는 Stage2 SCM 경로)에 있으므로
-              // Cursor가 PR 생성을 시도하지 않도록 강제한다.
-              autoPr: isEnvTestTask ? false : setup.autoPr === true,
-              requireTestsBeforePush: setup.requireTestsBeforePush !== false,
-            },
-            task: {
-              id: taskRow.id,
-              title: taskRow.name,
-              description: taskRow.description,
-              acceptanceCriteria: criteria,
-            },
-            suggestedBranchName: branchPlan.branchName,
-            prompt,
-            allowedPaths: mergedAllowedGlobs.length ? mergedAllowedGlobs : undefined,
-            taskKind: taskRow.taskKind ?? null,
-            githubAccessToken: setup.githubAccessToken ?? null,
-            envTestPollFinalizeContext: isEnvTestTask
-              ? {
-                  execRunId: execRun.id,
-                  actorUserId,
-                  taskId,
-                  repoUrl,
-                  baseBranch: setup.baseBranch,
-                  githubAccessToken: setup.githubAccessToken ?? null,
-                  steps,
-                  singleTaskId,
-                  effectiveAutoAdvance,
-                  execRunCreatedAt: execRun.createdAt,
-                }
-              : undefined,
-            stage2RuntimeMonitor: isEnvTestFamilyTaskKind(taskRow.taskKind)
-              ? {
-                  execRunId: execRun.id,
-                  projectId,
-                  taskId,
-                  actorUserId,
-                }
-              : undefined,
+        const executeParams = {
+          projectId,
+          workflowId: taskRow.sourceSpecVersionId ?? null,
+          executionSetup: {
+            cursorApiUrl: normalizeCursorApiBaseUrl(setup.cursorApiUrl),
+            cursorApiToken: setup.cursorApiToken ?? null,
+            gitRepoUrl: repoUrl,
+            baseBranch: setup.baseBranch,
+            branchStrategy: setup.branchStrategy,
+            branchPrefix: setup.branchPrefix,
+            autoCommit: setup.autoCommit !== false,
+            autoPush: setup.autoPush === true,
+            // ENV_TEST(Stage1/2)에서는 PR/merge 책임이 플랫폼(또는 Stage2 SCM 경로)에 있으므로
+            // Cursor가 PR 생성을 시도하지 않도록 강제한다.
+            autoPr: isEnvTestTask ? false : setup.autoPr === true,
+            requireTestsBeforePush: setup.requireTestsBeforePush !== false,
           },
+          task: {
+            id: taskRow.id,
+            title: taskRow.name,
+            description: taskRow.description,
+            acceptanceCriteria: criteria,
+          },
+          suggestedBranchName: branchPlan.branchName,
+          prompt,
+          allowedPaths: mergedAllowedGlobs.length ? mergedAllowedGlobs : undefined,
+          taskKind: taskRow.taskKind ?? null,
+          githubAccessToken: setup.githubAccessToken ?? null,
+          envTestPollFinalizeContext: isEnvTestTask
+            ? {
+                execRunId: execRun.id,
+                actorUserId,
+                taskId,
+                repoUrl,
+                baseBranch: setup.baseBranch,
+                githubAccessToken: setup.githubAccessToken ?? null,
+                steps,
+                singleTaskId,
+                effectiveAutoAdvance,
+                execRunCreatedAt: execRun.createdAt,
+              }
+            : undefined,
+          stage2RuntimeMonitor: isEnvTestFamilyTaskKind(taskRow.taskKind)
+            ? {
+                execRunId: execRun.id,
+                projectId,
+                taskId,
+                actorUserId,
+              }
+            : undefined,
+        };
+
+        if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
+          const out = await runStage2EnvTestPipeline({
+            executeParams,
+            ctx: {
+              projectId,
+              taskId,
+              actorUserId,
+              execRunId: execRun.id,
+              repoUrl,
+              baseBranch: setup.baseBranch,
+              headBranch: branchPlan.branchName,
+              githubAccessToken: setup.githubAccessToken ?? null,
+              execRunCreatedAt: execRun.createdAt,
+              steps,
+              singleTaskId,
+              effectiveAutoAdvance,
+            },
+          });
+          // Stage2 is fully orchestrated outside Cursor adapter. Return early.
+          if (out.kind === "return") return out.result;
+          if (out.kind === "continue_loop") {
+            // continue loop for auto-advance
+            continue;
+          }
+          // failures
+          return {
+            ok: false,
+            steps,
+            message:
+              out.kind === "pr_failed"
+                ? out.message
+                : out.kind === "cursor_launch_failed"
+                  ? out.message
+                  : out.kind === "branch_timeout"
+                    ? out.message
+                    : "Stage 2 실행이 실패했습니다.",
+          };
+        }
+
+        // Stage1 + normal tasks keep the existing path (Stage1 semantics preserved).
+        cursorOutcome = await runEnvTestCursorToPrOpenedCore({
+          executeParams,
           ctx: {
             projectId,
             taskId,
