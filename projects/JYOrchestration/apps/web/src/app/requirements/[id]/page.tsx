@@ -5,12 +5,11 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
-import {
-  getMockFeaturesForSession,
-  getMockMinutesForSession,
-  getMockRequirement,
-  getMockSessionsForRequirement,
-} from "@/lib/mock/workflowMock";
+import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
+import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
+import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
+import { getRequirementDetailView } from "@/lib/workflow/workflowViewModel";
 
 type TabId = "overview" | "sessions" | "minutes" | "features" | "tasks";
 
@@ -29,8 +28,7 @@ export default function RequirementDetailPage() {
 
   const params = useParams<{ id: string }>();
   const requirementId = typeof params?.id === "string" ? params.id : "";
-  const req = getMockRequirement(requirementId);
-  const sessions = getMockSessionsForRequirement(requirementId);
+  const vm = useMemo(() => getRequirementDetailView(requirementId), [requirementId]);
 
   const search = useSearchParams();
   const router = useRouter();
@@ -43,18 +41,47 @@ export default function RequirementDetailPage() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>{req?.title ?? "Requirement"}</div>
-          <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            {req?.description ?? "Unknown requirement id."}
+      <WorkflowPageHeader
+        title={vm.requirement?.title ?? "Requirement"}
+        subtitle={vm.requirement?.description ?? (requirementId ? `Unknown requirement id: ${requirementId}` : "Unknown requirement id.")}
+        backHref="/requirements"
+        backLabel="Back to list"
+        right={
+          vm.requirement ? (
+            <WorkflowBadge>{vm.requirement.status}</WorkflowBadge>
+          ) : (
+            <WorkflowBadge>UNKNOWN</WorkflowBadge>
+          )
+        }
+      />
+
+      <div style={{ marginTop: 14 }}>
+        <WorkflowCard>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13, color: "#6b7280" }}>
+              <div>
+                <strong style={{ color: "#111827" }}>{vm.requirement?.sessionCount ?? vm.sessions.length}</strong> sessions
+              </div>
+              <div>
+                <strong style={{ color: "#111827" }}>{vm.requirement?.featureCount ?? vm.features.length}</strong> features
+              </div>
+              <div style={{ color: "#6b7280" }}>
+                Next: Requirement → Session → Minutes → Features
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <WorkflowActionButton
+                label="Open latest session"
+                onClick={() => {
+                  if (!vm.latestSession) return;
+                  router.push(`/collaboration/${encodeURIComponent(vm.latestSession.id)}`);
+                }}
+              />
+              <WorkflowActionButton label="View latest minutes" onClick={() => setTab("minutes")} />
+              <WorkflowActionButton label="View derived features" onClick={() => setTab("features")} />
+            </div>
           </div>
-        </div>
-        <div style={{ flex: "0 0 auto" }}>
-          <Link href="/requirements" style={{ fontSize: 13, textDecoration: "underline" }}>
-            Back to list
-          </Link>
-        </div>
+        </WorkflowCard>
       </div>
 
       <nav aria-label="Requirement tabs" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
@@ -82,27 +109,25 @@ export default function RequirementDetailPage() {
       {tab === "overview" ? (
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Overview</div>
-          <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.6 }}>
-            This is a UI skeleton. Next phase will bind real requirement data, sessions, minutes generation, and feature derivation.
-          </div>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, fontSize: 13, color: "#6b7280" }}>
-            <div>
-              <strong style={{ color: "#111827" }}>{req?.sessionCount ?? sessions.length}</strong> sessions
+          {vm.requirement ? (
+            <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.6 }}>
+              This is a UI skeleton. Next phase will bind real requirement data, sessions, minutes generation, and feature derivation.
             </div>
-            <div>
-              <strong style={{ color: "#111827" }}>{req?.featureCount ?? 0}</strong> features
+          ) : (
+            <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.6 }}>
+              Requirement not found. Please check the URL.
             </div>
-          </div>
+          )}
         </div>
       ) : null}
 
       {tab === "sessions" ? (
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 900 }}>Sessions</div>
-          {sessions.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#6b7280" }}>(no sessions)</div>
+          {vm.sessions.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#6b7280" }}>No collaboration sessions available</div>
           ) : (
-            sessions.map((s) => (
+            vm.sessions.map((s) => (
               <div key={s.id} style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                   <div style={{ minWidth: 0 }}>
@@ -125,11 +150,11 @@ export default function RequirementDetailPage() {
       ) : null}
 
       {tab === "minutes" ? (
-        <MeetingMinutesPanel minutes={getMockMinutesForSession(sessions[0]?.id ?? "sess-201")} />
+        <MeetingMinutesPanel minutes={vm.minutes} emptyLabel="No meeting minutes available" />
       ) : null}
 
       {tab === "features" ? (
-        <FeatureSummaryPanel features={getMockFeaturesForSession(sessions[0]?.id ?? "sess-201")} />
+        <FeatureSummaryPanel features={vm.features} emptyLabel="No derived features available" />
       ) : null}
 
       {tab === "tasks" ? (

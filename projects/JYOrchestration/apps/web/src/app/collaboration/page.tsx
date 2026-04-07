@@ -1,42 +1,31 @@
 import Link from "next/link";
-import { getMockRequirement, mockSessions } from "@/lib/mock/workflowMock";
-
-function Badge({ text }: { text: string }) {
-  return (
-    <span
-      style={{
-        fontSize: 12,
-        padding: "2px 8px",
-        borderRadius: 999,
-        border: "1px solid #e5e5e5",
-        background: "#fafafa",
-        color: "#374151",
-        fontWeight: 800,
-      }}
-    >
-      {text}
-    </span>
-  );
-}
+import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
+import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
+import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
+import { getCollaborationListView } from "@/lib/workflow/workflowViewModel";
 
 export default function CollaborationPage() {
+  const vm = getCollaborationListView();
   return (
     <div>
-      <div style={{ fontSize: 18, fontWeight: 900 }}>Collaboration</div>
-      <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-        Session workspace entry points linked to Requirements (mock data).
-      </div>
+      <WorkflowPageHeader
+        title="Collaboration"
+        subtitle="Session workspace entry points linked to Requirements (mock data)."
+      />
 
       <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-        {mockSessions.map((s) => {
-          const req = getMockRequirement(s.requirementId);
+        {vm.sessions.length === 0 ? (
+          <WorkflowEmptyState title="Collaboration sessions" message="No collaboration sessions available" />
+        ) : (
+          vm.sessions.map(({ session: s, requirement: req }) => {
           return (
-            <div key={s.id} style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14 }}>
+            <WorkflowCard key={s.id}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                     <div style={{ fontSize: 14, fontWeight: 900 }}>{s.title}</div>
-                    <Badge text={s.status} />
+                    <WorkflowBadge>{s.status}</WorkflowBadge>
                   </div>
                   <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{s.createdAt}</div>
                   <div style={{ marginTop: 10, fontSize: 13, color: "#111827", lineHeight: 1.55 }}>
@@ -70,9 +59,10 @@ export default function CollaborationPage() {
                   </Link>
                 </div>
               </div>
-            </div>
+            </WorkflowCard>
           );
-        })}
+          })
+        )}
       </div>
     </div>
   );
