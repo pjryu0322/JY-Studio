@@ -40,10 +40,6 @@ import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAu
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/execution/scmManagerWithAiMembers";
 import { runStage1SmokePipeline } from "@/lib/executionLoop/envTestStage1Pipeline";
-import {
-  runEnvTestReflectionConfirmedPipeline,
-  runEnvTestReflectionNotConfirmedGithubBypass,
-} from "@/lib/executionLoop/envTestStage2Pipeline";
 import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2EnvTestPipeline";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
@@ -68,7 +64,7 @@ function parsePrNumberFromUrl(prUrl: string): number | null {
  * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (일반 Task) AI 리뷰·SCM·머지 또는 종료.
  * ENV_TEST family: compare·플랫폼 PR·PR_OPENED·merge/readiness는 `envTestStage1Helpers` / `stage2/*` / `envTestGithubFinalize`로 이관.
  * - Stage1(`ENV_TEST`): `runStage1SmokePipeline`(= Stage1 전용 모듈) — PR 단일 프로브; GitHub 브랜치 확인 후 Cursor 터미널 전 조기 PR 경로는 cursor 어댑터.
- * - Stage2(`ENV_TEST_STAGE2`): reflection 게이트·`runEnvTestReflectionNotConfirmedGithubBypass`·`runEnvTestReflectionConfirmedPipeline`.
+ * - Stage2(`ENV_TEST_STAGE2`): `runStage2EnvTestPipeline` (GitHub source-of-truth; Cursor terminal wait 없음).
  * 플랫폼은 로컬에서 코드/git을 실행하지 않습니다.
  */
 export async function runExecutionLoop(params: {
@@ -1114,75 +1110,7 @@ export async function runExecutionLoop(params: {
       const reflectionOk = isCursorCodeReflectionConfirmed(cr);
       if (!reflectionOk) {
         const headPending = (cr.branchName || branchPlan.branchName || "").trim();
-        if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
-          const bypass = await runEnvTestReflectionNotConfirmedGithubBypass({
-            projectId,
-            taskId,
-            taskKind: taskRow.taskKind,
-            actorUserId,
-            execRunId: execRun.id,
-            repoUrl,
-            baseBranch: setup.baseBranch,
-            githubAccessToken: setup.githubAccessToken ?? null,
-            cr,
-            headPending,
-            execRunCreatedAt: execRun.createdAt,
-            steps,
-            singleTaskId,
-            effectiveAutoAdvance,
-          });
-          if (bypass.kind === "return") {
-            return bypass.result;
-          }
-          if (bypass.kind === "continue_loop") {
-            continue;
-          }
-        }
-
-        if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
-          const hasCommit = Boolean(String(cr.commitHash ?? "").trim());
-          const hasChangedFiles = Array.isArray(cr.changedFiles) && cr.changedFiles.length > 0;
-          const hasDiff = Boolean(String(cr.summary ?? "").trim());
-          const stage2FailCode =
-            hasCommit && hasChangedFiles && hasDiff ? "BRANCH_NOT_REFLECTED" : "NO_COMMIT";
-          const stage2FailSummary =
-            stage2FailCode === "NO_COMMIT"
-              ? "Stage 2 실패: commit 미발생"
-              : "Stage 2 실패: Git branch 미반영";
-          await prisma.task.update({
-            where: { id: taskId },
-            data: {
-              status: "FAILED",
-              executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
-              lastEvalResult: stage2FailCode,
-              lastEvalSummary: stage2FailSummary,
-            },
-          });
-          await prisma.taskExecutionRun.update({
-            where: { id: execRun.id },
-            data: {
-              status: "failed",
-              evaluationDecision: "failed",
-              evaluationReason: stage2FailCode,
-            },
-          });
-          await refreshWorkflowStates(projectId);
-          steps.push({
-            phase: "git_reflection_gate",
-            taskId,
-            runId: cr.runId,
-            branch: cr.branchName,
-            commitHash: cr.commitHash ?? null,
-            changedFileCount: cr.changedFiles.length,
-            passed: false,
-            reason: stage2FailCode,
-          });
-          return {
-            ok: false,
-            steps,
-            message: stage2FailSummary,
-          };
-        }
+        // Stage2 no longer passes through this shared path (it dispatches to `runStage2EnvTestPipeline` early).
 
         const gateReason = "no_commit_and_no_changed_files";
         console.info("[execution-loop][completion-gate] reflection not confirmed — pending_apply", {
@@ -1316,27 +1244,7 @@ export async function runExecutionLoop(params: {
         },
       });
 
-      if (isEnvTestStage2TaskKind(taskRow.taskKind)) {
-        const envOut = await runEnvTestReflectionConfirmedPipeline({
-          projectId,
-          taskId,
-          taskKind: taskRow.taskKind,
-          actorUserId,
-          execRunId: execRun.id,
-          repoUrl,
-          baseBranch: setup.baseBranch,
-          githubAccessToken: setup.githubAccessToken ?? null,
-          execRunCreatedAt: execRun.createdAt,
-          cr,
-          steps,
-          singleTaskId,
-          effectiveAutoAdvance,
-        });
-        if (envOut.kind === "return") {
-          return envOut.result;
-        }
-        continue;
-      }
+      // Stage2 no longer passes through this shared path (it dispatches to `runStage2EnvTestPipeline` early).
 
       await prisma.task.update({
         where: { id: taskId },
