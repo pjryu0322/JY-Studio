@@ -16,21 +16,18 @@ import {
   type ExecutionSetupDto,
 } from "@/components/project-spec/api";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
+import type { ExecutionSetupBusyKey as BusyKey } from "@/components/project-spec/executionSetupBusyKey";
+import {
+  GLOB_PLACEHOLDER,
+  POLICY_APPROVAL,
+  POLICY_AUTO,
+  POLICY_EXTRA,
+  POLICY_GATES,
+} from "@/components/project-spec/executionSetupPolicyRows";
+import { ExecutionSetupUnifiedPolicyBody } from "@/components/project-spec/ExecutionSetupUnifiedPolicyBody";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 
-type BusyKey =
-  | "save-cursor"
-  | "save-exec-options"
-  | "save-policy"
-  | "val-cursor-api"
-  | "val-cursor-exec"
-  | "val-all"
-  | "del-cursor"
-  | "reveal-cursor"
-  | null;
-
-const GLOB_PLACEHOLDER = "src/**\napp/**\ntests/**";
 const CURSOR_API_DEFAULT_URL = "https://api.cursor.com";
 
 function connectionToneColor(tone: "muted" | "ok" | "bad" | "warn"): string {
@@ -46,76 +43,6 @@ function axisStatus(ok: boolean | null | undefined): { label: string; tone: "mut
   if (ok === false) return { label: "실패", tone: "bad" };
   return { label: "미검증", tone: "warn" };
 }
-
-type PolicyRow = { key: keyof Pick<
-  ExecutionSetupDto,
-  | "autoCommit"
-  | "autoPush"
-  | "autoPr"
-  | "requireApprovalBeforeApply"
-  | "requireTestsBeforePush"
-  | "dryRunAllowed"
-  | "autoAdvanceToNextTask"
-  | "stopOnTestFailure"
-  | "stopOnRepeatedFailure"
-  | "stopOnOutOfScopeChange"
-  | "requireApprovalForSensitiveTasks"
->; label: string; help: string };
-
-const POLICY_AUTO: PolicyRow[] = [
-  {
-    key: "autoCommit",
-    label: "자동 커밋",
-    help: "원격 에이전트가 변경 후 커밋할지 여부입니다.",
-  },
-  { key: "autoPush", label: "자동 푸시", help: "커밋 후 원격 저장소로 푸시할지 정합니다." },
-  { key: "autoPr", label: "자동 PR 생성", help: "푸시 후 PR 생성까지 자동으로 이어갈지 정합니다." },
-];
-
-const POLICY_GATES: PolicyRow[] = [
-  {
-    key: "requireTestsBeforePush",
-    label: "푸시 전 테스트 필수",
-    help: "테스트·검증을 통과하기 전에는 푸시하지 않습니다.",
-  },
-  {
-    key: "stopOnRepeatedFailure",
-    label: "동일 오류 반복 시 중단",
-    help: "같은 오류가 연속으로 나면 재시도를 멈추고 사람이 개입할 수 있게 합니다.",
-  },
-  {
-    key: "stopOnOutOfScopeChange",
-    label: "허용 경로 위반 시 중단",
-    help: "허용 글로브 밖 파일이나 비정상적으로 많은 변경이 감지되면 중단합니다.",
-  },
-  {
-    key: "stopOnTestFailure",
-    label: "테스트·빌드 실패 징후 시 중단",
-    help: "요약·평가에서 테스트나 빌드 실패 힌트가 보이면 즉시 실패 처리합니다.",
-  },
-];
-
-const POLICY_APPROVAL: PolicyRow[] = [
-  {
-    key: "requireApprovalBeforeApply",
-    label: "반영 전 승인 필요",
-    help: "코드 반영(커밋·푸시 등) 전에 사람의 승인을 받습니다.",
-  },
-  {
-    key: "requireApprovalForSensitiveTasks",
-    label: "인증·비밀정보 관련 작업은 사람 승인 필요",
-    help: "토큰·비밀번호·인증 등 민감한 작업은 자동으로 진행하지 않습니다.",
-  },
-];
-
-const POLICY_EXTRA: PolicyRow[] = [
-  { key: "dryRunAllowed", label: "드라이런 허용", help: "실제 반영 없이 시뮬레이션·검토만 하는 흐름을 허용합니다." },
-  {
-    key: "autoAdvanceToNextTask",
-    label: "검토 통과 시 다음 작업 자동 진행",
-    help: "현재 작업이 통과하면 다음 준비된 작업으로 자동 이어집니다.",
-  },
-];
 
 export function ExecutionSetupPanel(props: {
   projectId: string;
@@ -133,6 +60,10 @@ export function ExecutionSetupPanel(props: {
   unifiedExecutionEnvironment?: boolean;
   /** unified + 연결 설정 상단에 Git 폼 삽입(부모 렌더) */
   connectionSlotBeforeCursor?: ReactNode;
+  /** 실행 환경 탭: 1→2→3 플로우, 모니터 섹션 생략, Stage1 슬롯 분리 */
+  executionEnvironmentFlow?: boolean;
+  /** flow 모드에서 Step 2(Stage1 연결 검증) 본문 */
+  connectionSlotAfterCursor?: ReactNode;
   /** 프로젝트 OWNER만 저장된 키 전체를 일시 표시 */
   canRevealCursorApiKey?: boolean;
 }) {
@@ -147,6 +78,8 @@ export function ExecutionSetupPanel(props: {
     flatLayout = false,
     unifiedExecutionEnvironment = false,
     connectionSlotBeforeCursor,
+    executionEnvironmentFlow = false,
+    connectionSlotAfterCursor,
     canRevealCursorApiKey = false,
   } = props;
 
@@ -272,18 +205,62 @@ export function ExecutionSetupPanel(props: {
     : cursorApiDetailOpen;
 
   const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
+  const flowMode = Boolean(unified && executionEnvironmentFlow);
 
-  const sectionCard = (title: string, description: string | null, children: ReactNode) => (
+  const unifiedPolicyBody = (
+    <ExecutionSetupUnifiedPolicyBody
+      projectId={projectId}
+      canEdit={canEdit}
+      es={es}
+      setExecutionSetup={setExecutionSetup}
+      setMessage={setMessage}
+      examplesOpen={examplesOpen}
+      setExamplesOpen={setExamplesOpen}
+      showExecExamples={showExecExamples}
+      busy={busy}
+      setBusy={setBusy}
+    />
+  );
+
+  const sectionCard = (
+    title: string,
+    description: string | null,
+    children: ReactNode,
+    options?: { variant?: "stage1" }
+  ) => (
     <section
       style={{
         marginBottom: 16,
         padding: 16,
         borderRadius: 12,
-        border: "1px solid #e2e8f0",
-        background: "#fff",
+        border: options?.variant === "stage1" ? "2px solid #9333ea" : "1px solid #e2e8f0",
+        background: options?.variant === "stage1" ? "linear-gradient(180deg, #faf5ff 0%, #ffffff 64px)" : "#fff",
+        boxShadow: options?.variant === "stage1" ? "0 8px 28px rgba(147, 51, 234, 0.12)" : undefined,
       }}
     >
-      <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 4px 0", color: "#0f172a" }}>{title}</h2>
+      {options?.variant === "stage1" ? (
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: "0.08em",
+            color: "#7c3aed",
+            marginBottom: 8,
+          }}
+        >
+          STEP 2 · 핵심 검증
+        </div>
+      ) : null}
+      <h2
+        style={{
+          fontSize: options?.variant === "stage1" ? 20 : 17,
+          fontWeight: 800,
+          margin: "0 0 4px 0",
+          color: "#0f172a",
+        }}
+      >
+        {title}
+      </h2>
       {description ? (
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>{description}</p>
       ) : null}
@@ -671,7 +648,9 @@ export function ExecutionSetupPanel(props: {
       {!showBody ? (
         <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
           {unified
-            ? "연결 설정에서 저장소를 저장한 뒤 Cursor API·실행 정책·검증을 같은 화면에서 마칩니다."
+            ? flowMode
+              ? "1. 외부 시스템 연결 → 2. 연결 테스트 실행 → 3. (선택) 실행 정책 설정"
+              : "연결 설정에서 저장소를 저장한 뒤 Cursor API·실행 정책·검증을 같은 화면에서 마칩니다."
             : "Git 연동에서 저장소를 연결하고, 여기서 Cursor API와 실행 옵션·정책을 설정한 뒤 연결 검증을 마치면 실행 준비가 완료됩니다."}
         </p>
       ) : unified ? (
@@ -692,373 +671,83 @@ export function ExecutionSetupPanel(props: {
               설정이 바뀌었습니다. 해당 항목을 저장한 뒤 필요한 검증을 다시 실행해 주세요.
             </div>
           ) : null}
-          {sectionCard(
-            "연결 설정",
-            "Git 저장소와 Cursor API를 한곳에서 연결합니다. 저장소는 먼저 저장한 뒤 저장소 연결 검증을 실행하세요.",
+          {flowMode ? (
             <>
-              {connectionSlotBeforeCursor}
-              {renderCursorConnectionBlock({ compactTitle: true })}
-            </>
-          )}
-          {sectionCard(
-            "실행 정책",
-            "브랜치·경로·자동 반영·승인·재시도 등 실행 시 적용되는 규칙입니다.",
-            <>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                <button
-                  type="button"
-                  disabled={!canEdit}
-                  onClick={() => setExamplesOpen((v) => !v)}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #94a3b8",
-                    background: "#fff",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: canEdit ? "pointer" : "not-allowed",
-                  }}
-                >
-                  {examplesOpen ? "실행 옵션 예시 접기" : "실행 옵션 예시 보기"}
-                </button>
-                <button
-                  type="button"
-                  disabled={!canEdit || !es}
-                  onClick={() => {
-                    if (!es) return;
-                    setExecutionSetup({
-                      ...es,
-                      branchStrategy: "feature-per-workflow",
-                      branchPrefix: "jy/agent/",
-                      allowedPathGlobs: ["src/**", "app/**", "tests/**"],
-                    });
-                    setMessage("브랜치 전략·접두어·허용 경로에 예시 값을 채웠습니다.「실행 옵션 저장」으로 저장하세요.");
-                  }}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #7c3aed",
-                    background: canEdit && es ? "#f5f3ff" : "#f1f5f9",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: !canEdit || !es ? "not-allowed" : "pointer",
-                    color: "#5b21b6",
-                  }}
-                >
-                  실행 옵션 예시 적용
-                </button>
-              </div>
-              {showExecExamples ? (
-                <div
-                  style={{
-                    marginBottom: 14,
-                    padding: 12,
-                    borderRadius: 10,
-                    border: "1px dashed #94a3b8",
-                    background: "#f8fafc",
-                    fontSize: 12,
-                    color: "#334155",
-                    lineHeight: 1.55,
-                    fontFamily: "ui-monospace, monospace",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {`브랜치 전략 예: 워크플로마다 기능 브랜치 / 작업마다 기능 브랜치 / 수동
-작업 브랜치 접두어 예: jy/agent/
-허용 경로 glob 예:
-${GLOB_PLACEHOLDER}`}
-                </div>
-              ) : null}
-              <div
+              {sectionCard(
+                "1 외부 시스템 연결",
+                "Git 저장소·GitHub 인증·Cursor API를 설정합니다. 저장 후 검증으로 연결됨을 확인하세요.",
+                <>
+                  {connectionSlotBeforeCursor}
+                  {renderCursorConnectionBlock({ compactTitle: true })}
+                </>
+              )}
+              {connectionSlotAfterCursor
+                ? sectionCard(
+                    "2 연결 검증 (Stage 1)",
+                    "1단계가 준비되면 연결 테스트로 실제 Cursor·GitHub·머지 경로를 확인합니다.",
+                    connectionSlotAfterCursor,
+                    { variant: "stage1" }
+                  )
+                : null}
+              <details
                 style={{
-                  border: "1px solid #e2e8f0",
+                  marginBottom: 16,
                   borderRadius: 12,
-                  padding: 12,
-                  background: "#fafafa",
-                  marginBottom: 12,
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  padding: "0 16px 16px",
                 }}
               >
-                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6, color: "#0f172a" }}>실행 옵션</div>
-                <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-                  브랜치 전략·작업 브랜치 접두어·허용 경로를 저장합니다.
-                </p>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <label style={{ display: "grid", gap: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>브랜치 전략</span>
-                    <select
-                      value={es?.branchStrategy ?? "manual"}
-                      disabled={!canEdit || !es}
-                      onChange={(e) =>
-                        setExecutionSetup((p) => ({
-                          ...(p ?? ({} as ExecutionSetupDto)),
-                          branchStrategy: e.target.value as ExecutionSetupDto["branchStrategy"],
-                        }))
-                      }
-                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-                    >
-                      <option value="feature-per-workflow">워크플로마다 기능 브랜치</option>
-                      <option value="feature-per-task">작업마다 기능 브랜치</option>
-                      <option value="manual">수동</option>
-                    </select>
-                  </label>
-                  <label style={{ display: "grid", gap: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>작업 브랜치 접두어 (선택)</span>
-                    <input
-                      value={es?.branchPrefix ?? ""}
-                      disabled={!canEdit || !es}
-                      placeholder="jy/agent/"
-                      onChange={(e) =>
-                        setExecutionSetup((p) => ({
-                          ...(p ?? ({} as ExecutionSetupDto)),
-                          branchPrefix: e.target.value || null,
-                        }))
-                      }
-                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
-                    />
-                  </label>
-                </div>
-                <label style={{ display: "grid", gap: 4, marginTop: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>
-                    허용 경로 glob (선택, 줄바꿈으로 구분)
-                  </span>
-                  <textarea
-                    value={(es?.allowedPathGlobs ?? []).join("\n")}
-                    disabled={!canEdit || !es}
-                    placeholder={GLOB_PLACEHOLDER}
-                    rows={3}
-                    onChange={(e) => {
-                      const raw = e.target.value
-                        .split(/[\n,]+/)
-                        .map((s) => s.trim())
-                        .filter(Boolean);
-                      setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), allowedPathGlobs: raw }));
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 10,
-                      border: "1px solid #cbd5e1",
-                      fontFamily: "ui-monospace, monospace",
-                      fontSize: 12,
-                    }}
-                  />
-                </label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                  <button
-                    type="button"
-                    disabled={!canEdit || !es || busy === "save-exec-options"}
-                    onClick={async () => {
-                      if (!projectId || !es) return;
-                      setBusy("save-exec-options");
-                      try {
-                        const { res, json } = await patchExecutionSetup(projectId, {
-                          branchStrategy: es.branchStrategy,
-                          branchPrefix: es.branchPrefix,
-                          allowedPathGlobs: es.allowedPathGlobs ?? [],
-                        });
-                        if (!res.ok || !json.success || !json.data) {
-                          setMessage(json.message || "저장에 실패했습니다.");
-                          return;
-                        }
-                        setExecutionSetup(json.data);
-                        setMessage("실행 옵션을 저장했습니다.");
-                      } finally {
-                        setBusy(null);
-                      }
-                    }}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: "1px solid #2563eb",
-                      background: "#2563eb",
-                      color: "#fff",
-                      fontWeight: 800,
-                      fontSize: 12,
-                      cursor: !canEdit || !es ? "not-allowed" : busy === "save-exec-options" ? "wait" : "pointer",
-                    }}
-                  >
-                    {busy === "save-exec-options" ? "저장 중…" : "실행 옵션 저장"}
-                  </button>
-                </div>
-              </div>
-              <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fafafa" }}>
-                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6, color: "#0f172a" }}>정책·승인·재시도</div>
-                <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-                  자동 반영·검증·승인 규칙입니다. 정책만 변경한 경우 저장소·Cursor API 검증 결과는 유지됩니다.
-                </p>
-
-                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "10px 0 6px" }}>자동 반영</div>
-                <div style={{ display: "grid", gap: 10 }}>
-                  {POLICY_AUTO.map(({ key, label, help }) => (
-                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
-                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input
-                          type="checkbox"
-                          disabled={!canEdit || !es}
-                          checked={Boolean(es?.[key])}
-                          onChange={(e) =>
-                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
-                          }
-                        />
-                        <strong>{label}</strong>
-                      </span>
-                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "14px 0 6px" }}>검증·중단 조건</div>
-                <div style={{ display: "grid", gap: 10 }}>
-                  {POLICY_GATES.map(({ key, label, help }) => (
-                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
-                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input
-                          type="checkbox"
-                          disabled={!canEdit || !es}
-                          checked={es ? es[key] !== false : true}
-                          onChange={(e) =>
-                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
-                          }
-                        />
-                        <strong>{label}</strong>
-                      </span>
-                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "14px 0 6px" }}>승인 정책</div>
-                <div style={{ display: "grid", gap: 10 }}>
-                  {POLICY_APPROVAL.map(({ key, label, help }) => (
-                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
-                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input
-                          type="checkbox"
-                          disabled={!canEdit || !es}
-                          checked={
-                            key === "requireApprovalForSensitiveTasks"
-                              ? es?.requireApprovalForSensitiveTasks === true
-                              : es
-                                ? es[key] !== false
-                                : true
-                          }
-                          onChange={(e) =>
-                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
-                          }
-                        />
-                        <strong>{label}</strong>
-                      </span>
-                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div style={{ fontWeight: 800, fontSize: 12, color: "#475569", margin: "14px 0 6px" }}>추가 옵션</div>
-                <div style={{ display: "grid", gap: 10 }}>
-                  {POLICY_EXTRA.map(({ key, label, help }) => (
-                    <label key={key} style={{ display: "grid", gap: 4, fontSize: 13, color: "#334155" }}>
-                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input
-                          type="checkbox"
-                          disabled={!canEdit || !es}
-                          checked={es ? es[key] !== false : true}
-                          onChange={(e) =>
-                            setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), [key]: e.target.checked }))
-                          }
-                        />
-                        <strong>{label}</strong>
-                      </span>
-                      <span style={{ fontSize: 11, color: "#64748b", lineHeight: 1.45, paddingLeft: 24 }}>{help}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <label
+                <summary
                   style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                    fontSize: 13,
-                    color: "#334155",
-                    flexWrap: "wrap",
-                    marginTop: 12,
+                    padding: "14px 0",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                    fontSize: 16,
+                    color: "#0f172a",
+                    listStyle: "none",
                   }}
                 >
-                  <span style={{ fontWeight: 800 }}>작업당 최대 자동 재시도 횟수</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={20}
-                    disabled={!canEdit || !es}
-                    value={es?.maxAutoRetriesPerTask ?? 2}
-                    onChange={(e) => {
-                      const n = parseInt(e.target.value, 10);
-                      const v = Number.isFinite(n) ? Math.min(20, Math.max(0, n)) : 2;
-                      setExecutionSetup((p) => ({ ...(p ?? ({} as ExecutionSetupDto)), maxAutoRetriesPerTask: v }));
-                    }}
-                    style={{
-                      width: 72,
-                      padding: "6px 8px",
-                      borderRadius: 8,
-                      border: "1px solid #cbd5e1",
-                    }}
-                  />
-                  <span style={{ fontSize: 11, color: "#64748b", flex: "1 1 200px" }}>
-                    한 작업에서 오류가 날 때 자동으로 재시도하는 최대 횟수입니다.
-                  </span>
-                </label>
-
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
-                  <button
-                    type="button"
-                    disabled={!canEdit || !es || busy === "save-policy"}
-                    onClick={async () => {
-                      if (!projectId || !es) return;
-                      setBusy("save-policy");
-                      try {
-                        const { res, json } = await patchExecutionSetup(projectId, {
-                          autoCommit: es.autoCommit,
-                          autoPush: es.autoPush,
-                          autoPr: es.autoPr,
-                          requireApprovalBeforeApply: es.requireApprovalBeforeApply,
-                          requireTestsBeforePush: es.requireTestsBeforePush,
-                          dryRunAllowed: es.dryRunAllowed,
-                          autoAdvanceToNextTask: es.autoAdvanceToNextTask,
-                          maxAutoRetriesPerTask: es.maxAutoRetriesPerTask,
-                          stopOnTestFailure: es.stopOnTestFailure,
-                          stopOnRepeatedFailure: es.stopOnRepeatedFailure,
-                          stopOnOutOfScopeChange: es.stopOnOutOfScopeChange,
-                          requireApprovalForSensitiveTasks: es.requireApprovalForSensitiveTasks,
-                        });
-                        if (!res.ok || !json.success || !json.data) {
-                          setMessage(json.message || "정책 저장에 실패했습니다.");
-                          return;
-                        }
-                        setExecutionSetup(json.data);
-                        setMessage("실행 정책을 저장했습니다.");
-                      } finally {
-                        setBusy(null);
-                      }
-                    }}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 10,
-                      border: "1px solid #475569",
-                      background: "#334155",
-                      color: "#fff",
-                      fontWeight: 800,
-                      fontSize: 12,
-                      cursor: !canEdit || !es ? "not-allowed" : busy === "save-policy" ? "wait" : "pointer",
-                    }}
-                  >
-                    {busy === "save-policy" ? "저장 중…" : "실행 정책 저장"}
-                  </button>
-                </div>
-              </div>
+                  3 실행 정책{" "}
+                  <span style={{ fontWeight: 600, color: "#64748b", fontSize: 13 }}>(고급 설정 · 선택)</span>
+                </summary>
+                <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+                  Stage1 연결 테스트에 필수는 아닙니다. 브랜치·푸시·승인·재시도 규칙을 바꿀 때만 펼쳐 주세요.
+                </p>
+                {unifiedPolicyBody}
+              </details>
+            </>
+          ) : (
+            <>
+              {sectionCard(
+                "연결 설정",
+                "Git 저장소와 Cursor API를 한곳에서 연결합니다. 저장소는 먼저 저장한 뒤 저장소 연결 검증을 실행하세요.",
+                <>
+                  {connectionSlotBeforeCursor}
+                  {renderCursorConnectionBlock({ compactTitle: true })}
+                </>
+              )}
+              {sectionCard(
+                "실행 정책",
+                "브랜치·경로·자동 반영·승인·재시도 등 실행 시 적용되는 규칙입니다.",
+                unifiedPolicyBody
+              )}
             </>
           )}
-          {sectionCard(
-            "실행 상태",
-            "연결·검증 결과와 저장소 실행 가능 여부를 확인합니다. 실패 시 아래 사유를 참고하세요.",
+          {!flowMode ? (
+          <section
+            style={{
+              marginBottom: 16,
+              padding: 16,
+              borderRadius: 12,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+            }}
+          >
+            <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 4px 0", color: "#0f172a" }}>실행 상태</h2>
+            <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+              연결·검증 결과와 저장소 실행 가능 여부를 확인합니다. 실패 시 아래 사유를 참고하세요.
+            </p>
             <>
               <div
                 style={{
@@ -1295,7 +984,8 @@ ${GLOB_PLACEHOLDER}`}
                 <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>{es.lastValidationError}</div>
               ) : null}
             </>
-          )}
+          </section>
+          ) : null}
         </>
       ) : (
         <>

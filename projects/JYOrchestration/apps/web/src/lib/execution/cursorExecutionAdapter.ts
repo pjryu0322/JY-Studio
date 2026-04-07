@@ -23,11 +23,8 @@ import {
   isTaskProgressLogEnabled,
 } from "@/lib/observability/taskProgressLog";
 import { cursorApiBasicAuthHeader, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
-import {
-  getEnvTestStage1PrFirstRetryConfig,
-  runEnvTestAfterGithubPushConfirmed,
-  runStage1EnvTestPrSmokePath,
-} from "@/lib/executionLoop/envTestExecutionHelpers";
+import { getEnvTestStage1PrFirstRetryConfig, runStage1EnvTestPrSmokePath } from "@/lib/executionLoop/envTestStage1Helpers";
+import { runEnvTestAfterGithubPushConfirmed } from "@/lib/executionLoop/stage2/stage2PrFlow";
 import { normalizeStage1EnvTestHeadBranch } from "@/lib/service/githubEnvTestPullRequestService";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
 import {

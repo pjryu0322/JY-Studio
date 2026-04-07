@@ -1,12 +1,11 @@
 /**
- * Stage2(ENV_TEST_STAGE2) 역할 분리 파이프라인 진입점.
- * reflection·GitHub compare·플랫폼 PR·reviewer·security·SCM·merge 는 Stage1과 분리한다.
+ * Stage2(ENV_TEST_STAGE2) 전용 파이프라인. 구현은 `stage2/*`에 두고 이 파일은 공개 진입·문서 역할.
  *
- * Stage1 전용 경로(`runStage1SmokePipeline`)와 혼용하지 않는다.
+ * STAGE1 PROTECTION: Stage1(`ENV_TEST`)는 `envTestStage1Pipeline`만 사용. 이 모듈을 Stage1에서 import하지 않는다.
  */
-
 export {
   runEnvTestAfterGithubPushConfirmed,
   runEnvTestReflectionConfirmedPipeline,
   runEnvTestReflectionNotConfirmedGithubBypass,
-} from "./envTestExecutionHelpers";
+  type EnvTestReflectionNotConfirmedBypassResult,
+} from "./stage2/runStage2EnvTestPipeline";
