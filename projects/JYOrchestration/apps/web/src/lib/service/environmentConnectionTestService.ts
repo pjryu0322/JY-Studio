@@ -650,10 +650,18 @@ export async function getLatestEnvironmentTestTask(
   );
   const runSt = String(run0?.status ?? "").trim().toLowerCase();
   const runFailed = runSt === "failed";
+  /** Stage1: 워크플로가 이미 COMMITTED/PR_OPENED인데 task/run 플래그가 잠깐 어긋나도 UI가 “시작 중”으로만 보이지 않게 한다. */
+  const stage1WorkflowInFlight =
+    !isTerminal &&
+    !runFailed &&
+    (wfNorm === EXECUTION_WORKFLOW.RUNNING ||
+      wfNorm === EXECUTION_WORKFLOW.COMMITTED ||
+      wfNorm === EXECUTION_WORKFLOW.PENDING_APPLY ||
+      wfNorm === EXECUTION_WORKFLOW.PR_OPENED);
   const isRunning = Boolean(
     !isTerminal &&
       !runFailed &&
-      (tsU === "IN_PROGRESS" || runSt === "running") &&
+      (tsU === "IN_PROGRESS" || runSt === "running" || stage1WorkflowInFlight) &&
       (wfNorm === EXECUTION_WORKFLOW.RUNNING ||
         wfNorm === EXECUTION_WORKFLOW.COMMITTED ||
         wfNorm === EXECUTION_WORKFLOW.PENDING_APPLY ||

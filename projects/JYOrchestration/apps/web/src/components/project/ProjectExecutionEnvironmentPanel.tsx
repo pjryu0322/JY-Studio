@@ -167,6 +167,29 @@ function isStage1TerminalFromDto(last: EnvironmentTestLastDto): boolean {
   return isStage1TerminalWorkflow(normalizeWorkflowForUi(last.workflowStatus));
 }
 
+/**
+ * POST는 아직 `taskId`를 모르지만, 폴링으로 받은 DTO에 이미 Stage1 진행이 있으면 “시작하는 중” 대신 실시간 패널을 쓴다.
+ * `pendingOnly`: true이면 이전 실행의 터미널 DTO는 무시한다(새 클릭 직후 오탐 방지).
+ */
+function stage1LastDtoShowsPipelineProgress(
+  last: EnvironmentTestLastDto | null | undefined,
+  pendingOnly: boolean
+): boolean {
+  if (!last || !isStage1EnvironmentTestLast(last)) return false;
+  if (pendingOnly && isStage1TerminalFromDto(last)) return false;
+  if (isStage1TerminalFromDto(last)) return true;
+  if (last.isRunning === true) return true;
+  const wf = normalizeWorkflowForUi(last.workflowStatus);
+  return (
+    wf === EXECUTION_WORKFLOW.RUNNING ||
+    wf === EXECUTION_WORKFLOW.COMMITTED ||
+    wf === EXECUTION_WORKFLOW.PENDING_APPLY ||
+    wf === EXECUTION_WORKFLOW.PR_OPENED ||
+    wf === EXECUTION_WORKFLOW.REVIEWING ||
+    wf === EXECUTION_WORKFLOW.REVIEW_PENDING
+  );
+}
+
 function sumStage1CommittedBeforeKey(
   k: (typeof STAGE1_TIMING_ROW_KEYS)[number],
   bd: Record<string, number> | null | undefined
@@ -1195,7 +1218,8 @@ export function ProjectExecutionEnvironmentPanel({
                 ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다.
               </p>
             ) : null}
-            {stage1TimerSession?.taskId === "pending" ? (
+            {stage1TimerSession?.taskId === "pending" &&
+            !stage1LastDtoShowsPipelineProgress(envTestLast, true) ? (
               <div style={{ marginTop: 12, fontSize: 12, color: "#334155", lineHeight: 1.65 }}>
                 <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>현재 실행 결과</div>
                 <div style={{ fontWeight: 600, color: "#1e293b" }}>

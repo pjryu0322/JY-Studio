@@ -39,11 +39,11 @@ import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAutoMergeService";
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
 import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/execution/scmManagerWithAiMembers";
+import { runStage1SmokePipeline } from "@/lib/executionLoop/envTestStage1Pipeline";
 import {
   runEnvTestReflectionConfirmedPipeline,
   runEnvTestReflectionNotConfirmedGithubBypass,
-  runStage1EnvTestSimplePipeline,
-} from "@/lib/executionLoop/envTestExecutionHelpers";
+} from "@/lib/executionLoop/envTestStage2Pipeline";
 import { createGithubPullRequestFromBranch } from "@/lib/service/githubPullRequestFromBranchService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 export type { LoopStepRecord, RunExecutionLoopResult } from "./runLoopTypes";
@@ -66,7 +66,7 @@ function parsePrNumberFromUrl(prUrl: string): number | null {
 /**
  * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (일반 Task) AI 리뷰·SCM·머지 또는 종료.
  * ENV_TEST family: compare·플랫폼 PR·PR_OPENED·merge/readiness는 `envTestExecutionHelpers`로 이관.
- * - Stage1(`ENV_TEST`): Cursor 성공·폴링 실패 복구 모두 `runStage1EnvTestSimplePipeline`(PR 단일 프로브, 별도 Git HEAD/compare 없음).
+ * - Stage1(`ENV_TEST`): `runStage1SmokePipeline`(= Stage1 전용 모듈) — PR 단일 프로브; GitHub 브랜치 확인 후 Cursor 터미널 전 조기 PR 경로는 cursor 어댑터.
  * - Stage2(`ENV_TEST_STAGE2`): reflection 게이트·`runEnvTestReflectionNotConfirmedGithubBypass`·`runEnvTestReflectionConfirmedPipeline`.
  * 플랫폼은 로컬에서 코드/git을 실행하지 않습니다.
  */
@@ -745,11 +745,9 @@ export async function runExecutionLoop(params: {
         continue;
       }
 
-      // Stage1(ENV_TEST): 플랫폼 PR·머지는 항상 runStage1EnvTestSimplePipeline 경로에서만 수행한다.
-      // envTestGithubEarlyFinished(Stage2 compare 조기 종료)로 Stage1이 우회되면 PR 생성이 누락될 수 있어 차단한다.
+      // Stage1: GitHub에 브랜치가 보인 뒤 `runStage1EnvTestPrSmokePath`가 cursor 폴링 안에서 끝나면 envTestGithubEarlyFinished 로 전달된다.
       if (
         isEnvTestTask &&
-        !isEnvTestStage1TaskKind(taskRow.taskKind) &&
         cursorOutcome.ok &&
         "envTestGithubEarlyFinished" in cursorOutcome &&
         cursorOutcome.envTestGithubEarlyFinished
@@ -826,7 +824,7 @@ export async function runExecutionLoop(params: {
               commitHash: undefined,
               executionStatus: "cursor_poll_error_stage1_pr_smoke",
             };
-            const envOutRecover = await runStage1EnvTestSimplePipeline({
+            const envOutRecover = await runStage1SmokePipeline({
               projectId,
               taskId,
               taskKind: taskRow.taskKind,
@@ -1047,7 +1045,7 @@ export async function runExecutionLoop(params: {
       const { result: cr } = cursorOutcome;
 
       if (isEnvTestStage1TaskKind(taskRow.taskKind)) {
-        const envOutStage1 = await runStage1EnvTestSimplePipeline({
+        const envOutStage1 = await runStage1SmokePipeline({
           projectId,
           taskId,
           taskKind: taskRow.taskKind,
