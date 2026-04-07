@@ -745,8 +745,11 @@ export async function runExecutionLoop(params: {
         continue;
       }
 
+      // Stage1(ENV_TEST): 플랫폼 PR·머지는 항상 runStage1EnvTestSimplePipeline 경로에서만 수행한다.
+      // envTestGithubEarlyFinished(Stage2 compare 조기 종료)로 Stage1이 우회되면 PR 생성이 누락될 수 있어 차단한다.
       if (
         isEnvTestTask &&
+        !isEnvTestStage1TaskKind(taskRow.taskKind) &&
         cursorOutcome.ok &&
         "envTestGithubEarlyFinished" in cursorOutcome &&
         cursorOutcome.envTestGithubEarlyFinished
