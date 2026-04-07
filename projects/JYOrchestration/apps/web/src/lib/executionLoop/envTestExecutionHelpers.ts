@@ -969,17 +969,6 @@ export async function runStage1EnvTestSimplePipeline(input: {
     };
   }
 
-  input.steps.push({
-    phase: "stage1_smoke",
-    taskId,
-    runId: cr.runId,
-    branch: primaryHead,
-    commitHash: cr.commitHash ?? null,
-    changedFileCount: cr.changedFiles.length,
-    passed: true,
-    reason: "stage1_simple_smoke_pr",
-  });
-
   const diffSummary = cr.summary.slice(0, 24_000);
   const outPr = await runStage1EnvTestPrSmokePath({
     projectId,
