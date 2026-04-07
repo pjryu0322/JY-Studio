@@ -26,7 +26,7 @@ import {
   logStage2BranchReflectionCheck,
   logStage2CommitCheck,
   logStage2PrCreationCheck,
-} from "@/lib/executionLoop/stage2/stage2Internal";
+} from "@/lib/executionLoop/envTestStage2Helpers";
 import { appendStage2ProgressPhase, STAGE2_PROGRESS_PHASE } from "@/lib/executionLoop/stage2/stage2CanonicalProgressPhases";
 
 export type EnvTestReflectionNotConfirmedBypassResult =
