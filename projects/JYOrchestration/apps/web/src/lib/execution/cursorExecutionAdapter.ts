@@ -1236,6 +1236,12 @@ type AgentJson = {
   [k: string]: unknown;
 };
 
+/**
+ * Low-level Cursor agent JSON payload.
+ * Exported for Stage2 orchestrators that want pure launch/poll without adapter-owned orchestration.
+ */
+export type CursorAgentJson = AgentJson;
+
 function agentsBaseUrl(cursorApiUrl: string): string {
   return `${normalizeCursorApiBaseUrl(cursorApiUrl)}/v0/agents`;
 }
@@ -1277,7 +1283,8 @@ function pickChangedFiles(agent: AgentJson): string[] {
   return a.map((x) => String(x ?? "").trim()).filter(Boolean);
 }
 
-function mapAgentToResult(agent: AgentJson, fallbackBranch: string): CursorRunResult {
+/** Map Cursor agent state to minimal execution result (pure parsing). */
+export function mapAgentToResult(agent: AgentJson, fallbackBranch: string): CursorRunResult {
   const runId = typeof agent.id === "string" && agent.id.trim() ? agent.id.trim() : randomUUID();
   const branchName =
     typeof agent.target?.branchName === "string" && agent.target.branchName.trim()
@@ -1319,6 +1326,168 @@ function mapAgentToResult(agent: AgentJson, fallbackBranch: string): CursorRunRe
     prUrl: prUrlRaw,
     executionStatus: failed ? "failed" : "succeeded",
     error: err,
+  };
+}
+
+/**
+ * Low-level executor API: launch a Cursor agent and return its id + initial JSON.
+ * - No GitHub compare
+ * - No PR creation
+ * - No Stage1/Stage2 finalize
+ * - No orchestration decisions
+ *
+ * IMPORTANT: `executeCursorRun()` remains the Stage1-compatible higher-level path.
+ */
+export async function launchCursorAgent(params: ExecuteCursorRelayParams): Promise<
+  | { ok: true; agentId: string; launchJson: CursorAgentJson; launchUrl: string; logs: string[] }
+  | { ok: false; error: string; logs: string[] }
+> {
+  const logs: string[] = [];
+  const setup = params.executionSetup;
+  const base = normalizeCursorApiBaseUrl(setup.cursorApiUrl);
+  const apiKey = setup.cursorApiToken?.trim();
+  if (!apiKey) {
+    return { ok: false, error: "Cursor API 설정이 필요합니다. Execution setup에 Cursor API 키를 저장하세요.", logs };
+  }
+
+  const executionPromptText = [
+    params.prompt,
+    params.allowedPaths?.length ? `\n\n[허용 경로 glob]\n${params.allowedPaths.join("\n")}` : "",
+    `\n\n[정책] autoCommit=${setup.autoCommit}, requireTestsBeforePush=${setup.requireTestsBeforePush}`,
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const payloadPre = validateCursorAgentLaunchPayload({
+    gitRepoUrl: setup.gitRepoUrl,
+    baseBranch: setup.baseBranch,
+    targetBranchName: params.suggestedBranchName,
+    promptText: executionPromptText,
+  });
+  if (!payloadPre.ok) {
+    logs.push("[cursor-adapter] Cloud Agent 페이로드 사전 검증 실패(Git 검증 전)");
+    return { ok: false, error: payloadPre.message, logs };
+  }
+
+  const branchCtx = { gitRepoUrl: setup.gitRepoUrl, baseBranch: setup.baseBranch };
+  const preBranch = await verifyBaseBranchBeforeCursorExecution({
+    gitRepoUrl: setup.gitRepoUrl,
+    baseBranch: setup.baseBranch,
+    githubAccessToken: params.githubAccessToken ?? null,
+    projectId: params.projectId,
+  });
+  if (!preBranch.ok) {
+    logs.push("[cursor-adapter] base branch 사전 검증 실패");
+    return { ok: false, error: preBranch.message, logs };
+  }
+
+  const launchUrl = agentsBaseUrl(base);
+  const body = {
+    prompt: { text: executionPromptText },
+    model: "default" as const,
+    source: { repository: setup.gitRepoUrl.trim(), ref: setup.baseBranch.trim() },
+    target: {
+      branchName: params.suggestedBranchName,
+      // 정책: Cursor는 PR 생성/merge를 담당하지 않는다 (플랫폼/Stage2 SCM 경로가 수행).
+      autoCreatePr: false,
+      openAsCursorGithubApp: false,
+      skipReviewerRequest: false,
+    },
+  };
+
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), REQUEST_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(launchUrl, {
+        method: "POST",
+        headers: authHeaders(apiKey),
+        body: JSON.stringify(body),
+        redirect: "follow",
+        signal: ac.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const launchText = await res.text();
+    logs.push(`POST ${launchUrl} → HTTP ${res.status}`);
+    let launchJson: AgentJson | null = null;
+    try {
+      launchJson = JSON.parse(launchText) as AgentJson;
+    } catch {
+      logs.push(launchText.slice(0, 2000));
+    }
+
+    if (!res.ok) {
+      const raw = launchJson?.error ? String(launchJson.error) : `Cloud Agent 시작 실패 HTTP ${res.status}`;
+      return { ok: false, error: enhanceCursorErrorIfBaseBranchRelated(raw, branchCtx), logs };
+    }
+
+    const agentId = launchJson?.id?.trim();
+    if (!agentId || !launchJson) {
+      return { ok: false, error: "Cloud Agent 응답에 id가 없습니다.", logs };
+    }
+    return { ok: true, agentId, launchJson, launchUrl, logs };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: enhanceCursorErrorIfBaseBranchRelated(`Cursor 에이전트 시작 실패: ${msg}`, branchCtx), logs };
+  }
+}
+
+/**
+ * Low-level executor API: poll a Cursor agent once.
+ * Pure HTTP+parse; no GitHub/PR logic.
+ */
+export async function pollCursorAgent(input: {
+  cursorApiUrl: string;
+  cursorApiToken: string;
+  agentId: string;
+  fallbackBranchName: string;
+}): Promise<
+  | {
+      ok: true;
+      agentJson: CursorAgentJson;
+      statusUpper: string;
+      result: CursorRunResult;
+      hints: { commitHash?: string; headSha?: string; changedFiles: string[]; prUrl?: string };
+    }
+  | { ok: false; error: string }
+> {
+  const base = normalizeCursorApiBaseUrl(input.cursorApiUrl);
+  const url = `${agentsBaseUrl(base)}/${encodeURIComponent(input.agentId)}`;
+  const pollAc = new AbortController();
+  const pollTimer = setTimeout(() => pollAc.abort(), POLL_REQUEST_TIMEOUT_MS);
+  let pollRes: Response;
+  try {
+    pollRes = await fetch(url, {
+      method: "GET",
+      headers: authHeaders(input.cursorApiToken),
+      redirect: "follow",
+      signal: pollAc.signal,
+    });
+  } finally {
+    clearTimeout(pollTimer);
+  }
+  const pollText = await pollRes.text();
+  let agentJson: AgentJson;
+  try {
+    agentJson = JSON.parse(pollText) as AgentJson;
+  } catch {
+    return { ok: false, error: "상태 응답 파싱 실패" };
+  }
+  const statusUpper = String(agentJson.status ?? "").toUpperCase();
+  const commitHash = pickCommitHash(agentJson);
+  const headSha = pickHeadSha(agentJson);
+  const changedFiles = pickChangedFiles(agentJson);
+  const r = mapAgentToResult(agentJson, input.fallbackBranchName);
+  return {
+    ok: true,
+    agentJson,
+    statusUpper,
+    result: r,
+    hints: { commitHash, headSha, changedFiles, prUrl: r.prUrl },
   };
 }
 
