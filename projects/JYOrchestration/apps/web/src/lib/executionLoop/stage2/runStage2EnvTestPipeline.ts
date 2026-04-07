@@ -4,6 +4,7 @@
  */
 import type { ExecuteCursorRelayParams } from "@/lib/execution/cursorExecutionAdapter";
 import { launchCursorAgent } from "@/lib/execution/cursorExecutionAdapter";
+import { verifyBaseBranchBeforeCursorExecution } from "@/lib/execution/verifyBaseBranchBeforeCursor";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
 import { runEnvTestAfterGithubPushConfirmed } from "@/lib/executionLoop/stage2/stage2PrFlow";
 import { waitForStage2BranchExists, waitForStage2BranchReflected } from "@/lib/executionLoop/stage2/stage2GithubMonitor";
@@ -45,6 +46,16 @@ export async function runStage2EnvTestPipeline(input: {
   | { kind: "branch_timeout"; message: string }
 > {
   const { executeParams, ctx } = input;
+
+  const preBranch = await verifyBaseBranchBeforeCursorExecution({
+    gitRepoUrl: executeParams.executionSetup.gitRepoUrl,
+    baseBranch: executeParams.executionSetup.baseBranch,
+    githubAccessToken: executeParams.githubAccessToken ?? null,
+    projectId: ctx.projectId,
+  });
+  if (!preBranch.ok) {
+    return { kind: "cursor_launch_failed", message: preBranch.message };
+  }
 
   const launch = await launchCursorAgent(executeParams);
   if (!launch.ok) {
