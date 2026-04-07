@@ -772,6 +772,25 @@ export async function runStage1EnvTestPrSmokePath(input: {
     actorUserId: input.actorUserId,
   });
 
+  const headForPr = String(input.branchName ?? "").trim();
+  if (!headForPr) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "stage1_pr_phase_skipped_blocked",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        projectId: input.projectId,
+        taskId: input.taskId,
+        executionId: input.execRunId,
+        branchName: null,
+        reason: "empty_branch_at_runStage1EnvTestPrSmokePath_entry",
+      },
+    });
+    throw new Error("[runStage1EnvTestPrSmokePath] Stage1 requires non-empty branchName.");
+  }
+
   appendTaskProgressLog({
     kind: "execution",
     phase: "env_test_stage1_started",
@@ -780,7 +799,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
     userId: input.actorUserId,
     detail: {
       executionId: input.execRunId,
-      branchName: input.branchName,
+      branchName: headForPr,
       cursorRunId: input.cursorRunId ?? null,
     },
   });
@@ -796,7 +815,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
     data: {
       ...(input.cursorRunId ? { cursorRunId: input.cursorRunId } : {}),
       ...(input.cursorSummary != null ? { cursorSummary: input.cursorSummary.slice(0, 24_000) } : {}),
-      branchName: input.branchName,
+      branchName: headForPr,
       commitSha: input.headSha ?? null,
       changedFiles: input.changedFiles as unknown as object,
       gitSummary: input.diffSummary.slice(0, 24_000),
@@ -819,6 +838,20 @@ export async function runStage1EnvTestPrSmokePath(input: {
     },
   });
 
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "stage1_pr_phase_entered",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: {
+      projectId: input.projectId,
+      taskId: input.taskId,
+      executionId: input.execRunId,
+      branchName: headForPr,
+    },
+  });
+
   const prPhase = await runEnvTestPlatformPrPhase({
     projectId: input.projectId,
     taskId: input.taskId,
@@ -826,7 +859,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
     taskKind: ENV_TEST_TASK_KIND,
     repoUrl: input.repoUrl,
     baseBranch: input.baseBranch,
-    headBranch: input.branchName,
+    headBranch: headForPr,
     githubAccessToken: input.githubAccessToken ?? null,
     executionRunCreatedAt: input.execRunCreatedAt ?? null,
     compareOkAtMs: null,
@@ -836,6 +869,21 @@ export async function runStage1EnvTestPrSmokePath(input: {
   });
 
   if (!prPhase.ok) {
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "stage1_pr_phase_returned_failure",
+      projectId: input.projectId,
+      taskId: input.taskId,
+      userId: input.actorUserId,
+      detail: {
+        projectId: input.projectId,
+        taskId: input.taskId,
+        executionId: input.execRunId,
+        branchName: headForPr,
+        httpStatus: prPhase.httpStatus ?? null,
+        githubPrCode: prPhase.githubPrCode ?? null,
+      },
+    });
     await applyStage1EnvTestPrCreateTerminalFailure({
       projectId: input.projectId,
       taskId: input.taskId,
@@ -843,7 +891,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
       actorUserId: input.actorUserId,
       message: prPhase.message,
       httpStatus: prPhase.httpStatus ?? null,
-      headBranch: input.branchName,
+      headBranch: headForPr,
       headBranchRaw: prPhase.headBranchRaw ?? null,
       headBranchNormalized: prPhase.headBranchNormalized ?? null,
       headSentToGithub: prPhase.headSentToGithub ?? null,
@@ -853,6 +901,23 @@ export async function runStage1EnvTestPrSmokePath(input: {
     });
     return { kind: "pr_failed", message: prPhase.message };
   }
+
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "stage1_pr_phase_returned_success",
+    projectId: input.projectId,
+    taskId: input.taskId,
+    userId: input.actorUserId,
+    detail: {
+      projectId: input.projectId,
+      taskId: input.taskId,
+      executionId: input.execRunId,
+      branchName: headForPr,
+      prNumber: prPhase.prNumber,
+      prUrl: prPhase.prUrl,
+      reusedExisting: prPhase.reusedExisting,
+    },
+  });
 
   await patchTaskExecutionRunStage2Timing(input.execRunId, {
     executionId: input.execRunId,
@@ -866,7 +931,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
     taskKind: ENV_TEST_TASK_KIND,
     execRunId: input.execRunId,
     actorUserId: input.actorUserId,
-    branchName: input.branchName,
+    branchName: headForPr,
     prUrl: prPhase.prUrl,
     prNumber: prPhase.prNumber,
     steps: input.steps,
@@ -936,7 +1001,8 @@ export async function runStage1EnvTestSimplePipeline(input: {
   const cursorPick = pickEnvTestHeadBranch({
     cursorBranchName: cr.branchName,
     signalBranchNameHint,
-    fallbackBranchName: null,
+    /** Cursor 메타에 브랜치가 없어도 오케스트레이션 계획 브랜치로 PR 시도(무음 스킵 방지). */
+    fallbackBranchName: planned || null,
   });
   const rawHead = String(trackedBranchName || planned || cursorPick).trim();
   const primaryHead = normalizeStage1EnvTestHeadBranch(input.repoUrl, rawHead);
@@ -969,6 +1035,23 @@ export async function runStage1EnvTestSimplePipeline(input: {
     };
   }
 
+  appendTaskProgressLog({
+    kind: "execution",
+    phase: "stage1_branch_resolved",
+    projectId,
+    taskId,
+    userId: actorUserId,
+    detail: {
+      projectId,
+      taskId,
+      executionId: execRunId,
+      branchName: primaryHead,
+      plannedBranchName: planned || null,
+      trackedBranchName: trackedBranchName || null,
+      cursorBranchName: String(cr.branchName ?? "").trim() || null,
+    },
+  });
+
   const diffSummary = cr.summary.slice(0, 24_000);
   const outPr = await runStage1EnvTestPrSmokePath({
     projectId,
@@ -991,18 +1074,41 @@ export async function runStage1EnvTestSimplePipeline(input: {
     stage1PrCreateRetry: getEnvTestStage1PrFirstRetryConfig(),
   });
 
-  if (outPr.kind === "pr_failed") {
-    return {
-      kind: "return",
-      result: {
-        ok: false,
-        steps: input.steps,
-        message: "ENV_TEST(Stage1): 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
-      },
-    };
+  switch (outPr.kind) {
+    case "pr_failed":
+      return {
+        kind: "return",
+        result: {
+          ok: false,
+          steps: input.steps,
+          message: "ENV_TEST(Stage1): 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+        },
+      };
+    case "return":
+      return { kind: "return", result: outPr.result };
+    case "continue_loop":
+      // PR 생성·finalize 이후 merge+auto-advance일 때만 continue_loop.
+      return { kind: "continue_loop" };
+    default: {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "stage1_pr_phase_skipped_blocked",
+        projectId,
+        taskId,
+        userId: actorUserId,
+        detail: {
+          projectId,
+          taskId,
+          executionId: execRunId,
+          branchName: primaryHead,
+          reason: "unexpected_runStage1EnvTestPrSmokePath_outcome",
+        },
+      });
+      throw new Error(
+        "[runStage1EnvTestSimplePipeline] Stage1 must complete PR phase or explicit branch/PR failure; unexpected outcome from runStage1EnvTestPrSmokePath."
+      );
+    }
   }
-  if (outPr.kind === "return") return { kind: "return", result: outPr.result };
-  return { kind: "continue_loop" };
 }
 
 export type EnvTestReflectionNotConfirmedBypassResult =
