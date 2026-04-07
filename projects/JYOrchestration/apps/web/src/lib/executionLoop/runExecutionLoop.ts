@@ -65,7 +65,7 @@ function parsePrNumberFromUrl(prUrl: string): number | null {
 
 /**
  * 실행 루프: Cursor 실행 → Git 반영(Cursor 위임) → (일반 Task) AI 리뷰·SCM·머지 또는 종료.
- * ENV_TEST family: compare·플랫폼 PR·PR_OPENED·merge/readiness는 `envTestExecutionHelpers`로 이관.
+ * ENV_TEST family: compare·플랫폼 PR·PR_OPENED·merge/readiness는 `envTestStage1Helpers` / `stage2/*` / `envTestGithubFinalize`로 이관.
  * - Stage1(`ENV_TEST`): `runStage1SmokePipeline`(= Stage1 전용 모듈) — PR 단일 프로브; GitHub 브랜치 확인 후 Cursor 터미널 전 조기 PR 경로는 cursor 어댑터.
  * - Stage2(`ENV_TEST_STAGE2`): reflection 게이트·`runEnvTestReflectionNotConfirmedGithubBypass`·`runEnvTestReflectionConfirmedPipeline`.
  * 플랫폼은 로컬에서 코드/git을 실행하지 않습니다.

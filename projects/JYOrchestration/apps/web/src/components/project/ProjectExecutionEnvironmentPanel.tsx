@@ -38,16 +38,17 @@ function toneColor(tone: "muted" | "ok" | "bad" | "warn"): string {
   return "#64748b";
 }
 
-function readinessConnection(ok: boolean | null | undefined): string {
-  if (ok === true) return "정상";
-  if (ok === false) return "실패";
-  return "미검증";
-}
-
 function readinessTone(ok: boolean | null | undefined): "muted" | "ok" | "bad" | "warn" {
   if (ok === true) return "ok";
   if (ok === false) return "bad";
   return "warn";
+}
+
+/** Step 1 상태 칩: 연결됨 / 연결 안 됨 / 미검증 */
+function externalConnectionChipLabel(ok: boolean | null | undefined): string {
+  if (ok === true) return "연결됨";
+  if (ok === false) return "연결 안 됨";
+  return "미검증";
 }
 
 function normalizeWorkflowForUi(w: string | null | undefined): string {
@@ -113,6 +114,21 @@ function formatStage1DurationMs(ms: number | null | undefined): string {
   return `${minutes}분${restLabel}`;
 }
 
+/**
+ * Stage1 PR-first 스모크: `branchDetect` 시간이 비어 있으면 "생략"으로 보이지 않게 설명만 표시한다.
+ */
+function stage1BranchDetectTimingDisplayText(input: {
+  ms: number | null;
+  isLiveRow: boolean;
+}): { mode: "duration" } | { mode: "note"; text: string } {
+  const { ms, isLiveRow } = input;
+  const finite = ms != null && Number.isFinite(ms);
+  const showDuration = finite && (ms! > 0 || (isLiveRow && ms! >= 0));
+  if (showDuration) return { mode: "duration" };
+  if (isLiveRow) return { mode: "note", text: "PR 생성 단계에 포함 · 진행 중" };
+  return { mode: "note", text: "PR 생성 단계에 포함" };
+}
+
 function stage1TimingLabel(key: string): string {
   const map: Record<string, string> = {
     branchDetect: "브랜치 확인",
@@ -124,7 +140,11 @@ function stage1TimingLabel(key: string): string {
   return map[key] ?? key;
 }
 
+/** 서버 breakdown·페이즈 계산용 키 집합(순서는 누적 구간 계산용 파이프라인과 일치). */
 const STAGE1_TIMING_ROW_KEYS = ["branchDetect", "prCreation", "merge", "cursor"] as const;
+
+/** Stage1 결과 패널 표시 순서: Cursor → PR → 머지를 먼저, 브랜치 설명 행은 마지막. */
+const STAGE1_TIMING_DISPLAY_KEYS = ["cursor", "prCreation", "merge", "branchDetect"] as const;
 
 /** 실제 파이프라인 순서(누적 경과에서 “현재 단계” 한 줄을 나눌 때 사용) */
 const STAGE1_PIPELINE_ORDER = ["cursor", "branchDetect", "prCreation", "merge"] as const;
@@ -775,17 +795,6 @@ export function ProjectExecutionEnvironmentPanel({
   const autoPushOn = executionSetup?.autoPush === true;
   const envTestStartOk = executionReady && baseBranchConfigured && autoPushOn;
 
-  const canRunLabel = executionReady
-    ? "준비 완료"
-    : repoOk === false || githubEffectiveOk === false || cursorApiOk === false || execOk === false
-      ? "불가"
-      : "미검증";
-  const canRunTone: "ok" | "bad" | "warn" = executionReady
-    ? "ok"
-    : repoOk === false || githubEffectiveOk === false || cursorApiOk === false || execOk === false
-      ? "bad"
-      : "warn";
-
   const secondaryBtn: CSSProperties = {
     padding: "6px 10px",
     borderRadius: 8,
@@ -1074,9 +1083,77 @@ export function ProjectExecutionEnvironmentPanel({
     );
   })();
 
-  const gitConnectionSlot = (
+  const externalSetupConnectedCount =
+    (repoOk === true ? 1 : 0) + (githubEffectiveOk === true ? 1 : 0) + (cursorApiOk === true ? 1 : 0);
+
+  const externalSystemsConnectionSlot = (
     <div style={{ ...stepBox, marginBottom: 0 }}>
-          <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>저장소 연결을 확인합니다.</p>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 900,
+              letterSpacing: "0.07em",
+              color: "#0369a1",
+              marginBottom: 6,
+            }}
+          >
+            STEP 1
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>외부 시스템 연결</div>
+          <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+            Git 저장소·GitHub 인증은 이 블록에서 설정합니다. Cursor API는 바로 아래 단계 카드에서 연결합니다.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+            <span
+              style={{
+                padding: "5px 10px",
+                borderRadius: 8,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                fontSize: 11,
+                color: "#334155",
+              }}
+            >
+              Git 저장소:{" "}
+              <strong style={{ color: toneColor(readinessTone(repoOk)) }}>{externalConnectionChipLabel(repoOk)}</strong>
+            </span>
+            <span
+              style={{
+                padding: "5px 10px",
+                borderRadius: 8,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                fontSize: 11,
+                color: "#334155",
+              }}
+            >
+              GitHub 인증:{" "}
+              <strong style={{ color: toneColor(readinessTone(githubEffectiveOk)) }}>
+                {externalConnectionChipLabel(githubEffectiveOk)}
+              </strong>
+            </span>
+            <span
+              style={{
+                padding: "5px 10px",
+                borderRadius: 8,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                fontSize: 11,
+                color: "#334155",
+              }}
+            >
+              Cursor API:{" "}
+              <strong style={{ color: toneColor(readinessTone(cursorApiOk)) }}>
+                {externalConnectionChipLabel(cursorApiOk)}
+              </strong>
+            </span>
+          </div>
+          <p style={{ margin: "0 0 12px 0", fontSize: 11, fontWeight: 700, color: "#475569" }}>
+            연결 요약: {externalSetupConnectedCount}/3 항목 연결됨
+            {executionReady ? (
+              <span style={{ marginLeft: 8, color: "#15803d" }}>· 실행 준비 충족</span>
+            ) : null}
+          </p>
           <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#94a3b8", fontFamily: "ui-monospace, monospace" }}>
             예: {PLACEHOLDERS.gitRepoUrl} · {PLACEHOLDERS.gitRepoName} · {PLACEHOLDERS.baseBranch}
           </p>
@@ -1164,26 +1241,33 @@ export function ProjectExecutionEnvironmentPanel({
               GitHub 예시 적용
             </button>
           </div>
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
-            <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
-              AI, Cursor, Git 연동이 정상인지 간단한 테스트 Task와 PR 생성으로 확인합니다.
+          {githubAuthSlot}
+    </div>
+  );
+
+  const stage1ValidationSlot = (
+    <div>
+            <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
+              <strong>연결 검증</strong>은 Cursor가 브랜치에 푸시하고 PR·머지까지 진행하는지 확인합니다. Stage 2(역할 분리) 테스트는{" "}
+              <strong>AI Members</strong> 탭에서 실행합니다.
             </p>
             <button
               type="button"
               disabled={!canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk}
               onClick={() => void handleEnvironmentTest()}
               style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #7c3aed",
-                background: "#7c3aed",
+                padding: "12px 22px",
+                borderRadius: 10,
+                border: "1px solid #6d28d9",
+                background: "linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%)",
                 color: "#fff",
                 fontWeight: 800,
-                fontSize: 12,
+                fontSize: 14,
                 cursor:
                   !canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk
                     ? "not-allowed"
                     : "pointer",
+                boxShadow: "0 4px 14px rgba(124, 58, 237, 0.35)",
               }}
               title={
                 !specWorkflowConfirmed
@@ -1443,7 +1527,19 @@ export function ProjectExecutionEnvironmentPanel({
                             fontSize: 11,
                           }}
                         >
-                          <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>수행 시간</div>
+                          <div style={{ fontWeight: 800, marginBottom: 4, color: "#0f172a" }}>수행 시간</div>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: "#64748b",
+                              lineHeight: 1.45,
+                              marginBottom: 6,
+                            }}
+                          >
+                            Stage1 연결 테스트는 <strong style={{ color: "#475569" }}>Cursor 실행 → PR 생성 → 머지</strong>
+                            순으로 보여 줍니다. 원격 브랜치 확인은 별도 단계가 아니라{" "}
+                            <strong style={{ color: "#475569" }}>PR 생성 흐름에 포함</strong>됩니다.
+                          </div>
                           <div style={{ display: "grid", gap: 4 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                               <span style={{ color: "#64748b" }}>총 수행 시간</span>
@@ -1463,7 +1559,7 @@ export function ProjectExecutionEnvironmentPanel({
                                 ) : null}
                               </span>
                             </div>
-                            {STAGE1_TIMING_ROW_KEYS.map((k) => {
+                            {STAGE1_TIMING_DISPLAY_KEYS.map((k) => {
                               const committedRow =
                                 typeof bd?.[k] === "number" && bd[k]! > 0 ? bd[k]! : null;
                               const phaseSnapOk =
@@ -1487,10 +1583,14 @@ export function ProjectExecutionEnvironmentPanel({
                                 !terminal &&
                                 envTestLast.isRunning === true &&
                                 envTestLast.stage1CurrentPhase === k &&
-                                ms != null &&
                                 committedRow == null &&
                                 !stage1PollSyncStopped &&
-                                (usesPhaseSnap ? phaseDerived.extending : true);
+                                (usesPhaseSnap ? phaseDerived.extending : true) &&
+                                (ms != null || k === "branchDetect");
+                              const branchDetectNote =
+                                k === "branchDetect"
+                                  ? stage1BranchDetectTimingDisplayText({ ms, isLiveRow })
+                                  : null;
                               return (
                                 <div
                                   key={k}
@@ -1498,10 +1598,27 @@ export function ProjectExecutionEnvironmentPanel({
                                 >
                                   <span style={{ color: "#64748b" }}>{stage1TimingLabel(k)}</span>
                                   <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-                                    {formatStage1DurationMs(ms)}
-                                    {isLiveRow ? (
-                                      <span style={{ fontWeight: 500, color: "#94a3b8" }}> · 진행 중</span>
-                                    ) : null}
+                                    {branchDetectNote?.mode === "note" ? (
+                                      <span
+                                        style={{
+                                          fontWeight: 500,
+                                          color: "#475569",
+                                          fontVariantNumeric: "normal",
+                                        }}
+                                      >
+                                        {branchDetectNote.text}
+                                      </span>
+                                    ) : (
+                                      <>
+                                        {formatStage1DurationMs(ms)}
+                                        {isLiveRow ? (
+                                          <span style={{ fontWeight: 500, color: "#94a3b8" }}>
+                                            {" "}
+                                            · 진행 중
+                                          </span>
+                                        ) : null}
+                                      </>
+                                    )}
                                   </span>
                                 </div>
                               );
@@ -1750,8 +1867,6 @@ export function ProjectExecutionEnvironmentPanel({
                 </div>
               )
             ) : null}
-          </div>
-          {githubAuthSlot}
     </div>
   );
 
@@ -1765,69 +1880,24 @@ export function ProjectExecutionEnvironmentPanel({
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
           실행 환경 <span style={{ fontWeight: 600, color: "#64748b", fontSize: 16 }}>(Execution Environment)</span>
         </h1>
-        <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          Git·Cursor·실행 정책·검증을 한 탭에서 설정하면 실행 준비 상태를 바로 확인할 수 있습니다.
+        <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+          외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다.
         </p>
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #e9d5ff",
+            background: "#faf5ff",
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#5b21b6",
+            lineHeight: 1.5,
+          }}
+        >
+          1. 외부 시스템 연결 → 2. 연결 테스트 실행 → 3. (선택) 실행 정책 설정
+        </div>
       </header>
-
-      <div
-        style={{
-          marginBottom: 16,
-          padding: 14,
-          borderRadius: 12,
-          border: "1px solid #bae6fd",
-          background: "#f0f9ff",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 13, color: "#0c4a6e", marginBottom: 10 }}>실행 준비 상태</div>
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#0f172a", lineHeight: 1.7 }}>
-          <li>
-            <span style={{ color: "#64748b" }}>저장소 연결:</span>{" "}
-            <strong style={{ color: toneColor(readinessTone(repoOk)) }}>{readinessConnection(repoOk)}</strong>
-          </li>
-          <li>
-            <span style={{ color: "#64748b" }}>GitHub 인증:</span>{" "}
-            <strong
-              style={{
-                color: toneColor(
-                  githubEffectiveOk
-                    ? "ok"
-                    : githubAuthOk === false || (githubCap && !githubCap.githubOperableOk)
-                      ? "bad"
-                      : "warn"
-                ),
-              }}
-            >
-              {githubEffectiveOk
-                ? "정상 (머지 권한 포함)"
-                : githubAuthOk === false
-                  ? "필요"
-                  : githubAuthOk === true && !githubCap
-                    ? "재검증 필요"
-                    : githubCap && !githubCap.githubOperableOk
-                      ? "권한 부족"
-                      : "미검증"}
-            </strong>
-            {githubCap ? (
-              <ul style={{ margin: "6px 0 0 0", paddingLeft: 18, fontSize: 12, fontWeight: 500, color: "#334155" }}>
-                <li>저장소 접근: {githubCap.repoAccessOk ? "정상" : "실패"}</li>
-                <li>PR 조회: {githubCap.prReadOk ? "정상" : "실패"}</li>
-                <li>PR 생성 권한: {githubCap.prCreateOk ? "정상" : "실패"}</li>
-                <li>PR 머지 권한: {githubCap.prMergeOk ? "정상" : "실패"}</li>
-                <li>최종 GitHub 운영: {githubCap.githubOperableOk ? "정상" : "실패"}</li>
-              </ul>
-            ) : null}
-          </li>
-          <li>
-            <span style={{ color: "#64748b" }}>Cursor 연결:</span>{" "}
-            <strong style={{ color: toneColor(readinessTone(cursorApiOk)) }}>{readinessConnection(cursorApiOk)}</strong>
-          </li>
-          <li>
-            <span style={{ color: "#64748b" }}>실행 가능 여부:</span>{" "}
-            <strong style={{ color: toneColor(canRunTone) }}>{canRunLabel}</strong>
-          </li>
-        </ul>
-      </div>
 
       <ExecutionSetupPanel
         projectId={projectId}
@@ -1839,7 +1909,9 @@ export function ProjectExecutionEnvironmentPanel({
         formatTestedAt={formatTestedAt}
         flatLayout
         unifiedExecutionEnvironment
-        connectionSlotBeforeCursor={gitConnectionSlot}
+        executionEnvironmentFlow
+        connectionSlotBeforeCursor={externalSystemsConnectionSlot}
+        connectionSlotAfterCursor={stage1ValidationSlot}
         canRevealCursorApiKey={canRevealCursorApiKey}
       />
 
