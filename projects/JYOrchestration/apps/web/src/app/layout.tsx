@@ -5,6 +5,7 @@ import "@/lib/service/executionWorkerRuntime";
 import "@/lib/service/aiActionWorkerRuntime";
 import UiLabelOverlay from "@/components/dev/UiLabelOverlay";
 import DebugSettings from "@/components/debug/DebugSettings";
+import { PlatformShell } from "@/components/layout/PlatformShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,7 +33,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
+        <PlatformShell>{children}</PlatformShell>
         <UiLabelOverlay />
         <DebugSettings />
       </body>
