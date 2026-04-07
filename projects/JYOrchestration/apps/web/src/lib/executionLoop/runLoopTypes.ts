@@ -15,16 +15,6 @@ export type LoopStepRecord =
       passed: boolean;
       reason: string;
     }
-  | {
-      phase: "stage1_smoke";
-      taskId: string;
-      runId?: string;
-      branch?: string | null;
-      commitHash: string | null;
-      changedFileCount: number;
-      passed: boolean;
-      reason: string;
-    }
   | { phase: "evaluate"; taskId: string; verdict: string; summary: string }
   | { phase: "stop"; reason: string };
 

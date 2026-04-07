@@ -478,17 +478,14 @@ export type EnvTestPullRequestErrorResult = Exclude<
 
 /**
  * Stage1 PR 외부 재시도: `ENV_TEST_PR_CREATE_FAILED` 만.
- * 재시도: HTTP 404, 502, 503, 504 만. 422·400·401·403 및 `githubHeadFieldInvalid` 는 절대 재시도하지 않음.
+ * HTTP 404·502·503·504 만 재시도. 그 외(422 `head` invalid 포함)는 재시도 없음.
  */
 export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
   res: EnvTestPullRequestErrorResult,
   _attemptMeta: { attemptCount: number }
 ): boolean {
   if (res.ok !== false || res.code !== "ENV_TEST_PR_CREATE_FAILED") return false;
-  const r = res as EnvTestPrCreateFailed;
-  if (r.githubHeadFieldInvalid === true) return false;
-  const http = r.httpStatus;
-  if (http === 422 || http === 400 || http === 401 || http === 403) return false;
+  const http = (res as EnvTestPrCreateFailed).httpStatus;
   if (http === 404) return true;
   if (http === 502 || http === 503 || http === 504) return true;
   return false;
