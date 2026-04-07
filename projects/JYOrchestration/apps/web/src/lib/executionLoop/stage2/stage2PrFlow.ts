@@ -15,7 +15,7 @@ import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { requireEnvTestFamilyTaskKindForFinalize, runEnvTestPlatformPrPhase } from "@/lib/executionLoop/envTestCommonHelpers";
 import { finalizeEnvTestPrOpenedFromGithubOnly } from "@/lib/executionLoop/envTestGithubFinalize";
 import { patchTaskExecutionRunStage2Timing } from "@/lib/service/envTestStage2Telemetry";
-import { logStage2PrCreationCheck } from "@/lib/executionLoop/stage2/stage2Internal";
+import { logStage2PrCreationCheck } from "@/lib/executionLoop/envTestStage2Helpers";
 import { appendStage2ProgressPhase, STAGE2_PROGRESS_PHASE } from "@/lib/executionLoop/stage2/stage2CanonicalProgressPhases";
 
 export async function runEnvTestAfterGithubPushConfirmed(input: {
@@ -212,3 +212,4 @@ export async function runEnvTestAfterGithubPushConfirmed(input: {
   if (fin.kind === "return") return { kind: "return", result: fin.result };
   return { kind: "continue_loop" };
 }
+
