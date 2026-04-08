@@ -1,6 +1,8 @@
 "use client";
 
 import type { CollaborationOfficialTaskDraft } from "@/lib/workflow/collaborationActionContract";
+import type { TaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
+import { getTaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
 import type { TaskSequenceReviewControls } from "@/components/workflow/TaskSequence";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
@@ -31,10 +33,18 @@ export function TaskDraftsPanel({
   tasks,
   emptyLabel,
   review,
+  executionReadiness,
+  onSetExecutionReadiness,
+  highlightExecutionReady,
 }: {
   tasks: CollaborationOfficialTaskDraft[];
   emptyLabel?: string;
   review?: TaskSequenceReviewControls;
+  /** When no `review`, use these for read-only readiness (e.g. requirement tab). */
+  executionReadiness?: Record<string, TaskExecutionReadiness>;
+  onSetExecutionReadiness?: (taskId: string, readiness: TaskExecutionReadiness) => void;
+  /** Left accent on cards marked execution-ready (e.g. requirement view). */
+  highlightExecutionReady?: boolean;
 }) {
   if (tasks.length === 0) {
     return (
@@ -51,8 +61,17 @@ export function TaskDraftsPanel({
       {sorted.map((t, index) => {
         const confirmed = review && review.reviewById[t.id] === "confirmed";
         const isLast = index === sorted.length - 1;
+        const execMap = executionReadiness ?? review?.executionReadiness;
+        const execOnSet = onSetExecutionReadiness ?? review?.onSetExecutionReadiness;
+        const execR = execMap ? getTaskExecutionReadiness(execMap, t.id) : null;
+        const execReady = execR === "ready";
+        const showReadinessControls = Boolean(confirmed && execOnSet);
+        const showReadinessRead = Boolean(execMap && !showReadinessControls);
+        const cardFrame =
+          highlightExecutionReady && execReady ? { borderLeft: "4px solid #22c55e", paddingLeft: 10 } : undefined;
+
         return (
-          <WorkflowCard key={t.id} padding={12}>
+          <WorkflowCard key={t.id} padding={12} style={cardFrame}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ fontSize: 13, fontWeight: 900, minWidth: 0 }}>
                 <span style={{ color: "#6b7280", fontWeight: 800, marginRight: 8 }}>#{t.order}</span>
@@ -90,6 +109,26 @@ export function TaskDraftsPanel({
                     <WorkflowBadge>Confirmed</WorkflowBadge>
                   </span>
                 ) : null}
+                {showReadinessRead || showReadinessControls ? (
+                  execReady ? (
+                    <span style={{ marginLeft: 8 }}>
+                      <WorkflowBadge>Execution ready</WorkflowBadge>
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        fontSize: 10,
+                        fontWeight: 800,
+                        color: "#b45309",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      Not ready
+                    </span>
+                  )
+                ) : null}
               </div>
               <WorkflowBadge>{t.status}</WorkflowBadge>
             </div>
@@ -121,6 +160,15 @@ export function TaskDraftsPanel({
             ) : t.dependencyNote ? (
               <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>
                 Dependency note: {t.dependencyNote}
+              </div>
+            ) : null}
+            {showReadinessControls ? (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Execution readiness</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                  {seqBtn("Mark as Ready", () => execOnSet!(t.id, "ready"), execReady)}
+                  {seqBtn("Mark as Not Ready", () => execOnSet!(t.id, "not_ready"), !execReady)}
+                </div>
               </div>
             ) : null}
             {review ? (
