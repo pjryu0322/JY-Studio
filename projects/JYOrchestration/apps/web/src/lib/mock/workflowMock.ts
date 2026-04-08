@@ -124,10 +124,11 @@ export function getMockFeaturesForSession(sessionId: string): FeatureMock[] {
     {
       id: "feat-302",
       name: "Collaboration workspace layout",
-      description: "Discussion timeline + right-side summary panel for minutes/features.",
+      description:
+        "Discussion timeline and summary panel; webhook-friendly hooks to sync session highlights to external tools.",
       status: "PLANNED",
       userFlow: ["Open session", "Add discussion item", "Review minutes summary"],
-      nonFunctional: ["Lightweight local state only", "No backend wiring yet"],
+      nonFunctional: ["Lightweight local state only", "Partner integration stubs only in this phase"],
     },
   ];
   if (sessionId === "sess-201") return base;
