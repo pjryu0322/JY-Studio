@@ -30,6 +30,20 @@ export function TaskDraftsPanel({
             <div style={{ fontSize: 13, fontWeight: 900, minWidth: 0 }}>
               <span style={{ color: "#6b7280", fontWeight: 800, marginRight: 8 }}>#{t.order}</span>
               {t.name}
+              {t.taskType ? (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: "0.05em",
+                    color: "#9ca3af",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {t.taskType}
+                </span>
+              ) : null}
             </div>
             <WorkflowBadge>{t.status}</WorkflowBadge>
           </div>
