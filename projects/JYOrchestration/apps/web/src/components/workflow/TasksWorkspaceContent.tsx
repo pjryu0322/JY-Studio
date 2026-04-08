@@ -10,6 +10,8 @@ import { WorkflowSectionLabel } from "@/components/workflow/primitives/WorkflowS
 import type { TaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
 import {
   getTaskExecutionReadiness,
+  getActiveExecutionInput,
+  isActiveExecutionSnapshot,
   recordSessionConfirmedTasks,
   resolveSessionTaskReadiness,
   resolveSessionExecutionCandidates,
@@ -78,6 +80,12 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const preparedSnapshot = useMemo(
     () => resolveSessionExecutionLaunchSnapshot(view.sessionId),
     [view.sessionId, sessionResultsVersion]
+  );
+
+  const activeExecution = useMemo(() => getActiveExecutionInput(), [sessionResultsVersion]);
+  const isActiveSnapshot = useMemo(
+    () => isActiveExecutionSnapshot(view.sessionId, preparedSnapshot?.snapshotId),
+    [view.sessionId, preparedSnapshot?.snapshotId, sessionResultsVersion]
   );
 
   const displayedSequenceTasks = useMemo(() => {
@@ -293,6 +301,18 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
                     {preparedSnapshot.summary.candidateCount} candidates • prepared{" "}
                     <span style={{ fontFamily: "ui-monospace, monospace" }}>{preparedSnapshot.preparedAtIso}</span> • id{" "}
                     <span style={{ fontFamily: "ui-monospace, monospace" }}>{preparedSnapshot.snapshotId}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                    Active input:{" "}
+                    {isActiveSnapshot ? (
+                      <span style={{ fontWeight: 900, color: "#166534" }}>Selected</span>
+                    ) : activeExecution ? (
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>
+                        {activeExecution.sessionId} / {activeExecution.snapshotId}
+                      </span>
+                    ) : (
+                      <span>(none)</span>
+                    )}
                   </div>
                 </div>
               ) : (

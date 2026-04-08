@@ -37,6 +37,14 @@ export type SessionCollaborationResultEntry = {
 
 const bySessionId = new Map<string, SessionCollaborationResultEntry>();
 
+export type ActiveExecutionInputSelection = {
+  sessionId: string;
+  snapshotId: string;
+  selectedAtIso: string;
+};
+
+let activeExecutionInput: ActiveExecutionInputSelection | null = null;
+
 let version = 0;
 const listeners = new Set<() => void>();
 
@@ -180,6 +188,24 @@ export function resolveSessionExecutionLaunchSnapshot(sessionId: string | null |
 export function sessionHasExecutionLaunchSnapshot(sessionId: string | null | undefined): boolean {
   if (!sessionId) return false;
   return bySessionId.get(sessionId)?.executionLaunchSnapshot !== undefined;
+}
+
+export function getActiveExecutionInput(): ActiveExecutionInputSelection | null {
+  return activeExecutionInput;
+}
+
+export function setActiveExecutionInput(selection: { sessionId: string; snapshotId: string }): void {
+  activeExecutionInput = {
+    sessionId: selection.sessionId,
+    snapshotId: selection.snapshotId,
+    selectedAtIso: new Date().toISOString(),
+  };
+  bumpVersion();
+}
+
+export function isActiveExecutionSnapshot(sessionId: string | null | undefined, snapshotId: string | null | undefined): boolean {
+  if (!sessionId || !snapshotId) return false;
+  return Boolean(activeExecutionInput && activeExecutionInput.sessionId === sessionId && activeExecutionInput.snapshotId === snapshotId);
 }
 
 export function resolveSessionMinutes(sessionId: string | null | undefined, vmMinutes: MeetingMinutesMock | null): MeetingMinutesMock | null {

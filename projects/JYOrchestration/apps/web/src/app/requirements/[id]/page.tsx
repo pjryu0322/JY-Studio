@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import {
+  getActiveExecutionInput,
   getTaskExecutionReadiness,
+  isActiveExecutionSnapshot,
   resolveSessionConfirmedTasks,
   resolveSessionExecutionLaunchSnapshot,
   resolveSessionMinutes,
@@ -115,6 +117,12 @@ export default function RequirementDetailPage() {
   const executionSnapshot = useMemo(
     () => resolveSessionExecutionLaunchSnapshot(latestSessionId),
     [latestSessionId, sessionResultsVersion]
+  );
+
+  const activeExecution = useMemo(() => getActiveExecutionInput(), [sessionResultsVersion]);
+  const isActiveSnapshot = useMemo(
+    () => isActiveExecutionSnapshot(latestSessionId, executionSnapshot?.snapshotId),
+    [latestSessionId, executionSnapshot?.snapshotId, sessionResultsVersion]
   );
 
   const search = useSearchParams();
@@ -303,6 +311,20 @@ export default function RequirementDetailPage() {
                   {hasExecutionSnapshot && executionSnapshot ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
                       Snapshot prepared ({executionSnapshot.summary.candidateCount} candidates).
+                    </span>
+                  ) : null}
+                  {hasExecutionSnapshot && executionSnapshot ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Active input:{" "}
+                      {isActiveSnapshot ? (
+                        <span style={{ fontWeight: 900, color: "#166534" }}>Selected</span>
+                      ) : activeExecution ? (
+                        <span style={{ fontFamily: "ui-monospace, monospace" }}>
+                          {activeExecution.sessionId} / {activeExecution.snapshotId}
+                        </span>
+                      ) : (
+                        <span>(none)</span>
+                      )}
                     </span>
                   ) : null}
                 </>
