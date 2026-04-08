@@ -12,8 +12,10 @@ import {
   getTaskExecutionReadiness,
   recordSessionConfirmedTasks,
   resolveSessionTaskReadiness,
+  resolveSessionExecutionCandidates,
   setSessionTaskReadiness,
 } from "@/lib/workflow/collaborationSessionResultStore";
+import { buildExecutionLaunchInput } from "@/lib/workflow/executionLaunchInput";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { useTasksWorkspaceReview } from "@/lib/workflow/useTasksWorkspaceReview";
@@ -54,6 +56,21 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
     [officialConfirmed, readinessMap]
   );
   const readyTotal = officialConfirmed.length;
+
+  const candidateTasks = useMemo(
+    () => resolveSessionExecutionCandidates(view.sessionId),
+    [view.sessionId, sessionResultsVersion]
+  );
+
+  const executionLaunchPreview = useMemo(() => {
+    if (!view.sessionId) return null;
+    return buildExecutionLaunchInput({
+      sessionId: view.sessionId,
+      requirementId: view.requirementId,
+      confirmedTasks: officialConfirmed,
+      candidateTasks,
+    });
+  }, [view.sessionId, view.requirementId, officialConfirmed, candidateTasks]);
 
   const displayedSequenceTasks = useMemo(() => {
     if (sequenceView === "all") return working.activeTasks;
@@ -204,6 +221,36 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
           </div>
         ) : null}
       </div>
+
+      {executionLaunchPreview ? (
+        <WorkflowCard padding={12}>
+          <details>
+            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, listStyle: "none" }}>Execution input preview</summary>
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                Ready tasks form the execution candidate set. This preview shows what would be packaged as execution launch input in a later stage (no execution
+                is triggered here).
+              </div>
+              <div style={{ fontSize: 13, color: "#111827" }}>
+                <span style={{ fontWeight: 900 }}>{executionLaunchPreview.summary.candidateCount}</span> candidates •{" "}
+                <span style={{ fontWeight: 900 }}>{executionLaunchPreview.summary.confirmedCount}</span> confirmed • session{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionLaunchPreview.sessionId}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                requirementId:{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionLaunchPreview.requirementId ?? "(none)"}</span> • createdAt:{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionLaunchPreview.createdAtIso}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#111827" }}>
+                candidate task ids:{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace", color: "#374151" }}>
+                  {executionLaunchPreview.readyTaskIds.length > 0 ? executionLaunchPreview.readyTaskIds.join(", ") : "(none)"}
+                </span>
+              </div>
+            </div>
+          </details>
+        </WorkflowCard>
+      ) : null}
 
       {working.removedTasks.length > 0 ? (
         <WorkflowCard padding={10}>
