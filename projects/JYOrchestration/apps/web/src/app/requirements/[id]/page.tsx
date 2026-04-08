@@ -231,35 +231,27 @@ export default function RequirementDetailPage() {
       {tab === "tasks" ? (
         <div style={{ display: "grid", gap: 10 }}>
           {vm.requirement ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <WorkflowActionButton
                 label="Open Tasks workspace"
                 variant="primary"
                 onClick={() => router.push(`/tasks?requirementId=${encodeURIComponent(requirementId)}`)}
               />
-            </div>
-          ) : null}
-          {vm.requirement && latestSessionId ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              {tasksFromCollaboration ? (
+              {latestSessionId ? (
                 <>
-                  <WorkflowBadge>Collaboration snapshot</WorkflowBadge>
+                  {tasksFromCollaboration ? <WorkflowBadge>Snapshot</WorkflowBadge> : null}
                   <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                    Official task drafts for the latest session come from Task 초안 생성 in the collaboration workspace (mock_stub; in-memory — not persisted
-                    across full reload). Separate from 아이디어 요청 and analysis notes.
+                    {tasksFromCollaboration
+                      ? "Same drafts as /tasks (in-memory until persistence)."
+                      : "Generate with Task 초안 생성 in the session workspace."}
                   </span>
                 </>
-              ) : (
-                <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                  No collaboration-generated task drafts yet for the latest session (view model has none). Open the session workspace and run Task 초안 생성
-                  after official features when you want this list populated (mock).
-                </span>
-              )}
+              ) : null}
             </div>
           ) : null}
           <TaskDraftsPanel
             tasks={resolvedTaskDrafts}
-            emptyLabel="No task drafts for the latest session. Generate official features if needed, then run Task 초안 생성 in the collaboration workspace."
+            emptyLabel="No drafts yet. Use Task 초안 생성 in collaboration for the latest session."
           />
         </div>
       ) : null}

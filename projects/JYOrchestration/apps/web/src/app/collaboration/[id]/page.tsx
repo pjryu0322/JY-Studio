@@ -12,6 +12,7 @@ import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
+import { WorkflowSectionLabel } from "@/components/workflow/primitives/WorkflowSectionLabel";
 import type {
   CollaborationActionResult,
   CollaborationActionType,
@@ -182,9 +183,7 @@ export default function CollaborationWorkspacePage() {
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 340px)", gap: 16, marginTop: 16 }}>
         <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase", marginBottom: 8 }}>
-              Discussion
-            </div>
+            <WorkflowSectionLabel marginBottom={8}>Discussion</WorkflowSectionLabel>
             <DiscussionInput
               onAdd={(item) => {
                 const now = new Date();
@@ -200,14 +199,10 @@ export default function CollaborationWorkspacePage() {
           </div>
 
           <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase", marginBottom: 8 }}>
-              Workspace actions
-            </div>
+            <WorkflowSectionLabel marginBottom={8}>Workspace actions</WorkflowSectionLabel>
             <div style={{ display: "grid", gap: 10 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase", marginBottom: 6 }}>
-                  Official
-                </div>
+                <WorkflowSectionLabel marginBottom={6}>Official</WorkflowSectionLabel>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <WorkflowActionButton label="회의록 작성" onClick={() => void runAction("GENERATE_MINUTES")} />
                   <WorkflowActionButton label="Feature 생성" onClick={() => void runAction("GENERATE_FEATURES")} />
@@ -215,9 +210,7 @@ export default function CollaborationWorkspacePage() {
                 </div>
               </div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase", marginBottom: 6 }}>
-                  Supporting
-                </div>
+                <WorkflowSectionLabel marginBottom={6}>Supporting</WorkflowSectionLabel>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <WorkflowActionButton label="분석 요청" onClick={() => void runAction("REQUEST_ANALYSIS")} />
                   <WorkflowActionButton label="아이디어 요청" onClick={() => void runAction("REQUEST_IDEAS")} />
