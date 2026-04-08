@@ -49,6 +49,11 @@ export function ActionResultPanel({
         <span style={{ color: "#6b7280" }}> · {new Date(result.atIso).toLocaleString()}</span>
       </div>
       <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.55 }}>{result.message}</div>
+      {result.status === "success" && result.generationSource === "mock_stub" ? (
+        <div style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
+          Generation source: local stub (not connected to AI or external orchestration yet).
+        </div>
+      ) : null}
       {result.status === "success" && workspaceImpact ? (
         <div
           style={{
