@@ -7,6 +7,7 @@ import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
 import { resolveSessionExecutionLaunchSnapshot, setActiveExecutionInput } from "@/lib/workflow/collaborationSessionResultStore";
+import { getPreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
 import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 
@@ -26,6 +27,15 @@ export default function ExecutionPage() {
   const pre = useMemo(() => getPreExecutionStateForSession(sessionId), [sessionId, sessionResultsVersion]);
   const isActive = pre.isSnapshotActive;
   const launchReadiness = pre.launchReadiness;
+  const nextAction = useMemo(
+    () =>
+      getPreLaunchActionAvailability({
+        active: pre.active,
+        snapshot: snapshot,
+        launchReadiness,
+      }),
+    [pre.active, snapshot, launchReadiness]
+  );
 
   const openTasks = () => {
     const qs = new URLSearchParams();
@@ -143,6 +153,35 @@ export default function ExecutionPage() {
                 <WorkflowActionButton label="Open Tasks workspace" variant="primary" onClick={openTasks} />
               </div>
             ) : null}
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Next action</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            Shows the next possible execution step based on the current active input. This is a placeholder only; nothing launches here.
+          </div>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 13, color: "#111827" }}>
+              State:{" "}
+              {nextAction.canPrepareLaunchAction ? (
+                <span style={{ fontWeight: 900, color: "#166534" }}>Ready for handoff</span>
+              ) : (
+                <span style={{ fontWeight: 900, color: "#6b7280" }}>Unavailable</span>
+              )}
+            </div>
+
+            {nextAction.actionReason ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>{nextAction.actionReason}</div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <WorkflowActionButton label={nextAction.actionLabel} variant="primary" disabled onClick={() => {}} />
+              {!nextAction.canPrepareLaunchAction ? (
+                <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
+              ) : null}
+            </div>
           </div>
         </WorkflowCard>
       </div>
