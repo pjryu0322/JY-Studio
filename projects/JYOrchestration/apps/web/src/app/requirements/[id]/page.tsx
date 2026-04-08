@@ -283,6 +283,11 @@ export default function RequirementDetailPage() {
                         ? "Generated drafts from collaboration (same source as /tasks until you confirm a set there)."
                         : "Generate with Task 초안 생성 in the session workspace, then confirm tasks on /tasks if needed."}
                   </span>
+                  {tasksFromConfirmedSet ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Execution input preview is available on the Tasks workspace (pre-execution only).
+                    </span>
+                  ) : null}
                 </>
               ) : null}
             </div>
