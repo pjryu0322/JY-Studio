@@ -130,7 +130,7 @@ export default function RequirementDetailPage() {
               This is a UI skeleton. Next phase will bind real requirement data, sessions, minutes generation, and feature derivation.
             </div>
             <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
-              Suggested next step: open the latest session and create minutes → derive features.
+              Suggested next step: open the latest session, run 회의록 작성, then Feature 생성 (official) to refresh Minutes and Features tabs here (in-memory).
             </div>
           </WorkflowCard>
         ) : (
@@ -197,13 +197,14 @@ export default function RequirementDetailPage() {
                 <>
                   <WorkflowBadge>Collaboration snapshot</WorkflowBadge>
                   <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                    Official features for the latest session were updated from the collaboration flow (in-memory; not persisted across reload).
+                    Official derived features for the latest session come from Feature 생성 in the collaboration workspace (mock_stub; in-memory store — not
+                    persisted across full reload). This is separate from 아이디어 요청 suggestions.
                   </span>
                 </>
               ) : (
                 <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                  Derived features for the latest session from the view model. A future “derive features” action can write through the same shared store
-                  used for minutes.
+                  Official features for the latest session from the view model. Open the session workspace and run Feature 생성 to replace this list in the
+                  requirement view until persistence exists. Idea-based suggestions never appear here.
                 </span>
               )}
             </div>

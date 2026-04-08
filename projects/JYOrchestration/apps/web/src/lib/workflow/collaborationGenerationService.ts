@@ -1,11 +1,12 @@
 /**
- * Collaboration generation contract — entry point for minutes / analysis / ideas.
+ * Collaboration generation contract — entry point for minutes / features / analysis / ideas.
  * Replace implementations here (or delegate to external orchestration) without changing the UI page.
  */
 
 import type {
   CollaborationActionResult,
   CollaborationSuccessAnalysis,
+  CollaborationSuccessGenerateFeatures,
   CollaborationSuccessGenerateMinutes,
   CollaborationSuccessIdeas,
 } from "@/lib/workflow/collaborationActionContract";
@@ -39,6 +40,43 @@ export async function generateMinutesForSession(sessionId: string): Promise<Coll
       decisions: ["Keep workflow visible", "No backend orchestration in this phase"],
       pending: ["Wire generation contract", "Add persistence"],
       excluded: ["No AI agent execution changes"],
+    },
+  };
+  return out;
+}
+
+export async function generateFeaturesForSession(sessionId: string): Promise<CollaborationActionResult> {
+  const view = getCollaborationWorkspaceView(sessionId);
+  if (!view.session) {
+    return notFoundError("GENERATE_FEATURES", sessionId);
+  }
+
+  const atIso = new Date().toISOString();
+  const out: CollaborationSuccessGenerateFeatures = {
+    actionType: "GENERATE_FEATURES",
+    status: "success",
+    atIso,
+    generationSource: "mock_stub",
+    message: "Official features payload returned from generation service (mock stub — not AI yet).",
+    payload: {
+      features: [
+        {
+          id: `gen-${sessionId}-onboarding`,
+          name: "Guided onboarding checklist",
+          description: "Stub official feature for this session (replace with real derivation later).",
+          status: "PLANNED",
+          userFlow: ["Open collaboration workspace", "Run official actions", "Verify requirement tabs"],
+          nonFunctional: ["mock_stub", "Shared in-memory store only"],
+        },
+        {
+          id: `gen-${sessionId}-trace`,
+          name: "Cross-page workflow trace",
+          description: "Stub link between collaboration outputs and requirement detail (mock).",
+          status: "DRAFT",
+          userFlow: ["Generate official features here", "Open requirement Features tab"],
+          nonFunctional: ["No database persistence yet"],
+        },
+      ],
     },
   };
   return out;

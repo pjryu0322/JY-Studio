@@ -46,12 +46,12 @@ export function CollaborationWorkspaceAside({
           </div>
         </div>
         <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, marginBottom: 10 }}>
-          Session feature list from the workspace model. Idea suggestions are kept separate below.
+          Official list for this session (view model or Feature 생성). 아이디어 요청 suggestions stay under Supporting insights only.
         </div>
         <FeatureSummaryPanel
           hideHeader
           features={displayedFeatures}
-          emptyLabel="No official derived features for this session."
+          emptyLabel="No official derived features yet. Use Feature 생성 (official) to populate (mock)."
         />
       </WorkflowCard>
 
