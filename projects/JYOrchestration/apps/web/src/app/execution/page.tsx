@@ -6,7 +6,12 @@ import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowA
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import { resolveSessionExecutionLaunchSnapshot } from "@/lib/workflow/collaborationSessionResultStore";
+import {
+  getActiveExecutionInput,
+  isActiveExecutionSnapshot,
+  resolveSessionExecutionLaunchSnapshot,
+  setActiveExecutionInput,
+} from "@/lib/workflow/collaborationSessionResultStore";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 
 export default function ExecutionPage() {
@@ -20,6 +25,12 @@ export default function ExecutionPage() {
   const snapshot = useMemo(
     () => resolveSessionExecutionLaunchSnapshot(sessionId),
     [sessionId, sessionResultsVersion]
+  );
+
+  const active = useMemo(() => getActiveExecutionInput(), [sessionResultsVersion]);
+  const isActive = useMemo(
+    () => isActiveExecutionSnapshot(sessionId, snapshot?.snapshotId),
+    [sessionId, snapshot?.snapshotId, sessionResultsVersion]
   );
 
   const openTasks = () => {
@@ -53,6 +64,18 @@ export default function ExecutionPage() {
               <div style={{ fontSize: 12, color: "#6b7280" }}>
                 Snapshot exists for this session. Execution is not started; this is a read-only pre-execution input source.
               </div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                Active input:{" "}
+                {isActive ? (
+                  <span style={{ fontWeight: 900, color: "#166534" }}>Selected</span>
+                ) : active ? (
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>
+                    {active.sessionId} / {active.snapshotId}
+                  </span>
+                ) : (
+                  <span>(none)</span>
+                )}
+              </div>
               <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.55 }}>
                 <span style={{ fontWeight: 900 }}>{snapshot.summary.candidateCount}</span> candidates • snapshot{" "}
                 <span style={{ fontFamily: "ui-monospace, monospace" }}>{snapshot.snapshotId}</span>
@@ -61,6 +84,14 @@ export default function ExecutionPage() {
                 sessionId: <span style={{ fontFamily: "ui-monospace, monospace" }}>{snapshot.sessionId}</span> • requirementId:{" "}
                 <span style={{ fontFamily: "ui-monospace, monospace" }}>{snapshot.requirementId ?? "(none)"}</span> • preparedAt:{" "}
                 <span style={{ fontFamily: "ui-monospace, monospace" }}>{snapshot.preparedAtIso}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <WorkflowActionButton
+                  label={isActive ? "Active input selected" : "Select as active input"}
+                  variant="primary"
+                  onClick={() => setActiveExecutionInput({ sessionId: snapshot.sessionId, snapshotId: snapshot.snapshotId })}
+                  disabled={isActive}
+                />
               </div>
             </div>
           ) : (
