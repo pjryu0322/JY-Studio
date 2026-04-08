@@ -6,7 +6,7 @@ import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowA
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import { resolveSessionExecutionLaunchSnapshot, setActiveExecutionInput } from "@/lib/workflow/collaborationSessionResultStore";
+import { recordSessionHandoffPrepared, resolveSessionExecutionLaunchSnapshot, setActiveExecutionInput } from "@/lib/workflow/collaborationSessionResultStore";
 import { getPreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
 import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
@@ -27,6 +27,8 @@ export default function ExecutionPage() {
   const pre = useMemo(() => getPreExecutionStateForSession(sessionId), [sessionId, sessionResultsVersion]);
   const isActive = pre.isSnapshotActive;
   const launchReadiness = pre.launchReadiness;
+  const isHandoffPrepared = pre.isHandoffPreparedActive;
+  const handoffPrepared = pre.handoffPrepared;
   const nextAction = useMemo(
     () =>
       getPreLaunchActionAvailability({
@@ -163,6 +165,13 @@ export default function ExecutionPage() {
           </div>
 
           <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {isHandoffPrepared && handoffPrepared ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                <span style={{ fontWeight: 900, color: "#166534" }}>Handoff prepared</span> • preparedAt{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.preparedAtIso}</span> • snapshot{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.snapshotId}</span>
+              </div>
+            ) : null}
             <div style={{ fontSize: 13, color: "#111827" }}>
               State:{" "}
               {nextAction.canPrepareLaunchAction ? (
@@ -177,7 +186,21 @@ export default function ExecutionPage() {
             ) : null}
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <WorkflowActionButton label={nextAction.actionLabel} variant="primary" disabled onClick={() => {}} />
+              <WorkflowActionButton
+                label={isHandoffPrepared ? "Handoff prepared" : nextAction.actionLabel}
+                variant="primary"
+                disabled={!nextAction.canPrepareLaunchAction || isHandoffPrepared}
+                onClick={() => {
+                  if (!nextAction.canPrepareLaunchAction) return;
+                  if (!pre.active) return;
+                  recordSessionHandoffPrepared(pre.active.sessionId, {
+                    sessionId: pre.active.sessionId,
+                    snapshotId: pre.active.snapshotId,
+                    preparedAtIso: new Date().toISOString(),
+                    status: "prepared",
+                  });
+                }}
+              />
               {!nextAction.canPrepareLaunchAction ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
               ) : null}

@@ -122,6 +122,8 @@ export default function RequirementDetailPage() {
   const activeExecution = pre.active;
   const isActiveSnapshot = pre.isSnapshotActive;
   const launchReadiness = pre.launchReadiness;
+  const isHandoffPrepared = pre.isHandoffPreparedActive;
+  const handoffPrepared = pre.handoffPrepared;
 
   const search = useSearchParams();
   const router = useRouter();
@@ -334,6 +336,12 @@ export default function RequirementDetailPage() {
                         <span style={{ fontWeight: 900, color: "#b45309" }}>Not ready</span>
                       )}{" "}
                       (see /execution)
+                    </span>
+                  ) : null}
+                  {hasExecutionSnapshot && isHandoffPrepared && handoffPrepared ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Handoff prepared: <span style={{ fontWeight: 900, color: "#166534" }}>Prepared</span> •{" "}
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.preparedAtIso}</span>
                     </span>
                   ) : null}
                 </>

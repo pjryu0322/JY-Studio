@@ -71,6 +71,8 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const preparedSnapshot = pre.snapshot;
   const activeExecution = pre.active;
   const isActiveSnapshot = pre.isSnapshotActive;
+  const isHandoffPrepared = pre.isHandoffPreparedActive;
+  const handoffPrepared = pre.handoffPrepared;
 
   const displayedSequenceTasks = useMemo(() => {
     if (sequenceView === "all") return working.activeTasks;
@@ -298,6 +300,13 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
                       <span>(none)</span>
                     )}
                   </div>
+                  {isHandoffPrepared && handoffPrepared ? (
+                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                      Handoff prepared:{" "}
+                      <span style={{ fontWeight: 900, color: "#166534" }}>Prepared</span> •{" "}
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.preparedAtIso}</span>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div style={{ fontSize: 12, color: "#6b7280" }}>No snapshot prepared yet.</div>

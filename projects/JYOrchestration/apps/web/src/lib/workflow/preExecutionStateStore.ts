@@ -15,9 +15,17 @@ import { resolveSessionConfirmedTasks } from "@/lib/workflow/collaborationSessio
 
 export type TaskExecutionReadiness = "not_ready" | "ready";
 
+export type HandoffPreparedState = {
+  sessionId: string;
+  snapshotId: string;
+  preparedAtIso: string;
+  status: "prepared";
+};
+
 type PreExecutionEntry = {
   taskReadinessByTaskId?: Record<string, TaskExecutionReadiness>;
   executionLaunchSnapshot?: ExecutionLaunchSnapshot;
+  handoffPrepared?: HandoffPreparedState;
   updatedAtIso?: string;
 };
 
@@ -71,6 +79,25 @@ export function resolveSessionExecutionLaunchSnapshot(sessionId: string | null |
 export function sessionHasExecutionLaunchSnapshot(sessionId: string | null | undefined): boolean {
   if (!sessionId) return false;
   return getSessionEntry<PreExecutionEntry>(sessionId)?.executionLaunchSnapshot !== undefined;
+}
+
+export function recordSessionHandoffPrepared(sessionId: string, state: HandoffPreparedState): void {
+  const at = new Date().toISOString();
+  updateSessionEntry<PreExecutionEntry>(sessionId, (prev) => ({
+    ...(prev ?? {}),
+    handoffPrepared: state,
+    updatedAtIso: at,
+  }));
+}
+
+export function resolveSessionHandoffPrepared(sessionId: string | null | undefined): HandoffPreparedState | undefined {
+  if (!sessionId) return undefined;
+  return getSessionEntry<PreExecutionEntry>(sessionId)?.handoffPrepared;
+}
+
+export function isHandoffPreparedForActive(active: ActiveExecutionInputSelection | null, prepared: HandoffPreparedState | undefined): boolean {
+  if (!active || !prepared) return false;
+  return active.sessionId === prepared.sessionId && active.snapshotId === prepared.snapshotId && prepared.status === "prepared";
 }
 
 export type ActiveExecutionInputSelection = {
