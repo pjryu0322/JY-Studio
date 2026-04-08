@@ -9,6 +9,9 @@ import type {
 } from "@/lib/workflow/collaborationActionContract";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 
+/** Pre-execution readiness per task id (in-memory; not the execution pipeline). */
+export type TaskExecutionReadiness = "not_ready" | "ready";
+
 export type SessionCollaborationResultEntry = {
   /** When set, overrides view-model minutes for this session everywhere we resolve. */
   minutes?: MeetingMinutesMock;
@@ -23,6 +26,8 @@ export type SessionCollaborationResultEntry = {
   confirmedTasks?: CollaborationOfficialTaskDraft[];
   /** When `confirmedTasks` was last written. */
   confirmedTasksAtIso?: string;
+  /** Execution readiness for task ids (confirmed / working); defaults to not_ready when missing. */
+  taskReadinessByTaskId?: Record<string, TaskExecutionReadiness>;
   updatedAtIso: string;
   source: CollaborationGenerationSource;
 };
@@ -104,12 +109,49 @@ export function recordSessionOfficialTasks(
 export function recordSessionConfirmedTasks(sessionId: string, tasks: CollaborationOfficialTaskDraft[]): void {
   const prev = bySessionId.get(sessionId);
   const at = new Date().toISOString();
+  const prevReadiness = prev?.taskReadinessByTaskId ?? {};
+  const nextReadiness: Record<string, TaskExecutionReadiness> = {};
+  for (const t of tasks) {
+    nextReadiness[t.id] = prevReadiness[t.id] ?? "not_ready";
+  }
   bySessionId.set(sessionId, {
     ...prev,
     confirmedTasks: tasks,
     confirmedTasksAtIso: at,
+    taskReadinessByTaskId: nextReadiness,
     updatedAtIso: at,
     source: prev?.source ?? "mock_stub",
+  });
+  bumpVersion();
+}
+
+export function getTaskExecutionReadiness(
+  map: Record<string, TaskExecutionReadiness> | undefined,
+  taskId: string
+): TaskExecutionReadiness {
+  return map?.[taskId] ?? "not_ready";
+}
+
+/** Snapshot of readiness flags for the session (may be empty). */
+export function resolveSessionTaskReadiness(sessionId: string | null | undefined): Record<string, TaskExecutionReadiness> {
+  if (!sessionId) return {};
+  const m = bySessionId.get(sessionId)?.taskReadinessByTaskId;
+  return m ? { ...m } : {};
+}
+
+export function setSessionTaskReadiness(sessionId: string, taskId: string, readiness: TaskExecutionReadiness): void {
+  const prev = bySessionId.get(sessionId);
+  const at = new Date().toISOString();
+  const base: SessionCollaborationResultEntry = prev ?? {
+    updatedAtIso: at,
+    source: "mock_stub",
+  };
+  const prevMap = base.taskReadinessByTaskId ?? {};
+  bySessionId.set(sessionId, {
+    ...base,
+    taskReadinessByTaskId: { ...prevMap, [taskId]: readiness },
+    updatedAtIso: at,
+    source: base.source,
   });
   bumpVersion();
 }

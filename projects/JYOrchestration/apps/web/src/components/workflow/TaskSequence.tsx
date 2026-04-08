@@ -1,6 +1,8 @@
 "use client";
 
 import type { CollaborationOfficialTaskDraft } from "@/lib/workflow/collaborationActionContract";
+import type { TaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
+import { getTaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
 import type { TaskReviewUiStatus } from "@/lib/workflow/useTasksWorkspaceReview";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
@@ -12,6 +14,9 @@ export type TaskSequenceReviewControls = {
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
   onUpdateDependencyNote: (id: string, note: string) => void;
+  /** Per-task execution readiness (confirmed rows only in UI). */
+  executionReadiness?: Record<string, TaskExecutionReadiness>;
+  onSetExecutionReadiness?: (taskId: string, readiness: TaskExecutionReadiness) => void;
 };
 
 function seqBtn(label: string, onClick: () => void, disabled?: boolean) {
@@ -82,6 +87,11 @@ function TaskSequenceRow({
   review?: TaskSequenceReviewControls;
 }) {
   const confirmed = review && review.reviewById[task.id] === "confirmed";
+  const execReady =
+    review?.executionReadiness !== undefined
+      ? getTaskExecutionReadiness(review.executionReadiness, task.id)
+      : "not_ready";
+  const showReadiness = Boolean(confirmed && review?.onSetExecutionReadiness);
 
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
@@ -146,6 +156,13 @@ function TaskSequenceRow({
                 </span>
               ) : null}
               {confirmed ? <WorkflowBadge>Confirmed</WorkflowBadge> : null}
+              {showReadiness ? (
+                execReady === "ready" ? (
+                  <WorkflowBadge>Execution ready</WorkflowBadge>
+                ) : (
+                  <span style={{ fontSize: 10, fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.04em" }}>Not ready</span>
+                )
+              ) : null}
               <WorkflowBadge>{task.status}</WorkflowBadge>
             </div>
           </div>
@@ -191,6 +208,23 @@ function TaskSequenceRow({
                   boxSizing: "border-box",
                 }}
               />
+            </div>
+          ) : null}
+          {showReadiness ? (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Execution readiness (separate from Confirmed)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                {seqBtn(
+                  "Mark as Ready",
+                  () => review?.onSetExecutionReadiness?.(task.id, "ready"),
+                  execReady === "ready"
+                )}
+                {seqBtn(
+                  "Mark as Not Ready",
+                  () => review?.onSetExecutionReadiness?.(task.id, "not_ready"),
+                  execReady === "not_ready"
+                )}
+              </div>
             </div>
           ) : null}
           {review ? (

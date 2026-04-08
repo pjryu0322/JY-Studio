@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import {
+  getTaskExecutionReadiness,
   resolveSessionConfirmedTasks,
   resolveSessionMinutes,
   resolveSessionOfficialFeatures,
   resolveSessionOfficialTasks,
+  resolveSessionTaskReadiness,
   sessionHasConfirmedTaskSet,
   sessionHasMinutesOverride,
   sessionHasOfficialFeaturesOverride,
@@ -90,6 +92,18 @@ export default function RequirementDetailPage() {
     () => sessionHasConfirmedTaskSet(latestSessionId),
     [latestSessionId, sessionResultsVersion]
   );
+
+  const taskReadinessMap = useMemo(
+    () => resolveSessionTaskReadiness(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
+
+  const executionReadySummary = useMemo(() => {
+    if (!tasksFromConfirmedSet) return null;
+    const list = resolvedTaskDrafts;
+    const ready = list.filter((t) => getTaskExecutionReadiness(taskReadinessMap, t.id) === "ready").length;
+    return { ready, total: list.length };
+  }, [tasksFromConfirmedSet, resolvedTaskDrafts, taskReadinessMap]);
 
   const search = useSearchParams();
   const router = useRouter();
@@ -260,7 +274,11 @@ export default function RequirementDetailPage() {
                   {!tasksFromConfirmedSet && tasksFromCollaboration ? <WorkflowBadge>Snapshot</WorkflowBadge> : null}
                   <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
                     {tasksFromConfirmedSet
-                      ? "Showing the official confirmed task set from the Tasks workspace (in-memory until persistence)."
+                      ? `Showing the official confirmed task set from the Tasks workspace (in-memory).${
+                          executionReadySummary
+                            ? ` ${executionReadySummary.ready} / ${executionReadySummary.total} marked execution-ready.`
+                            : ""
+                        }`
                       : tasksFromCollaboration
                         ? "Generated drafts from collaboration (same source as /tasks until you confirm a set there)."
                         : "Generate with Task 초안 생성 in the session workspace, then confirm tasks on /tasks if needed."}
@@ -271,6 +289,8 @@ export default function RequirementDetailPage() {
           ) : null}
           <TaskDraftsPanel
             tasks={resolvedTaskDrafts}
+            executionReadiness={tasksFromConfirmedSet ? taskReadinessMap : undefined}
+            highlightExecutionReady={tasksFromConfirmedSet}
             emptyLabel={
               tasksFromConfirmedSet
                 ? "Confirmed set is empty. Open Tasks workspace and run Task 확정 after marking tasks with Confirm."

@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { TaskSequence } from "@/components/workflow/TaskSequence";
 import { TasksWorkspaceSummaryStrip } from "@/components/workflow/TasksWorkspaceSummaryStrip";
 import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowSectionLabel } from "@/components/workflow/primitives/WorkflowSectionLabel";
-import { recordSessionConfirmedTasks } from "@/lib/workflow/collaborationSessionResultStore";
+import type { TaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
+import {
+  getTaskExecutionReadiness,
+  recordSessionConfirmedTasks,
+  resolveSessionTaskReadiness,
+  setSessionTaskReadiness,
+} from "@/lib/workflow/collaborationSessionResultStore";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
+import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { useTasksWorkspaceReview } from "@/lib/workflow/useTasksWorkspaceReview";
 
 type Props = {
@@ -28,11 +35,24 @@ const inputStyle: CSSProperties = {
 };
 
 export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollaboration }: Props) {
+  const sessionResultsVersion = useCollaborationSessionResultsVersion();
   const working = useTasksWorkspaceReview(view.taskDrafts);
   const [addName, setAddName] = useState("");
   const [addDesc, setAddDesc] = useState("");
   const [addFeat, setAddFeat] = useState("");
   const [confirmFlash, setConfirmFlash] = useState<string | null>(null);
+
+  const readinessMap = useMemo(
+    () => resolveSessionTaskReadiness(view.sessionId),
+    [view.sessionId, sessionResultsVersion]
+  );
+
+  const officialConfirmed = view.confirmedTasks ?? [];
+  const readyCount = useMemo(
+    () => officialConfirmed.filter((t) => getTaskExecutionReadiness(readinessMap, t.id) === "ready").length,
+    [officialConfirmed, readinessMap]
+  );
+  const readyTotal = officialConfirmed.length;
 
   const reviewApi = {
     reviewById: working.reviewById,
@@ -41,6 +61,11 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
     onMoveUp: working.moveUp,
     onMoveDown: working.moveDown,
     onUpdateDependencyNote: working.updateDependencyNote,
+    executionReadiness: readinessMap,
+    onSetExecutionReadiness:
+      view.sessionId !== null
+        ? (taskId: string, readiness: TaskExecutionReadiness) => setSessionTaskReadiness(view.sessionId!, taskId, readiness)
+        : undefined,
   };
 
   const submitManual = () => {
@@ -107,6 +132,21 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
           disabled={!view.sessionId}
         />
         <span style={{ fontSize: 12, color: "#6b7280" }}>Saves only tasks marked Confirmed, in current order.</span>
+      </div>
+
+      {view.sessionId ? (
+        <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>
+          <span style={{ fontWeight: 800 }}>{readyCount}</span> / <span style={{ fontWeight: 800 }}>{readyTotal}</span> tasks in the{" "}
+          <span style={{ fontWeight: 800 }}>saved confirmed set</span> are marked ready for execution.
+          {readyTotal === 0 ? (
+            <span style={{ color: "#6b7280" }}> Run Task 확정 after confirming rows to fix this total.</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, borderLeft: "3px solid #e5e7eb", paddingLeft: 10 }}>
+        On each <span style={{ fontWeight: 800, color: "#374151" }}>Confirmed</span> row, set execution readiness separately. Ready tasks can be used for
+        execution in a later stage (not wired here). Use clear names, descriptions, and non-blocking dependency notes before marking ready.
       </div>
 
       <div>
@@ -197,7 +237,7 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
       <details>
         <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800, color: "#9ca3af" }}>Execution (not wired yet)</summary>
         <p style={{ fontSize: 12, color: "#6b7280", marginTop: 8, lineHeight: 1.5, marginBottom: 0 }}>
-          These drafts are not connected to automated execution yet.
+          Readiness flags are pre-execution only (in-memory). No run, queue, or Stage hooks are attached yet.
         </p>
       </details>
     </>
