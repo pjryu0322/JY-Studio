@@ -78,8 +78,24 @@ function TaskSequenceRow({ task, isLast }: { task: CollaborationOfficialTaskDraf
             <div style={{ fontSize: 14, fontWeight: 900, color: "#111827" }}>{task.name}</div>
             <WorkflowBadge>{task.status}</WorkflowBadge>
           </div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.4 }}>
-            Feature: <span style={{ color: "#374151" }}>{task.relatedFeatureName}</span>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.4, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
+            {task.taskType ? (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: "0.05em",
+                  color: "#9ca3af",
+                  textTransform: "uppercase",
+                  flexShrink: 0,
+                }}
+              >
+                {task.taskType}
+              </span>
+            ) : null}
+            <span>
+              Feature: <span style={{ color: "#374151" }}>{task.relatedFeatureName}</span>
+            </span>
           </div>
           {task.dependencyNote ? (
             <div style={{ fontSize: 12, color: "#92400e", marginTop: 6, lineHeight: 1.4 }}>

@@ -29,6 +29,14 @@ export type CollaborationOfficialFeaturesPayload = {
 /** Official task draft (not brainstorm ideas). */
 export type CollaborationTaskDraftStatus = "DRAFT" | "READY" | "BLOCKED";
 
+/** Work discipline for sequencing (optional on older payloads). */
+export type CollaborationTaskDraftType =
+  | "design"
+  | "backend"
+  | "frontend"
+  | "integration"
+  | "validation";
+
 export type CollaborationOfficialTaskDraft = {
   id: string;
   name: string;
@@ -38,6 +46,7 @@ export type CollaborationOfficialTaskDraft = {
   relatedFeatureName: string;
   order: number;
   dependencyNote?: string;
+  taskType?: CollaborationTaskDraftType;
 };
 
 export type CollaborationOfficialTasksPayload = {
@@ -277,6 +286,16 @@ function isTaskDraftStatus(s: unknown): s is CollaborationTaskDraftStatus {
   return s === "DRAFT" || s === "READY" || s === "BLOCKED";
 }
 
+function isTaskDraftType(s: unknown): s is CollaborationTaskDraftType {
+  return (
+    s === "design" ||
+    s === "backend" ||
+    s === "frontend" ||
+    s === "integration" ||
+    s === "validation"
+  );
+}
+
 function parseCollaborationOfficialTaskDraftItem(raw: unknown): CollaborationOfficialTaskDraft | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -285,6 +304,7 @@ function parseCollaborationOfficialTaskDraftItem(raw: unknown): CollaborationOff
   if (typeof o.relatedFeatureId !== "string" || typeof o.relatedFeatureName !== "string") return null;
   if (typeof o.order !== "number" || !Number.isFinite(o.order)) return null;
   if (o.dependencyNote !== undefined && typeof o.dependencyNote !== "string") return null;
+  if (o.taskType !== undefined && !isTaskDraftType(o.taskType)) return null;
   const out: CollaborationOfficialTaskDraft = {
     id: o.id,
     name: o.name,
@@ -296,6 +316,9 @@ function parseCollaborationOfficialTaskDraftItem(raw: unknown): CollaborationOff
   };
   if (typeof o.dependencyNote === "string") {
     out.dependencyNote = o.dependencyNote;
+  }
+  if (isTaskDraftType(o.taskType)) {
+    out.taskType = o.taskType;
   }
   return out;
 }

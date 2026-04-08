@@ -5,13 +5,13 @@
 
 import type {
   CollaborationActionResult,
-  CollaborationOfficialTaskDraft,
   CollaborationSuccessAnalysis,
   CollaborationSuccessGenerateFeatures,
   CollaborationSuccessGenerateMinutes,
   CollaborationSuccessGenerateTasks,
   CollaborationSuccessIdeas,
 } from "@/lib/workflow/collaborationActionContract";
+import { buildMockOfficialTaskDrafts } from "@/lib/workflow/mockOfficialTasksFromFeatures";
 import { getCollaborationWorkspaceView } from "@/lib/workflow/workflowViewModel";
 
 function notFoundError(actionType: CollaborationActionResult["actionType"], sessionId: string): CollaborationActionResult {
@@ -90,36 +90,7 @@ export async function generateTasksForSession(sessionId: string): Promise<Collab
     return notFoundError("GENERATE_TASKS", sessionId);
   }
 
-  const feats = view.features;
-  const primary = feats[0];
-  const secondary = feats[1];
-
-  const tasks: CollaborationOfficialTaskDraft[] = [
-    {
-      id: `task-${sessionId}-1`,
-      name: primary ? `Ship slice: ${primary.name}` : "Define first delivery slice",
-      description: primary
-        ? `Official task draft linked to feature “${primary.name}” (mock stub).`
-        : "Stub task when no VM features exist yet; run Feature 생성 for tighter linkage.",
-      status: "DRAFT",
-      relatedFeatureId: primary?.id ?? "unassigned",
-      relatedFeatureName: primary?.name ?? "(no official feature yet)",
-      order: 1,
-      dependencyNote: primary ? undefined : "Real flow: official features before task drafts.",
-    },
-    {
-      id: `task-${sessionId}-2`,
-      name: secondary ? `Verify: ${secondary.name}` : "Cross-check requirement outputs",
-      description: secondary
-        ? `Validation pass for “${secondary.name}” against minutes and acceptance notes (mock).`
-        : "Review minutes, features, and task drafts in the requirement view (mock).",
-      status: "READY",
-      relatedFeatureId: secondary?.id ?? primary?.id ?? "unassigned",
-      relatedFeatureName: secondary?.name ?? primary?.name ?? "(no official feature yet)",
-      order: 2,
-      dependencyNote: "Order is for review until execution binds these drafts.",
-    },
-  ];
+  const tasks = buildMockOfficialTaskDrafts(sessionId, view.features);
 
   const atIso = new Date().toISOString();
   const out: CollaborationSuccessGenerateTasks = {
@@ -127,7 +98,7 @@ export async function generateTasksForSession(sessionId: string): Promise<Collab
     status: "success",
     atIso,
     generationSource: "mock_stub",
-    message: "Official task drafts returned from generation service (mock stub — not AI yet).",
+    message: "Structured official task drafts returned from generation service (mock stub — not AI yet).",
     payload: { tasks },
   };
   return out;
