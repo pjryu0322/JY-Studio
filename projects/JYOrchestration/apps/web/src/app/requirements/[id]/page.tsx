@@ -230,6 +230,15 @@ export default function RequirementDetailPage() {
 
       {tab === "tasks" ? (
         <div style={{ display: "grid", gap: 10 }}>
+          {vm.requirement ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <WorkflowActionButton
+                label="Open Tasks workspace"
+                variant="primary"
+                onClick={() => router.push(`/tasks?requirementId=${encodeURIComponent(requirementId)}`)}
+              />
+            </div>
+          ) : null}
           {vm.requirement && latestSessionId ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {tasksFromCollaboration ? (

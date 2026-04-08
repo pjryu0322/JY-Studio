@@ -3,10 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import {
-  ActionResultPanel,
-  type ActionWorkspaceImpact,
-} from "@/components/workflow/ActionResultPanel";
+import { ActionResultPanel } from "@/components/workflow/ActionResultPanel";
 import { CollaborationWorkspaceAside } from "@/components/workflow/CollaborationWorkspaceAside";
 import { DiscussionInput } from "@/components/workflow/DiscussionInput";
 import { DiscussionTimeline, type DiscussionItem } from "@/components/workflow/DiscussionTimeline";
@@ -23,64 +20,16 @@ import type {
 import { isSuccessCollaborationResult } from "@/lib/workflow/collaborationActionContract";
 import { requestCollaborationGeneration } from "@/lib/workflow/collaborationGenerationClient";
 import {
-  recordSessionGeneratedMinutes,
-  recordSessionOfficialFeatures,
-  recordSessionOfficialTasks,
-  resolveSessionMinutes,
-  resolveSessionOfficialFeatures,
-  resolveSessionOfficialTasks,
-} from "@/lib/workflow/collaborationSessionResultStore";
-import { type DisplayedAnalysis, ideaStringsToSuggestedFeatures } from "@/lib/workflow/collaborationWorkspacePayload";
+  applyCollaborationWorkspaceDisplayPatch,
+  getCollaborationWorkspaceDisplayBootstrap,
+  getDisplayPatchForCollaborationSuccess,
+  recordOfficialOutputsForSuccess,
+} from "@/lib/workflow/collaborationWorkspaceHandlers";
+import { getCollaborationWorkspaceImpact } from "@/lib/workflow/collaborationWorkspaceImpact";
+import type { DisplayedAnalysis } from "@/lib/workflow/collaborationWorkspacePayload";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 import { routeState } from "@/lib/workflow/workflowState";
 import { getCollaborationWorkspaceView } from "@/lib/workflow/workflowViewModel";
-
-function workspaceImpactFrom(latest: CollaborationActionResult | null): ActionWorkspaceImpact | null {
-  if (!latest || latest.status !== "success") return null;
-  if (latest.actionType === "GENERATE_MINUTES") {
-    return {
-      scope: "primary",
-      lines: [
-        "Latest minutes (official) on the right now reflects this run.",
-        "Supporting insights stay the same until you run analysis or ideas.",
-      ],
-    };
-  }
-  if (latest.actionType === "GENERATE_FEATURES") {
-    return {
-      scope: "primary",
-      lines: [
-        "Official derived features on the right now reflect this run (also visible on the requirement Features tab for the latest session).",
-        "Idea-based suggestions under Supporting insights are unchanged. Run Task 초안 생성 to refresh official task drafts.",
-      ],
-    };
-  }
-  if (latest.actionType === "GENERATE_TASKS") {
-    return {
-      scope: "primary",
-      lines: [
-        "Official task drafts on the right now reflect this run (also visible on the requirement Tasks tab for the latest session).",
-        "Supporting insights and idea suggestions are unchanged.",
-      ],
-    };
-  }
-  if (latest.actionType === "REQUEST_ANALYSIS") {
-    return {
-      scope: "supporting",
-      lines: [
-        "Open Supporting insights to see the new analysis notes.",
-        "Official minutes, derived features, and task drafts were not changed.",
-      ],
-    };
-  }
-  return {
-    scope: "supporting",
-    lines: [
-      "Ideas and suggested feature cards were refreshed (labeled as suggestions, not official).",
-      "Official minutes, features, and task drafts on the right are unchanged.",
-    ],
-  };
-}
 
 export default function CollaborationWorkspacePage() {
   const params = useParams<{ id: string }>();
@@ -119,19 +68,20 @@ export default function CollaborationWorkspacePage() {
 
   useEffect(() => {
     const view = getCollaborationWorkspaceView(sessionId);
-    if (!view.session) {
+    const boot = getCollaborationWorkspaceDisplayBootstrap(sessionId, view);
+    if (!boot) {
       return;
     }
-    setDisplayedMinutes(resolveSessionMinutes(sessionId, view.minutes));
-    setDisplayedFeatures([...resolveSessionOfficialFeatures(sessionId, view.features)]);
-    setDisplayedTaskDrafts([...resolveSessionOfficialTasks(sessionId, [])]);
+    setDisplayedMinutes(boot.minutes);
+    setDisplayedFeatures(boot.features);
+    setDisplayedTaskDrafts(boot.taskDrafts);
     setDisplayedAnalysis(null);
     setDisplayedIdeas([]);
     setSuggestedFeaturesFromIdeas([]);
     setActionState({ status: "idle", latest: null });
   }, [sessionId]);
 
-  const workspaceImpact = useMemo(() => workspaceImpactFrom(actionState.latest), [actionState.latest]);
+  const workspaceImpact = useMemo(() => getCollaborationWorkspaceImpact(actionState.latest), [actionState.latest]);
 
   const runAction = async (actionType: CollaborationActionType) => {
     setActionState({
@@ -145,29 +95,15 @@ export default function CollaborationWorkspacePage() {
       return;
     }
 
-    switch (out.actionType) {
-      case "GENERATE_MINUTES":
-        recordSessionGeneratedMinutes(sessionId, out.payload, out.generationSource);
-        setDisplayedMinutes(out.payload);
-        break;
-      case "GENERATE_FEATURES":
-        recordSessionOfficialFeatures(sessionId, out.payload.features, out.generationSource);
-        setDisplayedFeatures([...out.payload.features]);
-        break;
-      case "GENERATE_TASKS":
-        recordSessionOfficialTasks(sessionId, out.payload.tasks, out.generationSource);
-        setDisplayedTaskDrafts([...out.payload.tasks]);
-        break;
-      case "REQUEST_ANALYSIS":
-        setDisplayedAnalysis(out.payload);
-        break;
-      case "REQUEST_IDEAS": {
-        const { ideas } = out.payload;
-        setDisplayedIdeas(ideas);
-        setSuggestedFeaturesFromIdeas(ideaStringsToSuggestedFeatures(ideas, Date.now()));
-        break;
-      }
-    }
+    recordOfficialOutputsForSuccess(sessionId, out);
+    applyCollaborationWorkspaceDisplayPatch(getDisplayPatchForCollaborationSuccess(out), {
+      setMinutes: setDisplayedMinutes,
+      setFeatures: setDisplayedFeatures,
+      setTaskDrafts: setDisplayedTaskDrafts,
+      setAnalysis: setDisplayedAnalysis,
+      setIdeas: setDisplayedIdeas,
+      setSuggestedFeaturesFromIdeas,
+    });
   };
 
   if (sessionRoute.kind === "not_found") {
@@ -219,12 +155,20 @@ export default function CollaborationWorkspacePage() {
               )}
             </div>
             {vm.requirement ? (
-              <Link
-                href={`/requirements/${encodeURIComponent(vm.requirement.id)}?tab=sessions`}
-                style={{ fontSize: 13, textDecoration: "underline", alignSelf: "center" }}
-              >
-                Open requirement
-              </Link>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", alignSelf: "center" }}>
+                <Link
+                  href={`/requirements/${encodeURIComponent(vm.requirement.id)}?tab=sessions`}
+                  style={{ fontSize: 13, textDecoration: "underline" }}
+                >
+                  Open requirement
+                </Link>
+                <Link
+                  href={`/tasks?requirementId=${encodeURIComponent(vm.requirement.id)}&sessionId=${encodeURIComponent(sessionId)}`}
+                  style={{ fontSize: 13, textDecoration: "underline" }}
+                >
+                  Tasks workspace
+                </Link>
+              </div>
             ) : null}
           </div>
         </WorkflowCard>
@@ -235,7 +179,6 @@ export default function CollaborationWorkspacePage() {
         </WorkflowCard>
       </div>
 
-      {/* Discussion-first: wider column, outputs support the thread */}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 340px)", gap: 16, marginTop: 16 }}>
         <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
           <div>
