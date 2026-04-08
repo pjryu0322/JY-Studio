@@ -1,8 +1,11 @@
 "use client";
 
 import type { CollaborationActionResult } from "@/lib/workflow/collaborationActionContract";
+import type { WorkspaceImpactNote } from "@/lib/workflow/collaborationWorkspaceImpact";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
+
+export type ActionWorkspaceImpact = WorkspaceImpactNote;
 
 function labelForType(t: CollaborationActionResult["actionType"]): string {
   if (t === "GENERATE_MINUTES") return "회의록 작성";
@@ -11,11 +14,6 @@ function labelForType(t: CollaborationActionResult["actionType"]): string {
   if (t === "REQUEST_ANALYSIS") return "분석 요청";
   return "아이디어 요청";
 }
-
-export type ActionWorkspaceImpact = {
-  scope: "primary" | "supporting";
-  lines: string[];
-};
 
 export function ActionResultPanel({
   result,
