@@ -18,6 +18,11 @@ import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPag
 import type { CollaborationActionResult, CollaborationActionType } from "@/lib/workflow/collaborationActionContract";
 import { isSuccessCollaborationResult } from "@/lib/workflow/collaborationActionContract";
 import { requestCollaborationGeneration } from "@/lib/workflow/collaborationGenerationClient";
+import {
+  recordSessionGeneratedMinutes,
+  resolveSessionMinutes,
+  resolveSessionOfficialFeatures,
+} from "@/lib/workflow/collaborationSessionResultStore";
 import { type DisplayedAnalysis, ideaStringsToSuggestedFeatures } from "@/lib/workflow/collaborationWorkspacePayload";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 import { routeState } from "@/lib/workflow/workflowState";
@@ -91,8 +96,8 @@ export default function CollaborationWorkspacePage() {
     if (!view.session) {
       return;
     }
-    setDisplayedMinutes(view.minutes);
-    setDisplayedFeatures([...view.features]);
+    setDisplayedMinutes(resolveSessionMinutes(sessionId, view.minutes));
+    setDisplayedFeatures([...resolveSessionOfficialFeatures(sessionId, view.features)]);
     setDisplayedAnalysis(null);
     setDisplayedIdeas([]);
     setSuggestedFeaturesFromIdeas([]);
@@ -106,7 +111,6 @@ export default function CollaborationWorkspacePage() {
       status: "running",
       latest: { actionType, status: "running", atIso: new Date().toISOString(), message: "Running…", payload: null },
     });
-    await new Promise((r) => setTimeout(r, 200));
     const out = await requestCollaborationGeneration(actionType, sessionId);
     setActionState({ status: out.status, latest: out });
 
@@ -116,6 +120,7 @@ export default function CollaborationWorkspacePage() {
 
     switch (out.actionType) {
       case "GENERATE_MINUTES":
+        recordSessionGeneratedMinutes(sessionId, out.payload, out.generationSource);
         setDisplayedMinutes(out.payload);
         break;
       case "REQUEST_ANALYSIS":

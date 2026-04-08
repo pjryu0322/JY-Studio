@@ -1,22 +1,17 @@
 "use client";
 
 import type { CollaborationActionResult, CollaborationActionType } from "@/lib/workflow/collaborationActionContract";
-import { parseCollaborationActionResultFromApi } from "@/lib/workflow/collaborationActionContract";
+import {
+  isCollaborationGenerationApiErr,
+  isCollaborationGenerationApiOk,
+  parseCollaborationActionResultFromApi,
+} from "@/lib/workflow/collaborationActionContract";
 
 const ROUTES: Record<CollaborationActionType, string> = {
   GENERATE_MINUTES: "/api/workflow/collaboration/generate-minutes",
   REQUEST_ANALYSIS: "/api/workflow/collaboration/request-analysis",
   REQUEST_IDEAS: "/api/workflow/collaboration/request-ideas",
 };
-
-type ApiOkBody = {
-  ok: true;
-  result: unknown;
-};
-
-function isApiOkBody(x: unknown): x is ApiOkBody {
-  return Boolean(x && typeof x === "object" && (x as ApiOkBody).ok === true);
-}
 
 /**
  * Calls the workflow API route for the given action. Parses the JSON envelope into a typed result.
@@ -38,10 +33,9 @@ export async function requestCollaborationGeneration(
     const json: unknown = await res.json().catch(() => null);
 
     if (!res.ok) {
-      const msg =
-        json && typeof json === "object" && "error" in json && typeof (json as { error: unknown }).error === "string"
-          ? (json as { error: string }).error
-          : `Request failed (${res.status})`;
+      const msg = isCollaborationGenerationApiErr(json)
+        ? json.error
+        : `Request failed (${res.status})`;
       return {
         actionType,
         status: "error",
@@ -51,7 +45,7 @@ export async function requestCollaborationGeneration(
       };
     }
 
-    if (!isApiOkBody(json) || json.result == null) {
+    if (!isCollaborationGenerationApiOk(json) || json.result == null) {
       return {
         actionType,
         status: "error",
