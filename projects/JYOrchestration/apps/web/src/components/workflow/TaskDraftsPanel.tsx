@@ -71,6 +71,20 @@ export function TaskDraftsPanel({
                     {t.taskType}
                   </span>
                 ) : null}
+                {review && !confirmed ? (
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: "0.05em",
+                      color: "#9ca3af",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Draft
+                  </span>
+                ) : null}
                 {confirmed ? (
                   <span style={{ marginLeft: 8 }}>
                     <WorkflowBadge>Confirmed</WorkflowBadge>

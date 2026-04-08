@@ -5,7 +5,10 @@
 
 import type { CollaborationOfficialTaskDraft } from "@/lib/workflow/collaborationActionContract";
 import {
+  getSessionCollaborationEntry,
+  resolveSessionConfirmedTasks,
   resolveSessionOfficialTasks,
+  sessionHasConfirmedTaskSet,
   sessionHasOfficialTasksOverride,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { getCollaborationWorkspaceView, getRequirementDetailView } from "@/lib/workflow/workflowViewModel";
@@ -20,8 +23,13 @@ export type TasksWorkspaceView = {
   requirementTitle: string | null;
   sessionTitle: string | null;
   sessionStatus: string | null;
+  /** Generated official drafts (Task 초안 생성); working copy on /tasks starts from this list. */
   taskDrafts: CollaborationOfficialTaskDraft[];
   taskSource: TasksWorkspaceTaskSource;
+  /** Saved confirmed subset from Tasks workspace; `undefined` if user never ran Task 확정. */
+  confirmedTasks: CollaborationOfficialTaskDraft[] | undefined;
+  hasConfirmedTaskSet: boolean;
+  confirmedTaskSetRecordedAtIso: string | null;
 };
 
 /**
@@ -42,6 +50,9 @@ export function getTasksWorkspaceView(input: {
     sessionStatus: null,
     taskDrafts: [],
     taskSource: "view_model_empty",
+    confirmedTasks: undefined,
+    hasConfirmedTaskSet: false,
+    confirmedTaskSetRecordedAtIso: null,
   });
 
   if (sid) {
@@ -57,6 +68,8 @@ export function getTasksWorkspaceView(input: {
     }
     const drafts = resolveSessionOfficialTasks(sid, []);
     const fromCollab = sessionHasOfficialTasksOverride(sid);
+    const confirmed = resolveSessionConfirmedTasks(sid);
+    const entry = getSessionCollaborationEntry(sid);
     return {
       found: true,
       requirementId: wv.session.requirementId,
@@ -66,6 +79,9 @@ export function getTasksWorkspaceView(input: {
       sessionStatus: wv.session.status,
       taskDrafts: drafts,
       taskSource: fromCollab ? "collaboration_snapshot" : "view_model_empty",
+      confirmedTasks: confirmed,
+      hasConfirmedTaskSet: sessionHasConfirmedTaskSet(sid),
+      confirmedTaskSetRecordedAtIso: entry?.confirmedTasksAtIso ?? null,
     };
   }
 
@@ -90,10 +106,15 @@ export function getTasksWorkspaceView(input: {
         sessionStatus: null,
         taskDrafts: [],
         taskSource: "view_model_empty",
+        confirmedTasks: undefined,
+        hasConfirmedTaskSet: false,
+        confirmedTaskSetRecordedAtIso: null,
       };
     }
     const drafts = resolveSessionOfficialTasks(latest.id, detail.taskDrafts);
     const fromCollab = sessionHasOfficialTasksOverride(latest.id);
+    const confirmed = resolveSessionConfirmedTasks(latest.id);
+    const entry = getSessionCollaborationEntry(latest.id);
     return {
       found: true,
       requirementId: reqId,
@@ -103,6 +124,9 @@ export function getTasksWorkspaceView(input: {
       sessionStatus: latest.status,
       taskDrafts: drafts,
       taskSource: fromCollab ? "collaboration_snapshot" : "view_model_empty",
+      confirmedTasks: confirmed,
+      hasConfirmedTaskSet: sessionHasConfirmedTaskSet(latest.id),
+      confirmedTaskSetRecordedAtIso: entry?.confirmedTasksAtIso ?? null,
     };
   }
 

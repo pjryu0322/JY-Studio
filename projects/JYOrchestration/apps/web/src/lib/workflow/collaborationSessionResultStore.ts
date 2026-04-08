@@ -16,6 +16,13 @@ export type SessionCollaborationResultEntry = {
   officialFeatures?: FeatureMock[];
   /** When set, overrides view-model / empty task draft list for this session. */
   officialTasks?: CollaborationOfficialTaskDraft[];
+  /**
+   * User-confirmed official task subset from Tasks workspace (separate from generated officialTasks).
+   * When defined (including []), Requirement / tasks resolution treats this as the official confirmed set.
+   */
+  confirmedTasks?: CollaborationOfficialTaskDraft[];
+  /** When `confirmedTasks` was last written. */
+  confirmedTasksAtIso?: string;
   updatedAtIso: string;
   source: CollaborationGenerationSource;
 };
@@ -93,6 +100,20 @@ export function recordSessionOfficialTasks(
   bumpVersion();
 }
 
+/** Persist the official confirmed subset from Tasks workspace (in-memory only). */
+export function recordSessionConfirmedTasks(sessionId: string, tasks: CollaborationOfficialTaskDraft[]): void {
+  const prev = bySessionId.get(sessionId);
+  const at = new Date().toISOString();
+  bySessionId.set(sessionId, {
+    ...prev,
+    confirmedTasks: tasks,
+    confirmedTasksAtIso: at,
+    updatedAtIso: at,
+    source: prev?.source ?? "mock_stub",
+  });
+  bumpVersion();
+}
+
 export function resolveSessionMinutes(sessionId: string | null | undefined, vmMinutes: MeetingMinutesMock | null): MeetingMinutesMock | null {
   if (!sessionId) return vmMinutes;
   const entry = bySessionId.get(sessionId);
@@ -121,6 +142,21 @@ export function resolveSessionOfficialTasks(
     return entry.officialTasks;
   }
   return vmTaskDrafts;
+}
+
+/** Confirmed task set if user saved one; `undefined` means never confirmed in this session. */
+export function resolveSessionConfirmedTasks(
+  sessionId: string | null | undefined
+): CollaborationOfficialTaskDraft[] | undefined {
+  if (!sessionId) return undefined;
+  const entry = bySessionId.get(sessionId);
+  if (entry?.confirmedTasks === undefined) return undefined;
+  return entry.confirmedTasks;
+}
+
+export function sessionHasConfirmedTaskSet(sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return bySessionId.get(sessionId)?.confirmedTasks !== undefined;
 }
 
 export function sessionHasMinutesOverride(sessionId: string | null | undefined): boolean {
