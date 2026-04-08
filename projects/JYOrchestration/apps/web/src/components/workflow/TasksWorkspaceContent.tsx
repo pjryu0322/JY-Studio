@@ -10,17 +10,13 @@ import { WorkflowSectionLabel } from "@/components/workflow/primitives/WorkflowS
 import type { TaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
 import {
   getTaskExecutionReadiness,
-  getActiveExecutionInput,
-  isActiveExecutionSnapshot,
   recordSessionConfirmedTasks,
-  resolveSessionTaskReadiness,
-  resolveSessionExecutionCandidates,
   recordSessionExecutionLaunchSnapshot,
-  resolveSessionExecutionLaunchSnapshot,
   setSessionTaskReadiness,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { buildExecutionLaunchInput } from "@/lib/workflow/executionLaunchInput";
 import { createExecutionLaunchSnapshot } from "@/lib/workflow/executionLaunchSnapshot";
+import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { useTasksWorkspaceReview } from "@/lib/workflow/useTasksWorkspaceReview";
@@ -50,10 +46,8 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const [confirmFlash, setConfirmFlash] = useState<string | null>(null);
   const [sequenceView, setSequenceView] = useState<"all" | "candidates">("all");
 
-  const readinessMap = useMemo(
-    () => resolveSessionTaskReadiness(view.sessionId),
-    [view.sessionId, sessionResultsVersion]
-  );
+  const pre = useMemo(() => getPreExecutionStateForSession(view.sessionId), [view.sessionId, sessionResultsVersion]);
+  const readinessMap = pre.readinessMap;
 
   const officialConfirmed = view.confirmedTasks ?? [];
   const readyCount = useMemo(
@@ -62,10 +56,7 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   );
   const readyTotal = officialConfirmed.length;
 
-  const candidateTasks = useMemo(
-    () => resolveSessionExecutionCandidates(view.sessionId),
-    [view.sessionId, sessionResultsVersion]
-  );
+  const candidateTasks = pre.candidateTasks;
 
   const executionLaunchPreview = useMemo(() => {
     if (!view.sessionId) return null;
@@ -77,16 +68,9 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
     });
   }, [view.sessionId, view.requirementId, officialConfirmed, candidateTasks]);
 
-  const preparedSnapshot = useMemo(
-    () => resolveSessionExecutionLaunchSnapshot(view.sessionId),
-    [view.sessionId, sessionResultsVersion]
-  );
-
-  const activeExecution = useMemo(() => getActiveExecutionInput(), [sessionResultsVersion]);
-  const isActiveSnapshot = useMemo(
-    () => isActiveExecutionSnapshot(view.sessionId, preparedSnapshot?.snapshotId),
-    [view.sessionId, preparedSnapshot?.snapshotId, sessionResultsVersion]
-  );
+  const preparedSnapshot = pre.snapshot;
+  const activeExecution = pre.active;
+  const isActiveSnapshot = pre.isSnapshotActive;
 
   const displayedSequenceTasks = useMemo(() => {
     if (sequenceView === "all") return working.activeTasks;

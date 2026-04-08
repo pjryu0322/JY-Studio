@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import {
-  getActiveExecutionInput,
   getTaskExecutionReadiness,
-  isActiveExecutionSnapshot,
   resolveSessionConfirmedTasks,
   resolveSessionExecutionLaunchSnapshot,
   resolveSessionMinutes,
@@ -20,6 +18,7 @@ import {
   sessionHasOfficialTasksOverride,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
+import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { WorkflowTabs } from "@/components/workflow/WorkflowTabs";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
@@ -119,11 +118,9 @@ export default function RequirementDetailPage() {
     [latestSessionId, sessionResultsVersion]
   );
 
-  const activeExecution = useMemo(() => getActiveExecutionInput(), [sessionResultsVersion]);
-  const isActiveSnapshot = useMemo(
-    () => isActiveExecutionSnapshot(latestSessionId, executionSnapshot?.snapshotId),
-    [latestSessionId, executionSnapshot?.snapshotId, sessionResultsVersion]
-  );
+  const pre = useMemo(() => getPreExecutionStateForSession(latestSessionId), [latestSessionId, sessionResultsVersion]);
+  const activeExecution = pre.active;
+  const isActiveSnapshot = pre.isSnapshotActive;
 
   const search = useSearchParams();
   const router = useRouter();
