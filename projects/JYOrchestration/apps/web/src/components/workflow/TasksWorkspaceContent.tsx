@@ -41,6 +41,7 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const [addDesc, setAddDesc] = useState("");
   const [addFeat, setAddFeat] = useState("");
   const [confirmFlash, setConfirmFlash] = useState<string | null>(null);
+  const [sequenceView, setSequenceView] = useState<"all" | "candidates">("all");
 
   const readinessMap = useMemo(
     () => resolveSessionTaskReadiness(view.sessionId),
@@ -53,6 +54,12 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
     [officialConfirmed, readinessMap]
   );
   const readyTotal = officialConfirmed.length;
+
+  const displayedSequenceTasks = useMemo(() => {
+    if (sequenceView === "all") return working.activeTasks;
+    // Candidate set is derived from the saved confirmed set + readiness map.
+    return working.activeTasks.filter((t) => getTaskExecutionReadiness(readinessMap, t.id) === "ready");
+  }, [sequenceView, working.activeTasks, readinessMap]);
 
   const reviewApi = {
     reviewById: working.reviewById,
@@ -137,7 +144,7 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
       {view.sessionId ? (
         <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>
           <span style={{ fontWeight: 800 }}>{readyCount}</span> / <span style={{ fontWeight: 800 }}>{readyTotal}</span> tasks in the{" "}
-          <span style={{ fontWeight: 800 }}>saved confirmed set</span> are marked ready for execution.
+          <span style={{ fontWeight: 800 }}>saved confirmed set</span> are execution candidates (ready).
           {readyTotal === 0 ? (
             <span style={{ color: "#6b7280" }}> Run Task 확정 after confirming rows to fix this total.</span>
           ) : null}
@@ -145,13 +152,57 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
       ) : null}
 
       <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, borderLeft: "3px solid #e5e7eb", paddingLeft: 10 }}>
-        On each <span style={{ fontWeight: 800, color: "#374151" }}>Confirmed</span> row, set execution readiness separately. Ready tasks can be used for
-        execution in a later stage (not wired here). Use clear names, descriptions, and non-blocking dependency notes before marking ready.
+        Ready tasks form the <span style={{ fontWeight: 800, color: "#374151" }}>execution candidate set</span>. These can be used for execution in the next
+        stage (not wired here). Mark a task ready only after name/description are clear and dependencies are not blocking.
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>View</span>
+        <button
+          type="button"
+          onClick={() => setSequenceView("all")}
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "1px solid #e5e7eb",
+            background: sequenceView === "all" ? "#111827" : "#fff",
+            color: sequenceView === "all" ? "#fff" : "#374151",
+            cursor: "pointer",
+          }}
+        >
+          All tasks
+        </button>
+        <button
+          type="button"
+          onClick={() => setSequenceView("candidates")}
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "1px solid #e5e7eb",
+            background: sequenceView === "candidates" ? "#111827" : "#fff",
+            color: sequenceView === "candidates" ? "#fff" : "#374151",
+            cursor: "pointer",
+          }}
+        >
+          Execution candidates
+        </button>
+        {sequenceView === "candidates" ? (
+          <span style={{ fontSize: 12, color: "#6b7280" }}>Shows only ready tasks (from the saved confirmed set).</span>
+        ) : null}
       </div>
 
       <div>
         <WorkflowSectionLabel marginBottom={10}>Task sequence</WorkflowSectionLabel>
-        <TaskSequence tasks={working.activeTasks} review={reviewApi} />
+        <TaskSequence tasks={displayedSequenceTasks} review={reviewApi} />
+        {sequenceView === "candidates" && displayedSequenceTasks.length === 0 ? (
+          <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            No execution candidates yet. Confirm tasks, save Task 확정, then mark them ready.
+          </div>
+        ) : null}
       </div>
 
       {working.removedTasks.length > 0 ? (
@@ -229,7 +280,12 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
         <details>
           <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, listStyle: "none" }}>Detailed task list</summary>
           <div style={{ marginTop: 12 }}>
-            <TaskDraftsPanel tasks={working.activeTasks} review={reviewApi} emptyLabel="No tasks in this working set." />
+            <TaskDraftsPanel
+              tasks={working.activeTasks}
+              review={reviewApi}
+              highlightExecutionReady
+              emptyLabel="No tasks in this working set."
+            />
           </div>
         </details>
       </WorkflowCard>

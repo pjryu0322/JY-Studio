@@ -196,6 +196,17 @@ export function resolveSessionConfirmedTasks(
   return entry.confirmedTasks;
 }
 
+/**
+ * Execution candidate set = confirmed tasks where readiness === "ready".
+ * Returns [] when no confirmed set exists for the session.
+ */
+export function resolveSessionExecutionCandidates(sessionId: string | null | undefined): CollaborationOfficialTaskDraft[] {
+  const confirmed = resolveSessionConfirmedTasks(sessionId);
+  if (!confirmed) return [];
+  const readiness = resolveSessionTaskReadiness(sessionId);
+  return confirmed.filter((t) => getTaskExecutionReadiness(readiness, t.id) === "ready");
+}
+
 export function sessionHasConfirmedTaskSet(sessionId: string | null | undefined): boolean {
   if (!sessionId) return false;
   return bySessionId.get(sessionId)?.confirmedTasks !== undefined;
