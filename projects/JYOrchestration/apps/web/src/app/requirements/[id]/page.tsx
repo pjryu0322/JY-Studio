@@ -6,10 +6,12 @@ import { useMemo } from "react";
 import {
   getTaskExecutionReadiness,
   resolveSessionConfirmedTasks,
+  resolveSessionExecutionLaunchSnapshot,
   resolveSessionMinutes,
   resolveSessionOfficialFeatures,
   resolveSessionOfficialTasks,
   resolveSessionTaskReadiness,
+  sessionHasExecutionLaunchSnapshot,
   sessionHasConfirmedTaskSet,
   sessionHasMinutesOverride,
   sessionHasOfficialFeaturesOverride,
@@ -104,6 +106,16 @@ export default function RequirementDetailPage() {
     const ready = list.filter((t) => getTaskExecutionReadiness(taskReadinessMap, t.id) === "ready").length;
     return { ready, total: list.length };
   }, [tasksFromConfirmedSet, resolvedTaskDrafts, taskReadinessMap]);
+
+  const hasExecutionSnapshot = useMemo(
+    () => sessionHasExecutionLaunchSnapshot(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
+
+  const executionSnapshot = useMemo(
+    () => resolveSessionExecutionLaunchSnapshot(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
 
   const search = useSearchParams();
   const router = useRouter();
@@ -285,7 +297,12 @@ export default function RequirementDetailPage() {
                   </span>
                   {tasksFromConfirmedSet ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Execution input preview is available on the Tasks workspace (pre-execution only).
+                      Execution input preview and snapshot preparation are available on the Tasks workspace (pre-execution only).
+                    </span>
+                  ) : null}
+                  {hasExecutionSnapshot && executionSnapshot ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Snapshot prepared ({executionSnapshot.summary.candidateCount} candidates).
                     </span>
                   ) : null}
                 </>
