@@ -6,17 +6,22 @@ export function FeatureSummaryPanel({
   features,
   title,
   emptyLabel = "No derived features available",
+  hideHeader = false,
 }: {
   features: FeatureMock[];
   title?: string;
   emptyLabel?: string;
+  /** When the parent already provides a section title (e.g. collaboration sidebar). */
+  hideHeader?: boolean;
 }) {
   return (
     <section aria-label="Derived features" style={{ display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 800 }}>{title ?? "Derived Features"}</div>
-        <WorkflowBadge>{features.length}</WorkflowBadge>
-      </div>
+      {hideHeader ? null : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title ?? "Derived Features"}</div>
+          <WorkflowBadge>{features.length}</WorkflowBadge>
+        </div>
+      )}
       {features.length === 0 ? (
         <div style={{ fontSize: 13, color: "#6b7280" }}>{emptyLabel}</div>
       ) : (

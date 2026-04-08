@@ -10,7 +10,19 @@ function labelForType(t: CollaborationActionResult["actionType"]): string {
   return "아이디어 요청";
 }
 
-export function ActionResultPanel({ result }: { result: CollaborationActionResult | null }) {
+export type ActionWorkspaceImpact = {
+  scope: "primary" | "supporting";
+  lines: string[];
+};
+
+export function ActionResultPanel({
+  result,
+  workspaceImpact,
+}: {
+  result: CollaborationActionResult | null;
+  /** Plain-language note about what updated in the workspace (official vs supporting). */
+  workspaceImpact?: ActionWorkspaceImpact | null;
+}) {
   if (!result) {
     return <WorkflowEmptyState title="Action result" message="No action run yet" />;
   }
@@ -29,7 +41,7 @@ export function ActionResultPanel({ result }: { result: CollaborationActionResul
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-        <div style={{ fontSize: 13, fontWeight: 900 }}>Latest action</div>
+        <div style={{ fontSize: 13, fontWeight: 900 }}>Last run</div>
         <WorkflowBadge>{result.status.toUpperCase()}</WorkflowBadge>
       </div>
       <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.55 }}>
@@ -37,9 +49,30 @@ export function ActionResultPanel({ result }: { result: CollaborationActionResul
         <span style={{ color: "#6b7280" }}> · {new Date(result.atIso).toLocaleString()}</span>
       </div>
       <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.55 }}>{result.message}</div>
+      {result.status === "success" && workspaceImpact ? (
+        <div
+          style={{
+            borderLeft: "3px solid #e5e7eb",
+            paddingLeft: 12,
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#6b7280" }}>
+            {workspaceImpact.scope === "primary"
+              ? "Workspace updated (official output)"
+              : "Workspace updated (supporting only)"}
+          </div>
+          {workspaceImpact.lines.map((line, i) => (
+            <div key={i} style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>
+              {line}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {payloadPreview ? (
         <details>
-          <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900 }}>Payload preview</summary>
+          <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900 }}>Raw payload (optional)</summary>
           <pre
             style={{
               marginTop: 10,
