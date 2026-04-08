@@ -25,6 +25,7 @@ export default function ExecutionPage() {
 
   const pre = useMemo(() => getPreExecutionStateForSession(sessionId), [sessionId, sessionResultsVersion]);
   const isActive = pre.isSnapshotActive;
+  const launchReadiness = pre.launchReadiness;
 
   const openTasks = () => {
     const qs = new URLSearchParams();
@@ -103,6 +104,46 @@ export default function ExecutionPage() {
               <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
             </div>
           ) : null}
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Launch readiness</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            This is a pre-launch validation checkpoint for the active prepared input. No execution is triggered here.
+          </div>
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 13, color: "#111827" }}>
+              Status:{" "}
+              {launchReadiness.isLaunchReady ? (
+                <span style={{ fontWeight: 900, color: "#166534" }}>Ready</span>
+              ) : (
+                <span style={{ fontWeight: 900, color: "#b45309" }}>Not ready</span>
+              )}
+            </div>
+
+            {!launchReadiness.isLaunchReady ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                {launchReadiness.reasons.map((r) => (
+                  <div key={r}>- {r}</div>
+                ))}
+              </div>
+            ) : null}
+
+            {launchReadiness.warnings.length > 0 ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 900, marginBottom: 4 }}>Warnings</div>
+                {launchReadiness.warnings.map((w) => (
+                  <div key={w}>- {w}</div>
+                ))}
+              </div>
+            ) : null}
+
+            {!launchReadiness.isLaunchReady ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <WorkflowActionButton label="Open Tasks workspace" variant="primary" onClick={openTasks} />
+              </div>
+            ) : null}
+          </div>
         </WorkflowCard>
       </div>
     </div>

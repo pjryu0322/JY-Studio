@@ -121,6 +121,7 @@ export default function RequirementDetailPage() {
   const pre = useMemo(() => getPreExecutionStateForSession(latestSessionId), [latestSessionId, sessionResultsVersion]);
   const activeExecution = pre.active;
   const isActiveSnapshot = pre.isSnapshotActive;
+  const launchReadiness = pre.launchReadiness;
 
   const search = useSearchParams();
   const router = useRouter();
@@ -322,6 +323,17 @@ export default function RequirementDetailPage() {
                       ) : (
                         <span>(none)</span>
                       )}
+                    </span>
+                  ) : null}
+                  {hasExecutionSnapshot && activeExecution ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Launch readiness:{" "}
+                      {launchReadiness.isLaunchReady ? (
+                        <span style={{ fontWeight: 900, color: "#166534" }}>Ready</span>
+                      ) : (
+                        <span style={{ fontWeight: 900, color: "#b45309" }}>Not ready</span>
+                      )}{" "}
+                      (see /execution)
                     </span>
                   ) : null}
                 </>

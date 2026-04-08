@@ -6,6 +6,7 @@ import {
   resolveSessionExecutionLaunchSnapshot,
   resolveSessionTaskReadiness,
 } from "@/lib/workflow/preExecutionStateStore";
+import { validateActiveExecutionInput, type LaunchReadinessResult } from "@/lib/workflow/preExecutionValidation";
 
 export type PreExecutionSessionSelector = {
   readinessMap: Record<string, "not_ready" | "ready">;
@@ -13,6 +14,7 @@ export type PreExecutionSessionSelector = {
   snapshot: ExecutionLaunchSnapshot | undefined;
   active: ReturnType<typeof getActiveExecutionInput>;
   isSnapshotActive: boolean;
+  launchReadiness: LaunchReadinessResult;
 };
 
 export function getPreExecutionStateForSession(sessionId: string | null | undefined): PreExecutionSessionSelector {
@@ -21,6 +23,7 @@ export function getPreExecutionStateForSession(sessionId: string | null | undefi
   const snapshot = resolveSessionExecutionLaunchSnapshot(sessionId);
   const active = getActiveExecutionInput();
   const isSnapshotActive = isActiveExecutionSnapshot(sessionId, snapshot?.snapshotId);
-  return { readinessMap, candidateTasks, snapshot, active, isSnapshotActive };
+  const launchReadiness = validateActiveExecutionInput({ active });
+  return { readinessMap, candidateTasks, snapshot, active, isSnapshotActive, launchReadiness };
 }
 
