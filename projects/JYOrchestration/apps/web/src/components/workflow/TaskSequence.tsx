@@ -138,7 +138,10 @@ function TaskSequenceRow({
         )}
       </div>
       <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 6 }}>
-        <WorkflowCard padding={10}>
+        <WorkflowCard
+          padding={10}
+          style={showReadiness && execReady === "ready" ? { borderColor: "#bbf7d0", background: "#f0fdf4" } : undefined}
+        >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ fontSize: 14, fontWeight: 900, color: "#111827" }}>{task.name}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>

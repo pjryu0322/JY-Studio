@@ -276,7 +276,7 @@ export default function RequirementDetailPage() {
                     {tasksFromConfirmedSet
                       ? `Showing the official confirmed task set from the Tasks workspace (in-memory).${
                           executionReadySummary
-                            ? ` ${executionReadySummary.ready} / ${executionReadySummary.total} marked execution-ready.`
+                            ? ` ${executionReadySummary.ready} / ${executionReadySummary.total} execution candidates (ready).`
                             : ""
                         }`
                       : tasksFromCollaboration
