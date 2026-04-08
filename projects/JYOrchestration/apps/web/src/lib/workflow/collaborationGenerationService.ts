@@ -39,7 +39,7 @@ export async function generateMinutesForSession(sessionId: string): Promise<Coll
     message: "Minutes payload returned from generation service (mock stub — not AI yet).",
     payload: {
       summary: "Discussion summarized into minutes.",
-      decisions: ["Keep workflow visible", "No backend orchestration in this phase"],
+      decisions: ["Keep session outputs visible", "No backend orchestration in this phase"],
       pending: ["Wire generation contract", "Add persistence"],
       excluded: ["No AI agent execution changes"],
     },
@@ -72,7 +72,7 @@ export async function generateFeaturesForSession(sessionId: string): Promise<Col
         },
         {
           id: `gen-${sessionId}-trace`,
-          name: "Cross-page workflow trace",
+          name: "Cross-page continuity",
           description: "Stub link between collaboration outputs and requirement detail (mock).",
           status: "DRAFT",
           userFlow: ["Generate official features here", "Open requirement Features tab"],
@@ -117,7 +117,7 @@ export async function generateTasksForSession(sessionId: string): Promise<Collab
       relatedFeatureId: secondary?.id ?? primary?.id ?? "unassigned",
       relatedFeatureName: secondary?.name ?? primary?.name ?? "(no official feature yet)",
       order: 2,
-      dependencyNote: "Ordering is informational until execution pipeline binds tasks.",
+      dependencyNote: "Order is for review until execution binds these drafts.",
     },
   ];
 

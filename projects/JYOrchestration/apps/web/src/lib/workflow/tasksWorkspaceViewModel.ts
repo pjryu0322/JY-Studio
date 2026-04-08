@@ -111,3 +111,14 @@ export function getTasksWorkspaceView(input: {
     ...emptyBase(),
   };
 }
+
+/** Page subtitle for /tasks from resolved workspace view (no side effects). */
+export function getTasksPageSubtitle(view: TasksWorkspaceView, hasContext: boolean): string {
+  if (!view.found || !hasContext) {
+    return "Official drafts, order, and dependencies";
+  }
+  if (view.sessionTitle) {
+    return `${view.requirementTitle ?? "—"} · ${view.sessionTitle}`;
+  }
+  return view.requirementTitle ?? "Official tasks in order";
+}

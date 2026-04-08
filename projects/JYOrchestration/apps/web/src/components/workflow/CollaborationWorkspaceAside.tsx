@@ -4,6 +4,7 @@ import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowSectionLabel } from "@/components/workflow/primitives/WorkflowSectionLabel";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import type { CollaborationOfficialTaskDraft } from "@/lib/workflow/collaborationActionContract";
 import type { DisplayedAnalysis } from "@/lib/workflow/collaborationWorkspacePayload";
@@ -28,9 +29,7 @@ export function CollaborationWorkspaceAside({
 }: CollaborationWorkspaceAsideProps) {
   return (
     <aside aria-label="Workspace output" style={{ display: "grid", gap: 14, alignContent: "start" }}>
-      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase" }}>
-        Primary outputs
-      </div>
+      <WorkflowSectionLabel>Primary outputs</WorkflowSectionLabel>
 
       <WorkflowCard padding={12}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
