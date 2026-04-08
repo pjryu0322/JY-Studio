@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
+import {
+  resolveSessionMinutes,
+  resolveSessionOfficialFeatures,
+  sessionHasMinutesOverride,
+  sessionHasOfficialFeaturesOverride,
+} from "@/lib/workflow/collaborationSessionResultStore";
+import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { WorkflowTabs } from "@/components/workflow/WorkflowTabs";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
@@ -31,6 +38,28 @@ export default function RequirementDetailPage() {
   const params = useParams<{ id: string }>();
   const requirementId = typeof params?.id === "string" ? params.id : "";
   const vm = useMemo(() => getRequirementDetailView(requirementId), [requirementId]);
+  const sessionResultsVersion = useCollaborationSessionResultsVersion();
+  const latestSessionId = vm.latestSession?.id ?? null;
+
+  const resolvedMinutes = useMemo(
+    () => resolveSessionMinutes(latestSessionId, vm.minutes),
+    [latestSessionId, vm.minutes, sessionResultsVersion]
+  );
+
+  const resolvedFeatures = useMemo(
+    () => resolveSessionOfficialFeatures(latestSessionId, vm.features),
+    [latestSessionId, vm.features, sessionResultsVersion]
+  );
+
+  const minutesFromCollaboration = useMemo(
+    () => sessionHasMinutesOverride(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
+
+  const featuresFromCollaboration = useMemo(
+    () => sessionHasOfficialFeaturesOverride(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
 
   const search = useSearchParams();
   const router = useRouter();
@@ -138,11 +167,49 @@ export default function RequirementDetailPage() {
       ) : null}
 
       {tab === "minutes" ? (
-        <MeetingMinutesPanel minutes={vm.minutes} emptyLabel="No meeting minutes available" />
+        <div style={{ display: "grid", gap: 10 }}>
+          {vm.requirement && latestSessionId ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              {minutesFromCollaboration ? (
+                <>
+                  <WorkflowBadge>Collaboration snapshot</WorkflowBadge>
+                  <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                    Latest session minutes reflect in-memory output from the collaboration workspace (mock stub; not persisted across reload).
+                  </span>
+                </>
+              ) : (
+                <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                  Minutes for the latest session from the view model. Open the session workspace and run 회의록 작성 to update what appears here until real
+                  persistence ships.
+                </span>
+              )}
+            </div>
+          ) : null}
+          <MeetingMinutesPanel minutes={resolvedMinutes} emptyLabel="No meeting minutes available" />
+        </div>
       ) : null}
 
       {tab === "features" ? (
-        <FeatureSummaryPanel features={vm.features} emptyLabel="No derived features available" />
+        <div style={{ display: "grid", gap: 10 }}>
+          {vm.requirement && latestSessionId ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              {featuresFromCollaboration ? (
+                <>
+                  <WorkflowBadge>Collaboration snapshot</WorkflowBadge>
+                  <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                    Official features for the latest session were updated from the collaboration flow (in-memory; not persisted across reload).
+                  </span>
+                </>
+              ) : (
+                <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                  Derived features for the latest session from the view model. A future “derive features” action can write through the same shared store
+                  used for minutes.
+                </span>
+              )}
+            </div>
+          ) : null}
+          <FeatureSummaryPanel features={resolvedFeatures} emptyLabel="No derived features available" />
+        </div>
       ) : null}
 
       {tab === "tasks" ? (

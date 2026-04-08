@@ -156,3 +156,24 @@ export function parseCollaborationIdeasPayload(raw: unknown): CollaborationIdeas
   if (!Array.isArray(o.ideas) || !o.ideas.every((x) => typeof x === "string")) return null;
   return { ideas: o.ideas };
 }
+
+/** JSON body for successful collaboration generation routes (client may narrow `result` after parse). */
+export type CollaborationGenerationApiOk = {
+  ok: true;
+  result: CollaborationActionResult;
+};
+
+export type CollaborationGenerationApiErr = {
+  ok: false;
+  error: string;
+};
+
+export type CollaborationGenerationApiEnvelope = CollaborationGenerationApiOk | CollaborationGenerationApiErr;
+
+export function isCollaborationGenerationApiOk(x: unknown): x is CollaborationGenerationApiOk {
+  return Boolean(x && typeof x === "object" && (x as { ok?: unknown }).ok === true && "result" in x);
+}
+
+export function isCollaborationGenerationApiErr(x: unknown): x is CollaborationGenerationApiErr {
+  return Boolean(x && typeof x === "object" && (x as { ok?: unknown }).ok === false && "error" in x);
+}
