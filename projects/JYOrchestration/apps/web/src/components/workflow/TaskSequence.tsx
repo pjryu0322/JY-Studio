@@ -132,6 +132,19 @@ function TaskSequenceRow({
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ fontSize: 14, fontWeight: 900, color: "#111827" }}>{task.name}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              {review && !confirmed ? (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: "0.05em",
+                    color: "#9ca3af",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Draft
+                </span>
+              ) : null}
               {confirmed ? <WorkflowBadge>Confirmed</WorkflowBadge> : null}
               <WorkflowBadge>{task.status}</WorkflowBadge>
             </div>

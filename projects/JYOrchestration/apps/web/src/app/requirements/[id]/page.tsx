@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import {
+  resolveSessionConfirmedTasks,
   resolveSessionMinutes,
   resolveSessionOfficialFeatures,
   resolveSessionOfficialTasks,
+  sessionHasConfirmedTaskSet,
   sessionHasMinutesOverride,
   sessionHasOfficialFeaturesOverride,
   sessionHasOfficialTasksOverride,
@@ -64,13 +66,28 @@ export default function RequirementDetailPage() {
     [latestSessionId, sessionResultsVersion]
   );
 
-  const resolvedTaskDrafts = useMemo(
+  const generatedTaskDrafts = useMemo(
     () => resolveSessionOfficialTasks(latestSessionId, vm.taskDrafts),
     [latestSessionId, vm.taskDrafts, sessionResultsVersion]
   );
 
+  const confirmedTaskSet = useMemo(
+    () => resolveSessionConfirmedTasks(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
+
+  const resolvedTaskDrafts = useMemo(
+    () => (confirmedTaskSet !== undefined ? confirmedTaskSet : generatedTaskDrafts),
+    [confirmedTaskSet, generatedTaskDrafts]
+  );
+
   const tasksFromCollaboration = useMemo(
     () => sessionHasOfficialTasksOverride(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
+
+  const tasksFromConfirmedSet = useMemo(
+    () => sessionHasConfirmedTaskSet(latestSessionId),
     [latestSessionId, sessionResultsVersion]
   );
 
@@ -239,11 +256,14 @@ export default function RequirementDetailPage() {
               />
               {latestSessionId ? (
                 <>
-                  {tasksFromCollaboration ? <WorkflowBadge>Snapshot</WorkflowBadge> : null}
+                  {tasksFromConfirmedSet ? <WorkflowBadge>Confirmed set</WorkflowBadge> : null}
+                  {!tasksFromConfirmedSet && tasksFromCollaboration ? <WorkflowBadge>Snapshot</WorkflowBadge> : null}
                   <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                    {tasksFromCollaboration
-                      ? "Same drafts as /tasks (in-memory until persistence)."
-                      : "Generate with Task 초안 생성 in the session workspace."}
+                    {tasksFromConfirmedSet
+                      ? "Showing the official confirmed task set from the Tasks workspace (in-memory until persistence)."
+                      : tasksFromCollaboration
+                        ? "Generated drafts from collaboration (same source as /tasks until you confirm a set there)."
+                        : "Generate with Task 초안 생성 in the session workspace, then confirm tasks on /tasks if needed."}
                   </span>
                 </>
               ) : null}
@@ -251,7 +271,11 @@ export default function RequirementDetailPage() {
           ) : null}
           <TaskDraftsPanel
             tasks={resolvedTaskDrafts}
-            emptyLabel="No drafts yet. Use Task 초안 생성 in collaboration for the latest session."
+            emptyLabel={
+              tasksFromConfirmedSet
+                ? "Confirmed set is empty. Open Tasks workspace and run Task 확정 after marking tasks with Confirm."
+                : "No drafts yet. Use Task 초안 생성 in collaboration for the latest session."
+            }
           />
         </div>
       ) : null}

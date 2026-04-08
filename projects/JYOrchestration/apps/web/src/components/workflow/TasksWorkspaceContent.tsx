@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { TaskSequence } from "@/components/workflow/TaskSequence";
 import { TasksWorkspaceSummaryStrip } from "@/components/workflow/TasksWorkspaceSummaryStrip";
+import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowSectionLabel } from "@/components/workflow/primitives/WorkflowSectionLabel";
+import { recordSessionConfirmedTasks } from "@/lib/workflow/collaborationSessionResultStore";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useTasksWorkspaceReview } from "@/lib/workflow/useTasksWorkspaceReview";
 
@@ -30,6 +32,7 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const [addName, setAddName] = useState("");
   const [addDesc, setAddDesc] = useState("");
   const [addFeat, setAddFeat] = useState("");
+  const [confirmFlash, setConfirmFlash] = useState<string | null>(null);
 
   const reviewApi = {
     reviewById: working.reviewById,
@@ -51,13 +54,59 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
     setAddFeat("");
   };
 
+  const confirmTaskSet = () => {
+    if (!view.sessionId) return;
+    const subset = working.activeTasks.filter((t) => working.reviewById[t.id] === "confirmed");
+    const snapshot = subset.map((t, i) => ({ ...t, order: i + 1 }));
+    recordSessionConfirmedTasks(view.sessionId, snapshot);
+    setConfirmFlash(
+      snapshot.length > 0
+        ? "Confirmed task set ready for next stage. It is stored in the shared session memory (this tab only until reload)."
+        : "Saved an empty confirmed set. Requirement view will show no tasks until you confirm rows or run Task 확정 again."
+    );
+  };
+
+  useEffect(() => {
+    if (!confirmFlash) return;
+    const id = window.setTimeout(() => setConfirmFlash(null), 7000);
+    return () => window.clearTimeout(id);
+  }, [confirmFlash]);
+
   return (
     <>
       <TasksWorkspaceSummaryStrip view={view} onOpenRequirement={onOpenRequirement} onOpenCollaboration={onOpenCollaboration} />
 
+      {view.hasConfirmedTaskSet ? (
+        <div style={{ border: "1px solid #bbf7d0", borderRadius: 12, padding: 10, background: "#f0fdf4" }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#166534" }}>Official confirmed snapshot</div>
+          <div style={{ fontSize: 12, color: "#15803d", marginTop: 6, lineHeight: 1.5 }}>
+            A confirmed task set exists for this session
+            {view.confirmedTaskSetRecordedAtIso ? ` (saved ${new Date(view.confirmedTaskSetRecordedAtIso).toLocaleString()})` : ""}. You can keep editing the
+            working list; use Task 확정 again to replace the official set. Not persisted to a database yet.
+          </div>
+        </div>
+      ) : null}
+
+      {confirmFlash ? (
+        <div style={{ border: "1px solid #bfdbfe", borderRadius: 12, padding: 10, background: "#eff6ff" }}>
+          <div style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.5 }}>{confirmFlash}</div>
+        </div>
+      ) : null}
+
       <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-        Generated official drafts load below. Your{" "}
-        <span style={{ fontWeight: 800, color: "#374151" }}>working set</span> is for light review here only — not saved to the server yet.
+        Generated official drafts load below. Use <span style={{ fontWeight: 800, color: "#374151" }}>Confirm</span> on each task you want in the official set,
+        then <span style={{ fontWeight: 800, color: "#374151" }}>Task 확정</span> to save it to the shared session store (in-memory). Rows without Confirm stay
+        drafts in this workspace only.
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+        <WorkflowActionButton
+          label="Task 확정"
+          variant="primary"
+          onClick={confirmTaskSet}
+          disabled={!view.sessionId}
+        />
+        <span style={{ fontSize: 12, color: "#6b7280" }}>Saves only tasks marked Confirmed, in current order.</span>
       </div>
 
       <div>

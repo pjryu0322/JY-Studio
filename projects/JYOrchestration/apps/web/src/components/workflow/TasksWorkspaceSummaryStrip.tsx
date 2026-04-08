@@ -46,8 +46,10 @@ export function TasksWorkspaceSummaryStrip({ view, onOpenRequirement, onOpenColl
             |
           </span>
           {view.taskSource === "collaboration_snapshot" ? <WorkflowBadge>Snapshot</WorkflowBadge> : <WorkflowBadge>Not generated</WorkflowBadge>}
+          {view.hasConfirmedTaskSet ? <WorkflowBadge>Confirmed set</WorkflowBadge> : null}
           <span style={{ fontSize: 12, color: "#6b7280" }}>
             {view.taskSource === "collaboration_snapshot" ? "In-memory only." : "Run Task 초안 생성 in collaboration."}
+            {view.hasConfirmedTaskSet ? " An official confirmed task set exists for this session." : ""}
           </span>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
