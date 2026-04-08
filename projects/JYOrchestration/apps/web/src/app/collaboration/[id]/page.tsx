@@ -15,18 +15,10 @@ import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import {
-  buildMockActionResult,
-  type CollaborationActionResult,
-  type CollaborationActionType,
-} from "@/lib/workflow/collaborationActionContract";
-import {
-  type DisplayedAnalysis,
-  ideaStringsToSuggestedFeatures,
-  isAnalysisPayload,
-  isIdeasPayload,
-  isMeetingMinutesPayload,
-} from "@/lib/workflow/collaborationWorkspacePayload";
+import type { CollaborationActionResult, CollaborationActionType } from "@/lib/workflow/collaborationActionContract";
+import { isSuccessCollaborationResult } from "@/lib/workflow/collaborationActionContract";
+import { requestCollaborationGeneration } from "@/lib/workflow/collaborationGenerationClient";
+import { type DisplayedAnalysis, ideaStringsToSuggestedFeatures } from "@/lib/workflow/collaborationWorkspacePayload";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 import { routeState } from "@/lib/workflow/workflowState";
 import { getCollaborationWorkspaceView } from "@/lib/workflow/workflowViewModel";
@@ -114,24 +106,27 @@ export default function CollaborationWorkspacePage() {
       status: "running",
       latest: { actionType, status: "running", atIso: new Date().toISOString(), message: "Running…", payload: null },
     });
-    await new Promise((r) => setTimeout(r, 250));
-    const out = buildMockActionResult(actionType);
+    await new Promise((r) => setTimeout(r, 200));
+    const out = await requestCollaborationGeneration(actionType, sessionId);
     setActionState({ status: out.status, latest: out });
 
-    if (out.status !== "success") return;
+    if (!isSuccessCollaborationResult(out)) {
+      return;
+    }
 
-    if (actionType === "GENERATE_MINUTES" && isMeetingMinutesPayload(out.payload)) {
-      setDisplayedMinutes(out.payload);
-      return;
-    }
-    if (actionType === "REQUEST_ANALYSIS" && isAnalysisPayload(out.payload)) {
-      setDisplayedAnalysis(out.payload);
-      return;
-    }
-    if (actionType === "REQUEST_IDEAS" && isIdeasPayload(out.payload)) {
-      const ideas = out.payload.ideas;
-      setDisplayedIdeas(ideas);
-      setSuggestedFeaturesFromIdeas(ideaStringsToSuggestedFeatures(ideas, Date.now()));
+    switch (out.actionType) {
+      case "GENERATE_MINUTES":
+        setDisplayedMinutes(out.payload);
+        break;
+      case "REQUEST_ANALYSIS":
+        setDisplayedAnalysis(out.payload);
+        break;
+      case "REQUEST_IDEAS": {
+        const { ideas } = out.payload;
+        setDisplayedIdeas(ideas);
+        setSuggestedFeaturesFromIdeas(ideaStringsToSuggestedFeatures(ideas, Date.now()));
+        break;
+      }
     }
   };
 
@@ -231,7 +226,8 @@ export default function CollaborationWorkspacePage() {
               <WorkflowActionButton label="아이디어 요청" onClick={() => void runAction("REQUEST_IDEAS")} />
             </div>
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, marginTop: 8 }}>
-              Buttons run local mock steps only. The right column shows what is official vs supporting for this session.
+              Buttons call the collaboration generation API; the server uses a mock stub today. The right column shows official vs supporting outputs for this
+              session.
             </div>
           </div>
 
