@@ -20,6 +20,7 @@ import { isSuccessCollaborationResult } from "@/lib/workflow/collaborationAction
 import { requestCollaborationGeneration } from "@/lib/workflow/collaborationGenerationClient";
 import {
   recordSessionGeneratedMinutes,
+  recordSessionOfficialFeatures,
   resolveSessionMinutes,
   resolveSessionOfficialFeatures,
 } from "@/lib/workflow/collaborationSessionResultStore";
@@ -36,6 +37,15 @@ function workspaceImpactFrom(latest: CollaborationActionResult | null): ActionWo
       lines: [
         "Latest minutes (official) on the right now reflects this run.",
         "Supporting insights stay the same until you run analysis or ideas.",
+      ],
+    };
+  }
+  if (latest.actionType === "GENERATE_FEATURES") {
+    return {
+      scope: "primary",
+      lines: [
+        "Official derived features on the right now reflect this run (also visible on the requirement Features tab for the latest session).",
+        "Idea-based suggestions under Supporting insights are unchanged.",
       ],
     };
   }
@@ -122,6 +132,10 @@ export default function CollaborationWorkspacePage() {
       case "GENERATE_MINUTES":
         recordSessionGeneratedMinutes(sessionId, out.payload, out.generationSource);
         setDisplayedMinutes(out.payload);
+        break;
+      case "GENERATE_FEATURES":
+        recordSessionOfficialFeatures(sessionId, out.payload.features, out.generationSource);
+        setDisplayedFeatures([...out.payload.features]);
         break;
       case "REQUEST_ANALYSIS":
         setDisplayedAnalysis(out.payload);
@@ -225,14 +239,29 @@ export default function CollaborationWorkspacePage() {
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase", marginBottom: 8 }}>
               Workspace actions
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <WorkflowActionButton label="회의록 작성" onClick={() => void runAction("GENERATE_MINUTES")} />
-              <WorkflowActionButton label="분석 요청" onClick={() => void runAction("REQUEST_ANALYSIS")} />
-              <WorkflowActionButton label="아이디어 요청" onClick={() => void runAction("REQUEST_IDEAS")} />
+            <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase", marginBottom: 6 }}>
+                  Official
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <WorkflowActionButton label="회의록 작성" onClick={() => void runAction("GENERATE_MINUTES")} />
+                  <WorkflowActionButton label="Feature 생성" onClick={() => void runAction("GENERATE_FEATURES")} />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "#6b7280", textTransform: "uppercase", marginBottom: 6 }}>
+                  Supporting
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <WorkflowActionButton label="분석 요청" onClick={() => void runAction("REQUEST_ANALYSIS")} />
+                  <WorkflowActionButton label="아이디어 요청" onClick={() => void runAction("REQUEST_IDEAS")} />
+                </div>
+              </div>
             </div>
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, marginTop: 8 }}>
-              Buttons call the collaboration generation API; the server uses a mock stub today. The right column shows official vs supporting outputs for this
-              session.
+              Official actions update primary outputs (and sync to the requirement detail for the latest session via in-memory store). Supporting actions only
+              fill Supporting insights. Server responses are mock_stub today.
             </div>
           </div>
 

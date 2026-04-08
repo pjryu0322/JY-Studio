@@ -1,6 +1,10 @@
-import type { MeetingMinutesMock } from "@/lib/mock/workflowMock";
+import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 
-export type CollaborationActionType = "GENERATE_MINUTES" | "REQUEST_ANALYSIS" | "REQUEST_IDEAS";
+export type CollaborationActionType =
+  | "GENERATE_MINUTES"
+  | "GENERATE_FEATURES"
+  | "REQUEST_ANALYSIS"
+  | "REQUEST_IDEAS";
 
 export type CollaborationActionStatus = "idle" | "running" | "success" | "error";
 
@@ -14,6 +18,11 @@ export type CollaborationAnalysisPayload = {
 
 export type CollaborationIdeasPayload = {
   ideas: string[];
+};
+
+/** Official derived features for the session (not idea suggestions). */
+export type CollaborationOfficialFeaturesPayload = {
+  features: FeatureMock[];
 };
 
 export type CollaborationGenerationSource = "mock_stub";
@@ -46,6 +55,15 @@ export type CollaborationSuccessIdeas = {
   generationSource: CollaborationGenerationSource;
 };
 
+export type CollaborationSuccessGenerateFeatures = {
+  actionType: "GENERATE_FEATURES";
+  status: "success";
+  message: string;
+  atIso: string;
+  payload: CollaborationOfficialFeaturesPayload;
+  generationSource: CollaborationGenerationSource;
+};
+
 export type CollaborationRunningOrError = {
   actionType: CollaborationActionType;
   status: "running" | "error";
@@ -56,13 +74,18 @@ export type CollaborationRunningOrError = {
 
 export type CollaborationActionResult =
   | CollaborationSuccessGenerateMinutes
+  | CollaborationSuccessGenerateFeatures
   | CollaborationSuccessAnalysis
   | CollaborationSuccessIdeas
   | CollaborationRunningOrError;
 
 export function isSuccessCollaborationResult(
   r: CollaborationActionResult
-): r is CollaborationSuccessGenerateMinutes | CollaborationSuccessAnalysis | CollaborationSuccessIdeas {
+): r is
+  | CollaborationSuccessGenerateMinutes
+  | CollaborationSuccessGenerateFeatures
+  | CollaborationSuccessAnalysis
+  | CollaborationSuccessIdeas {
   return r.status === "success";
 }
 
@@ -75,7 +98,6 @@ export function parseCollaborationActionResultFromApi(
   const o = raw as Record<string, unknown>;
   if (o.actionType !== actionType) return null;
   if (typeof o.atIso !== "string" || typeof o.message !== "string") return null;
-  if (o.actionType !== actionType) return null;
 
   if (o.status === "error") {
     return {
@@ -102,6 +124,19 @@ export function parseCollaborationActionResultFromApi(
     };
   }
 
+  if (actionType === "GENERATE_FEATURES") {
+    const payload = parseCollaborationOfficialFeaturesPayload(o.payload);
+    if (!payload) return null;
+    return {
+      actionType: "GENERATE_FEATURES",
+      status: "success",
+      message: o.message,
+      atIso: o.atIso,
+      payload,
+      generationSource: "mock_stub",
+    };
+  }
+
   if (actionType === "REQUEST_ANALYSIS") {
     const payload = parseCollaborationAnalysisPayload(o.payload);
     if (!payload) return null;
@@ -114,6 +149,8 @@ export function parseCollaborationActionResultFromApi(
       generationSource: "mock_stub",
     };
   }
+
+  if (actionType !== "REQUEST_IDEAS") return null;
 
   const payload = parseCollaborationIdeasPayload(o.payload);
   if (!payload) return null;
@@ -155,6 +192,40 @@ export function parseCollaborationIdeasPayload(raw: unknown): CollaborationIdeas
   const o = raw as Record<string, unknown>;
   if (!Array.isArray(o.ideas) || !o.ideas.every((x) => typeof x === "string")) return null;
   return { ideas: o.ideas };
+}
+
+function isFeatureMockStatus(s: unknown): s is FeatureMock["status"] {
+  return s === "DRAFT" || s === "PLANNED" || s === "IN_PROGRESS" || s === "DONE";
+}
+
+function parseFeatureMockItem(raw: unknown): FeatureMock | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.name !== "string" || typeof o.description !== "string") return null;
+  if (!isFeatureMockStatus(o.status)) return null;
+  if (!Array.isArray(o.userFlow) || !o.userFlow.every((x) => typeof x === "string")) return null;
+  if (!Array.isArray(o.nonFunctional) || !o.nonFunctional.every((x) => typeof x === "string")) return null;
+  return {
+    id: o.id,
+    name: o.name,
+    description: o.description,
+    status: o.status,
+    userFlow: o.userFlow,
+    nonFunctional: o.nonFunctional,
+  };
+}
+
+export function parseCollaborationOfficialFeaturesPayload(raw: unknown): CollaborationOfficialFeaturesPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.features)) return null;
+  const features: FeatureMock[] = [];
+  for (const item of o.features) {
+    const f = parseFeatureMockItem(item);
+    if (!f) return null;
+    features.push(f);
+  }
+  return { features };
 }
 
 /** JSON body for successful collaboration generation routes (client may narrow `result` after parse). */
