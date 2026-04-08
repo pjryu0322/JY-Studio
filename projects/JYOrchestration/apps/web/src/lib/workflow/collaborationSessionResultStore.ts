@@ -3,7 +3,10 @@
  * Not persisted across full reload — replace with API/DB later.
  */
 
-import type { CollaborationGenerationSource } from "@/lib/workflow/collaborationActionContract";
+import type {
+  CollaborationGenerationSource,
+  CollaborationOfficialTaskDraft,
+} from "@/lib/workflow/collaborationActionContract";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 
 export type SessionCollaborationResultEntry = {
@@ -11,6 +14,8 @@ export type SessionCollaborationResultEntry = {
   minutes?: MeetingMinutesMock;
   /** When set, overrides view-model official features for this session (future generation). */
   officialFeatures?: FeatureMock[];
+  /** When set, overrides view-model / empty task draft list for this session. */
+  officialTasks?: CollaborationOfficialTaskDraft[];
   updatedAtIso: string;
   source: CollaborationGenerationSource;
 };
@@ -73,6 +78,21 @@ export function recordSessionOfficialFeatures(
   bumpVersion();
 }
 
+export function recordSessionOfficialTasks(
+  sessionId: string,
+  tasks: CollaborationOfficialTaskDraft[],
+  source: CollaborationGenerationSource
+): void {
+  const prev = bySessionId.get(sessionId);
+  bySessionId.set(sessionId, {
+    ...prev,
+    officialTasks: tasks,
+    updatedAtIso: new Date().toISOString(),
+    source,
+  });
+  bumpVersion();
+}
+
 export function resolveSessionMinutes(sessionId: string | null | undefined, vmMinutes: MeetingMinutesMock | null): MeetingMinutesMock | null {
   if (!sessionId) return vmMinutes;
   const entry = bySessionId.get(sessionId);
@@ -91,6 +111,18 @@ export function resolveSessionOfficialFeatures(sessionId: string | null | undefi
   return vmFeatures;
 }
 
+export function resolveSessionOfficialTasks(
+  sessionId: string | null | undefined,
+  vmTaskDrafts: CollaborationOfficialTaskDraft[]
+): CollaborationOfficialTaskDraft[] {
+  if (!sessionId) return vmTaskDrafts;
+  const entry = bySessionId.get(sessionId);
+  if (entry?.officialTasks !== undefined) {
+    return entry.officialTasks;
+  }
+  return vmTaskDrafts;
+}
+
 export function sessionHasMinutesOverride(sessionId: string | null | undefined): boolean {
   if (!sessionId) return false;
   return bySessionId.get(sessionId)?.minutes !== undefined;
@@ -99,4 +131,9 @@ export function sessionHasMinutesOverride(sessionId: string | null | undefined):
 export function sessionHasOfficialFeaturesOverride(sessionId: string | null | undefined): boolean {
   if (!sessionId) return false;
   return bySessionId.get(sessionId)?.officialFeatures !== undefined;
+}
+
+export function sessionHasOfficialTasksOverride(sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return bySessionId.get(sessionId)?.officialTasks !== undefined;
 }

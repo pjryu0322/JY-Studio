@@ -6,10 +6,13 @@ import { useMemo } from "react";
 import {
   resolveSessionMinutes,
   resolveSessionOfficialFeatures,
+  resolveSessionOfficialTasks,
   sessionHasMinutesOverride,
   sessionHasOfficialFeaturesOverride,
+  sessionHasOfficialTasksOverride,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
+import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { WorkflowTabs } from "@/components/workflow/WorkflowTabs";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
@@ -58,6 +61,16 @@ export default function RequirementDetailPage() {
 
   const featuresFromCollaboration = useMemo(
     () => sessionHasOfficialFeaturesOverride(latestSessionId),
+    [latestSessionId, sessionResultsVersion]
+  );
+
+  const resolvedTaskDrafts = useMemo(
+    () => resolveSessionOfficialTasks(latestSessionId, vm.taskDrafts),
+    [latestSessionId, vm.taskDrafts, sessionResultsVersion]
+  );
+
+  const tasksFromCollaboration = useMemo(
+    () => sessionHasOfficialTasksOverride(latestSessionId),
     [latestSessionId, sessionResultsVersion]
   );
 
@@ -110,6 +123,7 @@ export default function RequirementDetailPage() {
               />
               <WorkflowActionButton label="View latest minutes" onClick={() => setTab("minutes")} />
               <WorkflowActionButton label="View derived features" onClick={() => setTab("features")} />
+              <WorkflowActionButton label="View task drafts" onClick={() => setTab("tasks")} />
             </div>
           </div>
         </WorkflowCard>
@@ -130,7 +144,8 @@ export default function RequirementDetailPage() {
               This is a UI skeleton. Next phase will bind real requirement data, sessions, minutes generation, and feature derivation.
             </div>
             <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
-              Suggested next step: open the latest session, run 회의록 작성, then Feature 생성 (official) to refresh Minutes and Features tabs here (in-memory).
+              Suggested next step: open the latest session, run 회의록 작성 → Feature 생성 → Task 초안 생성 to refresh Minutes, Features, and Tasks tabs here
+              (in-memory).
             </div>
           </WorkflowCard>
         ) : (
@@ -214,11 +229,29 @@ export default function RequirementDetailPage() {
       ) : null}
 
       {tab === "tasks" ? (
-        <div style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Tasks</div>
-          <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.6 }}>
-            (placeholder) Tasks will be derived from Features in a later phase.
-          </div>
+        <div style={{ display: "grid", gap: 10 }}>
+          {vm.requirement && latestSessionId ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              {tasksFromCollaboration ? (
+                <>
+                  <WorkflowBadge>Collaboration snapshot</WorkflowBadge>
+                  <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                    Official task drafts for the latest session come from Task 초안 생성 in the collaboration workspace (mock_stub; in-memory — not persisted
+                    across full reload). Separate from 아이디어 요청 and analysis notes.
+                  </span>
+                </>
+              ) : (
+                <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                  No collaboration-generated task drafts yet for the latest session (view model has none). Open the session workspace and run Task 초안 생성
+                  after official features when you want this list populated (mock).
+                </span>
+              )}
+            </div>
+          ) : null}
+          <TaskDraftsPanel
+            tasks={resolvedTaskDrafts}
+            emptyLabel="No task drafts for the latest session. Generate official features if needed, then run Task 초안 생성 in the collaboration workspace."
+          />
         </div>
       ) : null}
     </div>

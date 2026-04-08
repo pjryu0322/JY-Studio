@@ -4,12 +4,15 @@ import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
 import { MeetingMinutesPanel } from "@/components/workflow/MeetingMinutesPanel";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
+import type { CollaborationOfficialTaskDraft } from "@/lib/workflow/collaborationActionContract";
 import type { DisplayedAnalysis } from "@/lib/workflow/collaborationWorkspacePayload";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 
 export type CollaborationWorkspaceAsideProps = {
   displayedMinutes: MeetingMinutesMock | null;
   displayedFeatures: FeatureMock[];
+  displayedTaskDrafts: CollaborationOfficialTaskDraft[];
   displayedAnalysis: DisplayedAnalysis | null;
   displayedIdeas: string[];
   suggestedFeaturesFromIdeas: FeatureMock[];
@@ -18,6 +21,7 @@ export type CollaborationWorkspaceAsideProps = {
 export function CollaborationWorkspaceAside({
   displayedMinutes,
   displayedFeatures,
+  displayedTaskDrafts,
   displayedAnalysis,
   displayedIdeas,
   suggestedFeaturesFromIdeas,
@@ -56,6 +60,23 @@ export function CollaborationWorkspaceAside({
       </WorkflowCard>
 
       <WorkflowCard padding={12}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 900 }}>Official task drafts</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <WorkflowBadge>Official</WorkflowBadge>
+            <WorkflowBadge>{displayedTaskDrafts.length}</WorkflowBadge>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, marginBottom: 10 }}>
+          Generated via Task 초안 생성; synced to the requirement Tasks tab for the latest session. Not the same as idea suggestions.
+        </div>
+        <TaskDraftsPanel
+          tasks={displayedTaskDrafts}
+          emptyLabel="No official task drafts yet. Use Task 초안 생성 (mock)."
+        />
+      </WorkflowCard>
+
+      <WorkflowCard padding={12}>
         <details style={{ border: 0 }}>
           <summary
             style={{
@@ -73,7 +94,8 @@ export function CollaborationWorkspaceAside({
             <WorkflowBadge>Secondary</WorkflowBadge>
           </summary>
           <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, margin: "10px 0 0" }}>
-            Analysis, raw ideas, suggested feature shapes, and placeholders. These support the discussion; they are not the official minutes/features list.
+            Analysis, raw ideas, suggested feature shapes, and placeholders. These support the discussion; they are not the official minutes, features, or
+            task drafts.
           </p>
 
           <div style={{ marginTop: 14, display: "grid", gap: 14 }}>

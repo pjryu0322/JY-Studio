@@ -10,6 +10,7 @@ import {
 const ROUTES: Record<CollaborationActionType, string> = {
   GENERATE_MINUTES: "/api/workflow/collaboration/generate-minutes",
   GENERATE_FEATURES: "/api/workflow/collaboration/generate-features",
+  GENERATE_TASKS: "/api/workflow/collaboration/generate-tasks",
   REQUEST_ANALYSIS: "/api/workflow/collaboration/request-analysis",
   REQUEST_IDEAS: "/api/workflow/collaboration/request-ideas",
 };

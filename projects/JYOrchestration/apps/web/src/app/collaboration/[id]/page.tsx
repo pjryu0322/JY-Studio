@@ -15,14 +15,20 @@ import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import type { CollaborationActionResult, CollaborationActionType } from "@/lib/workflow/collaborationActionContract";
+import type {
+  CollaborationActionResult,
+  CollaborationActionType,
+  CollaborationOfficialTaskDraft,
+} from "@/lib/workflow/collaborationActionContract";
 import { isSuccessCollaborationResult } from "@/lib/workflow/collaborationActionContract";
 import { requestCollaborationGeneration } from "@/lib/workflow/collaborationGenerationClient";
 import {
   recordSessionGeneratedMinutes,
   recordSessionOfficialFeatures,
+  recordSessionOfficialTasks,
   resolveSessionMinutes,
   resolveSessionOfficialFeatures,
+  resolveSessionOfficialTasks,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { type DisplayedAnalysis, ideaStringsToSuggestedFeatures } from "@/lib/workflow/collaborationWorkspacePayload";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
@@ -45,7 +51,16 @@ function workspaceImpactFrom(latest: CollaborationActionResult | null): ActionWo
       scope: "primary",
       lines: [
         "Official derived features on the right now reflect this run (also visible on the requirement Features tab for the latest session).",
-        "Idea-based suggestions under Supporting insights are unchanged.",
+        "Idea-based suggestions under Supporting insights are unchanged. Run Task 초안 생성 to refresh official task drafts.",
+      ],
+    };
+  }
+  if (latest.actionType === "GENERATE_TASKS") {
+    return {
+      scope: "primary",
+      lines: [
+        "Official task drafts on the right now reflect this run (also visible on the requirement Tasks tab for the latest session).",
+        "Supporting insights and idea suggestions are unchanged.",
       ],
     };
   }
@@ -54,7 +69,7 @@ function workspaceImpactFrom(latest: CollaborationActionResult | null): ActionWo
       scope: "supporting",
       lines: [
         "Open Supporting insights to see the new analysis notes.",
-        "Official minutes and derived features were not changed.",
+        "Official minutes, derived features, and task drafts were not changed.",
       ],
     };
   }
@@ -62,7 +77,7 @@ function workspaceImpactFrom(latest: CollaborationActionResult | null): ActionWo
     scope: "supporting",
     lines: [
       "Ideas and suggested feature cards were refreshed (labeled as suggestions, not official).",
-      "Official derived features on the right are unchanged.",
+      "Official minutes, features, and task drafts on the right are unchanged.",
     ],
   };
 }
@@ -78,6 +93,7 @@ export default function CollaborationWorkspacePage() {
   const [displayedAnalysis, setDisplayedAnalysis] = useState<DisplayedAnalysis | null>(null);
   const [displayedIdeas, setDisplayedIdeas] = useState<string[]>([]);
   const [suggestedFeaturesFromIdeas, setSuggestedFeaturesFromIdeas] = useState<FeatureMock[]>([]);
+  const [displayedTaskDrafts, setDisplayedTaskDrafts] = useState<CollaborationOfficialTaskDraft[]>([]);
 
   const [discussion, setDiscussion] = useState<DiscussionItem[]>(() => [
     {
@@ -108,6 +124,7 @@ export default function CollaborationWorkspacePage() {
     }
     setDisplayedMinutes(resolveSessionMinutes(sessionId, view.minutes));
     setDisplayedFeatures([...resolveSessionOfficialFeatures(sessionId, view.features)]);
+    setDisplayedTaskDrafts([...resolveSessionOfficialTasks(sessionId, [])]);
     setDisplayedAnalysis(null);
     setDisplayedIdeas([]);
     setSuggestedFeaturesFromIdeas([]);
@@ -136,6 +153,10 @@ export default function CollaborationWorkspacePage() {
       case "GENERATE_FEATURES":
         recordSessionOfficialFeatures(sessionId, out.payload.features, out.generationSource);
         setDisplayedFeatures([...out.payload.features]);
+        break;
+      case "GENERATE_TASKS":
+        recordSessionOfficialTasks(sessionId, out.payload.tasks, out.generationSource);
+        setDisplayedTaskDrafts([...out.payload.tasks]);
         break;
       case "REQUEST_ANALYSIS":
         setDisplayedAnalysis(out.payload);
@@ -247,6 +268,7 @@ export default function CollaborationWorkspacePage() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <WorkflowActionButton label="회의록 작성" onClick={() => void runAction("GENERATE_MINUTES")} />
                   <WorkflowActionButton label="Feature 생성" onClick={() => void runAction("GENERATE_FEATURES")} />
+                  <WorkflowActionButton label="Task 초안 생성" onClick={() => void runAction("GENERATE_TASKS")} />
                 </div>
               </div>
               <div>
@@ -278,6 +300,7 @@ export default function CollaborationWorkspacePage() {
         <CollaborationWorkspaceAside
           displayedMinutes={displayedMinutes}
           displayedFeatures={displayedFeatures}
+          displayedTaskDrafts={displayedTaskDrafts}
           displayedAnalysis={displayedAnalysis}
           displayedIdeas={displayedIdeas}
           suggestedFeaturesFromIdeas={suggestedFeaturesFromIdeas}
