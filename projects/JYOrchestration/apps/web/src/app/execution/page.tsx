@@ -6,12 +6,8 @@ import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowA
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import {
-  getActiveExecutionInput,
-  isActiveExecutionSnapshot,
-  resolveSessionExecutionLaunchSnapshot,
-  setActiveExecutionInput,
-} from "@/lib/workflow/collaborationSessionResultStore";
+import { resolveSessionExecutionLaunchSnapshot, setActiveExecutionInput } from "@/lib/workflow/collaborationSessionResultStore";
+import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 
 export default function ExecutionPage() {
@@ -27,11 +23,8 @@ export default function ExecutionPage() {
     [sessionId, sessionResultsVersion]
   );
 
-  const active = useMemo(() => getActiveExecutionInput(), [sessionResultsVersion]);
-  const isActive = useMemo(
-    () => isActiveExecutionSnapshot(sessionId, snapshot?.snapshotId),
-    [sessionId, snapshot?.snapshotId, sessionResultsVersion]
-  );
+  const pre = useMemo(() => getPreExecutionStateForSession(sessionId), [sessionId, sessionResultsVersion]);
+  const isActive = pre.isSnapshotActive;
 
   const openTasks = () => {
     const qs = new URLSearchParams();
@@ -68,9 +61,9 @@ export default function ExecutionPage() {
                 Active input:{" "}
                 {isActive ? (
                   <span style={{ fontWeight: 900, color: "#166534" }}>Selected</span>
-                ) : active ? (
+                ) : pre.active ? (
                   <span style={{ fontFamily: "ui-monospace, monospace" }}>
-                    {active.sessionId} / {active.snapshotId}
+                    {pre.active.sessionId} / {pre.active.snapshotId}
                   </span>
                 ) : (
                   <span>(none)</span>
