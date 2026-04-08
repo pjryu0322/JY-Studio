@@ -25,6 +25,7 @@ export {
 
 export {
   type TaskExecutionReadiness,
+  type HandoffPreparedState,
   getTaskExecutionReadiness,
   resolveSessionTaskReadiness,
   setSessionTaskReadiness,
@@ -32,6 +33,9 @@ export {
   recordSessionExecutionLaunchSnapshot,
   resolveSessionExecutionLaunchSnapshot,
   sessionHasExecutionLaunchSnapshot,
+  recordSessionHandoffPrepared,
+  resolveSessionHandoffPrepared,
+  isHandoffPreparedForActive,
   type ActiveExecutionInputSelection,
   getActiveExecutionInput,
   setActiveExecutionInput,
