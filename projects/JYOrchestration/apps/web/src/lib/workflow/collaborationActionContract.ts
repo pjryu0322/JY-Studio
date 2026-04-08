@@ -3,6 +3,7 @@ import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
 export type CollaborationActionType =
   | "GENERATE_MINUTES"
   | "GENERATE_FEATURES"
+  | "GENERATE_TASKS"
   | "REQUEST_ANALYSIS"
   | "REQUEST_IDEAS";
 
@@ -23,6 +24,24 @@ export type CollaborationIdeasPayload = {
 /** Official derived features for the session (not idea suggestions). */
 export type CollaborationOfficialFeaturesPayload = {
   features: FeatureMock[];
+};
+
+/** Official task draft (not brainstorm ideas). */
+export type CollaborationTaskDraftStatus = "DRAFT" | "READY" | "BLOCKED";
+
+export type CollaborationOfficialTaskDraft = {
+  id: string;
+  name: string;
+  description: string;
+  status: CollaborationTaskDraftStatus;
+  relatedFeatureId: string;
+  relatedFeatureName: string;
+  order: number;
+  dependencyNote?: string;
+};
+
+export type CollaborationOfficialTasksPayload = {
+  tasks: CollaborationOfficialTaskDraft[];
 };
 
 export type CollaborationGenerationSource = "mock_stub";
@@ -64,6 +83,15 @@ export type CollaborationSuccessGenerateFeatures = {
   generationSource: CollaborationGenerationSource;
 };
 
+export type CollaborationSuccessGenerateTasks = {
+  actionType: "GENERATE_TASKS";
+  status: "success";
+  message: string;
+  atIso: string;
+  payload: CollaborationOfficialTasksPayload;
+  generationSource: CollaborationGenerationSource;
+};
+
 export type CollaborationRunningOrError = {
   actionType: CollaborationActionType;
   status: "running" | "error";
@@ -75,6 +103,7 @@ export type CollaborationRunningOrError = {
 export type CollaborationActionResult =
   | CollaborationSuccessGenerateMinutes
   | CollaborationSuccessGenerateFeatures
+  | CollaborationSuccessGenerateTasks
   | CollaborationSuccessAnalysis
   | CollaborationSuccessIdeas
   | CollaborationRunningOrError;
@@ -84,6 +113,7 @@ export function isSuccessCollaborationResult(
 ): r is
   | CollaborationSuccessGenerateMinutes
   | CollaborationSuccessGenerateFeatures
+  | CollaborationSuccessGenerateTasks
   | CollaborationSuccessAnalysis
   | CollaborationSuccessIdeas {
   return r.status === "success";
@@ -137,6 +167,19 @@ export function parseCollaborationActionResultFromApi(
     };
   }
 
+  if (actionType === "GENERATE_TASKS") {
+    const payload = parseCollaborationOfficialTasksPayload(o.payload);
+    if (!payload) return null;
+    return {
+      actionType: "GENERATE_TASKS",
+      status: "success",
+      message: o.message,
+      atIso: o.atIso,
+      payload,
+      generationSource: "mock_stub",
+    };
+  }
+
   if (actionType === "REQUEST_ANALYSIS") {
     const payload = parseCollaborationAnalysisPayload(o.payload);
     if (!payload) return null;
@@ -150,18 +193,20 @@ export function parseCollaborationActionResultFromApi(
     };
   }
 
-  if (actionType !== "REQUEST_IDEAS") return null;
+  if (actionType === "REQUEST_IDEAS") {
+    const payload = parseCollaborationIdeasPayload(o.payload);
+    if (!payload) return null;
+    return {
+      actionType: "REQUEST_IDEAS",
+      status: "success",
+      message: o.message,
+      atIso: o.atIso,
+      payload,
+      generationSource: "mock_stub",
+    };
+  }
 
-  const payload = parseCollaborationIdeasPayload(o.payload);
-  if (!payload) return null;
-  return {
-    actionType: "REQUEST_IDEAS",
-    status: "success",
-    message: o.message,
-    atIso: o.atIso,
-    payload,
-    generationSource: "mock_stub",
-  };
+  return null;
 }
 
 export function parseCollaborationMinutesPayload(raw: unknown): CollaborationMinutesPayload | null {
@@ -226,6 +271,46 @@ export function parseCollaborationOfficialFeaturesPayload(raw: unknown): Collabo
     features.push(f);
   }
   return { features };
+}
+
+function isTaskDraftStatus(s: unknown): s is CollaborationTaskDraftStatus {
+  return s === "DRAFT" || s === "READY" || s === "BLOCKED";
+}
+
+function parseCollaborationOfficialTaskDraftItem(raw: unknown): CollaborationOfficialTaskDraft | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.name !== "string" || typeof o.description !== "string") return null;
+  if (!isTaskDraftStatus(o.status)) return null;
+  if (typeof o.relatedFeatureId !== "string" || typeof o.relatedFeatureName !== "string") return null;
+  if (typeof o.order !== "number" || !Number.isFinite(o.order)) return null;
+  if (o.dependencyNote !== undefined && typeof o.dependencyNote !== "string") return null;
+  const out: CollaborationOfficialTaskDraft = {
+    id: o.id,
+    name: o.name,
+    description: o.description,
+    status: o.status,
+    relatedFeatureId: o.relatedFeatureId,
+    relatedFeatureName: o.relatedFeatureName,
+    order: o.order,
+  };
+  if (typeof o.dependencyNote === "string") {
+    out.dependencyNote = o.dependencyNote;
+  }
+  return out;
+}
+
+export function parseCollaborationOfficialTasksPayload(raw: unknown): CollaborationOfficialTasksPayload | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o.tasks)) return null;
+  const tasks: CollaborationOfficialTaskDraft[] = [];
+  for (const item of o.tasks) {
+    const t = parseCollaborationOfficialTaskDraftItem(item);
+    if (!t) return null;
+    tasks.push(t);
+  }
+  return { tasks };
 }
 
 /** JSON body for successful collaboration generation routes (client may narrow `result` after parse). */

@@ -7,6 +7,7 @@ import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmp
 function labelForType(t: CollaborationActionResult["actionType"]): string {
   if (t === "GENERATE_MINUTES") return "회의록 작성";
   if (t === "GENERATE_FEATURES") return "Feature 생성";
+  if (t === "GENERATE_TASKS") return "Task 초안 생성";
   if (t === "REQUEST_ANALYSIS") return "분석 요청";
   return "아이디어 요청";
 }

@@ -1,3 +1,4 @@
+import type { CollaborationOfficialTaskDraft } from "@/lib/workflow/collaborationActionContract";
 import {
   getMockFeaturesForSession,
   getMockMinutesForSession,
@@ -62,6 +63,8 @@ export type RequirementDetailView = {
   latestSession: CollaborationSessionMock | null;
   minutes: MeetingMinutesMock | null;
   features: FeatureMock[];
+  /** View-model task drafts (empty until backend); collaboration store may override per latest session. */
+  taskDrafts: CollaborationOfficialTaskDraft[];
 };
 
 export function getRequirementDetailView(requirementId: string): RequirementDetailView {
@@ -78,6 +81,7 @@ export function getRequirementDetailView(requirementId: string): RequirementDeta
     latestSession,
     minutes,
     features,
+    taskDrafts: [],
   };
 }
 
