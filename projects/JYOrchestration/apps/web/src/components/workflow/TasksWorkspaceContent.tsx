@@ -13,9 +13,12 @@ import {
   recordSessionConfirmedTasks,
   resolveSessionTaskReadiness,
   resolveSessionExecutionCandidates,
+  recordSessionExecutionLaunchSnapshot,
+  resolveSessionExecutionLaunchSnapshot,
   setSessionTaskReadiness,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { buildExecutionLaunchInput } from "@/lib/workflow/executionLaunchInput";
+import { createExecutionLaunchSnapshot } from "@/lib/workflow/executionLaunchSnapshot";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { useTasksWorkspaceReview } from "@/lib/workflow/useTasksWorkspaceReview";
@@ -71,6 +74,11 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
       candidateTasks,
     });
   }, [view.sessionId, view.requirementId, officialConfirmed, candidateTasks]);
+
+  const preparedSnapshot = useMemo(
+    () => resolveSessionExecutionLaunchSnapshot(view.sessionId),
+    [view.sessionId, sessionResultsVersion]
+  );
 
   const displayedSequenceTasks = useMemo(() => {
     if (sequenceView === "all") return working.activeTasks;
@@ -247,6 +255,49 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
                   {executionLaunchPreview.readyTaskIds.length > 0 ? executionLaunchPreview.readyTaskIds.join(", ") : "(none)"}
                 </span>
               </div>
+            </div>
+          </details>
+        </WorkflowCard>
+      ) : null}
+
+      {executionLaunchPreview ? (
+        <WorkflowCard padding={12}>
+          <details>
+            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, listStyle: "none" }}>Execution launch snapshot</summary>
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                Preview is dynamic. A snapshot is an explicit prepared set held in shared session memory (still pre-execution).
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <WorkflowActionButton
+                  label="Prepare execution snapshot"
+                  variant="primary"
+                  disabled={!view.sessionId}
+                  onClick={() => {
+                    if (!view.sessionId) return;
+                    const snap = createExecutionLaunchSnapshot({
+                      sessionId: view.sessionId,
+                      requirementId: view.requirementId,
+                      confirmedTasks: officialConfirmed,
+                      candidateTasks,
+                    });
+                    recordSessionExecutionLaunchSnapshot(view.sessionId, snap);
+                  }}
+                />
+                <span style={{ fontSize: 12, color: "#6b7280" }}>Captures current execution candidates at one moment.</span>
+              </div>
+              {preparedSnapshot ? (
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#fafafa" }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>Snapshot prepared</div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                    {preparedSnapshot.summary.candidateCount} candidates • prepared{" "}
+                    <span style={{ fontFamily: "ui-monospace, monospace" }}>{preparedSnapshot.preparedAtIso}</span> • id{" "}
+                    <span style={{ fontFamily: "ui-monospace, monospace" }}>{preparedSnapshot.snapshotId}</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "#6b7280" }}>No snapshot prepared yet.</div>
+              )}
             </div>
           </details>
         </WorkflowCard>

@@ -8,6 +8,7 @@ import type {
   CollaborationOfficialTaskDraft,
 } from "@/lib/workflow/collaborationActionContract";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
+import type { ExecutionLaunchSnapshot } from "@/lib/workflow/executionLaunchSnapshot";
 
 /** Pre-execution readiness per task id (in-memory; not the execution pipeline). */
 export type TaskExecutionReadiness = "not_ready" | "ready";
@@ -28,6 +29,8 @@ export type SessionCollaborationResultEntry = {
   confirmedTasksAtIso?: string;
   /** Execution readiness for task ids (confirmed / working); defaults to not_ready when missing. */
   taskReadinessByTaskId?: Record<string, TaskExecutionReadiness>;
+  /** Prepared execution launch snapshot (explicit; separate from dynamic preview). */
+  executionLaunchSnapshot?: ExecutionLaunchSnapshot;
   updatedAtIso: string;
   source: CollaborationGenerationSource;
 };
@@ -154,6 +157,29 @@ export function setSessionTaskReadiness(sessionId: string, taskId: string, readi
     source: base.source,
   });
   bumpVersion();
+}
+
+export function recordSessionExecutionLaunchSnapshot(sessionId: string, snapshot: ExecutionLaunchSnapshot): void {
+  const prev = bySessionId.get(sessionId);
+  const at = new Date().toISOString();
+  const base: SessionCollaborationResultEntry = prev ?? { updatedAtIso: at, source: "mock_stub" };
+  bySessionId.set(sessionId, {
+    ...base,
+    executionLaunchSnapshot: snapshot,
+    updatedAtIso: at,
+    source: base.source,
+  });
+  bumpVersion();
+}
+
+export function resolveSessionExecutionLaunchSnapshot(sessionId: string | null | undefined): ExecutionLaunchSnapshot | undefined {
+  if (!sessionId) return undefined;
+  return bySessionId.get(sessionId)?.executionLaunchSnapshot;
+}
+
+export function sessionHasExecutionLaunchSnapshot(sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return bySessionId.get(sessionId)?.executionLaunchSnapshot !== undefined;
 }
 
 export function resolveSessionMinutes(sessionId: string | null | undefined, vmMinutes: MeetingMinutesMock | null): MeetingMinutesMock | null {
