@@ -303,6 +303,7 @@ export {
   markBusinessExecutionRunRunning,
   markBusinessExecutionRunCompleted,
   markBusinessExecutionRunFailed,
+  applyExecutorConnectorResultToBusinessExecutionRun,
   businessExecutionRunStatusHint,
   businessExecutionRunSubtleNote,
   businessExecutionRunLatestStrip,
@@ -355,6 +356,7 @@ export {
 } from "@/lib/workflow/executorConnector";
 
 export {
+  invokeCursorExecutorConnector,
   invokeCursorExecutorConnectorPilot,
   type CursorExecutorConnectorPilotInput,
 } from "@/lib/workflow/cursorExecutorConnectorPilot";
@@ -364,3 +366,17 @@ export {
   isCurrentExecutorConnectorResult,
   getExecutorConnectorStateForSession,
 } from "@/lib/workflow/executorConnectorGate";
+
+/** Business Execution domain (models, selectors, validation) — not Stage1/Stage2. */
+export {
+  buildExecutionPageActionState,
+  getBusinessExecutionSessionState,
+  type ExecutionPageActionState,
+} from "@/lib/workflow/businessExecutionSelectors";
+export type { BusinessExecutionSessionState } from "@/lib/workflow/businessExecutionModels";
+
+export {
+  appendSessionBusinessExecutionRunEvent,
+  resolveSessionBusinessExecutionRunEvents,
+} from "@/lib/workflow/businessExecutionRunEventStore";
+export type { BusinessExecutionRunEvent, BusinessExecutionRunEventType } from "@/lib/workflow/businessExecutionRunEvent";

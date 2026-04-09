@@ -1,3 +1,12 @@
+/**
+ * Pre-execution + Business Execution pipeline selector for one collaboration session.
+ *
+ * Combines stored artifacts (drafts, snapshots, business execution chain) with derived currency and
+ * readiness. This is the business workflow path — not Stage1/Stage2 environment/procedure test state.
+ *
+ * Domain-oriented alias: getBusinessExecutionSessionState() in businessExecutionSelectors.ts.
+ */
+
 import type { ExecutionLaunchSnapshot } from "@/lib/workflow/executionLaunchSnapshot";
 import {
   getActiveExecutionInput,

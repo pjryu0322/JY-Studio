@@ -23,6 +23,7 @@ import {
   declareExecutionTriggerIntent,
   invokeBusinessExecution,
   invokeExecutorConnector,
+  applyExecutorConnectorResultToBusinessExecutionRun,
   markBusinessExecutionRunCompleted,
   markBusinessExecutionRunFailed,
   markBusinessExecutionRunRunning,
@@ -45,6 +46,8 @@ import {
   recordSessionActualExecutionAdapterRequest,
   recordSessionActualLaunchCommand,
   recordSessionBusinessExecutionRun,
+  appendSessionBusinessExecutionRunEvent,
+  resolveSessionBusinessExecutionRunEvents,
   recordSessionExecutorConnectorResult,
   recordSessionExecutorIntegrationAdapter,
   recordSessionBusinessExecutionPackage,
@@ -67,9 +70,19 @@ import { approveExecutionRequestDraft } from "@/lib/workflow/executionRequestApp
 import { createExecutionRequestDraft } from "@/lib/workflow/executionRequestDraft";
 import { getPreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
 import { EXECUTION_READINESS_UI_REASONS_MAX } from "@/lib/workflow/executionReadiness";
+import {
+  buildExecutionPageActionState,
+  getBusinessExecutionSessionState,
+} from "@/lib/workflow/businessExecutionSelectors";
 import { getBusinessExecutionMonitoringStateForSessionFromPre } from "@/lib/workflow/businessExecutionRunMonitoring";
-import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
+import {
+  createRetryRequestedEvent,
+  createRetryStartedEvent,
+  createRunCreatedEvent,
+  createRunEventFromConnectorResult,
+  createTerminalRunEventFromStatus,
+} from "@/lib/workflow/businessExecutionRunEvent";
 
 export default function ExecutionPage() {
   const router = useRouter();
@@ -79,11 +92,12 @@ export default function ExecutionPage() {
   const requirementId = search?.get("requirementId")?.trim() || null;
   const sessionId = search?.get("sessionId")?.trim() || null;
 
-  const pre = useMemo(() => getPreExecutionStateForSession(sessionId), [sessionId, sessionResultsVersion]);
+  const pre = useMemo(() => getBusinessExecutionSessionState(sessionId), [sessionId, sessionResultsVersion]);
   const monitoring = useMemo(
     () => getBusinessExecutionMonitoringStateForSessionFromPre(sessionId, pre),
     [sessionId, sessionResultsVersion, pre]
   );
+  const actions = useMemo(() => buildExecutionPageActionState(pre, monitoring), [pre, monitoring]);
   const snapshot = pre.snapshot;
   const isActive = pre.isSnapshotActive;
   const launchReadiness = pre.launchReadiness;
@@ -125,6 +139,10 @@ export default function ExecutionPage() {
   const isActualLaunchCommandCurrent = pre.isActualLaunchCommandCurrent;
   const businessExecutionRun = pre.businessExecutionRun;
   const isBusinessExecutionRunCurrent = pre.isBusinessExecutionRunCurrent;
+  const currentRunEvents = useMemo(() => {
+    if (!sessionId || !businessExecutionRun || !isBusinessExecutionRunCurrent) return [];
+    return resolveSessionBusinessExecutionRunEvents(sessionId, businessExecutionRun.runId);
+  }, [sessionId, sessionResultsVersion, businessExecutionRun?.runId, isBusinessExecutionRunCurrent]);
   const executorIntegrationAdapter = pre.executorIntegrationAdapter;
   const isExecutorIntegrationAdapterCurrent = pre.isExecutorIntegrationAdapterCurrent;
   const executorConnectorResult = pre.executorConnectorResult;
@@ -139,73 +157,8 @@ export default function ExecutionPage() {
     [pre.active, snapshot, launchReadiness]
   );
 
-  const canRecordBusinessRequest =
-    Boolean(snapshot) && handoffValidity.isHandoffValid && isDraftApproved && isHandoffPrepared;
-  const businessRequestNeedsAttention = bizReqValidity?.status === "stale" || bizReqValidity?.status === "invalid";
-  const businessRequestValid = bizReqValidity?.status === "requested";
-  const canApproveBusinessExecution =
-    Boolean(businessExecutionRequest) && businessRequestValid && !isBusinessExecutionApproved;
-  const hasOrphanBusinessApproval =
-    Boolean(businessExecutionRequest && businessExecutionApproval) &&
-    !isBusinessApprovalForRequest(businessExecutionRequest, businessExecutionApproval);
-  const canCreateBusinessPackage = isBusinessExecutionApproved && !isBusinessExecutionPackaged;
-  const hasNonCurrentPackage = Boolean(businessExecutionPackage) && !isBusinessExecutionPackaged;
-  const canAssignExecutor = isBusinessExecutionPackaged;
-  const hasNonCurrentAssignment = Boolean(executionAssignment) && !isExecutionPackageAssigned && isBusinessExecutionPackaged;
-  const canCreateHandoffPayload = isExecutionPackageAssigned && !isExecutionAssignmentHandoffCurrent;
-  const hasNonCurrentHandoffPayload =
-    Boolean(executionAssignmentHandoffPayload) && !isExecutionAssignmentHandoffCurrent && isExecutionPackageAssigned;
-  const canCreateIntakeContract = isExecutionAssignmentHandoffCurrent && !isExecutorIntakeContractCurrent;
-  const hasNonCurrentIntakeContract =
-    Boolean(executorIntakeContract) && !isExecutorIntakeContractCurrent && isExecutionAssignmentHandoffCurrent;
-  const canCreateWorkOrder = isExecutorIntakeContractCurrent && !isExecutorWorkOrderCurrent;
-  const hasNonCurrentWorkOrder =
-    Boolean(executorWorkOrder) && !isExecutorWorkOrderCurrent && isExecutorIntakeContractCurrent;
-  const canDeclareLaunchIntent = executionReadiness.status === "ready" && !isBusinessLaunchIntentCurrent;
-  const hasNonCurrentLaunchIntent =
-    Boolean(businessLaunchIntent) && !isBusinessLaunchIntentCurrent && executionReadiness.status === "ready";
-  const canRecordLaunchHandoff = isBusinessLaunchIntentCurrent && !isBusinessLaunchHandoffRecordCurrent;
-  const hasStaleLaunchHandoffRecord =
-    Boolean(businessLaunchHandoffRecord) && !isBusinessLaunchHandoffRecordCurrent;
-  const canPrepareExecutionBridge = isBusinessLaunchHandoffRecordCurrent && !isExecutionBridgePayloadCurrent;
-  const hasStaleExecutionBridgePayload =
-    Boolean(executionBridgePayload) && !isExecutionBridgePayloadCurrent;
-  const canPrepareLaunchContract = isExecutionBridgePayloadCurrent && !isExecutorLaunchContractCurrent;
-  const hasStaleExecutorLaunchContract =
-    Boolean(executorLaunchContract) && !isExecutorLaunchContractCurrent;
-  const canDeclareExecutionTriggerIntent = isExecutorLaunchContractCurrent && !isExecutionTriggerIntentCurrent;
-  const hasStaleExecutionTriggerIntent =
-    Boolean(executionTriggerIntent) && !isExecutionTriggerIntentCurrent;
-  const canPrepareExecutionAdapter =
-    isExecutionTriggerIntentCurrent && !isActualExecutionAdapterRequestCurrent;
-  const hasStaleActualExecutionAdapterRequest =
-    Boolean(actualExecutionAdapterRequest) && !isActualExecutionAdapterRequestCurrent;
-  const canPrepareLaunchCommand =
-    isActualExecutionAdapterRequestCurrent && !isActualLaunchCommandCurrent;
-  const hasStaleActualLaunchCommand =
-    Boolean(actualLaunchCommand) && !isActualLaunchCommandCurrent;
-  const blockedByActiveBusinessRun = monitoring.blockedByActiveCurrentRun;
-  const canStartBusinessExecution = monitoring.canInvokeOrRetryRun;
-  const hasStaleBusinessExecutionRun = monitoring.hasStoredRunNotCurrent;
-  const invocationPrimaryLabel = blockedByActiveBusinessRun
-    ? "Run in progress"
-    : monitoring.storedRun && (!monitoring.isRunCurrent || monitoring.view?.isTerminal)
-      ? "Retry"
-      : "Start business execution";
-  const canPrepareExecutorIntegrationAdapter =
-    isBusinessExecutionRunCurrent && Boolean(businessExecutionRun) && !isExecutorIntegrationAdapterCurrent;
-  const hasStaleExecutorIntegrationAdapter =
-    Boolean(executorIntegrationAdapter) && !isExecutorIntegrationAdapterCurrent;
-  const canInvokeExecutorConnector =
-    isExecutorIntegrationAdapterCurrent &&
-    Boolean(executorIntegrationAdapter) &&
-    Boolean(businessExecutionRun) &&
-    !isExecutorConnectorResultCurrent;
-  const hasStaleExecutorConnectorResult =
-    Boolean(executorConnectorResult) && !isExecutorConnectorResultCurrent;
-
   const assignExecutor = (executorType: ExecutionExecutorType) => {
-    if (!sessionId || !businessExecutionPackage || !canAssignExecutor) return;
+    if (!sessionId || !businessExecutionPackage || !actions.canAssignExecutor) return;
     const next = assignBusinessExecutionPackage({
       pkg: businessExecutionPackage,
       executorType,
@@ -215,7 +168,7 @@ export default function ExecutionPage() {
   };
 
   const prepareExecutorHandoffPayload = () => {
-    if (!sessionId || !canCreateHandoffPayload) return;
+    if (!sessionId || !actions.canCreateHandoffPayload) return;
     if (!executionAssignment || !businessExecutionPackage) return;
     const payload = createExecutionAssignmentHandoff({
       assignment: executionAssignment,
@@ -225,21 +178,21 @@ export default function ExecutionPage() {
   };
 
   const prepareExecutorIntakeContract = () => {
-    if (!sessionId || !canCreateIntakeContract) return;
+    if (!sessionId || !actions.canCreateIntakeContract) return;
     if (!executionAssignmentHandoffPayload) return;
     const contract = createExecutorIntakeContract({ handoff: executionAssignmentHandoffPayload });
     recordSessionExecutorIntakeContract(sessionId, contract);
   };
 
   const prepareExecutorWorkOrder = () => {
-    if (!sessionId || !canCreateWorkOrder) return;
+    if (!sessionId || !actions.canCreateWorkOrder) return;
     if (!executorIntakeContract) return;
     const wo = createExecutorWorkOrder({ intake: executorIntakeContract });
     recordSessionExecutorWorkOrder(sessionId, wo);
   };
 
   const declareLaunchIntent = () => {
-    if (!sessionId || !canDeclareLaunchIntent) return;
+    if (!sessionId || !actions.canDeclareLaunchIntent) return;
     if (!executorWorkOrder) return;
     const intent = declareBusinessLaunchIntent({
       readiness: executionReadiness,
@@ -250,7 +203,7 @@ export default function ExecutionPage() {
   };
 
   const prepareLaunchHandoffRecord = () => {
-    if (!sessionId || !canRecordLaunchHandoff) return;
+    if (!sessionId || !actions.canRecordLaunchHandoff) return;
     if (!businessLaunchIntent || !executorWorkOrder) return;
     const record = createBusinessLaunchHandoffRecord({
       intent: businessLaunchIntent,
@@ -263,7 +216,7 @@ export default function ExecutionPage() {
   };
 
   const prepareExecutionBridge = () => {
-    if (!sessionId || !canPrepareExecutionBridge) return;
+    if (!sessionId || !actions.canPrepareExecutionBridge) return;
     if (
       !businessLaunchHandoffRecord ||
       !businessLaunchIntent ||
@@ -286,7 +239,7 @@ export default function ExecutionPage() {
   };
 
   const prepareExecutorLaunchContract = () => {
-    if (!sessionId || !canPrepareLaunchContract) return;
+    if (!sessionId || !actions.canPrepareLaunchContract) return;
     if (!executionBridgePayload) return;
     const contract = createExecutorLaunchContract({
       bridge: executionBridgePayload,
@@ -300,7 +253,7 @@ export default function ExecutionPage() {
   };
 
   const markExecutionTriggerIntent = () => {
-    if (!sessionId || !canDeclareExecutionTriggerIntent) return;
+    if (!sessionId || !actions.canDeclareExecutionTriggerIntent) return;
     if (!executorLaunchContract || !executionBridgePayload) return;
     const intent = declareExecutionTriggerIntent({
       contract: executorLaunchContract,
@@ -316,7 +269,7 @@ export default function ExecutionPage() {
   };
 
   const prepareActualExecutionAdapter = () => {
-    if (!sessionId || !canPrepareExecutionAdapter) return;
+    if (!sessionId || !actions.canPrepareExecutionAdapter) return;
     if (!executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) return;
     const adapter = createActualExecutionAdapterRequest({
       triggerIntent: executionTriggerIntent,
@@ -332,7 +285,7 @@ export default function ExecutionPage() {
   };
 
   const prepareActualLaunchCommand = () => {
-    if (!sessionId || !canPrepareLaunchCommand) return;
+    if (!sessionId || !actions.canPrepareLaunchCommand) return;
     if (!actualExecutionAdapterRequest || !executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) {
       return;
     }
@@ -351,7 +304,7 @@ export default function ExecutionPage() {
   };
 
   const startBusinessExecution = () => {
-    if (!sessionId || !canStartBusinessExecution) return;
+    if (!sessionId || !actions.canStartBusinessExecution) return;
     if (!actualLaunchCommand || !actualExecutionAdapterRequest || !executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) {
       return;
     }
@@ -368,6 +321,7 @@ export default function ExecutionPage() {
       sessionId,
     });
     recordSessionBusinessExecutionRun(sessionId, run);
+    appendSessionBusinessExecutionRunEvent(sessionId, run.runId, createRunCreatedEvent(run));
   };
 
   const applyBusinessRunControl = (kind: "running" | "completed" | "failed") => {
@@ -386,7 +340,7 @@ export default function ExecutionPage() {
   };
 
   const prepareExecutorIntegrationAdapter = () => {
-    if (!sessionId || !canPrepareExecutorIntegrationAdapter) return;
+    if (!sessionId || !actions.canPrepareExecutorIntegrationAdapter) return;
     if (!businessExecutionRun || !actualLaunchCommand) return;
     try {
       const adapter = createExecutorIntegrationAdapter({
@@ -409,7 +363,7 @@ export default function ExecutionPage() {
   };
 
   const runExecutorConnector = () => {
-    if (!sessionId || !canInvokeExecutorConnector) return;
+    if (!sessionId || !actions.canInvokeExecutorConnector) return;
     if (!executorIntegrationAdapter || !businessExecutionRun || !actualLaunchCommand) return;
     try {
       const result = invokeExecutorConnector({
@@ -426,6 +380,62 @@ export default function ExecutionPage() {
         workOrder: executorWorkOrder,
         sessionId,
       });
+      appendSessionBusinessExecutionRunEvent(
+        sessionId,
+        businessExecutionRun.runId,
+        createRunEventFromConnectorResult({ run: businessExecutionRun, result })
+      );
+      // Pilot connectors map into the business run lifecycle (persisted core entity).
+      // scm/security remain stubbed and do not update the business run yet.
+      if ((result.executorType === "cursor_executor" || result.executorType === "reviewer") && isBusinessExecutionRunCurrent) {
+        const nextRun = applyExecutorConnectorResultToBusinessExecutionRun({
+          run: businessExecutionRun,
+          connectorResult: result,
+        });
+        recordSessionBusinessExecutionRun(sessionId, nextRun);
+        const terminal = createTerminalRunEventFromStatus(nextRun);
+        if (terminal) appendSessionBusinessExecutionRunEvent(sessionId, nextRun.runId, terminal);
+      }
+      recordSessionExecutorConnectorResult(sessionId, result);
+    } catch {
+      /* adapter not current */
+    }
+  };
+
+  const retryExecutorConnector = () => {
+    if (!sessionId || !actions.canRetryExecutorConnector) return;
+    if (!executorIntegrationAdapter || !businessExecutionRun || !actualLaunchCommand) return;
+    try {
+      appendSessionBusinessExecutionRunEvent(sessionId, businessExecutionRun.runId, createRetryRequestedEvent(businessExecutionRun));
+      appendSessionBusinessExecutionRunEvent(sessionId, businessExecutionRun.runId, createRetryStartedEvent(businessExecutionRun));
+      const result = invokeExecutorConnector({
+        integrationAdapter: executorIntegrationAdapter,
+        run: businessExecutionRun,
+        command: actualLaunchCommand,
+        adapter: actualExecutionAdapterRequest,
+        triggerIntent: executionTriggerIntent,
+        contract: executorLaunchContract,
+        bridge: executionBridgePayload,
+        handoffRecord: businessLaunchHandoffRecord,
+        intent: businessLaunchIntent,
+        readiness: executionReadiness,
+        workOrder: executorWorkOrder,
+        sessionId,
+      });
+      appendSessionBusinessExecutionRunEvent(
+        sessionId,
+        businessExecutionRun.runId,
+        createRunEventFromConnectorResult({ run: businessExecutionRun, result })
+      );
+      if ((result.executorType === "cursor_executor" || result.executorType === "reviewer") && isBusinessExecutionRunCurrent) {
+        const nextRun = applyExecutorConnectorResultToBusinessExecutionRun({
+          run: businessExecutionRun,
+          connectorResult: result,
+        });
+        recordSessionBusinessExecutionRun(sessionId, nextRun);
+        const terminal = createTerminalRunEventFromStatus(nextRun);
+        if (terminal) appendSessionBusinessExecutionRunEvent(sessionId, nextRun.runId, terminal);
+      }
       recordSessionExecutorConnectorResult(sessionId, result);
     } catch {
       /* adapter not current */
@@ -740,7 +750,7 @@ export default function ExecutionPage() {
                 {bizReqValidity.status === "invalid" && bizReqValidity.invalidReason ? (
                   <div style={{ fontSize: 12, color: "#b45309", marginTop: 6, lineHeight: 1.5 }}>{bizReqValidity.invalidReason}</div>
                 ) : null}
-                {businessRequestNeedsAttention ? (
+                {actions.businessRequestNeedsAttention ? (
                   <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
                     Re-prepare snapshot in /tasks if needed, then use Recreate request.
                   </div>
@@ -755,27 +765,27 @@ export default function ExecutionPage() {
                 <WorkflowActionButton
                   label="Create execution request"
                   variant="primary"
-                  disabled={!canRecordBusinessRequest}
+                  disabled={!actions.canRecordBusinessRequest}
                   onClick={() => {
                     if (!snapshot) return;
-                    if (!canRecordBusinessRequest) return;
+                    if (!actions.canRecordBusinessRequest) return;
                     recordSessionBusinessExecutionRequest(snapshot.sessionId, createBusinessExecutionRequest({ snapshot }));
                   }}
                 />
               ) : null}
-              {businessExecutionRequest && businessRequestNeedsAttention ? (
+              {businessExecutionRequest && actions.businessRequestNeedsAttention ? (
                 <WorkflowActionButton
                   label="Recreate request"
                   variant="primary"
-                  disabled={!canRecordBusinessRequest}
+                  disabled={!actions.canRecordBusinessRequest}
                   onClick={() => {
                     if (!snapshot) return;
-                    if (!canRecordBusinessRequest) return;
+                    if (!actions.canRecordBusinessRequest) return;
                     recordSessionBusinessExecutionRequest(snapshot.sessionId, createBusinessExecutionRequest({ snapshot }));
                   }}
                 />
               ) : null}
-              {!canRecordBusinessRequest || businessRequestNeedsAttention ? (
+              {!actions.canRecordBusinessRequest || actions.businessRequestNeedsAttention ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
               ) : null}
             </div>
@@ -793,7 +803,7 @@ export default function ExecutionPage() {
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to manage approval.</div>
             ) : !businessExecutionRequest || !bizReqValidity ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No business execution request yet.</div>
-            ) : !businessRequestValid ? (
+            ) : !actions.businessRequestValid ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 Approval unavailable while the request is{" "}
                 <span style={{ fontWeight: 900, color: "#b45309" }}>
@@ -803,7 +813,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasOrphanBusinessApproval ? (
+            {actions.hasOrphanBusinessApproval ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A prior approval exists for a different request snapshot and does not apply to the current request.
               </div>
@@ -822,7 +832,7 @@ export default function ExecutionPage() {
                   <span style={{ fontFamily: "ui-monospace, monospace" }}>{businessExecutionApproval.snapshotId}</span>
                 </div>
               </div>
-            ) : sessionId && businessExecutionRequest && businessRequestValid ? (
+            ) : sessionId && businessExecutionRequest && actions.businessRequestValid ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Not finalized yet.</div>
             ) : null}
 
@@ -830,14 +840,14 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isBusinessExecutionApproved ? "Approved" : "Approve execution request"}
                 variant="primary"
-                disabled={!sessionId || !canApproveBusinessExecution}
+                disabled={!sessionId || !actions.canApproveBusinessExecution}
                 onClick={() => {
-                  if (!sessionId || !businessExecutionRequest || !businessRequestValid) return;
+                  if (!sessionId || !businessExecutionRequest || !actions.businessRequestValid) return;
                   const approval = approveBusinessExecutionRequest({ request: businessExecutionRequest, approvedBy: "local" });
                   recordSessionBusinessExecutionApproval(sessionId, approval);
                 }}
               />
-              {sessionId && (!businessExecutionRequest || !businessRequestValid) ? (
+              {sessionId && (!businessExecutionRequest || !actions.businessRequestValid) ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
               ) : null}
             </div>
@@ -859,7 +869,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasNonCurrentPackage ? (
+            {actions.hasNonCurrentPackage ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored package does not match the current approved request. Prepare again to replace it (latest only).
               </div>
@@ -891,9 +901,9 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isBusinessExecutionPackaged ? "Packaged" : "Prepare execution package"}
                 variant="primary"
-                disabled={!sessionId || !canCreateBusinessPackage}
+                disabled={!sessionId || !actions.canCreateBusinessPackage}
                 onClick={() => {
-                  if (!sessionId || !canCreateBusinessPackage) return;
+                  if (!sessionId || !actions.canCreateBusinessPackage) return;
                   if (!businessExecutionRequest || !businessExecutionApproval) return;
                   const pkg = createBusinessExecutionPackage({
                     request: businessExecutionRequest,
@@ -924,7 +934,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasNonCurrentAssignment ? (
+            {actions.hasNonCurrentAssignment ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored assignment targets a different package. Choose an executor again to update (latest only).
               </div>
@@ -958,7 +968,7 @@ export default function ExecutionPage() {
                   key={t}
                   label={EXECUTOR_TYPE_LABELS[t]}
                   variant={isExecutionPackageAssigned && executionAssignment?.executorType === t ? "primary" : undefined}
-                  disabled={!sessionId || !canAssignExecutor}
+                  disabled={!sessionId || !actions.canAssignExecutor}
                   onClick={() => assignExecutor(t)}
                 />
               ))}
@@ -986,7 +996,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasNonCurrentHandoffPayload ? (
+            {actions.hasNonCurrentHandoffPayload ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored handoff payload does not match the current assignment. Prepare again to replace it (latest only).
               </div>
@@ -1017,7 +1027,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isExecutionAssignmentHandoffCurrent ? "Handoff prepared" : "Prepare executor handoff"}
                 variant="primary"
-                disabled={!sessionId || !canCreateHandoffPayload}
+                disabled={!sessionId || !actions.canCreateHandoffPayload}
                 onClick={prepareExecutorHandoffPayload}
               />
               {sessionId && !isExecutionPackageAssigned ? (
@@ -1042,7 +1052,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasNonCurrentIntakeContract ? (
+            {actions.hasNonCurrentIntakeContract ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored intake contract does not match the current handoff. Prepare again to replace it (latest only).
               </div>
@@ -1073,7 +1083,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isExecutorIntakeContractCurrent ? "Intake prepared" : "Prepare executor input"}
                 variant="primary"
-                disabled={!sessionId || !canCreateIntakeContract}
+                disabled={!sessionId || !actions.canCreateIntakeContract}
                 onClick={prepareExecutorIntakeContract}
               />
               {sessionId && !isExecutionAssignmentHandoffCurrent ? (
@@ -1098,7 +1108,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasNonCurrentWorkOrder ? (
+            {actions.hasNonCurrentWorkOrder ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored work order does not match the current intake. Prepare again to replace it (latest only).
               </div>
@@ -1134,7 +1144,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isExecutorWorkOrderCurrent ? "Work order prepared" : "Prepare executor work order"}
                 variant="primary"
-                disabled={!sessionId || !canCreateWorkOrder}
+                disabled={!sessionId || !actions.canCreateWorkOrder}
                 onClick={prepareExecutorWorkOrder}
               />
               {sessionId && !isExecutorIntakeContractCurrent ? (
@@ -1182,7 +1192,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasNonCurrentLaunchIntent ? (
+            {actions.hasNonCurrentLaunchIntent ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored launch intent does not match the current ready work order. Declare again to replace it (latest only).
               </div>
@@ -1211,7 +1221,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isBusinessLaunchIntentCurrent ? "Intent declared" : "Declare launch intent"}
                 variant="primary"
-                disabled={!sessionId || !canDeclareLaunchIntent}
+                disabled={!sessionId || !actions.canDeclareLaunchIntent}
                 onClick={declareLaunchIntent}
               />
               {sessionId && executionReadiness.status !== "ready" ? (
@@ -1235,7 +1245,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasStaleLaunchHandoffRecord ? (
+            {actions.hasStaleLaunchHandoffRecord ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored handoff record no longer matches the current launch intent or readiness. Use “Prepare launch handoff record” again (latest only).
               </div>
@@ -1265,7 +1275,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isBusinessLaunchHandoffRecordCurrent ? "Handoff recorded" : "Prepare launch handoff record"}
                 variant="primary"
-                disabled={!sessionId || !canRecordLaunchHandoff}
+                disabled={!sessionId || !actions.canRecordLaunchHandoff}
                 onClick={prepareLaunchHandoffRecord}
               />
               {sessionId && !isBusinessLaunchIntentCurrent ? (
@@ -1290,7 +1300,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasStaleExecutionBridgePayload ? (
+            {actions.hasStaleExecutionBridgePayload ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored bridge no longer matches the current handoff record or upstream state. Use “Prepare execution bridge” again (latest only).
               </div>
@@ -1319,7 +1329,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isExecutionBridgePayloadCurrent ? "Bridge ready" : "Prepare execution bridge"}
                 variant="primary"
-                disabled={!sessionId || !canPrepareExecutionBridge}
+                disabled={!sessionId || !actions.canPrepareExecutionBridge}
                 onClick={prepareExecutionBridge}
               />
               {sessionId && !isBusinessLaunchHandoffRecordCurrent ? (
@@ -1343,7 +1353,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasStaleExecutorLaunchContract ? (
+            {actions.hasStaleExecutorLaunchContract ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored launch contract no longer matches the current bridge. Use “Prepare launch contract” again (latest only).
               </div>
@@ -1379,7 +1389,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isExecutorLaunchContractCurrent ? "Contract ready" : "Prepare launch contract"}
                 variant="primary"
-                disabled={!sessionId || !canPrepareLaunchContract}
+                disabled={!sessionId || !actions.canPrepareLaunchContract}
                 onClick={prepareExecutorLaunchContract}
               />
               {sessionId && !isExecutionBridgePayloadCurrent ? (
@@ -1403,7 +1413,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasStaleExecutionTriggerIntent ? (
+            {actions.hasStaleExecutionTriggerIntent ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored trigger intent no longer matches the current launch contract. Declare again (latest only).
               </div>
@@ -1432,7 +1442,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isExecutionTriggerIntentCurrent ? "Trigger intent declared" : "Declare trigger intent"}
                 variant="primary"
-                disabled={!sessionId || !canDeclareExecutionTriggerIntent}
+                disabled={!sessionId || !actions.canDeclareExecutionTriggerIntent}
                 onClick={markExecutionTriggerIntent}
               />
               {sessionId && !isExecutorLaunchContractCurrent ? (
@@ -1457,7 +1467,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasStaleActualExecutionAdapterRequest ? (
+            {actions.hasStaleActualExecutionAdapterRequest ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored adapter no longer matches the current trigger intent or upstream state. Use “Prepare execution adapter” again (latest only).
               </div>
@@ -1493,7 +1503,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isActualExecutionAdapterRequestCurrent ? "Adapter ready" : "Prepare execution adapter"}
                 variant="primary"
-                disabled={!sessionId || !canPrepareExecutionAdapter}
+                disabled={!sessionId || !actions.canPrepareExecutionAdapter}
                 onClick={prepareActualExecutionAdapter}
               />
               {sessionId && !isExecutionTriggerIntentCurrent ? (
@@ -1518,7 +1528,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasStaleActualLaunchCommand ? (
+            {actions.hasStaleActualLaunchCommand ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored launch command no longer matches the current adapter. Use “Prepare launch command” again (latest only).
               </div>
@@ -1557,7 +1567,7 @@ export default function ExecutionPage() {
               <WorkflowActionButton
                 label={isActualLaunchCommandCurrent ? "Command ready" : "Prepare launch command"}
                 variant="primary"
-                disabled={!sessionId || !canPrepareLaunchCommand}
+                disabled={!sessionId || !actions.canPrepareLaunchCommand}
                 onClick={prepareActualLaunchCommand}
               />
               {sessionId && !isActualExecutionAdapterRequestCurrent ? (
@@ -1582,7 +1592,7 @@ export default function ExecutionPage() {
               </div>
             ) : null}
 
-            {hasStaleBusinessExecutionRun ? (
+            {actions.hasStaleBusinessExecutionRun ? (
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
                 A stored run no longer matches the current launch command. Use <span style={{ fontWeight: 900 }}>Retry</span> when the command is current to replace it
                 (latest only).
@@ -1595,9 +1605,9 @@ export default function ExecutionPage() {
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <WorkflowActionButton
-                label={invocationPrimaryLabel}
+                label={actions.invocationPrimaryLabel}
                 variant="primary"
-                disabled={!sessionId || !canStartBusinessExecution}
+                disabled={!sessionId || !actions.canStartBusinessExecution}
                 onClick={startBusinessExecution}
               />
               {sessionId && !isActualLaunchCommandCurrent ? (
@@ -1720,6 +1730,42 @@ export default function ExecutionPage() {
                   onClick={startBusinessExecution}
                 />
               </div>
+
+              {monitoring.view ? (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>Execution timeline</div>
+                  {currentRunEvents.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No run events recorded yet.</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {currentRunEvents
+                        .slice(-8)
+                        .map((e) => (
+                          <div
+                            key={e.eventId}
+                            style={{
+                              display: "flex",
+                              gap: 10,
+                              alignItems: "baseline",
+                              padding: "6px 8px",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 8,
+                              background: "#ffffff",
+                            }}
+                          >
+                            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: "#6b7280", minWidth: 170 }}>
+                              {e.createdAtIso}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#111827", lineHeight: 1.4, flex: 1 }}>{e.message}</div>
+                            {e.errorCode ? (
+                              <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: "#6b7280" }}>{e.errorCode}</div>
+                            ) : null}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           )}
         </WorkflowCard>
@@ -1737,7 +1783,7 @@ export default function ExecutionPage() {
               Integration unavailable until a <span style={{ fontWeight: 900 }}>current</span> business execution run exists.
             </div>
           ) : null}
-          {hasStaleExecutorIntegrationAdapter ? (
+          {actions.hasStaleExecutorIntegrationAdapter ? (
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
               A stored adapter no longer matches the current run or launch command. Prepare again after the run is current.
             </div>
@@ -1780,7 +1826,7 @@ export default function ExecutionPage() {
             <WorkflowActionButton
               label="Prepare integration adapter"
               variant="primary"
-              disabled={!sessionId || !canPrepareExecutorIntegrationAdapter}
+              disabled={!sessionId || !actions.canPrepareExecutorIntegrationAdapter}
               onClick={prepareExecutorIntegrationAdapter}
             />
           </div>
@@ -1790,8 +1836,9 @@ export default function ExecutionPage() {
           <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor connector</div>
           <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
             Passes the <span style={{ fontWeight: 900 }}>current</span> integration adapter through the same connector interface.{" "}
-            <span style={{ fontWeight: 900 }}>Cursor pilot</span> path for <span style={{ fontWeight: 900 }}>cursor_executor</span> (real-like local boundary, not Stage1/Stage2); reviewer, SCM, and security stay{" "}
-            <span style={{ fontWeight: 900 }}>stubbed</span>. No Git/PR/merge · not environment procedure test.
+            <span style={{ fontWeight: 900 }}>Cursor pilot</span> for <span style={{ fontWeight: 900 }}>cursor_executor</span> and{" "}
+            <span style={{ fontWeight: 900 }}>Reviewer pilot</span> for <span style={{ fontWeight: 900 }}>reviewer</span> (real-like local boundaries, not Stage1/Stage2);{" "}
+            <span style={{ fontWeight: 900 }}>SCM</span> and <span style={{ fontWeight: 900 }}>security</span> stay <span style={{ fontWeight: 900 }}>stubbed</span>. No Git/PR/merge · not environment procedure test.
           </div>
           {!sessionId ? (
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session for connector invocation.</div>
@@ -1800,7 +1847,7 @@ export default function ExecutionPage() {
               Connector unavailable until a <span style={{ fontWeight: 900 }}>current</span> integration adapter exists.
             </div>
           ) : null}
-          {hasStaleExecutorConnectorResult ? (
+          {actions.hasStaleExecutorConnectorResult ? (
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
               A stored connector result no longer matches the current integration adapter. Invoke again after the adapter is current.
             </div>
@@ -1825,7 +1872,12 @@ export default function ExecutionPage() {
               <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Connector status</div>
               {executorConnectorResult.connectorType ? (
                 <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
-                  {executorConnectorResult.connectorType.startsWith("cursor_pilot") ? "Cursor pilot connector" : "Stub connector"} ·{" "}
+                  {executorConnectorResult.connectorType.startsWith("cursor_pilot")
+                    ? "Cursor pilot connector"
+                    : executorConnectorResult.connectorType.startsWith("reviewer_pilot")
+                      ? "Reviewer pilot connector"
+                      : "Stub connector"}{" "}
+                  ·{" "}
                   <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.connectorType}</span>
                 </div>
               ) : null}
@@ -1862,6 +1914,11 @@ export default function ExecutionPage() {
                   {executorConnectorResult.resultSummary}
                 </div>
               ) : null}
+              {executorConnectorResult.errorCode ? (
+                <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
+                  errorCode <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.errorCode}</span>
+                </div>
+              ) : null}
               {executorConnectorResult.errorMessage ? (
                 <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
                   {executorConnectorResult.errorMessage}
@@ -1877,8 +1934,14 @@ export default function ExecutionPage() {
             <WorkflowActionButton
               label="Invoke connector"
               variant="primary"
-              disabled={!sessionId || !canInvokeExecutorConnector}
+              disabled={!sessionId || !actions.canInvokeExecutorConnector}
               onClick={runExecutorConnector}
+            />
+            <WorkflowActionButton
+              label="Retry"
+              variant="secondary"
+              disabled={!sessionId || !actions.canRetryExecutorConnector}
+              onClick={retryExecutorConnector}
             />
           </div>
         </WorkflowCard>

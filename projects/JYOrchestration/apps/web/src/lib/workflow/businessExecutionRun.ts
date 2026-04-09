@@ -13,6 +13,7 @@ import type { ExecutionExecutorType } from "@/lib/workflow/executionAssignment";
 import type { ExecutorLaunchContract } from "@/lib/workflow/executorLaunchContract";
 import type { ExecutionTriggerIntent } from "@/lib/workflow/executionTriggerIntent";
 import type { ExecutorWorkOrder } from "@/lib/workflow/executorWorkOrder";
+import type { ExecutorConnectorResult } from "@/lib/workflow/executorConnector";
 
 export type BusinessExecutionRunStatus = "queued" | "running" | "completed" | "failed";
 
@@ -198,6 +199,71 @@ export function markBusinessExecutionRunFailed(
   if (!errorMessage) return next;
   const now = new Date().toISOString();
   return { ...next, errorMessage, updatedAtIso: now, latestMessage: errorMessage };
+}
+
+/**
+ * Map a normalized executor connector result into the business execution run lifecycle.
+ * This is business-side state shaping only; it does not call Stage1/Stage2 or any external executor.
+ */
+export function applyExecutorConnectorResultToBusinessExecutionRun(input: {
+  run: BusinessExecutionRun;
+  connectorResult: ExecutorConnectorResult;
+}): BusinessExecutionRun {
+  const now = new Date().toISOString();
+  const result = input.connectorResult;
+  if (result.executorType !== input.run.executorType) {
+    throw new Error("applyExecutorConnectorResultToBusinessExecutionRun: executorType mismatch");
+  }
+  if (result.sessionId !== input.run.sessionId) {
+    throw new Error("applyExecutorConnectorResultToBusinessExecutionRun: session mismatch");
+  }
+  if (result.requirementId !== input.run.requirementId) {
+    // requirementId can be null, but should still align if present.
+    throw new Error("applyExecutorConnectorResultToBusinessExecutionRun: requirement mismatch");
+  }
+  if (result.status === "accepted") {
+    return {
+      ...input.run,
+      status: input.run.status === "completed" || input.run.status === "failed" ? "queued" : input.run.status,
+      updatedAtIso: now,
+      progressLabel: defaultBusinessExecutionRunProgress("queued"),
+      latestMessage: `Connector accepted · ${result.message}`,
+    };
+  }
+  if (result.status === "running") {
+    return {
+      ...input.run,
+      status: "running",
+      updatedAtIso: now,
+      progressLabel: defaultBusinessExecutionRunProgress("running"),
+      latestMessage: `Connector running · ${result.message}`,
+    };
+  }
+  if (result.status === "completed") {
+    return {
+      ...input.run,
+      status: "completed",
+      finishedAtIso: result.finishedAtIso ?? now,
+      updatedAtIso: now,
+      progressLabel: defaultBusinessExecutionRunProgress("completed"),
+      latestMessage: `Connector completed · ${result.message}`,
+      summary: result.resultSummary ?? input.run.summary,
+      errorMessage: undefined,
+    };
+  }
+  if (result.status === "failed") {
+    return {
+      ...input.run,
+      status: "failed",
+      finishedAtIso: result.finishedAtIso ?? now,
+      updatedAtIso: now,
+      progressLabel: defaultBusinessExecutionRunProgress("failed"),
+      latestMessage: `Connector failed · ${result.message}`,
+      errorMessage: result.errorMessage ?? input.run.errorMessage ?? "Connector failed.",
+      summary: input.run.summary,
+    };
+  }
+  return input.run;
 }
 
 export function isBusinessExecutionRunCurrent(input: {

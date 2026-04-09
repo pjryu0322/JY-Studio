@@ -20,7 +20,7 @@ import {
 import { buildExecutionLaunchInput } from "@/lib/workflow/executionLaunchInput";
 import { createExecutionLaunchSnapshot } from "@/lib/workflow/executionLaunchSnapshot";
 import { EXECUTOR_TYPE_LABELS } from "@/lib/workflow/executionAssignment";
-import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
+import { getBusinessExecutionSessionState } from "@/lib/workflow/businessExecutionSelectors";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { useTasksWorkspaceReview } from "@/lib/workflow/useTasksWorkspaceReview";
@@ -50,7 +50,7 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const [confirmFlash, setConfirmFlash] = useState<string | null>(null);
   const [sequenceView, setSequenceView] = useState<"all" | "candidates">("all");
 
-  const pre = useMemo(() => getPreExecutionStateForSession(view.sessionId), [view.sessionId, sessionResultsVersion]);
+  const pre = useMemo(() => getBusinessExecutionSessionState(view.sessionId), [view.sessionId, sessionResultsVersion]);
   const readinessMap = pre.readinessMap;
 
   const officialConfirmed = view.confirmedTasks ?? [];

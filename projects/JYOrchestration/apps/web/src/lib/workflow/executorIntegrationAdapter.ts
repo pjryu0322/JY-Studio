@@ -36,7 +36,9 @@ export type ExecutorIntegrationReviewerPayload = {
   kind: "reviewer";
   integrationMode: "review_integration";
   reviewFocus: string;
+  targetScopeSummary: string;
   checklist: string;
+  successExpectation: string;
   artifactRef: string;
 };
 
@@ -116,7 +118,9 @@ export function shapeExecutorIntegrationPayload(
         kind: "reviewer",
         integrationMode: "review_integration",
         reviewFocus: `Review quality, risk, and fit for snapshot ${run.snapshotId} tied to run ${run.runId}.`,
+        targetScopeSummary: runSummaryLine,
         checklist: `Trace to requirements · edge cases · testability · rollback posture · security-sensitive paths.`,
+        successExpectation: "Return a concise review outcome summary and a checklist pass/fail signal (pilot).",
         artifactRef: ref,
       };
     case "scm":
@@ -164,7 +168,7 @@ export function executorIntegrationAdapterExecutorHint(payload: ExecutorIntegrat
     case "cursor_executor":
       return `Cursor · ${payload.successCriteria.slice(0, 120)}${payload.successCriteria.length > 120 ? "…" : ""}`;
     case "reviewer":
-      return `Reviewer · checklist: ${payload.checklist.slice(0, 100)}${payload.checklist.length > 100 ? "…" : ""}`;
+      return `Reviewer · scope: ${payload.targetScopeSummary.slice(0, 80)}${payload.targetScopeSummary.length > 80 ? "…" : ""}`;
     case "scm":
       return `SCM · flow: ${payload.flowHandlingHints.slice(0, 100)}${payload.flowHandlingHints.length > 100 ? "…" : ""}`;
     case "security":

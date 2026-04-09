@@ -81,8 +81,10 @@ export function invokeCursorExecutorConnectorPilot(input: CursorExecutorConnecto
       finishedAtIso: startedAtIso,
       status: "failed",
       message: "Cursor pilot connector: integration payload is not a cursor envelope.",
+      rawStatus: "pilot_invalid_payload_kind",
       source: "executor_connector",
       errorMessage: "adapterPayload.kind !== cursor_executor",
+      errorCode: "invalid_payload",
       connectorType: "cursor_pilot_v1",
     };
   }
@@ -100,8 +102,10 @@ export function invokeCursorExecutorConnectorPilot(input: CursorExecutorConnecto
       finishedAtIso: startedAtIso,
       status: "failed",
       message: "Cursor pilot connector: rejected empty objective or instructions.",
+      rawStatus: "pilot_invalid_payload_empty_fields",
       source: "executor_connector",
       errorMessage: "Validation failed on cursor integration payload.",
+      errorCode: "invalid_payload",
       connectorType: "cursor_pilot_v1",
     };
   }
@@ -121,8 +125,13 @@ export function invokeCursorExecutorConnectorPilot(input: CursorExecutorConnecto
     status: "completed",
     message:
       "Cursor pilot: connector accepted integration envelope, normalized handoff fields, and completed local boundary (not Stage1/Stage2 · not Git · not env test).",
+    rawStatus: "pilot_completed",
     source: "executor_connector",
     resultSummary,
     connectorType: "cursor_pilot_v1",
   };
 }
+
+/** Spec name; delegates to {@link invokeCursorExecutorConnectorPilot}. */
+export const invokeCursorExecutorConnector: typeof invokeCursorExecutorConnectorPilot =
+  invokeCursorExecutorConnectorPilot;
