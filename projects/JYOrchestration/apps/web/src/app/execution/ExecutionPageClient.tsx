@@ -20,7 +20,7 @@ export function ExecutionPageClient() {
       monitoring={view.monitoring}
       actions={view.actions}
       nextAction={view.nextAction}
-      timeline={view.timeline}
+      views={view.views}
       pageActions={view.pageActions}
     />
   );

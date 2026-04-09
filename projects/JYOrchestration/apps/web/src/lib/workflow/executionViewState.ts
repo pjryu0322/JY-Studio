@@ -1,8 +1,15 @@
+/**
+ * UI-ready view models for /execution (grouped, user-facing).
+ * Business execution only — not Stage1/Stage2.
+ */
+
 import { EXECUTOR_TYPE_LABELS } from "@/lib/workflow/collaborationSessionResultStore";
 import type { ExecutionPageActionState, PreExecutionSessionSelector } from "@/lib/workflow/businessExecutionSelectors";
 import type { BusinessExecutionMonitoringState } from "@/lib/workflow/businessExecutionRunMonitoring";
 import type { PreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
 import type { BusinessExecutionRunEvent } from "@/lib/workflow/businessExecutionRunEvent";
+import type { BusinessExecutionRun } from "@/lib/workflow/businessExecutionRun";
+import { resolveSessionBusinessExecutionRunEvents } from "@/lib/workflow/collaborationSessionResultStore";
 
 export type ExecutionTone = "neutral" | "good" | "warn" | "bad";
 
@@ -39,12 +46,44 @@ export type ExecutionSummaryView = {
   nextActionNote: string | null;
 };
 
+export type ExecutionProgressRow = {
+  title: string;
+  statusLabel: string;
+  tone: ExecutionTone;
+  detail: string | null;
+};
+
+export type ExecutionProgressView = {
+  executionRequest: ExecutionProgressRow;
+  packageAndAssignment: ExecutionProgressRow;
+  executionPreparation: ExecutionProgressRow;
+};
+
+export type ExecutionRunAndConnectorView = {
+  canRetryBusinessRun: boolean;
+  businessRunRetryBlocked: boolean;
+  businessRunRetryLabel: string;
+  canInvokeConnector: boolean;
+  canRetryConnector: boolean;
+  connectorStaleNote: string | null;
+};
+
+export type ExecutionAdvancedArtifactsView = {
+  handoffPayloadReady: boolean;
+  intakeReady: boolean;
+  workOrderReady: boolean;
+  bridgeReady: boolean;
+  launchContractReady: boolean;
+  triggerIntentReady: boolean;
+  adapterReady: boolean;
+  launchCommandReady: boolean;
+};
+
 function toneForRunStatus(status: string | null | undefined): ExecutionTone {
   if (status === "completed") return "good";
   if (status === "failed") return "bad";
   if (status === "running") return "neutral";
   if (status === "accepted") return "neutral";
-  // queued / idle / unknown: keep slightly cautionary but not red
   if (status === "queued" || status === "idle") return "warn";
   return "warn";
 }
@@ -55,6 +94,18 @@ function connectorStatusLabel(status: string | null | undefined) {
   if (status === "running") return "Running";
   if (status === "completed") return "Completed";
   return "Failed";
+}
+
+export function getExecutionRunTimelineViewState(input: {
+  sessionId: string | null;
+  run: BusinessExecutionRun | undefined;
+  isRunCurrent: boolean;
+  maxEvents?: number;
+}): { events: BusinessExecutionRunEvent[] } {
+  if (!input.sessionId || !input.run || !input.isRunCurrent) return { events: [] };
+  const all = resolveSessionBusinessExecutionRunEvents(input.sessionId, input.run.runId);
+  const max = input.maxEvents ?? 10;
+  return { events: all.slice(Math.max(0, all.length - max)) };
 }
 
 export function getExecutionSummaryView(input: {
@@ -104,7 +155,6 @@ export function getExecutionSummaryView(input: {
     };
   }
 
-  // Pick a single “next best” action, keeping semantics identical to existing gating.
   const primaryAction: ExecutionSummaryView["primaryAction"] = !snapshot
     ? { key: "openTasks", label: "Open Tasks workspace", disabled: false, note: "No prepared snapshot yet." }
     : !isActive
@@ -183,7 +233,88 @@ export function getExecutionSummaryView(input: {
   };
 }
 
-export function getExecutionRunMonitoringView(input: {
+export function getExecutionProgressView(pre: PreExecutionSessionSelector, actions: ExecutionPageActionState): ExecutionProgressView {
+  const requestDone = pre.isBusinessExecutionApproved && actions.businessRequestValid;
+  const requestInProgress =
+    !requestDone && (Boolean(pre.executionRequestDraft) || Boolean(pre.businessExecutionRequest) || pre.isHandoffPreparedActive);
+  const executionRequest: ExecutionProgressRow = requestDone
+    ? { title: "Execution request", statusLabel: "Complete", tone: "good", detail: "Request recorded and approved for this snapshot." }
+    : requestInProgress
+      ? {
+          title: "Execution request",
+          statusLabel: "In progress",
+          tone: "warn",
+          detail: actions.businessRequestNeedsAttention
+            ? "Update tasks or recreate the request if it is stale or invalid."
+            : "Finish draft, checkpoint, and business approval.",
+        }
+      : { title: "Execution request", statusLabel: "Not started", tone: "neutral", detail: "Prepare handoff in Tasks, then create and approve the request here." };
+
+  const pkgDone = pre.isExecutionPackageAssigned;
+  const pkgInProgress = !pkgDone && pre.isBusinessExecutionPackaged;
+  const packageAndAssignment: ExecutionProgressRow = !requestDone
+    ? { title: "Package & assignment", statusLabel: "Blocked", tone: "neutral", detail: "Complete execution request first." }
+    : pkgDone
+      ? { title: "Package & assignment", statusLabel: "Complete", tone: "good", detail: "Work package exists and an executor is assigned." }
+      : pkgInProgress
+        ? { title: "Package & assignment", statusLabel: "In progress", tone: "warn", detail: "Package is ready — assign who will run this work." }
+        : {
+            title: "Package & assignment",
+            statusLabel: "Not started",
+            tone: "warn",
+            detail: "Create the execution package after approval.",
+          };
+
+  const prepDone = pre.isActualLaunchCommandCurrent;
+  const prepStarted = !prepDone && (pre.isExecutorWorkOrderCurrent || pre.isBusinessLaunchIntentCurrent || pre.isExecutionBridgePayloadCurrent);
+  const executionPreparation: ExecutionProgressRow = !pkgDone
+    ? { title: "Execution preparation", statusLabel: "Blocked", tone: "neutral", detail: "Finish package and assignment first." }
+    : prepDone
+      ? { title: "Execution preparation", statusLabel: "Complete", tone: "good", detail: "Launch inputs are ready for a business run." }
+      : prepStarted
+        ? {
+            title: "Execution preparation",
+            statusLabel: "In progress",
+            tone: "warn",
+            detail: "Complete the remaining preparation steps (see Advanced details if needed).",
+          }
+        : {
+            title: "Execution preparation",
+            statusLabel: "Not started",
+            tone: "warn",
+            detail: "After assignment, prepare executor inputs through the preparation chain.",
+          };
+
+  return { executionRequest, packageAndAssignment, executionPreparation };
+}
+
+export function getExecutionRunAndConnectorView(actions: ExecutionPageActionState): ExecutionRunAndConnectorView {
+  return {
+    canRetryBusinessRun: actions.canStartBusinessExecution,
+    businessRunRetryBlocked: actions.blockedByActiveBusinessRun,
+    businessRunRetryLabel: actions.invocationPrimaryLabel,
+    canInvokeConnector: actions.canInvokeExecutorConnector,
+    canRetryConnector: actions.canRetryExecutorConnector,
+    connectorStaleNote: actions.hasStaleExecutorConnectorResult
+      ? "A stored connector result no longer matches the current integration adapter. Invoke again after the adapter is current."
+      : null,
+  };
+}
+
+export function getExecutionAdvancedArtifactsView(pre: PreExecutionSessionSelector): ExecutionAdvancedArtifactsView {
+  return {
+    handoffPayloadReady: pre.isExecutionAssignmentHandoffCurrent,
+    intakeReady: pre.isExecutorIntakeContractCurrent,
+    workOrderReady: pre.isExecutorWorkOrderCurrent,
+    bridgeReady: pre.isExecutionBridgePayloadCurrent,
+    launchContractReady: pre.isExecutorLaunchContractCurrent,
+    triggerIntentReady: pre.isExecutionTriggerIntentCurrent,
+    adapterReady: pre.isActualExecutionAdapterRequestCurrent,
+    launchCommandReady: pre.isActualLaunchCommandCurrent,
+  };
+}
+
+export function getExecutionRunMonitoringMeta(input: {
   sessionId: string | null;
   monitoring: BusinessExecutionMonitoringState;
   timeline: { events: BusinessExecutionRunEvent[] };
@@ -197,3 +328,39 @@ export function getExecutionRunMonitoringView(input: {
   };
 }
 
+export type ExecutionPageViews = {
+  summary: ExecutionSummaryView;
+  progress: ExecutionProgressView;
+  runAndConnector: ExecutionRunAndConnectorView;
+  advanced: ExecutionAdvancedArtifactsView;
+  runMeta: ReturnType<typeof getExecutionRunMonitoringMeta>;
+};
+
+export function buildExecutionPageViews(input: {
+  sessionId: string | null;
+  requirementId: string | null;
+  pre: PreExecutionSessionSelector;
+  monitoring: BusinessExecutionMonitoringState;
+  actions: ExecutionPageActionState;
+  nextAction: PreLaunchActionAvailability;
+  timeline: { events: BusinessExecutionRunEvent[] };
+}): ExecutionPageViews {
+  return {
+    summary: getExecutionSummaryView({
+      sessionId: input.sessionId,
+      requirementId: input.requirementId,
+      pre: input.pre,
+      monitoring: input.monitoring,
+      actions: input.actions,
+      nextAction: input.nextAction,
+    }),
+    progress: getExecutionProgressView(input.pre, input.actions),
+    runAndConnector: getExecutionRunAndConnectorView(input.actions),
+    advanced: getExecutionAdvancedArtifactsView(input.pre),
+    runMeta: getExecutionRunMonitoringMeta({
+      sessionId: input.sessionId,
+      monitoring: input.monitoring,
+      timeline: input.timeline,
+    }),
+  };
+}
