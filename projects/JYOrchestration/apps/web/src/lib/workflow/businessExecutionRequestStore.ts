@@ -18,6 +18,10 @@ import type { ExecutionBridgePayload } from "@/lib/workflow/executionBridgePaylo
 import type { ExecutorLaunchContract } from "@/lib/workflow/executorLaunchContract";
 import type { ExecutionTriggerIntent } from "@/lib/workflow/executionTriggerIntent";
 import type { ActualExecutionAdapterRequest } from "@/lib/workflow/actualExecutionAdapter";
+import type { ActualLaunchCommand } from "@/lib/workflow/actualLaunchCommand";
+import type { BusinessExecutionRun } from "@/lib/workflow/businessExecutionRun";
+import type { ExecutorIntegrationAdapter } from "@/lib/workflow/executorIntegrationAdapter";
+import type { ExecutorConnectorResult } from "@/lib/workflow/executorConnector";
 import { getSessionEntry, updateSessionEntry } from "@/lib/workflow/sessionResultStoreCore";
 
 type BusinessExecutionRequestEntry = {
@@ -34,6 +38,10 @@ type BusinessExecutionRequestEntry = {
   latestExecutorLaunchContract?: ExecutorLaunchContract;
   latestExecutionTriggerIntent?: ExecutionTriggerIntent;
   latestActualExecutionAdapterRequest?: ActualExecutionAdapterRequest;
+  latestActualLaunchCommand?: ActualLaunchCommand;
+  latestBusinessExecutionRun?: BusinessExecutionRun;
+  latestExecutorIntegrationAdapter?: ExecutorIntegrationAdapter;
+  latestExecutorConnectorResult?: ExecutorConnectorResult;
   updatedAtIso?: string;
 };
 
@@ -308,6 +316,90 @@ export function resolveSessionActualExecutionAdapterRequest(
 export function sessionHasActualExecutionAdapterRequest(sessionId: string | null | undefined): boolean {
   if (!sessionId) return false;
   return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestActualExecutionAdapterRequest !== undefined;
+}
+
+export function recordSessionActualLaunchCommand(sessionId: string, command: ActualLaunchCommand): void {
+  const at = new Date().toISOString();
+  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
+    ...(prev ?? {}),
+    latestActualLaunchCommand: command,
+    updatedAtIso: at,
+  }));
+}
+
+export function resolveSessionActualLaunchCommand(
+  sessionId: string | null | undefined
+): ActualLaunchCommand | undefined {
+  if (!sessionId) return undefined;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestActualLaunchCommand;
+}
+
+export function sessionHasActualLaunchCommand(sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestActualLaunchCommand !== undefined;
+}
+
+export function recordSessionBusinessExecutionRun(sessionId: string, run: BusinessExecutionRun): void {
+  const at = new Date().toISOString();
+  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
+    ...(prev ?? {}),
+    latestBusinessExecutionRun: run,
+    updatedAtIso: at,
+  }));
+}
+
+export function resolveSessionBusinessExecutionRun(
+  sessionId: string | null | undefined
+): BusinessExecutionRun | undefined {
+  if (!sessionId) return undefined;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionRun;
+}
+
+export function sessionHasBusinessExecutionRun(sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionRun !== undefined;
+}
+
+export function recordSessionExecutorIntegrationAdapter(sessionId: string, adapter: ExecutorIntegrationAdapter): void {
+  const at = new Date().toISOString();
+  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
+    ...(prev ?? {}),
+    latestExecutorIntegrationAdapter: adapter,
+    updatedAtIso: at,
+  }));
+}
+
+export function resolveSessionExecutorIntegrationAdapter(
+  sessionId: string | null | undefined
+): ExecutorIntegrationAdapter | undefined {
+  if (!sessionId) return undefined;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestExecutorIntegrationAdapter;
+}
+
+export function sessionHasExecutorIntegrationAdapter(sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestExecutorIntegrationAdapter !== undefined;
+}
+
+export function recordSessionExecutorConnectorResult(sessionId: string, result: ExecutorConnectorResult): void {
+  const at = new Date().toISOString();
+  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
+    ...(prev ?? {}),
+    latestExecutorConnectorResult: result,
+    updatedAtIso: at,
+  }));
+}
+
+export function resolveSessionExecutorConnectorResult(
+  sessionId: string | null | undefined
+): ExecutorConnectorResult | undefined {
+  if (!sessionId) return undefined;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestExecutorConnectorResult;
+}
+
+export function sessionHasExecutorConnectorResult(sessionId: string | null | undefined): boolean {
+  if (!sessionId) return false;
+  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestExecutorConnectorResult !== undefined;
 }
 
 export {

@@ -15,8 +15,17 @@ import {
   declareBusinessLaunchIntent,
   actualExecutionAdapterExecutorHintPreview,
   actualExecutionAdapterPayloadSummary,
+  actualLaunchCommandExecutorHintPreview,
+  actualLaunchCommandPayloadSummary,
   createActualExecutionAdapterRequest,
+  createActualLaunchCommand,
+  createExecutorIntegrationAdapter,
   declareExecutionTriggerIntent,
+  invokeBusinessExecution,
+  invokeExecutorConnector,
+  markBusinessExecutionRunCompleted,
+  markBusinessExecutionRunFailed,
+  markBusinessExecutionRunRunning,
   executorLaunchContractContextSummary,
   executorLaunchHintsPreview,
   createBusinessExecutionPackage,
@@ -34,6 +43,10 @@ import {
   recordSessionExecutorLaunchContract,
   recordSessionExecutionTriggerIntent,
   recordSessionActualExecutionAdapterRequest,
+  recordSessionActualLaunchCommand,
+  recordSessionBusinessExecutionRun,
+  recordSessionExecutorConnectorResult,
+  recordSessionExecutorIntegrationAdapter,
   recordSessionBusinessExecutionPackage,
   recordSessionBusinessExecutionRequest,
   recordSessionExecutionAssignment,
@@ -45,6 +58,8 @@ import {
   recordSessionHandoffPrepared,
   setActiveExecutionInput,
   truncateWorkOrderPreview,
+  executorIntegrationAdapterExecutorHint,
+  executorIntegrationAdapterPayloadSummary,
   type ExecutionExecutorType,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { createBusinessExecutionRequest } from "@/lib/workflow/businessExecutionRequest";
@@ -52,6 +67,7 @@ import { approveExecutionRequestDraft } from "@/lib/workflow/executionRequestApp
 import { createExecutionRequestDraft } from "@/lib/workflow/executionRequestDraft";
 import { getPreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
 import { EXECUTION_READINESS_UI_REASONS_MAX } from "@/lib/workflow/executionReadiness";
+import { getBusinessExecutionMonitoringStateForSessionFromPre } from "@/lib/workflow/businessExecutionRunMonitoring";
 import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 
@@ -64,6 +80,10 @@ export default function ExecutionPage() {
   const sessionId = search?.get("sessionId")?.trim() || null;
 
   const pre = useMemo(() => getPreExecutionStateForSession(sessionId), [sessionId, sessionResultsVersion]);
+  const monitoring = useMemo(
+    () => getBusinessExecutionMonitoringStateForSessionFromPre(sessionId, pre),
+    [sessionId, sessionResultsVersion, pre]
+  );
   const snapshot = pre.snapshot;
   const isActive = pre.isSnapshotActive;
   const launchReadiness = pre.launchReadiness;
@@ -101,6 +121,14 @@ export default function ExecutionPage() {
   const isExecutionTriggerIntentCurrent = pre.isExecutionTriggerIntentCurrent;
   const actualExecutionAdapterRequest = pre.actualExecutionAdapterRequest;
   const isActualExecutionAdapterRequestCurrent = pre.isActualExecutionAdapterRequestCurrent;
+  const actualLaunchCommand = pre.actualLaunchCommand;
+  const isActualLaunchCommandCurrent = pre.isActualLaunchCommandCurrent;
+  const businessExecutionRun = pre.businessExecutionRun;
+  const isBusinessExecutionRunCurrent = pre.isBusinessExecutionRunCurrent;
+  const executorIntegrationAdapter = pre.executorIntegrationAdapter;
+  const isExecutorIntegrationAdapterCurrent = pre.isExecutorIntegrationAdapterCurrent;
+  const executorConnectorResult = pre.executorConnectorResult;
+  const isExecutorConnectorResultCurrent = pre.isExecutorConnectorResultCurrent;
   const nextAction = useMemo(
     () =>
       getPreLaunchActionAvailability({
@@ -152,6 +180,29 @@ export default function ExecutionPage() {
     isExecutionTriggerIntentCurrent && !isActualExecutionAdapterRequestCurrent;
   const hasStaleActualExecutionAdapterRequest =
     Boolean(actualExecutionAdapterRequest) && !isActualExecutionAdapterRequestCurrent;
+  const canPrepareLaunchCommand =
+    isActualExecutionAdapterRequestCurrent && !isActualLaunchCommandCurrent;
+  const hasStaleActualLaunchCommand =
+    Boolean(actualLaunchCommand) && !isActualLaunchCommandCurrent;
+  const blockedByActiveBusinessRun = monitoring.blockedByActiveCurrentRun;
+  const canStartBusinessExecution = monitoring.canInvokeOrRetryRun;
+  const hasStaleBusinessExecutionRun = monitoring.hasStoredRunNotCurrent;
+  const invocationPrimaryLabel = blockedByActiveBusinessRun
+    ? "Run in progress"
+    : monitoring.storedRun && (!monitoring.isRunCurrent || monitoring.view?.isTerminal)
+      ? "Retry"
+      : "Start business execution";
+  const canPrepareExecutorIntegrationAdapter =
+    isBusinessExecutionRunCurrent && Boolean(businessExecutionRun) && !isExecutorIntegrationAdapterCurrent;
+  const hasStaleExecutorIntegrationAdapter =
+    Boolean(executorIntegrationAdapter) && !isExecutorIntegrationAdapterCurrent;
+  const canInvokeExecutorConnector =
+    isExecutorIntegrationAdapterCurrent &&
+    Boolean(executorIntegrationAdapter) &&
+    Boolean(businessExecutionRun) &&
+    !isExecutorConnectorResultCurrent;
+  const hasStaleExecutorConnectorResult =
+    Boolean(executorConnectorResult) && !isExecutorConnectorResultCurrent;
 
   const assignExecutor = (executorType: ExecutionExecutorType) => {
     if (!sessionId || !businessExecutionPackage || !canAssignExecutor) return;
@@ -278,6 +329,107 @@ export default function ExecutionPage() {
       sessionId,
     });
     recordSessionActualExecutionAdapterRequest(sessionId, adapter);
+  };
+
+  const prepareActualLaunchCommand = () => {
+    if (!sessionId || !canPrepareLaunchCommand) return;
+    if (!actualExecutionAdapterRequest || !executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) {
+      return;
+    }
+    const command = createActualLaunchCommand({
+      adapter: actualExecutionAdapterRequest,
+      triggerIntent: executionTriggerIntent,
+      contract: executorLaunchContract,
+      bridge: executionBridgePayload,
+      handoffRecord: businessLaunchHandoffRecord,
+      intent: businessLaunchIntent,
+      readiness: executionReadiness,
+      workOrder: executorWorkOrder,
+      sessionId,
+    });
+    recordSessionActualLaunchCommand(sessionId, command);
+  };
+
+  const startBusinessExecution = () => {
+    if (!sessionId || !canStartBusinessExecution) return;
+    if (!actualLaunchCommand || !actualExecutionAdapterRequest || !executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) {
+      return;
+    }
+    const run = invokeBusinessExecution({
+      command: actualLaunchCommand,
+      adapter: actualExecutionAdapterRequest,
+      triggerIntent: executionTriggerIntent,
+      contract: executorLaunchContract,
+      bridge: executionBridgePayload,
+      handoffRecord: businessLaunchHandoffRecord,
+      intent: businessLaunchIntent,
+      readiness: executionReadiness,
+      workOrder: executorWorkOrder,
+      sessionId,
+    });
+    recordSessionBusinessExecutionRun(sessionId, run);
+  };
+
+  const applyBusinessRunControl = (kind: "running" | "completed" | "failed") => {
+    if (!sessionId || !businessExecutionRun || !isBusinessExecutionRunCurrent) return;
+    try {
+      const next =
+        kind === "running"
+          ? markBusinessExecutionRunRunning(businessExecutionRun)
+          : kind === "completed"
+            ? markBusinessExecutionRunCompleted(businessExecutionRun)
+            : markBusinessExecutionRunFailed(businessExecutionRun);
+      recordSessionBusinessExecutionRun(sessionId, next);
+    } catch {
+      /* invalid transition — ignore */
+    }
+  };
+
+  const prepareExecutorIntegrationAdapter = () => {
+    if (!sessionId || !canPrepareExecutorIntegrationAdapter) return;
+    if (!businessExecutionRun || !actualLaunchCommand) return;
+    try {
+      const adapter = createExecutorIntegrationAdapter({
+        run: businessExecutionRun,
+        command: actualLaunchCommand,
+        adapter: actualExecutionAdapterRequest,
+        triggerIntent: executionTriggerIntent,
+        contract: executorLaunchContract,
+        bridge: executionBridgePayload,
+        handoffRecord: businessLaunchHandoffRecord,
+        intent: businessLaunchIntent,
+        readiness: executionReadiness,
+        workOrder: executorWorkOrder,
+        sessionId,
+      });
+      recordSessionExecutorIntegrationAdapter(sessionId, adapter);
+    } catch {
+      /* run not current or invalid chain */
+    }
+  };
+
+  const runExecutorConnector = () => {
+    if (!sessionId || !canInvokeExecutorConnector) return;
+    if (!executorIntegrationAdapter || !businessExecutionRun || !actualLaunchCommand) return;
+    try {
+      const result = invokeExecutorConnector({
+        integrationAdapter: executorIntegrationAdapter,
+        run: businessExecutionRun,
+        command: actualLaunchCommand,
+        adapter: actualExecutionAdapterRequest,
+        triggerIntent: executionTriggerIntent,
+        contract: executorLaunchContract,
+        bridge: executionBridgePayload,
+        handoffRecord: businessLaunchHandoffRecord,
+        intent: businessLaunchIntent,
+        readiness: executionReadiness,
+        workOrder: executorWorkOrder,
+        sessionId,
+      });
+      recordSessionExecutorConnectorResult(sessionId, result);
+    } catch {
+      /* adapter not current */
+    }
   };
 
   const openTasks = () => {
@@ -1348,6 +1500,378 @@ export default function ExecutionPage() {
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
               ) : null}
             </div>
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Actual launch command</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            Final command artifact from the <span style={{ fontWeight: 900 }}>current execution adapter</span> for a future launch invocation only. Not launched — no
+            Stage1/Stage2.
+          </div>
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {!sessionId ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare a launch command.</div>
+            ) : !isActualExecutionAdapterRequestCurrent ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Launch command unavailable until a <span style={{ fontWeight: 900 }}>current adapter request</span> exists.
+              </div>
+            ) : null}
+
+            {hasStaleActualLaunchCommand ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                A stored launch command no longer matches the current adapter. Use “Prepare launch command” again (latest only).
+              </div>
+            ) : null}
+
+            {isActualLaunchCommandCurrent && actualLaunchCommand ? (
+              <div style={{ border: "1px solid #d1fae5", borderRadius: 10, padding: 10, background: "#ecfdf5" }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#047857" }}>Command ready</div>
+                <div style={{ fontSize: 12, color: "#065f46", marginTop: 6, lineHeight: 1.5 }}>
+                  Ready for launch invocation · status <span style={{ fontWeight: 900 }}>command_ready</span> · command{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{actualLaunchCommand.launchCommandId}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#065f46", marginTop: 4, lineHeight: 1.5 }}>
+                  adapter{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{actualLaunchCommand.adapterRequestId}</span> · trigger intent{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{actualLaunchCommand.triggerIntentId}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#065f46", marginTop: 4, lineHeight: 1.5 }}>
+                  executor <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[actualLaunchCommand.executorType]}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#065f46", marginTop: 4, lineHeight: 1.5 }}>
+                  created <span style={{ fontFamily: "ui-monospace, monospace" }}>{actualLaunchCommand.createdAtIso}</span>
+                </div>
+                <div style={{ fontSize: 11, color: "#059669", marginTop: 8, lineHeight: 1.45, fontStyle: "italic" }}>
+                  Command: {actualLaunchCommandPayloadSummary(actualLaunchCommand)}
+                </div>
+                <div style={{ fontSize: 11, color: "#059669", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
+                  Hint: {actualLaunchCommandExecutorHintPreview(actualLaunchCommand)}
+                </div>
+              </div>
+            ) : sessionId && isActualExecutionAdapterRequestCurrent ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No launch command on file for this current adapter yet.</div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <WorkflowActionButton
+                label={isActualLaunchCommandCurrent ? "Command ready" : "Prepare launch command"}
+                variant="primary"
+                disabled={!sessionId || !canPrepareLaunchCommand}
+                onClick={prepareActualLaunchCommand}
+              />
+              {sessionId && !isActualExecutionAdapterRequestCurrent ? (
+                <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
+              ) : null}
+            </div>
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Business execution run</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            Creates the latest tracked business-side run from the <span style={{ fontWeight: 900 }}>current launch command</span> only. In-memory · not Stage1/Stage2 · not
+            environment test flow · not Git.
+          </div>
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {!sessionId ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to start a business execution run.</div>
+            ) : !isActualLaunchCommandCurrent ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Execution unavailable until a <span style={{ fontWeight: 900 }}>current launch command</span> exists.
+              </div>
+            ) : null}
+
+            {hasStaleBusinessExecutionRun ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                A stored run no longer matches the current launch command. Use <span style={{ fontWeight: 900 }}>Retry</span> when the command is current to replace it
+                (latest only).
+              </div>
+            ) : null}
+
+            {sessionId && isActualLaunchCommandCurrent && !isBusinessExecutionRunCurrent ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No business execution run for this current command yet.</div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <WorkflowActionButton
+                label={invocationPrimaryLabel}
+                variant="primary"
+                disabled={!sessionId || !canStartBusinessExecution}
+                onClick={startBusinessExecution}
+              />
+              {sessionId && !isActualLaunchCommandCurrent ? (
+                <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
+              ) : null}
+            </div>
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Execution monitoring</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
+            Observe and lightly control the <span style={{ fontWeight: 900 }}>current</span> business run. Local-only — not executor telemetry, not Stage1/Stage2, not
+            environment tests.
+          </div>
+          {!sessionId ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to view run monitoring.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {monitoring.staleRunView ? (
+                <div
+                  style={{
+                    border: "1px dashed #d1d5db",
+                    borderRadius: 10,
+                    padding: 10,
+                    background: "#f9fafb",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#6b7280" }}>Previous run (not current)</div>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>
+                    {monitoring.staleRunView.progressLabel} ·{" "}
+                    <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.staleRunView.runId}</span>
+                  </div>
+                  {monitoring.hasStaleRunVersusCommand ? (
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
+                      Launch command is current — you can <span style={{ fontWeight: 900 }}>Retry</span> above to start a fresh run.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {monitoring.view ? (
+                <div
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 10,
+                    background:
+                      monitoring.view.status === "failed"
+                        ? "#fef2f2"
+                        : monitoring.view.status === "completed"
+                          ? "#f0fdf4"
+                          : monitoring.view.status === "running"
+                            ? "#eff6ff"
+                            : "#fffbeb",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>Current run</div>
+                  <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                    Run status <span style={{ fontWeight: 900 }}>{monitoring.view.progressLabel}</span> ·{" "}
+                    <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.runId}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                    command{" "}
+                    <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.launchCommandId}</span> · executor{" "}
+                    <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[monitoring.view.executorType]}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>{monitoring.view.latestMessage}</div>
+                  <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                    started <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.startedAtIso}</span>
+                    {" · "}
+                    updated <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.updatedAtIso}</span>
+                  </div>
+                  {monitoring.view.finishedAtIso ? (
+                    <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                      finished <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.finishedAtIso}</span>
+                    </div>
+                  ) : null}
+                  {monitoring.view.resultSummary ? (
+                    <div style={{ fontSize: 11, color: "#166534", marginTop: 6, lineHeight: 1.45, fontStyle: "italic" }}>
+                      {monitoring.view.resultSummary}
+                    </div>
+                  ) : null}
+                  {monitoring.view.errorMessage ? (
+                    <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 6, lineHeight: 1.45, fontStyle: "italic" }}>
+                      {monitoring.view.errorMessage}
+                    </div>
+                  ) : null}
+                  {monitoring.view.note ? (
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>Note: {monitoring.view.note}</div>
+                  ) : null}
+                </div>
+              ) : sessionId && !monitoring.staleRunView ? (
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No business execution run on file for this session.</div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <WorkflowActionButton
+                  label="Mark running"
+                  variant="secondary"
+                  disabled={!sessionId || !monitoring.canMarkRunning}
+                  onClick={() => applyBusinessRunControl("running")}
+                />
+                <WorkflowActionButton
+                  label="Mark completed"
+                  variant="secondary"
+                  disabled={!sessionId || !monitoring.canMarkCompleted}
+                  onClick={() => applyBusinessRunControl("completed")}
+                />
+                <WorkflowActionButton
+                  label="Mark failed"
+                  variant="secondary"
+                  disabled={!sessionId || !monitoring.canMarkFailed}
+                  onClick={() => applyBusinessRunControl("failed")}
+                />
+                <WorkflowActionButton
+                  label="Retry"
+                  variant="secondary"
+                  disabled={!sessionId || !monitoring.canInvokeOrRetryRun || monitoring.blockedByActiveCurrentRun}
+                  onClick={startBusinessExecution}
+                />
+              </div>
+            </div>
+          )}
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor integration</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
+            Turn the <span style={{ fontWeight: 900 }}>current</span> business execution run into a structured integration envelope. Artifact only ·{" "}
+            <span style={{ fontWeight: 900 }}>not connected yet</span> · no external executor calls · not Stage1/Stage2.
+          </div>
+          {!sessionId ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare an integration adapter.</div>
+          ) : !isBusinessExecutionRunCurrent || !businessExecutionRun ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+              Integration unavailable until a <span style={{ fontWeight: 900 }}>current</span> business execution run exists.
+            </div>
+          ) : null}
+          {hasStaleExecutorIntegrationAdapter ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+              A stored adapter no longer matches the current run or launch command. Prepare again after the run is current.
+            </div>
+          ) : null}
+          {isExecutorIntegrationAdapterCurrent && executorIntegrationAdapter ? (
+            <div
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 10,
+                background: "#f9fafb",
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Ready for executor connection</div>
+              <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                Status <span style={{ fontWeight: 900 }}>integration ready</span> · adapter{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorIntegrationAdapter.integrationAdapterId}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                run <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorIntegrationAdapter.runId}</span> · executor{" "}
+                <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[executorIntegrationAdapter.executorType]}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                created <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorIntegrationAdapter.createdAtIso}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8, lineHeight: 1.45, fontStyle: "italic" }}>
+                {executorIntegrationAdapterPayloadSummary(executorIntegrationAdapter.adapterPayload)}
+              </div>
+              <div style={{ fontSize: 11, color: "#059669", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
+                Hint: {executorIntegrationAdapterExecutorHint(executorIntegrationAdapter.adapterPayload)}
+              </div>
+            </div>
+          ) : sessionId && isBusinessExecutionRunCurrent && businessExecutionRun ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+              No integration adapter for this current run yet.
+            </div>
+          ) : null}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <WorkflowActionButton
+              label="Prepare integration adapter"
+              variant="primary"
+              disabled={!sessionId || !canPrepareExecutorIntegrationAdapter}
+              onClick={prepareExecutorIntegrationAdapter}
+            />
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor connector</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
+            Passes the <span style={{ fontWeight: 900 }}>current</span> integration adapter through the connector interface (stub/mock). Not Stage1/Stage2 · not environment procedure test · no Git/PR/merge.
+          </div>
+          {!sessionId ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session for connector invocation.</div>
+          ) : !isExecutorIntegrationAdapterCurrent || !executorIntegrationAdapter ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+              Connector unavailable until a <span style={{ fontWeight: 900 }}>current</span> integration adapter exists.
+            </div>
+          ) : null}
+          {hasStaleExecutorConnectorResult ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+              A stored connector result no longer matches the current integration adapter. Invoke again after the adapter is current.
+            </div>
+          ) : null}
+          {isExecutorConnectorResultCurrent && executorConnectorResult ? (
+            <div
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 10,
+                background:
+                  executorConnectorResult.status === "failed"
+                    ? "#fef2f2"
+                    : executorConnectorResult.status === "completed"
+                      ? "#f0fdf4"
+                      : executorConnectorResult.status === "running"
+                        ? "#eff6ff"
+                        : "#fffbeb",
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Connector status</div>
+              <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                <span style={{ fontWeight: 900 }}>
+                  {executorConnectorResult.status === "accepted"
+                    ? "Connector accepted"
+                    : executorConnectorResult.status === "running"
+                      ? "Running"
+                      : executorConnectorResult.status === "completed"
+                        ? "Completed"
+                        : "Failed"}
+                </span>{" "}
+                · run <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.connectorRunId}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                adapter{" "}
+                <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.integrationAdapterId}</span> · executor{" "}
+                <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[executorConnectorResult.executorType]}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                started <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.startedAtIso}</span>
+              </div>
+              {executorConnectorResult.finishedAtIso ? (
+                <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                  finished <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.finishedAtIso}</span>
+                </div>
+              ) : null}
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8, lineHeight: 1.45, fontStyle: "italic" }}>
+                {executorConnectorResult.message}
+              </div>
+              {executorConnectorResult.resultSummary ? (
+                <div style={{ fontSize: 11, color: "#166534", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
+                  {executorConnectorResult.resultSummary}
+                </div>
+              ) : null}
+              {executorConnectorResult.errorMessage ? (
+                <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
+                  {executorConnectorResult.errorMessage}
+                </div>
+              ) : null}
+            </div>
+          ) : sessionId && isExecutorIntegrationAdapterCurrent && executorIntegrationAdapter ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+              No connector result for this current integration adapter yet.
+            </div>
+          ) : null}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <WorkflowActionButton
+              label="Invoke connector"
+              variant="primary"
+              disabled={!sessionId || !canInvokeExecutorConnector}
+              onClick={runExecutorConnector}
+            />
           </div>
         </WorkflowCard>
       </div>
