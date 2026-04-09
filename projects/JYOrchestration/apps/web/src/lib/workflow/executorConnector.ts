@@ -1,11 +1,12 @@
 /**
  * Executor connector layer: accepts integration adapter, returns a connector result.
  * cursor_executor → cursor pilot path ({@link invokeCursorExecutorConnectorPilot}).
- * reviewer / scm / security / unassigned → {@link stubNonCursorExecutorConnector} (stub only).
+ * reviewer → reviewer pilot path ({@link invokeReviewerExecutorConnectorPilot}).
+ * scm / security / unassigned → {@link stubNonPilotExecutorConnector} (stub only).
  *
  * NOT Stage1/Stage2. NOT env/procedure test execution. No Git/PR/merge here.
  *
- * TODO: Reviewer / SCM / security real connector pilots (same result shape as cursor).
+ * TODO: SCM / security real connector pilots (same result shape as cursor/reviewer).
  * TODO: Connector retry and timeout policy at this boundary.
  */
 
@@ -23,8 +24,15 @@ import type { ExecutorWorkOrder } from "@/lib/workflow/executorWorkOrder";
 import type { ExecutorIntegrationAdapter } from "@/lib/workflow/executorIntegrationAdapter";
 import { isExecutorIntegrationAdapterCurrent } from "@/lib/workflow/executorIntegrationAdapter";
 import { invokeCursorExecutorConnectorPilot } from "@/lib/workflow/cursorExecutorConnectorPilot";
+import { invokeReviewerExecutorConnectorPilot } from "@/lib/workflow/reviewerExecutorConnectorPilot";
 
 export type ExecutorConnectorResultStatus = "accepted" | "running" | "completed" | "failed";
+
+export type ExecutorConnectorErrorCode =
+  | "execution_error"
+  | "timeout"
+  | "invalid_payload"
+  | "connector_unavailable";
 
 export type ExecutorConnectorResult = {
   connectorRunId: string;
@@ -36,9 +44,12 @@ export type ExecutorConnectorResult = {
   finishedAtIso?: string;
   status: ExecutorConnectorResultStatus;
   message: string;
+  /** Optional raw status from pilot/stub layers before normalization. */
+  rawStatus?: string;
   source: "executor_connector";
   resultSummary?: string;
   errorMessage?: string;
+  errorCode?: ExecutorConnectorErrorCode;
   connectorType?: string;
 };
 
@@ -46,44 +57,65 @@ function nextConnectorRunId(): string {
   return `exconn-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+export function normalizeConnectorResult(input: {
+  result: ExecutorConnectorResult;
+  defaultConnectorType: string;
+}): ExecutorConnectorResult {
+  const r = input.result;
+  const normalized: ExecutorConnectorResult = {
+    ...r,
+    source: "executor_connector",
+    connectorType: r.connectorType ?? input.defaultConnectorType,
+  };
+  if (normalized.status === "failed") {
+    return {
+      ...normalized,
+      errorCode: normalized.errorCode ?? "execution_error",
+      errorMessage: normalized.errorMessage ?? normalized.message,
+    };
+  }
+  return normalized;
+}
+
 /**
  * Stub/mock connector for non-cursor executors only.
  * cursor_executor uses {@link invokeCursorExecutorConnectorPilot} — do not add cursor cases here.
  */
-function stubNonCursorExecutorConnector(executorType: ExecutionExecutorType): {
+function stubNonPilotExecutorConnector(executorType: ExecutionExecutorType): {
   status: ExecutorConnectorResultStatus;
   message: string;
   resultSummary?: string;
   errorMessage?: string;
+  rawStatus?: string;
+  errorCode?: ExecutorConnectorErrorCode;
 } {
   const baseMsg = "Stub connector (no external call · not Stage1/Stage2 · not env test).";
   switch (executorType) {
-    case "reviewer":
-      return {
-        status: "completed",
-        message: `${baseMsg} Mock review integration acknowledged.`,
-        resultSummary: "Mock review connector completed locally.",
-      };
     case "scm":
       return {
         status: "completed",
         message: `${baseMsg} Mock SCM integration acknowledged.`,
         resultSummary: "Mock SCM connector completed locally.",
+        rawStatus: "stub_completed",
       };
     case "security":
       return {
         status: "completed",
         message: `${baseMsg} Mock security integration acknowledged.`,
         resultSummary: "Mock security connector completed locally.",
+        rawStatus: "stub_completed",
       };
     case "unassigned":
       return {
         status: "accepted",
         message: `${baseMsg} Placeholder executor — accepted only.`,
         resultSummary: "Unassigned executor stub — no downstream channel.",
+        rawStatus: "stub_accepted",
       };
     case "cursor_executor":
-      throw new Error("stubNonCursorExecutorConnector: cursor_executor must use cursor pilot path");
+      throw new Error("stubNonPilotExecutorConnector: cursor_executor must use pilot path");
+    case "reviewer":
+      throw new Error("stubNonPilotExecutorConnector: reviewer must use pilot path");
   }
 }
 
@@ -127,12 +159,17 @@ export function invokeExecutorConnector(input: {
     throw new Error("invokeExecutorConnector: integration adapter is not current");
   }
   if (input.integrationAdapter.executorType === "cursor_executor") {
-    return invokeCursorExecutorConnectorPilot(input);
+    const pilot = invokeCursorExecutorConnectorPilot(input);
+    return normalizeConnectorResult({ result: pilot, defaultConnectorType: "cursor_pilot_v1" });
+  }
+  if (input.integrationAdapter.executorType === "reviewer") {
+    const pilot = invokeReviewerExecutorConnectorPilot(input);
+    return normalizeConnectorResult({ result: pilot, defaultConnectorType: "reviewer_pilot_v1" });
   }
   const startedAtIso = new Date().toISOString();
-  const stub = stubNonCursorExecutorConnector(input.integrationAdapter.executorType);
+  const stub = stubNonPilotExecutorConnector(input.integrationAdapter.executorType);
   const finishedAtIso = stub.status === "completed" || stub.status === "failed" ? startedAtIso : undefined;
-  return {
+  const result: ExecutorConnectorResult = {
     connectorRunId: nextConnectorRunId(),
     integrationAdapterId: input.integrationAdapter.integrationAdapterId,
     executorType: input.integrationAdapter.executorType,
@@ -142,11 +179,17 @@ export function invokeExecutorConnector(input: {
     finishedAtIso,
     status: stub.status,
     message: stub.message,
+    rawStatus: stub.rawStatus,
     source: "executor_connector",
     resultSummary: stub.resultSummary,
     errorMessage: stub.errorMessage,
+    errorCode: stub.errorCode,
     connectorType: `stub_${input.integrationAdapter.executorType}`,
   };
+  return normalizeConnectorResult({
+    result,
+    defaultConnectorType: `stub_${input.integrationAdapter.executorType}`,
+  });
 }
 
 export function isExecutorConnectorResultCurrent(input: {

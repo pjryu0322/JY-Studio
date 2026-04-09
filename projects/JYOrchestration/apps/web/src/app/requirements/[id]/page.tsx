@@ -22,7 +22,7 @@ import { EXECUTOR_TYPE_LABELS } from "@/lib/workflow/executionAssignment";
 import { businessExecutionRunLatestStrip } from "@/lib/workflow/businessExecutionRun";
 import { executorConnectorResultSubtleNote } from "@/lib/workflow/executorConnector";
 import { executorIntegrationAdapterSubtleNote } from "@/lib/workflow/executorIntegrationAdapter";
-import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
+import { getBusinessExecutionSessionState } from "@/lib/workflow/businessExecutionSelectors";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { WorkflowTabs } from "@/components/workflow/WorkflowTabs";
 import { FeatureSummaryPanel } from "@/components/workflow/FeatureSummaryPanel";
@@ -122,7 +122,7 @@ export default function RequirementDetailPage() {
     [latestSessionId, sessionResultsVersion]
   );
 
-  const pre = useMemo(() => getPreExecutionStateForSession(latestSessionId), [latestSessionId, sessionResultsVersion]);
+  const pre = useMemo(() => getBusinessExecutionSessionState(latestSessionId), [latestSessionId, sessionResultsVersion]);
   const activeExecution = pre.active;
   const isActiveSnapshot = pre.isSnapshotActive;
   const launchReadiness = pre.launchReadiness;

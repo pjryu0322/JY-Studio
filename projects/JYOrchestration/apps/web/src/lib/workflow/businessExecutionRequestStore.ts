@@ -22,6 +22,23 @@ import type { ActualLaunchCommand } from "@/lib/workflow/actualLaunchCommand";
 import type { BusinessExecutionRun } from "@/lib/workflow/businessExecutionRun";
 import type { ExecutorIntegrationAdapter } from "@/lib/workflow/executorIntegrationAdapter";
 import type { ExecutorConnectorResult } from "@/lib/workflow/executorConnector";
+import {
+  recordSessionBusinessExecutionApproval as recordCoreBusinessExecutionApproval,
+  recordSessionBusinessExecutionPackage as recordCoreBusinessExecutionPackage,
+  recordSessionBusinessExecutionRequest as recordCoreBusinessExecutionRequest,
+  recordSessionBusinessExecutionRun as recordCoreBusinessExecutionRun,
+  recordSessionExecutionAssignment as recordCoreExecutionAssignment,
+  resolveSessionBusinessExecutionApproval as resolveCoreBusinessExecutionApproval,
+  resolveSessionBusinessExecutionPackage as resolveCoreBusinessExecutionPackage,
+  resolveSessionBusinessExecutionRequest as resolveCoreBusinessExecutionRequest,
+  resolveSessionBusinessExecutionRun as resolveCoreBusinessExecutionRun,
+  resolveSessionExecutionAssignment as resolveCoreExecutionAssignment,
+  sessionHasBusinessExecutionApproval as hasCoreBusinessExecutionApproval,
+  sessionHasBusinessExecutionPackage as hasCoreBusinessExecutionPackage,
+  sessionHasBusinessExecutionRequest as hasCoreBusinessExecutionRequest,
+  sessionHasBusinessExecutionRun as hasCoreBusinessExecutionRun,
+  sessionHasExecutionAssignment as hasCoreExecutionAssignment,
+} from "@/lib/workflow/businessExecutionEntityRepository";
 import { getSessionEntry, updateSessionEntry } from "@/lib/workflow/sessionResultStoreCore";
 
 type BusinessExecutionRequestEntry = {
@@ -45,24 +62,13 @@ type BusinessExecutionRequestEntry = {
   updatedAtIso?: string;
 };
 
-export function recordSessionBusinessExecutionRequest(sessionId: string, request: BusinessExecutionRequest): void {
-  const at = new Date().toISOString();
-  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
-    ...(prev ?? {}),
-    latestBusinessExecutionRequest: request,
-    updatedAtIso: at,
-  }));
-}
-
-export function resolveSessionBusinessExecutionRequest(sessionId: string | null | undefined): BusinessExecutionRequest | undefined {
-  if (!sessionId) return undefined;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionRequest;
-}
-
-export function sessionHasBusinessExecutionRequest(sessionId: string | null | undefined): boolean {
-  if (!sessionId) return false;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionRequest !== undefined;
-}
+/**
+ * Core entity persistence boundary (latest-only, in-memory for now).
+ * These functions intentionally delegate to the core entity repository to prepare for later DB adoption.
+ */
+export const recordSessionBusinessExecutionRequest = recordCoreBusinessExecutionRequest;
+export const resolveSessionBusinessExecutionRequest = resolveCoreBusinessExecutionRequest;
+export const sessionHasBusinessExecutionRequest = hasCoreBusinessExecutionRequest;
 
 export function isBusinessExecutionRequestForSnapshot(
   request: BusinessExecutionRequest | undefined,
@@ -72,62 +78,17 @@ export function isBusinessExecutionRequestForSnapshot(
   return request.snapshotId === snapshotId;
 }
 
-export function recordSessionBusinessExecutionApproval(sessionId: string, approval: BusinessExecutionApproval): void {
-  const at = new Date().toISOString();
-  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
-    ...(prev ?? {}),
-    latestBusinessExecutionApproval: approval,
-    updatedAtIso: at,
-  }));
-}
+export const recordSessionBusinessExecutionApproval = recordCoreBusinessExecutionApproval;
+export const resolveSessionBusinessExecutionApproval = resolveCoreBusinessExecutionApproval;
+export const sessionHasBusinessExecutionApproval = hasCoreBusinessExecutionApproval;
 
-export function resolveSessionBusinessExecutionApproval(sessionId: string | null | undefined): BusinessExecutionApproval | undefined {
-  if (!sessionId) return undefined;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionApproval;
-}
+export const recordSessionBusinessExecutionPackage = recordCoreBusinessExecutionPackage;
+export const resolveSessionBusinessExecutionPackage = resolveCoreBusinessExecutionPackage;
+export const sessionHasBusinessExecutionPackage = hasCoreBusinessExecutionPackage;
 
-export function sessionHasBusinessExecutionApproval(sessionId: string | null | undefined): boolean {
-  if (!sessionId) return false;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionApproval !== undefined;
-}
-
-export function recordSessionBusinessExecutionPackage(sessionId: string, pkg: BusinessExecutionPackage): void {
-  const at = new Date().toISOString();
-  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
-    ...(prev ?? {}),
-    latestBusinessExecutionPackage: pkg,
-    updatedAtIso: at,
-  }));
-}
-
-export function resolveSessionBusinessExecutionPackage(sessionId: string | null | undefined): BusinessExecutionPackage | undefined {
-  if (!sessionId) return undefined;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionPackage;
-}
-
-export function sessionHasBusinessExecutionPackage(sessionId: string | null | undefined): boolean {
-  if (!sessionId) return false;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionPackage !== undefined;
-}
-
-export function recordSessionExecutionAssignment(sessionId: string, assignment: ExecutionAssignment): void {
-  const at = new Date().toISOString();
-  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
-    ...(prev ?? {}),
-    latestExecutionAssignment: assignment,
-    updatedAtIso: at,
-  }));
-}
-
-export function resolveSessionExecutionAssignment(sessionId: string | null | undefined): ExecutionAssignment | undefined {
-  if (!sessionId) return undefined;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestExecutionAssignment;
-}
-
-export function sessionHasExecutionAssignment(sessionId: string | null | undefined): boolean {
-  if (!sessionId) return false;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestExecutionAssignment !== undefined;
-}
+export const recordSessionExecutionAssignment = recordCoreExecutionAssignment;
+export const resolveSessionExecutionAssignment = resolveCoreExecutionAssignment;
+export const sessionHasExecutionAssignment = hasCoreExecutionAssignment;
 
 export function recordSessionExecutionAssignmentHandoffPayload(
   sessionId: string,
@@ -339,26 +300,9 @@ export function sessionHasActualLaunchCommand(sessionId: string | null | undefin
   return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestActualLaunchCommand !== undefined;
 }
 
-export function recordSessionBusinessExecutionRun(sessionId: string, run: BusinessExecutionRun): void {
-  const at = new Date().toISOString();
-  updateSessionEntry<BusinessExecutionRequestEntry>(sessionId, (prev) => ({
-    ...(prev ?? {}),
-    latestBusinessExecutionRun: run,
-    updatedAtIso: at,
-  }));
-}
-
-export function resolveSessionBusinessExecutionRun(
-  sessionId: string | null | undefined
-): BusinessExecutionRun | undefined {
-  if (!sessionId) return undefined;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionRun;
-}
-
-export function sessionHasBusinessExecutionRun(sessionId: string | null | undefined): boolean {
-  if (!sessionId) return false;
-  return getSessionEntry<BusinessExecutionRequestEntry>(sessionId)?.latestBusinessExecutionRun !== undefined;
-}
+export const recordSessionBusinessExecutionRun = recordCoreBusinessExecutionRun;
+export const resolveSessionBusinessExecutionRun = resolveCoreBusinessExecutionRun;
+export const sessionHasBusinessExecutionRun = hasCoreBusinessExecutionRun;
 
 export function recordSessionExecutorIntegrationAdapter(sessionId: string, adapter: ExecutorIntegrationAdapter): void {
   const at = new Date().toISOString();
