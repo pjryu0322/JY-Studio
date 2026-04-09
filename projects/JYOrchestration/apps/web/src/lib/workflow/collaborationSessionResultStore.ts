@@ -355,6 +355,11 @@ export {
 } from "@/lib/workflow/executorConnector";
 
 export {
+  invokeCursorExecutorConnectorPilot,
+  type CursorExecutorConnectorPilotInput,
+} from "@/lib/workflow/cursorExecutorConnectorPilot";
+
+export {
   resolveExecutorConnectorResult,
   isCurrentExecutorConnectorResult,
   getExecutorConnectorStateForSession,
