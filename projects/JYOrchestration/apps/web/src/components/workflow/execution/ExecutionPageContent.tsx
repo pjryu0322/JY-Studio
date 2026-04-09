@@ -19,8 +19,7 @@ import {
 import type { ExecutionPageActionState, PreExecutionSessionSelector } from "@/lib/workflow/businessExecutionSelectors";
 import type { BusinessExecutionMonitoringState } from "@/lib/workflow/businessExecutionRunMonitoring";
 import type { PreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
-import type { BusinessExecutionRunEvent } from "@/lib/workflow/businessExecutionRunEvent";
-import { getExecutionRunMonitoringView, getExecutionSummaryView, type ExecutionTone } from "@/components/workflow/execution/executionPageViewModels";
+import type { ExecutionPageViews, ExecutionTone } from "@/lib/workflow/executionViewState";
 
 export type ExecutionPageContentActions = {
   openTasks: () => void;
@@ -56,7 +55,7 @@ export type ExecutionPageContentProps = {
   monitoring: BusinessExecutionMonitoringState;
   actions: ExecutionPageActionState;
   nextAction: PreLaunchActionAvailability;
-  timeline: { events: BusinessExecutionRunEvent[] };
+  views: ExecutionPageViews;
   pageActions: ExecutionPageContentActions;
 };
 
@@ -71,8 +70,29 @@ function inlineKpi(label: string, value: string, tone: "neutral" | "good" | "war
   );
 }
 
+function progressRowView(row: ExecutionPageViews["progress"]["executionRequest"]) {
+  const color =
+    row.tone === "good" ? "#166534" : row.tone === "warn" ? "#b45309" : row.tone === "bad" ? "#b91c1c" : "#111827";
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 4,
+        padding: "10px 12px",
+        border: "1px solid #e5e7eb",
+        borderRadius: 10,
+        background: "#fafafa",
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>{row.title}</div>
+      <div style={{ fontSize: 13, fontWeight: 900, color }}>{row.statusLabel}</div>
+      {row.detail ? <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>{row.detail}</div> : null}
+    </div>
+  );
+}
+
 export function ExecutionPageContent(props: ExecutionPageContentProps) {
-  const { sessionId, requirementId, pre, monitoring, actions, nextAction, timeline, pageActions } = props;
+  const { sessionId, requirementId, pre, monitoring, actions, nextAction, views, pageActions } = props;
 
   const snapshot = pre.snapshot;
   const isActive = pre.isSnapshotActive;
@@ -126,16 +146,9 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
   const executorConnectorResult = pre.executorConnectorResult;
   const isExecutorConnectorResultCurrent = pre.isExecutorConnectorResultCurrent;
 
-  const summary = getExecutionSummaryView({
-    sessionId,
-    requirementId,
-    pre,
-    monitoring,
-    actions,
-    nextAction,
-  });
-
-  const runMonitoringView = getExecutionRunMonitoringView({ sessionId, monitoring, timeline });
+  const summary = views.summary;
+  const runAndConnector = views.runAndConnector;
+  const recentEvents = views.runMeta.recentEvents;
 
   function toneOrNeutral(tone: ExecutionTone | undefined): ExecutionTone {
     return tone ?? "neutral";
@@ -166,31 +179,43 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
                 {summary.kpis.map((k) => inlineKpi(k.label, k.value, toneOrNeutral(k.tone)))}
               </div>
 
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <WorkflowActionButton label="Open Tasks workspace" variant="secondary" onClick={pageActions.openTasks} />
-                {summary.primaryAction.key === "none" ? (
-                  <div style={{ fontSize: 12, color: "#6b7280" }}>{summary.primaryAction.note ?? "Up to date."}</div>
-                ) : (
-                  <WorkflowActionButton
-                    label={summary.primaryAction.label}
-                    variant="primary"
-                    disabled={summary.primaryAction.disabled}
-                    onClick={() => {
-                      const key = summary.primaryAction.key;
-                      if (key === "openTasks") pageActions.openTasks();
-                      else if (key === "selectActiveInput") pageActions.selectActiveInput();
-                      else if (key === "prepareHandoffPrepared") pageActions.prepareHandoffPrepared();
-                      else if (key === "createExecutionRequestDraft") pageActions.createExecutionRequestDraft();
-                      else if (key === "approveExecutionDraft") pageActions.approveExecutionDraft();
-                      else if (key === "recordBusinessExecutionRequest") pageActions.recordBusinessExecutionRequest();
-                      else if (key === "approveBusinessExecution") pageActions.approveBusinessExecution();
-                      else if (key === "createBusinessExecutionPackage") pageActions.createBusinessExecutionPackage();
-                      else if (key === "startBusinessExecution") pageActions.startBusinessExecution();
-                      else if (key === "prepareExecutorIntegrationAdapter") pageActions.prepareExecutorIntegrationAdapter();
-                      else if (key === "runExecutorConnector") pageActions.runExecutorConnector();
-                    }}
-                  />
-                )}
+              <div
+                style={{
+                  border: summary.primaryAction.key === "none" ? "1px solid #e5e7eb" : "2px solid #2563eb",
+                  borderRadius: 12,
+                  padding: 12,
+                  background: summary.primaryAction.key === "none" ? "#fafafa" : "#eff6ff",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 900, color: "#1e40af", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                  Next action
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <WorkflowActionButton label="Open Tasks workspace" variant="secondary" onClick={pageActions.openTasks} />
+                  {summary.primaryAction.key === "none" ? (
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>{summary.primaryAction.note ?? "Up to date."}</div>
+                  ) : (
+                    <WorkflowActionButton
+                      label={summary.primaryAction.label}
+                      variant="primary"
+                      disabled={summary.primaryAction.disabled}
+                      onClick={() => {
+                        const key = summary.primaryAction.key;
+                        if (key === "openTasks") pageActions.openTasks();
+                        else if (key === "selectActiveInput") pageActions.selectActiveInput();
+                        else if (key === "prepareHandoffPrepared") pageActions.prepareHandoffPrepared();
+                        else if (key === "createExecutionRequestDraft") pageActions.createExecutionRequestDraft();
+                        else if (key === "approveExecutionDraft") pageActions.approveExecutionDraft();
+                        else if (key === "recordBusinessExecutionRequest") pageActions.recordBusinessExecutionRequest();
+                        else if (key === "approveBusinessExecution") pageActions.approveBusinessExecution();
+                        else if (key === "createBusinessExecutionPackage") pageActions.createBusinessExecutionPackage();
+                        else if (key === "startBusinessExecution") pageActions.startBusinessExecution();
+                        else if (key === "prepareExecutorIntegrationAdapter") pageActions.prepareExecutorIntegrationAdapter();
+                        else if (key === "runExecutorConnector") pageActions.runExecutorConnector();
+                      }}
+                    />
+                  )}
+                </div>
               </div>
 
               {summary.primaryAction.note ? (
@@ -203,268 +228,20 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
           )}
         </WorkflowCard>
 
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Current run</div>
-
-          <WorkflowCard padding={12}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Execution monitoring</div>
-            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
-              Observe and lightly control the <span style={{ fontWeight: 900 }}>current</span> business run. Local-only — not executor telemetry, not Stage1/Stage2, not
-              environment tests.
-            </div>
-            {!sessionId ? (
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to view run monitoring.</div>
-            ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {monitoring.staleRunView ? (
-                  <div
-                    style={{
-                      border: "1px dashed #d1d5db",
-                      borderRadius: 10,
-                      padding: 10,
-                      background: "#f9fafb",
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 900, color: "#6b7280" }}>Previous run (not current)</div>
-                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>
-                      {monitoring.staleRunView.progressLabel} ·{" "}
-                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.staleRunView.runId}</span>
-                    </div>
-                    {monitoring.hasStaleRunVersusCommand ? (
-                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
-                        Launch command is current — you can <span style={{ fontWeight: 900 }}>Retry</span> in “Start / Retry run”.
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {monitoring.view ? (
-                  <div
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 10,
-                      padding: 10,
-                      background:
-                        monitoring.view.status === "failed"
-                          ? "#fef2f2"
-                          : monitoring.view.status === "completed"
-                            ? "#f0fdf4"
-                            : monitoring.view.status === "running"
-                              ? "#eff6ff"
-                              : "#fffbeb",
-                    }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>Current run</div>
-                    <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
-                      Run status <span style={{ fontWeight: 900 }}>{monitoring.view.progressLabel}</span> ·{" "}
-                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.runId}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
-                      command{" "}
-                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.launchCommandId}</span> · executor{" "}
-                      <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[monitoring.view.executorType]}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>{monitoring.view.latestMessage}</div>
-                    <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
-                      started <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.startedAtIso}</span>
-                      {" · "}
-                      updated <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.updatedAtIso}</span>
-                    </div>
-                    {monitoring.view.finishedAtIso ? (
-                      <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
-                        finished <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.finishedAtIso}</span>
-                      </div>
-                    ) : null}
-                    {monitoring.view.resultSummary ? (
-                      <div style={{ fontSize: 11, color: "#166534", marginTop: 6, lineHeight: 1.45, fontStyle: "italic" }}>
-                        {monitoring.view.resultSummary}
-                      </div>
-                    ) : null}
-                    {monitoring.view.errorMessage ? (
-                      <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 6, lineHeight: 1.45, fontStyle: "italic" }}>
-                        {monitoring.view.errorMessage}
-                      </div>
-                    ) : null}
-                    {monitoring.view.note ? (
-                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>Note: {monitoring.view.note}</div>
-                    ) : null}
-                  </div>
-                ) : sessionId && !monitoring.staleRunView ? (
-                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No business execution run on file for this session.</div>
-                ) : null}
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <WorkflowActionButton
-                    label="Mark running"
-                    variant="secondary"
-                    disabled={!sessionId || !monitoring.canMarkRunning}
-                    onClick={() => pageActions.applyBusinessRunControl("running")}
-                  />
-                  <WorkflowActionButton
-                    label="Mark completed"
-                    variant="secondary"
-                    disabled={!sessionId || !monitoring.canMarkCompleted}
-                    onClick={() => pageActions.applyBusinessRunControl("completed")}
-                  />
-                  <WorkflowActionButton
-                    label="Mark failed"
-                    variant="secondary"
-                    disabled={!sessionId || !monitoring.canMarkFailed}
-                    onClick={() => pageActions.applyBusinessRunControl("failed")}
-                  />
-                </div>
-
-                {monitoring.view ? (
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>Recent execution events</div>
-                    {runMonitoringView.recentEvents.length === 0 ? (
-                      <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No run events recorded yet.</div>
-                    ) : (
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {runMonitoringView.recentEvents.map((e) => (
-                          <div
-                            key={e.eventId}
-                            style={{
-                              display: "flex",
-                              gap: 10,
-                              alignItems: "baseline",
-                              padding: "6px 8px",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: 8,
-                              background: "#ffffff",
-                            }}
-                          >
-                            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: "#6b7280", minWidth: 170 }}>
-                              {e.createdAtIso}
-                            </div>
-                            <div style={{ fontSize: 12, color: "#111827", lineHeight: 1.4, flex: 1 }}>{e.message}</div>
-                            {e.errorCode ? (
-                              <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: "#6b7280" }}>{e.errorCode}</div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </WorkflowCard>
-
-          <WorkflowCard padding={12}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor connector</div>
-            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
-              Cursor pilot for <span style={{ fontWeight: 900 }}>cursor_executor</span> and Reviewer pilot for <span style={{ fontWeight: 900 }}>reviewer</span>.{" "}
-              <span style={{ fontWeight: 900 }}>SCM</span> and <span style={{ fontWeight: 900 }}>security</span> stay <span style={{ fontWeight: 900 }}>stubbed</span>. Not
-              Stage1/Stage2. No Git/PR/merge.
-            </div>
-            {!sessionId ? (
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session for connector invocation.</div>
-            ) : !isExecutorIntegrationAdapterCurrent || !executorIntegrationAdapter ? (
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                Connector unavailable until a <span style={{ fontWeight: 900 }}>current</span> integration adapter exists.
-              </div>
-            ) : null}
-            {actions.hasStaleExecutorConnectorResult ? (
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
-                A stored connector result no longer matches the current integration adapter. Invoke again after the adapter is current.
-              </div>
-            ) : null}
-            {isExecutorConnectorResultCurrent && executorConnectorResult ? (
-              <div
-                style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 10,
-                  padding: 10,
-                  background:
-                    executorConnectorResult.status === "failed"
-                      ? "#fef2f2"
-                      : executorConnectorResult.status === "completed"
-                        ? "#f0fdf4"
-                        : executorConnectorResult.status === "running"
-                          ? "#eff6ff"
-                          : "#fffbeb",
-                  marginBottom: 10,
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Connector status</div>
-                {executorConnectorResult.connectorType ? (
-                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
-                    {executorConnectorResult.connectorType.startsWith("cursor_pilot")
-                      ? "Cursor pilot connector"
-                      : executorConnectorResult.connectorType.startsWith("reviewer_pilot")
-                        ? "Reviewer pilot connector"
-                        : "Stub connector"}{" "}
-                    · <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.connectorType}</span>
-                  </div>
-                ) : null}
-                <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
-                  <span style={{ fontWeight: 900 }}>
-                    {executorConnectorResult.status === "accepted"
-                      ? "Connector accepted"
-                      : executorConnectorResult.status === "running"
-                        ? "Running"
-                        : executorConnectorResult.status === "completed"
-                          ? "Completed"
-                          : "Failed"}
-                  </span>{" "}
-                  · run <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.connectorRunId}</span>
-                </div>
-                <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
-                  adapter <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.integrationAdapterId}</span> · executor{" "}
-                  <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[executorConnectorResult.executorType]}</span>
-                </div>
-                <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
-                  started <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.startedAtIso}</span>
-                </div>
-                {executorConnectorResult.finishedAtIso ? (
-                  <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
-                    finished <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.finishedAtIso}</span>
-                  </div>
-                ) : null}
-                <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8, lineHeight: 1.45, fontStyle: "italic" }}>
-                  {executorConnectorResult.message}
-                </div>
-                {executorConnectorResult.resultSummary ? (
-                  <div style={{ fontSize: 11, color: "#166534", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
-                    {executorConnectorResult.resultSummary}
-                  </div>
-                ) : null}
-                {executorConnectorResult.errorCode ? (
-                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
-                    errorCode <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.errorCode}</span>
-                  </div>
-                ) : null}
-                {executorConnectorResult.errorMessage ? (
-                  <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
-                    {executorConnectorResult.errorMessage}
-                  </div>
-                ) : null}
-              </div>
-            ) : sessionId && isExecutorIntegrationAdapterCurrent && executorIntegrationAdapter ? (
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
-                No connector result for this current integration adapter yet.
-              </div>
-            ) : null}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <WorkflowActionButton
-                label="Invoke connector"
-                variant="primary"
-                disabled={!sessionId || !actions.canInvokeExecutorConnector}
-                onClick={pageActions.runExecutorConnector}
-              />
-              <WorkflowActionButton
-                label="Retry"
-                variant="secondary"
-                disabled={!sessionId || !actions.canRetryExecutorConnector}
-                onClick={pageActions.retryExecutorConnector}
-              />
-            </div>
-          </WorkflowCard>
-        </div>
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Workflow progress</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
+            High-level checkpoints. Expand each section below for the actions that advance the workflow.
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {progressRowView(views.progress.executionRequest)}
+            {progressRowView(views.progress.packageAndAssignment)}
+            {progressRowView(views.progress.executionPreparation)}
+          </div>
+        </WorkflowCard>
 
         <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Execution progress</div>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Workflow steps</div>
 
           <details open style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#ffffff" }}>
             <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, color: "#111827" }}>Execution request</summary>
@@ -662,7 +439,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
           </details>
 
           <details style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#ffffff" }}>
-            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, color: "#111827" }}>Package and assignment</summary>
+            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, color: "#111827" }}>Package & assignment</summary>
             <div style={{ marginTop: 10, display: "grid", gap: 14 }}>
               <WorkflowCard padding={12}>
                 <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Business execution package</div>
@@ -760,134 +537,332 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
                   </div>
                 </div>
               </WorkflowCard>
+            </div>
+          </details>
 
+          <details open style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#ffffff" }}>
+            <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, color: "#111827" }}>Execution preparation</summary>
+            <div style={{ marginTop: 10, display: "grid", gap: 14 }}>
               <WorkflowCard padding={12}>
-                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor handoff payload</div>
-                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                  Stable bundle for a future executor consumer from the current assignment. Does not start Stage1/Stage2.
-                </div>
-                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  {!sessionId ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare a handoff payload.</div>
-                  ) : !isExecutionPackageAssigned ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                      Handoff unavailable until the current package has a valid <span style={{ fontWeight: 900 }}>executor assignment</span>.
-                    </div>
-                  ) : null}
-                  {actions.hasNonCurrentHandoffPayload ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                      A stored handoff payload does not match the current assignment. Prepare again to replace it (latest only).
-                    </div>
-                  ) : null}
-                  {isExecutionAssignmentHandoffCurrent && executionAssignmentHandoffPayload ? (
-                    <div style={{ border: "1px solid #fed7aa", borderRadius: 10, padding: 10, background: "#fffbeb" }}>
-                      <div style={{ fontSize: 13, fontWeight: 900, color: "#9a3412" }}>Handoff ready</div>
-                      <div style={{ fontSize: 12, color: "#c2410c", marginTop: 6, lineHeight: 1.5 }}>
-                        Status <span style={{ fontWeight: 900 }}>handoff_ready</span> • handoff{" "}
-                        <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionAssignmentHandoffPayload.handoffId}</span>
-                      </div>
-                    </div>
-                  ) : sessionId && isExecutionPackageAssigned ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No handoff payload yet for this assignment.</div>
-                  ) : null}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <WorkflowActionButton
-                      label={isExecutionAssignmentHandoffCurrent ? "Handoff prepared" : "Prepare executor handoff"}
-                      variant="primary"
-                      disabled={!sessionId || !actions.canCreateHandoffPayload}
-                      onClick={pageActions.prepareExecutorHandoffPayload}
-                    />
-                    {sessionId && !isExecutionPackageAssigned ? (
-                      <WorkflowActionButton label="Open Tasks workspace" onClick={pageActions.openTasks} />
-                    ) : null}
+                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Execution readiness</div>
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Derived check only — does not start execution or Stage1/Stage2.</div>
+                <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 13, color: "#111827" }}>
+                    Status:{" "}
+                    {executionReadiness.status === "ready" ? (
+                      <span style={{ fontWeight: 900, color: "#166534" }}>Ready</span>
+                    ) : (
+                      <span style={{ fontWeight: 900, color: "#b45309" }}>Not ready</span>
+                    )}
                   </div>
                 </div>
               </WorkflowCard>
 
               <WorkflowCard padding={12}>
-                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor intake contract</div>
-                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                  Executor-facing structured input from the current handoff. Does not start Stage1/Stage2.
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Launch intent</div>
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  {!sessionId ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare an intake contract.</div>
-                  ) : !isExecutionAssignmentHandoffCurrent ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                      Intake unavailable until a <span style={{ fontWeight: 900 }}>current handoff payload</span> exists.
-                    </div>
-                  ) : null}
-                  {actions.hasNonCurrentIntakeContract ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                      A stored intake contract does not match the current handoff. Prepare again to replace it (latest only).
-                    </div>
-                  ) : null}
-                  {isExecutorIntakeContractCurrent && executorIntakeContract ? (
-                    <div style={{ border: "1px solid #d1fae5", borderRadius: 10, padding: 10, background: "#ecfdf5" }}>
-                      <div style={{ fontSize: 13, fontWeight: 900, color: "#065f46" }}>Intake prepared</div>
-                      <div style={{ fontSize: 12, color: "#047857", marginTop: 6, lineHeight: 1.5 }}>
-                        intake <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorIntakeContract.intakeId}</span> •{" "}
-                        <span style={{ fontStyle: "italic" }}>{executorIntakePreviewLine(executorIntakeContract)}</span>
-                      </div>
-                    </div>
-                  ) : sessionId && isExecutionAssignmentHandoffCurrent ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No intake contract yet.</div>
-                  ) : null}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <WorkflowActionButton
-                      label={isExecutorIntakeContractCurrent ? "Intake prepared" : "Prepare executor input"}
-                      variant="primary"
-                      disabled={!sessionId || !actions.canCreateIntakeContract}
-                      onClick={pageActions.prepareExecutorIntakeContract}
-                    />
-                  </div>
+                  <WorkflowActionButton
+                    label={isBusinessLaunchIntentCurrent ? "Intent declared" : "Declare launch intent"}
+                    variant="primary"
+                    disabled={!sessionId || !actions.canDeclareLaunchIntent}
+                    onClick={pageActions.declareLaunchIntent}
+                  />
                 </div>
               </WorkflowCard>
 
               <WorkflowCard padding={12}>
-                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor work order</div>
-                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                  Actionable instructions for the executor from the current intake. Does not start Stage1/Stage2.
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Launch handoff</div>
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  {!sessionId ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare a work order.</div>
-                  ) : !isExecutorIntakeContractCurrent ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                      Work order unavailable until a <span style={{ fontWeight: 900 }}>current intake contract</span> exists.
-                    </div>
-                  ) : null}
-                  {actions.hasNonCurrentWorkOrder ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                      A stored work order does not match the current intake. Prepare again to replace it (latest only).
-                    </div>
-                  ) : null}
-                  {isExecutorWorkOrderCurrent && executorWorkOrder ? (
-                    <div style={{ border: "1px solid #e0e7ff", borderRadius: 10, padding: 10, background: "#eef2ff" }}>
-                      <div style={{ fontSize: 13, fontWeight: 900, color: "#3730a3" }}>Work order prepared</div>
-                      <div style={{ fontSize: 11, color: "#6366f1", marginTop: 6, lineHeight: 1.45 }}>
-                        Objective: {truncateWorkOrderPreview(executorWorkOrder.objective, 96)}
-                      </div>
-                      <div style={{ fontSize: 11, color: "#6366f1", marginTop: 4, lineHeight: 1.45 }}>
-                        Success: {truncateWorkOrderPreview(executorWorkOrder.successCriteria, 96)}
-                      </div>
-                    </div>
-                  ) : sessionId && isExecutorIntakeContractCurrent ? (
-                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No work order yet.</div>
-                  ) : null}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <WorkflowActionButton
-                      label={isExecutorWorkOrderCurrent ? "Work order prepared" : "Prepare executor work order"}
-                      variant="primary"
-                      disabled={!sessionId || !actions.canCreateWorkOrder}
-                      onClick={pageActions.prepareExecutorWorkOrder}
-                    />
-                  </div>
+                  <WorkflowActionButton
+                    label={isBusinessLaunchHandoffRecordCurrent ? "Handoff recorded" : "Prepare launch handoff record"}
+                    variant="primary"
+                    disabled={!sessionId || !actions.canRecordLaunchHandoff}
+                    onClick={pageActions.prepareLaunchHandoffRecord}
+                  />
                 </div>
               </WorkflowCard>
             </div>
           </details>
         </div>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Current run & monitoring</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 12 }}>
+            Observe the <span style={{ fontWeight: 900 }}>current</span> business run, start or retry when the launch command is current, prepare the integration envelope, then
+            invoke the executor connector. Local-only — not Stage1/Stage2, not Git/PR/merge.
+          </div>
+          {!sessionId ? (
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to use run monitoring and the connector.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 14 }}>
+              {monitoring.staleRunView ? (
+                <div
+                  style={{
+                    border: "1px dashed #d1d5db",
+                    borderRadius: 10,
+                    padding: 10,
+                    background: "#f9fafb",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#6b7280" }}>Previous run (not current)</div>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>
+                    {monitoring.staleRunView.progressLabel} · <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.staleRunView.runId}</span>
+                  </div>
+                  {monitoring.hasStaleRunVersusCommand ? (
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
+                      Launch command is current — use <span style={{ fontWeight: 900 }}>{runAndConnector.businessRunRetryLabel}</span> below.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {monitoring.view ? (
+                <div
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 10,
+                    background:
+                      monitoring.view.status === "failed"
+                        ? "#fef2f2"
+                        : monitoring.view.status === "completed"
+                          ? "#f0fdf4"
+                          : monitoring.view.status === "running"
+                            ? "#eff6ff"
+                            : "#fffbeb",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>Run status</div>
+                  <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                    <span style={{ fontWeight: 900 }}>{monitoring.view.progressLabel}</span> ·{" "}
+                    <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.runId}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                    command <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.launchCommandId}</span> · executor{" "}
+                    <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[monitoring.view.executorType]}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6, lineHeight: 1.45 }}>{monitoring.view.latestMessage}</div>
+                  <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                    started <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.startedAtIso}</span>
+                    {" · "}
+                    updated <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.updatedAtIso}</span>
+                  </div>
+                  {monitoring.view.finishedAtIso ? (
+                    <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                      finished <span style={{ fontFamily: "ui-monospace, monospace" }}>{monitoring.view.finishedAtIso}</span>
+                    </div>
+                  ) : null}
+                  {monitoring.view.resultSummary ? (
+                    <div style={{ fontSize: 11, color: "#166534", marginTop: 6, lineHeight: 1.45, fontStyle: "italic" }}>{monitoring.view.resultSummary}</div>
+                  ) : null}
+                  {monitoring.view.errorMessage ? (
+                    <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 6, lineHeight: 1.45, fontStyle: "italic" }}>{monitoring.view.errorMessage}</div>
+                  ) : null}
+                  {monitoring.view.note ? (
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>Note: {monitoring.view.note}</div>
+                  ) : null}
+                </div>
+              ) : sessionId && !monitoring.staleRunView ? (
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No business execution run on file for this session.</div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <WorkflowActionButton
+                  label="Mark running"
+                  variant="secondary"
+                  disabled={!sessionId || !monitoring.canMarkRunning}
+                  onClick={() => pageActions.applyBusinessRunControl("running")}
+                />
+                <WorkflowActionButton
+                  label="Mark completed"
+                  variant="secondary"
+                  disabled={!sessionId || !monitoring.canMarkCompleted}
+                  onClick={() => pageActions.applyBusinessRunControl("completed")}
+                />
+                <WorkflowActionButton
+                  label="Mark failed"
+                  variant="secondary"
+                  disabled={!sessionId || !monitoring.canMarkFailed}
+                  onClick={() => pageActions.applyBusinessRunControl("failed")}
+                />
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>Start / retry business run</div>
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+                  Creates the latest tracked business-side run from the <span style={{ fontWeight: 900 }}>current launch command</span> only. Not Stage1/Stage2. Not Git.
+                </div>
+                {runAndConnector.businessRunRetryBlocked ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+                    A run is already in progress for the current command — finish or mark terminal before starting another.
+                  </div>
+                ) : null}
+                <WorkflowActionButton
+                  label={actions.invocationPrimaryLabel}
+                  variant="primary"
+                  disabled={!sessionId || !actions.canStartBusinessExecution}
+                  onClick={pageActions.startBusinessExecution}
+                />
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>Executor integration adapter</div>
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+                  Turn the <span style={{ fontWeight: 900 }}>current</span> business execution run into a structured integration envelope. Artifact only.
+                </div>
+                {isExecutorIntegrationAdapterCurrent && executorIntegrationAdapter ? (
+                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 10, lineHeight: 1.45, fontStyle: "italic" }}>
+                    {executorIntegrationAdapterPayloadSummary(executorIntegrationAdapter.adapterPayload)}
+                    <br />
+                    Hint: {executorIntegrationAdapterExecutorHint(executorIntegrationAdapter.adapterPayload)}
+                  </div>
+                ) : null}
+                <WorkflowActionButton
+                  label="Prepare integration adapter"
+                  variant="primary"
+                  disabled={!sessionId || !actions.canPrepareExecutorIntegrationAdapter}
+                  onClick={pageActions.prepareExecutorIntegrationAdapter}
+                />
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>Executor connector</div>
+                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+                  Cursor pilot for <span style={{ fontWeight: 900 }}>cursor_executor</span> and Reviewer pilot for <span style={{ fontWeight: 900 }}>reviewer</span>.{" "}
+                  <span style={{ fontWeight: 900 }}>SCM</span> and <span style={{ fontWeight: 900 }}>security</span> stay <span style={{ fontWeight: 900 }}>stubbed</span>.
+                </div>
+                {!isExecutorIntegrationAdapterCurrent || !executorIntegrationAdapter ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+                    Connector unavailable until a <span style={{ fontWeight: 900 }}>current</span> integration adapter exists.
+                  </div>
+                ) : null}
+                {runAndConnector.connectorStaleNote ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>{runAndConnector.connectorStaleNote}</div>
+                ) : null}
+                {isExecutorConnectorResultCurrent && executorConnectorResult ? (
+                  <div
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: 10,
+                      background:
+                        executorConnectorResult.status === "failed"
+                          ? "#fef2f2"
+                          : executorConnectorResult.status === "completed"
+                            ? "#f0fdf4"
+                            : executorConnectorResult.status === "running"
+                              ? "#eff6ff"
+                              : "#fffbeb",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Connector status</div>
+                    {executorConnectorResult.connectorType ? (
+                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
+                        {executorConnectorResult.connectorType.startsWith("cursor_pilot")
+                          ? "Cursor pilot connector"
+                          : executorConnectorResult.connectorType.startsWith("reviewer_pilot")
+                            ? "Reviewer pilot connector"
+                            : "Stub connector"}{" "}
+                        · <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.connectorType}</span>
+                      </div>
+                    ) : null}
+                    <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
+                      <span style={{ fontWeight: 900 }}>
+                        {executorConnectorResult.status === "accepted"
+                          ? "Connector accepted"
+                          : executorConnectorResult.status === "running"
+                            ? "Running"
+                            : executorConnectorResult.status === "completed"
+                              ? "Completed"
+                              : "Failed"}
+                      </span>{" "}
+                      · run <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.connectorRunId}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                      adapter <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.integrationAdapterId}</span> · executor{" "}
+                      <span style={{ fontWeight: 900 }}>{EXECUTOR_TYPE_LABELS[executorConnectorResult.executorType]}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                      started <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.startedAtIso}</span>
+                    </div>
+                    {executorConnectorResult.finishedAtIso ? (
+                      <div style={{ fontSize: 12, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                        finished <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.finishedAtIso}</span>
+                      </div>
+                    ) : null}
+                    <div style={{ fontSize: 11, color: "#6b7280", marginTop: 8, lineHeight: 1.45, fontStyle: "italic" }}>{executorConnectorResult.message}</div>
+                    {executorConnectorResult.resultSummary ? (
+                      <div style={{ fontSize: 11, color: "#166534", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
+                        {executorConnectorResult.resultSummary}
+                      </div>
+                    ) : null}
+                    {executorConnectorResult.errorCode ? (
+                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
+                        errorCode <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.errorCode}</span>
+                      </div>
+                    ) : null}
+                    {executorConnectorResult.errorMessage ? (
+                      <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 4, lineHeight: 1.45, fontStyle: "italic" }}>
+                        {executorConnectorResult.errorMessage}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : sessionId && isExecutorIntegrationAdapterCurrent && executorIntegrationAdapter ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
+                    No connector result for this current integration adapter yet.
+                  </div>
+                ) : null}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <WorkflowActionButton
+                    label="Invoke connector"
+                    variant="primary"
+                    disabled={!sessionId || !actions.canInvokeExecutorConnector}
+                    onClick={pageActions.runExecutorConnector}
+                  />
+                  <WorkflowActionButton
+                    label="Retry connector"
+                    variant="secondary"
+                    disabled={!sessionId || !actions.canRetryExecutorConnector}
+                    onClick={pageActions.retryExecutorConnector}
+                  />
+                </div>
+              </div>
+
+              {monitoring.view ? (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>Recent run events</div>
+                  {recentEvents.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No run events recorded yet.</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {recentEvents.map((e) => (
+                        <div
+                          key={e.eventId}
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "baseline",
+                            padding: "6px 8px",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            background: "#ffffff",
+                          }}
+                        >
+                          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: "#6b7280", minWidth: 170 }}>{e.createdAtIso}</div>
+                          <div style={{ fontSize: 12, color: "#111827", lineHeight: 1.4, flex: 1 }}>{e.message}</div>
+                          {e.errorCode ? (
+                            <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 11, color: "#6b7280" }}>{e.errorCode}</div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </WorkflowCard>
 
         <details style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#f9fafb" }}>
           <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, color: "#111827" }}>Advanced details (artifacts)</summary>
@@ -1022,41 +997,127 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
             </WorkflowCard>
 
             <WorkflowCard padding={12}>
-              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Execution readiness</div>
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Derived check only — does not start execution or Stage1/Stage2.</div>
-              <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-                <div style={{ fontSize: 13, color: "#111827" }}>
-                  Status:{" "}
-                  {executionReadiness.status === "ready" ? (
-                    <span style={{ fontWeight: 900, color: "#166534" }}>Ready</span>
-                  ) : (
-                    <span style={{ fontWeight: 900, color: "#b45309" }}>Not ready</span>
-                  )}
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor handoff payload</div>
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Stable bundle for a future executor consumer from the current assignment. Does not start Stage1/Stage2.
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                {!sessionId ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare a handoff payload.</div>
+                ) : !isExecutionPackageAssigned ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                    Handoff unavailable until the current package has a valid <span style={{ fontWeight: 900 }}>executor assignment</span>.
+                  </div>
+                ) : null}
+                {actions.hasNonCurrentHandoffPayload ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                    A stored handoff payload does not match the current assignment. Prepare again to replace it (latest only).
+                  </div>
+                ) : null}
+                {isExecutionAssignmentHandoffCurrent && executionAssignmentHandoffPayload ? (
+                  <div style={{ border: "1px solid #fed7aa", borderRadius: 10, padding: 10, background: "#fffbeb" }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: "#9a3412" }}>Handoff ready</div>
+                    <div style={{ fontSize: 12, color: "#c2410c", marginTop: 6, lineHeight: 1.5 }}>
+                      Status <span style={{ fontWeight: 900 }}>handoff_ready</span> • handoff{" "}
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionAssignmentHandoffPayload.handoffId}</span>
+                    </div>
+                  </div>
+                ) : sessionId && isExecutionPackageAssigned ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No handoff payload yet for this assignment.</div>
+                ) : null}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <WorkflowActionButton
+                    label={isExecutionAssignmentHandoffCurrent ? "Handoff prepared" : "Prepare executor handoff"}
+                    variant="primary"
+                    disabled={!sessionId || !actions.canCreateHandoffPayload}
+                    onClick={pageActions.prepareExecutorHandoffPayload}
+                  />
+                  {sessionId && !isExecutionPackageAssigned ? (
+                    <WorkflowActionButton label="Open Tasks workspace" onClick={pageActions.openTasks} />
+                  ) : null}
                 </div>
               </div>
             </WorkflowCard>
 
             <WorkflowCard padding={12}>
-              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Launch intent</div>
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor intake contract</div>
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Executor-facing structured input from the current handoff. Does not start Stage1/Stage2.
+              </div>
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                <WorkflowActionButton
-                  label={isBusinessLaunchIntentCurrent ? "Intent declared" : "Declare launch intent"}
-                  variant="primary"
-                  disabled={!sessionId || !actions.canDeclareLaunchIntent}
-                  onClick={pageActions.declareLaunchIntent}
-                />
+                {!sessionId ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare an intake contract.</div>
+                ) : !isExecutionAssignmentHandoffCurrent ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                    Intake unavailable until a <span style={{ fontWeight: 900 }}>current handoff payload</span> exists.
+                  </div>
+                ) : null}
+                {actions.hasNonCurrentIntakeContract ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                    A stored intake contract does not match the current handoff. Prepare again to replace it (latest only).
+                  </div>
+                ) : null}
+                {isExecutorIntakeContractCurrent && executorIntakeContract ? (
+                  <div style={{ border: "1px solid #d1fae5", borderRadius: 10, padding: 10, background: "#ecfdf5" }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: "#065f46" }}>Intake prepared</div>
+                    <div style={{ fontSize: 12, color: "#047857", marginTop: 6, lineHeight: 1.5 }}>
+                      intake <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorIntakeContract.intakeId}</span> •{" "}
+                      <span style={{ fontStyle: "italic" }}>{executorIntakePreviewLine(executorIntakeContract)}</span>
+                    </div>
+                  </div>
+                ) : sessionId && isExecutionAssignmentHandoffCurrent ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No intake contract yet.</div>
+                ) : null}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <WorkflowActionButton
+                    label={isExecutorIntakeContractCurrent ? "Intake prepared" : "Prepare executor input"}
+                    variant="primary"
+                    disabled={!sessionId || !actions.canCreateIntakeContract}
+                    onClick={pageActions.prepareExecutorIntakeContract}
+                  />
+                </div>
               </div>
             </WorkflowCard>
 
             <WorkflowCard padding={12}>
-              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Launch handoff</div>
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor work order</div>
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Actionable instructions for the executor from the current intake. Does not start Stage1/Stage2.
+              </div>
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                <WorkflowActionButton
-                  label={isBusinessLaunchHandoffRecordCurrent ? "Handoff recorded" : "Prepare launch handoff record"}
-                  variant="primary"
-                  disabled={!sessionId || !actions.canRecordLaunchHandoff}
-                  onClick={pageActions.prepareLaunchHandoffRecord}
-                />
+                {!sessionId ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session to prepare a work order.</div>
+                ) : !isExecutorIntakeContractCurrent ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                    Work order unavailable until a <span style={{ fontWeight: 900 }}>current intake contract</span> exists.
+                  </div>
+                ) : null}
+                {actions.hasNonCurrentWorkOrder ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                    A stored work order does not match the current intake. Prepare again to replace it (latest only).
+                  </div>
+                ) : null}
+                {isExecutorWorkOrderCurrent && executorWorkOrder ? (
+                  <div style={{ border: "1px solid #e0e7ff", borderRadius: 10, padding: 10, background: "#eef2ff" }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: "#3730a3" }}>Work order prepared</div>
+                    <div style={{ fontSize: 11, color: "#6366f1", marginTop: 6, lineHeight: 1.45 }}>
+                      Objective: {truncateWorkOrderPreview(executorWorkOrder.objective, 96)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#6366f1", marginTop: 4, lineHeight: 1.45 }}>
+                      Success: {truncateWorkOrderPreview(executorWorkOrder.successCriteria, 96)}
+                    </div>
+                  </div>
+                ) : sessionId && isExecutorIntakeContractCurrent ? (
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No work order yet.</div>
+                ) : null}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <WorkflowActionButton
+                    label={isExecutorWorkOrderCurrent ? "Work order prepared" : "Prepare executor work order"}
+                    variant="primary"
+                    disabled={!sessionId || !actions.canCreateWorkOrder}
+                    onClick={pageActions.prepareExecutorWorkOrder}
+                  />
+                </div>
               </div>
             </WorkflowCard>
 
@@ -1137,43 +1198,6 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
                   variant="primary"
                   disabled={!sessionId || !actions.canPrepareLaunchCommand}
                   onClick={pageActions.prepareActualLaunchCommand}
-                />
-              </div>
-            </WorkflowCard>
-
-            <WorkflowCard padding={12}>
-              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Start / retry run</div>
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                Creates the latest tracked business-side run from the <span style={{ fontWeight: 900 }}>current launch command</span> only. Not Stage1/Stage2. Not Git.
-              </div>
-              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <WorkflowActionButton
-                  label={actions.invocationPrimaryLabel}
-                  variant="primary"
-                  disabled={!sessionId || !actions.canStartBusinessExecution}
-                  onClick={pageActions.startBusinessExecution}
-                />
-              </div>
-            </WorkflowCard>
-
-            <WorkflowCard padding={12}>
-              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor integration</div>
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
-                Turn the <span style={{ fontWeight: 900 }}>current</span> business execution run into a structured integration envelope. Artifact only.
-              </div>
-              {isExecutorIntegrationAdapterCurrent && executorIntegrationAdapter ? (
-                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 10, lineHeight: 1.45, fontStyle: "italic" }}>
-                  {executorIntegrationAdapterPayloadSummary(executorIntegrationAdapter.adapterPayload)}
-                  <br />
-                  Hint: {executorIntegrationAdapterExecutorHint(executorIntegrationAdapter.adapterPayload)}
-                </div>
-              ) : null}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <WorkflowActionButton
-                  label="Prepare integration adapter"
-                  variant="primary"
-                  disabled={!sessionId || !actions.canPrepareExecutorIntegrationAdapter}
-                  onClick={pageActions.prepareExecutorIntegrationAdapter}
                 />
               </div>
             </WorkflowCard>

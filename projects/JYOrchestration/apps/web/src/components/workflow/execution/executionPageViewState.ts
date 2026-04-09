@@ -1,16 +1,16 @@
 import { useMemo } from "react";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import type { ReadonlyURLSearchParams } from "next/navigation";
-import { getPreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
-import { buildExecutionPageActionState, getBusinessExecutionSessionState } from "@/lib/workflow/businessExecutionSelectors";
-import { getBusinessExecutionMonitoringStateForSessionFromPre } from "@/lib/workflow/businessExecutionRunMonitoring";
-import { createExecutionPageActions } from "@/lib/workflow/executionPageActions";
-import { getExecutionRunTimelineViewState } from "@/lib/workflow/executionPageViewState";
+import { getCurrentExecutionState } from "@/lib/workflow/executionSelectors";
+import {
+  buildExecutionPageViews,
+  getExecutionRunTimelineViewState,
+} from "@/lib/workflow/executionViewState";
+import { createExecutionProcessActions } from "@/lib/workflow/executionProcessActions";
 
 type UseExecutionPageViewStateInput = {
   router: AppRouterInstance;
   search: ReadonlyURLSearchParams | null;
-  /** used to trigger recompute when session store updates */
   sessionResultsVersion: number;
 };
 
@@ -18,22 +18,7 @@ export function useExecutionPageViewState(input: UseExecutionPageViewStateInput)
   const requirementId = input.search?.get("requirementId")?.trim() || null;
   const sessionId = input.search?.get("sessionId")?.trim() || null;
 
-  // This selector is cheap and must refresh when the session store version changes.
-  // The caller provides `sessionResultsVersion` to force a rerender; we intentionally do not
-  // hide it behind useMemo to avoid React Compiler / hooks lint mismatches.
-  const pre = getBusinessExecutionSessionState(sessionId);
-  const monitoring = getBusinessExecutionMonitoringStateForSessionFromPre(sessionId, pre);
-  const actions = buildExecutionPageActionState(pre, monitoring);
-
-  const nextAction = useMemo(
-    () =>
-      getPreLaunchActionAvailability({
-        active: pre.active,
-        snapshot: pre.snapshot,
-        launchReadiness: pre.launchReadiness,
-      }),
-    [pre.active, pre.snapshot, pre.launchReadiness]
-  );
+  const { pre, monitoring, actionState, nextAction } = getCurrentExecutionState(sessionId);
 
   const timeline = useMemo(
     () =>
@@ -41,21 +26,44 @@ export function useExecutionPageViewState(input: UseExecutionPageViewStateInput)
         sessionId,
         run: pre.businessExecutionRun,
         isRunCurrent: pre.isBusinessExecutionRunCurrent,
-        maxEvents: 8,
+        maxEvents: 10,
       }),
-    [sessionId, pre.businessExecutionRun, pre.isBusinessExecutionRunCurrent]
+    [sessionId, pre.businessExecutionRun, pre.isBusinessExecutionRunCurrent, input.sessionResultsVersion]
+  );
+
+  const views = useMemo(
+    () =>
+      buildExecutionPageViews({
+        sessionId,
+        requirementId,
+        pre,
+        monitoring,
+        actions: actionState,
+        nextAction,
+        timeline,
+      }),
+    [
+      sessionId,
+      requirementId,
+      pre,
+      monitoring,
+      actionState,
+      nextAction,
+      timeline,
+      input.sessionResultsVersion,
+    ]
   );
 
   const pageActions = useMemo(
     () =>
-      createExecutionPageActions({
+      createExecutionProcessActions({
         router: input.router,
         sessionId,
         requirementId,
         pre,
-        actions,
+        actions: actionState,
       }),
-    [input.router, sessionId, requirementId, pre, actions]
+    [input.router, sessionId, requirementId, pre, actionState]
   );
 
   return {
@@ -63,10 +71,10 @@ export function useExecutionPageViewState(input: UseExecutionPageViewStateInput)
     requirementId,
     pre,
     monitoring,
-    actions,
+    actions: actionState,
     nextAction,
     timeline,
+    views,
     pageActions,
   };
 }
-
