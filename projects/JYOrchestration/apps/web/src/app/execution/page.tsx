@@ -7,67 +7,20 @@ import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
 import {
-  approveBusinessExecutionRequest,
-  assignBusinessExecutionPackage,
-  createBusinessLaunchHandoffRecord,
-  createExecutionBridgePayload,
-  createExecutorLaunchContract,
-  declareBusinessLaunchIntent,
   actualExecutionAdapterExecutorHintPreview,
   actualExecutionAdapterPayloadSummary,
   actualLaunchCommandExecutorHintPreview,
   actualLaunchCommandPayloadSummary,
-  createActualExecutionAdapterRequest,
-  createActualLaunchCommand,
-  createExecutorIntegrationAdapter,
-  declareExecutionTriggerIntent,
-  invokeBusinessExecution,
-  invokeExecutorConnector,
-  applyExecutorConnectorResultToBusinessExecutionRun,
-  markBusinessExecutionRunCompleted,
-  markBusinessExecutionRunFailed,
-  markBusinessExecutionRunRunning,
   executorLaunchContractContextSummary,
   executorLaunchHintsPreview,
-  createBusinessExecutionPackage,
-  createExecutionAssignmentHandoff,
-  createExecutorIntakeContract,
-  createExecutorWorkOrder,
   executorIntakePreviewLine,
   EXECUTION_EXECUTOR_TYPES,
   EXECUTOR_TYPE_LABELS,
-  isBusinessApprovalForRequest,
-  recordSessionBusinessExecutionApproval,
-  recordSessionBusinessLaunchHandoffRecord,
-  recordSessionBusinessLaunchIntent,
-  recordSessionExecutionBridgePayload,
-  recordSessionExecutorLaunchContract,
-  recordSessionExecutionTriggerIntent,
-  recordSessionActualExecutionAdapterRequest,
-  recordSessionActualLaunchCommand,
-  recordSessionBusinessExecutionRun,
-  appendSessionBusinessExecutionRunEvent,
-  resolveSessionBusinessExecutionRunEvents,
-  recordSessionExecutorConnectorResult,
-  recordSessionExecutorIntegrationAdapter,
-  recordSessionBusinessExecutionPackage,
-  recordSessionBusinessExecutionRequest,
-  recordSessionExecutionAssignment,
-  recordSessionExecutionAssignmentHandoffPayload,
-  recordSessionExecutorIntakeContract,
-  recordSessionExecutorWorkOrder,
-  recordSessionExecutionRequestDraft,
-  recordSessionExecutionRequestApproval,
-  recordSessionHandoffPrepared,
-  setActiveExecutionInput,
   truncateWorkOrderPreview,
   executorIntegrationAdapterExecutorHint,
   executorIntegrationAdapterPayloadSummary,
   type ExecutionExecutorType,
 } from "@/lib/workflow/collaborationSessionResultStore";
-import { createBusinessExecutionRequest } from "@/lib/workflow/businessExecutionRequest";
-import { approveExecutionRequestDraft } from "@/lib/workflow/executionRequestApproval";
-import { createExecutionRequestDraft } from "@/lib/workflow/executionRequestDraft";
 import { getPreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
 import { EXECUTION_READINESS_UI_REASONS_MAX } from "@/lib/workflow/executionReadiness";
 import {
@@ -77,6 +30,7 @@ import {
 import { getBusinessExecutionMonitoringStateForSessionFromPre } from "@/lib/workflow/businessExecutionRunMonitoring";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { createExecutionPageActions } from "@/lib/workflow/executionPageActions";
+import { getExecutionRunTimelineViewState } from "@/lib/workflow/executionPageViewState";
 
 export default function ExecutionPage() {
   const router = useRouter();
@@ -133,10 +87,16 @@ export default function ExecutionPage() {
   const isActualLaunchCommandCurrent = pre.isActualLaunchCommandCurrent;
   const businessExecutionRun = pre.businessExecutionRun;
   const isBusinessExecutionRunCurrent = pre.isBusinessExecutionRunCurrent;
-  const currentRunEvents = useMemo(() => {
-    if (!sessionId || !businessExecutionRun || !isBusinessExecutionRunCurrent) return [];
-    return resolveSessionBusinessExecutionRunEvents(sessionId, businessExecutionRun.runId);
-  }, [sessionId, sessionResultsVersion, businessExecutionRun?.runId, isBusinessExecutionRunCurrent]);
+  const timeline = useMemo(
+    () =>
+      getExecutionRunTimelineViewState({
+        sessionId,
+        run: businessExecutionRun,
+        isRunCurrent: isBusinessExecutionRunCurrent,
+        maxEvents: 8,
+      }),
+    [sessionId, sessionResultsVersion, businessExecutionRun?.runId, isBusinessExecutionRunCurrent]
+  );
   const executorIntegrationAdapter = pre.executorIntegrationAdapter;
   const isExecutorIntegrationAdapterCurrent = pre.isExecutorIntegrationAdapterCurrent;
   const executorConnectorResult = pre.executorConnectorResult;
@@ -164,6 +124,13 @@ export default function ExecutionPage() {
   );
 
   const openTasks = pageActions.openTasks;
+  const selectActiveInput = pageActions.selectActiveInput;
+  const prepareHandoffPrepared = pageActions.prepareHandoffPrepared;
+  const createExecutionRequestDraft = pageActions.createExecutionRequestDraft;
+  const approveExecutionDraft = pageActions.approveExecutionDraft;
+  const recordBusinessExecutionRequest = pageActions.recordBusinessExecutionRequest;
+  const approveBusinessExecution = pageActions.approveBusinessExecution;
+  const createBusinessExecutionPackage = pageActions.createBusinessExecutionPackage;
   const prepareExecutorHandoffPayload = pageActions.prepareExecutorHandoffPayload;
   const prepareExecutorIntakeContract = pageActions.prepareExecutorIntakeContract;
   const prepareExecutorWorkOrder = pageActions.prepareExecutorWorkOrder;
@@ -229,7 +196,7 @@ export default function ExecutionPage() {
                 <WorkflowActionButton
                   label={isActive ? "Active input selected" : "Select as active input"}
                   variant="primary"
-                  onClick={() => setActiveExecutionInput({ sessionId: snapshot.sessionId, snapshotId: snapshot.snapshotId })}
+                onClick={selectActiveInput}
                   disabled={isActive}
                 />
               </div>
@@ -348,16 +315,7 @@ export default function ExecutionPage() {
                 label={isHandoffPrepared ? "Handoff prepared" : nextAction.actionLabel}
                 variant="primary"
                 disabled={!nextAction.canPrepareLaunchAction || isHandoffPrepared}
-                onClick={() => {
-                  if (!nextAction.canPrepareLaunchAction) return;
-                  if (!pre.active) return;
-                  recordSessionHandoffPrepared(pre.active.sessionId, {
-                    sessionId: pre.active.sessionId,
-                    snapshotId: pre.active.snapshotId,
-                    preparedAtIso: new Date().toISOString(),
-                    status: "prepared",
-                  });
-                }}
+                onClick={prepareHandoffPrepared}
               />
               {!nextAction.canPrepareLaunchAction || snapshotStaleness.isSnapshotStale || (isHandoffPrepared && !handoffValidity.isHandoffValid) ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
@@ -395,12 +353,7 @@ export default function ExecutionPage() {
                 label="Create execution draft"
                 variant="primary"
                 disabled={!handoffValidity.isHandoffValid || !isHandoffPrepared || !snapshot || Boolean(executionRequestDraft)}
-                onClick={() => {
-                  if (!snapshot) return;
-                  if (!isHandoffPrepared) return;
-                  if (!handoffValidity.isHandoffValid) return;
-                  recordSessionExecutionRequestDraft(snapshot.sessionId, createExecutionRequestDraft({ snapshot }));
-                }}
+                onClick={createExecutionRequestDraft}
               />
               {!handoffValidity.isHandoffValid ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
@@ -433,12 +386,7 @@ export default function ExecutionPage() {
                 label={isDraftApproved ? "Approved" : "Approve for launch"}
                 variant="primary"
                 disabled={!executionRequestDraft || !handoffValidity.isHandoffValid || isDraftApproved}
-                onClick={() => {
-                  if (!executionRequestDraft) return;
-                  if (!handoffValidity.isHandoffValid) return;
-                  const approval = approveExecutionRequestDraft({ draft: executionRequestDraft, approvedBy: "local" });
-                  recordSessionExecutionRequestApproval(executionRequestDraft.sessionId, approval);
-                }}
+                onClick={approveExecutionDraft}
               />
               {!executionRequestDraft || !handoffValidity.isHandoffValid ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
@@ -497,11 +445,7 @@ export default function ExecutionPage() {
                   label="Create execution request"
                   variant="primary"
                   disabled={!actions.canRecordBusinessRequest}
-                  onClick={() => {
-                    if (!snapshot) return;
-                    if (!actions.canRecordBusinessRequest) return;
-                    recordSessionBusinessExecutionRequest(snapshot.sessionId, createBusinessExecutionRequest({ snapshot }));
-                  }}
+                  onClick={recordBusinessExecutionRequest}
                 />
               ) : null}
               {businessExecutionRequest && actions.businessRequestNeedsAttention ? (
@@ -509,11 +453,7 @@ export default function ExecutionPage() {
                   label="Recreate request"
                   variant="primary"
                   disabled={!actions.canRecordBusinessRequest}
-                  onClick={() => {
-                    if (!snapshot) return;
-                    if (!actions.canRecordBusinessRequest) return;
-                    recordSessionBusinessExecutionRequest(snapshot.sessionId, createBusinessExecutionRequest({ snapshot }));
-                  }}
+                  onClick={recordBusinessExecutionRequest}
                 />
               ) : null}
               {!actions.canRecordBusinessRequest || actions.businessRequestNeedsAttention ? (
@@ -572,11 +512,7 @@ export default function ExecutionPage() {
                 label={isBusinessExecutionApproved ? "Approved" : "Approve execution request"}
                 variant="primary"
                 disabled={!sessionId || !actions.canApproveBusinessExecution}
-                onClick={() => {
-                  if (!sessionId || !businessExecutionRequest || !actions.businessRequestValid) return;
-                  const approval = approveBusinessExecutionRequest({ request: businessExecutionRequest, approvedBy: "local" });
-                  recordSessionBusinessExecutionApproval(sessionId, approval);
-                }}
+                onClick={approveBusinessExecution}
               />
               {sessionId && (!businessExecutionRequest || !actions.businessRequestValid) ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
@@ -633,15 +569,7 @@ export default function ExecutionPage() {
                 label={isBusinessExecutionPackaged ? "Packaged" : "Prepare execution package"}
                 variant="primary"
                 disabled={!sessionId || !actions.canCreateBusinessPackage}
-                onClick={() => {
-                  if (!sessionId || !actions.canCreateBusinessPackage) return;
-                  if (!businessExecutionRequest || !businessExecutionApproval) return;
-                  const pkg = createBusinessExecutionPackage({
-                    request: businessExecutionRequest,
-                    approval: businessExecutionApproval,
-                  });
-                  recordSessionBusinessExecutionPackage(sessionId, pkg);
-                }}
+                onClick={createBusinessExecutionPackage}
               />
               {sessionId && !isBusinessExecutionApproved ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
@@ -1465,12 +1393,11 @@ export default function ExecutionPage() {
               {monitoring.view ? (
                 <div style={{ marginTop: 6 }}>
                   <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>Execution timeline</div>
-                  {currentRunEvents.length === 0 ? (
+                  {timeline.events.length === 0 ? (
                     <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No run events recorded yet.</div>
                   ) : (
                     <div style={{ display: "grid", gap: 6 }}>
-                      {currentRunEvents
-                        .slice(-8)
+                      {timeline.events
                         .map((e) => (
                           <div
                             key={e.eventId}

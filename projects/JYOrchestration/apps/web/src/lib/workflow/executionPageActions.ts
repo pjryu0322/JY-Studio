@@ -10,10 +10,12 @@
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import type { ExecutionExecutorType } from "@/lib/workflow/executionAssignment";
 import {
+  approveBusinessExecutionRequest,
   assignBusinessExecutionPackage,
   createActualExecutionAdapterRequest,
   createActualLaunchCommand,
   createBusinessLaunchHandoffRecord,
+  createBusinessExecutionPackage,
   createExecutionAssignmentHandoff,
   createExecutionBridgePayload,
   createExecutorIntakeContract,
@@ -27,6 +29,9 @@ import {
   markBusinessExecutionRunFailed,
   markBusinessExecutionRunRunning,
   createExecutorIntegrationAdapter,
+  recordSessionBusinessExecutionApproval,
+  recordSessionBusinessExecutionPackage,
+  recordSessionBusinessExecutionRequest,
   recordSessionActualExecutionAdapterRequest,
   recordSessionActualLaunchCommand,
   recordSessionBusinessExecutionRun,
@@ -35,15 +40,22 @@ import {
   recordSessionExecutionAssignment,
   recordSessionExecutionAssignmentHandoffPayload,
   recordSessionExecutionBridgePayload,
+  recordSessionExecutionRequestApproval,
+  recordSessionExecutionRequestDraft,
   recordSessionExecutionTriggerIntent,
   recordSessionExecutorConnectorResult,
   recordSessionExecutorIntegrationAdapter,
   recordSessionExecutorIntakeContract,
   recordSessionExecutorLaunchContract,
   recordSessionExecutorWorkOrder,
+  recordSessionHandoffPrepared,
   applyExecutorConnectorResultToBusinessExecutionRun,
   appendSessionBusinessExecutionRunEvent,
+  setActiveExecutionInput,
 } from "@/lib/workflow/collaborationSessionResultStore";
+import { createBusinessExecutionRequest } from "@/lib/workflow/businessExecutionRequest";
+import { approveExecutionRequestDraft } from "@/lib/workflow/executionRequestApproval";
+import { createExecutionRequestDraft } from "@/lib/workflow/executionRequestDraft";
 import {
   createRetryRequestedEvent,
   createRetryStartedEvent,
@@ -75,6 +87,58 @@ export function createExecutionPageActions(ctx: ExecutionPageActionContext) {
 
   return {
     openTasks: () => openTasks(router, { requirementId, sessionId }),
+
+    selectActiveInput: () => {
+      if (!pre.snapshot) return;
+      setActiveExecutionInput({ sessionId: pre.snapshot.sessionId, snapshotId: pre.snapshot.snapshotId });
+    },
+
+    prepareHandoffPrepared: () => {
+      if (!pre.active) return;
+      recordSessionHandoffPrepared(pre.active.sessionId, {
+        sessionId: pre.active.sessionId,
+        snapshotId: pre.active.snapshotId,
+        preparedAtIso: new Date().toISOString(),
+        status: "prepared",
+      });
+    },
+
+    createExecutionRequestDraft: () => {
+      if (!pre.snapshot) return;
+      if (!pre.isHandoffPreparedActive) return;
+      if (!pre.handoffValidity.isHandoffValid) return;
+      recordSessionExecutionRequestDraft(pre.snapshot.sessionId, createExecutionRequestDraft({ snapshot: pre.snapshot }));
+    },
+
+    approveExecutionDraft: () => {
+      if (!pre.executionRequestDraft) return;
+      if (!pre.handoffValidity.isHandoffValid) return;
+      const approval = approveExecutionRequestDraft({ draft: pre.executionRequestDraft, approvedBy: "local" });
+      recordSessionExecutionRequestApproval(pre.executionRequestDraft.sessionId, approval);
+    },
+
+    recordBusinessExecutionRequest: () => {
+      if (!pre.snapshot) return;
+      if (!actions.canRecordBusinessRequest) return;
+      recordSessionBusinessExecutionRequest(pre.snapshot.sessionId, createBusinessExecutionRequest({ snapshot: pre.snapshot }));
+    },
+
+    approveBusinessExecution: () => {
+      if (!sessionId || !actions.canApproveBusinessExecution) return;
+      if (!pre.businessExecutionRequest) return;
+      const approval = approveBusinessExecutionRequest({ request: pre.businessExecutionRequest, approvedBy: "local" });
+      recordSessionBusinessExecutionApproval(sessionId, approval);
+    },
+
+    createBusinessExecutionPackage: () => {
+      if (!sessionId || !actions.canCreateBusinessPackage) return;
+      if (!pre.businessExecutionRequest || !pre.businessExecutionApproval) return;
+      const pkg = createBusinessExecutionPackage({
+        request: pre.businessExecutionRequest,
+        approval: pre.businessExecutionApproval,
+      });
+      recordSessionBusinessExecutionPackage(sessionId, pkg);
+    },
 
     assignExecutor: (executorType: ExecutionExecutorType) => {
       if (!sessionId || !pre.businessExecutionPackage || !actions.canAssignExecutor) return;
