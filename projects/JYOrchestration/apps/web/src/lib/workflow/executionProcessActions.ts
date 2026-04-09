@@ -45,7 +45,7 @@ import { approveExecutionRequestDraft } from "@/lib/workflow/executionRequestApp
 import { createExecutionRequestDraft } from "@/lib/workflow/executionRequestDraft";
 import type { ExecutionPageActionState } from "@/lib/workflow/businessExecutionSelectors";
 import type { PreExecutionSessionSelector } from "@/lib/workflow/preExecutionSelectors";
-import { invokeExecutorConnectorForSession, retryExecutorConnectorForSession } from "@/lib/workflow/executionConnectorActions";
+import { invokeCurrentExecutorConnector, retryCurrentExecutorConnector } from "@/lib/workflow/executionConnectorActions";
 import {
   applyBusinessRunControlForSession,
   startBusinessExecutionForSession,
@@ -298,8 +298,8 @@ export function createExecutionProcessActions(ctx: ExecutionProcessActionContext
       }
     },
 
-    runExecutorConnector: () => invokeExecutorConnectorForSession({ sessionId, pre, actions }),
+    runExecutorConnector: () => invokeCurrentExecutorConnector({ sessionId, pre, actions }),
 
-    retryExecutorConnector: () => retryExecutorConnectorForSession({ sessionId, pre, actions }),
+    retryExecutorConnector: () => retryCurrentExecutorConnector({ sessionId, pre, actions }),
   };
 }
