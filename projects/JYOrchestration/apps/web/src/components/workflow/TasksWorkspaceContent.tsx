@@ -9,6 +9,9 @@ import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowSectionLabel } from "@/components/workflow/primitives/WorkflowSectionLabel";
 import type { TaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
 import {
+  businessExecutionRunLatestStrip,
+  executorConnectorResultSubtleNote,
+  executorIntegrationAdapterSubtleNote,
   getTaskExecutionReadiness,
   recordSessionConfirmedTasks,
   recordSessionExecutionLaunchSnapshot,
@@ -94,6 +97,13 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const isExecutorLaunchContractCurrent = pre.isExecutorLaunchContractCurrent;
   const isExecutionTriggerIntentCurrent = pre.isExecutionTriggerIntentCurrent;
   const isActualExecutionAdapterRequestCurrent = pre.isActualExecutionAdapterRequestCurrent;
+  const isActualLaunchCommandCurrent = pre.isActualLaunchCommandCurrent;
+  const businessExecutionRun = pre.businessExecutionRun;
+  const isBusinessExecutionRunCurrent = pre.isBusinessExecutionRunCurrent;
+  const executorIntegrationAdapter = pre.executorIntegrationAdapter;
+  const isExecutorIntegrationAdapterCurrent = pre.isExecutorIntegrationAdapterCurrent;
+  const executorConnectorResult = pre.executorConnectorResult;
+  const isExecutorConnectorResultCurrent = pre.isExecutorConnectorResultCurrent;
 
   const displayedSequenceTasks = useMemo(() => {
     if (sequenceView === "all") return working.activeTasks;
@@ -430,6 +440,26 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
                   {isActualExecutionAdapterRequestCurrent ? (
                     <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
                       Execution adapter ready · ready for actual execution handoff · not launched.
+                    </div>
+                  ) : null}
+                  {isActualLaunchCommandCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Launch command ready · execution command prepared · not launched.
+                    </div>
+                  ) : null}
+                  {businessExecutionRun ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      {businessExecutionRunLatestStrip(businessExecutionRun, isBusinessExecutionRunCurrent)}
+                    </div>
+                  ) : null}
+                  {executorIntegrationAdapter ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      {executorIntegrationAdapterSubtleNote(executorIntegrationAdapter, isExecutorIntegrationAdapterCurrent)}
+                    </div>
+                  ) : null}
+                  {executorConnectorResult ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      {executorConnectorResultSubtleNote(executorConnectorResult, isExecutorConnectorResultCurrent)}
                     </div>
                   ) : null}
                 </div>

@@ -19,6 +19,9 @@ import {
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 import { EXECUTOR_TYPE_LABELS } from "@/lib/workflow/executionAssignment";
+import { businessExecutionRunLatestStrip } from "@/lib/workflow/businessExecutionRun";
+import { executorConnectorResultSubtleNote } from "@/lib/workflow/executorConnector";
+import { executorIntegrationAdapterSubtleNote } from "@/lib/workflow/executorIntegrationAdapter";
 import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { WorkflowTabs } from "@/components/workflow/WorkflowTabs";
@@ -201,6 +204,45 @@ export default function RequirementDetailPage() {
                     <>
                       {" "}
                       · Execution adapter <span style={{ fontWeight: 800, color: "#6b7280" }}>ready</span>
+                    </>
+                  ) : null}
+                  {pre.isActualLaunchCommandCurrent ? (
+                    <>
+                      {" "}
+                      · Launch command <span style={{ fontWeight: 800, color: "#6b7280" }}>ready</span>
+                    </>
+                  ) : null}
+                  {pre.businessExecutionRun ? (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <span style={{ fontWeight: 800, color: "#6b7280" }}>
+                        {businessExecutionRunLatestStrip(pre.businessExecutionRun, pre.isBusinessExecutionRunCurrent)}
+                      </span>
+                    </>
+                  ) : null}
+                  {pre.executorIntegrationAdapter ? (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <span style={{ fontWeight: 800, color: "#6b7280" }}>
+                        {executorIntegrationAdapterSubtleNote(
+                          pre.executorIntegrationAdapter,
+                          pre.isExecutorIntegrationAdapterCurrent
+                        )}
+                      </span>
+                    </>
+                  ) : null}
+                  {pre.executorConnectorResult ? (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <span style={{ fontWeight: 800, color: "#6b7280" }}>
+                        {executorConnectorResultSubtleNote(
+                          pre.executorConnectorResult,
+                          pre.isExecutorConnectorResultCurrent
+                        )}
+                      </span>
                     </>
                   ) : null}
                 </div>

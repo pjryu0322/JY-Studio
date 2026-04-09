@@ -89,6 +89,18 @@ export {
   recordSessionActualExecutionAdapterRequest,
   resolveSessionActualExecutionAdapterRequest,
   sessionHasActualExecutionAdapterRequest,
+  recordSessionActualLaunchCommand,
+  resolveSessionActualLaunchCommand,
+  sessionHasActualLaunchCommand,
+  recordSessionBusinessExecutionRun,
+  resolveSessionBusinessExecutionRun,
+  sessionHasBusinessExecutionRun,
+  recordSessionExecutorIntegrationAdapter,
+  resolveSessionExecutorIntegrationAdapter,
+  sessionHasExecutorIntegrationAdapter,
+  recordSessionExecutorConnectorResult,
+  resolveSessionExecutorConnectorResult,
+  sessionHasExecutorConnectorResult,
   evaluateExecutionRequestValidity,
   resolveExecutionRequestValidity,
   type ExecutionRequestLifecycleStatus,
@@ -267,3 +279,83 @@ export {
   isCurrentActualExecutionAdapterRequest,
   getActualExecutionAdapterStateForSession,
 } from "@/lib/workflow/actualExecutionAdapterGate";
+
+export {
+  createActualLaunchCommand,
+  shapeActualLaunchCommandPayload,
+  isActualLaunchCommandCurrent,
+  actualLaunchCommandPayloadSummary,
+  actualLaunchCommandExecutorHintPreview,
+  type ActualLaunchCommand,
+  type ActualLaunchCommandPayload,
+} from "@/lib/workflow/actualLaunchCommand";
+
+export {
+  resolveActualLaunchCommand,
+  isCurrentActualLaunchCommand,
+  getActualLaunchCommandStateForSession,
+} from "@/lib/workflow/actualLaunchCommandGate";
+
+export {
+  invokeBusinessExecution,
+  applyMockBusinessExecutionRunTransition,
+  isBusinessExecutionRunCurrent,
+  markBusinessExecutionRunRunning,
+  markBusinessExecutionRunCompleted,
+  markBusinessExecutionRunFailed,
+  businessExecutionRunStatusHint,
+  businessExecutionRunSubtleNote,
+  businessExecutionRunLatestStrip,
+  defaultBusinessExecutionRunMessage,
+  defaultBusinessExecutionRunProgress,
+  type BusinessExecutionRun,
+  type BusinessExecutionRunStatus,
+} from "@/lib/workflow/businessExecutionRun";
+
+export {
+  resolveBusinessExecutionRun,
+  isCurrentBusinessExecutionRun,
+  getBusinessExecutionRunStateForSession,
+} from "@/lib/workflow/businessExecutionRunGate";
+
+export {
+  getBusinessExecutionRunView,
+  resolveBusinessExecutionRunState,
+  getBusinessExecutionMonitoringStateForSession,
+  getBusinessExecutionMonitoringStateForSessionFromPre,
+  type BusinessExecutionRunView,
+  type BusinessExecutionRunResolvedState,
+  type BusinessExecutionMonitoringState,
+} from "@/lib/workflow/businessExecutionRunMonitoring";
+
+export {
+  createExecutorIntegrationAdapter,
+  shapeExecutorIntegrationPayload,
+  isExecutorIntegrationAdapterCurrent,
+  executorIntegrationAdapterPayloadSummary,
+  executorIntegrationAdapterExecutorHint,
+  executorIntegrationAdapterSubtleNote,
+  type ExecutorIntegrationAdapter,
+  type ExecutorIntegrationAdapterPayload,
+  type ExecutorIntegrationAdapterStatus,
+} from "@/lib/workflow/executorIntegrationAdapter";
+
+export {
+  resolveExecutorIntegrationAdapter,
+  isCurrentExecutorIntegrationAdapter,
+  getExecutorIntegrationStateForSession,
+} from "@/lib/workflow/executorIntegrationAdapterGate";
+
+export {
+  invokeExecutorConnector,
+  isExecutorConnectorResultCurrent,
+  executorConnectorResultSubtleNote,
+  type ExecutorConnectorResult,
+  type ExecutorConnectorResultStatus,
+} from "@/lib/workflow/executorConnector";
+
+export {
+  resolveExecutorConnectorResult,
+  isCurrentExecutorConnectorResult,
+  getExecutorConnectorStateForSession,
+} from "@/lib/workflow/executorConnectorGate";

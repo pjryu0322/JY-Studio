@@ -45,10 +45,22 @@ import type { ExecutionTriggerIntent } from "@/lib/workflow/executionTriggerInte
 import { isExecutionTriggerIntentCurrent as computeExecutionTriggerIntentCurrent } from "@/lib/workflow/executionTriggerIntent";
 import type { ActualExecutionAdapterRequest } from "@/lib/workflow/actualExecutionAdapter";
 import { isActualExecutionAdapterRequestCurrent as computeActualExecutionAdapterRequestCurrent } from "@/lib/workflow/actualExecutionAdapter";
+import type { ActualLaunchCommand } from "@/lib/workflow/actualLaunchCommand";
+import { isActualLaunchCommandCurrent as computeActualLaunchCommandCurrent } from "@/lib/workflow/actualLaunchCommand";
+import type { BusinessExecutionRun } from "@/lib/workflow/businessExecutionRun";
+import { isBusinessExecutionRunCurrent as computeBusinessExecutionRunCurrent } from "@/lib/workflow/businessExecutionRun";
+import type { ExecutorIntegrationAdapter } from "@/lib/workflow/executorIntegrationAdapter";
+import { isExecutorIntegrationAdapterCurrent as computeExecutorIntegrationAdapterCurrent } from "@/lib/workflow/executorIntegrationAdapter";
+import type { ExecutorConnectorResult } from "@/lib/workflow/executorConnector";
+import { isExecutorConnectorResultCurrent as computeExecutorConnectorResultCurrent } from "@/lib/workflow/executorConnector";
 import {
   isBusinessExecutionRequestForSnapshot,
   sessionHasBusinessExecutionRequest,
   resolveSessionActualExecutionAdapterRequest,
+  resolveSessionActualLaunchCommand,
+  resolveSessionBusinessExecutionRun,
+  resolveSessionExecutorIntegrationAdapter,
+  resolveSessionExecutorConnectorResult,
   resolveSessionBusinessLaunchHandoffRecord,
   resolveSessionBusinessLaunchIntent,
   resolveSessionExecutionBridgePayload,
@@ -101,6 +113,14 @@ export type PreExecutionSessionSelector = {
   isExecutionTriggerIntentCurrent: boolean;
   actualExecutionAdapterRequest: ActualExecutionAdapterRequest | undefined;
   isActualExecutionAdapterRequestCurrent: boolean;
+  actualLaunchCommand: ActualLaunchCommand | undefined;
+  isActualLaunchCommandCurrent: boolean;
+  businessExecutionRun: BusinessExecutionRun | undefined;
+  isBusinessExecutionRunCurrent: boolean;
+  executorIntegrationAdapter: ExecutorIntegrationAdapter | undefined;
+  isExecutorIntegrationAdapterCurrent: boolean;
+  executorConnectorResult: ExecutorConnectorResult | undefined;
+  isExecutorConnectorResultCurrent: boolean;
 };
 
 export function getPreExecutionStateForSession(sessionId: string | null | undefined): PreExecutionSessionSelector {
@@ -222,6 +242,64 @@ export function getPreExecutionStateForSession(sessionId: string | null | undefi
     workOrder: executorWorkOrder,
     sessionId,
   });
+  const actualLaunchCommand = resolveSessionActualLaunchCommand(sessionId);
+  const isActualLaunchCommandCurrent = computeActualLaunchCommandCurrent({
+    command: actualLaunchCommand,
+    adapter: actualExecutionAdapterRequest,
+    triggerIntent: executionTriggerIntent,
+    contract: executorLaunchContract,
+    bridge: executionBridgePayload,
+    handoffRecord: businessLaunchHandoffRecord,
+    intent: businessLaunchIntent,
+    readiness: executionReadiness,
+    workOrder: executorWorkOrder,
+    sessionId,
+  });
+  const businessExecutionRun = resolveSessionBusinessExecutionRun(sessionId);
+  const isBusinessExecutionRunCurrent = computeBusinessExecutionRunCurrent({
+    run: businessExecutionRun,
+    command: actualLaunchCommand,
+    adapter: actualExecutionAdapterRequest,
+    triggerIntent: executionTriggerIntent,
+    contract: executorLaunchContract,
+    bridge: executionBridgePayload,
+    handoffRecord: businessLaunchHandoffRecord,
+    intent: businessLaunchIntent,
+    readiness: executionReadiness,
+    workOrder: executorWorkOrder,
+    sessionId,
+  });
+  const executorIntegrationAdapter = resolveSessionExecutorIntegrationAdapter(sessionId);
+  const isExecutorIntegrationAdapterCurrent = computeExecutorIntegrationAdapterCurrent({
+    integrationAdapter: executorIntegrationAdapter,
+    run: businessExecutionRun,
+    command: actualLaunchCommand,
+    adapter: actualExecutionAdapterRequest,
+    triggerIntent: executionTriggerIntent,
+    contract: executorLaunchContract,
+    bridge: executionBridgePayload,
+    handoffRecord: businessLaunchHandoffRecord,
+    intent: businessLaunchIntent,
+    readiness: executionReadiness,
+    workOrder: executorWorkOrder,
+    sessionId,
+  });
+  const executorConnectorResult = resolveSessionExecutorConnectorResult(sessionId);
+  const isExecutorConnectorResultCurrent = computeExecutorConnectorResultCurrent({
+    result: executorConnectorResult,
+    integrationAdapter: executorIntegrationAdapter,
+    run: businessExecutionRun,
+    command: actualLaunchCommand,
+    adapter: actualExecutionAdapterRequest,
+    triggerIntent: executionTriggerIntent,
+    contract: executorLaunchContract,
+    bridge: executionBridgePayload,
+    handoffRecord: businessLaunchHandoffRecord,
+    intent: businessLaunchIntent,
+    readiness: executionReadiness,
+    workOrder: executorWorkOrder,
+    sessionId,
+  });
   return {
     readinessMap,
     candidateTasks,
@@ -266,6 +344,14 @@ export function getPreExecutionStateForSession(sessionId: string | null | undefi
     isExecutionTriggerIntentCurrent,
     actualExecutionAdapterRequest,
     isActualExecutionAdapterRequestCurrent,
+    actualLaunchCommand,
+    isActualLaunchCommandCurrent,
+    businessExecutionRun,
+    isBusinessExecutionRunCurrent,
+    executorIntegrationAdapter,
+    isExecutorIntegrationAdapterCurrent,
+    executorConnectorResult,
+    isExecutorConnectorResultCurrent,
   };
 }
 
