@@ -1,6 +1,12 @@
 /**
- * Executor connector layer: accepts integration adapter, returns a connector result (stub/mock by default).
- * NOT Stage1/Stage2. NOT env/procedure test execution. No Git/PR/merge. No real external dispatch in this stub.
+ * Executor connector layer: accepts integration adapter, returns a connector result.
+ * cursor_executor → cursor pilot path ({@link invokeCursorExecutorConnectorPilot}).
+ * reviewer / scm / security / unassigned → {@link stubNonCursorExecutorConnector} (stub only).
+ *
+ * NOT Stage1/Stage2. NOT env/procedure test execution. No Git/PR/merge here.
+ *
+ * TODO: Reviewer / SCM / security real connector pilots (same result shape as cursor).
+ * TODO: Connector retry and timeout policy at this boundary.
  */
 
 import type { ActualExecutionAdapterRequest } from "@/lib/workflow/actualExecutionAdapter";
@@ -16,6 +22,7 @@ import type { ExecutionTriggerIntent } from "@/lib/workflow/executionTriggerInte
 import type { ExecutorWorkOrder } from "@/lib/workflow/executorWorkOrder";
 import type { ExecutorIntegrationAdapter } from "@/lib/workflow/executorIntegrationAdapter";
 import { isExecutorIntegrationAdapterCurrent } from "@/lib/workflow/executorIntegrationAdapter";
+import { invokeCursorExecutorConnectorPilot } from "@/lib/workflow/cursorExecutorConnectorPilot";
 
 export type ExecutorConnectorResultStatus = "accepted" | "running" | "completed" | "failed";
 
@@ -39,8 +46,11 @@ function nextConnectorRunId(): string {
   return `exconn-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/** Stub outcome text per executor role (in-memory mock only). */
-function stubConnectorOutcome(executorType: ExecutionExecutorType): {
+/**
+ * Stub/mock connector for non-cursor executors only.
+ * cursor_executor uses {@link invokeCursorExecutorConnectorPilot} — do not add cursor cases here.
+ */
+function stubNonCursorExecutorConnector(executorType: ExecutionExecutorType): {
   status: ExecutorConnectorResultStatus;
   message: string;
   resultSummary?: string;
@@ -48,12 +58,6 @@ function stubConnectorOutcome(executorType: ExecutionExecutorType): {
 } {
   const baseMsg = "Stub connector (no external call · not Stage1/Stage2 · not env test).";
   switch (executorType) {
-    case "cursor_executor":
-      return {
-        status: "completed",
-        message: `${baseMsg} Mock implementation channel acknowledged.`,
-        resultSummary: "Mock implementation handoff completed locally.",
-      };
     case "reviewer":
       return {
         status: "completed",
@@ -78,6 +82,8 @@ function stubConnectorOutcome(executorType: ExecutionExecutorType): {
         message: `${baseMsg} Placeholder executor — accepted only.`,
         resultSummary: "Unassigned executor stub — no downstream channel.",
       };
+    case "cursor_executor":
+      throw new Error("stubNonCursorExecutorConnector: cursor_executor must use cursor pilot path");
   }
 }
 
@@ -120,8 +126,11 @@ export function invokeExecutorConnector(input: {
   ) {
     throw new Error("invokeExecutorConnector: integration adapter is not current");
   }
+  if (input.integrationAdapter.executorType === "cursor_executor") {
+    return invokeCursorExecutorConnectorPilot(input);
+  }
   const startedAtIso = new Date().toISOString();
-  const stub = stubConnectorOutcome(input.integrationAdapter.executorType);
+  const stub = stubNonCursorExecutorConnector(input.integrationAdapter.executorType);
   const finishedAtIso = stub.status === "completed" || stub.status === "failed" ? startedAtIso : undefined;
   return {
     connectorRunId: nextConnectorRunId(),
@@ -185,15 +194,22 @@ export function executorConnectorResultSubtleNote(
   if (!isCurrent) {
     return "Connector result on file · not tied to current integration adapter.";
   }
+  const isCursorPilot = result.connectorType?.startsWith("cursor_pilot") === true;
   switch (result.status) {
     case "accepted":
       return "Connector accepted · not Stage1/Stage2 · not env test.";
     case "running":
-      return "Executor running (stub) · not env procedure test.";
+      return isCursorPilot
+        ? "Cursor pilot running · not env procedure test."
+        : "Executor running (stub) · not env procedure test.";
     case "completed":
-      return "Execution completed (stub) · not env test flow.";
+      return isCursorPilot
+        ? "Cursor pilot completed · not Stage1/Stage2 · not env test."
+        : "Execution completed (stub) · not env test flow.";
     case "failed":
-      return "Execution failed (stub) · not env test flow.";
+      return isCursorPilot
+        ? "Cursor pilot failed · not env test flow."
+        : "Execution failed (stub) · not env test flow.";
     default:
       return "Connector result on file.";
   }

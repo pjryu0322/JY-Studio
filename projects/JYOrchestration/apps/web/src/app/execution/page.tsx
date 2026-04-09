@@ -1789,7 +1789,9 @@ export default function ExecutionPage() {
         <WorkflowCard padding={12}>
           <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Executor connector</div>
           <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 10 }}>
-            Passes the <span style={{ fontWeight: 900 }}>current</span> integration adapter through the connector interface (stub/mock). Not Stage1/Stage2 · not environment procedure test · no Git/PR/merge.
+            Passes the <span style={{ fontWeight: 900 }}>current</span> integration adapter through the same connector interface.{" "}
+            <span style={{ fontWeight: 900 }}>Cursor pilot</span> path for <span style={{ fontWeight: 900 }}>cursor_executor</span> (real-like local boundary, not Stage1/Stage2); reviewer, SCM, and security stay{" "}
+            <span style={{ fontWeight: 900 }}>stubbed</span>. No Git/PR/merge · not environment procedure test.
           </div>
           {!sessionId ? (
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Select a session for connector invocation.</div>
@@ -1821,6 +1823,12 @@ export default function ExecutionPage() {
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Connector status</div>
+              {executorConnectorResult.connectorType ? (
+                <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, lineHeight: 1.45 }}>
+                  {executorConnectorResult.connectorType.startsWith("cursor_pilot") ? "Cursor pilot connector" : "Stub connector"} ·{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{executorConnectorResult.connectorType}</span>
+                </div>
+              ) : null}
               <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.5 }}>
                 <span style={{ fontWeight: 900 }}>
                   {executorConnectorResult.status === "accepted"
