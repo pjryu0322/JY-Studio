@@ -6,7 +6,16 @@ import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowA
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import { recordSessionHandoffPrepared, resolveSessionExecutionLaunchSnapshot, setActiveExecutionInput } from "@/lib/workflow/collaborationSessionResultStore";
+import {
+  recordSessionBusinessExecutionRequest,
+  recordSessionExecutionRequestDraft,
+  recordSessionExecutionRequestApproval,
+  recordSessionHandoffPrepared,
+  setActiveExecutionInput,
+} from "@/lib/workflow/collaborationSessionResultStore";
+import { createBusinessExecutionRequest } from "@/lib/workflow/businessExecutionRequest";
+import { approveExecutionRequestDraft } from "@/lib/workflow/executionRequestApproval";
+import { createExecutionRequestDraft } from "@/lib/workflow/executionRequestDraft";
 import { getPreLaunchActionAvailability } from "@/lib/workflow/preLaunchActionModel";
 import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
@@ -19,16 +28,19 @@ export default function ExecutionPage() {
   const requirementId = search?.get("requirementId")?.trim() || null;
   const sessionId = search?.get("sessionId")?.trim() || null;
 
-  const snapshot = useMemo(
-    () => resolveSessionExecutionLaunchSnapshot(sessionId),
-    [sessionId, sessionResultsVersion]
-  );
-
   const pre = useMemo(() => getPreExecutionStateForSession(sessionId), [sessionId, sessionResultsVersion]);
+  const snapshot = pre.snapshot;
   const isActive = pre.isSnapshotActive;
   const launchReadiness = pre.launchReadiness;
   const isHandoffPrepared = pre.isHandoffPreparedActive;
   const handoffPrepared = pre.handoffPrepared;
+  const snapshotStaleness = pre.snapshotStaleness;
+  const handoffValidity = pre.handoffValidity;
+  const executionRequestDraft = pre.executionRequestDraft;
+  const executionRequestApproval = pre.executionRequestApproval;
+  const isDraftApproved = pre.isExecutionDraftApproved;
+  const businessExecutionRequest = pre.businessExecutionRequest;
+  const isBusinessRequestForSnapshot = pre.isBusinessExecutionRequestForCurrentSnapshot;
   const nextAction = useMemo(
     () =>
       getPreLaunchActionAvailability({
@@ -172,6 +184,30 @@ export default function ExecutionPage() {
                 <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.snapshotId}</span>
               </div>
             ) : null}
+
+            {snapshot ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Snapshot:{" "}
+                {snapshotStaleness.isSnapshotStale ? (
+                  <span style={{ fontWeight: 900, color: "#b45309" }}>Stale</span>
+                ) : (
+                  <span style={{ fontWeight: 900, color: "#166534" }}>Current</span>
+                )}
+                {snapshotStaleness.isSnapshotStale && snapshotStaleness.staleReason ? ` • ${snapshotStaleness.staleReason}` : ""}
+              </div>
+            ) : null}
+
+            {isHandoffPrepared ? (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                Handoff validity:{" "}
+                {handoffValidity.isHandoffValid ? (
+                  <span style={{ fontWeight: 900, color: "#166534" }}>Valid</span>
+                ) : (
+                  <span style={{ fontWeight: 900, color: "#b45309" }}>Invalid</span>
+                )}
+                {!handoffValidity.isHandoffValid && handoffValidity.invalidReason ? ` • ${handoffValidity.invalidReason}` : ""}
+              </div>
+            ) : null}
             <div style={{ fontSize: 13, color: "#111827" }}>
               State:{" "}
               {nextAction.canPrepareLaunchAction ? (
@@ -201,7 +237,137 @@ export default function ExecutionPage() {
                   });
                 }}
               />
-              {!nextAction.canPrepareLaunchAction ? (
+              {!nextAction.canPrepareLaunchAction || snapshotStaleness.isSnapshotStale || (isHandoffPrepared && !handoffValidity.isHandoffValid) ? (
+                <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
+              ) : null}
+            </div>
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Execution request draft</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            Draft is a structured request payload for a later stage. Creating a draft does not start execution.
+          </div>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {executionRequestDraft ? (
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#fafafa" }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>Draft prepared</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                  status <span style={{ fontWeight: 900 }}>draft</span> • request{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionRequestDraft.requestId}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                  snapshot <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionRequestDraft.snapshotId}</span> • candidates{" "}
+                  <span style={{ fontWeight: 900 }}>{executionRequestDraft.readyTaskIds.length}</span> • created{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionRequestDraft.createdAtIso}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No draft prepared yet.</div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <WorkflowActionButton
+                label="Create execution draft"
+                variant="primary"
+                disabled={!handoffValidity.isHandoffValid || !isHandoffPrepared || !snapshot || Boolean(executionRequestDraft)}
+                onClick={() => {
+                  if (!snapshot) return;
+                  if (!isHandoffPrepared) return;
+                  if (!handoffValidity.isHandoffValid) return;
+                  recordSessionExecutionRequestDraft(snapshot.sessionId, createExecutionRequestDraft({ snapshot }));
+                }}
+              />
+              {!handoffValidity.isHandoffValid ? (
+                <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
+              ) : null}
+            </div>
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Final pre-launch checkpoint</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            Approval is a local pre-execution checkpoint for the current execution draft. It does not start execution.
+          </div>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {isDraftApproved && executionRequestApproval ? (
+              <div style={{ border: "1px solid #bbf7d0", borderRadius: 10, padding: 10, background: "#f0fdf4" }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#166534" }}>Approved for future launch</div>
+                <div style={{ fontSize: 12, color: "#15803d", marginTop: 6, lineHeight: 1.5 }}>
+                  request <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionRequestApproval.requestId}</span> • approved{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionRequestApproval.approvedAtIso}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>Not approved yet.</div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <WorkflowActionButton
+                label={isDraftApproved ? "Approved" : "Approve for launch"}
+                variant="primary"
+                disabled={!executionRequestDraft || !handoffValidity.isHandoffValid || isDraftApproved}
+                onClick={() => {
+                  if (!executionRequestDraft) return;
+                  if (!handoffValidity.isHandoffValid) return;
+                  const approval = approveExecutionRequestDraft({ draft: executionRequestDraft, approvedBy: "local" });
+                  recordSessionExecutionRequestApproval(executionRequestDraft.sessionId, approval);
+                }}
+              />
+              {!executionRequestDraft || !handoffValidity.isHandoffValid ? (
+                <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
+              ) : null}
+            </div>
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={12}>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Business execution request</div>
+          <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+            This creates a business-side execution request artifact (not Stage1/Stage2). It does not launch execution.
+          </div>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {businessExecutionRequest ? (
+              <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, background: "#fafafa" }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>Request prepared</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                  status <span style={{ fontWeight: 900 }}>requested</span> • request{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{businessExecutionRequest.requestId}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                  snapshot <span style={{ fontFamily: "ui-monospace, monospace" }}>{businessExecutionRequest.snapshotId}</span> • candidates{" "}
+                  <span style={{ fontWeight: 900 }}>{businessExecutionRequest.candidateTaskIds.length}</span> • created{" "}
+                  <span style={{ fontFamily: "ui-monospace, monospace" }}>{businessExecutionRequest.createdAtIso}</span>
+                </div>
+                {!isBusinessRequestForSnapshot ? (
+                  <div style={{ fontSize: 12, color: "#b45309", marginTop: 6, lineHeight: 1.5 }}>
+                    Note: this request was created for a different snapshot.
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>No business execution request yet.</div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <WorkflowActionButton
+                label="Create execution request"
+                variant="primary"
+                disabled={!snapshot || !handoffValidity.isHandoffValid || !isDraftApproved || !isHandoffPrepared || Boolean(businessExecutionRequest)}
+                onClick={() => {
+                  if (!snapshot) return;
+                  if (!isHandoffPrepared) return;
+                  if (!handoffValidity.isHandoffValid) return;
+                  if (!isDraftApproved) return;
+                  recordSessionBusinessExecutionRequest(snapshot.sessionId, createBusinessExecutionRequest({ snapshot }));
+                }}
+              />
+              {!snapshot || !handoffValidity.isHandoffValid || !isDraftApproved ? (
                 <WorkflowActionButton label="Open Tasks workspace" onClick={openTasks} />
               ) : null}
             </div>
