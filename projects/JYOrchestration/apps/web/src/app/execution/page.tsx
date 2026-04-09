@@ -76,13 +76,7 @@ import {
 } from "@/lib/workflow/businessExecutionSelectors";
 import { getBusinessExecutionMonitoringStateForSessionFromPre } from "@/lib/workflow/businessExecutionRunMonitoring";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
-import {
-  createRetryRequestedEvent,
-  createRetryStartedEvent,
-  createRunCreatedEvent,
-  createRunEventFromConnectorResult,
-  createTerminalRunEventFromStatus,
-} from "@/lib/workflow/businessExecutionRunEvent";
+import { createExecutionPageActions } from "@/lib/workflow/executionPageActions";
 
 export default function ExecutionPage() {
   const router = useRouter();
@@ -157,298 +151,35 @@ export default function ExecutionPage() {
     [pre.active, snapshot, launchReadiness]
   );
 
-  const assignExecutor = (executorType: ExecutionExecutorType) => {
-    if (!sessionId || !businessExecutionPackage || !actions.canAssignExecutor) return;
-    const next = assignBusinessExecutionPackage({
-      pkg: businessExecutionPackage,
-      executorType,
-      assignedBy: "local",
-    });
-    recordSessionExecutionAssignment(sessionId, next);
-  };
-
-  const prepareExecutorHandoffPayload = () => {
-    if (!sessionId || !actions.canCreateHandoffPayload) return;
-    if (!executionAssignment || !businessExecutionPackage) return;
-    const payload = createExecutionAssignmentHandoff({
-      assignment: executionAssignment,
-      pkg: businessExecutionPackage,
-    });
-    recordSessionExecutionAssignmentHandoffPayload(sessionId, payload);
-  };
-
-  const prepareExecutorIntakeContract = () => {
-    if (!sessionId || !actions.canCreateIntakeContract) return;
-    if (!executionAssignmentHandoffPayload) return;
-    const contract = createExecutorIntakeContract({ handoff: executionAssignmentHandoffPayload });
-    recordSessionExecutorIntakeContract(sessionId, contract);
-  };
-
-  const prepareExecutorWorkOrder = () => {
-    if (!sessionId || !actions.canCreateWorkOrder) return;
-    if (!executorIntakeContract) return;
-    const wo = createExecutorWorkOrder({ intake: executorIntakeContract });
-    recordSessionExecutorWorkOrder(sessionId, wo);
-  };
-
-  const declareLaunchIntent = () => {
-    if (!sessionId || !actions.canDeclareLaunchIntent) return;
-    if (!executorWorkOrder) return;
-    const intent = declareBusinessLaunchIntent({
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      declaredBy: "local",
-    });
-    recordSessionBusinessLaunchIntent(sessionId, intent);
-  };
-
-  const prepareLaunchHandoffRecord = () => {
-    if (!sessionId || !actions.canRecordLaunchHandoff) return;
-    if (!businessLaunchIntent || !executorWorkOrder) return;
-    const record = createBusinessLaunchHandoffRecord({
-      intent: businessLaunchIntent,
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      sessionId,
-      recordedBy: "local",
-    });
-    recordSessionBusinessLaunchHandoffRecord(sessionId, record);
-  };
-
-  const prepareExecutionBridge = () => {
-    if (!sessionId || !actions.canPrepareExecutionBridge) return;
-    if (
-      !businessLaunchHandoffRecord ||
-      !businessLaunchIntent ||
-      !executorWorkOrder ||
-      !executorIntakeContract ||
-      !executionAssignment
-    ) {
-      return;
-    }
-    const bridge = createExecutionBridgePayload({
-      handoffRecord: businessLaunchHandoffRecord,
-      intent: businessLaunchIntent,
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      intake: executorIntakeContract,
-      assignment: executionAssignment,
-      sessionId,
-    });
-    recordSessionExecutionBridgePayload(sessionId, bridge);
-  };
-
-  const prepareExecutorLaunchContract = () => {
-    if (!sessionId || !actions.canPrepareLaunchContract) return;
-    if (!executionBridgePayload) return;
-    const contract = createExecutorLaunchContract({
-      bridge: executionBridgePayload,
-      handoffRecord: businessLaunchHandoffRecord,
-      intent: businessLaunchIntent,
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      sessionId,
-    });
-    recordSessionExecutorLaunchContract(sessionId, contract);
-  };
-
-  const markExecutionTriggerIntent = () => {
-    if (!sessionId || !actions.canDeclareExecutionTriggerIntent) return;
-    if (!executorLaunchContract || !executionBridgePayload) return;
-    const intent = declareExecutionTriggerIntent({
-      contract: executorLaunchContract,
-      bridge: executionBridgePayload,
-      handoffRecord: businessLaunchHandoffRecord,
-      intent: businessLaunchIntent,
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      sessionId,
-      declaredBy: "local",
-    });
-    recordSessionExecutionTriggerIntent(sessionId, intent);
-  };
-
-  const prepareActualExecutionAdapter = () => {
-    if (!sessionId || !actions.canPrepareExecutionAdapter) return;
-    if (!executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) return;
-    const adapter = createActualExecutionAdapterRequest({
-      triggerIntent: executionTriggerIntent,
-      contract: executorLaunchContract,
-      bridge: executionBridgePayload,
-      handoffRecord: businessLaunchHandoffRecord,
-      intent: businessLaunchIntent,
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      sessionId,
-    });
-    recordSessionActualExecutionAdapterRequest(sessionId, adapter);
-  };
-
-  const prepareActualLaunchCommand = () => {
-    if (!sessionId || !actions.canPrepareLaunchCommand) return;
-    if (!actualExecutionAdapterRequest || !executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) {
-      return;
-    }
-    const command = createActualLaunchCommand({
-      adapter: actualExecutionAdapterRequest,
-      triggerIntent: executionTriggerIntent,
-      contract: executorLaunchContract,
-      bridge: executionBridgePayload,
-      handoffRecord: businessLaunchHandoffRecord,
-      intent: businessLaunchIntent,
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      sessionId,
-    });
-    recordSessionActualLaunchCommand(sessionId, command);
-  };
-
-  const startBusinessExecution = () => {
-    if (!sessionId || !actions.canStartBusinessExecution) return;
-    if (!actualLaunchCommand || !actualExecutionAdapterRequest || !executionTriggerIntent || !executorLaunchContract || !executionBridgePayload) {
-      return;
-    }
-    const run = invokeBusinessExecution({
-      command: actualLaunchCommand,
-      adapter: actualExecutionAdapterRequest,
-      triggerIntent: executionTriggerIntent,
-      contract: executorLaunchContract,
-      bridge: executionBridgePayload,
-      handoffRecord: businessLaunchHandoffRecord,
-      intent: businessLaunchIntent,
-      readiness: executionReadiness,
-      workOrder: executorWorkOrder,
-      sessionId,
-    });
-    recordSessionBusinessExecutionRun(sessionId, run);
-    appendSessionBusinessExecutionRunEvent(sessionId, run.runId, createRunCreatedEvent(run));
-  };
-
-  const applyBusinessRunControl = (kind: "running" | "completed" | "failed") => {
-    if (!sessionId || !businessExecutionRun || !isBusinessExecutionRunCurrent) return;
-    try {
-      const next =
-        kind === "running"
-          ? markBusinessExecutionRunRunning(businessExecutionRun)
-          : kind === "completed"
-            ? markBusinessExecutionRunCompleted(businessExecutionRun)
-            : markBusinessExecutionRunFailed(businessExecutionRun);
-      recordSessionBusinessExecutionRun(sessionId, next);
-    } catch {
-      /* invalid transition — ignore */
-    }
-  };
-
-  const prepareExecutorIntegrationAdapter = () => {
-    if (!sessionId || !actions.canPrepareExecutorIntegrationAdapter) return;
-    if (!businessExecutionRun || !actualLaunchCommand) return;
-    try {
-      const adapter = createExecutorIntegrationAdapter({
-        run: businessExecutionRun,
-        command: actualLaunchCommand,
-        adapter: actualExecutionAdapterRequest,
-        triggerIntent: executionTriggerIntent,
-        contract: executorLaunchContract,
-        bridge: executionBridgePayload,
-        handoffRecord: businessLaunchHandoffRecord,
-        intent: businessLaunchIntent,
-        readiness: executionReadiness,
-        workOrder: executorWorkOrder,
+  const pageActions = useMemo(
+    () =>
+      createExecutionPageActions({
+        router,
         sessionId,
-      });
-      recordSessionExecutorIntegrationAdapter(sessionId, adapter);
-    } catch {
-      /* run not current or invalid chain */
-    }
-  };
+        requirementId,
+        pre,
+        actions,
+      }),
+    [router, sessionId, requirementId, pre, actions]
+  );
 
-  const runExecutorConnector = () => {
-    if (!sessionId || !actions.canInvokeExecutorConnector) return;
-    if (!executorIntegrationAdapter || !businessExecutionRun || !actualLaunchCommand) return;
-    try {
-      const result = invokeExecutorConnector({
-        integrationAdapter: executorIntegrationAdapter,
-        run: businessExecutionRun,
-        command: actualLaunchCommand,
-        adapter: actualExecutionAdapterRequest,
-        triggerIntent: executionTriggerIntent,
-        contract: executorLaunchContract,
-        bridge: executionBridgePayload,
-        handoffRecord: businessLaunchHandoffRecord,
-        intent: businessLaunchIntent,
-        readiness: executionReadiness,
-        workOrder: executorWorkOrder,
-        sessionId,
-      });
-      appendSessionBusinessExecutionRunEvent(
-        sessionId,
-        businessExecutionRun.runId,
-        createRunEventFromConnectorResult({ run: businessExecutionRun, result })
-      );
-      // Pilot connectors map into the business run lifecycle (persisted core entity).
-      // scm/security remain stubbed and do not update the business run yet.
-      if ((result.executorType === "cursor_executor" || result.executorType === "reviewer") && isBusinessExecutionRunCurrent) {
-        const nextRun = applyExecutorConnectorResultToBusinessExecutionRun({
-          run: businessExecutionRun,
-          connectorResult: result,
-        });
-        recordSessionBusinessExecutionRun(sessionId, nextRun);
-        const terminal = createTerminalRunEventFromStatus(nextRun);
-        if (terminal) appendSessionBusinessExecutionRunEvent(sessionId, nextRun.runId, terminal);
-      }
-      recordSessionExecutorConnectorResult(sessionId, result);
-    } catch {
-      /* adapter not current */
-    }
-  };
+  const openTasks = pageActions.openTasks;
+  const prepareExecutorHandoffPayload = pageActions.prepareExecutorHandoffPayload;
+  const prepareExecutorIntakeContract = pageActions.prepareExecutorIntakeContract;
+  const prepareExecutorWorkOrder = pageActions.prepareExecutorWorkOrder;
+  const declareLaunchIntent = pageActions.declareLaunchIntent;
+  const prepareLaunchHandoffRecord = pageActions.prepareLaunchHandoffRecord;
+  const prepareExecutionBridge = pageActions.prepareExecutionBridge;
+  const prepareExecutorLaunchContract = pageActions.prepareExecutorLaunchContract;
+  const markExecutionTriggerIntent = pageActions.markExecutionTriggerIntent;
+  const prepareActualExecutionAdapter = pageActions.prepareActualExecutionAdapter;
+  const prepareActualLaunchCommand = pageActions.prepareActualLaunchCommand;
+  const startBusinessExecution = pageActions.startBusinessExecution;
+  const applyBusinessRunControl = pageActions.applyBusinessRunControl;
+  const prepareExecutorIntegrationAdapter = pageActions.prepareExecutorIntegrationAdapter;
+  const runExecutorConnector = pageActions.runExecutorConnector;
+  const retryExecutorConnector = pageActions.retryExecutorConnector;
 
-  const retryExecutorConnector = () => {
-    if (!sessionId || !actions.canRetryExecutorConnector) return;
-    if (!executorIntegrationAdapter || !businessExecutionRun || !actualLaunchCommand) return;
-    try {
-      appendSessionBusinessExecutionRunEvent(sessionId, businessExecutionRun.runId, createRetryRequestedEvent(businessExecutionRun));
-      appendSessionBusinessExecutionRunEvent(sessionId, businessExecutionRun.runId, createRetryStartedEvent(businessExecutionRun));
-      const result = invokeExecutorConnector({
-        integrationAdapter: executorIntegrationAdapter,
-        run: businessExecutionRun,
-        command: actualLaunchCommand,
-        adapter: actualExecutionAdapterRequest,
-        triggerIntent: executionTriggerIntent,
-        contract: executorLaunchContract,
-        bridge: executionBridgePayload,
-        handoffRecord: businessLaunchHandoffRecord,
-        intent: businessLaunchIntent,
-        readiness: executionReadiness,
-        workOrder: executorWorkOrder,
-        sessionId,
-      });
-      appendSessionBusinessExecutionRunEvent(
-        sessionId,
-        businessExecutionRun.runId,
-        createRunEventFromConnectorResult({ run: businessExecutionRun, result })
-      );
-      if ((result.executorType === "cursor_executor" || result.executorType === "reviewer") && isBusinessExecutionRunCurrent) {
-        const nextRun = applyExecutorConnectorResultToBusinessExecutionRun({
-          run: businessExecutionRun,
-          connectorResult: result,
-        });
-        recordSessionBusinessExecutionRun(sessionId, nextRun);
-        const terminal = createTerminalRunEventFromStatus(nextRun);
-        if (terminal) appendSessionBusinessExecutionRunEvent(sessionId, nextRun.runId, terminal);
-      }
-      recordSessionExecutorConnectorResult(sessionId, result);
-    } catch {
-      /* adapter not current */
-    }
-  };
-
-  const openTasks = () => {
-    const qs = new URLSearchParams();
-    if (requirementId) qs.set("requirementId", requirementId);
-    if (sessionId) qs.set("sessionId", sessionId);
-    const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    router.push(`/tasks${suffix}`);
-  };
 
   return (
     <div>
@@ -969,7 +700,7 @@ export default function ExecutionPage() {
                   label={EXECUTOR_TYPE_LABELS[t]}
                   variant={isExecutionPackageAssigned && executionAssignment?.executorType === t ? "primary" : undefined}
                   disabled={!sessionId || !actions.canAssignExecutor}
-                  onClick={() => assignExecutor(t)}
+                  onClick={() => pageActions.assignExecutor(t)}
                 />
               ))}
             </div>
