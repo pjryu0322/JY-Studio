@@ -95,3 +95,14 @@ export function recordConnectorInvocationEffects(input: {
     if (terminal) appendSessionBusinessExecutionRunEvent(sessionId, nextRun.runId, terminal);
   }
 }
+
+/** Alias: apply normalized connector result to the current run (events + pilot semantics). */
+export const applyConnectorOutcomeToRun = recordConnectorInvocationEffects;
+
+export function applyBusinessExecutionRunControl(input: {
+  sessionId: string | null;
+  pre: PreExecutionSessionSelector;
+  kind: "running" | "completed" | "failed";
+}): void {
+  applyBusinessRunControlForSession(input);
+}

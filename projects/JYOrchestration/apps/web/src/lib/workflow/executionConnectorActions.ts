@@ -11,7 +11,7 @@ import {
 import type { ExecutionPageActionState } from "@/lib/workflow/businessExecutionSelectors";
 import type { PreExecutionSessionSelector } from "@/lib/workflow/preExecutionSelectors";
 import { createRetryRequestedEvent, createRetryStartedEvent } from "@/lib/workflow/businessExecutionRunEvent";
-import { recordConnectorInvocationEffects } from "@/lib/workflow/executionRunActions";
+import { applyConnectorOutcomeToRun } from "@/lib/workflow/executionRunActions";
 
 export function invokeExecutorConnectorForSession(input: {
   sessionId: string | null;
@@ -36,7 +36,7 @@ export function invokeExecutorConnectorForSession(input: {
       workOrder: pre.executorWorkOrder,
       sessionId,
     });
-    recordConnectorInvocationEffects({ sessionId, pre, result });
+    applyConnectorOutcomeToRun({ sessionId, pre, result });
     recordSessionExecutorConnectorResult(sessionId, result);
   } catch {
     /* adapter not current */
@@ -68,9 +68,13 @@ export function retryExecutorConnectorForSession(input: {
       workOrder: pre.executorWorkOrder,
       sessionId,
     });
-    recordConnectorInvocationEffects({ sessionId, pre, result });
+    applyConnectorOutcomeToRun({ sessionId, pre, result });
     recordSessionExecutorConnectorResult(sessionId, result);
   } catch {
     /* adapter not current */
   }
 }
+
+/** Stable names for call sites that prefer verb-oriented API */
+export const invokeCurrentExecutorConnector = invokeExecutorConnectorForSession;
+export const retryCurrentExecutorConnector = retryExecutorConnectorForSession;
