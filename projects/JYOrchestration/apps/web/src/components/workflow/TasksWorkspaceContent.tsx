@@ -16,6 +16,7 @@ import {
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { buildExecutionLaunchInput } from "@/lib/workflow/executionLaunchInput";
 import { createExecutionLaunchSnapshot } from "@/lib/workflow/executionLaunchSnapshot";
+import { EXECUTOR_TYPE_LABELS } from "@/lib/workflow/executionAssignment";
 import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
@@ -79,7 +80,20 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const executionRequestDraft = pre.executionRequestDraft;
   const isDraftApproved = pre.isExecutionDraftApproved;
   const hasBusinessExecutionRequest = pre.hasBusinessExecutionRequest;
-  const businessExecutionRequest = pre.businessExecutionRequest;
+  const businessExecutionRequestValidity = pre.businessExecutionRequestValidity;
+  const isBusinessExecutionApproved = pre.isBusinessExecutionApproved;
+  const isBusinessExecutionPackaged = pre.isBusinessExecutionPackaged;
+  const isExecutionPackageAssigned = pre.isExecutionPackageAssigned;
+  const executionAssignment = pre.executionAssignment;
+  const isExecutionAssignmentHandoffCurrent = pre.isExecutionAssignmentHandoffCurrent;
+  const isExecutorIntakeContractCurrent = pre.isExecutorIntakeContractCurrent;
+  const isExecutorWorkOrderCurrent = pre.isExecutorWorkOrderCurrent;
+  const executionReadiness = pre.executionReadiness;
+  const isBusinessLaunchIntentCurrent = pre.isBusinessLaunchIntentCurrent;
+  const isBusinessLaunchHandoffRecordCurrent = pre.isBusinessLaunchHandoffRecordCurrent;
+  const isExecutorLaunchContractCurrent = pre.isExecutorLaunchContractCurrent;
+  const isExecutionTriggerIntentCurrent = pre.isExecutionTriggerIntentCurrent;
+  const isActualExecutionAdapterRequestCurrent = pre.isActualExecutionAdapterRequestCurrent;
 
   const displayedSequenceTasks = useMemo(() => {
     if (sequenceView === "all") return working.activeTasks;
@@ -335,10 +349,87 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
                       Final checkpoint: <span style={{ fontWeight: 900, color: "#166534" }}>Approved</span> (see /execution)
                     </div>
                   ) : null}
-                  {hasBusinessExecutionRequest && businessExecutionRequest ? (
+                  {hasBusinessExecutionRequest && businessExecutionRequestValidity ? (
                     <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
-                      Business execution request: <span style={{ fontWeight: 900, color: "#166534" }}>Requested</span> •{" "}
-                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{businessExecutionRequest.requestId}</span>
+                      Business request:{" "}
+                      <span
+                        style={{
+                          fontWeight: 900,
+                          color: businessExecutionRequestValidity.status === "requested" ? "#166534" : "#b45309",
+                        }}
+                      >
+                        {businessExecutionRequestValidity.status === "requested"
+                          ? "Requested"
+                          : businessExecutionRequestValidity.status === "stale"
+                            ? "Stale"
+                            : "Invalid"}
+                      </span>{" "}
+                      (see /execution)
+                    </div>
+                  ) : null}
+                  {isBusinessExecutionApproved ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, lineHeight: 1.45 }}>
+                      Business request: <span style={{ fontWeight: 800, color: "#6b7280" }}>Approved</span> · pre-execution only, not a launch.
+                    </div>
+                  ) : null}
+                  {isBusinessExecutionPackaged ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Execution package: <span style={{ fontWeight: 800, color: "#6b7280" }}>Prepared</span> · not launched.
+                    </div>
+                  ) : null}
+                  {isExecutionPackageAssigned && executionAssignment ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Assigned: <span style={{ fontWeight: 800, color: "#6b7280" }}>{EXECUTOR_TYPE_LABELS[executionAssignment.executorType]}</span> · not
+                      launched.
+                    </div>
+                  ) : null}
+                  {isExecutionAssignmentHandoffCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Executor handoff: <span style={{ fontWeight: 800, color: "#6b7280" }}>Prepared</span> · not launched.
+                    </div>
+                  ) : null}
+                  {isExecutorIntakeContractCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Executor input: <span style={{ fontWeight: 800, color: "#6b7280" }}>Intake ready</span> · not launched.
+                    </div>
+                  ) : null}
+                  {isExecutorWorkOrderCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Work order: <span style={{ fontWeight: 800, color: "#6b7280" }}>Ready</span> · not launched.
+                    </div>
+                  ) : null}
+                  {view.sessionId ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Execution readiness:{" "}
+                      <span style={{ fontWeight: 800, color: executionReadiness.status === "ready" ? "#166534" : "#b45309" }}>
+                        {executionReadiness.status === "ready" ? "Ready" : "Not ready"}
+                      </span>
+                      .
+                    </div>
+                  ) : null}
+                  {isBusinessLaunchIntentCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Launch intent: <span style={{ fontWeight: 800, color: "#6b7280" }}>Declared</span> · not launched.
+                    </div>
+                  ) : null}
+                  {isBusinessLaunchHandoffRecordCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Launch handoff recorded · ready for execution handoff · not launched.
+                    </div>
+                  ) : null}
+                  {isExecutorLaunchContractCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Launch contract ready · executor contract prepared · not launched.
+                    </div>
+                  ) : null}
+                  {isExecutionTriggerIntentCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Trigger intent declared · ready to trigger later · not launched.
+                    </div>
+                  ) : null}
+                  {isActualExecutionAdapterRequestCurrent ? (
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.45 }}>
+                      Execution adapter ready · ready for actual execution handoff · not launched.
                     </div>
                   ) : null}
                 </div>
