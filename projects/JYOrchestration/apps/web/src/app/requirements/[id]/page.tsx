@@ -18,6 +18,7 @@ import {
   sessionHasOfficialTasksOverride,
 } from "@/lib/workflow/collaborationSessionResultStore";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
+import { EXECUTOR_TYPE_LABELS } from "@/lib/workflow/executionAssignment";
 import { getPreExecutionStateForSession } from "@/lib/workflow/preExecutionSelectors";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { WorkflowTabs } from "@/components/workflow/WorkflowTabs";
@@ -166,6 +167,44 @@ export default function RequirementDetailPage() {
               <div style={{ color: "#6b7280" }}>
                 Next: Requirement → Session → Minutes → Features
               </div>
+              {latestSessionId ? (
+                <div style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>
+                  Execution readiness (latest session):{" "}
+                  <span style={{ fontWeight: 800, color: pre.executionReadiness.status === "ready" ? "#166534" : "#b45309" }}>
+                    {pre.executionReadiness.status === "ready" ? "Ready" : "Not ready"}
+                  </span>
+                  {pre.isBusinessLaunchIntentCurrent ? (
+                    <>
+                      {" "}
+                      · Launch intent <span style={{ fontWeight: 800, color: "#6b7280" }}>declared</span>
+                    </>
+                  ) : null}
+                  {pre.isBusinessLaunchHandoffRecordCurrent ? (
+                    <>
+                      {" "}
+                      · Launch handoff <span style={{ fontWeight: 800, color: "#6b7280" }}>recorded</span>
+                    </>
+                  ) : null}
+                  {pre.isExecutorLaunchContractCurrent ? (
+                    <>
+                      {" "}
+                      · Launch contract <span style={{ fontWeight: 800, color: "#6b7280" }}>ready</span>
+                    </>
+                  ) : null}
+                  {pre.isExecutionTriggerIntentCurrent ? (
+                    <>
+                      {" "}
+                      · Trigger intent <span style={{ fontWeight: 800, color: "#6b7280" }}>declared</span>
+                    </>
+                  ) : null}
+                  {pre.isActualExecutionAdapterRequestCurrent ? (
+                    <>
+                      {" "}
+                      · Execution adapter <span style={{ fontWeight: 800, color: "#6b7280" }}>ready</span>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <WorkflowActionButton
@@ -367,9 +406,55 @@ export default function RequirementDetailPage() {
                       Final checkpoint: <span style={{ fontWeight: 900, color: "#166534" }}>Approved</span>
                     </span>
                   ) : null}
-                  {pre.hasBusinessExecutionRequest ? (
+                  {pre.hasBusinessExecutionRequest && pre.businessExecutionRequestValidity ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Business execution request: <span style={{ fontWeight: 900, color: "#166534" }}>Requested</span> (see /execution)
+                      Business request:{" "}
+                      <span
+                        style={{
+                          fontWeight: 900,
+                          color: pre.businessExecutionRequestValidity.status === "requested" ? "#166534" : "#b45309",
+                        }}
+                      >
+                        {pre.businessExecutionRequestValidity.status === "requested"
+                          ? "Requested"
+                          : pre.businessExecutionRequestValidity.status === "stale"
+                            ? "Stale"
+                            : "Invalid"}
+                      </span>{" "}
+                      (see /execution)
+                    </span>
+                  ) : null}
+                  {pre.isBusinessExecutionApproved ? (
+                    <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
+                      Business request: <span style={{ fontWeight: 800, color: "#6b7280" }}>Approved</span> · not a launch.
+                    </span>
+                  ) : null}
+                  {pre.isBusinessExecutionPackaged ? (
+                    <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
+                      Execution package: <span style={{ fontWeight: 800, color: "#6b7280" }}>Prepared</span> · not launched.
+                    </span>
+                  ) : null}
+                  {pre.isExecutionPackageAssigned && pre.executionAssignment ? (
+                    <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
+                      Assigned: <span style={{ fontWeight: 800, color: "#6b7280" }}>
+                        {EXECUTOR_TYPE_LABELS[pre.executionAssignment.executorType]}
+                      </span>{" "}
+                      · not launched.
+                    </span>
+                  ) : null}
+                  {pre.isExecutionAssignmentHandoffCurrent ? (
+                    <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
+                      Executor handoff: <span style={{ fontWeight: 800, color: "#6b7280" }}>Prepared</span> · not launched.
+                    </span>
+                  ) : null}
+                  {pre.isExecutorIntakeContractCurrent ? (
+                    <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
+                      Executor input: <span style={{ fontWeight: 800, color: "#6b7280" }}>Intake ready</span> · not launched.
+                    </span>
+                  ) : null}
+                  {pre.isExecutorWorkOrderCurrent ? (
+                    <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
+                      Work order: <span style={{ fontWeight: 800, color: "#6b7280" }}>Ready</span> · not launched.
                     </span>
                   ) : null}
                 </>

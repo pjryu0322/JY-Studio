@@ -6,9 +6,12 @@ export type BusinessExecutionRequest = {
   requirementId: string | null;
   sessionId: string;
   snapshotId: string;
+  /** Confirmed task ids at request time (for derived stale checks). */
+  confirmedTaskIds: string[];
   candidateTaskIds: string[];
   candidateTasks: CollaborationOfficialTaskDraft[];
   createdAtIso: string;
+  /** Stored creation status only; use evaluateExecutionRequestValidity for lifecycle. */
   status: "requested";
   source: "business_pre_execution";
   summary?: {
@@ -28,11 +31,13 @@ export function createBusinessExecutionRequest(input: {
   requestLabel?: string;
 }): BusinessExecutionRequest {
   const candidateTaskIds = input.snapshot.readyTaskIds;
+  const confirmedTaskIds = input.snapshot.confirmedTaskIds;
   return {
     requestId: requestId(),
     requirementId: input.snapshot.requirementId,
     sessionId: input.snapshot.sessionId,
     snapshotId: input.snapshot.snapshotId,
+    confirmedTaskIds,
     candidateTaskIds,
     candidateTasks: input.snapshot.candidateTasks,
     createdAtIso: new Date().toISOString(),
