@@ -36,8 +36,21 @@ export {
   recordSessionHandoffPrepared,
   resolveSessionHandoffPrepared,
   isHandoffPreparedForActive,
+  recordSessionExecutionRequestDraft,
+  resolveSessionExecutionRequestDraft,
+  sessionHasExecutionRequestDraft,
+  recordSessionExecutionRequestApproval,
+  resolveSessionExecutionRequestApproval,
+  isExecutionDraftApproved,
   type ActiveExecutionInputSelection,
   getActiveExecutionInput,
   setActiveExecutionInput,
   isActiveExecutionSnapshot,
 } from "@/lib/workflow/preExecutionStateStore";
+
+export {
+  recordSessionBusinessExecutionRequest,
+  resolveSessionBusinessExecutionRequest,
+  sessionHasBusinessExecutionRequest,
+  isBusinessExecutionRequestForSnapshot,
+} from "@/lib/workflow/businessExecutionRequestStore";

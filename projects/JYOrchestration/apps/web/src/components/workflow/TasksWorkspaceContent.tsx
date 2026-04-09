@@ -73,6 +73,13 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
   const isActiveSnapshot = pre.isSnapshotActive;
   const isHandoffPrepared = pre.isHandoffPreparedActive;
   const handoffPrepared = pre.handoffPrepared;
+  const snapshotStaleness = pre.snapshotStaleness;
+  const handoffValidity = pre.handoffValidity;
+  const hasExecutionRequestDraft = pre.hasExecutionRequestDraft;
+  const executionRequestDraft = pre.executionRequestDraft;
+  const isDraftApproved = pre.isExecutionDraftApproved;
+  const hasBusinessExecutionRequest = pre.hasBusinessExecutionRequest;
+  const businessExecutionRequest = pre.businessExecutionRequest;
 
   const displayedSequenceTasks = useMemo(() => {
     if (sequenceView === "all") return working.activeTasks;
@@ -305,6 +312,33 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenCollabora
                       Handoff prepared:{" "}
                       <span style={{ fontWeight: 900, color: "#166534" }}>Prepared</span> •{" "}
                       <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.preparedAtIso}</span>
+                    </div>
+                  ) : null}
+                  {preparedSnapshot && snapshotStaleness.isSnapshotStale ? (
+                    <div style={{ fontSize: 12, color: "#b45309", marginTop: 6, lineHeight: 1.5 }}>
+                      Snapshot is stale. Re-prepare snapshot before handoff.
+                    </div>
+                  ) : null}
+                  {isHandoffPrepared && !handoffValidity.isHandoffValid ? (
+                    <div style={{ fontSize: 12, color: "#b45309", marginTop: 6, lineHeight: 1.5 }}>
+                      Handoff is invalid. Re-prepare snapshot and prepare handoff again.
+                    </div>
+                  ) : null}
+                  {hasExecutionRequestDraft && executionRequestDraft ? (
+                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                      Execution draft: <span style={{ fontWeight: 900, color: "#166534" }}>Draft prepared</span> •{" "}
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{executionRequestDraft.requestId}</span>
+                    </div>
+                  ) : null}
+                  {isDraftApproved ? (
+                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                      Final checkpoint: <span style={{ fontWeight: 900, color: "#166534" }}>Approved</span> (see /execution)
+                    </div>
+                  ) : null}
+                  {hasBusinessExecutionRequest && businessExecutionRequest ? (
+                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.5 }}>
+                      Business execution request: <span style={{ fontWeight: 900, color: "#166534" }}>Requested</span> •{" "}
+                      <span style={{ fontFamily: "ui-monospace, monospace" }}>{businessExecutionRequest.requestId}</span>
                     </div>
                   ) : null}
                 </div>

@@ -124,6 +124,9 @@ export default function RequirementDetailPage() {
   const launchReadiness = pre.launchReadiness;
   const isHandoffPrepared = pre.isHandoffPreparedActive;
   const handoffPrepared = pre.handoffPrepared;
+  const snapshotStaleness = pre.snapshotStaleness;
+  const handoffValidity = pre.handoffValidity;
+  const hasExecutionDraft = pre.hasExecutionRequestDraft;
 
   const search = useSearchParams();
   const router = useRouter();
@@ -342,6 +345,31 @@ export default function RequirementDetailPage() {
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
                       Handoff prepared: <span style={{ fontWeight: 900, color: "#166534" }}>Prepared</span> •{" "}
                       <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.preparedAtIso}</span>
+                    </span>
+                  ) : null}
+                  {hasExecutionSnapshot && snapshotStaleness.isSnapshotStale ? (
+                    <span style={{ fontSize: 12, color: "#b45309", lineHeight: 1.45 }}>
+                      Snapshot stale: <span style={{ fontWeight: 900 }}>Re-prepare</span> (see /tasks)
+                    </span>
+                  ) : null}
+                  {hasExecutionSnapshot && isHandoffPrepared && !handoffValidity.isHandoffValid ? (
+                    <span style={{ fontSize: 12, color: "#b45309", lineHeight: 1.45 }}>
+                      Handoff invalid: <span style={{ fontWeight: 900 }}>Re-prepare</span> (see /execution)
+                    </span>
+                  ) : null}
+                  {hasExecutionDraft ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Execution draft: <span style={{ fontWeight: 900, color: "#166534" }}>Prepared</span> (see /execution)
+                    </span>
+                  ) : null}
+                  {pre.isExecutionDraftApproved ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Final checkpoint: <span style={{ fontWeight: 900, color: "#166534" }}>Approved</span>
+                    </span>
+                  ) : null}
+                  {pre.hasBusinessExecutionRequest ? (
+                    <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
+                      Business execution request: <span style={{ fontWeight: 900, color: "#166534" }}>Requested</span> (see /execution)
                     </span>
                   ) : null}
                 </>
