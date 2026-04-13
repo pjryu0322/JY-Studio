@@ -1,11 +1,21 @@
 /**
  * MVP — simulated prompt vs result validation for executionService (no LLM, in-memory).
+ *
+ * Contract:
+ * - `reviewTaskResult({ taskId, prompt, result })` returns `{ status, reason?, retryable }`.
+ * - Validation is deterministic mock logic only (no external LLM, no DB).
  */
 
 export type ReviewResult = {
   status: "PASSED" | "FAILED";
   reason?: string;
   retryable: boolean;
+};
+
+export type ReviewTaskInput = {
+  taskId: string;
+  prompt: string;
+  result: unknown;
 };
 
 export interface ValidationInput {
@@ -79,11 +89,7 @@ function hasExpectedStructure(result: unknown): boolean {
   return false;
 }
 
-export async function reviewTaskResult(input: {
-  taskId: string;
-  prompt: string;
-  result: unknown;
-}): Promise<ReviewResult> {
+export async function reviewTaskResult(input: ReviewTaskInput): Promise<ReviewResult> {
   const forced = failuresRemainingBeforePass.get(input.taskId) ?? 0;
   if (forced > 0) {
     failuresRemainingBeforePass.set(input.taskId, forced - 1);

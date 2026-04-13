@@ -40,10 +40,21 @@ export type WaitForCompletionResult = {
 };
 
 const jobResults = new Map<string, WaitForCompletionResult>();
+/** Test hook: next N `waitForCompletion` calls return failure (`CURSOR_FAILED`) before checking `jobResults`. */
+let failNextCursorWaits = 0;
+
+export function mvpCursorFailNextWaits(count: number): void {
+  failNextCursorWaits = Math.max(0, count);
+}
 
 /** Configure stub outcome for a jobId (tests). */
 export function mvpCursorSetJobResult(jobId: string, result: WaitForCompletionResult): void {
   jobResults.set(jobId, result);
+}
+
+export function mvpCursorResetTestHooks(): void {
+  jobResults.clear();
+  failNextCursorWaits = 0;
 }
 
 export async function submitTaskPrompt(input: SubmitTaskPromptInput): Promise<SubmitTaskPromptResult> {
@@ -55,6 +66,10 @@ export async function submitTaskPrompt(input: SubmitTaskPromptInput): Promise<Su
 }
 
 export async function waitForCompletion(jobId: string): Promise<WaitForCompletionResult> {
+  if (failNextCursorWaits > 0) {
+    failNextCursorWaits -= 1;
+    return { ok: false, summary: "CURSOR_FAILED", changedFiles: [] };
+  }
   return jobResults.get(jobId) ?? { ok: true, summary: "mvp-cursor-ok", changedFiles: ["mvp/change.ts"] };
 }
 

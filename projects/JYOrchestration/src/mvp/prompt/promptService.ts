@@ -1,5 +1,10 @@
 /**
  * MVP — structured prompts for executionService (in-memory only).
+ *
+ * Contract:
+ * - `generatePrompt(taskId)` / `regeneratePrompt(taskId, failureReason)` produce the same six core sections.
+ * - Regeneration appends an explicit correction block derived from `failureReason` and a unique stamp
+ *   so the text is never identical to the previous cached prompt.
  */
 
 import { mvpGetTaskById, type Task } from "../task/taskService";
@@ -57,29 +62,35 @@ function buildStructuredPrompt(
   const title = task?.title ?? `(unknown task ${taskId})`;
   const description = task?.description ?? "No description provided for this task id.";
 
+  const projectIdLine =
+    task?.projectId != null && String(task.projectId).trim() !== ""
+      ? `- MVP projectId: ${task.projectId}`
+      : `- MVP projectId: (not set on task — mock context only)`;
+
   const sections = [
-    `## 1. Project Context (mock)`,
+    `## 1. Project context (mock)`,
+    projectIdLine,
     `- Project workspace: mock monorepo root`,
     `- Track: MVP execution lane (isolated from production pipelines)`,
     ``,
-    `## 2. Task Objective`,
+    `## 2. Task objective`,
     `- Title: ${title}`,
     `- Description: ${description}`,
     ``,
-    `## 3. Scope Constraints`,
+    `## 3. Scope constraints`,
     `- Implement only what the task describes; avoid unrelated refactors.`,
     `- Keep changes reviewable and small unless the task explicitly requires more.`,
     ``,
-    `## 4. UI / Mockup Instruction`,
+    `## 4. UI / mockup constraints`,
     `- If UI is required: prefer clear states, loading/error paths, and accessible labels.`,
     `- If no UI is required: focus on correctness of logic, APIs, and tests.`,
     ``,
-    `## 5. Output Constraints`,
+    `## 5. Output constraints`,
     `- Produce code that compiles in the target stack assumed by the task.`,
     `- Add or update tests when behavior changes.`,
     `- Summarize key decisions in comments only when necessary (avoid noise).`,
     ``,
-    `## 6. Git/Workspace Instruction`,
+    `## 6. Git / workspace instruction`,
     `- Work on a dedicated branch; keep commits focused and reversible.`,
     `- Do not mix unrelated concerns in a single commit.`,
     ``,
@@ -135,16 +146,41 @@ export function clearPromptCache(): void {
   latestPrompt.clear();
 }
 
-export function buildTaskPrompt(_input: TaskPromptBuildInput): string {
-  return "";
+/**
+ * Builds the same structured prompt as `generatePrompt`, with optional spec context appended.
+ * Does not write the prompt cache; use `generatePrompt` / `regeneratePrompt` for execution flows.
+ */
+export function buildTaskPrompt(input: TaskPromptBuildInput): string {
+  const base = buildStructuredPrompt(input.taskId);
+  if (input.specContext != null && String(input.specContext).trim() !== "") {
+    return `${base}\n\n## SPEC CONTEXT (caller-provided)\n${input.specContext}\n`;
+  }
+  return base;
 }
 
-export function buildCursorExecutionPrompt(_input: CursorPromptBuildInput): string {
-  return "";
+/** Structured prompt plus explicit repo/branch metadata for cursor-oriented callers. */
+export function buildCursorExecutionPrompt(input: CursorPromptBuildInput): string {
+  const base = buildStructuredPrompt(input.taskId);
+  return [
+    base,
+    ``,
+    `## CURSOR EXECUTION METADATA`,
+    `- projectId: ${input.projectId}`,
+    `- repoUrl: ${input.repoUrl}`,
+    `- baseBranch: ${input.baseBranch}`,
+    ``,
+  ].join("\n");
 }
 
-export async function resolvePromptVersion(_input: {
-  taskId: string;
-}): Promise<PromptVersionRef | null> {
-  return null;
+/** Returns a stable ref when a cached prompt exists for the task (MVP versioning is string-hash based). */
+export async function resolvePromptVersion(input: { taskId: string }): Promise<PromptVersionRef | null> {
+  const cached = latestPrompt.get(input.taskId);
+  if (!cached) {
+    return null;
+  }
+  let h = 0;
+  for (let i = 0; i < cached.length; i += 1) {
+    h = (Math.imul(31, h) + cached.charCodeAt(i)) | 0;
+  }
+  return { promptId: `mvp-prompt:${input.taskId}`, version: Math.abs(h) };
 }
