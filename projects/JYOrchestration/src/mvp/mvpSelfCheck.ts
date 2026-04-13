@@ -91,6 +91,13 @@ import {
 } from "../application/planningExecutionHandoff";
 import { mvpPrepareExecutionHandoffFromPlanningUseCase } from "../application/usecases/mvpPrepareExecutionHandoffFromPlanningUseCase";
 import {
+  buildExecutionPreparationBundle,
+  validateExecutionPreparationBundle,
+} from "../application/executionPreparation";
+import { mvpPrepareExecutionInputFromPlanningUseCase } from "../application/usecases/mvpPrepareExecutionInputFromPlanningUseCase";
+import { dryRunExecutionBridge } from "../application/executionBridge";
+import { mvpStartExecutionFromPreparationUseCase } from "../application/usecases/mvpStartExecutionFromPreparationUseCase";
+import {
   MVP_EXECUTION_APPLICATION_COMMANDS,
   MVP_EXECUTION_APPLICATION_QUERIES,
 } from "../application/mvpExecutionApplicationCqrs";
@@ -1073,6 +1080,8 @@ export async function runMvpSelfCheck(): Promise<void> {
     const vagueHandoff = mvpPrepareExecutionHandoffFromPlanningUseCase({ projectId: pPipe, inputText: "좋은 플랫폼 만들고 싶다" });
     assert(vagueHandoff.ok === false && vagueHandoff.reason.length > 0, "BLOCKED planning cannot yield execution handoff");
     assert(validatePlanningExecutionHandoffFromContext(pipeVague).ok === false, "BLOCKED context fails handoff eligibility");
+    const vagueExecPrep = mvpPrepareExecutionInputFromPlanningUseCase({ projectId: pPipe, inputText: "좋은 플랫폼 만들고 싶다" });
+    assert(vagueExecPrep.ok === false, "BLOCKED planning cannot yield execution preparation bundle");
 
     const pipeVideo = runPlanningPipeline({
       projectId: pPipe,
@@ -1094,6 +1103,11 @@ export async function runMvpSelfCheck(): Promise<void> {
     });
     assert(videoHandoff.ok === false, "NEEDS_CONFIRMATION planning cannot yield execution handoff");
     assert(validatePlanningExecutionHandoffFromContext(pipeVideo).ok === false, "NEEDS_CONFIRMATION context fails handoff eligibility");
+    const videoExecPrep = mvpPrepareExecutionInputFromPlanningUseCase({
+      projectId: pPipe,
+      inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+    });
+    assert(videoExecPrep.ok === false, "NEEDS_CONFIRMATION planning cannot yield execution preparation bundle");
 
     const listIdea = "게시글 목록과 상세를 볼 수 있는 서비스";
     const standaloneRef = prepareRequirementRefinementDecision({ projectId: pPipe, inputText: listIdea });
@@ -1230,6 +1244,60 @@ export async function runMvpSelfCheck(): Promise<void> {
         },
       };
       assert(validatePlanningExecutionHandoffBundle(badBundle).ok === false, "handoff validator rejects inconsistent trace task count");
+
+      const execInput = mvpPrepareExecutionInputFromPlanningUseCase({ projectId: pPipe, refinement: synthPipeBundle });
+      assert(execInput.ok === true, "READY planning yields execution preparation bundle via use-case");
+      assert(execInput.bundle.source === "PLANNING_HANDOFF", "execution prep bundle is tagged from planning handoff");
+      assert(
+        execInput.bundle.context.featureCount === hb.features.features.length,
+        "execution prep context featureCount matches handoff features"
+      );
+      assert(
+        execInput.bundle.tasks.map((t) => t.id).join(",") === hb.tasks.tasks.map((t) => t.id).join(","),
+        "execution preparation preserves handoff task order"
+      );
+      assert(
+        execInput.bundle.tasks.every((t) => t.name.length > 0 && t.screenId.length > 0 && t.projectId === pPipe),
+        "execution prep tasks carry non-empty prompt-relevant fields and projectId"
+      );
+      assert(
+        execInput.bundle.tasks.every((t) => execInput.bundle.screens.some((s) => s.id === t.screenId)),
+        "every execution prep task references a bundled screen ref"
+      );
+      const prepDirect = buildExecutionPreparationBundle(hb);
+      assert(
+        prepDirect.ok === true && validateExecutionPreparationBundle(prepDirect.bundle).ok === true,
+        "handoff-to-execution adapter plus dry-run succeeds on validated handoff"
+      );
+      const dupTail = {
+        ...execInput.bundle,
+        tasks: [...execInput.bundle.tasks, execInput.bundle.tasks[execInput.bundle.tasks.length - 1]!],
+      };
+      assert(validateExecutionPreparationBundle(dupTail).ok === false, "execution prep dry-run rejects duplicate task id");
+      const badScreenPrep = {
+        ...execInput.bundle,
+        tasks: execInput.bundle.tasks.map((t, i) =>
+          i === 0 ? { ...t, screenId: "unknown-screen-id-selfcheck" } : t
+        ),
+      };
+      assert(validateExecutionPreparationBundle(badScreenPrep).ok === false, "execution prep dry-run rejects unknown screen");
+      const emptyRoute = {
+        ...execInput.bundle,
+        screens: execInput.bundle.screens.map((s, i) => (i === 0 ? { ...s, routePath: "   " } : s)),
+      };
+      assert(validateExecutionPreparationBundle(emptyRoute).ok === false, "execution prep rejects empty screen routePath");
+      const dupScreen = {
+        ...execInput.bundle,
+        screens: [...execInput.bundle.screens, execInput.bundle.screens[execInput.bundle.screens.length - 1]!],
+      };
+      assert(validateExecutionPreparationBundle(dupScreen).ok === false, "execution prep rejects duplicate screen id");
+
+      const dryBridge = dryRunExecutionBridge(execInput.bundle);
+      assert(dryBridge.ok === true, "execution bridge dry-run succeeds without store seeding or startRun");
+      assert(
+        dryBridge.bridgeInput!.tasks.map((x) => x.taskId).join(",") === execInput.bundle.tasks.map((t) => t.id).join(","),
+        "bridge dry-run preserves preparation task order"
+      );
     }
     assert(pipeFromRefinement.features != null, "READY pipeline run materializes features");
     const altIa = generateStandardIa({ featureResult: pipeFromRefinement.features });
@@ -1243,6 +1311,64 @@ export async function runMvpSelfCheck(): Promise<void> {
         pipeFromRefinement.tasks != null &&
         altTasks.result.tasks.length === pipeFromRefinement.tasks.tasks.length,
       "pipeline task output matches the same standalone module sequence applied to the pipeline feature result"
+    );
+  }
+
+  {
+    resetAll();
+    const pB = "mvp-exec-bridge-entry";
+    const autoDecisionB: RequirementRefinementDecision = {
+      normalizedText: "Stable demo input for refinement-only readiness",
+      drafts: [
+        {
+          id: `draft-auto-${pB}`,
+          projectId: pB,
+          description: "Browse posts in list and detail",
+          source: "USER_INPUT",
+          confidence: "HIGH",
+        },
+      ],
+      decisions: [
+        {
+          gap: {
+            code: "LIST_DETAIL_SCREENS",
+            question: "Confirm list vs detail",
+            severity: "INFO",
+          },
+          mode: "AUTO",
+          reason: "synthetic bridge self-check row",
+          resolvedValue:
+            "Assumed UX: one list/browse screen and one detail screen for the same content type, with navigation between them.",
+        },
+      ],
+    };
+    const refinedB = buildRefinedRequirements({ refinementDecision: autoDecisionB });
+    const synthB: PrepareRequirementRefinementDecisionResult = {
+      normalizedText: autoDecisionB.normalizedText,
+      drafts: [...autoDecisionB.drafts],
+      gapViewModel: buildRequirementGapViewModel({
+        normalizedText: autoDecisionB.normalizedText,
+        drafts: autoDecisionB.drafts,
+        gaps: [],
+      }),
+      refinementDecision: autoDecisionB,
+      refinedRequirements: refinedB,
+      readinessResult: evaluateRequirementReadiness(autoDecisionB),
+    };
+    const prepB = mvpPrepareExecutionInputFromPlanningUseCase({ projectId: pB, refinement: synthB });
+    assert(prepB.ok === true, "bridge self-check obtains execution preparation bundle");
+    const dryB = dryRunExecutionBridge(prepB.bundle);
+    assert(dryB.ok === true && dryB.bridgeInput != null, "isolated dry-run for bridge entry project");
+    const badPrep = { ...prepB.bundle, tasks: [], context: { ...prepB.bundle.context, taskCount: 0 } };
+    assert(dryRunExecutionBridge(badPrep).ok === false, "malformed preparation fails dry-run before any execution");
+    const startedB = await mvpStartExecutionFromPreparationUseCase(prepB.bundle);
+    assert(startedB.ok === true, "guarded bridge path starts execution via mvpStartExecutionUseCase");
+    const runSt = await getRunStatus(startedB.runId);
+    assert(runSt != null, "bridge-started run is visible to executionService projections");
+    const listedB = await listAllTasks(pB);
+    assert(
+      listedB.map((t) => t.id).join(",") === dryB.bridgeInput!.tasks.map((x) => x.taskId).join(","),
+      "seeded MVP task order matches bridge input task ids"
     );
   }
 

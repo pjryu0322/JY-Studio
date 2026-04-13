@@ -7,10 +7,14 @@
  */
 
 import type { PipelineContext } from "../pipeline/pipelineContext";
-import type { FeatureGenerationResult } from "../planning/featureGeneration/featureGenerationContracts";
 import type { IaGenerationResult } from "../planning/iaGeneration/iaGenerationContracts";
-import type { ScreenGenerationResult } from "../planning/screenGeneration/screenGenerationContracts";
-import type { TaskGenerationResult } from "../planning/taskGeneration/taskGenerationContracts";
+import {
+  cloneFeatureGenerationResultForHandoff,
+  cloneIaGenerationResultForHandoff,
+  cloneScreenGenerationResultForHandoff,
+  cloneTaskGenerationResultForHandoff,
+  planningSortedStrings,
+} from "./planningArtifactClones";
 import { validatePlanningExecutionHandoffFromContext } from "./planningExecutionHandoffValidation";
 import type {
   BuildPlanningExecutionHandoffResult,
@@ -23,43 +27,6 @@ import type {
 
 const TRACE_LOG_SAMPLE_MAX = 32;
 
-function sortedStrings(xs: readonly string[]): string[] {
-  return [...xs].sort((a, b) => a.localeCompare(b));
-}
-
-function cloneFeatureGenerationResult(r: FeatureGenerationResult): FeatureGenerationResult {
-  const features = [...r.features]
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map((f) => ({
-      ...f,
-      requirementIds: sortedStrings(f.requirementIds),
-    }));
-  const traces = [...r.traces].sort((a, b) => {
-      const c = a.featureId.localeCompare(b.featureId);
-      if (c !== 0) return c;
-      return sortedStrings(a.requirementIds).join("\0").localeCompare(sortedStrings(b.requirementIds).join("\0"));
-    });
-  return { projectId: r.projectId, features, traces };
-}
-
-function cloneIaGenerationResult(r: IaGenerationResult): IaGenerationResult {
-  const menuNodes = [...r.menuNodes].sort((a, b) => a.id.localeCompare(b.id)).map((n) => ({ ...n }));
-  const traces = [...r.traces].sort((a, b) => a.menuId.localeCompare(b.menuId));
-  return { projectId: r.projectId, menuNodes, traces };
-}
-
-function cloneScreenGenerationResult(r: ScreenGenerationResult): ScreenGenerationResult {
-  const screens = [...r.screens].sort((a, b) => a.id.localeCompare(b.id)).map((s) => ({ ...s }));
-  const traces = [...r.traces].sort((a, b) => a.screenId.localeCompare(b.screenId));
-  return { projectId: r.projectId, screens, traces };
-}
-
-function cloneTaskGenerationResult(r: TaskGenerationResult): TaskGenerationResult {
-  const tasks = [...r.tasks].sort((a, b) => a.id.localeCompare(b.id)).map((t) => ({ ...t }));
-  const traces = [...r.traces].sort((a, b) => a.taskId.localeCompare(b.taskId));
-  return { projectId: r.projectId, tasks, traces };
-}
-
 function buildIaMenuSummary(ia: IaGenerationResult): IaMenuHandoffSummary {
   const sortedNodes = [...ia.menuNodes].sort((a, b) => a.id.localeCompare(b.id));
   const menuNodesOrderedById = sortedNodes.map((n) => ({
@@ -68,7 +35,7 @@ function buildIaMenuSummary(ia: IaGenerationResult): IaMenuHandoffSummary {
     name: n.name,
     parentId: n.parentId,
     order: n.order,
-    sourceFeatureIdsOrdered: sortedStrings(n.sourceFeatureIds),
+    sourceFeatureIdsOrdered: planningSortedStrings(n.sourceFeatureIds),
   }));
   const rootMenuNodeCount = menuNodesOrderedById.filter((n) => n.parentId == null).length;
   return {
@@ -134,10 +101,10 @@ export function buildPlanningExecutionHandoff(ctx: PipelineContext): BuildPlanni
     pipelineStatus: "READY",
     planningReadiness: readiness,
     refinedRequirementsSummary: refinedSummaries,
-    features: cloneFeatureGenerationResult(ctx.features),
+    features: cloneFeatureGenerationResultForHandoff(ctx.features),
     iaMenuSummary: buildIaMenuSummary(ctx.iaResult),
-    screens: cloneScreenGenerationResult(ctx.screens),
-    tasks: cloneTaskGenerationResult(ctx.tasks),
+    screens: cloneScreenGenerationResultForHandoff(ctx.screens),
+    tasks: cloneTaskGenerationResultForHandoff(ctx.tasks),
     traceMetadata: buildTraceMetadata(ctx),
   };
 
