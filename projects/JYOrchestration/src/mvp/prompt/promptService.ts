@@ -1,6 +1,12 @@
 /**
  * MVP — structured prompts for executionService (in-memory only).
  *
+ * **Target path (extend here):** domain-aware screen + ScreenFlow context via `prompt/helpers/flowPromptHelpers`
+ * when `task.screenId` resolves to a screen (Requirement → … → Task pipeline).
+ *
+ * **Legacy compatibility (temporary):** tasks without `screenId` keep the original six-section layout
+ * without the `## 1.1 Screen context` block — do not remove until retirement checklist allows.
+ *
  * Contract:
  * - `generatePrompt(taskId)` / `regeneratePrompt(taskId, failureReason)` produce the same six core sections.
  * - Regeneration appends an explicit correction block derived from `failureReason` and a unique stamp
@@ -14,7 +20,8 @@ import { mvpGetMenuNodeById } from "../domain/stores/mvpMenuStore";
 import {
   buildFlowContextPromptLines,
   resolveFlowGraphForTask,
-  resolvePrevNextScreenNames,
+  resolveNextScreenNames,
+  resolvePreviousScreenNames,
 } from "./mvpPromptFlowContext";
 
 export interface TaskPromptBuildInput {
@@ -90,8 +97,8 @@ function buildStructuredPrompt(
   const menu = screen ? mvpGetMenuNodeById(screen.menuId) : undefined;
   const parentMenu = menu?.parentId ? mvpGetMenuNodeById(menu.parentId) : undefined;
   const graph = resolveFlowGraphForTask(task, screen);
-  const { prevNames, nextNames } =
-    screen && graph ? resolvePrevNextScreenNames(graph, screen.id) : { prevNames: [], nextNames: [] };
+  const prevNames = screen && graph ? resolvePreviousScreenNames(graph, screen.id) : [];
+  const nextNames = screen && graph ? resolveNextScreenNames(graph, screen.id) : [];
 
   const projectIdLine =
     task?.projectId != null && String(task.projectId).trim() !== ""

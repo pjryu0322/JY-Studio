@@ -1,5 +1,11 @@
 /**
  * MVP public surface (isolated). No connection to production APIs or Stage1/2.
+ *
+ * **Target (extend here):** orchestration facade, domain/screen flow, application layer consumers,
+ * ports/contracts, `runMvpSelfCheck`.
+ *
+ * **Legacy (retire per docs/MVP_LEGACY_RETIREMENT_CHECKLIST.md):** `legacy/exampleFlow` — demos that
+ * bypass the facade; prefer `mvpOrchestrationFacade` + `src/application` for new work.
  */
 
 export * from "./task/taskService";
@@ -18,7 +24,7 @@ export * from "./contracts/mvpDtos";
 export * from "./ports/mvpPorts";
 export * from "./runtime/mvpExecutionPortsBundle";
 export * from "./execution/inMemoryExecutionState";
-export * from "./exampleFlow";
+export * from "./legacy/exampleFlow";
 export * from "./testing/mvpExecutionFixtures";
 export * from "./testing/mvpFakeExecutionPorts";
 export * from "./mapping/mvpPersistenceMapping";
@@ -36,9 +42,11 @@ export * from "./domain/mvpDomainOrderingService";
 export * from "./screen/mvpScreenFlowTypes";
 export * from "./screen/mvpScreenFlowService";
 export * from "./screen/mvpScreenFlowMetadata";
+export * from "./screen/mvpScreenFlowLookup";
 export * from "./screen/mvpScreenFlowTaskOrdering";
 export * from "./screen/stores/mvpScreenFlowStore";
 export * from "./prompt/mvpPromptFlowContext";
 export * from "./reviewer/mvpReviewFlowValidationMode";
 export * from "./reviewer/mvpReviewFlowValidationHelpers";
+export * from "./reviewer/flowValidationTypes";
 export { runMvpSelfCheck } from "./mvpSelfCheck";

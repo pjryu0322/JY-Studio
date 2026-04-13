@@ -1,5 +1,8 @@
 /**
- * JYOrchestration — use-case: make the upstream workflow explicit (Requirement→Feature→IA→Screen→Task).
+ * JYOrchestration — use-case: **Requirement-based** upstream bundle (no ProjectSpec).
+ *
+ * Reads `MvpRequirement[]` from the MVP requirement store, then:
+ * Requirement[] → Feature → IA → Screen → Task (same pure generators as the domain module).
  *
  * Preparation-only. Does NOT call executionService.
  */

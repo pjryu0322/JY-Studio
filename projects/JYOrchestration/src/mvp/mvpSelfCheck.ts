@@ -77,6 +77,7 @@ import {
   MVP_EXECUTION_APPLICATION_LAYER_ID,
 } from "../application/mvpExecutionApplicationService";
 import { appFailureResult, appSuccessResult } from "../application/mvpAppResultHelpers";
+import { runPlanningPipeline } from "../application/pipeline";
 import {
   MVP_EXECUTION_APPLICATION_COMMANDS,
   MVP_EXECUTION_APPLICATION_QUERIES,
@@ -102,11 +103,61 @@ import {
 import { mvpPrepareExecutionUseCase } from "../application/usecases/mvpPrepareExecutionUseCase";
 import { mvpStartExecutionUseCase } from "../application/usecases/mvpStartExecutionUseCase";
 import { buildMvpExecutionStatusView } from "../application/viewmodels/mvpExecutionStatusView";
-import type { MvpRequirement } from "./domain/mvpDomainTypes";
+import {
+  createRequirementsFromInput,
+  normalizeRequirementText,
+  requirementsFromLegacyProjectSpecBody,
+} from "../application/usecases/requirement";
+import { mvpPrepareMockupFromRequirementInputUseCase } from "../application/usecases/mvpPrepareMockupFromRequirementInputUseCase";
+import {
+  buildRequirementDrafts,
+  buildRequirementGapViewModel,
+  buildRefinedRequirements,
+  detectRequirementGaps,
+  evaluateRequirementReadiness,
+  groupRequirementGaps,
+  normalizeRequirementInput,
+  prepareRequirementInputForRefinement,
+  prepareRequirementRefinementDecision,
+  prepareRequirementsFromInput,
+  refinedRequirementsToMvpRequirements,
+  splitRequirementInput,
+} from "../application/planning/requirementInput";
+import type { PrepareRequirementRefinementDecisionResult } from "../application/planning/requirementInput/prepareRequirementRefinementDecision";
+import type { RequirementRefinementDecision, RefinedRequirement } from "../application/planning/requirementInput/refinement/refinementContracts";
+import {
+  FEATURE_GENERATION_ENTRY_CODE,
+  prepareFeatureGenerationEntry,
+} from "../application/planning/featureEntry";
+import type { FeatureGenerationResult } from "../application/planning/featureGeneration";
+import {
+  featureDraftsToMvpFeatures,
+  generateFeaturesFromRefinedRequirements,
+  generateStandardFeatures,
+} from "../application/planning/featureGeneration";
+import {
+  generateIaFromFeatures,
+  generateStandardIa,
+  iaMenuDraftsToMvpMenuNodes,
+  normalizeMenuName,
+} from "../application/planning/iaGeneration";
+import type { IaMenuDraft } from "../application/planning/iaGeneration/iaGenerationContracts";
+import {
+  generateStandardScreens,
+  inferScreenRoleFromMenuName,
+  screenDraftsToMvpScreens,
+} from "../application/planning/screenGeneration";
+import {
+  generateStandardTasks,
+  normalizeTaskName as normalizePlanningTaskName,
+  taskDraftsToMvpTasks,
+} from "../application/planning/taskGeneration";
+import type { MvpFeature, MvpRequirement } from "./domain/mvpDomainTypes";
 import {
   generateFeaturesFromRequirements,
   generateIAFromFeatures,
   generateMockupTasksFromRequirements,
+  generateMockupTasksFromRequirementList,
   generateScreensFromIA,
   generateTasksFromScreens,
 } from "./domain/mvpDomainGenerationService";
@@ -138,9 +189,23 @@ import {
   legacyBuildFlowContextPromptLines,
   resolveFlowGraphForTask,
   resolvePrevNextScreenNames,
+  resolvePreviousScreenNames,
+  resolveNextScreenNames,
   buildFlowContextPromptLines,
 } from "./prompt/mvpPromptFlowContext";
-import { evaluateFlowValidation } from "./reviewer/mvpReviewFlowValidationHelpers";
+import { resolveFlowValidationMode, resolveFlowValidationModeFromPrompt } from "./reviewer/mvpReviewFlowValidationMode";
+import {
+  MVP_FLOW_VALIDATION_ISSUE_MESSAGE,
+  detectFlowValidationEnabledFromPrompt,
+  evaluateFlowValidation,
+  hasFlowContextBlockInPrompt,
+  parseFlowBlockContentFromPrompt,
+  parseFlowContextFromPrompt,
+  parseResultSummary,
+  validateEntryScreenRule,
+  validateNavigationToken,
+  validateScreenIsolationToken,
+} from "./reviewer/mvpReviewFlowValidationHelpers";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -295,6 +360,716 @@ export async function runMvpSelfCheck(): Promise<void> {
   }
 
   {
+    resetAll();
+    const p = "mvp-req-input-canonical";
+    const ideaKo =
+      "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다";
+    const reqsFromInput = createRequirementsFromInput(ideaKo, p);
+    assert(reqsFromInput.length >= 2, "requirement input: simple 하고 split should yield multiple requirements");
+    assert(
+      normalizeRequirementText("  alpha   만들고 싶다  ") === "alpha",
+      "normalizeRequirementText trims and strips common filler"
+    );
+    const prepared = mvpPrepareMockupFromRequirementInputUseCase(p, ideaKo);
+    assert(
+      prepared.requirements.length === reqsFromInput.length,
+      "requirement-input use-case should surface the same requirement count as createRequirementsFromInput"
+    );
+    assert(prepared.tasks.length >= 2, "requirement input → tasks pipeline should produce multiple mockup tasks");
+    mvpSeedProjectTasks(p, prepared.tasks);
+    const runInput = await startRun(p);
+    assert(runInput.status === "SUCCESS", "requirement-input-derived tasks must remain executable");
+
+    resetAll();
+    const pComma = "mvp-req-input-comma";
+    const commaIdea = "화상회의 생성 기능, 화상회의 참여 기능";
+    const commaReqs = createRequirementsFromInput(commaIdea, pComma);
+    assert(commaReqs.length === 2, "comma-separated requirement input should split deterministically");
+    const commaTasks = generateMockupTasksFromRequirementList(pComma, commaReqs);
+    mvpSeedProjectTasks(pComma, commaTasks);
+    const runComma = await startRun(pComma);
+    assert(runComma.status === "SUCCESS", "comma-split requirement list should execute");
+
+    resetAll();
+    const pLegacy = "mvp-legacy-project-spec-body";
+    const legacyReqs = requirementsFromLegacyProjectSpecBody(
+      pLegacy,
+      "# Old ProjectSpec\n\nLegacy body text for conversion.\n"
+    );
+    assert(legacyReqs.length === 1, "legacy ProjectSpec body maps to a single coarse requirement");
+    const legacyTasks = generateMockupTasksFromRequirementList(pLegacy, legacyReqs);
+    mvpSeedProjectTasks(pLegacy, legacyTasks);
+    const runLegacy = await startRun(pLegacy);
+    assert(runLegacy.status === "SUCCESS", "legacy ProjectSpec-as-text path should still execute");
+  }
+
+  {
+    resetAll();
+    const pPlan = "mvp-planning-requirement-input";
+    assert(
+      normalizeRequirementInput("  line1\nline2   ").text.replace(/\s+/g, " ") ===
+        normalizeRequirementInput("line1 line2").text,
+      "normalizeRequirementInput flattens newlines like spaces"
+    );
+    const commaParts = splitRequirementInput("화상회의 생성 기능, 화상회의 참여 기능");
+    assert(commaParts.length === 2, "planning split: comma yields two draft descriptions");
+
+    const vcNorm = normalizeRequirementInput(
+      "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다"
+    ).text;
+    const vcParts = splitRequirementInput(vcNorm);
+    assert(
+      vcParts.length === 2 &&
+        vcParts[0] === "화상회의 생성 기능이 필요하다" &&
+        vcParts[1] === "화상회의 참여 기능이 필요하다",
+      "planning split: deterministic two-intent video-meeting phrasing"
+    );
+
+    const vague = "We want a dashboard for teams";
+    const gaps = detectRequirementGaps(normalizeRequirementInput(vague).text, []);
+    assert(
+      gaps.some((g) => g.code === "AUTH_SCOPE"),
+      "gap detection: underspecified idea should mention authentication scope"
+    );
+
+    const built = buildRequirementDrafts({ projectId: pPlan, inputText: vague });
+    assert(built.drafts.length >= 1 && built.normalizedText.length > 0, "buildRequirementDrafts produces drafts");
+    assert(built.gaps.some((g) => g.code === "AUTH_SCOPE"), "buildRequirementDrafts runs gap detection");
+
+    const prep = prepareRequirementsFromInput({
+      projectId: pPlan,
+      inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+    });
+    assert(prep.requirements.length === 2, "prepareRequirementsFromInput maps two drafts to requirements");
+    const featuresP = generateFeaturesFromRequirements(prep.requirements);
+    const menuP = generateIAFromFeatures(featuresP);
+    const screensP = generateScreensFromIA(menuP);
+    const tasksP = generateTasksFromScreens(screensP, "MOCKUP");
+    const vmap = validateDomainMapping({
+      requirements: prep.requirements,
+      features: featuresP,
+      menuNodes: menuP,
+      screens: screensP,
+      tasks: tasksP,
+      allowLegacyTasks: false,
+    });
+    assert(vmap.ok === true, "planning-derived requirements must stay domain-valid");
+
+    mvpSeedProjectTasks(pPlan, generateMockupTasksFromRequirementList(pPlan, prep.requirements));
+    const runPlan = await startRun(pPlan);
+    assert(runPlan.status === "SUCCESS", "planning prepareRequirementsFromInput path must execute");
+
+    resetAll();
+    const pLegacyCreate = "mvp-legacy-createRequirementsFromInput";
+    const legacyCreate = createRequirementsFromInput(
+      "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+      pLegacyCreate
+    );
+    assert(legacyCreate.length >= 2, "legacy createRequirementsFromInput must remain unchanged for same input shape");
+  }
+
+  {
+    resetAll();
+    const pGap = "mvp-gap-ux-viewmodel";
+    const vague = "We want a dashboard for teams";
+    const gaps = detectRequirementGaps(normalizeRequirementInput(vague).text, []);
+    const groups = groupRequirementGaps(gaps);
+    assert(groups.some((g) => g.code === "AUTHENTICATION"), "AUTH_SCOPE gaps map to AUTHENTICATION group");
+    const stableTwice = stableJson(groupRequirementGaps(gaps)) === stableJson(groupRequirementGaps(gaps));
+    assert(stableTwice, "groupRequirementGaps output must be stable for same input");
+
+    const drafts = buildRequirementDrafts({ projectId: pGap, inputText: vague }).drafts;
+    const vm = buildRequirementGapViewModel({
+      normalizedText: normalizeRequirementInput(vague).text,
+      drafts,
+      gaps,
+    });
+    assert(vm.summary.totalDrafts === drafts.length, "view model summary totalDrafts");
+    assert(vm.summary.totalGapQuestions === gaps.length, "view model summary totalGapQuestions");
+    assert(vm.sections[0]!.priority === "HIGH", "high-priority section (authentication) must appear first");
+    assert(
+      vm.summary.highPriorityCount === vm.sections.filter((s) => s.priority === "HIGH").reduce((n, s) => n + s.questions.length, 0),
+      "highPriorityCount must match questions in HIGH sections"
+    );
+
+    const refined = prepareRequirementInputForRefinement({
+      projectId: pGap,
+      inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+    });
+    assert(refined.gapViewModel.sections.length >= 1, "refinement handoff includes gap sections");
+    assert(refined.requirements.length === refined.drafts.length, "refinement includes aligned requirements");
+    const featR = generateFeaturesFromRequirements(refined.requirements);
+    const menuR = generateIAFromFeatures(featR);
+    const screensR = generateScreensFromIA(menuR);
+    const tasksR = generateTasksFromScreens(screensR, "MOCKUP");
+    const vmapR = validateDomainMapping({
+      requirements: refined.requirements,
+      features: featR,
+      menuNodes: menuR,
+      screens: screensR,
+      tasks: tasksR,
+      allowLegacyTasks: false,
+    });
+    assert(vmapR.ok === true, "refinement requirements stay compatible with downstream mapping");
+  }
+
+  {
+    resetAll();
+    const pRef = "mvp-requirement-refinement-decision";
+    const video = prepareRequirementRefinementDecision({
+      projectId: pRef,
+      inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+    });
+    assert(video.readinessResult.isReady === false, "video meeting idea stays gated until access/auth choices");
+    assert(
+      video.refinementDecision.decisions.some(
+        (d) => d.gap.code === "VISIBILITY_OR_ROLES" && d.mode === "USER_CONFIRM"
+      ),
+      "meeting collaboration without explicit visibility is USER_CONFIRM"
+    );
+    assert(
+      video.refinementDecision.decisions.some((d) => d.gap.code === "AUTH_SCOPE" && d.mode === "USER_CONFIRM"),
+      "implicit authentication scope is USER_CONFIRM"
+    );
+
+    const listDetail = prepareRequirementRefinementDecision({
+      projectId: pRef,
+      inputText: "게시글 목록과 상세를 볼 수 있는 서비스",
+    });
+    const listDec = listDetail.refinementDecision.decisions.find((d) => d.gap.code === "LIST_DETAIL_SCREENS");
+    assert(listDec?.mode === "AUTO" && Boolean(listDec.resolvedValue), "explicit list/detail intent is AUTO-resolved");
+    assert(listDetail.readinessResult.isReady === false, "remaining confirm gaps block automatic downstream");
+    assert(
+      listDetail.readinessResult.confirmRequired.some((d) => d.gap.code === "AUTH_SCOPE"),
+      "readiness lists authentication scope as confirm-required"
+    );
+    assert(
+      listDetail.refinedRequirements.length >= 1 &&
+        listDetail.refinedRequirements.some((r) => r.source === "AUTO_RESOLVED" && r.status === "REFINED"),
+      "AUTO list/detail resolution enriches refined requirement rows"
+    );
+
+    const vagueKo = prepareRequirementRefinementDecision({
+      projectId: pRef,
+      inputText: "좋은 플랫폼 만들고 싶다",
+    });
+    assert(vagueKo.readinessResult.isReady === false, "generic goal text is not automatically ready");
+    assert(
+      vagueKo.readinessResult.blockingIssues.some((d) => d.gap.code === "NO_ACTIONABLE_INTENT"),
+      "marketing-style vagueness yields synthetic blocking intent"
+    );
+
+    const autoOnlyDecision: RequirementRefinementDecision = {
+      normalizedText: "Stable demo input for refinement-only readiness",
+      drafts: [
+        {
+          id: `draft-auto-${pRef}`,
+          projectId: pRef,
+          description: "Browse posts in list and detail",
+          source: "USER_INPUT",
+          confidence: "HIGH",
+        },
+      ],
+      decisions: [
+        {
+          gap: {
+            code: "LIST_DETAIL_SCREENS",
+            question: "Confirm list vs detail",
+            severity: "INFO",
+          },
+          mode: "AUTO",
+          reason: "synthetic self-check row",
+          resolvedValue:
+            "Assumed UX: one list/browse screen and one detail screen for the same content type, with navigation between them.",
+        },
+      ],
+    };
+    assert(evaluateRequirementReadiness(autoOnlyDecision).isReady === true, "AUTO-only gap decisions are ready");
+    const refinedOnlyAuto = buildRefinedRequirements({ refinementDecision: autoOnlyDecision });
+
+    const entryListDetail = prepareFeatureGenerationEntry({
+      source: "requirement_input",
+      projectId: pRef,
+      inputText: "게시글 목록과 상세를 볼 수 있는 서비스",
+    });
+    assert(
+      entryListDetail.featureGenerationEntry.ok === false &&
+        entryListDetail.featureGenerationEntry.status === "NEEDS_CONFIRMATION",
+      "list/detail idea with unresolved auth stays outside automatic feature generation"
+    );
+    assert(
+      entryListDetail.featureGenerationEntry.pendingGapDecisions.some((d) => d.gap.code === "AUTH_SCOPE"),
+      "feature entry preserves AUTH gap as pending confirmation"
+    );
+
+    const entryVideoMeeting = prepareFeatureGenerationEntry({
+      source: "requirement_input",
+      projectId: pRef,
+      inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+    });
+    assert(
+      entryVideoMeeting.featureGenerationEntry.ok === false &&
+        entryVideoMeeting.featureGenerationEntry.status === "NEEDS_CONFIRMATION",
+      "video meeting phrasing needs confirmation before feature synthesis"
+    );
+    assert(
+      entryVideoMeeting.featureGenerationEntry.reasons.some(
+        (r) => r.code === FEATURE_GENERATION_ENTRY_CODE.NEEDS_CONFIRMATION_ACCESS_SCOPE
+      ),
+      "visibility / roles surface as access-scope confirmation reasons"
+    );
+
+    const entryVague = prepareFeatureGenerationEntry({
+      source: "requirement_input",
+      projectId: pRef,
+      inputText: "좋은 플랫폼 만들고 싶다",
+    });
+    assert(
+      entryVague.featureGenerationEntry.ok === false && entryVague.featureGenerationEntry.status === "BLOCKED",
+      "generic marketing input is blocked at feature entry"
+    );
+    assert(
+      entryVague.featureGenerationEntry.reasons.some((r) => r.code === FEATURE_GENERATION_ENTRY_CODE.BLOCKED_VAGUE_INPUT),
+      "vague input carries BLOCKED_VAGUE_INPUT reason code"
+    );
+
+    const synthRefinementBundle: PrepareRequirementRefinementDecisionResult = {
+      normalizedText: autoOnlyDecision.normalizedText,
+      drafts: autoOnlyDecision.drafts,
+      gapViewModel: buildRequirementGapViewModel({
+        normalizedText: autoOnlyDecision.normalizedText,
+        drafts: autoOnlyDecision.drafts,
+        gaps: [],
+      }),
+      refinementDecision: autoOnlyDecision,
+      refinedRequirements: refinedOnlyAuto,
+      readinessResult: evaluateRequirementReadiness(autoOnlyDecision),
+    };
+    const entryReady = prepareFeatureGenerationEntry({
+      source: "refinement_result",
+      refinement: synthRefinementBundle,
+    });
+    assert(
+      entryReady.featureGenerationEntry.ok === true && entryReady.featureGenerationEntry.status === "READY",
+      "AUTO-only refinement bundle passes the feature-generation entry gate"
+    );
+    assert(
+      entryReady.featureGenerationEntry.input.projectId === pRef &&
+        entryReady.featureGenerationEntry.input.refinedRequirements.length === refinedOnlyAuto.length,
+      "READY entry exposes a stable input bundle for downstream generators"
+    );
+    const stdFromReady = generateStandardFeatures({ entry: entryReady.featureGenerationEntry });
+    assert(
+      stdFromReady.state === "GENERATED" && stdFromReady.result != null,
+      "generateStandardFeatures runs only on READY entry control output"
+    );
+    const mvpStandardFromRefined = featureDraftsToMvpFeatures(stdFromReady.result.features);
+    assert(
+      mvpStandardFromRefined.length === 1 && mvpStandardFromRefined[0]!.requirementIds.length === 1,
+      "standard feature generation stays aligned with a single refined requirement row"
+    );
+    const mvpFromRefined = refinedRequirementsToMvpRequirements(
+      entryReady.featureGenerationEntry.input.refinedRequirements
+    );
+    assert(mvpFromRefined.length === 1 && mvpFromRefined[0]!.status === "CONFIRMED", "refined rows map to confirmed MVP requirements");
+    const featsAuto = generateFeaturesFromRequirements(mvpFromRefined);
+    const menuAuto = generateIAFromFeatures(featsAuto);
+    const screensAuto = generateScreensFromIA(menuAuto);
+    const tasksAuto = generateTasksFromScreens(screensAuto, "MOCKUP");
+    const vmapAuto = validateDomainMapping({
+      requirements: mvpFromRefined,
+      features: featsAuto,
+      menuNodes: menuAuto,
+      screens: screensAuto,
+      tasks: tasksAuto,
+      allowLegacyTasks: false,
+    });
+    assert(vmapAuto.ok === true, "refinement-mapped requirements stay domain-valid through task generation");
+    mvpSeedProjectTasks(pRef, generateMockupTasksFromRequirementList(pRef, mvpFromRefined));
+    const runRef = await startRun(pRef);
+    assert(runRef.status === "SUCCESS", "refined-to-MVP requirement list should still execute");
+
+    const pStd = "mvp-standard-feature-grouping";
+    const refinedVideoPair: RefinedRequirement[] = [
+      {
+        id: `rr-v0-${pStd}`,
+        projectId: pStd,
+        description: "화상회의 생성 기능이 필요하다",
+        source: "USER_INPUT",
+        status: "REFINED",
+      },
+      {
+        id: `rr-v1-${pStd}`,
+        projectId: pStd,
+        description: "화상회의 참여 기능이 필요하다",
+        source: "USER_INPUT",
+        status: "REFINED",
+      },
+    ];
+    const genVideo = generateFeaturesFromRefinedRequirements({
+      projectId: pStd,
+      refinedRequirements: refinedVideoPair,
+    });
+    assert(
+      genVideo.features.length === 1 &&
+        genVideo.features[0]!.name === "화상회의" &&
+        genVideo.features[0]!.requirementIds.length === 2,
+      "related video-meeting capabilities merge into one deterministic feature"
+    );
+    assert(
+      genVideo.traces[0]!.featureId === genVideo.features[0]!.id &&
+        genVideo.traces[0]!.requirementIds.join(",") === genVideo.features[0]!.requirementIds.join(","),
+      "feature source trace lists the same requirement ids as the draft"
+    );
+
+    const refinedPostBrowse: RefinedRequirement[] = [
+      {
+        id: `rr-p0-${pStd}`,
+        projectId: pStd,
+        description: "게시글 목록 조회",
+        source: "USER_INPUT",
+        status: "REFINED",
+      },
+      {
+        id: `rr-p1-${pStd}`,
+        projectId: pStd,
+        description: "게시글 상세 조회",
+        source: "USER_INPUT",
+        status: "REFINED",
+      },
+    ];
+    const genPost = generateFeaturesFromRefinedRequirements({
+      projectId: pStd,
+      refinedRequirements: refinedPostBrowse,
+    });
+    assert(
+      genPost.features.length === 1 && genPost.features[0]!.name === "게시글 조회",
+      "list/detail post browse descriptions collapse to a single 게시글 조회 feature"
+    );
+
+    const refinedLoginAndPost: RefinedRequirement[] = [
+      {
+        id: `rr-l-${pStd}`,
+        projectId: pStd,
+        description: "로그인",
+        source: "USER_INPUT",
+        status: "REFINED",
+      },
+      refinedPostBrowse[0]!,
+    ];
+    const genSplit = generateFeaturesFromRefinedRequirements({
+      projectId: pStd,
+      refinedRequirements: refinedLoginAndPost,
+    });
+    assert(genSplit.features.length === 2, "unrelated capabilities stay in separate features");
+
+    const mvpReqVideo = refinedRequirementsToMvpRequirements(refinedVideoPair);
+    const mvpFeatVideo = featureDraftsToMvpFeatures(genVideo.features);
+    const menuVideo = generateIAFromFeatures(mvpFeatVideo);
+    const screensVideo = generateScreensFromIA(menuVideo);
+    const tasksVideo = generateTasksFromScreens(screensVideo, "MOCKUP");
+    const vmapVideo = validateDomainMapping({
+      requirements: mvpReqVideo,
+      features: mvpFeatVideo,
+      menuNodes: menuVideo,
+      screens: screensVideo,
+      tasks: tasksVideo,
+      allowLegacyTasks: false,
+    });
+    assert(vmapVideo.ok === true, "standard-generated features remain valid IA generation inputs");
+
+    const invalidStd = generateStandardFeatures({
+      entry: { ok: false, status: "BLOCKED", reasons: [], pendingGapDecisions: [] },
+    });
+    assert(
+      invalidStd.state === "INVALID_READY_BUNDLE" && invalidStd.result == null,
+      "generateStandardFeatures rejects non-READY entry results"
+    );
+
+    const pIa = "mvp-standard-ia-generation";
+    assert(normalizeMenuName("화상회의 관리 기능") === "화상회의", "IA menu name normalization strips redundant capability tails");
+    assert(normalizeMenuName("게시글 조회 기능") === "게시글 조회", "IA menu name normalization keeps concise browse labels");
+
+    const iaSingle = generateIaFromFeatures([
+      { id: `feat-ia-0-${pIa}`, projectId: pIa, name: "화상회의", order: 0 },
+    ]);
+    const rootId = `menu-root-${pIa}`;
+    const topSingle = iaSingle.menuNodes.filter((m) => m.parentId === rootId);
+    assert(topSingle.length === 1 && topSingle[0]!.name === "화상회의", "single feature becomes one stable top-level menu under root");
+
+    const iaGrouped = generateIaFromFeatures([
+      { id: `feat-ia-p0-${pIa}`, projectId: pIa, name: "게시글 조회", order: 0 },
+      { id: `feat-ia-p1-${pIa}`, projectId: pIa, name: "게시글 작성", order: 1 },
+    ]);
+    const postParent = iaGrouped.menuNodes.find((m) => m.id === `menu-group-${pIa}-post`);
+    assert(postParent != null && postParent.name === "게시글", "two post lines share a grouped parent menu");
+    const postChildren = iaGrouped.menuNodes
+      .filter((m) => m.parentId === postParent!.id)
+      .sort((a, b) => a.order - b.order);
+    assert(
+      postChildren.length === 2 && postChildren[0]!.name === "조회" && postChildren[1]!.name === "작성",
+      "grouped post menus use normalized child titles"
+    );
+    const parentTrace = iaGrouped.traces.find((t) => t.menuId === postParent!.id);
+    assert(
+      parentTrace != null &&
+        parentTrace.featureIds.includes(`feat-ia-p0-${pIa}`) &&
+        parentTrace.featureIds.includes(`feat-ia-p1-${pIa}`),
+      "IA traces preserve source feature ids on grouped parent"
+    );
+
+    const iaFlat = generateIaFromFeatures([
+      { id: `feat-ia-l-${pIa}`, projectId: pIa, name: "로그인", order: 0 },
+      { id: `feat-ia-b-${pIa}`, projectId: pIa, name: "게시글 조회", order: 1 },
+    ]);
+    const topFlat = iaFlat.menuNodes.filter((m) => m.parentId === rootId);
+    assert(topFlat.length === 2, "unrelated capabilities stay as separate root-level menus");
+
+    const groupedFeatureResult: FeatureGenerationResult = {
+      projectId: pIa,
+      traces: [],
+      features: [
+        {
+          id: `feat-ia-p0-${pIa}`,
+          projectId: pIa,
+          name: "게시글 조회",
+          requirementIds: [`req-ia-p0-${pIa}`],
+          order: 0,
+          source: "REQUIREMENT_REFINEMENT" as const,
+        },
+        {
+          id: `feat-ia-p1-${pIa}`,
+          projectId: pIa,
+          name: "게시글 작성",
+          requirementIds: [`req-ia-p1-${pIa}`],
+          order: 1,
+          source: "REQUIREMENT_REFINEMENT" as const,
+        },
+      ],
+    };
+    const stdIa = generateStandardIa({ featureResult: groupedFeatureResult });
+    assert(stdIa.state === "GENERATED" && stdIa.result != null, "generateStandardIa consumes standardized feature results");
+    const mvpMenuIa = iaMenuDraftsToMvpMenuNodes(stdIa.result.menuNodes);
+    const mvpReqIa: MvpRequirement[] = [
+      { id: `req-ia-p0-${pIa}`, projectId: pIa, description: "게시글 조회", status: "CONFIRMED" },
+      { id: `req-ia-p1-${pIa}`, projectId: pIa, description: "게시글 작성", status: "CONFIRMED" },
+    ];
+    const mvpFeatsIa: MvpFeature[] = groupedFeatureResult.features.map((f) => ({
+      id: f.id,
+      projectId: f.projectId,
+      name: f.name,
+      requirementIds: f.requirementIds,
+      order: f.order,
+    }));
+    const screensIa = generateScreensFromIA(mvpMenuIa);
+    const tasksIa = generateTasksFromScreens(screensIa, "MOCKUP");
+    const vmapIa = validateDomainMapping({
+      requirements: mvpReqIa,
+      features: mvpFeatsIa,
+      menuNodes: mvpMenuIa,
+      screens: screensIa,
+      tasks: tasksIa,
+      allowLegacyTasks: false,
+    });
+    assert(vmapIa.ok === true, "standard IA rows map cleanly into the existing screen generation path");
+
+    const emptyIa = generateStandardIa({ featureResult: { projectId: pIa, features: [], traces: [] } });
+    assert(
+      emptyIa.state === "EMPTY_FEATURES" && emptyIa.result != null && emptyIa.result.menuNodes.length === 0,
+      "empty feature list yields EMPTY_FEATURES with an explicit empty menu set"
+    );
+
+    const scrSingle = generateStandardScreens({ iaResult: iaSingle });
+    assert(
+      scrSingle.state === "GENERATED" &&
+        scrSingle.result != null &&
+        scrSingle.result.screens.length === 1 &&
+        scrSingle.result.screens[0]!.routePath === "/video-meeting",
+      "single IA menu maps to one screen with a deterministic route"
+    );
+    assert(inferScreenRoleFromMenuName("조회") === "LIST", "screen role inference treats 조회 as LIST");
+    assert(inferScreenRoleFromMenuName("게시글 작성") === "CREATE", "screen role inference treats 작성-bearing names as CREATE");
+
+    const scrGrouped = generateStandardScreens({ iaResult: iaGrouped });
+    assert(
+      scrGrouped.state === "GENERATED" && scrGrouped.result != null && scrGrouped.result.screens.length === 3,
+      "grouped 게시글 IA yields parent + two child screens"
+    );
+    const listScreen = scrGrouped.result.screens.find((s) => s.name === "조회");
+    const writeScreen = scrGrouped.result.screens.find((s) => s.name === "작성");
+    assert(
+      listScreen != null &&
+        writeScreen != null &&
+        listScreen.routePath === "/posts/list" &&
+        writeScreen.routePath === "/posts/create" &&
+        listScreen.screenRole === "LIST" &&
+        writeScreen.screenRole === "CREATE",
+      "child screens get stable hierarchical routes and inferred roles"
+    );
+    assert(
+      scrGrouped.result.traces.every((t) => scrGrouped.result!.screens.some((s) => s.id === t.screenId && s.menuId === t.menuId)),
+      "screen traces preserve menuId linkage for every generated screen"
+    );
+
+    const scrFlat = generateStandardScreens({ iaResult: iaFlat });
+    assert(
+      scrFlat.state === "GENERATED" && scrFlat.result != null && scrFlat.result.screens.length === 2,
+      "unrelated IA menus become separate screens"
+    );
+
+    const mvpMenuForScreens = iaMenuDraftsToMvpMenuNodes(iaGrouped.menuNodes);
+    const mvpScreensPlan = screenDraftsToMvpScreens(scrGrouped.result!.screens);
+    const tasksFromPlan = generateTasksFromScreens(mvpScreensPlan, "MOCKUP");
+    const vmapScreens = validateDomainMapping({
+      requirements: mvpReqIa,
+      features: mvpFeatsIa,
+      menuNodes: mvpMenuForScreens,
+      screens: mvpScreensPlan,
+      tasks: tasksFromPlan,
+      allowLegacyTasks: false,
+    });
+    assert(vmapScreens.ok === true, "planning-generated screens stay compatible with task generation inputs");
+
+    const rootOnlyMenus: IaMenuDraft[] = [
+      { id: `menu-root-${pIa}`, projectId: pIa, name: "Root", parentId: null, order: 0, sourceFeatureIds: [] },
+    ];
+    const emptyScreens = generateStandardScreens({
+      iaResult: { projectId: pIa, menuNodes: rootOnlyMenus, traces: [] },
+    });
+    assert(
+      emptyScreens.state === "EMPTY_IA" && emptyScreens.result != null && emptyScreens.result.screens.length === 0,
+      "root-only IA bundle yields EMPTY_IA with no screens"
+    );
+
+    const invalidIaMenus: IaMenuDraft[] = [
+      { id: "bad-menu-1", projectId: pIa, name: "orphan", parentId: "missing-parent", order: 0, sourceFeatureIds: [] },
+    ];
+    const invalidScreens = generateStandardScreens({
+      iaResult: { projectId: pIa, menuNodes: invalidIaMenus, traces: [] },
+    });
+    assert(invalidScreens.state === "INVALID_MENU_INPUT" && invalidScreens.result == null, "orphan menu parents are rejected at the screen gate");
+
+    assert(
+      normalizePlanningTaskName("화상회의") === "화상회의 화면 생성",
+      "planning task titles append a clear mockup action suffix"
+    );
+    assert(normalizePlanningTaskName("") === "미지정 화면 생성", "blank screen names map to a safe default task title");
+
+    const stdTasksGrouped = generateStandardTasks({ screenResult: scrGrouped.result! });
+    assert(
+      stdTasksGrouped.state === "GENERATED" &&
+        stdTasksGrouped.result != null &&
+        stdTasksGrouped.result.tasks.length === scrGrouped.result!.screens.length,
+      "each generated screen yields exactly one planning task"
+    );
+    const screenIds = new Set(scrGrouped.result!.screens.map((s) => s.id));
+    assert(
+      stdTasksGrouped.result.tasks.every((t) => screenIds.has(t.screenId)),
+      "every task references a valid screen id"
+    );
+    const sortedScreens = [...scrGrouped.result!.screens].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+    assert(
+      stdTasksGrouped.result.tasks.every((t, i) => t.screenId === sortedScreens[i]!.id && t.order === i),
+      "task order follows sorted screen order"
+    );
+
+    const mvpPlanTasks = taskDraftsToMvpTasks(stdTasksGrouped.result.tasks);
+    assert(
+      mvpPlanTasks.every(
+        (t) => t.status === "CONFIRMED" && t.type === "FUNCTIONAL" && t.screenId != null && t.taskPurpose === "MOCKUP"
+      ),
+      "planning task drafts map to execution-ready MVP task rows"
+    );
+    const pTaskPlan = `mvp-planning-task-gen-${pIa}`;
+    resetAll();
+    mvpSeedProjectTasks(pTaskPlan, mvpPlanTasks);
+    const runPlanTasks = await startRun(pTaskPlan);
+    assert(runPlanTasks.status === "SUCCESS", "planning-derived mockup tasks remain executable by the MVP pipeline");
+
+    const emptyTasks = generateStandardTasks({ screenResult: { projectId: pIa, screens: [], traces: [] } });
+    assert(
+      emptyTasks.state === "EMPTY_SCREEN" &&
+        emptyTasks.result != null &&
+        emptyTasks.result.tasks.length === 0,
+      "empty screen bundle yields EMPTY_SCREEN task generation state"
+    );
+
+    const invalidScreensForTasks = {
+      projectId: pIa,
+      traces: [],
+      screens: [
+        { id: "s-bad-a", projectId: pIa, name: "A", menuId: "m-a", routePath: "/a", order: 0, screenRole: "GENERAL" as const },
+        { id: "s-bad-b", projectId: "other", name: "B", menuId: "m-b", routePath: "/b", order: 1, screenRole: "GENERAL" as const },
+      ],
+    };
+    const invalidTasks = generateStandardTasks({ screenResult: invalidScreensForTasks });
+    assert(invalidTasks.state === "INVALID_SCREEN_INPUT" && invalidTasks.result == null, "mixed project screens are rejected at the task gate");
+
+    const pPipe = `mvp-planning-pipeline-${pIa}`;
+    const pipeVague = runPlanningPipeline({ projectId: pPipe, inputText: "좋은 플랫폼 만들고 싶다" });
+    assert(pipeVague.status === "BLOCKED", "unified pipeline blocks vague product ideas");
+    assert(
+      pipeVague.traceLogs?.some((l) => l.includes("stepFeatureEntryGate")),
+      "pipeline trace records the feature entry gate step"
+    );
+
+    const pipeVideo = runPlanningPipeline({
+      projectId: pPipe,
+      inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+    });
+    assert(pipeVideo.status === "NEEDS_CONFIRMATION", "unified pipeline defers video meeting scope until confirmation");
+
+    const listIdea = "게시글 목록과 상세를 볼 수 있는 서비스";
+    const standaloneRef = prepareRequirementRefinementDecision({ projectId: pPipe, inputText: listIdea });
+    const pipeList = runPlanningPipeline({ projectId: pPipe, inputText: listIdea });
+    assert(
+      pipeList.normalizedText === standaloneRef.normalizedText &&
+        pipeList.readinessResult?.isReady === standaloneRef.readinessResult.isReady &&
+        pipeList.featureGenerationEntry?.ok === false,
+      "pipeline refinement stage matches standalone prepareRequirementRefinementDecision for the same input"
+    );
+
+    const autoDraftsPipe = autoOnlyDecision.drafts.map((d) => ({ ...d, projectId: pPipe }));
+    const autoDecisionPipe: RequirementRefinementDecision = {
+      ...autoOnlyDecision,
+      drafts: autoDraftsPipe,
+    };
+    const refinedPipe = buildRefinedRequirements({ refinementDecision: autoDecisionPipe });
+    const synthPipeBundle: PrepareRequirementRefinementDecisionResult = {
+      normalizedText: autoDecisionPipe.normalizedText,
+      drafts: autoDraftsPipe,
+      gapViewModel: buildRequirementGapViewModel({
+        normalizedText: autoDecisionPipe.normalizedText,
+        drafts: autoDraftsPipe,
+        gaps: [],
+      }),
+      refinementDecision: autoDecisionPipe,
+      refinedRequirements: refinedPipe,
+      readinessResult: evaluateRequirementReadiness(autoDecisionPipe),
+    };
+    const pipeFromRefinement = runPlanningPipeline({ projectId: pPipe, refinement: synthPipeBundle });
+    assert(
+      pipeFromRefinement.status === "READY" &&
+        pipeFromRefinement.tasks != null &&
+        pipeFromRefinement.tasks.tasks.length >= 1,
+      "pipeline can complete through tasks when refinement bundle is already READY at the gate"
+    );
+    assert(pipeFromRefinement.features != null, "READY pipeline run materializes features");
+    const altIa = generateStandardIa({ featureResult: pipeFromRefinement.features });
+    assert(altIa.state === "GENERATED" && altIa.result != null, "standalone IA step matches pipeline preconditions");
+    const altScreens = generateStandardScreens({ iaResult: altIa.result });
+    assert(altScreens.state === "GENERATED" && altScreens.result != null, "standalone screen step matches pipeline");
+    const altTasks = generateStandardTasks({ screenResult: altScreens.result });
+    assert(
+      altTasks.state === "GENERATED" &&
+        altTasks.result != null &&
+        pipeFromRefinement.tasks != null &&
+        altTasks.result.tasks.length === pipeFromRefinement.tasks.tasks.length,
+      "pipeline task output matches the same standalone module sequence applied to the pipeline feature result"
+    );
+  }
+
+  {
     const p = "mvp-domain-prompt-screen-aware";
     resetAll();
     const reqs: MvpRequirement[] = [
@@ -327,6 +1102,41 @@ export async function runMvpSelfCheck(): Promise<void> {
     const graph0 = resolveFlowGraphForTask({ ...t0 }, screen0);
     assert(graph0 != null, "flow graph should resolve for domain-generated task");
     const { prevNames, nextNames } = resolvePrevNextScreenNames(graph0, screen0.id);
+    assert(
+      stableJson({ prevNames, nextNames }) ===
+        stableJson({
+          prevNames: resolvePreviousScreenNames(graph0, screen0.id),
+          nextNames: resolveNextScreenNames(graph0, screen0.id),
+        }),
+      "split prev/next screen name helpers must match combined resolver"
+    );
+    assert(
+      prompt0 === buildTaskPrompt({ taskId: t0.id, projectId: p }),
+      "generatePrompt output must match buildTaskPrompt rebuild (parity / no drift)"
+    );
+    const parsedFlow0 = parseFlowContextFromPrompt(prompt0);
+    assert(
+      hasFlowContextBlockInPrompt(prompt0) === parsedFlow0.hasFlowBlock,
+      "hasFlowContextBlockInPrompt matches parseFlowContextFromPrompt"
+    );
+    assert(
+      detectFlowValidationEnabledFromPrompt(prompt0) === parsedFlow0.flowValidationEnabled,
+      "detectFlowValidationEnabledFromPrompt matches parseFlowContextFromPrompt"
+    );
+    const blockContent0 = parseFlowBlockContentFromPrompt(prompt0);
+    assert(
+      blockContent0.isEntry === parsedFlow0.isEntry &&
+        stableJson(blockContent0.nextScreens) === stableJson(parsedFlow0.nextScreens),
+      "parseFlowBlockContentFromPrompt matches parseFlowContextFromPrompt fields"
+    );
+    const modeFromPrompt0 = resolveFlowValidationModeFromPrompt(prompt0);
+    assert(
+      modeFromPrompt0.source === "prompt_substrings" &&
+        modeFromPrompt0.hasFlowContextBlock === parsedFlow0.hasFlowBlock &&
+        modeFromPrompt0.validationEnabled === parsedFlow0.flowValidationEnabled,
+      "resolveFlowValidationModeFromPrompt matches parseFlowContextFromPrompt"
+    );
+    assert(resolveFlowValidationMode(prompt0) === "OFF", "default generated prompt keeps flow validation mode OFF");
     const blockNew = buildFlowContextPromptLines({ screen: screen0, graph: graph0, prevNames, nextNames }).join("\n");
     const blockLegacy = legacyBuildFlowContextPromptLines(screen0, graph0, prevNames, nextNames).join("\n");
     assert(blockNew === blockLegacy, "flow context helper parity (legacy vs new builder)");
@@ -353,6 +1163,7 @@ export async function runMvpSelfCheck(): Promise<void> {
     const entryTask = tasks[0]!;
     const entryPrompt = await mvpDefaultPromptProvider.generatePrompt(entryTask.id);
     const entryPromptWithFlowValidation = `${entryPrompt}\nFlow validation: ON\n`;
+    assert(resolveFlowValidationMode(entryPromptWithFlowValidation) === "ON", "appended marker must flip mode to ON");
 
     const bad = await reviewTaskResult({
       taskId: entryTask.id,
@@ -362,6 +1173,54 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(bad.status === "FAILED" && bad.flowValidation?.isConsistent === false, "reviewer detects missing flow tokens");
     const badEval = evaluateFlowValidation(entryPromptWithFlowValidation, { summary: "mvp-cursor-ok" });
     assert(badEval.enabled === true && badEval.issues.length > 0, "flow validation helper parity (bad)");
+    assert(
+      stableJson(badEval.issues) ===
+        stableJson([
+          "MISSING_SCREEN_ISOLATION_TOKEN: expected summary to include SCREEN_ONLY_OK",
+          "MISSING_NAVIGATION_TOKEN: expected summary to include NAV_OK when next screens exist",
+        ]),
+      "flow validation issue strings must remain stable"
+    );
+    assert(
+      Array.isArray(badEval.issueCodes) && badEval.issueCodes.join(",") === "MISSING_SCREEN_ISOLATION_TOKEN,MISSING_NAVIGATION_TOKEN",
+      "flow validation should expose typed issue codes (internal)"
+    );
+    assert(
+      (badEval.issueCodes ?? []).every((c, i) => MVP_FLOW_VALIDATION_ISSUE_MESSAGE[c] === badEval.issues[i]),
+      "typed flow issues must map to the same outward issue strings"
+    );
+    const expectedBadReview = {
+      status: "FAILED" as const,
+      reason:
+        "FLOW_VALIDATION_FAILED: MISSING_SCREEN_ISOLATION_TOKEN: expected summary to include SCREEN_ONLY_OK | MISSING_NAVIGATION_TOKEN: expected summary to include NAV_OK when next screens exist",
+      retryable: true,
+      flowValidation: {
+        isConsistent: false,
+        issues: [
+          "MISSING_SCREEN_ISOLATION_TOKEN: expected summary to include SCREEN_ONLY_OK",
+          "MISSING_NAVIGATION_TOKEN: expected summary to include NAV_OK when next screens exist",
+        ],
+      },
+    };
+    assert(
+      stableJson({ status: bad.status, reason: bad.reason, retryable: bad.retryable, flowValidation: bad.flowValidation }) ===
+        stableJson(expectedBadReview),
+      "reviewer FAILED shape+reason parity (frozen snapshot)"
+    );
+    assert(
+      stableJson(bad.flowValidation?.issues) === stableJson(badEval.issues),
+      "reviewer flowValidation.issues must match evaluateFlowValidation issues (parity)"
+    );
+    const badSummary = parseResultSummary({ summary: "mvp-cursor-ok" });
+    const badCodes = [
+      validateScreenIsolationToken(badSummary),
+      validateNavigationToken(badSummary, parseFlowContextFromPrompt(entryPromptWithFlowValidation).nextScreens.length),
+      validateEntryScreenRule(badSummary, parseFlowContextFromPrompt(entryPromptWithFlowValidation).isEntry),
+    ].filter((c): c is NonNullable<typeof c> => c != null);
+    assert(
+      stableJson(badCodes) === stableJson(["MISSING_SCREEN_ISOLATION_TOKEN", "MISSING_NAVIGATION_TOKEN"]),
+      "token validators must agree with typed issue codes for bad summary"
+    );
 
     const good = await reviewTaskResult({
       taskId: entryTask.id,
@@ -371,6 +1230,20 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(good.status === "PASSED" && good.flowValidation?.isConsistent === true, "reviewer allows valid flow tokens");
     const goodEval = evaluateFlowValidation(entryPromptWithFlowValidation, { summary: "SCREEN_ONLY_OK NAV_OK" });
     assert(goodEval.enabled === true && goodEval.issues.length === 0, "flow validation helper parity (good)");
+    const expectedGoodReview = {
+      status: "PASSED" as const,
+      retryable: false,
+      flowValidation: { isConsistent: true, issues: [] as string[] },
+    };
+    assert(
+      stableJson({ status: good.status, reason: good.reason, retryable: good.retryable, flowValidation: good.flowValidation }) ===
+        stableJson(expectedGoodReview),
+      "reviewer PASSED shape parity (frozen snapshot)"
+    );
+    assert(
+      stableJson(good.flowValidation?.issues) === stableJson(goodEval.issues),
+      "reviewer PASSED flowValidation.issues must match evaluateFlowValidation (empty parity)"
+    );
 
     resetAll();
     const legacyPid = "mvp-flow-reviewer-legacy";
