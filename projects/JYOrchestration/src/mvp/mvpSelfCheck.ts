@@ -16,6 +16,7 @@ import {
   mvpClearReviewPolicy,
   mvpConfigureReviewFailures,
   mvpReviewForceNonRetryableOnce,
+  reviewTaskResult,
 } from "./reviewer/reviewerService";
 import type { ExecutionRun } from "./contracts/mvpExecutionTypes";
 import {
@@ -120,6 +121,7 @@ import {
   isEntryScreen,
 } from "./screen/mvpScreenFlowMetadata";
 import { orderTasksByScreenFlow as orderTasksByScreenFlowGraph } from "./screen/mvpScreenFlowTaskOrdering";
+import { mvpClearScreenFlowStore } from "./screen/stores/mvpScreenFlowStore";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -160,6 +162,7 @@ function resetAll(): void {
   mvpClearRequirementStore();
   mvpClearMenuStore();
   mvpClearScreenStore();
+  mvpClearScreenFlowStore();
   clearPromptCache();
   mvpClearReviewPolicy();
   mvpResetExecutionState();
@@ -294,6 +297,10 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(prompt0.includes(`Generated for screen ${t0.screenId}`) === false, "prompt should not leak raw generator text");
     assert(prompt0 !== prompt1, "different screens should generate different prompts");
     assert(!prompt0.includes(tasks[1]!.title), "no cross-screen contamination by other task title");
+    assert(prompt0.includes("### Flow context (preparation only)"), "prompt includes flow context block");
+    assert(prompt0.includes("This screen is an ENTRY screen.") || prompt0.includes("This screen comes AFTER:"), "prompt has entry/previous flow line");
+    assert(prompt0.includes("Next screen(s):"), "prompt includes next screen line");
+    assert(prompt1.includes("This screen comes AFTER:"), "non-entry screen should come AFTER previous");
 
     resetAll();
     const legacyPid = "mvp-legacy-task-prompt";
@@ -301,6 +308,47 @@ export async function runMvpSelfCheck(): Promise<void> {
     const legacyTask = (await listAllTasks(legacyPid))[0]!;
     const legacyPrompt = await mvpDefaultPromptProvider.generatePrompt(legacyTask.id);
     assert(!legacyPrompt.includes("## 1.1 Screen context (domain-aware)"), "legacy tasks keep old prompt shape (no screen context)");
+  }
+
+  {
+    resetAll();
+    const p = "mvp-flow-reviewer";
+    const reqs: MvpRequirement[] = [
+      { id: `req-1-${p}`, projectId: p, description: "Need entry", status: "CONFIRMED" },
+      { id: `req-2-${p}`, projectId: p, description: "Need next", status: "CONFIRMED" },
+    ];
+    mvpSeedProjectRequirements(p, reqs);
+    const tasks = generateMockupTasksFromRequirements(p);
+    mvpSeedProjectTasks(p, tasks);
+    const entryTask = tasks[0]!;
+    const entryPrompt = await mvpDefaultPromptProvider.generatePrompt(entryTask.id);
+    const entryPromptWithFlowValidation = `${entryPrompt}\nFlow validation: ON\n`;
+
+    const bad = await reviewTaskResult({
+      taskId: entryTask.id,
+      prompt: entryPromptWithFlowValidation,
+      result: { summary: "mvp-cursor-ok", changedFiles: [`mvp/${entryTask.id}.ts`] },
+    });
+    assert(bad.status === "FAILED" && bad.flowValidation?.isConsistent === false, "reviewer detects missing flow tokens");
+
+    const good = await reviewTaskResult({
+      taskId: entryTask.id,
+      prompt: entryPromptWithFlowValidation,
+      result: { summary: "SCREEN_ONLY_OK NAV_OK", changedFiles: [`mvp/${entryTask.id}.ts`] },
+    });
+    assert(good.status === "PASSED" && good.flowValidation?.isConsistent === true, "reviewer allows valid flow tokens");
+
+    resetAll();
+    const legacyPid = "mvp-flow-reviewer-legacy";
+    mvpSeedProjectTasks(legacyPid, [baseTasks(legacyPid)[0]!]);
+    const legacyTask = (await listAllTasks(legacyPid))[0]!;
+    const legacyPrompt = await mvpDefaultPromptProvider.generatePrompt(legacyTask.id);
+    const legacyReview = await reviewTaskResult({
+      taskId: legacyTask.id,
+      prompt: legacyPrompt,
+      result: { summary: "mvp-cursor-ok", changedFiles: [`mvp/${legacyTask.id}.ts`] },
+    });
+    assert(legacyReview.status === "PASSED", "legacy tasks still pass reviewer without flow tokens");
   }
 
   {
