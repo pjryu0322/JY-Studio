@@ -21,4 +21,8 @@ export * from "./execution/inMemoryExecutionState";
 export * from "./exampleFlow";
 export * from "./testing/mvpExecutionFixtures";
 export * from "./testing/mvpFakeExecutionPorts";
+export * from "./mapping/mvpPersistenceMapping";
+export * from "./adapters/draft/mvpDraftPrismaRunStoreAdapter";
+export * from "./adapters/draft/mvpDraftPrismaStepStoreAdapter";
+export * from "./orchestration/mvpRunInspectionViewModel";
 export { runMvpSelfCheck } from "./mvpSelfCheck";
