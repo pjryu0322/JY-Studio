@@ -128,10 +128,14 @@ export async function reviewTaskResult(input: ReviewTaskInput): Promise<ReviewRe
 }
 
 export async function validateAgainstPrompt(_input: ValidationInput): Promise<ValidationOutcome> {
-  return { ok: false, findings: ["mvp stub"] };
+  void _input;
+  return {
+    ok: false,
+    findings: ["NOT_IMPLEMENTED_IN_MVP: validateAgainstPrompt (use reviewTaskResult in executionService)"],
+  };
 }
 
 export async function decideRetry(_input: RetryDecisionInput): Promise<RetryDecision> {
-  if (_input.attempt >= _input.maxAttempts) return "stop";
-  return "retry";
+  void _input;
+  return "stop";
 }

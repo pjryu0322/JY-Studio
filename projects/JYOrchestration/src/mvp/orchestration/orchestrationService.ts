@@ -42,6 +42,9 @@ export async function evaluateExecutionReadiness(
   if (orders.some((o) => typeof o !== "number" || !Number.isFinite(o))) {
     blockers.push("INVALID_FINAL_ORDER");
   }
+  if (orders.some((o) => Number.isFinite(o) && o < 0)) {
+    blockers.push("FINAL_ORDER_NEGATIVE");
+  }
 
   const seen = new Set<number>();
   for (const o of orders) {

@@ -81,4 +81,10 @@ export async function runMvpSelfCheck(): Promise<void> {
   const ready = await evaluateExecutionReadiness({ projectId: pid });
   assert(ready.isReady === false, "empty explicit seed => not ready");
   assert(ready.blockers.includes("NO_EXECUTABLE_TASKS"), "expected NO_EXECUTABLE_TASKS blocker");
+
+  resetAll();
+  mvpSeedProjectTasks(pid, [{ ...baseTasks(pid)[0]!, finalOrder: -1 }]);
+  const rNeg = await evaluateExecutionReadiness({ projectId: pid });
+  assert(rNeg.isReady === false, "negative finalOrder should not be ready");
+  assert(rNeg.blockers.includes("FINAL_ORDER_NEGATIVE"), "expected FINAL_ORDER_NEGATIVE blocker");
 }

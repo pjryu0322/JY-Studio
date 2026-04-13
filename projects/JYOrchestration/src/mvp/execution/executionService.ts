@@ -20,6 +20,19 @@ export type MvpFailureCode =
   | "TASK_NOT_FOUND"
   | "UNHANDLED";
 
+/** Per-code default retryability (same-task, in-run retries only). `REVIEW_FAILED` defers to `review.retryable`. */
+export function mvpFailureCodeDefaultRetryable(code: MvpFailureCode): boolean {
+  switch (code) {
+    case "CURSOR_FAILED":
+    case "GIT_BRANCH_MISSING":
+      return true;
+    case "REVIEW_FAILED":
+    case "TASK_NOT_FOUND":
+    case "UNHANDLED":
+      return false;
+  }
+}
+
 export type ExecutionRun = {
   id: string;
   projectId: string;
@@ -32,6 +45,11 @@ export type ExecutionTaskState = {
   taskId: string;
   status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
   retryCount: number;
+  /**
+   * When true, the last terminal failure for this task was non-retryable (e.g. review with `retryable: false`).
+   * Used so `retryTask()` cannot bypass policy after a hard stop.
+   */
+  lastFailureWasNonRetryable?: boolean;
 };
 
 type RunMeta = { failureReason?: string };
@@ -67,8 +85,11 @@ function classifyFromMessage(msg: string): MvpFailureCode {
   return "UNHANDLED";
 }
 
-function isEngineRetryable(code: MvpFailureCode): boolean {
-  return code === "CURSOR_FAILED" || code === "GIT_BRANCH_MISSING";
+function isRetryableForCode(code: MvpFailureCode, reviewRetryable?: boolean): boolean {
+  if (code === "REVIEW_FAILED") {
+    return reviewRetryable === true;
+  }
+  return mvpFailureCodeDefaultRetryable(code);
 }
 
 /**
@@ -137,12 +158,14 @@ async function maybeRetryOrFail(
   lastFailureDetail.set(rk, detail);
 
   if (retryable && taskState.retryCount < DEFAULT_MAX_RETRY_COUNT) {
+    taskState.lastFailureWasNonRetryable = false;
     taskState.retryCount += 1;
     await executeTask(runId, taskId);
     return;
   }
 
   taskState.status = "FAILED";
+  taskState.lastFailureWasNonRetryable = !retryable;
   await failRun(runId, `${code}:${detail}`);
 }
 
@@ -178,7 +201,7 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
     const cursorOutcome = await waitForCompletion(jobId);
     if (!cursorOutcome.ok) {
       const detail = cursorOutcome.summary?.trim() || "CURSOR_FAILED";
-      await maybeRetryOrFail(runId, taskId, "CURSOR_FAILED", detail, true);
+      await maybeRetryOrFail(runId, taskId, "CURSOR_FAILED", detail, isRetryableForCode("CURSOR_FAILED"));
       return;
     }
 
@@ -187,7 +210,13 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       branchName: MVP_DEFAULT_BRANCH,
     });
     if (!branchOk) {
-      await maybeRetryOrFail(runId, taskId, "GIT_BRANCH_MISSING", "branch not found", true);
+      await maybeRetryOrFail(
+        runId,
+        taskId,
+        "GIT_BRANCH_MISSING",
+        "branch not found",
+        isRetryableForCode("GIT_BRANCH_MISSING")
+      );
       return;
     }
     const { sha: headSha } = await getLatestCommit({
@@ -213,6 +242,7 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
 
     if (review.status === "PASSED") {
       taskState.status = "SUCCESS";
+      taskState.lastFailureWasNonRetryable = false;
       lastFailureDetail.delete(rk);
       run.currentTaskIndex += 1;
       await executeNextTask(runId);
@@ -220,22 +250,30 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
     }
 
     const reviewDetail = review.reason ?? "REVIEW_FAILED";
-    await maybeRetryOrFail(runId, taskId, "REVIEW_FAILED", reviewDetail, review.retryable);
+    await maybeRetryOrFail(
+      runId,
+      taskId,
+      "REVIEW_FAILED",
+      reviewDetail,
+      isRetryableForCode("REVIEW_FAILED", review.retryable)
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const code = classifyFromMessage(msg);
-    await maybeRetryOrFail(runId, taskId, code, msg, isEngineRetryable(code));
+    await maybeRetryOrFail(runId, taskId, code, msg, isRetryableForCode(code));
   }
 }
 
 export async function handleStepFailure(runId: string, taskId: string, error: unknown): Promise<void> {
   const msg = error instanceof Error ? error.message : String(error);
   const code = classifyFromMessage(msg);
-  await maybeRetryOrFail(runId, taskId, code, msg, isEngineRetryable(code));
+  await maybeRetryOrFail(runId, taskId, code, msg, isRetryableForCode(code));
 }
 
 /**
- * Manual retry: respects max retry budget, does not run for SUCCESS/RUNNING, or when exhausted.
+ * Manual retry: same-task only; honors max retry budget and last non-retryable failure.
+ * Requires `run.status === "RUNNING"` (today the engine also calls `failRun` on terminal task failure,
+ * so this path is reserved for future run modes or in-process extensions that keep the run open).
  */
 export async function retryTask(runId: string, taskId: string): Promise<void> {
   const run = runs.get(runId);
@@ -247,7 +285,10 @@ export async function retryTask(runId: string, taskId: string): Promise<void> {
     return;
   }
   const st = run.tasks[idx]!;
-  if (st.status === "SUCCESS" || st.status === "RUNNING") {
+  if (st.status !== "FAILED") {
+    return;
+  }
+  if (st.lastFailureWasNonRetryable === true) {
     return;
   }
   if (st.retryCount >= DEFAULT_MAX_RETRY_COUNT) {
@@ -256,6 +297,7 @@ export async function retryTask(runId: string, taskId: string): Promise<void> {
   run.currentTaskIndex = idx;
   st.retryCount += 1;
   st.status = "PENDING";
+  st.lastFailureWasNonRetryable = false;
   await executeTask(runId, taskId);
 }
 

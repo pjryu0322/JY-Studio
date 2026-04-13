@@ -27,6 +27,10 @@ export interface PromptVersionRef {
   version: number;
 }
 
+/** Explains `resolvePromptVersion` returning null before any prompt is cached for the task. */
+export const MVP_PROMPT_VERSION_REQUIRES_CACHE =
+  "NOT_IMPLEMENTED_IN_MVP: no cached prompt for taskId; call generatePrompt or regeneratePrompt first";
+
 const latestPrompt = new Map<string, string>();
 
 function stamp(): string {
@@ -172,7 +176,10 @@ export function buildCursorExecutionPrompt(input: CursorPromptBuildInput): strin
   ].join("\n");
 }
 
-/** Returns a stable ref when a cached prompt exists for the task (MVP versioning is string-hash based). */
+/**
+ * Returns a deterministic version ref when a cached prompt exists for the task (hash of cached text).
+ * If nothing is cached yet, returns null — see `MVP_PROMPT_VERSION_REQUIRES_CACHE`.
+ */
 export async function resolvePromptVersion(input: { taskId: string }): Promise<PromptVersionRef | null> {
   const cached = latestPrompt.get(input.taskId);
   if (!cached) {
