@@ -18,6 +18,11 @@ import { generateStandardScreens } from "../planning/screenGeneration/generateSt
 import { generateStandardTasks } from "../planning/taskGeneration/generateStandardTasks";
 import type { PlanningPipelineInput, PipelineStatus } from "./pipelineTypes";
 import { appendTrace, createPipelineContext, type PipelineContext } from "./pipelineContext";
+import {
+  legacyEarlyStopReasonString,
+  pipelineStopFromFeatureEntryStatus,
+  pipelineStopFromGenerationFailure,
+} from "./pipelineStopReason";
 
 function isTerminal(ctx: PipelineContext): boolean {
   return ctx.status === "BLOCKED" || ctx.status === "NEEDS_CONFIRMATION";
@@ -116,7 +121,13 @@ export function stepFeatureEntryGate(ctx: PipelineContext): PipelineContext {
   if (!entry.ok) {
     const terminal: PipelineStatus = entry.status === "BLOCKED" ? "BLOCKED" : "NEEDS_CONFIRMATION";
     appendTrace(ctx, "stepFeatureEntryGate", `stop=${terminal}`);
-    return { ...next, status: terminal, earlyStopReason: `feature_entry_gate:${entry.status}` };
+    const stop = pipelineStopFromFeatureEntryStatus(entry.status);
+    return {
+      ...next,
+      status: terminal,
+      pipelineStop: stop,
+      earlyStopReason: legacyEarlyStopReasonString(stop),
+    };
   }
   return next;
 }
@@ -133,7 +144,8 @@ export function stepFeatureGeneration(ctx: PipelineContext): PipelineContext {
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `FEATURE_GENERATION:${out.state}`];
     appendTrace(ctx, "stepFeatureGeneration", "treat as BLOCKED");
-    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `feature_generation:${out.state}` };
+    const stop = pipelineStopFromGenerationFailure("FEATURE", out.state);
+    return { ...ctx, errors, status: "BLOCKED", pipelineStop: stop, earlyStopReason: legacyEarlyStopReasonString(stop) };
   }
   return {
     ...ctx,
@@ -148,7 +160,8 @@ export function stepIaGeneration(ctx: PipelineContext): PipelineContext {
   appendTrace(ctx, "stepIaGeneration", `state=${out.state}`);
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `IA_GENERATION:${out.state}`];
-    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `ia_generation:${out.state}` };
+    const stop = pipelineStopFromGenerationFailure("IA", out.state);
+    return { ...ctx, errors, status: "BLOCKED", pipelineStop: stop, earlyStopReason: legacyEarlyStopReasonString(stop) };
   }
   return {
     ...ctx,
@@ -163,7 +176,8 @@ export function stepScreenGeneration(ctx: PipelineContext): PipelineContext {
   appendTrace(ctx, "stepScreenGeneration", `state=${out.state}`);
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `SCREEN_GENERATION:${out.state}`];
-    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `screen_generation:${out.state}` };
+    const stop = pipelineStopFromGenerationFailure("SCREEN", out.state);
+    return { ...ctx, errors, status: "BLOCKED", pipelineStop: stop, earlyStopReason: legacyEarlyStopReasonString(stop) };
   }
   return {
     ...ctx,
@@ -178,7 +192,8 @@ export function stepTaskGeneration(ctx: PipelineContext): PipelineContext {
   appendTrace(ctx, "stepTaskGeneration", `state=${out.state}`);
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `TASK_GENERATION:${out.state}`];
-    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `task_generation:${out.state}` };
+    const stop = pipelineStopFromGenerationFailure("TASK", out.state);
+    return { ...ctx, errors, status: "BLOCKED", pipelineStop: stop, earlyStopReason: legacyEarlyStopReasonString(stop) };
   }
   return {
     ...ctx,

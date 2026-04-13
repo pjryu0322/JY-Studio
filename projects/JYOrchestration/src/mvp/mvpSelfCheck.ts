@@ -77,7 +77,12 @@ import {
   MVP_EXECUTION_APPLICATION_LAYER_ID,
 } from "../application/mvpExecutionApplicationService";
 import { appFailureResult, appSuccessResult } from "../application/mvpAppResultHelpers";
-import { runPlanningPipeline } from "../application/pipeline";
+import {
+  buildPlanningPipelineResultViewModel,
+  legacyEarlyStopReasonString,
+  runPlanningPipeline,
+} from "../application/pipeline";
+import { mvpRunPlanningPipelineUseCase } from "../application/usecases/mvpRunPlanningPipelineUseCase";
 import {
   MVP_EXECUTION_APPLICATION_COMMANDS,
   MVP_EXECUTION_APPLICATION_QUERIES,
@@ -1029,6 +1034,34 @@ export async function runMvpSelfCheck(): Promise<void> {
       (pipeVague.executedSteps ?? []).length === 6 && pipeVague.executedSteps?.at(-1) === "stepFeatureEntryGate",
       "pipeline executedSteps lists each step function until the terminal gate"
     );
+    assert(pipeVague.pipelineStop?.code === "FEATURE_ENTRY_GATE_BLOCKED", "typed pipeline stop for vague BLOCKED path");
+    assert(
+      pipeVague.pipelineStop != null && legacyEarlyStopReasonString(pipeVague.pipelineStop) === pipeVague.earlyStopReason,
+      "typed stop maps to legacy earlyStopReason string (BLOCKED)"
+    );
+    {
+      const vmVague = buildPlanningPipelineResultViewModel(pipeVague);
+      assert(
+        vmVague.stopReason?.code === "FEATURE_ENTRY_GATE_BLOCKED" && vmVague.legacyEarlyStopReason === pipeVague.earlyStopReason,
+        "planning result view model stop reason matches context (BLOCKED)"
+      );
+      assert(
+        vmVague.status === pipeVague.status &&
+          stableJson([...vmVague.executedSteps]) === stableJson(pipeVague.executedSteps ?? []) &&
+          vmVague.snapshots.requirementDraftCount === (pipeVague.requirementDrafts?.length ?? 0) &&
+          vmVague.snapshots.gapCount === (pipeVague.requirementGaps?.length ?? 0),
+        "view model mirrors pipeline context fields for partial run"
+      );
+      const viaUse = mvpRunPlanningPipelineUseCase({ projectId: pPipe, inputText: "좋은 플랫폼 만들고 싶다" });
+      assert(
+        stableJson(buildPlanningPipelineResultViewModel(viaUse.context)) === stableJson(viaUse.viewModel),
+        "use-case view model equals builder on returned context"
+      );
+      assert(
+        viaUse.viewModel.legacyEarlyStopReason === pipeVague.earlyStopReason && viaUse.viewModel.status === pipeVague.status,
+        "use-case output matches direct runPlanningPipeline for same vague input"
+      );
+    }
 
     const pipeVideo = runPlanningPipeline({
       projectId: pPipe,
@@ -1038,6 +1071,11 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(
       pipeVideo.earlyStopReason === "feature_entry_gate:NEEDS_CONFIRMATION",
       "pipeline records early stop reason at the feature entry gate (NEEDS_CONFIRMATION)"
+    );
+    assert(pipeVideo.pipelineStop?.code === "FEATURE_ENTRY_GATE_NEEDS_CONFIRMATION", "typed pipeline stop for video NEEDS_CONFIRMATION path");
+    assert(
+      pipeVideo.pipelineStop != null && legacyEarlyStopReasonString(pipeVideo.pipelineStop) === pipeVideo.earlyStopReason,
+      "typed stop maps to legacy earlyStopReason string (NEEDS_CONFIRMATION)"
     );
 
     const listIdea = "게시글 목록과 상세를 볼 수 있는 서비스";
@@ -1076,8 +1114,8 @@ export async function runMvpSelfCheck(): Promise<void> {
       "pipeline can complete through tasks when refinement bundle is already READY at the gate"
     );
     assert(
-      pipeFromRefinement.earlyStopReason === undefined,
-      "successful READY pipeline must not set earlyStopReason"
+      pipeFromRefinement.earlyStopReason === undefined && pipeFromRefinement.pipelineStop === undefined,
+      "successful READY pipeline must not set earlyStopReason or typed pipelineStop"
     );
     assert(
       (pipeFromRefinement.executedSteps ?? []).join(",") ===
@@ -1090,6 +1128,45 @@ export async function runMvpSelfCheck(): Promise<void> {
         pipeFromRefinement.stageOutputCounts?.screens === pipeFromRefinement.screens?.screens.length,
       "stageOutputCounts mirror final artifact list lengths"
     );
+    {
+      const vmReady = buildPlanningPipelineResultViewModel(pipeFromRefinement);
+      assert(vmReady.stopReason === null && vmReady.legacyEarlyStopReason === undefined, "READY view model has no stop reason");
+      assert(
+        vmReady.outputsPresent.tasks === true &&
+          vmReady.outputsPresent.features === true &&
+          vmReady.outputsPresent.screens === true &&
+          vmReady.outputsPresent.iaResult === true,
+        "READY view model marks downstream artifacts present"
+      );
+      const featNames = [...new Set(pipeFromRefinement.features!.features.map((f) => f.name.trim()))].sort((a, b) =>
+        a.localeCompare(b)
+      );
+      assert(stableJson(vmReady.snapshots.featureNamesOrdered) === stableJson(featNames), "snapshot feature names match context");
+      const routes = [...new Set(pipeFromRefinement.screens!.screens.map((s) => s.routePath.trim()))].sort((a, b) =>
+        a.localeCompare(b)
+      );
+      assert(stableJson(vmReady.snapshots.screenRoutesOrdered) === stableJson(routes), "snapshot routes match context");
+      const taskIds = [...pipeFromRefinement.tasks!.tasks]
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((t) => t.id);
+      assert(
+        stableJson(vmReady.snapshots.taskIdsOrdered) === stableJson(taskIds) &&
+          (vmReady.snapshots.taskIdsOrdered?.length ?? 0) === (vmReady.stageOutputCounts.tasks ?? 0),
+        "snapshot task ids and count consistent with stageOutputCounts"
+      );
+      assert(
+        (vmReady.snapshots.iaRootMenuCount ?? 0) ===
+          pipeFromRefinement.iaResult!.menuNodes.filter((n) => n.parentId == null).length,
+        "snapshot IA root count matches context"
+      );
+      const ucA = mvpRunPlanningPipelineUseCase({ projectId: pPipe, refinement: synthPipeBundle });
+      const ucB = mvpRunPlanningPipelineUseCase({ projectId: pPipe, refinement: synthPipeBundle });
+      assert(stableJson(ucA.viewModel) === stableJson(ucB.viewModel), "planning use-case view model is deterministic");
+      assert(
+        stableJson(buildPlanningPipelineResultViewModel(ucA.context)) === stableJson(ucA.viewModel),
+        "view model builder matches use-case for READY refinement path"
+      );
+    }
     assert(pipeFromRefinement.features != null, "READY pipeline run materializes features");
     const altIa = generateStandardIa({ featureResult: pipeFromRefinement.features });
     assert(altIa.state === "GENERATED" && altIa.result != null, "standalone IA step matches pipeline preconditions");

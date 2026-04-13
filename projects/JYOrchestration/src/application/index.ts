@@ -21,6 +21,7 @@ export * from "./usecases/mvpGetExecutionStatusUseCase";
 export * from "./usecases/mvpGetExecutionInspectionUseCase";
 export * from "./usecases/mvpPrepareMockupFromRequirementsUseCase";
 export * from "./usecases/mvpPrepareMockupFromRequirementInputUseCase";
+export * from "./usecases/mvpRunPlanningPipelineUseCase";
 export * from "./usecases/requirement";
 export * from "./planning/requirementInput";
 export * from "./planning/featureEntry";
