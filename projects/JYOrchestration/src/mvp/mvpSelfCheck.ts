@@ -176,6 +176,7 @@ import {
   getOrderedScreensFromFlow,
   validateScreenFlow,
 } from "./screen/mvpScreenFlowService";
+import { findNavigationEntryScreen } from "./screen/helpers/screenFlowLookup";
 import {
   getNextScreens,
   getPreviousScreens,
@@ -191,6 +192,7 @@ import {
   resolvePrevNextScreenNames,
   resolvePreviousScreenNames,
   resolveNextScreenNames,
+  resolveScreenFlowLabelsForPrompt,
   buildFlowContextPromptLines,
 } from "./prompt/mvpPromptFlowContext";
 import { resolveFlowValidationMode, resolveFlowValidationModeFromPrompt } from "./reviewer/mvpReviewFlowValidationMode";
@@ -281,17 +283,24 @@ export async function runMvpSelfCheck(): Promise<void> {
     const literalOk = { ok: true as const, code: MVP_EXECUTION_APP_CODE.OK, readiness: readinessProbe };
     assert(stableJson(viaHelper) === stableJson(literalOk), "appSuccessResult must match literal success contract");
     const fInv = appFailureResult(MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID);
-    assert(stableJson(fInv) === stableJson({ ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID }));
+    assert(
+      stableJson(fInv) === stableJson({ ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID }),
+      "appFailureResult without extras must match literal"
+    );
     const fNr = appFailureResult(MVP_EXECUTION_APP_CODE.NOT_READY, { readiness: readinessProbe });
     assert(
       stableJson(fNr) === stableJson({ ok: false, code: MVP_EXECUTION_APP_CODE.NOT_READY, readiness: readinessProbe }),
       "appFailureResult with extras must match literal"
     );
 
-    assert(MVP_EXECUTION_APPLICATION_COMMANDS.length === 1 && MVP_EXECUTION_APPLICATION_COMMANDS[0] === "startRun");
-    for (const q of MVP_EXECUTION_APPLICATION_QUERIES) {
-      assert(q !== "startRun", "CQRS: startRun must only be a command");
-    }
+    assert(
+      MVP_EXECUTION_APPLICATION_COMMANDS.length === 1 && MVP_EXECUTION_APPLICATION_COMMANDS[0] === "startRun",
+      "CQRS: exactly one command and it must be startRun"
+    );
+    assert(
+      !(MVP_EXECUTION_APPLICATION_QUERIES as readonly string[]).includes("startRun"),
+      "CQRS: startRun must only be a command"
+    );
     assert(
       MVP_EXECUTION_APPLICATION_QUERIES.length === 5 &&
         (["getReadiness", "getRunSummary", "getRunDetail", "getStepList", "getRunInspection"] as const).every((n) =>
@@ -310,7 +319,7 @@ export async function runMvpSelfCheck(): Promise<void> {
     );
 
     const sr = await appEnv.startRun({ projectId: "mvp-envelope-not-ready" });
-    assert(sr.ok === false && sr.code === MVP_EXECUTION_APP_CODE.NOT_READY);
+    assert(sr.ok === false && sr.code === MVP_EXECUTION_APP_CODE.NOT_READY, "startRun when not ready must fail");
     const envS = routeEnvelopeDraftFromStartRunResult(sr);
     assert(
       envS.success === false &&
@@ -1012,12 +1021,24 @@ export async function runMvpSelfCheck(): Promise<void> {
       pipeVague.traceLogs?.some((l) => l.includes("stepFeatureEntryGate")),
       "pipeline trace records the feature entry gate step"
     );
+    assert(
+      pipeVague.earlyStopReason === "feature_entry_gate:BLOCKED",
+      "pipeline records early stop reason at the feature entry gate (BLOCKED)"
+    );
+    assert(
+      (pipeVague.executedSteps ?? []).length === 6 && pipeVague.executedSteps?.at(-1) === "stepFeatureEntryGate",
+      "pipeline executedSteps lists each step function until the terminal gate"
+    );
 
     const pipeVideo = runPlanningPipeline({
       projectId: pPipe,
       inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
     });
     assert(pipeVideo.status === "NEEDS_CONFIRMATION", "unified pipeline defers video meeting scope until confirmation");
+    assert(
+      pipeVideo.earlyStopReason === "feature_entry_gate:NEEDS_CONFIRMATION",
+      "pipeline records early stop reason at the feature entry gate (NEEDS_CONFIRMATION)"
+    );
 
     const listIdea = "게시글 목록과 상세를 볼 수 있는 서비스";
     const standaloneRef = prepareRequirementRefinementDecision({ projectId: pPipe, inputText: listIdea });
@@ -1053,6 +1074,21 @@ export async function runMvpSelfCheck(): Promise<void> {
         pipeFromRefinement.tasks != null &&
         pipeFromRefinement.tasks.tasks.length >= 1,
       "pipeline can complete through tasks when refinement bundle is already READY at the gate"
+    );
+    assert(
+      pipeFromRefinement.earlyStopReason === undefined,
+      "successful READY pipeline must not set earlyStopReason"
+    );
+    assert(
+      (pipeFromRefinement.executedSteps ?? []).join(",") ===
+        "stepFeatureEntryGate,stepFeatureGeneration,stepIaGeneration,stepScreenGeneration,stepTaskGeneration",
+      "from_refinement pipeline executes the downstream planning steps in order"
+    );
+    assert(
+      pipeFromRefinement.stageOutputCounts?.tasks === pipeFromRefinement.tasks?.tasks.length &&
+        pipeFromRefinement.stageOutputCounts?.features === pipeFromRefinement.features?.features.length &&
+        pipeFromRefinement.stageOutputCounts?.screens === pipeFromRefinement.screens?.screens.length,
+      "stageOutputCounts mirror final artifact list lengths"
     );
     assert(pipeFromRefinement.features != null, "READY pipeline run materializes features");
     const altIa = generateStandardIa({ featureResult: pipeFromRefinement.features });
@@ -1101,6 +1137,15 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(screen0 != null, "screen lookup for task");
     const graph0 = resolveFlowGraphForTask({ ...t0 }, screen0);
     assert(graph0 != null, "flow graph should resolve for domain-generated task");
+    assert(
+      stableJson(resolveScreenFlowLabelsForPrompt({ ...t0 }, screen0)) ===
+        stableJson({
+          graph: graph0,
+          prevNames: resolvePreviousScreenNames(graph0, screen0.id),
+          nextNames: resolveNextScreenNames(graph0, screen0.id),
+        }),
+      "resolveScreenFlowLabelsForPrompt must match explicit graph + prev/next name resolution"
+    );
     const { prevNames, nextNames } = resolvePrevNextScreenNames(graph0, screen0.id);
     assert(
       stableJson({ prevNames, nextNames }) ===
@@ -1288,6 +1333,10 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(ok.ok === true, "generated screen flow should validate");
     const ord = getOrderedScreensFromFlow(g);
     assert(ord.map((s) => s.id).join(",") === screens.map((s) => s.id).join(","), "ordered screens follow linear flow");
+    assert(
+      findNavigationEntryScreen(g)?.id === screens[0]!.id,
+      "findNavigationEntryScreen matches linear NAVIGATION entry"
+    );
     assert(isEntryScreen(g, screens[0]!.id) === true, "entry screen detection");
     assert(getNextScreens(g, screens[0]!.id)[0] === screens[1]!.id, "next screen helper");
     assert(getPreviousScreens(g, screens[2]!.id)[0] === screens[1]!.id, "previous screen helper");
@@ -1552,7 +1601,10 @@ export async function runMvpSelfCheck(): Promise<void> {
       "application startRun when ready must succeed"
     );
     const summaryViaAppRes = await appSvc.getRunSummary({ runId: appStart.runId });
-    assert(summaryViaAppRes.ok === true && summaryViaAppRes.code === MVP_EXECUTION_APP_CODE.OK);
+    assert(
+      summaryViaAppRes.ok === true && summaryViaAppRes.code === MVP_EXECUTION_APP_CODE.OK,
+      "getRunSummary after successful startRun must succeed"
+    );
     const summaryViaApp = summaryViaAppRes.summary;
     assert(
       summaryViaFacade?.runStatus === summaryViaApp?.runStatus &&

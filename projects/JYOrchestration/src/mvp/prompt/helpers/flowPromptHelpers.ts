@@ -55,6 +55,21 @@ export function resolveNextScreenNames(graph: MvpScreenFlowGraphNonNull, screenI
   return resolveNextScreens(screenId, graph);
 }
 
+/** Single call-site for structured prompts: graph + adjacent screen names (empty when no screen/graph). */
+export function resolveScreenFlowLabelsForPrompt(
+  task: Task | undefined,
+  screen: MvpScreen | null
+): {
+  graph: ReturnType<typeof mvpGetProjectScreenFlow>;
+  prevNames: string[];
+  nextNames: string[];
+} {
+  const graph = resolveFlowGraphForTask(task, screen);
+  const prevNames = screen && graph ? resolvePreviousScreenNames(graph, screen.id) : [];
+  const nextNames = screen && graph ? resolveNextScreenNames(graph, screen.id) : [];
+  return { graph, prevNames, nextNames };
+}
+
 export function resolvePrevNextScreenNames(graph: MvpScreenFlowGraphNonNull, screenId: string): {
   prevNames: string[];
   nextNames: string[];

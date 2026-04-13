@@ -17,12 +17,7 @@ import type { PromptProvider } from "../ports/mvpPorts";
 import { mvpGetTaskById, type Task } from "../task/taskService";
 import { getScreenByTask } from "../domain/mvpDomainTaskScreenService";
 import { mvpGetMenuNodeById } from "../domain/stores/mvpMenuStore";
-import {
-  buildFlowContextPromptLines,
-  resolveFlowGraphForTask,
-  resolveNextScreenNames,
-  resolvePreviousScreenNames,
-} from "./mvpPromptFlowContext";
+import { buildFlowContextPromptLines, resolveScreenFlowLabelsForPrompt } from "./mvpPromptFlowContext";
 
 export interface TaskPromptBuildInput {
   taskId: string;
@@ -96,9 +91,7 @@ function buildStructuredPrompt(
   const screen = getScreenByTask(taskId);
   const menu = screen ? mvpGetMenuNodeById(screen.menuId) : undefined;
   const parentMenu = menu?.parentId ? mvpGetMenuNodeById(menu.parentId) : undefined;
-  const graph = resolveFlowGraphForTask(task, screen);
-  const prevNames = screen && graph ? resolvePreviousScreenNames(graph, screen.id) : [];
-  const nextNames = screen && graph ? resolveNextScreenNames(graph, screen.id) : [];
+  const { graph, prevNames, nextNames } = resolveScreenFlowLabelsForPrompt(task, screen);
 
   const projectIdLine =
     task?.projectId != null && String(task.projectId).trim() !== ""
