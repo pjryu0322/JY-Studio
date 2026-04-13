@@ -1,3 +1,5 @@
+import type { GitVerifier } from "../ports/mvpPorts";
+
 /**
  * MVP — Git verification stubs (in-memory; no network).
  */
@@ -81,3 +83,9 @@ export async function summarizeDiff(_input: DiffSummaryInput): Promise<DiffSumma
 export async function listChangedFiles(_input: ChangedFilesInput): Promise<string[]> {
   return [];
 }
+
+export const mvpDefaultGitVerifier: GitVerifier = {
+  verifyBranchExists,
+  getLatestCommit,
+  getCommitDiff,
+};

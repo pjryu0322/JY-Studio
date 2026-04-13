@@ -1,3 +1,5 @@
+import type { CursorExecutor } from "../ports/mvpPorts";
+
 /**
  * MVP — Cursor-style execution (in-memory stub; no real API).
  */
@@ -84,3 +86,8 @@ export async function pollAgentJob(_jobId: string): Promise<AgentJobStatus> {
 export async function collectAgentResult(_jobId: string): Promise<AgentResultPayload | null> {
   return null;
 }
+
+export const mvpDefaultCursorExecutor: CursorExecutor = {
+  submitTaskPrompt,
+  waitForCompletion,
+};

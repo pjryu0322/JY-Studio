@@ -2,6 +2,7 @@
  * MVP — run-level read model combining execution state and step log (in-memory only).
  */
 
+import type { MvpStructuredFailure } from "../contracts/mvpStructuredFailure";
 import { getRunStatus } from "./executionService";
 import { mvpGetExecutionStepsForRun } from "./executionStepLog";
 import { mvpGetLastFailureStepForRun } from "./executionStepProjections";
@@ -14,7 +15,14 @@ const KNOWN_FAILURE_PREFIXES = [
   "UNHANDLED",
 ] as const;
 
-function inferFailureCodeFromStep(step: { stepType: string; message: string }): string | null {
+function inferFailureCodeFromStep(step: {
+  stepType: string;
+  message: string;
+  failurePayload?: MvpStructuredFailure;
+}): string | null {
+  if (step.failurePayload) {
+    return step.failurePayload.failureCode;
+  }
   if (step.stepType === "CURSOR_FAILED") {
     return "CURSOR_FAILED";
   }
@@ -46,6 +54,8 @@ export type MvpRunSummaryProjection = {
   currentTaskId: string | null;
   lastFailureCode: string | null;
   lastFailureMessage: string | null;
+  /** Structured payload from the last failure step when recorded. */
+  lastFailurePayload?: MvpStructuredFailure;
   totalStepCount: number;
 };
 
@@ -70,9 +80,11 @@ export async function mvpProjectRunSummary(runId: string): Promise<MvpRunSummary
   const lastFail = mvpGetLastFailureStepForRun(runId);
   let lastFailureCode: string | null = null;
   let lastFailureMessage: string | null = null;
+  let lastFailurePayload: MvpStructuredFailure | undefined;
   if (lastFail) {
-    lastFailureMessage = lastFail.message;
+    lastFailureMessage = lastFail.failurePayload?.failureMessage ?? lastFail.message;
     lastFailureCode = inferFailureCodeFromStep(lastFail);
+    lastFailurePayload = lastFail.failurePayload;
   }
 
   if (run.status === "FAILED" && run.failureReason && !lastFailureMessage) {
@@ -94,6 +106,7 @@ export async function mvpProjectRunSummary(runId: string): Promise<MvpRunSummary
     currentTaskId,
     lastFailureCode,
     lastFailureMessage,
+    lastFailurePayload,
     totalStepCount: steps.length,
   };
 }

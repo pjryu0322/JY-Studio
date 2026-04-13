@@ -5,6 +5,8 @@
  * `timestamp` is diagnostic only; callers should prefer `sequence` for ordering.
  */
 
+import type { MvpStructuredFailure } from "../contracts/mvpStructuredFailure";
+
 export type MvpExecutionStepType =
   | "PROMPT_GENERATED"
   | "CURSOR_SUBMITTED"
@@ -31,6 +33,8 @@ export type MvpExecutionStepRecord = {
   status: MvpExecutionStepStatus;
   message: string;
   timestamp: number;
+  /** Present on failure-oriented steps when the engine classified the outcome. */
+  failurePayload?: MvpStructuredFailure;
 };
 
 const stepsByRun = new Map<string, MvpExecutionStepRecord[]>();
@@ -48,6 +52,7 @@ export function mvpAppendExecutionStep(
     status: record.status,
     message: record.message,
     timestamp: record.timestamp ?? Date.now(),
+    failurePayload: record.failurePayload,
   };
   list.push(row);
   stepsByRun.set(record.runId, list);

@@ -1,3 +1,5 @@
+import type { ReviewEngine } from "../ports/mvpPorts";
+
 /**
  * MVP — simulated prompt vs result validation for executionService (no LLM, in-memory).
  *
@@ -157,3 +159,7 @@ export async function decideRetry(_input: RetryDecisionInput): Promise<RetryDeci
   void _input;
   return "stop";
 }
+
+export const mvpDefaultReviewEngine: ReviewEngine = {
+  reviewTaskResult,
+};

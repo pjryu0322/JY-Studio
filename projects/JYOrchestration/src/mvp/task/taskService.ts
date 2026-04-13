@@ -1,3 +1,5 @@
+import type { TaskProvider } from "../ports/mvpPorts";
+
 /**
  * MVP — task store + executable task list for executionService (in-memory only).
  *
@@ -209,3 +211,8 @@ export async function createTaskDraft(_input: TaskDraftInput): Promise<TaskDraft
 export async function classifyTask(_input: TaskClassificationInput): Promise<TaskClassificationResult> {
   return { taskId: _input.taskId, labels: [] };
 }
+
+/** Default in-memory `TaskProvider` port (same behavior as calling `getExecutableTasks` directly). */
+export const mvpDefaultTaskProvider: TaskProvider = {
+  getExecutableTasks,
+};
