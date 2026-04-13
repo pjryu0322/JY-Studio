@@ -3,9 +3,18 @@
  */
 
 import type { ExecutionRun } from "../contracts/mvpExecutionTypes";
-import { toMvpExecutionStepDto, toMvpReadinessDto, toMvpRunSummaryDto, type MvpExecutionStepDto, type MvpReadinessDto, type MvpRunSummaryDto } from "../contracts/mvpDtos";
+import {
+  toMvpExecutionStepDto,
+  toMvpReadinessDto,
+  toMvpRunDetailDto,
+  toMvpRunSummaryDto,
+  type MvpExecutionStepDto,
+  type MvpReadinessDto,
+  type MvpRunDetailDto,
+  type MvpRunSummaryDto,
+} from "../contracts/mvpDtos";
 import { startRun } from "../execution/executionService";
-import { mvpProjectRunSummary } from "../execution/mvpRunSummary";
+import { mvpProjectRunDetail, mvpProjectRunSummary } from "../execution/mvpRunSummary";
 import { mvpExecutionPortsBundle } from "../runtime/mvpExecutionPortsBundle";
 import { evaluateExecutionReadiness, type ExecutionReadinessInput } from "./orchestrationService";
 
@@ -40,6 +49,15 @@ export async function mvpGetRunSummaryDto(runId: string): Promise<MvpRunSummaryD
     return null;
   }
   return toMvpRunSummaryDto(p);
+}
+
+/** Detailed run inspection DTO (null if run id is unknown). */
+export async function mvpGetRunDetailDto(runId: string): Promise<MvpRunDetailDto | null> {
+  const p = await mvpProjectRunDetail(runId);
+  if (!p) {
+    return null;
+  }
+  return toMvpRunDetailDto(p);
 }
 
 /** Step log as DTOs (stable `sequence` order). */

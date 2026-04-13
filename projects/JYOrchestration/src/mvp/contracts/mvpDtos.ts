@@ -5,7 +5,7 @@
 import type { ExecutionTaskState } from "./mvpExecutionTypes";
 import type { MvpStructuredFailure } from "./mvpStructuredFailure";
 import type { MvpExecutionStepRecord } from "../execution/executionStepLog";
-import type { MvpRunSummaryProjection } from "../execution/mvpRunSummary";
+import type { MvpRunDetailProjection, MvpRunSummaryProjection } from "../execution/mvpRunSummary";
 
 export type MvpReadinessDto = {
   projectId: string;
@@ -47,6 +47,28 @@ export type MvpRunSummaryDto = {
   totalStepCount: number;
   /** Structured failure from the last failure step when present. */
   lastFailurePayload?: MvpStructuredFailure;
+};
+
+export type MvpRunDetailRetrySummaryDto = {
+  /** Count of `TASK_RETRY_SCHEDULED` steps in the log. */
+  automaticRetrySteps: number;
+  /** Sum of per-task `retryCount` fields on the run. */
+  totalTaskRetryCount: number;
+  /** Maximum `retryCount` among tasks. */
+  maxTaskRetryCount: number;
+};
+
+/** Detailed run inspection DTO (tasks + retries + failure + optional step flow). */
+export type MvpRunDetailDto = {
+  runId: string;
+  runStatus: "RUNNING" | "SUCCESS" | "FAILED";
+  currentTaskId: string | null;
+  tasks: MvpTaskStateDto[];
+  totalStepCount: number;
+  latestFailurePayload?: MvpStructuredFailure;
+  retrySummary: MvpRunDetailRetrySummaryDto;
+  /** Compact `seq:TYPE → …` summary when steps exist. */
+  stepFlowSummary?: string;
 };
 
 export function toMvpReadinessDto(input: {
@@ -99,5 +121,22 @@ export function toMvpRunSummaryDto(p: MvpRunSummaryProjection): MvpRunSummaryDto
     lastFailureMessage: p.lastFailureMessage,
     totalStepCount: p.totalStepCount,
     lastFailurePayload: p.lastFailurePayload,
+  };
+}
+
+export function toMvpRunDetailDto(p: MvpRunDetailProjection): MvpRunDetailDto {
+  return {
+    runId: p.runId,
+    runStatus: p.runStatus,
+    currentTaskId: p.currentTaskId,
+    tasks: p.tasks.map(toMvpTaskStateDto),
+    totalStepCount: p.totalStepCount,
+    latestFailurePayload: p.latestFailurePayload,
+    retrySummary: {
+      automaticRetrySteps: p.retrySummary.automaticRetrySteps,
+      totalTaskRetryCount: p.retrySummary.totalTaskRetryCount,
+      maxTaskRetryCount: p.retrySummary.maxTaskRetryCount,
+    },
+    stepFlowSummary: p.stepFlowSummary,
   };
 }

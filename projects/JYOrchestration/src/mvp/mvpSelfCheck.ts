@@ -39,6 +39,7 @@ import {
 import { evaluateExecutionReadiness } from "./orchestration/orchestrationService";
 import {
   mvpCheckReadinessDto,
+  mvpGetRunDetailDto,
   mvpGetRunSummaryDto,
   mvpGetStepFlowSummary,
   mvpGetStepSummaryDtos,
@@ -56,6 +57,7 @@ import { mvpDefaultReviewEngine } from "./reviewer/reviewerService";
 import { mvpInMemoryRunStore, mvpInMemoryStepStore } from "./execution/inMemoryExecutionState";
 import { mvpCursorResetTestHooks, mvpCursorFailNextWaits } from "./cursor/cursorService";
 import { mvpGitResetStubs } from "./git/gitService";
+import { createMvpFakeExecutionPortsBundle } from "./testing/mvpFakeExecutionPorts";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -166,6 +168,20 @@ export async function runMvpSelfCheck(): Promise<void> {
     "StepStore view must match executionStepLog reader"
   );
 
+  const detailOk = await mvpGetRunDetailDto(r1.id);
+  assert(detailOk != null && detailOk.runStatus === "SUCCESS", "run detail DTO after success");
+  assert(detailOk.tasks.length === 2 && detailOk.tasks.every((t) => t.status === "SUCCESS"), "detail tasks SUCCESS");
+  assert(detailOk.totalStepCount === steps1.length, "detail step count");
+  assert(
+    detailOk.retrySummary.automaticRetrySteps === 0 && detailOk.retrySummary.totalTaskRetryCount === 0,
+    "detail retry summary on happy path"
+  );
+  assert(detailOk.latestFailurePayload === undefined, "no structured failure payload on success detail");
+  assert(
+    detailOk.stepFlowSummary != null && detailOk.stepFlowSummary.includes("RUN_SUCCESS"),
+    "detail step flow summary"
+  );
+
   let threw = false;
   try {
     buildTaskPrompt({ taskId: tid0, projectId: "wrong-project" });
@@ -237,6 +253,19 @@ export async function runMvpSelfCheck(): Promise<void> {
     "step summary DTOs must include failurePayload on failure steps"
   );
 
+  const detailFail = await mvpGetRunDetailDto(rNonRetry.id);
+  assert(detailFail != null && detailFail.runStatus === "FAILED", "run detail DTO after failure");
+  assert(detailFail.tasks.length === 1 && detailFail.tasks[0]!.status === "FAILED", "detail task FAILED");
+  assert(
+    detailFail.latestFailurePayload?.failureCode === "REVIEW_FAILED" && detailFail.latestFailurePayload.retryable === false,
+    "run detail DTO must preserve structured failure"
+  );
+  assert(detailFail.totalStepCount === stepsNr.length, "detail step count matches log");
+  assert(
+    detailFail.stepFlowSummary != null && detailFail.stepFlowSummary.includes("REVIEW_FAILED"),
+    "detail flow includes failing step"
+  );
+
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
   mvpCursorFailNextWaits(DEFAULT_MAX_RETRY_COUNT + 2);
@@ -296,4 +325,54 @@ export async function runMvpSelfCheck(): Promise<void> {
   const afterNr = await getRunStatus(ridNr);
   assert(afterNr.tasks[0]!.retryCount === 0, "retryTask must not run after non-retryable failure");
   assert(afterNr.tasks[0]!.status === "FAILED", "task should remain FAILED when manual retry is rejected");
+
+  resetAll();
+  {
+    const { bundle: fakeOkBundle, counters: cOk } = createMvpFakeExecutionPortsBundle({ reviewPass: true });
+    mvpSetExecutionPortsBundleForTesting(fakeOkBundle);
+    mvpResetExecutionState();
+    const fakeStart = await mvpStartRunIfReady("mvp-fake-ok-project");
+    assert(fakeStart.ok === true, "orchestration must drive execution through injected fake bundle");
+    assert(
+      cOk.getExecutableTasks >= 1 &&
+        cOk.generatePrompt >= 1 &&
+        cOk.submitTaskPrompt >= 1 &&
+        cOk.waitForCompletion >= 1 &&
+        cOk.reviewTaskResult >= 1,
+      "fake Task/Prompt/Cursor/Review adapters must be invoked"
+    );
+    assert(cOk.stepAppend >= 1, "injected StepStore.append must be used");
+    const fakeDetail = await mvpGetRunDetailDto(fakeStart.run.id);
+    assert(
+      fakeDetail?.runStatus === "SUCCESS" && fakeDetail.tasks.length === 1 && fakeDetail.tasks[0]!.taskId === "fake-task-1",
+      "fake run detail DTO"
+    );
+    assert(
+      fakeDetail?.totalStepCount === fakeOkBundle.stepStore.getStepsForRun(fakeStart.run.id).length,
+      "detail step count must follow injected StepStore"
+    );
+
+    const { bundle: fakeEmptyBundle, counters: cEmpty } = createMvpFakeExecutionPortsBundle({
+      emptyExecutableSet: true,
+    });
+    mvpSetExecutionPortsBundleForTesting(fakeEmptyBundle);
+    mvpResetExecutionState();
+    const fakeBlocked = await mvpStartRunIfReady("mvp-fake-empty");
+    assert(fakeBlocked.ok === false && fakeBlocked.reason === "NOT_READY", "facade rejects start when fake tasks empty");
+    assert(cEmpty.getExecutableTasks >= 1, "readiness must consult fake TaskProvider");
+
+    const { bundle: fakeFailBundle, counters: cFail } = createMvpFakeExecutionPortsBundle({ reviewPass: false });
+    mvpSetExecutionPortsBundleForTesting(fakeFailBundle);
+    mvpResetExecutionState();
+    const fakeFailStart = await mvpStartRunIfReady("mvp-fake-fail-project");
+    assert(fakeFailStart.ok === true && fakeFailStart.run.status === "FAILED", "fake failing review ends run");
+    const fakeFailDetail = await mvpGetRunDetailDto(fakeFailStart.run.id);
+    assert(
+      fakeFailDetail?.latestFailurePayload?.failureCode === "REVIEW_FAILED" &&
+        fakeFailDetail.latestFailurePayload.retryable === false,
+      "fake failure path must surface structured failure in run detail DTO"
+    );
+    assert(cFail.reviewTaskResult >= 1, "fake review must run on failure path");
+  }
+  resetAll();
 }
