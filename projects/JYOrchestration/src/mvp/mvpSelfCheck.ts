@@ -133,6 +133,14 @@ import {
 } from "./screen/mvpScreenFlowMetadata";
 import { orderTasksByScreenFlow as orderTasksByScreenFlowGraph } from "./screen/mvpScreenFlowTaskOrdering";
 import { mvpClearScreenFlowStore } from "./screen/stores/mvpScreenFlowStore";
+import { getScreenByTask } from "./domain/mvpDomainTaskScreenService";
+import {
+  legacyBuildFlowContextPromptLines,
+  resolveFlowGraphForTask,
+  resolvePrevNextScreenNames,
+  buildFlowContextPromptLines,
+} from "./prompt/mvpPromptFlowContext";
+import { evaluateFlowValidation } from "./reviewer/mvpReviewFlowValidationHelpers";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -313,6 +321,17 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(prompt0.includes("Next screen(s):"), "prompt includes next screen line");
     assert(prompt1.includes("This screen comes AFTER:"), "non-entry screen should come AFTER previous");
 
+    // Parity check: extracted flow helpers should reproduce the same flow block.
+    const screen0 = getScreenByTask(t0.id);
+    assert(screen0 != null, "screen lookup for task");
+    const graph0 = resolveFlowGraphForTask({ ...t0 }, screen0);
+    assert(graph0 != null, "flow graph should resolve for domain-generated task");
+    const { prevNames, nextNames } = resolvePrevNextScreenNames(graph0, screen0.id);
+    const blockNew = buildFlowContextPromptLines({ screen: screen0, graph: graph0, prevNames, nextNames }).join("\n");
+    const blockLegacy = legacyBuildFlowContextPromptLines(screen0, graph0, prevNames, nextNames).join("\n");
+    assert(blockNew === blockLegacy, "flow context helper parity (legacy vs new builder)");
+    assert(prompt0.includes(blockNew.trim()), "prompt contains flow block built by helper");
+
     resetAll();
     const legacyPid = "mvp-legacy-task-prompt";
     mvpSeedProjectTasks(legacyPid, [baseTasks(legacyPid)[0]!]);
@@ -341,6 +360,8 @@ export async function runMvpSelfCheck(): Promise<void> {
       result: { summary: "mvp-cursor-ok", changedFiles: [`mvp/${entryTask.id}.ts`] },
     });
     assert(bad.status === "FAILED" && bad.flowValidation?.isConsistent === false, "reviewer detects missing flow tokens");
+    const badEval = evaluateFlowValidation(entryPromptWithFlowValidation, { summary: "mvp-cursor-ok" });
+    assert(badEval.enabled === true && badEval.issues.length > 0, "flow validation helper parity (bad)");
 
     const good = await reviewTaskResult({
       taskId: entryTask.id,
@@ -348,6 +369,8 @@ export async function runMvpSelfCheck(): Promise<void> {
       result: { summary: "SCREEN_ONLY_OK NAV_OK", changedFiles: [`mvp/${entryTask.id}.ts`] },
     });
     assert(good.status === "PASSED" && good.flowValidation?.isConsistent === true, "reviewer allows valid flow tokens");
+    const goodEval = evaluateFlowValidation(entryPromptWithFlowValidation, { summary: "SCREEN_ONLY_OK NAV_OK" });
+    assert(goodEval.enabled === true && goodEval.issues.length === 0, "flow validation helper parity (good)");
 
     resetAll();
     const legacyPid = "mvp-flow-reviewer-legacy";

@@ -11,8 +11,11 @@ import type { PromptProvider } from "../ports/mvpPorts";
 import { mvpGetTaskById, type Task } from "../task/taskService";
 import { getScreenByTask } from "../domain/mvpDomainTaskScreenService";
 import { mvpGetMenuNodeById } from "../domain/stores/mvpMenuStore";
-import { mvpGetProjectScreenFlow } from "../screen/stores/mvpScreenFlowStore";
-import { getNextScreens, getPreviousScreens, isEntryScreen } from "../screen/mvpScreenFlowMetadata";
+import {
+  buildFlowContextPromptLines,
+  resolveFlowGraphForTask,
+  resolvePrevNextScreenNames,
+} from "./mvpPromptFlowContext";
 
 export interface TaskPromptBuildInput {
   taskId: string;
@@ -86,26 +89,9 @@ function buildStructuredPrompt(
   const screen = getScreenByTask(taskId);
   const menu = screen ? mvpGetMenuNodeById(screen.menuId) : undefined;
   const parentMenu = menu?.parentId ? mvpGetMenuNodeById(menu.parentId) : undefined;
-  const graph =
-    screen && screen.projectId
-      ? mvpGetProjectScreenFlow(screen.projectId)
-      : task?.projectId
-        ? mvpGetProjectScreenFlow(task.projectId)
-        : null;
-  const prevIds = screen && graph ? getPreviousScreens(graph, screen.id) : [];
-  const nextIds = screen && graph ? getNextScreens(graph, screen.id) : [];
-  const prevNames =
-    screen && graph
-      ? prevIds
-          .map((id) => graph.screens.find((s) => s.id === id)?.name)
-          .filter((x): x is string => typeof x === "string" && x.length > 0)
-      : [];
-  const nextNames =
-    screen && graph
-      ? nextIds
-          .map((id) => graph.screens.find((s) => s.id === id)?.name)
-          .filter((x): x is string => typeof x === "string" && x.length > 0)
-      : [];
+  const graph = resolveFlowGraphForTask(task, screen);
+  const { prevNames, nextNames } =
+    screen && graph ? resolvePrevNextScreenNames(graph, screen.id) : { prevNames: [], nextNames: [] };
 
   const projectIdLine =
     task?.projectId != null && String(task.projectId).trim() !== ""
@@ -127,19 +113,7 @@ function buildStructuredPrompt(
           `Route: ${screen.routePath}`,
           `UI Scope: this screen only`,
           ``,
-          `### Flow context (preparation only)`,
-          ...(graph
-            ? [
-                isEntryScreen(graph, screen.id)
-                  ? `This screen is an ENTRY screen.`
-                  : prevNames.length > 0
-                    ? `This screen comes AFTER: ${prevNames.join(", ")}`
-                    : `This screen comes AFTER: (unknown)`,
-                nextNames.length > 0 ? `Next screen(s): ${nextNames.join(", ")}` : `Next screen(s): (none)`,
-                `Flow validation: OFF`,
-              ]
-            : [`Flow graph: (not available)`]),
-          ``,
+          ...(graph ? buildFlowContextPromptLines({ screen, graph, prevNames, nextNames }) : buildFlowContextPromptLines({ screen, graph: null, prevNames: [], nextNames: [] })),
           `### Constraints (screen-scoped)`,
           `- Do NOT implement other screens or flows unless explicitly required for this screen.`,
           `- Do NOT add unrelated UI components; keep changes scoped to this screen.`,

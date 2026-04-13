@@ -1,4 +1,5 @@
 import type { ReviewEngine } from "../ports/mvpPorts";
+import { evaluateFlowValidation } from "./mvpReviewFlowValidationHelpers";
 
 /**
  * MVP — simulated prompt vs result validation for executionService (no LLM, in-memory).
@@ -104,38 +105,6 @@ function hasExpectedStructure(result: unknown): boolean {
   return false;
 }
 
-function extractFlowContextFromPrompt(prompt: string): {
-  hasFlowBlock: boolean;
-  flowValidationEnabled: boolean;
-  nextScreens: string[];
-  hasPrevious: boolean;
-  isEntry: boolean;
-} {
-  const hasFlowBlock = prompt.includes("### Flow context (preparation only)");
-  const flowValidationEnabled = prompt.includes("Flow validation: ON");
-  const isEntry = prompt.includes("This screen is an ENTRY screen.");
-  const hasPrevious = prompt.includes("This screen comes AFTER:");
-  const nextLine = prompt
-    .split("\n")
-    .find((l) => l.startsWith("Next screen(s):"));
-  const nextScreens =
-    nextLine && !nextLine.includes("(none)")
-      ? nextLine
-          .replace("Next screen(s):", "")
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0)
-      : [];
-  return { hasFlowBlock, flowValidationEnabled, nextScreens, hasPrevious, isEntry };
-}
-
-function extractResultSummary(result: unknown): string {
-  if (!result || typeof result !== "object") return "";
-  const r = result as Record<string, unknown>;
-  const s = r.summary;
-  return typeof s === "string" ? s : "";
-}
-
 export async function reviewTaskResult(input: ReviewTaskInput): Promise<ReviewResult> {
   if (forceNonRetryableReviewOnce.has(input.taskId)) {
     forceNonRetryableReviewOnce.delete(input.taskId);
@@ -172,26 +141,9 @@ export async function reviewTaskResult(input: ReviewTaskInput): Promise<ReviewRe
     };
   }
 
-  const flow = extractFlowContextFromPrompt(input.prompt);
-  if (flow.hasFlowBlock && flow.flowValidationEnabled) {
-    const issues: string[] = [];
-    const summary = extractResultSummary(input.result);
-
-    // Screen isolation is not enforceable without real code inspection; use a soft contract token.
-    if (!summary.includes("SCREEN_ONLY_OK")) {
-      issues.push("MISSING_SCREEN_ISOLATION_TOKEN: expected summary to include SCREEN_ONLY_OK");
-    }
-
-    // Navigation continuity token when next screens exist.
-    if (flow.nextScreens.length > 0 && !summary.includes("NAV_OK")) {
-      issues.push("MISSING_NAVIGATION_TOKEN: expected summary to include NAV_OK when next screens exist");
-    }
-
-    // Entry screens should not claim previous continuity token.
-    if (flow.isEntry && summary.includes("PREV_OK")) {
-      issues.push("ENTRY_SCREEN_PREV_TOKEN_FORBIDDEN: entry screen must not depend on prior UI");
-    }
-
+  const flowEval = evaluateFlowValidation(input.prompt, input.result);
+  if (flowEval.enabled) {
+    const issues = flowEval.issues;
     if (issues.length > 0) {
       return {
         status: "FAILED",
@@ -200,8 +152,6 @@ export async function reviewTaskResult(input: ReviewTaskInput): Promise<ReviewRe
         flowValidation: { isConsistent: false, issues },
       };
     }
-
-    // Pass through flowValidation success.
     if (hasExpectedStructure(input.result)) {
       return { status: "PASSED", retryable: false, flowValidation: { isConsistent: true, issues: [] } };
     }
