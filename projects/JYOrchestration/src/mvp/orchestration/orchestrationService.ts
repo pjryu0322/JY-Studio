@@ -25,7 +25,8 @@ export interface ProjectExecutionSummaryStub {
 }
 
 /**
- * Readiness: at least one executable task (FUNCTIONAL + CONFIRMED), finite unique `finalOrder` on those tasks.
+ * Readiness: at least one executable task; executable set is exactly `getExecutableTasks()` (FUNCTIONAL + CONFIRMED only);
+ * `finalOrder` must be finite, non-negative, and unique among those tasks.
  * Uses the same registry semantics as `getExecutableTasks` (explicit empty seed => no tasks).
  */
 export async function evaluateExecutionReadiness(
