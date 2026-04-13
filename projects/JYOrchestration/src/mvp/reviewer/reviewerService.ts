@@ -4,6 +4,14 @@ import { evaluateFlowValidation } from "./mvpReviewFlowValidationHelpers";
 /**
  * MVP — simulated prompt vs result validation for executionService (no LLM, in-memory).
  *
+ * **Target path:** optional ScreenFlow checks via `evaluateFlowValidation` when the prompt contains
+ * the flow block **and** `Flow validation: ON` (substring gate — see `resolveFlowValidationMode` in
+ * `mvpReviewFlowValidationMode` and `reviewer/helpers/flowReviewHelpers`).
+ *
+ * **Legacy compatibility:** prompts without that gate skip flow validation; tasks without screen
+ * context therefore behave as before. New work should prefer domain-generated prompts + explicit
+ * markers over ad hoc string hacks.
+ *
  * Contract:
  * - `reviewTaskResult({ taskId, prompt, result })` returns `{ status, reason?, retryable }`.
  * - Validation is deterministic mock logic only (no external LLM, no DB).

@@ -1,7 +1,10 @@
 /**
- * MVP — domain generation pipeline.
+ * MVP — domain generation pipeline (canonical upstream entry: **Requirement[]**).
  *
- * Requirement → Feature → IA → Screen → Task
+ * Requirement[] → Feature → IA (menu) → Screen → Task → (downstream: Prompt → mockup execution).
+ *
+ * There is **no ProjectSpec** dependency in this module: callers supply requirements (from user
+ * idea text, seeded rows, or a legacy ProjectSpec body converted to a single Requirement elsewhere).
  *
  * Pure, deterministic generators. No execution integration.
  */
@@ -9,7 +12,7 @@
 import type { Task, TaskPurpose } from "../task/taskService";
 import type { MvpFeature, MvpMenuNode, MvpRequirement, MvpScreen } from "./mvpDomainTypes";
 import { validateDomainMapping } from "./mvpDomainValidationService";
-import { mvpListProjectRequirements } from "./stores/mvpRequirementStore";
+import { mvpListProjectRequirements, mvpSeedProjectRequirements } from "./stores/mvpRequirementStore";
 import { mvpSeedProjectMenuNodes } from "./stores/mvpMenuStore";
 import { mvpSeedProjectScreens } from "./stores/mvpScreenStore";
 import { generateScreenFlow, getOrderedScreensFromFlow, validateScreenFlow } from "../screen/mvpScreenFlowService";
@@ -83,12 +86,14 @@ export function generateTasksFromScreens(
 }
 
 /**
- * Entry point for upstream domain flow. Generates MOCKUP tasks from seeded requirements.
- * Returns tasks compatible with the existing execution pipeline.
+ * Requirement-based mockup generation: builds MOCKUP tasks from an explicit requirement list.
+ * Seeds the in-memory requirement store with the given list so lookups stay aligned with the graph.
  */
-export function generateMockupTasksFromRequirements(projectId: string): Task[] {
-  const requirements = mvpListProjectRequirements(projectId);
-  const features = generateFeaturesFromRequirements(requirements);
+export function generateMockupTasksFromRequirementList(projectId: string, requirements: readonly MvpRequirement[]): Task[] {
+  const reqList = requirements.map((r) => ({ ...r, projectId }));
+  mvpSeedProjectRequirements(projectId, reqList);
+
+  const features = generateFeaturesFromRequirements(reqList);
   const menu = generateIAFromFeatures(features);
   const screens = generateScreensFromIA(menu);
   const graph = generateScreenFlow(screens);
@@ -105,7 +110,7 @@ export function generateMockupTasksFromRequirements(projectId: string): Task[] {
   mvpSeedProjectScreenFlow(projectId, graph);
 
   const ok = validateDomainMapping({
-    requirements,
+    requirements: reqList,
     features,
     menuNodes: menu,
     screens,
@@ -116,5 +121,12 @@ export function generateMockupTasksFromRequirements(projectId: string): Task[] {
     throw new Error(`MVP_DOMAIN_MAPPING_INVALID: ${ok.errors.join(" | ")}`);
   }
   return tasks;
+}
+
+/**
+ * Same as {@link generateMockupTasksFromRequirementList} using requirements currently in the MVP store.
+ */
+export function generateMockupTasksFromRequirements(projectId: string): Task[] {
+  return generateMockupTasksFromRequirementList(projectId, mvpListProjectRequirements(projectId));
 }
 

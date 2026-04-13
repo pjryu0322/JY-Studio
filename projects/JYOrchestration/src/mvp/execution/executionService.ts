@@ -1,6 +1,9 @@
 /**
- * MVP — fully independent sequential execution engine (in-memory, no DB, no prod wiring).
+ * MVP — **target** sequential execution core (in-memory, no DB, no prod wiring).
  * Drives work through internal ports (`mvpExecutionPortsBundle`) for future substitution.
+ *
+ * **Stability:** behavior is frozen unless a deliberate migration is approved; new orchestration
+ * belongs in `mvpOrchestrationFacade` / `src/application`, not duplicate engines.
  */
 
 import type { ExecutionRun, ExecutionTaskState, MvpFailureCode } from "../contracts/mvpExecutionTypes";

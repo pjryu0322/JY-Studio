@@ -1,5 +1,7 @@
 /**
- * MVP — project-level orchestration and execution readiness (isolated, unwired).
+ * MVP — project-level execution readiness helpers (**target** path; used by `mvpOrchestrationFacade`).
+ *
+ * Not to be confused with Stage1/Stage2 (those live under `apps/web`, outside this package).
  */
 
 import { mvpExecutionPortsBundle } from "../runtime/mvpExecutionPortsBundle";

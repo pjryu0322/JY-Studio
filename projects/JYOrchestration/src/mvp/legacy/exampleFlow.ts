@@ -1,12 +1,18 @@
 /**
- * MVP — minimal in-memory demonstration of Task → Prompt → Result → Review
- * (and optional full execution run). No external I/O.
+ * LEGACY (demo / smoke) — minimal in-memory Task → Prompt → Review and optional `startRun`.
+ *
+ * Prefer for new work:
+ * - `mvpOrchestrationFacade` + `MvpExecutionApplicationService` (readiness-gated runs, DTOs), or
+ * - `mvpPrepareMockupFromRequirementInputUseCase` (requirement-input → domain → tasks).
+ *
+ * This module bypasses the orchestration facade and calls `startRun` directly for illustration only.
+ * No external I/O. Retirement: see `docs/MVP_LEGACY_RETIREMENT_CHECKLIST.md`.
  */
 
-import { mvpResetExecutionState, startRun, type ExecutionRun } from "./execution/executionService";
-import { clearPromptCache, generatePrompt } from "./prompt/promptService";
-import { mvpClearReviewPolicy, reviewTaskResult, type ReviewResult } from "./reviewer/reviewerService";
-import { mvpClearTaskStore, mvpSeedProjectTasks, type Task } from "./task/taskService";
+import { mvpResetExecutionState, startRun, type ExecutionRun } from "../execution/executionService";
+import { clearPromptCache, generatePrompt } from "../prompt/promptService";
+import { mvpClearReviewPolicy, reviewTaskResult, type ReviewResult } from "../reviewer/reviewerService";
+import { mvpClearTaskStore, mvpSeedProjectTasks, type Task } from "../task/taskService";
 
 export type MvpLinearFlowSnapshot = {
   tasks: Task[];

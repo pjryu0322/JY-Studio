@@ -1,5 +1,8 @@
 /**
- * MVP — isolated orchestration facade (readiness + run lifecycle + projections). No HTTP/DB.
+ * MVP — **target** orchestration facade (readiness + run lifecycle + projections). No HTTP/DB.
+ *
+ * Prefer this module (or `src/application` use-cases) over calling `startRun` directly in new code.
+ * Legacy demos: `legacy/exampleFlow.ts`.
  */
 
 import type { ExecutionRun } from "../contracts/mvpExecutionTypes";
