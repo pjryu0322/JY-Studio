@@ -8,6 +8,18 @@ import type { PipelineStopReason } from "./pipelineStopReason";
 import { legacyEarlyStopReasonString } from "./pipelineStopReason";
 import { buildPlanningStageSnapshots, type PlanningStageSnapshots } from "./planningStageSnapshots";
 
+export type PlanningPipelineReadinessSummary = {
+  readonly isReady: boolean;
+  readonly blockingIssueCount: number;
+  readonly confirmRequiredCount: number;
+  readonly autoResolvedCount: number;
+};
+
+/** Lightweight refinement / gap decision counts for handoff diagnostics. */
+export type PlanningPipelineRefinementSummary = {
+  readonly gapDecisionCount: number;
+};
+
 export type PlanningPipelineOutputsPresence = {
   normalizedText: boolean;
   requirementDrafts: boolean;
@@ -38,6 +50,10 @@ export type PlanningPipelineResultViewModel = {
   snapshots: PlanningStageSnapshots;
   outputsPresent: PlanningPipelineOutputsPresence;
   errors: readonly string[];
+  /** Present when refinement readiness was evaluated on this run. */
+  readinessSummary?: PlanningPipelineReadinessSummary;
+  /** Present when a refinement decision exists on this run. */
+  refinementSummary?: PlanningPipelineRefinementSummary;
 };
 
 function buildOutputsPresence(ctx: PipelineContext): PlanningPipelineOutputsPresence {
@@ -59,6 +75,21 @@ export function buildPlanningPipelineResultViewModel(ctx: PipelineContext): Plan
   const stop = ctx.pipelineStop ?? null;
   const legacy = stop != null ? legacyEarlyStopReasonString(stop) : ctx.earlyStopReason;
 
+  const readinessSummary =
+    ctx.readinessResult != null
+      ? {
+          isReady: ctx.readinessResult.isReady,
+          blockingIssueCount: ctx.readinessResult.blockingIssues.length,
+          confirmRequiredCount: ctx.readinessResult.confirmRequired.length,
+          autoResolvedCount: ctx.readinessResult.autoResolved.length,
+        }
+      : undefined;
+
+  const refinementSummary =
+    ctx.refinementDecision != null
+      ? { gapDecisionCount: ctx.refinementDecision.decisions.length }
+      : undefined;
+
   return {
     projectId: ctx.projectId,
     inputTextLength: ctx.inputText.length,
@@ -70,6 +101,8 @@ export function buildPlanningPipelineResultViewModel(ctx: PipelineContext): Plan
     snapshots: buildPlanningStageSnapshots(ctx),
     outputsPresent: buildOutputsPresence(ctx),
     errors: [...(ctx.errors ?? [])],
+    readinessSummary,
+    refinementSummary,
   };
 }
 
