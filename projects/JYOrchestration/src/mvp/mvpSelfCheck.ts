@@ -71,6 +71,10 @@ import {
 import { MvpDraftPrismaRunStoreAdapter } from "./adapters/draft/mvpDraftPrismaRunStoreAdapter";
 import { MvpDraftPrismaStepStoreAdapter } from "./adapters/draft/mvpDraftPrismaStepStoreAdapter";
 import { mvpBuildRunInspectionViewModel } from "./orchestration/mvpRunInspectionViewModel";
+import {
+  MvpExecutionApplicationService,
+  MVP_EXECUTION_APPLICATION_LAYER_ID,
+} from "../application/mvpExecutionApplicationService";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -211,6 +215,22 @@ export async function runMvpSelfCheck(): Promise<void> {
   assert(blocked.readiness.isReady === false, "readiness DTO must reflect blockers");
   assert(blocked.readiness.blockers.length > 0, "not-ready readiness must list blockers");
 
+  {
+    assert(MVP_EXECUTION_APPLICATION_LAYER_ID.startsWith("jyorchestration:"), "application layer stays JYOrchestration-local");
+    const app = new MvpExecutionApplicationService();
+    const appReadiness = await app.getReadiness({ projectId: pid });
+    assert(
+      appReadiness.readiness.isReady === false &&
+        appReadiness.readiness.blockers.join(",") === blocked.readiness.blockers.join(","),
+      "application getReadiness must match MVP facade readiness"
+    );
+    const appStart = await app.startRun({ projectId: pid });
+    assert(
+      appStart.ok === false && appStart.reason === "NOT_READY" && appStart.readiness.isReady === false,
+      "application startRun must respect readiness (no run when not ready)"
+    );
+  }
+
   resetAll();
   mvpSeedProjectTasks(pid, baseTasks(pid));
   const viaFacade = await mvpStartRunIfReady(pid);
@@ -276,6 +296,36 @@ export async function runMvpSelfCheck(): Promise<void> {
   assert(inspectOk.runSummary?.runStatus === "SUCCESS" && inspectOk.runSummary.totalStepCount === steps1.length, "inspection summary");
   assert(inspectOk.runDetail?.tasks.length === 2 && inspectOk.runDetail.runStatus === "SUCCESS", "inspection detail");
   assert(inspectOk.steps.length === steps1.length && inspectOk.stepFlowSummary.includes("RUN_SUCCESS"), "inspection steps + flow");
+
+  {
+    const app = new MvpExecutionApplicationService();
+    const appSum = await app.getRunSummary({ runId: r1.id });
+    assert(
+      appSum.summary?.runId === dtoOk?.runId &&
+        appSum.summary?.runStatus === dtoOk?.runStatus &&
+        appSum.summary?.totalStepCount === dtoOk?.totalStepCount,
+      "application getRunSummary must match facade DTO"
+    );
+    const appDet = await app.getRunDetail({ runId: r1.id });
+    assert(
+      appDet.detail?.runId === detailOk.runId &&
+        appDet.detail?.runStatus === detailOk.runStatus &&
+        appDet.detail?.tasks.length === detailOk.tasks.length,
+      "application getRunDetail must match facade DTO"
+    );
+    const appSteps = await app.getStepList({ runId: r1.id });
+    assert(
+      appSteps.steps.length === stepDtosOk.length && appSteps.stepFlowSummary === inspectOk.stepFlowSummary,
+      "application getStepList must match facade steps and flow"
+    );
+    const appInsp = await app.getRunInspection({ projectId: pid, runId: r1.id });
+    assert(
+      appInsp.inspection.runId === inspectOk.runId &&
+        appInsp.inspection.readiness.isReady === inspectOk.readiness.isReady &&
+        appInsp.inspection.steps.length === inspectOk.steps.length,
+      "application getRunInspection must match consolidated inspection VM"
+    );
+  }
 
   let threw = false;
   try {
@@ -373,6 +423,26 @@ export async function runMvpSelfCheck(): Promise<void> {
     "inspection step list carries failure payload"
   );
   assert(inspectFail.stepFlowSummary.includes("REVIEW_FAILED"), "inspection flow includes failure");
+
+  {
+    const app = new MvpExecutionApplicationService();
+    const appSum = await app.getRunSummary({ runId: rNonRetry.id });
+    assert(
+      appSum.summary?.runStatus === "FAILED" && appSum.summary?.lastFailurePayload?.failureCode === "REVIEW_FAILED",
+      "application summary on failure path"
+    );
+    const appDet = await app.getRunDetail({ runId: rNonRetry.id });
+    assert(
+      appDet.detail?.runStatus === "FAILED" && appDet.detail?.latestFailurePayload?.failureCode === "REVIEW_FAILED",
+      "application detail on failure path"
+    );
+    const appInsp = await app.getRunInspection({ projectId: pid, runId: rNonRetry.id });
+    assert(
+      appInsp.inspection.runDetail?.latestFailurePayload?.failureCode === "REVIEW_FAILED" &&
+        appInsp.inspection.runSummary?.lastFailurePayload?.failureCode === "REVIEW_FAILED",
+      "application inspection preserves structured failure"
+    );
+  }
 
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
