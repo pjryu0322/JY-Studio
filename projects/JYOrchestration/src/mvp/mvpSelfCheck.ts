@@ -3,7 +3,14 @@
  * Import and call `runMvpSelfCheck()` from tests or a one-off script under src/mvp only.
  */
 
-import { mvpClearTaskStore, mvpSeedProjectTasks, type Task } from "./task/taskService";
+import {
+  mvpClearTaskStore,
+  mvpSeedProjectTasks,
+  listAllTasks,
+  reorderTasks,
+  confirmTask,
+  type Task,
+} from "./task/taskService";
 import { clearPromptCache } from "./prompt/promptService";
 import { mvpClearReviewPolicy, mvpConfigureReviewFailures } from "./reviewer/reviewerService";
 import { mvpResetExecutionState, startRun, getRunStatus, DEFAULT_MAX_RETRY_COUNT } from "./execution/executionService";
@@ -87,4 +94,19 @@ export async function runMvpSelfCheck(): Promise<void> {
   const rNeg = await evaluateExecutionReadiness({ projectId: pid });
   assert(rNeg.isReady === false, "negative finalOrder should not be ready");
   assert(rNeg.blockers.includes("FINAL_ORDER_NEGATIVE"), "expected FINAL_ORDER_NEGATIVE blocker");
+
+  resetAll();
+  const ta = `t-a-${pid}`;
+  const tb = `t-b-${pid}`;
+  mvpSeedProjectTasks(pid, [
+    { ...baseTasks(pid)[0]!, status: "DRAFT" },
+    { ...baseTasks(pid)[1]! },
+  ]);
+  const conf = await confirmTask({ taskId: ta, actorId: "actor-1" });
+  assert(conf.confirmed === true, "confirmTask should set CONFIRMED when task exists");
+  const ord = await reorderTasks({ projectId: pid, orderedTaskIds: [tb, ta] });
+  assert(ord.ok === true, "reorderTasks should succeed when ids are a valid permutation");
+  const listed = await listAllTasks(pid);
+  const byOrder = [...listed].sort((a, b) => a.finalOrder - b.finalOrder).map((t) => t.id);
+  assert(byOrder[0] === tb && byOrder[1] === ta, "reorderTasks should update finalOrder in memory");
 }
