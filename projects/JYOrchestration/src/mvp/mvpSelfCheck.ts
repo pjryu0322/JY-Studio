@@ -37,6 +37,23 @@ import {
   mvpTestInstallRunWithNonRetryableFailure,
 } from "./testing/mvpExecutionFixtures";
 import { evaluateExecutionReadiness } from "./orchestration/orchestrationService";
+import {
+  mvpCheckReadinessDto,
+  mvpGetRunSummaryDto,
+  mvpGetStepFlowSummary,
+  mvpGetStepSummaryDtos,
+  mvpStartRunIfReady,
+} from "./orchestration/mvpOrchestrationFacade";
+import {
+  mvpExecutionPortsBundle,
+  mvpSetExecutionPortsBundleForTesting,
+} from "./runtime/mvpExecutionPortsBundle";
+import { mvpDefaultTaskProvider } from "./task/taskService";
+import { mvpDefaultPromptProvider } from "./prompt/promptService";
+import { mvpDefaultCursorExecutor } from "./cursor/cursorService";
+import { mvpDefaultGitVerifier } from "./git/gitService";
+import { mvpDefaultReviewEngine } from "./reviewer/reviewerService";
+import { mvpInMemoryRunStore, mvpInMemoryStepStore } from "./execution/inMemoryExecutionState";
 import { mvpCursorResetTestHooks, mvpCursorFailNextWaits } from "./cursor/cursorService";
 import { mvpGitResetStubs } from "./git/gitService";
 
@@ -70,6 +87,7 @@ function baseTasks(pid: string): Task[] {
 }
 
 function resetAll(): void {
+  mvpSetExecutionPortsBundleForTesting(null);
   mvpClearTaskStore();
   clearPromptCache();
   mvpClearReviewPolicy();
@@ -85,8 +103,29 @@ export async function runMvpSelfCheck(): Promise<void> {
   const pid = "mvp-self-check";
 
   resetAll();
+  {
+    const b = mvpExecutionPortsBundle();
+    assert(b.tasks === mvpDefaultTaskProvider, "bundle.tasks must be default TaskProvider");
+    assert(b.prompt === mvpDefaultPromptProvider, "bundle.prompt must be default PromptProvider");
+    assert(b.cursor === mvpDefaultCursorExecutor, "bundle.cursor must be default CursorExecutor");
+    assert(b.git === mvpDefaultGitVerifier, "bundle.git must be default GitVerifier");
+    assert(b.review === mvpDefaultReviewEngine, "bundle.review must be default ReviewEngine");
+    assert(b.runStore === mvpInMemoryRunStore, "bundle.runStore must be in-memory RunStore");
+    assert(b.stepStore === mvpInMemoryStepStore, "bundle.stepStore must be in-memory StepStore");
+  }
+
+  resetAll();
+  mvpSeedProjectTasks(pid, []);
+  const blocked = await mvpStartRunIfReady(pid);
+  assert(blocked.ok === false && blocked.reason === "NOT_READY", "facade must reject start when not ready");
+  assert(blocked.readiness.isReady === false, "readiness DTO must reflect blockers");
+  assert(blocked.readiness.blockers.length > 0, "not-ready readiness must list blockers");
+
+  resetAll();
   mvpSeedProjectTasks(pid, baseTasks(pid));
-  const r1 = await startRun(pid);
+  const viaFacade = await mvpStartRunIfReady(pid);
+  assert(viaFacade.ok === true, "facade must start when ready");
+  const r1 = viaFacade.run;
   assert(r1.status === "SUCCESS", "two tasks should both succeed");
   assert(r1.tasks.every((t) => t.status === "SUCCESS"), "all task states SUCCESS");
   const steps1 = mvpGetExecutionStepsForRun(r1.id);
@@ -108,6 +147,24 @@ export async function runMvpSelfCheck(): Promise<void> {
   assert(sumOk.totalTasks === 2 && sumOk.completedTasks === 2 && sumOk.failedTasks === 0, "summary task counts");
   assert(sumOk.totalStepCount === steps1.length, "summary step count should match log length");
   assert(sumOk.lastFailureCode == null && sumOk.lastFailureMessage == null, "no last failure on success");
+  const dtoOk = await mvpGetRunSummaryDto(r1.id);
+  assert(dtoOk?.runStatus === "SUCCESS" && dtoOk.totalStepCount === steps1.length, "facade run summary DTO after success");
+  const stepDtosOk = mvpGetStepSummaryDtos(r1.id);
+  assert(stepDtosOk.length === steps1.length, "facade step DTOs must match log length");
+  assert(
+    stepDtosOk.every((d, i) => d.sequence === steps1[i]!.sequence && d.stepType === steps1[i]!.stepType),
+    "step DTOs must preserve sequence and type from port-backed log"
+  );
+  assert(mvpGetStepFlowSummary(r1.id).includes("RUN_SUCCESS"), "step flow summary must mention RUN_SUCCESS");
+  const readinessDto = await mvpCheckReadinessDto({ projectId: pid });
+  assert(readinessDto.isReady === true && readinessDto.projectId === pid, "readiness DTO should be ready after seed");
+
+  const portSteps = mvpExecutionPortsBundle().stepStore.getStepsForRun(r1.id);
+  assert(
+    portSteps.length === steps1.length &&
+      portSteps.every((s, i) => s.sequence === steps1[i]!.sequence && s.message === steps1[i]!.message),
+    "StepStore view must match executionStepLog reader"
+  );
 
   let threw = false;
   try {
@@ -153,9 +210,32 @@ export async function runMvpSelfCheck(): Promise<void> {
   assert(!typesNr.includes("TASK_RETRY_SCHEDULED"), "non-retryable review must not schedule task retry");
   const lastFailNr = mvpGetLastFailureStepForRun(rNonRetry.id);
   assert(lastFailNr != null && lastFailNr.status === "FAILURE", "last failure step must exist for failed run");
+  assert(
+    lastFailNr.failurePayload != null &&
+      lastFailNr.failurePayload.failureCode === "REVIEW_FAILED" &&
+      lastFailNr.failurePayload.sourceStepType === "REVIEW_FAILED",
+    "failure step must preserve structured failure payload"
+  );
   const sumFail = await mvpProjectRunSummary(rNonRetry.id);
   assert(sumFail?.runStatus === "FAILED" && sumFail.failedTasks === 1, "summary should reflect failed run");
   assert(sumFail?.lastFailureMessage != null, "summary should surface last failure message");
+  assert(
+    sumFail?.lastFailurePayload?.failureCode === "REVIEW_FAILED" && sumFail.lastFailurePayload.retryable === false,
+    "run summary projection must carry structured failure from step"
+  );
+  const dtoFail = await mvpGetRunSummaryDto(rNonRetry.id);
+  assert(
+    dtoFail?.runStatus === "FAILED" &&
+      dtoFail.lastFailurePayload?.failureCode === "REVIEW_FAILED" &&
+      dtoFail.lastFailurePayload.sourceStepType === "REVIEW_FAILED",
+    "facade run summary DTO must expose structured failure after failure"
+  );
+  const stepDtosFail = mvpGetStepSummaryDtos(rNonRetry.id);
+  const reviewFailDto = stepDtosFail.find((d) => d.stepType === "REVIEW_FAILED");
+  assert(
+    reviewFailDto?.failurePayload?.failureCode === "REVIEW_FAILED" && reviewFailDto.failurePayload.retryable === false,
+    "step summary DTOs must include failurePayload on failure steps"
+  );
 
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);

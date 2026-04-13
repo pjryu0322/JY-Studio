@@ -1,25 +1,18 @@
 /**
  * MVP — fully independent sequential execution engine (in-memory, no DB, no prod wiring).
+ * Drives work through internal ports (`mvpExecutionPortsBundle`) for future substitution.
  */
 
-import { getExecutableTasks } from "../task/taskService";
-import { generatePrompt, regeneratePrompt } from "../prompt/promptService";
-import { submitTaskPrompt, waitForCompletion } from "../cursor/cursorService";
-import { verifyBranchExists, getLatestCommit, getCommitDiff } from "../git/gitService";
-import { reviewTaskResult } from "../reviewer/reviewerService";
-import { mvpAppendExecutionStep, mvpClearAllExecutionSteps } from "./executionStepLog";
+import type { ExecutionRun, ExecutionTaskState, MvpFailureCode } from "../contracts/mvpExecutionTypes";
+import type { MvpStructuredFailure } from "../contracts/mvpStructuredFailure";
+import { mvpExecutionPortsBundle } from "../runtime/mvpExecutionPortsBundle";
+
+export type { ExecutionRun, ExecutionTaskState, MvpFailureCode } from "../contracts/mvpExecutionTypes";
 
 export const DEFAULT_MAX_RETRY_COUNT = 2;
 
 const MVP_DEFAULT_REPO_URL = "https://mvp.local/repo.git";
 const MVP_DEFAULT_BRANCH = "main";
-
-export type MvpFailureCode =
-  | "CURSOR_FAILED"
-  | "GIT_BRANCH_MISSING"
-  | "REVIEW_FAILED"
-  | "TASK_NOT_FOUND"
-  | "UNHANDLED";
 
 /** All classified failure codes used by the MVP execution engine. */
 export const MVP_FAILURE_CODES: readonly MvpFailureCode[] = [
@@ -43,36 +36,14 @@ export function mvpFailureCodeDefaultRetryable(code: MvpFailureCode): boolean {
   }
 }
 
-export type ExecutionRun = {
-  id: string;
-  projectId: string;
-  status: "RUNNING" | "SUCCESS" | "FAILED";
-  currentTaskIndex: number;
-  tasks: ExecutionTaskState[];
-};
-
-export type ExecutionTaskState = {
-  taskId: string;
-  status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
-  retryCount: number;
-  /**
-   * When true, the last terminal failure for this task was non-retryable (e.g. review with `retryable: false`).
-   * Used so `retryTask()` cannot bypass policy after a hard stop.
-   */
-  lastFailureWasNonRetryable?: boolean;
-  lastFailureCode?: MvpFailureCode;
-  lastFailureMessage?: string;
-  lastFailureRetryable?: boolean;
-  /** Times `executeTask` entered the pipeline for this task (includes automatic retries). */
-  totalExecuteAttempts?: number;
-};
-
 type RunMeta = { failureReason?: string };
 
-const runs = new Map<string, ExecutionRun>();
-const runMeta = new Map<string, RunMeta>();
 /** Last failure detail for prompt regeneration (review, cursor, git). */
 const lastFailureDetail = new Map<string, string>();
+
+function ports() {
+  return mvpExecutionPortsBundle();
+}
 
 function runTaskKey(runId: string, taskId: string): string {
   return `${runId}::${taskId}`;
@@ -108,20 +79,53 @@ export function mvpFailureIsRetryable(code: MvpFailureCode, reviewRetryable?: bo
   return mvpFailureCodeDefaultRetryable(code);
 }
 
+function sourceStepForFailureCode(code: MvpFailureCode): string {
+  switch (code) {
+    case "CURSOR_FAILED":
+      return "CURSOR_FAILED";
+    case "GIT_BRANCH_MISSING":
+      return "GIT_FAILED";
+    case "REVIEW_FAILED":
+      return "REVIEW_FAILED";
+    case "TASK_NOT_FOUND":
+    case "UNHANDLED":
+      return "RUN_FAILED";
+  }
+}
+
+function structuredFailure(
+  code: MvpFailureCode,
+  message: string,
+  retryable: boolean,
+  sourceStepType: string
+): MvpStructuredFailure {
+  return {
+    failureCode: code,
+    failureMessage: message,
+    retryable,
+    sourceStepType,
+  };
+}
+
+function deriveStructuredFailureFromReason(reason: string): MvpStructuredFailure {
+  const code = classifyFromMessage(reason);
+  return structuredFailure(code, reason, mvpFailureIsRetryable(code), sourceStepForFailureCode(code));
+}
+
 /**
  * Test-only: register a run snapshot into the in-memory engine (used by `testing/mvpExecutionFixtures`).
  */
 export function mvpTestingRegisterRunSnapshot(run: ExecutionRun): void {
-  runs.set(run.id, cloneRun(run));
-  runMeta.delete(run.id);
+  ports().runStore.put(cloneRun(run));
+  ports().runStore.deleteMeta(run.id);
 }
 
 /**
  * Start a new sequential run for a project.
- * Loads tasks via taskService (FUNCTIONAL + CONFIRMED, sorted by finalOrder), then drives the pipeline.
+ * Loads tasks via TaskProvider, then drives the pipeline.
  */
 export async function startRun(projectId: string): Promise<ExecutionRun> {
-  const loaded = await getExecutableTasks(projectId);
+  const loaded = await ports().tasks.getExecutableTasks(projectId);
   const run: ExecutionRun = {
     id: newId(),
     projectId,
@@ -134,18 +138,15 @@ export async function startRun(projectId: string): Promise<ExecutionRun> {
       totalExecuteAttempts: 0,
     })),
   };
-  runs.set(run.id, run);
-  runMeta.delete(run.id);
+  ports().runStore.put(run);
+  ports().runStore.deleteMeta(run.id);
   await executeNextTask(run.id);
-  const final = runs.get(run.id);
+  const final = ports().runStore.get(run.id);
   return final ? cloneRun(final) : run;
 }
 
-/**
- * Advance the run: if all tasks finished, complete; otherwise execute the current task.
- */
 export async function executeNextTask(runId: string): Promise<void> {
-  const run = runs.get(runId);
+  const run = ports().runStore.get(runId);
   if (!run || run.status !== "RUNNING") {
     return;
   }
@@ -183,10 +184,13 @@ async function maybeRetryOrFail(
   detail: string,
   retryable: boolean
 ): Promise<void> {
-  const run = runs.get(runId);
+  const run = ports().runStore.get(runId);
   const taskState = run?.tasks.find((t) => t.taskId === taskId);
   if (!run || !taskState) {
-    await failRun(runId, `${code}:${detail}`, { causeTaskId: taskId });
+    await failRun(runId, `${code}:${detail}`, {
+      causeTaskId: taskId,
+      failure: structuredFailure(code, detail, retryable, sourceStepForFailureCode(code)),
+    });
     return;
   }
 
@@ -196,7 +200,7 @@ async function maybeRetryOrFail(
 
   if (retryable && taskState.retryCount < DEFAULT_MAX_RETRY_COUNT) {
     taskState.lastFailureWasNonRetryable = false;
-    mvpAppendExecutionStep({
+    ports().stepStore.append({
       runId,
       taskId,
       stepType: "TASK_RETRY_SCHEDULED",
@@ -210,35 +214,39 @@ async function maybeRetryOrFail(
 
   taskState.status = "FAILED";
   taskState.lastFailureWasNonRetryable = !retryable;
-  await failRun(runId, `${code}:${detail}`, { causeTaskId: taskId });
+  await failRun(runId, `${code}:${detail}`, {
+    causeTaskId: taskId,
+    failure: structuredFailure(code, detail, retryable, sourceStepForFailureCode(code)),
+  });
 }
 
-/**
- * Execute the full per-task pipeline: prompt → cursor → git → review (+ retry rules).
- */
 export async function executeTask(runId: string, taskId: string): Promise<void> {
-  const run = runs.get(runId);
+  const run = ports().runStore.get(runId);
   if (!run || run.status !== "RUNNING") {
     return;
   }
 
   const taskState = run.tasks.find((t) => t.taskId === taskId);
   if (!taskState) {
-    await failRun(runId, "TASK_NOT_FOUND", { causeTaskId: taskId });
+    await failRun(runId, "TASK_NOT_FOUND", {
+      causeTaskId: taskId,
+      failure: structuredFailure("TASK_NOT_FOUND", "task not in run", false, "RUN_FAILED"),
+    });
     return;
   }
 
   taskState.status = "RUNNING";
   taskState.totalExecuteAttempts = (taskState.totalExecuteAttempts ?? 0) + 1;
+  const p = ports();
 
   try {
     const rk = runTaskKey(runId, taskId);
     const promptText =
       taskState.retryCount === 0
-        ? await generatePrompt(taskId)
-        : await regeneratePrompt(taskId, lastFailureDetail.get(rk) ?? "previous step failed");
+        ? await p.prompt.generatePrompt(taskId)
+        : await p.prompt.regeneratePrompt(taskId, lastFailureDetail.get(rk) ?? "previous step failed");
 
-    mvpAppendExecutionStep({
+    p.stepStore.append({
       runId,
       taskId,
       stepType: "PROMPT_GENERATED",
@@ -246,12 +254,12 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       message: taskState.retryCount === 0 ? "generatePrompt" : "regeneratePrompt",
     });
 
-    const { jobId } = await submitTaskPrompt({
+    const { jobId } = await p.cursor.submitTaskPrompt({
       projectId: run.projectId,
       taskId,
       prompt: promptText,
     });
-    mvpAppendExecutionStep({
+    p.stepStore.append({
       runId,
       taskId,
       stepType: "CURSOR_SUBMITTED",
@@ -259,21 +267,23 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       message: `jobId=${jobId}`,
     });
 
-    const cursorOutcome = await waitForCompletion(jobId);
+    const cursorOutcome = await p.cursor.waitForCompletion(jobId);
     if (!cursorOutcome.ok) {
       const detail = cursorOutcome.summary?.trim() || "CURSOR_FAILED";
-      mvpAppendExecutionStep({
+      const r = mvpFailureIsRetryable("CURSOR_FAILED");
+      p.stepStore.append({
         runId,
         taskId,
         stepType: "CURSOR_FAILED",
         status: "FAILURE",
         message: detail,
+        failurePayload: structuredFailure("CURSOR_FAILED", detail, r, "CURSOR_FAILED"),
       });
-      await maybeRetryOrFail(runId, taskId, "CURSOR_FAILED", detail, mvpFailureIsRetryable("CURSOR_FAILED"));
+      await maybeRetryOrFail(runId, taskId, "CURSOR_FAILED", detail, r);
       return;
     }
 
-    mvpAppendExecutionStep({
+    p.stepStore.append({
       runId,
       taskId,
       stepType: "CURSOR_COMPLETED",
@@ -281,29 +291,25 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       message: cursorOutcome.summary || "ok",
     });
 
-    const branchOk = await verifyBranchExists({
+    const branchOk = await p.git.verifyBranchExists({
       repoUrl: MVP_DEFAULT_REPO_URL,
       branchName: MVP_DEFAULT_BRANCH,
     });
     if (!branchOk) {
-      mvpAppendExecutionStep({
+      const r = mvpFailureIsRetryable("GIT_BRANCH_MISSING");
+      p.stepStore.append({
         runId,
         taskId,
         stepType: "GIT_FAILED",
         status: "FAILURE",
         message: "branch not found",
+        failurePayload: structuredFailure("GIT_BRANCH_MISSING", "branch not found", r, "GIT_FAILED"),
       });
-      await maybeRetryOrFail(
-        runId,
-        taskId,
-        "GIT_BRANCH_MISSING",
-        "branch not found",
-        mvpFailureIsRetryable("GIT_BRANCH_MISSING")
-      );
+      await maybeRetryOrFail(runId, taskId, "GIT_BRANCH_MISSING", "branch not found", r);
       return;
     }
 
-    mvpAppendExecutionStep({
+    p.stepStore.append({
       runId,
       taskId,
       stepType: "GIT_VERIFIED",
@@ -311,18 +317,18 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       message: MVP_DEFAULT_BRANCH,
     });
 
-    const { sha: headSha } = await getLatestCommit({
+    const { sha: headSha } = await p.git.getLatestCommit({
       repoUrl: MVP_DEFAULT_REPO_URL,
       branch: MVP_DEFAULT_BRANCH,
     });
     const baseSha = `${headSha}^`;
-    const gitDiffSummary = await getCommitDiff({
+    const gitDiffSummary = await p.git.getCommitDiff({
       repoUrl: MVP_DEFAULT_REPO_URL,
       baseSha,
       headSha,
     });
 
-    const review = await reviewTaskResult({
+    const review = await p.review.reviewTaskResult({
       taskId,
       prompt: promptText,
       result: {
@@ -333,7 +339,7 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
     });
 
     if (review.status === "PASSED") {
-      mvpAppendExecutionStep({
+      p.stepStore.append({
         runId,
         taskId,
         stepType: "REVIEW_PASSED",
@@ -346,7 +352,7 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       taskState.lastFailureMessage = undefined;
       taskState.lastFailureRetryable = undefined;
       lastFailureDetail.delete(rk);
-      mvpAppendExecutionStep({
+      p.stepStore.append({
         runId,
         taskId,
         stepType: "TASK_COMPLETED",
@@ -359,20 +365,16 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
     }
 
     const reviewDetail = review.reason ?? "REVIEW_FAILED";
-    mvpAppendExecutionStep({
+    const rr = mvpFailureIsRetryable("REVIEW_FAILED", review.retryable);
+    p.stepStore.append({
       runId,
       taskId,
       stepType: "REVIEW_FAILED",
       status: "FAILURE",
       message: reviewDetail,
+      failurePayload: structuredFailure("REVIEW_FAILED", reviewDetail, rr, "REVIEW_FAILED"),
     });
-    await maybeRetryOrFail(
-      runId,
-      taskId,
-      "REVIEW_FAILED",
-      reviewDetail,
-      mvpFailureIsRetryable("REVIEW_FAILED", review.retryable)
-    );
+    await maybeRetryOrFail(runId, taskId, "REVIEW_FAILED", reviewDetail, rr);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const code = classifyFromMessage(msg);
@@ -386,13 +388,8 @@ export async function handleStepFailure(runId: string, taskId: string, error: un
   await maybeRetryOrFail(runId, taskId, code, msg, mvpFailureIsRetryable(code));
 }
 
-/**
- * Manual retry: same-task only; honors max retry budget and last non-retryable failure.
- * Requires `run.status === "RUNNING"` (today the engine also calls `failRun` on terminal task failure,
- * so this path is reserved for future run modes or in-process extensions that keep the run open).
- */
 export async function retryTask(runId: string, taskId: string): Promise<void> {
-  const run = runs.get(runId);
+  const run = ports().runStore.get(runId);
   if (!run || run.status !== "RUNNING") {
     return;
   }
@@ -418,7 +415,7 @@ export async function retryTask(runId: string, taskId: string): Promise<void> {
 }
 
 export async function completeRun(runId: string): Promise<void> {
-  const run = runs.get(runId);
+  const run = ports().runStore.get(runId);
   if (!run) {
     return;
   }
@@ -426,7 +423,7 @@ export async function completeRun(runId: string): Promise<void> {
     return;
   }
   run.status = "SUCCESS";
-  mvpAppendExecutionStep({
+  ports().stepStore.append({
     runId,
     taskId: "",
     stepType: "RUN_SUCCESS",
@@ -438,9 +435,9 @@ export async function completeRun(runId: string): Promise<void> {
 export async function failRun(
   runId: string,
   reason: string,
-  ctx?: { causeTaskId?: string }
+  ctx?: { causeTaskId?: string; failure?: MvpStructuredFailure }
 ): Promise<void> {
-  const run = runs.get(runId);
+  const run = ports().runStore.get(runId);
   if (!run) {
     return;
   }
@@ -448,20 +445,22 @@ export async function failRun(
     return;
   }
   run.status = "FAILED";
-  mvpAppendExecutionStep({
+  const failure = ctx?.failure ?? deriveStructuredFailureFromReason(reason);
+  ports().stepStore.append({
     runId,
     taskId: ctx?.causeTaskId ?? "",
     stepType: "RUN_FAILED",
     status: "FAILURE",
     message: reason,
+    failurePayload: failure,
   });
-  runMeta.set(runId, { failureReason: reason });
+  ports().runStore.setMeta(runId, { failureReason: reason });
 }
 
 export async function getRunStatus(
   runId: string
 ): Promise<ExecutionRun & { failureReason?: string }> {
-  const run = runs.get(runId);
+  const run = ports().runStore.get(runId);
   if (!run) {
     return {
       id: runId,
@@ -472,13 +471,11 @@ export async function getRunStatus(
       failureReason: "RUN_NOT_FOUND",
     };
   }
-  return { ...cloneRun(run), failureReason: runMeta.get(runId)?.failureReason };
+  return { ...cloneRun(run), failureReason: ports().runStore.getMeta(runId)?.failureReason };
 }
 
-/** Test helper: clear all in-memory runs and step logs. */
 export function mvpResetExecutionState(): void {
-  runs.clear();
-  runMeta.clear();
+  ports().runStore.clear();
+  ports().stepStore.clearAll();
   lastFailureDetail.clear();
-  mvpClearAllExecutionSteps();
 }

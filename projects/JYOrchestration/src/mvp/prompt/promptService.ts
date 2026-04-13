@@ -7,6 +7,7 @@
  *   so the text is never identical to the previous cached prompt.
  */
 
+import type { PromptProvider } from "../ports/mvpPorts";
 import { mvpGetTaskById, type Task } from "../task/taskService";
 
 export interface TaskPromptBuildInput {
@@ -211,3 +212,8 @@ export async function resolvePromptVersion(input: { taskId: string }): Promise<P
   }
   return { promptId: `mvp-prompt:${input.taskId}`, version: Math.abs(h) };
 }
+
+export const mvpDefaultPromptProvider: PromptProvider = {
+  generatePrompt,
+  regeneratePrompt,
+};
