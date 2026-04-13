@@ -43,7 +43,8 @@ export * from "./screen/mvpScreenFlowTypes";
 export * from "./screen/mvpScreenFlowService";
 export * from "./screen/mvpScreenFlowMetadata";
 export * from "./screen/mvpScreenFlowLookup";
-export * from "./screen/mvpScreenFlowTaskOrdering";
+/** Graph-based ordering (screens + edges); distinct from `orderTasksByScreenFlow` in domain ordering. */
+export { orderTasksByScreenFlow as orderTasksByScreenFlowFromGraph } from "./screen/mvpScreenFlowTaskOrdering";
 export * from "./screen/stores/mvpScreenFlowStore";
 export * from "./prompt/mvpPromptFlowContext";
 export * from "./reviewer/mvpReviewFlowValidationMode";

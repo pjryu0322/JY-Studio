@@ -4,6 +4,7 @@
 
 import type { MvpScreen } from "../domain/mvpDomainTypes";
 import type { ScreenFlowEdge, ScreenFlowGraph } from "./mvpScreenFlowTypes";
+import { findNavigationEntryScreen } from "./helpers/screenFlowLookup";
 
 function edgeKey(e: Pick<ScreenFlowEdge, "fromScreenId" | "toScreenId" | "type">): string {
   return `${e.type}::${e.fromScreenId}=>${e.toScreenId}`;
@@ -132,12 +133,7 @@ export function getOrderedScreensFromFlow(graph: ScreenFlowGraph): MvpScreen[] {
     return [...graph.screens].sort((a, b) => a.order - b.order).map((s) => ({ ...s }));
   }
 
-  const incoming = new Map<string, number>();
-  for (const s of graph.screens) incoming.set(s.id, 0);
-  for (const e of navEdges) {
-    incoming.set(e.toScreenId, (incoming.get(e.toScreenId) ?? 0) + 1);
-  }
-  const entry = graph.screens.find((s) => (incoming.get(s.id) ?? 0) === 0);
+  const entry = findNavigationEntryScreen(graph);
   if (!entry) {
     // No entry means a cycle or malformed graph; fallback deterministically.
     return [...graph.screens].sort((a, b) => a.order - b.order).map((s) => ({ ...s }));
@@ -163,7 +159,7 @@ export function getOrderedScreensFromFlow(graph: ScreenFlowGraph): MvpScreen[] {
     seen.add(current);
     const s = screensById.get(current);
     if (s) out.push({ ...s });
-    const next = edgesFrom.get(current)?.[0]?.toScreenId;
+    const next: string | undefined = edgesFrom.get(current)?.[0]?.toScreenId;
     current = next;
   }
 

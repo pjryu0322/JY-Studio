@@ -43,6 +43,11 @@ export function stepBuildRequirementDrafts(ctx: PipelineContext): PipelineContex
     normalizedText: draftResult.normalizedText,
     requirementDrafts: draftResult.drafts,
     requirementGaps: draftResult.gaps,
+    stageOutputCounts: {
+      ...ctx.stageOutputCounts,
+      requirementDrafts: draftResult.drafts.length,
+      requirementGaps: draftResult.gaps.length,
+    },
   };
 }
 
@@ -50,7 +55,11 @@ export function stepDetectGaps(ctx: PipelineContext): PipelineContext {
   if (isTerminal(ctx)) return ctx;
   const gaps = detectRequirementGaps(ctx.normalizedText ?? "", ctx.requirementDrafts ?? []);
   appendTrace(ctx, "stepDetectGaps", `count=${gaps.length}`);
-  return { ...ctx, requirementGaps: gaps };
+  return {
+    ...ctx,
+    requirementGaps: gaps,
+    stageOutputCounts: { ...ctx.stageOutputCounts, requirementGaps: gaps.length },
+  };
 }
 
 export function stepBuildGapUX(ctx: PipelineContext): PipelineContext {
@@ -61,7 +70,11 @@ export function stepBuildGapUX(ctx: PipelineContext): PipelineContext {
     gaps: ctx.requirementGaps ?? [],
   });
   appendTrace(ctx, "stepBuildGapUX", `sections=${gapViewModel.sections.length}`);
-  return { ...ctx, gapViewModel };
+  return {
+    ...ctx,
+    gapViewModel,
+    stageOutputCounts: { ...ctx.stageOutputCounts, gapUxSections: gapViewModel.sections.length },
+  };
 }
 
 export function stepRefinementDecision(ctx: PipelineContext): PipelineContext {
@@ -78,7 +91,13 @@ export function stepRefinementDecision(ctx: PipelineContext): PipelineContext {
     "stepRefinementDecision",
     `blocking=${readinessResult.blockingIssues.length} confirm=${readinessResult.confirmRequired.length} ready=${readinessResult.isReady}`
   );
-  return { ...ctx, refinementDecision, refinedRequirements, readinessResult };
+  return {
+    ...ctx,
+    refinementDecision,
+    refinedRequirements,
+    readinessResult,
+    stageOutputCounts: { ...ctx.stageOutputCounts, refinedRequirements: refinedRequirements.length },
+  };
 }
 
 export function stepFeatureEntryGate(ctx: PipelineContext): PipelineContext {
@@ -97,7 +116,7 @@ export function stepFeatureEntryGate(ctx: PipelineContext): PipelineContext {
   if (!entry.ok) {
     const terminal: PipelineStatus = entry.status === "BLOCKED" ? "BLOCKED" : "NEEDS_CONFIRMATION";
     appendTrace(ctx, "stepFeatureEntryGate", `stop=${terminal}`);
-    return { ...next, status: terminal };
+    return { ...next, status: terminal, earlyStopReason: `feature_entry_gate:${entry.status}` };
   }
   return next;
 }
@@ -114,9 +133,13 @@ export function stepFeatureGeneration(ctx: PipelineContext): PipelineContext {
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `FEATURE_GENERATION:${out.state}`];
     appendTrace(ctx, "stepFeatureGeneration", "treat as BLOCKED");
-    return { ...ctx, errors, status: "BLOCKED" };
+    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `feature_generation:${out.state}` };
   }
-  return { ...ctx, features: out.result };
+  return {
+    ...ctx,
+    features: out.result,
+    stageOutputCounts: { ...ctx.stageOutputCounts, features: out.result.features.length },
+  };
 }
 
 export function stepIaGeneration(ctx: PipelineContext): PipelineContext {
@@ -125,9 +148,13 @@ export function stepIaGeneration(ctx: PipelineContext): PipelineContext {
   appendTrace(ctx, "stepIaGeneration", `state=${out.state}`);
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `IA_GENERATION:${out.state}`];
-    return { ...ctx, errors, status: "BLOCKED" };
+    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `ia_generation:${out.state}` };
   }
-  return { ...ctx, iaResult: out.result };
+  return {
+    ...ctx,
+    iaResult: out.result,
+    stageOutputCounts: { ...ctx.stageOutputCounts, iaMenuNodes: out.result.menuNodes.length },
+  };
 }
 
 export function stepScreenGeneration(ctx: PipelineContext): PipelineContext {
@@ -136,9 +163,13 @@ export function stepScreenGeneration(ctx: PipelineContext): PipelineContext {
   appendTrace(ctx, "stepScreenGeneration", `state=${out.state}`);
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `SCREEN_GENERATION:${out.state}`];
-    return { ...ctx, errors, status: "BLOCKED" };
+    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `screen_generation:${out.state}` };
   }
-  return { ...ctx, screens: out.result };
+  return {
+    ...ctx,
+    screens: out.result,
+    stageOutputCounts: { ...ctx.stageOutputCounts, screens: out.result.screens.length },
+  };
 }
 
 export function stepTaskGeneration(ctx: PipelineContext): PipelineContext {
@@ -147,9 +178,14 @@ export function stepTaskGeneration(ctx: PipelineContext): PipelineContext {
   appendTrace(ctx, "stepTaskGeneration", `state=${out.state}`);
   if (out.state !== "GENERATED" || out.result == null) {
     const errors = [...(ctx.errors ?? []), `TASK_GENERATION:${out.state}`];
-    return { ...ctx, errors, status: "BLOCKED" };
+    return { ...ctx, errors, status: "BLOCKED", earlyStopReason: `task_generation:${out.state}` };
   }
-  return { ...ctx, tasks: out.result, status: "READY" };
+  return {
+    ...ctx,
+    tasks: out.result,
+    status: "READY",
+    stageOutputCounts: { ...ctx.stageOutputCounts, tasks: out.result.tasks.length },
+  };
 }
 
 const STEPS_FROM_RAW: ReadonlyArray<(ctx: PipelineContext) => PipelineContext> = [
@@ -180,6 +216,10 @@ function finalizeStatus(ctx: PipelineContext): PipelineContext {
   return ctx;
 }
 
+function appendExecutedStep(ctx: PipelineContext, step: (c: PipelineContext) => PipelineContext): PipelineContext {
+  return { ...ctx, executedSteps: [...(ctx.executedSteps ?? []), step.name] };
+}
+
 /**
  * Runs the planning stack left-to-right. Stops after the feature gate when not READY.
  */
@@ -188,7 +228,7 @@ export function runPlanningPipeline(input: PlanningPipelineInput): PipelineConte
     let ctx = createPipelineContext(input);
     appendTrace(ctx, "runPlanningPipeline", "mode=from_refinement");
     for (const step of STEPS_FROM_REFINEMENT) {
-      ctx = step(ctx);
+      ctx = appendExecutedStep(step(ctx), step);
       if (isTerminal(ctx)) break;
     }
     return finalizeStatus(ctx);
@@ -197,7 +237,7 @@ export function runPlanningPipeline(input: PlanningPipelineInput): PipelineConte
   let ctx = createPipelineContext(input);
   appendTrace(ctx, "runPlanningPipeline", "mode=raw_input");
   for (const step of STEPS_FROM_RAW) {
-    ctx = step(ctx);
+    ctx = appendExecutedStep(step(ctx), step);
     if (isTerminal(ctx)) break;
   }
   return finalizeStatus(ctx);

@@ -15,7 +15,19 @@ import type { IaGenerationResult } from "../planning/iaGeneration/iaGenerationCo
 import type { ScreenGenerationResult } from "../planning/screenGeneration/screenGenerationContracts";
 import type { TaskGenerationResult } from "../planning/taskGeneration/taskGenerationContracts";
 import { detectRequirementGaps } from "../planning/requirementInput/detectRequirementGaps";
-import type { PlanningPipelineInput } from "./pipelineTypes";
+import type { PlanningPipelineInput, PipelineStatus } from "./pipelineTypes";
+
+/** Artifact counts after each planning stage (best-effort; only keys present when a step ran). */
+export type PipelineStageOutputCounts = Partial<{
+  requirementDrafts: number;
+  requirementGaps: number;
+  gapUxSections: number;
+  refinedRequirements: number;
+  features: number;
+  iaMenuNodes: number;
+  screens: number;
+  tasks: number;
+}>;
 
 export type PipelineContext = {
   projectId: string;
@@ -44,6 +56,13 @@ export type PipelineContext = {
   status?: PipelineStatus;
   errors?: string[];
   traceLogs?: string[];
+
+  /** Step function names executed in order (includes steps that ran before an early terminal). */
+  executedSteps?: string[];
+  /** Set when {@link status} is terminal (`BLOCKED` / `NEEDS_CONFIRMATION`) from the gate or a generation failure. */
+  earlyStopReason?: string;
+  /** Latest known counts per artifact type (merged across steps). */
+  stageOutputCounts?: PipelineStageOutputCounts;
 };
 
 export function createPipelineContext(input: PlanningPipelineInput): PipelineContext {
@@ -62,6 +81,8 @@ export function createPipelineContext(input: PlanningPipelineInput): PipelineCon
       readinessResult: r.readinessResult,
       traceLogs: [],
       errors: [],
+      executedSteps: [],
+      stageOutputCounts: {},
     };
   }
   return {
@@ -69,6 +90,8 @@ export function createPipelineContext(input: PlanningPipelineInput): PipelineCon
     inputText: input.inputText,
     traceLogs: [],
     errors: [],
+    executedSteps: [],
+    stageOutputCounts: {},
   };
 }
 
