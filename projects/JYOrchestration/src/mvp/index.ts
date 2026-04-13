@@ -38,4 +38,7 @@ export * from "./screen/mvpScreenFlowService";
 export * from "./screen/mvpScreenFlowMetadata";
 export * from "./screen/mvpScreenFlowTaskOrdering";
 export * from "./screen/stores/mvpScreenFlowStore";
+export * from "./prompt/mvpPromptFlowContext";
+export * from "./reviewer/mvpReviewFlowValidationMode";
+export * from "./reviewer/mvpReviewFlowValidationHelpers";
 export { runMvpSelfCheck } from "./mvpSelfCheck";
