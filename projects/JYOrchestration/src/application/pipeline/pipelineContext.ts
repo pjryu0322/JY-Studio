@@ -16,6 +16,7 @@ import type { ScreenGenerationResult } from "../planning/screenGeneration/screen
 import type { TaskGenerationResult } from "../planning/taskGeneration/taskGenerationContracts";
 import { detectRequirementGaps } from "../planning/requirementInput/detectRequirementGaps";
 import type { PlanningPipelineInput, PipelineStatus } from "./pipelineTypes";
+import type { PipelineStopReason } from "./pipelineStopReason";
 
 /** Artifact counts after each planning stage (best-effort; only keys present when a step ran). */
 export type PipelineStageOutputCounts = Partial<{
@@ -59,6 +60,8 @@ export type PipelineContext = {
 
   /** Step function names executed in order (includes steps that ran before an early terminal). */
   executedSteps?: string[];
+  /** Typed terminal reason (preferred read-model); kept in sync with {@link earlyStopReason}. */
+  pipelineStop?: PipelineStopReason;
   /** Set when {@link status} is terminal (`BLOCKED` / `NEEDS_CONFIRMATION`) from the gate or a generation failure. */
   earlyStopReason?: string;
   /** Latest known counts per artifact type (merged across steps). */
