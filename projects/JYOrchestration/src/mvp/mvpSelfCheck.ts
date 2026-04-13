@@ -91,6 +91,17 @@ import {
   routeEnvelopeDraftFromStartRunResult,
 } from "../application/mvpRouteEnvelopeDraft";
 import { MVP_EXECUTION_APP_CODE } from "../application/mvpExecutionResultCodes";
+import {
+  mvpGetExecutionInspectionUseCase,
+} from "../application/usecases/mvpGetExecutionInspectionUseCase";
+import {
+  mvpGetExecutionRunDetailUseCase,
+  mvpGetExecutionRunSummaryUseCase,
+  mvpGetExecutionStepListUseCase,
+} from "../application/usecases/mvpGetExecutionStatusUseCase";
+import { mvpPrepareExecutionUseCase } from "../application/usecases/mvpPrepareExecutionUseCase";
+import { mvpStartExecutionUseCase } from "../application/usecases/mvpStartExecutionUseCase";
+import { buildMvpExecutionStatusView } from "../application/viewmodels/mvpExecutionStatusView";
 import type { MvpRequirement } from "./domain/mvpDomainTypes";
 import {
   generateFeaturesFromRequirements,
@@ -503,6 +514,13 @@ export async function runMvpSelfCheck(): Promise<void> {
     );
   }
 
+  {
+    const uReadiness = await mvpPrepareExecutionUseCase({ projectId: pid });
+    assert(stableJson(uReadiness) === stableJson(await new MvpExecutionApplicationService().getReadiness({ projectId: pid })), "use-case prepare parity with facade");
+    const uStart = await mvpStartExecutionUseCase({ projectId: pid });
+    assert(stableJson(uStart) === stableJson(await new MvpExecutionApplicationService().startRun({ projectId: pid })), "use-case start parity with facade");
+  }
+
   resetAll();
   mvpSeedProjectTasks(pid, baseTasks(pid));
   const viaFacade = await mvpStartRunIfReady(pid);
@@ -591,6 +609,27 @@ export async function runMvpSelfCheck(): Promise<void> {
     const appInsp = await app.getRunInspection({ projectId: pid, runId: r1.id });
     assert(appInsp.ok === true && appInsp.code === MVP_EXECUTION_APP_CODE.OK, "application getRunInspection success code");
     assert(stableJson(appInsp.inspection) === stableJson(inspectOk), "application getRunInspection JSON parity vs facade VM");
+  }
+
+  {
+    const ucSum = await mvpGetExecutionRunSummaryUseCase({ runId: r1.id });
+    const ucDet = await mvpGetExecutionRunDetailUseCase({ runId: r1.id });
+    const ucSteps = await mvpGetExecutionStepListUseCase({ runId: r1.id });
+    const ucInsp = await mvpGetExecutionInspectionUseCase({ projectId: pid, runId: r1.id });
+    assert(stableJson(ucSum) === stableJson(await new MvpExecutionApplicationService().getRunSummary({ runId: r1.id })), "use-case summary parity");
+    assert(stableJson(ucDet) === stableJson(await new MvpExecutionApplicationService().getRunDetail({ runId: r1.id })), "use-case detail parity");
+    assert(stableJson(ucSteps) === stableJson(await new MvpExecutionApplicationService().getStepList({ runId: r1.id })), "use-case step list parity");
+    assert(stableJson(ucInsp) === stableJson(await new MvpExecutionApplicationService().getRunInspection({ projectId: pid, runId: r1.id })), "use-case inspection parity");
+
+    const statusView = buildMvpExecutionStatusView({
+      runId: r1.id,
+      summary: ucSum.ok ? ucSum.summary : null,
+      detail: ucDet.ok ? ucDet.detail : null,
+      steps: ucSteps.ok ? ucSteps.steps : [],
+      stepFlowSummary: ucSteps.ok ? ucSteps.stepFlowSummary : "",
+      inspection: ucInsp.ok ? ucInsp.inspection : null,
+    });
+    assert(statusView.runId === r1.id && statusView.summary?.runId === r1.id, "status view composition basics");
   }
 
   let threw = false;
