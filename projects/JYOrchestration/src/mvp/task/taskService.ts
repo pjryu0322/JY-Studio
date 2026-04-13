@@ -1,5 +1,11 @@
 /**
  * MVP — task store + executable task list for executionService (in-memory only).
+ *
+ * Contract for executionService:
+ * - `getExecutableTasks(projectId)` returns only FUNCTIONAL + CONFIRMED tasks, sorted by `finalOrder` ASC.
+ * - If `mvpSeedProjectTasks(projectId, [])` was used, the project explicitly has zero tasks (no implicit mock).
+ * - If the project was never seeded, `getExecutableTasks` still returns one built-in mock task for demos.
+ * - No database.
  */
 
 export type Task = {
@@ -9,6 +15,8 @@ export type Task = {
   type: "FUNCTIONAL" | "NON_FUNCTIONAL";
   status: "CONFIRMED" | "DRAFT";
   finalOrder: number;
+  /** Optional; improves prompt “project context” section when set. */
+  projectId?: string;
 };
 
 export interface TaskDraftInput {
@@ -39,6 +47,7 @@ export interface TaskReorderInput {
 
 export interface TaskReorderResult {
   ok: boolean;
+  message?: string;
 }
 
 export interface TaskConfirmInput {
@@ -49,18 +58,19 @@ export interface TaskConfirmInput {
 export interface TaskConfirmResult {
   taskId: string;
   confirmed: boolean;
+  message?: string;
 }
 
 const registry = new Map<string, Task[]>();
 const byId = new Map<string, Task>();
 
-/** Replace all tasks for a project (task ids should be unique). */
+/** Replace all tasks for a project (task ids should be unique). Use `[]` for explicit “no tasks”. */
 export function mvpSeedProjectTasks(projectId: string, tasks: Task[]): void {
   const prev = registry.get(projectId) ?? [];
   for (const t of prev) {
     byId.delete(t.id);
   }
-  const next = tasks.slice();
+  const next = tasks.map((t) => ({ ...t, projectId: t.projectId ?? projectId }));
   registry.set(projectId, next);
   for (const t of next) {
     byId.set(t.id, t);
@@ -77,6 +87,16 @@ export function mvpGetTaskById(taskId: string): Task | undefined {
   return byId.get(taskId);
 }
 
+function findTaskLocation(taskId: string): { projectId: string; index: number } | null {
+  for (const [projectId, list] of registry) {
+    const index = list.findIndex((t) => t.id === taskId);
+    if (index >= 0) {
+      return { projectId, index };
+    }
+  }
+  return null;
+}
+
 function defaultMockTasks(projectId: string): Task[] {
   return [
     {
@@ -86,24 +106,29 @@ function defaultMockTasks(projectId: string): Task[] {
       type: "FUNCTIONAL",
       status: "CONFIRMED",
       finalOrder: 0,
+      projectId,
     },
   ];
 }
 
 /**
- * Executable tasks for the MVP pipeline: FUNCTIONAL + CONFIRMED, finalOrder ASC.
- * If nothing was seeded for the project, returns a small mock list so the engine stays runnable.
+ * Executable tasks for the MVP pipeline.
+ * - Includes only `type === "FUNCTIONAL"` and `status === "CONFIRMED"`.
+ * - Sorted by `finalOrder` ascending.
+ * - If the project key exists in the registry (including `[]`), uses that list only (no implicit mock).
+ * - If the project was never registered, returns one built-in mock task.
  */
 export async function getExecutableTasks(projectId: string): Promise<Task[]> {
-  const rows = registry.get(projectId);
-  let source: Task[];
-  if (rows && rows.length > 0) {
-    source = rows;
-  } else {
-    source = defaultMockTasks(projectId);
-    for (const t of source) {
-      byId.set(t.id, { ...t });
-    }
+  if (registry.has(projectId)) {
+    const rows = registry.get(projectId)!;
+    return rows
+      .filter((t) => t.type === "FUNCTIONAL" && t.status === "CONFIRMED")
+      .sort((a, b) => a.finalOrder - b.finalOrder)
+      .map((t) => ({ ...t }));
+  }
+  const source = defaultMockTasks(projectId);
+  for (const t of source) {
+    byId.set(t.id, { ...t });
   }
   return source
     .filter((t) => t.type === "FUNCTIONAL" && t.status === "CONFIRMED")
@@ -111,11 +136,10 @@ export async function getExecutableTasks(projectId: string): Promise<Task[]> {
     .map((t) => ({ ...t }));
 }
 
-/** All tasks for a project (no pipeline filter); useful for inspection / demos. */
+/** All tasks for a project (no pipeline filter). */
 export async function listAllTasks(projectId: string): Promise<Task[]> {
-  const rows = registry.get(projectId);
-  if (rows && rows.length > 0) {
-    return rows.map((t) => ({ ...t }));
+  if (registry.has(projectId)) {
+    return (registry.get(projectId) ?? []).map((t) => ({ ...t }));
   }
   const mocks = defaultMockTasks(projectId);
   for (const t of mocks) {
@@ -124,18 +148,61 @@ export async function listAllTasks(projectId: string): Promise<Task[]> {
   return mocks.map((t) => ({ ...t }));
 }
 
+/**
+ * Reorders tasks in a project: `orderedTaskIds` must be a permutation of all task ids in that project.
+ * Updates `finalOrder` to 0..n-1 according to the list order.
+ */
+export async function reorderTasks(input: TaskReorderInput): Promise<TaskReorderResult> {
+  const list = registry.get(input.projectId);
+  if (!list?.length) {
+    return { ok: false, message: "no tasks for project" };
+  }
+  if (input.orderedTaskIds.length !== list.length) {
+    return { ok: false, message: "orderedTaskIds must include every task id exactly once" };
+  }
+  const idSet = new Set(list.map((t) => t.id));
+  for (const id of input.orderedTaskIds) {
+    if (!idSet.has(id)) {
+      return { ok: false, message: `unknown task id: ${id}` };
+    }
+  }
+  const orderMap = new Map(input.orderedTaskIds.map((id, i) => [id, i]));
+  const next = list.map((t) => ({
+    ...t,
+    finalOrder: orderMap.get(t.id)!,
+    projectId: t.projectId ?? input.projectId,
+  }));
+  registry.set(input.projectId, next);
+  for (const t of next) {
+    byId.set(t.id, t);
+  }
+  return { ok: true };
+}
+
+/**
+ * Sets a task's status to CONFIRMED when it exists in the in-memory registry (any project).
+ */
+export async function confirmTask(input: TaskConfirmInput): Promise<TaskConfirmResult> {
+  const loc = findTaskLocation(input.taskId);
+  if (!loc) {
+    return { taskId: input.taskId, confirmed: false, message: "task not found" };
+  }
+  const list = registry.get(loc.projectId)!;
+  const row = list[loc.index]!;
+  if (row.status === "CONFIRMED") {
+    return { taskId: input.taskId, confirmed: true, message: "already confirmed" };
+  }
+  const nextRow = { ...row, status: "CONFIRMED" as const };
+  const nextList = list.map((t, i) => (i === loc.index ? nextRow : t));
+  registry.set(loc.projectId, nextList);
+  byId.set(nextRow.id, nextRow);
+  return { taskId: input.taskId, confirmed: true };
+}
+
 export async function createTaskDraft(_input: TaskDraftInput): Promise<TaskDraftResult> {
   return { draftId: "mvp-draft", projectId: _input.projectId };
 }
 
 export async function classifyTask(_input: TaskClassificationInput): Promise<TaskClassificationResult> {
   return { taskId: _input.taskId, labels: [] };
-}
-
-export async function reorderTasks(_input: TaskReorderInput): Promise<TaskReorderResult> {
-  return { ok: false };
-}
-
-export async function confirmTask(_input: TaskConfirmInput): Promise<TaskConfirmResult> {
-  return { taskId: _input.taskId, confirmed: false };
 }

@@ -8,9 +8,17 @@ import { submitTaskPrompt, waitForCompletion } from "../cursor/cursorService";
 import { verifyBranchExists, getLatestCommit, getCommitDiff } from "../git/gitService";
 import { reviewTaskResult } from "../reviewer/reviewerService";
 
-const DEFAULT_MAX_RETRY_COUNT = 2;
+export const DEFAULT_MAX_RETRY_COUNT = 2;
+
 const MVP_DEFAULT_REPO_URL = "https://mvp.local/repo.git";
 const MVP_DEFAULT_BRANCH = "main";
+
+export type MvpFailureCode =
+  | "CURSOR_FAILED"
+  | "GIT_BRANCH_MISSING"
+  | "REVIEW_FAILED"
+  | "TASK_NOT_FOUND"
+  | "UNHANDLED";
 
 export type ExecutionRun = {
   id: string;
@@ -30,7 +38,8 @@ type RunMeta = { failureReason?: string };
 
 const runs = new Map<string, ExecutionRun>();
 const runMeta = new Map<string, RunMeta>();
-const lastReviewFailure = new Map<string, string>();
+/** Last failure detail for prompt regeneration (review, cursor, git). */
+const lastFailureDetail = new Map<string, string>();
 
 function runTaskKey(runId: string, taskId: string): string {
   return `${runId}::${taskId}`;
@@ -48,6 +57,18 @@ function cloneRun(run: ExecutionRun): ExecutionRun {
     ...run,
     tasks: run.tasks.map((t) => ({ ...t })),
   };
+}
+
+function classifyFromMessage(msg: string): MvpFailureCode {
+  const m = msg.trim();
+  if (m === "TASK_NOT_FOUND" || m.includes("TASK_NOT_FOUND")) return "TASK_NOT_FOUND";
+  if (m === "GIT_BRANCH_MISSING" || m.includes("GIT_BRANCH_MISSING")) return "GIT_BRANCH_MISSING";
+  if (m === "CURSOR_FAILED" || m.toUpperCase().includes("CURSOR_FAILED")) return "CURSOR_FAILED";
+  return "UNHANDLED";
+}
+
+function isEngineRetryable(code: MvpFailureCode): boolean {
+  return code === "CURSOR_FAILED" || code === "GIT_BRANCH_MISSING";
 }
 
 /**
@@ -98,6 +119,33 @@ export async function executeNextTask(runId: string): Promise<void> {
   await executeTask(runId, state.taskId);
 }
 
+async function maybeRetryOrFail(
+  runId: string,
+  taskId: string,
+  code: MvpFailureCode,
+  detail: string,
+  retryable: boolean
+): Promise<void> {
+  const run = runs.get(runId);
+  const taskState = run?.tasks.find((t) => t.taskId === taskId);
+  if (!run || !taskState) {
+    await failRun(runId, `${code}:${detail}`);
+    return;
+  }
+
+  const rk = runTaskKey(runId, taskId);
+  lastFailureDetail.set(rk, detail);
+
+  if (retryable && taskState.retryCount < DEFAULT_MAX_RETRY_COUNT) {
+    taskState.retryCount += 1;
+    await executeTask(runId, taskId);
+    return;
+  }
+
+  taskState.status = "FAILED";
+  await failRun(runId, `${code}:${detail}`);
+}
+
 /**
  * Execute the full per-task pipeline: prompt → cursor → git → review (+ retry rules).
  */
@@ -109,21 +157,19 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
 
   const taskState = run.tasks.find((t) => t.taskId === taskId);
   if (!taskState) {
-    await handleStepFailure(runId, taskId, new Error("TASK_NOT_FOUND"));
+    await failRun(runId, "TASK_NOT_FOUND");
     return;
   }
 
   taskState.status = "RUNNING";
 
   try {
-    // STEP 1 — Generate Prompt
     const rk = runTaskKey(runId, taskId);
     const promptText =
       taskState.retryCount === 0
         ? await generatePrompt(taskId)
-        : await regeneratePrompt(taskId, lastReviewFailure.get(rk) ?? "review failed");
+        : await regeneratePrompt(taskId, lastFailureDetail.get(rk) ?? "previous step failed");
 
-    // STEP 2–3 — Cursor
     const { jobId } = await submitTaskPrompt({
       projectId: run.projectId,
       taskId,
@@ -131,17 +177,17 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
     });
     const cursorOutcome = await waitForCompletion(jobId);
     if (!cursorOutcome.ok) {
-      await handleStepFailure(runId, taskId, new Error(cursorOutcome.summary || "CURSOR_FAILED"));
+      const detail = cursorOutcome.summary?.trim() || "CURSOR_FAILED";
+      await maybeRetryOrFail(runId, taskId, "CURSOR_FAILED", detail, true);
       return;
     }
 
-    // STEP 4 — Git verification
     const branchOk = await verifyBranchExists({
       repoUrl: MVP_DEFAULT_REPO_URL,
       branchName: MVP_DEFAULT_BRANCH,
     });
     if (!branchOk) {
-      await handleStepFailure(runId, taskId, new Error("GIT_BRANCH_MISSING"));
+      await maybeRetryOrFail(runId, taskId, "GIT_BRANCH_MISSING", "branch not found", true);
       return;
     }
     const { sha: headSha } = await getLatestCommit({
@@ -155,7 +201,6 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       headSha,
     });
 
-    // STEP 5 — Review
     const review = await reviewTaskResult({
       taskId,
       prompt: promptText,
@@ -166,42 +211,32 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       },
     });
 
-    // STEP 6 — Decision / retry
     if (review.status === "PASSED") {
       taskState.status = "SUCCESS";
-      lastReviewFailure.delete(rk);
+      lastFailureDetail.delete(rk);
       run.currentTaskIndex += 1;
       await executeNextTask(runId);
       return;
     }
 
-    if (
-      review.retryable &&
-      taskState.retryCount < DEFAULT_MAX_RETRY_COUNT
-    ) {
-      taskState.retryCount += 1;
-      lastReviewFailure.set(rk, review.reason ?? "review failed");
-      await executeTask(runId, taskId);
-      return;
-    }
-
-    taskState.status = "FAILED";
-    await failRun(runId, review.reason ?? "REVIEW_FAILED_MAX_RETRIES");
+    const reviewDetail = review.reason ?? "REVIEW_FAILED";
+    await maybeRetryOrFail(runId, taskId, "REVIEW_FAILED", reviewDetail, review.retryable);
   } catch (e) {
-    await handleStepFailure(runId, taskId, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = classifyFromMessage(msg);
+    await maybeRetryOrFail(runId, taskId, code, msg, isEngineRetryable(code));
   }
 }
 
 export async function handleStepFailure(runId: string, taskId: string, error: unknown): Promise<void> {
   const msg = error instanceof Error ? error.message : String(error);
-  const run = runs.get(runId);
-  const t = run?.tasks.find((x) => x.taskId === taskId);
-  if (t) {
-    t.status = "FAILED";
-  }
-  await failRun(runId, msg);
+  const code = classifyFromMessage(msg);
+  await maybeRetryOrFail(runId, taskId, code, msg, isEngineRetryable(code));
 }
 
+/**
+ * Manual retry: respects max retry budget, does not run for SUCCESS/RUNNING, or when exhausted.
+ */
 export async function retryTask(runId: string, taskId: string): Promise<void> {
   const run = runs.get(runId);
   if (!run || run.status !== "RUNNING") {
@@ -211,8 +246,14 @@ export async function retryTask(runId: string, taskId: string): Promise<void> {
   if (idx < 0) {
     return;
   }
-  run.currentTaskIndex = idx;
   const st = run.tasks[idx]!;
+  if (st.status === "SUCCESS" || st.status === "RUNNING") {
+    return;
+  }
+  if (st.retryCount >= DEFAULT_MAX_RETRY_COUNT) {
+    return;
+  }
+  run.currentTaskIndex = idx;
   st.retryCount += 1;
   st.status = "PENDING";
   await executeTask(runId, taskId);
@@ -262,5 +303,5 @@ export async function getRunStatus(
 export function mvpResetExecutionState(): void {
   runs.clear();
   runMeta.clear();
-  lastReviewFailure.clear();
+  lastFailureDetail.clear();
 }

@@ -31,11 +31,18 @@ export type CommitDiffInput = { repoUrl: string; baseSha: string; headSha: strin
 let branchExists = true;
 let latestSha = "mvp000000000000000000000000000000000000";
 let diffText = "diff --git a/mvp b/mvp\n+ok\n";
+/** Test hook: next N calls to `verifyBranchExists` return false (GIT_BRANCH_MISSING path). */
+let failNextBranchChecks = 0;
+
+export function mvpGitFailNextBranchChecks(count: number): void {
+  failNextBranchChecks = Math.max(0, count);
+}
 
 export function mvpGitResetStubs(): void {
   branchExists = true;
   latestSha = "mvp000000000000000000000000000000000000";
   diffText = "diff --git a/mvp b/mvp\n+ok\n";
+  failNextBranchChecks = 0;
 }
 
 export function mvpGitConfigure(input: {
@@ -50,6 +57,10 @@ export function mvpGitConfigure(input: {
 
 export async function verifyBranchExists(input: BranchVerifyInput): Promise<boolean> {
   void input;
+  if (failNextBranchChecks > 0) {
+    failNextBranchChecks -= 1;
+    return false;
+  }
   return branchExists;
 }
 

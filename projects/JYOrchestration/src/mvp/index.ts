@@ -10,3 +10,4 @@ export * from "./cursor/cursorService";
 export * from "./git/gitService";
 export * from "./orchestration/orchestrationService";
 export * from "./exampleFlow";
+export { runMvpSelfCheck } from "./mvpSelfCheck";
