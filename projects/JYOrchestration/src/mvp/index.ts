@@ -25,4 +25,8 @@ export * from "./mapping/mvpPersistenceMapping";
 export * from "./adapters/draft/mvpDraftPrismaRunStoreAdapter";
 export * from "./adapters/draft/mvpDraftPrismaStepStoreAdapter";
 export * from "./orchestration/mvpRunInspectionViewModel";
+export * from "./domain/mvpDomainTypes";
+export * from "./domain/mvpDomainGenerationService";
+export * from "./domain/mvpDomainValidationService";
+export * from "./domain/stores/mvpRequirementStore";
 export { runMvpSelfCheck } from "./mvpSelfCheck";

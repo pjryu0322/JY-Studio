@@ -90,6 +90,19 @@ import {
   routeEnvelopeDraftFromStartRunResult,
 } from "../application/mvpRouteEnvelopeDraft";
 import { MVP_EXECUTION_APP_CODE } from "../application/mvpExecutionResultCodes";
+import type { MvpRequirement } from "./domain/mvpDomainTypes";
+import {
+  generateFeaturesFromRequirements,
+  generateIAFromFeatures,
+  generateMockupTasksFromRequirements,
+  generateScreensFromIA,
+  generateTasksFromScreens,
+} from "./domain/mvpDomainGenerationService";
+import { validateDomainMapping } from "./domain/mvpDomainValidationService";
+import {
+  mvpClearRequirementStore,
+  mvpSeedProjectRequirements,
+} from "./domain/stores/mvpRequirementStore";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -127,6 +140,7 @@ function baseTasks(pid: string): Task[] {
 function resetAll(): void {
   mvpSetExecutionPortsBundleForTesting(null);
   mvpClearTaskStore();
+  mvpClearRequirementStore();
   clearPromptCache();
   mvpClearReviewPolicy();
   mvpResetExecutionState();
@@ -204,6 +218,40 @@ export async function runMvpSelfCheck(): Promise<void> {
     );
   }
   resetAll();
+
+  {
+    const p = "mvp-domain-gen";
+    const reqs: MvpRequirement[] = [
+      { id: `req-1-${p}`, projectId: p, description: "Need a login screen", status: "CONFIRMED" },
+      { id: `req-2-${p}`, projectId: p, description: "Need a settings screen", status: "CONFIRMED" },
+    ];
+    mvpSeedProjectRequirements(p, reqs);
+    const features = generateFeaturesFromRequirements(reqs);
+    const ia = generateIAFromFeatures(features);
+    const screens = generateScreensFromIA(ia);
+    const tasks = generateTasksFromScreens(screens, "MOCKUP");
+    const v = validateDomainMapping({
+      requirements: reqs,
+      features,
+      menuNodes: ia,
+      screens,
+      tasks,
+      allowLegacyTasks: false,
+    });
+    assert(v.ok === true, "domain mapping should be valid");
+    assert(tasks.length === screens.length, "1 screen = 1 task");
+    assert(tasks.every((t) => (t as { screenId?: string }).screenId != null), "generated tasks must have screenId");
+    assert(tasks.every((t) => (t as { taskPurpose?: string }).taskPurpose === "MOCKUP"), "generated tasks purpose MOCKUP");
+    for (let i = 1; i < tasks.length; i += 1) {
+      assert(tasks[i]!.finalOrder >= tasks[i - 1]!.finalOrder, "tasks ordered by screen.order/finalOrder");
+    }
+
+    const entryTasks = generateMockupTasksFromRequirements(p);
+    assert(entryTasks.length === tasks.length, "entrypoint produces same task count");
+    mvpSeedProjectTasks(p, entryTasks);
+    const run = await startRun(p);
+    assert(run.status === "SUCCESS", "generated tasks should be executable by existing MVP pipeline");
+  }
 
   {
     const sampleRun: ExecutionRun = {
