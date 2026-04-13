@@ -9,6 +9,8 @@
 
 import type { PromptProvider } from "../ports/mvpPorts";
 import { mvpGetTaskById, type Task } from "../task/taskService";
+import { getScreenByTask } from "../domain/mvpDomainTaskScreenService";
+import { mvpGetMenuNodeById } from "../domain/stores/mvpMenuStore";
 
 export interface TaskPromptBuildInput {
   taskId: string;
@@ -79,6 +81,9 @@ function buildStructuredPrompt(
   const task = resolveTask(taskId);
   const title = task?.title ?? `(unknown task ${taskId})`;
   const description = task?.description ?? "No description provided for this task id.";
+  const screen = getScreenByTask(taskId);
+  const menu = screen ? mvpGetMenuNodeById(screen.menuId) : undefined;
+  const parentMenu = menu?.parentId ? mvpGetMenuNodeById(menu.parentId) : undefined;
 
   const projectIdLine =
     task?.projectId != null && String(task.projectId).trim() !== ""
@@ -91,6 +96,21 @@ function buildStructuredPrompt(
     `- Project workspace: mock monorepo root`,
     `- Track: MVP execution lane (isolated from production pipelines)`,
     ``,
+    ...(screen
+      ? [
+          `## 1.1 Screen context (domain-aware)`,
+          `You are building the screen: ${screen.name}`,
+          menu ? `This screen belongs to menu: ${menu.name}` : `This screen belongs to menu: (unknown)`,
+          parentMenu ? `Parent menu: ${parentMenu.name}` : `Parent menu: (none)`,
+          `Route: ${screen.routePath}`,
+          `UI Scope: this screen only`,
+          ``,
+          `### Constraints (screen-scoped)`,
+          `- Do NOT implement other screens or flows unless explicitly required for this screen.`,
+          `- Do NOT add unrelated UI components; keep changes scoped to this screen.`,
+          ``,
+        ]
+      : []),
     `## 2. Task objective`,
     `- Title: ${title}`,
     `- Description: ${description}`,
@@ -102,6 +122,13 @@ function buildStructuredPrompt(
     `## 4. UI / mockup constraints`,
     `- If UI is required: prefer clear states, loading/error paths, and accessible labels.`,
     `- If no UI is required: focus on correctness of logic, APIs, and tests.`,
+    ...(screen
+      ? [
+          ``,
+          `### Screen purpose`,
+          `- UI role: ${(task as { taskPurpose?: string } | undefined)?.taskPurpose ?? "LEGACY/UNSPECIFIED"}`,
+        ]
+      : []),
     ``,
     `## 5. Output constraints`,
     `- Produce code that compiles in the target stack assumed by the task.`,

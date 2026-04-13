@@ -10,6 +10,9 @@ import type { Task, TaskPurpose } from "../task/taskService";
 import type { MvpFeature, MvpMenuNode, MvpRequirement, MvpScreen } from "./mvpDomainTypes";
 import { validateDomainMapping } from "./mvpDomainValidationService";
 import { mvpListProjectRequirements } from "./stores/mvpRequirementStore";
+import { mvpSeedProjectMenuNodes } from "./stores/mvpMenuStore";
+import { mvpSeedProjectScreens } from "./stores/mvpScreenStore";
+import { orderTasksByScreenFlow } from "./mvpDomainOrderingService";
 
 function slugify(name: string): string {
   return name
@@ -67,7 +70,7 @@ export function generateTasksFromScreens(
     .map((s, idx) => ({
       id: `task-${s.projectId}-${idx}`,
       title: `${purpose}: ${s.name}`,
-      description: `Generated for screen ${s.id}`,
+      description: `Generated from domain screen: ${s.name}`,
       type: "FUNCTIONAL",
       status: "CONFIRMED",
       finalOrder: s.order,
@@ -86,7 +89,11 @@ export function generateMockupTasksFromRequirements(projectId: string): Task[] {
   const features = generateFeaturesFromRequirements(requirements);
   const menu = generateIAFromFeatures(features);
   const screens = generateScreensFromIA(menu);
-  const tasks = generateTasksFromScreens(screens, "MOCKUP");
+  const tasks = orderTasksByScreenFlow(generateTasksFromScreens(screens, "MOCKUP"));
+
+  // Seed stores for prompt context lookup (still isolated; no execution integration).
+  mvpSeedProjectMenuNodes(projectId, menu);
+  mvpSeedProjectScreens(projectId, screens);
 
   const ok = validateDomainMapping({
     requirements,

@@ -103,6 +103,9 @@ import {
   mvpClearRequirementStore,
   mvpSeedProjectRequirements,
 } from "./domain/stores/mvpRequirementStore";
+import { mvpClearMenuStore } from "./domain/stores/mvpMenuStore";
+import { mvpClearScreenStore, mvpSeedProjectScreens } from "./domain/stores/mvpScreenStore";
+import { orderTasksByScreenFlow } from "./domain/mvpDomainOrderingService";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -141,6 +144,8 @@ function resetAll(): void {
   mvpSetExecutionPortsBundleForTesting(null);
   mvpClearTaskStore();
   mvpClearRequirementStore();
+  mvpClearMenuStore();
+  mvpClearScreenStore();
   clearPromptCache();
   mvpClearReviewPolicy();
   mvpResetExecutionState();
@@ -251,6 +256,54 @@ export async function runMvpSelfCheck(): Promise<void> {
     mvpSeedProjectTasks(p, entryTasks);
     const run = await startRun(p);
     assert(run.status === "SUCCESS", "generated tasks should be executable by existing MVP pipeline");
+  }
+
+  {
+    const p = "mvp-domain-prompt-screen-aware";
+    resetAll();
+    const reqs: MvpRequirement[] = [
+      { id: `req-1-${p}`, projectId: p, description: "Need a login screen", status: "CONFIRMED" },
+      { id: `req-2-${p}`, projectId: p, description: "Need a settings screen", status: "CONFIRMED" },
+    ];
+    mvpSeedProjectRequirements(p, reqs);
+    const tasks = generateMockupTasksFromRequirements(p);
+    assert(tasks.length === 2, "expected 2 tasks from 2 requirements (MVP)");
+    mvpSeedProjectTasks(p, tasks);
+
+    const t0 = tasks[0]!;
+    const t1 = tasks[1]!;
+    const prompt0 = await mvpDefaultPromptProvider.generatePrompt(t0.id);
+    const prompt1 = await mvpDefaultPromptProvider.generatePrompt(t1.id);
+    assert(prompt0.includes("## 1.1 Screen context (domain-aware)"), "prompt includes screen context section");
+    assert(prompt0.includes("UI Scope: this screen only"), "prompt includes UI scope constraint");
+    assert(prompt0.includes("Route:"), "prompt includes route path");
+    assert(prompt0.includes(`Generated for screen ${t0.screenId}`) === false, "prompt should not leak raw generator text");
+    assert(prompt0 !== prompt1, "different screens should generate different prompts");
+    assert(!prompt0.includes(tasks[1]!.title), "no cross-screen contamination by other task title");
+
+    resetAll();
+    const legacyPid = "mvp-legacy-task-prompt";
+    mvpSeedProjectTasks(legacyPid, [baseTasks(legacyPid)[0]!]);
+    const legacyTask = (await listAllTasks(legacyPid))[0]!;
+    const legacyPrompt = await mvpDefaultPromptProvider.generatePrompt(legacyTask.id);
+    assert(!legacyPrompt.includes("## 1.1 Screen context (domain-aware)"), "legacy tasks keep old prompt shape (no screen context)");
+  }
+
+  {
+    resetAll();
+    const p = "mvp-domain-ordering";
+    mvpSeedProjectScreens(p, [
+      { id: `screen-a-${p}`, projectId: p, name: "A", menuId: "m1", routePath: "/a", order: 1 },
+      { id: `screen-b-${p}`, projectId: p, name: "B", menuId: "m1", routePath: "/b", order: 0 },
+    ]);
+    const tasks: Task[] = [
+      { ...baseTasks(p)[0]!, id: `t-a-${p}`, finalOrder: 5, screenId: `screen-a-${p}`, taskPurpose: "MOCKUP" },
+      { ...baseTasks(p)[1]!, id: `t-b-${p}`, finalOrder: 2, screenId: `screen-b-${p}`, taskPurpose: "MOCKUP" },
+      { ...baseTasks(p)[0]!, id: `t-legacy-${p}`, finalOrder: 0 },
+    ];
+    const ordered = orderTasksByScreenFlow(tasks);
+    assert(ordered[0]!.id === `t-b-${p}` && ordered[1]!.id === `t-a-${p}`, "tasks ordered by screen.order");
+    assert(ordered[2]!.id === `t-legacy-${p}`, "legacy tasks placed after screen-aware tasks");
   }
 
   {
