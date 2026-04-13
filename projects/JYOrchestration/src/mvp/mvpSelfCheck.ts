@@ -12,8 +12,20 @@ import {
   type Task,
 } from "./task/taskService";
 import { clearPromptCache } from "./prompt/promptService";
-import { mvpClearReviewPolicy, mvpConfigureReviewFailures } from "./reviewer/reviewerService";
-import { mvpResetExecutionState, startRun, getRunStatus, DEFAULT_MAX_RETRY_COUNT } from "./execution/executionService";
+import {
+  mvpClearReviewPolicy,
+  mvpConfigureReviewFailures,
+  mvpReviewForceNonRetryableOnce,
+} from "./reviewer/reviewerService";
+import {
+  mvpResetExecutionState,
+  startRun,
+  getRunStatus,
+  retryTask,
+  mvpTestInstallRunAtRetryLimit,
+  mvpTestInstallRunWithNonRetryableFailure,
+  DEFAULT_MAX_RETRY_COUNT,
+} from "./execution/executionService";
 import { evaluateExecutionReadiness } from "./orchestration/orchestrationService";
 import { mvpCursorResetTestHooks, mvpCursorFailNextWaits } from "./cursor/cursorService";
 import { mvpGitResetStubs } from "./git/gitService";
@@ -77,6 +89,21 @@ export async function runMvpSelfCheck(): Promise<void> {
 
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
+  mvpCursorFailNextWaits(1);
+  const rCursorRetry = await startRun(pid);
+  assert(rCursorRetry.status === "SUCCESS", "cursor failure once should retry on same task then succeed");
+  assert(rCursorRetry.tasks[0]!.retryCount === 1, "one in-run retry should increment retryCount");
+
+  resetAll();
+  mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
+  mvpReviewForceNonRetryableOnce(baseTasks(pid)[0]!.id);
+  const rNonRetry = await startRun(pid);
+  assert(rNonRetry.status === "FAILED", "non-retryable review must fail the run without further retries");
+  const stNonRetry = await getRunStatus(rNonRetry.id);
+  assert(stNonRetry.failureReason?.includes("REVIEW_FAILED"), "failure reason should reference REVIEW_FAILED");
+
+  resetAll();
+  mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
   mvpCursorFailNextWaits(DEFAULT_MAX_RETRY_COUNT + 2);
   const r3 = await startRun(pid);
   assert(r3.status === "FAILED", "cursor failures beyond retry budget should fail the run");
@@ -109,4 +136,23 @@ export async function runMvpSelfCheck(): Promise<void> {
   const listed = await listAllTasks(pid);
   const byOrder = [...listed].sort((a, b) => a.finalOrder - b.finalOrder).map((t) => t.id);
   assert(byOrder[0] === tb && byOrder[1] === ta, "reorderTasks should update finalOrder in memory");
+
+  resetAll();
+  const tidMax = `t-max-retry-${pid}`;
+  const ridMax = mvpTestInstallRunAtRetryLimit({ projectId: pid, taskId: tidMax });
+  const beforeMax = await getRunStatus(ridMax);
+  assert(beforeMax.tasks[0]!.retryCount === DEFAULT_MAX_RETRY_COUNT, "fixture at max retry");
+  await retryTask(ridMax, tidMax);
+  const afterMax = await getRunStatus(ridMax);
+  assert(afterMax.tasks[0]!.retryCount === DEFAULT_MAX_RETRY_COUNT, "retryTask must not bypass max retry");
+  assert(afterMax.tasks[0]!.status === "FAILED", "task should stay FAILED when retry is rejected");
+  assert(afterMax.status === "RUNNING", "synthetic run stays RUNNING for policy-only check");
+
+  resetAll();
+  const tidNr = `t-nonretry-retry-${pid}`;
+  const ridNr = mvpTestInstallRunWithNonRetryableFailure({ projectId: pid, taskId: tidNr });
+  await retryTask(ridNr, tidNr);
+  const afterNr = await getRunStatus(ridNr);
+  assert(afterNr.tasks[0]!.retryCount === 0, "retryTask must not run after non-retryable failure");
+  assert(afterNr.tasks[0]!.status === "FAILED", "task should remain FAILED when manual retry is rejected");
 }

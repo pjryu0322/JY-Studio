@@ -20,6 +20,15 @@ export type MvpFailureCode =
   | "TASK_NOT_FOUND"
   | "UNHANDLED";
 
+/** All classified failure codes used by the MVP execution engine. */
+export const MVP_FAILURE_CODES: readonly MvpFailureCode[] = [
+  "CURSOR_FAILED",
+  "GIT_BRANCH_MISSING",
+  "REVIEW_FAILED",
+  "TASK_NOT_FOUND",
+  "UNHANDLED",
+] as const;
+
 /** Per-code default retryability (same-task, in-run retries only). `REVIEW_FAILED` defers to `review.retryable`. */
 export function mvpFailureCodeDefaultRetryable(code: MvpFailureCode): boolean {
   switch (code) {
@@ -85,7 +94,8 @@ function classifyFromMessage(msg: string): MvpFailureCode {
   return "UNHANDLED";
 }
 
-function isRetryableForCode(code: MvpFailureCode, reviewRetryable?: boolean): boolean {
+/** Whether this failure code (and optional review flag) may trigger an in-run same-task retry. */
+export function mvpFailureIsRetryable(code: MvpFailureCode, reviewRetryable?: boolean): boolean {
   if (code === "REVIEW_FAILED") {
     return reviewRetryable === true;
   }
@@ -201,7 +211,7 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
     const cursorOutcome = await waitForCompletion(jobId);
     if (!cursorOutcome.ok) {
       const detail = cursorOutcome.summary?.trim() || "CURSOR_FAILED";
-      await maybeRetryOrFail(runId, taskId, "CURSOR_FAILED", detail, isRetryableForCode("CURSOR_FAILED"));
+      await maybeRetryOrFail(runId, taskId, "CURSOR_FAILED", detail, mvpFailureIsRetryable("CURSOR_FAILED"));
       return;
     }
 
@@ -215,7 +225,7 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
         taskId,
         "GIT_BRANCH_MISSING",
         "branch not found",
-        isRetryableForCode("GIT_BRANCH_MISSING")
+        mvpFailureIsRetryable("GIT_BRANCH_MISSING")
       );
       return;
     }
@@ -255,19 +265,19 @@ export async function executeTask(runId: string, taskId: string): Promise<void> 
       taskId,
       "REVIEW_FAILED",
       reviewDetail,
-      isRetryableForCode("REVIEW_FAILED", review.retryable)
+      mvpFailureIsRetryable("REVIEW_FAILED", review.retryable)
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const code = classifyFromMessage(msg);
-    await maybeRetryOrFail(runId, taskId, code, msg, isRetryableForCode(code));
+    await maybeRetryOrFail(runId, taskId, code, msg, mvpFailureIsRetryable(code));
   }
 }
 
 export async function handleStepFailure(runId: string, taskId: string, error: unknown): Promise<void> {
   const msg = error instanceof Error ? error.message : String(error);
   const code = classifyFromMessage(msg);
-  await maybeRetryOrFail(runId, taskId, code, msg, isRetryableForCode(code));
+  await maybeRetryOrFail(runId, taskId, code, msg, mvpFailureIsRetryable(code));
 }
 
 /**
@@ -339,6 +349,56 @@ export async function getRunStatus(
     };
   }
   return { ...cloneRun(run), failureReason: runMeta.get(runId)?.failureReason };
+}
+
+/**
+ * Test-only: installs a RUNNING run with one FAILED task already at `DEFAULT_MAX_RETRY_COUNT`.
+ * Asserts `retryTask` does not increment retries or change terminal state.
+ */
+export function mvpTestInstallRunAtRetryLimit(input: { projectId: string; taskId: string }): string {
+  const runId = newId();
+  runs.set(runId, {
+    id: runId,
+    projectId: input.projectId,
+    status: "RUNNING",
+    currentTaskIndex: 0,
+    tasks: [
+      {
+        taskId: input.taskId,
+        status: "FAILED",
+        retryCount: DEFAULT_MAX_RETRY_COUNT,
+        lastFailureWasNonRetryable: false,
+      },
+    ],
+  });
+  runMeta.delete(runId);
+  return runId;
+}
+
+/**
+ * Test-only: FAILED task whose last failure was non-retryable; `retryTask` must no-op.
+ */
+export function mvpTestInstallRunWithNonRetryableFailure(input: {
+  projectId: string;
+  taskId: string;
+}): string {
+  const runId = newId();
+  runs.set(runId, {
+    id: runId,
+    projectId: input.projectId,
+    status: "RUNNING",
+    currentTaskIndex: 0,
+    tasks: [
+      {
+        taskId: input.taskId,
+        status: "FAILED",
+        retryCount: 0,
+        lastFailureWasNonRetryable: true,
+      },
+    ],
+  });
+  runMeta.delete(runId);
+  return runId;
 }
 
 /** Test helper: clear all in-memory runs. */

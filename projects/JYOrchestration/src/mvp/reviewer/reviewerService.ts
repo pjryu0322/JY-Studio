@@ -39,19 +39,28 @@ export interface RetryDecisionInput {
 
 /** Optional test hook: force N failing reviews before pass (per taskId). */
 const failuresRemainingBeforePass = new Map<string, number>();
+/** Next review for this taskId returns FAILED with `retryable: false` once (non-retryable path). */
+const forceNonRetryableReviewOnce = new Set<string>();
 
 export function mvpConfigureReviewFailures(taskId: string, failuresBeforePass: number): void {
   failuresRemainingBeforePass.set(taskId, Math.max(0, failuresBeforePass));
 }
 
+/** Test hook: next `reviewTaskResult` for `taskId` fails with `retryable: false` (consumed once). */
+export function mvpReviewForceNonRetryableOnce(taskId: string): void {
+  forceNonRetryableReviewOnce.add(taskId);
+}
+
 export function mvpClearReviewPolicy(): void {
   failuresRemainingBeforePass.clear();
+  forceNonRetryableReviewOnce.clear();
 }
 
 /** Human-readable MVP review rules (simulated, no LLM). */
 export function describeReviewRules(): readonly string[] {
   return [
     "Optional per-task failure simulation via mvpConfigureReviewFailures.",
+    "Optional one-shot non-retryable failure via mvpReviewForceNonRetryableOnce.",
     "Empty prompt → FAILED (retryable).",
     "Empty result payload → FAILED (retryable).",
     "Pass if result.mvpPass === true OR result.changedFiles is a non-empty array.",
@@ -90,6 +99,15 @@ function hasExpectedStructure(result: unknown): boolean {
 }
 
 export async function reviewTaskResult(input: ReviewTaskInput): Promise<ReviewResult> {
+  if (forceNonRetryableReviewOnce.has(input.taskId)) {
+    forceNonRetryableReviewOnce.delete(input.taskId);
+    return {
+      status: "FAILED",
+      reason: "mvp forced non-retryable review failure",
+      retryable: false,
+    };
+  }
+
   const forced = failuresRemainingBeforePass.get(input.taskId) ?? 0;
   if (forced > 0) {
     failuresRemainingBeforePass.set(input.taskId, forced - 1);
