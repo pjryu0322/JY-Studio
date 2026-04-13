@@ -160,6 +160,9 @@ export async function reorderTasks(input: TaskReorderInput): Promise<TaskReorder
   if (input.orderedTaskIds.length !== list.length) {
     return { ok: false, message: "orderedTaskIds must include every task id exactly once" };
   }
+  if (new Set(input.orderedTaskIds).size !== input.orderedTaskIds.length) {
+    return { ok: false, message: "orderedTaskIds must not contain duplicates" };
+  }
   const idSet = new Set(list.map((t) => t.id));
   for (const id of input.orderedTaskIds) {
     if (!idSet.has(id)) {
