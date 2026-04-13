@@ -29,4 +29,8 @@ export * from "./domain/mvpDomainTypes";
 export * from "./domain/mvpDomainGenerationService";
 export * from "./domain/mvpDomainValidationService";
 export * from "./domain/stores/mvpRequirementStore";
+export * from "./domain/stores/mvpMenuStore";
+export * from "./domain/stores/mvpScreenStore";
+export * from "./domain/mvpDomainTaskScreenService";
+export * from "./domain/mvpDomainOrderingService";
 export { runMvpSelfCheck } from "./mvpSelfCheck";
