@@ -75,6 +75,20 @@ import {
   MvpExecutionApplicationService,
   MVP_EXECUTION_APPLICATION_LAYER_ID,
 } from "../application/mvpExecutionApplicationService";
+import { appFailureResult, appSuccessResult } from "../application/mvpAppResultHelpers";
+import {
+  MVP_EXECUTION_APPLICATION_COMMANDS,
+  MVP_EXECUTION_APPLICATION_QUERIES,
+} from "../application/mvpExecutionApplicationCqrs";
+import {
+  MVP_ROUTE_ENVELOPE_DRAFT_MESSAGES,
+  routeEnvelopeDraftFromGetReadinessResult,
+  routeEnvelopeDraftFromGetRunDetailResult,
+  routeEnvelopeDraftFromGetRunInspectionResult,
+  routeEnvelopeDraftFromGetRunSummaryResult,
+  routeEnvelopeDraftFromGetStepListResult,
+  routeEnvelopeDraftFromStartRunResult,
+} from "../application/mvpRouteEnvelopeDraft";
 import { MVP_EXECUTION_APP_CODE } from "../application/mvpExecutionResultCodes";
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -139,6 +153,57 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(!(b.runStore instanceof MvpDraftPrismaRunStoreAdapter), "default bundle must not use Prisma run draft");
     assert(!(b.stepStore instanceof MvpDraftPrismaStepStoreAdapter), "default bundle must not use Prisma step draft");
   }
+
+  resetAll();
+  {
+    const readinessProbe = await mvpCheckReadinessDto({ projectId: "mvp-result-helper-probe" });
+    const viaHelper = appSuccessResult({ readiness: readinessProbe });
+    const literalOk = { ok: true as const, code: MVP_EXECUTION_APP_CODE.OK, readiness: readinessProbe };
+    assert(stableJson(viaHelper) === stableJson(literalOk), "appSuccessResult must match literal success contract");
+    const fInv = appFailureResult(MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID);
+    assert(stableJson(fInv) === stableJson({ ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID }));
+    const fNr = appFailureResult(MVP_EXECUTION_APP_CODE.NOT_READY, { readiness: readinessProbe });
+    assert(
+      stableJson(fNr) === stableJson({ ok: false, code: MVP_EXECUTION_APP_CODE.NOT_READY, readiness: readinessProbe }),
+      "appFailureResult with extras must match literal"
+    );
+
+    assert(MVP_EXECUTION_APPLICATION_COMMANDS.length === 1 && MVP_EXECUTION_APPLICATION_COMMANDS[0] === "startRun");
+    for (const q of MVP_EXECUTION_APPLICATION_QUERIES) {
+      assert(q !== "startRun", "CQRS: startRun must only be a command");
+    }
+    assert(
+      MVP_EXECUTION_APPLICATION_QUERIES.length === 5 &&
+        (["getReadiness", "getRunSummary", "getRunDetail", "getStepList", "getRunInspection"] as const).every((n) =>
+          (MVP_EXECUTION_APPLICATION_QUERIES as readonly string[]).includes(n)
+        ),
+      "CQRS query surface must stay in sync with service methods"
+    );
+
+    mvpSeedProjectTasks("mvp-envelope-not-ready", []);
+    const appEnv = new MvpExecutionApplicationService();
+    const gr = await appEnv.getReadiness({ projectId: "mvp-envelope-not-ready" });
+    const envG = routeEnvelopeDraftFromGetReadinessResult(gr);
+    assert(
+      envG.success === true && gr.ok && stableJson(envG.data) === stableJson({ readiness: gr.readiness }),
+      "readiness envelope maps application success"
+    );
+
+    const sr = await appEnv.startRun({ projectId: "mvp-envelope-not-ready" });
+    assert(sr.ok === false && sr.code === MVP_EXECUTION_APP_CODE.NOT_READY);
+    const envS = routeEnvelopeDraftFromStartRunResult(sr);
+    assert(
+      envS.success === false &&
+        "message" in envS &&
+        envS.message === MVP_ROUTE_ENVELOPE_DRAFT_MESSAGES[MVP_EXECUTION_APP_CODE.NOT_READY],
+      "NOT_READY envelope message"
+    );
+    assert(
+      "data" in envS && envS.data != null && stableJson(envS.data) === stableJson({ readiness: sr.readiness }),
+      "NOT_READY envelope carries readiness"
+    );
+  }
+  resetAll();
 
   {
     const sampleRun: ExecutionRun = {
@@ -497,6 +562,13 @@ export async function runMvpSelfCheck(): Promise<void> {
       badPidReadiness.ok === false && badPidReadiness.code === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID,
       "application getReadiness rejects blank projectId"
     );
+    const envBadPid = routeEnvelopeDraftFromGetReadinessResult(badPidReadiness);
+    assert(
+      envBadPid.success === false &&
+        envBadPid.appCode === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID &&
+        envBadPid.message === MVP_ROUTE_ENVELOPE_DRAFT_MESSAGES[MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID],
+      "envelope maps INVALID_PROJECT_ID from getReadiness"
+    );
     const badPidStart = await app.startRun({ projectId: "" });
     assert(
       badPidStart.ok === false && badPidStart.code === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID,
@@ -504,30 +576,61 @@ export async function runMvpSelfCheck(): Promise<void> {
     );
     const badRid = await app.getRunSummary({ runId: " \n " });
     assert(badRid.ok === false && badRid.code === MVP_EXECUTION_APP_CODE.INVALID_RUN_ID, "application rejects blank runId");
+    const envBadRid = routeEnvelopeDraftFromGetRunSummaryResult(badRid);
+    assert(
+      envBadRid.success === false &&
+        envBadRid.appCode === MVP_EXECUTION_APP_CODE.INVALID_RUN_ID &&
+        envBadRid.message === MVP_ROUTE_ENVELOPE_DRAFT_MESSAGES[MVP_EXECUTION_APP_CODE.INVALID_RUN_ID],
+      "envelope maps INVALID_RUN_ID from getRunSummary"
+    );
     const missingRun = await app.getRunSummary({ runId: "mvp-nonexistent-run-id-00000000" });
     assert(
       missingRun.ok === false && missingRun.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
       "application maps unknown run to RUN_NOT_FOUND"
+    );
+    const envMissSum = routeEnvelopeDraftFromGetRunSummaryResult(missingRun);
+    assert(
+      envMissSum.success === false &&
+        envMissSum.appCode === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND &&
+        envMissSum.message === MVP_ROUTE_ENVELOPE_DRAFT_MESSAGES[MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND],
+      "envelope maps RUN_NOT_FOUND from getRunSummary"
     );
     const missingDetail = await app.getRunDetail({ runId: "mvp-nonexistent-run-id-00000000" });
     assert(
       missingDetail.ok === false && missingDetail.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
       "application getRunDetail RUN_NOT_FOUND"
     );
+    const envMissDet = routeEnvelopeDraftFromGetRunDetailResult(missingDetail);
+    assert(
+      envMissDet.success === false && envMissDet.appCode === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
+      "envelope maps RUN_NOT_FOUND from getRunDetail"
+    );
     const missingSteps = await app.getStepList({ runId: "mvp-nonexistent-run-id-00000000" });
     assert(
       missingSteps.ok === false && missingSteps.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
       "application getStepList RUN_NOT_FOUND"
+    );
+    assert(
+      routeEnvelopeDraftFromGetStepListResult(missingSteps).appCode === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
+      "envelope maps RUN_NOT_FOUND from getStepList"
     );
     const missingInsp = await app.getRunInspection({ projectId: pid, runId: "mvp-nonexistent-run-id-00000000" });
     assert(
       missingInsp.ok === false && missingInsp.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
       "application getRunInspection RUN_NOT_FOUND"
     );
+    assert(
+      routeEnvelopeDraftFromGetRunInspectionResult(missingInsp).appCode === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
+      "envelope maps RUN_NOT_FOUND from getRunInspection"
+    );
     const badInspPid = await app.getRunInspection({ projectId: "", runId: rNonRetry.id });
     assert(
       badInspPid.ok === false && badInspPid.code === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID,
       "application getRunInspection rejects blank projectId"
+    );
+    assert(
+      routeEnvelopeDraftFromGetRunInspectionResult(badInspPid).appCode === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID,
+      "envelope maps INVALID_PROJECT_ID from getRunInspection"
     );
   }
 
