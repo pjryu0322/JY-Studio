@@ -7,6 +7,8 @@ export * from "./prompt/promptService";
 export * from "./reviewer/reviewerService";
 export * from "./execution/executionService";
 export * from "./execution/executionStepLog";
+export * from "./execution/executionStepProjections";
+export * from "./execution/mvpRunSummary";
 export * from "./cursor/cursorService";
 export * from "./git/gitService";
 export * from "./orchestration/orchestrationService";

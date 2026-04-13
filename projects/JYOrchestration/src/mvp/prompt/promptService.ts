@@ -31,6 +31,19 @@ export interface PromptVersionRef {
 export const MVP_PROMPT_VERSION_REQUIRES_CACHE =
   "NOT_IMPLEMENTED_IN_MVP: no cached prompt for taskId; call generatePrompt or regeneratePrompt first";
 
+function assertTaskProjectMatches(
+  taskId: string,
+  expectedProjectId: string,
+  label: "buildTaskPrompt" | "buildCursorExecutionPrompt"
+): void {
+  const task = mvpGetTaskById(taskId);
+  if (task?.projectId != null && String(task.projectId).trim() !== "" && task.projectId !== expectedProjectId) {
+    throw new Error(
+      `NOT_IMPLEMENTED_IN_MVP_CROSS_PROJECT: ${label} expected projectId=${expectedProjectId} but task ${taskId} is registered under projectId=${task.projectId}`
+    );
+  }
+}
+
 const latestPrompt = new Map<string, string>();
 
 function stamp(): string {
@@ -153,8 +166,10 @@ export function clearPromptCache(): void {
 /**
  * Builds the same structured prompt as `generatePrompt`, with optional spec context appended.
  * Does not write the prompt cache; use `generatePrompt` / `regeneratePrompt` for execution flows.
+ * Throws if a seeded task exists under a different `projectId` (contract guard for future wiring).
  */
 export function buildTaskPrompt(input: TaskPromptBuildInput): string {
+  assertTaskProjectMatches(input.taskId, input.projectId, "buildTaskPrompt");
   const base = buildStructuredPrompt(input.taskId);
   if (input.specContext != null && String(input.specContext).trim() !== "") {
     return `${base}\n\n## SPEC CONTEXT (caller-provided)\n${input.specContext}\n`;
@@ -162,8 +177,12 @@ export function buildTaskPrompt(input: TaskPromptBuildInput): string {
   return base;
 }
 
-/** Structured prompt plus explicit repo/branch metadata for cursor-oriented callers. */
+/**
+ * Structured prompt plus explicit repo/branch metadata for cursor-oriented callers.
+ * Throws if a seeded task exists under a different `projectId` (contract guard for future wiring).
+ */
 export function buildCursorExecutionPrompt(input: CursorPromptBuildInput): string {
+  assertTaskProjectMatches(input.taskId, input.projectId, "buildCursorExecutionPrompt");
   const base = buildStructuredPrompt(input.taskId);
   return [
     base,
@@ -178,7 +197,8 @@ export function buildCursorExecutionPrompt(input: CursorPromptBuildInput): strin
 
 /**
  * Returns a deterministic version ref when a cached prompt exists for the task (hash of cached text).
- * If nothing is cached yet, returns null — see `MVP_PROMPT_VERSION_REQUIRES_CACHE`.
+ * If nothing is cached yet, returns null (explicit “no materialized prompt” — not an empty string).
+ * See `MVP_PROMPT_VERSION_REQUIRES_CACHE` for the contract.
  */
 export async function resolvePromptVersion(input: { taskId: string }): Promise<PromptVersionRef | null> {
   const cached = latestPrompt.get(input.taskId);

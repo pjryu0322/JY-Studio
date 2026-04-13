@@ -11,7 +11,7 @@ import {
   confirmTask,
   type Task,
 } from "./task/taskService";
-import { clearPromptCache } from "./prompt/promptService";
+import { buildTaskPrompt, clearPromptCache } from "./prompt/promptService";
 import {
   mvpClearReviewPolicy,
   mvpConfigureReviewFailures,
@@ -25,6 +25,13 @@ import {
   DEFAULT_MAX_RETRY_COUNT,
 } from "./execution/executionService";
 import { mvpGetExecutionStepsForRun } from "./execution/executionStepLog";
+import {
+  mvpGetExecutionStepsForTask,
+  mvpGetLastFailureStepForRun,
+  mvpGetRetryCountFromSteps,
+  mvpSummarizeExecutionStepFlow,
+} from "./execution/executionStepProjections";
+import { mvpProjectRunSummary } from "./execution/mvpRunSummary";
 import {
   mvpTestInstallRunAtRetryLimit,
   mvpTestInstallRunWithNonRetryableFailure,
@@ -83,9 +90,32 @@ export async function runMvpSelfCheck(): Promise<void> {
   assert(r1.status === "SUCCESS", "two tasks should both succeed");
   assert(r1.tasks.every((t) => t.status === "SUCCESS"), "all task states SUCCESS");
   const steps1 = mvpGetExecutionStepsForRun(r1.id);
+  for (let i = 1; i < steps1.length; i += 1) {
+    assert(steps1[i]!.sequence === steps1[i - 1]!.sequence + 1, "step sequence must be strictly monotonic");
+  }
   const types1 = steps1.map((s) => s.stepType);
   assert(types1.includes("RUN_SUCCESS"), "successful run should log RUN_SUCCESS");
   assert(types1.filter((t) => t === "TASK_COMPLETED").length === 2, "two tasks should log TASK_COMPLETED");
+  const tid0 = r1.tasks[0]!.taskId;
+  const taskSteps0 = mvpGetExecutionStepsForTask(r1.id, tid0);
+  assert(taskSteps0.length > 0, "task-scoped steps should exist for first task");
+  assert(taskSteps0.every((s) => s.taskId === tid0), "task filter must only return matching taskId");
+  assert(mvpGetLastFailureStepForRun(r1.id) === undefined, "successful run should have no failure step");
+  assert(mvpSummarizeExecutionStepFlow(r1.id).length > 0, "flow summary must be non-empty");
+  const sumOk = await mvpProjectRunSummary(r1.id);
+  assert(sumOk != null, "run summary should exist");
+  assert(sumOk.runStatus === "SUCCESS", "summary status SUCCESS");
+  assert(sumOk.totalTasks === 2 && sumOk.completedTasks === 2 && sumOk.failedTasks === 0, "summary task counts");
+  assert(sumOk.totalStepCount === steps1.length, "summary step count should match log length");
+  assert(sumOk.lastFailureCode == null && sumOk.lastFailureMessage == null, "no last failure on success");
+
+  let threw = false;
+  try {
+    buildTaskPrompt({ taskId: tid0, projectId: "wrong-project" });
+  } catch {
+    threw = true;
+  }
+  assert(threw, "buildTaskPrompt must reject cross-project contract mismatch");
 
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
@@ -121,6 +151,11 @@ export async function runMvpSelfCheck(): Promise<void> {
   const iRevFail = typesNr.indexOf("REVIEW_FAILED");
   assert(iRunFail > iRevFail, "RUN_FAILED should follow REVIEW_FAILED in the log");
   assert(!typesNr.includes("TASK_RETRY_SCHEDULED"), "non-retryable review must not schedule task retry");
+  const lastFailNr = mvpGetLastFailureStepForRun(rNonRetry.id);
+  assert(lastFailNr != null && lastFailNr.status === "FAILURE", "last failure step must exist for failed run");
+  const sumFail = await mvpProjectRunSummary(rNonRetry.id);
+  assert(sumFail?.runStatus === "FAILED" && sumFail.failedTasks === 1, "summary should reflect failed run");
+  assert(sumFail?.lastFailureMessage != null, "summary should surface last failure message");
 
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
@@ -129,6 +164,9 @@ export async function runMvpSelfCheck(): Promise<void> {
   assert(r3.status === "FAILED", "cursor failures beyond retry budget should fail the run");
   const st3 = await getRunStatus(r3.id);
   assert(st3.failureReason?.includes("CURSOR_FAILED"), "failure reason should mention CURSOR_FAILED");
+  assert(mvpGetRetryCountFromSteps(r3.id) === DEFAULT_MAX_RETRY_COUNT, "retry steps should match policy budget");
+  const sumCurFail = await mvpProjectRunSummary(r3.id);
+  assert(sumCurFail?.failedTasks === 1 && sumCurFail.lastFailureCode === "CURSOR_FAILED", "summary last failure code");
 
   resetAll();
   mvpSeedProjectTasks(pid, []);
