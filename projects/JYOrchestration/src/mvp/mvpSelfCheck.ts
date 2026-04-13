@@ -216,7 +216,10 @@ export async function runMvpSelfCheck(): Promise<void> {
   assert(blocked.readiness.blockers.length > 0, "not-ready readiness must list blockers");
 
   {
-    assert(MVP_EXECUTION_APPLICATION_LAYER_ID.startsWith("jyorchestration:"), "application layer stays JYOrchestration-local");
+    assert(
+      MVP_EXECUTION_APPLICATION_LAYER_ID === "jyorchestration:application:mvp-execution",
+      "application layer id must remain JYOrchestration-scoped (no external package coupling)"
+    );
     const app = new MvpExecutionApplicationService();
     const appReadiness = await app.getReadiness({ projectId: pid });
     assert(
@@ -334,6 +337,29 @@ export async function runMvpSelfCheck(): Promise<void> {
     threw = true;
   }
   assert(threw, "buildTaskPrompt must reject cross-project contract mismatch");
+
+  {
+    const pStart = "mvp-app-start-parity";
+    resetAll();
+    mvpSeedProjectTasks(pStart, baseTasks(pStart));
+    const facadeStart = await mvpStartRunIfReady(pStart);
+    assert(facadeStart.ok === true, "facade baseline start when ready");
+    const summaryViaFacade = await mvpGetRunSummaryDto(facadeStart.run.id);
+    resetAll();
+    mvpSeedProjectTasks(pStart, baseTasks(pStart));
+    const appSvc = new MvpExecutionApplicationService();
+    const appStart = await appSvc.startRun({ projectId: pStart });
+    assert(appStart.ok === true, "application startRun when ready must succeed");
+    const summaryViaApp = await mvpGetRunSummaryDto(appStart.runId);
+    assert(
+      summaryViaFacade?.runStatus === summaryViaApp?.runStatus &&
+        summaryViaFacade?.totalTasks === summaryViaApp?.totalTasks &&
+        summaryViaFacade?.completedTasks === summaryViaApp?.completedTasks &&
+        summaryViaFacade?.failedTasks === summaryViaApp?.failedTasks &&
+        summaryViaFacade?.totalStepCount === summaryViaApp?.totalStepCount,
+      "application startRun path must match MVP facade run outcome (summary parity)"
+    );
+  }
 
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
