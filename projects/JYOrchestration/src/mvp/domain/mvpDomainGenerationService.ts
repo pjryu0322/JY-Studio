@@ -14,6 +14,7 @@ import { mvpSeedProjectMenuNodes } from "./stores/mvpMenuStore";
 import { mvpSeedProjectScreens } from "./stores/mvpScreenStore";
 import { generateScreenFlow, getOrderedScreensFromFlow, validateScreenFlow } from "../screen/mvpScreenFlowService";
 import { orderTasksByScreenFlow } from "../screen/mvpScreenFlowTaskOrdering";
+import { mvpSeedProjectScreenFlow } from "../screen/stores/mvpScreenFlowStore";
 
 function slugify(name: string): string {
   return name
@@ -101,6 +102,7 @@ export function generateMockupTasksFromRequirements(projectId: string): Task[] {
   // Seed stores for prompt context lookup (still isolated; no execution integration).
   mvpSeedProjectMenuNodes(projectId, menu);
   mvpSeedProjectScreens(projectId, screens);
+  mvpSeedProjectScreenFlow(projectId, graph);
 
   const ok = validateDomainMapping({
     requirements,

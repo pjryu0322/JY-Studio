@@ -37,4 +37,5 @@ export * from "./screen/mvpScreenFlowTypes";
 export * from "./screen/mvpScreenFlowService";
 export * from "./screen/mvpScreenFlowMetadata";
 export * from "./screen/mvpScreenFlowTaskOrdering";
+export * from "./screen/stores/mvpScreenFlowStore";
 export { runMvpSelfCheck } from "./mvpSelfCheck";
