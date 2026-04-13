@@ -19,7 +19,16 @@ export type Task = {
   finalOrder: number;
   /** Optional; improves prompt “project context” section when set. */
   projectId?: string;
+  /**
+   * Optional for backward compatibility. New upstream-generated tasks should set `screenId`.
+   * Execution pipeline ignores this field today.
+   */
+  screenId?: string;
+  /** Optional for backward compatibility. Used by upstream generation only. */
+  taskPurpose?: TaskPurpose;
 };
+
+export type TaskPurpose = "MOCKUP" | "BUILD";
 
 export interface TaskDraftInput {
   projectId: string;
