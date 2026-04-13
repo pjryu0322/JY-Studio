@@ -17,6 +17,7 @@ import {
   mvpConfigureReviewFailures,
   mvpReviewForceNonRetryableOnce,
 } from "./reviewer/reviewerService";
+import type { ExecutionRun } from "./contracts/mvpExecutionTypes";
 import {
   mvpResetExecutionState,
   startRun,
@@ -25,6 +26,7 @@ import {
   DEFAULT_MAX_RETRY_COUNT,
 } from "./execution/executionService";
 import { mvpGetExecutionStepsForRun } from "./execution/executionStepLog";
+import type { MvpExecutionStepRecord } from "./execution/executionStepLog";
 import {
   mvpGetExecutionStepsForTask,
   mvpGetLastFailureStepForRun,
@@ -58,6 +60,17 @@ import { mvpInMemoryRunStore, mvpInMemoryStepStore } from "./execution/inMemoryE
 import { mvpCursorResetTestHooks, mvpCursorFailNextWaits } from "./cursor/cursorService";
 import { mvpGitResetStubs } from "./git/gitService";
 import { createMvpFakeExecutionPortsBundle } from "./testing/mvpFakeExecutionPorts";
+import {
+  mergePersistedRunParts,
+  mvpPersistedRowToStepRecord,
+  mvpStepRecordToPersistedRow,
+  persistedMetaRowToRunMeta,
+  runMetaToPersistedRow,
+  splitExecutionRunForPersistence,
+} from "./mapping/mvpPersistenceMapping";
+import { MvpDraftPrismaRunStoreAdapter } from "./adapters/draft/mvpDraftPrismaRunStoreAdapter";
+import { MvpDraftPrismaStepStoreAdapter } from "./adapters/draft/mvpDraftPrismaStepStoreAdapter";
+import { mvpBuildRunInspectionViewModel } from "./orchestration/mvpRunInspectionViewModel";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -114,6 +127,81 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(b.review === mvpDefaultReviewEngine, "bundle.review must be default ReviewEngine");
     assert(b.runStore === mvpInMemoryRunStore, "bundle.runStore must be in-memory RunStore");
     assert(b.stepStore === mvpInMemoryStepStore, "bundle.stepStore must be in-memory StepStore");
+    assert(!(b.runStore instanceof MvpDraftPrismaRunStoreAdapter), "default bundle must not use Prisma run draft");
+    assert(!(b.stepStore instanceof MvpDraftPrismaStepStoreAdapter), "default bundle must not use Prisma step draft");
+  }
+
+  {
+    const sampleRun: ExecutionRun = {
+      id: "run-rt",
+      projectId: "p-rt",
+      status: "RUNNING",
+      currentTaskIndex: 1,
+      tasks: [
+        {
+          taskId: "a",
+          status: "SUCCESS",
+          retryCount: 0,
+          lastFailureCode: "REVIEW_FAILED",
+          lastFailureMessage: "x",
+          lastFailureRetryable: false,
+          totalExecuteAttempts: 2,
+        },
+        { taskId: "b", status: "PENDING", retryCount: 1 },
+      ],
+    };
+    const { run: runRow, tasks: taskRows } = splitExecutionRunForPersistence(sampleRun);
+    assert(runRow.id === sampleRun.id && runRow.projectId === sampleRun.projectId && runRow.status === sampleRun.status, "run row keys");
+    assert(runRow.currentTaskIndex === sampleRun.currentTaskIndex, "currentTaskIndex preserved");
+    assert(taskRows.length === 2 && taskRows[0]!.taskId === "a" && taskRows[1]!.sortOrder === 1, "task rows preserve order");
+    const merged = mergePersistedRunParts(runRow, taskRows);
+    assert(merged.id === sampleRun.id && merged.tasks.length === sampleRun.tasks.length, "merge restores run");
+    assert(merged.tasks[0]!.lastFailureCode === "REVIEW_FAILED" && merged.tasks[0]!.totalExecuteAttempts === 2, "task snapshot fields round-trip");
+    assert(merged.tasks[1]!.retryCount === 1 && merged.tasks[1]!.status === "PENDING", "second task preserved");
+
+    const step: MvpExecutionStepRecord = {
+      runId: "r1",
+      taskId: "t1",
+      sequence: 3,
+      stepType: "CURSOR_FAILED",
+      status: "FAILURE",
+      message: "boom",
+      timestamp: 1700000000000,
+      failurePayload: {
+        failureCode: "CURSOR_FAILED",
+        failureMessage: "boom",
+        retryable: true,
+        sourceStepType: "CURSOR_FAILED",
+      },
+    };
+    const persistedStep = mvpStepRecordToPersistedRow(step);
+    assert(persistedStep.sequence === 3 && persistedStep.failurePayloadJson != null, "step row carries sequence and JSON");
+    const stepBack = mvpPersistedRowToStepRecord(persistedStep);
+    assert(
+      stepBack.failurePayload?.failureCode === "CURSOR_FAILED" &&
+        stepBack.failurePayload.retryable === true &&
+        stepBack.stepType === "CURSOR_FAILED",
+      "structured failure survives JSON round-trip"
+    );
+
+    const metaRow = runMetaToPersistedRow("rid", { failureReason: "TASK_NOT_FOUND:gone" });
+    assert(persistedMetaRowToRunMeta(metaRow).failureReason === "TASK_NOT_FOUND:gone", "run meta mapping");
+
+    let draftRunThrew = false;
+    try {
+      new MvpDraftPrismaRunStoreAdapter().get("x");
+    } catch (e) {
+      draftRunThrew = e instanceof Error && e.message.includes("NOT_IMPLEMENTED_IN_MVP");
+    }
+    assert(draftRunThrew, "draft Prisma run adapter must be isolated (throws)");
+
+    let draftStepThrew = false;
+    try {
+      new MvpDraftPrismaStepStoreAdapter().getStepsForRun("x");
+    } catch (e) {
+      draftStepThrew = e instanceof Error && e.message.includes("NOT_IMPLEMENTED_IN_MVP");
+    }
+    assert(draftStepThrew, "draft Prisma step adapter must be isolated (throws)");
   }
 
   resetAll();
@@ -181,6 +269,13 @@ export async function runMvpSelfCheck(): Promise<void> {
     detailOk.stepFlowSummary != null && detailOk.stepFlowSummary.includes("RUN_SUCCESS"),
     "detail step flow summary"
   );
+
+  const inspectOk = await mvpBuildRunInspectionViewModel({ projectId: pid, runId: r1.id });
+  assert(inspectOk.runId === r1.id && inspectOk.projectId === pid, "inspection keys");
+  assert(inspectOk.readiness.isReady === true, "inspection bundles readiness");
+  assert(inspectOk.runSummary?.runStatus === "SUCCESS" && inspectOk.runSummary.totalStepCount === steps1.length, "inspection summary");
+  assert(inspectOk.runDetail?.tasks.length === 2 && inspectOk.runDetail.runStatus === "SUCCESS", "inspection detail");
+  assert(inspectOk.steps.length === steps1.length && inspectOk.stepFlowSummary.includes("RUN_SUCCESS"), "inspection steps + flow");
 
   let threw = false;
   try {
@@ -265,6 +360,19 @@ export async function runMvpSelfCheck(): Promise<void> {
     detailFail.stepFlowSummary != null && detailFail.stepFlowSummary.includes("REVIEW_FAILED"),
     "detail flow includes failing step"
   );
+
+  const inspectFail = await mvpBuildRunInspectionViewModel({ projectId: pid, runId: rNonRetry.id });
+  assert(inspectFail.runSummary?.runStatus === "FAILED" && inspectFail.runDetail?.runStatus === "FAILED", "inspection after failure");
+  assert(
+    inspectFail.runDetail?.latestFailurePayload?.failureCode === "REVIEW_FAILED" &&
+      inspectFail.runSummary?.lastFailurePayload?.failureCode === "REVIEW_FAILED",
+    "inspection preserves structured failure across summary and detail"
+  );
+  assert(
+    inspectFail.steps.some((s) => s.stepType === "REVIEW_FAILED" && s.failurePayload?.failureCode === "REVIEW_FAILED"),
+    "inspection step list carries failure payload"
+  );
+  assert(inspectFail.stepFlowSummary.includes("REVIEW_FAILED"), "inspection flow includes failure");
 
   resetAll();
   mvpSeedProjectTasks(pid, [baseTasks(pid)[0]!]);
