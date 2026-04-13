@@ -12,7 +12,8 @@ import { validateDomainMapping } from "./mvpDomainValidationService";
 import { mvpListProjectRequirements } from "./stores/mvpRequirementStore";
 import { mvpSeedProjectMenuNodes } from "./stores/mvpMenuStore";
 import { mvpSeedProjectScreens } from "./stores/mvpScreenStore";
-import { orderTasksByScreenFlow } from "./mvpDomainOrderingService";
+import { generateScreenFlow, getOrderedScreensFromFlow, validateScreenFlow } from "../screen/mvpScreenFlowService";
+import { orderTasksByScreenFlow } from "../screen/mvpScreenFlowTaskOrdering";
 
 function slugify(name: string): string {
   return name
@@ -89,7 +90,13 @@ export function generateMockupTasksFromRequirements(projectId: string): Task[] {
   const features = generateFeaturesFromRequirements(requirements);
   const menu = generateIAFromFeatures(features);
   const screens = generateScreensFromIA(menu);
-  const tasks = orderTasksByScreenFlow(generateTasksFromScreens(screens, "MOCKUP"));
+  const graph = generateScreenFlow(screens);
+  const flowOk = validateScreenFlow(graph);
+  if (!flowOk.ok) {
+    throw new Error(`MVP_SCREEN_FLOW_INVALID: ${flowOk.errors.join(" | ")}`);
+  }
+  const orderedScreens = getOrderedScreensFromFlow(graph);
+  const tasks = orderTasksByScreenFlow(generateTasksFromScreens(orderedScreens, "MOCKUP"), graph.screens, graph.edges);
 
   // Seed stores for prompt context lookup (still isolated; no execution integration).
   mvpSeedProjectMenuNodes(projectId, menu);

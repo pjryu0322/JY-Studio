@@ -106,6 +106,20 @@ import {
 import { mvpClearMenuStore } from "./domain/stores/mvpMenuStore";
 import { mvpClearScreenStore, mvpSeedProjectScreens } from "./domain/stores/mvpScreenStore";
 import { orderTasksByScreenFlow } from "./domain/mvpDomainOrderingService";
+import type { MvpScreen } from "./domain/mvpDomainTypes";
+import type { ScreenFlowEdge } from "./screen/mvpScreenFlowTypes";
+import {
+  generateScreenFlow,
+  getOrderedScreensFromFlow,
+  validateScreenFlow,
+} from "./screen/mvpScreenFlowService";
+import {
+  getNextScreens,
+  getPreviousScreens,
+  getScreenDepth,
+  isEntryScreen,
+} from "./screen/mvpScreenFlowMetadata";
+import { orderTasksByScreenFlow as orderTasksByScreenFlowGraph } from "./screen/mvpScreenFlowTaskOrdering";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -304,6 +318,39 @@ export async function runMvpSelfCheck(): Promise<void> {
     const ordered = orderTasksByScreenFlow(tasks);
     assert(ordered[0]!.id === `t-b-${p}` && ordered[1]!.id === `t-a-${p}`, "tasks ordered by screen.order");
     assert(ordered[2]!.id === `t-legacy-${p}`, "legacy tasks placed after screen-aware tasks");
+  }
+
+  {
+    resetAll();
+    const p = "mvp-screen-flow";
+    const screens: MvpScreen[] = [
+      { id: `screen-0-${p}`, projectId: p, name: "Entry", menuId: "m1", routePath: "/entry", order: 0 },
+      { id: `screen-1-${p}`, projectId: p, name: "Next", menuId: "m1", routePath: "/next", order: 1 },
+      { id: `screen-2-${p}`, projectId: p, name: "Last", menuId: "m1", routePath: "/last", order: 2 },
+    ];
+    const g = generateScreenFlow(screens);
+    const ok = validateScreenFlow(g);
+    assert(ok.ok === true, "generated screen flow should validate");
+    const ord = getOrderedScreensFromFlow(g);
+    assert(ord.map((s) => s.id).join(",") === screens.map((s) => s.id).join(","), "ordered screens follow linear flow");
+    assert(isEntryScreen(g, screens[0]!.id) === true, "entry screen detection");
+    assert(getNextScreens(g, screens[0]!.id)[0] === screens[1]!.id, "next screen helper");
+    assert(getPreviousScreens(g, screens[2]!.id)[0] === screens[1]!.id, "previous screen helper");
+    assert(getScreenDepth(g, screens[0]!.id) === 0 && getScreenDepth(g, screens[2]!.id) === 2, "screen depth helper");
+
+    const tasks: Task[] = [
+      { ...baseTasks(p)[0]!, id: `t1-${p}`, finalOrder: 0, screenId: screens[1]!.id, taskPurpose: "MOCKUP" },
+      { ...baseTasks(p)[0]!, id: `t0-${p}`, finalOrder: 0, screenId: screens[0]!.id, taskPurpose: "MOCKUP" },
+      { ...baseTasks(p)[0]!, id: `t2-${p}`, finalOrder: 0, screenId: screens[2]!.id, taskPurpose: "MOCKUP" },
+      { ...baseTasks(p)[0]!, id: `tLegacy-${p}`, finalOrder: 0 },
+    ];
+    const orderedTasks = orderTasksByScreenFlowGraph(tasks, g.screens, g.edges);
+    assert(
+      orderedTasks.slice(0, 3).map((t) => (t as { screenId?: string }).screenId).join(",") ===
+        screens.map((s) => s.id).join(","),
+      "tasks are ordered by screen flow order"
+    );
+    assert(orderedTasks[3]!.id === `tLegacy-${p}`, "legacy task remains supported after flow tasks");
   }
 
   {
