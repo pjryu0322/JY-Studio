@@ -2,7 +2,7 @@
  * MVP — project-level orchestration and execution readiness (isolated, unwired).
  */
 
-import { getExecutableTasks } from "../task/taskService";
+import { mvpExecutionPortsBundle } from "../runtime/mvpExecutionPortsBundle";
 
 export interface ExecutionReadinessInput {
   projectId: string;
@@ -25,15 +25,15 @@ export interface ProjectExecutionSummaryStub {
 }
 
 /**
- * Readiness: at least one executable task; executable set is exactly `getExecutableTasks()` (FUNCTIONAL + CONFIRMED only);
- * `finalOrder` must be finite, non-negative, and unique among those tasks.
- * Uses the same registry semantics as `getExecutableTasks` (explicit empty seed => no tasks).
+ * Readiness: at least one executable task from `TaskProvider.getExecutableTasks(projectId)`;
+ * each task’s `finalOrder` must be finite, non-negative, and unique in that list.
+ * Uses the bundle’s `TaskProvider` so readiness matches injected adapters (e.g. tests, future API-backed registry).
  */
 export async function evaluateExecutionReadiness(
   input: ExecutionReadinessInput
 ): Promise<ExecutionReadinessResult> {
   const blockers: string[] = [];
-  const executable = await getExecutableTasks(input.projectId);
+  const executable = await mvpExecutionPortsBundle().tasks.getExecutableTasks(input.projectId);
 
   if (executable.length === 0) {
     blockers.push("NO_EXECUTABLE_TASKS");

@@ -20,4 +20,5 @@ export * from "./runtime/mvpExecutionPortsBundle";
 export * from "./execution/inMemoryExecutionState";
 export * from "./exampleFlow";
 export * from "./testing/mvpExecutionFixtures";
+export * from "./testing/mvpFakeExecutionPorts";
 export { runMvpSelfCheck } from "./mvpSelfCheck";
