@@ -84,6 +84,13 @@ import {
 } from "../application/pipeline";
 import { mvpRunPlanningPipelineUseCase } from "../application/usecases/mvpRunPlanningPipelineUseCase";
 import {
+  buildPlanningExecutionHandoff,
+  validatePlanningExecutionHandoff,
+  validatePlanningExecutionHandoffBundle,
+  validatePlanningExecutionHandoffFromContext,
+} from "../application/planningExecutionHandoff";
+import { mvpPrepareExecutionHandoffFromPlanningUseCase } from "../application/usecases/mvpPrepareExecutionHandoffFromPlanningUseCase";
+import {
   MVP_EXECUTION_APPLICATION_COMMANDS,
   MVP_EXECUTION_APPLICATION_QUERIES,
 } from "../application/mvpExecutionApplicationCqrs";
@@ -1063,6 +1070,10 @@ export async function runMvpSelfCheck(): Promise<void> {
       );
     }
 
+    const vagueHandoff = mvpPrepareExecutionHandoffFromPlanningUseCase({ projectId: pPipe, inputText: "좋은 플랫폼 만들고 싶다" });
+    assert(vagueHandoff.ok === false && vagueHandoff.reason.length > 0, "BLOCKED planning cannot yield execution handoff");
+    assert(validatePlanningExecutionHandoffFromContext(pipeVague).ok === false, "BLOCKED context fails handoff eligibility");
+
     const pipeVideo = runPlanningPipeline({
       projectId: pPipe,
       inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
@@ -1077,6 +1088,12 @@ export async function runMvpSelfCheck(): Promise<void> {
       pipeVideo.pipelineStop != null && legacyEarlyStopReasonString(pipeVideo.pipelineStop) === pipeVideo.earlyStopReason,
       "typed stop maps to legacy earlyStopReason string (NEEDS_CONFIRMATION)"
     );
+    const videoHandoff = mvpPrepareExecutionHandoffFromPlanningUseCase({
+      projectId: pPipe,
+      inputText: "사용자가 화상회의를 생성하고 참여할 수 있는 웹 서비스를 만들고 싶다",
+    });
+    assert(videoHandoff.ok === false, "NEEDS_CONFIRMATION planning cannot yield execution handoff");
+    assert(validatePlanningExecutionHandoffFromContext(pipeVideo).ok === false, "NEEDS_CONFIRMATION context fails handoff eligibility");
 
     const listIdea = "게시글 목록과 상세를 볼 수 있는 서비스";
     const standaloneRef = prepareRequirementRefinementDecision({ projectId: pPipe, inputText: listIdea });
@@ -1166,6 +1183,53 @@ export async function runMvpSelfCheck(): Promise<void> {
         stableJson(buildPlanningPipelineResultViewModel(ucA.context)) === stableJson(ucA.viewModel),
         "view model builder matches use-case for READY refinement path"
       );
+      assert(
+        vmReady.readinessSummary != null &&
+          vmReady.readinessSummary.isReady === true &&
+          vmReady.readinessSummary.blockingIssueCount === 0 &&
+          vmReady.readinessSummary.confirmRequiredCount === 0,
+        "READY view model exposes readiness summary for handoff clarity"
+      );
+      assert(
+        (vmReady.refinementSummary?.gapDecisionCount ?? 0) === pipeFromRefinement.refinementDecision!.decisions.length,
+        "refinement summary gap decision count matches context"
+      );
+
+      const handoffPrep = mvpPrepareExecutionHandoffFromPlanningUseCase({ projectId: pPipe, refinement: synthPipeBundle });
+      assert(handoffPrep.ok === true, "READY refinement path must produce execution handoff bundle");
+      const hb = handoffPrep.bundle;
+      assert(hb.pipelineStatus === "READY" && hb.projectId === pPipe, "handoff bundle carries READY and projectId");
+      assert(
+        stableJson(hb.features.features.map((f) => f.id).sort()) ===
+          stableJson(pipeFromRefinement.features!.features.map((f) => f.id).sort()),
+        "handoff feature ids match pipeline output"
+      );
+      assert(
+        stableJson(hb.tasks.tasks.map((t) => t.id).sort()) ===
+          stableJson(pipeFromRefinement.tasks!.tasks.map((t) => t.id).sort()),
+        "handoff task ids match pipeline output"
+      );
+      assert(
+        stableJson(hb.screens.screens.map((s) => s.id).sort()) ===
+          stableJson(pipeFromRefinement.screens!.screens.map((s) => s.id).sort()),
+        "handoff screen ids match pipeline output"
+      );
+      assert(validatePlanningExecutionHandoffFromContext(pipeFromRefinement).ok === true, "READY context passes handoff gate");
+      assert(validatePlanningExecutionHandoff(hb).ok === true, "validatePlanningExecutionHandoff accepts READY bundle");
+      assert(validatePlanningExecutionHandoff(pipeFromRefinement).ok === true, "dispatcher validates READY context");
+      const builtCtx = buildPlanningExecutionHandoff(pipeFromRefinement);
+      assert(
+        builtCtx.ok === true && validatePlanningExecutionHandoffBundle(builtCtx.bundle).ok === true,
+        "handoff builder plus post-validator succeeds on READY pipeline"
+      );
+      const badBundle = {
+        ...builtCtx.bundle,
+        traceMetadata: {
+          ...builtCtx.bundle.traceMetadata,
+          stageOutputCounts: { ...builtCtx.bundle.traceMetadata.stageOutputCounts, tasks: 999 },
+        },
+      };
+      assert(validatePlanningExecutionHandoffBundle(badBundle).ok === false, "handoff validator rejects inconsistent trace task count");
     }
     assert(pipeFromRefinement.features != null, "READY pipeline run materializes features");
     const altIa = generateStandardIa({ featureResult: pipeFromRefinement.features });

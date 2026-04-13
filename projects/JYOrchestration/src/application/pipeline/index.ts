@@ -12,6 +12,8 @@ export { buildPlanningStageSnapshots } from "./planningStageSnapshots";
 export type {
   PlanningPipelineApplicationResult,
   PlanningPipelineOutputsPresence,
+  PlanningPipelineReadinessSummary,
+  PlanningPipelineRefinementSummary,
   PlanningPipelineResultViewModel,
 } from "./planningPipelineResultViewModel";
 export { buildPlanningPipelineResultViewModel } from "./planningPipelineResultViewModel";
