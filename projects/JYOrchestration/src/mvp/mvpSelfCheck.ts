@@ -75,11 +75,16 @@ import {
   MvpExecutionApplicationService,
   MVP_EXECUTION_APPLICATION_LAYER_ID,
 } from "../application/mvpExecutionApplicationService";
+import { MVP_EXECUTION_APP_CODE } from "../application/mvpExecutionResultCodes";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
     throw new Error(`mvpSelfCheck: ${msg}`);
   }
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value);
 }
 
 function baseTasks(pid: string): Task[] {
@@ -222,6 +227,7 @@ export async function runMvpSelfCheck(): Promise<void> {
     );
     const app = new MvpExecutionApplicationService();
     const appReadiness = await app.getReadiness({ projectId: pid });
+    assert(appReadiness.ok === true && appReadiness.code === MVP_EXECUTION_APP_CODE.OK, "application getReadiness ok shape");
     assert(
       appReadiness.readiness.isReady === false &&
         appReadiness.readiness.blockers.join(",") === blocked.readiness.blockers.join(","),
@@ -229,7 +235,9 @@ export async function runMvpSelfCheck(): Promise<void> {
     );
     const appStart = await app.startRun({ projectId: pid });
     assert(
-      appStart.ok === false && appStart.reason === "NOT_READY" && appStart.readiness.isReady === false,
+      appStart.ok === false &&
+        appStart.code === MVP_EXECUTION_APP_CODE.NOT_READY &&
+        appStart.readiness.isReady === false,
       "application startRun must respect readiness (no run when not ready)"
     );
   }
@@ -303,31 +311,25 @@ export async function runMvpSelfCheck(): Promise<void> {
   {
     const app = new MvpExecutionApplicationService();
     const appSum = await app.getRunSummary({ runId: r1.id });
+    assert(appSum.ok === true && appSum.code === MVP_EXECUTION_APP_CODE.OK, "application getRunSummary success code");
     assert(
-      appSum.summary?.runId === dtoOk?.runId &&
-        appSum.summary?.runStatus === dtoOk?.runStatus &&
-        appSum.summary?.totalStepCount === dtoOk?.totalStepCount,
+      appSum.summary.runId === dtoOk?.runId &&
+        appSum.summary.runStatus === dtoOk?.runStatus &&
+        appSum.summary.totalStepCount === dtoOk?.totalStepCount,
       "application getRunSummary must match facade DTO"
     );
     const appDet = await app.getRunDetail({ runId: r1.id });
-    assert(
-      appDet.detail?.runId === detailOk.runId &&
-        appDet.detail?.runStatus === detailOk.runStatus &&
-        appDet.detail?.tasks.length === detailOk.tasks.length,
-      "application getRunDetail must match facade DTO"
-    );
+    assert(appDet.ok === true && appDet.code === MVP_EXECUTION_APP_CODE.OK, "application getRunDetail success code");
+    assert(stableJson(appDet.detail) === stableJson(detailOk), "application getRunDetail JSON parity vs facade");
+
     const appSteps = await app.getStepList({ runId: r1.id });
-    assert(
-      appSteps.steps.length === stepDtosOk.length && appSteps.stepFlowSummary === inspectOk.stepFlowSummary,
-      "application getStepList must match facade steps and flow"
-    );
+    assert(appSteps.ok === true && appSteps.code === MVP_EXECUTION_APP_CODE.OK, "application getStepList success code");
+    assert(stableJson(appSteps.steps) === stableJson(stepDtosOk), "application step list JSON parity vs facade");
+    assert(appSteps.stepFlowSummary === inspectOk.stepFlowSummary, "application step flow must match facade inspection flow");
+
     const appInsp = await app.getRunInspection({ projectId: pid, runId: r1.id });
-    assert(
-      appInsp.inspection.runId === inspectOk.runId &&
-        appInsp.inspection.readiness.isReady === inspectOk.readiness.isReady &&
-        appInsp.inspection.steps.length === inspectOk.steps.length,
-      "application getRunInspection must match consolidated inspection VM"
-    );
+    assert(appInsp.ok === true && appInsp.code === MVP_EXECUTION_APP_CODE.OK, "application getRunInspection success code");
+    assert(stableJson(appInsp.inspection) === stableJson(inspectOk), "application getRunInspection JSON parity vs facade VM");
   }
 
   let threw = false;
@@ -349,8 +351,13 @@ export async function runMvpSelfCheck(): Promise<void> {
     mvpSeedProjectTasks(pStart, baseTasks(pStart));
     const appSvc = new MvpExecutionApplicationService();
     const appStart = await appSvc.startRun({ projectId: pStart });
-    assert(appStart.ok === true, "application startRun when ready must succeed");
-    const summaryViaApp = await mvpGetRunSummaryDto(appStart.runId);
+    assert(
+      appStart.ok === true && appStart.code === MVP_EXECUTION_APP_CODE.OK,
+      "application startRun when ready must succeed"
+    );
+    const summaryViaAppRes = await appSvc.getRunSummary({ runId: appStart.runId });
+    assert(summaryViaAppRes.ok === true && summaryViaAppRes.code === MVP_EXECUTION_APP_CODE.OK);
+    const summaryViaApp = summaryViaAppRes.summary;
     assert(
       summaryViaFacade?.runStatus === summaryViaApp?.runStatus &&
         summaryViaFacade?.totalTasks === summaryViaApp?.totalTasks &&
@@ -453,20 +460,74 @@ export async function runMvpSelfCheck(): Promise<void> {
   {
     const app = new MvpExecutionApplicationService();
     const appSum = await app.getRunSummary({ runId: rNonRetry.id });
+    assert(appSum.ok === true && appSum.code === MVP_EXECUTION_APP_CODE.OK, "application getRunSummary ok on failure run");
     assert(
-      appSum.summary?.runStatus === "FAILED" && appSum.summary?.lastFailurePayload?.failureCode === "REVIEW_FAILED",
+      appSum.summary.runStatus === "FAILED" && appSum.summary.lastFailurePayload?.failureCode === "REVIEW_FAILED",
       "application summary on failure path"
     );
+    assert(stableJson(appSum.summary.lastFailurePayload) === stableJson(dtoFail?.lastFailurePayload), "summary failure payload parity");
+
     const appDet = await app.getRunDetail({ runId: rNonRetry.id });
+    assert(appDet.ok === true && appDet.code === MVP_EXECUTION_APP_CODE.OK, "application getRunDetail ok on failure run");
     assert(
-      appDet.detail?.runStatus === "FAILED" && appDet.detail?.latestFailurePayload?.failureCode === "REVIEW_FAILED",
+      appDet.detail.runStatus === "FAILED" && appDet.detail.latestFailurePayload?.failureCode === "REVIEW_FAILED",
       "application detail on failure path"
     );
+    assert(stableJson(appDet.detail.latestFailurePayload) === stableJson(detailFail?.latestFailurePayload), "detail failure payload parity");
+
+    const appSteps = await app.getStepList({ runId: rNonRetry.id });
+    assert(appSteps.ok === true && appSteps.code === MVP_EXECUTION_APP_CODE.OK, "application getStepList ok on failure run");
+    assert(stableJson(appSteps.steps) === stableJson(stepDtosFail), "failure step list JSON parity vs facade");
+    assert(appSteps.stepFlowSummary === inspectFail.stepFlowSummary, "failure step flow parity vs facade inspection");
+
     const appInsp = await app.getRunInspection({ projectId: pid, runId: rNonRetry.id });
+    assert(appInsp.ok === true && appInsp.code === MVP_EXECUTION_APP_CODE.OK, "application getRunInspection ok on failure run");
     assert(
       appInsp.inspection.runDetail?.latestFailurePayload?.failureCode === "REVIEW_FAILED" &&
         appInsp.inspection.runSummary?.lastFailurePayload?.failureCode === "REVIEW_FAILED",
       "application inspection preserves structured failure"
+    );
+    assert(stableJson(appInsp.inspection) === stableJson(inspectFail), "failure inspection JSON parity vs facade VM");
+  }
+
+  {
+    const app = new MvpExecutionApplicationService();
+    const badPidReadiness = await app.getReadiness({ projectId: "  \t  " });
+    assert(
+      badPidReadiness.ok === false && badPidReadiness.code === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID,
+      "application getReadiness rejects blank projectId"
+    );
+    const badPidStart = await app.startRun({ projectId: "" });
+    assert(
+      badPidStart.ok === false && badPidStart.code === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID,
+      "application startRun rejects blank projectId"
+    );
+    const badRid = await app.getRunSummary({ runId: " \n " });
+    assert(badRid.ok === false && badRid.code === MVP_EXECUTION_APP_CODE.INVALID_RUN_ID, "application rejects blank runId");
+    const missingRun = await app.getRunSummary({ runId: "mvp-nonexistent-run-id-00000000" });
+    assert(
+      missingRun.ok === false && missingRun.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
+      "application maps unknown run to RUN_NOT_FOUND"
+    );
+    const missingDetail = await app.getRunDetail({ runId: "mvp-nonexistent-run-id-00000000" });
+    assert(
+      missingDetail.ok === false && missingDetail.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
+      "application getRunDetail RUN_NOT_FOUND"
+    );
+    const missingSteps = await app.getStepList({ runId: "mvp-nonexistent-run-id-00000000" });
+    assert(
+      missingSteps.ok === false && missingSteps.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
+      "application getStepList RUN_NOT_FOUND"
+    );
+    const missingInsp = await app.getRunInspection({ projectId: pid, runId: "mvp-nonexistent-run-id-00000000" });
+    assert(
+      missingInsp.ok === false && missingInsp.code === MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND,
+      "application getRunInspection RUN_NOT_FOUND"
+    );
+    const badInspPid = await app.getRunInspection({ projectId: "", runId: rNonRetry.id });
+    assert(
+      badInspPid.ok === false && badInspPid.code === MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID,
+      "application getRunInspection rejects blank projectId"
     );
   }
 

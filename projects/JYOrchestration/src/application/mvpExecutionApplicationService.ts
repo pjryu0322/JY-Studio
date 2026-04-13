@@ -26,45 +26,98 @@ import type {
   StartRunRequest,
   StartRunResult,
 } from "./mvpExecutionContracts";
+import { MVP_EXECUTION_APP_CODE } from "./mvpExecutionResultCodes";
 
 /** Marker for tests documenting that this layer is JYOrchestration-local only. */
 export const MVP_EXECUTION_APPLICATION_LAYER_ID = "jyorchestration:application:mvp-execution" as const;
 
+function normalizeProjectId(projectId: string): string | null {
+  const t = projectId.trim();
+  return t.length > 0 ? t : null;
+}
+
+function normalizeRunId(runId: string): string | null {
+  const t = runId.trim();
+  return t.length > 0 ? t : null;
+}
+
 export class MvpExecutionApplicationService {
   async getReadiness(req: GetReadinessRequest): Promise<GetReadinessResult> {
-    const readiness = await mvpCheckReadinessDto({ projectId: req.projectId });
-    return { readiness };
+    const projectId = normalizeProjectId(req.projectId);
+    if (!projectId) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID };
+    }
+    const readiness = await mvpCheckReadinessDto({ projectId });
+    return { ok: true, code: MVP_EXECUTION_APP_CODE.OK, readiness };
   }
 
   async startRun(req: StartRunRequest): Promise<StartRunResult> {
-    const r = await mvpStartRunIfReady(req.projectId);
-    if (!r.ok) {
-      return { ok: false, reason: "NOT_READY", readiness: r.readiness };
+    const projectId = normalizeProjectId(req.projectId);
+    if (!projectId) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID };
     }
-    return { ok: true, runId: r.run.id, readiness: r.readiness };
+    const r = await mvpStartRunIfReady(projectId);
+    if (!r.ok) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.NOT_READY, readiness: r.readiness };
+    }
+    return { ok: true, code: MVP_EXECUTION_APP_CODE.OK, runId: r.run.id, readiness: r.readiness };
   }
 
   async getRunSummary(req: GetRunSummaryRequest): Promise<GetRunSummaryResult> {
-    const summary = await mvpGetRunSummaryDto(req.runId);
-    return { summary };
+    const runId = normalizeRunId(req.runId);
+    if (!runId) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_RUN_ID };
+    }
+    const summary = await mvpGetRunSummaryDto(runId);
+    if (!summary) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND };
+    }
+    return { ok: true, code: MVP_EXECUTION_APP_CODE.OK, summary };
   }
 
   async getRunDetail(req: GetRunDetailRequest): Promise<GetRunDetailResult> {
-    const detail = await mvpGetRunDetailDto(req.runId);
-    return { detail };
+    const runId = normalizeRunId(req.runId);
+    if (!runId) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_RUN_ID };
+    }
+    const detail = await mvpGetRunDetailDto(runId);
+    if (!detail) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND };
+    }
+    return { ok: true, code: MVP_EXECUTION_APP_CODE.OK, detail };
   }
 
   async getStepList(req: GetStepListRequest): Promise<GetStepListResult> {
-    const steps = mvpGetStepSummaryDtos(req.runId);
-    const stepFlowSummary = mvpGetStepFlowSummary(req.runId);
-    return { steps, stepFlowSummary };
+    const runId = normalizeRunId(req.runId);
+    if (!runId) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_RUN_ID };
+    }
+    const summary = await mvpGetRunSummaryDto(runId);
+    if (!summary) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND };
+    }
+    const steps = mvpGetStepSummaryDtos(runId);
+    const stepFlowSummary = mvpGetStepFlowSummary(runId);
+    return { ok: true, code: MVP_EXECUTION_APP_CODE.OK, steps, stepFlowSummary };
   }
 
   async getRunInspection(req: GetRunInspectionRequest): Promise<GetRunInspectionResult> {
+    const projectId = normalizeProjectId(req.projectId);
+    if (!projectId) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_PROJECT_ID };
+    }
+    const runId = normalizeRunId(req.runId);
+    if (!runId) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.INVALID_RUN_ID };
+    }
+    const summary = await mvpGetRunSummaryDto(runId);
+    if (!summary) {
+      return { ok: false, code: MVP_EXECUTION_APP_CODE.RUN_NOT_FOUND };
+    }
     const inspection = await mvpBuildRunInspectionViewModel({
-      projectId: req.projectId,
-      runId: req.runId,
+      projectId,
+      runId,
     });
-    return { inspection };
+    return { ok: true, code: MVP_EXECUTION_APP_CODE.OK, inspection };
   }
 }
