@@ -98,6 +98,20 @@ export function PlanningExecutionPageClient() {
     }
   }, [useDemo, demoStatus]);
 
+  async function refreshRunStatus(): Promise<void> {
+    setRunStatusError(null);
+    if (useDemo) return;
+    const rid = liveScreen.viewModel.runId;
+    if (!rid) return;
+    const r = await getPlanningExecutionRunStatus(rid);
+    if (r.status === "success") {
+      setRunStatus(r.response.run);
+      setRunStatusError(null);
+    } else {
+      setRunStatusError(r.message);
+    }
+  }
+
   useEffect(() => {
     if (useDemo) return;
     const rid = liveScreen.viewModel.runId;
@@ -214,6 +228,7 @@ export function PlanningExecutionPageClient() {
         onInputTextChange={setInputText}
         runStatus={useDemo ? null : runStatus}
         runStatusError={useDemo ? null : runStatusError}
+        onRunStatusRefresh={useDemo ? null : refreshRunStatus}
         inputDisabled={inFlight}
         onStructuralAction={async (a) => {
           setLastAction(a);
@@ -248,29 +263,11 @@ export function PlanningExecutionPageClient() {
             return;
           }
           if (a === "INSPECT_FAILURE") {
-            // If run-status is available, prefer showing it (runtime failure inspection).
-            const rid = liveScreen.viewModel.runId;
-            if (rid) {
-              const r = await getPlanningExecutionRunStatus(rid);
-              if (r.status === "success") {
-                setRunStatus(r.response.run);
-                setRunStatusError(null);
-              } else {
-                setRunStatusError(r.message);
-              }
-            }
+            await refreshRunStatus();
             return;
           }
           if (a === "VIEW_RUN_STATUS") {
-            const rid = liveScreen.viewModel.runId;
-            if (!rid) return;
-            const r = await getPlanningExecutionRunStatus(rid);
-            if (r.status === "success") {
-              setRunStatus(r.response.run);
-              setRunStatusError(null);
-            } else {
-              setRunStatusError(r.message);
-            }
+            await refreshRunStatus();
             return;
           }
         }}
