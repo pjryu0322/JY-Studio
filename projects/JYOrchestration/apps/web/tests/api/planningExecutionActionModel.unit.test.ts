@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizePlanningExecutionActions, resolvePlanningExecutionPrimaryAction } from "../../src/components/planningExecution/planningExecutionActionModel";
+import {
+  normalizePlanningExecutionActions,
+  resolvePlanningExecutionActionBarActions,
+  resolvePlanningExecutionPrimaryAction,
+} from "../../src/components/planningExecution/planningExecutionActionModel";
 
 describe("planning execution action model normalization", () => {
   it("dedupes available actions and keeps primary/secondary ordered", () => {
@@ -45,6 +49,22 @@ describe("planning execution action model normalization", () => {
     expect(a.availableActions).not.toContain("VIEW_RUN_STATUS");
     expect(a.primaryAction).toBe("EDIT_INPUT");
     expect(a.availableActions).toContain("REFRESH_STATUS");
+  });
+
+  it("ActionBar stays flow-only (no VIEW_RUN_STATUS / no REFRESH_STATUS)", () => {
+    const base = normalizePlanningExecutionActions({
+      primaryAction: "VIEW_RUN_STATUS",
+      secondaryAction: "REFRESH_STATUS",
+      availableActions: ["VIEW_RUN_STATUS", "REFRESH_STATUS", "EDIT_INPUT", "START_EXECUTION"],
+    });
+    const a = resolvePlanningExecutionActionBarActions({
+      responseStatus: "EXECUTION_STARTED",
+      baseActions: base,
+      runStatus: { status: "RUNNING", canInspect: true, canRetry: false },
+    });
+    expect(a.availableActions).not.toContain("VIEW_RUN_STATUS");
+    expect(a.availableActions).not.toContain("REFRESH_STATUS");
+    expect(a.availableActions).toEqual(["EDIT_INPUT", "START_EXECUTION"]);
   });
 });
 

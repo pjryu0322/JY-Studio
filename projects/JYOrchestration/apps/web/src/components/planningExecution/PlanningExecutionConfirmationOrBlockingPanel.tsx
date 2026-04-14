@@ -6,8 +6,10 @@ import { PlanningExecutionMessagePanel } from "./PlanningExecutionMessagePanel";
 /** Confirmation counts + message — no refinement bundle. */
 export function PlanningExecutionConfirmationOrBlockingPanel({
   vm,
+  onReviewConfirmation,
 }: {
   readonly vm: PlanningOriginatedExecutionViewModel;
+  readonly onReviewConfirmation: (() => void) | null;
 }) {
   const c = vm.confirmationNeededSummary;
   const isConfirmation = vm.responseStatus === "NEEDS_CONFIRMATION";
@@ -23,6 +25,17 @@ export function PlanningExecutionConfirmationOrBlockingPanel({
           </p>
           {vm.confirmationNeededQualitativeSummary ? (
             <p className="mt-2 text-sm text-amber-950">{vm.confirmationNeededQualitativeSummary}</p>
+          ) : null}
+          {onReviewConfirmation ? (
+            <div className="mt-3">
+              <button
+                type="button"
+                className="rounded-md bg-amber-900 px-3 py-2 text-sm font-medium text-white hover:bg-amber-800"
+                onClick={onReviewConfirmation}
+              >
+                확인 검토
+              </button>
+            </div>
           ) : null}
         </section>
       ) : null}

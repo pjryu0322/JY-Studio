@@ -10,11 +10,13 @@ export function PlanningExecutionExecutionStatusPanel({
   runStatus,
   runStatusError,
   onRunStatusRefresh,
+  onInspectFailure,
 }: {
   readonly vm: PlanningOriginatedExecutionViewModel;
   readonly runStatus: (PlanningExecutionRunStatusResponse & { ok: true })["run"] | null;
   readonly runStatusError: string | null;
   readonly onRunStatusRefresh: (() => void) | null;
+  readonly onInspectFailure: (() => void) | null;
 }) {
   const pres = runStatus ? buildPlanningExecutionRunStatusPresentation({ run: runStatus }) : null;
   return (
@@ -66,6 +68,17 @@ export function PlanningExecutionExecutionStatusPanel({
                 </span>
               </div>
               {pres?.hintLine ? <p className="mt-1 text-xs text-neutral-600">{pres.hintLine}</p> : null}
+              {runStatus.status === "FAILED" && onInspectFailure ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-md bg-red-900 px-3 py-2 text-sm font-medium text-white hover:bg-red-800"
+                    onClick={onInspectFailure}
+                  >
+                    실패 원인 보기
+                  </button>
+                </div>
+              ) : null}
             </div>
             <dl className="mt-2 grid gap-2 text-sm text-neutral-700">
               <div className="flex justify-between gap-2">

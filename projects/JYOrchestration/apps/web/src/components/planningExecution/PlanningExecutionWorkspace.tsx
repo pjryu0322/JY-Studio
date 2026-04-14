@@ -25,7 +25,7 @@ import { PlanningExecutionReadinessPanel } from "./PlanningExecutionReadinessPan
 import { PlanningExecutionStatusCard } from "./PlanningExecutionStatusCard";
 import { PlanningExecutionCounts } from "./PlanningExecutionCounts";
 import { PlanningExecutionTaskList } from "./PlanningExecutionTaskList";
-import { resolvePlanningExecutionPrimaryAction } from "./planningExecutionActionModel";
+import { resolvePlanningExecutionActionBarActions } from "./planningExecutionActionModel";
 
 export type PlanningExecutionWorkspaceProps = Readonly<{
   screen: PlanningExecutionScreenViewModel;
@@ -35,6 +35,8 @@ export type PlanningExecutionWorkspaceProps = Readonly<{
   runStatus: (PlanningExecutionRunStatusResponse & { ok: true })["run"] | null;
   runStatusError: string | null;
   onRunStatusRefresh: (() => void) | null;
+  onInspectFailure: (() => void) | null;
+  onReviewConfirmation: (() => void) | null;
   /** When true, disables local input (e.g. while a request is in flight). */
   inputDisabled?: boolean;
 }>;
@@ -52,6 +54,8 @@ function renderSection(
     runStatus,
     runStatusError,
     onRunStatusRefresh,
+    onInspectFailure,
+    onReviewConfirmation,
   } = props;
   const vm = screen.viewModel;
   switch (section) {
@@ -69,7 +73,7 @@ function renderSection(
     case "PLANNING_RESULT_SUMMARY":
       return <PlanningExecutionPlanningSummaryPanel vm={vm} />;
     case "CONFIRMATION_BLOCKING_PANEL":
-      return <PlanningExecutionConfirmationOrBlockingPanel vm={vm} />;
+      return <PlanningExecutionConfirmationOrBlockingPanel vm={vm} onReviewConfirmation={onReviewConfirmation} />;
     case "EXECUTION_READINESS_PANEL":
       return <PlanningExecutionReadinessPanel vm={vm} />;
     case "EXECUTION_START_STATUS_PANEL":
@@ -79,6 +83,7 @@ function renderSection(
           runStatus={runStatus}
           runStatusError={runStatusError}
           onRunStatusRefresh={onRunStatusRefresh}
+          onInspectFailure={onInspectFailure}
         />
       );
     case "METRICS_ROW":
@@ -86,7 +91,7 @@ function renderSection(
     case "TASK_SCREEN_SUMMARY_PANEL":
       return <PlanningExecutionTaskList counts={vm.counts} />;
     case "ACTION_BAR":
-      const effectiveActions: PlanningExecutionActionViewModel = resolvePlanningExecutionPrimaryAction({
+      const effectiveActions: PlanningExecutionActionViewModel = resolvePlanningExecutionActionBarActions({
         responseStatus: screen.responseStatus,
         baseActions: vm.actions,
         runStatus: runStatus
