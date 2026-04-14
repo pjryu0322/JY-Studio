@@ -4,6 +4,7 @@
  * Structural action intents only — wire `onStructuralAction` to route/facade later; no direct executionService.
  */
 
+import { planningExecutionActionLabel } from "@jy-orch/application/public";
 import type { PlanningExecutionActionViewModel, PlanningExecutionStructuralAction } from "@jy-orch/application/public";
 
 export function PlanningExecutionActionBar({
@@ -27,7 +28,7 @@ export function PlanningExecutionActionBar({
         disabled={disabled}
         onClick={() => onStructuralAction(actions.primaryAction)}
       >
-        {actions.primaryAction}
+        {planningExecutionActionLabel(actions.primaryAction)}
       </button>
       {actions.secondaryAction ? (
         <button
@@ -37,11 +38,11 @@ export function PlanningExecutionActionBar({
           disabled={disabled}
           onClick={() => onStructuralAction(actions.secondaryAction!)}
         >
-          {actions.secondaryAction}
+          {planningExecutionActionLabel(actions.secondaryAction!)}
         </button>
       ) : null}
       <span className="ml-auto text-xs text-neutral-500">
-        Available: {actions.availableActions.join(", ")}
+        Available: {actions.availableActions.map(planningExecutionActionLabel).join(" · ")}
       </span>
     </footer>
   );

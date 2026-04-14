@@ -1,6 +1,9 @@
 /**
  * JYOrchestration internal application layer (service-ready; no HTTP wiring here).
  *
+ * External consumers (web routes, UI adapters) should prefer `@jy-orch/application/public`.
+ * This module exports many internal building blocks and is intentionally broader than our public surface.
+ *
  * **Target default for new features:** use-cases + `MvpExecutionApplicationService` → MVP facade
  * → frozen `executionService` (do not add parallel execution engines here).
  *

@@ -42,9 +42,8 @@ const FORBIDDEN_KEYS = new Set([
   "refinement",
   "screens",
   "tasks",
-  "context",
-  "source",
   "ExecutionPreparationBundle",
+  "ExecutionBridgePayload",
 ]);
 
 function assertNoForbiddenKeyLeak(value: unknown, path: string, depth: number, kind: string): void {
@@ -162,6 +161,23 @@ export async function runPlanningOriginatedExecutionUiRouteIntegrationSelfCheck(
     planningTerminalBlocksPreparation(needsConf.planningSummary.planningStatus),
     "transition: NEEDS_CONFIRMATION never runs execution preparation"
   );
+  {
+    const vmNc = planningOriginatedVmFromFacade(needsConf);
+    const r = needsConf.planningSummary.readiness;
+    assert(r !== null, "NEEDS_CONFIRMATION should expose readiness summary for UX counts");
+    if (r) {
+      assert(
+        vmNc.confirmationNeededSummary !== null,
+        "NEEDS_CONFIRMATION view-model must propagate confirmation counts"
+      );
+      assert(
+        vmNc.confirmationNeededSummary !== null &&
+          vmNc.confirmationNeededSummary.confirmRequiredCount === r.confirmRequiredCount &&
+          vmNc.confirmationNeededSummary.blockingIssueCount === r.blockingIssueCount,
+        "NEEDS_CONFIRMATION confirmation summary matches readiness"
+      );
+    }
+  }
 
   const autoDec: RequirementRefinementDecision = {
     normalizedText: "Stable demo input for planning-originated execution facade",

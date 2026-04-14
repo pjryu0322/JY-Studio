@@ -3,9 +3,16 @@
  */
 import { describe, expect, it } from "vitest";
 import { demoPlanningExecutionScreenViewModel } from "../../src/components/planningExecution/planningExecutionDemoSamples";
-import type { PlanningOriginatedExecutionStatus } from "../../../../src/application/contracts/planningOriginatedExecutionResponse";
+import type { PlanningOriginatedExecutionStatus } from "@jy-orch/application/public";
 
-const FORBIDDEN = ["bundle", "handoff", "ExecutionPreparationBundle", "screens", "tasks", "context"] as const;
+const FORBIDDEN = [
+  "bundle",
+  "handoff",
+  "ExecutionPreparationBundle",
+  "ExecutionBridgePayload",
+  "screens",
+  "tasks",
+] as const;
 
 function assertNoForbiddenJsonKeys(json: string): void {
   for (const k of FORBIDDEN) {

@@ -37,6 +37,7 @@ type UiRequestState =
 
 export function PlanningExecutionPageClient() {
   const [useDemo, setUseDemo] = useState(false);
+  const [showDevControls, setShowDevControls] = useState(false);
   const [demoStatus, setDemoStatus] = useState<PlanningOriginatedExecutionStatus>("READY_FOR_EXECUTION");
   const [projectId, setProjectId] = useState("");
   const [inputText, setInputText] = useState("");
@@ -92,65 +93,51 @@ export function PlanningExecutionPageClient() {
     <div className="min-h-screen bg-neutral-100/80">
       <div className="border-b border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700 shadow-sm">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-xs text-neutral-700">
-            <input
-              type="checkbox"
-              checked={useDemo}
-              onChange={(e) => setUseDemo(e.target.checked)}
-            />
-            Use demo fixtures
-          </label>
+          <span className="text-sm font-semibold text-neutral-900">Planning → execution</span>
 
-          {useDemo ? (
-            <>
-              <label className="font-medium text-neutral-800" htmlFor="demo-status-select">
-                Demo status
+          <button
+            type="button"
+            className="ml-auto rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100"
+            onClick={() => setShowDevControls((v) => !v)}
+          >
+            {showDevControls ? "Hide dev controls" : "Dev controls"}
+          </button>
+
+          {!showDevControls ? null : (
+            <div className="flex w-full flex-wrap items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
+              <label className="flex items-center gap-2 text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={useDemo}
+                  onChange={(e) => setUseDemo(e.target.checked)}
+                />
+                Demo fixtures
               </label>
-              <select
-                id="demo-status-select"
-                className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 font-mono text-xs"
-                value={demoStatus}
-                onChange={(e) => setDemoStatus(e.target.value as PlanningOriginatedExecutionStatus)}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <>
-              <input
-                className="w-44 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-xs"
-                placeholder="projectId"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                disabled={inFlight}
-              />
-              <button
-                type="button"
-                className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-50"
-                disabled={inFlight}
-                onClick={async () => {
-                  const next = await submit("PREPARE_ONLY");
-                  if (next) setLiveScreen(next);
-                }}
-              >
-                Prepare only
-              </button>
-              <button
-                type="button"
-                className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
-                disabled={inFlight}
-                onClick={async () => {
-                  const next = await submit("PREPARE_AND_START");
-                  if (next) setLiveScreen(next);
-                }}
-              >
-                Prepare & start
-              </button>
-            </>
+
+              {useDemo ? (
+                <>
+                  <label className="font-medium text-neutral-800" htmlFor="demo-status-select">
+                    Demo status
+                  </label>
+                  <select
+                    id="demo-status-select"
+                    className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 font-mono text-xs"
+                    value={demoStatus}
+                    onChange={(e) => setDemoStatus(e.target.value as PlanningOriginatedExecutionStatus)}
+                  >
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <span className="text-neutral-500">
+                  In real mode, run actions are driven from the action bar.
+                </span>
+              )}
+            </div>
           )}
 
           {lastAction ? (

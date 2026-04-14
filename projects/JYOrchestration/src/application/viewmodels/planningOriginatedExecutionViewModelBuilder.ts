@@ -8,6 +8,7 @@
 
 import type { PlanningOriginatedExecutionResponse } from "../contracts/planningOriginatedExecutionResponse";
 import type { PlanningOriginatedExecutionStatus } from "../contracts/planningOriginatedExecutionResponse";
+import type { PlanningOriginatedReadinessSummary } from "../planningOriginatedExecution/planningOriginatedExecutionContracts";
 import type {
   PlanningExecutionActionViewModel,
   PlanningExecutionCountsViewModel,
@@ -105,6 +106,14 @@ function messageFrom(
   };
 }
 
+function confirmationSummaryFromReadiness(
+  r: PlanningOriginatedReadinessSummary | null
+): import("../contracts/planningOriginatedExecutionResponse").PlanningOriginatedConfirmationNeededSummary {
+  if (!r) return null;
+  if (r.confirmRequiredCount === 0 && r.blockingIssueCount === 0) return null;
+  return { confirmRequiredCount: r.confirmRequiredCount, blockingIssueCount: r.blockingIssueCount };
+}
+
 /** Build UI view-model from a normalized planning-originated execution response. */
 export function buildPlanningOriginatedExecutionViewModel(
   response: PlanningOriginatedExecutionResponse
@@ -124,7 +133,8 @@ export function buildPlanningOriginatedExecutionViewModel(
       responseStatus: status,
       statusCard,
       counts: null,
-      confirmationNeededSummary: null,
+      confirmationNeededSummary:
+        status === "NEEDS_CONFIRMATION" ? confirmationSummaryFromReadiness(planning.readiness) : null,
       runId: null,
       canStartExecution,
       canRetry,
