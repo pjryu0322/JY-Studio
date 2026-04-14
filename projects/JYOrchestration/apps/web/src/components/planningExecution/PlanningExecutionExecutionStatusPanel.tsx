@@ -8,10 +8,12 @@ export function PlanningExecutionExecutionStatusPanel({
   vm,
   runStatus,
   runStatusError,
+  onRunStatusRefresh,
 }: {
   readonly vm: PlanningOriginatedExecutionViewModel;
   readonly runStatus: (PlanningExecutionRunStatusResponse & { ok: true })["run"] | null;
   readonly runStatusError: string | null;
+  readonly onRunStatusRefresh: (() => void) | null;
 }) {
   return (
     <div className="space-y-3">
@@ -22,7 +24,18 @@ export function PlanningExecutionExecutionStatusPanel({
         </section>
       ) : null}
       <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="Run monitoring">
-        <h3 className="text-sm font-semibold text-neutral-800">실행 상태</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-neutral-800">실행 상태</h3>
+          {onRunStatusRefresh ? (
+            <button
+              type="button"
+              className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+              onClick={onRunStatusRefresh}
+            >
+              실행 상태 새로고침
+            </button>
+          ) : null}
+        </div>
         {runStatusError ? (
           <p className="mt-2 text-sm text-red-800" data-testid="run-status-error">
             {runStatusError}
@@ -43,6 +56,14 @@ export function PlanningExecutionExecutionStatusPanel({
               <dt className="text-neutral-500">진행률(작업 기준)</dt>
               <dd>{runStatus.progressPercent}%</dd>
             </div>
+            <div className="col-span-full">
+              <div className="h-2 w-full rounded-full bg-neutral-100">
+                <div
+                  className="h-2 rounded-full bg-neutral-800"
+                  style={{ width: `${Math.max(0, Math.min(100, runStatus.progressPercent))}%` }}
+                />
+              </div>
+            </div>
             <div className="flex justify-between gap-2">
               <dt className="text-neutral-500">현재 단계</dt>
               <dd className="font-mono text-xs">{runStatus.currentStep ?? "—"}</dd>
@@ -57,7 +78,7 @@ export function PlanningExecutionExecutionStatusPanel({
           </dl>
         ) : (
           <p className="mt-2 text-sm text-neutral-700">
-            “실행 상태 보기”를 눌러 현재 run 상태를 불러옵니다. (상태 재평가는 계획/준비를 다시 평가합니다.)
+            실행 상태는 이 패널에서 확인합니다. “상태 재평가”는 계획/준비를 다시 평가하는 별도 동작입니다.
           </p>
         )}
       </section>

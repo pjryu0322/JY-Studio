@@ -25,6 +25,7 @@ import { PlanningExecutionReadinessPanel } from "./PlanningExecutionReadinessPan
 import { PlanningExecutionStatusCard } from "./PlanningExecutionStatusCard";
 import { PlanningExecutionCounts } from "./PlanningExecutionCounts";
 import { PlanningExecutionTaskList } from "./PlanningExecutionTaskList";
+import { deriveRuntimeFailureActions, normalizePlanningExecutionActions } from "./planningExecutionActionModel";
 
 export type PlanningExecutionWorkspaceProps = Readonly<{
   screen: PlanningExecutionScreenViewModel;
@@ -33,6 +34,7 @@ export type PlanningExecutionWorkspaceProps = Readonly<{
   onStructuralAction: (action: PlanningExecutionStructuralAction) => void;
   runStatus: (PlanningExecutionRunStatusResponse & { ok: true })["run"] | null;
   runStatusError: string | null;
+  onRunStatusRefresh: (() => void) | null;
   /** When true, disables local input (e.g. while a request is in flight). */
   inputDisabled?: boolean;
 }>;
@@ -41,7 +43,16 @@ function renderSection(
   section: PlanningExecutionScreenSection,
   props: PlanningExecutionWorkspaceProps
 ): ReactNode {
-  const { screen, inputText, onInputTextChange, onStructuralAction, inputDisabled, runStatus, runStatusError } = props;
+  const {
+    screen,
+    inputText,
+    onInputTextChange,
+    onStructuralAction,
+    inputDisabled,
+    runStatus,
+    runStatusError,
+    onRunStatusRefresh,
+  } = props;
   const vm = screen.viewModel;
   switch (section) {
     case "INPUT_PANEL":
@@ -62,39 +73,31 @@ function renderSection(
     case "EXECUTION_READINESS_PANEL":
       return <PlanningExecutionReadinessPanel vm={vm} />;
     case "EXECUTION_START_STATUS_PANEL":
-      return <PlanningExecutionExecutionStatusPanel vm={vm} runStatus={runStatus} runStatusError={runStatusError} />;
+      return (
+        <PlanningExecutionExecutionStatusPanel
+          vm={vm}
+          runStatus={runStatus}
+          runStatusError={runStatusError}
+          onRunStatusRefresh={onRunStatusRefresh}
+        />
+      );
     case "METRICS_ROW":
       return <PlanningExecutionCounts counts={vm.counts} />;
     case "TASK_SCREEN_SUMMARY_PANEL":
       return <PlanningExecutionTaskList counts={vm.counts} />;
     case "ACTION_BAR":
-      const effectiveActions: PlanningExecutionActionViewModel =
-        screen.responseStatus === "EXECUTION_STARTED" && runStatus?.status === "FAILED"
-          ? {
-              primaryAction: "INSPECT_FAILURE",
-              secondaryAction: "RETRY_EXECUTION",
-              availableActions: ["INSPECT_FAILURE", "RETRY_EXECUTION", ...vm.actions.availableActions],
-            }
-          : vm.actions;
-      const runFailed = runStatus?.status === "FAILED";
-      // Prefer contract-driven hints when available (run status knows if retry/inspect are meaningful).
-      const preferInspect = runFailed && runStatus?.canInspect === true;
-      const preferRetry = runFailed && runStatus?.canRetry === true;
-      const contractActions: PlanningExecutionActionViewModel | null =
-        screen.responseStatus === "EXECUTION_STARTED" && runFailed && (preferInspect || preferRetry)
-          ? {
-              primaryAction: preferInspect ? "INSPECT_FAILURE" : "RETRY_EXECUTION",
-              secondaryAction: preferInspect && preferRetry ? "RETRY_EXECUTION" : preferRetry ? "INSPECT_FAILURE" : null,
-              availableActions: [
-                ...(preferInspect ? (["INSPECT_FAILURE"] as const) : (["RETRY_EXECUTION"] as const)),
-                ...(preferInspect && preferRetry ? (["RETRY_EXECUTION"] as const) : preferRetry ? (["INSPECT_FAILURE"] as const) : ([] as const)),
-                ...vm.actions.availableActions,
-              ],
-            }
-          : null;
+      const base = normalizePlanningExecutionActions(vm.actions);
+      const runFailed = screen.responseStatus === "EXECUTION_STARTED" && runStatus?.status === "FAILED";
+      const effectiveActions: PlanningExecutionActionViewModel = runFailed
+        ? deriveRuntimeFailureActions({
+            baseActions: base,
+            canInspect: runStatus?.canInspect === true,
+            canRetry: runStatus?.canRetry === true,
+          })
+        : base;
       return (
         <PlanningExecutionActionBar
-          actions={contractActions ?? effectiveActions}
+          actions={effectiveActions}
           onStructuralAction={onStructuralAction}
           disabled={inputDisabled}
           runStatusRefreshHint={screen.responseStatus === "EXECUTION_STARTED" && runStatus !== null}
