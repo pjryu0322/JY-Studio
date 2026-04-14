@@ -7,6 +7,7 @@ import {
   mvpClearTaskStore,
   mvpSeedProjectTasks,
   listAllTasks,
+  getExecutableTasks,
   reorderTasks,
   confirmTask,
   type Task,
@@ -95,7 +96,15 @@ import {
   validateExecutionPreparationBundle,
 } from "../application/executionPreparation";
 import { mvpPrepareExecutionInputFromPlanningUseCase } from "../application/usecases/mvpPrepareExecutionInputFromPlanningUseCase";
-import { dryRunExecutionBridge } from "../application/executionBridge";
+import {
+  applyExecutionPreparationToMvpStores,
+  applyLegacyMvpSeedFromExecutionPreparationBundle,
+  applyMvpSeedPayload,
+  buildMvpSeedPayloadFromExecutionPreparation,
+  dryRunExecutionBridge,
+  minimalExecutionPreparationBundleForParity,
+  verifyMvpSeedPayloadApplied,
+} from "../application/executionBridge";
 import { mvpStartExecutionFromPreparationUseCase } from "../application/usecases/mvpStartExecutionFromPreparationUseCase";
 import {
   MVP_EXECUTION_APPLICATION_COMMANDS,
@@ -1369,6 +1378,110 @@ export async function runMvpSelfCheck(): Promise<void> {
     assert(
       listedB.map((t) => t.id).join(",") === dryB.bridgeInput!.tasks.map((x) => x.taskId).join(","),
       "seeded MVP task order matches bridge input task ids"
+    );
+  }
+
+  {
+    resetAll();
+    const pPar = "mvp-bridge-seed-parity";
+    const bundlePar = minimalExecutionPreparationBundleForParity(pPar);
+    assert(validateExecutionPreparationBundle(bundlePar).ok === true, "minimal parity bundle validates");
+    const builtPayload = buildMvpSeedPayloadFromExecutionPreparation(bundlePar);
+
+    applyLegacyMvpSeedFromExecutionPreparationBundle(bundlePar);
+    const vLegacy = await verifyMvpSeedPayloadApplied(builtPayload);
+    assert(vLegacy.ok === true, "legacy-style seed satisfies post-seed verification vs built payload");
+
+    const readinessLegacy = await evaluateExecutionReadiness({ projectId: pPar });
+    const execLegacy = await getExecutableTasks(pPar);
+    const visibleLegacy = (await listAllTasks(pPar)).map((t) => t.id).join(",");
+    const startLegacy = await mvpStartExecutionUseCase({ projectId: pPar });
+    assert(startLegacy.ok === true, "legacy-seeded path must start");
+    const sumLegacy = await mvpProjectRunSummary(startLegacy.runId);
+    assert(sumLegacy != null, "legacy path run summary");
+
+    resetAll();
+    await applyExecutionPreparationToMvpStores(bundlePar);
+    const vBridge = await verifyMvpSeedPayloadApplied(builtPayload);
+    assert(vBridge.ok === true, "bridge apply path satisfies post-seed verification");
+
+    const readinessBridge = await evaluateExecutionReadiness({ projectId: pPar });
+    const execBridge = await getExecutableTasks(pPar);
+    const visibleBridge = (await listAllTasks(pPar)).map((t) => t.id).join(",");
+    const startBridge = await mvpStartExecutionUseCase({ projectId: pPar });
+    assert(startBridge.ok === true, "bridge-seeded path must start");
+    const sumBridge = await mvpProjectRunSummary(startBridge.runId);
+    assert(sumBridge != null, "bridge path run summary");
+
+    assert(
+      stableJson(readinessLegacy) === stableJson(readinessBridge),
+      "readiness parity: legacy seed vs bridge applyExecutionPreparationToMvpStores"
+    );
+    assert(
+      execLegacy.map((t) => t.id).join(",") === execBridge.map((t) => t.id).join(","),
+      "executable task id order parity between legacy and bridge seed"
+    );
+    assert(
+      visibleLegacy === visibleBridge,
+      "visible listAllTasks id order parity between legacy and bridge seed"
+    );
+    assert(
+      stableJson({
+        runStatus: sumLegacy.runStatus,
+        totalTasks: sumLegacy.totalTasks,
+        currentTaskId: sumLegacy.currentTaskId,
+        completedTasks: sumLegacy.completedTasks,
+        failedTasks: sumLegacy.failedTasks,
+      }) ===
+        stableJson({
+          runStatus: sumBridge.runStatus,
+          totalTasks: sumBridge.totalTasks,
+          currentTaskId: sumBridge.currentTaskId,
+          completedTasks: sumBridge.completedTasks,
+          failedTasks: sumBridge.failedTasks,
+        }),
+      "run summary shape parity after legacy vs bridge seed + start"
+    );
+
+    resetAll();
+    applyMvpSeedPayload(builtPayload);
+    const vSplit = await verifyMvpSeedPayloadApplied(builtPayload);
+    assert(vSplit.ok === true, "split applyMvpSeedPayload + verify matches built payload");
+
+    resetAll();
+    await applyExecutionPreparationToMvpStores(bundlePar);
+    const listedSplit = await listAllTasks(pPar);
+    resetAll();
+    applyMvpSeedPayload(builtPayload);
+    const listedApplyOnly = await listAllTasks(pPar);
+    assert(
+      stableJson(listedSplit.map((t) => ({ id: t.id, finalOrder: t.finalOrder, screenId: t.screenId }))) ===
+        stableJson(listedApplyOnly.map((t) => ({ id: t.id, finalOrder: t.finalOrder, screenId: t.screenId }))),
+      "applyExecutionPreparationToMvpStores and applyMvpSeedPayload yield identical task rows"
+    );
+
+    resetAll();
+    applyMvpSeedPayload(builtPayload);
+    const ghost: Task = {
+      id: `ghost-extra-${pPar}`,
+      title: "ghost",
+      description: "ghost",
+      type: "FUNCTIONAL",
+      status: "CONFIRMED",
+      finalOrder: 99,
+      projectId: pPar,
+      screenId: builtPayload.screens[0]!.id,
+      taskPurpose: "MOCKUP",
+    };
+    const bloatedExpected: typeof builtPayload = {
+      ...builtPayload,
+      tasks: [...builtPayload.tasks, ghost],
+    };
+    const vMalformed = await verifyMvpSeedPayloadApplied(bloatedExpected);
+    assert(vMalformed.ok === false, "verification must fail when expected payload overstates task count");
+    assert(
+      vMalformed.ok === false && vMalformed.issues.some((i) => i.code === "TASK_COUNT"),
+      "malformed expected payload surfaces TASK_COUNT"
     );
   }
 
