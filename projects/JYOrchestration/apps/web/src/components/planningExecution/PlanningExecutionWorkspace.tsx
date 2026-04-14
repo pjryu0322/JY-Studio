@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import type {
   PlanningExecutionScreenSection,
   PlanningExecutionScreenViewModel,
+  PlanningExecutionActionViewModel,
   PlanningExecutionStructuralAction,
   PlanningExecutionRunStatusResponse,
 } from "@jy-orch/application/public";
@@ -67,9 +68,17 @@ function renderSection(
     case "TASK_SCREEN_SUMMARY_PANEL":
       return <PlanningExecutionTaskList counts={vm.counts} />;
     case "ACTION_BAR":
+      const effectiveActions: PlanningExecutionActionViewModel =
+        screen.responseStatus === "EXECUTION_STARTED" && runStatus?.status === "FAILED"
+          ? {
+              primaryAction: "INSPECT_FAILURE",
+              secondaryAction: "RETRY_EXECUTION",
+              availableActions: ["INSPECT_FAILURE", "RETRY_EXECUTION", ...vm.actions.availableActions],
+            }
+          : vm.actions;
       return (
         <PlanningExecutionActionBar
-          actions={vm.actions}
+          actions={effectiveActions}
           onStructuralAction={onStructuralAction}
           disabled={inputDisabled}
         />

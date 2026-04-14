@@ -32,24 +32,27 @@ export function PlanningExecutionExecutionStatusPanel({
           <dl className="mt-2 grid gap-2 text-sm text-neutral-700">
             <div className="flex justify-between gap-2">
               <dt className="text-neutral-500">상태</dt>
-              <dd className="font-mono text-xs">{runStatus.runStatus}</dd>
+              <dd className="font-mono text-xs">{runStatus.status}</dd>
+            </div>
+            {runStatus.status === "FAILED" ? (
+              <div className="col-span-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+                실행이 중간에 실패했습니다. “실패 원인 보기”로 메시지를 확인하거나, “다시 시도”로 새 실행을 시작할 수 있습니다.
+              </div>
+            ) : null}
+            <div className="flex justify-between gap-2">
+              <dt className="text-neutral-500">진행률</dt>
+              <dd>{runStatus.progressPercent}%</dd>
             </div>
             <div className="flex justify-between gap-2">
-              <dt className="text-neutral-500">진행</dt>
-              <dd>
-                {runStatus.completedTasks}/{runStatus.totalTasks} (실패 {runStatus.failedTasks})
-              </dd>
-            </div>
-            <div className="flex justify-between gap-2">
-              <dt className="text-neutral-500">현재 작업</dt>
-              <dd className="font-mono text-xs">{runStatus.currentTaskId ?? "—"}</dd>
+              <dt className="text-neutral-500">현재 단계</dt>
+              <dd className="font-mono text-xs">{runStatus.currentStep ?? "—"}</dd>
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-neutral-500">스텝 수</dt>
-              <dd>{runStatus.totalStepCount}</dd>
+              <dd>{runStatus.totalSteps}</dd>
             </div>
-            {runStatus.lastFailureMessage ? (
-              <div className="col-span-full text-sm text-red-800">{runStatus.lastFailureMessage}</div>
+            {runStatus.lastMessage ? (
+              <div className="col-span-full text-sm text-neutral-700">{runStatus.lastMessage}</div>
             ) : null}
           </dl>
         ) : (
