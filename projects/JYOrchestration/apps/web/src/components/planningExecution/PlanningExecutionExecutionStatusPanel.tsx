@@ -40,7 +40,7 @@ export function PlanningExecutionExecutionStatusPanel({
               </div>
             ) : null}
             <div className="flex justify-between gap-2">
-              <dt className="text-neutral-500">진행률</dt>
+              <dt className="text-neutral-500">진행률(작업 기준)</dt>
               <dd>{runStatus.progressPercent}%</dd>
             </div>
             <div className="flex justify-between gap-2">
@@ -48,7 +48,7 @@ export function PlanningExecutionExecutionStatusPanel({
               <dd className="font-mono text-xs">{runStatus.currentStep ?? "—"}</dd>
             </div>
             <div className="flex justify-between gap-2">
-              <dt className="text-neutral-500">스텝 수</dt>
+              <dt className="text-neutral-500">스텝 수(로그)</dt>
               <dd>{runStatus.totalSteps}</dd>
             </div>
             {runStatus.lastMessage ? (

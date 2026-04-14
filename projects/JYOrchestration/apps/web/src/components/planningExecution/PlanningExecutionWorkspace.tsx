@@ -76,11 +76,28 @@ function renderSection(
               availableActions: ["INSPECT_FAILURE", "RETRY_EXECUTION", ...vm.actions.availableActions],
             }
           : vm.actions;
+      const runFailed = runStatus?.status === "FAILED";
+      // Prefer contract-driven hints when available (run status knows if retry/inspect are meaningful).
+      const preferInspect = runFailed && runStatus?.canInspect === true;
+      const preferRetry = runFailed && runStatus?.canRetry === true;
+      const contractActions: PlanningExecutionActionViewModel | null =
+        screen.responseStatus === "EXECUTION_STARTED" && runFailed && (preferInspect || preferRetry)
+          ? {
+              primaryAction: preferInspect ? "INSPECT_FAILURE" : "RETRY_EXECUTION",
+              secondaryAction: preferInspect && preferRetry ? "RETRY_EXECUTION" : preferRetry ? "INSPECT_FAILURE" : null,
+              availableActions: [
+                ...(preferInspect ? (["INSPECT_FAILURE"] as const) : (["RETRY_EXECUTION"] as const)),
+                ...(preferInspect && preferRetry ? (["RETRY_EXECUTION"] as const) : preferRetry ? (["INSPECT_FAILURE"] as const) : ([] as const)),
+                ...vm.actions.availableActions,
+              ],
+            }
+          : null;
       return (
         <PlanningExecutionActionBar
-          actions={effectiveActions}
+          actions={contractActions ?? effectiveActions}
           onStructuralAction={onStructuralAction}
           disabled={inputDisabled}
+          runStatusRefreshHint={screen.responseStatus === "EXECUTION_STARTED" && runStatus !== null}
         />
       );
     default:

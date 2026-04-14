@@ -74,6 +74,12 @@ describe("Planning execution UI structural (demo screen)", () => {
     }
   });
 
+  it("keeps planning re-evaluation and run-status viewing distinct on EXECUTION_STARTED", () => {
+    const screen = demoPlanningExecutionScreenViewModel("EXECUTION_STARTED");
+    expect(screen.viewModel.actions.primaryAction).toBe("VIEW_RUN_STATUS");
+    expect(screen.viewModel.actions.availableActions).toContain("REFRESH_STATUS");
+  });
+
   it("NEEDS_CONFIRMATION includes counts + qualitative summary (no refinement bundle)", () => {
     const screen = demoPlanningExecutionScreenViewModel("NEEDS_CONFIRMATION");
     expect(screen.viewModel.confirmationNeededSummary).not.toBeNull();
