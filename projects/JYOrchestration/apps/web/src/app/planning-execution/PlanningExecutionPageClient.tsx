@@ -235,6 +235,23 @@ export function PlanningExecutionPageClient() {
         runStatus={useDemo ? null : runStatus}
         runStatusError={useDemo ? null : runStatusError}
         onRunStatusRefresh={useDemo || runStatusLoading ? null : refreshRunStatus}
+        onInspectFailure={
+          useDemo
+            ? null
+            : async () => {
+                setLastAction("INSPECT_FAILURE");
+                await refreshRunStatus();
+              }
+        }
+        onReviewConfirmation={
+          useDemo
+            ? null
+            : async () => {
+                setLastAction("REVIEW_CONFIRMATION");
+                const next = await submit("PREPARE_AND_START");
+                if (next) setLiveScreen(next);
+              }
+        }
         inputDisabled={inFlight}
         onStructuralAction={async (a) => {
           setLastAction(a);

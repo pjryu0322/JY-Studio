@@ -54,9 +54,8 @@ describe("Planning execution UI structural (demo screen)", () => {
     expect(screen.viewModel.counts).toBeNull();
   });
 
-  it("EXECUTION_STARTED provides refresh + edit path (no dead-end)", () => {
+  it("EXECUTION_STARTED keeps flow unblocked (no dead-end)", () => {
     const screen = demoPlanningExecutionScreenViewModel("EXECUTION_STARTED");
-    expect(screen.viewModel.actions.availableActions).toContain("REFRESH_STATUS");
     expect(screen.viewModel.actions.availableActions).toContain("EDIT_INPUT");
   });
 

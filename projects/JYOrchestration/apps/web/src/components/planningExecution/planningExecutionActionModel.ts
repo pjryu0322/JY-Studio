@@ -91,4 +91,46 @@ export function resolvePlanningExecutionPrimaryAction(input: {
   return base;
 }
 
+const FLOW_ACTIONS: readonly PlanningExecutionStructuralAction[] = [
+  "EDIT_INPUT",
+  "START_EXECUTION",
+  "RETRY_EXECUTION",
+] as const;
+
+function keepFlowActionsOnly(actions: PlanningExecutionActionViewModel): PlanningExecutionActionViewModel {
+  const allowed = new Set(FLOW_ACTIONS);
+  const available = actions.availableActions.filter((a) => allowed.has(a));
+  const primary = allowed.has(actions.primaryAction) ? actions.primaryAction : "EDIT_INPUT";
+  const secondary =
+    actions.secondaryAction && allowed.has(actions.secondaryAction) && actions.secondaryAction !== primary
+      ? actions.secondaryAction
+      : null;
+  return normalizePlanningExecutionActions({ primaryAction: primary, secondaryAction: secondary, availableActions: available });
+}
+
+/**
+ * ActionBar should be flow control only:
+ * - EDIT_INPUT
+ * - START_EXECUTION
+ * - RETRY_EXECUTION
+ *
+ * Everything else (run-status refresh/inspect, confirmation review) is handled locally in panels.
+ */
+export function resolvePlanningExecutionActionBarActions(input: {
+  responseStatus: "BLOCKED" | "NEEDS_CONFIRMATION" | "READY_FOR_EXECUTION" | "EXECUTION_STARTED" | "EXECUTION_START_FAILED";
+  baseActions: PlanningExecutionActionViewModel;
+  runStatus: { status: "RUNNING" | "COMPLETED" | "FAILED"; canInspect: boolean; canRetry: boolean } | null;
+}): PlanningExecutionActionViewModel {
+  const resolved = resolvePlanningExecutionPrimaryAction(input);
+  // Runtime failure: ActionBar offers retry (flow), while inspect stays in the panel.
+  if (input.responseStatus === "EXECUTION_STARTED" && input.runStatus?.status === "FAILED") {
+    return normalizePlanningExecutionActions({
+      primaryAction: "RETRY_EXECUTION",
+      secondaryAction: "EDIT_INPUT",
+      availableActions: ["RETRY_EXECUTION", "EDIT_INPUT"],
+    });
+  }
+  return keepFlowActionsOnly(resolved);
+}
+
 
