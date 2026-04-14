@@ -7,6 +7,8 @@ describe("buildPlanningExecutionRunStatusPresentation", () => {
       run: {
         runId: "r1",
         status: "RUNNING",
+        totalTasks: 10,
+        completedTasks: 1,
         currentStep: "1:START",
         totalSteps: 10,
         progressPercent: 10,
@@ -24,6 +26,8 @@ describe("buildPlanningExecutionRunStatusPresentation", () => {
       run: {
         runId: "r1",
         status: "COMPLETED",
+        totalTasks: 10,
+        completedTasks: 10,
         currentStep: null,
         totalSteps: 10,
         progressPercent: 100,
@@ -41,6 +45,8 @@ describe("buildPlanningExecutionRunStatusPresentation", () => {
       run: {
         runId: "r1",
         status: "FAILED",
+        totalTasks: 10,
+        completedTasks: 8,
         currentStep: "9:FAIL",
         totalSteps: 10,
         progressPercent: 80,

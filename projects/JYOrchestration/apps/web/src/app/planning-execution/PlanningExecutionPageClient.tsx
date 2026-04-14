@@ -46,6 +46,7 @@ export function PlanningExecutionPageClient() {
   const [reqState, setReqState] = useState<UiRequestState>({ kind: "idle" });
   const [runStatus, setRunStatus] = useState<(PlanningExecutionRunStatusResponse & { ok: true })["run"] | null>(null);
   const [runStatusError, setRunStatusError] = useState<string | null>(null);
+  const [runStatusLoading, setRunStatusLoading] = useState(false);
 
   const screen = useMemo(() => {
     if (useDemo) return demoPlanningExecutionScreenViewModel(demoStatus);
@@ -103,12 +104,17 @@ export function PlanningExecutionPageClient() {
     if (useDemo) return;
     const rid = liveScreen.viewModel.runId;
     if (!rid) return;
-    const r = await getPlanningExecutionRunStatus(rid);
-    if (r.status === "success") {
-      setRunStatus(r.response.run);
-      setRunStatusError(null);
-    } else {
-      setRunStatusError(r.message);
+    setRunStatusLoading(true);
+    try {
+      const r = await getPlanningExecutionRunStatus(rid);
+      if (r.status === "success") {
+        setRunStatus(r.response.run);
+        setRunStatusError(null);
+      } else {
+        setRunStatusError(r.message);
+      }
+    } finally {
+      setRunStatusLoading(false);
     }
   }
 
@@ -228,7 +234,7 @@ export function PlanningExecutionPageClient() {
         onInputTextChange={setInputText}
         runStatus={useDemo ? null : runStatus}
         runStatusError={useDemo ? null : runStatusError}
-        onRunStatusRefresh={useDemo ? null : refreshRunStatus}
+        onRunStatusRefresh={useDemo || runStatusLoading ? null : refreshRunStatus}
         inputDisabled={inFlight}
         onStructuralAction={async (a) => {
           setLastAction(a);

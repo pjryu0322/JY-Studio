@@ -38,6 +38,9 @@ export function PlanningExecutionExecutionStatusPanel({
             </button>
           ) : null}
         </div>
+        {!onRunStatusRefresh && runStatus ? (
+          <p className="mt-1 text-xs text-neutral-500">새로고침 중…</p>
+        ) : null}
         {runStatusError ? (
           <p className="mt-2 text-sm text-red-800" data-testid="run-status-error">
             {runStatusError}
@@ -65,6 +68,12 @@ export function PlanningExecutionExecutionStatusPanel({
               {pres?.hintLine ? <p className="mt-1 text-xs text-neutral-600">{pres.hintLine}</p> : null}
             </div>
             <dl className="mt-2 grid gap-2 text-sm text-neutral-700">
+              <div className="flex justify-between gap-2">
+                <dt className="text-neutral-500">완료된 작업</dt>
+                <dd>
+                  {runStatus.completedTasks}/{runStatus.totalTasks}
+                </dd>
+              </div>
             <div className="flex justify-between gap-2">
               <dt className="text-neutral-500">진행률(작업 기준)</dt>
               <dd>{runStatus.progressPercent}%</dd>
