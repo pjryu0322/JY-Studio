@@ -11,6 +11,8 @@ export type PlanningExecutionRunStatusUi = Readonly<{
   runId: string;
   /** UI-friendly status bucket (separates SUCCESS from “completed”). */
   status: "RUNNING" | "COMPLETED" | "FAILED";
+  totalTasks: number;
+  completedTasks: number;
   currentStep: string | null;
   totalSteps: number;
   /** \(0..100\), rounded to an integer. */

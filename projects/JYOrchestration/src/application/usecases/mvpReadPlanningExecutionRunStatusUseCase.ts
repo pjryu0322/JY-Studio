@@ -45,6 +45,8 @@ export async function mvpReadPlanningExecutionRunStatusUseCase(req: {
       run: {
         runId: s.runId,
         status,
+        totalTasks: s.totalTasks,
+        completedTasks: s.completedTasks,
         currentStep: lastStep ? `${lastStep.sequence}:${lastStep.stepType}` : null,
         totalSteps: s.totalStepCount,
         progressPercent,

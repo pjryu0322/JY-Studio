@@ -10,6 +10,8 @@ describe("planning execution run-status client adapter", () => {
           run: {
             runId: "run-1",
             status: "RUNNING",
+            totalTasks: 5,
+            completedTasks: 2,
             currentStep: "3:TASK_STARTED",
             totalSteps: 12,
             progressPercent: 40,
