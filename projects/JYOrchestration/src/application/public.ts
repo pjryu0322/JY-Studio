@@ -19,6 +19,7 @@ export * from "./contracts/planningOriginatedExecutionResponseBuilder";
 export * from "./viewmodels/planningOriginatedExecutionViewModel";
 export * from "./viewmodels/planningOriginatedExecutionViewModelBuilder";
 export * from "./viewmodels/planningOriginatedExecutionActionLabels";
+export * from "./viewmodels/planningOriginatedExecutionStatusCopy";
 export * from "./viewmodels/planningOriginatedExecutionScreenUx";
 export * from "./viewmodels/planningOriginatedExecutionScreenUxBuilder";
 
