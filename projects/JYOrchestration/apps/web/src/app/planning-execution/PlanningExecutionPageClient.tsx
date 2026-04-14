@@ -98,6 +98,27 @@ export function PlanningExecutionPageClient() {
     }
   }, [useDemo, demoStatus]);
 
+  useEffect(() => {
+    if (useDemo) return;
+    const rid = liveScreen.viewModel.runId;
+    if (!rid) return;
+    if (liveScreen.responseStatus !== "EXECUTION_STARTED") return;
+    let cancelled = false;
+    (async () => {
+      const r = await getPlanningExecutionRunStatus(rid);
+      if (cancelled) return;
+      if (r.status === "success") {
+        setRunStatus(r.response.run);
+        setRunStatusError(null);
+      } else if (r.status === "validation_error" || r.status === "auth_error" || r.status === "transport_error") {
+        setRunStatusError(r.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [liveScreen.responseStatus, liveScreen.viewModel.runId, useDemo]);
+
   function DevControlsPanel() {
     return (
       <div className="flex w-full flex-wrap items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
@@ -227,7 +248,17 @@ export function PlanningExecutionPageClient() {
             return;
           }
           if (a === "INSPECT_FAILURE") {
-            // Placeholder: for now, the actionable details are already in the message panel.
+            // If run-status is available, prefer showing it (runtime failure inspection).
+            const rid = liveScreen.viewModel.runId;
+            if (rid) {
+              const r = await getPlanningExecutionRunStatus(rid);
+              if (r.status === "success") {
+                setRunStatus(r.response.run);
+                setRunStatusError(null);
+              } else {
+                setRunStatusError(r.message);
+              }
+            }
             return;
           }
           if (a === "VIEW_RUN_STATUS") {

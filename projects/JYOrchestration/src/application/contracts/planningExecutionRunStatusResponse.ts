@@ -1,34 +1,33 @@
 /**
- * Planning-originated execution — run-status response contract (UI/route safe).
+ * Planning-originated execution — **UI-friendly** run-status response contract.
  *
  * Boundary:
- * - No executionService internals
+ * - No raw executionService internals / stores
  * - No handoff / preparation / bridge payloads
- * - Minimal, stable summary suitable for current UX
+ * - Presentation-oriented fields only (progress, last message, user actions)
  */
 
-export type PlanningExecutionRunStatus = Readonly<{
+export type PlanningExecutionRunStatusUi = Readonly<{
   runId: string;
-  runStatus: "RUNNING" | "SUCCESS" | "FAILED";
-  totalTasks: number;
-  completedTasks: number;
-  failedTasks: number;
-  currentTaskId: string | null;
-  lastFailureMessage: string | null;
-  totalStepCount: number;
+  /** UI-friendly status bucket (separates SUCCESS from “completed”). */
+  status: "RUNNING" | "COMPLETED" | "FAILED";
+  currentStep: string | null;
+  totalSteps: number;
+  /** \(0..100\), rounded to an integer. */
+  progressPercent: number;
+  lastMessage: string | null;
+  canRetry: boolean;
+  canInspect: boolean;
 }>;
 
 export type PlanningExecutionRunStatusResponse =
   | Readonly<{
       ok: true;
-      run: PlanningExecutionRunStatus;
+      run: PlanningExecutionRunStatusUi;
     }>
   | Readonly<{
       ok: false;
-      error:
-        | "INVALID_RUN_ID"
-        | "RUN_NOT_FOUND"
-        | "UNEXPECTED_ERROR";
+      error: "INVALID_RUN_ID" | "RUN_NOT_FOUND" | "UNEXPECTED_ERROR";
       message: string;
     }>;
 

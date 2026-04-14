@@ -1,10 +1,11 @@
 /**
  * Planning-originated execution — use-case: read run-status summary by runId.
  *
- * This wraps the existing MVP run summary reader and maps it into a UI/route-safe contract.
+ * This wraps the existing MVP run readers and maps into a UI-friendly contract.
  */
 
 import { mvpGetExecutionRunSummaryUseCase } from "./mvpGetExecutionStatusUseCase";
+import { mvpGetExecutionStepListUseCase } from "./mvpGetExecutionStatusUseCase";
 import type { PlanningExecutionRunStatusResponse } from "../contracts/planningExecutionRunStatusResponse";
 
 export async function mvpReadPlanningExecutionRunStatusUseCase(req: {
@@ -29,17 +30,27 @@ export async function mvpReadPlanningExecutionRunStatusUseCase(req: {
     }
 
     const s = r.value.summary;
+    const steps = await mvpGetExecutionStepListUseCase({ runId });
+    const lastStep =
+      steps.ok && steps.value.steps.length > 0 ? steps.value.steps[steps.value.steps.length - 1] : null;
+
+    const status: "RUNNING" | "COMPLETED" | "FAILED" =
+      s.runStatus === "RUNNING" ? "RUNNING" : s.runStatus === "SUCCESS" ? "COMPLETED" : "FAILED";
+
+    const progressPercent =
+      s.totalTasks > 0 ? Math.max(0, Math.min(100, Math.round((s.completedTasks / s.totalTasks) * 100))) : 0;
+
     return {
       ok: true,
       run: {
         runId: s.runId,
-        runStatus: s.runStatus,
-        totalTasks: s.totalTasks,
-        completedTasks: s.completedTasks,
-        failedTasks: s.failedTasks,
-        currentTaskId: s.currentTaskId,
-        lastFailureMessage: s.lastFailureMessage,
-        totalStepCount: s.totalStepCount,
+        status,
+        currentStep: lastStep ? `${lastStep.sequence}:${lastStep.stepType}` : null,
+        totalSteps: s.totalStepCount,
+        progressPercent,
+        lastMessage: s.lastFailureMessage ?? (lastStep ? lastStep.message : null),
+        canRetry: status === "FAILED",
+        canInspect: true,
       },
     };
   } catch (e) {
