@@ -31,7 +31,7 @@ export async function mvpStartExecutionFromPreparationUseCase(
     return { ok: false, reason: bv.reasons.join(" | ") };
   }
 
-  applyExecutionPreparationToMvpStores(bundle);
+  await applyExecutionPreparationToMvpStores(bundle);
 
   const started = await mvpStartExecutionUseCase({ projectId: bundle.projectId });
   if (!started.ok) {
