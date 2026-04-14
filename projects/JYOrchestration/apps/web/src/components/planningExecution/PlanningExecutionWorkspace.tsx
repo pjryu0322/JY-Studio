@@ -13,6 +13,7 @@ import type {
   PlanningExecutionScreenSection,
   PlanningExecutionScreenViewModel,
   PlanningExecutionStructuralAction,
+  PlanningExecutionRunStatusResponse,
 } from "@jy-orch/application/public";
 import { PlanningExecutionActionBar } from "./PlanningExecutionActionBar";
 import { PlanningExecutionConfirmationOrBlockingPanel } from "./PlanningExecutionConfirmationOrBlockingPanel";
@@ -29,6 +30,8 @@ export type PlanningExecutionWorkspaceProps = Readonly<{
   inputText: string;
   onInputTextChange: (value: string) => void;
   onStructuralAction: (action: PlanningExecutionStructuralAction) => void;
+  runStatus: (PlanningExecutionRunStatusResponse & { ok: true })["run"] | null;
+  runStatusError: string | null;
   /** When true, disables local input (e.g. while a request is in flight). */
   inputDisabled?: boolean;
 }>;
@@ -37,7 +40,7 @@ function renderSection(
   section: PlanningExecutionScreenSection,
   props: PlanningExecutionWorkspaceProps
 ): ReactNode {
-  const { screen, inputText, onInputTextChange, onStructuralAction, inputDisabled } = props;
+  const { screen, inputText, onInputTextChange, onStructuralAction, inputDisabled, runStatus, runStatusError } = props;
   const vm = screen.viewModel;
   switch (section) {
     case "INPUT_PANEL":
@@ -58,7 +61,7 @@ function renderSection(
     case "EXECUTION_READINESS_PANEL":
       return <PlanningExecutionReadinessPanel vm={vm} />;
     case "EXECUTION_START_STATUS_PANEL":
-      return <PlanningExecutionExecutionStatusPanel vm={vm} />;
+      return <PlanningExecutionExecutionStatusPanel vm={vm} runStatus={runStatus} runStatusError={runStatusError} />;
     case "METRICS_ROW":
       return <PlanningExecutionCounts counts={vm.counts} />;
     case "TASK_SCREEN_SUMMARY_PANEL":
