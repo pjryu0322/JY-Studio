@@ -100,9 +100,15 @@ import {
   applyExecutionPreparationToMvpStores,
   applyLegacyMvpSeedFromExecutionPreparationBundle,
   applyMvpSeedPayload,
+  buildExecutionParitySnapshot,
   buildMvpSeedPayloadFromExecutionPreparation,
+  compareExecutionParitySnapshots,
   dryRunExecutionBridge,
+  formatMvpSeedVerificationIssuesForError,
+  isMvpSeedVerificationIssueCode,
   minimalExecutionPreparationBundleForParity,
+  MVP_SEED_VERIFICATION_ISSUE_CODES,
+  postStartInspectionComparableShape,
   verifyMvpSeedPayloadApplied,
 } from "../application/executionBridge";
 import { mvpStartExecutionFromPreparationUseCase } from "../application/usecases/mvpStartExecutionFromPreparationUseCase";
@@ -1400,6 +1406,32 @@ export async function runMvpSelfCheck(): Promise<void> {
     const sumLegacy = await mvpProjectRunSummary(startLegacy.runId);
     assert(sumLegacy != null, "legacy path run summary");
 
+    const legacyDetail = await mvpGetRunDetailDto(startLegacy.runId);
+    const legacySummaryDto = await mvpGetRunSummaryDto(startLegacy.runId);
+    const legacySteps = mvpGetExecutionStepsForRun(startLegacy.runId);
+    const legacyInspect = await mvpBuildRunInspectionViewModel({ projectId: pPar, runId: startLegacy.runId });
+    const legacyRunLive = await getRunStatus(startLegacy.runId);
+    const legacyExecTasks = await getExecutableTasks(pPar);
+    const snapLegacy = buildExecutionParitySnapshot({
+      readiness: readinessLegacy,
+      runLive: legacyRunLive,
+      summaryProjection: sumLegacy,
+      summaryDto: legacySummaryDto,
+      runDetail: legacyDetail,
+      steps: legacySteps,
+      inspection: legacyInspect,
+      executableTasks: legacyExecTasks,
+      visibleTaskIdsOrdered: visibleLegacy,
+      executableTaskIdsOrdered: execLegacy.map((t) => t.id).join(","),
+    });
+
+    const ucLegacy = await mvpGetExecutionInspectionUseCase({ projectId: pPar, runId: startLegacy.runId });
+    assert(ucLegacy.ok === true, "execution inspection use-case succeeds for legacy parity run");
+    assert(
+      stableJson(postStartInspectionComparableShape(ucLegacy.inspection)) === stableJson(snapLegacy.inspection),
+      "legacy inspection UC matches parity snapshot inspection slice"
+    );
+
     resetAll();
     await applyExecutionPreparationToMvpStores(bundlePar);
     const vBridge = await verifyMvpSeedPayloadApplied(builtPayload);
@@ -1413,34 +1445,35 @@ export async function runMvpSelfCheck(): Promise<void> {
     const sumBridge = await mvpProjectRunSummary(startBridge.runId);
     assert(sumBridge != null, "bridge path run summary");
 
+    const bridgeDetail = await mvpGetRunDetailDto(startBridge.runId);
+    const bridgeSummaryDto = await mvpGetRunSummaryDto(startBridge.runId);
+    const bridgeSteps = mvpGetExecutionStepsForRun(startBridge.runId);
+    const bridgeInspect = await mvpBuildRunInspectionViewModel({ projectId: pPar, runId: startBridge.runId });
+    const bridgeRunLive = await getRunStatus(startBridge.runId);
+    const bridgeExecTasks = await getExecutableTasks(pPar);
+    const snapBridge = buildExecutionParitySnapshot({
+      readiness: readinessBridge,
+      runLive: bridgeRunLive,
+      summaryProjection: sumBridge,
+      summaryDto: bridgeSummaryDto,
+      runDetail: bridgeDetail,
+      steps: bridgeSteps,
+      inspection: bridgeInspect,
+      executableTasks: bridgeExecTasks,
+      visibleTaskIdsOrdered: visibleBridge,
+      executableTaskIdsOrdered: execBridge.map((t) => t.id).join(","),
+    });
+
     assert(
-      stableJson(readinessLegacy) === stableJson(readinessBridge),
-      "readiness parity: legacy seed vs bridge applyExecutionPreparationToMvpStores"
+      compareExecutionParitySnapshots(snapLegacy, snapBridge),
+      "execution parity snapshot: legacy-started vs bridge-started (readiness, run live, summaries, detail, steps, inspection, downstream task inputs, ordering)"
     );
+
+    const ucBridge = await mvpGetExecutionInspectionUseCase({ projectId: pPar, runId: startBridge.runId });
+    assert(ucBridge.ok === true, "execution inspection use-case succeeds for bridge parity run");
     assert(
-      execLegacy.map((t) => t.id).join(",") === execBridge.map((t) => t.id).join(","),
-      "executable task id order parity between legacy and bridge seed"
-    );
-    assert(
-      visibleLegacy === visibleBridge,
-      "visible listAllTasks id order parity between legacy and bridge seed"
-    );
-    assert(
-      stableJson({
-        runStatus: sumLegacy.runStatus,
-        totalTasks: sumLegacy.totalTasks,
-        currentTaskId: sumLegacy.currentTaskId,
-        completedTasks: sumLegacy.completedTasks,
-        failedTasks: sumLegacy.failedTasks,
-      }) ===
-        stableJson({
-          runStatus: sumBridge.runStatus,
-          totalTasks: sumBridge.totalTasks,
-          currentTaskId: sumBridge.currentTaskId,
-          completedTasks: sumBridge.completedTasks,
-          failedTasks: sumBridge.failedTasks,
-        }),
-      "run summary shape parity after legacy vs bridge seed + start"
+      stableJson(postStartInspectionComparableShape(ucBridge.inspection)) === stableJson(snapBridge.inspection),
+      "bridge inspection UC matches parity snapshot inspection slice"
     );
 
     resetAll();
@@ -1480,9 +1513,21 @@ export async function runMvpSelfCheck(): Promise<void> {
     const vMalformed = await verifyMvpSeedPayloadApplied(bloatedExpected);
     assert(vMalformed.ok === false, "verification must fail when expected payload overstates task count");
     assert(
-      vMalformed.ok === false && vMalformed.issues.some((i) => i.code === "TASK_COUNT"),
-      "malformed expected payload surfaces TASK_COUNT"
+      vMalformed.ok === false &&
+        vMalformed.issues.some((i) => i.code === MVP_SEED_VERIFICATION_ISSUE_CODES.TASK_COUNT_MISMATCH),
+      "malformed expected payload surfaces typed TASK_COUNT_MISMATCH"
     );
+    assert(
+      formatMvpSeedVerificationIssuesForError(vMalformed.ok === false ? vMalformed.issues : []).includes(
+        MVP_SEED_VERIFICATION_ISSUE_CODES.TASK_COUNT_MISMATCH
+      ),
+      "typed verification issues format for errors preserves TASK_COUNT_MISMATCH code string"
+    );
+    assert(
+      isMvpSeedVerificationIssueCode(MVP_SEED_VERIFICATION_ISSUE_CODES.TASK_COUNT_MISMATCH),
+      "TASK_COUNT_MISMATCH is a known typed issue code"
+    );
+    assert(!isMvpSeedVerificationIssueCode("NOT_A_SEED_CODE"), "unknown strings are not typed seed issue codes");
   }
 
   {
