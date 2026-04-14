@@ -16,6 +16,7 @@ import type { PlanningOriginatedExecutionDeps, PlanningOriginatedExecutionResult
 import { normalizePlanningOriginatedExecutionResult, planningTerminalBlocksPreparation } from "../../application/planningOriginatedExecution/planningOriginatedExecutionResult";
 import { mvpRunPlanningOriginatedExecutionUseCase } from "../../application/usecases/mvpRunPlanningOriginatedExecutionUseCase";
 import { mvpPrepareExecutionInputFromPlanningUseCase } from "../../application/usecases/mvpPrepareExecutionInputFromPlanningUseCase";
+import { mvpReadPlanningExecutionRunStatusUseCase } from "../../application/usecases/mvpReadPlanningExecutionRunStatusUseCase";
 import { buildPlanningOriginatedExecutionResponse, normalizePlanningOriginatedExecutionResponse, presentPlanningOriginatedExecutionResult } from "../../application/contracts/planningOriginatedExecutionResponseBuilder";
 import { buildPlanningOriginatedExecutionViewModel, planningExecutionStructuralActionsForStatus } from "../../application/viewmodels/planningOriginatedExecutionViewModelBuilder";
 import { buildPlanningExecutionScreenViewModel } from "../../application/viewmodels/planningOriginatedExecutionScreenUxBuilder";
@@ -224,6 +225,11 @@ export async function runPlanningOriginatedExecutionUiRouteIntegrationSelfCheck(
   );
   assert(started.ok === true && started.status === "EXECUTION_STARTED", "PREPARE_AND_START returns EXECUTION_STARTED");
   assert(started.ok === true && (await getRunStatus(started.runId)).id === started.runId, "run visible after EXECUTION_STARTED");
+  {
+    const rs = await mvpReadPlanningExecutionRunStatusUseCase({ runId: started.runId });
+    assert(rs.ok === true && rs.run.runId === started.runId, "run-status use-case can read summary by runId");
+    assertNoForbiddenKeyLeak(rs, "planning-execution-run-status", 0, "planning-execution run-status response");
+  }
 
   resetAll();
   const depsSimFail: PlanningOriginatedExecutionDeps = {

@@ -11,12 +11,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type {
+  PlanningExecutionRunStatusResponse,
   PlanningExecutionStructuralAction,
   PlanningOriginatedExecutionStatus,
 } from "@jy-orch/application/public";
 import { demoPlanningExecutionScreenViewModel } from "@/components/planningExecution/planningExecutionDemoSamples";
 import { PlanningExecutionWorkspace } from "@/components/planningExecution/PlanningExecutionWorkspace";
-import { runPlanningOriginatedExecution } from "@/lib/jy-orchestration/planning-execution";
+import { getPlanningExecutionRunStatus, runPlanningOriginatedExecution } from "@/lib/jy-orchestration/planning-execution";
 
 const STATUSES: readonly PlanningOriginatedExecutionStatus[] = [
   "BLOCKED",
@@ -43,6 +44,8 @@ export function PlanningExecutionPageClient() {
   const [inputText, setInputText] = useState("");
   const [lastAction, setLastAction] = useState<PlanningExecutionStructuralAction | null>(null);
   const [reqState, setReqState] = useState<UiRequestState>({ kind: "idle" });
+  const [runStatus, setRunStatus] = useState<(PlanningExecutionRunStatusResponse & { ok: true })["run"] | null>(null);
+  const [runStatusError, setRunStatusError] = useState<string | null>(null);
 
   const screen = useMemo(() => {
     if (useDemo) return demoPlanningExecutionScreenViewModel(demoStatus);
@@ -54,10 +57,16 @@ export function PlanningExecutionPageClient() {
 
   async function submit(mode: "PREPARE_ONLY" | "PREPARE_AND_START") {
     setReqState({ kind: "submitting", mode });
+    setRunStatusError(null);
     const r = await runPlanningOriginatedExecution({ projectId, inputText, mode });
     switch (r.status) {
       case "success":
         setReqState({ kind: "idle" });
+        // A new run id implies we should drop any previous run-status summary.
+        if (r.screen.viewModel.runId !== (runStatus?.runId ?? null)) {
+          setRunStatus(null);
+          setRunStatusError(null);
+        }
         return r.screen;
       case "validation_error":
         setReqState({ kind: "validation_error", issues: r.issues });
@@ -182,9 +191,12 @@ export function PlanningExecutionPageClient() {
         screen={useDemo ? screen : liveScreen}
         inputText={inputText}
         onInputTextChange={setInputText}
+        runStatus={useDemo ? null : runStatus}
+        runStatusError={useDemo ? null : runStatusError}
         inputDisabled={inFlight}
         onStructuralAction={async (a) => {
           setLastAction(a);
+          setRunStatusError(null);
 
           if (useDemo) return;
           if (inFlight) return;
@@ -219,8 +231,15 @@ export function PlanningExecutionPageClient() {
             return;
           }
           if (a === "VIEW_RUN_STATUS") {
-            // Placeholder: no monitoring surface wired yet (keep simple as requested).
-            // We still provide REFRESH_STATUS to re-query via the same route.
+            const rid = liveScreen.viewModel.runId;
+            if (!rid) return;
+            const r = await getPlanningExecutionRunStatus(rid);
+            if (r.status === "success") {
+              setRunStatus(r.response.run);
+              setRunStatusError(null);
+            } else {
+              setRunStatusError(r.message);
+            }
             return;
           }
         }}
