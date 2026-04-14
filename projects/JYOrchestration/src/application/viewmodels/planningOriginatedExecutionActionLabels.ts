@@ -7,7 +7,14 @@
 
 import type { PlanningExecutionStructuralAction } from "./planningOriginatedExecutionViewModel";
 
-export function planningExecutionActionLabel(action: PlanningExecutionStructuralAction): string {
+export type PlanningExecutionActionLabelContext =
+  | { readonly kind: "default" }
+  | { readonly kind: "run_status_refresh" };
+
+export function planningExecutionActionLabel(
+  action: PlanningExecutionStructuralAction,
+  ctx: PlanningExecutionActionLabelContext = { kind: "default" }
+): string {
   switch (action) {
     case "EDIT_INPUT":
       return "입력 수정";
@@ -20,7 +27,7 @@ export function planningExecutionActionLabel(action: PlanningExecutionStructural
     case "INSPECT_FAILURE":
       return "실패 원인 보기";
     case "VIEW_RUN_STATUS":
-      return "실행 상태 보기";
+      return ctx.kind === "run_status_refresh" ? "실행 상태 새로고침" : "실행 상태 보기";
     case "REFRESH_STATUS":
       // Honest semantics: this is a re-evaluation via PREPARE_ONLY today, not a true run-status poll.
       return "상태 재평가";

@@ -26,5 +26,10 @@ describe("planningExecutionActionLabel", () => {
     const label = planningExecutionActionLabel("REFRESH_STATUS");
     expect(label).toContain("재평가");
   });
+
+  it("can label VIEW_RUN_STATUS as manual refresh when context indicates refresh", () => {
+    const label = planningExecutionActionLabel("VIEW_RUN_STATUS", { kind: "run_status_refresh" });
+    expect(label).toContain("새로고침");
+  });
 });
 

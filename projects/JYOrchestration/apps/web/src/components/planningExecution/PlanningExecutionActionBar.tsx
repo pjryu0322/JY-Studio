@@ -11,10 +11,12 @@ export function PlanningExecutionActionBar({
   actions,
   onStructuralAction,
   disabled,
+  runStatusRefreshHint,
 }: {
   readonly actions: PlanningExecutionActionViewModel;
   readonly onStructuralAction: (a: PlanningExecutionStructuralAction) => void;
   readonly disabled?: boolean;
+  readonly runStatusRefreshHint?: boolean;
 }) {
   return (
     <footer
@@ -28,7 +30,7 @@ export function PlanningExecutionActionBar({
         disabled={disabled}
         onClick={() => onStructuralAction(actions.primaryAction)}
       >
-        {planningExecutionActionLabel(actions.primaryAction)}
+        {planningExecutionActionLabel(actions.primaryAction, runStatusRefreshHint ? { kind: "run_status_refresh" } : { kind: "default" })}
       </button>
       {actions.secondaryAction ? (
         <button
@@ -38,11 +40,11 @@ export function PlanningExecutionActionBar({
           disabled={disabled}
           onClick={() => onStructuralAction(actions.secondaryAction!)}
         >
-          {planningExecutionActionLabel(actions.secondaryAction!)}
+          {planningExecutionActionLabel(actions.secondaryAction!, runStatusRefreshHint ? { kind: "run_status_refresh" } : { kind: "default" })}
         </button>
       ) : null}
       <span className="ml-auto text-xs text-neutral-500">
-        Available: {actions.availableActions.map(planningExecutionActionLabel).join(" · ")}
+        Available: {actions.availableActions.map((a) => planningExecutionActionLabel(a, runStatusRefreshHint ? { kind: "run_status_refresh" } : { kind: "default" })).join(" · ")}
       </span>
     </footer>
   );
