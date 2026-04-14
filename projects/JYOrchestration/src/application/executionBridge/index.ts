@@ -22,11 +22,32 @@ export {
 export { buildMvpSeedPayloadFromExecutionPreparation } from "./buildMvpSeedPayloadFromExecutionPreparation";
 export { applyMvpSeedPayload } from "./applyMvpSeedPayload";
 export type {
-  MvpSeedVerificationChecked,
   MvpSeedVerificationIssue,
-  MvpSeedVerificationResult,
-} from "./verifyMvpSeedPayloadApplied";
+  MvpSeedVerificationIssueCode,
+} from "./mvpSeedVerificationIssueModel";
+export {
+  MVP_SEED_VERIFICATION_ISSUE_CODES,
+  formatMvpSeedVerificationIssuesForError,
+  isMvpSeedVerificationIssueCode,
+  mvpSeedVerificationIssue,
+} from "./mvpSeedVerificationIssueModel";
+export type { MvpSeedVerificationChecked, MvpSeedVerificationResult } from "./verifyMvpSeedPayloadApplied";
 export { verifyMvpSeedPayloadApplied } from "./verifyMvpSeedPayloadApplied";
+export type { ExecutionBootstrapPayload, MvpExecutionBridgeBootstrap } from "./mvpExecutionBridgeBootstrap";
+export {
+  MVP_EXECUTION_BRIDGE_BOOTSTRAP_KIND,
+  applyMvpExecutionBridgeBootstrap,
+  buildMvpExecutionBridgeBootstrapFromPreparation,
+} from "./mvpExecutionBridgeBootstrap";
+export type { BuildExecutionParitySnapshotInput, ExecutionParitySnapshot } from "./executionParitySnapshot";
+export { buildExecutionParitySnapshot, compareExecutionParitySnapshots } from "./executionParitySnapshot";
+export {
+  postStartInspectionComparableShape,
+  postStartRunDetailComparableShape,
+  postStartRunSummaryComparableShape,
+  postStartStepLogComparableShape,
+  promptRelevantExecutableTaskShape,
+} from "./bridgePostStartParitySnapshot";
 export {
   applyLegacyMvpSeedFromExecutionPreparationBundle,
   minimalExecutionPreparationBundleForParity,

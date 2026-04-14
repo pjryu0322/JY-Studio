@@ -4,20 +4,23 @@
  *
  * Bridge-only: not used by legacy `mvpSeedProjectTasks` + `startRun` flows directly.
  *
- * Pipeline: {@link buildMvpSeedPayloadFromExecutionPreparation} → {@link applyMvpSeedPayload} →
+ * Pipeline: {@link buildMvpExecutionBridgeBootstrapFromPreparation} → {@link applyMvpExecutionBridgeBootstrap} →
  * {@link verifyMvpSeedPayloadApplied}.
  */
 
 import type { ExecutionPreparationBundle } from "../executionPreparation/executionPreparationContracts";
-import { applyMvpSeedPayload } from "./applyMvpSeedPayload";
-import { buildMvpSeedPayloadFromExecutionPreparation } from "./buildMvpSeedPayloadFromExecutionPreparation";
+import { formatMvpSeedVerificationIssuesForError } from "./mvpSeedVerificationIssueModel";
+import {
+  applyMvpExecutionBridgeBootstrap,
+  buildMvpExecutionBridgeBootstrapFromPreparation,
+} from "./mvpExecutionBridgeBootstrap";
 import { verifyMvpSeedPayloadApplied } from "./verifyMvpSeedPayloadApplied";
 
 export async function applyExecutionPreparationToMvpStores(bundle: ExecutionPreparationBundle): Promise<void> {
-  const payload = buildMvpSeedPayloadFromExecutionPreparation(bundle);
-  applyMvpSeedPayload(payload);
-  const v = await verifyMvpSeedPayloadApplied(payload);
+  const bootstrap = buildMvpExecutionBridgeBootstrapFromPreparation(bundle);
+  applyMvpExecutionBridgeBootstrap(bootstrap);
+  const v = await verifyMvpSeedPayloadApplied(bootstrap.seedPayload);
   if (!v.ok) {
-    throw new Error(`MVP bridge seed verification failed: ${v.issues.map((i) => i.code + (i.detail ? `(${i.detail})` : "")).join("; ")}`);
+    throw new Error(`MVP bridge seed verification failed: ${formatMvpSeedVerificationIssuesForError(v.issues)}`);
   }
 }
