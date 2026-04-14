@@ -29,10 +29,10 @@ describe("Planning execution UI structural (demo screen)", () => {
     "EXECUTION_START_FAILED",
   ];
 
-  it.each(statuses)("status %s — action bar last, status banner present", (status) => {
+  it.each(statuses)("status %s — input→status→action continuous flow", (status) => {
     const screen = demoPlanningExecutionScreenViewModel(status);
     const v = screen.visibleSections;
-    expect(v[v.length - 1]).toBe("ACTION_BAR");
+    expect(v.slice(0, 3)).toEqual(["INPUT_PANEL", "STATUS_BANNER", "ACTION_BAR"]);
     expect(v.includes("STATUS_BANNER")).toBe(true);
     expect(v.includes("INPUT_PANEL")).toBe(true);
     expect(screen.viewModel.actions.primaryAction).toBeTruthy();
@@ -58,6 +58,20 @@ describe("Planning execution UI structural (demo screen)", () => {
     const screen = demoPlanningExecutionScreenViewModel("EXECUTION_STARTED");
     expect(screen.viewModel.actions.availableActions).toContain("REFRESH_STATUS");
     expect(screen.viewModel.actions.availableActions).toContain("EDIT_INPUT");
+  });
+
+  it("primary action intent matches each outward state", () => {
+    const expected: Record<PlanningOriginatedExecutionStatus, string> = {
+      BLOCKED: "EDIT_INPUT",
+      NEEDS_CONFIRMATION: "REVIEW_CONFIRMATION",
+      READY_FOR_EXECUTION: "START_EXECUTION",
+      EXECUTION_STARTED: "VIEW_RUN_STATUS",
+      EXECUTION_START_FAILED: "RETRY_EXECUTION",
+    };
+    for (const s of statuses) {
+      const screen = demoPlanningExecutionScreenViewModel(s);
+      expect(screen.viewModel.actions.primaryAction).toBe(expected[s]);
+    }
   });
 
   it("NEEDS_CONFIRMATION includes counts + qualitative summary (no refinement bundle)", () => {

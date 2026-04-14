@@ -23,8 +23,8 @@ function layoutForStatus(status: PlanningOriginatedExecutionStatus): {
   binds: readonly PlanningExecutionScreenSectionBinding[];
   emphasized: PlanningExecutionEmphasizedSummary | null;
 } {
-  const baseTop: PlanningExecutionScreenSection[] = ["INPUT_PANEL", "STATUS_BANNER"];
-  const baseBottom: PlanningExecutionScreenSection[] = ["ACTION_BAR"];
+  // Primary user flow: input → current state → next action (CTA) as one continuous block.
+  const baseFlow: PlanningExecutionScreenSection[] = ["INPUT_PANEL", "STATUS_BANNER", "ACTION_BAR"];
 
   switch (status) {
     case "BLOCKED": {
@@ -33,13 +33,13 @@ function layoutForStatus(status: PlanningOriginatedExecutionStatus): {
         "CONFIRMATION_BLOCKING_PANEL",
       ];
       return {
-        sections: [...baseTop, ...mid, ...baseBottom],
+        sections: [...baseFlow, ...mid],
         binds: bindings([
           ["INPUT_PANEL", ["projectId"]],
           ["STATUS_BANNER", ["statusCard"]],
+          ["ACTION_BAR", ["actions"]],
           ["PLANNING_RESULT_SUMMARY", ["planningHints"]],
           ["CONFIRMATION_BLOCKING_PANEL", ["message"]],
-          ["ACTION_BAR", ["actions"]],
         ]),
         emphasized: "BLOCKING",
       };
@@ -50,13 +50,13 @@ function layoutForStatus(status: PlanningOriginatedExecutionStatus): {
         "CONFIRMATION_BLOCKING_PANEL",
       ];
       return {
-        sections: [...baseTop, ...mid, ...baseBottom],
+        sections: [...baseFlow, ...mid],
         binds: bindings([
           ["INPUT_PANEL", ["projectId"]],
           ["STATUS_BANNER", ["statusCard"]],
+          ["ACTION_BAR", ["actions"]],
           ["PLANNING_RESULT_SUMMARY", ["planningHints"]],
           ["CONFIRMATION_BLOCKING_PANEL", ["confirmationNeededSummary", "message"]],
-          ["ACTION_BAR", ["actions"]],
         ]),
         emphasized: "CONFIRMATION",
       };
@@ -68,14 +68,14 @@ function layoutForStatus(status: PlanningOriginatedExecutionStatus): {
         "TASK_SCREEN_SUMMARY_PANEL",
       ];
       return {
-        sections: [...baseTop, ...mid, ...baseBottom],
+        sections: [...baseFlow, ...mid],
         binds: bindings([
           ["INPUT_PANEL", ["projectId"]],
           ["STATUS_BANNER", ["statusCard"]],
+          ["ACTION_BAR", ["actions"]],
           ["EXECUTION_READINESS_PANEL", ["message"]],
           ["METRICS_ROW", ["counts"]],
           ["TASK_SCREEN_SUMMARY_PANEL", ["counts"]],
-          ["ACTION_BAR", ["actions"]],
         ]),
         emphasized: "READINESS",
       };
@@ -87,14 +87,14 @@ function layoutForStatus(status: PlanningOriginatedExecutionStatus): {
         "TASK_SCREEN_SUMMARY_PANEL",
       ];
       return {
-        sections: [...baseTop, ...mid, ...baseBottom],
+        sections: [...baseFlow, ...mid],
         binds: bindings([
           ["INPUT_PANEL", ["projectId"]],
           ["STATUS_BANNER", ["statusCard"]],
+          ["ACTION_BAR", ["actions"]],
           ["EXECUTION_START_STATUS_PANEL", ["runId", "message", "statusCard"]],
           ["METRICS_ROW", ["counts"]],
           ["TASK_SCREEN_SUMMARY_PANEL", ["counts"]],
-          ["ACTION_BAR", ["actions"]],
         ]),
         emphasized: "RUN",
       };
@@ -107,15 +107,15 @@ function layoutForStatus(status: PlanningOriginatedExecutionStatus): {
         "TASK_SCREEN_SUMMARY_PANEL",
       ];
       return {
-        sections: [...baseTop, ...mid, ...baseBottom],
+        sections: [...baseFlow, ...mid],
         binds: bindings([
           ["INPUT_PANEL", ["projectId"]],
           ["STATUS_BANNER", ["statusCard"]],
+          ["ACTION_BAR", ["actions"]],
           ["EXECUTION_READINESS_PANEL", ["message"]],
           ["EXECUTION_START_STATUS_PANEL", ["message", "statusCard"]],
           ["METRICS_ROW", ["counts"]],
           ["TASK_SCREEN_SUMMARY_PANEL", ["counts"]],
-          ["ACTION_BAR", ["actions"]],
         ]),
         emphasized: "EXECUTION_FAILURE",
       };
