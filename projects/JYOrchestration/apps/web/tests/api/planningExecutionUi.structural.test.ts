@@ -59,4 +59,28 @@ describe("Planning execution UI structural (demo screen)", () => {
     expect(screen.viewModel.actions.availableActions).toContain("REFRESH_STATUS");
     expect(screen.viewModel.actions.availableActions).toContain("EDIT_INPUT");
   });
+
+  it("NEEDS_CONFIRMATION includes counts + qualitative summary (no refinement bundle)", () => {
+    const screen = demoPlanningExecutionScreenViewModel("NEEDS_CONFIRMATION");
+    expect(screen.viewModel.confirmationNeededSummary).not.toBeNull();
+    expect(screen.viewModel.confirmationNeededSummary!.confirmRequiredCount).toBeGreaterThan(0);
+    expect(screen.viewModel.confirmationNeededQualitativeSummary).toBeTruthy();
+    assertNoForbiddenJsonKeys(JSON.stringify(screen.viewModel));
+  });
+
+  it("status card copy is present and stable for all statuses", () => {
+    const statuses: PlanningOriginatedExecutionStatus[] = [
+      "BLOCKED",
+      "NEEDS_CONFIRMATION",
+      "READY_FOR_EXECUTION",
+      "EXECUTION_STARTED",
+      "EXECUTION_START_FAILED",
+    ];
+    for (const s of statuses) {
+      const screen = demoPlanningExecutionScreenViewModel(s);
+      expect(screen.viewModel.statusCard.headline).toBeTruthy();
+      expect(screen.viewModel.statusCard.explanation).toBeTruthy();
+      expect(screen.viewModel.statusCard.nextStepGuidance).toBeTruthy();
+    }
+  });
 });

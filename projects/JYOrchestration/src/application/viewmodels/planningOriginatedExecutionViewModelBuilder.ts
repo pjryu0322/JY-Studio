@@ -19,50 +19,47 @@ import type {
   PlanningOriginatedExecutionViewModel,
 } from "./planningOriginatedExecutionViewModel";
 import { planningOriginatedExecutionStatePolicy } from "../planningOriginatedExecution/planningOriginatedExecutionStateModel";
+import { planningExecutionStatusCopy } from "./planningOriginatedExecutionStatusCopy";
 
 type StatusCardDef = Readonly<{
   tone: PlanningExecutionTone;
   badgeLabel: string;
-  headline: string;
-  nextActionLabel: string;
 }>;
 
 const STATUS_CARD: Record<PlanningOriginatedExecutionStatus, StatusCardDef> = {
   BLOCKED: {
     tone: "danger",
-    badgeLabel: "Blocked",
-    headline: "Planning cannot proceed with this input",
-    nextActionLabel: "Revise planning input",
+    badgeLabel: "차단됨",
   },
   NEEDS_CONFIRMATION: {
     tone: "warning",
-    badgeLabel: "Confirmation needed",
-    headline: "Confirm open points before execution can be prepared",
-    nextActionLabel: "Review and confirm",
+    badgeLabel: "확인 필요",
   },
   READY_FOR_EXECUTION: {
     tone: "neutral",
-    badgeLabel: "Ready",
-    headline: "Execution is prepared and can be started",
-    nextActionLabel: "Start execution",
+    badgeLabel: "준비됨",
   },
   EXECUTION_STARTED: {
     tone: "success",
-    badgeLabel: "Started",
-    headline: "Execution run has started",
-    nextActionLabel: "View run status",
+    badgeLabel: "시작됨",
   },
   EXECUTION_START_FAILED: {
     tone: "danger",
-    badgeLabel: "Start failed",
-    headline: "Execution preparation succeeded but start failed",
-    nextActionLabel: "Retry or inspect failure",
+    badgeLabel: "실패",
   },
 };
 
 function statusCardFor(status: PlanningOriginatedExecutionStatus): PlanningExecutionStatusCardViewModel {
   const d = STATUS_CARD[status];
-  return { status, tone: d.tone, badgeLabel: d.badgeLabel, headline: d.headline, nextActionLabel: d.nextActionLabel };
+  const copy = planningExecutionStatusCopy(status);
+  return {
+    status,
+    tone: d.tone,
+    badgeLabel: d.badgeLabel,
+    headline: copy.headline,
+    explanation: copy.explanation,
+    nextStepGuidance: copy.nextStepGuidance,
+  };
 }
 
 export function planningExecutionStructuralActionsForStatus(
@@ -114,6 +111,23 @@ function confirmationSummaryFromReadiness(
   return { confirmRequiredCount: r.confirmRequiredCount, blockingIssueCount: r.blockingIssueCount };
 }
 
+function confirmationQualitativeSummary(
+  summary: import("../contracts/planningOriginatedExecutionResponse").PlanningOriginatedConfirmationNeededSummary
+): string | null {
+  if (!summary) return null;
+  const { confirmRequiredCount, blockingIssueCount } = summary;
+  if (confirmRequiredCount > 0 && blockingIssueCount > 0) {
+    return "미확정 항목과 차단 이슈가 남아 있어, 확인 후에만 실행을 진행할 수 있습니다.";
+  }
+  if (confirmRequiredCount > 0) {
+    return "몇 가지 미확정 항목이 있어, 확인이 끝나야 실행을 시작할 수 있습니다.";
+  }
+  if (blockingIssueCount > 0) {
+    return "차단 이슈가 남아 있어, 해결/확인 후에만 실행을 진행할 수 있습니다.";
+  }
+  return null;
+}
+
 /** Build UI view-model from a normalized planning-originated execution response. */
 export function buildPlanningOriginatedExecutionViewModel(
   response: PlanningOriginatedExecutionResponse
@@ -128,13 +142,15 @@ export function buildPlanningOriginatedExecutionViewModel(
 
   if (status === "BLOCKED" || status === "NEEDS_CONFIRMATION") {
     const planning = response.planning;
+    const confirmationNeededSummary =
+      status === "NEEDS_CONFIRMATION" ? confirmationSummaryFromReadiness(planning.readiness) : null;
     return {
       projectId: planning.projectId,
       responseStatus: status,
       statusCard,
       counts: null,
-      confirmationNeededSummary:
-        status === "NEEDS_CONFIRMATION" ? confirmationSummaryFromReadiness(planning.readiness) : null,
+      confirmationNeededSummary,
+      confirmationNeededQualitativeSummary: status === "NEEDS_CONFIRMATION" ? confirmationQualitativeSummary(confirmationNeededSummary) : null,
       runId: null,
       canStartExecution,
       canRetry,
@@ -164,6 +180,7 @@ export function buildPlanningOriginatedExecutionViewModel(
       orderedTaskIds: preview.orderedTaskIds,
     }),
     confirmationNeededSummary: preview.confirmationNeededSummary,
+    confirmationNeededQualitativeSummary: null,
     runId,
     canStartExecution,
     canRetry,

@@ -82,10 +82,7 @@ export function PlanningExecutionWorkspace(props: PlanningExecutionWorkspaceProp
     <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4 pb-12">
       <header className="space-y-1">
         <h1 className="text-lg font-semibold tracking-tight text-neutral-900">Planning → execution</h1>
-        <p className="text-sm text-neutral-500">
-          Skeleton UI: view-model / screen contract only. Emphasis:{" "}
-          <span className="font-mono text-xs text-neutral-700">{screen.emphasizedSummary ?? "—"}</span>
-        </p>
+        <p className="text-sm text-neutral-500">입력을 바탕으로 계획을 정리하고, 준비가 되면 실행을 시작합니다.</p>
       </header>
       {screen.visibleSections.map((section) => (
         <div key={section} data-section={section}>

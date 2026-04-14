@@ -89,6 +89,47 @@ export function PlanningExecutionPageClient() {
     }
   }, [useDemo, demoStatus]);
 
+  function DevControlsPanel() {
+    return (
+      <div className="flex w-full flex-wrap items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
+        <label className="flex items-center gap-2 text-neutral-700">
+          <input type="checkbox" checked={useDemo} onChange={(e) => setUseDemo(e.target.checked)} />
+          Demo fixtures
+        </label>
+
+        {useDemo ? (
+          <>
+            <label className="font-medium text-neutral-800" htmlFor="demo-status-select">
+              Demo status
+            </label>
+            <select
+              id="demo-status-select"
+              className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 font-mono text-xs"
+              value={demoStatus}
+              onChange={(e) => setDemoStatus(e.target.value as PlanningOriginatedExecutionStatus)}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <span className="text-neutral-500">In real mode, run actions are driven from the action bar.</span>
+        )}
+
+        {lastAction ? (
+          <span className="font-mono text-xs text-neutral-600">
+            Last structural action: <strong>{lastAction}</strong> (placeholder)
+          </span>
+        ) : (
+          <span className="text-xs text-neutral-500">Use action bar — handlers are placeholders.</span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-neutral-100/80">
       <div className="border-b border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700 shadow-sm">
@@ -103,50 +144,9 @@ export function PlanningExecutionPageClient() {
             {showDevControls ? "Hide dev controls" : "Dev controls"}
           </button>
 
-          {!showDevControls ? null : (
-            <div className="flex w-full flex-wrap items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
-              <label className="flex items-center gap-2 text-neutral-700">
-                <input
-                  type="checkbox"
-                  checked={useDemo}
-                  onChange={(e) => setUseDemo(e.target.checked)}
-                />
-                Demo fixtures
-              </label>
+          {!showDevControls ? null : <DevControlsPanel />}
 
-              {useDemo ? (
-                <>
-                  <label className="font-medium text-neutral-800" htmlFor="demo-status-select">
-                    Demo status
-                  </label>
-                  <select
-                    id="demo-status-select"
-                    className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 font-mono text-xs"
-                    value={demoStatus}
-                    onChange={(e) => setDemoStatus(e.target.value as PlanningOriginatedExecutionStatus)}
-                  >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <span className="text-neutral-500">
-                  In real mode, run actions are driven from the action bar.
-                </span>
-              )}
-            </div>
-          )}
-
-          {lastAction ? (
-            <span className="font-mono text-xs text-neutral-600">
-              Last structural action: <strong>{lastAction}</strong> (placeholder)
-            </span>
-          ) : (
-            <span className="text-xs text-neutral-500">Use action bar — handlers are placeholders.</span>
-          )}
+          <span className="text-xs text-neutral-500">입력과 상태를 확인한 뒤, 아래 액션으로 진행하세요.</span>
         </div>
         {!useDemo && reqState.kind !== "idle" ? (
           <div className="mx-auto mt-2 max-w-3xl">

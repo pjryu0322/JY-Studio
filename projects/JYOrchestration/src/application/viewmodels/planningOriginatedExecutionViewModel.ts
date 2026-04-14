@@ -20,6 +20,13 @@ import type { PlanningOriginatedConfirmationNeededSummary } from "../contracts/p
 /** Visual tone for status chrome (banners, badges) — structural only. */
 export type PlanningExecutionTone = "danger" | "warning" | "neutral" | "success";
 
+/** State-specific UX copy (no i18n system; deterministic strings). */
+export type PlanningExecutionStatusCopy = Readonly<{
+  headline: string;
+  explanation: string;
+  nextStepGuidance: string;
+}>;
+
 /** Structural action intents for buttons/links (not React components). */
 export type PlanningExecutionStructuralAction =
   | "EDIT_INPUT"
@@ -36,7 +43,8 @@ export type PlanningExecutionStatusCardViewModel = Readonly<{
   tone: PlanningExecutionTone;
   badgeLabel: string;
   headline: string;
-  nextActionLabel: string;
+  explanation: string;
+  nextStepGuidance: string;
 }>;
 
 /** Counts + task order when execution preparation preview exists. */
@@ -78,6 +86,8 @@ export type PlanningOriginatedExecutionViewModel = Readonly<{
   /** Non-null when preview exists on the response; otherwise null (planning-only terminals). */
   counts: PlanningExecutionCountsViewModel | null;
   confirmationNeededSummary: PlanningOriginatedConfirmationNeededSummary;
+  /** Qualitative confirmation summary when confirmation is required (no refinement bundle). */
+  confirmationNeededQualitativeSummary: string | null;
   runId: string | null;
   canStartExecution: boolean;
   canRetry: boolean;

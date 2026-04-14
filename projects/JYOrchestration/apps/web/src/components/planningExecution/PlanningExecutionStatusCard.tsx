@@ -28,7 +28,8 @@ export function PlanningExecutionStatusCard({ card }: { readonly card: PlanningE
         <span className="text-xs font-mono text-neutral-500">{card.status}</span>
       </div>
       <h2 className="mt-2 text-base font-semibold text-neutral-900">{card.headline}</h2>
-      <p className="mt-1 text-sm text-neutral-600">{card.nextActionLabel}</p>
+      <p className="mt-1 text-sm text-neutral-700">{card.explanation}</p>
+      <p className="mt-2 text-sm text-neutral-600">{card.nextStepGuidance}</p>
     </section>
   );
 }
