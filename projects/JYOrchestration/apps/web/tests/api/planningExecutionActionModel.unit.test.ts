@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveRuntimeFailureActions, normalizePlanningExecutionActions } from "../../src/components/planningExecution/planningExecutionActionModel";
+import { normalizePlanningExecutionActions, resolvePlanningExecutionPrimaryAction } from "../../src/components/planningExecution/planningExecutionActionModel";
 
 describe("planning execution action model normalization", () => {
   it("dedupes available actions and keeps primary/secondary ordered", () => {
@@ -20,11 +20,31 @@ describe("planning execution action model normalization", () => {
       secondaryAction: "REFRESH_STATUS",
       availableActions: ["VIEW_RUN_STATUS", "REFRESH_STATUS", "EDIT_INPUT"],
     });
-    const a = deriveRuntimeFailureActions({ baseActions: base, canInspect: true, canRetry: true });
+    const a = resolvePlanningExecutionPrimaryAction({
+      responseStatus: "EXECUTION_STARTED",
+      baseActions: base,
+      runStatus: { status: "FAILED", canInspect: true, canRetry: true },
+    });
     expect(a.primaryAction).toBe("INSPECT_FAILURE");
     expect(a.secondaryAction).toBe("RETRY_EXECUTION");
     expect(a.availableActions).toContain("INSPECT_FAILURE");
     expect(a.availableActions).toContain("RETRY_EXECUTION");
+  });
+
+  it("removes VIEW_RUN_STATUS from global actions once run-status is present", () => {
+    const base = normalizePlanningExecutionActions({
+      primaryAction: "VIEW_RUN_STATUS",
+      secondaryAction: "REFRESH_STATUS",
+      availableActions: ["VIEW_RUN_STATUS", "REFRESH_STATUS", "EDIT_INPUT"],
+    });
+    const a = resolvePlanningExecutionPrimaryAction({
+      responseStatus: "EXECUTION_STARTED",
+      baseActions: base,
+      runStatus: { status: "RUNNING", canInspect: true, canRetry: false },
+    });
+    expect(a.availableActions).not.toContain("VIEW_RUN_STATUS");
+    expect(a.primaryAction).toBe("EDIT_INPUT");
+    expect(a.availableActions).toContain("REFRESH_STATUS");
   });
 });
 

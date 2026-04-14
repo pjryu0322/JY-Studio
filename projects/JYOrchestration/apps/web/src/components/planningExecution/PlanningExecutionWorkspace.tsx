@@ -25,7 +25,7 @@ import { PlanningExecutionReadinessPanel } from "./PlanningExecutionReadinessPan
 import { PlanningExecutionStatusCard } from "./PlanningExecutionStatusCard";
 import { PlanningExecutionCounts } from "./PlanningExecutionCounts";
 import { PlanningExecutionTaskList } from "./PlanningExecutionTaskList";
-import { deriveRuntimeFailureActions, normalizePlanningExecutionActions } from "./planningExecutionActionModel";
+import { resolvePlanningExecutionPrimaryAction } from "./planningExecutionActionModel";
 
 export type PlanningExecutionWorkspaceProps = Readonly<{
   screen: PlanningExecutionScreenViewModel;
@@ -86,21 +86,19 @@ function renderSection(
     case "TASK_SCREEN_SUMMARY_PANEL":
       return <PlanningExecutionTaskList counts={vm.counts} />;
     case "ACTION_BAR":
-      const base = normalizePlanningExecutionActions(vm.actions);
-      const runFailed = screen.responseStatus === "EXECUTION_STARTED" && runStatus?.status === "FAILED";
-      const effectiveActions: PlanningExecutionActionViewModel = runFailed
-        ? deriveRuntimeFailureActions({
-            baseActions: base,
-            canInspect: runStatus?.canInspect === true,
-            canRetry: runStatus?.canRetry === true,
-          })
-        : base;
+      const effectiveActions: PlanningExecutionActionViewModel = resolvePlanningExecutionPrimaryAction({
+        responseStatus: screen.responseStatus,
+        baseActions: vm.actions,
+        runStatus: runStatus
+          ? { status: runStatus.status, canInspect: runStatus.canInspect, canRetry: runStatus.canRetry }
+          : null,
+      });
       return (
         <PlanningExecutionActionBar
           actions={effectiveActions}
           onStructuralAction={onStructuralAction}
           disabled={inputDisabled}
-          runStatusRefreshHint={screen.responseStatus === "EXECUTION_STARTED" && runStatus !== null}
+          runStatusRefreshHint={false}
         />
       );
     default:
