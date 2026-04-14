@@ -2,6 +2,7 @@
 
 import type { PlanningExecutionRunStatusResponse, PlanningOriginatedExecutionViewModel } from "@jy-orch/application/public";
 import { PlanningExecutionMessagePanel } from "./PlanningExecutionMessagePanel";
+import { buildPlanningExecutionRunStatusPresentation } from "./planningExecutionRunStatusPresentation";
 
 /** Run id + status headline — no run store internals. */
 export function PlanningExecutionExecutionStatusPanel({
@@ -15,6 +16,7 @@ export function PlanningExecutionExecutionStatusPanel({
   readonly runStatusError: string | null;
   readonly onRunStatusRefresh: (() => void) | null;
 }) {
+  const pres = runStatus ? buildPlanningExecutionRunStatusPresentation({ run: runStatus }) : null;
   return (
     <div className="space-y-3">
       {vm.runId ? (
@@ -42,16 +44,27 @@ export function PlanningExecutionExecutionStatusPanel({
           </p>
         ) : null}
         {runStatus ? (
-          <dl className="mt-2 grid gap-2 text-sm text-neutral-700">
-            <div className="flex justify-between gap-2">
-              <dt className="text-neutral-500">상태</dt>
-              <dd className="font-mono text-xs">{runStatus.status}</dd>
-            </div>
-            {runStatus.status === "FAILED" ? (
-              <div className="col-span-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
-                실행이 중간에 실패했습니다. “실패 원인 보기”로 메시지를 확인하거나, “다시 시도”로 새 실행을 시작할 수 있습니다.
+          <>
+            <div
+              className={
+                pres?.tone === "danger"
+                  ? "mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900"
+                  : pres?.tone === "success"
+                    ? "mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
+                    : "mt-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800"
+              }
+              aria-label="Run status summary"
+              data-testid="run-status-summary"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">{pres?.summaryLine ?? "—"}</span>
+                <span className="rounded-full border border-neutral-300 bg-white px-2 py-0.5 text-xs font-medium text-neutral-800">
+                  {pres?.statusLabel ?? "—"}
+                </span>
               </div>
-            ) : null}
+              {pres?.hintLine ? <p className="mt-1 text-xs text-neutral-600">{pres.hintLine}</p> : null}
+            </div>
+            <dl className="mt-2 grid gap-2 text-sm text-neutral-700">
             <div className="flex justify-between gap-2">
               <dt className="text-neutral-500">진행률(작업 기준)</dt>
               <dd>{runStatus.progressPercent}%</dd>
@@ -75,7 +88,8 @@ export function PlanningExecutionExecutionStatusPanel({
             {runStatus.lastMessage ? (
               <div className="col-span-full text-sm text-neutral-700">{runStatus.lastMessage}</div>
             ) : null}
-          </dl>
+            </dl>
+          </>
         ) : (
           <p className="mt-2 text-sm text-neutral-700">
             실행 상태는 이 패널에서 확인합니다. “상태 재평가”는 계획/준비를 다시 평가하는 별도 동작입니다.

@@ -8,6 +8,17 @@ function uniq<T>(xs: readonly T[]): T[] {
   return out;
 }
 
+function removeAction(
+  actions: PlanningExecutionActionViewModel,
+  a: PlanningExecutionStructuralAction
+): PlanningExecutionActionViewModel {
+  return normalizePlanningExecutionActions({
+    primaryAction: actions.primaryAction === a ? "EDIT_INPUT" : actions.primaryAction,
+    secondaryAction: actions.secondaryAction === a ? null : actions.secondaryAction,
+    availableActions: actions.availableActions.filter((x) => x !== a),
+  });
+}
+
 /**
  * Normalizes an action view-model to ensure:
  * - `secondaryAction` is not equal to `primaryAction`
@@ -43,4 +54,41 @@ export function deriveRuntimeFailureActions(input: {
     ],
   });
 }
+
+/**
+ * Centralized primary-action priority resolver for the workspace.
+ *
+ * Goal: avoid re-implementing priority logic in React components.
+ */
+export function resolvePlanningExecutionPrimaryAction(input: {
+  responseStatus: "BLOCKED" | "NEEDS_CONFIRMATION" | "READY_FOR_EXECUTION" | "EXECUTION_STARTED" | "EXECUTION_START_FAILED";
+  baseActions: PlanningExecutionActionViewModel;
+  runStatus: { status: "RUNNING" | "COMPLETED" | "FAILED"; canInspect: boolean; canRetry: boolean } | null;
+}): PlanningExecutionActionViewModel {
+  const base = normalizePlanningExecutionActions(input.baseActions);
+  if (input.responseStatus !== "EXECUTION_STARTED") return base;
+
+  // When run-status is available, ongoing status checks should be panel-local.
+  // De-emphasize VIEW_RUN_STATUS in the global action bar to reduce duplication/ambiguity.
+  if (input.runStatus && input.runStatus.status !== "FAILED") {
+    const stripped = removeAction(base, "VIEW_RUN_STATUS");
+    return normalizePlanningExecutionActions({
+      primaryAction: "EDIT_INPUT",
+      secondaryAction: "REFRESH_STATUS",
+      availableActions: ["EDIT_INPUT", "REFRESH_STATUS", ...stripped.availableActions],
+    });
+  }
+
+  if (input.runStatus && input.runStatus.status === "FAILED") {
+    return deriveRuntimeFailureActions({
+      baseActions: removeAction(base, "VIEW_RUN_STATUS"),
+      canInspect: input.runStatus.canInspect,
+      canRetry: input.runStatus.canRetry,
+    });
+  }
+
+  // No run-status yet: keep VIEW_RUN_STATUS as the entry point.
+  return base;
+}
+
 
