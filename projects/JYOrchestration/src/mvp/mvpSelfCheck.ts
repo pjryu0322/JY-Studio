@@ -242,6 +242,7 @@ import {
   validateNavigationToken,
   validateScreenIsolationToken,
 } from "./reviewer/mvpReviewFlowValidationHelpers";
+import { runPlanningOriginatedExecutionUiRouteIntegrationSelfCheck } from "./selfcheck/uiRouteIntegrationSelfCheck";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
@@ -252,6 +253,8 @@ function assert(cond: unknown, msg: string): asserts cond {
 function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
+
+// NOTE: planning-originated execution UI/route integration checks live in `src/mvp/selfcheck/*`.
 
 function baseTasks(pid: string): Task[] {
   return [
@@ -366,6 +369,13 @@ export async function runMvpSelfCheck(): Promise<void> {
       "NOT_READY envelope carries readiness"
     );
   }
+
+  // (TODO refactor) This file is intentionally large today. It will be split into concern-based modules:
+  // - planning
+  // - bridge/bootstrap
+  // - facade/response
+  // - ui/route integration
+  // with this function remaining as a thin aggregator.
   resetAll();
 
   {
@@ -1529,6 +1539,8 @@ export async function runMvpSelfCheck(): Promise<void> {
     );
     assert(!isMvpSeedVerificationIssueCode("NOT_A_SEED_CODE"), "unknown strings are not typed seed issue codes");
   }
+
+  await runPlanningOriginatedExecutionUiRouteIntegrationSelfCheck({ resetAll });
 
   {
     const p = "mvp-domain-prompt-screen-aware";
