@@ -7,7 +7,7 @@ export function PlanningExecutionPlanningSummaryPanel({ vm }: { readonly vm: Pla
   const h = vm.planningHints;
   if (!h) return null;
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="Planning summary">
+    <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="계획 요약">
       <h3 className="text-sm font-semibold text-neutral-800">계획 요약</h3>
       <dl className="mt-2 grid gap-2 text-sm text-neutral-700">
         <div className="flex justify-between gap-2">

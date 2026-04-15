@@ -22,12 +22,12 @@ export function PlanningExecutionExecutionStatusPanel({
   return (
     <div className="space-y-3">
       {vm.runId ? (
-        <section className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4" aria-label="Run identifier">
+        <section className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4" aria-label="실행 식별자">
           <h3 className="text-sm font-semibold text-emerald-950">Run</h3>
           <p className="mt-1 font-mono text-sm text-emerald-900">{vm.runId}</p>
         </section>
       ) : null}
-      <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="Run monitoring">
+      <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="실행 모니터링">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-neutral-800">실행 상태</h3>
           {onRunStatusRefresh ? (
@@ -58,7 +58,7 @@ export function PlanningExecutionExecutionStatusPanel({
                     ? "mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
                     : "mt-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800"
               }
-              aria-label="Run status summary"
+              aria-label="실행 상태 요약"
               data-testid="run-status-summary"
             >
               <div className="flex flex-wrap items-center gap-2">

@@ -14,10 +14,10 @@ export function DiscussionTimeline({ items }: { items: DiscussionItem[] }) {
   const sorted = useMemo(() => [...items].sort((a, b) => (a.at < b.at ? 1 : -1)), [items]);
 
   return (
-    <section aria-label="Discussion timeline" style={{ display: "grid", gap: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 800 }}>Discussion</div>
+    <section aria-label="토론 타임라인" style={{ display: "grid", gap: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 800 }}>토론</div>
       {sorted.length === 0 ? (
-        <div style={{ fontSize: 13, color: "#6b7280" }}>(no discussion yet)</div>
+        <div style={{ fontSize: 13, color: "#6b7280" }}>(아직 토론이 없습니다)</div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {sorted.map((x) => (
@@ -26,7 +26,7 @@ export function DiscussionTimeline({ items }: { items: DiscussionItem[] }) {
                 <div style={{ fontSize: 13, fontWeight: 800 }}>
                   {x.author}{" "}
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#6b7280" }}>
-                    · {x.mode === "online" ? "online" : "offline note"}
+                    · {x.mode === "online" ? "온라인" : "오프라인 메모"}
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: "#6b7280" }}>{x.at}</div>

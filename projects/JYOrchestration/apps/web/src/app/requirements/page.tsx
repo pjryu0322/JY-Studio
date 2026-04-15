@@ -16,7 +16,7 @@ export default function RequirementsPage() {
 
   return (
     <div className="relative">
-      <ScreenLabel label="요구사항-목록-섹션" visible={showScreenLabels} />
+      <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
       <WorkflowPageHeader
         title="요구사항"
         subtitle="워크플로우 흐름: 요구사항 → 협업 세션 → 회의록 → 기능"
@@ -31,20 +31,20 @@ export default function RequirementsPage() {
           vm.requirements.map((r) => (
             <WorkflowCard key={r.id}>
               <div className="relative" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                <ScreenLabel label="요구사항-항목카드" visible={showScreenLabels} />
+                <ScreenLabel label="요구사항-목록-항목카드-컨테이너" visible={showScreenLabels} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                     <div className="relative" style={{ fontSize: 14, fontWeight: 900 }}>
-                      <ScreenLabel label="요구사항-항목카드-제목" visible={showScreenLabels} />
+                      <ScreenLabel label="요구사항-목록-항목카드-제목텍스트" visible={showScreenLabels} />
                       {r.title}
                     </div>
                     <div className="relative">
-                      <ScreenLabel label="요구사항-항목카드-상태배지" visible={showScreenLabels} />
+                      <ScreenLabel label="요구사항-목록-항목카드-상태배지" visible={showScreenLabels} />
                       <WorkflowBadge>{formatRequirementStatusForUi(r.status)}</WorkflowBadge>
                     </div>
                   </div>
                   <div className="relative" style={{ fontSize: 13, color: "#111827", marginTop: 6, lineHeight: 1.55 }}>
-                    <ScreenLabel label="요구사항-항목카드-설명" visible={showScreenLabels} />
+                    <ScreenLabel label="요구사항-목록-항목카드-설명텍스트" visible={showScreenLabels} />
                     {r.description}
                   </div>
                   <div
@@ -67,7 +67,7 @@ export default function RequirementsPage() {
                 </div>
 
                 <div className="relative" style={{ flex: "0 0 auto" }}>
-                  <ScreenLabel label="요구사항-항목카드-열기버튼" visible={showScreenLabels} />
+                  <ScreenLabel label="요구사항-목록-항목카드-열기버튼" visible={showScreenLabels} />
                   <Link
                     href={`/requirements/${encodeURIComponent(r.id)}?tab=overview`}
                     style={{

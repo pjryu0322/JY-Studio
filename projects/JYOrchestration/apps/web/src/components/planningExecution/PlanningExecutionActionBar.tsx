@@ -21,7 +21,7 @@ export function PlanningExecutionActionBar({
   return (
     <footer
       className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4"
-      aria-label="Planning execution actions"
+      aria-label="계획 기반 실행 동작"
     >
       <button
         type="button"

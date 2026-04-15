@@ -70,7 +70,7 @@ export async function requestCollaborationGeneration(
 
     return parsed;
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Network error";
+    const message = e instanceof Error ? e.message : "네트워크 오류";
     return {
       actionType,
       status: "error",

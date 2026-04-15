@@ -29,6 +29,7 @@ import {
 import { getCollaborationWorkspaceImpact } from "@/lib/workflow/collaborationWorkspaceImpact";
 import type { DisplayedAnalysis } from "@/lib/workflow/collaborationWorkspacePayload";
 import type { FeatureMock, MeetingMinutesMock } from "@/lib/mock/workflowMock";
+import { formatCollaborationSessionStatusForUi } from "@/lib/ui/workflowUiCopy";
 import { routeState } from "@/lib/workflow/workflowState";
 import { getCollaborationWorkspaceView } from "@/lib/workflow/workflowViewModel";
 
@@ -51,14 +52,14 @@ export default function CollaborationWorkspacePage() {
       at: "2026-04-07 10:05",
       author: "Alice",
       mode: "online",
-      content: "Let’s align on the collaboration workspace structure first (top summary + discussion + right results).",
+      content: "협업 워크스페이스 구조(상단 요약·토론·오른쪽 결과)부터 맞추자.",
     },
     {
       id: "d-2",
       at: "2026-04-07 10:12",
       author: "Bob",
       mode: "offline",
-      content: "Offline meeting notes: capture decisions + pending items; keep minutes panel reusable across pages.",
+      content: "오프라인 회의 메모: 결정·미결 항목을 남기고, 회의록 패널은 페이지 간 재사용되게 유지.",
     },
   ]);
 
@@ -87,7 +88,7 @@ export default function CollaborationWorkspacePage() {
   const runAction = async (actionType: CollaborationActionType) => {
     setActionState({
       status: "running",
-      latest: { actionType, status: "running", atIso: new Date().toISOString(), message: "Running…", payload: null },
+      latest: { actionType, status: "running", atIso: new Date().toISOString(), message: "실행 중…", payload: null },
     });
     const out = await requestCollaborationGeneration(actionType, sessionId);
     setActionState({ status: out.status, latest: out });
@@ -111,16 +112,16 @@ export default function CollaborationWorkspacePage() {
     return (
       <div>
         <WorkflowPageHeader
-          title="Collaboration Session"
-          subtitle={sessionId ? `Unknown session id: ${sessionId}` : "Unknown session id."}
+          title="협업 세션"
+          subtitle={sessionId ? `알 수 없는 세션 ID: ${sessionId}` : "알 수 없는 세션 ID입니다."}
           backHref="/collaboration"
-          backLabel="Back to sessions"
-          right={<WorkflowBadge>UNKNOWN</WorkflowBadge>}
+          backLabel="세션 목록으로"
+          right={<WorkflowBadge>알 수 없음</WorkflowBadge>}
         />
         <div style={{ marginTop: 14 }}>
           <WorkflowEmptyState
-            title="Session not found"
-            message="Please check the URL. This page will not show unrelated mock minutes or features for invalid sessions."
+            title="세션을 찾을 수 없음"
+            message="URL을 확인하세요. 잘못된 세션에는 관계 없는 목 데이터를 표시하지 않습니다."
           />
         </div>
       </div>
@@ -130,20 +131,26 @@ export default function CollaborationWorkspacePage() {
   return (
     <div>
       <WorkflowPageHeader
-        title={vm.session?.title ?? "Collaboration Session"}
+        title={vm.session?.title ?? "협업 세션"}
         subtitle={
-          vm.session ? `${vm.session.createdAt} · ${vm.session.id}` : sessionId ? `Unknown session id: ${sessionId}` : "Unknown session id."
+          vm.session ? `${vm.session.createdAt} · ${vm.session.id}` : sessionId ? `알 수 없는 세션 ID: ${sessionId}` : "알 수 없는 세션 ID입니다."
         }
         backHref="/collaboration"
-        backLabel="Back to sessions"
-        right={vm.session ? <WorkflowBadge>{vm.session.status}</WorkflowBadge> : <WorkflowBadge>UNKNOWN</WorkflowBadge>}
+        backLabel="세션 목록으로"
+        right={
+          vm.session ? (
+            <WorkflowBadge>{formatCollaborationSessionStatusForUi(vm.session.status)}</WorkflowBadge>
+          ) : (
+            <WorkflowBadge>알 수 없음</WorkflowBadge>
+          )
+        }
       />
 
       <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
         <WorkflowCard>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Linked Requirement</div>
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>연결된 요구사항</div>
               {vm.requirement ? (
                 <>
                   <div style={{ fontSize: 14, fontWeight: 900 }}>{vm.requirement.title}</div>
@@ -152,7 +159,7 @@ export default function CollaborationWorkspacePage() {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 13, color: "#6b7280" }}>(no requirement linked)</div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>(연결된 요구사항 없음)</div>
               )}
             </div>
             {vm.requirement ? (
@@ -161,13 +168,13 @@ export default function CollaborationWorkspacePage() {
                   href={`/requirements/${encodeURIComponent(vm.requirement.id)}?tab=sessions`}
                   style={{ fontSize: 13, textDecoration: "underline" }}
                 >
-                  Open requirement
+                  요구사항 열기
                 </Link>
                 <Link
                   href={`/tasks?requirementId=${encodeURIComponent(vm.requirement.id)}&sessionId=${encodeURIComponent(sessionId)}`}
                   style={{ fontSize: 13, textDecoration: "underline" }}
                 >
-                  Tasks workspace
+                  작업 워크스페이스
                 </Link>
               </div>
             ) : null}
@@ -175,15 +182,15 @@ export default function CollaborationWorkspacePage() {
         </WorkflowCard>
 
         <WorkflowCard>
-          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Related materials</div>
-          <div style={{ fontSize: 13, color: "#6b7280" }}>(placeholder) Attach links/docs in the next phase.</div>
+          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>관련 자료</div>
+          <div style={{ fontSize: 13, color: "#6b7280" }}>(자리 표시자) 다음 단계에서 링크·문서를 첨부합니다.</div>
         </WorkflowCard>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 340px)", gap: 16, marginTop: 16 }}>
         <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
           <div>
-            <WorkflowSectionLabel marginBottom={8}>Discussion</WorkflowSectionLabel>
+            <WorkflowSectionLabel marginBottom={8}>토론</WorkflowSectionLabel>
             <DiscussionInput
               onAdd={(item) => {
                 const now = new Date();
@@ -199,10 +206,10 @@ export default function CollaborationWorkspacePage() {
           </div>
 
           <div>
-            <WorkflowSectionLabel marginBottom={8}>Workspace actions</WorkflowSectionLabel>
+            <WorkflowSectionLabel marginBottom={8}>워크스페이스 작업</WorkflowSectionLabel>
             <div style={{ display: "grid", gap: 10 }}>
               <div>
-                <WorkflowSectionLabel marginBottom={6}>Official</WorkflowSectionLabel>
+                <WorkflowSectionLabel marginBottom={6}>공식</WorkflowSectionLabel>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <WorkflowActionButton label="회의록 작성" onClick={() => void runAction("GENERATE_MINUTES")} />
                   <WorkflowActionButton label="Feature 생성" onClick={() => void runAction("GENERATE_FEATURES")} />
@@ -210,7 +217,7 @@ export default function CollaborationWorkspacePage() {
                 </div>
               </div>
               <div>
-                <WorkflowSectionLabel marginBottom={6}>Supporting</WorkflowSectionLabel>
+                <WorkflowSectionLabel marginBottom={6}>보조</WorkflowSectionLabel>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <WorkflowActionButton label="분석 요청" onClick={() => void runAction("REQUEST_ANALYSIS")} />
                   <WorkflowActionButton label="아이디어 요청" onClick={() => void runAction("REQUEST_IDEAS")} />
@@ -218,16 +225,15 @@ export default function CollaborationWorkspacePage() {
               </div>
             </div>
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, marginTop: 8 }}>
-              Official actions update primary outputs (and sync to the requirement detail for the latest session via in-memory store). Supporting actions only
-              fill Supporting insights. Server responses are mock_stub today.
+              공식 작업은 주요 산출물을 갱신하고(메모리 저장으로 최신 세션 요구사항 상세와 동기), 보조 작업은 보조 인사이트만 채웁니다. 서버 응답은 현재
+              mock_stub입니다.
             </div>
           </div>
 
           <WorkflowCard padding={12}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Action feedback</div>
+            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>작업 피드백</div>
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, marginBottom: 10 }}>
-              Status, timing, and optional JSON preview for the last run. After success, read the workspace note to see whether official outputs or only
-              supporting insights changed.
+              마지막 실행의 상태·시각·선택적 JSON 미리보기입니다. 성공 후 워크스페이스 안내를 읽어 공식 산출물만 바뀌었는지 보조만 바뀌었는지 확인하세요.
             </div>
             <ActionResultPanel result={actionState.latest} workspaceImpact={workspaceImpact} />
           </WorkflowCard>

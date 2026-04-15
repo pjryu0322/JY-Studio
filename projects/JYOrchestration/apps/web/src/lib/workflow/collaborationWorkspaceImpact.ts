@@ -12,8 +12,8 @@ export function getCollaborationWorkspaceImpact(latest: CollaborationActionResul
     return {
       scope: "primary",
       lines: [
-        "Latest minutes (official) on the right now reflects this run.",
-        "Supporting insights stay the same until you run analysis or ideas.",
+        "오른쪽 최신 회의록(공식)이 이번 실행 결과를 반영합니다.",
+        "분석·아이디어 요청 전까지 보조 인사이트는 그대로입니다.",
       ],
     };
   }
@@ -21,8 +21,8 @@ export function getCollaborationWorkspaceImpact(latest: CollaborationActionResul
     return {
       scope: "primary",
       lines: [
-        "Official derived features on the right now reflect this run (also visible on the requirement Features tab for the latest session).",
-        "Idea-based suggestions under Supporting insights are unchanged. Run Task 초안 생성 to refresh official task drafts.",
+        "오른쪽 공식 파생 기능이 이번 실행을 반영합니다(최신 세션 기준 요구사항 기능 탭에서도 확인).",
+        "보조 인사이트의 아이디어 제안은 바뀌지 않습니다. 공식 작업 초안은 작업 초안 생성으로 갱신하세요.",
       ],
     };
   }
@@ -30,8 +30,8 @@ export function getCollaborationWorkspaceImpact(latest: CollaborationActionResul
     return {
       scope: "primary",
       lines: [
-        "Official task drafts on the right now reflect this run (also visible on the requirement Tasks tab for the latest session).",
-        "Supporting insights and idea suggestions are unchanged.",
+        "오른쪽 공식 작업 초안이 이번 실행을 반영합니다(최신 세션 기준 요구사항 작업 탭에서도 확인).",
+        "보조 인사이트와 아이디어 제안은 그대로입니다.",
       ],
     };
   }
@@ -39,16 +39,16 @@ export function getCollaborationWorkspaceImpact(latest: CollaborationActionResul
     return {
       scope: "supporting",
       lines: [
-        "Open Supporting insights to see the new analysis notes.",
-        "Official minutes, derived features, and task drafts were not changed.",
+        "보조 인사이트를 열면 새 분석 메모를 볼 수 있습니다.",
+        "공식 회의록·파생 기능·작업 초안은 변경되지 않았습니다.",
       ],
     };
   }
   return {
     scope: "supporting",
     lines: [
-      "Ideas and suggested feature cards were refreshed (labeled as suggestions, not official).",
-      "Official minutes, features, and task drafts on the right are unchanged.",
+      "아이디어와 제안 기능 카드가 갱신되었습니다(제안 표기, 공식 아님).",
+      "오른쪽 공식 회의록·기능·작업 초안은 그대로입니다.",
     ],
   };
 }

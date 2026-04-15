@@ -19,7 +19,7 @@ export function TasksWorkspaceSummaryStrip({ view, onOpenRequirement, onOpenColl
 
   return (
     <div className="relative">
-      <ScreenLabel label="작업-요약-컨텍스트-패널" visible={showScreenLabels} />
+      <ScreenLabel label="작업-워크스페이스-상단요약스트립-패널" visible={showScreenLabels} />
       <WorkflowCard padding={12}>
         <div
           style={{

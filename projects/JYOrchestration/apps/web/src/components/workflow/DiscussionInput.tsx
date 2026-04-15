@@ -13,18 +13,18 @@ export function DiscussionInput({
   const canSubmit = useMemo(() => content.trim().length > 0, [content]);
 
   return (
-    <section aria-label="Add discussion" style={{ border: "1px solid #e5e5e5", borderRadius: 10, padding: 12 }}>
-      <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>Add discussion item</div>
+    <section aria-label="토론 항목 추가" style={{ border: "1px solid #e5e5e5", borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>토론 항목 추가</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
         <label style={{ fontSize: 13, color: "#374151", fontWeight: 700 }}>
-          Mode{" "}
+          유형{" "}
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as DiscussionItem["mode"])}
             style={{ marginLeft: 6, padding: "6px 8px", borderRadius: 8, border: "1px solid #d1d5db" }}
           >
-            <option value="online">online</option>
-            <option value="offline">offline meeting note</option>
+            <option value="online">온라인</option>
+            <option value="offline">오프라인 회의 메모</option>
           </select>
         </label>
       </div>
@@ -32,7 +32,7 @@ export function DiscussionInput({
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        placeholder="Write discussion or meeting notes…"
+        placeholder="토론 또는 회의 메모를 입력하세요…"
         rows={4}
         style={{
           width: "100%",
@@ -52,7 +52,7 @@ export function DiscussionInput({
           onClick={() => {
             const text = content.trim();
             if (!text) return;
-            onAdd({ author: "You", content: text, mode });
+            onAdd({ author: "나", content: text, mode });
             setContent("");
           }}
           style={{
@@ -66,7 +66,7 @@ export function DiscussionInput({
             fontSize: 13,
           }}
         >
-          Add
+          추가
         </button>
       </div>
     </section>

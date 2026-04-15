@@ -9,13 +9,13 @@ import type { PlanningExecutionCountsViewModel } from "@jy-orch/application/publ
 export function PlanningExecutionCounts({ counts }: { readonly counts: PlanningExecutionCountsViewModel | null }) {
   if (!counts) {
     return (
-      <section className="rounded-lg border border-dashed border-neutral-200 p-4 text-sm text-neutral-500" aria-label="Metrics">
+      <section className="rounded-lg border border-dashed border-neutral-200 p-4 text-sm text-neutral-500" aria-label="지표">
         Metrics unavailable until execution preparation preview exists.
       </section>
     );
   }
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="Planning execution metrics">
+    <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="계획 기반 실행 지표">
       <h3 className="text-sm font-semibold text-neutral-800">Counts</h3>
       <dl className="mt-2 grid grid-cols-3 gap-3 text-center">
         <div>
