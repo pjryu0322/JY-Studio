@@ -107,11 +107,11 @@ function toneForRunStatus(status: string | null | undefined): ExecutionTone {
 }
 
 function connectorStatusLabel(status: string | null | undefined) {
-  if (!status) return "Not invoked";
-  if (status === "accepted") return "Accepted";
-  if (status === "running") return "Running";
-  if (status === "completed") return "Completed";
-  return "Failed";
+  if (!status) return "호출 안 함";
+  if (status === "accepted") return "수락됨";
+  if (status === "running") return "진행 중";
+  if (status === "completed") return "완료";
+  return "실패";
 }
 
 export function getExecutionRunTimelineViewState(input: {
@@ -138,8 +138,8 @@ function resolvePrimaryExecutionAction(input: {
   const handoffValidity = pre.handoffValidity;
   const isDraftApproved = pre.isExecutionDraftApproved;
 
-  if (!snapshot) return { key: "openTasks", label: "Open Tasks workspace", disabled: false, note: "No prepared snapshot yet." };
-  if (!isActive) return { key: "selectActiveInput", label: "Select as active input", disabled: false, note: null };
+  if (!snapshot) return { key: "openTasks", label: "작업 화면 열기", disabled: false, note: "준비된 스냅샷이 아직 없습니다." };
+  if (!isActive) return { key: "selectActiveInput", label: "활성 입력으로 선택", disabled: false, note: null };
   if (!isHandoffPrepared) {
     return {
       key: "prepareHandoffPrepared",
@@ -151,23 +151,23 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.executionRequestDraft) {
     return {
       key: "createExecutionRequestDraft",
-      label: "Create execution draft",
+      label: "실행 요청 초안 만들기",
       disabled: !handoffValidity.isHandoffValid || !isHandoffPrepared,
-      note: !handoffValidity.isHandoffValid ? "Handoff is not valid for the current snapshot." : null,
+      note: !handoffValidity.isHandoffValid ? "현재 스냅샷에 대해 인수가 유효하지 않습니다." : null,
     };
   }
   if (!isDraftApproved) {
     return {
       key: "approveExecutionDraft",
-      label: "Approve for launch",
+      label: "실행을 위해 승인",
       disabled: !handoffValidity.isHandoffValid,
-      note: !handoffValidity.isHandoffValid ? "Handoff is not valid for the current snapshot." : null,
+      note: !handoffValidity.isHandoffValid ? "현재 스냅샷에 대해 인수가 유효하지 않습니다." : null,
     };
   }
   if (!pre.businessExecutionRequest) {
     return {
       key: "recordBusinessExecutionRequest",
-      label: "Create execution request",
+      label: "실행 요청 작성",
       disabled: !actions.canRecordBusinessRequest,
       note: null,
     };
@@ -175,7 +175,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isBusinessExecutionApproved) {
     return {
       key: "approveBusinessExecution",
-      label: "Approve execution request",
+      label: "실행 요청 승인",
       disabled: !actions.canApproveBusinessExecution,
       note: null,
     };
@@ -183,7 +183,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isBusinessExecutionPackaged) {
     return {
       key: "createBusinessExecutionPackage",
-      label: "Prepare execution package",
+      label: "실행 패키지 준비",
       disabled: !actions.canCreateBusinessPackage,
       note: null,
     };
@@ -191,15 +191,15 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutionPackageAssigned) {
     return {
       key: "assignExecutor",
-      label: "Assign executor",
+      label: "실행기 배정",
       disabled: !actions.canAssignExecutor,
-      note: "Choose cursor_executor or reviewer for this package.",
+      note: "이 패키지에 cursor_executor 또는 reviewer를 선택하세요.",
     };
   }
   if (!pre.isExecutionAssignmentHandoffCurrent) {
     return {
       key: "prepareExecutorHandoffPayload",
-      label: "Prepare executor handoff",
+      label: "실행기 인수 준비",
       disabled: !actions.canCreateHandoffPayload,
       note: null,
     };
@@ -207,7 +207,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutorIntakeContractCurrent) {
     return {
       key: "prepareExecutorIntakeContract",
-      label: "Prepare executor intake",
+      label: "실행기 입력 계약 준비",
       disabled: !actions.canCreateIntakeContract,
       note: null,
     };
@@ -215,7 +215,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutorWorkOrderCurrent) {
     return {
       key: "prepareExecutorWorkOrder",
-      label: "Prepare executor work order",
+      label: "실행기 작업 지시 준비",
       disabled: !actions.canCreateWorkOrder,
       note: null,
     };
@@ -223,18 +223,18 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isBusinessLaunchIntentCurrent) {
     return {
       key: "declareLaunchIntent",
-      label: "Declare launch intent",
+      label: "실행 의도 선언",
       disabled: !actions.canDeclareLaunchIntent,
       note:
         pre.executionReadiness.status !== "ready"
-          ? "Execution readiness must be ready before declaring launch intent."
+          ? "실행 의도를 선언하려면 실행 준비가 완료되어야 합니다."
           : null,
     };
   }
   if (!pre.isBusinessLaunchHandoffRecordCurrent) {
     return {
       key: "prepareLaunchHandoffRecord",
-      label: "Prepare launch handoff record",
+      label: "실행 인수 기록 준비",
       disabled: !actions.canRecordLaunchHandoff,
       note: null,
     };
@@ -242,7 +242,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutionBridgePayloadCurrent) {
     return {
       key: "prepareExecutionBridge",
-      label: "Prepare execution bridge",
+      label: "실행 브리지 준비",
       disabled: !actions.canPrepareExecutionBridge,
       note: null,
     };
@@ -250,7 +250,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutorLaunchContractCurrent) {
     return {
       key: "prepareExecutorLaunchContract",
-      label: "Prepare launch contract",
+      label: "실행 계약 준비",
       disabled: !actions.canPrepareLaunchContract,
       note: null,
     };
@@ -258,7 +258,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutionTriggerIntentCurrent) {
     return {
       key: "markExecutionTriggerIntent",
-      label: "Declare trigger intent",
+      label: "트리거 의도 선언",
       disabled: !actions.canDeclareExecutionTriggerIntent,
       note: null,
     };
@@ -266,7 +266,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isActualExecutionAdapterRequestCurrent) {
     return {
       key: "prepareActualExecutionAdapter",
-      label: "Prepare execution adapter",
+      label: "실행 어댑터 준비",
       disabled: !actions.canPrepareExecutionAdapter,
       note: null,
     };
@@ -274,7 +274,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isActualLaunchCommandCurrent) {
     return {
       key: "prepareActualLaunchCommand",
-      label: "Prepare launch command",
+      label: "실행 명령 준비",
       disabled: !actions.canPrepareLaunchCommand,
       note: null,
     };
@@ -290,7 +290,7 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutorIntegrationAdapterCurrent) {
     return {
       key: "prepareExecutorIntegrationAdapter",
-      label: "Prepare integration adapter",
+      label: "통합 어댑터 준비",
       disabled: !actions.canPrepareExecutorIntegrationAdapter,
       note: null,
     };
@@ -298,7 +298,7 @@ function resolvePrimaryExecutionAction(input: {
   if (actions.canRetryExecutorConnector) {
     return {
       key: "retryExecutorConnector",
-      label: "Retry connector",
+      label: "연결기 다시 시도",
       disabled: false,
       note: null,
     };
@@ -306,12 +306,12 @@ function resolvePrimaryExecutionAction(input: {
   if (!pre.isExecutorConnectorResultCurrent) {
     return {
       key: "runExecutorConnector",
-      label: "Invoke connector",
+      label: "연결기 호출",
       disabled: !actions.canInvokeExecutorConnector,
       note: null,
     };
   }
-  return { key: "none", label: "Up to date", disabled: true, note: "Up to date for the current session state." };
+  return { key: "none", label: "최신 상태", disabled: true, note: "현재 세션 상태에 맞게 모두 반영되었습니다." };
 }
 
 export function getExecutionSummaryView(input: {
@@ -334,23 +334,23 @@ export function getExecutionSummaryView(input: {
     null;
 
   const connectorLabel = connectorStatusLabel(pre.executorConnectorResult?.status);
-  const runLabel = monitoring.view ? monitoring.view.progressLabel : pre.isBusinessExecutionRunCurrent ? "Run exists" : "No run";
+  const runLabel = monitoring.view ? monitoring.view.progressLabel : pre.isBusinessExecutionRunCurrent ? "실행 있음" : "실행 없음";
 
   const kpis: ExecutionSummaryKpi[] = [
-    { label: "Executor", value: currentExecutorType ? EXECUTOR_TYPE_LABELS[currentExecutorType] : "(unassigned)" },
-    { label: "Readiness", value: pre.launchReadiness.isLaunchReady ? "Ready" : "Not ready", tone: pre.launchReadiness.isLaunchReady ? "good" : "warn" },
-    { label: "Run", value: runLabel, tone: toneForRunStatus(monitoring.view?.status ?? null) },
-    { label: "Connector", value: connectorLabel, tone: toneForRunStatus(pre.executorConnectorResult?.status ?? null) },
+    { label: "실행기", value: currentExecutorType ? EXECUTOR_TYPE_LABELS[currentExecutorType] : "(미배정)" },
+    { label: "준비도", value: pre.launchReadiness.isLaunchReady ? "준비됨" : "미준비", tone: pre.launchReadiness.isLaunchReady ? "good" : "warn" },
+    { label: "실행", value: runLabel, tone: toneForRunStatus(monitoring.view?.status ?? null) },
+    { label: "연결기", value: connectorLabel, tone: toneForRunStatus(pre.executorConnectorResult?.status ?? null) },
   ];
 
-  const nextActionNote = nextAction.actionReason ? `Next action note: ${nextAction.actionReason}` : null;
+  const nextActionNote = nextAction.actionReason ? `다음 동작 안내: ${nextAction.actionReason}` : null;
 
   if (!sessionId) {
     return {
       hasSession: false,
       contextLine: null,
       kpis,
-      primaryAction: { key: "openTasks", label: "Open Tasks workspace", disabled: false, note: "Select a session to view execution status." },
+      primaryAction: { key: "openTasks", label: "작업 화면 열기", disabled: false, note: "실행 상태를 보려면 세션을 선택하세요." },
       nextActionNote,
     };
   }
@@ -359,7 +359,7 @@ export function getExecutionSummaryView(input: {
 
   return {
     hasSession: true,
-    contextLine: `sessionId ${sessionId} • requirementId ${requirementId ?? "(none)"}`,
+    contextLine: `세션 ${sessionId} · 요구사항 ${requirementId ?? "없음"}`,
     kpis,
     primaryAction,
     nextActionNote,
@@ -371,51 +371,61 @@ export function getExecutionProgressView(pre: PreExecutionSessionSelector, actio
   const requestInProgress =
     !requestDone && (Boolean(pre.executionRequestDraft) || Boolean(pre.businessExecutionRequest) || pre.isHandoffPreparedActive);
   const executionRequest: ExecutionProgressRow = requestDone
-    ? { title: "Execution request", statusLabel: "Complete", tone: "good", detail: "Request recorded and approved for this snapshot." }
+    ? {
+        title: "실행 요청",
+        statusLabel: "완료",
+        tone: "good",
+        detail: "이 스냅샷에 대해 요청이 기록되고 승인되었습니다.",
+      }
     : requestInProgress
       ? {
-          title: "Execution request",
-          statusLabel: "In progress",
+          title: "실행 요청",
+          statusLabel: "진행 중",
           tone: "warn",
           detail: actions.businessRequestNeedsAttention
-            ? "Update tasks or recreate the request if it is stale or invalid."
-            : "Finish draft, checkpoint, and business approval.",
+            ? "작업을 갱신하거나 요청이 오래되었거나 유효하지 않으면 다시 작성하세요."
+            : "초안, 체크포인트, 비즈니스 승인을 마치세요.",
         }
-      : { title: "Execution request", statusLabel: "Not started", tone: "neutral", detail: "Prepare handoff in Tasks, then create and approve the request here." };
+      : {
+          title: "실행 요청",
+          statusLabel: "시작 전",
+          tone: "neutral",
+          detail: "작업 화면에서 인수를 준비한 뒤, 여기서 요청을 만들고 승인하세요.",
+        };
 
   const pkgDone = pre.isExecutionPackageAssigned;
   const pkgInProgress = !pkgDone && pre.isBusinessExecutionPackaged;
   const packageAndAssignment: ExecutionProgressRow = !requestDone
-    ? { title: "Package & assignment", statusLabel: "Blocked", tone: "neutral", detail: "Complete execution request first." }
+    ? { title: "패키지·배정", statusLabel: "차단됨", tone: "neutral", detail: "먼저 실행 요청을 완료하세요." }
     : pkgDone
-      ? { title: "Package & assignment", statusLabel: "Complete", tone: "good", detail: "Work package exists and an executor is assigned." }
+      ? { title: "패키지·배정", statusLabel: "완료", tone: "good", detail: "작업 패키지가 있고 실행기가 배정되었습니다." }
       : pkgInProgress
-        ? { title: "Package & assignment", statusLabel: "In progress", tone: "warn", detail: "Package is ready — assign who will run this work." }
+        ? { title: "패키지·배정", statusLabel: "진행 중", tone: "warn", detail: "패키지가 준비됨 — 누가 실행할지 배정하세요." }
         : {
-            title: "Package & assignment",
-            statusLabel: "Not started",
+            title: "패키지·배정",
+            statusLabel: "시작 전",
             tone: "warn",
-            detail: "Create the execution package after approval.",
+            detail: "승인 후 실행 패키지를 만드세요.",
           };
 
   const prepDone = pre.isActualLaunchCommandCurrent;
   const prepStarted = !prepDone && (pre.isExecutorWorkOrderCurrent || pre.isBusinessLaunchIntentCurrent || pre.isExecutionBridgePayloadCurrent);
   const executionPreparation: ExecutionProgressRow = !pkgDone
-    ? { title: "Execution preparation", statusLabel: "Blocked", tone: "neutral", detail: "Finish package and assignment first." }
+    ? { title: "실행 준비", statusLabel: "차단됨", tone: "neutral", detail: "먼저 패키지와 배정을 완료하세요." }
     : prepDone
-      ? { title: "Execution preparation", statusLabel: "Complete", tone: "good", detail: "Launch inputs are ready for a business run." }
+      ? { title: "실행 준비", statusLabel: "완료", tone: "good", detail: "비즈니스 실행을 위한 실행 입력이 준비되었습니다." }
       : prepStarted
         ? {
-            title: "Execution preparation",
-            statusLabel: "In progress",
+            title: "실행 준비",
+            statusLabel: "진행 중",
             tone: "warn",
-            detail: "Complete the remaining preparation steps in Execution preparation below.",
+            detail: "아래 실행 준비 섹션에서 남은 단계를 완료하세요.",
           }
         : {
-            title: "Execution preparation",
-            statusLabel: "Not started",
+            title: "실행 준비",
+            statusLabel: "시작 전",
             tone: "warn",
-            detail: "After assignment, prepare executor inputs through the preparation chain.",
+            detail: "배정 후 준비 체인을 따라 실행기 입력을 준비하세요.",
           };
 
   return { executionRequest, packageAndAssignment, executionPreparation };
@@ -434,7 +444,7 @@ export function getExecutionConnectorView(actions: ExecutionPageActionState): Ex
     canInvokeConnector: actions.canInvokeExecutorConnector,
     canRetryConnector: actions.canRetryExecutorConnector,
     connectorStaleNote: actions.hasStaleExecutorConnectorResult
-      ? "A stored connector result no longer matches the current integration adapter. Invoke again after the adapter is current."
+      ? "저장된 연결기 결과가 현재 통합 어댑터와 일치하지 않습니다. 어댑터를 최신으로 맞춘 뒤 다시 호출하세요."
       : null,
   };
 }

@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
 type NavItem = {
   label: string;
   href: string;
   disabled?: boolean;
+  screenLabel: string;
 };
 
 function SectionTitle({ children }: { children: ReactNode }) {
@@ -48,6 +51,7 @@ function NavLinkItem({ item, active }: { item: NavItem; active: boolean }) {
 
 export function PlatformSidebar() {
   const pathname = usePathname() || "/";
+  const showScreenLabels = useShowScreenLabels();
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/" || pathname === "/workspace";
@@ -56,24 +60,35 @@ export function PlatformSidebar() {
   };
 
   const workflow: NavItem[] = [
-    { label: "Requirements", href: "/requirements" },
-    { label: "Collaboration", href: "/collaboration" },
-    { label: "Features", href: "/features" },
-    { label: "Tasks", href: "/tasks" },
+    { label: "요구사항", href: "/requirements", screenLabel: "공통-사이드바-요구사항-메뉴" },
+    { label: "협업", href: "/collaboration", screenLabel: "공통-사이드바-협업-메뉴" },
+    { label: "기능", href: "/features", screenLabel: "공통-사이드바-기능-메뉴" },
+    { label: "작업", href: "/tasks", screenLabel: "공통-사이드바-작업-메뉴" },
   ];
-  const execution: NavItem[] = [{ label: "Execution", href: "/execution" }];
-  const insight: NavItem[] = [{ label: "Trace", href: "/trace", disabled: false }];
+  const execution: NavItem[] = [{ label: "실행", href: "/execution", screenLabel: "공통-사이드바-실행-메뉴" }];
+  const insight: NavItem[] = [{ label: "추적", href: "/trace", disabled: false, screenLabel: "공통-사이드바-추적-메뉴" }];
   const project: NavItem[] = [
-    { label: "Workspace", href: "/workspace" },
-    { label: "Project Admin · Members", href: "/project-admin/members" },
-    { label: "Project Admin · Settings", href: "/project-admin/settings" },
-    { label: "Project Admin · Policies", href: "/project-admin/policies", disabled: true },
-    { label: "Project Admin · Integrations", href: "/project-admin/integrations", disabled: true },
+    { label: "워크스페이스", href: "/workspace", screenLabel: "공통-사이드바-워크스페이스-메뉴" },
+    { label: "프로젝트 관리 · 멤버", href: "/project-admin/members", screenLabel: "공통-사이드바-프로젝트관리-멤버-메뉴" },
+    { label: "프로젝트 관리 · 설정", href: "/project-admin/settings", screenLabel: "공통-사이드바-프로젝트관리-설정-메뉴" },
+    {
+      label: "프로젝트 관리 · 정책",
+      href: "/project-admin/policies",
+      disabled: true,
+      screenLabel: "공통-사이드바-프로젝트관리-정책-메뉴",
+    },
+    {
+      label: "프로젝트 관리 · 연동",
+      href: "/project-admin/integrations",
+      disabled: true,
+      screenLabel: "공통-사이드바-프로젝트관리-연동-메뉴",
+    },
   ];
 
   return (
     <aside
-      aria-label="Platform navigation"
+      aria-label="플랫폼 내비게이션"
+      className="relative"
       style={{
         width: 260,
         flex: "0 0 260px",
@@ -86,36 +101,63 @@ export function PlatformSidebar() {
         background: "var(--background)",
       }}
     >
-      <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>JY Orchestration</div>
+      <ScreenLabel label="공통-사이드바-전체-패널" visible={showScreenLabels} />
+      <div className="relative" style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>
+        <ScreenLabel label="공통-사이드바-제목-섹션" visible={showScreenLabels} />
+        JY Orchestration
+      </div>
 
-      <SectionTitle>WORKFLOW</SectionTitle>
+      <div className="relative">
+        <ScreenLabel label="공통-사이드바-워크플로우흐름-섹션" visible={showScreenLabels} />
+        <SectionTitle>워크플로우 흐름</SectionTitle>
+      </div>
       <div style={{ display: "grid", gap: 4 }}>
         {workflow.map((item) => (
-          <NavLinkItem key={item.href} item={item} active={isActive(item.href)} />
+          <div key={item.href} className="relative">
+            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+            <NavLinkItem item={item} active={isActive(item.href)} />
+          </div>
         ))}
       </div>
 
-      <SectionTitle>EXECUTION</SectionTitle>
+      <div className="relative">
+        <ScreenLabel label="공통-사이드바-실행구역-섹션" visible={showScreenLabels} />
+        <SectionTitle>실행</SectionTitle>
+      </div>
       <div style={{ display: "grid", gap: 4 }}>
         {execution.map((item) => (
-          <NavLinkItem key={item.href} item={item} active={isActive(item.href)} />
+          <div key={item.href} className="relative">
+            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+            <NavLinkItem item={item} active={isActive(item.href)} />
+          </div>
         ))}
       </div>
 
-      <SectionTitle>INSIGHT</SectionTitle>
+      <div className="relative">
+        <ScreenLabel label="공통-사이드바-추적구역-섹션" visible={showScreenLabels} />
+        <SectionTitle>추적</SectionTitle>
+      </div>
       <div style={{ display: "grid", gap: 4 }}>
         {insight.map((item) => (
-          <NavLinkItem key={item.href} item={item} active={isActive(item.href)} />
+          <div key={item.href} className="relative">
+            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+            <NavLinkItem item={item} active={isActive(item.href)} />
+          </div>
         ))}
       </div>
 
-      <SectionTitle>PROJECT</SectionTitle>
+      <div className="relative">
+        <ScreenLabel label="공통-사이드바-프로젝트구역-섹션" visible={showScreenLabels} />
+        <SectionTitle>프로젝트</SectionTitle>
+      </div>
       <div style={{ display: "grid", gap: 4 }}>
         {project.map((item) => (
-          <NavLinkItem key={item.href} item={item} active={isActive(item.href)} />
+          <div key={item.href} className="relative">
+            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+            <NavLinkItem item={item} active={isActive(item.href)} />
+          </div>
         ))}
       </div>
     </aside>
   );
 }
-

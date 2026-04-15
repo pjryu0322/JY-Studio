@@ -16,32 +16,32 @@ export function getPreLaunchActionAvailability(input: {
   if (!input.active) {
     return {
       canPrepareLaunchAction: false,
-      actionLabel: "Select an active input",
-      actionReason: "No active prepared input selected.",
+      actionLabel: "활성 입력 선택",
+      actionReason: "선택된 활성 준비 입력이 없습니다.",
     };
   }
 
   if (!input.snapshot) {
     return {
       canPrepareLaunchAction: false,
-      actionLabel: "Prepare snapshot in Tasks",
-      actionReason: "Prepared snapshot is missing for this session.",
+      actionLabel: "작업 화면에서 스냅샷 준비",
+      actionReason: "이 세션에 대한 준비 스냅샷이 없습니다.",
     };
   }
 
   if (!input.launchReadiness.isLaunchReady) {
-    const primaryReason = input.launchReadiness.reasons[0] ?? "Active input is not launch-ready.";
+    const primaryReason = input.launchReadiness.reasons[0] ?? "활성 입력이 실행 준비 상태가 아닙니다.";
     return {
       canPrepareLaunchAction: false,
-      actionLabel: "Fix readiness issues",
+      actionLabel: "준비 이슈 해결",
       actionReason: primaryReason,
     };
   }
 
   return {
     canPrepareLaunchAction: true,
-    actionLabel: "Prepare launch handoff",
-    actionReason: "Active prepared input is launch-ready.",
+    actionLabel: "실행 인수 준비",
+    actionReason: "활성 준비 입력이 실행 준비를 만족합니다.",
   };
 }
 

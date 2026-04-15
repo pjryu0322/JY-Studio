@@ -3,6 +3,10 @@
 import type { CollaborationOfficialTaskDraft } from "@/lib/workflow/collaborationActionContract";
 import type { TaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
 import { getTaskExecutionReadiness } from "@/lib/workflow/collaborationSessionResultStore";
+import {
+  formatCollaborationTaskDraftStatusForUi,
+  formatCollaborationTaskDraftTypeForUi,
+} from "@/lib/ui/workflowUiCopy";
 import type { TaskReviewUiStatus } from "@/lib/workflow/useTasksWorkspaceReview";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
@@ -53,7 +57,7 @@ export function TaskSequence({
   if (tasks.length === 0) {
     return (
       <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.55 }}>
-        No tasks in this working set yet. Generate drafts in collaboration or add a task below.
+        아직 이 작업 집합에 항목이 없습니다. 협업에서 초안을 생성하거나 아래에서 작업을 추가하세요.
       </div>
     );
   }
@@ -61,7 +65,7 @@ export function TaskSequence({
   const sorted = [...tasks].sort((a, b) => a.order - b.order);
 
   return (
-    <section aria-label="Task sequence" style={{ display: "grid", gap: 0 }}>
+    <section aria-label="작업 순서" style={{ display: "grid", gap: 0 }}>
       {sorted.map((t, index) => (
         <TaskSequenceRow
           key={t.id}
@@ -155,18 +159,18 @@ function TaskSequenceRow({
                     textTransform: "uppercase",
                   }}
                 >
-                  Draft
+                  초안
                 </span>
               ) : null}
-              {confirmed ? <WorkflowBadge>Confirmed</WorkflowBadge> : null}
+              {confirmed ? <WorkflowBadge>확정</WorkflowBadge> : null}
               {showReadiness ? (
                 execReady === "ready" ? (
-                  <WorkflowBadge>Execution ready</WorkflowBadge>
+                  <WorkflowBadge>실행 준비됨</WorkflowBadge>
                 ) : (
-                  <span style={{ fontSize: 10, fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.04em" }}>Not ready</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.04em" }}>미준비</span>
                 )
               ) : null}
-              <WorkflowBadge>{task.status}</WorkflowBadge>
+              <WorkflowBadge>{formatCollaborationTaskDraftStatusForUi(task.status)}</WorkflowBadge>
             </div>
           </div>
           <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6, lineHeight: 1.4, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
@@ -181,27 +185,27 @@ function TaskSequenceRow({
                   flexShrink: 0,
                 }}
               >
-                {task.taskType}
+                {formatCollaborationTaskDraftTypeForUi(task.taskType) ?? task.taskType}
               </span>
             ) : null}
             <span>
-              Feature: <span style={{ color: "#374151" }}>{task.relatedFeatureName}</span>
+              관련 기능: <span style={{ color: "#374151" }}>{task.relatedFeatureName}</span>
             </span>
           </div>
           {task.dependencyNote && !review ? (
             <div style={{ fontSize: 12, color: "#92400e", marginTop: 6, lineHeight: 1.4 }}>
-              Deps: {task.dependencyNote}
+              선행: {task.dependencyNote}
             </div>
           ) : null}
           {review ? (
             <div style={{ marginTop: 8 }}>
-              <label style={{ fontSize: 11, color: "#9ca3af", display: "block", marginBottom: 4 }}>Dependency note</label>
+              <label style={{ fontSize: 11, color: "#9ca3af", display: "block", marginBottom: 4 }}>선행 작업 메모</label>
               <input
                 key={`${task.id}-${task.dependencyNote ?? ""}`}
                 type="text"
                 defaultValue={task.dependencyNote ?? ""}
                 onBlur={(e) => review.onUpdateDependencyNote(task.id, e.target.value)}
-                placeholder="e.g. Depends on: prior step name"
+                placeholder="예: 이전 단계 이름에 의존"
                 style={{
                   width: "100%",
                   fontSize: 12,
@@ -215,15 +219,15 @@ function TaskSequenceRow({
           ) : null}
           {showReadiness ? (
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>Execution readiness (separate from Confirmed)</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>실행 준비도(확정과 별개)</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                 {seqBtn(
-                  "Mark as Ready",
+                  "준비로 표시",
                   () => review?.onSetExecutionReadiness?.(task.id, "ready"),
                   execReady === "ready"
                 )}
                 {seqBtn(
-                  "Mark as Not Ready",
+                  "미준비로 표시",
                   () => review?.onSetExecutionReadiness?.(task.id, "not_ready"),
                   execReady === "not_ready"
                 )}
@@ -232,10 +236,10 @@ function TaskSequenceRow({
           ) : null}
           {review ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, alignItems: "center" }}>
-              {seqBtn("Confirm", () => review.onConfirm(task.id), confirmed)}
-              {seqBtn("Remove", () => review.onRemove(task.id))}
-              {seqBtn("Move up", () => review.onMoveUp(index), index <= 0)}
-              {seqBtn("Move down", () => review.onMoveDown(index), isLast)}
+              {seqBtn("확정", () => review.onConfirm(task.id), confirmed)}
+              {seqBtn("제거", () => review.onRemove(task.id))}
+              {seqBtn("위로", () => review.onMoveUp(index), index <= 0)}
+              {seqBtn("아래로", () => review.onMoveDown(index), isLast)}
             </div>
           ) : null}
         </WorkflowCard>

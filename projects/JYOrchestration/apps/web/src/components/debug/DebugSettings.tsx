@@ -1,11 +1,12 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { readUiLabelsEnabled, writeUiLabelsEnabled, subscribe } from "@/lib/ui-label/useUiLabel";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
 export default function DebugSettings() {
-  const pathname = usePathname();
+  const showScreenLabels = useShowScreenLabels();
   const [open, setOpen] = useState(false);
   const [labelsOn, setLabelsOn] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -51,10 +52,6 @@ export default function DebugSettings() {
     return null;
   }
 
-  if (pathname?.startsWith("/projects/")) {
-    return null;
-  }
-
   return (
     <div
       style={{
@@ -66,7 +63,8 @@ export default function DebugSettings() {
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <div style={{ pointerEvents: "auto", position: "relative" }}>
+      <div style={{ pointerEvents: "auto", position: "relative" }} className="relative">
+        <ScreenLabel label="공통-상단바-화면설정-버튼" visible={showScreenLabels} />
         <button
           ref={btnRef}
           type="button"
@@ -98,6 +96,7 @@ export default function DebugSettings() {
             ref={panelRef}
             role="dialog"
             aria-label="화면 표시 설정"
+            className="relative"
             style={{
               position: "absolute",
               top: "100%",
@@ -112,10 +111,13 @@ export default function DebugSettings() {
               boxShadow: "0 10px 40px rgba(15,23,42,0.12)",
             }}
           >
-            <p style={{ margin: "0 0 10px 0", fontSize: 12, fontWeight: 600, color: "#64748b" }}>
-              표시
-            </p>
+            <ScreenLabel label="공통-상단바-화면설정-팝오버" visible={showScreenLabels} />
+            <div className="relative" style={{ margin: "0 0 10px 0" }}>
+              <ScreenLabel label="공통-상단바-화면설정-표시섹션" visible={showScreenLabels} />
+              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#64748b" }}>표시</p>
+            </div>
             <label
+              className="relative"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -126,6 +128,7 @@ export default function DebugSettings() {
                 userSelect: "none",
               }}
             >
+              <ScreenLabel label="공통-상단바-화면설정-화면라벨표시-체크박스" visible={showScreenLabels} />
               <input
                 type="checkbox"
                 checked={labelsOn}

@@ -181,22 +181,29 @@ function formatDependency(
   short: string
 ): string {
   const prevShort = truncate(prev.title, 44);
+  const typeKo: Record<CollaborationTaskDraftType, string> = {
+    design: "설계",
+    backend: "백엔드",
+    frontend: "프론트엔드",
+    integration: "통합",
+    validation: "검증",
+  };
   if (currentType === "backend" && prev.taskType === "design") {
-    return `After design for «${short}»: ${prevShort}`;
+    return `「${short}」 설계 이후: ${prevShort}`;
   }
   if (currentType === "frontend" && prev.taskType === "design") {
-    return `After design for «${short}»: ${prevShort}`;
+    return `「${short}」 설계 이후: ${prevShort}`;
   }
   if (currentType === "integration" && (prev.taskType === "backend" || prev.taskType === "frontend")) {
-    return `Integrate after ${prev.taskType} work on «${short}» (${prevShort})`;
+    return `「${short}」 ${typeKo[prev.taskType]} 작업 이후 통합 (${prevShort})`;
   }
   if (currentType === "validation" && prev.taskType === "integration") {
-    return `After integration for «${short}»: ${prevShort}`;
+    return `「${short}」 통합 이후: ${prevShort}`;
   }
   if (currentType === "validation" && (prev.taskType === "backend" || prev.taskType === "frontend")) {
-    return `Validate «${short}» after ${prev.taskType} (${prevShort})`;
+    return `「${short}」 ${typeKo[prev.taskType]} 이후 검증 (${prevShort})`;
   }
-  return `Depends on: ${truncate(prev.title, 56)}`;
+  return `선행 작업: ${truncate(prev.title, 56)}`;
 }
 
 /* ─── Strategy pipelines (ordered: design → build → integrate → validate) ─── */

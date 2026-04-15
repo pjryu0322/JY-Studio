@@ -42,30 +42,30 @@ export type BusinessExecutionRun = {
 export function defaultBusinessExecutionRunProgress(status: BusinessExecutionRunStatus): string {
   switch (status) {
     case "queued":
-      return "Queued";
+      return "대기";
     case "running":
-      return "Running";
+      return "진행 중";
     case "completed":
-      return "Completed";
+      return "완료";
     case "failed":
-      return "Failed";
+      return "실패";
     default:
-      return "Run";
+      return "실행";
   }
 }
 
 export function defaultBusinessExecutionRunMessage(status: BusinessExecutionRunStatus): string {
   switch (status) {
     case "queued":
-      return "Waiting (local queue only · not dispatched).";
+      return "대기 중(로컬 큐만 · 실제 디스패치 없음).";
     case "running":
-      return "In progress (local monitoring · not Stage1/Stage2).";
+      return "진행 중(로컬 모니터링 · Stage1/Stage2 아님).";
     case "completed":
-      return "Completed (local mock · not env test flow).";
+      return "완료(로컬 목 · 환경 테스트 흐름 아님).";
     case "failed":
-      return "Failed (local mock · not env test flow).";
+      return "실패(로컬 목 · 환경 테스트 흐름 아님).";
     default:
-      return "Business execution run.";
+      return "비즈니스 실행 런.";
   }
 }
 
@@ -310,15 +310,15 @@ export function isBusinessExecutionRunCurrent(input: {
 export function businessExecutionRunStatusHint(run: BusinessExecutionRun): string {
   switch (run.status) {
     case "queued":
-      return "Execution queued";
+      return "실행 대기열";
     case "running":
-      return "Execution running";
+      return "실행 중";
     case "completed":
-      return "Execution completed";
+      return "실행 완료";
     case "failed":
-      return "Execution failed";
+      return "실행 실패";
     default:
-      return "Business run";
+      return "비즈니스 실행";
   }
 }
 
@@ -329,7 +329,7 @@ export function businessExecutionRunLatestStrip(
 ): string | null {
   if (!run) return null;
   if (!isRunCurrent) {
-    return "Business run on file · not tied to current launch command.";
+    return "저장된 비즈니스 실행 · 현재 실행 명령과 연결되지 않음.";
   }
   return businessExecutionRunStatusHint(run);
 }
@@ -338,14 +338,14 @@ export function businessExecutionRunLatestStrip(
 export function businessExecutionRunSubtleNote(run: BusinessExecutionRun): string {
   switch (run.status) {
     case "queued":
-      return "Business execution queued · not Stage1/Stage2 · not launched.";
+      return "비즈니스 실행 대기 · Stage1/Stage2 아님 · 아직 시작되지 않음.";
     case "running":
-      return "Business execution running · not Stage1/Stage2.";
+      return "비즈니스 실행 중 · Stage1/Stage2 아님.";
     case "completed":
-      return "Business execution completed · not env test flow.";
+      return "비즈니스 실행 완료 · 환경 테스트 흐름 아님.";
     case "failed":
-      return "Business execution failed · not env test flow.";
+      return "비즈니스 실행 실패 · 환경 테스트 흐름 아님.";
     default:
-      return "Business execution run.";
+      return "비즈니스 실행 기록.";
   }
 }

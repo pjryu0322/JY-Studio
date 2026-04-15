@@ -27,6 +27,14 @@ const STATUSES: readonly PlanningOriginatedExecutionStatus[] = [
   "EXECUTION_START_FAILED",
 ] as const;
 
+const STATUS_OPTION_LABEL: Record<PlanningOriginatedExecutionStatus, string> = {
+  BLOCKED: "차단됨",
+  NEEDS_CONFIRMATION: "확인 필요",
+  READY_FOR_EXECUTION: "실행 준비됨",
+  EXECUTION_STARTED: "실행 시작됨",
+  EXECUTION_START_FAILED: "실행 시작 실패",
+};
+
 type UiRequestState =
   | { readonly kind: "idle" }
   | { readonly kind: "submitting"; readonly mode: "PREPARE_ONLY" | "PREPARE_AND_START" }
@@ -144,13 +152,13 @@ export function PlanningExecutionPageClient() {
       <div className="flex w-full flex-wrap items-center gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
         <label className="flex items-center gap-2 text-neutral-700">
           <input type="checkbox" checked={useDemo} onChange={(e) => setUseDemo(e.target.checked)} />
-          Demo fixtures
+          데모 고정값
         </label>
 
         {useDemo ? (
           <>
             <label className="font-medium text-neutral-800" htmlFor="demo-status-select">
-              Demo status
+              데모 상태
             </label>
             <select
               id="demo-status-select"
@@ -160,21 +168,21 @@ export function PlanningExecutionPageClient() {
             >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {STATUS_OPTION_LABEL[s]}
                 </option>
               ))}
             </select>
           </>
         ) : (
-          <span className="text-neutral-500">In real mode, run actions are driven from the action bar.</span>
+          <span className="text-neutral-500">실제 모드에서는 액션 바에서 실행 동작이 이어집니다.</span>
         )}
 
         {lastAction ? (
           <span className="font-mono text-xs text-neutral-600">
-            Last structural action: <strong>{lastAction}</strong> (placeholder)
+            마지막 구조 동작: <strong>{lastAction}</strong> (자리 표시자)
           </span>
         ) : (
-          <span className="text-xs text-neutral-500">Use action bar — handlers are placeholders.</span>
+          <span className="text-xs text-neutral-500">액션 바를 사용하세요. 핸들러는 자리 표시자입니다.</span>
         )}
       </div>
     );
@@ -184,14 +192,14 @@ export function PlanningExecutionPageClient() {
     <div className="min-h-screen bg-neutral-100/80">
       <div className="border-b border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700 shadow-sm">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-3">
-          <span className="text-sm font-semibold text-neutral-900">Planning → execution</span>
+          <span className="text-sm font-semibold text-neutral-900">계획 → 실행</span>
 
           <button
             type="button"
             className="ml-auto rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100"
             onClick={() => setShowDevControls((v) => !v)}
           >
-            {showDevControls ? "Hide dev controls" : "Dev controls"}
+            {showDevControls ? "개발 도구 숨기기" : "개발 도구"}
           </button>
 
           {!showDevControls ? null : <DevControlsPanel />}
@@ -202,26 +210,26 @@ export function PlanningExecutionPageClient() {
           <div className="mx-auto mt-2 max-w-3xl">
             <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
               {reqState.kind === "submitting" ? (
-                <span className="font-mono">Submitting ({reqState.mode})…</span>
+                <span className="font-mono">전송 중 ({reqState.mode === "PREPARE_ONLY" ? "준비만" : "준비 및 시작"})…</span>
               ) : reqState.kind === "validation_error" ? (
                 <span>
-                  <strong>Validation:</strong> {reqState.issues.join(" · ")}
+                  <strong>검증:</strong> {reqState.issues.join(" · ")}
                 </span>
               ) : reqState.kind === "auth_error" ? (
                 <span>
-                  <strong>Auth:</strong> {reqState.message}
+                  <strong>인증:</strong> {reqState.message}
                 </span>
               ) : reqState.kind === "forbidden" ? (
                 <span>
-                  <strong>Forbidden:</strong> {reqState.message}
+                  <strong>거부됨:</strong> {reqState.message}
                 </span>
               ) : reqState.kind === "parse_error" ? (
                 <span>
-                  <strong>Parse:</strong> {reqState.message}
+                  <strong>파싱:</strong> {reqState.message}
                 </span>
               ) : (
                 <span>
-                  <strong>Network:</strong> {reqState.message}
+                  <strong>네트워크:</strong> {reqState.message}
                 </span>
               )}
             </div>

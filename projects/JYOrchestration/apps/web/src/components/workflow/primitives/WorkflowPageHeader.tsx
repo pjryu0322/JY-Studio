@@ -6,7 +6,7 @@ export function WorkflowPageHeader({
   subtitle,
   right,
   backHref,
-  backLabel = "Back",
+  backLabel = "뒤로",
 }: {
   title: string;
   subtitle?: string;

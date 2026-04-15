@@ -39,25 +39,27 @@ export function TasksPageClient() {
   return (
     <div>
       <WorkflowPageHeader
-        title="Tasks"
+        title="작업"
         subtitle={getTasksPageSubtitle(view, hasContext)}
         backHref="/requirements"
-        backLabel="Back to requirements"
+        backLabel="요구사항으로"
       />
 
       <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
-        {!view.found ? <WorkflowEmptyState title="Context not found" message={view.notFoundReason ?? "Check the URL."} /> : null}
+        {!view.found ? (
+          <WorkflowEmptyState title="컨텍스트를 찾을 수 없음" message={view.notFoundReason ?? "URL을 확인하세요."} />
+        ) : null}
 
         {view.found && !hasContext ? (
           <WorkflowCard padding={12}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>Pick a requirement or session</div>
+            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>요구사항 또는 세션을 선택하세요</div>
             <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
-              Use Open Tasks workspace from a requirement, or add <code style={{ fontSize: 12 }}>?requirementId=</code> /{" "}
-              <code style={{ fontSize: 12 }}>?sessionId=</code> to the URL.
+              요구사항에서 작업 워크스페이스 열기를 사용하거나, URL에 <code style={{ fontSize: 12 }}>?requirementId=</code> /{" "}
+              <code style={{ fontSize: 12 }}>?sessionId=</code> 를 추가하세요.
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              <WorkflowActionButton label="Requirements" onClick={() => router.push("/requirements")} />
-              <WorkflowActionButton label="Collaboration" onClick={() => router.push("/collaboration")} variant="primary" />
+              <WorkflowActionButton label="요구사항" onClick={() => router.push("/requirements")} />
+              <WorkflowActionButton label="협업" onClick={() => router.push("/collaboration")} variant="primary" />
             </div>
           </WorkflowCard>
         ) : null}

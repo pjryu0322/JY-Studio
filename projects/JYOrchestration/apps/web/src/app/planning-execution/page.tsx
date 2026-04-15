@@ -7,7 +7,7 @@ import { PlanningExecutionPageClient } from "@/app/planning-execution/PlanningEx
  */
 export default function PlanningExecutionPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-neutral-500">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-neutral-500">불러오는 중…</div>}>
       <PlanningExecutionPageClient />
     </Suspense>
   );
