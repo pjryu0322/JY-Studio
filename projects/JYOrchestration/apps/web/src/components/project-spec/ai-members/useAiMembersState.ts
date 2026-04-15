@@ -124,7 +124,7 @@ export function useAiMembersState(input: {
     const sec = slotStateForDbRole(members, "execution-review", "security-reviewer");
     const scm = slotStateForDbRole(members, "scm-manager", "scm-manager");
     return {
-      executorLabel: executorReady ? "준비됨 (Cursor)" : "없음 · 실행 환경 탭에서 연결",
+      executorLabel: executorReady ? "준비됨 (Cursor)" : "없음 · 프로젝트 관리 → 설정에서 연결",
       reviewerLabel: readinessLabel(rev),
       securityLabel: readinessLabel(sec),
       scmLabel: scm === "ready" ? "준비됨" : readinessLabel(scm, true),
