@@ -18,7 +18,7 @@ export function PlanningExecutionStatusCard({ card }: { readonly card: PlanningE
   return (
     <section
       className={`rounded-lg border p-4 ${b}`}
-      aria-label="Planning execution status"
+      aria-label="계획 기반 실행 상태"
       data-planning-status={card.status}
     >
       <div className="flex flex-wrap items-center gap-2">

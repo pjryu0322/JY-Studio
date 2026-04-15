@@ -63,7 +63,10 @@ export default function DebugSettings() {
         fontFamily: "system-ui, sans-serif",
       }}
     >
-      <div style={{ pointerEvents: "auto", position: "relative" }} className="relative">
+      <div
+        style={{ pointerEvents: "auto", position: "relative", paddingTop: showScreenLabels ? 22 : 0 }}
+        className="relative"
+      >
         <ScreenLabel label="공통-상단바-화면설정-버튼" visible={showScreenLabels} />
         <button
           ref={btnRef}
@@ -102,7 +105,7 @@ export default function DebugSettings() {
               top: "100%",
               right: 0,
               marginTop: 8,
-              padding: "12px 14px",
+              padding: showScreenLabels ? "26px 14px 12px 14px" : "12px 14px",
               minWidth: 220,
               maxWidth: "min(280px, calc(100vw - 32px))",
               background: "#fff",

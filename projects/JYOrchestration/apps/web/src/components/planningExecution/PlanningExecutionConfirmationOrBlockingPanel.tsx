@@ -17,7 +17,7 @@ export function PlanningExecutionConfirmationOrBlockingPanel({
   return (
     <div className="space-y-3">
       {isConfirmation && c ? (
-        <section className="rounded-lg border border-amber-200 bg-amber-50/50 p-4" aria-label="Confirmation needed">
+        <section className="rounded-lg border border-amber-200 bg-amber-50/50 p-4" aria-label="확인 필요">
           <h3 className="text-sm font-semibold text-amber-950">확인 필요</h3>
           <p className="mt-2 text-sm text-amber-950">
             확인 필요: <strong>{c.confirmRequiredCount}</strong> · 차단 이슈:{" "}

@@ -32,19 +32,23 @@ import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { formatCollaborationSessionStatusForUi, formatRequirementStatusForUi } from "@/lib/ui/workflowUiCopy";
 import { getRequirementDetailView } from "@/lib/workflow/workflowViewModel";
 
 type TabId = "overview" | "sessions" | "minutes" | "features" | "tasks";
 
 export function RequirementDetailPageClient() {
+  const showScreenLabels = useShowScreenLabels();
   const tabs = useMemo(
     () =>
       [
-        { id: "overview" as const, label: "Overview" },
-        { id: "sessions" as const, label: "Sessions" },
-        { id: "minutes" as const, label: "Minutes" },
-        { id: "features" as const, label: "Features" },
-        { id: "tasks" as const, label: "Tasks" },
+        { id: "overview" as const, label: "개요" },
+        { id: "sessions" as const, label: "세션" },
+        { id: "minutes" as const, label: "회의록" },
+        { id: "features" as const, label: "기능" },
+        { id: "tasks" as const, label: "작업" },
       ] satisfies { id: TabId; label: string }[],
     []
   );
@@ -120,67 +124,78 @@ export function RequirementDetailPageClient() {
     router.replace(`/requirements/${encodeURIComponent(requirementId)}?tab=${encodeURIComponent(next)}`);
   };
 
+  const statusBadge =
+    vm.requirement !== undefined && vm.requirement !== null ? (
+      <WorkflowBadge>{formatRequirementStatusForUi(vm.requirement.status)}</WorkflowBadge>
+    ) : (
+      <WorkflowBadge>알 수 없음</WorkflowBadge>
+    );
+
   return (
-    <div>
+    <div className="relative">
+      <ScreenLabel label="요구사항-상세-페이지-섹션" visible={showScreenLabels} />
       <WorkflowPageHeader
-        title={vm.requirement?.title ?? "Requirement"}
-        subtitle={vm.requirement?.description ?? (requirementId ? `Unknown requirement id: ${requirementId}` : "Unknown requirement id.")}
+        title={vm.requirement?.title ?? "요구사항"}
+        subtitle={
+          vm.requirement?.description ?? (requirementId ? `알 수 없는 요구사항 ID: ${requirementId}` : "알 수 없는 요구사항 ID입니다.")
+        }
         backHref="/requirements"
-        backLabel="Back to list"
-        right={vm.requirement ? <WorkflowBadge>{vm.requirement.status}</WorkflowBadge> : <WorkflowBadge>UNKNOWN</WorkflowBadge>}
+        backLabel="목록으로"
+        right={statusBadge}
       />
 
-      <div style={{ marginTop: 14 }}>
+      <div className="relative" style={{ marginTop: 14 }}>
+        <ScreenLabel label="요구사항-상세-요약-카드" visible={showScreenLabels} />
         <WorkflowCard>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13, color: "#6b7280" }}>
               <div>
-                <strong style={{ color: "#111827" }}>{vm.requirement?.sessionCount ?? vm.sessions.length}</strong> sessions
+                <strong style={{ color: "#111827" }}>{vm.requirement?.sessionCount ?? vm.sessions.length}</strong>개 세션
               </div>
               <div>
-                <strong style={{ color: "#111827" }}>{vm.requirement?.featureCount ?? vm.features.length}</strong> features
+                <strong style={{ color: "#111827" }}>{vm.requirement?.featureCount ?? vm.features.length}</strong>개 기능
               </div>
-              <div style={{ color: "#6b7280" }}>Next: Requirement → Session → Minutes → Features</div>
+              <div style={{ color: "#6b7280" }}>흐름: 요구사항 → 세션 → 회의록 → 기능</div>
               {latestSessionId ? (
                 <div style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>
-                  Execution readiness (latest session):{" "}
+                  실행 준비도(최신 세션):{" "}
                   <span style={{ fontWeight: 800, color: pre.executionReadiness.status === "ready" ? "#166534" : "#b45309" }}>
-                    {pre.executionReadiness.status === "ready" ? "Ready" : "Not ready"}
+                    {pre.executionReadiness.status === "ready" ? "준비됨" : "미준비"}
                   </span>
                   {pre.isBusinessLaunchIntentCurrent ? (
                     <>
                       {" "}
-                      · Launch intent <span style={{ fontWeight: 800, color: "#6b7280" }}>declared</span>
+                      · 시작 의도 <span style={{ fontWeight: 800, color: "#6b7280" }}>선언됨</span>
                     </>
                   ) : null}
                   {pre.isBusinessLaunchHandoffRecordCurrent ? (
                     <>
                       {" "}
-                      · Launch handoff <span style={{ fontWeight: 800, color: "#6b7280" }}>recorded</span>
+                      · 시작 인계 <span style={{ fontWeight: 800, color: "#6b7280" }}>기록됨</span>
                     </>
                   ) : null}
                   {pre.isExecutorLaunchContractCurrent ? (
                     <>
                       {" "}
-                      · Launch contract <span style={{ fontWeight: 800, color: "#6b7280" }}>ready</span>
+                      · 시작 계약 <span style={{ fontWeight: 800, color: "#6b7280" }}>준비됨</span>
                     </>
                   ) : null}
                   {pre.isExecutionTriggerIntentCurrent ? (
                     <>
                       {" "}
-                      · Trigger intent <span style={{ fontWeight: 800, color: "#6b7280" }}>declared</span>
+                      · 트리거 의도 <span style={{ fontWeight: 800, color: "#6b7280" }}>선언됨</span>
                     </>
                   ) : null}
                   {pre.isActualExecutionAdapterRequestCurrent ? (
                     <>
                       {" "}
-                      · Execution adapter <span style={{ fontWeight: 800, color: "#6b7280" }}>ready</span>
+                      · 실행 어댑터 <span style={{ fontWeight: 800, color: "#6b7280" }}>준비됨</span>
                     </>
                   ) : null}
                   {pre.isActualLaunchCommandCurrent ? (
                     <>
                       {" "}
-                      · Launch command <span style={{ fontWeight: 800, color: "#6b7280" }}>ready</span>
+                      · 시작 명령 <span style={{ fontWeight: 800, color: "#6b7280" }}>준비됨</span>
                     </>
                   ) : null}
                   {pre.businessExecutionRun ? (
@@ -215,44 +230,50 @@ export function RequirementDetailPageClient() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <WorkflowActionButton
-                label="Open latest session"
+                label="최신 세션 열기"
                 onClick={() => {
                   if (!vm.latestSession) return;
                   router.push(`/collaboration/${encodeURIComponent(vm.latestSession.id)}`);
                 }}
               />
-              <WorkflowActionButton label="View latest minutes" onClick={() => setTab("minutes")} />
-              <WorkflowActionButton label="View derived features" onClick={() => setTab("features")} />
-              <WorkflowActionButton label="View task drafts" onClick={() => setTab("tasks")} />
+              <WorkflowActionButton label="최신 회의록 보기" onClick={() => setTab("minutes")} />
+              <WorkflowActionButton label="파생 기능 보기" onClick={() => setTab("features")} />
+              <WorkflowActionButton label="작업 초안 보기" onClick={() => setTab("tasks")} />
             </div>
           </div>
         </WorkflowCard>
       </div>
 
-      <WorkflowTabs ariaLabel="Requirement tabs" tabs={tabs} activeId={tab} onChange={(id) => setTab(id)} />
+      <div className="relative">
+        <ScreenLabel label="요구사항-상세-탭-메뉴" visible={showScreenLabels} />
+        <WorkflowTabs ariaLabel="요구사항 탭" tabs={tabs} activeId={tab} onChange={(id) => setTab(id)} />
+      </div>
 
       {tab === "overview" ? (
         vm.requirement ? (
-          <WorkflowCard>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>Overview</div>
-            <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.6 }}>
-              This is a UI skeleton. Next phase will bind real requirement data, sessions, minutes generation, and feature derivation.
-            </div>
-            <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
-              Suggested next step: open the latest session, run 회의록 작성 → Feature 생성 → Task 초안 생성 to refresh Minutes, Features, and Tasks tabs here
-              (in-memory).
-            </div>
-          </WorkflowCard>
+          <div className="relative">
+            <ScreenLabel label="요구사항-상세-개요탭-패널" visible={showScreenLabels} />
+            <WorkflowCard>
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>개요</div>
+              <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.6 }}>
+                UI 골격입니다. 이후 단계에서 실제 요구사항·세션·회의록·기능 데이터와 연동됩니다.
+              </div>
+              <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
+                권장: 최신 세션을 연 뒤 회의록 작성 → 기능 생성 → 작업 초안 생성을 실행하면 이 화면의 회의록·기능·작업 탭이 갱신됩니다(메모리).
+              </div>
+            </WorkflowCard>
+          </div>
         ) : (
-          <WorkflowEmptyState title="Requirement not found" message="Please check the URL. This page will not show unrelated mock content." />
+          <WorkflowEmptyState title="요구사항을 찾을 수 없음" message="URL을 확인하세요. 관계 없는 목 데이터는 표시하지 않습니다." />
         )
       ) : null}
 
       {tab === "sessions" ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 900 }}>Sessions</div>
+        <div className="relative" style={{ display: "grid", gap: 10 }}>
+          <ScreenLabel label="요구사항-상세-세션탭-섹션" visible={showScreenLabels} />
+          <div style={{ fontSize: 13, fontWeight: 900 }}>세션</div>
           {vm.sessions.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#6b7280" }}>No collaboration sessions available</div>
+            <div style={{ fontSize: 13, color: "#6b7280" }}>연결된 협업 세션이 없습니다.</div>
           ) : (
             vm.sessions.map((s) => (
               <div key={s.id} style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14 }}>
@@ -260,11 +281,11 @@ export function RequirementDetailPageClient() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 900 }}>{s.title}</div>
                     <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                      {s.createdAt} · {s.status}
+                      {s.createdAt} · {formatCollaborationSessionStatusForUi(s.status)}
                     </div>
                   </div>
                   <Link href={`/collaboration/${encodeURIComponent(s.id)}`} style={{ fontSize: 13, textDecoration: "underline", alignSelf: "center" }}>
-                    Open workspace
+                    워크스페이스 열기
                   </Link>
                 </div>
               </div>
@@ -274,138 +295,142 @@ export function RequirementDetailPageClient() {
       ) : null}
 
       {tab === "minutes" ? (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="relative" style={{ display: "grid", gap: 10 }}>
+          <ScreenLabel label="요구사항-상세-회의록탭-섹션" visible={showScreenLabels} />
           {vm.requirement && latestSessionId ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {minutesFromCollaboration ? (
                 <>
-                  <WorkflowBadge>Collaboration snapshot</WorkflowBadge>
+                  <WorkflowBadge>협업 스냅샷</WorkflowBadge>
                   <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                    Latest session minutes reflect in-memory output from the collaboration workspace (mock stub; not persisted across reload).
+                    최신 세션 회의록은 협업 워크스페이스의 메모리 출력을 반영합니다(목 스텁, 새로고침 시 초기화될 수 있음).
                   </span>
                 </>
               ) : (
                 <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                  Minutes for the latest session from the view model. Open the session workspace and run 회의록 작성 to update what appears here until real
-                  persistence ships.
+                  최신 세션 회의록은 뷰 모델 기준입니다. 세션 워크스페이스에서 회의록 작성을 실행하면 저장소 연동 전까지 여기 내용이 바뀝니다.
                 </span>
               )}
             </div>
           ) : null}
-          <MeetingMinutesPanel minutes={resolvedMinutes} emptyLabel="No meeting minutes available" />
+          <MeetingMinutesPanel minutes={resolvedMinutes} emptyLabel="표시할 회의록이 없습니다." />
         </div>
       ) : null}
 
       {tab === "features" ? (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="relative" style={{ display: "grid", gap: 10 }}>
+          <ScreenLabel label="요구사항-상세-기능탭-섹션" visible={showScreenLabels} />
           {vm.requirement && latestSessionId ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {featuresFromCollaboration ? (
                 <>
-                  <WorkflowBadge>Collaboration snapshot</WorkflowBadge>
+                  <WorkflowBadge>협업 스냅샷</WorkflowBadge>
                   <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                    Official derived features for the latest session come from Feature 생성 in the collaboration workspace (mock_stub; in-memory store — not
-                    persisted across full reload). This is separate from 아이디어 요청 suggestions.
+                    최신 세션의 공식 파생 기능은 협업 워크스페이스의 기능 생성에서 옵니다(목·메모리, 전체 새로고침 시 유실 가능). 아이디어 요청 제안과는
+                    별개입니다.
                   </span>
                 </>
               ) : (
                 <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                  Official features for the latest session from the view model. Open the session workspace and run Feature 생성 to replace this list in the
-                  requirement view until persistence exists. Idea-based suggestions never appear here.
+                  최신 세션 기능은 뷰 모델 기준입니다. 세션에서 기능 생성을 실행하면 저장 전까지 요구사항 화면 목록이 바뀝니다. 아이디어 기반 제안은 여기에
+                  나오지 않습니다.
                 </span>
               )}
             </div>
           ) : null}
-          <FeatureSummaryPanel features={resolvedFeatures} emptyLabel="No derived features available" />
+          <FeatureSummaryPanel features={resolvedFeatures} emptyLabel="파생 기능이 없습니다." />
         </div>
       ) : null}
 
       {tab === "tasks" ? (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="relative" style={{ display: "grid", gap: 10 }}>
+          <ScreenLabel label="요구사항-상세-작업탭-섹션" visible={showScreenLabels} />
           {vm.requirement ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <WorkflowActionButton
-                label="Open Tasks workspace"
+                label="작업 워크스페이스 열기"
                 variant="primary"
                 onClick={() => router.push(`/tasks?requirementId=${encodeURIComponent(requirementId)}`)}
               />
               {latestSessionId ? (
                 <>
-                  {tasksFromConfirmedSet ? <WorkflowBadge>Confirmed set</WorkflowBadge> : null}
-                  {!tasksFromConfirmedSet && tasksFromCollaboration ? <WorkflowBadge>Snapshot</WorkflowBadge> : null}
+                  {tasksFromConfirmedSet ? <WorkflowBadge>확정 세트</WorkflowBadge> : null}
+                  {!tasksFromConfirmedSet && tasksFromCollaboration ? <WorkflowBadge>스냅샷</WorkflowBadge> : null}
                   <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
                     {tasksFromConfirmedSet
-                      ? `Showing the official confirmed task set from the Tasks workspace (in-memory).${
-                          executionReadySummary ? ` ${executionReadySummary.ready} / ${executionReadySummary.total} execution candidates (ready).` : ""
+                      ? `작업 화면의 공식 확정 세트를 표시합니다(메모리).${
+                          executionReadySummary
+                            ? ` 실행 후보(준비됨) ${executionReadySummary.ready} / ${executionReadySummary.total}개.`
+                            : ""
                         }`
                       : tasksFromCollaboration
-                        ? "Generated drafts from collaboration (same source as /tasks until you confirm a set there)."
-                        : "Generate with Task 초안 생성 in the session workspace, then confirm tasks on /tasks if needed."}
+                        ? "협업에서 생성된 초안입니다(작업 화면에서 확정하기 전까지 동일 출처)."
+                        : "세션 워크스페이스에서 작업 초안 생성을 실행한 뒤 필요하면 작업 화면에서 확정하세요."}
                   </span>
                   {tasksFromConfirmedSet ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Execution input preview and snapshot preparation are available on the Tasks workspace (pre-execution only).
+                      실행 입력 미리보기·스냅샷 준비는 작업 워크스페이스에서 할 수 있습니다(실행 전 단계).
                     </span>
                   ) : null}
                   {hasExecutionSnapshot && executionSnapshot ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Snapshot prepared ({executionSnapshot.summary.candidateCount} candidates).
+                      스냅샷 준비됨(후보 {executionSnapshot.summary.candidateCount}개).
                     </span>
                   ) : null}
                   {hasExecutionSnapshot && executionSnapshot ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Active input:{" "}
+                      활성 입력:{" "}
                       {isActiveSnapshot ? (
-                        <span style={{ fontWeight: 900, color: "#166534" }}>Selected</span>
+                        <span style={{ fontWeight: 900, color: "#166534" }}>선택됨</span>
                       ) : activeExecution ? (
                         <span style={{ fontFamily: "ui-monospace, monospace" }}>
                           {activeExecution.sessionId} / {activeExecution.snapshotId}
                         </span>
                       ) : (
-                        <span>(none)</span>
+                        <span>(없음)</span>
                       )}
                     </span>
                   ) : null}
                   {hasExecutionSnapshot && activeExecution ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Launch readiness:{" "}
+                      시작 준비도:{" "}
                       {launchReadiness.isLaunchReady ? (
-                        <span style={{ fontWeight: 900, color: "#166534" }}>Ready</span>
+                        <span style={{ fontWeight: 900, color: "#166534" }}>준비됨</span>
                       ) : (
-                        <span style={{ fontWeight: 900, color: "#b45309" }}>Not ready</span>
+                        <span style={{ fontWeight: 900, color: "#b45309" }}>미준비</span>
                       )}{" "}
-                      (see /execution)
+                      (/execution 참고)
                     </span>
                   ) : null}
                   {hasExecutionSnapshot && isHandoffPrepared && handoffPrepared ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Handoff prepared: <span style={{ fontWeight: 900, color: "#166534" }}>Prepared</span> •{" "}
+                      인계 준비: <span style={{ fontWeight: 900, color: "#166534" }}>준비됨</span> ·{" "}
                       <span style={{ fontFamily: "ui-monospace, monospace" }}>{handoffPrepared.preparedAtIso}</span>
                     </span>
                   ) : null}
                   {hasExecutionSnapshot && snapshotStaleness.isSnapshotStale ? (
                     <span style={{ fontSize: 12, color: "#b45309", lineHeight: 1.45 }}>
-                      Snapshot stale: <span style={{ fontWeight: 900 }}>Re-prepare</span> (see /tasks)
+                      스냅샷 오래됨: <span style={{ fontWeight: 900 }}>다시 준비</span> (/tasks 참고)
                     </span>
                   ) : null}
                   {hasExecutionSnapshot && isHandoffPrepared && !handoffValidity.isHandoffValid ? (
                     <span style={{ fontSize: 12, color: "#b45309", lineHeight: 1.45 }}>
-                      Handoff invalid: <span style={{ fontWeight: 900 }}>Re-prepare</span> (see /execution)
+                      인계 무효: <span style={{ fontWeight: 900 }}>다시 준비</span> (/execution 참고)
                     </span>
                   ) : null}
                   {hasExecutionDraft ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Execution draft: <span style={{ fontWeight: 900, color: "#166534" }}>Prepared</span> (see /execution)
+                      실행 요청 초안: <span style={{ fontWeight: 900, color: "#166534" }}>준비됨</span> (/execution 참고)
                     </span>
                   ) : null}
                   {pre.isExecutionDraftApproved ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Final checkpoint: <span style={{ fontWeight: 900, color: "#166534" }}>Approved</span>
+                      최종 검증점: <span style={{ fontWeight: 900, color: "#166534" }}>승인됨</span>
                     </span>
                   ) : null}
                   {pre.hasBusinessExecutionRequest && pre.businessExecutionRequestValidity ? (
                     <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                      Business request:{" "}
+                      비즈니스 요청:{" "}
                       <span
                         style={{
                           fontWeight: 900,
@@ -413,43 +438,44 @@ export function RequirementDetailPageClient() {
                         }}
                       >
                         {pre.businessExecutionRequestValidity.status === "requested"
-                          ? "Requested"
+                          ? "요청됨"
                           : pre.businessExecutionRequestValidity.status === "stale"
-                            ? "Stale"
-                            : "Invalid"}
+                            ? "오래됨"
+                            : "무효"}
                       </span>{" "}
-                      (see /execution)
+                      (/execution 참고)
                     </span>
                   ) : null}
                   {pre.isBusinessExecutionApproved ? (
                     <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
-                      Business request: <span style={{ fontWeight: 800, color: "#6b7280" }}>Approved</span> · not a launch.
+                      비즈니스 요청: <span style={{ fontWeight: 800, color: "#6b7280" }}>승인됨</span> · 실행 시작은 아님.
                     </span>
                   ) : null}
                   {pre.isBusinessExecutionPackaged ? (
                     <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
-                      Execution package: <span style={{ fontWeight: 800, color: "#6b7280" }}>Prepared</span> · not launched.
+                      실행 패키지: <span style={{ fontWeight: 800, color: "#6b7280" }}>준비됨</span> · 아직 시작되지 않음.
                     </span>
                   ) : null}
                   {pre.isExecutionPackageAssigned && pre.executionAssignment ? (
                     <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
-                      Assigned:{" "}
-                      <span style={{ fontWeight: 800, color: "#6b7280" }}>{EXECUTOR_TYPE_LABELS[pre.executionAssignment.executorType]}</span> · not launched.
+                      배정:{" "}
+                      <span style={{ fontWeight: 800, color: "#6b7280" }}>{EXECUTOR_TYPE_LABELS[pre.executionAssignment.executorType]}</span> · 아직 시작되지
+                      않음.
                     </span>
                   ) : null}
                   {pre.isExecutionAssignmentHandoffCurrent ? (
                     <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
-                      Executor handoff: <span style={{ fontWeight: 800, color: "#6b7280" }}>Prepared</span> · not launched.
+                      실행기 인계: <span style={{ fontWeight: 800, color: "#6b7280" }}>준비됨</span> · 아직 시작되지 않음.
                     </span>
                   ) : null}
                   {pre.isExecutorIntakeContractCurrent ? (
                     <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
-                      Executor input: <span style={{ fontWeight: 800, color: "#6b7280" }}>Intake ready</span> · not launched.
+                      실행기 입력: <span style={{ fontWeight: 800, color: "#6b7280" }}>접수 준비됨</span> · 아직 시작되지 않음.
                     </span>
                   ) : null}
                   {pre.isExecutorWorkOrderCurrent ? (
                     <span style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.45 }}>
-                      Work order: <span style={{ fontWeight: 800, color: "#6b7280" }}>Ready</span> · not launched.
+                      작업 지시: <span style={{ fontWeight: 800, color: "#6b7280" }}>준비됨</span> · 아직 시작되지 않음.
                     </span>
                   ) : null}
                 </>
@@ -462,8 +488,8 @@ export function RequirementDetailPageClient() {
             highlightExecutionReady={tasksFromConfirmedSet}
             emptyLabel={
               tasksFromConfirmedSet
-                ? "Confirmed set is empty. Open Tasks workspace and run Task 확정 after marking tasks with Confirm."
-                : "No drafts yet. Use Task 초안 생성 in collaboration for the latest session."
+                ? "확정 세트가 비어 있습니다. 작업 워크스페이스에서 행을 확정한 뒤 작업 확정을 실행하세요."
+                : "아직 초안이 없습니다. 최신 세션 협업에서 작업 초안 생성을 사용하세요."
             }
           />
         </div>
@@ -471,4 +497,3 @@ export function RequirementDetailPageClient() {
     </div>
   );
 }
-

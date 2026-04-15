@@ -16,7 +16,7 @@ export default function CollaborationPage() {
 
   return (
     <div className="relative">
-      <ScreenLabel label="협업-목록-섹션" visible={showScreenLabels} />
+      <ScreenLabel label="협업-목록-페이지-섹션" visible={showScreenLabels} />
       <WorkflowPageHeader
         title="협업"
         subtitle="요구사항에 연결된 세션 워크스페이스 진입점(목 데이터)."
@@ -32,24 +32,24 @@ export default function CollaborationPage() {
             return (
               <WorkflowCard key={s.id}>
                 <div className="relative" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                  <ScreenLabel label="협업-세션카드" visible={showScreenLabels} />
+                  <ScreenLabel label="협업-목록-세션카드-컨테이너" visible={showScreenLabels} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                       <div className="relative" style={{ fontSize: 14, fontWeight: 900 }}>
-                        <ScreenLabel label="협업-세션카드-제목" visible={showScreenLabels} />
+                        <ScreenLabel label="협업-목록-세션카드-제목텍스트" visible={showScreenLabels} />
                         {s.title}
                       </div>
                       <div className="relative">
-                        <ScreenLabel label="협업-세션카드-상태배지" visible={showScreenLabels} />
+                        <ScreenLabel label="협업-목록-세션카드-상태배지" visible={showScreenLabels} />
                         <WorkflowBadge>{formatCollaborationSessionStatusForUi(s.status)}</WorkflowBadge>
                       </div>
                     </div>
                     <div className="relative" style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                      <ScreenLabel label="협업-세션카드-생성일" visible={showScreenLabels} />
+                      <ScreenLabel label="협업-목록-세션카드-생성일시" visible={showScreenLabels} />
                       {s.createdAt}
                     </div>
                     <div className="relative" style={{ marginTop: 10, fontSize: 13, color: "#111827", lineHeight: 1.55 }}>
-                      <ScreenLabel label="협업-세션카드-요구사항링크" visible={showScreenLabels} />
+                      <ScreenLabel label="협업-목록-세션카드-요구사항링크" visible={showScreenLabels} />
                       <strong>요구사항:</strong>{" "}
                       {req ? (
                         <Link href={`/requirements/${encodeURIComponent(req.id)}?tab=overview`} style={{ textDecoration: "underline" }}>
@@ -62,7 +62,7 @@ export default function CollaborationPage() {
                   </div>
 
                   <div className="relative" style={{ flex: "0 0 auto" }}>
-                    <ScreenLabel label="협업-세션카드-워크스페이스열기버튼" visible={showScreenLabels} />
+                    <ScreenLabel label="협업-목록-세션카드-워크스페이스열기버튼" visible={showScreenLabels} />
                     <Link
                       href={`/collaboration/${encodeURIComponent(s.id)}`}
                       style={{

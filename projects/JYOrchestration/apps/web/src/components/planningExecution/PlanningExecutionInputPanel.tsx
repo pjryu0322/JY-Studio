@@ -16,7 +16,7 @@ export function PlanningExecutionInputPanel({
   readonly disabled?: boolean;
 }) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="Planning input">
+    <section className="rounded-lg border border-neutral-200 bg-white p-4" aria-label="계획 입력">
       <h3 className="text-sm font-semibold text-neutral-800">입력</h3>
       <p className="mt-1 text-xs text-neutral-500">
         프로젝트 <span className="font-mono">{projectId}</span>

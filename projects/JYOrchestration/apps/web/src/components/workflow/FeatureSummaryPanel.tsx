@@ -1,11 +1,12 @@
 import type { FeatureMock } from "@/lib/mock/workflowMock";
+import { formatFeatureStatusForUi } from "@/lib/ui/workflowUiCopy";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 
 export function FeatureSummaryPanel({
   features,
   title,
-  emptyLabel = "No derived features available",
+  emptyLabel = "파생 기능이 없습니다.",
   hideHeader = false,
 }: {
   features: FeatureMock[];
@@ -15,10 +16,10 @@ export function FeatureSummaryPanel({
   hideHeader?: boolean;
 }) {
   return (
-    <section aria-label="Derived features" style={{ display: "grid", gap: 10 }}>
+    <section aria-label="파생 기능" style={{ display: "grid", gap: 10 }}>
       {hideHeader ? null : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 800 }}>{title ?? "Derived Features"}</div>
+          <div style={{ fontSize: 13, fontWeight: 800 }}>{title ?? "파생 기능"}</div>
           <WorkflowBadge>{features.length}</WorkflowBadge>
         </div>
       )}
@@ -30,13 +31,13 @@ export function FeatureSummaryPanel({
             <WorkflowCard key={f.id} padding={12}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 800 }}>{f.name}</div>
-                <WorkflowBadge>{f.status}</WorkflowBadge>
+                <WorkflowBadge>{formatFeatureStatusForUi(f.status)}</WorkflowBadge>
               </div>
               <div style={{ fontSize: 13, color: "#111827", marginTop: 6, lineHeight: 1.55 }}>{f.description}</div>
 
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                 <div>
-                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800, marginBottom: 4 }}>User flow</div>
+                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800, marginBottom: 4 }}>사용자 흐름</div>
                   <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
                     {f.userFlow.map((x, idx) => (
                       <li key={`${f.id}-flow-${idx}`} style={{ fontSize: 13, color: "#111827", lineHeight: 1.45 }}>
@@ -46,7 +47,7 @@ export function FeatureSummaryPanel({
                   </ul>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800, marginBottom: 4 }}>Non-functional</div>
+                  <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800, marginBottom: 4 }}>비기능</div>
                   <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
                     {f.nonFunctional.map((x, idx) => (
                       <li key={`${f.id}-nf-${idx}`} style={{ fontSize: 13, color: "#111827", lineHeight: 1.45 }}>
