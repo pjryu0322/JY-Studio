@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Project Spec 컨텍스트를 조회했습니다.",
+      message: "실행 계획 입력을 조회했습니다.",
       data,
     });
   } catch (error) {
@@ -133,7 +133,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Project Spec 컨텍스트가 저장되었습니다.",
+      message: "실행 계획 입력이 저장되었습니다.",
       data: updated,
     });
   } catch (error) {

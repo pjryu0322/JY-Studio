@@ -167,7 +167,7 @@ export async function runExecutionLoop(params: {
       return {
         ok: false,
         steps,
-        message: "확정된 Project Spec 버전이 없습니다. Spec을 확정한 뒤 Task를 생성·확정하고 실행하세요.",
+        message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 확정한 뒤 Task를 생성·확정하고 실행하세요.",
       };
     }
     const projectName = project?.name ?? projectId;

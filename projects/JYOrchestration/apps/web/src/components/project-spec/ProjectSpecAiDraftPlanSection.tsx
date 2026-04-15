@@ -306,8 +306,8 @@ export function ProjectSpecAiDraftPlanSection(props: ProjectSpecAiDraftPlanSecti
               )}
             </div>
             <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>
-              이 문서는 실행 계획이며 최종 Spec이 아닙니다. 「실행계획 저장」으로 저장한 내용만 다음 단계 AI Spec 생성에
-              사용됩니다.
+              이 문서는 실행 계획 초안이며 아직 공식 확정본이 아닙니다. 「실행계획 저장」으로 저장한 내용만 다음 단계 AI
+              실행 계획 문서 생성에 사용됩니다.
             </p>
             <textarea
               data-testid="spec-workspace-plan-working-document"

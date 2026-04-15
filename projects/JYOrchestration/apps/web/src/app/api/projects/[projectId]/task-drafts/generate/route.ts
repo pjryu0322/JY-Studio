@@ -83,7 +83,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          message: "확정된 Spec 버전이 없습니다. Project Spec을 먼저 확정하세요.",
+          message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 먼저 확정하세요.",
         },
         { status: 400 }
       );

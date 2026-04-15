@@ -5,7 +5,7 @@ export async function POST() {
     {
       success: false,
       code: "LEGACY_UPLOAD_FLOW_DISABLED",
-      message: "업로드 기반 Project Spec API는 비활성화되었습니다.",
+      message: "업로드 기반 실행 계획 API는 비활성화되었습니다.",
     },
     { status: 410 }
   );

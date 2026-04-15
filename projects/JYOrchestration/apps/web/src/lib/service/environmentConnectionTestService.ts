@@ -292,7 +292,7 @@ export async function createEnvironmentTestTask(input: {
   if (!project?.currentSpecVersionId) {
     return {
       ok: false,
-      message: "확정된 Project Spec 버전이 없습니다. Spec을 확정한 뒤 연결 테스트를 실행하세요.",
+      message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 확정한 뒤 연결 테스트를 실행하세요.",
     };
   }
 
@@ -371,7 +371,7 @@ export async function createEnvironmentStage2TestTask(input: {
   if (!project?.currentSpecVersionId) {
     return {
       ok: false,
-      message: "확정된 Project Spec 버전이 없습니다. Spec을 확정한 뒤 연결 테스트를 실행하세요.",
+      message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 확정한 뒤 연결 테스트를 실행하세요.",
     };
   }
 

@@ -170,7 +170,7 @@ export function ExecutionSetupPanel(props: {
     return (
       <div
         id="execution-setup-panel"
-        data-ui-label="[F-1-3-6] 실행 환경 설정 (스펙 미확정)"
+        data-ui-label="[F-1-3-6] 실행 환경 설정 (실행 계획 미확정)"
         style={{
           marginTop: 16,
           padding: 12,
@@ -183,7 +183,7 @@ export function ExecutionSetupPanel(props: {
           <WorkspaceLabelBadge section="executionSetup" />
           <strong style={{ fontSize: 14 }}>{WORKSPACE_SECTION_META.executionSetup.title}</strong>
           <span style={{ fontSize: 12, color: "#64748b" }}>
-            프로젝트 스펙이 확정된 뒤 Cursor API·실행 옵션·정책을 설정할 수 있습니다.
+            공식 실행 계획이 확정된 뒤 Git·GitHub·Cursor 연결과 실행 옵션·정책을 설정할 수 있습니다.
           </span>
         </div>
       </div>

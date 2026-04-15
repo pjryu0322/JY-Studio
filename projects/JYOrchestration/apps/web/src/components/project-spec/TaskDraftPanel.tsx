@@ -204,7 +204,7 @@ export function TaskDraftPanel({
           </div>
         ) : (
           <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", lineHeight: 1.45 }}>
-            현재 스펙에 Task가 없습니다.
+            현재 확정된 실행 계획에 Task가 없습니다.
           </div>
         )}
 

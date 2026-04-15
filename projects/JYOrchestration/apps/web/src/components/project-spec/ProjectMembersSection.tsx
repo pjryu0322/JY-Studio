@@ -114,7 +114,7 @@ const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> =
   },
   "spec-reviewer": {
     title: "Spec 리뷰어",
-    description: "스펙·요구 정합성을 검토합니다.",
+    description: "실행 계획·요구 정합성을 검토합니다.",
   },
   "task-reviewer": {
     title: "Task 리뷰어",
@@ -122,7 +122,7 @@ const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> =
   },
   planner: {
     title: "Planner",
-    description: "기획·분해 단계(스펙/태스크)에 참여하는 역할입니다.",
+    description: "기획·분해 단계(실행 계획·태스크)에 참여하는 역할입니다.",
   },
   "scm-manager": {
     title: "SCM Manager",

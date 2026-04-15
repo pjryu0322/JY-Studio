@@ -9,7 +9,7 @@ export async function requireProjectSpecUpload(projectId: string, userId: string
   const role = await resolveProjectRole(projectId, userId);
   if (!canPlan(role)) {
     throw new ProjectAccessDeniedError(
-      "ProjectSpec 업로드는 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
+      "실행 계획 업로드는 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
     );
   }
   return role;
@@ -19,7 +19,7 @@ export async function requireProjectSpecParse(projectId: string, userId: string)
   const role = await resolveProjectRole(projectId, userId);
   if (!canPlan(role)) {
     throw new ProjectAccessDeniedError(
-      "ProjectSpec 파싱은 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
+      "실행 계획 파싱은 PLANNER·REVIEWER·OWNER 권한이 필요합니다."
     );
   }
   return role;

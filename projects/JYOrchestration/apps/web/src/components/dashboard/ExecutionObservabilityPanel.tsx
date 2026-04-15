@@ -392,7 +392,26 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
 
         {!execSetupReady && phase === "READY" ? (
           <span style={{ fontSize: 12, color: "#b45309", lineHeight: 1.45 }}>
-            실행 환경 검증을 완료한 뒤 실행할 수 있습니다.
+            실행 환경 검증을 완료한 뒤 실행할 수 있습니다.{" "}
+            {onScrollToExecutionSetup ? (
+              <button
+                type="button"
+                onClick={() => onScrollToExecutionSetup()}
+                style={{
+                  marginLeft: 2,
+                  padding: 0,
+                  border: "none",
+                  background: "none",
+                  color: "#1d4ed8",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  fontSize: 12,
+                }}
+              >
+                실행 환경 설정 열기
+              </button>
+            ) : null}
           </span>
         ) : null}
 
@@ -457,7 +476,7 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
             return (
               <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.5 }}>
                 {primary.length === 0
-                  ? "현재 스펙에 확정된 PRIMARY Task가 없습니다."
+                  ? "현재 실행 계획에 확정된 PRIMARY Task가 없습니다."
                   : "진행 중인 Task가 없습니다."}
               </p>
             );
@@ -716,7 +735,7 @@ export function ExecutionObservabilityPanel({
             }}
           >
             <span>
-              <strong style={{ color: "#546e7a" }}>활성 스펙</strong>{" "}
+              <strong style={{ color: "#546e7a" }}>활성 실행 계획</strong>{" "}
               <span style={{ color: "#90a4ae", fontSize: 12 }}>
                 {data.currentSpecVersionId ? "버전 연결됨" : "미확정 — Task 집계 없음"}
               </span>
@@ -724,7 +743,7 @@ export function ExecutionObservabilityPanel({
             <span>
               <strong style={{ color: "#2e7d32" }}>Task 완료율</strong>{" "}
               {data.task.total > 0 ? `${pct(data.task.done, data.task.total)}%` : "—"}{" "}
-              <span style={{ color: "#90a4ae", fontSize: 12 }}>(현재 스펙·DONE / 전체)</span>
+              <span style={{ color: "#90a4ae", fontSize: 12 }}>(현재 실행 계획·DONE / 전체)</span>
             </span>
             <span>
               <strong style={{ color: "#c62828" }}>Task 실패율</strong>{" "}
@@ -758,7 +777,7 @@ export function ExecutionObservabilityPanel({
                 lineHeight: 1.55,
               }}
             >
-              <strong>이전 스펙(보관)</strong> · Task {data.historical.archivedTaskCount} · 프롬프트 Run{" "}
+              <strong>이전 실행 계획(보관)</strong> · Task {data.historical.archivedTaskCount} · 프롬프트 Run{" "}
               {data.historical.promptRunCount} · Cursor 실행 기록 {data.historical.cursorRunCount}
             </div>
           ) : null}
@@ -773,7 +792,7 @@ export function ExecutionObservabilityPanel({
             <div style={cardStyle}>
               <h3 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "#37474f" }}>Task</h3>
               <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#263238" }}>{data.task.total}</p>
-              <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#78909c" }}>현재 확정 스펙 기준</p>
+              <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#78909c" }}>현재 확정 실행 계획 기준</p>
               <StackedBar
                 total={data.task.total}
                 segments={[
@@ -789,7 +808,7 @@ export function ExecutionObservabilityPanel({
               <h3 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "#37474f" }}>TaskRun</h3>
               <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#263238" }}>{data.taskRun.total}</p>
               <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#78909c" }}>
-                프롬프트 실행 이력 (현재 스펙 Task)
+                프롬프트 실행 이력 (현재 실행 계획 Task)
               </p>
             </div>
 
@@ -801,7 +820,7 @@ export function ExecutionObservabilityPanel({
                 {data.cursorExecutionRun.activeCount}
               </p>
               <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#78909c" }}>
-                보관 {data.cursorExecutionRun.archivedCount} (이전 스펙)
+                보관 {data.cursorExecutionRun.archivedCount} (이전 실행 계획)
               </p>
             </div>
 

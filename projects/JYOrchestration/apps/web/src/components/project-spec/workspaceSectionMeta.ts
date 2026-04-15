@@ -4,8 +4,8 @@
  */
 export const WORKSPACE_SECTION_META = {
   workspaceRoot: {
-    fullLabel: "[F-1-3] Workspace — Project Spec definition (AI-first)",
-    title: "Project Spec 정의 워크스페이스",
+    fullLabel: "[F-1-3] Workspace — execution planning (AI-assisted)",
+    title: "실행 계획 워크스페이스",
   },
   projectContext: {
     fullLabel: "[F-1-3-1] Workspace — Project Context",
@@ -24,19 +24,19 @@ export const WORKSPACE_SECTION_META = {
     title: "문서 후보 비교 · 작업 편집기",
   },
   specFromSavedPlan: {
-    fullLabel: "[F-1-3-2] Workspace — Project Spec from saved plan",
-    title: "저장된 계획으로 Project Spec 생성",
+    fullLabel: "[F-1-3-2] Workspace — AI plan document from saved execution plan",
+    title: "저장된 계획으로 실행 계획 문서 생성",
   },
   aiResponsesCompare: {
     fullLabel: "[F-1-3-3] Workspace — AI responses & compare",
     title: "AI 응답",
   },
   confirmedSpecVersions: {
-    fullLabel: "[F-1-3-4] Workspace — Confirmed spec & versions",
-    title: "확정된 Project Spec",
+    fullLabel: "[F-1-3-4] Workspace — Confirmed execution plan versions",
+    title: "확정된 실행 계획",
   },
   taskDrafts: {
-    fullLabel: "[F-1-3-5] Workspace — Task drafts (Spec-linked)",
+    fullLabel: "[F-1-3-5] Workspace — Task drafts (plan-linked)",
     title: "실행 워크플로",
   },
   executionSetup: {
