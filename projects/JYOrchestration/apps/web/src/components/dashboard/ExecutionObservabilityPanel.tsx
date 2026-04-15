@@ -35,6 +35,9 @@ type ExecutionObservabilityPanelProps = {
     onAbortLoop: () => void | Promise<void>;
     onScrollToExecutionSetup?: () => void;
     lastFailedIsGitBranchError?: boolean;
+    /** true이면 실행 시작 버튼이 준비 미완료여도 눌리며, 클릭 시 `onExecSetupBlockedAttempt`로 위임 */
+    execSetupSoftGate?: boolean;
+    onExecSetupBlockedAttempt?: () => void;
   } | null;
 };
 
@@ -212,6 +215,8 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
     onAbortLoop,
     onScrollToExecutionSetup,
     lastFailedIsGitBranchError = false,
+    execSetupSoftGate = false,
+    onExecSetupBlockedAttempt,
   } = props;
 
   const primary = primaryOnly(tasks);
@@ -234,7 +239,11 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
   const totalCount = primary.length;
   const progressPct = totalCount > 0 ? Math.round((100 * completedCount) / totalCount) : 0;
 
-  const startDisabled = !execSetupReady || executionLoopBusy || phase === "DONE" || primary.length === 0;
+  const startDisabled =
+    (!execSetupSoftGate && !execSetupReady) ||
+    executionLoopBusy ||
+    phase === "DONE" ||
+    primary.length === 0;
 
   const phaseLabel: Record<ExecutionControlPhase, string> = {
     READY: "READY",
@@ -306,7 +315,13 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
           <button
             type="button"
             disabled={startDisabled}
-            onClick={() => onStartExecution()}
+            onClick={() => {
+              if (execSetupSoftGate && !execSetupReady && onExecSetupBlockedAttempt) {
+                onExecSetupBlockedAttempt();
+                return;
+              }
+              onStartExecution();
+            }}
             style={{
               ...btnBase,
               background: startDisabled ? "#e2e8f0" : "#0d9488",
@@ -409,7 +424,7 @@ function LiveExecutionBlock(props: NonNullable<ExecutionObservabilityPanelProps[
                   fontSize: 12,
                 }}
               >
-                실행 환경 설정 열기
+                설정으로 이동
               </button>
             ) : null}
           </span>

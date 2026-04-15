@@ -23,11 +23,11 @@ test.describe("E2E project", () => {
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
   });
 
-  test("[E2E-PRJ-003] 상세 — 실행 환경 탭은 런타임 연결·검증 중심(중복 프로젝트 요약 없음)", async ({ page }) => {
+  test("[E2E-PRJ-003] 상세 — 실행 환경은 프로젝트 관리 설정으로 이동(요약만 상세에 유지)", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-tab-execution").click();
-    await expect(page.getByTestId("project-execution-environment-settings")).toHaveAttribute("open", "");
+    await page.getByTestId("project-execution-readiness-settings-link").click();
+    await expect(page).toHaveURL(/\/project-admin\/settings\?projectId=/, { timeout: 15_000 });
     const env = page.getByTestId("project-execution-environment-panel");
     await expect(env).toBeVisible();
     await expect(env.getByTestId("project-advanced-settings-panel")).toHaveCount(0);
@@ -35,15 +35,15 @@ test.describe("E2E project", () => {
     await expect(env.locator("#execution-setup-panel")).toBeVisible();
   });
 
-  test("[E2E-PRJ-004] 상세 — 실행 환경 탭 연결 UI", async ({ page }) => {
+  test("[E2E-PRJ-004] 설정 — 실행 환경 연결 UI", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-tab-execution").click();
-    await expect(page.getByTestId("project-execution-environment-settings")).toHaveAttribute("open", "");
+    await page.getByTestId("project-execution-readiness-settings-link").click();
+    await expect(page).toHaveURL(/\/project-admin\/settings\?projectId=/, { timeout: 15_000 });
+    await expect(page.getByTestId("project-admin-settings-page")).toBeVisible();
     const envPanel = page.getByTestId("project-execution-environment-panel");
     await expect(envPanel).toBeVisible();
     await expect(envPanel.getByRole("heading", { name: /실행 환경/i })).toBeVisible();
-    await expect(envPanel.getByText("실행 준비 상태")).toBeVisible();
     await expect(envPanel.getByRole("button", { name: "저장소 연결 검증" })).toBeVisible();
     await expect(envPanel.getByRole("button", { name: "Cursor API 검증" })).toBeVisible();
   });

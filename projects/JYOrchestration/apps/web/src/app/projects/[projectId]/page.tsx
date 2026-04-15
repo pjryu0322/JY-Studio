@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
 import {
@@ -45,7 +45,7 @@ import {
   normalizeGitApprovalModeForDisplay,
 } from "@/lib/git-apply/retry";
 import { ProjectDetailGearMenu } from "@/components/project/ProjectDetailGearMenu";
-import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
+import { ExecutionEnvironmentBlockedModal } from "@/components/project/ExecutionEnvironmentBlockedModal";
 import { ProjectExecutionReadinessSummary } from "@/components/project/ProjectExecutionReadinessSummary";
 import {
   computeProjectExecutionReadiness,
@@ -57,6 +57,7 @@ import {
   isGitBranchConfigErrorMessage,
   stripGitBranchConfigMarkerForDisplay,
 } from "@/lib/execution/gitBranchCursorError";
+import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 
 function rbacForbiddenMessage(
   res: Response,
@@ -68,10 +69,11 @@ function rbacForbiddenMessage(
   return null;
 }
 
-type ProjectMainTab = "overview" | "members" | "ai-members" | "execution";
+type ProjectMainTab = "overview" | "members" | "ai-members";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
+  const router = useRouter();
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,8 +126,7 @@ export default function ProjectDetailPage() {
   const [executionLoopBusy, setExecutionLoopBusy] = useState(false);
   const [executionLoopBanner, setExecutionLoopBanner] = useState<string | null>(null);
   const [executionLoopPaused, setExecutionLoopPaused] = useState(false);
-  const [executionEnvSettingsOpen, setExecutionEnvSettingsOpen] = useState(false);
-  const [executionEnvFocusReason, setExecutionEnvFocusReason] = useState<string | null>(null);
+  const [envBlockedModalOpen, setEnvBlockedModalOpen] = useState(false);
   const [singleExecutionTaskId, setSingleExecutionTaskId] = useState("");
   const [approvingSensitiveTaskId, setApprovingSensitiveTaskId] = useState<string | null>(null);
 
@@ -734,19 +735,20 @@ export default function ProjectDetailPage() {
     }
   }, [projectId, uiPermissions.canRun]);
 
-  const expandExecutionEnvironmentSettings = useCallback((reason?: string | null) => {
-    if (reason === null) setExecutionEnvFocusReason(null);
-    else if (reason !== undefined) {
-      const trimmed = String(reason).trim();
-      if (trimmed) setExecutionEnvFocusReason(trimmed);
-    }
-    setExecutionEnvSettingsOpen(true);
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById("project-execution-environment-settings")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }, []);
+  const navigateToExecutionSettings = useCallback(
+    (opts?: { envNote?: string | null }) => {
+      if (!projectId) return;
+      setEnvBlockedModalOpen(false);
+      const note = opts?.envNote != null ? String(opts.envNote).trim() : "";
+      router.push(
+        projectExecutionSettingsHref(projectId, {
+          from: "planning",
+          envNote: note || undefined,
+        })
+      );
+    },
+    [projectId, router]
+  );
 
   const handlePauseExecutionLoop = useCallback(async () => {
     if (!projectId) return;
@@ -811,7 +813,7 @@ export default function ProjectDetailPage() {
         setErrorMessage(m);
         setExecutionLoopBanner(m);
         if (isExecutionEnvironmentFailureMessage(m)) {
-          expandExecutionEnvironmentSettings(m);
+          navigateToExecutionSettings({ envNote: m });
         }
         await reloadTasksList();
         await loadExecutionRuns();
@@ -834,8 +836,16 @@ export default function ProjectDetailPage() {
     reloadTasksList,
     loadExecutionRuns,
     refreshExecutionLoopPaused,
-    expandExecutionEnvironmentSettings,
+    navigateToExecutionSettings,
   ]);
+
+  const startExecutionFromPlanning = useCallback(() => {
+    if (execSetupValidatedHint !== true) {
+      setEnvBlockedModalOpen(true);
+      return;
+    }
+    void runExecutionLoopPrimary();
+  }, [execSetupValidatedHint, runExecutionLoopPrimary]);
 
   useEffect(() => {
     if (!projectId || !uiPermissions.canRun) return;
@@ -885,17 +895,6 @@ export default function ProjectDetailPage() {
       cancelled = true;
     };
   }, [projectId, permissions.canViewProject, uiPermissions.canRun]);
-
-  useEffect(() => {
-    if (mainTab !== "execution") return;
-    if (!projectId || loading || !project || errorMessage) return;
-    setExecutionEnvSettingsOpen(true);
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById("project-execution-environment-settings")
-        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
-  }, [mainTab, projectId, loading, project, errorMessage]);
 
   async function handleGenerateTaskPrompt(taskId: string) {
     try {
@@ -974,9 +973,9 @@ export default function ProjectDetailPage() {
             typeof json.message === "string" ? json.message : undefined
           )
         ) {
-          expandExecutionEnvironmentSettings(
-            typeof json.message === "string" ? json.message : "실행 환경을 확인하세요."
-          );
+          navigateToExecutionSettings({
+            envNote: typeof json.message === "string" ? json.message : "실행 환경을 확인하세요.",
+          });
         }
         await reloadTasksList();
         await loadExecutionRuns();
@@ -995,11 +994,11 @@ export default function ProjectDetailPage() {
     if (!prompt) {
       const msg =
         execSetupValidatedHint === false
-          ? "Cursor 파이프라인을 쓰려면 실행 환경 설정에서 연결·검증을 완료하거나, mock 실행을 위해 프롬프트를 생성하세요."
+          ? "Cursor 파이프라인을 쓰려면 프로젝트 관리 → 설정에서 연결·검증을 완료하거나, mock 실행을 위해 프롬프트를 생성하세요."
           : "먼저 프롬프트를 생성해 주세요.";
       setPromptMessage(msg);
       if (execSetupValidatedHint === false) {
-        expandExecutionEnvironmentSettings(msg);
+        navigateToExecutionSettings({ envNote: msg });
       }
       return;
     }
@@ -1772,8 +1771,8 @@ export default function ProjectDetailPage() {
   }
 
   const scrollToExecutionSetup = useCallback(() => {
-    expandExecutionEnvironmentSettings(null);
-  }, [expandExecutionEnvironmentSettings]);
+    navigateToExecutionSettings();
+  }, [navigateToExecutionSettings]);
 
   const projectFlowTail = (
     <>
@@ -1832,11 +1831,13 @@ export default function ProjectDetailPage() {
                             executionLoopPaused,
                             execSetupReady: execSetupValidatedHint === true,
                             executionLoopBanner,
-                            onStartExecution: () => void runExecutionLoopPrimary(),
+                            onStartExecution: () => void startExecutionFromPlanning(),
                             onPauseLoop: handlePauseExecutionLoop,
                             onResumeLoop: handleResumeExecutionLoop,
                             onAbortLoop: handleAbortExecutionLoop,
                             onScrollToExecutionSetup: scrollToExecutionSetup,
+                            execSetupSoftGate: true,
+                            onExecSetupBlockedAttempt: () => setEnvBlockedModalOpen(true),
                             lastFailedIsGitBranchError: Boolean(
                               orchestrationTaskOverview.lastFailed &&
                                 isGitBranchConfigErrorMessage(
@@ -1872,7 +1873,7 @@ export default function ProjectDetailPage() {
                   </details>
                   {execSetupValidatedHint !== true ? (
                     <span style={{ fontSize: 13, color: "#b45309", lineHeight: 1.45 }}>
-                      실행 환경 설정에서 Execution setup을 저장하고 검증을 완료한 뒤 「실행 시작」을 사용할 수 있습니다.
+                      프로젝트 관리 → 설정에서 Execution setup을 저장하고 검증을 완료한 뒤 「실행 시작」을 사용할 수 있습니다.
                     </span>
                   ) : (
                     <span style={{ fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
@@ -2757,11 +2758,6 @@ export default function ProjectDetailPage() {
 
   const detailTabs: { id: ProjectMainTab; label: string; uiLabel: string }[] = [
     { id: "overview", label: "실행 계획", uiLabel: "[P-3-2-1] Tab — Execution planning" },
-    {
-      id: "execution",
-      label: "실행 환경",
-      uiLabel: "[P-3-2-4] Tab — Execution Environment",
-    },
     { id: "members", label: "멤버", uiLabel: "[P-3-2-2] Tab — Members" },
     { id: "ai-members", label: "AI 멤버", uiLabel: "[P-3-2-3] Tab — AI Members" },
   ];
@@ -2796,7 +2792,7 @@ export default function ProjectDetailPage() {
         <ProjectExecutionReadinessSummary
           setup={executionSetupOverview}
           loading={executionSetupOverviewLoading}
-          onExpandExecutionSettings={() => expandExecutionEnvironmentSettings(null)}
+          settingsHref={projectExecutionSettingsHref(projectId, { from: "planning" })}
         />
       ) : null}
       {showGuidedChrome ? (
@@ -2845,105 +2841,12 @@ export default function ProjectDetailPage() {
                     gap: 6,
                   }}
                 >
-                  {t.id === "execution" && uiPermissions.canRun ? (
-                    <span
-                      title={
-                        execSetupValidatedHint === true
-                          ? "실행 환경 검증 완료"
-                          : execSetupValidatedHint === false
-                            ? "실행 환경 미검증 또는 검증 실패"
-                            : "실행 환경 상태 확인 중"
-                      }
-                      aria-hidden
-                      style={{ fontSize: 13, lineHeight: 1 }}
-                    >
-                      {execSetupValidatedHint === true ? "✔" : execSetupValidatedHint === false ? "❌" : "⚠"}
-                    </span>
-                  ) : null}
                   <span>{t.label}</span>
                 </button>
               ))}
             </div>
             <ProjectDetailGearMenu />
           </nav>
-
-          {executionEnvFocusReason ? (
-            <div
-              role="alert"
-              data-testid="project-execution-env-focus-reason"
-              style={{
-                marginBottom: 12,
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: "1px solid #fdba74",
-                background: "#fffbeb",
-                color: "#9a3412",
-                fontSize: 13,
-                lineHeight: 1.5,
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "flex-start",
-                gap: 10,
-              }}
-            >
-              <span style={{ flex: "1 1 220px" }}>
-                <strong>실행이 환경 설정 때문에 막혔습니다.</strong> {executionEnvFocusReason}
-              </span>
-              <button
-                type="button"
-                onClick={() => setExecutionEnvFocusReason(null)}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #fdba74",
-                  background: "#fff",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  color: "#9a3412",
-                }}
-              >
-                닫기
-              </button>
-            </div>
-          ) : null}
-
-          <details
-            id="project-execution-environment-settings"
-            data-testid="project-execution-environment-settings"
-            open={executionEnvSettingsOpen}
-            onToggle={(e) => {
-              const el = e.currentTarget;
-              setExecutionEnvSettingsOpen(el.open);
-              if (!el.open) setExecutionEnvFocusReason(null);
-            }}
-            style={{
-              marginBottom: 20,
-              border: "1px solid #e2e8f0",
-              borderRadius: 10,
-              padding: "10px 12px",
-              background: "#fff",
-            }}
-          >
-            <summary
-              style={{
-                cursor: "pointer",
-                fontWeight: 800,
-                fontSize: 15,
-                color: "#0f172a",
-              }}
-            >
-              실행 환경 설정
-            </summary>
-            <div style={{ marginTop: 14 }}>
-              <ProjectExecutionEnvironmentPanel
-                projectId={projectId}
-                project={project}
-                canEdit={rbac.canEditSpec}
-                canRevealCursorApiKey={projectRole === "OWNER"}
-              />
-            </div>
-          </details>
 
           {mainTab === "overview" ? (
             <div data-ui-label="[P-4-1] Overview Region — execution planning → tasks">
@@ -2960,7 +2863,7 @@ export default function ProjectDetailPage() {
                   canRunExecution: uiPermissions.canRun,
                   execSetupReady: execSetupValidatedHint === true,
                   executionLoopBusy,
-                  onStartExecution: () => void runExecutionLoopPrimary(),
+                  onStartExecution: () => void startExecutionFromPlanning(),
                 }}
               />
               {projectFlowTail}
@@ -2968,7 +2871,7 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {mainTab !== "overview" ? (
-            <div data-ui-label="[P-4-4] Project Region — Members / AI Members / Execution Environment">
+            <div data-ui-label="[P-4-4] Project Region — Members / AI Members">
               {mainTab === "members" ? (
                 <ProjectMembersSection
                   projectId={projectId}
@@ -3007,16 +2910,15 @@ export default function ProjectDetailPage() {
                 />
               ) : null}
 
-              {mainTab === "execution" ? (
-                <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
-                  Git·GitHub·Cursor·정책은 위의 <strong>실행 환경 설정</strong>에서 펼쳐 수정합니다. 탭을 선택하면 해당
-                  섹션으로 스크롤됩니다.
-                </p>
-              ) : null}
             </div>
           ) : null}
         </>
       ) : null}
+      <ExecutionEnvironmentBlockedModal
+        open={envBlockedModalOpen}
+        onCancel={() => setEnvBlockedModalOpen(false)}
+        onGoSettings={() => navigateToExecutionSettings()}
+      />
     </main>
   );
 }

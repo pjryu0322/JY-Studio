@@ -23,6 +23,8 @@ type Props = {
   canEdit: boolean;
   /** 프로젝트 OWNER만 저장된 Cursor API 키 일시 표시 */
   canRevealCursorApiKey?: boolean;
+  /** 프로젝트 관리 설정 화면 전용 톤(문구만 조정, 로직 동일) */
+  settingsSurface?: "admin";
 };
 
 const PLACEHOLDERS = {
@@ -425,7 +427,9 @@ export function ProjectExecutionEnvironmentPanel({
   project,
   canEdit,
   canRevealCursorApiKey = false,
+  settingsSurface,
 }: Props) {
+  const isAdminSettings = settingsSurface === "admin";
   const [executionSetup, setExecutionSetup] = useState<
     Awaited<ReturnType<typeof fetchExecutionSetup>>["json"]["data"] | null
   >(null);
@@ -1877,24 +1881,30 @@ export function ProjectExecutionEnvironmentPanel({
       style={{ marginBottom: 8 }}
     >
       <header style={{ marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>실행 환경</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
+          {isAdminSettings ? "실행 환경 준비" : "실행 환경"}
+        </h1>
         <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다.
+          {isAdminSettings
+            ? "저장소·GitHub·Cursor를 연결하고 검증을 통과하면 실행 계획 화면에서 실행을 시작할 수 있습니다."
+            : "외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."}
         </p>
-        <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #e9d5ff",
-            background: "#faf5ff",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#5b21b6",
-            lineHeight: 1.5,
-          }}
-        >
-          1. 외부 시스템 연결 → 2. 연결 테스트 실행 → 3. (선택) 실행 정책 설정
-        </div>
+        {isAdminSettings ? null : (
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #e9d5ff",
+              background: "#faf5ff",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#5b21b6",
+              lineHeight: 1.5,
+            }}
+          >
+            1. 외부 시스템 연결 → 2. 연결 테스트 실행 → 3. (선택) 실행 정책 설정
+          </div>
+        )}
       </header>
 
       <ExecutionSetupPanel

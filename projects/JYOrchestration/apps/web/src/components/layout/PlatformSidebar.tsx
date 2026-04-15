@@ -69,16 +69,16 @@ export function PlatformSidebar() {
   const insight: NavItem[] = [{ label: "추적", href: "/trace", disabled: false, screenLabel: "공통-사이드바-추적-메뉴" }];
   const project: NavItem[] = [
     { label: "워크스페이스", href: "/workspace", screenLabel: "공통-사이드바-워크스페이스-메뉴" },
-    { label: "프로젝트 관리 · 멤버", href: "/project-admin/members", screenLabel: "공통-사이드바-프로젝트관리-멤버-메뉴" },
-    { label: "프로젝트 관리 · 설정", href: "/project-admin/settings", screenLabel: "공통-사이드바-프로젝트관리-설정-메뉴" },
+    { label: "멤버", href: "/project-admin/members", screenLabel: "공통-사이드바-프로젝트관리-멤버-메뉴" },
+    { label: "설정", href: "/project-admin/settings", screenLabel: "공통-사이드바-프로젝트관리-설정-메뉴" },
     {
-      label: "프로젝트 관리 · 정책",
+      label: "정책",
       href: "/project-admin/policies",
       disabled: true,
       screenLabel: "공통-사이드바-프로젝트관리-정책-메뉴",
     },
     {
-      label: "프로젝트 관리 · 연동",
+      label: "연동",
       href: "/project-admin/integrations",
       disabled: true,
       screenLabel: "공통-사이드바-프로젝트관리-연동-메뉴",
@@ -148,7 +148,7 @@ export function PlatformSidebar() {
 
       <div className="relative">
         <ScreenLabel label="공통-사이드바-프로젝트구역-섹션" visible={showScreenLabels} />
-        <SectionTitle>프로젝트</SectionTitle>
+        <SectionTitle>프로젝트 관리</SectionTitle>
       </div>
       <div style={{ display: "grid", gap: 4 }}>
         {project.map((item) => (
