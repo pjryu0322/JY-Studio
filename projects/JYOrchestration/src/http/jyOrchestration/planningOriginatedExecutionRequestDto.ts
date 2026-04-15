@@ -44,13 +44,13 @@ export function parsePlanningExecutionRequest(body: unknown): PlanningExecutionR
   const issues: string[] = [];
 
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    return { ok: false, issues: ["body must be a JSON object"] };
+    return { ok: false, issues: ["요청 본문은 JSON 객체여야 합니다."] };
   }
 
   const o = body as Record<string, unknown>;
   const projectId = typeof o.projectId === "string" ? o.projectId.trim() : "";
   if (!projectId) {
-    issues.push("projectId is required");
+    issues.push("프로젝트 ID가 필요합니다.");
   }
 
   const modeRaw = o.mode;
@@ -58,17 +58,17 @@ export function parsePlanningExecutionRequest(body: unknown): PlanningExecutionR
   if (modeRaw === "PREPARE_ONLY" || modeRaw === "PREPARE_AND_START") {
     mode = modeRaw;
   } else {
-    issues.push('mode must be "PREPARE_ONLY" or "PREPARE_AND_START"');
+    issues.push("mode 값이 올바르지 않습니다. 허용: 준비만, 준비 및 시작.");
   }
 
   const hasText = "inputText" in o && o.inputText !== undefined && o.inputText !== null;
   const hasRef = "refinement" in o && o.refinement !== undefined && o.refinement !== null;
 
   if (hasText && hasRef) {
-    issues.push("provide only one of inputText or refinement");
+    issues.push("inputText와 refinement는 동시에 보낼 수 없습니다. 하나만 제공하세요.");
   }
   if (!hasText && !hasRef) {
-    issues.push("at least one planning input source is required: inputText or refinement");
+    issues.push("inputText 또는 refinement 중 하나는 반드시 필요합니다.");
   }
 
   let planningInput:
@@ -78,7 +78,7 @@ export function parsePlanningExecutionRequest(body: unknown): PlanningExecutionR
   if (hasText && !hasRef) {
     const t = typeof o.inputText === "string" ? o.inputText.trim() : "";
     if (!t) {
-      issues.push("inputText must be a non-empty string when provided");
+      issues.push("inputText가 있으면 비어 있지 않은 문자열이어야 합니다.");
     } else {
       planningInput = { kind: "inputText", inputText: t };
     }
@@ -87,14 +87,14 @@ export function parsePlanningExecutionRequest(body: unknown): PlanningExecutionR
   if (hasRef && !hasText) {
     const ref = o.refinement;
     if (!isLoosePrepareRequirementRefinementDecisionResult(ref)) {
-      issues.push("refinement must match PrepareRequirementRefinementDecisionResult shape");
+      issues.push("refinement가 요구하는 형태와 일치하지 않습니다.");
     } else {
       planningInput = { kind: "refinement", refinement: ref };
     }
   }
 
   if (issues.length > 0 || !planningInput || !projectId || !mode) {
-    return { ok: false, issues: issues.length > 0 ? issues : ["invalid request"] };
+    return { ok: false, issues: issues.length > 0 ? issues : ["요청이 유효하지 않습니다."] };
   }
 
   if (planningInput.kind === "inputText") {

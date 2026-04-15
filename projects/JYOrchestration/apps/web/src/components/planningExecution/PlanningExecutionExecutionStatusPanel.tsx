@@ -3,6 +3,7 @@
 import type { PlanningExecutionRunStatusResponse, PlanningOriginatedExecutionViewModel } from "@jy-orch/application/public";
 import { PlanningExecutionMessagePanel } from "./PlanningExecutionMessagePanel";
 import { buildPlanningExecutionRunStatusPresentation } from "./planningExecutionRunStatusPresentation";
+import { formatPlanningRunCurrentStepLineKo } from "@/components/planningExecution/planningExecutionUiCopy";
 
 /** Run id + status headline — no run store internals. */
 export function PlanningExecutionExecutionStatusPanel({
@@ -19,11 +20,12 @@ export function PlanningExecutionExecutionStatusPanel({
   readonly onInspectFailure: (() => void) | null;
 }) {
   const pres = runStatus ? buildPlanningExecutionRunStatusPresentation({ run: runStatus }) : null;
+  const currentStepUi = runStatus ? formatPlanningRunCurrentStepLineKo(runStatus.currentStep) : null;
   return (
     <div className="space-y-3">
       {vm.runId ? (
         <section className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4" aria-label="실행 식별자">
-          <h3 className="text-sm font-semibold text-emerald-950">Run</h3>
+          <h3 className="text-sm font-semibold text-emerald-950">실행 식별자</h3>
           <p className="mt-1 font-mono text-sm text-emerald-900">{vm.runId}</p>
         </section>
       ) : null}
@@ -44,8 +46,8 @@ export function PlanningExecutionExecutionStatusPanel({
           <p className="mt-1 text-xs text-neutral-500">새로고침 중…</p>
         ) : null}
         {runStatusError ? (
-          <p className="mt-2 text-sm text-red-800" data-testid="run-status-error">
-            {runStatusError}
+          <p className="mt-2 text-sm text-red-800" data-testid="run-status-error" title={runStatusError}>
+            실행 상태를 불러오지 못했습니다. 자세한 내용은 이 영역에 마우스를 올려 툴팁으로 확인하세요.
           </p>
         ) : null}
         {runStatus ? (
@@ -101,14 +103,18 @@ export function PlanningExecutionExecutionStatusPanel({
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-neutral-500">현재 단계</dt>
-              <dd className="font-mono text-xs">{runStatus.currentStep ?? "—"}</dd>
+              <dd className="text-right text-xs text-neutral-800" title={currentStepUi?.detailTitle ?? undefined}>
+                {currentStepUi?.line ?? "—"}
+              </dd>
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-neutral-500">스텝 수(로그)</dt>
               <dd>{runStatus.totalSteps}</dd>
             </div>
             {runStatus.lastMessage ? (
-              <div className="col-span-full text-sm text-neutral-700">{runStatus.lastMessage}</div>
+              <div className="col-span-full text-sm text-neutral-700" title={runStatus.lastMessage}>
+                엔진이 추가 로그 메시지를 남겼습니다. 전문은 이 영역에 마우스를 올려 툴팁으로 확인하세요.
+              </div>
             ) : null}
             </dl>
           </>

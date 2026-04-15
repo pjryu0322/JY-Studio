@@ -1,6 +1,7 @@
 "use client";
 
 import type { PlanningOriginatedExecutionViewModel } from "@jy-orch/application/public";
+import { formatPlanningPipelineStatusKo } from "@/components/planningExecution/planningExecutionUiCopy";
 
 /** Planning-phase hints only (messages live in confirmation/blocking panel). */
 export function PlanningExecutionPlanningSummaryPanel({ vm }: { readonly vm: PlanningOriginatedExecutionViewModel }) {
@@ -12,7 +13,7 @@ export function PlanningExecutionPlanningSummaryPanel({ vm }: { readonly vm: Pla
       <dl className="mt-2 grid gap-2 text-sm text-neutral-700">
         <div className="flex justify-between gap-2">
           <dt className="text-neutral-500">계획 상태</dt>
-          <dd className="font-mono text-xs">{h.planningStatus ?? "—"}</dd>
+          <dd className="text-xs">{formatPlanningPipelineStatusKo(h.planningStatus)}</dd>
         </div>
         <div className="flex justify-between gap-2">
           <dt className="text-neutral-500">파이프라인 오류</dt>
