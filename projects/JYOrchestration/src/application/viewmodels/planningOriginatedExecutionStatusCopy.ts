@@ -35,7 +35,7 @@ export function planningExecutionStatusCopy(
     case "EXECUTION_STARTED":
       return {
         headline: "실행이 시작되었습니다",
-        explanation: "실행(run)이 시작되었습니다.",
+        explanation: "실행이 시작되었습니다.",
         nextStepGuidance:
           "현재는 ‘상태 재평가’로 계획/준비 결과를 다시 확인할 수 있습니다. 실행 상태 조회는 추후 제공됩니다.",
       };

@@ -35,6 +35,16 @@ const STATUS_OPTION_LABEL: Record<PlanningOriginatedExecutionStatus, string> = {
   EXECUTION_START_FAILED: "실행 시작 실패",
 };
 
+const STRUCTURAL_ACTION_LABEL_KO: Record<PlanningExecutionStructuralAction, string> = {
+  EDIT_INPUT: "입력 편집",
+  REVIEW_CONFIRMATION: "확인 검토",
+  START_EXECUTION: "실행 시작",
+  VIEW_RUN_STATUS: "실행 상태 보기",
+  REFRESH_STATUS: "상태 재평가",
+  RETRY_EXECUTION: "실행 다시 시도",
+  INSPECT_FAILURE: "실패 원인 조사",
+};
+
 type UiRequestState =
   | { readonly kind: "idle" }
   | { readonly kind: "submitting"; readonly mode: "PREPARE_ONLY" | "PREPARE_AND_START" }
@@ -178,8 +188,8 @@ export function PlanningExecutionPageClient() {
         )}
 
         {lastAction ? (
-          <span className="font-mono text-xs text-neutral-600">
-            마지막 구조 동작: <strong>{lastAction}</strong> (자리 표시자)
+          <span className="text-xs text-neutral-600">
+            마지막 구조 동작: <strong>{STRUCTURAL_ACTION_LABEL_KO[lastAction]}</strong> (자리 표시자)
           </span>
         ) : (
           <span className="text-xs text-neutral-500">액션 바를 사용하세요. 핸들러는 자리 표시자입니다.</span>

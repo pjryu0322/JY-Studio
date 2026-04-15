@@ -36,7 +36,8 @@ function previewFor(status: PlanningOriginatedExecutionStatus) {
     status,
     summaryLabel: status,
     runId: status === "EXECUTION_STARTED" ? "demo-run-1" : null,
-    blockingReason: status === "EXECUTION_START_FAILED" ? "DEMO_START_FAILED" : null,
+    blockingReason:
+      status === "EXECUTION_START_FAILED" ? "데모: 실행 시작 단계에서 오류가 발생했습니다." : null,
   };
 }
 
@@ -44,22 +45,22 @@ const demoResponses: Record<PlanningOriginatedExecutionStatus, PlanningOriginate
   BLOCKED: {
     ok: false,
     status: "BLOCKED",
-    internalReasonCode: "DEMO_BLOCKED",
-    reasonSummary: "Planning or execution preparation cannot proceed.",
+    internalReasonCode: null,
+    reasonSummary: "현재 입력으로는 계획을 확정하거나 실행 준비를 진행할 수 없습니다.",
     planning: {
       projectId: DEMO_PREVIEW_BASE.projectId,
       planningStatus: "BLOCKED",
       pipelineErrorCount: 0,
       executedStepCount: 1,
-      stopHint: "DEMO_STOP",
+      stopHint: "데모: 계획이 여기서 중단되었습니다.",
       readiness: null,
     },
   },
   NEEDS_CONFIRMATION: {
     ok: false,
     status: "NEEDS_CONFIRMATION",
-    internalReasonCode: "DEMO_NEEDS_CONFIRMATION",
-    reasonSummary: "Human confirmation is required before execution can be prepared.",
+    internalReasonCode: null,
+    reasonSummary: "실행을 준비하기 전에 사용자 확인이 필요합니다.",
     planning: {
       projectId: DEMO_PREVIEW_BASE.projectId,
       planningStatus: "NEEDS_CONFIRMATION",
@@ -90,9 +91,12 @@ const demoResponses: Record<PlanningOriginatedExecutionStatus, PlanningOriginate
   EXECUTION_START_FAILED: {
     ok: false,
     status: "EXECUTION_START_FAILED",
-    internalReasonCode: "DEMO_START_FAILED",
+    internalReasonCode: null,
     reasonSummary: "실행 준비는 성공했으나 런 시작에 실패했습니다.",
-    preview: { ...previewFor("EXECUTION_START_FAILED"), blockingReason: "DEMO_START_FAILED" },
+    preview: {
+      ...previewFor("EXECUTION_START_FAILED"),
+      blockingReason: "데모: 실행 시작 단계에서 오류가 발생했습니다.",
+    },
   },
 };
 

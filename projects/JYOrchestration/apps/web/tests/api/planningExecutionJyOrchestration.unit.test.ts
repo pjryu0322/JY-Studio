@@ -42,7 +42,7 @@ describe("planning-execution HTTP request DTO", () => {
     const r = parsePlanningExecutionRequest({ inputText: "hello" });
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.issues.some((i) => i.includes("projectId"))).toBe(true);
+      expect(r.issues.some((i) => i.includes("프로젝트"))).toBe(true);
       expect(r.issues.some((i) => i.includes("mode"))).toBe(true);
     }
   });
@@ -64,7 +64,7 @@ describe("planning-execution HTTP request DTO", () => {
       refinement: { normalizedText: "x", drafts: [], gapViewModel: {}, refinementDecision: {}, refinedRequirements: [], readinessResult: {} },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.issues.some((i) => i.includes("only one"))).toBe(true);
+    if (!r.ok) expect(r.issues.some((i) => i.includes("동시"))).toBe(true);
   });
 
   it("accepts minimal valid inputText request", () => {

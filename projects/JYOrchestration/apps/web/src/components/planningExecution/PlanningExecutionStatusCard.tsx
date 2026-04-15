@@ -5,6 +5,7 @@
  */
 
 import type { PlanningExecutionStatusCardViewModel } from "@jy-orch/application/public";
+import { formatPlanningOriginatedExecutionStatusKo } from "@/components/planningExecution/planningExecutionUiCopy";
 
 const toneBorder: Record<PlanningExecutionStatusCardViewModel["tone"], string> = {
   danger: "border-red-200 bg-red-50",
@@ -25,7 +26,9 @@ export function PlanningExecutionStatusCard({ card }: { readonly card: PlanningE
         <span className="rounded-full border border-neutral-300 bg-white px-2 py-0.5 text-xs font-medium text-neutral-800">
           {card.badgeLabel}
         </span>
-        <span className="text-xs font-mono text-neutral-500">{card.status}</span>
+        <span className="text-xs text-neutral-500" title={card.status}>
+          {formatPlanningOriginatedExecutionStatusKo(card.status)}
+        </span>
       </div>
       <h2 className="mt-2 text-base font-semibold text-neutral-900">{card.headline}</h2>
       <p className="mt-1 text-sm text-neutral-700">{card.explanation}</p>

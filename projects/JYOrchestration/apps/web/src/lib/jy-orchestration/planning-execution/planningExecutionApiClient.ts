@@ -89,10 +89,10 @@ export async function runPlanningOriginatedExecution(
   const mode = req.mode;
 
   const issues: string[] = [];
-  if (!projectId) issues.push("projectId is required");
-  if (!inputText) issues.push("inputText is required");
+  if (!projectId) issues.push("프로젝트 ID가 필요합니다.");
+  if (!inputText) issues.push("입력 텍스트가 필요합니다.");
   if (mode !== "PREPARE_ONLY" && mode !== "PREPARE_AND_START") {
-    issues.push('mode must be "PREPARE_ONLY" or "PREPARE_AND_START"');
+    issues.push("mode 값이 올바르지 않습니다. 허용: 준비만, 준비 및 시작.");
   }
   if (issues.length > 0) {
     return { status: "validation_error", issues };
@@ -123,29 +123,23 @@ export async function runPlanningOriginatedExecution(
       if (res.status === 403 && isForbiddenBody(json) && json.code === RBAC_FORBIDDEN_CODE) {
         return { status: "forbidden", message: json.message ?? "권한이 없습니다." };
       }
-      const msg =
-        json && typeof json === "object" && "message" in (json as Record<string, unknown>) && typeof (json as any).message === "string"
-          ? (json as any).message
-          : `Request failed (${res.status})`;
-      return { status: "transport_error", message: msg };
+      return { status: "transport_error", message: `요청이 실패했습니다(응답 코드 ${res.status}).` };
     }
 
     if (!isLikelyPlanningOriginatedExecutionResponse(json)) {
-      return { status: "parse_error", message: "Invalid response from planning-execution API." };
+      return { status: "parse_error", message: "계획 기반 실행 API 응답 형식이 올바르지 않습니다." };
     }
 
     let normalized: PlanningOriginatedExecutionResponse;
     try {
       normalized = normalizePlanningOriginatedExecutionResponse(json);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Normalization failed";
-      return { status: "parse_error", message: `Invalid planning execution response: ${msg}` };
+    } catch {
+      return { status: "parse_error", message: "계획 기반 실행 응답을 해석하지 못했습니다." };
     }
 
     return { status: "success", response: normalized, screen: screenFromNormalizedResponse(normalized) };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Network error";
-    return { status: "transport_error", message };
+  } catch {
+    return { status: "transport_error", message: "네트워크 오류가 발생했습니다." };
   }
 }
 

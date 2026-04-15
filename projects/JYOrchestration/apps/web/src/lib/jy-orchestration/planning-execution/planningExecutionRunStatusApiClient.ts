@@ -27,7 +27,7 @@ function isRunStatusResponse(x: unknown): x is PlanningExecutionRunStatusRespons
 
 export async function getPlanningExecutionRunStatus(runId: string): Promise<GetPlanningExecutionRunStatusResult> {
   const rid = String(runId ?? "").trim();
-  if (!rid) return { status: "validation_error", message: "runId is required" };
+  if (!rid) return { status: "validation_error", message: "실행 식별자가 필요합니다." };
 
   try {
     const res = await fetch(`${ROUTE}?runId=${encodeURIComponent(rid)}`, {
@@ -37,19 +37,14 @@ export async function getPlanningExecutionRunStatus(runId: string): Promise<GetP
     const json: unknown = await res.json().catch(() => null);
     if (res.status === 401) return { status: "auth_error", message: "로그인이 필요합니다." };
     if (!res.ok) {
-      const msg =
-        json && typeof json === "object" && "message" in (json as Record<string, unknown>) && typeof (json as any).message === "string"
-          ? (json as any).message
-          : `Request failed (${res.status})`;
-      return { status: "transport_error", message: msg };
+      return { status: "transport_error", message: `요청이 실패했습니다(응답 코드 ${res.status}).` };
     }
     if (!isRunStatusResponse(json) || json.ok !== true) {
-      return { status: "parse_error", message: "Invalid run-status response." };
+      return { status: "parse_error", message: "실행 상태 응답 형식이 올바르지 않습니다." };
     }
     return { status: "success", response: json };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Network error";
-    return { status: "transport_error", message };
+  } catch {
+    return { status: "transport_error", message: "네트워크 오류가 발생했습니다." };
   }
 }
 

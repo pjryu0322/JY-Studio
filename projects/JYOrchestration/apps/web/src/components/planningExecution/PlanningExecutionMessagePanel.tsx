@@ -23,8 +23,8 @@ export function PlanningExecutionMessagePanel({
         </p>
       ) : null}
       {message.internalReasonCode ? (
-        <p className="mt-2 font-mono text-xs text-neutral-500" data-testid="internal-reason-code">
-          {message.internalReasonCode}
+        <p className="mt-2 text-xs text-neutral-500" data-testid="internal-reason-code" title={message.internalReasonCode}>
+          내부 진단 코드가 있습니다. 지원·디버깅용 값은 툴팁으로 확인하세요.
         </p>
       ) : null}
     </section>

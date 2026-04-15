@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(badRequestBody(["body must be valid JSON"]), { status: 400 });
+      return NextResponse.json(badRequestBody(["요청 본문은 올바른 JSON이어야 합니다."]), { status: 400 });
     }
 
     const parsed = parsePlanningExecutionRequest(body);
@@ -62,6 +62,9 @@ export async function POST(request: NextRequest) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;
     console.error("POST /api/jy-orchestration/planning-execution error:", error);
-    return NextResponse.json({ error: "INTERNAL_ERROR", message: "Planning execution request failed." }, { status: 500 });
+    return NextResponse.json(
+      { error: "INTERNAL_ERROR", message: "계획 기반 실행 요청 처리에 실패했습니다." },
+      { status: 500 }
+    );
   }
 }
