@@ -235,25 +235,25 @@ export function executorConnectorResultSubtleNote(
 ): string | null {
   if (!result) return null;
   if (!isCurrent) {
-    return "Connector result on file · not tied to current integration adapter.";
+    return "저장된 커넥터 결과 · 현재 통합 어댑터와 연결되지 않음.";
   }
   const isCursorPilot = result.connectorType?.startsWith("cursor_pilot") === true;
   switch (result.status) {
     case "accepted":
-      return "Connector accepted · not Stage1/Stage2 · not env test.";
+      return "커넥터 수락됨 · Stage1/Stage2 아님 · 환경 테스트 아님.";
     case "running":
       return isCursorPilot
-        ? "Cursor pilot running · not env procedure test."
-        : "Executor running (stub) · not env procedure test.";
+        ? "Cursor 파일럿 실행 중 · 환경 절차 테스트 아님."
+        : "실행기 실행 중(스텁) · 환경 절차 테스트 아님.";
     case "completed":
       return isCursorPilot
-        ? "Cursor pilot completed · not Stage1/Stage2 · not env test."
-        : "Execution completed (stub) · not env test flow.";
+        ? "Cursor 파일럿 완료 · Stage1/Stage2 아님 · 환경 테스트 아님."
+        : "실행 완료(스텁) · 환경 테스트 흐름 아님.";
     case "failed":
       return isCursorPilot
-        ? "Cursor pilot failed · not env test flow."
-        : "Execution failed (stub) · not env test flow.";
+        ? "Cursor 파일럿 실패 · 환경 테스트 흐름 아님."
+        : "실행 실패(스텁) · 환경 테스트 흐름 아님.";
     default:
-      return "Connector result on file.";
+      return "저장된 커넥터 결과.";
   }
 }

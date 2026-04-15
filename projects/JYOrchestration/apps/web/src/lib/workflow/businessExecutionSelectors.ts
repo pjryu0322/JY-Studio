@@ -118,10 +118,10 @@ export function buildExecutionPageActionState(
 
   const blockedByActiveBusinessRun = monitoring.blockedByActiveCurrentRun;
   const invocationPrimaryLabel = blockedByActiveBusinessRun
-    ? "Run in progress"
+    ? "실행 진행 중"
     : monitoring.storedRun && (!monitoring.isRunCurrent || monitoring.view?.isTerminal)
-      ? "Retry"
-      : "Start business execution";
+      ? "다시 시도"
+      : "비즈니스 실행 시작";
 
   return {
     canRecordBusinessRequest:

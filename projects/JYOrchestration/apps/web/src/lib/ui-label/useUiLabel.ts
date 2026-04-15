@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export const UI_LABELS_STORAGE_KEY = "showUiLabels";
+/** 화면 라벨 표시 (요구 키명) */
+export const UI_LABELS_STORAGE_KEY = "jy-show-screen-labels";
+
+const LEGACY_SHOW_UI_LABELS = "showUiLabels";
 
 /** 이전 키에서 한 번만 마이그레이션 */
 const LEGACY_LABELS_STORAGE_KEY = "jy_debug_labels";
@@ -14,6 +17,15 @@ function migrateLegacyIfNeeded(): void {
   try {
     const current = window.localStorage.getItem(UI_LABELS_STORAGE_KEY);
     if (current === "true" || current === "false") return;
+    const fromShowUi = window.localStorage.getItem(LEGACY_SHOW_UI_LABELS);
+    if (fromShowUi === "true") {
+      window.localStorage.setItem(UI_LABELS_STORAGE_KEY, "true");
+      return;
+    }
+    if (fromShowUi === "false") {
+      window.localStorage.setItem(UI_LABELS_STORAGE_KEY, "false");
+      return;
+    }
     const legacy = window.localStorage.getItem(LEGACY_LABELS_STORAGE_KEY);
     if (legacy === "true") {
       window.localStorage.setItem(UI_LABELS_STORAGE_KEY, "true");
@@ -78,6 +90,7 @@ export function useUiLabel() {
       if (
         e.key === UI_LABELS_STORAGE_KEY ||
         e.key === LEGACY_LABELS_STORAGE_KEY ||
+        e.key === LEGACY_SHOW_UI_LABELS ||
         e.key === null
       ) {
         setEnabledState(readUiLabelsEnabled());

@@ -61,7 +61,7 @@ export function getTasksWorkspaceView(input: {
       return {
         ...emptyBase(),
         found: false,
-        notFoundReason: "Session not found.",
+        notFoundReason: "세션을 찾을 수 없습니다.",
         sessionId: sid,
         requirementId: reqId,
       };
@@ -91,7 +91,7 @@ export function getTasksWorkspaceView(input: {
       return {
         ...emptyBase(),
         found: false,
-        notFoundReason: "Requirement not found.",
+        notFoundReason: "요구사항을 찾을 수 없습니다.",
         requirementId: reqId,
       };
     }
@@ -139,10 +139,10 @@ export function getTasksWorkspaceView(input: {
 /** Page subtitle for /tasks from resolved workspace view (no side effects). */
 export function getTasksPageSubtitle(view: TasksWorkspaceView, hasContext: boolean): string {
   if (!view.found || !hasContext) {
-    return "Official drafts, order, and dependencies";
+    return "공식 초안, 순서, 의존성";
   }
   if (view.sessionTitle) {
     return `${view.requirementTitle ?? "—"} · ${view.sessionTitle}`;
   }
-  return view.requirementTitle ?? "Official tasks in order";
+  return view.requirementTitle ?? "순서대로 공식 작업";
 }

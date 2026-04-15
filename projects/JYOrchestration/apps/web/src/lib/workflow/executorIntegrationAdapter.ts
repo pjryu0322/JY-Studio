@@ -278,7 +278,7 @@ export function executorIntegrationAdapterSubtleNote(
 ): string | null {
   if (!adapter) return null;
   if (!isCurrent) {
-    return "Executor integration adapter on file · not tied to current run.";
+    return "저장된 실행기 통합 어댑터 · 현재 실행과 연결되지 않음.";
   }
-  return "Integration adapter ready · executor integration prepared · not connected yet.";
+  return "통합 어댑터 준비됨 · 실행기 통합 준비됨 · 아직 연결되지 않음.";
 }

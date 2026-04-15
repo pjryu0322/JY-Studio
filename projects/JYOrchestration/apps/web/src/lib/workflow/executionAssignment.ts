@@ -15,11 +15,11 @@ export const EXECUTION_EXECUTOR_TYPES: readonly ExecutionExecutorType[] = [
 ] as const;
 
 export const EXECUTOR_TYPE_LABELS: Record<ExecutionExecutorType, string> = {
-  cursor_executor: "Cursor Executor",
-  reviewer: "Reviewer",
+  cursor_executor: "Cursor 실행기",
+  reviewer: "리뷰어",
   scm: "SCM",
-  security: "Security",
-  unassigned: "Unassigned",
+  security: "보안",
+  unassigned: "미배정",
 };
 
 export type ExecutionAssignment = {

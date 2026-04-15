@@ -44,7 +44,7 @@ export function PlanningExecutionActionBar({
         </button>
       ) : null}
       <span className="ml-auto text-xs text-neutral-500">
-        Available: {actions.availableActions.map((a) => planningExecutionActionLabel(a, runStatusRefreshHint ? { kind: "run_status_refresh" } : { kind: "default" })).join(" · ")}
+        사용 가능: {actions.availableActions.map((a) => planningExecutionActionLabel(a, runStatusRefreshHint ? { kind: "run_status_refresh" } : { kind: "default" })).join(" · ")}
       </span>
     </footer>
   );

@@ -77,21 +77,21 @@ const demoResponses: Record<PlanningOriginatedExecutionStatus, PlanningOriginate
   READY_FOR_EXECUTION: {
     ok: true,
     status: "READY_FOR_EXECUTION",
-    reasonSummary: "Execution is prepared; start when ready.",
+    reasonSummary: "실행이 준비되었습니다. 준비되면 시작하세요.",
     preview: previewFor("READY_FOR_EXECUTION"),
   },
   EXECUTION_STARTED: {
     ok: true,
     status: "EXECUTION_STARTED",
     runId: "demo-run-1",
-    reasonSummary: "Execution run has started.",
+    reasonSummary: "실행 런이 시작되었습니다.",
     preview: { ...previewFor("EXECUTION_STARTED"), runId: "demo-run-1" },
   },
   EXECUTION_START_FAILED: {
     ok: false,
     status: "EXECUTION_START_FAILED",
     internalReasonCode: "DEMO_START_FAILED",
-    reasonSummary: "Execution preparation succeeded but starting the run failed.",
+    reasonSummary: "실행 준비는 성공했으나 런 시작에 실패했습니다.",
     preview: { ...previewFor("EXECUTION_START_FAILED"), blockingReason: "DEMO_START_FAILED" },
   },
 };
