@@ -280,7 +280,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
       primaryAction = {
         id: "scroll_tasks",
         label: "할 일 목록 확인",
-        description: "워크스페이스에서 Project Spec을 확정하면 Task 초안이 준비됩니다.",
+        description: "워크스페이스에서 실행 계획을 확정하면 Task 초안이 준비됩니다.",
       };
     } else {
       primaryAction = {

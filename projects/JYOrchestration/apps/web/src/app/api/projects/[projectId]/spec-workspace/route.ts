@@ -245,7 +245,7 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      message: "Spec 워크스페이스를 불러왔습니다.",
+      message: "실행 계획 워크스페이스를 불러왔습니다.",
       data: {
         project: mapProject(projectRow),
         specVersions: specVersions.map((v) => ({
@@ -282,7 +282,7 @@ export async function GET(
       );
     }
     return NextResponse.json(
-      { success: false, message: "Spec 워크스페이스 조회 중 오류가 발생했습니다." },
+      { success: false, message: "실행 계획 워크스페이스 조회 중 오류가 발생했습니다." },
       { status: 500 }
     );
   }
@@ -413,7 +413,7 @@ export async function PATCH(
           ? normalizeSpecPromptPreset(body.specPromptPreset)
           : normalizeSpecPromptPreset(cfg.preset);
       if (!nextTemplate.trim()) {
-        return NextResponse.json({ success: false, message: "Spec 프롬프트 템플릿이 비어 있습니다." }, { status: 400 });
+        return NextResponse.json({ success: false, message: "AI 생성용 프롬프트 템플릿이 비어 있습니다." }, { status: 400 });
       }
       const saved = await prisma.specPromptConfig.update({
         where: { projectId: id },
@@ -424,7 +424,7 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      message: "프로젝트 Spec 컨텍스트가 저장되었습니다.",
+      message: "실행 계획 입력이 저장되었습니다.",
       data: {
         project: mapProject(updated),
         ...(specPromptConfigOut ? { specPromptConfig: specPromptConfigOut } : {}),
@@ -544,7 +544,7 @@ export async function POST(
         return NextResponse.json(
           {
             success: false,
-            message: "프롬프트 템플릿이 비어 있으면 Project Spec을 생성할 수 없습니다.",
+            message: "프롬프트 템플릿이 비어 있으면 AI 실행 계획 문서를 생성할 수 없습니다.",
           },
           { status: 400 }
         );
@@ -613,7 +613,7 @@ export async function POST(
         return NextResponse.json(
           {
             success: false,
-            message: "AI Spec 문서 생성에 실패했습니다. 잠시 후 다시 시도하세요.",
+            message: "AI 실행 계획 문서 생성에 실패했습니다. 잠시 후 다시 시도하세요.",
             code: "OPENAI_GENERATE_FAILED",
           },
           { status: 502 }
@@ -692,7 +692,7 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: "이 응답을 공식 Project Spec으로 확정했습니다.",
+        message: "이 응답을 공식 실행 계획으로 확정했습니다.",
         data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
@@ -747,7 +747,7 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: "섹션 병합 결과를 공식 Project Spec으로 확정했습니다.",
+        message: "섹션 병합 결과를 공식 실행 계획으로 확정했습니다.",
         data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
@@ -811,7 +811,7 @@ export async function POST(
         projBase.currentSpecVersion?.markdown?.trim() || projBase.confirmedSpecMarkdown?.trim() || "";
       if (!currentMd) {
         return NextResponse.json(
-          { success: false, message: "확정된 Project Spec이 없어 AI 개선을 실행할 수 없습니다." },
+          { success: false, message: "확정된 실행 계획이 없어 AI 개선을 실행할 수 없습니다." },
           { status: 400 }
         );
       }
@@ -873,7 +873,7 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: "현재 스펙을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.",
+        message: "현재 확정된 실행 계획을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.",
         data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }
@@ -907,7 +907,7 @@ export async function POST(
       });
       return NextResponse.json({
         success: true,
-        message: "선택한 버전을 현재 활성 스펙으로 되돌렸습니다.",
+        message: "선택한 버전을 현재 활성 실행 계획으로 되돌렸습니다.",
         data: { project: mapProject(updatedProject), taskDraftSync },
       });
     }

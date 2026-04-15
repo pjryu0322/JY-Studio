@@ -73,8 +73,8 @@ export function computeProjectGuidedFlowSnapshot(input: {
     },
     {
       id: 2,
-      title: "STEP 2: ProjectSpec 등록",
-      shortTitle: "ProjectSpec 등록",
+      title: "STEP 2: 실행 계획 등록",
+      shortTitle: "실행 계획 등록",
       done: s2,
       anchorId: GUIDED_FLOW_ANCHORS.upload,
     },
@@ -137,7 +137,7 @@ export function guidedFlowNextHint(input: {
       if (!input.canRegisterSpec) {
         return "Spec 워크스페이스 편집은 PLANNER·OWNER 권한이 필요합니다. 담당자에게 요청하거나 역할을 확인하세요.";
       }
-      return "워크스페이스에서 실행 계획을 작성·저장한 뒤 AI Project Spec을 생성하세요.";
+      return "워크스페이스에서 실행 계획을 작성·저장한 뒤 AI 실행 계획 문서를 생성하세요.";
     case 3:
       if (!input.canReview) {
         return "AI 분석은 REVIEWER 이상에서 실행할 수 있습니다.";

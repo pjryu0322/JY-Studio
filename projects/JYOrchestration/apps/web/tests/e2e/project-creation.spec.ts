@@ -27,6 +27,7 @@ test.describe("E2E project", () => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
     await page.getByTestId("project-detail-tab-execution").click();
+    await expect(page.getByTestId("project-execution-environment-settings")).toHaveAttribute("open", "");
     const env = page.getByTestId("project-execution-environment-panel");
     await expect(env).toBeVisible();
     await expect(env.getByTestId("project-advanced-settings-panel")).toHaveCount(0);
@@ -38,6 +39,7 @@ test.describe("E2E project", () => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
     await page.getByTestId("project-detail-tab-execution").click();
+    await expect(page.getByTestId("project-execution-environment-settings")).toHaveAttribute("open", "");
     const envPanel = page.getByTestId("project-execution-environment-panel");
     await expect(envPanel).toBeVisible();
     await expect(envPanel.getByRole("heading", { name: /실행 환경/i })).toBeVisible();

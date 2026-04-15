@@ -550,7 +550,7 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("현재 스펙을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.");
+      setMessage("현재 확정된 실행 계획을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
@@ -585,7 +585,7 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("선택한 버전을 현재 활성 스펙으로 되돌렸습니다.");
+      setMessage("선택한 버전을 현재 활성 실행 계획으로 되돌렸습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
@@ -630,7 +630,7 @@ export function ProjectSpecWorkspace({
       }));
       setLastSavedWorkingDocument(workingDocument);
       setPlanDocumentDirty(false);
-      setMessage("실행 계획이 저장되었습니다. 다음 단계 「AI로 Project Spec 생성」에 반영됩니다.");
+      setMessage("실행 계획이 저장되었습니다. 다음 단계 「AI 실행 계획 문서 생성」에 반영됩니다.");
       mergeContextIntoProject(ctx);
       await loadWorkspace();
     } catch (e) {
@@ -903,7 +903,7 @@ export function ProjectSpecWorkspace({
             : !savedExecutionPlanOk
               ? "실행 계획을 「실행계획 저장」으로 저장하세요."
               : !specGenSettingsReady
-                ? "Spec Generation Settings에서 프리셋과 프롬프트 템플릿을 입력하세요."
+                ? "AI 생성 설정에서 프리셋과 프롬프트 템플릿을 입력하세요."
                 : !specModelSelectionReady
                   ? "AI 모델을 선택하세요."
                   : "조건을 충족한 뒤 다시 시도하세요."
@@ -912,7 +912,7 @@ export function ProjectSpecWorkspace({
     }
     const fingerprintNow = `${specPromptDraft.preset}|${specPromptDraft.template.trim()}|${selectedModel}`;
     setActionBusy("ai-spec");
-    setMessage("저장된 실행 계획만을 반영해 AI에 Project Spec 생성을 요청하는 중…");
+    setMessage("저장된 실행 계획만을 반영해 AI에 실행 계획 문서 생성을 요청하는 중…");
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "aiRequest",
@@ -921,7 +921,7 @@ export function ProjectSpecWorkspace({
         templatePrompt: specPromptDraft.template,
       });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "AI Spec 생성에 실패했습니다.");
+        setMessage(json.message || "AI 실행 계획 문서 생성에 실패했습니다.");
         return;
       }
       const data = json.data as {
@@ -931,11 +931,11 @@ export function ProjectSpecWorkspace({
         mergeWorkspaceProjectSlice(data.project);
       }
       setSpecGenFingerprintAtLastRun(fingerprintNow);
-      setMessage("AI Spec 초안이 응답 목록에 추가되었습니다.");
+      setMessage("AI 실행 계획 문서 초안이 응답 목록에 추가되었습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("AI Spec 생성 중 오류가 발생했습니다.");
+      setMessage("AI 실행 계획 문서 생성 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -969,7 +969,7 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("이 응답을 공식 Project Spec으로 확정했습니다.");
+      setMessage("이 응답을 공식 실행 계획으로 확정했습니다.");
       setChosenSpecResponseId(null);
       await loadWorkspace();
     } catch (e) {
@@ -1012,7 +1012,7 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("병합 결과를 공식 Project Spec으로 확정했습니다.");
+      setMessage("병합 결과를 공식 실행 계획으로 확정했습니다.");
       setChosenSpecResponseId(null);
       await loadWorkspace();
     } catch (e) {
@@ -1100,7 +1100,7 @@ export function ProjectSpecWorkspace({
             : ws
         );
       }
-      setMessage("Spec 생성 프롬프트 설정을 저장했습니다.");
+      setMessage("실행 계획 문서 생성용 프롬프트 설정을 저장했습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
@@ -1139,9 +1139,9 @@ export function ProjectSpecWorkspace({
     >
       <WorkspaceSectionHeader section="workspaceRoot" as="h2" marginBottom={8} />
       <p style={{ margin: "0 0 16px 0", color: "#475569", lineHeight: 1.55, fontSize: 14 }}>
-        프로젝트 기본 정보 → AI 실행 계획 초안 후보 비교 → 작업 문서 편집·저장 →{" "}
-        <strong>Spec Generation Settings</strong> → <strong>AI Project Spec 생성</strong> → 응답 비교·확정 → 아래 Task 초안
-        확인·확정 순으로 진행합니다. 실행 계획 본문은 서버가 주입하고, 템플릿·프리셋은 생성 전에 설정합니다.
+        프로젝트 기본 정보 → AI 실행 계획 초안 후보 비교 → 작업 문서 편집·저장 → <strong>AI 생성 설정</strong> →{" "}
+        <strong>AI 실행 계획 문서 생성</strong> → 응답 비교·확정 → 아래 Task 초안 확인·확정 순으로 진행합니다. 실행 계획 본문은
+        서버가 주입하고, 템플릿·프리셋은 생성 전에 설정합니다.
       </p>
       <div style={{ marginBottom: 12 }}>
         <button
@@ -1229,7 +1229,7 @@ export function ProjectSpecWorkspace({
 
         {baseInputsOk && allSpecFieldsEmpty && canEdit && !generatingContext ? (
           <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#64748b" }}>
-            조건이 맞으면 AI가 먼저 실행 계획 전체 문서를 제안합니다. Spec 필드가 이미 채워져 있으면 자동 생성은 건너뜁니다.
+            조건이 맞으면 AI가 먼저 실행 계획 전체 문서를 제안합니다. 계획 입력 필드가 이미 채워져 있으면 자동 생성은 건너뜁니다.
           </p>
         ) : null}
 
@@ -1301,8 +1301,8 @@ export function ProjectSpecWorkspace({
           {canEdit ? (
             <div style={{ display: "grid", gap: 8 }}>
               <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-                현재 작업 중인 실행 계획을 저장합니다. 저장된 실행 계획은 다음 단계의 AI Project Spec 생성에만 사용됩니다
-                (최종 Spec이 아닙니다).
+                현재 작업 중인 실행 계획을 저장합니다. 저장된 실행 계획은 다음 단계의 AI 실행 계획 문서 생성에만 사용됩니다
+                (아직 공식 확정본이 아닙니다).
               </p>
               <button
                 type="button"
@@ -1348,14 +1348,14 @@ export function ProjectSpecWorkspace({
         <WorkspaceSectionHeader section="specFromSavedPlan" layout="column" marginBottom={10} />
 
         <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          순서: <strong>1. Spec Generation Settings</strong> → <strong>2. Generate Project Spec</strong> → 아래{" "}
-          <strong>AI 응답</strong> 섹션에서 비교·확정. 실행 계획 본문은 서버가 주입합니다.
+          순서: <strong>1. AI 생성 설정</strong> → <strong>2. AI 실행 계획 문서 생성</strong> → 아래 <strong>AI 응답</strong> 섹션에서
+          비교·확정. 실행 계획 본문은 서버가 주입합니다.
         </p>
 
-        <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 8 }}>1. Spec Generation Settings</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 8 }}>1. AI 생성 설정</div>
         <div
           data-testid="spec-workspace-spec-generation-settings"
-          data-ui-label="[F-1-3-3] Spec Generation Settings"
+          data-ui-label="[F-1-3-3] AI generation settings"
           style={{
             marginBottom: 16,
             padding: 14,
@@ -1463,7 +1463,7 @@ export function ProjectSpecWorkspace({
           </p>
         ) : null}
 
-        <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>2. Generate Project Spec</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>2. AI 실행 계획 문서 생성</div>
 
         <label style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>AI 모델</span>
@@ -1504,7 +1504,7 @@ export function ProjectSpecWorkspace({
               cursor: canEdit && canRunAiProjectSpec ? "pointer" : "not-allowed",
             }}
           >
-            {actionBusy === "ai-spec" ? "저장 후 AI 요청 중…" : "AI로 Project Spec 생성"}
+            {actionBusy === "ai-spec" ? "저장 후 AI 요청 중…" : "AI 실행 계획 문서 생성"}
           </button>
         </div>
         {canEdit && baseInputsOk && savedExecutionPlanOk && !planDocumentDirty && !specPromptDraft.template.trim() ? (
@@ -1514,7 +1514,7 @@ export function ProjectSpecWorkspace({
         ) : null}
         {canEdit && baseInputsOk && !savedExecutionPlanOk ? (
           <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#b45309" }}>
-            실행 계획 문서를 작성한 뒤 「실행계획 저장」을 실행하세요. AI Spec은 저장된 실행 계획만을 근거로 생성됩니다.
+            실행 계획 문서를 작성한 뒤 「실행계획 저장」을 실행하세요. AI는 저장된 실행 계획만을 근거로 문서를 생성합니다.
           </p>
         ) : null}
         {canEdit && baseInputsOk && savedExecutionPlanOk && planDocumentDirty ? (
@@ -1526,10 +1526,10 @@ export function ProjectSpecWorkspace({
           <p
             data-testid="spec-workspace-ai-spec-progress"
             role="status"
-            data-ui-label="[F-1-3-2-s2] Inline — Project Spec AI response request"
+            data-ui-label="[F-1-3-2-s2] Inline — AI execution plan document request"
             style={{ margin: "10px 0 0 0", fontSize: 13, color: "#0f766e", fontWeight: 600 }}
           >
-            저장된 실행 계획을 반영해 AI에 Project Spec 응답을 요청하는 중…
+            저장된 실행 계획을 반영해 AI에 실행 계획 문서 응답을 요청하는 중…
           </p>
         ) : null}
       </div>
@@ -1546,7 +1546,7 @@ export function ProjectSpecWorkspace({
       >
         <WorkspaceSectionHeader section="aiResponsesCompare" marginBottom={8} />
         <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-          여러 Spec <strong>후보 중 하나를 선택</strong>해 공식 Project Spec으로 확정하는 단계입니다. 두 응답을 「비교」에 넣으면 기본은{" "}
+          여러 AI <strong>후보 중 하나를 선택</strong>해 공식 실행 계획으로 확정하는 단계입니다. 두 응답을 「비교」에 넣으면 기본은{" "}
           <strong>전체 문서</strong> 나란히 보기이며, 섹션 단위 비교는 보조 모드로 전환할 수 있습니다.
         </p>
 
@@ -1566,7 +1566,7 @@ export function ProjectSpecWorkspace({
           >
             <div style={{ fontSize: 13, fontWeight: 800, color: "#1e3a8a" }}>결정</div>
             <span style={{ fontSize: 12, color: "#1e40af" }}>
-              후보 카드에서 「이 Spec 선택」 후 아래 버튼으로 확정하세요.
+              후보 카드에서 「이 응답 선택」 후 아래 버튼으로 확정하세요.
             </span>
             <button
               type="button"
@@ -1591,7 +1591,7 @@ export function ProjectSpecWorkspace({
                   !canEdit || !chosenSpecResponseId || actionBusy?.startsWith("confirm") ? "not-allowed" : "pointer",
               }}
             >
-              선택한 Spec 확정
+              선택한 응답 확정
             </button>
           </div>
         ) : null}
@@ -1600,10 +1600,10 @@ export function ProjectSpecWorkspace({
           <p
             role="status"
             data-testid="spec-workspace-inline-confirm-spec"
-            data-ui-label="[F-1-3-3-s] Inline — confirm / merge Project Spec"
+            data-ui-label="[F-1-3-3-s] Inline — confirm / merge execution plan"
             style={{ margin: "0 0 12px 0", fontSize: 13, fontWeight: 600, color: "#1d4ed8" }}
           >
-            Project Spec 확정을 처리하는 중입니다. 완료되면 Task 초안이 자동으로 맞춰질 수 있습니다.
+            실행 계획 확정을 처리하는 중입니다. 완료되면 Task 초안이 자동으로 맞춰질 수 있습니다.
           </p>
         ) : null}
 
@@ -1688,7 +1688,7 @@ export function ProjectSpecWorkspace({
                   const s = getSpecCandidateDisplayScore(compareLeft);
                   return (
                     <div style={{ fontSize: 11, color: "#0f172a", marginTop: 4, fontWeight: 700 }}>
-                      Spec Score: {s.total}
+                      문서 점수: {s.total}
                       <div style={{ fontWeight: 600, marginTop: 4 }}>
                         · Completeness: {s.completeness}
                         <br />· Structure: {s.structure}
@@ -1713,7 +1713,7 @@ export function ProjectSpecWorkspace({
                   const s = getSpecCandidateDisplayScore(compareRight);
                   return (
                     <div style={{ fontSize: 11, color: "#0f172a", marginTop: 4, fontWeight: 700 }}>
-                      Spec Score: {s.total}
+                      문서 점수: {s.total}
                       <div style={{ fontWeight: 600, marginTop: 4 }}>
                         · Completeness: {s.completeness}
                         <br />· Structure: {s.structure}
@@ -1760,7 +1760,7 @@ export function ProjectSpecWorkspace({
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "start" }}>
                       <div>
                         <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 13, color: "#0f172a" }}>
-                          전체 문서 · A (Spec Score {sL.total})
+                          전체 문서 · A (문서 점수 {sL.total})
                         </div>
                         <pre
                           ref={fullCompareLeftRef}
@@ -1785,7 +1785,7 @@ export function ProjectSpecWorkspace({
                       </div>
                       <div>
                         <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 13, color: "#0f172a" }}>
-                          전체 문서 · B (Spec Score {sR.total})
+                          전체 문서 · B (문서 점수 {sR.total})
                         </div>
                         <pre
                           ref={fullCompareRightRef}
@@ -2074,7 +2074,7 @@ export function ProjectSpecWorkspace({
                           boxShadow: "0 2px 10px rgba(37,99,235,0.25)",
                         }}
                       >
-                        {actionBusy === "confirm-merged" ? "확정 중…" : "이 내용으로 Project Spec 확정"}
+                        {actionBusy === "confirm-merged" ? "확정 중…" : "이 내용으로 실행 계획 확정"}
                       </button>
                     </div>
                   </div>
@@ -2086,7 +2086,7 @@ export function ProjectSpecWorkspace({
 
         {!workspace?.responses?.length ? (
           <p style={{ color: "#64748b", margin: 0 }}>
-            아직 응답이 없습니다. 위에서 계획을 저장한 뒤 「AI로 Project Spec 생성」을 실행하세요.
+            아직 응답이 없습니다. 위에서 계획을 저장한 뒤 「AI 실행 계획 문서 생성」을 실행하세요.
           </p>
         ) : (
           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 12 }}>
@@ -2149,7 +2149,7 @@ export function ProjectSpecWorkspace({
                         토큰: 입력 {r.promptTokens ?? "-"} / 출력 {r.completionTokens ?? "-"} / 총 {r.totalTokens ?? "-"}
                       </div>
                       <div style={{ fontSize: 12, color: "#334155", marginTop: 6, fontWeight: 800 }}>
-                        Spec Score: {sc.total}
+                        문서 점수: {sc.total}
                       </div>
                       <div style={{ fontSize: 11, color: "#475569", marginTop: 2, lineHeight: 1.5 }}>
                         · Completeness: {sc.completeness}
@@ -2160,17 +2160,17 @@ export function ProjectSpecWorkspace({
                       </div>
                       {lowScore ? (
                         <div style={{ marginTop: 8, fontSize: 12, color: "#b45309", fontWeight: 700 }}>
-                          ⚠ Spec completeness is low (또는 총점이 낮음). 섹션 누락 가능성을 검토하세요.
+                          ⚠ 문서 완성도가 낮습니다(또는 총점이 낮음). 섹션 누락 가능성을 검토하세요.
                         </div>
                       ) : null}
                       {selected ? (
                         <span style={{ display: "inline-block", marginTop: 8, color: "#15803d", fontWeight: 800 }}>
-                          현재 공식 Spec 출처
+                          현재 공식 실행 계획 출처
                         </span>
                       ) : null}
                       {isChosen ? (
                         <span style={{ display: "inline-block", marginTop: 8, marginLeft: 8, color: "#1d4ed8", fontWeight: 900 }}>
-                          선택됨 — 아래 「선택한 Spec 확정」을 누르세요
+                          선택됨 — 아래 「선택한 응답 확정」을 누르세요
                         </span>
                       ) : null}
                     </div>
@@ -2226,7 +2226,7 @@ export function ProjectSpecWorkspace({
                             fontWeight: 800,
                           }}
                         >
-                          이 Spec 선택
+                          이 응답 선택
                         </button>
                       ) : null}
                     </div>
@@ -2320,7 +2320,7 @@ export function ProjectSpecWorkspace({
                     fontSize: 13,
                   }}
                 >
-                  {actionBusy === "refine-spec" ? "AI 개선 중…" : "AI로 개선 (현재 스펙 기준)"}
+                  {actionBusy === "refine-spec" ? "AI 개선 중…" : "AI로 개선 (현재 확정 실행 계획 기준)"}
                 </button>
               </div>
             ) : null}
@@ -2330,7 +2330,7 @@ export function ProjectSpecWorkspace({
                 data-ui-label="[F-1-3-4-s1] Inline — AI refine on confirmed spec"
                 style={{ margin: "0 0 12px 0", fontSize: 13, fontWeight: 600, color: "#14532d" }}
               >
-                확정 Spec을 기준으로 AI 개선 응답을 받는 중입니다…
+                확정된 실행 계획을 기준으로 AI 개선 응답을 받는 중입니다…
               </p>
             ) : null}
             {specEditOpen && canEdit ? (
@@ -2377,7 +2377,7 @@ export function ProjectSpecWorkspace({
                     data-ui-label="[F-1-3-4-s2] Inline — manual spec version append"
                     style={{ margin: "10px 0 0 0", fontSize: 13, fontWeight: 600, color: "#14532d" }}
                   >
-                    수정한 Spec을 새 버전으로 저장하는 중입니다…
+                    수정한 실행 계획을 새 버전으로 저장하는 중입니다…
                   </p>
                 ) : null}
               </div>
@@ -2415,7 +2415,7 @@ export function ProjectSpecWorkspace({
                     data-ui-label="[F-1-3-4-s3] Inline — spec version rollback"
                     style={{ margin: "0 0 8px 0", fontSize: 13, fontWeight: 600, color: "#92400e" }}
                   >
-                    활성 Spec 버전을 변경(롤백)하는 중입니다…
+                    활성 실행 계획 버전을 변경(롤백)하는 중입니다…
                   </p>
                 ) : null}
                 <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#166534" }}>
@@ -2780,7 +2780,7 @@ export function ProjectSpecWorkspace({
           </>
         ) : (
           <p style={{ margin: 0, color: "#166534", fontSize: 14 }}>
-            아직 확정된 스펙이 없습니다. AI 응답 중 하나를 선택해 확정하면 Task 생성 등의 기준으로 사용할 수 있습니다.
+            아직 확정된 실행 계획이 없습니다. AI 응답 중 하나를 선택해 확정하면 Task 생성 등의 기준으로 사용할 수 있습니다.
           </p>
         )}
       </div>

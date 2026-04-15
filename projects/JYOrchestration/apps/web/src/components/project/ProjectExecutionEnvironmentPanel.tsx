@@ -1877,9 +1877,7 @@ export function ProjectExecutionEnvironmentPanel({
       style={{ marginBottom: 8 }}
     >
       <header style={{ marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
-          실행 환경 <span style={{ fontWeight: 600, color: "#64748b", fontSize: 16 }}>(Execution Environment)</span>
-        </h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>실행 환경</h1>
         <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
           외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다.
         </p>

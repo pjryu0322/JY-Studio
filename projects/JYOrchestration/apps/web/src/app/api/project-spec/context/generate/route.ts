@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "AI가 Project Spec 컨텍스트 초안을 생성했습니다.",
+      message: "AI가 실행 계획 입력 초안을 생성했습니다.",
       data: {
         projectId,
         ...structured,

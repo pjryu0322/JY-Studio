@@ -206,83 +206,65 @@ export default function HomePage() {
           </div>
         </div>
         <p style={{ margin: 0, color: "#555" }}>
-          프로젝트 생성, ProjectSpec 등록, FeatureSpec 업로드, Task 계획과 실행을
-          관리하는 웹서비스 MVP
+          아이디어를 AI 기반 협의를 통해 구체화하고, 실행 가능한 프로토타입으로 구현하여 사업 가능성을 검증하는 플랫폼
         </p>
       </section>
 
       <section
-        className="relative"
+        className="relative mx-auto mb-6 max-w-2xl rounded-xl border border-neutral-200 p-6"
         data-ui-label="[B] Create Project Form"
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          padding: 20,
-          marginBottom: 24,
-        }}
       >
         <ScreenLabel label="워크스페이스-프로젝트생성-섹션" visible={showScreenLabels} />
         <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>
           새 프로젝트 생성
         </h2>
 
-        <form data-testid="home-create-project-form" onSubmit={handleCreateProject}>
-          <div style={{ display: "grid", gap: 12 }}>
-            {errorMessage ? (
-              <p style={{ color: "#b00020", margin: 0 }}>{errorMessage}</p>
-            ) : null}
-            <div className="relative">
-              <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트명-입력" visible={showScreenLabels} />
-              <input
-                type="text"
-                placeholder="프로젝트명"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={submitting}
-                data-testid="home-project-name"
-                data-ui-label="[B-1] Project Name"
-                style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
-              />
-            </div>
+        <form data-testid="home-create-project-form" className="space-y-3" onSubmit={handleCreateProject}>
+          {errorMessage ? (
+            <p style={{ color: "#b00020", margin: 0 }}>{errorMessage}</p>
+          ) : null}
+          <div className="relative">
+            <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트명-입력" visible={showScreenLabels} />
+            <input
+              type="text"
+              placeholder="프로젝트명"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={submitting}
+              data-testid="home-project-name"
+              data-ui-label="[B-1] Project Name"
+              className="h-11 w-full rounded-lg border border-neutral-300 px-3 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
+            />
+          </div>
 
-            <div className="relative">
-              <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트설명-입력영역" visible={showScreenLabels} />
-              <textarea
-                placeholder="프로젝트 설명 (선택)"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                disabled={submitting}
-                rows={3}
-                data-testid="home-project-description"
-                data-ui-label="[B-2] Project Description"
-                style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8 }}
-              />
-            </div>
+          <div className="relative">
+            <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트설명-입력영역" visible={showScreenLabels} />
+            <textarea
+              placeholder="프로젝트 설명 (선택)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={submitting}
+              data-testid="home-project-description"
+              data-ui-label="[B-2] Project Description"
+              className="min-h-[120px] w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
+            />
+          </div>
 
-            <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-              생성 후 프로젝트 상세에서 Git·고급 설정을 이어서 구성할 수 있습니다.
-            </p>
+          <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
+            생성 후 프로젝트 상세에서 Git·고급 설정을 이어서 구성할 수 있습니다.
+          </p>
 
-            <div className="relative" style={{ display: "inline-block", width: "fit-content" }}>
-              <ScreenLabel label="워크스페이스-프로젝트생성-생성버튼" visible={showScreenLabels} />
-              <button
-                type="submit"
-                disabled={submitting}
-                data-testid="home-create-project"
-                data-ui-label="[B-6] Create Project Submit"
-                style={{
-                  padding: "12px 16px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "#111",
-                  color: "#fff",
-                  cursor: submitting ? "not-allowed" : "pointer",
-                  opacity: submitting ? 0.7 : 1,
-                }}
-              >
-                {submitting ? "생성 중..." : "프로젝트 생성"}
-              </button>
-            </div>
+          <div className="relative inline-block w-fit">
+            <ScreenLabel label="워크스페이스-프로젝트생성-생성버튼" visible={showScreenLabels} />
+            <button
+              type="submit"
+              disabled={submitting}
+              data-testid="home-create-project"
+              data-ui-label="[B-6] Create Project Submit"
+              className="h-10 cursor-pointer rounded-lg border-0 bg-neutral-900 px-4 text-sm font-semibold text-white opacity-100 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {submitting ? "생성 중..." : "프로젝트 생성"}
+            </button>
           </div>
         </form>
       </section>

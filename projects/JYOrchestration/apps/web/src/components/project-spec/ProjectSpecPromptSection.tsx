@@ -46,7 +46,7 @@ export function ProjectSpecPromptSection({ prompt }: ProjectSpecPromptSectionPro
 
   return (
     <section
-      data-ui-label="[F-1-3] Function — Project Spec Prompt Guide"
+      data-ui-label="[F-1-3] Function — execution plan prompt guide"
       style={{
         border: "1px solid #ddd",
         borderRadius: 12,
@@ -54,7 +54,7 @@ export function ProjectSpecPromptSection({ prompt }: ProjectSpecPromptSectionPro
         marginBottom: 16,
       }}
     >
-      <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12 }}>Project Spec Prompt Guide</h2>
+      <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 12 }}>실행 계획 프롬프트 안내</h2>
       <p style={{ marginBottom: 10, color: "#475569", lineHeight: 1.5, fontSize: 13 }}>
         아래 버튼을 눌러 프롬프트를 복사하거나, 필요하면 모달에서 내용을 확인할 수 있습니다.
       </p>
@@ -74,7 +74,7 @@ export function ProjectSpecPromptSection({ prompt }: ProjectSpecPromptSectionPro
             fontWeight: 700,
           }}
         >
-          Project Spec Prompt Guide
+          실행 계획 프롬프트 안내
         </button>
       ) : (
         <div
