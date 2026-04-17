@@ -1,4 +1,5 @@
-import { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import { AppFlowGuidance } from "@/components/layout/AppFlowGuidance";
 import { PlatformSidebar } from "@/components/layout/PlatformSidebar";
 
 export function PlatformShell({ children }: { children: ReactNode }) {
@@ -6,9 +7,12 @@ export function PlatformShell({ children }: { children: ReactNode }) {
     <div style={{ display: "flex", minHeight: "100vh" }}>
       <PlatformSidebar />
       <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-        <div style={{ padding: 24 }}>{children}</div>
+        <div style={{ padding: 24 }}>
+          <Suspense fallback={<>{children}</>}>
+            <AppFlowGuidance>{children}</AppFlowGuidance>
+          </Suspense>
+        </div>
       </div>
     </div>
   );
 }
-

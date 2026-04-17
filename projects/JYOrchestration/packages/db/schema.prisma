@@ -167,6 +167,8 @@ model Project {
   defaultBranch String?
   /// 프로젝트 생명주기: ACTIVE | DELETED (소프트 삭제)
   status        String
+  /// 워크플로 단계: null=기존·제한 없음, REQUIREMENTS_PENDING=신규 생성 후 요구사항 단계 필수(실행 계획 진입 전)
+  workflowStatus String?
   /// 소프트 삭제 시각
   deletedAt     DateTime?
   /// 소프트 삭제 수행 사용자

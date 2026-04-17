@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
@@ -9,6 +10,8 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { formatRequirementStatusForUi } from "@/lib/ui/workflowUiCopy";
 import { getRequirementsListView } from "@/lib/workflow/workflowViewModel";
+import { RequirementsWorkflowGateClient } from "@/app/requirements/RequirementsWorkflowGateClient";
+import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
 
 export default function RequirementsPage() {
   const vm = getRequirementsListView();
@@ -17,12 +20,19 @@ export default function RequirementsPage() {
   return (
     <div className="relative">
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
+      <Suspense fallback={null}>
+        <RequirementsWorkflowGateClient />
+      </Suspense>
       <WorkflowPageHeader
         title="요구사항"
-        subtitle="워크플로우 흐름: 요구사항 → 협업 세션 → 회의록 → 기능"
-        backHref="/workspace"
-        backLabel="워크스페이스로"
+        subtitle="공식 순서: 요구사항 → 협업 → 기능 → 작업 → 실행 계획 → 실행 → 추적"
+        backHref="/"
+        backLabel="실행 계획(홈)"
       />
+
+      <WorkflowDemoSampleBanner>
+        아래 카드 목록과 상태 배지는 워크플로 이해용 샘플이며, 선택한 프로젝트의 실제 진척과 다를 수 있습니다.
+      </WorkflowDemoSampleBanner>
 
       <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
         {vm.requirements.length === 0 ? (

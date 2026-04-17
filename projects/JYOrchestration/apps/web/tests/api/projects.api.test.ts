@@ -25,10 +25,14 @@ describe("projects API", () => {
       }),
     });
     expect(res.status).toBe(201);
-    const json = (await res.json()) as { success?: boolean; data?: { id: string; name: string } };
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: { id: string; name: string; workflowStatus?: string | null };
+    };
     expect(json.success).toBe(true);
     expect(json.data?.name).toBe(name);
     expect(json.data?.id).toBeTruthy();
+    expect(json.data?.workflowStatus).toBe("REQUIREMENTS_PENDING");
   });
 
   it("[PRJ-002] 프로젝트 목록 조회 (소유·멤버십)", async () => {
