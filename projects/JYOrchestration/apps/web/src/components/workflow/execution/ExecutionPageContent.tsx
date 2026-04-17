@@ -184,9 +184,9 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
     <div>
       <WorkflowPageHeader
         title="실행"
-        subtitle="비즈니스 실행만 해당합니다. Stage1/Stage2는 포함되지 않습니다."
-        backHref="/workspace"
-        backLabel="워크스페이스로"
+        subtitle="공식 워크플로의 실행 단계입니다. 협업 세션에 연결된 업무 실행(비즈니스) 준비·가동만 다루며, 저장소·PR·머지에 해당하는 환경 실행은 프로젝트 설정에서 이어집니다."
+        backHref="/"
+        backLabel="실행 계획(홈)"
       />
 
       <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
@@ -270,7 +270,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
         <WorkflowCard padding={12}>
           <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>현재 실행·모니터링</div>
           <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 12 }}>
-            <span style={{ fontWeight: 900 }}>현재</span> 비즈니스 실행을 관찰하고, 실행 명령이 최신일 때 시작·재시도하며, 통합 봉투를 준비한 뒤 실행기 연결기를 호출합니다. 로컬 전용이며 Stage1/Stage2·Git/PR/머지가 아닙니다.
+            <span style={{ fontWeight: 900 }}>현재</span> 비즈니스 실행을 관찰하고, 실행 명령이 최신일 때 시작·재시도하며, 통합 봉투를 준비한 뒤 실행기 연결기를 호출합니다. 로컬 전용이며 저장소·PR·머지에 해당하는 환경 실행이 아닙니다.
           </div>
           {!sessionId ? (
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>실행 모니터링과 연결기를 쓰려면 세션을 선택하세요.</div>
@@ -371,7 +371,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
               <div>
                 <div style={{ fontSize: 12, fontWeight: 900, color: "#111827", marginBottom: 6 }}>비즈니스 실행 시작·재시도</div>
                 <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
-                  <span style={{ fontWeight: 900 }}>현재 실행 명령</span>에서만 최신 추적 비즈니스 실행을 만듭니다. Stage1/Stage2·Git이 아닙니다.
+                  <span style={{ fontWeight: 900 }}>현재 실행 명령</span>에서만 최신 추적 비즈니스 실행을 만듭니다. 저장소·PR 환경 실행이 아닙니다.
                 </div>
                 {runView.businessRunRetryBlocked ? (
                   <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, marginBottom: 8 }}>
@@ -624,7 +624,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
               <WorkflowCard padding={12}>
                 <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>비즈니스 실행 요청</div>
                 <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                  비즈니스 측 요청만 해당합니다(Stage1/Stage2 제외). 생명주기는 현재 스냅샷과 작업 집합에서 계산됩니다.
+                  비즈니스 측 요청만 해당합니다(저장소·PR 환경 실행 제외). 생명주기는 현재 스냅샷과 작업 집합에서 계산됩니다.
                 </div>
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                   {businessExecutionRequest && bizReqValidity ? (
@@ -690,7 +690,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
               <WorkflowCard padding={12}>
                 <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>비즈니스 실행 승인</div>
                 <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                  현재 비즈니스 실행 요청을 추적용으로만 확정합니다. Stage1/Stage2를 시작하지 않습니다.
+                  현재 비즈니스 실행 요청을 추적용으로만 확정합니다. 저장소·PR 환경 실행은 이 단계에서 시작하지 않습니다.
                 </div>
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                   {!sessionId ? (
@@ -750,7 +750,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
               <WorkflowCard padding={12}>
                 <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>비즈니스 실행 패키지</div>
                 <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                  승인된 실행 요청을 안정적인 작업 패키지로 묶습니다. Stage1/Stage2를 시작하지 않습니다.
+                  승인된 실행 요청을 안정적인 작업 패키지로 묶습니다. 저장소·PR 환경 실행은 이 단계에서 시작하지 않습니다.
                 </div>
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                   {!sessionId ? (
@@ -799,7 +799,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
               <WorkflowCard padding={12}>
                 <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>실행 배정</div>
                 <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                  현재 패키지를 어떤 실행기 역할이 다룰지 기록합니다. 의도만이며 Stage1/Stage2를 시작하지 않습니다.
+                  현재 패키지를 어떤 실행기 역할이 다룰지 기록합니다. 의도만이며 저장소·PR 환경 실행은 이 단계에서 시작하지 않습니다.
                 </div>
                 <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                   {!sessionId ? (
@@ -850,7 +850,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
             <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, color: "#111827" }}>실행 준비</summary>
             <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
               <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                실행 명령까지의 인수를 하위 단계로 묶었습니다. 작업 중인 그룹을 펼치세요. Stage1/Stage2가 아닙니다.
+                실행 명령까지의 인수를 하위 단계로 묶었습니다. 작업 중인 그룹을 펼치세요. 저장소·PR 환경 실행이 아닙니다.
               </div>
 
               <details style={{ border: "1px solid #e8e8ff", borderRadius: 10, padding: 8, background: "#fafbff" }}>
@@ -858,7 +858,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
                 <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                   <WorkflowCard padding={10}>
                     <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>실행기 인수 페이로드</div>
-                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>현재 배정에서 나온 안정 번들입니다. Stage1/Stage2를 시작하지 않습니다.</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>현재 배정에서 나온 안정 번들입니다. 저장소·PR 환경 실행은 이 단계에서 시작하지 않습니다.</div>
                     <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
                       {!sessionId ? (
                         <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>인수 페이로드를 준비하려면 세션을 선택하세요.</div>
@@ -899,7 +899,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
 
                   <WorkflowCard padding={10}>
                     <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>실행기 입력 계약</div>
-                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>현재 인수에서 온 구조화된 입력입니다. Stage1/Stage2를 시작하지 않습니다.</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>현재 인수에서 온 구조화된 입력입니다. 저장소·PR 환경 실행은 이 단계에서 시작하지 않습니다.</div>
                     <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
                       {!sessionId ? (
                         <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>입력 계약을 준비하려면 세션을 선택하세요.</div>
@@ -935,7 +935,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
 
                   <WorkflowCard padding={10}>
                     <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>실행기 작업 지시</div>
-                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>현재 입력에 따른 지시입니다. Stage1/Stage2를 시작하지 않습니다.</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>현재 입력에 따른 지시입니다. 저장소·PR 환경 실행은 이 단계에서 시작하지 않습니다.</div>
                     <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
                       {!sessionId ? (
                         <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>작업 지시를 준비하려면 세션을 선택하세요.</div>
@@ -978,7 +978,7 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
                 <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                   <WorkflowCard padding={10}>
                     <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 6 }}>실행 준비도</div>
-                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>파생 점검만 수행합니다. 실행이나 Stage1/Stage2를 시작하지 않습니다.</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>파생 점검만 수행합니다. 실제 가동이나 저장소·PR 환경 실행은 시작하지 않습니다.</div>
                     <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
                       <div style={{ fontSize: 12, color: "#111827" }}>
                         상태:{" "}

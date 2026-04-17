@@ -9,6 +9,7 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { formatCollaborationSessionStatusForUi } from "@/lib/ui/workflowUiCopy";
 import { getCollaborationListView } from "@/lib/workflow/workflowViewModel";
+import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
 
 export default function CollaborationPage() {
   const vm = getCollaborationListView();
@@ -19,10 +20,14 @@ export default function CollaborationPage() {
       <ScreenLabel label="협업-목록-페이지-섹션" visible={showScreenLabels} />
       <WorkflowPageHeader
         title="협업"
-        subtitle="요구사항에 연결된 세션 워크스페이스 진입점(목 데이터)."
+        subtitle="요구사항 다음 단계. 세션에서 회의·결정을 모은 뒤 기능·작업으로 넘깁니다."
         backHref="/requirements"
         backLabel="요구사항으로"
       />
+
+      <WorkflowDemoSampleBanner>
+        세션 목록은 데모용 샘플입니다. 실제 프로젝트 협업은 멤버와 연결된 작업 공간에서 이어집니다.
+      </WorkflowDemoSampleBanner>
 
       <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
         {vm.sessions.length === 0 ? (

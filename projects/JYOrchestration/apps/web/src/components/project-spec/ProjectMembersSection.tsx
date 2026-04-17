@@ -14,6 +14,13 @@ import {
 } from "@/lib/ai-member/aiMemberOrchestration";
 import { AiMembersPage } from "@/components/project-spec/ai-members/AiMembersPage";
 import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import {
+  memberRowToUnified,
+  memberTypeLabelKr,
+  projectRoleLabelKr,
+} from "@/lib/project/unifiedMemberPresentation";
 
 export type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
 
@@ -70,8 +77,8 @@ type ProjectMembersSectionProps = {
   /** 액션 수정(스텁/완료) 권한 판별용 */
   currentProjectRole?: ProjectRole | null;
   currentUserId?: string | null;
-  /** 탭 분리: 사람 멤버만 / AI만 / 전체 */
-  memberSurface?: "all" | "human" | "ai";
+  /** 탭 분리: 사람 멤버만 / AI만 / 전체 / 통합(사용자+AI 한 화면) */
+  memberSurface?: "all" | "human" | "ai" | "unified";
   /** AI Members: Stage 2 환경 테스트 실행(프로젝트 편집 권한) */
   canRunStage2EnvTest?: boolean;
   /** AI Members: 기본 Stage2 멤버 일괄 추가(OWNER 전용 API) */
@@ -778,6 +785,10 @@ export function ProjectMembersSection({
   const [requestPromptId, setRequestPromptId] = useState("");
   const [requestBusy, setRequestBusy] = useState(false);
 
+  const showScreenLabels = useShowScreenLabels();
+  const [unifiedMemberTab, setUnifiedMemberTab] = useState<"all" | "human" | "ai">("all");
+  const [unifiedSelectedId, setUnifiedSelectedId] = useState<string | null>(null);
+
   const canAnyAiRequest = canRequestAiMemberAction || canRequestAiReviewAction;
 
   function canPatchListedAction(a: AiActionRow): boolean {
@@ -829,6 +840,7 @@ export function ProjectMembersSection({
   useEffect(() => {
     if (memberSurface === "human") setInviteType("HUMAN");
     if (memberSurface === "ai") setInviteType("AI");
+    if (memberSurface === "unified") setInviteType("HUMAN");
   }, [memberSurface]);
 
   const sortedMembers = useMemo(
@@ -845,8 +857,25 @@ export function ProjectMembersSection({
   const displayMembers = useMemo(() => {
     if (memberSurface === "human") return sortedMembers.filter((m) => m.memberType === "HUMAN");
     if (memberSurface === "ai") return sortedMembers.filter((m) => m.memberType === "AI");
+    if (memberSurface === "unified") {
+      if (unifiedMemberTab === "human") return sortedMembers.filter((m) => m.memberType === "HUMAN");
+      if (unifiedMemberTab === "ai") return sortedMembers.filter((m) => m.memberType === "AI");
+      return sortedMembers;
+    }
     return sortedMembers;
-  }, [sortedMembers, memberSurface]);
+  }, [sortedMembers, memberSurface, unifiedMemberTab]);
+
+  const unifiedSelectedMember = useMemo(
+    () => sortedMembers.find((m) => m.memberId === unifiedSelectedId) ?? null,
+    [sortedMembers, unifiedSelectedId]
+  );
+
+  useEffect(() => {
+    if (memberSurface !== "unified" || !unifiedSelectedId) return;
+    if (!displayMembers.some((m) => m.memberId === unifiedSelectedId)) {
+      setUnifiedSelectedId(null);
+    }
+  }, [memberSurface, displayMembers, unifiedSelectedId]);
 
   const aiOrchestrationSplit = useMemo(() => {
     const ai = sortedMembers.filter((m) => m.memberType === "AI");
@@ -1225,13 +1254,21 @@ export function ProjectMembersSection({
   }, [taskPrompts, requestTaskId]);
 
   const title =
-    memberSurface === "human" ? "사람 멤버" : memberSurface === "ai" ? "AI 멤버 · 오케스트레이션" : "멤버 관리";
+    memberSurface === "human"
+      ? "사람 멤버"
+      : memberSurface === "ai"
+        ? "AI 멤버 · 오케스트레이션"
+        : memberSurface === "unified"
+          ? "멤버"
+          : "멤버 관리";
   const subtitle =
     memberSurface === "human"
       ? "프로젝트에 참여하는 사람 사용자를 초대·역할 변경합니다."
       : memberSurface === "ai"
         ? "Stage 2에 사용하는 역할을 카드로 관리합니다. 상단에서 기본 멤버 추가와 역할 테스트를 실행할 수 있습니다."
-        : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
+        : memberSurface === "unified"
+          ? "사람과 AI가 같은 멤버 목록에 표시됩니다. 역할은 동일하게 적용되며, AI만 모델·오케스트레이션 설정이 추가됩니다."
+          : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
 
   const collabSurfaceVisible = memberSurface !== "human";
   const showCollaborationQueuePanel =
@@ -1638,14 +1675,18 @@ export function ProjectMembersSection({
           ? "project-members-human-section"
           : memberSurface === "ai"
             ? "project-members-ai-section"
-            : "project-members-section"
+            : memberSurface === "unified"
+              ? "project-unified-members-section"
+              : "project-members-section"
       }
       data-ui-label={
         memberSurface === "human"
           ? "[P-6-1] Members Surface — Human"
           : memberSurface === "ai"
             ? "[P-6-2] Members Surface — AI"
-            : "[P-6-0] Members Surface — All"
+            : memberSurface === "unified"
+              ? "[P-6-3] Members Surface — Unified"
+              : "[P-6-0] Members Surface — All"
       }
       style={{ border: "1px solid #ddd", borderRadius: 12, padding: 20, marginBottom: 16 }}
     >
@@ -1661,7 +1702,7 @@ export function ProjectMembersSection({
       {inviteOpen && canManageMembers ? (
         <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 12, marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-            {memberSurface === "all" ? (
+            {memberSurface === "all" || memberSurface === "unified" ? (
               <select value={inviteType} onChange={(e) => setInviteType(e.target.value as "HUMAN" | "AI")}>
                 <option value="HUMAN">HUMAN</option>
                 <option value="AI">AI</option>
@@ -1818,8 +1859,181 @@ export function ProjectMembersSection({
       {message ? <p style={{ color: "#0b6b0b", fontSize: 13 }}>{message}</p> : null}
       {error ? <p style={{ color: "#b42318", fontSize: 13 }}>{error}</p> : null}
 
-      {memberSurface === "ai" ? (
-        <AiMembersPage
+      {memberSurface === "ai" || memberSurface === "unified" ? (
+        <>
+          {memberSurface === "unified" ? (
+            <div data-testid="project-unified-members-table-wrap" style={{ marginBottom: 20 }}>
+              <ScreenLabel label="프로젝트관리-멤버-탭-구역" visible={showScreenLabels} />
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                {(["all", "human", "ai"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => {
+                      setUnifiedMemberTab(tab);
+                      setUnifiedSelectedId(null);
+                    }}
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 8,
+                      border: unifiedMemberTab === tab ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                      background: unifiedMemberTab === tab ? "#eff6ff" : "#fff",
+                      fontWeight: unifiedMemberTab === tab ? 800 : 600,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {tab === "all" ? "전체" : tab === "human" ? "사용자" : "AI"}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+                <div data-testid="project-unified-members-list-column" style={{ flex: "1 1 320px", minWidth: 0 }}>
+                  <ScreenLabel label="프로젝트관리-멤버-목록-테이블" visible={showScreenLabels} />
+                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>이름</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>유형</th>
+                          <th style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0" }}>역할</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayMembers.map((m) => {
+                          const u = memberRowToUnified(m);
+                          const sel = unifiedSelectedId === m.memberId;
+                          return (
+                            <tr
+                              key={m.memberId}
+                              data-testid="project-unified-members-row"
+                              onClick={() => setUnifiedSelectedId(m.memberId)}
+                              style={{
+                                cursor: "pointer",
+                                background: sel ? "#eff6ff" : "#fff",
+                                borderBottom: "1px solid #f1f5f9",
+                              }}
+                            >
+                              <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+                                  <ScreenLabel label="프로젝트관리-멤버-행-컨테이너" visible={showScreenLabels} />
+                                  <span style={{ fontWeight: 700 }}>{u.name}</span>
+                                </div>
+                              </td>
+                              <td style={{ padding: "10px 12px" }}>
+                                <ScreenLabel label="프로젝트관리-멤버-행-유형배지" visible={showScreenLabels} />
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    padding: "2px 8px",
+                                    borderRadius: 999,
+                                    background: u.type === "AI" ? "#ede9fe" : "#eef2ff",
+                                    color: u.type === "AI" ? "#5b21b6" : "#1d4ed8",
+                                  }}
+                                >
+                                  {memberTypeLabelKr(u.type)}
+                                </span>
+                              </td>
+                              <td style={{ padding: "10px 12px", color: "#334155" }}>{u.roles.join(" · ")}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <aside
+                  data-testid="project-unified-members-detail"
+                  style={{
+                    flex: "1 1 280px",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 10,
+                    padding: 14,
+                    background: "#fafafa",
+                    minHeight: 200,
+                  }}
+                >
+                  <ScreenLabel label="프로젝트관리-멤버-상세-패널" visible={showScreenLabels} />
+                  {!unifiedSelectedMember ? (
+                    <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>목록에서 멤버를 선택하세요.</p>
+                  ) : unifiedSelectedMember.memberType === "HUMAN" ? (
+                    <div>
+                      <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 800 }}>멤버 상세</h3>
+                      <p style={{ margin: "0 0 6px 0", fontSize: 13 }}>
+                        <span style={{ color: "#64748b" }}>이름</span> {unifiedSelectedMember.displayName}
+                      </p>
+                      <label style={{ display: "grid", gap: 6, marginTop: 12, fontSize: 13 }}>
+                        <span style={{ fontWeight: 700 }}>역할</span>
+                        <select
+                          disabled={
+                            !canManageMembers ||
+                            busyMemberId === unifiedSelectedMember.memberId ||
+                            unifiedSelectedMember.isOwner
+                          }
+                          value={unifiedSelectedMember.role}
+                          onChange={(e) =>
+                            handleRoleChange(unifiedSelectedMember.memberId, e.target.value as ProjectRole)
+                          }
+                          style={{ padding: 8, borderRadius: 8, border: "1px solid #cbd5e1" }}
+                        >
+                          {ROLE_OPTIONS.map((role) => (
+                            <option key={role} value={role}>
+                              {projectRoleLabelKr(role)} ({role})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {canManageMembers && !unifiedSelectedMember.isOwner ? (
+                        <button
+                          type="button"
+                          style={{ marginTop: 14, padding: "8px 12px", borderRadius: 8 }}
+                          onClick={() => void handleRemove(unifiedSelectedMember.memberId)}
+                          disabled={busyMemberId === unifiedSelectedMember.memberId}
+                        >
+                          제거
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div>
+                      <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 800 }}>AI 멤버 상세</h3>
+                      <ScreenLabel label="프로젝트관리-멤버-상세-AI설정" visible={showScreenLabels} />
+                      <p style={{ margin: "0 0 6px 0", fontSize: 13 }}>
+                        <span style={{ color: "#64748b" }}>이름</span> {unifiedSelectedMember.displayName}
+                      </p>
+                      <p style={{ margin: "0 0 12px 0", fontSize: 13 }}>
+                        <span style={{ color: "#64748b" }}>프로젝트 역할</span>{" "}
+                        {projectRoleLabelKr(unifiedSelectedMember.role)} ({unifiedSelectedMember.role})
+                      </p>
+                      {canManageMembers ? (
+                        <AiOrchestrationControls
+                          member={unifiedSelectedMember}
+                          disabled={busyMemberId === unifiedSelectedMember.memberId}
+                          onError={(msg) => setError(msg)}
+                          onMessage={(msg) => setMessage(msg)}
+                          onSaved={onChanged}
+                          canRemove={!unifiedSelectedMember.isOwner}
+                          onRemove={() => void handleRemove(unifiedSelectedMember.memberId)}
+                        />
+                      ) : null}
+                      {isExecutionReviewerOrchRole(unifiedSelectedMember.aiOrchestrationRole) ? (
+                        <AiExecutionReviewerPolicyOverrides
+                          member={unifiedSelectedMember}
+                          disabled={busyMemberId === unifiedSelectedMember.memberId}
+                          canEdit={canManageMembers}
+                          onError={(msg) => setError(msg)}
+                          onMessage={(msg) => setMessage(msg)}
+                          onSaved={onChanged}
+                        />
+                      ) : null}
+                    </div>
+                  )}
+                </aside>
+              </div>
+            </div>
+          ) : null}
+          <AiMembersPage
           projectId={projectId}
           members={sortedMembers}
           canManageMembers={canManageMembers}
@@ -1862,7 +2076,7 @@ export function ProjectMembersSection({
             추적: Task 실행 기록 화면에서 리뷰어별 요약·모델·판단을 확인할 수 있습니다.
           </p>
 
-          {aiOrchestrationSplit.others.length > 0 ? (
+          {aiOrchestrationSplit.others.length > 0 && memberSurface !== "unified" ? (
             <div>
               <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 8px 0", color: "#0f172a" }}>
                 기타 AI 멤버
@@ -1876,6 +2090,7 @@ export function ProjectMembersSection({
             </div>
           ) : null}
         </AiMembersPage>
+        </>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
           {displayMembers.map((m) => renderStandardMemberRow(m))}
@@ -1976,7 +2191,7 @@ export function ProjectMembersSection({
           }}
         >
           <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: "#0f172a" }}>
-            {memberSurface === "ai" ? "협업 액션 큐" : "AI 멤버 액션"}
+            {memberSurface === "ai" || memberSurface === "unified" ? "협업 액션 큐" : "AI 멤버 액션"}
           </h3>
           {canDispatchAiMemberAction ? (
             <button
@@ -1990,7 +2205,7 @@ export function ProjectMembersSection({
           ) : null}
         </div>
         <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px 0" }}>
-          {memberSurface === "ai"
+          {memberSurface === "ai" || memberSurface === "unified"
             ? "요청·디스패치·사람 검토·적용 워크플로입니다. 실행 루프(Cursor) 검토와는 별도입니다."
             : "백그라운드 처리는 환경 변수 AI_ACTION_WORKER_ENABLED=true 로 켤 수 있습니다. 결과는 자동 반영되지 않으며 사람 검토·적용이 필요합니다."}
         </p>

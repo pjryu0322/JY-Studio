@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
+import { ProjectAdminWorkflowScopeNote } from "@/components/project/ProjectAdminWorkflowScopeNote";
 import { canEditSpec } from "@/lib/rbac/projectPermissions";
 import type { ProjectRole } from "@/lib/rbac/projectPermissions";
 function ProjectAdminSettingsInner() {
@@ -87,6 +88,8 @@ function ProjectAdminSettingsInner() {
           ← 실행 계획으로 돌아가기
         </Link>
       </div>
+
+      <ProjectAdminWorkflowScopeNote />
 
       {!projectId ? (
         <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>

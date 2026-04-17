@@ -7,6 +7,7 @@ import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowA
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
+import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
 import { getTasksPageSubtitle, getTasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 
@@ -65,7 +66,12 @@ export function TasksPageClient() {
         ) : null}
 
         {view.found && hasContext ? (
-          <TasksWorkspaceContent view={view} onOpenRequirement={openRequirement} onOpenCollaboration={openCollaboration} />
+          <>
+            <WorkflowDemoSampleBanner>
+              이 작업 공간은 URL로 연결된 요구사항·협업 세션에서 온 초안 중심입니다. 프로젝트 단위 작업·생성 작업은 실행 계획(홈)에서 이어집니다.
+            </WorkflowDemoSampleBanner>
+            <TasksWorkspaceContent view={view} onOpenRequirement={openRequirement} onOpenCollaboration={openCollaboration} />
+          </>
         ) : null}
       </div>
     </div>

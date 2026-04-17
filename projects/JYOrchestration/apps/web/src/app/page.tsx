@@ -139,7 +139,7 @@ export default function HomePage() {
       setName("");
       setDescription("");
       await loadProjects();
-      router.push(`/projects/${json.data.id}`);
+      router.push(`/requirements?projectId=${encodeURIComponent(json.data.id)}`);
     } catch (error) {
       console.error("Failed to create project:", error);
       setErrorMessage("프로젝트 생성 중 오류가 발생했습니다.");

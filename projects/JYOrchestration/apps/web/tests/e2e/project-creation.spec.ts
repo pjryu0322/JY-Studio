@@ -9,7 +9,7 @@ test.describe("E2E project", () => {
     await page.waitForURL(/\/$/, { timeout: 30_000 });
   });
 
-  test("[E2E-PRJ-001] 생성 폼은 이름·설명 입력만, 생성 후 상세로 이동", async ({ page }) => {
+  test("[E2E-PRJ-001] 생성 폼은 이름·설명 입력만, 생성 후 요구사항으로 이동 → 완료 시 실행 계획(상세)", async ({ page }) => {
     const form = page.getByTestId("home-create-project-form");
     await expect(form.locator('input[type="text"]')).toHaveCount(1);
     await expect(form.locator("textarea")).toHaveCount(1);
@@ -19,7 +19,15 @@ test.describe("E2E project", () => {
     await page.getByTestId("home-project-name").fill(name);
     await page.getByTestId("home-project-description").fill("E2E 설명");
     await page.getByTestId("home-create-project").click();
-    await expect(page).toHaveURL(/\/projects\/[^/]+$/, { timeout: 20_000 });
+    await expect(page).toHaveURL(/\/requirements\?projectId=/, { timeout: 20_000 });
+    const projectId = new URL(page.url()).searchParams.get("projectId");
+    expect(projectId).toBeTruthy();
+    await page.getByTestId("requirements-project-idea-textarea").fill(`E2E 아이디어: ${name}`);
+    await page.getByRole("button", { name: /다음 단계: 협업/ }).click();
+    await expect(page).toHaveURL(/\/collaboration/, { timeout: 20_000 });
+    await page.goto("/");
+    await page.getByTestId(`project-open-${projectId}`).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`), { timeout: 20_000 });
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
   });
 

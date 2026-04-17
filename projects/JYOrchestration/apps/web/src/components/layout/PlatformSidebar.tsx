@@ -11,11 +11,51 @@ type NavItem = {
   href: string;
   disabled?: boolean;
   screenLabel: string;
+  /** 홈·워크스페이스 별칭·프로젝트 상세(실행 계획 화면)에서 활성 */
+  matchHomeAndProjectPlanning?: boolean;
 };
 
-function SectionTitle({ children }: { children: ReactNode }) {
+function GroupDivider() {
   return (
-    <div style={{ fontSize: 12, letterSpacing: 0.6, fontWeight: 700, color: "#6b7280", margin: "16px 0 8px" }}>
+    <div
+      role="separator"
+      aria-hidden
+      style={{
+        height: 1,
+        margin: "14px 0",
+        background: "#e5e7eb",
+        border: 0,
+      }}
+    />
+  );
+}
+
+function GroupSectionHeader({
+  children,
+  screenLabel,
+  showScreenLabels,
+  dimmed,
+}: {
+  children: ReactNode;
+  screenLabel: string;
+  showScreenLabels: boolean;
+  /** 그룹 내 항목이 활성일 때 약한 강조 */
+  dimmed?: boolean;
+}) {
+  return (
+    <div
+      className="relative"
+      style={{
+        fontSize: 11,
+        letterSpacing: 0.4,
+        fontWeight: 700,
+        color: dimmed ? "#9ca3af" : "#64748b",
+        margin: "0 0 6px 2px",
+        textTransform: "none" as const,
+        userSelect: "none",
+      }}
+    >
+      <ScreenLabel label={screenLabel} visible={showScreenLabels} />
       {children}
     </div>
   );
@@ -49,41 +89,51 @@ function NavLinkItem({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
+function isItemActive(pathname: string, item: NavItem): boolean {
+  if (item.disabled) return false;
+  if (item.matchHomeAndProjectPlanning) {
+    return (
+      pathname === "/" ||
+      pathname === "/workspace" ||
+      pathname.startsWith("/projects/")
+    );
+  }
+  if (item.href === "/requirements") {
+    return pathname === "/requirements" || pathname.startsWith("/requirements/");
+  }
+  return pathname === item.href || pathname.startsWith(item.href + "/");
+}
+
 export function PlatformSidebar() {
   const pathname = usePathname() || "/";
   const showScreenLabels = useShowScreenLabels();
 
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/" || pathname === "/workspace";
-    if (href === "/requirements") return pathname === "/requirements" || pathname.startsWith("/requirements/");
-    return pathname === href || pathname.startsWith(href + "/");
-  };
-
-  const workflow: NavItem[] = [
-    { label: "요구사항", href: "/requirements", screenLabel: "공통-사이드바-요구사항-메뉴" },
-    { label: "협업", href: "/collaboration", screenLabel: "공통-사이드바-협업-메뉴" },
-    { label: "기능", href: "/features", screenLabel: "공통-사이드바-기능-메뉴" },
-    { label: "작업", href: "/tasks", screenLabel: "공통-사이드바-작업-메뉴" },
-  ];
-  const execution: NavItem[] = [{ label: "실행", href: "/execution", screenLabel: "공통-사이드바-실행-메뉴" }];
-  const insight: NavItem[] = [{ label: "추적", href: "/trace", disabled: false, screenLabel: "공통-사이드바-추적-메뉴" }];
-  const project: NavItem[] = [
-    { label: "워크스페이스", href: "/workspace", screenLabel: "공통-사이드바-워크스페이스-메뉴" },
+  const projectManagement: NavItem[] = [
     { label: "멤버", href: "/project-admin/members", screenLabel: "공통-사이드바-프로젝트관리-멤버-메뉴" },
     { label: "설정", href: "/project-admin/settings", screenLabel: "공통-사이드바-프로젝트관리-설정-메뉴" },
-    {
-      label: "정책",
-      href: "/project-admin/policies",
-      disabled: true,
-      screenLabel: "공통-사이드바-프로젝트관리-정책-메뉴",
-    },
-    {
-      label: "연동",
-      href: "/project-admin/integrations",
-      disabled: true,
-      screenLabel: "공통-사이드바-프로젝트관리-연동-메뉴",
-    },
   ];
+
+  const workflow: NavItem[] = [
+    { label: "요구사항", href: "/requirements", screenLabel: "공통-사이드바-워크플로우-요구사항-메뉴" },
+    { label: "협업", href: "/collaboration", screenLabel: "공통-사이드바-워크플로우-협업-메뉴" },
+    { label: "기능", href: "/features", screenLabel: "공통-사이드바-워크플로우-기능-메뉴" },
+    { label: "작업", href: "/tasks", screenLabel: "공통-사이드바-워크플로우-작업-메뉴" },
+    {
+      label: "실행 계획",
+      href: "/",
+      screenLabel: "공통-사이드바-워크플로우-실행계획-메뉴",
+      matchHomeAndProjectPlanning: true,
+    },
+    { label: "실행", href: "/execution", screenLabel: "공통-사이드바-워크플로우-실행-메뉴" },
+  ];
+
+  const insight: NavItem[] = [
+    { label: "추적", href: "/trace", disabled: false, screenLabel: "공통-사이드바-인사이트-추적-메뉴" },
+  ];
+
+  const workflowGroupActive = workflow.some((item) => isItemActive(pathname, item));
+  const projectGroupActive = projectManagement.some((item) => isItemActive(pathname, item));
+  const insightGroupActive = insight.some((item) => isItemActive(pathname, item));
 
   return (
     <aside
@@ -102,61 +152,91 @@ export function PlatformSidebar() {
       }}
     >
       <ScreenLabel label="공통-사이드바-전체-패널" visible={showScreenLabels} />
-      <div className="relative" style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>
+      <div className="relative" style={{ fontSize: 14, fontWeight: 800, marginBottom: 12 }}>
         <ScreenLabel label="공통-사이드바-제목-섹션" visible={showScreenLabels} />
         JY Orchestration
       </div>
 
-      <div className="relative">
-        <ScreenLabel label="공통-사이드바-워크플로우흐름-섹션" visible={showScreenLabels} />
-        <SectionTitle>워크플로우 흐름</SectionTitle>
-      </div>
-      <div style={{ display: "grid", gap: 4 }}>
-        {workflow.map((item) => (
-          <div key={item.href} className="relative">
-            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-            <NavLinkItem item={item} active={isActive(item.href)} />
-          </div>
-        ))}
-      </div>
-
-      <div className="relative">
-        <ScreenLabel label="공통-사이드바-실행구역-섹션" visible={showScreenLabels} />
-        <SectionTitle>실행</SectionTitle>
-      </div>
-      <div style={{ display: "grid", gap: 4 }}>
-        {execution.map((item) => (
-          <div key={item.href} className="relative">
-            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-            <NavLinkItem item={item} active={isActive(item.href)} />
-          </div>
-        ))}
-      </div>
-
-      <div className="relative">
-        <ScreenLabel label="공통-사이드바-추적구역-섹션" visible={showScreenLabels} />
-        <SectionTitle>추적</SectionTitle>
-      </div>
-      <div style={{ display: "grid", gap: 4 }}>
-        {insight.map((item) => (
-          <div key={item.href} className="relative">
-            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-            <NavLinkItem item={item} active={isActive(item.href)} />
-          </div>
-        ))}
+      {/* 1 — 프로젝트 관리 */}
+      <div
+        style={{
+          padding: "8px 8px 10px",
+          borderRadius: 10,
+          background: projectGroupActive ? "rgba(239, 246, 255, 0.55)" : "transparent",
+          border: projectGroupActive ? "1px solid #e0e7ff" : "1px solid transparent",
+        }}
+      >
+        <GroupSectionHeader
+          screenLabel="공통-사이드바-프로젝트관리-그룹-헤더"
+          showScreenLabels={showScreenLabels}
+          dimmed={!projectGroupActive}
+        >
+          프로젝트 관리
+        </GroupSectionHeader>
+        <div style={{ display: "grid", gap: 4 }}>
+          {projectManagement.map((item) => (
+            <div key={item.href} className="relative">
+              <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+              <NavLinkItem item={item} active={isItemActive(pathname, item)} />
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="relative">
-        <ScreenLabel label="공통-사이드바-프로젝트구역-섹션" visible={showScreenLabels} />
-        <SectionTitle>프로젝트 관리</SectionTitle>
+      <GroupDivider />
+
+      {/* 2 — 워크플로우 */}
+      <div
+        style={{
+          padding: "8px 8px 10px",
+          borderRadius: 10,
+          background: workflowGroupActive ? "rgba(239, 246, 255, 0.45)" : "transparent",
+          border: workflowGroupActive ? "1px solid #e0e7ff" : "1px solid transparent",
+        }}
+      >
+        <GroupSectionHeader
+          screenLabel="공통-사이드바-워크플로우-그룹-헤더"
+          showScreenLabels={showScreenLabels}
+          dimmed={!workflowGroupActive}
+        >
+          워크플로우
+        </GroupSectionHeader>
+        <div style={{ display: "grid", gap: 4 }}>
+          {workflow.map((item) => (
+            <div key={item.href + item.label} className="relative">
+              <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+              <NavLinkItem item={item} active={isItemActive(pathname, item)} />
+            </div>
+          ))}
+        </div>
       </div>
-      <div style={{ display: "grid", gap: 4 }}>
-        {project.map((item) => (
-          <div key={item.href} className="relative">
-            <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-            <NavLinkItem item={item} active={isActive(item.href)} />
-          </div>
-        ))}
+
+      <GroupDivider />
+
+      {/* 3 — 인사이트 */}
+      <div
+        style={{
+          padding: "8px 8px 10px",
+          borderRadius: 10,
+          background: insightGroupActive ? "rgba(239, 246, 255, 0.45)" : "transparent",
+          border: insightGroupActive ? "1px solid #e0e7ff" : "1px solid transparent",
+        }}
+      >
+        <GroupSectionHeader
+          screenLabel="공통-사이드바-인사이트-그룹-헤더"
+          showScreenLabels={showScreenLabels}
+          dimmed={!insightGroupActive}
+        >
+          인사이트
+        </GroupSectionHeader>
+        <div style={{ display: "grid", gap: 4 }}>
+          {insight.map((item) => (
+            <div key={item.href} className="relative">
+              <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+              <NavLinkItem item={item} active={isItemActive(pathname, item)} />
+            </div>
+          ))}
+        </div>
       </div>
     </aside>
   );

@@ -1,17 +1,21 @@
 import type { RequirementStatus } from "@/lib/mock/workflowMock";
 import type { CollaborationTaskDraftStatus, CollaborationTaskDraftType } from "@/lib/workflow/collaborationActionContract";
 
+function withSampleWorkflowLabel(label: string): string {
+  return `${label} · 샘플`;
+}
+
 /** 요구사항·워크플로 목록에 표시되는 상태(내부 코드 → 한글) */
 export function formatRequirementStatusForUi(status: RequirementStatus): string {
   switch (status) {
     case "IN_DISCUSSION":
-      return "논의 중";
+      return withSampleWorkflowLabel("논의 중");
     case "DRAFT":
-      return "초안";
+      return withSampleWorkflowLabel("초안");
     case "APPROVED":
-      return "승인됨";
+      return withSampleWorkflowLabel("승인됨");
     case "DONE":
-      return "완료";
+      return withSampleWorkflowLabel("완료");
     default: {
       const _e: never = status;
       return _e;
@@ -20,8 +24,8 @@ export function formatRequirementStatusForUi(status: RequirementStatus): string 
 }
 
 export function formatCollaborationSessionStatusForUi(status: "OPEN" | "CLOSED"): string {
-  if (status === "OPEN") return "진행 중";
-  return "종료";
+  if (status === "OPEN") return withSampleWorkflowLabel("진행 중");
+  return withSampleWorkflowLabel("종료");
 }
 
 export function formatCollaborationTaskDraftStatusForUi(status: CollaborationTaskDraftStatus): string {
@@ -62,13 +66,13 @@ export function formatCollaborationTaskDraftTypeForUi(type: CollaborationTaskDra
 export function formatFeatureStatusForUi(status: "DRAFT" | "PLANNED" | "IN_PROGRESS" | "DONE"): string {
   switch (status) {
     case "DRAFT":
-      return "초안";
+      return withSampleWorkflowLabel("초안");
     case "PLANNED":
-      return "계획됨";
+      return withSampleWorkflowLabel("계획됨");
     case "IN_PROGRESS":
-      return "진행 중";
+      return withSampleWorkflowLabel("진행 중");
     case "DONE":
-      return "완료";
+      return withSampleWorkflowLabel("완료");
     default: {
       const _e: never = status;
       return _e;

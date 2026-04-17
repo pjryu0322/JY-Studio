@@ -58,6 +58,7 @@ import {
   stripGitBranchConfigMarkerForDisplay,
 } from "@/lib/execution/gitBranchCursorError";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
+import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
 
 function rbacForbiddenMessage(
   res: Response,
@@ -69,7 +70,7 @@ function rbacForbiddenMessage(
   return null;
 }
 
-type ProjectMainTab = "overview" | "members" | "ai-members";
+type ProjectMainTab = "overview" | "members";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
@@ -317,6 +318,13 @@ export default function ProjectDetailPage() {
       cancelled = true;
     };
   }, [reloadSessionContext]);
+
+  useEffect(() => {
+    if (!projectId || loading || !project) return;
+    if (!isRequirementsPendingWorkflow(project.workflowStatus)) return;
+    const notice = encodeURIComponent("먼저 요구사항과 작업 단계를 완료하세요.");
+    router.replace(`/requirements?projectId=${encodeURIComponent(projectId)}&workflowNotice=${notice}`);
+  }, [projectId, loading, project, router]);
 
   useEffect(() => {
     if (!project) {
@@ -2758,8 +2766,7 @@ export default function ProjectDetailPage() {
 
   const detailTabs: { id: ProjectMainTab; label: string; uiLabel: string }[] = [
     { id: "overview", label: "실행 계획", uiLabel: "[P-3-2-1] Tab — Execution planning" },
-    { id: "members", label: "멤버", uiLabel: "[P-3-2-2] Tab — Members" },
-    { id: "ai-members", label: "AI 멤버", uiLabel: "[P-3-2-3] Tab — AI Members" },
+    { id: "members", label: "멤버", uiLabel: "[P-3-2-2] Tab — Members (unified)" },
   ];
 
   return (
@@ -2788,6 +2795,24 @@ export default function ProjectDetailPage() {
         </div>
       ) : null}
       <ProjectSpecPageStatus loading={loading} errorMessage={errorMessage} />
+      {showGuidedChrome && !loadingTasks && tasks.length === 0 ? (
+        <div
+          role="status"
+          data-ui-label="[P-1-1a] Banner — No tasks yet"
+          style={{
+            marginBottom: 14,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid #fde68a",
+            background: "#fffbeb",
+            color: "#92400e",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <strong>작업이 아직 없습니다.</strong> 워크플로에 따라 실행 계획에서 작업을 생성한 뒤 실행·추적 단계로 진행하세요.
+        </div>
+      ) : null}
       {showGuidedChrome ? (
         <ProjectExecutionReadinessSummary
           setup={executionSetupOverview}
@@ -2871,7 +2896,7 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {mainTab !== "overview" ? (
-            <div data-ui-label="[P-4-4] Project Region — Members / AI Members">
+            <div data-ui-label="[P-4-4] Project Region — Members (unified)">
               {mainTab === "members" ? (
                 <ProjectMembersSection
                   projectId={projectId}
@@ -2886,30 +2911,11 @@ export default function ProjectDetailPage() {
                   canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
                   currentProjectRole={projectRole}
                   currentUserId={currentUserId}
-                  memberSurface="human"
-                />
-              ) : null}
-
-              {mainTab === "ai-members" ? (
-                <ProjectMembersSection
-                  projectId={projectId}
-                  members={memberRows}
-                  canManageMembers={rbac.canManageMembers}
-                  onChanged={reloadSessionContext}
-                  tasks={tasks}
-                  gitRequests={gitRequests}
-                  taskPrompts={taskPrompts}
-                  canRequestAiMemberAction={permissions.canRequestAiMemberAction}
-                  canRequestAiReviewAction={permissions.canRequestAiReviewAction}
-                  canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
-                  currentProjectRole={projectRole}
-                  currentUserId={currentUserId}
-                  memberSurface="ai"
+                  memberSurface="unified"
                   canRunStage2EnvTest={permissions.canEditProject}
                   isProjectOwner={projectRole === "OWNER"}
                 />
               ) : null}
-
             </div>
           ) : null}
         </>

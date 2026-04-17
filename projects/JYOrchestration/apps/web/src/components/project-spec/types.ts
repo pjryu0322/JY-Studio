@@ -7,6 +7,8 @@ export type Project = {
   repoUrl?: string | null;
   defaultBranch?: string | null;
   status: string;
+  /** null=제한 없음, REQUIREMENTS_PENDING=요구사항 단계 완료 전 실행 계획 진입 불가 */
+  workflowStatus?: string | null;
   deletedAt?: string | null;
   deletedByUserId?: string | null;
   /** 승인만: NO_APPROVAL | MANUAL_APPROVAL (레거시 AUTO_APPLY = NO_APPROVAL). push와 독립. */

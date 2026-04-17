@@ -5,6 +5,7 @@ import type { Project } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
+import { PROJECT_WORKFLOW_REQUIREMENTS_PENDING } from "@/lib/project/projectWorkflowStatus";
 
 /** @deprecated 이름 보존용 — 내부적으로 소유 또는 HUMAN 멤버십 프로젝트를 반환합니다. */
 export async function listProjectsOrderedByCreatedDesc(
@@ -63,6 +64,7 @@ export async function createProject(input: CreateProjectInput) {
         repoUrl: input.repoUrl,
         defaultBranch: input.defaultBranch,
         status: PROJECT_LIFECYCLE_ACTIVE,
+        workflowStatus: PROJECT_WORKFLOW_REQUIREMENTS_PENDING,
       },
     });
     await tx.projectMember.create({
