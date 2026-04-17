@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
+import { ProjectCreateMemberPicker, type PendingProjectInvite } from "@/components/project/ProjectCreateMemberPicker";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
@@ -53,6 +54,7 @@ export default function HomePage() {
   const [description, setDescription] = useState("");
   const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<PendingProjectInvite[]>([]);
 
   const defaultProjectType = "web-service";
   const defaultBranch = "main";
@@ -101,6 +103,48 @@ export default function HomePage() {
     }
   }, [includeDeletedProjects]);
 
+  async function invitePendingMembers(projectId: string) {
+    for (const p of pendingInvites) {
+      if (p.kind === "human") {
+        const res = await fetch("/api/project/members/invite", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            memberType: "HUMAN",
+            userId: p.user.id,
+            role: p.role,
+          }),
+        });
+        if (!res.ok) {
+          const j = (await res.json()) as ApiResponse<unknown>;
+          console.warn("Member invite failed:", j.message);
+        }
+      } else {
+        const res = await fetch("/api/project/members/invite", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            memberType: "AI",
+            displayName: p.displayName,
+            role: p.role,
+            aiOrchestrationRole: p.aiOrchestrationRole,
+            orchestrationStage: p.orchestrationStage,
+            aiProvider: "openai",
+            orchestrationEnabled: true,
+          }),
+        });
+        if (!res.ok) {
+          const j = (await res.json()) as ApiResponse<unknown>;
+          console.warn("AI member invite failed:", j.message);
+        }
+      }
+    }
+  }
+
   async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
@@ -136,10 +180,14 @@ export default function HomePage() {
         return;
       }
 
+      const newId = json.data.id;
+      await invitePendingMembers(newId);
+
       setName("");
       setDescription("");
+      setPendingInvites([]);
       await loadProjects();
-      router.push(`/requirements?projectId=${encodeURIComponent(json.data.id)}`);
+      router.push(`/requirements?projectId=${encodeURIComponent(newId)}`);
     } catch (error) {
       console.error("Failed to create project:", error);
       setErrorMessage("프로젝트 생성 중 오류가 발생했습니다.");
@@ -249,6 +297,8 @@ export default function HomePage() {
               className="min-h-[120px] w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
             />
           </div>
+
+          <ProjectCreateMemberPicker disabled={submitting} pending={pendingInvites} onChangePending={setPendingInvites} />
 
           <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
             생성 후 프로젝트 상세에서 Git·고급 설정을 이어서 구성할 수 있습니다.
@@ -374,7 +424,7 @@ export default function HomePage() {
                   <div className="relative" style={{ display: "inline-block" }}>
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-상세보기버튼" visible={showScreenLabels} />
                     <Link
-                      href={`/projects/${project.id}`}
+                      href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
                       data-testid={
                         project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
                       }
@@ -389,7 +439,7 @@ export default function HomePage() {
                         fontWeight: 600,
                       }}
                     >
-                      상세 보기
+                      열기
                     </Link>
                   </div>
                   {sessionUser &&

@@ -9,6 +9,7 @@ import {
   requireProjectOwnerMemberAdmin,
 } from "@/lib/service/projectMemberService";
 import { parseAiMemberRole, parseOrchestrationStage } from "@/lib/ai-member/aiMemberOrchestration";
+import { prisma } from "@/lib/prisma";
 
 type InviteBody = {
   projectId?: string;
@@ -112,10 +113,21 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const email = String(body.email ?? "").trim().toLowerCase();
+    const userIdTarget = String(body.userId ?? "").trim();
+    let email = String(body.email ?? "").trim().toLowerCase();
+    if (userIdTarget) {
+      const u = await prisma.user.findUnique({
+        where: { id: userIdTarget },
+        select: { email: true },
+      });
+      if (!u?.email) {
+        return NextResponse.json({ success: false, message: "선택한 사용자를 찾을 수 없습니다." }, { status: 400 });
+      }
+      email = u.email.trim().toLowerCase();
+    }
     if (!email) {
       return NextResponse.json(
-        { success: false, message: "HUMAN 멤버는 이메일이 필요합니다." },
+        { success: false, message: "HUMAN 멤버는 이메일 또는 userId가 필요합니다." },
         { status: 400 }
       );
     }

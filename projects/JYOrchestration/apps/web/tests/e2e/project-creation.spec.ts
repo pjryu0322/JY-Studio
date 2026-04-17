@@ -13,7 +13,7 @@ test.describe("E2E project", () => {
     const form = page.getByTestId("home-create-project-form");
     await expect(form.locator('input[type="text"]')).toHaveCount(1);
     await expect(form.locator("textarea")).toHaveCount(1);
-    await expect(form.locator("select")).toHaveCount(0);
+    await expect(form.locator("select")).toHaveCount(1); // 멤버 초대: 사람 역할
 
     const name = `E2E Project ${Date.now()}`;
     await page.getByTestId("home-project-name").fill(name);
@@ -22,7 +22,9 @@ test.describe("E2E project", () => {
     await expect(page).toHaveURL(/\/requirements\?projectId=/, { timeout: 20_000 });
     const projectId = new URL(page.url()).searchParams.get("projectId");
     expect(projectId).toBeTruthy();
-    await page.getByTestId("requirements-project-idea-textarea").fill(`E2E 아이디어: ${name}`);
+    await page.getByTestId("requirements-chat-input").fill(`E2E 아이디어: ${name}`);
+    await page.getByRole("button", { name: "전송" }).click();
+    await expect(page.getByText(`E2E 아이디어: ${name}`)).toBeVisible({ timeout: 15_000 });
     await page.getByTestId("requirements-scope-in").fill("회의록 업로드·요약·액션 항목 추출");
     await page.getByTestId("requirements-scope-out").fill("결제·모바일 네이티브 앱");
     await page.getByTestId("requirements-target-users").fill("팀 리더·PM");

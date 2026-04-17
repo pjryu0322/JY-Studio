@@ -12,6 +12,7 @@ import {
   normalizeGitApprovalModeForStorage,
 } from "@/lib/git-apply/retry";
 import { prisma } from "@/lib/prisma";
+import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import { softDeleteProjectByOwner } from "@/lib/service/projectService";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
@@ -34,7 +35,7 @@ export async function GET(
       return userId;
     }
 
-    const project = await prisma.project.findUnique({ where: { id } });
+    const project = await findProjectScalarsByIdSafe(id);
     if (!project) {
       return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
     }

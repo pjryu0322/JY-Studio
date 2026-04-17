@@ -33,6 +33,8 @@ export type Project = {
   taskPrompt?: string | null;
   /** 단일 호출 Task 생성용 템플릿 (null이면 기본값) */
   taskGenerationPrompt?: string | null;
+  /** 요구사항 협의실 JSON (메시지·회의록 등) */
+  requirementsRoomState?: unknown | null;
 };
 
 /** 확정 Project Spec 버전 행 (append-only) */
