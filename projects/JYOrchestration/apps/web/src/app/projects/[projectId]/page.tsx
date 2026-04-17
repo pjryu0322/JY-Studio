@@ -26,7 +26,8 @@ import {
 } from "@/components/task/TaskListSection";
 import { TaskHistoryItem, TaskHistoryTimeline } from "@/components/task/TaskHistoryTimeline";
 import { formatTestedAt } from "@/components/project-spec/format";
-import { ProjectMembersSection, type ProjectMemberUiRow } from "@/components/project-spec/ProjectMembersSection";
+import { ProjectMembersSummaryPanel } from "@/components/project-spec/ProjectMembersSummaryPanel";
+import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
 import {
   canEditSpec,
   canManageMembers,
@@ -59,6 +60,7 @@ import {
 } from "@/lib/execution/gitBranchCursorError";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
+import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 
 function rbacForbiddenMessage(
   res: Response,
@@ -132,7 +134,6 @@ export default function ProjectDetailPage() {
   const [approvingSensitiveTaskId, setApprovingSensitiveTaskId] = useState<string | null>(null);
 
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [memberRows, setMemberRows] = useState<ProjectMemberUiRow[]>([]);
   const permissions = useMemo(
     () =>
@@ -275,7 +276,6 @@ export default function ProjectDetailPage() {
   const reloadSessionContext = useCallback(async () => {
     if (!projectId) {
       setProjectRole(null);
-      setCurrentUserId(null);
       setMemberRows([]);
       return;
     }
@@ -286,18 +286,15 @@ export default function ProjectDetailPage() {
       success: boolean;
       data?: {
         myRole: ProjectRole | null;
-        currentUserId?: string;
         members: ProjectMemberUiRow[];
       };
     };
     if (!res.ok || !json.success || !json.data) {
       setProjectRole(null);
-      setCurrentUserId(null);
       setMemberRows([]);
       return;
     }
     setProjectRole(json.data.myRole);
-    setCurrentUserId(json.data.currentUserId ?? null);
     setMemberRows(Array.isArray(json.data.members) ? json.data.members : []);
   }, [projectId]);
 
@@ -309,7 +306,6 @@ export default function ProjectDetailPage() {
       } catch {
         if (!cancelled) {
           setProjectRole(null);
-          setCurrentUserId(null);
           setMemberRows([]);
         }
       }
@@ -322,7 +318,7 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (!projectId || loading || !project) return;
     if (!isRequirementsPendingWorkflow(project.workflowStatus)) return;
-    const notice = encodeURIComponent("먼저 요구사항과 작업 단계를 완료하세요.");
+    const notice = encodeURIComponent(REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR);
     router.replace(`/requirements?projectId=${encodeURIComponent(projectId)}&workflowNotice=${notice}`);
   }, [projectId, loading, project, router]);
 
@@ -2897,25 +2893,7 @@ export default function ProjectDetailPage() {
 
           {mainTab !== "overview" ? (
             <div data-ui-label="[P-4-4] Project Region — Members (unified)">
-              {mainTab === "members" ? (
-                <ProjectMembersSection
-                  projectId={projectId}
-                  members={memberRows}
-                  canManageMembers={rbac.canManageMembers}
-                  onChanged={reloadSessionContext}
-                  tasks={tasks}
-                  gitRequests={gitRequests}
-                  taskPrompts={taskPrompts}
-                  canRequestAiMemberAction={permissions.canRequestAiMemberAction}
-                  canRequestAiReviewAction={permissions.canRequestAiReviewAction}
-                  canDispatchAiMemberAction={permissions.canDispatchAiMemberAction}
-                  currentProjectRole={projectRole}
-                  currentUserId={currentUserId}
-                  memberSurface="unified"
-                  canRunStage2EnvTest={permissions.canEditProject}
-                  isProjectOwner={projectRole === "OWNER"}
-                />
-              ) : null}
+              {mainTab === "members" ? <ProjectMembersSummaryPanel projectId={projectId} members={memberRows} /> : null}
             </div>
           ) : null}
         </>

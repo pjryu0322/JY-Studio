@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from "react";
-import { AppFlowGuidance } from "@/components/layout/AppFlowGuidance";
+import { AppFlowGuidance } from "@/components/workflow/AppFlowGuidance";
 import { PlatformSidebar } from "@/components/layout/PlatformSidebar";
 
 export function PlatformShell({ children }: { children: ReactNode }) {

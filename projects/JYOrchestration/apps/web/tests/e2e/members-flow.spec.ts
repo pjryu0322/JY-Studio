@@ -10,6 +10,9 @@ test.describe("E2E members", () => {
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
     await page.getByTestId("project-detail-tab-members").click();
+    await expect(page.getByTestId("project-members-summary-panel")).toBeVisible();
+    await page.getByTestId("project-members-summary-admin-link").click();
+    await expect(page).toHaveURL(/\/project-admin\/members\?projectId=/, { timeout: 15_000 });
     await expect(page.getByTestId("project-unified-members-section")).toBeVisible();
   });
 

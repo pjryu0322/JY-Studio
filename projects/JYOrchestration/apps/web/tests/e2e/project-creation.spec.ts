@@ -23,7 +23,13 @@ test.describe("E2E project", () => {
     const projectId = new URL(page.url()).searchParams.get("projectId");
     expect(projectId).toBeTruthy();
     await page.getByTestId("requirements-project-idea-textarea").fill(`E2E 아이디어: ${name}`);
-    await page.getByRole("button", { name: /다음 단계: 협업/ }).click();
+    await page.getByTestId("requirements-scope-in").fill("회의록 업로드·요약·액션 항목 추출");
+    await page.getByTestId("requirements-scope-out").fill("결제·모바일 네이티브 앱");
+    await page.getByTestId("requirements-target-users").fill("팀 리더·PM");
+    await page.getByTestId("requirements-success-criteria").fill("회의록 1건을 1분 내 요약 초안 생성");
+    await page.getByTestId("requirements-confirm-button").click();
+    await expect(page.getByTestId("requirements-goto-collaboration")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("requirements-goto-collaboration").click();
     await expect(page).toHaveURL(/\/collaboration/, { timeout: 20_000 });
     await page.goto("/");
     await page.getByTestId(`project-open-${projectId}`).click();

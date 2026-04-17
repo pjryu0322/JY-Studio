@@ -2,22 +2,23 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
+import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
+import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
 
-const linkPrimary: CSSProperties = {
+const btnPrimary: CSSProperties = {
   display: "inline-block",
   padding: "10px 16px",
   borderRadius: 10,
   border: "1px solid #2563eb",
   background: "#2563eb",
   color: "#fff",
-  fontWeight: 900,
+  fontWeight: 800,
   textDecoration: "none",
   fontSize: 13,
 };
 
-const linkSecondary: CSSProperties = {
+const btnSecondary: CSSProperties = {
   display: "inline-block",
   padding: "10px 16px",
   borderRadius: 10,
@@ -34,26 +35,69 @@ export default function FeaturesPage() {
     <div>
       <WorkflowPageHeader
         title="기능"
-        subtitle="협업·스펙에서 정리된 기능 단위가 이 단계에 모입니다. 아직 카탈로그가 비어 있으면 이전 단계로 돌아가 맥락을 채우세요."
+        subtitle="요구사항이 정리되고 스펙이 확정되면, 기능 단위로 쪼개져 작업·실행 계획으로 이어집니다."
         backHref="/collaboration"
         backLabel="협업으로"
       />
 
-      <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-        <WorkflowEmptyState
-          title="등록된 기능 없음"
-          message="이 화면은 아직 실데이터 목록과 연결되지 않았습니다. 공식 순서대로 협업을 진행하고, 실행 계획에서 스펙·계획을 확정하면 작업 단계로 자연스럽게 이어집니다."
-          right={
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-              <Link href="/collaboration" style={linkPrimary}>
-                이전 단계: 협업
-              </Link>
-              <Link href="/" style={linkSecondary}>
-                실행 계획(홈)
-              </Link>
-            </div>
-          }
-        />
+      <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
+        <WorkflowCard padding={16}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>시작 안내</div>
+          <ul style={{ margin: "0 0 14px 0", paddingLeft: 20, fontSize: 14, color: "#334155", lineHeight: 1.65 }}>
+            <li>기능은 요구사항 승인·스펙 확정 후 자동으로 후보가 쌓이도록 설계되어 있습니다.</li>
+            <li>실행 계획에서 AI로 스펙을 생성·확정하면 이후 단계가 자연스럽게 열립니다.</li>
+            <li>지금은 데이터가 없어도, 아래 버튼으로 다음 행동을 선택할 수 있습니다.</li>
+          </ul>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <Link href="/requirements" style={btnPrimary}>
+              요구사항으로
+            </Link>
+            <Link href="/" style={btnSecondary}>
+              실행 계획(홈) — AI 스펙
+            </Link>
+            <Link href="/collaboration" style={btnSecondary}>
+              협업에서 맥락 보강
+            </Link>
+            <Link href="/tasks" style={btnSecondary}>
+              작업 화면
+            </Link>
+          </div>
+        </WorkflowCard>
+
+        <WorkflowCard padding={16}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>수동·초안</div>
+          <p style={{ margin: "0 0 12px 0", fontSize: 14, color: "#475569", lineHeight: 1.6 }}>
+            기능 목록의 직접 편집 UI는 실행 계획·스펙 워크스페이스와 연결해 확장할 예정입니다. 지금은 실행 계획에서 텍스트로 요구를 구체화하는 것이 가장 빠른 경로입니다.
+          </p>
+          <Link href="/" style={btnPrimary}>
+            실행 계획에서 이어하기
+          </Link>
+        </WorkflowCard>
+
+        <details style={{ borderRadius: 12, border: "1px solid #e2e8f0", padding: "12px 14px", background: "#fff" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 900, fontSize: 14, color: "#1e3a8a" }}>
+            샘플 구조 보기 (데모)
+          </summary>
+          <WorkflowDemoSampleBanner>아래 카드는 UI 예시용 샘플이며 실제 데이터가 아닙니다.</WorkflowDemoSampleBanner>
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {["회의록 업로드", "요약·액션 추출", "권한 관리"].map((title) => (
+              <div
+                key={title}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px dashed #cbd5e1",
+                  background: "#f8fafc",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#334155",
+                }}
+              >
+                {title} <span style={{ fontWeight: 600, color: "#64748b" }}>· 우선순위 P1 (샘플)</span>
+              </div>
+            ))}
+          </div>
+        </details>
       </div>
     </div>
   );
