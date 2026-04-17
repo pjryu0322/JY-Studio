@@ -22,7 +22,6 @@ import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceMod
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { PROJECT_WORKFLOW_REQUIREMENTS_PENDING } from "@/lib/project/projectWorkflowStatus";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import type { Project } from "@/components/project-spec/types";
 
@@ -304,23 +303,6 @@ type PatchBody = {
   specPromptPreset?: string | null;
 };
 
-function patchDataContainsMeaningfulSpec(d: Record<string, unknown>): boolean {
-  const keys = [
-    "specCoreGoals",
-    "specScopeIn",
-    "specScopeOut",
-    "specTargetUsers",
-    "specSuccessCriteria",
-    "executionPlanMarkdown",
-  ] as const;
-  for (const k of keys) {
-    if (!(k in d)) continue;
-    const v = d[k];
-    if (typeof v === "string" && v.trim().length > 0) return true;
-  }
-  return false;
-}
-
 export async function PATCH(
   request: NextRequest,
   segmentData: { params: Promise<{ projectId: string }> }
@@ -406,19 +388,6 @@ export async function PATCH(
 
     if (Object.keys(data).length === 0 && !hasPromptPatch) {
       return NextResponse.json({ success: false, message: "수정할 필드가 없습니다." }, { status: 400 });
-    }
-
-    if (Object.keys(data).length > 0) {
-      const priorWf = await prisma.project.findUnique({
-        where: { id },
-        select: { workflowStatus: true },
-      });
-      if (
-        priorWf?.workflowStatus === PROJECT_WORKFLOW_REQUIREMENTS_PENDING &&
-        patchDataContainsMeaningfulSpec(data)
-      ) {
-        data.workflowStatus = null;
-      }
     }
 
     let updated = await prisma.project.findUnique({ where: { id }, select: PROJECT_MAP_SELECT });
