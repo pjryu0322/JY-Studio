@@ -115,30 +115,35 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
     return <>{children}</>;
   }
 
+  const onRequirementsPage = current === "requirements";
+  const hideGuidanceFooter = onRequirementsPage;
+
   return (
     <div data-testid="app-flow-guidance">
       <FlowProgressStrip current={current} gates={gates} loading={loading} />
 
       <div style={{ marginBottom: 24 }}>{children}</div>
 
-      <div
-        style={{
-          marginTop: 8,
-          paddingTop: 16,
-          borderTop: "1px solid #e5e7eb",
-          display: "grid",
-          gap: 12,
-        }}
-      >
-        <FlowStatusSummary lines={statusLines} />
-        <FlowNextActionCard
-          offFlow={offFlow}
-          currentIsRequirements={current === "requirements"}
-          next={next}
-          nextReachable={nextReachable}
-          nextBlockReason={nextBlockReason}
-        />
-      </div>
+      {hideGuidanceFooter ? null : (
+        <div
+          style={{
+            marginTop: 8,
+            paddingTop: 16,
+            borderTop: "1px solid #e5e7eb",
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <FlowStatusSummary lines={statusLines} />
+          <FlowNextActionCard
+            offFlow={offFlow}
+            currentIsRequirements={onRequirementsPage}
+            next={next}
+            nextReachable={nextReachable}
+            nextBlockReason={nextBlockReason}
+          />
+        </div>
+      )}
     </div>
   );
 }

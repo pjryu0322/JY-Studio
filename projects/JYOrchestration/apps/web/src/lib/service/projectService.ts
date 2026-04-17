@@ -2,6 +2,7 @@
  * Project CRUD / 설정 (API 레이어에서 호출).
  */
 import type { Project } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
@@ -21,27 +22,62 @@ export async function listProjectsAccessibleToUser(
   options?: { includeDeleted?: boolean }
 ) {
   const includeDeleted = options?.includeDeleted === true;
-  return prisma.project.findMany({
-    where: {
-      AND: [
-        ...(includeDeleted ? [] : [{ status: { not: PROJECT_LIFECYCLE_DELETED } }]),
-        {
-          OR: [
-            { ownerUserId: userId },
-            {
-              members: {
-                some: {
-                  userId,
-                  memberType: "HUMAN",
+  try {
+    if (skipPrismaProjectListDueToP2022) {
+      return listProjectsAccessibleToUserViaRawSelect(userId, includeDeleted);
+    }
+    return await prisma.project.findMany({
+      where: {
+        AND: [
+          ...(includeDeleted ? [] : [{ status: { not: PROJECT_LIFECYCLE_DELETED } }]),
+          {
+            OR: [
+              { ownerUserId: userId },
+              {
+                members: {
+                  some: {
+                    userId,
+                    memberType: "HUMAN",
+                  },
                 },
               },
-            },
-          ],
-        },
-      ],
-    },
-    orderBy: { createdAt: "desc" },
-  });
+            ],
+          },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022") {
+      skipPrismaProjectListDueToP2022 = true;
+      return listProjectsAccessibleToUserViaRawSelect(userId, includeDeleted);
+    }
+    throw e;
+  }
+}
+
+let skipPrismaProjectListDueToP2022 = false;
+
+async function listProjectsAccessibleToUserViaRawSelect(userId: string, includeDeleted: boolean): Promise<Project[]> {
+  const rows = await prisma.$queryRaw<Array<Project>>`
+    SELECT p.*
+    FROM "projects" p
+    WHERE
+      (${includeDeleted} = true OR p."status" <> ${PROJECT_LIFECYCLE_DELETED})
+    AND
+    (
+      p."ownerUserId" = ${userId}
+      OR EXISTS (
+        SELECT 1
+        FROM "project_members" pm
+        WHERE pm."projectId" = p."id"
+          AND pm."userId" = ${userId}
+          AND pm."memberType" = 'HUMAN'
+      )
+    )
+    ORDER BY p."createdAt" DESC
+  `;
+  return rows;
 }
 
 export type CreateProjectInput = {

@@ -1,0 +1,1215 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { fetchProjectById } from "@/components/project-spec/api";
+import type { Project } from "@/components/project-spec/types";
+import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
+import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
+import type { RequirementsMemberChip } from "@/components/requirements/RequirementsHeader";
+import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
+import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
+import { RequirementsNavBreadcrumb } from "@/components/requirements/RequirementsNavBreadcrumb";
+import { RequirementsParticipantBar, type ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import { RequirementsDraftPanel } from "@/components/requirements/RequirementsDraftPanel";
+import { RequirementsPromptView } from "@/components/requirements/RequirementsPromptView";
+import { RequirementsSummaryPanel } from "@/components/requirements/RequirementsSummaryPanel";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
+import { bumpDraftVersion, confirmDraft, draftMeetsMinimum, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
+import { buildPromptPresenterView, type RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
+import {
+  projectMeetsRequirementsAnalysisComplete,
+  type RequirementsAnalysisFieldSlice,
+} from "@/lib/project/requirementsAnalysisGate";
+import { joinSuccessCriteriaAndNfr, splitSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
+import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
+import {
+  newChatMessage,
+  parseRequirementsRoomState,
+  VIRTUAL_AI_PLANNER_ID,
+  type RequirementsRoomStateV3,
+} from "@/lib/project/requirementsRoomState";
+import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/appFlowModel";
+
+function notifyAppFlowProjectContextChanged() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT));
+}
+
+const LOCAL_SHELL_KEY = "jyo:requirements-workspace-local-v3";
+
+type LocalShell = {
+  room: RequirementsRoomStateV3;
+  goals: string;
+  scopeIn: string;
+  scopeOut: string;
+  targetUsers: string;
+  success: string;
+  nfr: string;
+  openIssues: string;
+  priorityFeatures: string;
+};
+
+function readLocalShell(): LocalShell | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(LOCAL_SHELL_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as LocalShell;
+    if (!o || typeof o !== "object") return null;
+    return {
+      room: parseRequirementsRoomState(o.room),
+      goals: String(o.goals ?? ""),
+      scopeIn: String(o.scopeIn ?? ""),
+      scopeOut: String(o.scopeOut ?? ""),
+      targetUsers: String(o.targetUsers ?? ""),
+      success: String(o.success ?? ""),
+      nfr: String(o.nfr ?? ""),
+      openIssues: String(o.openIssues ?? ""),
+      priorityFeatures: String(o.priorityFeatures ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalShell(s: LocalShell) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(LOCAL_SHELL_KEY, JSON.stringify(s));
+  } catch {
+    /* ignore */
+  }
+}
+
+function concatUserContext(messages: RequirementsRoomStateV3["requirementsConversation"]["messages"]): string {
+  return messages
+    .filter((m) => m.role === "user")
+    .map((m) => m.content.trim())
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function formatDialogueExcerpt(messages: RequirementsRoomStateV3["requirementsConversation"]["messages"], maxChars = 12000): string {
+  const lines = messages.slice(-48).map((m) => {
+    const who =
+      m.role === "user"
+        ? "사용자"
+        : m.role === "ai"
+          ? `AI${m.speakerName ? `(${m.speakerName})` : ""}`
+          : m.role === "human"
+            ? `멤버${m.speakerName ? `(${m.speakerName})` : ""}`
+            : "시스템";
+    return `${who}: ${m.content}`;
+  });
+  return lines.join("\n").slice(-maxChars);
+}
+
+type MemberRow = RequirementsMemberChip & { role: string; isOwner?: boolean; userId?: string | null };
+
+type SessionUser = { id: string; email: string; name: string };
+
+async function fetchProjectWithRetry(projectId: string): Promise<{ project: Project | null; errorMessage: string | null }> {
+  const first = await fetchProjectById(projectId);
+  if (first.project) return first;
+  await new Promise((r) => setTimeout(r, 450));
+  return fetchProjectById(projectId);
+}
+
+export function RequirementsWorkspace({
+  initialProjectId,
+  initialWorkflowNotice,
+}: {
+  readonly initialProjectId: string;
+  readonly initialWorkflowNotice: string;
+}) {
+  const router = useRouter();
+  const showScreenLabels = useShowScreenLabels();
+
+  const [resolvedProjectId, setResolvedProjectId] = useState(() => initialProjectId.trim());
+  const [project, setProject] = useState<Project | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [members, setMembers] = useState<MemberRow[]>([]);
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [room, setRoom] = useState<RequirementsRoomStateV3>(() => parseRequirementsRoomState(null));
+  const [conversationStatus, setConversationStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+  const [loadedConversationProjectId, setLoadedConversationProjectId] = useState<string>("");
+  const [goals, setGoals] = useState("");
+  const [scopeIn, setScopeIn] = useState("");
+  const [scopeOut, setScopeOut] = useState("");
+  const [targetUsers, setTargetUsers] = useState("");
+  const [success, setSuccess] = useState("");
+  const [nfr, setNfr] = useState("");
+  const [openIssues, setOpenIssues] = useState("");
+  const [priorityFeatures, setPriorityFeatures] = useState("");
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [selectedTargetId, setSelectedTargetId] = useState<string>(VIRTUAL_AI_PLANNER_ID);
+  const [selectedTargetName, setSelectedTargetName] = useState("AI 기획자");
+  const [fetchNonce, setFetchNonce] = useState(0);
+  const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
+  const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
+  const [aiInvokePending, setAiInvokePending] = useState(false);
+  const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [promptView, setPromptView] = useState<RequirementsPromptPresenterView | null>(null);
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    setResolvedProjectId(initialProjectId.trim());
+  }, [initialProjectId]);
+
+  useEffect(() => {
+    if (resolvedProjectId) return;
+    try {
+      const s = sessionStorage.getItem(APP_FLOW_LAST_PROJECT_KEY);
+      const sid = String(s ?? "").trim();
+      if (sid) setResolvedProjectId(sid);
+    } catch {
+      /* ignore */
+    }
+  }, [resolvedProjectId]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const json = (await res.json()) as { success?: boolean; data?: SessionUser | null };
+        if (res.ok && json.success && json.data) setSessionUser(json.data);
+        else setSessionUser(null);
+      } catch {
+        setSessionUser(null);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setAiConnPhase("checking");
+      setAiConnDetail(undefined);
+      try {
+        const res = await fetch("/api/requirements/ai-connection", { credentials: "include" });
+        const json = (await res.json()) as {
+          success?: boolean;
+          message?: string;
+          data?: { connected?: boolean; code?: string; message?: string; checkedAt?: string };
+        };
+        if (cancelled) return;
+        if (!res.ok || json.success === false) {
+          setAiConnPhase("error");
+          setAiConnDetail(json.message || `HTTP ${res.status}`);
+          return;
+        }
+        const d = json.data;
+        if (!d) {
+          setAiConnPhase("error");
+          setAiConnDetail("응답 형식 오류");
+          return;
+        }
+        if (d.connected) {
+          setAiConnPhase("ready");
+          setAiConnDetail(undefined);
+        } else if (d.code === "NO_KEY") {
+          setAiConnPhase("no_key");
+          setAiConnDetail(d.message);
+        } else {
+          setAiConnPhase("error");
+          setAiConnDetail(d.message);
+        }
+      } catch {
+        if (!cancelled) {
+          setAiConnPhase("error");
+          setAiConnDetail("네트워크 오류");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!resolvedProjectId) {
+      const local = readLocalShell();
+      if (local) {
+        setRoom(local.room);
+        setGoals(local.goals);
+        setScopeIn(local.scopeIn);
+        setScopeOut(local.scopeOut);
+        setTargetUsers(local.targetUsers);
+        setSuccess(local.success);
+        setNfr(local.nfr);
+        setOpenIssues(local.openIssues);
+        setPriorityFeatures(local.priorityFeatures);
+      }
+      setConversationStatus("loaded");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setConversationStatus("loading");
+      setLoadedConversationProjectId("");
+      setLoadError(null);
+      const { project: p, errorMessage } = await fetchProjectWithRetry(resolvedProjectId);
+      if (cancelled) return;
+      if (!p) {
+        setProject(null);
+        setLoadError(errorMessage || "프로젝트 정보를 잠시 불러오지 못했습니다.");
+        setMembers([]);
+        setConversationStatus("error");
+        return;
+      }
+      setProject(p);
+      setLoadError(null);
+      const r = parseRequirementsRoomState(p.requirementsRoomState);
+      setRoom(r);
+      setLoadedConversationProjectId(resolvedProjectId);
+      setGoals(String(p.specCoreGoals ?? "").trim());
+      setScopeIn(String(p.specScopeIn ?? "").trim());
+      setScopeOut(String(p.specScopeOut ?? "").trim());
+      setTargetUsers(String(p.specTargetUsers ?? "").trim());
+      const sc = splitSuccessCriteriaAndNfr(p.specSuccessCriteria);
+      setSuccess(sc.success);
+      setNfr(sc.nfr);
+      setOpenIssues(r.openIssues ?? "");
+      setPriorityFeatures(r.priorityFeatures ?? "");
+      setConversationStatus("loaded");
+
+      const res = await fetch(`/api/project/members?projectId=${encodeURIComponent(resolvedProjectId)}`, {
+        credentials: "include",
+      });
+      const json = (await res.json()) as { success?: boolean; data?: MemberRow[] };
+      if (cancelled) return;
+      if (!res.ok || !json.success || !Array.isArray(json.data)) {
+        setMembers([]);
+        return;
+      }
+      setMembers(json.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedProjectId, fetchNonce]);
+
+  const reloadMembers = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    const res = await fetch(`/api/project/members?projectId=${encodeURIComponent(pid)}`, { credentials: "include" });
+    const json = (await res.json()) as { success?: boolean; data?: MemberRow[] };
+    if (!res.ok || !json.success || !Array.isArray(json.data)) {
+      setMembers([]);
+      return;
+    }
+    setMembers(json.data);
+  }, [resolvedProjectId]);
+
+  const humanOthers = useMemo(() => members.filter((m) => m.memberType === "HUMAN" && !m.isOwner), [members]);
+  const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
+
+  const aiPlannerStatusLabel = useMemo(() => {
+    if (aiInvokePending) return "응답 대기 중(OpenAI 호출 중)";
+    if (aiConnPhase === "checking") return "연결 확인 중…";
+    if (aiConnPhase === "no_key") return "연결 확인 필요(API 키 없음)";
+    if (aiConnPhase === "error") {
+      const d = (aiConnDetail ?? "").trim();
+      return d ? `연결 실패: ${d.slice(0, 72)}${d.length > 72 ? "…" : ""}` : "연결 실패";
+    }
+    if (aiConnPhase === "ready") {
+      if (aiLastInvoke && !aiLastInvoke.ok) return "연결됨 · 마지막 호출 실패";
+      if (aiLastInvoke?.ok) return "연결됨 · 마지막 응답 성공";
+      return "연결됨 · 호출 전";
+    }
+    return "대기";
+  }, [aiConnPhase, aiConnDetail, aiInvokePending, aiLastInvoke]);
+
+  const participants = useMemo((): ParticipantOption[] => {
+    const list: ParticipantOption[] = [
+      { id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자", kind: "ai", onlineHint: false, aiStatusLabel: aiPlannerStatusLabel },
+    ];
+    for (const m of aiMembers) {
+      list.push({
+        id: m.memberId,
+        name: (m.displayName || m.email || "AI").slice(0, 24),
+        kind: "ai",
+        onlineHint: false,
+        aiStatusLabel: aiPlannerStatusLabel,
+      });
+    }
+    for (const m of members) {
+      if (m.memberType !== "HUMAN") continue;
+      const uid = m.userId ?? null;
+      list.push({
+        id: m.memberId,
+        name: (m.displayName || m.email || "멤버").slice(0, 24),
+        kind: "human",
+        onlineHint: Boolean(sessionUser?.id && uid && sessionUser.id === uid),
+      });
+    }
+    const seen = new Set<string>();
+    return list.filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel]);
+
+  const conversation = room.requirementsConversation;
+  const conversationMessages = conversation.messages;
+  // 로딩 중에는 null로 전달해 "기록 없음"으로 오판하지 않게 합니다.
+  const messages = conversationStatus === "loaded" ? conversationMessages : null;
+  const draftDoc = room.requirementsDraft ?? null;
+  const onboardingKey = useMemo(() => (resolvedProjectId.trim() ? `pid:${resolvedProjectId.trim()}` : "no-pid"), [resolvedProjectId]);
+  const [onboardingAppliedKey, setOnboardingAppliedKey] = useState<string | null>(null);
+
+  const toolButtonStyle: CSSProperties = useMemo(
+    () => ({
+      width: "100%",
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: "1px solid #e5e7eb",
+      background: "#fff",
+      textAlign: "left",
+      fontWeight: 800,
+      fontSize: 12,
+      cursor: "pointer",
+    }),
+    []
+  );
+
+  const isDraftIntent = useCallback((text: string) => {
+    const t = text.trim();
+    if (!t) return false;
+    return /(초안|문서화|문서 형태|정리해줘|정리해 줘|요구사항.*(만들|작성)|요구사항\s*초안\s*생성)/i.test(t);
+  }, []);
+
+  const analysisSlice = useMemo((): RequirementsAnalysisFieldSlice => {
+    const userText = concatUserContext(conversationMessages);
+    const description = userText.trim() || null;
+    return {
+      description,
+      specCoreGoals: goals.trim() || null,
+      specScopeIn: scopeIn.trim() || null,
+      specScopeOut: scopeOut.trim() || null,
+      specTargetUsers: targetUsers.trim() || null,
+      specSuccessCriteria: joinSuccessCriteriaAndNfr(success, nfr).trim() || null,
+      confirmedSpecMarkdown: project?.confirmedSpecMarkdown ?? null,
+    };
+  }, [conversationMessages, goals, scopeIn, scopeOut, targetUsers, success, nfr, project?.confirmedSpecMarkdown]);
+
+  const analysisComplete = useMemo(() => projectMeetsRequirementsAnalysisComplete(analysisSlice), [analysisSlice]);
+  const requirementsPending = project ? isRequirementsPendingWorkflow(project.workflowStatus) : true;
+
+  const persistRemote = useCallback(
+    async (nextRoom: RequirementsRoomStateV3, spec: Partial<Project>) => {
+      const pid = resolvedProjectId.trim();
+      setRoom(nextRoom);
+      if (!pid) {
+        const g = spec.specCoreGoals !== undefined ? String(spec.specCoreGoals ?? "") : goals;
+        const si = spec.specScopeIn !== undefined ? String(spec.specScopeIn ?? "") : scopeIn;
+        const so = spec.specScopeOut !== undefined ? String(spec.specScopeOut ?? "") : scopeOut;
+        const tu = spec.specTargetUsers !== undefined ? String(spec.specTargetUsers ?? "") : targetUsers;
+        const sc = spec.specSuccessCriteria !== undefined ? String(spec.specSuccessCriteria ?? "") : joinSuccessCriteriaAndNfr(success, nfr);
+        const scParts = splitSuccessCriteriaAndNfr(sc);
+        writeLocalShell({
+          room: nextRoom,
+          goals: g,
+          scopeIn: si,
+          scopeOut: so,
+          targetUsers: tu,
+          success: scParts.success,
+          nfr: scParts.nfr,
+          openIssues: nextRoom.openIssues ?? openIssues,
+          priorityFeatures: nextRoom.priorityFeatures ?? priorityFeatures,
+        });
+        return null;
+      }
+      const userBlob = concatUserContext(nextRoom.requirementsConversation.messages).trim();
+      const body: Record<string, unknown> = {
+        requirementsRoomState: {
+          ...nextRoom,
+          openIssues: openIssues.trim() || undefined,
+          priorityFeatures: priorityFeatures.trim() || undefined,
+        },
+      };
+      if (userBlob) {
+        body.description = userBlob.slice(0, 60000);
+      }
+      if (spec.specCoreGoals !== undefined) body.specCoreGoals = spec.specCoreGoals;
+      if (spec.specScopeIn !== undefined) body.specScopeIn = spec.specScopeIn;
+      if (spec.specScopeOut !== undefined) body.specScopeOut = spec.specScopeOut;
+      if (spec.specTargetUsers !== undefined) body.specTargetUsers = spec.specTargetUsers;
+      if (spec.specSuccessCriteria !== undefined) body.specSuccessCriteria = spec.specSuccessCriteria;
+      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string; code?: string; patchApplied?: boolean; data?: { project?: Project } };
+      // DB 스키마가 오래된 환경에서는 success=true여도 patchApplied=false로 내려올 수 있습니다.
+      if (!res.ok || !json.success || !json.data?.project) {
+        throw new Error(json.message || "저장에 실패했습니다.");
+      }
+      setProject(json.data.project);
+      notifyAppFlowProjectContextChanged();
+      return json.data.project;
+    },
+    [resolvedProjectId, openIssues, priorityFeatures, goals, scopeIn, scopeOut, targetUsers, success, nfr]
+  );
+
+  useEffect(() => {
+    if (conversationStatus !== "loaded") return;
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    if (!project) return;
+    if (loadedConversationProjectId !== pid) return;
+    if (onboardingAppliedKey === onboardingKey) return;
+    const existing = room.requirementsConversation.messages;
+    if (existing.length > 0) {
+      setOnboardingAppliedKey(onboardingKey);
+      return;
+    }
+    // first entry: no history -> insert AI planner guide once per projectId
+    const pname = (project.name ?? "").trim() || "(이름 없음)";
+    const pdesc = (project.description ?? "").trim();
+    const guide = [
+      `${pname}${pdesc ? ` (${pdesc.slice(0, 60)}${pdesc.length > 60 ? "…" : ""})` : ""}를 기준으로 요구사항을 정리해볼게요.`,
+      "",
+      "먼저 아래 질문 4개만 답해 주세요.",
+      "1) 누가 사용하는 서비스인가요? (예: 내부 직원 / 관리자 / 외부 고객)",
+      "2) 사용자가 반드시 해야 하는 핵심 기능 3가지는? (예: 작성·검색·공유)",
+      "3) 권한/역할이 필요한가요? (예: 작성자/검토자/관리자)",
+      "4) 검색·보관·첨부(파일)·알림 같은 운영 요구가 있나요?",
+      "",
+      "짧게 예시로 이렇게 시작해도 좋아요: “내부 직원이 회의록을 작성·검색·공유하고, 관리자는 권한과 보관 정책을 설정해야 해요.”",
+    ].join("\n");
+
+    const nextRoom: RequirementsRoomStateV3 = {
+      ...room,
+      requirementsConversation: {
+        ...room.requirementsConversation,
+        projectId: pid,
+        messages: [
+          newChatMessage({
+            role: "ai",
+            body: guide,
+            speakerType: "AI",
+            speakerId: VIRTUAL_AI_PLANNER_ID,
+            speakerName: "AI 기획자",
+            messageType: "NOTICE",
+          }),
+        ],
+      },
+    };
+    setOnboardingAppliedKey(onboardingKey);
+    void persistRemote(nextRoom, {});
+  }, [conversationStatus, resolvedProjectId, loadedConversationProjectId, project, onboardingAppliedKey, onboardingKey, room, persistRemote]);
+
+  const onOrganizeRequirements = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) {
+      setError("프로젝트에 연결된 뒤 요구사항을 정리할 수 있습니다.");
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const excerpt = formatDialogueExcerpt(conversationMessages);
+      const res = await fetch("/api/requirements/draft-generate", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: pid,
+          projectName: project?.name ?? "",
+          projectDescription: project?.description ?? "",
+          stage: "requirements",
+          userMessage: "요구사항을 문서 형태로 정리해줘. 필수 항목(개요/사용자/기능/성공기준)이 빠지면 추론해서 채우고, 불확실하면 미결정 이슈로 남겨줘.",
+          dialogueExcerpt: excerpt,
+          existingDraft: draftDoc,
+        }),
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: {
+          draft?: {
+            overview: string;
+            goals: string[];
+            users: string[];
+            features: string[];
+            excluded: string[];
+            nonFunctional: string[];
+            successCriteria: string[];
+            openIssues: string[];
+          };
+        };
+      };
+      if (!res.ok || !json.success || !json.data?.draft) {
+        throw new Error(json.message || "요구사항 정리에 실패했습니다.");
+      }
+
+      const nextDraft = confirmDraft(
+        bumpDraftVersion(draftDoc, {
+          projectId: pid,
+          overview: json.data.draft.overview,
+          goals: json.data.draft.goals,
+          users: json.data.draft.users,
+          features: json.data.draft.features,
+          excluded: json.data.draft.excluded,
+          nonFunctional: json.data.draft.nonFunctional,
+          successCriteria: json.data.draft.successCriteria,
+          openIssues: json.data.draft.openIssues,
+          createdAt: new Date().toISOString(),
+          source: { messageCount: messages.length, lastMessageAt: messages[messages.length - 1]?.createdAt },
+        })
+      );
+
+      const nextRoom: RequirementsRoomStateV3 = {
+        ...room,
+        requirementsDraft: nextDraft,
+        requirementsConversation: {
+          ...room.requirementsConversation,
+          projectId: pid,
+          messages: [
+            ...messages,
+            newChatMessage({
+              role: "system",
+              body: "요구사항이 정리되었습니다.",
+              speakerType: "SYSTEM",
+              speakerId: "system",
+              speakerName: "시스템",
+              messageType: "NOTICE",
+            }),
+          ],
+        },
+      };
+      await persistRemote(nextRoom, {});
+
+      const workflowRes = await fetch(`/api/projects/${encodeURIComponent(pid)}/workflow/confirm-requirements`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const workflowJson = (await workflowRes.json()) as { success?: boolean; message?: string; data?: Project };
+      if (!workflowRes.ok || !workflowJson.success || !workflowJson.data) {
+        throw new Error(workflowJson.message || "정리 후 단계 반영에 실패했습니다.");
+      }
+      setProject(workflowJson.data);
+      notifyAppFlowProjectContextChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오류");
+    } finally {
+      setBusy(false);
+    }
+  }, [resolvedProjectId, busy, messages, project?.name, project?.description, draftDoc, room, persistRemote]);
+
+  const isAiTarget = useCallback(
+    (targetId: string) => {
+      if (targetId === VIRTUAL_AI_PLANNER_ID) return true;
+      const row = members.find((m) => m.memberId === targetId);
+      return Boolean(row?.memberType === "AI");
+    },
+    [members]
+  );
+
+  const onSend = useCallback(async () => {
+    const text = input.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const userMsg = newChatMessage({
+        role: "user",
+        body: text,
+        directedToId: selectedTargetId,
+        directedToName: selectedTargetName,
+        speakerId: sessionUser?.id ?? "me",
+        speakerName: sessionUser?.name ?? "나",
+        speakerType: "USER",
+        messageType: selectedTargetName ? "QUESTION" : "STATEMENT",
+      });
+      const msgs = [...messages, userMsg];
+      const turn = room.aiQuestionIndex ?? 0;
+
+      if (isAiTarget(selectedTargetId)) {
+        const aiName = selectedTargetId === VIRTUAL_AI_PLANNER_ID ? "AI 기획자" : selectedTargetName;
+        setPromptView(
+          buildPromptPresenterView({
+            projectName: project?.name ?? "",
+            projectDescription: project?.description ?? "",
+            targetName: aiName,
+            messages,
+            latestUserMessage: text,
+          })
+        );
+        // OpenAI 내부 진행 로그는 UI에 노출하지 않습니다(typing indicator로 대체).
+        const withCalling: RequirementsRoomStateV3 = {
+          ...room,
+          requirementsConversation: { ...room.requirementsConversation, projectId: resolvedProjectId.trim(), messages: msgs },
+        };
+        await persistRemote(withCalling, {});
+        setAiInvokePending(true);
+        const pid = resolvedProjectId.trim();
+        let finalRoom: RequirementsRoomStateV3;
+        try {
+          const excerpt = formatDialogueExcerpt(conversationMessages);
+          const endpoint = isDraftIntent(text) ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
+          const res = await fetch(endpoint, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...(pid ? { projectId: pid } : {}),
+              projectName: project?.name ?? "",
+              projectDescription: project?.description ?? "",
+              stage: "requirements",
+              userMessage: text,
+              dialogueExcerpt: excerpt,
+            }),
+          });
+          const json = (await res.json()) as {
+            success?: boolean;
+            message?: string;
+            data?: { reply?: string; draft?: { overview: string; goals: string[]; users: string[]; features: string[]; excluded: string[]; nonFunctional: string[]; successCriteria: string[]; openIssues: string[] } };
+          };
+          if (res.ok && json.success && (json.data?.reply || json.data?.draft)) {
+            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+            const createdDraft = json.data?.draft ?? null;
+            const aiReply =
+              json.data?.reply ??
+              (createdDraft
+                ? `요구사항 초안을 정리했습니다.\n\n- 프로젝트 개요: ${createdDraft.overview}\n- 대상 사용자: ${createdDraft.users.join(", ")}\n- 핵심 기능: ${createdDraft.features.join(", ")}\n- 성공 기준: ${createdDraft.successCriteria.join(", ")}\n${createdDraft.openIssues.length ? `- 미결정 이슈: ${createdDraft.openIssues.join(", ")}` : ""}`.trim()
+                : "");
+
+            const nextDraftDoc =
+              createdDraft && pid
+                ? bumpDraftVersion(
+                    draftDoc,
+                    {
+                      projectId: pid,
+                      overview: createdDraft.overview,
+                      goals: createdDraft.goals,
+                      users: createdDraft.users,
+                      features: createdDraft.features,
+                      excluded: createdDraft.excluded,
+                      nonFunctional: createdDraft.nonFunctional,
+                      successCriteria: createdDraft.successCriteria,
+                      openIssues: createdDraft.openIssues,
+                      createdAt: new Date().toISOString(),
+                      source: { messageCount: messages.length, lastMessageAt: messages[messages.length - 1]?.createdAt },
+                    }
+                  )
+                : null;
+
+            finalRoom = {
+              ...withCalling,
+              aiQuestionIndex: turn + 1,
+              requirementsConversation: {
+                ...withCalling.requirementsConversation,
+                messages: [
+                  ...withCalling.requirementsConversation.messages,
+                  newChatMessage({
+                    role: "ai",
+                    body: aiReply,
+                    speakerType: "AI",
+                    speakerId: selectedTargetId,
+                    speakerName: aiName,
+                    messageType: "ANSWER",
+                  }),
+                ],
+              },
+              ...(nextDraftDoc ? { requirementsDraft: nextDraftDoc } : {}),
+            };
+          } else {
+            const errMsg = json.message || "응답 생성 실패";
+            setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
+            finalRoom = {
+              ...withCalling,
+              aiQuestionIndex: turn + 1,
+              requirementsConversation: {
+                ...withCalling.requirementsConversation,
+                messages: [
+                  ...withCalling.requirementsConversation.messages,
+                  newChatMessage({
+                    role: "system",
+                    body: "AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.",
+                    speakerType: "SYSTEM",
+                    speakerId: "system",
+                    speakerName: "시스템",
+                    messageType: "FRIENDLY_ERROR",
+                  }),
+                ],
+              },
+            };
+          }
+        } catch (e) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
+          finalRoom = {
+            ...withCalling,
+            aiQuestionIndex: turn + 1,
+            requirementsConversation: {
+              ...withCalling.requirementsConversation,
+              messages: [
+                ...withCalling.requirementsConversation.messages,
+                newChatMessage({
+                  role: "system",
+                  body: "AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.",
+                  speakerType: "SYSTEM",
+                  speakerId: "system",
+                  speakerName: "시스템",
+                  messageType: "FRIENDLY_ERROR",
+                }),
+              ],
+            },
+          };
+        } finally {
+          setAiInvokePending(false);
+        }
+        setInput("");
+        await persistRemote(finalRoom, {});
+      } else {
+        const nextRoom: RequirementsRoomStateV3 = {
+          ...room,
+          requirementsConversation: {
+            ...room.requirementsConversation,
+            projectId: resolvedProjectId.trim(),
+            messages: [
+              ...msgs,
+              newChatMessage({
+                role: "system",
+                body: `@${selectedTargetName}님께 공개 질문으로 전달되었습니다. 답변은 이 대화에 이어서 남겨 주세요.`,
+                speakerType: "SYSTEM",
+                speakerId: "system",
+                speakerName: "시스템",
+                messageType: "NOTICE",
+              }),
+            ],
+          },
+        };
+        setInput("");
+        await persistRemote(nextRoom, {});
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오류");
+    } finally {
+      setBusy(false);
+    }
+  }, [input, busy, room, messages, selectedTargetId, selectedTargetName, isAiTarget, persistRemote, resolvedProjectId, sessionUser?.id, sessionUser?.name, project?.name, project?.description]);
+
+  const onSaveConversation = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // 대화 저장은 타임라인을 오염시키지 않고, 현재 conversation JSON을 서버에 저장만 합니다.
+      const pid = resolvedProjectId.trim();
+      const next: RequirementsRoomStateV3 = {
+        ...room,
+        requirementsConversation: {
+          ...room.requirementsConversation,
+          projectId: pid,
+        },
+      };
+      await persistRemote(next, {});
+      setLastSavedAt(new Date().toISOString());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오류");
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, room, resolvedProjectId, persistRemote]);
+
+  const onPanelBlurSave = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const nextRoom: RequirementsRoomStateV3 = {
+        ...room,
+        openIssues: openIssues.trim() || undefined,
+        priorityFeatures: priorityFeatures.trim() || undefined,
+      };
+      await persistRemote(nextRoom, {
+        specCoreGoals: goals.trim() || null,
+        specScopeIn: scopeIn.trim() || null,
+        specScopeOut: scopeOut.trim() || null,
+        specTargetUsers: targetUsers.trim() || null,
+        specSuccessCriteria: joinSuccessCriteriaAndNfr(success, nfr).trim() || null,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "오류");
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, room, openIssues, priorityFeatures, goals, scopeIn, scopeOut, targetUsers, success, nfr, persistRemote]);
+
+  const onGotoCollaboration = useCallback(() => {
+    if (requirementsPending) {
+      setError("먼저 요구사항을 정리해야 다음 단계로 진행할 수 있습니다.");
+      return;
+    }
+    const gate = draftMeetsMinimum(draftDoc);
+    if (!gate.ok) {
+      const ok = window.confirm("요구사항 정리 없이 다음 단계로 이동하시겠습니까?");
+      if (!ok) return;
+    }
+    router.push("/collaboration");
+  }, [requirementsPending, router, draftDoc]);
+
+  const ackDev = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/workflow/ack-requirements`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const json = (await res.json()) as { success?: boolean };
+      if (!res.ok || !json.success) return;
+      notifyAppFlowProjectContextChanged();
+      router.push(`/projects/${encodeURIComponent(pid)}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [resolvedProjectId, router]);
+
+  const inviteHref = resolvedProjectId.trim() ? `/projects/${encodeURIComponent(resolvedProjectId.trim())}` : "/";
+  const inviteEmphasis = humanOthers.length === 0;
+  const memberChips: RequirementsMemberChip[] = members.map((m) => ({
+    memberId: m.memberId,
+    displayName: m.displayName,
+    email: m.email,
+    memberType: m.memberType,
+  }));
+  const remoteLocked = !resolvedProjectId.trim();
+  const virtualPlanner = aiMembers.length === 0;
+
+  const trimmedProjectName = project?.name?.trim();
+  const headerProjectName = trimmedProjectName
+    ? trimmedProjectName
+    : !resolvedProjectId.trim()
+      ? "새 요구사항 (프로젝트 미연결)"
+      : loadError
+        ? "프로젝트"
+        : !project
+          ? "불러오는 중…"
+          : "이름 미설정";
+  const headerDescription = !resolvedProjectId.trim()
+    ? ""
+    : loadError
+      ? "프로젝트 세부 정보를 잠시 불러오지 못했습니다. 아래 안내를 확인하거나 다시 시도해 주세요."
+      : !project
+        ? ""
+        : project.description?.trim()
+          ? project.description.trim()
+          : "설명이 아직 없습니다.";
+  const headerPlannerHint = virtualPlanner ? "AI 기획자가 기본으로 참여합니다." : null;
+
+  const shellStyle = { display: "flex", flexDirection: "column" as const, gap: 0, minHeight: "min(78vh, 900px)" };
+  const mainRow: CSSProperties = {
+    display: "flex",
+    flex: 1,
+    gap: 0,
+    minHeight: 420,
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    overflow: "hidden",
+    background: "#fff",
+  };
+
+  return (
+    <div style={shellStyle}>
+      <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
+
+      <RequirementsNavBreadcrumb projectId={resolvedProjectId.trim()} projectName={project?.name?.trim() ?? ""} />
+
+      <RequirementsHeader
+        projectName={headerProjectName}
+        descriptionText={headerDescription}
+        inviteHref={inviteHref}
+        inviteEmphasis={inviteEmphasis}
+        members={memberChips}
+        plannerHint={headerPlannerHint}
+        onInviteClick={resolvedProjectId.trim() ? () => setInviteOpen(true) : undefined}
+      />
+
+      <div style={{ marginBottom: 8 }} />
+
+      {draftOpen && draftDoc ? (
+        <div style={{ marginBottom: 10 }}>
+          <RequirementsDraftPanel
+            draft={draftDoc}
+            onClose={() => setDraftOpen(false)}
+            onChange={(next) => {
+              const nextRoom: RequirementsRoomStateV3 = { ...room, requirementsDraft: next };
+              setRoom(nextRoom);
+              void persistRemote(nextRoom, {});
+            }}
+          />
+        </div>
+      ) : null}
+
+      {initialWorkflowNotice ? (
+        <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 8 }}>{initialWorkflowNotice}</div>
+      ) : null}
+
+      {loadError ? (
+        <div className="relative" style={{ position: "relative" }}>
+          <ScreenLabel label="요구사항-상단-오류배너" visible={showScreenLabels} />
+          <div style={{ fontSize: 12, color: "#64748b", padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }} role="status">
+            {loadError}{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setLoadError(null);
+                setFetchNonce((n) => n + 1);
+              }}
+              style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}
+            >
+              다시 시도
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {remoteLocked ? (
+        <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>
+          프로젝트가 연결되지 않았습니다.{" "}
+          <button type="button" onClick={() => router.push("/")} style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+            홈에서 프로젝트 만들기
+          </button>
+        </div>
+      ) : null}
+
+      <div style={mainRow}>
+        <div style={{ flex: summaryOpen ? "1 1 70%" : "1 1 100%", minWidth: 0, display: "flex", flexDirection: "column" }}>
+            <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
+          <RequirementsChatPanel
+            messages={messages}
+            typingIndicator={aiInvokePending}
+            composer={
+              <div style={{ borderTop: "1px solid #e5e7eb", padding: 12, background: "#fff" }}>
+                <RequirementsParticipantBar
+                  participants={participants}
+                  selectedId={selectedTargetId}
+                  onSelect={(id, name) => {
+                    setSelectedTargetId(id);
+                    setSelectedTargetName(name);
+                  }}
+                />
+                <div style={{ marginTop: 10 }}>
+                  <RequirementsComposerGpt
+                    value={input}
+                    onChange={setInput}
+                    onSend={() => void onSend()}
+                    busy={busy}
+                    disabled={false}
+                    placeholder="예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요"
+                    leading={
+                      <div className="relative" style={{ position: "relative" }}>
+                        <ScreenLabel label="요구사항-입력창-도구아이콘" visible={showScreenLabels} />
+                        <button
+                          type="button"
+                          onClick={() => setToolsOpen((v) => !v)}
+                          title="도구"
+                          aria-label="도구"
+                          style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 10,
+                            border: "1px solid #e5e7eb",
+                            background: "#fff",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 18,
+                            lineHeight: 1,
+                            color: "#0f172a",
+                          }}
+                        >
+                          ⎚
+                        </button>
+
+                        {toolsOpen ? (
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "calc(100% + 10px)",
+                              left: 0,
+                              width: 320,
+                              maxWidth: "min(92vw, 360px)",
+                              background: "#fff",
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 12,
+                              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)",
+                              padding: 10,
+                              zIndex: 30,
+                            }}
+                          >
+                            <ScreenLabel label="요구사항-도구메뉴-팝오버" visible={showScreenLabels} />
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                              <div className="relative" style={{ position: "relative" }}>
+                                <ScreenLabel label="요구사항-도구메뉴-대화저장버튼" visible={showScreenLabels} />
+                                <ScreenLabel label="요구사항-대화저장버튼" visible={showScreenLabels} />
+                                <button type="button" disabled={busy} onClick={() => void onSaveConversation()} style={{ ...toolButtonStyle, cursor: busy ? "wait" : "pointer" }}>
+                                  대화 저장
+                                </button>
+                              </div>
+
+                              <div className="relative" style={{ position: "relative" }}>
+                                <ScreenLabel label="요구사항-도구메뉴-요약보기버튼" visible={showScreenLabels} />
+                                <button
+                                  type="button"
+                                  onClick={() => setSummaryOpen((v) => !v)}
+                                  style={{ ...toolButtonStyle, background: summaryOpen ? "#ecfeff" : "#fff" }}
+                                >
+                                  요구사항 요약 보기
+                                </button>
+                              </div>
+
+                              <div className="relative" style={{ position: "relative" }}>
+                                <ScreenLabel label="요구사항-도구메뉴-프롬프트보기버튼" visible={showScreenLabels} />
+                                <RequirementsPromptView open={promptOpen} onToggle={() => setPromptOpen((v) => !v)} view={promptView} variant="menu" />
+                              </div>
+
+                              <div className="relative" style={{ position: "relative" }}>
+                                <ScreenLabel label="요구사항-도구메뉴-정리버튼" visible={showScreenLabels} />
+                                <button type="button" disabled={busy || remoteLocked} onClick={() => void onOrganizeRequirements()} style={{ ...toolButtonStyle, cursor: busy ? "wait" : remoteLocked ? "not-allowed" : "pointer", background: remoteLocked ? "#f4f4f5" : "#fff", color: remoteLocked ? "#a1a1aa" : "#0f172a" }}>
+                                  요구사항 정리
+                                </button>
+                              </div>
+
+                              {draftDoc ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setDraftOpen(true)}
+                                  title="정리된 요구사항 보기"
+                                  style={toolButtonStyle}
+                                >
+                                  정리된 요구사항 보기
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    }
+                  />
+                  {lastSavedAt ? (
+                    <div style={{ marginTop: 8, fontSize: 11, color: "#64748b" }}>
+                      마지막 저장:{" "}
+                      {new Date(lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            }
+          />
+        </div>
+        {summaryOpen ? (
+          <aside style={{ flex: "1 1 30%", minWidth: 240, borderLeft: "1px solid #e5e7eb", background: "#f9fafb" }}>
+            <ScreenLabel label="요구사항-요약보기-패널" visible={showScreenLabels} />
+            <RequirementsSummaryPanel
+              goals={goals}
+              targetUsers={targetUsers}
+              scopeIn={scopeIn}
+              scopeOut={scopeOut}
+              openIssues={openIssues}
+              success={success}
+              onGoalsChange={setGoals}
+              onTargetUsersChange={setTargetUsers}
+              onScopeInChange={setScopeIn}
+              onScopeOutChange={setScopeOut}
+              onOpenIssuesChange={setOpenIssues}
+              onSuccessChange={setSuccess}
+              onBlurSave={() => void onPanelBlurSave()}
+            />
+          </aside>
+        ) : null}
+      </div>
+
+      <div
+        style={{
+          position: "sticky",
+          bottom: 0,
+          zIndex: 4,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          alignItems: "center",
+          padding: "12px 0",
+          marginTop: 12,
+          borderTop: "1px solid #e5e7eb",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, #fff 18%)",
+        }}
+      >
+        <div className="relative" style={{ position: "relative" }}>
+          <ScreenLabel label="요구사항-하단액션-협업이동버튼" visible={showScreenLabels} />
+          <button
+            type="button"
+            disabled={busy || requirementsPending}
+            data-testid="requirements-goto-collaboration"
+            onClick={onGotoCollaboration}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid #cbd5e1",
+              background: requirementsPending ? "#f4f4f5" : "#fff",
+              color: requirementsPending ? "#a1a1aa" : "#0f172a",
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: busy ? "wait" : requirementsPending ? "not-allowed" : "pointer",
+            }}
+          >
+            협업 단계로 이동
+          </button>
+        </div>
+        {isNextPublicDevWorkflowToolsEnabled() ? (
+          <button
+            type="button"
+            disabled={busy || remoteLocked}
+            onClick={() => void ackDev()}
+            style={{
+              marginLeft: "auto",
+              fontSize: 11,
+              border: "1px dashed #fca5a5",
+              background: "#fff",
+              color: "#b91c1c",
+              borderRadius: 8,
+              padding: "6px 10px",
+              cursor: "pointer",
+            }}
+          >
+            (DEV) 단계 건너뛰기
+          </button>
+        ) : null}
+      </div>
+
+      {error ? (
+        <p style={{ color: "#b91c1c", fontWeight: 600, fontSize: 13 }} role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <RequirementsMemberInviteModal
+        open={inviteOpen && Boolean(resolvedProjectId.trim())}
+        projectId={resolvedProjectId.trim()}
+        onClose={() => setInviteOpen(false)}
+        onInvited={() => void reloadMembers()}
+      />
+    </div>
+  );
+}
