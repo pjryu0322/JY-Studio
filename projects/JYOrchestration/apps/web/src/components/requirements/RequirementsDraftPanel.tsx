@@ -25,7 +25,7 @@ export function RequirementsDraftPanel({
     <section style={{ border: "1px solid #e5e7eb", background: "#fff", borderRadius: 12, padding: "10px 12px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontWeight: 900, color: "#0f172a" }}>
-          요구사항 초안 v{draft.version} · {draft.status}
+          정리 초안 v{draft.version} · {draft.status}
         </div>
         <button type="button" onClick={onClose} style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 800, cursor: "pointer" }}>
           닫기
@@ -61,7 +61,7 @@ export function RequirementsDraftPanel({
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, fontWeight: 900 }}>비기능 요구사항(줄바꿈=항목)</span>
+          <span style={{ fontSize: 12, fontWeight: 900 }}>비기능 요건(줄바꿈=항목)</span>
           <textarea
             value={joinLines(draft.nonFunctional)}
             onChange={(e) => onChange({ ...draft, nonFunctional: splitLines(e.target.value) })}

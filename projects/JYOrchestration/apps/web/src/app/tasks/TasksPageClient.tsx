@@ -40,10 +40,10 @@ export function TasksPageClient() {
   return (
     <div>
       <WorkflowPageHeader
-        title="작업"
+        title="작업 정리"
         subtitle={getTasksPageSubtitle(view, hasContext)}
         backHref="/requirements"
-        backLabel="요구사항으로"
+        backLabel="아이디어 구체화로"
       />
 
       <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
@@ -53,13 +53,13 @@ export function TasksPageClient() {
 
         {view.found && !hasContext ? (
           <WorkflowCard padding={12}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>요구사항 또는 세션을 선택하세요</div>
+            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>아이디어 또는 협업 세션을 선택하세요</div>
             <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
-              요구사항에서 작업 워크스페이스 열기를 사용하거나, URL에 <code style={{ fontSize: 12 }}>?requirementId=</code> /{" "}
+              아이디어 구체화 화면에서 작업 워크스페이스 열기를 사용하거나, URL에 <code style={{ fontSize: 12 }}>?requirementId=</code> /{" "}
               <code style={{ fontSize: 12 }}>?sessionId=</code> 를 추가하세요.
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              <WorkflowActionButton label="요구사항" onClick={() => router.push("/requirements")} />
+              <WorkflowActionButton label="아이디어 구체화" onClick={() => router.push("/requirements")} />
               <WorkflowActionButton label="협업" onClick={() => router.push("/collaboration")} variant="primary" />
             </div>
           </WorkflowCard>
@@ -68,7 +68,8 @@ export function TasksPageClient() {
         {view.found && hasContext ? (
           <>
             <WorkflowDemoSampleBanner>
-              이 작업 공간은 URL로 연결된 요구사항·협업 세션에서 온 초안 중심입니다. 프로젝트 단위 작업·생성 작업은 실행 계획(홈)에서 이어집니다.
+              이 작업 공간은 URL로 연결된 아이디어·협업 세션에서 온 초안 중심입니다. 프로젝트 단위 작업·생성 작업은 생성 준비(홈)에서
+              이어집니다.
             </WorkflowDemoSampleBanner>
             <TasksWorkspaceContent view={view} onOpenRequirement={openRequirement} onOpenCollaboration={openCollaboration} />
           </>

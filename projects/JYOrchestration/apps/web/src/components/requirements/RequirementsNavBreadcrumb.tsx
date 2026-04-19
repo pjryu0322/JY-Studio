@@ -30,7 +30,7 @@ export function RequirementsNavBreadcrumb({
   return (
     <nav aria-label="위치" style={crumbStyle}>
       <Link href="/" style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>
-        워크스페이스
+        플랫폼 홈
       </Link>
       {sep}
       <Link href="/" style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>
@@ -40,16 +40,16 @@ export function RequirementsNavBreadcrumb({
         <>
           {sep}
           <Link
-            href={`/projects/${encodeURIComponent(pid)}`}
+            href={`/projects/${encodeURIComponent(pid)}?view=workspace`}
+            title={`${projectLabel} · 생성 준비(프로젝트 허브)`}
             style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            title={projectLabel}
           >
             {projectLabel}
           </Link>
         </>
       ) : null}
       {sep}
-      <span style={{ color: "#0f172a", fontWeight: 800 }}>요구사항</span>
+      <span style={{ color: "#0f172a", fontWeight: 800 }}>아이디어 구체화</span>
     </nav>
   );
 }

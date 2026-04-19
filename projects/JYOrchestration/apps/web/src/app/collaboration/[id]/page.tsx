@@ -159,7 +159,7 @@ export default function CollaborationWorkspacePage() {
                   </div>
                 </>
               ) : (
-                <div style={{ fontSize: 13, color: "#6b7280" }}>(연결된 요구사항 없음)</div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>(연결된 아이디어 없음)</div>
               )}
             </div>
             {vm.requirement ? (
@@ -168,13 +168,13 @@ export default function CollaborationWorkspacePage() {
                   href={`/requirements/${encodeURIComponent(vm.requirement.id)}?tab=sessions`}
                   style={{ fontSize: 13, textDecoration: "underline" }}
                 >
-                  요구사항 열기
+                  아이디어 구체화 열기
                 </Link>
                 <Link
                   href={`/tasks?requirementId=${encodeURIComponent(vm.requirement.id)}&sessionId=${encodeURIComponent(sessionId)}`}
                   style={{ fontSize: 13, textDecoration: "underline" }}
                 >
-                  작업 워크스페이스
+                  작업 정리 화면
                 </Link>
               </div>
             ) : null}
@@ -225,7 +225,7 @@ export default function CollaborationWorkspacePage() {
               </div>
             </div>
             <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45, marginTop: 8 }}>
-              공식 작업은 주요 산출물을 갱신하고(메모리 저장으로 최신 세션 요구사항 상세와 동기), 보조 작업은 보조 인사이트만 채웁니다. 서버 응답은 현재
+              공식 작업은 주요 산출물을 갱신하고(메모리 저장으로 최신 세션 아이디어 상세와 동기), 보조 작업은 보조 인사이트만 채웁니다. 서버 응답은 현재
               mock_stub입니다.
             </div>
           </div>

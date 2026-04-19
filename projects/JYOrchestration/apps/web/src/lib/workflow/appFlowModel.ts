@@ -2,9 +2,10 @@ export {
   APP_FLOW_LAST_PROJECT_KEY,
   APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT,
   APP_FLOW_STEPS,
+  appFlowStepHref,
   nextStepAfter,
   projectIdFromPathname,
-  resolveAppFlowStepFromPathname,
+  resolveAppFlowStepFromLocation,
   type AppFlowStepDef,
   type AppFlowStepId,
 } from "./flow-state";

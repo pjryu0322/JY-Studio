@@ -135,12 +135,12 @@ export function RequirementDetailPageClient() {
     <div className="relative">
       <ScreenLabel label="요구사항-상세-페이지-섹션" visible={showScreenLabels} />
       <WorkflowPageHeader
-        title={vm.requirement?.title ?? "요구사항"}
+        title={vm.requirement?.title ?? "아이디어"}
         subtitle={
-          vm.requirement?.description ?? (requirementId ? `알 수 없는 요구사항 ID: ${requirementId}` : "알 수 없는 요구사항 ID입니다.")
+          vm.requirement?.description ?? (requirementId ? `알 수 없는 아이디어 ID: ${requirementId}` : "알 수 없는 아이디어 ID입니다.")
         }
         backHref="/requirements"
-        backLabel="목록으로"
+        backLabel="아이디어 목록으로"
         right={statusBadge}
       />
 
@@ -155,7 +155,7 @@ export function RequirementDetailPageClient() {
               <div>
                 <strong style={{ color: "#111827" }}>{vm.requirement?.featureCount ?? vm.features.length}</strong>개 기능
               </div>
-              <div style={{ color: "#6b7280" }}>흐름: 요구사항 → 세션 → 회의록 → 기능</div>
+              <div style={{ color: "#6b7280" }}>흐름: 아이디어 구체화 → 세션 → 회의록 → 기능 정리</div>
               {latestSessionId ? (
                 <div style={{ fontSize: 11, color: "#9ca3af", alignSelf: "center" }}>
                   실행 준비도(최신 세션):{" "}
@@ -246,7 +246,7 @@ export function RequirementDetailPageClient() {
 
       <div className="relative">
         <ScreenLabel label="요구사항-상세-탭-메뉴" visible={showScreenLabels} />
-        <WorkflowTabs ariaLabel="요구사항 탭" tabs={tabs} activeId={tab} onChange={(id) => setTab(id)} />
+        <WorkflowTabs ariaLabel="아이디어 상세 탭" tabs={tabs} activeId={tab} onChange={(id) => setTab(id)} />
       </div>
 
       {tab === "overview" ? (
@@ -256,7 +256,7 @@ export function RequirementDetailPageClient() {
             <WorkflowCard>
               <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>개요</div>
               <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.6 }}>
-                UI 골격입니다. 이후 단계에서 실제 요구사항·세션·회의록·기능 데이터와 연동됩니다.
+                UI 골격입니다. 이후 단계에서 실제 아이디어·세션·회의록·기능 데이터와 연동됩니다.
               </div>
               <div style={{ marginTop: 10, fontSize: 13, color: "#6b7280" }}>
                 권장: 최신 세션을 연 뒤 회의록 작성 → 기능 생성 → 작업 초안 생성을 실행하면 이 화면의 회의록·기능·작업 탭이 갱신됩니다(메모리).
@@ -264,7 +264,7 @@ export function RequirementDetailPageClient() {
             </WorkflowCard>
           </div>
         ) : (
-          <WorkflowEmptyState title="요구사항을 찾을 수 없음" message="URL을 확인하세요. 관계 없는 목 데이터는 표시하지 않습니다." />
+          <WorkflowEmptyState title="아이디어를 찾을 수 없음" message="URL을 확인하세요. 관계 없는 목 데이터는 표시하지 않습니다." />
         )
       ) : null}
 
@@ -332,7 +332,7 @@ export function RequirementDetailPageClient() {
                 </>
               ) : (
                 <span style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.45 }}>
-                  최신 세션 기능은 뷰 모델 기준입니다. 세션에서 기능 생성을 실행하면 저장 전까지 요구사항 화면 목록이 바뀝니다. 아이디어 기반 제안은 여기에
+                  최신 세션 기능은 뷰 모델 기준입니다. 세션에서 기능 생성을 실행하면 저장 전까지 아이디어 상세 화면 목록이 바뀝니다. 아이디어 기반 제안은 여기에
                   나오지 않습니다.
                 </span>
               )}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { AppFlowStepDef } from "@/lib/workflow/flow-state";
+import { appFlowStepHref, type AppFlowStepDef } from "@/lib/workflow/flow-state";
 
 export function FlowNextActionCard({
   offFlow,
@@ -9,19 +9,22 @@ export function FlowNextActionCard({
   next,
   nextReachable,
   nextBlockReason,
+  projectId,
 }: {
   readonly offFlow: boolean;
   readonly currentIsRequirements: boolean;
   readonly next: AppFlowStepDef | null;
   readonly nextReachable: boolean;
   readonly nextBlockReason: string | null;
+  readonly projectId: string | null;
 }) {
+  const pid = projectId?.trim() || null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
       <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>다음 단계</span>
       {offFlow ? (
         <Link
-          href="/requirements"
+          href={appFlowStepHref("requirements", pid)}
           style={{
             display: "inline-block",
             padding: "10px 16px",
@@ -33,12 +36,12 @@ export function FlowNextActionCard({
             textDecoration: "none",
           }}
         >
-          요구사항에서 워크플로 시작
+          아이디어 구체화에서 시작
         </Link>
       ) : next ? (
         nextReachable ? (
           <Link
-            href={next.href}
+            href={appFlowStepHref(next.id, pid)}
             style={{
               display: "inline-block",
               padding: "10px 16px",
@@ -77,12 +80,12 @@ export function FlowNextActionCard({
         )
       ) : (
         <span style={{ fontSize: 13, color: "#64748b" }}>
-          마지막 단계입니다. 필요하면 요구사항으로 돌아가 워크플로를 다시 시작하세요.
+          마지막 단계입니다. 필요하면 아이디어 구체화로 돌아가 처음부터 다시 정리할 수 있습니다.
         </span>
       )}
       {!currentIsRequirements && !offFlow ? (
-        <Link href="/requirements" style={{ fontSize: 13, color: "#1d4ed8", fontWeight: 600 }}>
-          요구사항으로
+        <Link href={appFlowStepHref("requirements", pid)} style={{ fontSize: 13, color: "#1d4ed8", fontWeight: 600 }}>
+          아이디어 구체화로
         </Link>
       ) : null}
     </div>

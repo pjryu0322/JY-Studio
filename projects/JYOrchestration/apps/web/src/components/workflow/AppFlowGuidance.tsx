@@ -11,7 +11,7 @@ import {
   loadAppFlowProjectContext,
   nextStepAfter,
   projectIdFromPathname,
-  resolveAppFlowStepFromPathname,
+  resolveAppFlowStepFromLocation,
 } from "@/lib/workflow/appFlowModel";
 import { buildAppFlowStatusLines } from "@/lib/workflow/flow-status-lines";
 import { stripStepReachableForUi, gateReasonForStep } from "@/components/workflow/flowStripHelpers";
@@ -22,7 +22,7 @@ import { FlowNextActionCard } from "@/components/workflow/FlowNextActionCard";
 export function AppFlowGuidance({ children }: { readonly children: React.ReactNode }) {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
-  const current = resolveAppFlowStepFromPathname(pathname);
+  const current = resolveAppFlowStepFromLocation(pathname, searchParams);
   const pathProjectId = projectIdFromPathname(pathname);
   const queryProjectId = String(searchParams.get("projectId") ?? "").trim() || null;
 
@@ -120,7 +120,7 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
 
   return (
     <div data-testid="app-flow-guidance">
-      <FlowProgressStrip current={current} gates={gates} loading={loading} />
+      <FlowProgressStrip current={current} gates={gates} loading={loading} projectId={effectiveProjectId} />
 
       <div style={{ marginBottom: 24 }}>{children}</div>
 
@@ -141,6 +141,7 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
             next={next}
             nextReachable={nextReachable}
             nextBlockReason={nextBlockReason}
+            projectId={effectiveProjectId}
           />
         </div>
       )}

@@ -61,11 +61,11 @@ export function RequirementsSummaryPanel({
         flexDirection: "column",
         background: "#f9fafb",
       }}
-      aria-label="요구사항 정리 패널"
+      aria-label="아이디어 요약 패널"
     >
       <ScreenLabel label="요구사항-AI정리패널" visible={showScreenLabels} />
       <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: "#52525b", marginBottom: 10 }}>실시간 요구사항</div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#52525b", marginBottom: 10 }}>요약 메모</div>
         <div style={panelCard}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#71717a", marginBottom: 6 }}>프로젝트 목표</div>
           <textarea value={goals} onChange={(e) => onGoalsChange(e.target.value)} onBlur={onBlurSave} rows={4} style={ta} />

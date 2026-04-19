@@ -35,6 +35,12 @@ export type Project = {
   taskGenerationPrompt?: string | null;
   /** 요구사항 협의실 JSON (메시지·회의록 등) */
   requirementsRoomState?: unknown | null;
+  /** 요구사항 협의실 Raw conversation(JSON) */
+  requirementsConversationJson?: unknown | null;
+  /** 요구사항 협의실 Derived draft(JSON) */
+  requirementsDraftJson?: unknown | null;
+  /** 요구사항 협의실 State/meta(JSON) */
+  requirementsStateJson?: unknown | null;
 };
 
 /** 확정 Project Spec 버전 행 (append-only) */

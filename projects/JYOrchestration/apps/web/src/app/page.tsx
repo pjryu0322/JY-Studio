@@ -254,7 +254,7 @@ export default function HomePage() {
           </div>
         </div>
         <p style={{ margin: 0, color: "#555" }}>
-          아이디어를 AI 기반 협의를 통해 구체화하고, 실행 가능한 프로토타입으로 구현하여 사업 가능성을 검증하는 플랫폼
+          JY Orchestration은 아이디어를 단계적으로 정리하는 플랫폼이며, 프로토타입은 각 프로젝트에서 만들어지는 결과물입니다.
         </p>
       </section>
 
@@ -301,7 +301,7 @@ export default function HomePage() {
           <ProjectCreateMemberPicker disabled={submitting} pending={pendingInvites} onChangePending={setPendingInvites} />
 
           <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-            생성 후 프로젝트 상세에서 Git·고급 설정을 이어서 구성할 수 있습니다.
+            생성 후 생성 준비(프로젝트 허브)에서 Git·고급 설정을 이어서 구성할 수 있습니다.
           </p>
 
           <div className="relative inline-block w-fit">

@@ -202,7 +202,7 @@ function ProjectAdminMembersInner() {
     [projectRole]
   );
 
-  const backHref = projectId ? `/projects/${encodeURIComponent(projectId)}` : "/";
+  const backHref = projectId ? `/projects/${encodeURIComponent(projectId)}?view=workspace` : "/";
 
   return (
     <main data-testid="project-admin-members-page" style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
@@ -211,7 +211,7 @@ function ProjectAdminMembersInner() {
           href={backHref}
           style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", textDecoration: "none" }}
         >
-          ← 실행 계획으로 돌아가기
+          ← 생성 준비로 돌아가기
         </Link>
       </div>
 
@@ -244,9 +244,9 @@ function ProjectAdminMembersInner() {
               프로젝트 관리 · 멤버
             </h1>
             <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
-              <strong>{project.name}</strong>의 사람·AI 멤버를 한곳에서 관리합니다. 실행 계획은{" "}
+              <strong>{project.name}</strong>의 사람·AI 멤버를 한곳에서 관리합니다. 스펙·작업 흐름은{" "}
               <Link href={backHref} style={{ color: "#1d4ed8", fontWeight: 700 }}>
-                실행 계획
+                생성 준비
               </Link>
               화면에서 진행하세요.
             </p>

@@ -20,9 +20,9 @@ export default function CollaborationPage() {
       <ScreenLabel label="협업-목록-페이지-섹션" visible={showScreenLabels} />
       <WorkflowPageHeader
         title="협업"
-        subtitle="요구사항 다음 단계. 세션에서 회의·결정을 모은 뒤 기능·작업으로 넘깁니다."
+        subtitle="아이디어 구체화 다음 단계입니다. 세션에서 회의·결정을 모은 뒤 기능 정리·작업 정리로 넘깁니다."
         backHref="/requirements"
-        backLabel="요구사항으로"
+        backLabel="아이디어 구체화로"
       />
 
       <WorkflowDemoSampleBanner>
@@ -55,7 +55,7 @@ export default function CollaborationPage() {
                     </div>
                     <div className="relative" style={{ marginTop: 10, fontSize: 13, color: "#111827", lineHeight: 1.55 }}>
                       <ScreenLabel label="협업-목록-세션카드-요구사항링크" visible={showScreenLabels} />
-                      <strong>요구사항:</strong>{" "}
+                      <strong>연결된 아이디어:</strong>{" "}
                       {req ? (
                         <Link href={`/requirements/${encodeURIComponent(req.id)}?tab=overview`} style={{ textDecoration: "underline" }}>
                           {req.title}

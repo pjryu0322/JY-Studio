@@ -12,7 +12,7 @@ export function projectHasFeatureBaseline(project: Project | null): boolean {
   return spec.length > 0 || plan.length > 0;
 }
 
-const REQUIREMENTS_GATE_KR = "먼저 요구사항을 확정해야 다음 단계로 진행할 수 있습니다.";
+const REQUIREMENTS_GATE_KR = "먼저 아이디어 구체화를 마쳐야 다음 단계로 진행할 수 있습니다.";
 
 export function computeFlowGates(input: {
   projectId: string | null;
@@ -56,22 +56,22 @@ export function computeFlowGates(input: {
     tasksReason: tasksEnabled
       ? null
       : !hasProject
-        ? "프로젝트를 선택하면 작업 단계 조건을 확인할 수 있습니다."
+        ? "프로젝트를 선택하면 작업 정리 단계 조건을 확인할 수 있습니다."
         : requirementsPending
           ? REQUIREMENTS_GATE_KR
-          : "확정 스펙 또는 실행 계획을 저장한 뒤 작업 단계로 진행할 수 있습니다.",
+          : "확정 스펙 또는 생성 준비 내용을 저장한 뒤 작업 정리 단계로 진행할 수 있습니다.",
     planningReason: planningEnabled
       ? null
       : !hasProject
-        ? "프로젝트를 선택하면 실행 계획(홈)으로 이동할 수 있습니다."
+        ? "프로젝트를 선택하면 생성 준비(프로젝트 허브)로 이동할 수 있습니다."
         : REQUIREMENTS_GATE_KR,
     executionReason: executionEnabled
       ? null
       : !hasProject
-        ? "실행 환경은 프로젝트 설정에서 준비합니다."
+        ? "프로토타입 생성 환경은 프로젝트 설정에서 준비합니다."
         : requirementsPending
           ? REQUIREMENTS_GATE_KR
-          : readiness.blockedReasonKr ?? "실행 환경을 설정·검증해야 실행 단계로 갈 수 있습니다.",
+          : readiness.blockedReasonKr ?? "실행 환경을 설정·검증해야 프로토타입 생성 단계로 갈 수 있습니다.",
     traceReason: traceEnabled ? null : REQUIREMENTS_GATE_KR,
   };
 }

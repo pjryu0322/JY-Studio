@@ -65,7 +65,7 @@ export function RequirementsChatPanel({
         borderRight: "1px solid #e5e7eb",
         minHeight: 420,
       }}
-      aria-label="요구사항 협의 채팅"
+      aria-label="아이디어 구체화 채팅"
     >
       <div className="relative" style={{ position: "relative", flex: 1, overflowY: "auto", padding: "16px 14px", background: "#f4f4f5" }}>
         <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />

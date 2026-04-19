@@ -34,8 +34,8 @@ export default function FeaturesPage() {
   return (
     <div>
       <WorkflowPageHeader
-        title="기능"
-        subtitle="요구사항이 정리되고 스펙이 확정되면, 기능 단위로 쪼개져 작업·실행 계획으로 이어집니다."
+        title="기능 정리"
+        subtitle="아이디어가 정리되고 스펙이 확정되면, 기능 단위로 나뉘어 작업 정리·생성 준비로 이어집니다."
         backHref="/collaboration"
         backLabel="협업으로"
       />
@@ -44,22 +44,22 @@ export default function FeaturesPage() {
         <WorkflowCard padding={16}>
           <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>시작 안내</div>
           <ul style={{ margin: "0 0 14px 0", paddingLeft: 20, fontSize: 14, color: "#334155", lineHeight: 1.65 }}>
-            <li>기능은 요구사항 승인·스펙 확정 후 자동으로 후보가 쌓이도록 설계되어 있습니다.</li>
-            <li>실행 계획에서 AI로 스펙을 생성·확정하면 이후 단계가 자연스럽게 열립니다.</li>
+            <li>기능 목록은 아이디어 승인·스펙 확정 후 자동으로 후보가 쌓이도록 설계되어 있습니다.</li>
+            <li>생성 준비(프로젝트 허브)에서 AI로 스펙을 생성·확정하면 이후 단계가 자연스럽게 열립니다.</li>
             <li>지금은 데이터가 없어도, 아래 버튼으로 다음 행동을 선택할 수 있습니다.</li>
           </ul>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <Link href="/requirements" style={btnPrimary}>
-              요구사항으로
+              아이디어 구체화로
             </Link>
             <Link href="/" style={btnSecondary}>
-              실행 계획(홈) — AI 스펙
+              생성 준비(홈) — AI 스펙
             </Link>
             <Link href="/collaboration" style={btnSecondary}>
               협업에서 맥락 보강
             </Link>
             <Link href="/tasks" style={btnSecondary}>
-              작업 화면
+              작업 정리 화면
             </Link>
           </div>
         </WorkflowCard>
@@ -67,10 +67,11 @@ export default function FeaturesPage() {
         <WorkflowCard padding={16}>
           <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>수동·초안</div>
           <p style={{ margin: "0 0 12px 0", fontSize: 14, color: "#475569", lineHeight: 1.6 }}>
-            기능 목록의 직접 편집 UI는 실행 계획·스펙 워크스페이스와 연결해 확장할 예정입니다. 지금은 실행 계획에서 텍스트로 요구를 구체화하는 것이 가장 빠른 경로입니다.
+            기능 목록의 직접 편집 UI는 생성 준비·스펙 워크스페이스와 연결해 확장할 예정입니다. 지금은 생성 준비 화면에서 텍스트로
+            아이디어를 구체화하는 것이 가장 빠른 경로입니다.
           </p>
           <Link href="/" style={btnPrimary}>
-            실행 계획에서 이어하기
+            생성 준비에서 이어하기
           </Link>
         </WorkflowCard>
 

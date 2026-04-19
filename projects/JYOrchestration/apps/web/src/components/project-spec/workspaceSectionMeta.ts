@@ -5,11 +5,11 @@
 export const WORKSPACE_SECTION_META = {
   workspaceRoot: {
     fullLabel: "[F-1-3] Workspace — execution planning (AI-assisted)",
-    title: "실행 계획 워크스페이스",
+    title: "생성 준비 워크스페이스",
   },
   projectContext: {
     fullLabel: "[F-1-3-1] Workspace — Project Context",
-    title: "실행 계획 입력",
+    title: "생성 준비 입력",
   },
   basicFields: {
     fullLabel: "[F-1-3-1a] Workspace — Basic Project Fields",
@@ -17,7 +17,7 @@ export const WORKSPACE_SECTION_META = {
   },
   draftActions: {
     fullLabel: "[F-1-3-1b] Workspace — AI Draft Actions",
-    title: "AI 실행 계획 초안",
+    title: "AI 생성 준비 초안",
   },
   draftCandidates: {
     fullLabel: "[F-1-3-1c] Workspace — AI Draft Candidates",
@@ -25,7 +25,7 @@ export const WORKSPACE_SECTION_META = {
   },
   specFromSavedPlan: {
     fullLabel: "[F-1-3-2] Workspace — AI plan document from saved execution plan",
-    title: "저장된 계획으로 실행 계획 문서 생성",
+    title: "저장된 계획으로 준비 문서 생성",
   },
   aiResponsesCompare: {
     fullLabel: "[F-1-3-3] Workspace — AI responses & compare",
@@ -33,19 +33,19 @@ export const WORKSPACE_SECTION_META = {
   },
   confirmedSpecVersions: {
     fullLabel: "[F-1-3-4] Workspace — Confirmed execution plan versions",
-    title: "확정된 실행 계획",
+    title: "확정된 준비 문서",
   },
   taskDrafts: {
     fullLabel: "[F-1-3-5] Workspace — Task drafts (plan-linked)",
-    title: "실행 워크플로",
+    title: "작업 정리 · 실행 연결",
   },
   executionSetup: {
     fullLabel: "[F-1-3-6] 실행 환경 — 연결·정책·검증",
-    title: "실행 환경 설정",
+    title: "프로토타입 생성 환경 설정",
   },
   gitIntegration: {
     fullLabel: "[P-6-4] Project — 실행 환경",
-    title: "실행 환경",
+    title: "프로토타입 생성 환경",
   },
 } as const;
 

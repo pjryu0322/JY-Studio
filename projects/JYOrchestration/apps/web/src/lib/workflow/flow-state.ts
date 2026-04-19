@@ -15,27 +15,54 @@ export type AppFlowStepId =
 export type AppFlowStepDef = Readonly<{
   id: AppFlowStepId;
   label: string;
-  href: string;
 }>;
 
 export const APP_FLOW_STEPS: readonly AppFlowStepDef[] = [
-  { id: "requirements", label: "요구사항", href: "/requirements" },
-  { id: "collaboration", label: "협업", href: "/collaboration" },
-  { id: "features", label: "기능", href: "/features" },
-  { id: "tasks", label: "작업", href: "/tasks" },
-  { id: "planning", label: "실행 계획", href: "/" },
-  { id: "execution", label: "실행", href: "/execution" },
-  { id: "trace", label: "추적", href: "/trace" },
+  { id: "requirements", label: "아이디어 구체화" },
+  { id: "collaboration", label: "협업" },
+  { id: "features", label: "기능 정리" },
+  { id: "tasks", label: "작업 정리" },
+  { id: "planning", label: "생성 준비" },
+  { id: "execution", label: "프로토타입 생성" },
+  { id: "trace", label: "추적" },
 ] as const;
 
-export function resolveAppFlowStepFromPathname(pathname: string): AppFlowStepId | null {
+/** 프로젝트 허브(스펙·작업 준비)는 `?view=workspace`로 구분합니다. */
+export function appFlowStepHref(stepId: AppFlowStepId, projectId: string | null): string {
+  const pid = projectId?.trim() || null;
+  const q = pid ? `?projectId=${encodeURIComponent(pid)}` : "";
+  switch (stepId) {
+    case "requirements":
+      return `/requirements${q}`;
+    case "collaboration":
+      return `/collaboration${q}`;
+    case "features":
+      return `/features${q}`;
+    case "tasks":
+      return `/tasks${q}`;
+    case "planning":
+      return pid ? `/projects/${encodeURIComponent(pid)}?view=workspace` : "/";
+    case "execution":
+      return `/execution${q}`;
+    case "trace":
+      return `/trace${q}`;
+    default:
+      return "/";
+  }
+}
+
+export function resolveAppFlowStepFromLocation(pathname: string, searchParams: URLSearchParams | null): AppFlowStepId | null {
+  const sp = searchParams ?? new URLSearchParams();
   const p = pathname || "/";
   if (p === "/login" || p.startsWith("/login/")) return null;
   if (p === "/requirements" || p.startsWith("/requirements/")) return "requirements";
   if (p === "/collaboration" || p.startsWith("/collaboration/")) return "collaboration";
   if (p === "/features" || p.startsWith("/features/")) return "features";
   if (p === "/tasks" || p.startsWith("/tasks/")) return "tasks";
-  if (p === "/" || p === "/workspace" || p.startsWith("/projects/")) return "planning";
+  if (p.startsWith("/projects/")) {
+    return sp.get("view") === "workspace" ? "planning" : "requirements";
+  }
+  if (p === "/" || p === "/workspace") return "planning";
   if (p === "/execution" || p.startsWith("/execution/")) return "execution";
   if (p === "/trace" || p.startsWith("/trace/")) return "trace";
   if (p.startsWith("/planning-execution")) return "execution";
