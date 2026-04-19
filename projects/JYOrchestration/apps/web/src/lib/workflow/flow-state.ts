@@ -60,7 +60,7 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
     return sp.get("view") === "workspace" ? "planning" : "requirements";
   }
   /** 플랫폼 홈·프로젝트 목록: 워크플로 단계로 취급하지 않음(상단 탭·가이드 혼동 방지). */
-  if (p === "/" || p === "/workspace") return null;
+  if (isPlatformHomeSurface(p)) return null;
   if (p === "/execution" || p.startsWith("/execution/")) return "execution";
   if (p === "/trace" || p.startsWith("/trace/")) return "trace";
   if (p.startsWith("/planning-execution")) return "execution";
@@ -72,6 +72,12 @@ export function projectIdFromPathname(pathname: string): string | null {
   return m?.[1] ? decodeURIComponent(m[1]) : null;
 }
 
+/** 플랫폼 홈·프로젝트 목록·생성 폼 화면 (`/`·`/workspace` 리다이렉트 대상). 워크플로 “생성 준비” 허브와 동일시하지 않음. */
+export function isPlatformHomeSurface(pathname: string): boolean {
+  const p = pathname || "/";
+  return p === "/" || p === "/workspace";
+}
+
 /**
  * 상단 워크플로·프로젝트 메뉴용 프로젝트 ID.
  * - `/projects/:id` 경로면 해당 id (워크스페이스·상세 모두 “프로젝트 열림”).
@@ -80,7 +86,7 @@ export function projectIdFromPathname(pathname: string): string | null {
  */
 export function resolveWorkflowProjectContextId(pathname: string, searchParams: URLSearchParams | null): string | null {
   const p = pathname || "/";
-  if (p === "/" || p === "/workspace") return null;
+  if (isPlatformHomeSurface(p)) return null;
 
   const sp = searchParams ?? new URLSearchParams();
   const q = String(sp.get("projectId") ?? "").trim();
@@ -98,6 +104,8 @@ export function isWorkflowStepNavActive(
   const sp = searchParams ?? new URLSearchParams();
   const ctx = contextProjectId.trim();
   if (!ctx) return false;
+  /** 홈에서는 어떤 워크플로 탭도 활성 표시하지 않음(과거 `/`를 생성 준비와 혼동하던 케이스 방지). */
+  if (isPlatformHomeSurface(pathname)) return false;
   const qp = String(sp.get("projectId") ?? "").trim();
   const pathPid = projectIdFromPathname(pathname);
 
