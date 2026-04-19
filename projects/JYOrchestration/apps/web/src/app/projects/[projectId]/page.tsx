@@ -13,6 +13,7 @@ import {
   type ExecutionSetupDto,
   type TaskExecutionRunDto,
 } from "@/components/project-spec/api";
+import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { ProjectSpecPageHeader } from "@/components/project-spec/ProjectSpecPageHeader";
 import { ProjectSpecPageStatus } from "@/components/project-spec/ProjectSpecPageStatus";
 import { ProjectSpecWorkspace } from "@/components/project-spec/ProjectSpecWorkspace";
@@ -2780,6 +2781,9 @@ export default function ProjectDetailPage() {
       style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}
     >
       <ProjectSpecPageHeader projectName={project?.name ?? null} />
+      <div style={{ marginTop: 12, marginBottom: 14 }}>
+        <ProjectWorkflowNav />
+      </div>
       {executionSafeMode ? (
         <div
           role="status"

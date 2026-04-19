@@ -1,3 +1,4 @@
+import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
@@ -189,6 +190,10 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
         backHref="/"
         backLabel="생성 준비(홈)"
       />
+
+      <div style={{ marginTop: 12, marginBottom: 4 }}>
+        <ProjectWorkflowNav />
+      </div>
 
       <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
         <WorkflowCard padding={12}>

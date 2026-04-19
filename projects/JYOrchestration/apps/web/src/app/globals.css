@@ -69,3 +69,9 @@ html[data-jyo-reduce-motion="1"] *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+
+@media (max-width: 720px) {
+  .jyo-platform-tagline {
+    display: none;
+  }
+}

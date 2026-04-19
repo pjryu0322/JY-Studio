@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
+import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { TasksWorkspaceContent } from "@/components/workflow/TasksWorkspaceContent";
 import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
@@ -41,6 +42,10 @@ export function TasksPageClient() {
         backHref="/requirements"
         backLabel="아이디어 구체화로"
       />
+
+      <div style={{ marginTop: 12, marginBottom: 4 }}>
+        <ProjectWorkflowNav />
+      </div>
 
       <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
         {!view.found ? (
