@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "@/lib/service/executionWorkerRuntime";
 import "@/lib/service/aiActionWorkerRuntime";
-import DebugSettings from "@/components/debug/DebugSettings";
 import { ClientProviders } from "@/components/layout/ClientProviders";
 import { PlatformShell } from "@/components/layout/PlatformShell";
 
@@ -33,7 +32,6 @@ export default function RootLayout({
         <ClientProviders>
           <PlatformShell>{children}</PlatformShell>
         </ClientProviders>
-        {process.env.NODE_ENV !== "production" ? <DebugSettings /> : null}
       </body>
     </html>
   );

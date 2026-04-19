@@ -50,6 +50,4 @@ run("test:api (Vitest)", "npm", ["run", "test:api"]);
 run("test:e2e (Playwright)", "npm", ["run", "test:e2e"]);
 run("aggregate", "node", [join(root, "apps", "web", "scripts", "aggregate-test-results.mjs")]);
 
-console.log(
-  "\n[harness] 완료. .artifacts/test-results/latest.json 및 /dev/test-results (로그인 후) 에서 확인하세요.\n"
-);
+console.log("\n[harness] 완료. 요약은 .artifacts/test-results/latest.json 을 열어 확인하세요.\n");
