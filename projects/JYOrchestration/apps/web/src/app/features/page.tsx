@@ -36,8 +36,8 @@ export default function FeaturesPage() {
       <WorkflowPageHeader
         title="기능 정리"
         subtitle="아이디어가 정리되고 스펙이 확정되면, 기능 단위로 나뉘어 작업 정리·생성 준비로 이어집니다."
-        backHref="/collaboration"
-        backLabel="협업으로"
+        backHref="/requirements"
+        backLabel="아이디어 구체화로"
       />
 
       <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
@@ -54,9 +54,6 @@ export default function FeaturesPage() {
             </Link>
             <Link href="/" style={btnSecondary}>
               생성 준비(홈) — AI 스펙
-            </Link>
-            <Link href="/collaboration" style={btnSecondary}>
-              협업에서 맥락 보강
             </Link>
             <Link href="/tasks" style={btnSecondary}>
               작업 정리 화면

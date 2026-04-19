@@ -20,7 +20,7 @@ export default function CollaborationPage() {
       <ScreenLabel label="협업-목록-페이지-섹션" visible={showScreenLabels} />
       <WorkflowPageHeader
         title="협업"
-        subtitle="아이디어 구체화 다음 단계입니다. 세션에서 회의·결정을 모은 뒤 기능 정리·작업 정리로 넘깁니다."
+        subtitle="주 진행은 아이디어 구체화 → 기능 정리입니다. 이 목록은 데모·심화용 세션으로 유지됩니다."
         backHref="/requirements"
         backLabel="아이디어 구체화로"
       />

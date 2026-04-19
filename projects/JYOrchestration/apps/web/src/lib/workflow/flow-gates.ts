@@ -19,13 +19,11 @@ export function computeFlowGates(input: {
   project: Project | null;
   executionSetup: ExecutionSetupDto | null;
 }): {
-  collaborationEnabled: boolean;
   featuresEnabled: boolean;
   tasksEnabled: boolean;
   planningEnabled: boolean;
   executionEnabled: boolean;
   traceEnabled: boolean;
-  collaborationReason: string | null;
   featuresReason: string | null;
   tasksReason: string | null;
   planningReason: string | null;
@@ -37,7 +35,6 @@ export function computeFlowGates(input: {
   const hasBaseline = projectHasFeatureBaseline(input.project);
   const readiness = computeProjectExecutionReadiness(input.executionSetup);
 
-  const collaborationEnabled = !hasProject || !requirementsPending;
   const featuresEnabled = !hasProject || !requirementsPending;
   const tasksEnabled = hasProject && !requirementsPending && hasBaseline;
   const planningEnabled = hasProject && !requirementsPending;
@@ -45,13 +42,11 @@ export function computeFlowGates(input: {
   const traceEnabled = !hasProject || !requirementsPending;
 
   return {
-    collaborationEnabled,
     featuresEnabled,
     tasksEnabled,
     planningEnabled,
     executionEnabled,
     traceEnabled,
-    collaborationReason: collaborationEnabled ? null : REQUIREMENTS_GATE_KR,
     featuresReason: featuresEnabled ? null : REQUIREMENTS_GATE_KR,
     tasksReason: tasksEnabled
       ? null
@@ -78,7 +73,6 @@ export function computeFlowGates(input: {
 
 export function stepReachableInStrip(stepId: AppFlowStepId, gates: ReturnType<typeof computeFlowGates>): boolean {
   if (stepId === "requirements") return true;
-  if (stepId === "collaboration") return gates.collaborationEnabled;
   if (stepId === "features") return gates.featuresEnabled;
   if (stepId === "tasks") return gates.tasksEnabled;
   if (stepId === "planning") return gates.planningEnabled;

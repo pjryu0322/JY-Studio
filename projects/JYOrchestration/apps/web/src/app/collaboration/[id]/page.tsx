@@ -114,8 +114,8 @@ export default function CollaborationWorkspacePage() {
         <WorkflowPageHeader
           title="협업 세션"
           subtitle={sessionId ? `알 수 없는 세션 ID: ${sessionId}` : "알 수 없는 세션 ID입니다."}
-          backHref="/collaboration"
-          backLabel="세션 목록으로"
+          backHref="/features"
+          backLabel="기능 정리로"
           right={<WorkflowBadge>알 수 없음</WorkflowBadge>}
         />
         <div style={{ marginTop: 14 }}>
@@ -135,8 +135,8 @@ export default function CollaborationWorkspacePage() {
         subtitle={
           vm.session ? `${vm.session.createdAt} · ${vm.session.id}` : sessionId ? `알 수 없는 세션 ID: ${sessionId}` : "알 수 없는 세션 ID입니다."
         }
-        backHref="/collaboration"
-        backLabel="세션 목록으로"
+        backHref="/features"
+        backLabel="기능 정리로"
         right={
           vm.session ? (
             <WorkflowBadge>{formatCollaborationSessionStatusForUi(vm.session.status)}</WorkflowBadge>

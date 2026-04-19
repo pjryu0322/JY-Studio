@@ -29,12 +29,8 @@ export function TasksPageClient() {
     }
   };
 
-  const openCollaboration = () => {
-    if (view.sessionId) {
-      router.push(`/collaboration/${encodeURIComponent(view.sessionId)}`);
-    } else {
-      router.push("/collaboration");
-    }
+  const openFeaturesStep = () => {
+    router.push("/features");
   };
 
   return (
@@ -53,14 +49,14 @@ export function TasksPageClient() {
 
         {view.found && !hasContext ? (
           <WorkflowCard padding={12}>
-            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>아이디어 또는 협업 세션을 선택하세요</div>
+            <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>아이디어 또는 세션 컨텍스트를 선택하세요</div>
             <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
               아이디어 구체화 화면에서 작업 워크스페이스 열기를 사용하거나, URL에 <code style={{ fontSize: 12 }}>?requirementId=</code> /{" "}
               <code style={{ fontSize: 12 }}>?sessionId=</code> 를 추가하세요.
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <WorkflowActionButton label="아이디어 구체화" onClick={() => router.push("/requirements")} />
-              <WorkflowActionButton label="협업" onClick={() => router.push("/collaboration")} variant="primary" />
+              <WorkflowActionButton label="기능 정리" onClick={() => router.push("/features")} variant="primary" />
             </div>
           </WorkflowCard>
         ) : null}
@@ -68,10 +64,9 @@ export function TasksPageClient() {
         {view.found && hasContext ? (
           <>
             <WorkflowDemoSampleBanner>
-              이 작업 공간은 URL로 연결된 아이디어·협업 세션에서 온 초안 중심입니다. 프로젝트 단위 작업·생성 작업은 생성 준비(홈)에서
-              이어집니다.
+              이 작업 공간은 URL로 연결된 아이디어·세션에서 온 초안 중심입니다. 프로젝트 단위 작업·생성 작업은 생성 준비(홈)에서 이어집니다.
             </WorkflowDemoSampleBanner>
-            <TasksWorkspaceContent view={view} onOpenRequirement={openRequirement} onOpenCollaboration={openCollaboration} />
+            <TasksWorkspaceContent view={view} onOpenRequirement={openRequirement} onOpenFeaturesStep={openFeaturesStep} />
           </>
         ) : null}
       </div>

@@ -10,11 +10,11 @@ import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel"
 type Props = {
   view: TasksWorkspaceView;
   onOpenRequirement: () => void;
-  onOpenCollaboration: () => void;
+  onOpenFeaturesStep: () => void;
 };
 
 /** Single compact row: context, source, navigation. */
-export function TasksWorkspaceSummaryStrip({ view, onOpenRequirement, onOpenCollaboration }: Props) {
+export function TasksWorkspaceSummaryStrip({ view, onOpenRequirement, onOpenFeaturesStep }: Props) {
   const showScreenLabels = useShowScreenLabels();
 
   return (
@@ -54,13 +54,13 @@ export function TasksWorkspaceSummaryStrip({ view, onOpenRequirement, onOpenColl
             {view.taskSource === "collaboration_snapshot" ? <WorkflowBadge>스냅샷</WorkflowBadge> : <WorkflowBadge>미생성</WorkflowBadge>}
             {view.hasConfirmedTaskSet ? <WorkflowBadge>확정 세트</WorkflowBadge> : null}
             <span style={{ fontSize: 12, color: "#6b7280" }}>
-              {view.taskSource === "collaboration_snapshot" ? "메모리 전용입니다." : "협업 화면에서 작업 초안을 생성하세요."}
+              {view.taskSource === "collaboration_snapshot" ? "메모리 전용입니다." : "작업 초안을 생성하거나 기능 정리 단계에서 맥락을 보강하세요."}
               {view.hasConfirmedTaskSet ? " 이 세션에 공식 확정 작업 세트가 있습니다." : ""}
             </span>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {view.requirementId ? <WorkflowActionButton label="요구사항" onClick={onOpenRequirement} /> : null}
-            <WorkflowActionButton label="협업" variant="primary" onClick={onOpenCollaboration} />
+            <WorkflowActionButton label="기능 정리" variant="primary" onClick={onOpenFeaturesStep} />
           </div>
         </div>
       </WorkflowCard>

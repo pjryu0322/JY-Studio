@@ -230,10 +230,10 @@ export function RequirementDetailPageClient() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <WorkflowActionButton
-                label="최신 세션 열기"
+                label="작업 정리에서 열기"
                 onClick={() => {
                   if (!vm.latestSession) return;
-                  router.push(`/collaboration/${encodeURIComponent(vm.latestSession.id)}`);
+                  router.push(`/tasks?sessionId=${encodeURIComponent(vm.latestSession.id)}`);
                 }}
               />
               <WorkflowActionButton label="최신 회의록 보기" onClick={() => setTab("minutes")} />
@@ -273,7 +273,7 @@ export function RequirementDetailPageClient() {
           <ScreenLabel label="요구사항-상세-세션탭-섹션" visible={showScreenLabels} />
           <div style={{ fontSize: 13, fontWeight: 900 }}>세션</div>
           {vm.sessions.length === 0 ? (
-            <div style={{ fontSize: 13, color: "#6b7280" }}>연결된 협업 세션이 없습니다.</div>
+            <div style={{ fontSize: 13, color: "#6b7280" }}>연결된 세션이 없습니다.</div>
           ) : (
             vm.sessions.map((s) => (
               <div key={s.id} style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 14 }}>
@@ -284,8 +284,8 @@ export function RequirementDetailPageClient() {
                       {s.createdAt} · {formatCollaborationSessionStatusForUi(s.status)}
                     </div>
                   </div>
-                  <Link href={`/collaboration/${encodeURIComponent(s.id)}`} style={{ fontSize: 13, textDecoration: "underline", alignSelf: "center" }}>
-                    워크스페이스 열기
+                  <Link href={`/tasks?sessionId=${encodeURIComponent(s.id)}`} style={{ fontSize: 13, textDecoration: "underline", alignSelf: "center" }}>
+                    작업 정리에서 열기
                   </Link>
                 </div>
               </div>

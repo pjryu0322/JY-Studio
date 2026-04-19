@@ -12,7 +12,6 @@ export function stripStepReachableForUi(
 }
 
 export function gateReasonForStep(stepId: AppFlowStepId, gates: AppFlowGateSnapshot): string | null {
-  if (stepId === "collaboration") return gates.collaborationReason;
   if (stepId === "features") return gates.featuresReason;
   if (stepId === "tasks") return gates.tasksReason;
   if (stepId === "planning") return gates.planningReason;
