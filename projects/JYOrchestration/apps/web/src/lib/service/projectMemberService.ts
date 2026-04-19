@@ -1,4 +1,4 @@
-import type { ProjectAiActionApprovalMode, ProjectAiActionApplyMode } from "@prisma/client";
+import type { Prisma, ProjectAiActionApprovalMode, ProjectAiActionApplyMode } from "@prisma/client";
 import type { ProjectRole } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
@@ -142,6 +142,42 @@ export async function inviteHumanProjectMember(input: {
       displayName: user.name,
       invitedByUserId: input.invitedByUserId,
     },
+  });
+}
+
+/**
+ * 프로젝트 생성 시 spec 단계 기본 AI 기획자(planner).
+ * `aiOrchestrationRole` + `orchestrationStage` 조합으로 동일 프로젝트 내 중복 생성을 막습니다.
+ */
+export async function ensureDefaultAiPlannerProjectMember(
+  tx: Prisma.TransactionClient,
+  input: { projectId: string; invitedByUserId: string }
+) {
+  const existing = await tx.projectMember.findFirst({
+    where: {
+      projectId: input.projectId,
+      memberType: "AI",
+      aiOrchestrationRole: "planner",
+      orchestrationStage: "spec",
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    return existing;
+  }
+  return tx.projectMember.create({
+    data: {
+      projectId: input.projectId,
+      memberType: "AI",
+      role: "EDITOR",
+      displayName: "AI 기획자",
+      aiProvider: "openai",
+      aiOrchestrationRole: "planner",
+      orchestrationStage: "spec",
+      orchestrationEnabled: true,
+      invitedByUserId: input.invitedByUserId,
+    },
+    select: { id: true },
   });
 }
 
