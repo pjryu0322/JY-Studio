@@ -18,23 +18,26 @@ export function RequirementsParticipantBar({
   participants,
   selectedId,
   onSelect,
+  dense,
 }: {
   readonly participants: readonly ParticipantOption[];
   readonly selectedId: string;
   readonly onSelect: (id: string, name: string) => void;
+  /** true면 하단 안내 문구를 숨겨 입력 영역을 더 단정하게 유지합니다. */
+  readonly dense?: boolean;
 }) {
   const showScreenLabels = useShowScreenLabels();
   return (
     <div
       data-testid="requirements-participant-bar"
       style={{
-        padding: "10px 12px",
-        borderTop: "1px solid #e5e7eb",
-        background: "#fff",
+        padding: dense ? "4px 0 0" : "10px 12px",
+        borderTop: dense ? "none" : "1px solid #e5e7eb",
+        background: "transparent",
         fontSize: 12,
       }}
     >
-      <div style={{ fontWeight: 800, color: "#475569", marginBottom: 8 }}>참가자 · 질문 대상</div>
+      <div style={{ fontWeight: 800, color: "#475569", marginBottom: dense ? 6 : 8 }}>참여 대상</div>
       <div className="relative" style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: 8 }}>
         <ScreenLabel label="요구사항-참가자영역-질문대상리스트" visible={showScreenLabels} />
         {participants.map((p) => {
@@ -67,7 +70,7 @@ export function RequirementsParticipantBar({
           );
         })}
       </div>
-      {selectedId === VIRTUAL_AI_PLANNER_ID ? (
+      {dense ? null : selectedId === VIRTUAL_AI_PLANNER_ID ? (
         <div style={{ marginTop: 8, color: "#64748b" }}>
           대상: <strong style={{ color: "#0f172a" }}>AI 기획자</strong> — OpenAI로 요청하며, 진행·성공·실패는 대화에 시스템 메시지로 남습니다.
         </div>

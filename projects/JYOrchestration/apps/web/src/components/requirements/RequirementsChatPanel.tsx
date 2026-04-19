@@ -18,13 +18,14 @@ const msgBubble = (mine: boolean) =>
     maxWidth: "min(92%, 720px)",
     marginLeft: mine ? "auto" : 0,
     marginRight: mine ? 0 : "auto",
-    padding: "10px 14px",
-    borderRadius: mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-    background: mine ? "#0d7377" : "#fff",
-    color: mine ? "#fff" : "#111827",
-    border: mine ? "none" : "1px solid #e5e7eb",
-    fontSize: 14,
+    padding: "14px 16px",
+    borderRadius: mine ? "18px 18px 6px 18px" : "18px 18px 18px 6px",
+    background: mine ? "linear-gradient(180deg, #0f766e 0%, #0d5c56 100%)" : "#fff",
+    color: mine ? "#fff" : "#0f172a",
+    border: mine ? "none" : "1px solid #e2e8f0",
+    fontSize: 15,
     lineHeight: 1.55,
+    boxShadow: mine ? "0 10px 28px -14px rgba(13, 92, 86, 0.45)" : "0 8px 24px -16px rgba(15, 23, 42, 0.12)",
     whiteSpace: "pre-wrap" as const,
   }) as const;
 
@@ -62,12 +63,20 @@ export function RequirementsChatPanel({
         minWidth: 280,
         display: "flex",
         flexDirection: "column",
-        borderRight: "1px solid #e5e7eb",
-        minHeight: 420,
+        minHeight: 440,
       }}
       aria-label="아이디어 구체화 채팅"
     >
-      <div className="relative" style={{ position: "relative", flex: 1, overflowY: "auto", padding: "16px 14px", background: "#f4f4f5" }}>
+      <div
+        className="relative"
+        style={{
+          position: "relative",
+          flex: 1,
+          overflowY: "auto",
+          padding: "20px 18px",
+          background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
+        }}
+      >
         <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
         {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
         {messages === null ? (
@@ -85,7 +94,7 @@ export function RequirementsChatPanel({
           const mine = m.role === "user";
           const directed = mine && m.targetName ? `@${m.targetName}에게 질문` : null;
           return (
-            <div key={m.id} style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+            <div key={m.id} style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}>
               <div
                 style={{
                   fontSize: 11,
