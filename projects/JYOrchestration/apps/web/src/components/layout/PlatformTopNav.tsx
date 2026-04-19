@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { PlatformSettingsMenu } from "@/components/layout/PlatformSettingsMenu";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import {
@@ -44,6 +45,9 @@ function withProjectQuery(path: string, projectId: string | null): string {
   sp.set("projectId", projectId.trim());
   return `${base}?${sp.toString()}`;
 }
+
+const PLATFORM_HEADER_TAGLINE =
+  "아이디어를 정리하고, 각 프로젝트에서 검증 가능한 프로토타입을 만드는 플랫폼";
 
 const WORKFLOW_TOP_NAV: { stepId: AppFlowStepId; label: string; screenLabel: string }[] = [
   { stepId: "requirements", label: "아이디어 구체화", screenLabel: "공통-상단내비-워크플로우-요구사항" },
@@ -134,19 +138,43 @@ export function PlatformTopNav() {
           rowGap: 8,
         }}
       >
-        <Link
-          href="/"
+        <div
           style={{
-            fontWeight: 800,
-            fontSize: 15,
-            color: "#0f172a",
-            textDecoration: "none",
-            marginRight: 8,
-            letterSpacing: "-0.02em",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            columnGap: 14,
+            rowGap: 6,
+            minWidth: 0,
+            maxWidth: "min(100%, 620px)",
           }}
         >
-          JY Orchestration
-        </Link>
+          <Link
+            href="/"
+            style={{
+              fontWeight: 800,
+              fontSize: 15,
+              color: "#0f172a",
+              textDecoration: "none",
+              letterSpacing: "-0.02em",
+              flexShrink: 0,
+            }}
+          >
+            JY Orchestration
+          </Link>
+          <span
+            style={{
+              fontSize: 12.5,
+              fontWeight: 500,
+              color: "#64748b",
+              lineHeight: 1.45,
+              letterSpacing: "-0.01em",
+              minWidth: 0,
+            }}
+          >
+            {PLATFORM_HEADER_TAGLINE}
+          </span>
+        </div>
         {hasProjectContext ? <span style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} aria-hidden /> : null}
         {hasProjectContext && projectContextId ? (
           <nav aria-label="프로젝트 워크플로" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
@@ -225,6 +253,7 @@ export function PlatformTopNav() {
             })}
           </nav>
         ) : null}
+        <PlatformSettingsMenu />
       </div>
     </header>
   );
