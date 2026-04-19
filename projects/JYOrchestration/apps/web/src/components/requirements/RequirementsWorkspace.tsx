@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
@@ -12,13 +12,17 @@ import { RequirementsMemberInviteModal } from "@/components/requirements/Require
 import { RequirementsNavBreadcrumb } from "@/components/requirements/RequirementsNavBreadcrumb";
 import { RequirementsParticipantBar, type ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { RequirementsDraftPanel } from "@/components/requirements/RequirementsDraftPanel";
-import { RequirementsPromptView } from "@/components/requirements/RequirementsPromptView";
-import { RequirementsSummaryPanel } from "@/components/requirements/RequirementsSummaryPanel";
+import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { bumpDraftVersion, confirmDraft, draftMeetsMinimum, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
-import { buildPromptPresenterView, type RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
+import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
+import {
+  mergeRequirementsStateJson,
+  parseRequirementsStateJson,
+  type RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 import {
   projectMeetsRequirementsAnalysisComplete,
   REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR,
@@ -53,15 +57,6 @@ type LocalShell = {
   nfr: string;
   openIssues: string;
   priorityFeatures: string;
-};
-
-type RequirementsStateJson = {
-  lastSavedAt?: string;
-  lastOrganizedAt?: string;
-  selectedTargetId?: string | null;
-  onboardingShown?: boolean;
-  openIssues?: string;
-  priorityFeatures?: string;
 };
 
 function readLocalShell(): LocalShell | null {
@@ -113,21 +108,6 @@ function parseRequirementsConversationJson(raw: unknown, projectId: string): Req
     projectId: typeof o.projectId === "string" && o.projectId.trim() ? String(o.projectId) : projectId,
     stage,
     messages: msgs,
-  };
-}
-
-function parseRequirementsStateJson(raw: unknown): RequirementsStateJson {
-  const root = unwrapDbJsonField(raw);
-  if (!root || typeof root !== "object") return {};
-  const o = root as Record<string, unknown>;
-  return {
-    lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
-    lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
-    selectedTargetId:
-      typeof o.selectedTargetId === "string" ? o.selectedTargetId : o.selectedTargetId === null ? null : undefined,
-    onboardingShown: typeof o.onboardingShown === "boolean" ? o.onboardingShown : undefined,
-    openIssues: typeof o.openIssues === "string" ? o.openIssues : undefined,
-    priorityFeatures: typeof o.priorityFeatures === "string" ? o.priorityFeatures : undefined,
   };
 }
 
@@ -203,8 +183,7 @@ export function RequirementsWorkspace({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // (고급 보기 내부에서만 사용) - 기존 사이드 패널 토글은 제거
-  const [summaryOpen] = useState(false);
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [selectedTargetId, setSelectedTargetId] = useState<string>(VIRTUAL_AI_PLANNER_ID);
   const [selectedTargetName, setSelectedTargetName] = useState("AI 기획자");
@@ -213,16 +192,15 @@ export function RequirementsWorkspace({
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
   const [aiInvokePending, setAiInvokePending] = useState(false);
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [promptView, setPromptView] = useState<RequirementsPromptPresenterView | null>(null);
   const [draftOpen, setDraftOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [organizeState, setOrganizeState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [organizeError, setOrganizeError] = useState<string | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [organizedAt, setOrganizedAt] = useState<string | null>(null);
+
+  const stateJsonRef = useRef<RequirementsStateJson>({});
+  const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setResolvedProjectId(initialProjectId.trim());
@@ -300,6 +278,7 @@ export function RequirementsWorkspace({
 
   useEffect(() => {
     if (!resolvedProjectId) {
+      stateJsonRef.current = {};
       const local = readLocalShell();
       if (local) {
         setRoom(local.room);
@@ -335,6 +314,7 @@ export function RequirementsWorkspace({
       const conv = parseRequirementsConversationJson(p.requirementsConversationJson, pid);
       const draft = (p.requirementsDraftJson as RequirementsDraftDoc | null | undefined) ?? null;
       const state = parseRequirementsStateJson(p.requirementsStateJson);
+      stateJsonRef.current = mergeRequirementsStateJson(state, {});
       const legacy = parseRequirementsRoomState(p.requirementsRoomState);
       const legacyConv = legacy.requirementsConversation;
       const convUserCount = conv.messages.filter((m) => m.role === "user").length;
@@ -367,6 +347,12 @@ export function RequirementsWorkspace({
       setPriorityFeatures(state.priorityFeatures ?? legacy.priorityFeatures ?? "");
       setLastSavedAt(state.lastSavedAt ?? null);
       setOrganizedAt(state.lastOrganizedAt ?? null);
+      if (typeof state.selectedTargetId === "string" && state.selectedTargetId.trim()) {
+        setSelectedTargetId(state.selectedTargetId.trim());
+      }
+      if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
+        setInput(state.lastUserDraftText);
+      }
       setConversationStatus("loaded");
 
       const res = await fetch(`/api/project/members?projectId=${encodeURIComponent(resolvedProjectId)}`, {
@@ -447,6 +433,11 @@ export function RequirementsWorkspace({
     });
   }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel]);
 
+  useEffect(() => {
+    const row = participants.find((p) => p.id === selectedTargetId);
+    if (row) setSelectedTargetName(row.name);
+  }, [participants, selectedTargetId]);
+
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
   // 로딩 중에는 null로 전달해 "기록 없음"으로 오판하지 않게 합니다.
@@ -455,17 +446,17 @@ export function RequirementsWorkspace({
   const onboardingKey = useMemo(() => (resolvedProjectId.trim() ? `pid:${resolvedProjectId.trim()}` : "no-pid"), [resolvedProjectId]);
   const [onboardingAppliedKey, setOnboardingAppliedKey] = useState<string | null>(null);
 
-  const toolButtonStyle: CSSProperties = useMemo(
+  const actionBtn: CSSProperties = useMemo(
     () => ({
-      width: "100%",
-      padding: "10px 12px",
+      padding: "8px 14px",
       borderRadius: 10,
-      border: "1px solid #e5e7eb",
+      border: "1px solid #e2e8f0",
       background: "#fff",
-      textAlign: "left",
-      fontWeight: 800,
-      fontSize: 12,
+      fontWeight: 700,
+      fontSize: 13,
       cursor: "pointer",
+      color: "#0f172a",
+      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
     }),
     []
   );
@@ -502,6 +493,46 @@ export function RequirementsWorkspace({
     return null;
   }, [initialWorkflowNotice, project]);
 
+  const persistStateJsonOnly = useCallback(
+    async (patch: Partial<RequirementsStateJson>) => {
+      const pid = resolvedProjectId.trim();
+      if (!pid) return;
+      const ts = new Date().toISOString();
+      const merged = mergeRequirementsStateJson(stateJsonRef.current, { ...patch, lastSavedAt: patch.lastSavedAt ?? ts });
+      stateJsonRef.current = merged;
+      setSaveState("saving");
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requirementsStateJson: merged }),
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          message?: string;
+          data?: { project?: Project; patchApplied?: boolean; message?: string };
+        };
+        if (!res.ok || !json.success || !json.data?.project) {
+          setSaveState("error");
+          return;
+        }
+        if (json.data.patchApplied === false) {
+          setSaveState("error");
+          return;
+        }
+        setProject(json.data.project);
+        stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
+        notifyAppFlowProjectContextChanged();
+        setSaveState("saved");
+        setLastSavedAt(merged.lastSavedAt ?? ts);
+      } catch {
+        setSaveState("error");
+      }
+    },
+    [resolvedProjectId]
+  );
+
   const persistRemote = useCallback(
     async (nextRoom: RequirementsRoomStateV3, spec: Partial<Project>, meta?: Partial<RequirementsStateJson>) => {
       const pid = resolvedProjectId.trim();
@@ -529,18 +560,20 @@ export function RequirementsWorkspace({
       setSaveState("saving");
       const userBlob = concatUserContext(nextRoom.requirementsConversation.messages).trim();
       const nextSavedAt = new Date().toISOString();
+      const baseState = mergeRequirementsStateJson(stateJsonRef.current, {
+        lastSavedAt: nextSavedAt,
+        lastOrganizedAt: organizedAt ?? stateJsonRef.current.lastOrganizedAt,
+        selectedTargetId: selectedTargetId ?? stateJsonRef.current.selectedTargetId ?? null,
+        onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
+        openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
+        priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
+      });
+      const mergedState = meta ? mergeRequirementsStateJson(baseState, meta) : baseState;
+      stateJsonRef.current = mergedState;
       const body: Record<string, unknown> = {
         requirementsConversationJson: nextRoom.requirementsConversation,
         requirementsDraftJson: nextRoom.requirementsDraft ?? null,
-        requirementsStateJson: {
-          lastSavedAt: meta?.lastSavedAt ?? nextSavedAt,
-          lastOrganizedAt: meta?.lastOrganizedAt ?? organizedAt ?? undefined,
-          selectedTargetId: meta?.selectedTargetId ?? selectedTargetId ?? null,
-          onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
-          openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
-          priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
-        } satisfies RequirementsStateJson,
-        // DB에 split 컬럼이 없는 환경에서도 대화가 날아가지 않도록 레거시 JSONB에 동시 기록
+        requirementsStateJson: mergedState,
         requirementsRoomState: {
           ...nextRoom,
           openIssues: openIssues.trim() || undefined,
@@ -567,7 +600,6 @@ export function RequirementsWorkspace({
         code?: string;
         data?: { project?: Project; patchApplied?: boolean; message?: string };
       };
-      // DB 스키마가 오래된 환경에서는 success=true여도 data.patchApplied=false로 내려올 수 있습니다.
       if (!res.ok || !json.success || !json.data?.project) {
         setSaveState("error");
         throw new Error(json.message || "저장에 실패했습니다.");
@@ -581,9 +613,10 @@ export function RequirementsWorkspace({
         );
       }
       setProject(json.data.project);
+      stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
       notifyAppFlowProjectContextChanged();
       setSaveState("saved");
-      setLastSavedAt(nextSavedAt);
+      setLastSavedAt(mergedState.lastSavedAt ?? nextSavedAt);
       return json.data.project;
     },
     [
@@ -602,6 +635,28 @@ export function RequirementsWorkspace({
       nfr,
     ]
   );
+
+  useEffect(() => {
+    const pid = resolvedProjectId.trim();
+    if (!pid || conversationStatus !== "loaded") {
+      if (draftDebounceTimerRef.current) {
+        clearTimeout(draftDebounceTimerRef.current);
+        draftDebounceTimerRef.current = null;
+      }
+      return;
+    }
+    if (draftDebounceTimerRef.current) clearTimeout(draftDebounceTimerRef.current);
+    draftDebounceTimerRef.current = setTimeout(() => {
+      draftDebounceTimerRef.current = null;
+      void persistStateJsonOnly({ lastUserDraftText: input });
+    }, 800);
+    return () => {
+      if (draftDebounceTimerRef.current) {
+        clearTimeout(draftDebounceTimerRef.current);
+        draftDebounceTimerRef.current = null;
+      }
+    };
+  }, [input, resolvedProjectId, conversationStatus, persistStateJsonOnly]);
 
   useEffect(() => {
     if (conversationStatus !== "loaded") return;
@@ -669,11 +724,31 @@ export function RequirementsWorkspace({
       return;
     }
     if (busy || organizeState === "running") return;
+    if (draftDebounceTimerRef.current) {
+      clearTimeout(draftDebounceTimerRef.current);
+      draftDebounceTimerRef.current = null;
+    }
     setBusy(true);
     setError(null);
     setOrganizeState("running");
     setOrganizeError(null);
     try {
+      const organizeUserMessage =
+        "지금까지의 대화를 바탕으로 아이디어를 문서 형태로 정리해줘. 필수 항목(개요/사용자/기능/성공기준)이 빠지면 추론해서 채우고, 불확실하면 미결정 이슈로 남겨줘.";
+      const promptMetaIso = new Date().toISOString();
+      const organizePromptView = buildPromptPresenterView({
+        projectName: project?.name ?? "",
+        projectDescription: project?.description ?? "",
+        targetName: "AI 기획자",
+        messages: conversationMessages,
+        latestUserMessage: organizeUserMessage,
+      });
+      await persistStateJsonOnly({
+        lastPromptView: organizePromptView,
+        lastPromptText: organizePromptView.copyText,
+        lastPromptGeneratedAt: promptMetaIso,
+        lastUserDraftText: input,
+      });
       const excerpt = formatDialogueExcerpt(conversationMessages);
       const res = await fetch("/api/requirements/draft-generate", {
         method: "POST",
@@ -684,8 +759,7 @@ export function RequirementsWorkspace({
           projectName: project?.name ?? "",
           projectDescription: project?.description ?? "",
           stage: "requirements",
-          userMessage:
-            "지금까지의 대화를 바탕으로 아이디어를 문서 형태로 정리해줘. 필수 항목(개요/사용자/기능/성공기준)이 빠지면 추론해서 채우고, 불확실하면 미결정 이슈로 남겨줘.",
+          userMessage: organizeUserMessage,
           dialogueExcerpt: excerpt,
           existingDraft: draftDoc,
         }),
@@ -750,7 +824,20 @@ export function RequirementsWorkspace({
     } finally {
       setBusy(false);
     }
-  }, [resolvedProjectId, busy, conversationStatus, conversationMessages, organizeState, project?.name, project?.description, draftDoc, room, persistRemote]);
+  }, [
+    resolvedProjectId,
+    busy,
+    conversationStatus,
+    conversationMessages,
+    organizeState,
+    project?.name,
+    project?.description,
+    draftDoc,
+    room,
+    persistRemote,
+    persistStateJsonOnly,
+    input,
+  ]);
 
   const isAiTarget = useCallback(
     (targetId: string) => {
@@ -762,6 +849,10 @@ export function RequirementsWorkspace({
   );
 
   const onSend = useCallback(async () => {
+    if (draftDebounceTimerRef.current) {
+      clearTimeout(draftDebounceTimerRef.current);
+      draftDebounceTimerRef.current = null;
+    }
     const text = input.trim();
     if (!text || busy) return;
     setBusy(true);
@@ -782,21 +873,24 @@ export function RequirementsWorkspace({
 
       if (isAiTarget(selectedTargetId)) {
         const aiName = selectedTargetId === VIRTUAL_AI_PLANNER_ID ? "AI 기획자" : selectedTargetName;
-        setPromptView(
-          buildPromptPresenterView({
-            projectName: project?.name ?? "",
-            projectDescription: project?.description ?? "",
-            targetName: aiName,
-            messages: conversationMessages,
-            latestUserMessage: text,
-          })
-        );
-        // OpenAI 내부 진행 로그는 UI에 노출하지 않습니다(typing indicator로 대체).
+        const promptMetaIso = new Date().toISOString();
+        const pv = buildPromptPresenterView({
+          projectName: project?.name ?? "",
+          projectDescription: project?.description ?? "",
+          targetName: aiName,
+          messages: conversationMessages,
+          latestUserMessage: text,
+        });
         const withCalling: RequirementsRoomStateV3 = {
           ...room,
           requirementsConversation: { ...room.requirementsConversation, projectId: resolvedProjectId.trim(), messages: msgs },
         };
-        await persistRemote(withCalling, {});
+        await persistRemote(withCalling, {}, {
+          lastPromptView: pv,
+          lastPromptText: pv.copyText,
+          lastPromptGeneratedAt: promptMetaIso,
+          lastUserDraftText: text,
+        });
         setAiInvokePending(true);
         const pid = resolvedProjectId.trim();
         let finalRoom: RequirementsRoomStateV3;
@@ -916,7 +1010,7 @@ export function RequirementsWorkspace({
           setAiInvokePending(false);
         }
         setInput("");
-        await persistRemote(finalRoom, {});
+        await persistRemote(finalRoom, {}, { lastUserDraftText: "" });
       } else {
         const nextRoom: RequirementsRoomStateV3 = {
           ...room,
@@ -937,7 +1031,7 @@ export function RequirementsWorkspace({
           },
         };
         setInput("");
-        await persistRemote(nextRoom, {});
+        await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류");
@@ -960,29 +1054,6 @@ export function RequirementsWorkspace({
     project?.description,
     draftDoc,
   ]);
-
-  const onSaveConversation = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      // 대화 저장은 타임라인을 오염시키지 않고, 현재 conversation JSON을 서버에 저장만 합니다.
-      const pid = resolvedProjectId.trim();
-      const next: RequirementsRoomStateV3 = {
-        ...room,
-        requirementsConversation: {
-          ...room.requirementsConversation,
-          projectId: pid,
-        },
-      };
-      await persistRemote(next, {});
-      setLastSavedAt(new Date().toISOString());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "오류");
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, room, resolvedProjectId, persistRemote]);
 
   const onPanelBlurSave = useCallback(async () => {
     if (busy) return;
@@ -1073,16 +1144,25 @@ export function RequirementsWorkspace({
           : "설명이 아직 없습니다.";
   const headerPlannerHint = virtualPlanner ? "AI 기획자가 기본으로 참여합니다." : null;
 
+  const lastSaveTimeLabel = useMemo(
+    () =>
+      lastSavedAt
+        ? new Date(lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })
+        : null,
+    [lastSavedAt]
+  );
+
   const shellStyle = { display: "flex", flexDirection: "column" as const, gap: 0, minHeight: "min(78vh, 900px)" };
   const mainRow: CSSProperties = {
     display: "flex",
     flex: 1,
     gap: 0,
-    minHeight: 420,
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
+    minHeight: 440,
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
     overflow: "hidden",
     background: "#fff",
+    boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.18)",
   };
 
   return (
@@ -1099,6 +1179,7 @@ export function RequirementsWorkspace({
         members={memberChips}
         plannerHint={headerPlannerHint}
         onInviteClick={resolvedProjectId.trim() ? () => setInviteOpen(true) : undefined}
+        autosave={{ state: saveState, lastTimeLabel: lastSaveTimeLabel }}
       />
 
       <div style={{ marginBottom: 8 }} />
@@ -1158,153 +1239,76 @@ export function RequirementsWorkspace({
             messages={messages}
             typingIndicator={aiInvokePending}
             composer={
-              <div style={{ borderTop: "1px solid #e5e7eb", padding: 12, background: "#fff" }}>
-                <RequirementsParticipantBar
-                  participants={participants}
-                  selectedId={selectedTargetId}
-                  onSelect={(id, name) => {
-                    setSelectedTargetId(id);
-                    setSelectedTargetName(name);
-                  }}
-                />
-                <div style={{ marginTop: 10 }}>
-                  <RequirementsComposerGpt
-                    value={input}
-                    onChange={setInput}
-                    onSend={() => void onSend()}
-                    busy={busy}
-                    disabled={false}
-                    placeholder="예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요"
-                    leading={
-                      <div className="relative" style={{ position: "relative" }}>
-                        <ScreenLabel label="요구사항-입력창-도구아이콘" visible={showScreenLabels} />
+              <div
+                style={{
+                  borderTop: "1px solid #e2e8f0",
+                  padding: "16px 18px 20px",
+                  background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+                }}
+              >
+                <RequirementsComposerGpt
+                  value={input}
+                  onChange={setInput}
+                  onSend={() => void onSend()}
+                  busy={busy}
+                  disabled={false}
+                  placeholder="예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요"
+                  toolbarAbove={
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, rowGap: 10 }}>
+                        <ScreenLabel label="요구사항-입력창-액션행" visible={showScreenLabels} />
                         <button
                           type="button"
-                          onClick={() => setToolsOpen((v) => !v)}
-                          title="도구"
-                          aria-label="도구"
+                          disabled={busy || remoteLocked}
+                          onClick={() => void onOrganizeRequirements()}
                           style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 10,
-                            border: "1px solid #e5e7eb",
-                            background: "#fff",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 18,
-                            lineHeight: 1,
-                            color: "#0f172a",
+                            ...actionBtn,
+                            cursor: busy ? "wait" : remoteLocked ? "not-allowed" : "pointer",
+                            opacity: remoteLocked ? 0.55 : 1,
                           }}
                         >
-                          ⎚
+                          정리 요청
                         </button>
-
-                        {toolsOpen ? (
-                          <div
-                            style={{
-                              position: "absolute",
-                              bottom: "calc(100% + 10px)",
-                              left: 0,
-                              width: 320,
-                              maxWidth: "min(92vw, 360px)",
-                              background: "#fff",
-                              border: "1px solid #e5e7eb",
-                              borderRadius: 12,
-                              boxShadow: "0 10px 24px rgba(15, 23, 42, 0.12)",
-                              padding: 10,
-                              zIndex: 30,
-                            }}
-                          >
-                            <ScreenLabel label="요구사항-도구메뉴-팝오버" visible={showScreenLabels} />
-
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                              <div className="relative" style={{ position: "relative" }}>
-                                <ScreenLabel label="요구사항-도구메뉴-대화저장버튼" visible={showScreenLabels} />
-                                <ScreenLabel label="요구사항-대화저장버튼" visible={showScreenLabels} />
-                                <button type="button" disabled={busy} onClick={() => void onSaveConversation()} style={{ ...toolButtonStyle, cursor: busy ? "wait" : "pointer" }}>
-                                  대화 저장
-                                </button>
-                              </div>
-
-                              <div className="relative" style={{ position: "relative" }}>
-                                <ScreenLabel label="요구사항-도구메뉴-정리버튼" visible={showScreenLabels} />
-                                <button type="button" disabled={busy || remoteLocked} onClick={() => void onOrganizeRequirements()} style={{ ...toolButtonStyle, cursor: busy ? "wait" : remoteLocked ? "not-allowed" : "pointer", background: remoteLocked ? "#f4f4f5" : "#fff", color: remoteLocked ? "#a1a1aa" : "#0f172a" }}>
-                                  정리 요청
-                                </button>
-                              </div>
-
-                              {draftDoc ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setDraftOpen(true)}
-                                  title="정리본 보기"
-                                  style={toolButtonStyle}
-                                >
-                                  정리본 보기
-                                </button>
-                              ) : null}
-
-                              <button
-                                type="button"
-                                onClick={() => setAdvancedOpen((v) => !v)}
-                                style={{ ...toolButtonStyle, background: advancedOpen ? "#f1f5f9" : "#fff" }}
-                              >
-                                {advancedOpen ? "고급 보기 닫기" : "고급 보기"}
-                              </button>
-                            </div>
-                          </div>
+                        {draftDoc ? (
+                          <button type="button" onClick={() => setDraftOpen(true)} style={actionBtn}>
+                            정리본 보기
+                          </button>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setSummaryModalOpen(true)}
+                          style={{
+                            border: 0,
+                            background: "none",
+                            padding: "6px 4px",
+                            fontWeight: 700,
+                            fontSize: 13,
+                            color: "#64748b",
+                            cursor: "pointer",
+                            textDecoration: "underline",
+                            textUnderlineOffset: 3,
+                          }}
+                        >
+                          요약 편집
+                        </button>
                       </div>
-                    }
-                  />
-                  {lastSavedAt ? (
-                    <div style={{ marginTop: 8, fontSize: 11, color: "#64748b" }}>
-                      마지막 저장:{" "}
-                      {new Date(lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                      <RequirementsParticipantBar
+                        dense
+                        participants={participants}
+                        selectedId={selectedTargetId}
+                        onSelect={(id, name) => {
+                          setSelectedTargetId(id);
+                          setSelectedTargetName(name);
+                          const p = resolvedProjectId.trim();
+                          if (p) void persistStateJsonOnly({ selectedTargetId: id });
+                        }}
+                      />
                     </div>
-                  ) : null}
-                </div>
+                  }
+                />
               </div>
             }
           />
-          {advancedOpen ? (
-            <div style={{ borderTop: "1px solid #e5e7eb", padding: 12, background: "#fff" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <div style={{ fontWeight: 900, fontSize: 13, color: "#0f172a" }}>고급 보기</div>
-                <button type="button" onClick={() => setAdvancedOpen(false)} style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 800, cursor: "pointer", padding: 0, font: "inherit", fontSize: 12 }}>
-                  닫기
-                </button>
-              </div>
-              <div style={{ display: "grid", gap: 10 }}>
-                <RequirementsPromptView open={promptOpen} onToggle={() => setPromptOpen((v) => !v)} view={promptView} />
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-                  <div style={{ padding: "10px 12px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb", fontWeight: 900, fontSize: 12, color: "#0f172a" }}>
-                    아이디어 요약(수정 가능)
-                  </div>
-                  <div style={{ padding: 12, background: "#fff" }}>
-                    <ScreenLabel label="요구사항-요약보기-패널" visible={showScreenLabels} />
-                    <RequirementsSummaryPanel
-                      goals={goals}
-                      targetUsers={targetUsers}
-                      scopeIn={scopeIn}
-                      scopeOut={scopeOut}
-                      openIssues={openIssues}
-                      success={success}
-                      onGoalsChange={setGoals}
-                      onTargetUsersChange={setTargetUsers}
-                      onScopeInChange={setScopeIn}
-                      onScopeOutChange={setScopeOut}
-                      onOpenIssuesChange={setOpenIssues}
-                      onSuccessChange={setSuccess}
-                      onBlurSave={() => void onPanelBlurSave()}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -1376,6 +1380,24 @@ export function RequirementsWorkspace({
         projectId={resolvedProjectId.trim()}
         onClose={() => setInviteOpen(false)}
         onInvited={() => void reloadMembers()}
+      />
+
+      <RequirementsSummaryModal
+        open={summaryModalOpen}
+        onClose={() => setSummaryModalOpen(false)}
+        goals={goals}
+        targetUsers={targetUsers}
+        scopeIn={scopeIn}
+        scopeOut={scopeOut}
+        openIssues={openIssues}
+        success={success}
+        onGoalsChange={setGoals}
+        onTargetUsersChange={setTargetUsers}
+        onScopeInChange={setScopeIn}
+        onScopeOutChange={setScopeOut}
+        onOpenIssuesChange={setOpenIssues}
+        onSuccessChange={setSuccess}
+        onBlurSave={() => void onPanelBlurSave()}
       />
     </div>
   );

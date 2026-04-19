@@ -42,13 +42,13 @@ export function buildPromptPresenterView(input: {
   messages: readonly RequirementsMessage[];
   latestUserMessage: string;
 }): RequirementsPromptPresenterView {
-  const roleText = "당신은 요구사항 분석 전문가입니다.";
-  const stageText = "요구사항 정의";
+  const roleText = "당신은 제품 아이디어를 함께 다듬는 AI 기획 파트너입니다.";
+  const stageText = "아이디어 구체화";
   const bullets = recentBullets(input.messages);
   const latest = input.latestUserMessage.trim();
 
   const copyText = [
-    "AI 기획자에게 전달되는 내용",
+    "AI에게 전달되는 맥락",
     "",
     "역할:",
     roleText,
@@ -73,7 +73,7 @@ export function buildPromptPresenterView(input: {
   ].join("\n");
 
   return {
-    title: "AI 기획자에게 전달되는 내용",
+    title: "AI에게 전달되는 맥락",
     roleText,
     projectName: input.projectName,
     projectDescription: input.projectDescription,
