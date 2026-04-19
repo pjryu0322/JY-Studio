@@ -47,7 +47,7 @@ function withProjectQuery(path: string, projectId: string | null): string {
 }
 
 const PLATFORM_HEADER_TAGLINE =
-  "아이디어를 정리하고, 각 프로젝트에서 검증 가능한 프로토타입을 만드는 플랫폼";
+  "AI와 전문가의 도움으로 아이디어를 구체화하고, 개발 전 시행착오를 줄이기 위한 프로토타입 제작을 지원하는 플랫폼";
 
 const WORKFLOW_TOP_NAV: { stepId: AppFlowStepId; label: string; screenLabel: string }[] = [
   { stepId: "requirements", label: "아이디어 구체화", screenLabel: "공통-상단내비-워크플로우-요구사항" },
@@ -146,7 +146,8 @@ export function PlatformTopNav() {
             columnGap: 14,
             rowGap: 6,
             minWidth: 0,
-            maxWidth: "min(100%, 620px)",
+            flex: "1 1 220px",
+            maxWidth: "min(100%, 56rem)",
           }}
         >
           <Link
@@ -158,6 +159,7 @@ export function PlatformTopNav() {
               textDecoration: "none",
               letterSpacing: "-0.02em",
               flexShrink: 0,
+              lineHeight: 1.25,
             }}
           >
             JY Orchestration
@@ -170,6 +172,7 @@ export function PlatformTopNav() {
               lineHeight: 1.45,
               letterSpacing: "-0.01em",
               minWidth: 0,
+              flex: "1 1 200px",
             }}
           >
             {PLATFORM_HEADER_TAGLINE}

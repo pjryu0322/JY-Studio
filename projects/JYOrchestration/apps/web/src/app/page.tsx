@@ -244,7 +244,7 @@ export default function HomePage() {
       </section>
 
       <section
-        className="relative mx-auto mb-6 max-w-2xl rounded-xl border border-neutral-200 p-6"
+        className="relative mx-auto mb-6 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
         data-ui-label="[B] Create Project Form"
       >
         <ScreenLabel label="워크스페이스-프로젝트생성-섹션" visible={showScreenLabels} />
@@ -299,13 +299,8 @@ export default function HomePage() {
       </section>
 
       <section
-        className="relative"
+        className="relative mx-auto mb-8 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
         data-ui-label="[C] Project List"
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          padding: 20,
-        }}
       >
         <ScreenLabel label="워크스페이스-프로젝트목록-섹션" visible={showScreenLabels} />
         <div
