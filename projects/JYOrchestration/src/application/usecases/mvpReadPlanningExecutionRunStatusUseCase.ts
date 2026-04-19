@@ -29,10 +29,10 @@ export async function mvpReadPlanningExecutionRunStatusUseCase(req: {
       return { ok: false, error: "UNEXPECTED_ERROR", message: "실행 상태 조회에 실패했습니다." };
     }
 
-    const s = r.value.summary;
+    const s = r.summary;
     const steps = await mvpGetExecutionStepListUseCase({ runId });
     const lastStep =
-      steps.ok && steps.value.steps.length > 0 ? steps.value.steps[steps.value.steps.length - 1] : null;
+      steps.ok && steps.steps.length > 0 ? steps.steps[steps.steps.length - 1] : null;
 
     const status: "RUNNING" | "COMPLETED" | "FAILED" =
       s.runStatus === "RUNNING" ? "RUNNING" : s.runStatus === "SUCCESS" ? "COMPLETED" : "FAILED";

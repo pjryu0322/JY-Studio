@@ -202,30 +202,35 @@ function ProjectAdminMembersInner() {
     [projectRole]
   );
 
-  const backHref = projectId ? `/projects/${encodeURIComponent(projectId)}?view=workspace` : "/";
+  const backHref =
+    projectId.trim().length > 0
+      ? `/requirements?projectId=${encodeURIComponent(projectId)}`
+      : "/";
 
   return (
     <main data-testid="project-admin-members-page" style={{ padding: 24, maxWidth: 1000, margin: "0 auto" }}>
-      <div style={{ marginBottom: 16 }}>
-        <Link
-          href={backHref}
-          style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", textDecoration: "none" }}
-        >
-          ← 생성 준비로 돌아가기
-        </Link>
-      </div>
+      {projectId ? (
+        <div style={{ marginBottom: 16 }}>
+          <Link
+            href={backHref}
+            style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", textDecoration: "none" }}
+          >
+            ← 아이디어 구체화로
+          </Link>
+        </div>
+      ) : null}
 
-      <ProjectAdminWorkflowScopeNote />
+      {projectId ? <ProjectAdminWorkflowScopeNote /> : null}
 
       {!projectId ? (
-        <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
-          <p style={{ margin: "0 0 10px 0" }}>
-            프로젝트가 선택되지 않았습니다.{" "}
+        <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
+          <h1 style={{ margin: "0 0 8px 0", fontSize: 18, fontWeight: 800, color: "#0f172a" }}>프로젝트 멤버</h1>
+          <p style={{ margin: 0 }}>
+            프로젝트를 선택한 뒤 이 화면에서 멤버를 추가·제거할 수 있습니다.{" "}
             <Link href="/" style={{ color: "#1d4ed8", fontWeight: 700 }}>
-              프로젝트 목록
+              홈
             </Link>
-            에서 프로젝트를 연 뒤 이 페이지로 이동하거나, URL에{" "}
-            <code style={{ fontSize: 12 }}>?projectId=…</code> 를 붙여 주세요.
+            에서 프로젝트를 연 다음 <code style={{ fontSize: 12 }}>?projectId=…</code> 로 다시 열어 주세요.
           </p>
         </div>
       ) : null}
@@ -240,15 +245,13 @@ function ProjectAdminMembersInner() {
       {projectId && project && !errorMessage ? (
         <>
           <header style={{ marginBottom: 18 }}>
-            <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-              프로젝트 관리 · 멤버
-            </h1>
+            <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>프로젝트 멤버</h1>
             <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
-              <strong>{project.name}</strong>의 사람·AI 멤버를 한곳에서 관리합니다. 스펙·작업 흐름은{" "}
+              <strong>{project.name}</strong>에 속한 사람·AI 멤버를 관리합니다. 다음 단계는{" "}
               <Link href={backHref} style={{ color: "#1d4ed8", fontWeight: 700 }}>
-                생성 준비
+                아이디어 구체화
               </Link>
-              화면에서 진행하세요.
+              에서 이어가면 됩니다.
             </p>
           </header>
 

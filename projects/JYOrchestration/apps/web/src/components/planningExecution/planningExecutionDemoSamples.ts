@@ -45,7 +45,7 @@ const demoResponses: Record<PlanningOriginatedExecutionStatus, PlanningOriginate
   BLOCKED: {
     ok: false,
     status: "BLOCKED",
-    internalReasonCode: null,
+    internalReasonCode: "",
     reasonSummary: "현재 입력으로는 계획을 확정하거나 실행 준비를 진행할 수 없습니다.",
     planning: {
       projectId: DEMO_PREVIEW_BASE.projectId,
@@ -59,7 +59,7 @@ const demoResponses: Record<PlanningOriginatedExecutionStatus, PlanningOriginate
   NEEDS_CONFIRMATION: {
     ok: false,
     status: "NEEDS_CONFIRMATION",
-    internalReasonCode: null,
+    internalReasonCode: "",
     reasonSummary: "실행을 준비하기 전에 사용자 확인이 필요합니다.",
     planning: {
       projectId: DEMO_PREVIEW_BASE.projectId,
@@ -91,7 +91,7 @@ const demoResponses: Record<PlanningOriginatedExecutionStatus, PlanningOriginate
   EXECUTION_START_FAILED: {
     ok: false,
     status: "EXECUTION_START_FAILED",
-    internalReasonCode: null,
+    internalReasonCode: "",
     reasonSummary: "실행 준비는 성공했으나 런 시작에 실패했습니다.",
     preview: {
       ...previewFor("EXECUTION_START_FAILED"),

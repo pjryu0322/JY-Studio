@@ -1,6 +1,6 @@
 "use client";
 
-import type { CollaborationActionResult } from "@/lib/workflow/collaborationActionContract";
+import type { CollaborationActionResult, CollaborationActionStatus } from "@/lib/workflow/collaborationActionContract";
 import type { WorkspaceImpactNote } from "@/lib/workflow/collaborationWorkspaceImpact";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
@@ -15,7 +15,7 @@ function labelForType(t: CollaborationActionResult["actionType"]): string {
   return "아이디어 요청";
 }
 
-function statusLabelKo(status: CollaborationActionResult["status"]): string {
+function statusLabelKo(status: CollaborationActionStatus): string {
   switch (status) {
     case "idle":
       return "대기";

@@ -1,22 +1,29 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 type Tab = "login" | "register";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>("login");
+  const [tab, setTab] = useState<Tab>(() => (searchParams.get("tab") === "register" ? "register" : "login"));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
+  const [regPassword2, setRegPassword2] = useState("");
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "register") setTab("register");
+  }, [searchParams]);
 
   const redirectHome = useCallback(async () => {
     const from = searchParams.get("from")?.trim();
@@ -32,6 +39,7 @@ function LoginForm() {
   const onLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setSubmitting(true);
     try {
       const res = await fetch("/api/auth/login", {
@@ -59,6 +67,11 @@ function LoginForm() {
   const onRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfo(null);
+    if (regPassword !== regPassword2) {
+      setError("비밀번호 확인이 일치하지 않습니다.");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/auth/register", {
@@ -76,6 +89,8 @@ function LoginForm() {
         setError(json.message || "회원가입에 실패했습니다.");
         return;
       }
+      setInfo("가입이 완료되었습니다. 홈으로 이동합니다…");
+      setRegPassword2("");
       await redirectHome();
     } catch {
       setError("회원가입 중 오류가 발생했습니다.");
@@ -112,7 +127,7 @@ function LoginForm() {
           JYOrchestration
         </h1>
         <p style={{ margin: "0 0 24px 0", color: "#666", fontSize: 14 }}>
-          로그인 후 오케스트레이션을 사용할 수 있습니다.
+          회원가입 후 프로젝트를 만들고 <strong>아이디어 구체화</strong>부터 진행할 수 있습니다.
         </p>
 
         <div data-ui-label="[L-2] Auth Tabs" style={{ display: "flex", gap: 8, marginBottom: 20 }}>
@@ -122,6 +137,7 @@ function LoginForm() {
             onClick={() => {
               setTab("login");
               setError(null);
+              setInfo(null);
             }}
             style={{
               flex: 1,
@@ -142,6 +158,7 @@ function LoginForm() {
             onClick={() => {
               setTab("register");
               setError(null);
+              setInfo(null);
             }}
             style={{
               flex: 1,
@@ -160,6 +177,9 @@ function LoginForm() {
 
         {error ? (
           <p style={{ color: "#b00020", margin: "0 0 16px 0", fontSize: 14 }}>{error}</p>
+        ) : null}
+        {info ? (
+          <p style={{ color: "#166534", margin: "0 0 16px 0", fontSize: 14, fontWeight: 600 }}>{info}</p>
         ) : null}
 
         {tab === "login" ? (
@@ -203,6 +223,30 @@ function LoginForm() {
             >
               {submitting ? "처리 중..." : "로그인"}
             </button>
+            <p style={{ margin: 0, textAlign: "center", fontSize: 13, color: "#555" }}>
+              계정이 없으신가요?{" "}
+              <button
+                type="button"
+                data-testid="login-goto-register"
+                onClick={() => {
+                  setTab("register");
+                  setError(null);
+                  setInfo(null);
+                }}
+                style={{
+                  border: 0,
+                  background: "none",
+                  padding: 0,
+                  color: "#111",
+                  fontWeight: 700,
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  font: "inherit",
+                }}
+              >
+                회원가입
+              </button>
+            </p>
           </form>
         ) : (
           <form data-ui-label="[L-4] Register Form" onSubmit={onRegister} style={{ display: "grid", gap: 14 }}>
@@ -240,6 +284,18 @@ function LoginForm() {
               data-testid="register-password"
               style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
             />
+            <input
+              type="password"
+              autoComplete="new-password"
+              placeholder="비밀번호 확인"
+              value={regPassword2}
+              onChange={(e) => setRegPassword2(e.target.value)}
+              disabled={submitting}
+              required
+              minLength={8}
+              data-testid="register-password-confirm"
+              style={{ padding: 12, borderRadius: 8, border: "1px solid #ccc" }}
+            />
             <button
               type="submit"
               disabled={submitting}
@@ -257,6 +313,30 @@ function LoginForm() {
             >
               {submitting ? "처리 중..." : "가입하기"}
             </button>
+            <p style={{ margin: 0, textAlign: "center", fontSize: 13, color: "#555" }}>
+              이미 계정이 있으신가요?{" "}
+              <button
+                type="button"
+                data-testid="register-goto-login"
+                onClick={() => {
+                  setTab("login");
+                  setError(null);
+                  setInfo(null);
+                }}
+                style={{
+                  border: 0,
+                  background: "none",
+                  padding: 0,
+                  color: "#111",
+                  fontWeight: 700,
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  font: "inherit",
+                }}
+              >
+                로그인
+              </button>
+            </p>
           </form>
         )}
       </div>
