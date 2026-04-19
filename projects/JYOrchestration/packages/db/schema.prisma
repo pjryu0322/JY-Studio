@@ -252,6 +252,13 @@ model Project {
   /// 요구사항 협의실: 채팅·회의록 등(JSON, 클라이언트 스키마 v1)
   requirementsRoomState Json?
 
+  /// 요구사항 협의실: Raw conversation(운영 원본)
+  requirementsConversationJson Json?
+  /// 요구사항 협의실: Derived draft / organized requirements(운영 원본)
+  requirementsDraftJson Json?
+  /// 요구사항 협의실: UI/흐름 상태 메타(운영 원본)
+  requirementsStateJson Json?
+
   @@index([ownerUserId])
   @@map("projects")
 }

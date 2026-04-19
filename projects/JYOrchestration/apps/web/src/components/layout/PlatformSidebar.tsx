@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ReactNode } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
@@ -11,7 +11,7 @@ type NavItem = {
   href: string;
   disabled?: boolean;
   screenLabel: string;
-  /** 홈·워크스페이스 별칭·프로젝트 상세(실행 계획 화면)에서 활성 */
+  /** 홈·워크스페이스 별칭·프로젝트 허브(`?view=workspace`)에서 활성 */
   matchHomeAndProjectPlanning?: boolean;
 };
 
@@ -89,14 +89,13 @@ function NavLinkItem({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
-function isItemActive(pathname: string, item: NavItem): boolean {
+function isItemActive(pathname: string, item: NavItem, searchParams: URLSearchParams): boolean {
   if (item.disabled) return false;
   if (item.matchHomeAndProjectPlanning) {
-    return (
-      pathname === "/" ||
-      pathname === "/workspace" ||
-      pathname.startsWith("/projects/")
-    );
+    if (pathname.startsWith("/projects/")) {
+      return searchParams.get("view") === "workspace";
+    }
+    return pathname === "/" || pathname === "/workspace";
   }
   if (item.href === "/requirements") {
     return pathname === "/requirements" || pathname.startsWith("/requirements/");
@@ -106,6 +105,7 @@ function isItemActive(pathname: string, item: NavItem): boolean {
 
 export function PlatformSidebar() {
   const pathname = usePathname() || "/";
+  const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
 
   const projectManagement: NavItem[] = [
@@ -114,26 +114,26 @@ export function PlatformSidebar() {
   ];
 
   const workflow: NavItem[] = [
-    { label: "요구사항", href: "/requirements", screenLabel: "공통-사이드바-워크플로우-요구사항-메뉴" },
+    { label: "아이디어 구체화", href: "/requirements", screenLabel: "공통-사이드바-워크플로우-요구사항-메뉴" },
     { label: "협업", href: "/collaboration", screenLabel: "공통-사이드바-워크플로우-협업-메뉴" },
-    { label: "기능", href: "/features", screenLabel: "공통-사이드바-워크플로우-기능-메뉴" },
-    { label: "작업", href: "/tasks", screenLabel: "공통-사이드바-워크플로우-작업-메뉴" },
+    { label: "기능 정리", href: "/features", screenLabel: "공통-사이드바-워크플로우-기능-메뉴" },
+    { label: "작업 정리", href: "/tasks", screenLabel: "공통-사이드바-워크플로우-작업-메뉴" },
     {
-      label: "실행 계획",
+      label: "생성 준비",
       href: "/",
       screenLabel: "공통-사이드바-워크플로우-실행계획-메뉴",
       matchHomeAndProjectPlanning: true,
     },
-    { label: "실행", href: "/execution", screenLabel: "공통-사이드바-워크플로우-실행-메뉴" },
+    { label: "프로토타입 생성", href: "/execution", screenLabel: "공통-사이드바-워크플로우-실행-메뉴" },
   ];
 
   const insight: NavItem[] = [
     { label: "추적", href: "/trace", disabled: false, screenLabel: "공통-사이드바-인사이트-추적-메뉴" },
   ];
 
-  const workflowGroupActive = workflow.some((item) => isItemActive(pathname, item));
-  const projectGroupActive = projectManagement.some((item) => isItemActive(pathname, item));
-  const insightGroupActive = insight.some((item) => isItemActive(pathname, item));
+  const workflowGroupActive = workflow.some((item) => isItemActive(pathname, item, searchParams));
+  const projectGroupActive = projectManagement.some((item) => isItemActive(pathname, item, searchParams));
+  const insightGroupActive = insight.some((item) => isItemActive(pathname, item, searchParams));
 
   return (
     <aside
@@ -177,7 +177,7 @@ export function PlatformSidebar() {
           {projectManagement.map((item) => (
             <div key={item.href} className="relative">
               <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-              <NavLinkItem item={item} active={isItemActive(pathname, item)} />
+              <NavLinkItem item={item} active={isItemActive(pathname, item, searchParams)} />
             </div>
           ))}
         </div>
@@ -205,7 +205,7 @@ export function PlatformSidebar() {
           {workflow.map((item) => (
             <div key={item.href + item.label} className="relative">
               <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-              <NavLinkItem item={item} active={isItemActive(pathname, item)} />
+              <NavLinkItem item={item} active={isItemActive(pathname, item, searchParams)} />
             </div>
           ))}
         </div>
@@ -233,7 +233,7 @@ export function PlatformSidebar() {
           {insight.map((item) => (
             <div key={item.href} className="relative">
               <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-              <NavLinkItem item={item} active={isItemActive(pathname, item)} />
+              <NavLinkItem item={item} active={isItemActive(pathname, item, searchParams)} />
             </div>
           ))}
         </div>

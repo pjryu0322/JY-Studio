@@ -39,6 +39,9 @@ const PROJECT_SCALAR_SELECT_BASE: Prisma.ProjectSelect = {
 const PROJECT_SCALAR_SELECT_WITH_ROOM: Prisma.ProjectSelect = {
   ...PROJECT_SCALAR_SELECT_BASE,
   requirementsRoomState: true,
+  requirementsConversationJson: true,
+  requirementsDraftJson: true,
+  requirementsStateJson: true,
 };
 
 const PROJECT_SCALAR_SELECT_WITHOUT_ROOM: Prisma.ProjectSelect = {
@@ -122,6 +125,12 @@ function normalizeProjectRawRow(row: Record<string, unknown>): Record<string, un
     taskGenerationPrompt: "taskGenerationPrompt",
     requirementsroomstate: "requirementsRoomState",
     requirementsRoomState: "requirementsRoomState",
+    requirementsconversationjson: "requirementsConversationJson",
+    requirementsConversationJson: "requirementsConversationJson",
+    requirementsdraftjson: "requirementsDraftJson",
+    requirementsDraftJson: "requirementsDraftJson",
+    requirementsstatejson: "requirementsStateJson",
+    requirementsStateJson: "requirementsStateJson",
   };
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) {
@@ -180,6 +189,9 @@ function mergeToFullProjectScalarRow(row: Record<string, unknown>): ProjectScala
     taskPrompt: (row.taskPrompt as string | null | undefined) ?? null,
     taskGenerationPrompt: (row.taskGenerationPrompt as string | null | undefined) ?? null,
     requirementsRoomState: (row.requirementsRoomState as Prisma.JsonValue | null | undefined) ?? null,
+    requirementsConversationJson: (row.requirementsConversationJson as Prisma.JsonValue | null | undefined) ?? null,
+    requirementsDraftJson: (row.requirementsDraftJson as Prisma.JsonValue | null | undefined) ?? null,
+    requirementsStateJson: (row.requirementsStateJson as Prisma.JsonValue | null | undefined) ?? null,
   } as ProjectScalarRow;
 }
 

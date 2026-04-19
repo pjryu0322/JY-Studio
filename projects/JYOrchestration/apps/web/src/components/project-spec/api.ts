@@ -17,7 +17,10 @@ export async function fetchProjectById(projectId: string): Promise<{
   errorMessage: string | null;
 }> {
   const encoded = encodeURIComponent(projectId);
-  const res = await fetch(`/api/projects/${encoded}`, { credentials: "include" });
+  const res = await fetch(`/api/projects/${encoded}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
   const json = (await res.json()) as ApiResponse<Project>;
 
   if (res.status === 404 || res.status === 403) {

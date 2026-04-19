@@ -76,7 +76,7 @@ function ProjectAdminSettingsInner() {
     [projectRole]
   );
 
-  const backHref = projectId ? `/projects/${encodeURIComponent(projectId)}` : "/";
+  const backHref = projectId ? `/projects/${encodeURIComponent(projectId)}?view=workspace` : "/";
 
   return (
     <main data-testid="project-admin-settings-page" style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
@@ -85,7 +85,7 @@ function ProjectAdminSettingsInner() {
           href={backHref}
           style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", textDecoration: "none" }}
         >
-          ← 실행 계획으로 돌아가기
+          ← 생성 준비로 돌아가기
         </Link>
       </div>
 
@@ -132,14 +132,14 @@ function ProjectAdminSettingsInner() {
         <>
           <header style={{ marginBottom: 18 }}>
             <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-              프로젝트 설정 · 실행 환경
+              프로젝트 설정 · 프로토타입 생성 환경
             </h1>
             <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
-              연결·실행 정책·검증을 이 화면에서만 준비합니다. 실행 계획 설계는{" "}
+              연결·실행 정책·검증을 이 화면에서만 준비합니다. 스펙·작업 설계는{" "}
               <Link href={backHref} style={{ color: "#1d4ed8", fontWeight: 700 }}>
-                실행 계획
+                생성 준비
               </Link>
-              으로 돌아가세요.
+              로 돌아가세요.
             </p>
           </header>
 

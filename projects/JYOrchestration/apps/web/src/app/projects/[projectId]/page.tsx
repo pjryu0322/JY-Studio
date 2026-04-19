@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { RolePermissions } from "@/lib/auth/roles";
 import {
@@ -77,6 +77,8 @@ type ProjectMainTab = "overview" | "members";
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const workspaceView = searchParams.get("view");
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -316,11 +318,18 @@ export default function ProjectDetailPage() {
   }, [reloadSessionContext]);
 
   useEffect(() => {
+    if (!projectId) return;
+    if (workspaceView === "workspace") return;
+    router.replace(`/requirements?projectId=${encodeURIComponent(projectId)}`);
+  }, [projectId, workspaceView, router]);
+
+  useEffect(() => {
     if (!projectId || loading || !project) return;
     if (!isRequirementsPendingWorkflow(project.workflowStatus)) return;
+    if (workspaceView !== "workspace") return;
     const notice = encodeURIComponent(REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR);
     router.replace(`/requirements?projectId=${encodeURIComponent(projectId)}&workflowNotice=${notice}`);
-  }, [projectId, loading, project, router]);
+  }, [projectId, loading, project, router, workspaceView]);
 
   useEffect(() => {
     if (!project) {
@@ -2007,13 +2016,13 @@ export default function ProjectDetailPage() {
                         </ul>
                       ) : partitionedCursorRuns.historical.length > 0 ? (
                         <div style={{ color: "#64748b", fontSize: 12 }}>
-                          현재 실행 계획·활성 Task에 대한 최근 Cursor 기록이 없습니다.
+                          현재 생성 준비·활성 Task에 대한 최근 Cursor 기록이 없습니다.
                         </div>
                       ) : null}
                       {partitionedCursorRuns.historical.length > 0 ? (
                         <>
                           <div style={{ fontWeight: 800, fontSize: 11, color: "#92400e", letterSpacing: "0.02em" }}>
-                            보관 (이전 실행 계획 기준 Task 실행 기록)
+                            보관 (이전 생성 준비 기준 Task 실행 기록)
                           </div>
                           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
                             {partitionedCursorRuns.historical.map((run) => {
@@ -2761,7 +2770,7 @@ export default function ProjectDetailPage() {
   const showGuidedChrome = Boolean(!loading && project && !errorMessage);
 
   const detailTabs: { id: ProjectMainTab; label: string; uiLabel: string }[] = [
-    { id: "overview", label: "실행 계획", uiLabel: "[P-3-2-1] Tab — Execution planning" },
+    { id: "overview", label: "생성 준비", uiLabel: "[P-3-2-1] Tab — Execution planning" },
     { id: "members", label: "멤버", uiLabel: "[P-3-2-2] Tab — Members (unified)" },
   ];
 
@@ -2806,7 +2815,7 @@ export default function ProjectDetailPage() {
             lineHeight: 1.5,
           }}
         >
-          <strong>작업이 아직 없습니다.</strong> 워크플로에 따라 실행 계획에서 작업을 생성한 뒤 실행·추적 단계로 진행하세요.
+          <strong>작업이 아직 없습니다.</strong> 워크플로에 따라 생성 준비 화면에서 작업을 만든 뒤 프로토타입 생성·추적 단계로 진행하세요.
         </div>
       ) : null}
       {showGuidedChrome ? (

@@ -27,45 +27,101 @@ import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import type { Project } from "@/components/project-spec/types";
 
 type ProjectColumnName = string;
-let cachedProjectColumns: Set<ProjectColumnName> | null = null;
+/**
+ * Prisma/PostgreSQL는 camelCase 컬럼을 따옴표로 생성합니다.
+ * information_schema.columns.column_name 은 소문자만 주는 경우가 있어 UPDATE 식별자와 불일치할 수 있으므로
+ * pg_attribute.attname 으로 실제 이름을 가져옵니다.
+ */
+let cachedProjectColumnMap: Map<string, ProjectColumnName> | null = null;
 
-async function getProjectColumns(): Promise<Set<ProjectColumnName>> {
-  if (cachedProjectColumns) return cachedProjectColumns;
-  const rows = await prisma.$queryRaw<Array<{ column_name: string }>>`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'projects'
+async function getProjectColumnMap(): Promise<Map<string, ProjectColumnName>> {
+  if (cachedProjectColumnMap) return cachedProjectColumnMap;
+  const rows = await prisma.$queryRaw<Array<{ name: string }>>`
+    SELECT a.attname AS name
+    FROM pg_attribute a
+    JOIN pg_class c ON a.attrelid = c.oid
+    JOIN pg_namespace n ON c.relnamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND c.relname = 'projects'
+      AND a.attnum > 0
+      AND NOT a.attisdropped
   `;
-  cachedProjectColumns = new Set(rows.map((r) => String(r.column_name ?? "").trim()).filter(Boolean));
-  return cachedProjectColumns;
+  const m = new Map<string, ProjectColumnName>();
+  for (const r of rows) {
+    const actual = String(r.name ?? "").trim();
+    if (!actual) continue;
+    m.set(actual.toLowerCase(), actual);
+  }
+  cachedProjectColumnMap = m;
+  return cachedProjectColumnMap;
 }
 
-function toJsonbText(v: unknown): string {
-  if (v === null) return "null";
+/** pg 식별자 (컬럼명은 pg_attribute 에서 온 값만 사용) */
+function pgQuoteIdent(name: string): string {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+/** Prisma.sql 에 넣을 스칼라만 허용 (객체가 들어가면 PG 구문 오류가 날 수 있음) */
+function scalarForRawUpdate(v: unknown): string | number | boolean | Date | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  if (v instanceof Date) return v;
+  return String(v);
+}
+
+/** jsonb 컬럼은 반드시 텍스트로 직렬화해 바인딩 (객체를 Prisma.sql에 넣으면 42601 구문 오류가 남) */
+function jsonbTextOrNull(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
   try {
     return JSON.stringify(v);
   } catch {
-    return "null";
+    return "{}";
   }
+}
+
+function pgQuoteStringLiteral(s: string): string {
+  return `'${s.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+}
+
+function scalarSqlRhs(value: ReturnType<typeof scalarForRawUpdate>): string {
+  if (value === null) return "NULL";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "NULL";
+    return String(value);
+  }
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (value instanceof Date) return `${pgQuoteStringLiteral(value.toISOString())}::timestamptz`;
+  return pgQuoteStringLiteral(String(value));
 }
 
 async function rawUpdateProjectByIdSafe(
   projectId: string,
   patch: Record<string, unknown>
 ): Promise<{ ok: true; applied: boolean; degraded?: { code: string; message: string } } | { ok: false; message: string }> {
-  const cols = await getProjectColumns();
-  const entries: Array<{ col: string; value: unknown; castJsonb?: boolean }> = [];
+  const colMap = await getProjectColumnMap();
+  const entries: Array<
+    | { col: string; kind: "jsonb"; jsonText: string | null }
+    | { col: string; kind: "scalar"; value: ReturnType<typeof scalarForRawUpdate> }
+  > = [];
 
   for (const [k, v] of Object.entries(patch)) {
-    if (!cols.has(k)) continue;
-    if (k === "requirementsRoomState") {
-      entries.push({ col: k, value: toJsonbText(v), castJsonb: true });
+    const actualCol = colMap.get(k.toLowerCase());
+    if (!actualCol) continue;
+    const lower = actualCol.toLowerCase();
+    if (
+      lower === "requirementsroomstate" ||
+      lower === "requirementsconversationjson" ||
+      lower === "requirementsdraftjson" ||
+      lower === "requirementsstatejson"
+    ) {
+      entries.push({ col: actualCol, kind: "jsonb", jsonText: jsonbTextOrNull(v) });
       continue;
     }
-    entries.push({ col: k, value: v });
+    entries.push({ col: actualCol, kind: "scalar", value: scalarForRawUpdate(v) });
   }
 
   if (entries.length === 0) {
+    cachedProjectColumnMap = null;
     return {
       ok: true,
       applied: false,
@@ -76,16 +132,21 @@ async function rawUpdateProjectByIdSafe(
     };
   }
 
-  const setClauses = entries.map((e) =>
-    e.castJsonb
-      ? Prisma.sql`${Prisma.raw(`"${e.col}"`)} = ${String(e.value)}::jsonb`
-      : Prisma.sql`${Prisma.raw(`"${e.col}"`)} = ${e.value as any}`
-  );
+  const setParts: string[] = [];
+  for (const e of entries) {
+    const colQ = pgQuoteIdent(e.col);
+    if (e.kind === "jsonb") {
+      if (e.jsonText === null) setParts.push(`${colQ} = NULL`);
+      else setParts.push(`${colQ} = ${pgQuoteStringLiteral(e.jsonText)}::jsonb`);
+    } else {
+      setParts.push(`${colQ} = ${scalarSqlRhs(e.value)}`);
+    }
+  }
+
+  const sql = `UPDATE "projects" SET ${setParts.join(", ")} WHERE "id" = ${pgQuoteStringLiteral(projectId)}`;
 
   try {
-    await prisma.$executeRaw(
-      Prisma.sql`UPDATE "projects" SET ${Prisma.join(setClauses, Prisma.sql`, `)} WHERE "id" = ${projectId}`
-    );
+    await prisma.$executeRawUnsafe(sql);
     return { ok: true, applied: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -195,6 +256,9 @@ function mapProject(row: {
   confirmedSpecAt: Date | null;
   currentSpecVersionId: string | null;
   requirementsRoomState: unknown | null;
+  requirementsConversationJson?: unknown | null;
+  requirementsDraftJson?: unknown | null;
+  requirementsStateJson?: unknown | null;
 }): Pick<
   Project,
   | "id"
@@ -213,6 +277,9 @@ function mapProject(row: {
   | "confirmedSpecAt"
   | "currentSpecVersionId"
   | "requirementsRoomState"
+  | "requirementsConversationJson"
+  | "requirementsDraftJson"
+  | "requirementsStateJson"
 > {
   return {
     id: row.id,
@@ -231,6 +298,9 @@ function mapProject(row: {
     confirmedSpecAt: row.confirmedSpecAt?.toISOString() ?? null,
     currentSpecVersionId: row.currentSpecVersionId,
     requirementsRoomState: row.requirementsRoomState ?? null,
+    requirementsConversationJson: row.requirementsConversationJson ?? null,
+    requirementsDraftJson: row.requirementsDraftJson ?? null,
+    requirementsStateJson: row.requirementsStateJson ?? null,
   };
 }
 
@@ -255,6 +325,9 @@ function toProjectMapRow(row: ProjectSafeRow) {
     confirmedSpecAt: row.confirmedSpecAt,
     currentSpecVersionId: row.currentSpecVersionId,
     requirementsRoomState: row.requirementsRoomState,
+    requirementsConversationJson: row.requirementsConversationJson ?? null,
+    requirementsDraftJson: row.requirementsDraftJson ?? null,
+    requirementsStateJson: row.requirementsStateJson ?? null,
   });
 }
 
@@ -376,6 +449,9 @@ type PatchBody = {
   specPromptTemplate?: string | null;
   specPromptPreset?: string | null;
   requirementsRoomState?: unknown | null;
+  requirementsConversationJson?: unknown | null;
+  requirementsDraftJson?: unknown | null;
+  requirementsStateJson?: unknown | null;
 };
 
 export async function PATCH(
@@ -461,6 +537,18 @@ export async function PATCH(
     if (body.requirementsRoomState !== undefined) {
       data.requirementsRoomState =
         body.requirementsRoomState === null ? null : (body.requirementsRoomState as Prisma.InputJsonValue);
+    }
+    if (body.requirementsConversationJson !== undefined) {
+      data.requirementsConversationJson =
+        body.requirementsConversationJson === null ? null : (body.requirementsConversationJson as Prisma.InputJsonValue);
+    }
+    if (body.requirementsDraftJson !== undefined) {
+      data.requirementsDraftJson =
+        body.requirementsDraftJson === null ? null : (body.requirementsDraftJson as Prisma.InputJsonValue);
+    }
+    if (body.requirementsStateJson !== undefined) {
+      data.requirementsStateJson =
+        body.requirementsStateJson === null ? null : (body.requirementsStateJson as Prisma.InputJsonValue);
     }
 
     const hasPromptPatch = body.specPromptTemplate !== undefined || body.specPromptPreset !== undefined;

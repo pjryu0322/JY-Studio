@@ -252,7 +252,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
   let primaryAction: IdeaUxPrimaryAction = {
     id: "scroll_workspace",
     label: "프로젝트 계획 입력",
-    description: "워크스페이스에서 기본 정보와 실행 계획을 정리한 뒤 저장하고 이어서 진행하세요.",
+    description: "생성 준비 화면에서 기본 정보와 계획을 정리한 뒤 저장하고 이어서 진행하세요.",
   };
   let scrollAnchor = IDEA_UX_ANCHORS[1];
 
@@ -264,7 +264,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
       primaryAction = {
         id: "scroll_workspace",
         label: "프로젝트 계획·Spec 정의하기",
-        description: "기본 정보 → AI 실행 계획 초안 → 편집·저장 순으로 워크스페이스에서 진행하세요.",
+        description: "기본 정보 → AI 생성 준비 초안 → 편집·저장 순으로 생성 준비 화면에서 진행하세요.",
       };
     } else {
       primaryAction = {
@@ -280,7 +280,7 @@ export function computeIdeaGuidedUxSnapshot(input: {
       primaryAction = {
         id: "scroll_tasks",
         label: "할 일 목록 확인",
-        description: "워크스페이스에서 실행 계획을 확정하면 Task 초안이 준비됩니다.",
+        description: "생성 준비 화면에서 준비 문서를 확정하면 Task 초안이 준비됩니다.",
       };
     } else {
       primaryAction = {

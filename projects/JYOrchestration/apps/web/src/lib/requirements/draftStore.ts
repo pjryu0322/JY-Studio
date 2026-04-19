@@ -36,7 +36,7 @@ export function confirmDraft(prev: RequirementsDraftDoc): RequirementsDraftDoc {
 }
 
 export function draftMeetsMinimum(d: RequirementsDraftDoc | null): { ok: true } | { ok: false; missing: string[] } {
-  if (!d) return { ok: false, missing: ["요구사항 초안"] };
+  if (!d) return { ok: false, missing: ["정리 초안"] };
   const missing: string[] = [];
   if (!d.overview.trim()) missing.push("프로젝트 개요");
   if (d.users.length === 0) missing.push("대상 사용자");

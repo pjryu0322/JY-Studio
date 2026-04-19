@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { APP_FLOW_STEPS, type AppFlowStepId } from "@/lib/workflow/flow-state";
+import { APP_FLOW_STEPS, appFlowStepHref, type AppFlowStepId } from "@/lib/workflow/flow-state";
 import type { AppFlowGateSnapshot } from "@/lib/workflow/flow-gates";
 import { gateReasonForStep, stripStepReachableForUi } from "@/components/workflow/flowStripHelpers";
 
@@ -10,10 +10,12 @@ export function FlowProgressStrip({
   current,
   gates,
   loading,
+  projectId,
 }: {
   readonly current: AppFlowStepId | null;
   readonly gates: AppFlowGateSnapshot;
   readonly loading: boolean;
+  readonly projectId: string | null;
 }) {
   const stripStyle: CSSProperties = {
     display: "flex",
@@ -44,7 +46,7 @@ export function FlowProgressStrip({
           <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             {sep}
             {reachable ? (
-              <Link href={s.href} style={{ ...labelStyle, textDecoration: "none" }}>
+              <Link href={appFlowStepHref(s.id, projectId?.trim() || null)} style={{ ...labelStyle, textDecoration: "none" }}>
                 {s.label}
               </Link>
             ) : (
