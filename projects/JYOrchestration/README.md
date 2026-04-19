@@ -55,18 +55,7 @@ npm run seed:test -- --with-actions
 
 같은 이메일·같은 프로젝트명+소유자·같은 `aiAgentKey`·같은 시드 `correlationKey`는 **건너뛰므로** 데이터가 중복 증가하지 않습니다.
 
-### Dev 요약 API (선택)
-
-로컬에서만, `.env.local` 등에 다음을 넣은 뒤:
-
-`ENABLE_DEV_TEST_SEED_API=true`
-
-브라우저 또는 `GET /api/dev/test-seed-summary` 로 프로젝트 ID·멤버 ID·시드 액션 ID를 JSON으로 확인할 수 있습니다.  
-`NODE_ENV=production` 이면 항상 404입니다.
-
-시드 스크립트(`packages/db/scripts/seed-test-data.mjs`)와 `apps/web/src/lib/dev/testSeedConstants.ts`의 프로젝트명·소유자 이메일·correlation 접두어는 **동기화**해 두었습니다.
-
-## 자동 테스트 하네스 (API + E2E + 결과 UI)
+## 자동 테스트 하네스 (API + E2E + 결과 집계)
 
 Next.js는 **동일 워크스페이스에 dev 서버를 하나만** 띄울 수 있습니다. 로컬에서 전체 하네스를 돌릴 때는 **터미널 A**에서 먼저 개발 서버를 실행한 뒤 **터미널 B**에서 테스트를 실행하세요.
 
@@ -91,11 +80,3 @@ Next.js는 **동일 워크스페이스에 dev 서버를 하나만** 띄울 수 �
 - `.artifacts/test-results/playwright-raw.json` — Playwright JSON 리포터 출력  
 - `.artifacts/test-results/latest.json` — 위 둘을 합친 요약(집계기)  
 - `.artifacts/test-results/history/*.json` — 집계 시점별 복사본
-
-### 결과 대시보드 (브라우저)
-
-- 경로: **`/dev/test-results`**
-- 로그인 필요. `GET /api/dev/test-results` 로 `latest.json` 을 읽습니다.
-- **production** 에서는 `ENABLE_TEST_RESULTS_UI=true` 일 때만 API·기능 노출(그 외 404).
-
-로그인 후 홈 하단 링크 **「테스트 결과 대시보드 (개발용)」** 로도 이동할 수 있습니다 (`NODE_ENV !== production` 일 때만 표시).

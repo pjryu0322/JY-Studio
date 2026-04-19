@@ -7,8 +7,7 @@
  *
  * DATABASE_URL은 .env(루트)에서 읽습니다.
  *
- * 프로젝트명·소유자 이메일·correlation 접두어는
- * apps/web/src/lib/dev/testSeedConstants.ts 와 맞출 것.
+ * 프로젝트명·소유자 이메일·correlation 접두어는 이 파일의 상수를 단일 출처로 유지합니다.
  */
 
 import { readFileSync, existsSync } from "node:fs";
