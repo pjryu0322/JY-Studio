@@ -28,6 +28,8 @@ export type RequirementsStateJson = {
   lastPromptGeneratedAt?: string;
   /** 전송 전 입력창 초안(세션 간 복원) */
   lastUserDraftText?: string;
+  /** 4/4 완료 안내 AI 메시지를 대화에 1회만 삽입했는지 */
+  ideationCompletionAiNoticeSent?: boolean;
 };
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
@@ -70,6 +72,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
     lastPromptGeneratedAt: typeof o.lastPromptGeneratedAt === "string" ? o.lastPromptGeneratedAt : undefined,
     lastUserDraftText: typeof o.lastUserDraftText === "string" ? o.lastUserDraftText : undefined,
+    ideationCompletionAiNoticeSent:
+      typeof o.ideationCompletionAiNoticeSent === "boolean" ? o.ideationCompletionAiNoticeSent : undefined,
   };
 }
 
