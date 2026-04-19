@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { runRequirementsDraftOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
+import { runRequirementsDraftOpenAI, type RequirementsAiResponseStyle } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 
 type Body = {
   projectId?: string;
@@ -12,7 +12,14 @@ type Body = {
   userMessage?: string;
   dialogueExcerpt?: string;
   existingDraft?: unknown;
+  aiResponseStyle?: string;
 };
+
+function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === "brief" || s === "detailed" || s === "standard") return s;
+  return undefined;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +34,7 @@ export async function POST(request: NextRequest) {
     const userMessage = String(body.userMessage ?? "").trim();
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
     const existingDraft = body.existingDraft;
+    const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
 
     if (!userMessage) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
@@ -49,6 +57,7 @@ export async function POST(request: NextRequest) {
       userMessage,
       dialogueExcerpt,
       existingDraft,
+      responseStyle,
     });
     if (!result.ok) {
       return NextResponse.json({ success: false, code: result.code, message: result.message }, { status: 502 });

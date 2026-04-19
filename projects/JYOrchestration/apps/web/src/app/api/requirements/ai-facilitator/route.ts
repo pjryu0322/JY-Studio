@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { runRequirementsFacilitatorOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
+import { runRequirementsFacilitatorOpenAI, type RequirementsAiResponseStyle } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 
 type Body = {
   projectId?: string;
@@ -11,7 +11,14 @@ type Body = {
   stage?: string;
   userMessage?: string;
   dialogueExcerpt?: string;
+  aiResponseStyle?: string;
 };
+
+function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === "brief" || s === "detailed" || s === "standard") return s;
+  return undefined;
+}
 
 /**
  * 요구사항 협의실: AI 기획자 응답(OpenAI). projectId가 있으면 프로젝트 조회 권한 필요.
@@ -30,6 +37,7 @@ export async function POST(request: NextRequest) {
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
+    const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
 
     if (!userMessage) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
@@ -54,6 +62,7 @@ export async function POST(request: NextRequest) {
       stage,
       userMessage,
       dialogueExcerpt,
+      responseStyle,
     });
     if (!result.ok) {
       return NextResponse.json({

@@ -17,6 +17,7 @@ import { RequirementsSummaryModal } from "@/components/requirements/Requirements
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
+import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
 import { bumpDraftVersion, confirmDraft, draftMeetsMinimum, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import {
@@ -791,6 +792,7 @@ export function RequirementsWorkspace({
           userMessage: organizeUserMessage,
           dialogueExcerpt: excerpt,
           existingDraft: draftDoc,
+          aiResponseStyle: readAiResponseStyle(),
         }),
       });
       const json = (await res.json()) as {
@@ -937,6 +939,7 @@ export function RequirementsWorkspace({
               stage: "requirements",
               userMessage: text,
               dialogueExcerpt: excerpt,
+              aiResponseStyle: readAiResponseStyle(),
             }),
           });
           const json = (await res.json()) as {

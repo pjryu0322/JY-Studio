@@ -73,6 +73,10 @@ export async function POST(request: NextRequest) {
     const projectType = String(payload.projectType ?? "web-service").trim();
     const repoUrl = String(payload.repoUrl ?? "").trim() || null;
     const defaultBranch = String(payload.defaultBranch ?? "main").trim() || "main";
+    const includeDefaultAiPlanner =
+      payload.includeDefaultAiPlanner === false || String(payload.includeDefaultAiPlanner).toLowerCase() === "false"
+        ? false
+        : true;
 
     if (!name) {
       return fail("프로젝트명은 필수입니다.", 400);
@@ -85,6 +89,7 @@ export async function POST(request: NextRequest) {
       repoUrl,
       defaultBranch,
       ownerUserId: userId,
+      includeDefaultAiPlanner,
     });
 
     return ok("프로젝트가 생성되었습니다.", project, 201);
