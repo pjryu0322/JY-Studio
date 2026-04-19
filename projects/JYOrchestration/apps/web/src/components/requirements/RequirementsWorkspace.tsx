@@ -9,7 +9,6 @@ import { RequirementsComposerGpt } from "@/components/requirements/RequirementsC
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
-import { RequirementsNavBreadcrumb } from "@/components/requirements/RequirementsNavBreadcrumb";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { RequirementsDraftPanel } from "@/components/requirements/RequirementsDraftPanel";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
@@ -18,6 +17,7 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
+import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
 import { bumpDraftVersion, confirmDraft, draftMeetsMinimum, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import {
@@ -25,11 +25,7 @@ import {
   parseRequirementsStateJson,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
-import {
-  projectMeetsRequirementsAnalysisComplete,
-  REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR,
-  type RequirementsAnalysisFieldSlice,
-} from "@/lib/project/requirementsAnalysisGate";
+import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr, splitSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
 import {
@@ -41,6 +37,9 @@ import {
 import { coerceRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { newConversation, type RequirementsConversation } from "@/lib/requirements/conversationStore";
 import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/appFlowModel";
+
+const IDEATION_COMPLETION_NOTICE =
+  "핵심 정보가 정리되었습니다. 기능 정리 단계로 이동할 수 있습니다.";
 
 function notifyAppFlowProjectContextChanged() {
   if (typeof window === "undefined") return;
@@ -208,6 +207,9 @@ export function RequirementsWorkspace({
   const [draftOpen, setDraftOpen] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveToastVisible, setSaveToastVisible] = useState(false);
+  const saveToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevSaveStateRef = useRef<"idle" | "saving" | "saved" | "error">("idle");
   const [organizeState, setOrganizeState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [organizeError, setOrganizeError] = useState<string | null>(null);
   const [organizedAt, setOrganizedAt] = useState<string | null>(null);
@@ -496,22 +498,26 @@ export function RequirementsWorkspace({
     return /(초안|문서화|문서 형태|정리해줘|정리해 줘|요구사항.*(만들|작성)|요구사항\s*초안\s*생성|아이디어.*(정리|문서))/i.test(t);
   }, []);
 
-  const analysisSlice = useMemo((): RequirementsAnalysisFieldSlice => {
-    const userText = concatUserContext(conversationMessages);
-    const description = userText.trim() || null;
-    return {
-      description,
-      specCoreGoals: goals.trim() || null,
-      specScopeIn: scopeIn.trim() || null,
-      specScopeOut: scopeOut.trim() || null,
-      specTargetUsers: targetUsers.trim() || null,
-      specSuccessCriteria: joinSuccessCriteriaAndNfr(success, nfr).trim() || null,
-      confirmedSpecMarkdown: project?.confirmedSpecMarkdown ?? null,
-    };
-  }, [conversationMessages, goals, scopeIn, scopeOut, targetUsers, success, nfr, project?.confirmedSpecMarkdown]);
-
-  const analysisComplete = useMemo(() => projectMeetsRequirementsAnalysisComplete(analysisSlice), [analysisSlice]);
   const requirementsPending = project ? isRequirementsPendingWorkflow(project.workflowStatus) : true;
+
+  const ideationSlice = useMemo(
+    () => ({ goals, targetUsers, success, nfr }),
+    [goals, targetUsers, success, nfr]
+  );
+  const ideationItems = useMemo(() => ideationChecklistItems(ideationSlice), [ideationSlice]);
+  const ideationComplete = useMemo(() => ideationChecklistComplete(ideationSlice), [ideationSlice]);
+  const ideationStatusLine = useMemo(() => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) return null;
+    if (ideationComplete) return "아이디어 구체화 완료 ✓";
+    const done = ideationItems.filter((i) => i.done).length;
+    return `아이디어 구체화 진행 중 (${done}/4)`;
+  }, [resolvedProjectId, ideationComplete, ideationItems]);
+
+  const ideationNoticeSent = useMemo(
+    () => Boolean(parseRequirementsStateJson(project?.requirementsStateJson).ideationCompletionAiNoticeSent),
+    [project?.requirementsStateJson]
+  );
 
   const persistedPromptState = useMemo(
     () => parseRequirementsStateJson(project?.requirementsStateJson),
@@ -693,6 +699,28 @@ export function RequirementsWorkspace({
   }, [input, resolvedProjectId, conversationStatus, persistStateJsonOnly]);
 
   useEffect(() => {
+    const prev = prevSaveStateRef.current;
+    prevSaveStateRef.current = saveState;
+    if (prev === "saving" && saveState === "saved") {
+      if (saveToastHideTimerRef.current) clearTimeout(saveToastHideTimerRef.current);
+      setSaveToastVisible(true);
+      saveToastHideTimerRef.current = setTimeout(() => {
+        setSaveToastVisible(false);
+        saveToastHideTimerRef.current = null;
+      }, 2000);
+    }
+  }, [saveState]);
+
+  useEffect(() => {
+    return () => {
+      if (saveToastHideTimerRef.current) {
+        clearTimeout(saveToastHideTimerRef.current);
+        saveToastHideTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (conversationStatus !== "loaded") return;
     const pid = resolvedProjectId.trim();
     if (!pid) return;
@@ -741,6 +769,46 @@ export function RequirementsWorkspace({
       setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
     });
   }, [conversationStatus, resolvedProjectId, loadedConversationProjectId, project, onboardingAppliedKey, onboardingKey, room, persistRemote]);
+
+  useEffect(() => {
+    if (conversationStatus !== "loaded") return;
+    const pid = resolvedProjectId.trim();
+    if (!pid || !project) return;
+    if (loadedConversationProjectId !== pid) return;
+    if (!ideationComplete) return;
+    if (ideationNoticeSent) return;
+    const msgs = room.requirementsConversation.messages;
+    const already = msgs.some((m) => m.role === "ai" && m.content.trim() === IDEATION_COMPLETION_NOTICE);
+    if (already) return;
+    const notice = newChatMessage({
+      role: "ai",
+      body: IDEATION_COMPLETION_NOTICE,
+      speakerType: "AI",
+      speakerId: VIRTUAL_AI_PLANNER_ID,
+      speakerName: "AI 기획자",
+      messageType: "NOTICE",
+    });
+    const nextRoom: RequirementsRoomStateV3 = {
+      ...room,
+      requirementsConversation: {
+        ...room.requirementsConversation,
+        projectId: pid,
+        messages: [...msgs, notice],
+      },
+    };
+    void persistRemote(nextRoom, {}, { ideationCompletionAiNoticeSent: true }).catch((e) => {
+      setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
+    });
+  }, [
+    conversationStatus,
+    resolvedProjectId,
+    loadedConversationProjectId,
+    project,
+    ideationComplete,
+    ideationNoticeSent,
+    room,
+    persistRemote,
+  ]);
 
   const onOrganizeRequirements = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -1116,8 +1184,8 @@ export function RequirementsWorkspace({
   }, [busy, room, openIssues, priorityFeatures, goals, scopeIn, scopeOut, targetUsers, success, nfr, persistRemote]);
 
   const onGotoFeatures = useCallback(() => {
-    if (requirementsPending) {
-      setError("먼저 대화를 정리해야 다음 단계로 진행할 수 있습니다.");
+    if (!ideationComplete) {
+      setError("요약 편집에서 사용자 정의·핵심 기능·권한/역할·운영 요구사항을 모두 채운 뒤 다음 단계로 이동할 수 있습니다.");
       return;
     }
     const gate = draftMeetsMinimum(draftDoc);
@@ -1128,7 +1196,7 @@ export function RequirementsWorkspace({
     const pid = resolvedProjectId.trim();
     const q = pid ? `?projectId=${encodeURIComponent(pid)}` : "";
     router.push(`/features${q}`);
-  }, [requirementsPending, router, draftDoc, resolvedProjectId]);
+  }, [ideationComplete, router, draftDoc, resolvedProjectId]);
 
   const ackDev = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -1166,14 +1234,6 @@ export function RequirementsWorkspace({
         : !project
           ? "불러오는 중…"
           : "이름 미설정";
-  const lastSaveTimeLabel = useMemo(
-    () =>
-      lastSavedAt
-        ? new Date(lastSavedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })
-        : null,
-    [lastSavedAt]
-  );
-
   const shellStyle = { display: "flex", flexDirection: "column" as const, gap: 0, minHeight: 0 };
   const mainRow: CSSProperties = {
     flex: "1 1 auto",
@@ -1190,12 +1250,32 @@ export function RequirementsWorkspace({
     <div style={shellStyle}>
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
 
-      <RequirementsNavBreadcrumb projectId={resolvedProjectId.trim()} projectName={project?.name?.trim() ?? ""} />
+      {saveToastVisible ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            top: 72,
+            right: 24,
+            zIndex: 60,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "#0f172a",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 700,
+            boxShadow: "0 12px 32px -8px rgba(15, 23, 42, 0.45)",
+          }}
+        >
+          저장되었습니다 ✓
+        </div>
+      ) : null}
 
       <RequirementsHeader
         projectName={headerProjectName}
-        autosave={{ state: saveState, lastTimeLabel: lastSaveTimeLabel }}
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
+        ideationStatusLine={ideationStatusLine}
       />
 
       <div style={{ marginBottom: 6 }} />
@@ -1351,21 +1431,21 @@ export function RequirementsWorkspace({
           <ScreenLabel label="요구사항-하단액션-기능정리이동버튼" visible={showScreenLabels} />
           <button
             type="button"
-            disabled={busy || requirementsPending}
+            disabled={busy || remoteLocked || !ideationComplete}
             data-testid="requirements-goto-features"
             onClick={onGotoFeatures}
             style={{
               padding: "10px 16px",
               borderRadius: 10,
               border: "1px solid #cbd5e1",
-              background: requirementsPending ? "#f4f4f5" : "#fff",
-              color: requirementsPending ? "#a1a1aa" : "#0f172a",
+              background: !ideationComplete || remoteLocked ? "#f4f4f5" : "#fff",
+              color: !ideationComplete || remoteLocked ? "#a1a1aa" : "#0f172a",
               fontWeight: 800,
               fontSize: 13,
-              cursor: busy ? "wait" : requirementsPending ? "not-allowed" : "pointer",
+              cursor: busy ? "wait" : !ideationComplete || remoteLocked ? "not-allowed" : "pointer",
             }}
           >
-            기능 정리로 이동
+            {ideationComplete ? "다음 단계: 기능 정리 →" : "기능 정리로 이동"}
           </button>
         </div>
         {isNextPublicDevWorkflowToolsEnabled() ? (
