@@ -28,7 +28,7 @@ test.describe("E2E auth", () => {
     await page.getByTestId("login-password").fill("JyoTest!123");
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/$/, { timeout: 30_000 });
-    await page.getByTestId("home-logout").click();
+    await page.getByTestId("platform-top-logout").click();
     await expect(page.getByText("로그인이 필요합니다.").first()).toBeVisible({ timeout: 15_000 });
   });
 });

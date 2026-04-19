@@ -1218,6 +1218,7 @@ export function RequirementsWorkspace({
         plannerHint={headerPlannerHint}
         onInviteClick={resolvedProjectId.trim() ? () => setInviteOpen(true) : undefined}
         autosave={{ state: saveState, lastTimeLabel: lastSaveTimeLabel }}
+        showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
       />
 
       <div style={{ marginBottom: 6 }} />

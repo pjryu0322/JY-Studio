@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
+import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
 import { ProjectAdminWorkflowScopeNote } from "@/components/project/ProjectAdminWorkflowScopeNote";
 import { canEditSpec } from "@/lib/rbac/projectPermissions";
@@ -88,6 +89,12 @@ function ProjectAdminSettingsInner() {
           ← 생성 준비로 돌아가기
         </Link>
       </div>
+
+      {projectId ? (
+        <div style={{ marginBottom: 14 }}>
+          <ProjectWorkflowNav />
+        </div>
+      ) : null}
 
       <ProjectAdminWorkflowScopeNote />
 

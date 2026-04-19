@@ -193,54 +193,12 @@ export default function HomePage() {
     router.replace(`/requirements?projectId=${encodeURIComponent(id)}`);
   }, [router]);
 
-  async function handleLogout() {
-    try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    } catch {
-      /* ignore */
-    }
-    window.location.href = "/login";
-  }
-
   return (
     <main className="relative" style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }} data-ui-label="[A] Home">
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
       <section className="relative" data-ui-label="[A-1] Header" style={{ marginBottom: 28 }}>
         <ScreenLabel label="워크스페이스-홈-헤더-섹션" visible={showScreenLabels} />
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>JY 오케스트레이션</h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 14, color: "#444" }}>
-              {sessionUser
-                ? `${sessionUser.name} (${sessionUser.email})`
-                : "…"}
-            </span>
-            <button
-              type="button"
-              data-testid="home-logout"
-              onClick={() => void handleLogout()}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-              로그아웃
-            </button>
-          </div>
-        </div>
+        <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>JY 오케스트레이션</h1>
       </section>
 
       <section

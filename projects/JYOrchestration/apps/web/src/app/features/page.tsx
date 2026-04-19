@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
@@ -39,6 +40,10 @@ export default function FeaturesPage() {
         backHref="/requirements"
         backLabel="아이디어 구체화로"
       />
+
+      <div style={{ marginTop: 12, marginBottom: 4 }}>
+        <ProjectWorkflowNav />
+      </div>
 
       <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
         <WorkflowCard padding={16}>

@@ -12,6 +12,7 @@ import { RolePermissions } from "@/lib/auth/roles";
 import { canManageMembers } from "@/lib/rbac/projectPermissions";
 import type { ProjectRole } from "@/lib/rbac/projectPermissions";
 import { RBAC_FORBIDDEN_CODE } from "@/lib/rbac/projectAccessDenied";
+import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { ProjectAdminWorkflowScopeNote } from "@/components/project/ProjectAdminWorkflowScopeNote";
 
 function rbacForbiddenMessage(
@@ -217,6 +218,12 @@ function ProjectAdminMembersInner() {
           >
             ← 아이디어 구체화로
           </Link>
+        </div>
+      ) : null}
+
+      {projectId ? (
+        <div style={{ marginBottom: 14 }}>
+          <ProjectWorkflowNav />
         </div>
       ) : null}
 
