@@ -59,7 +59,8 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   if (p.startsWith("/projects/")) {
     return sp.get("view") === "workspace" ? "planning" : "requirements";
   }
-  if (p === "/" || p === "/workspace") return "planning";
+  /** 플랫폼 홈·프로젝트 목록: 워크플로 단계로 취급하지 않음(상단 탭·가이드 혼동 방지). */
+  if (p === "/" || p === "/workspace") return null;
   if (p === "/execution" || p.startsWith("/execution/")) return "execution";
   if (p === "/trace" || p.startsWith("/trace/")) return "trace";
   if (p.startsWith("/planning-execution")) return "execution";
@@ -72,14 +73,19 @@ export function projectIdFromPathname(pathname: string): string | null {
 }
 
 /**
- * 상단 워크플로 탭을 보여줄지 여부. `?projectId=` 또는 `/projects/:id`에 프로젝트가 열려 있을 때만 true.
- * (홈 `/`·프로젝트 목록만 있는 화면에서는 컨텍스트 없음 → 탭 숨김.)
+ * 상단 워크플로·프로젝트 메뉴용 프로젝트 ID.
+ * - `/projects/:id` 경로면 해당 id (워크스페이스·상세 모두 “프로젝트 열림”).
+ * - 그 외 경로에서는 `?projectId=`만 인정.
+ * - 플랫폼 홈 `/`·`/workspace`에서는 URL에 `?projectId=`가 있어도 컨텍스트 없음(목록 화면에서 상단 탭이 남지 않도록).
  */
 export function resolveWorkflowProjectContextId(pathname: string, searchParams: URLSearchParams | null): string | null {
+  const p = pathname || "/";
+  if (p === "/" || p === "/workspace") return null;
+
   const sp = searchParams ?? new URLSearchParams();
   const q = String(sp.get("projectId") ?? "").trim();
   if (q) return q;
-  return projectIdFromPathname(pathname);
+  return projectIdFromPathname(p);
 }
 
 /** 워크플로 탭(요구사항·기능·…) 현재 단계 활성 표시용 */

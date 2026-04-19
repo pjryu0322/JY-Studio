@@ -59,11 +59,12 @@ export function PlatformTopNav() {
   const showScreenLabels = useShowScreenLabels();
   const [platformAdminNav, setPlatformAdminNav] = useState(false);
 
+  /** 워크플로 탭·프로젝트 멤버/설정/추적: `resolveWorkflowProjectContextId`가 null이면 조건부 렌더링으로 전부 비표시. */
   const projectContextId = useMemo(
     () => resolveWorkflowProjectContextId(pathname, searchParams),
     [pathname, searchParams]
   );
-  const showWorkflowNav = Boolean(projectContextId);
+  const showProjectScopedTopNav = Boolean(projectContextId?.trim());
 
   useEffect(() => {
     let cancelled = false;
@@ -146,8 +147,8 @@ export function PlatformTopNav() {
         >
           JY Orchestration
         </Link>
-        {showWorkflowNav ? <span style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} aria-hidden /> : null}
-        {showWorkflowNav && projectContextId ? (
+        {showProjectScopedTopNav ? <span style={{ width: 1, height: 22, background: "#e2e8f0", flexShrink: 0 }} aria-hidden /> : null}
+        {showProjectScopedTopNav && projectContextId ? (
           <nav aria-label="프로젝트 워크플로" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
             {WORKFLOW_TOP_NAV.map((item) => {
               const href = appFlowStepHref(item.stepId, projectContextId);
@@ -164,7 +165,7 @@ export function PlatformTopNav() {
           </nav>
         ) : null}
         <span style={{ flex: 1, minWidth: 8 }} aria-hidden />
-        {showWorkflowNav ? (
+        {showProjectScopedTopNav ? (
           <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
             {admin.map((item) => {
               const base = item.href.split("?")[0] ?? item.href;
@@ -205,7 +206,7 @@ export function PlatformTopNav() {
             </span>
           </nav>
         ) : null}
-        {showWorkflowNav ? (
+        {showProjectScopedTopNav ? (
           <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {insight.map((item) => {
               const isActive = isTraceNavActive(pathname, searchParams, projectContextId, item.href);
