@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
@@ -35,7 +35,7 @@ export function RequirementsChatPanel({
   typingIndicator,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
-  readonly composer: React.ReactNode;
+  readonly composer: ReactNode;
   /** AI 응답 대기 중 표시(채팅 타임라인에는 저장되지 않음) */
   readonly typingIndicator?: boolean;
 }) {
@@ -52,18 +52,22 @@ export function RequirementsChatPanel({
   );
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages?.length]);
+    const t = window.requestAnimationFrame(() => {
+      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+    return () => window.cancelAnimationFrame(t);
+  }, [messages, typingIndicator]);
 
   return (
     <section
       data-testid="requirements-chat-panel"
       style={{
-        flex: "1 1 70%",
-        minWidth: 280,
         display: "flex",
         flexDirection: "column",
-        minHeight: 440,
+        height: "clamp(560px, 72vh, 820px)",
+        minWidth: 280,
+        maxWidth: "100%",
+        overflow: "hidden",
       }}
       aria-label="아이디어 구체화 채팅"
     >
@@ -72,8 +76,9 @@ export function RequirementsChatPanel({
         style={{
           position: "relative",
           flex: 1,
+          minHeight: 0,
           overflowY: "auto",
-          padding: "20px 18px",
+          padding: "18px 18px 20px",
           background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
         }}
       >
@@ -151,7 +156,7 @@ export function RequirementsChatPanel({
         ) : null}
         <div ref={endRef} />
       </div>
-      {composer}
+      <div style={{ flexShrink: 0 }}>{composer}</div>
     </section>
   );
 }
