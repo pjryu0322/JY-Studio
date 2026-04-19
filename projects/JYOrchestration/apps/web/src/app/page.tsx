@@ -169,7 +169,7 @@ export default function HomePage() {
   return (
     <main className="relative" style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }} data-ui-label="[A] Home">
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
-      <section className="relative" data-ui-label="[A-1] Header" style={{ marginBottom: 24 }}>
+      <section className="relative" data-ui-label="[A-1] Header" style={{ marginBottom: 28 }}>
         <ScreenLabel label="워크스페이스-홈-헤더-섹션" visible={showScreenLabels} />
         <div
           style={{
@@ -178,7 +178,6 @@ export default function HomePage() {
             alignItems: "center",
             justifyContent: "space-between",
             gap: 12,
-            marginBottom: 12,
           }}
         >
           <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>JY 오케스트레이션</h1>
@@ -206,18 +205,6 @@ export default function HomePage() {
             </button>
           </div>
         </div>
-        <p
-          style={{
-            margin: "10px 0 0 0",
-            maxWidth: 640,
-            color: "#475569",
-            fontSize: 15,
-            lineHeight: 1.65,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          JY Orchestration은 아이디어를 정리하고, 각 프로젝트에서 검증 가능한 프로토타입을 만드는 플랫폼입니다.
-        </p>
       </section>
 
       <section
@@ -259,14 +246,6 @@ export default function HomePage() {
               className="min-h-[120px] w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
             />
           </div>
-
-          <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-            AI 기획자는 프로젝트 생성 시 자동으로 참여합니다. 사람 멤버는 생성 후{" "}
-            <strong>아이디어 구체화</strong> 화면에서 초대할 수 있습니다.
-          </p>
-          <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-            생성 준비(프로젝트 허브)에서는 Git·고급 설정을 이어서 구성할 수 있습니다.
-          </p>
 
           <div className="relative inline-block w-fit">
             <ScreenLabel label="워크스페이스-프로젝트생성-생성버튼" visible={showScreenLabels} />
