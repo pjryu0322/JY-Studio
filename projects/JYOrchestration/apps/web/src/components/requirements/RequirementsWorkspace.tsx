@@ -1129,6 +1129,11 @@ export function RequirementsWorkspace({
     email: m.email,
     memberType: m.memberType,
   }));
+
+  const existingHumanUserIds = useMemo(
+    () => new Set(members.filter((m) => m.memberType === "HUMAN" && m.userId).map((m) => m.userId as string)),
+    [members]
+  );
   const remoteLocked = !resolvedProjectId.trim();
   const virtualPlanner = aiMembers.length === 0;
 
@@ -1391,6 +1396,7 @@ export function RequirementsWorkspace({
         projectId={resolvedProjectId.trim()}
         onClose={() => setInviteOpen(false)}
         onInvited={() => void reloadMembers()}
+        existingHumanUserIds={existingHumanUserIds}
       />
 
       <RequirementsPromptDocumentDrawer

@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
         ],
       },
       take: limit,
-      orderBy: [{ email: "asc" }],
-      select: { id: true, email: true, name: true },
+      orderBy: [{ updatedAt: "desc" }, { email: "asc" }],
+      select: { id: true, email: true, name: true, createdAt: true, updatedAt: true },
     });
 
     return NextResponse.json({
