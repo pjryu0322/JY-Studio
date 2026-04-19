@@ -164,24 +164,26 @@ export function PlatformTopNav() {
           </nav>
         ) : null}
         <span style={{ flex: 1, minWidth: 8 }} aria-hidden />
-        <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-          {admin.map((item) => {
-            const base = item.href.split("?")[0] ?? item.href;
-            const active = isAdminPathActive(pathname, base);
-            return (
-              <span key={item.label + item.href} className="relative">
-                <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-                <Link
-                  href={item.href}
-                  style={{ ...linkBase(active), fontWeight: 600, color: active ? "#1e40af" : "#64748b" }}
-                  aria-current={active ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              </span>
-            );
-          })}
-        </nav>
+        {showWorkflowNav ? (
+          <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+            {admin.map((item) => {
+              const base = item.href.split("?")[0] ?? item.href;
+              const active = isAdminPathActive(pathname, base);
+              return (
+                <span key={item.label + item.href} className="relative">
+                  <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+                  <Link
+                    href={item.href}
+                    style={{ ...linkBase(active), fontWeight: 600, color: active ? "#1e40af" : "#64748b" }}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                </span>
+              );
+            })}
+          </nav>
+        ) : null}
         {platformAdminNav ? (
           <nav aria-label="플랫폼 관리" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
             <span className="relative">
@@ -203,23 +205,25 @@ export function PlatformTopNav() {
             </span>
           </nav>
         ) : null}
-        <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {insight.map((item) => {
-            const isActive = isTraceNavActive(pathname, searchParams, projectContextId, item.href);
-            return (
-              <span key={item.href} className="relative">
-                <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-                <Link
-                  href={item.href}
-                  style={{ ...linkBase(isActive), fontWeight: 600, color: isActive ? "#1e40af" : "#64748b" }}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              </span>
-            );
-          })}
-        </nav>
+        {showWorkflowNav ? (
+          <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {insight.map((item) => {
+              const isActive = isTraceNavActive(pathname, searchParams, projectContextId, item.href);
+              return (
+                <span key={item.href} className="relative">
+                  <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+                  <Link
+                    href={item.href}
+                    style={{ ...linkBase(isActive), fontWeight: 600, color: isActive ? "#1e40af" : "#64748b" }}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                </span>
+              );
+            })}
+          </nav>
+        ) : null}
       </div>
     </header>
   );
