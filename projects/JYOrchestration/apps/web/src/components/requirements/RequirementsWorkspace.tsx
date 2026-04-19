@@ -144,7 +144,13 @@ function formatDialogueExcerpt(messages: RequirementsRoomStateV3["requirementsCo
   return lines.join("\n").slice(-maxChars);
 }
 
-type MemberRow = RequirementsMemberChip & { role: string; isOwner?: boolean; userId?: string | null };
+type MemberRow = RequirementsMemberChip & {
+  role: string;
+  isOwner?: boolean;
+  userId?: string | null;
+  aiOrchestrationRole?: string | null;
+  orchestrationStage?: string | null;
+};
 
 type SessionUser = { id: string; email: string; name: string };
 
@@ -388,6 +394,15 @@ export function RequirementsWorkspace({
   const humanOthers = useMemo(() => members.filter((m) => m.memberType === "HUMAN" && !m.isOwner), [members]);
   const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
 
+  useEffect(() => {
+    if (selectedTargetId !== VIRTUAL_AI_PLANNER_ID) return;
+    const planner = aiMembers.find((m) => m.aiOrchestrationRole === "planner" && m.orchestrationStage === "spec");
+    if (planner) {
+      setSelectedTargetId(planner.memberId);
+      setSelectedTargetName((planner.displayName ?? "AI 기획자").trim() || "AI 기획자");
+    }
+  }, [aiMembers, selectedTargetId]);
+
   const aiPlannerStatusLabel = useMemo(() => {
     if (aiInvokePending) return "응답 대기 중(OpenAI 호출 중)";
     if (aiConnPhase === "checking") return "연결 확인 중…";
@@ -405,9 +420,16 @@ export function RequirementsWorkspace({
   }, [aiConnPhase, aiConnDetail, aiInvokePending, aiLastInvoke]);
 
   const participants = useMemo((): ParticipantOption[] => {
-    const list: ParticipantOption[] = [
-      { id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자", kind: "ai", onlineHint: false, aiStatusLabel: aiPlannerStatusLabel },
-    ];
+    const list: ParticipantOption[] = [];
+    if (aiMembers.length === 0) {
+      list.push({
+        id: VIRTUAL_AI_PLANNER_ID,
+        name: "AI 기획자",
+        kind: "ai",
+        onlineHint: false,
+        aiStatusLabel: aiPlannerStatusLabel,
+      });
+    }
     for (const m of aiMembers) {
       list.push({
         id: m.memberId,

@@ -13,7 +13,7 @@ test.describe("E2E project", () => {
     const form = page.getByTestId("home-create-project-form");
     await expect(form.locator('input[type="text"]')).toHaveCount(1);
     await expect(form.locator("textarea")).toHaveCount(1);
-    await expect(form.locator("select")).toHaveCount(1); // 멤버 초대: 사람 역할
+    await expect(form.locator("select")).toHaveCount(0);
 
     const name = `E2E Project ${Date.now()}`;
     await page.getByTestId("home-project-name").fill(name);

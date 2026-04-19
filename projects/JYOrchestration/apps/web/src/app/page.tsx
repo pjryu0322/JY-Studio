@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
-import { ProjectCreateMemberPicker, type PendingProjectInvite } from "@/components/project/ProjectCreateMemberPicker";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
@@ -54,8 +53,6 @@ export default function HomePage() {
   const [description, setDescription] = useState("");
   const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
-  const [pendingInvites, setPendingInvites] = useState<PendingProjectInvite[]>([]);
-
   const defaultProjectType = "web-service";
   const defaultBranch = "main";
 
@@ -103,48 +100,6 @@ export default function HomePage() {
     }
   }, [includeDeletedProjects]);
 
-  async function invitePendingMembers(projectId: string) {
-    for (const p of pendingInvites) {
-      if (p.kind === "human") {
-        const res = await fetch("/api/project/members/invite", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            memberType: "HUMAN",
-            userId: p.user.id,
-            role: p.role,
-          }),
-        });
-        if (!res.ok) {
-          const j = (await res.json()) as ApiResponse<unknown>;
-          console.warn("Member invite failed:", j.message);
-        }
-      } else {
-        const res = await fetch("/api/project/members/invite", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            memberType: "AI",
-            displayName: p.displayName,
-            role: p.role,
-            aiOrchestrationRole: p.aiOrchestrationRole,
-            orchestrationStage: p.orchestrationStage,
-            aiProvider: "openai",
-            orchestrationEnabled: true,
-          }),
-        });
-        if (!res.ok) {
-          const j = (await res.json()) as ApiResponse<unknown>;
-          console.warn("AI member invite failed:", j.message);
-        }
-      }
-    }
-  }
-
   async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
@@ -181,11 +136,9 @@ export default function HomePage() {
       }
 
       const newId = json.data.id;
-      await invitePendingMembers(newId);
 
       setName("");
       setDescription("");
-      setPendingInvites([]);
       await loadProjects();
       router.push(`/requirements?projectId=${encodeURIComponent(newId)}`);
     } catch (error) {
@@ -298,10 +251,12 @@ export default function HomePage() {
             />
           </div>
 
-          <ProjectCreateMemberPicker disabled={submitting} pending={pendingInvites} onChangePending={setPendingInvites} />
-
-          <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>
-            생성 후 생성 준비(프로젝트 허브)에서 Git·고급 설정을 이어서 구성할 수 있습니다.
+          <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+            AI 기획자는 프로젝트 생성 시 자동으로 참여합니다. 사람 멤버는 생성 후{" "}
+            <strong>아이디어 구체화</strong> 화면에서 초대할 수 있습니다.
+          </p>
+          <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+            생성 준비(프로젝트 허브)에서는 Git·고급 설정을 이어서 구성할 수 있습니다.
           </p>
 
           <div className="relative inline-block w-fit">
