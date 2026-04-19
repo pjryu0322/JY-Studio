@@ -15,7 +15,6 @@ import {
 } from "@/lib/workflow/appFlowModel";
 import { buildAppFlowStatusLines } from "@/lib/workflow/flow-status-lines";
 import { stripStepReachableForUi, gateReasonForStep } from "@/components/workflow/flowStripHelpers";
-import { FlowProgressStrip } from "@/components/workflow/FlowProgressStrip";
 import { FlowStatusSummary } from "@/components/workflow/FlowStatusSummary";
 import { FlowNextActionCard } from "@/components/workflow/FlowNextActionCard";
 
@@ -30,8 +29,6 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
   const [project, setProject] = useState<Project | null>(null);
   const [taskCount, setTaskCount] = useState(0);
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
-  const [loading, setLoading] = useState(false);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -61,14 +58,13 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
       setExecutionSetup(null);
       return;
     }
-    setLoading(true);
     try {
       const ctx = await loadAppFlowProjectContext(effectiveProjectId);
       setProject(ctx.project);
       setTaskCount(ctx.taskCount);
       setExecutionSetup(ctx.executionSetup);
-    } finally {
-      setLoading(false);
+    } catch {
+      /* ignore transient load errors */
     }
   }, [effectiveProjectId]);
 
@@ -120,9 +116,7 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
 
   return (
     <div data-testid="app-flow-guidance">
-      <FlowProgressStrip current={current} gates={gates} loading={loading} projectId={effectiveProjectId} />
-
-      <div style={{ marginBottom: 24 }}>{children}</div>
+      <div style={{ marginBottom: 20 }}>{children}</div>
 
       {hideGuidanceFooter ? null : (
         <div

@@ -1161,12 +1161,11 @@ export function RequirementsWorkspace({
     [lastSavedAt]
   );
 
-  const shellStyle = { display: "flex", flexDirection: "column" as const, gap: 0, minHeight: "min(78vh, 900px)" };
+  const shellStyle = { display: "flex", flexDirection: "column" as const, gap: 0, minHeight: 0 };
   const mainRow: CSSProperties = {
     display: "flex",
-    flex: 1,
+    flex: "0 0 auto",
     gap: 0,
-    minHeight: 440,
     border: "1px solid #e2e8f0",
     borderRadius: 16,
     overflow: "hidden",
@@ -1191,7 +1190,7 @@ export function RequirementsWorkspace({
         autosave={{ state: saveState, lastTimeLabel: lastSaveTimeLabel }}
       />
 
-      <div style={{ marginBottom: 8 }} />
+      <div style={{ marginBottom: 6 }} />
 
       {draftOpen && draftDoc ? (
         <div style={{ marginBottom: 10 }}>
@@ -1357,7 +1356,7 @@ export function RequirementsWorkspace({
               cursor: busy ? "wait" : requirementsPending ? "not-allowed" : "pointer",
             }}
           >
-            다음 단계: 기능 정리로 이동
+            기능 정리로 이동
           </button>
         </div>
         {isNextPublicDevWorkflowToolsEnabled() ? (
