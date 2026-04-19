@@ -206,8 +206,17 @@ export default function HomePage() {
             </button>
           </div>
         </div>
-        <p style={{ margin: 0, color: "#555" }}>
-          JY Orchestration은 아이디어를 단계적으로 정리하는 플랫폼이며, 프로토타입은 각 프로젝트에서 만들어지는 결과물입니다.
+        <p
+          style={{
+            margin: "10px 0 0 0",
+            maxWidth: 640,
+            color: "#475569",
+            fontSize: 15,
+            lineHeight: 1.65,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          JY Orchestration은 아이디어를 정리하고, 각 프로젝트에서 검증 가능한 프로토타입을 만드는 플랫폼입니다.
         </p>
       </section>
 
