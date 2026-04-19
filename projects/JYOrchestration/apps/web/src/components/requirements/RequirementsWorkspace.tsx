@@ -6,11 +6,11 @@ import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
-import type { RequirementsMemberChip } from "@/components/requirements/RequirementsHeader";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
+import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
 import { RequirementsNavBreadcrumb } from "@/components/requirements/RequirementsNavBreadcrumb";
-import { RequirementsParticipantBar, type ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { RequirementsDraftPanel } from "@/components/requirements/RequirementsDraftPanel";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
@@ -145,7 +145,11 @@ function formatDialogueExcerpt(messages: RequirementsRoomStateV3["requirementsCo
   return lines.join("\n").slice(-maxChars);
 }
 
-type MemberRow = RequirementsMemberChip & {
+type MemberRow = {
+  memberId: string;
+  displayName: string | null;
+  email: string | null;
+  memberType: string;
   role: string;
   isOwner?: boolean;
   userId?: string | null;
@@ -1144,23 +1148,13 @@ export function RequirementsWorkspace({
     }
   }, [resolvedProjectId, router]);
 
-  const inviteHref = resolvedProjectId.trim()
-    ? `/projects/${encodeURIComponent(resolvedProjectId.trim())}?view=workspace`
-    : "/";
   const inviteEmphasis = humanOthers.length === 0;
-  const memberChips: RequirementsMemberChip[] = members.map((m) => ({
-    memberId: m.memberId,
-    displayName: m.displayName,
-    email: m.email,
-    memberType: m.memberType,
-  }));
 
   const existingHumanUserIds = useMemo(
     () => new Set(members.filter((m) => m.memberType === "HUMAN" && m.userId).map((m) => m.userId as string)),
     [members]
   );
   const remoteLocked = !resolvedProjectId.trim();
-  const virtualPlanner = aiMembers.length === 0;
 
   const trimmedProjectName = project?.name?.trim();
   const headerProjectName = trimmedProjectName
@@ -1172,17 +1166,6 @@ export function RequirementsWorkspace({
         : !project
           ? "불러오는 중…"
           : "이름 미설정";
-  const headerDescription = !resolvedProjectId.trim()
-    ? ""
-    : loadError
-      ? "프로젝트 세부 정보를 잠시 불러오지 못했습니다. 아래 안내를 확인하거나 다시 시도해 주세요."
-      : !project
-        ? ""
-        : project.description?.trim()
-          ? project.description.trim()
-          : "설명이 아직 없습니다.";
-  const headerPlannerHint = virtualPlanner ? "AI 기획자가 기본으로 참여합니다." : null;
-
   const lastSaveTimeLabel = useMemo(
     () =>
       lastSavedAt
@@ -1193,14 +1176,14 @@ export function RequirementsWorkspace({
 
   const shellStyle = { display: "flex", flexDirection: "column" as const, gap: 0, minHeight: 0 };
   const mainRow: CSSProperties = {
-    display: "flex",
-    flex: "0 0 auto",
+    flex: "1 1 auto",
     gap: 0,
     border: "1px solid #e2e8f0",
     borderRadius: 16,
     overflow: "hidden",
     background: "#fff",
     boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.18)",
+    minHeight: 0,
   };
 
   return (
@@ -1211,12 +1194,6 @@ export function RequirementsWorkspace({
 
       <RequirementsHeader
         projectName={headerProjectName}
-        descriptionText={headerDescription}
-        inviteHref={inviteHref}
-        inviteEmphasis={inviteEmphasis}
-        members={memberChips}
-        plannerHint={headerPlannerHint}
-        onInviteClick={resolvedProjectId.trim() ? () => setInviteOpen(true) : undefined}
         autosave={{ state: saveState, lastTimeLabel: lastSaveTimeLabel }}
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
       />
@@ -1271,9 +1248,23 @@ export function RequirementsWorkspace({
         </div>
       ) : null}
 
-      <div style={mainRow}>
-        <div style={{ flex: "1 1 100%", minWidth: 0, display: "flex", flexDirection: "column" }}>
-            <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
+      <div style={mainRow} className="jyo-requirements-workspace-main">
+        <RequirementsMemberSidebar
+          participants={participants}
+          selectedId={selectedTargetId}
+          onSelect={(id, name) => {
+            setSelectedTargetId(id);
+            setSelectedTargetName(name);
+            const p = resolvedProjectId.trim();
+            if (p) void persistStateJsonOnly({ selectedTargetId: id });
+          }}
+          showInvite={Boolean(resolvedProjectId.trim())}
+          inviteDisabled={remoteLocked}
+          inviteEmphasis={inviteEmphasis}
+          onInviteClick={() => setInviteOpen(true)}
+        />
+        <div style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
           <RequirementsChatPanel
             messages={messages}
             typingIndicator={aiInvokePending}
@@ -1293,58 +1284,45 @@ export function RequirementsWorkspace({
                   disabled={false}
                   placeholder="예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요"
                   toolbarAbove={
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, rowGap: 10 }}>
-                        <ScreenLabel label="요구사항-입력창-액션행" visible={showScreenLabels} />
-                        <button
-                          type="button"
-                          disabled={busy || remoteLocked}
-                          onClick={() => void onOrganizeRequirements()}
-                          style={{
-                            ...actionBtn,
-                            cursor: busy ? "wait" : remoteLocked ? "not-allowed" : "pointer",
-                            opacity: remoteLocked ? 0.55 : 1,
-                          }}
-                        >
-                          정리 요청
-                        </button>
-                        {draftDoc ? (
-                          <button type="button" onClick={() => setDraftOpen(true)} style={actionBtn}>
-                            정리본 보기
-                          </button>
-                        ) : null}
-                        <button type="button" onClick={() => setPromptDrawerOpen(true)} style={actionBtn}>
-                          프롬프트 보기
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSummaryModalOpen(true)}
-                          style={{
-                            border: 0,
-                            background: "none",
-                            padding: "6px 4px",
-                            fontWeight: 700,
-                            fontSize: 13,
-                            color: "#64748b",
-                            cursor: "pointer",
-                            textDecoration: "underline",
-                            textUnderlineOffset: 3,
-                          }}
-                        >
-                          요약 편집
-                        </button>
-                      </div>
-                      <RequirementsParticipantBar
-                        dense
-                        participants={participants}
-                        selectedId={selectedTargetId}
-                        onSelect={(id, name) => {
-                          setSelectedTargetId(id);
-                          setSelectedTargetName(name);
-                          const p = resolvedProjectId.trim();
-                          if (p) void persistStateJsonOnly({ selectedTargetId: id });
+                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, rowGap: 10, width: "100%" }}>
+                      <ScreenLabel label="요구사항-입력창-액션행" visible={showScreenLabels} />
+                      <button
+                        type="button"
+                        disabled={busy || remoteLocked}
+                        onClick={() => void onOrganizeRequirements()}
+                        style={{
+                          ...actionBtn,
+                          cursor: busy ? "wait" : remoteLocked ? "not-allowed" : "pointer",
+                          opacity: remoteLocked ? 0.55 : 1,
                         }}
-                      />
+                      >
+                        정리 요청
+                      </button>
+                      {draftDoc ? (
+                        <button type="button" onClick={() => setDraftOpen(true)} style={actionBtn}>
+                          정리본 보기
+                        </button>
+                      ) : null}
+                      <button type="button" onClick={() => setPromptDrawerOpen(true)} style={actionBtn}>
+                        프롬프트 보기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSummaryModalOpen(true)}
+                        style={{
+                          border: 0,
+                          background: "none",
+                          padding: "6px 4px",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          color: "#64748b",
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          textUnderlineOffset: 3,
+                        }}
+                      >
+                        요약 편집
+                      </button>
                     </div>
                   }
                 />
