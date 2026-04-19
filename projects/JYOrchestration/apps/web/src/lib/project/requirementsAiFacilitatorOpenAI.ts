@@ -1,8 +1,28 @@
 const DEFAULT_MODEL = "gpt-4o-mini";
 
+export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
+
 export type RequirementsFacilitatorOpenAiResult =
   | { ok: true; text: string; model: string }
   | { ok: false; code: string; message: string };
+
+function facilitatorResponseStyleAddendum(style: RequirementsAiResponseStyle | undefined): string {
+  const s = style === "brief" || style === "detailed" ? style : "standard";
+  if (s === "standard") return "";
+  if (s === "brief") {
+    return `\n\n[응답 길이 선호 — 사용자 설정: 간단히]\n- 문장 수를 줄이고, 한두 가지 확인 질문에 집중합니다.\n- 기본 8문장 이내 규칙보다 더 짧게 써도 됩니다.`;
+  }
+  return `\n\n[응답 길이 선호 — 사용자 설정: 상세히]\n- 맥락·옵션·트레이드오프를 풀어 설명해도 됩니다.\n- 필요하면 단계별로 나열합니다.`;
+}
+
+function draftResponseStyleAddendum(style: RequirementsAiResponseStyle | undefined): string {
+  const s = style === "brief" || style === "detailed" ? style : "standard";
+  if (s === "standard") return "";
+  if (s === "brief") {
+    return `\n[추가 규칙 — 응답 스타일: 간단히]\n- overview·각 배열 항목은 짧은 구문 위주로 유지합니다.`;
+  }
+  return `\n[추가 규칙 — 응답 스타일: 상세히]\n- overview와 항목 설명을 조금 더 구체적으로 작성해도 됩니다.`;
+}
 
 export type RequirementsDraftOpenAiResult =
   | {
@@ -30,6 +50,8 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   stage: "requirements";
   userMessage: string;
   dialogueExcerpt: string;
+  /** 클라이언트 전역 설정과 동기 */
+  responseStyle?: RequirementsAiResponseStyle;
 }): Promise<RequirementsFacilitatorOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -58,7 +80,7 @@ export async function runRequirementsFacilitatorOpenAI(input: {
 규칙:
 - 한국어로 답합니다.
 - 1회 응답은 8문장 이내, 불필요한 서론·마크다운 제목 없이 대화체로 작성합니다.
-- 사용자가 특정 참가자에게 질문한 맥락이 있으면 그에 맞춰 답합니다.`,
+- 사용자가 특정 참가자에게 질문한 맥락이 있으면 그에 맞춰 답합니다.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
         },
         {
           role: "user",
@@ -120,6 +142,7 @@ export async function runRequirementsDraftOpenAI(input: {
   dialogueExcerpt: string;
   userMessage: string;
   existingDraft?: unknown;
+  responseStyle?: RequirementsAiResponseStyle;
 }): Promise<RequirementsDraftOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -180,7 +203,7 @@ ${input.userMessage.trim()}
 [규칙]
 - overview/users/features/successCriteria는 비어있지 않게(최소 1개 이상) 추론해 채워라.
 - 근거가 약하면 openIssues에 '확인 필요'로 남겨라.
-- 한국어로 작성.`,
+- 한국어로 작성.${draftResponseStyleAddendum(input.responseStyle)}`,
         },
       ],
     }),

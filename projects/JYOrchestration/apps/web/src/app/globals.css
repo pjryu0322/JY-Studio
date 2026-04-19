@@ -52,3 +52,20 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.jyo-platform-main {
+  padding: 20px 24px 32px;
+}
+
+html[data-jyo-compact="1"] .jyo-platform-main {
+  padding: 12px 16px 22px;
+}
+
+html[data-jyo-reduce-motion="1"] *,
+html[data-jyo-reduce-motion="1"] *::before,
+html[data-jyo-reduce-motion="1"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}

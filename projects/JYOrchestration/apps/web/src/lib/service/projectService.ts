@@ -88,9 +88,12 @@ export type CreateProjectInput = {
   repoUrl: string | null;
   defaultBranch: string;
   ownerUserId: string;
+  /** 기본 true. false면 기본 AI 기획자 멤버를 넣지 않습니다. */
+  includeDefaultAiPlanner?: boolean;
 };
 
 export async function createProject(input: CreateProjectInput) {
+  const includeAi = input.includeDefaultAiPlanner !== false;
   return prisma.$transaction(async (tx) => {
     const project = await tx.project.create({
       data: {
@@ -111,10 +114,12 @@ export async function createProject(input: CreateProjectInput) {
         role: "OWNER",
       },
     });
-    await ensureDefaultAiPlannerProjectMember(tx, {
-      projectId: project.id,
-      invitedByUserId: input.ownerUserId,
-    });
+    if (includeAi) {
+      await ensureDefaultAiPlannerProjectMember(tx, {
+        projectId: project.id,
+        invitedByUserId: input.ownerUserId,
+      });
+    }
     return project;
   });
 }
