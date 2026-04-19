@@ -12,6 +12,7 @@ import { RequirementsMemberInviteModal } from "@/components/requirements/Require
 import { RequirementsNavBreadcrumb } from "@/components/requirements/RequirementsNavBreadcrumb";
 import { RequirementsParticipantBar, type ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { RequirementsDraftPanel } from "@/components/requirements/RequirementsDraftPanel";
+import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
@@ -184,6 +185,7 @@ export function RequirementsWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [selectedTargetId, setSelectedTargetId] = useState<string>(VIRTUAL_AI_PLANNER_ID);
   const [selectedTargetName, setSelectedTargetName] = useState("AI 기획자");
@@ -483,6 +485,11 @@ export function RequirementsWorkspace({
 
   const analysisComplete = useMemo(() => projectMeetsRequirementsAnalysisComplete(analysisSlice), [analysisSlice]);
   const requirementsPending = project ? isRequirementsPendingWorkflow(project.workflowStatus) : true;
+
+  const persistedPromptState = useMemo(
+    () => parseRequirementsStateJson(project?.requirementsStateJson),
+    [project?.requirementsStateJson]
+  );
 
   const workflowGuidanceBanner = useMemo(() => {
     const fromUrl = initialWorkflowNotice.trim();
@@ -1079,7 +1086,7 @@ export function RequirementsWorkspace({
     }
   }, [busy, room, openIssues, priorityFeatures, goals, scopeIn, scopeOut, targetUsers, success, nfr, persistRemote]);
 
-  const onGotoCollaboration = useCallback(() => {
+  const onGotoFeatures = useCallback(() => {
     if (requirementsPending) {
       setError("먼저 대화를 정리해야 다음 단계로 진행할 수 있습니다.");
       return;
@@ -1089,8 +1096,10 @@ export function RequirementsWorkspace({
       const ok = window.confirm("정리 없이 다음 단계로 이동하시겠습니까?");
       if (!ok) return;
     }
-    router.push("/collaboration");
-  }, [requirementsPending, router, draftDoc]);
+    const pid = resolvedProjectId.trim();
+    const q = pid ? `?projectId=${encodeURIComponent(pid)}` : "";
+    router.push(`/features${q}`);
+  }, [requirementsPending, router, draftDoc, resolvedProjectId]);
 
   const ackDev = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -1274,6 +1283,9 @@ export function RequirementsWorkspace({
                             정리본 보기
                           </button>
                         ) : null}
+                        <button type="button" onClick={() => setPromptDrawerOpen(true)} style={actionBtn}>
+                          프롬프트 보기
+                        </button>
                         <button
                           type="button"
                           onClick={() => setSummaryModalOpen(true)}
@@ -1328,12 +1340,12 @@ export function RequirementsWorkspace({
         }}
       >
         <div className="relative" style={{ position: "relative" }}>
-          <ScreenLabel label="요구사항-하단액션-협업이동버튼" visible={showScreenLabels} />
+          <ScreenLabel label="요구사항-하단액션-기능정리이동버튼" visible={showScreenLabels} />
           <button
             type="button"
             disabled={busy || requirementsPending}
-            data-testid="requirements-goto-collaboration"
-            onClick={onGotoCollaboration}
+            data-testid="requirements-goto-features"
+            onClick={onGotoFeatures}
             style={{
               padding: "10px 16px",
               borderRadius: 10,
@@ -1345,7 +1357,7 @@ export function RequirementsWorkspace({
               cursor: busy ? "wait" : requirementsPending ? "not-allowed" : "pointer",
             }}
           >
-            다음 단계: 협업으로 이동
+            다음 단계: 기능 정리로 이동
           </button>
         </div>
         {isNextPublicDevWorkflowToolsEnabled() ? (
@@ -1380,6 +1392,15 @@ export function RequirementsWorkspace({
         projectId={resolvedProjectId.trim()}
         onClose={() => setInviteOpen(false)}
         onInvited={() => void reloadMembers()}
+      />
+
+      <RequirementsPromptDocumentDrawer
+        open={promptDrawerOpen}
+        onClose={() => setPromptDrawerOpen(false)}
+        view={persistedPromptState.lastPromptView ?? null}
+        lastPromptText={persistedPromptState.lastPromptText}
+        lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
+        conversationMessages={conversationStatus === "loaded" ? conversationMessages : null}
       />
 
       <RequirementsSummaryModal

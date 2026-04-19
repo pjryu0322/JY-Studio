@@ -5,7 +5,6 @@ export const APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT = "jyo:app-flow-project-cont
 
 export type AppFlowStepId =
   | "requirements"
-  | "collaboration"
   | "features"
   | "tasks"
   | "planning"
@@ -19,7 +18,6 @@ export type AppFlowStepDef = Readonly<{
 
 export const APP_FLOW_STEPS: readonly AppFlowStepDef[] = [
   { id: "requirements", label: "아이디어 구체화" },
-  { id: "collaboration", label: "협업" },
   { id: "features", label: "기능 정리" },
   { id: "tasks", label: "작업 정리" },
   { id: "planning", label: "생성 준비" },
@@ -34,8 +32,6 @@ export function appFlowStepHref(stepId: AppFlowStepId, projectId: string | null)
   switch (stepId) {
     case "requirements":
       return `/requirements${q}`;
-    case "collaboration":
-      return `/collaboration${q}`;
     case "features":
       return `/features${q}`;
     case "tasks":
@@ -56,7 +52,7 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   const p = pathname || "/";
   if (p === "/login" || p.startsWith("/login/")) return null;
   if (p === "/requirements" || p.startsWith("/requirements/")) return "requirements";
-  if (p === "/collaboration" || p.startsWith("/collaboration/")) return "collaboration";
+  if (p === "/collaboration" || p.startsWith("/collaboration/")) return null;
   if (p === "/features" || p.startsWith("/features/")) return "features";
   if (p === "/tasks" || p.startsWith("/tasks/")) return "tasks";
   if (p.startsWith("/projects/")) {

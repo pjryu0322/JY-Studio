@@ -57,7 +57,7 @@ export function TaskSequence({
   if (tasks.length === 0) {
     return (
       <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.55 }}>
-        아직 이 작업 집합에 항목이 없습니다. 협업에서 초안을 생성하거나 아래에서 작업을 추가하세요.
+        아직 이 작업 집합에 항목이 없습니다. 세션에서 초안을 생성하거나 아래에서 작업을 추가하세요.
       </div>
     );
   }

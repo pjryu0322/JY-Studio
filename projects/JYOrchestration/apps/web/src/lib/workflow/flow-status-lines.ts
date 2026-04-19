@@ -15,7 +15,7 @@ export function buildAppFlowStatusLines(input: {
     lines.push(`프로젝트: ${project?.name ?? effectiveProjectId}`);
     if (isRequirementsPendingWorkflow(project?.workflowStatus)) {
       lines.push(
-        "아이디어 구체화: 아직 단계 미완료 — 협업·생성 준비 등은 아이디어 정리를 마친 뒤 단계 메뉴에서 열 수 있습니다"
+        "아이디어 구체화: 아직 단계 미완료 — 기능 정리·생성 준비 등은 아이디어 정리를 마친 뒤 단계 메뉴에서 열 수 있습니다"
       );
     }
     lines.push(

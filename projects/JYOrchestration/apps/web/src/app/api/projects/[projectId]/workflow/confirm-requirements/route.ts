@@ -93,7 +93,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: "요구사항이 확정되었습니다. 협업·실행 계획 단계로 진행할 수 있습니다.",
+      message: "요구사항이 확정되었습니다. 기능 정리·생성 준비 단계로 진행할 수 있습니다.",
       data: updated,
     });
   } catch (error) {

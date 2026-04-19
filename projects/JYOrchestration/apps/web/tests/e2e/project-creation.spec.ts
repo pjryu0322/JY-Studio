@@ -30,9 +30,9 @@ test.describe("E2E project", () => {
     await page.getByTestId("requirements-target-users").fill("팀 리더·PM");
     await page.getByTestId("requirements-success-criteria").fill("회의록 1건을 1분 내 요약 초안 생성");
     await page.getByTestId("requirements-confirm-button").click();
-    await expect(page.getByTestId("requirements-goto-collaboration")).toBeVisible({ timeout: 20_000 });
-    await page.getByTestId("requirements-goto-collaboration").click();
-    await expect(page).toHaveURL(/\/collaboration/, { timeout: 20_000 });
+    await expect(page.getByTestId("requirements-goto-features")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("requirements-goto-features").click();
+    await expect(page).toHaveURL(/\/features/, { timeout: 20_000 });
     await page.goto("/");
     await page.getByTestId(`project-open-${projectId}`).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`), { timeout: 20_000 });
