@@ -75,3 +75,27 @@ html[data-jyo-reduce-motion="1"] *::after {
     display: none;
   }
 }
+
+/* 아이디어 구체화: 멤버 패널 + 채팅 가로 배치(좁은 화면에서는 세로 스택) */
+.jyo-requirements-workspace-main {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: min(520px, 70vh);
+}
+
+@media (max-width: 720px) {
+  .jyo-requirements-workspace-main {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .jyo-requirements-member-sidebar {
+    width: 100% !important;
+    flex: 0 0 auto !important;
+    max-width: none;
+    max-height: 240px;
+    border-right: none !important;
+    border-bottom: 1px solid #e2e8f0;
+  }
+}
