@@ -71,6 +71,56 @@ export function projectIdFromPathname(pathname: string): string | null {
   return m?.[1] ? decodeURIComponent(m[1]) : null;
 }
 
+/**
+ * 상단 워크플로 탭을 보여줄지 여부. `?projectId=` 또는 `/projects/:id`에 프로젝트가 열려 있을 때만 true.
+ * (홈 `/`·프로젝트 목록만 있는 화면에서는 컨텍스트 없음 → 탭 숨김.)
+ */
+export function resolveWorkflowProjectContextId(pathname: string, searchParams: URLSearchParams | null): string | null {
+  const sp = searchParams ?? new URLSearchParams();
+  const q = String(sp.get("projectId") ?? "").trim();
+  if (q) return q;
+  return projectIdFromPathname(pathname);
+}
+
+/** 워크플로 탭(요구사항·기능·…) 현재 단계 활성 표시용 */
+export function isWorkflowStepNavActive(
+  stepId: AppFlowStepId,
+  pathname: string,
+  searchParams: URLSearchParams | null,
+  contextProjectId: string
+): boolean {
+  const sp = searchParams ?? new URLSearchParams();
+  const ctx = contextProjectId.trim();
+  if (!ctx) return false;
+  const qp = String(sp.get("projectId") ?? "").trim();
+  const pathPid = projectIdFromPathname(pathname);
+
+  if (stepId === "planning") {
+    return pathPid === ctx && sp.get("view") === "workspace";
+  }
+  if (stepId === "requirements") {
+    if (!(pathname === "/requirements" || pathname.startsWith("/requirements/"))) return false;
+    return qp === ctx;
+  }
+  if (stepId === "features") {
+    if (!(pathname === "/features" || pathname.startsWith("/features/"))) return false;
+    return qp === ctx;
+  }
+  if (stepId === "tasks") {
+    if (!(pathname === "/tasks" || pathname.startsWith("/tasks/"))) return false;
+    return qp === ctx;
+  }
+  if (stepId === "execution") {
+    if (!(pathname === "/execution" || pathname.startsWith("/execution/"))) return false;
+    return qp === ctx;
+  }
+  if (stepId === "trace") {
+    if (!(pathname === "/trace" || pathname.startsWith("/trace/"))) return false;
+    return qp === ctx;
+  }
+  return false;
+}
+
 export function nextStepAfter(current: AppFlowStepId): AppFlowStepDef | null {
   const idx = APP_FLOW_STEPS.findIndex((s) => s.id === current);
   if (idx < 0 || idx >= APP_FLOW_STEPS.length - 1) return null;
