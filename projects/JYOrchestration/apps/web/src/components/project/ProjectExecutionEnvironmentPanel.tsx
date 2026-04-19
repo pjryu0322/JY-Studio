@@ -430,6 +430,8 @@ export function ProjectExecutionEnvironmentPanel({
   settingsSurface,
 }: Props) {
   const isAdminSettings = settingsSurface === "admin";
+  /** 운영 빌드에서는 내부 워크플로 코드 등 기술용 표시를 숨깁니다. */
+  const showWorkflowDiagnostics = process.env.NODE_ENV !== "production";
   const [executionSetup, setExecutionSetup] = useState<
     Awaited<ReturnType<typeof fetchExecutionSetup>>["json"]["data"] | null
   >(null);
@@ -1717,14 +1719,16 @@ export function ProjectExecutionEnvironmentPanel({
                                 {formatTestedAt(envTestLast.mergedAt)}
                               </div>
                             ) : null}
-                            {(() => {
-                              const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
-                              return code ? (
-                                <div style={{ marginTop: 4, fontSize: 10, color: "#94a3b8" }}>
-                                  워크플로 코드 · {code}
-                                </div>
-                              ) : null;
-                            })()}
+                            {showWorkflowDiagnostics
+                              ? (() => {
+                                  const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
+                                  return code ? (
+                                    <div style={{ marginTop: 4, fontSize: 10, color: "#94a3b8" }}>
+                                      워크플로 코드 · {code}
+                                    </div>
+                                  ) : null;
+                                })()
+                              : null}
                             {(() => {
                               const tk = environmentTestTaskStatusKorean(envTestLast.taskStatus);
                               return tk ? (
@@ -1788,12 +1792,14 @@ export function ProjectExecutionEnvironmentPanel({
                     <span style={{ fontWeight: 700, color: "#0f172a" }}>
                       {environmentTestWorkflowLabel(envTestLast.workflowStatus)}
                     </span>
-                    {(() => {
-                      const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
-                      return code ? (
-                        <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}> · {code}</span>
-                      ) : null;
-                    })()}
+                    {showWorkflowDiagnostics
+                      ? (() => {
+                          const code = environmentTestWorkflowInternalCode(envTestLast.workflowStatus);
+                          return code ? (
+                            <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 500 }}> · {code}</span>
+                          ) : null;
+                        })()
+                      : null}
                     {(() => {
                       const tk = environmentTestTaskStatusKorean(envTestLast.taskStatus);
                       return tk ? (

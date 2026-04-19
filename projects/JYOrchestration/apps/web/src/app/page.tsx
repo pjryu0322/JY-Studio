@@ -437,13 +437,6 @@ export default function HomePage() {
         )}
         </div>
       </section>
-      {process.env.NODE_ENV !== "production" ? (
-        <footer style={{ marginTop: 32, paddingTop: 16, borderTop: "1px solid #eee", fontSize: 13 }}>
-          <Link href="/dev/test-results" data-testid="link-test-results" style={{ color: "#2563eb" }}>
-            테스트 결과 대시보드 (개발용)
-          </Link>
-        </footer>
-      ) : null}
       {deleteTarget ? (
         <ProjectDeleteConfirmModal
           open={Boolean(deleteTarget)}

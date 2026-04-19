@@ -70,6 +70,7 @@ const labelRow: CSSProperties = {
  * 실행 환경 탭 본문은 여기에 넣지 않습니다.
  */
 export function ProjectDetailGearMenu() {
+  const showDeveloperTools = process.env.NODE_ENV !== "production";
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [labelsOn, setLabelsOn] = useState(false);
@@ -124,7 +125,7 @@ export function ProjectDetailGearMenu() {
         data-testid="project-detail-gear-menu"
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label="프로젝트 표시 및 개발자 설정"
+        aria-label={showDeveloperTools ? "프로젝트 표시 및 개발자 설정" : "프로젝트 표시 설정"}
         onClick={() => setOpen((v) => !v)}
         style={{
           width: 40,
@@ -169,7 +170,7 @@ export function ProjectDetailGearMenu() {
             이 브라우저에만 저장됩니다. 실행 환경(Cursor·Git 검증)은「실행 환경」탭에서 구성합니다.
           </p>
 
-          <div style={sectionTitle}>Display</div>
+          <div style={sectionTitle}>표시</div>
           <label style={labelRow}>
             <input
               type="checkbox"
@@ -184,83 +185,87 @@ export function ProjectDetailGearMenu() {
             <span>화면 라벨 표시</span>
           </label>
 
-          <div style={sectionTitle}>Developer Options</div>
-          <label style={labelRow}>
-            <input
-              type="checkbox"
-              checked={verboseLogs}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setVerboseLogs(next);
-                writeLsBool(LS_VERBOSE, next);
-              }}
-              style={{ width: 16, height: 16, accentColor: "#2563eb" }}
-            />
-            <span>로그 상세 보기</span>
-          </label>
-          <label style={labelRow}>
-            <input
-              type="checkbox"
-              checked={debugMode}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setDebugMode(next);
-                writeLsBool(LS_DEBUG_MODE, next);
-              }}
-              style={{ width: 16, height: 16, accentColor: "#2563eb" }}
-            />
-            <span>디버그 모드</span>
-          </label>
+          {showDeveloperTools ? (
+            <>
+              <div style={sectionTitle}>개발자 옵션</div>
+              <label style={labelRow}>
+                <input
+                  type="checkbox"
+                  checked={verboseLogs}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setVerboseLogs(next);
+                    writeLsBool(LS_VERBOSE, next);
+                  }}
+                  style={{ width: 16, height: 16, accentColor: "#2563eb" }}
+                />
+                <span>로그 상세 보기</span>
+              </label>
+              <label style={labelRow}>
+                <input
+                  type="checkbox"
+                  checked={debugMode}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setDebugMode(next);
+                    writeLsBool(LS_DEBUG_MODE, next);
+                  }}
+                  style={{ width: 16, height: 16, accentColor: "#2563eb" }}
+                />
+                <span>디버그 모드</span>
+              </label>
 
-          <div style={sectionTitle}>Advanced Settings</div>
-          <label style={{ display: "grid", gap: 4, marginBottom: 10, fontSize: 12, color: "#334155" }}>
-            <span style={{ fontWeight: 600 }}>retry 정책 (클라이언트 힌트)</span>
-            <select
-              value={retryPolicy}
-              onChange={(e) => {
-                const v = e.target.value;
-                setRetryPolicy(v);
-                writeLsString(LS_RETRY_POLICY, v);
-              }}
-              style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }}
-            >
-              <option value="default">기본</option>
-              <option value="conservative">보수적 (재시도 적음)</option>
-              <option value="aggressive">공격적 (재시도 많음)</option>
-            </select>
-          </label>
-          <label style={{ display: "grid", gap: 4, marginBottom: 10, fontSize: 12, color: "#334155" }}>
-            <span style={{ fontWeight: 600 }}>timeout 배율 (클라이언트 힌트)</span>
-            <select
-              value={timeoutScale}
-              onChange={(e) => {
-                const v = e.target.value;
-                setTimeoutScale(v);
-                writeLsString(LS_TIMEOUT_SCALE, v);
-              }}
-              style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }}
-            >
-              <option value="1">1×</option>
-              <option value="1.5">1.5×</option>
-              <option value="2">2×</option>
-            </select>
-          </label>
-          <label style={labelRow}>
-            <input
-              type="checkbox"
-              checked={experimentalUi}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setExperimentalUi(next);
-                writeLsBool(LS_FLAG_EXPERIMENTAL_UI, next);
-              }}
-              style={{ width: 16, height: 16, accentColor: "#2563eb" }}
-            />
-            <span>Feature: 실험 UI 플래그</span>
-          </label>
-          <p style={{ margin: "10px 0 0 0", fontSize: 10, color: "#94a3b8", lineHeight: 1.4 }}>
-            고급 항목은 추후 API·워커와 연동할 수 있도록 로컬에만 저장됩니다.
-          </p>
+              <div style={sectionTitle}>고급 (로컬)</div>
+              <label style={{ display: "grid", gap: 4, marginBottom: 10, fontSize: 12, color: "#334155" }}>
+                <span style={{ fontWeight: 600 }}>retry 정책 (클라이언트 힌트)</span>
+                <select
+                  value={retryPolicy}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setRetryPolicy(v);
+                    writeLsString(LS_RETRY_POLICY, v);
+                  }}
+                  style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }}
+                >
+                  <option value="default">기본</option>
+                  <option value="conservative">보수적 (재시도 적음)</option>
+                  <option value="aggressive">공격적 (재시도 많음)</option>
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 4, marginBottom: 10, fontSize: 12, color: "#334155" }}>
+                <span style={{ fontWeight: 600 }}>timeout 배율 (클라이언트 힌트)</span>
+                <select
+                  value={timeoutScale}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTimeoutScale(v);
+                    writeLsString(LS_TIMEOUT_SCALE, v);
+                  }}
+                  style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }}
+                >
+                  <option value="1">1×</option>
+                  <option value="1.5">1.5×</option>
+                  <option value="2">2×</option>
+                </select>
+              </label>
+              <label style={labelRow}>
+                <input
+                  type="checkbox"
+                  checked={experimentalUi}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setExperimentalUi(next);
+                    writeLsBool(LS_FLAG_EXPERIMENTAL_UI, next);
+                  }}
+                  style={{ width: 16, height: 16, accentColor: "#2563eb" }}
+                />
+                <span>실험 UI 플래그</span>
+              </label>
+              <p style={{ margin: "10px 0 0 0", fontSize: 10, color: "#94a3b8", lineHeight: 1.4 }}>
+                고급 항목은 추후 API·워커와 연동할 수 있도록 로컬에만 저장됩니다.
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

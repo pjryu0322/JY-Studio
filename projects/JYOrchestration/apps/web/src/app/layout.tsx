@@ -33,7 +33,7 @@ export default function RootLayout({
         <ClientProviders>
           <PlatformShell>{children}</PlatformShell>
         </ClientProviders>
-        <DebugSettings />
+        {process.env.NODE_ENV !== "production" ? <DebugSettings /> : null}
       </body>
     </html>
   );
