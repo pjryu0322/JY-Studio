@@ -51,6 +51,7 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   const sp = searchParams ?? new URLSearchParams();
   const p = pathname || "/";
   if (p === "/login" || p.startsWith("/login/")) return null;
+  if (p.startsWith("/admin")) return null;
   if (p === "/requirements" || p.startsWith("/requirements/")) return "requirements";
   if (p === "/collaboration" || p.startsWith("/collaboration/")) return null;
   if (p === "/features" || p.startsWith("/features/")) return "features";

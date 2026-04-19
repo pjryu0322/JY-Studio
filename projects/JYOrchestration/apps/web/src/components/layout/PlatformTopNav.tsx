@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -32,6 +33,24 @@ export function PlatformTopNav() {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
+  const [platformAdminNav, setPlatformAdminNav] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const json = (await res.json()) as { success?: boolean; data?: { isPlatformAdmin?: boolean } | null };
+        if (cancelled) return;
+        setPlatformAdminNav(Boolean(json.success && json.data?.isPlatformAdmin));
+      } catch {
+        if (!cancelled) setPlatformAdminNav(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const workflow: NavItem[] = [
     { label: "아이디어 구체화", href: "/requirements", screenLabel: "공통-상단내비-워크플로우-요구사항" },
@@ -47,7 +66,7 @@ export function PlatformTopNav() {
   ];
 
   const admin: NavItem[] = [
-    { label: "멤버", href: "/project-admin/members", screenLabel: "공통-상단내비-관리-멤버" },
+    { label: "프로젝트 멤버", href: "/project-admin/members", screenLabel: "공통-상단내비-관리-프로젝트멤버" },
     { label: "설정", href: "/project-admin/settings", screenLabel: "공통-상단내비-관리-설정" },
   ];
 
@@ -128,6 +147,27 @@ export function PlatformTopNav() {
             );
           })}
         </nav>
+        {platformAdminNav ? (
+          <nav aria-label="플랫폼 관리" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+            <span className="relative">
+              <ScreenLabel label="공통-상단내비-플랫폼-사용자" visible={showScreenLabels} />
+              <Link
+                href="/admin/platform-users"
+                style={{
+                  ...linkBase(pathname === "/admin/platform-users" || pathname.startsWith("/admin/platform-users/")),
+                  fontWeight: 600,
+                  color:
+                    pathname === "/admin/platform-users" || pathname.startsWith("/admin/platform-users/")
+                      ? "#1e40af"
+                      : "#64748b",
+                }}
+                aria-current={pathname.startsWith("/admin/platform-users") ? "page" : undefined}
+              >
+                플랫폼 사용자
+              </Link>
+            </span>
+          </nav>
+        ) : null}
         <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
           {insight.map((item) => {
             const active = isItemActive(pathname, item, searchParams);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isPlatformAdminUser } from "@/lib/admin/platformAdmin";
 import { getSessionUserIdFromRequest } from "@/lib/auth/requestUser";
 import { prisma } from "@/lib/prisma";
 
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
       name: user.name,
       globalRole: user.globalRole,
       createdAt: user.createdAt.toISOString(),
+      isPlatformAdmin: isPlatformAdminUser(user.globalRole, user.email),
     },
   });
 }
