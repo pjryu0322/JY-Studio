@@ -14,6 +14,12 @@ import {
   type AppFlowStepId,
 } from "@/lib/workflow/flow-state";
 
+/**
+ * MVP: 프로젝트 워크플로 스트립에서 「추적」 비노출(`/trace` 라우트·기능은 유지).
+ * 재도입 시 `true`로 변경하면 아래 `insight` 네비가 다시 렌더됩니다.
+ */
+const SHOW_PROJECT_TRACE_NAV = false;
+
 type NavItem = { label: string; href: string; screenLabel: string };
 
 function isAdminPathActive(pathname: string, basePath: string): boolean {
@@ -63,7 +69,7 @@ const linkBase = (active: boolean): CSSProperties => ({
 });
 
 /**
- * 프로젝트 컨텍스트가 있을 때만: 워크플로 단계 + 프로젝트 멤버/설정 + 추적.
+ * 프로젝트 컨텍스트가 있을 때만: 워크플로 단계 + 프로젝트 멤버/설정 (+ 옵션: 추적).
  * 글로벌 상단이 아닌 프로젝트 영역(요구사항 헤더·워크플로 페이지 등)에 배치합니다.
  */
 function ProjectWorkflowNavInner() {
@@ -85,11 +91,11 @@ function ProjectWorkflowNavInner() {
     [projectContextId]
   );
 
-  const traceHref = projectContextId ? appFlowStepHref("trace", projectContextId) : "/trace";
-  const insight: NavItem[] = useMemo(
-    () => [{ label: "추적", href: traceHref, screenLabel: "공통-상단내비-추적" }],
-    [traceHref]
-  );
+  const insight: NavItem[] = useMemo(() => {
+    if (!SHOW_PROJECT_TRACE_NAV) return [];
+    const href = projectContextId ? appFlowStepHref("trace", projectContextId) : "/trace";
+    return [{ label: "추적", href, screenLabel: "공통-상단내비-추적" }];
+  }, [projectContextId]);
 
   if (!hasProjectContext || !projectContextId) return null;
 
@@ -100,11 +106,11 @@ function ProjectWorkflowNavInner() {
         display: "flex",
         flexWrap: "wrap",
         alignItems: "center",
-        gap: 8,
-        rowGap: 8,
+        gap: 10,
+        rowGap: 10,
       }}
     >
-      <nav aria-label="프로젝트 워크플로" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+      <nav aria-label="프로젝트 워크플로" style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
         {WORKFLOW_TOP_NAV.map((item) => {
           const href = appFlowStepHref(item.stepId, projectContextId);
           const active = isWorkflowStepNavActive(item.stepId, pathname, searchParams, projectContextId);
@@ -119,7 +125,7 @@ function ProjectWorkflowNavInner() {
         })}
       </nav>
       <span style={{ width: 1, height: 20, background: "#e2e8f0", flexShrink: 0 }} aria-hidden />
-      <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+      <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
         {admin.map((item) => {
           const base = item.href.split("?")[0] ?? item.href;
           const active = isAdminPathActive(pathname, base);
@@ -137,23 +143,25 @@ function ProjectWorkflowNavInner() {
           );
         })}
       </nav>
-      <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-        {insight.map((item) => {
-          const isActive = isTraceNavActive(pathname, searchParams, projectContextId, item.href);
-          return (
-            <span key={item.href} className="relative">
-              <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-              <Link
-                href={item.href}
-                style={{ ...linkBase(isActive), fontWeight: 600, color: isActive ? "#1e40af" : "#64748b" }}
-                aria-current={isActive ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            </span>
-          );
-        })}
-      </nav>
+      {SHOW_PROJECT_TRACE_NAV ? (
+        <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+          {insight.map((item) => {
+            const isActive = isTraceNavActive(pathname, searchParams, projectContextId, item.href);
+            return (
+              <span key={item.href} className="relative">
+                <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+                <Link
+                  href={item.href}
+                  style={{ ...linkBase(isActive), fontWeight: 600, color: isActive ? "#1e40af" : "#64748b" }}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {item.label}
+                </Link>
+              </span>
+            );
+          })}
+        </nav>
+      ) : null}
     </div>
   );
 }
