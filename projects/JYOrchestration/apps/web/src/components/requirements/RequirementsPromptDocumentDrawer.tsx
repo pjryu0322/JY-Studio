@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
@@ -17,6 +17,7 @@ const backdrop: CSSProperties = {
 };
 
 const panel: CSSProperties = {
+  position: "relative",
   width: "min(960px, 100vw)",
   maxWidth: "100%",
   background: "#fafbfc",
@@ -52,8 +53,82 @@ const bodyLg: CSSProperties = {
   wordBreak: "break-word" as const,
 };
 
+const actionBarBtn: CSSProperties = {
+  padding: "6px 12px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: "pointer",
+  color: "#0f172a",
+};
+
 function formatSpeaker(m: RequirementsMessage): string {
-  return m.speakerName?.trim() || (m.role === "user" ? "사용자" : m.role === "ai" ? "AI" : "시스템");
+  const n = m.speakerName?.trim();
+  if (n) return n;
+  if (m.role === "user") return "사용자";
+  if (m.role === "ai") return "AI";
+  if (m.role === "human") return "멤버";
+  return "시스템";
+}
+
+function sanitizeExportFileStem(name: string): string {
+  const trimmed = name.trim().slice(0, 80);
+  const base = trimmed.replace(/[/\\?%*:|"<>]/g, "-").replace(/\s+/g, "");
+  return base.length > 0 ? base : "project";
+}
+
+function localDateSlug(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function buildExportBasename(exportBaseName: string | null | undefined): string {
+  return sanitizeExportFileStem(exportBaseName ?? "");
+}
+
+function downloadTextFile(filename: string, text: string, mime: string) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function messagesToJsonLines(messages: readonly RequirementsMessage[]): string {
+  const rows = messages.map((m) => ({
+    role: m.role,
+    speaker: formatSpeaker(m),
+    content: m.content,
+    createdAt: m.createdAt,
+  }));
+  return `${JSON.stringify(rows, null, 2)}\n`;
+}
+
+function messagesToTxt(messages: readonly RequirementsMessage[]): string {
+  return messages
+    .map((m) => {
+      const who = formatSpeaker(m);
+      const when = m.createdAt ? new Date(m.createdAt).toISOString() : "";
+      return `[${m.role}] ${who} · ${when}\n${m.content}`;
+    })
+    .join("\n\n---\n\n");
+}
+
+function ClipboardIcon({ size = 20 }: { readonly size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
 }
 
 export function RequirementsPromptDocumentDrawer({
@@ -63,6 +138,7 @@ export function RequirementsPromptDocumentDrawer({
   lastPromptText,
   lastPromptGeneratedAt,
   conversationMessages,
+  exportBaseName,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
@@ -70,13 +146,46 @@ export function RequirementsPromptDocumentDrawer({
   readonly lastPromptText?: string | null;
   readonly lastPromptGeneratedAt?: string | null;
   readonly conversationMessages: readonly RequirementsMessage[] | null;
+  /** 다운로드 파일명 접두사(예: 프로젝트명). 비어 있으면 `project` 사용 */
+  readonly exportBaseName?: string | null;
 }) {
   const show = useShowScreenLabels();
   const [tab, setTab] = useState<"prompt" | "history">("prompt");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [copyToastVisible, setCopyToastVisible] = useState(false);
+  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (open) setTab("prompt");
   }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedIds(new Set());
+      return;
+    }
+    if (!conversationMessages?.length) {
+      setSelectedIds(new Set());
+      return;
+    }
+    const valid = new Set(conversationMessages.map((m) => m.id));
+    setSelectedIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (valid.has(id)) next.add(id);
+      }
+      return next;
+    });
+  }, [open, conversationMessages]);
+
+  useEffect(() => {
+    return () => {
+      if (copyToastTimerRef.current) {
+        clearTimeout(copyToastTimerRef.current);
+        copyToastTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const generatedLabel = useMemo(() => {
     if (!lastPromptGeneratedAt) return null;
@@ -92,15 +201,75 @@ export function RequirementsPromptDocumentDrawer({
 
   const fullText = (lastPromptText && lastPromptText.trim()) || view?.copyText || "";
 
-  const onCopy = useCallback(async () => {
+  const exportStem = useMemo(() => buildExportBasename(exportBaseName), [exportBaseName]);
+
+  const orderedMessages = conversationMessages ?? [];
+
+  const allMessageIds = useMemo(() => orderedMessages.map((m) => m.id), [orderedMessages]);
+
+  const allSelected = useMemo(
+    () => allMessageIds.length > 0 && allMessageIds.every((id) => selectedIds.has(id)),
+    [allMessageIds, selectedIds]
+  );
+
+  const showCopyToast = useCallback(() => {
+    if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
+    setCopyToastVisible(true);
+    copyToastTimerRef.current = setTimeout(() => {
+      setCopyToastVisible(false);
+      copyToastTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  const onCopyPrompt = useCallback(async () => {
     const t = fullText.trim();
     if (!t) return;
     try {
       await navigator.clipboard.writeText(t);
+      showCopyToast();
     } catch {
       /* ignore */
     }
-  }, [fullText]);
+  }, [fullText, showCopyToast]);
+
+  const toggleSelectAll = useCallback(() => {
+    if (!orderedMessages.length) return;
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(allMessageIds));
+  }, [allMessageIds, allSelected, orderedMessages.length]);
+
+  const toggleOne = useCallback((id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const downloadPair = useCallback(
+    (messages: readonly RequirementsMessage[]) => {
+      if (!messages.length) return;
+      const date = localDateSlug();
+      const base = `${exportStem}-chat-${date}`;
+      downloadTextFile(`${base}.txt`, messagesToTxt(messages), "text/plain;charset=utf-8");
+      window.setTimeout(() => {
+        downloadTextFile(`${base}.json`, messagesToJsonLines(messages), "application/json;charset=utf-8");
+      }, 200);
+    },
+    [exportStem]
+  );
+
+  const onSaveSelected = useCallback(() => {
+    const picked = orderedMessages.filter((m) => selectedIds.has(m.id));
+    if (!picked.length) return;
+    downloadPair(picked);
+  }, [downloadPair, orderedMessages, selectedIds]);
+
+  const onSaveAll = useCallback(() => {
+    if (!orderedMessages.length) return;
+    downloadPair(orderedMessages);
+  }, [downloadPair, orderedMessages]);
 
   if (!open) return null;
 
@@ -118,6 +287,28 @@ export function RequirementsPromptDocumentDrawer({
     >
       <div style={panel} onMouseDown={(e) => e.stopPropagation()}>
         <ScreenLabel label="요구사항-프롬프트-드로어" visible={show} />
+        {copyToastVisible ? (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              position: "absolute",
+              top: 56,
+              right: 16,
+              zIndex: 2,
+              padding: "8px 14px",
+              borderRadius: 10,
+              background: "#0f172a",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              boxShadow: "0 8px 24px rgba(15, 23, 42, 0.25)",
+              maxWidth: "min(320px, 90vw)",
+            }}
+          >
+            프롬프트가 복사되었습니다.
+          </div>
+        ) : null}
         <div
           style={{
             padding: "16px 20px",
@@ -167,23 +358,6 @@ export function RequirementsPromptDocumentDrawer({
             </button>
             <button
               type="button"
-              disabled={!fullText.trim()}
-              onClick={() => void onCopy()}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 10,
-                border: "1px solid #cbd5e1",
-                background: "#fff",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: fullText.trim() ? "pointer" : "not-allowed",
-                opacity: fullText.trim() ? 1 : 0.5,
-              }}
-            >
-              프롬프트 복사
-            </button>
-            <button
-              type="button"
               onClick={onClose}
               style={{
                 padding: "8px 14px",
@@ -203,9 +377,35 @@ export function RequirementsPromptDocumentDrawer({
 
         <div style={{ flex: 1, overflow: "auto", padding: "20px 22px 28px" }}>
           {tab === "prompt" ? (
-            <>
+            <div style={{ position: "relative" }}>
               {generatedLabel ? (
-                <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>마지막 생성: {generatedLabel}</p>
+                <p style={{ margin: "0 0 10px", fontSize: 13, color: "#64748b" }}>마지막 생성: {generatedLabel}</p>
+              ) : null}
+              {hasPrompt ? (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    disabled={!fullText.trim()}
+                    aria-label="프롬프트 복사"
+                    title="클립보드에 복사"
+                    onClick={() => void onCopyPrompt()}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      color: "#334155",
+                      cursor: fullText.trim() ? "pointer" : "not-allowed",
+                      opacity: fullText.trim() ? 1 : 0.45,
+                    }}
+                  >
+                    <ClipboardIcon />
+                  </button>
+                </div>
               ) : null}
               {!hasPrompt ? (
                 <p style={{ ...bodyLg, color: "#64748b" }}>
@@ -265,31 +465,66 @@ export function RequirementsPromptDocumentDrawer({
                   </div>
                 </>
               )}
-            </>
+            </div>
           ) : (
             <div style={docBlock}>
               <div style={labelSm}>대화 기록 (저장본 기준)</div>
               {!conversationMessages || conversationMessages.length === 0 ? (
                 <div style={{ ...bodyLg, color: "#64748b" }}>표시할 메시지가 없습니다.</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {conversationMessages.map((m) => (
-                    <div
-                      key={m.id}
-                      style={{
-                        padding: "12px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #e2e8f0",
-                        background: m.role === "user" ? "#f8fafc" : m.role === "ai" ? "#fff" : "#fefce8",
-                      }}
-                    >
-                      <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", marginBottom: 6 }}>
-                        {formatSpeaker(m)} · {m.createdAt ? new Date(m.createdAt).toLocaleString("ko-KR", { timeStyle: "short" }) : ""}
-                      </div>
-                      <div style={bodyLg}>{m.content}</div>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: 8,
+                      marginBottom: 14,
+                      paddingBottom: 12,
+                      borderBottom: "1px solid #e2e8f0",
+                    }}
+                  >
+                    <button type="button" onClick={toggleSelectAll} style={actionBarBtn}>
+                      {allSelected ? "전체 해제" : "전체 선택"}
+                    </button>
+                    <button type="button" disabled={selectedIds.size === 0} onClick={onSaveSelected} style={{ ...actionBarBtn, opacity: selectedIds.size === 0 ? 0.5 : 1 }}>
+                      선택 저장
+                    </button>
+                    <button type="button" disabled={!orderedMessages.length} onClick={onSaveAll} style={{ ...actionBarBtn, opacity: !orderedMessages.length ? 0.5 : 1 }}>
+                      전체 저장
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {conversationMessages.map((m) => (
+                      <label
+                        key={m.id}
+                        style={{
+                          display: "flex",
+                          gap: 12,
+                          alignItems: "flex-start",
+                          cursor: "pointer",
+                          padding: "12px 14px",
+                          borderRadius: 10,
+                          border: "1px solid #e2e8f0",
+                          background: m.role === "user" ? "#f8fafc" : m.role === "ai" ? "#fff" : "#fefce8",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(m.id)}
+                          onChange={(e) => toggleOne(m.id, e.target.checked)}
+                          style={{ marginTop: 4, width: 18, height: 18, flexShrink: 0, accentColor: "#0d7377" }}
+                        />
+                        <div style={{ flex: "1 1 0%", minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", marginBottom: 6 }}>
+                            {formatSpeaker(m)} · {m.createdAt ? new Date(m.createdAt).toLocaleString("ko-KR", { timeStyle: "short" }) : ""}
+                          </div>
+                          <div style={bodyLg}>{m.content}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}

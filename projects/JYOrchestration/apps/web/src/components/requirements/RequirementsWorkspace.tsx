@@ -10,7 +10,7 @@ import { RequirementsHeader } from "@/components/requirements/RequirementsHeader
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
-import { RequirementsDraftPanel } from "@/components/requirements/RequirementsDraftPanel";
+import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
@@ -204,7 +204,7 @@ export function RequirementsWorkspace({
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
   const [aiInvokePending, setAiInvokePending] = useState(false);
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
-  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveToastVisible, setSaveToastVisible] = useState(false);
@@ -474,6 +474,11 @@ export function RequirementsWorkspace({
   // 로딩 중에는 null로 전달해 "기록 없음"으로 오판하지 않게 합니다.
   const messages = conversationStatus === "loaded" ? conversationMessages : null;
   const draftDoc = room.requirementsDraft ?? null;
+
+  useEffect(() => {
+    if (!draftDoc) setDraftDrawerOpen(false);
+  }, [draftDoc]);
+
   const onboardingKey = useMemo(() => (resolvedProjectId.trim() ? `pid:${resolvedProjectId.trim()}` : "no-pid"), [resolvedProjectId]);
   const [onboardingAppliedKey, setOnboardingAppliedKey] = useState<string | null>(null);
 
@@ -1280,22 +1285,6 @@ export function RequirementsWorkspace({
 
       <div style={{ marginBottom: 6 }} />
 
-      {draftOpen && draftDoc ? (
-        <div style={{ marginBottom: 10 }}>
-          <RequirementsDraftPanel
-            draft={draftDoc}
-            onClose={() => setDraftOpen(false)}
-            onChange={(next) => {
-              const nextRoom: RequirementsRoomStateV3 = { ...room, requirementsDraft: next };
-              setRoom(nextRoom);
-              void persistRemote(nextRoom, {}).catch((e) => {
-                setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
-              });
-            }}
-          />
-        </div>
-      ) : null}
-
       {workflowGuidanceBanner ? (
         <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 8 }}>{workflowGuidanceBanner}</div>
       ) : null}
@@ -1363,48 +1352,14 @@ export function RequirementsWorkspace({
                   busy={busy}
                   disabled={false}
                   placeholder="예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요"
-                  toolbarAbove={
-                    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, rowGap: 10, width: "100%" }}>
-                      <ScreenLabel label="요구사항-입력창-액션행" visible={showScreenLabels} />
-                      <button
-                        type="button"
-                        disabled={busy || remoteLocked}
-                        onClick={() => void onOrganizeRequirements()}
-                        style={{
-                          ...actionBtn,
-                          cursor: busy ? "wait" : remoteLocked ? "not-allowed" : "pointer",
-                          opacity: remoteLocked ? 0.55 : 1,
-                        }}
-                      >
-                        정리 요청
-                      </button>
-                      {draftDoc ? (
-                        <button type="button" onClick={() => setDraftOpen(true)} style={actionBtn}>
-                          정리본 보기
-                        </button>
-                      ) : null}
-                      <button type="button" onClick={() => setPromptDrawerOpen(true)} style={actionBtn}>
-                        프롬프트 보기
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSummaryModalOpen(true)}
-                        style={{
-                          border: 0,
-                          background: "none",
-                          padding: "6px 4px",
-                          fontWeight: 700,
-                          fontSize: 13,
-                          color: "#64748b",
-                          cursor: "pointer",
-                          textDecoration: "underline",
-                          textUnderlineOffset: 3,
-                        }}
-                      >
-                        요약 편집
-                      </button>
-                    </div>
-                  }
+                  toolsMenu={{
+                    onOrganizeRequirements: () => void onOrganizeRequirements(),
+                    organizeDisabled: busy || remoteLocked,
+                    draftViewAvailable: Boolean(draftDoc),
+                    onOpenDraftView: () => setDraftDrawerOpen(true),
+                    onOpenPromptView: () => setPromptDrawerOpen(true),
+                    onOpenSummaryEdit: () => setSummaryModalOpen(true),
+                  }}
                 />
               </div>
             }
@@ -1490,6 +1445,7 @@ export function RequirementsWorkspace({
         lastPromptText={persistedPromptState.lastPromptText}
         lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
         conversationMessages={conversationStatus === "loaded" ? conversationMessages : null}
+        exportBaseName={project?.name?.trim() ?? ""}
       />
 
       <RequirementsSummaryModal

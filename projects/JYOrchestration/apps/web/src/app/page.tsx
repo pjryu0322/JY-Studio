@@ -194,15 +194,19 @@ export default function HomePage() {
   }, [router]);
 
   return (
-    <main className="relative" style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }} data-ui-label="[A] Home">
+    <main
+      className="relative"
+      style={{
+        padding: "8px 24px 20px",
+        maxWidth: 1200,
+        margin: "0 auto",
+      }}
+      data-ui-label="[A] Home"
+    >
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
-      <section className="relative" data-ui-label="[A-1] Header" style={{ marginBottom: 28 }}>
-        <ScreenLabel label="워크스페이스-홈-헤더-섹션" visible={showScreenLabels} />
-        <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>JY 오케스트레이션</h1>
-      </section>
 
       <section
-        className="relative mx-auto mb-6 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
+        className="relative mx-auto mb-5 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
         data-ui-label="[B] Create Project Form"
       >
         <ScreenLabel label="워크스페이스-프로젝트생성-섹션" visible={showScreenLabels} />
@@ -257,7 +261,7 @@ export default function HomePage() {
       </section>
 
       <section
-        className="relative mx-auto mb-8 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
+        className="relative mx-auto mb-6 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
         data-ui-label="[C] Project List"
       >
         <ScreenLabel label="워크스페이스-프로젝트목록-섹션" visible={showScreenLabels} />
