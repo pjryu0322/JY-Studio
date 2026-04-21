@@ -7,7 +7,7 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
 const PLATFORM_HEADER_TAGLINE =
-  "AI와 전문가의 도움으로 아이디어를 구체화하고, 개발 전 시행착오를 줄이기 위한 프로토타입 제작을 지원하는 플랫폼";
+  "AI와 전문가의 도움으로 아이디어를 구체화하고 프로토타입 제작을 지원하는 플랫폼";
 
 type MeState = {
   name: string;
@@ -19,6 +19,11 @@ export function PlatformTopNav() {
   const showScreenLabels = useShowScreenLabels();
   const [me, setMe] = useState<MeState | null>(null);
   const [meReady, setMeReady] = useState(false);
+  const [requirementsStatus, setRequirementsStatus] = useState<{
+    text: string;
+    complete: boolean;
+    projectId: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +55,25 @@ export function PlatformTopNav() {
     };
   }, []);
 
+  useEffect(() => {
+    const onStatus = (e: Event) => {
+      const ce = e as CustomEvent<{ statusLine?: string | null; projectId?: string | null }>;
+      const pid = typeof ce.detail?.projectId === "string" ? ce.detail.projectId.trim() : "";
+      const statusLine = typeof ce.detail?.statusLine === "string" ? ce.detail.statusLine.trim() : "";
+      if (!pid || !statusLine) {
+        setRequirementsStatus(null);
+        return;
+      }
+      setRequirementsStatus({
+        text: statusLine,
+        complete: statusLine.includes("완료"),
+        projectId: pid,
+      });
+    };
+    window.addEventListener("jyo:requirementsStatus", onStatus as EventListener);
+    return () => window.removeEventListener("jyo:requirementsStatus", onStatus as EventListener);
+  }, []);
+
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
@@ -79,9 +103,9 @@ export function PlatformTopNav() {
           padding: "10px 20px",
           display: "flex",
           flexWrap: "wrap",
-          alignItems: "center",
+          alignItems: "flex-start",
           gap: 12,
-          rowGap: 10,
+          rowGap: 12,
           minHeight: 44,
         }}
       >
@@ -91,7 +115,7 @@ export function PlatformTopNav() {
             alignItems: "center",
             gap: 14,
             minWidth: 0,
-            flex: "1 1 auto",
+            flex: "1 1 200px",
             overflow: "hidden",
           }}
         >
@@ -129,54 +153,111 @@ export function PlatformTopNav() {
           </span>
         </div>
 
-        <div style={{ flex: "1 1 24px", minWidth: 8 }} aria-hidden />
+        <div style={{ flex: "1 1 16px", minWidth: 8 }} aria-hidden />
 
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 10, flexShrink: 0 }}>
-          {meReady && me ? (
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#334155", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {me.name} <span style={{ fontWeight: 500, color: "#64748b" }}>({me.email})</span>
-            </span>
-          ) : meReady ? (
-            <span style={{ fontSize: 13, color: "#94a3b8" }}>로그인 필요</span>
-          ) : (
-            <span style={{ fontSize: 13, color: "#94a3b8" }}>…</span>
-          )}
-          {me ? (
-            <button
-              type="button"
-              data-testid="platform-top-logout"
-              onClick={() => void handleLogout()}
-              style={{
-                padding: "7px 12px",
-                borderRadius: 8,
-                border: "1px solid #cbd5e1",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 700,
-                color: "#334155",
-              }}
-            >
-              로그아웃
-            </button>
-          ) : null}
-          {me?.isPlatformAdmin ? (
-            <Link
-              href="/admin/platform-users"
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: "#475569",
-                textDecoration: "none",
-                padding: "7px 10px",
-                borderRadius: 8,
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              플랫폼 사용자
-            </Link>
-          ) : null}
-          <PlatformSettingsMenu />
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 10,
+            rowGap: 10,
+            flex: "1 1 260px",
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: 6,
+              minWidth: 0,
+              flex: "1 1 160px",
+            }}
+          >
+            {meReady && me ? (
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#334155",
+                  maxWidth: "min(100%, 320px)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {me.name} <span style={{ fontWeight: 500, color: "#64748b" }}>({me.email})</span>
+              </span>
+            ) : meReady ? (
+              <span style={{ fontSize: 13, color: "#94a3b8" }}>로그인 필요</span>
+            ) : (
+              <span style={{ fontSize: 13, color: "#94a3b8" }}>…</span>
+            )}
+            {requirementsStatus ? (
+              <span
+                title={requirementsStatus.text}
+                style={{
+                  display: "inline-block",
+                  maxWidth: "min(100%, 340px)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  letterSpacing: "-0.01em",
+                  padding: "5px 11px",
+                  borderRadius: 999,
+                  border: requirementsStatus.complete ? "1px solid #6ee7b7" : "1px solid #bfdbfe",
+                  background: requirementsStatus.complete ? "#ecfdf5" : "#eff6ff",
+                  color: requirementsStatus.complete ? "#047857" : "#1e40af",
+                  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+                }}
+              >
+                {requirementsStatus.text}
+              </span>
+            ) : null}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
+            {me ? (
+              <button
+                type="button"
+                data-testid="platform-top-logout"
+                onClick={() => void handleLogout()}
+                style={{
+                  padding: "7px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#334155",
+                }}
+              >
+                로그아웃
+              </button>
+            ) : null}
+            {me?.isPlatformAdmin ? (
+              <Link
+                href="/admin/platform-users"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#475569",
+                  textDecoration: "none",
+                  padding: "7px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                플랫폼 사용자
+              </Link>
+            ) : null}
+            <PlatformSettingsMenu />
+          </div>
         </div>
       </div>
     </header>

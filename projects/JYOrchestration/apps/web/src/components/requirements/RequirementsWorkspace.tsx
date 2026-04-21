@@ -6,6 +6,7 @@ import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
+import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
@@ -18,7 +19,7 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
 import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
-import { bumpDraftVersion, confirmDraft, draftMeetsMinimum, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
+import { bumpDraftVersion, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import {
   mergeRequirementsStateJson,
@@ -34,12 +35,13 @@ import {
   VIRTUAL_AI_PLANNER_ID,
   type RequirementsRoomStateV3,
 } from "@/lib/project/requirementsRoomState";
-import { coerceRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { coerceRequirementsMessage, type RequirementsMessage, type RequirementsMessageTarget } from "@/lib/requirements/requirementsMessage";
+import { dedupeMemberRefs, resolveMentionTargetsFromText, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { newConversation, type RequirementsConversation } from "@/lib/requirements/conversationStore";
 import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/appFlowModel";
 
 const IDEATION_COMPLETION_NOTICE =
-  "핵심 정보가 정리되었습니다. 기능 정리 단계로 이동할 수 있습니다.";
+  "핵심 정보가 정리되었습니다. 상단 워크플로에서 「기능 정리」로 이동할 수 있습니다.";
 
 function notifyAppFlowProjectContextChanged() {
   if (typeof window === "undefined") return;
@@ -139,7 +141,9 @@ function formatDialogueExcerpt(messages: RequirementsRoomStateV3["requirementsCo
           : m.role === "human"
             ? `멤버${m.speakerName ? `(${m.speakerName})` : ""}`
             : "시스템";
-    return `${who}: ${m.content}`;
+    const tg = getMessageTargets(m);
+    const arrow = tg.length ? ` → ${tg.map((t) => t.name).join(", ")}` : "";
+    return `${who}${arrow}: ${m.content}`;
   });
   return lines.join("\n").slice(-maxChars);
 }
@@ -192,18 +196,21 @@ export function RequirementsWorkspace({
   const [openIssues, setOpenIssues] = useState("");
   const [priorityFeatures, setPriorityFeatures] = useState("");
   const [input, setInput] = useState("");
+  const composerTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [selectedTargetId, setSelectedTargetId] = useState<string>(VIRTUAL_AI_PLANNER_ID);
-  const [selectedTargetName, setSelectedTargetName] = useState("AI 기획자");
+  const [selectedMembers, setSelectedMembers] = useState<RequirementsMessageTarget[]>([
+    { id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" },
+  ]);
   const [fetchNonce, setFetchNonce] = useState(0);
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
   const [aiInvokePending, setAiInvokePending] = useState(false);
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -362,8 +369,11 @@ export function RequirementsWorkspace({
       setPriorityFeatures(state.priorityFeatures ?? legacy.priorityFeatures ?? "");
       setLastSavedAt(state.lastSavedAt ?? null);
       setOrganizedAt(state.lastOrganizedAt ?? null);
-      if (typeof state.selectedTargetId === "string" && state.selectedTargetId.trim()) {
-        setSelectedTargetId(state.selectedTargetId.trim());
+      const sm = state.selectedMembers;
+      if (Array.isArray(sm) && sm.length > 0) {
+        setSelectedMembers(dedupeMemberRefs(sm as RequirementsMessageTarget[]));
+      } else if (typeof state.selectedTargetId === "string" && state.selectedTargetId.trim()) {
+        setSelectedMembers([{ id: state.selectedTargetId.trim(), name: "AI 기획자" }]);
       }
       if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
         setInput(state.lastUserDraftText);
@@ -402,13 +412,16 @@ export function RequirementsWorkspace({
   const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
 
   useEffect(() => {
-    if (selectedTargetId !== VIRTUAL_AI_PLANNER_ID) return;
-    const planner = aiMembers.find((m) => m.aiOrchestrationRole === "planner" && m.orchestrationStage === "spec");
-    if (planner) {
-      setSelectedTargetId(planner.memberId);
-      setSelectedTargetName((planner.displayName ?? "AI 기획자").trim() || "AI 기획자");
-    }
-  }, [aiMembers, selectedTargetId]);
+    setSelectedMembers((prev) => {
+      const onlyVirtual = prev.length === 1 && prev[0].id === VIRTUAL_AI_PLANNER_ID;
+      if (!onlyVirtual) return prev;
+      const planner = aiMembers.find((m) => m.aiOrchestrationRole === "planner" && m.orchestrationStage === "spec");
+      if (!planner) return prev;
+      return dedupeMemberRefs([
+        { id: planner.memberId, name: (planner.displayName ?? "AI 기획자").trim() || "AI 기획자" },
+      ]);
+    });
+  }, [aiMembers]);
 
   const aiPlannerStatusLabel = useMemo(() => {
     if (aiInvokePending) return "응답 대기 중(OpenAI 호출 중)";
@@ -465,9 +478,21 @@ export function RequirementsWorkspace({
   }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel]);
 
   useEffect(() => {
-    const row = participants.find((p) => p.id === selectedTargetId);
-    if (row) setSelectedTargetName(row.name);
-  }, [participants, selectedTargetId]);
+    setSelectedMembers((prev) => {
+      if (!prev.length) return prev;
+      const refs = participants.map((p) => ({ id: p.id, name: p.name }));
+      let changed = false;
+      const next = prev.map((m) => {
+        const hit = refs.find((r) => r.id === m.id);
+        if (hit && hit.name !== m.name) {
+          changed = true;
+          return { id: m.id, name: hit.name };
+        }
+        return m;
+      });
+      return changed ? dedupeMemberRefs(next) : prev;
+    });
+  }, [participants]);
 
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
@@ -518,6 +543,20 @@ export function RequirementsWorkspace({
     const done = ideationItems.filter((i) => i.done).length;
     return `아이디어 구체화 진행 중 (${done}/4)`;
   }, [resolvedProjectId, ideationComplete, ideationItems]);
+
+  useEffect(() => {
+    const pid = resolvedProjectId.trim();
+    window.dispatchEvent(
+      new CustomEvent("jyo:requirementsStatus", {
+        detail: { statusLine: ideationStatusLine, projectId: pid || null },
+      })
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("jyo:requirementsStatus", { detail: { statusLine: null, projectId: null } })
+      );
+    };
+  }, [ideationStatusLine, resolvedProjectId]);
 
   const ideationNoticeSent = useMemo(
     () => Boolean(parseRequirementsStateJson(project?.requirementsStateJson).ideationCompletionAiNoticeSent),
@@ -578,6 +617,108 @@ export function RequirementsWorkspace({
     [resolvedProjectId]
   );
 
+  const toggleMemberTarget = useCallback(
+    (id: string, name: string) => {
+      setSelectedMembers((prev) => {
+        const exists = prev.some((x) => x.id === id);
+        let next: RequirementsMessageTarget[];
+        if (exists) {
+          if (prev.length <= 1) return prev;
+          next = prev.filter((x) => x.id !== id);
+        } else {
+          next = dedupeMemberRefs([...prev, { id, name }]);
+        }
+        const pid = resolvedProjectId.trim();
+        if (pid) {
+          void persistStateJsonOnly({
+            selectedMembers: next,
+            selectedTargetId: next[0]?.id ?? null,
+          });
+        }
+        return next;
+      });
+    },
+    [resolvedProjectId, persistStateJsonOnly]
+  );
+
+  const removeMemberTarget = useCallback(
+    (id: string) => {
+      setSelectedMembers((prev) => {
+        if (prev.length <= 1) return prev;
+        const next = prev.filter((x) => x.id !== id);
+        const pid = resolvedProjectId.trim();
+        if (pid) {
+          void persistStateJsonOnly({
+            selectedMembers: next,
+            selectedTargetId: next[0]?.id ?? null,
+          });
+        }
+        return next;
+      });
+    },
+    [resolvedProjectId, persistStateJsonOnly]
+  );
+
+  const handleComposerInputChange = useCallback(
+    (v: string) => {
+      setInput(v);
+      const refs = participants.map((p) => ({ id: p.id, name: p.name }));
+      const extra = resolveMentionTargetsFromText(v, refs);
+      if (!extra.length) return;
+      setSelectedMembers((prev) => {
+        const merged = dedupeMemberRefs([...prev, ...extra]);
+        const unchanged =
+          merged.length === prev.length && merged.every((m, i) => m.id === prev[i]?.id && m.name === prev[i]?.name);
+        if (unchanged) return prev;
+        const pid = resolvedProjectId.trim();
+        if (pid) {
+          void persistStateJsonOnly({
+            selectedMembers: merged,
+            selectedTargetId: merged[0]?.id ?? null,
+          });
+        }
+        return merged;
+      });
+    },
+    [participants, resolvedProjectId, persistStateJsonOnly]
+  );
+
+  const composerPlaceholder = useMemo(() => {
+    if (selectedMembers.length === 0) return "예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요";
+    if (selectedMembers.length === 1) return `${selectedMembers[0].name}에게 질문하세요`;
+    return `선택한 ${selectedMembers.length}명에게 질문하세요`;
+  }, [selectedMembers]);
+
+  const targetPickerItems = useMemo<readonly RequirementsComposerTargetPickerItem[]>(() => {
+    const humans = participants.filter((p) => p.kind === "human").map((p) => ({ id: p.id, name: p.name }));
+    const all = participants.map((p) => ({ id: p.id, name: p.name }));
+    const plannerAi = participants.find((p) => p.kind === "ai" && /기획/.test(p.name)) ?? null;
+    const plannerTarget = plannerAi ? { id: plannerAi.id, name: plannerAi.name } : { id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" };
+    return [
+      { id: "picker:ai-planner", label: "AI 기획자", targets: [plannerTarget] },
+      { id: "picker:humans", label: "사람 멤버", targets: humans },
+      { id: "picker:all", label: "전체 멤버", targets: all },
+    ];
+  }, [participants]);
+
+  const addMemberTargets = useCallback(
+    (targets: readonly { id: string; name: string }[]) => {
+      if (!targets.length) return;
+      setSelectedMembers((prev) => {
+        const merged = dedupeMemberRefs([...prev, ...(targets as RequirementsMessageTarget[])]);
+        const pid = resolvedProjectId.trim();
+        if (pid) {
+          void persistStateJsonOnly({
+            selectedMembers: merged,
+            selectedTargetId: merged[0]?.id ?? null,
+          });
+        }
+        return merged;
+      });
+    },
+    [resolvedProjectId, persistStateJsonOnly]
+  );
+
   const persistRemote = useCallback(
     async (nextRoom: RequirementsRoomStateV3, spec: Partial<Project>, meta?: Partial<RequirementsStateJson>) => {
       const pid = resolvedProjectId.trim();
@@ -608,7 +749,8 @@ export function RequirementsWorkspace({
       const baseState = mergeRequirementsStateJson(stateJsonRef.current, {
         lastSavedAt: nextSavedAt,
         lastOrganizedAt: organizedAt ?? stateJsonRef.current.lastOrganizedAt,
-        selectedTargetId: selectedTargetId ?? stateJsonRef.current.selectedTargetId ?? null,
+        selectedTargetId: selectedMembers[0]?.id ?? stateJsonRef.current.selectedTargetId ?? null,
+        selectedMembers: selectedMembers.length ? [...selectedMembers] : null,
         onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
         openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
         priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
@@ -669,7 +811,7 @@ export function RequirementsWorkspace({
       openIssues,
       priorityFeatures,
       organizedAt,
-      selectedTargetId,
+      selectedMembers,
       onboardingAppliedKey,
       onboardingKey,
       goals,
@@ -966,26 +1108,34 @@ export function RequirementsWorkspace({
     setBusy(true);
     setError(null);
     try {
+      const targets = dedupeMemberRefs(
+        selectedMembers.length ? selectedMembers : [{ id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" }]
+      );
+      const anyAi = targets.some((t) => isAiTarget(t.id));
+      const primaryAi = targets.find((t) => isAiTarget(t.id));
+      const combinedLabel = targets.map((t) => t.name).join(" · ");
+
       const userMsg = newChatMessage({
         role: "user",
         body: text,
-        directedToId: selectedTargetId,
-        directedToName: selectedTargetName,
+        targets,
+        ...(replyTo?.id ? { replyTo: replyTo.id } : {}),
         speakerId: sessionUser?.id ?? "me",
         speakerName: sessionUser?.name ?? "나",
         speakerType: "USER",
-        messageType: selectedTargetName ? "QUESTION" : "STATEMENT",
+        messageType: targets.length ? "QUESTION" : "STATEMENT",
       });
       const msgs = [...conversationMessages, userMsg];
       const turn = room.aiQuestionIndex ?? 0;
 
-      if (isAiTarget(selectedTargetId)) {
-        const aiName = selectedTargetId === VIRTUAL_AI_PLANNER_ID ? "AI 기획자" : selectedTargetName;
+      if (anyAi) {
+        const primaryId = primaryAi?.id ?? targets[0].id;
+        const aiName = primaryId === VIRTUAL_AI_PLANNER_ID ? "AI 기획자" : primaryAi?.name ?? targets[0].name;
         const promptMetaIso = new Date().toISOString();
         const pv = buildPromptPresenterView({
           projectName: project?.name ?? "",
           projectDescription: project?.description ?? "",
-          targetName: aiName,
+          targetName: combinedLabel,
           messages: conversationMessages,
           latestUserMessage: text,
         });
@@ -1017,6 +1167,9 @@ export function RequirementsWorkspace({
               userMessage: text,
               dialogueExcerpt: excerpt,
               aiResponseStyle: readAiResponseStyle(),
+              targets: targets.map((t) => ({ id: t.id, name: t.name })),
+              sender: { id: sessionUser?.id ?? "", name: sessionUser?.name ?? "나" },
+              replyTo: replyTo?.id ?? null,
             }),
           });
           const json = (await res.json()) as {
@@ -1064,7 +1217,7 @@ export function RequirementsWorkspace({
                     role: "ai",
                     body: aiReply,
                     speakerType: "AI",
-                    speakerId: selectedTargetId,
+                    speakerId: primaryId,
                     speakerName: aiName,
                     messageType: "ANSWER",
                   }),
@@ -1119,6 +1272,7 @@ export function RequirementsWorkspace({
           setAiInvokePending(false);
         }
         setInput("");
+        setReplyTo(null);
         await persistRemote(finalRoom, {}, { lastUserDraftText: "" });
       } else {
         const nextRoom: RequirementsRoomStateV3 = {
@@ -1130,7 +1284,7 @@ export function RequirementsWorkspace({
               ...msgs,
               newChatMessage({
                 role: "system",
-                body: `@${selectedTargetName}님께 공개 질문으로 전달되었습니다. 답변은 이 대화에 이어서 남겨 주세요.`,
+                body: `${targets.map((t) => `@${t.name}`).join(", ")}님께 공개 질문으로 전달되었습니다. 답변은 이 대화에 이어서 남겨 주세요.`,
                 speakerType: "SYSTEM",
                 speakerId: "system",
                 speakerName: "시스템",
@@ -1140,6 +1294,7 @@ export function RequirementsWorkspace({
           },
         };
         setInput("");
+        setReplyTo(null);
         await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
       }
     } catch (e) {
@@ -1152,8 +1307,7 @@ export function RequirementsWorkspace({
     busy,
     room,
     conversationMessages,
-    selectedTargetId,
-    selectedTargetName,
+    selectedMembers,
     isAiTarget,
     persistRemote,
     resolvedProjectId,
@@ -1162,6 +1316,7 @@ export function RequirementsWorkspace({
     project?.name,
     project?.description,
     draftDoc,
+    replyTo,
   ]);
 
   const onPanelBlurSave = useCallback(async () => {
@@ -1188,21 +1343,6 @@ export function RequirementsWorkspace({
     }
   }, [busy, room, openIssues, priorityFeatures, goals, scopeIn, scopeOut, targetUsers, success, nfr, persistRemote]);
 
-  const onGotoFeatures = useCallback(() => {
-    if (!ideationComplete) {
-      setError("요약 편집에서 사용자 정의·핵심 기능·권한/역할·운영 요구사항을 모두 채운 뒤 다음 단계로 이동할 수 있습니다.");
-      return;
-    }
-    const gate = draftMeetsMinimum(draftDoc);
-    if (!gate.ok) {
-      const ok = window.confirm("정리 없이 다음 단계로 이동하시겠습니까?");
-      if (!ok) return;
-    }
-    const pid = resolvedProjectId.trim();
-    const q = pid ? `?projectId=${encodeURIComponent(pid)}` : "";
-    router.push(`/features${q}`);
-  }, [ideationComplete, router, draftDoc, resolvedProjectId]);
-
   const ackDev = useCallback(async () => {
     const pid = resolvedProjectId.trim();
     if (!pid) return;
@@ -1220,6 +1360,21 @@ export function RequirementsWorkspace({
       setBusy(false);
     }
   }, [resolvedProjectId, router]);
+
+  const insertComposerPrompt = useCallback((text: string) => {
+    setInput(text);
+    window.requestAnimationFrame(() => {
+      const el = composerTextAreaRef.current;
+      if (!el) return;
+      el.focus();
+      const len = text.length;
+      try {
+        el.setSelectionRange(len, len);
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
 
   const inviteEmphasis = humanOthers.length === 0;
 
@@ -1280,7 +1435,6 @@ export function RequirementsWorkspace({
       <RequirementsHeader
         projectName={headerProjectName}
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
-        ideationStatusLine={ideationStatusLine}
       />
 
       <div style={{ marginBottom: 6 }} />
@@ -1320,13 +1474,8 @@ export function RequirementsWorkspace({
       <div style={mainRow} className="jyo-requirements-workspace-main">
         <RequirementsMemberSidebar
           participants={participants}
-          selectedId={selectedTargetId}
-          onSelect={(id, name) => {
-            setSelectedTargetId(id);
-            setSelectedTargetName(name);
-            const p = resolvedProjectId.trim();
-            if (p) void persistStateJsonOnly({ selectedTargetId: id });
-          }}
+          selectedMemberIds={selectedMembers.map((m) => m.id)}
+          onToggleMember={toggleMemberTarget}
           showInvite={Boolean(resolvedProjectId.trim())}
           inviteDisabled={remoteLocked}
           inviteEmphasis={inviteEmphasis}
@@ -1337,21 +1486,54 @@ export function RequirementsWorkspace({
           <RequirementsChatPanel
             messages={messages}
             typingIndicator={aiInvokePending}
+            onInsertComposerPrompt={insertComposerPrompt}
+            onSetReplyTo={(messageId, preview) => {
+              setReplyTo({ id: messageId, preview });
+              window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);
+            }}
             composer={
               <div
                 style={{
-                  borderTop: "1px solid #e2e8f0",
-                  padding: "16px 18px 20px",
+                  padding: "12px 18px 16px",
                   background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
                 }}
               >
+                {replyTo ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#475569", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      답글 대상: <span style={{ fontWeight: 700, color: "#0f172a" }}>{replyTo.preview || replyTo.id}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyTo(null)}
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        background: "#fff",
+                        borderRadius: 999,
+                        padding: "6px 10px",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: "#475569",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      취소 ×
+                    </button>
+                  </div>
+                ) : null}
                 <RequirementsComposerGpt
+                  textAreaRef={composerTextAreaRef}
                   value={input}
-                  onChange={setInput}
+                  onChange={handleComposerInputChange}
                   onSend={() => void onSend()}
                   busy={busy}
                   disabled={false}
-                  placeholder="예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요"
+                  placeholder={composerPlaceholder}
+                  questionTargets={selectedMembers}
+                  onRemoveQuestionTarget={removeMemberTarget}
+                  targetPickerItems={targetPickerItems}
+                  onAddQuestionTargets={addMemberTargets}
                   toolsMenu={{
                     onOrganizeRequirements: () => void onOrganizeRequirements(),
                     organizeDisabled: busy || remoteLocked,
@@ -1359,69 +1541,15 @@ export function RequirementsWorkspace({
                     onOpenDraftView: () => setDraftDrawerOpen(true),
                     onOpenPromptView: () => setPromptDrawerOpen(true),
                     onOpenSummaryEdit: () => setSummaryModalOpen(true),
+                    devAckStep: isNextPublicDevWorkflowToolsEnabled()
+                      ? { onClick: () => void ackDev(), disabled: busy || remoteLocked || !resolvedProjectId.trim() }
+                      : null,
                   }}
                 />
               </div>
             }
           />
         </div>
-      </div>
-
-      <div
-        style={{
-          position: "sticky",
-          bottom: 0,
-          zIndex: 4,
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 10,
-          alignItems: "center",
-          padding: "12px 0",
-          marginTop: 12,
-          borderTop: "1px solid #e5e7eb",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, #fff 18%)",
-        }}
-      >
-        <div className="relative" style={{ position: "relative" }}>
-          <ScreenLabel label="요구사항-하단액션-기능정리이동버튼" visible={showScreenLabels} />
-          <button
-            type="button"
-            disabled={busy || remoteLocked || !ideationComplete}
-            data-testid="requirements-goto-features"
-            onClick={onGotoFeatures}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              background: !ideationComplete || remoteLocked ? "#f4f4f5" : "#fff",
-              color: !ideationComplete || remoteLocked ? "#a1a1aa" : "#0f172a",
-              fontWeight: 800,
-              fontSize: 13,
-              cursor: busy ? "wait" : !ideationComplete || remoteLocked ? "not-allowed" : "pointer",
-            }}
-          >
-            {ideationComplete ? "다음 단계: 기능 정리 →" : "기능 정리로 이동"}
-          </button>
-        </div>
-        {isNextPublicDevWorkflowToolsEnabled() ? (
-          <button
-            type="button"
-            disabled={busy || remoteLocked}
-            onClick={() => void ackDev()}
-            style={{
-              marginLeft: "auto",
-              fontSize: 11,
-              border: "1px dashed #fca5a5",
-              background: "#fff",
-              color: "#b91c1c",
-              borderRadius: 8,
-              padding: "6px 10px",
-              cursor: "pointer",
-            }}
-          >
-            (DEV) 단계 건너뛰기
-          </button>
-        ) : null}
       </div>
 
       {error ? (

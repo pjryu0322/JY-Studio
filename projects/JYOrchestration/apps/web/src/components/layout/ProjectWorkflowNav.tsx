@@ -56,8 +56,8 @@ const WORKFLOW_TOP_NAV: { stepId: AppFlowStepId; label: string; screenLabel: str
   { stepId: "execution", label: "프로토타입 생성", screenLabel: "공통-상단내비-워크플로우-실행" },
 ];
 
-const linkBase = (active: boolean): CSSProperties => ({
-  padding: "6px 12px",
+const linkProcess = (active: boolean): CSSProperties => ({
+  padding: "7px 14px",
   borderRadius: 999,
   fontSize: 13,
   fontWeight: 700,
@@ -66,6 +66,18 @@ const linkBase = (active: boolean): CSSProperties => ({
   border: active ? "1px solid #bfdbfe" : "1px solid transparent",
   background: active ? "#eff6ff" : "transparent",
   color: active ? "#1e40af" : "#334155",
+});
+
+const linkMgmt = (active: boolean): CSSProperties => ({
+  padding: "6px 12px",
+  borderRadius: 999,
+  fontSize: 12.5,
+  fontWeight: 600,
+  textDecoration: "none",
+  whiteSpace: "nowrap",
+  border: active ? "1px solid #e2e8f0" : "1px solid transparent",
+  background: active ? "#f8fafc" : "transparent",
+  color: active ? "#475569" : "#94a3b8",
 });
 
 /**
@@ -93,8 +105,7 @@ function ProjectWorkflowNavInner() {
 
   const insight: NavItem[] = useMemo(() => {
     if (!SHOW_PROJECT_TRACE_NAV) return [];
-    const href = projectContextId ? appFlowStepHref("trace", projectContextId) : "/trace";
-    return [{ label: "추적", href, screenLabel: "공통-상단내비-추적" }];
+    return [{ label: "추적", href: withProjectQuery("/trace", projectContextId), screenLabel: "공통-상단내비-추적" }];
   }, [projectContextId]);
 
   if (!hasProjectContext || !projectContextId) return null;
@@ -106,26 +117,37 @@ function ProjectWorkflowNavInner() {
         display: "flex",
         flexWrap: "wrap",
         alignItems: "center",
-        gap: 10,
-        rowGap: 10,
+        columnGap: 20,
+        rowGap: 12,
       }}
     >
-      <nav aria-label="프로젝트 워크플로" style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+      <nav aria-label="프로젝트 단계" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
         {WORKFLOW_TOP_NAV.map((item) => {
           const href = appFlowStepHref(item.stepId, projectContextId);
           const active = isWorkflowStepNavActive(item.stepId, pathname, searchParams, projectContextId);
           return (
             <span key={item.stepId} className="relative">
               <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-              <Link href={href} style={linkBase(active)} aria-current={active ? "page" : undefined}>
+              <Link href={href} style={linkProcess(active)} aria-current={active ? "page" : undefined}>
                 {item.label}
               </Link>
             </span>
           );
         })}
       </nav>
-      <span style={{ width: 1, height: 20, background: "#e2e8f0", flexShrink: 0 }} aria-hidden />
-      <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+      <span
+        role="separator"
+        aria-hidden
+        style={{
+          width: 1,
+          minHeight: 28,
+          alignSelf: "stretch",
+          background: "#cbd5e1",
+          opacity: 0.75,
+          flexShrink: 0,
+        }}
+      />
+      <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
         {admin.map((item) => {
           const base = item.href.split("?")[0] ?? item.href;
           const active = isAdminPathActive(pathname, base);
@@ -134,7 +156,7 @@ function ProjectWorkflowNavInner() {
               <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
               <Link
                 href={item.href}
-                style={{ ...linkBase(active), fontWeight: 600, color: active ? "#1e40af" : "#64748b" }}
+                style={linkMgmt(active)}
                 aria-current={active ? "page" : undefined}
               >
                 {item.label}
@@ -152,7 +174,7 @@ function ProjectWorkflowNavInner() {
                 <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
                 <Link
                   href={item.href}
-                  style={{ ...linkBase(isActive), fontWeight: 600, color: isActive ? "#1e40af" : "#64748b" }}
+                  style={linkMgmt(isActive)}
                   aria-current={isActive ? "page" : undefined}
                 >
                   {item.label}
