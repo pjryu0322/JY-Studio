@@ -103,8 +103,7 @@ export function RequirementsChatPanel({
       messages[0] &&
       messages[0].role === "ai" &&
       messages[0].speakerId === VIRTUAL_AI_PLANNER_ID &&
-      (messages[0].meta?.internalType === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE ||
-        (messages[0].messageType === "NOTICE" && messages[0].content.includes("먼저 아래 질문")))
+      messages[0].meta?.internalType === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE
   );
 
   useEffect(() => {
@@ -286,11 +285,20 @@ export function RequirementsChatPanel({
           position: "relative",
           flex: 1,
           minHeight: 0,
-          overflowY: "auto",
-          padding: "18px 18px 12px",
-          background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
+        <div
+          style={{
+            position: "relative",
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            padding: "18px 18px 12px",
+            background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
+          }}
+        >
         <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
         {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
 
@@ -713,21 +721,18 @@ export function RequirementsChatPanel({
           ) : null}
           <div ref={endRef} />
         </div>
-      </div>
+        </div>
 
-      <div
-        style={{
-          flexShrink: 0,
-          position: "sticky",
-          bottom: 0,
-          zIndex: 8,
-          paddingTop: 10,
-          marginTop: 0,
-          background: "linear-gradient(180deg, rgba(248,250,252,0) 0%, #f8fafc 28%, #ffffff 100%)",
-          borderTop: "1px solid #e2e8f0",
-        }}
-      >
-        {composer}
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "10px 18px 0",
+            borderTop: "1px solid #e2e8f0",
+            background: "#f8fafc",
+          }}
+        >
+          {composer}
+        </div>
       </div>
     </section>
   );

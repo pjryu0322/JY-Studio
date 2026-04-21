@@ -147,7 +147,7 @@ export default function HomePage() {
       await loadProjects();
       setHighlightProjectId(newId);
       setCreateToast(true);
-      /** 최근 프로젝트 키만 갱신(자동 열기는 프로젝트 허브로). 생성 직후 아이디어 화면으로 보내지 않음 — readAutoEnterAfterCreate는 사용하지 않음. */
+      /** 최근 프로젝트 키 갱신(자동 열기 시 프로젝트 허브로만 이동). 생성 직후 요구사항 화면으로는 이동하지 않음. */
       try {
         sessionStorage.setItem(APP_FLOW_LAST_PROJECT_KEY, newId);
       } catch {

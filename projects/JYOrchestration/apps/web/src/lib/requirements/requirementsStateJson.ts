@@ -36,8 +36,6 @@ export type RequirementsStateJson = {
   lastPromptGeneratedAt?: string;
   /** 전송 전 입력창 초안(세션 간 복원) */
   lastUserDraftText?: string;
-  /** 4/4 완료 안내 AI 메시지를 대화에 1회만 삽입했는지 */
-  ideationCompletionAiNoticeSent?: boolean;
   /** AI 산출물 초안(회의 요약·문제정의서 등), 버전은 유형별로 증가 */
   deliverableAssets?: IdeationDeliverableAsset[] | null;
   /**
@@ -101,8 +99,6 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
     lastPromptGeneratedAt: typeof o.lastPromptGeneratedAt === "string" ? o.lastPromptGeneratedAt : undefined,
     lastUserDraftText: typeof o.lastUserDraftText === "string" ? o.lastUserDraftText : undefined,
-    ideationCompletionAiNoticeSent:
-      typeof o.ideationCompletionAiNoticeSent === "boolean" ? o.ideationCompletionAiNoticeSent : undefined,
     deliverableAssets: o.deliverableAssets === null ? null : parseDeliverableAssetsFromState(o.deliverableAssets),
     organizeContext: !("organizeContext" in o)
       ? undefined

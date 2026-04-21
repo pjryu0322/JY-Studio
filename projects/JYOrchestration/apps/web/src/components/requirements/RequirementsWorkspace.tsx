@@ -63,9 +63,6 @@ import { dedupeMemberRefs, resolveMentionTargetsFromText, getMessageTargets } fr
 import { newConversation, type RequirementsConversation } from "@/lib/requirements/conversationStore";
 import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/appFlowModel";
 
-const IDEATION_COMPLETION_NOTICE =
-  "핵심 정보가 정리되었습니다. 이제 「정리 요청」으로 정리본을 만들 수 있습니다. 필요하면 상단 워크플로에서 「기능 정리」로 이동하세요.";
-
 function notifyAppFlowProjectContextChanged() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT));
@@ -538,21 +535,6 @@ export function RequirementsWorkspace({
   const onboardingKey = useMemo(() => (resolvedProjectId.trim() ? `pid:${resolvedProjectId.trim()}` : "no-pid"), [resolvedProjectId]);
   const [onboardingAppliedKey, setOnboardingAppliedKey] = useState<string | null>(null);
 
-  const actionBtn: CSSProperties = useMemo(
-    () => ({
-      padding: "8px 14px",
-      borderRadius: 10,
-      border: "1px solid #e2e8f0",
-      background: "#fff",
-      fontWeight: 700,
-      fontSize: 13,
-      cursor: "pointer",
-      color: "#0f172a",
-      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
-    }),
-    []
-  );
-
   const isDraftIntent = useCallback((text: string) => {
     const t = text.trim();
     if (!t) return false;
@@ -588,11 +570,6 @@ export function RequirementsWorkspace({
       );
     };
   }, [ideationStatusLine, resolvedProjectId]);
-
-  const ideationNoticeSent = useMemo(
-    () => Boolean(parseRequirementsStateJson(project?.requirementsStateJson).ideationCompletionAiNoticeSent),
-    [project?.requirementsStateJson]
-  );
 
   const persistedPromptState = useMemo(
     () => parseRequirementsStateJson(project?.requirementsStateJson),
@@ -996,46 +973,6 @@ export function RequirementsWorkspace({
       }
     };
   }, [conversationStatus, resolvedProjectId, loadedConversationProjectId, project, onboardingAppliedKey, onboardingKey, room, persistRemote]);
-
-  useEffect(() => {
-    if (conversationStatus !== "loaded") return;
-    const pid = resolvedProjectId.trim();
-    if (!pid || !project) return;
-    if (loadedConversationProjectId !== pid) return;
-    if (!ideationComplete) return;
-    if (ideationNoticeSent) return;
-    const msgs = room.requirementsConversation.messages;
-    const already = msgs.some((m) => m.role === "ai" && m.content.trim() === IDEATION_COMPLETION_NOTICE);
-    if (already) return;
-    const notice = newChatMessage({
-      role: "ai",
-      body: IDEATION_COMPLETION_NOTICE,
-      speakerType: "AI",
-      speakerId: VIRTUAL_AI_PLANNER_ID,
-      speakerName: "AI 기획자",
-      messageType: "NOTICE",
-    });
-    const nextRoom: RequirementsRoomStateV3 = {
-      ...room,
-      requirementsConversation: {
-        ...room.requirementsConversation,
-        projectId: pid,
-        messages: [...msgs, notice],
-      },
-    };
-    void persistRemote(nextRoom, {}, { ideationCompletionAiNoticeSent: true }).catch((e) => {
-      setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
-    });
-  }, [
-    conversationStatus,
-    resolvedProjectId,
-    loadedConversationProjectId,
-    project,
-    ideationComplete,
-    ideationNoticeSent,
-    room,
-    persistRemote,
-  ]);
 
   const onOrganizeRequirements = useCallback(async () => {
     const pid = resolvedProjectId.trim();
