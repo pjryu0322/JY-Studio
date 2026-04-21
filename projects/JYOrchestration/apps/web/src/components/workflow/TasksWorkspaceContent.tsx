@@ -29,8 +29,6 @@ import { useTasksWorkspaceReview } from "@/lib/workflow/useTasksWorkspaceReview"
 
 type Props = {
   view: TasksWorkspaceView;
-  onOpenRequirement: () => void;
-  onOpenFeaturesStep: () => void;
 };
 
 const inputStyle: CSSProperties = {
@@ -43,7 +41,7 @@ const inputStyle: CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenFeaturesStep }: Props) {
+export function TasksWorkspaceContent({ view }: Props) {
   const showScreenLabels = useShowScreenLabels();
   const sessionResultsVersion = useCollaborationSessionResultsVersion();
   const working = useTasksWorkspaceReview(view.taskDrafts);
@@ -158,7 +156,7 @@ export function TasksWorkspaceContent({ view, onOpenRequirement, onOpenFeaturesS
 
   return (
     <>
-      <TasksWorkspaceSummaryStrip view={view} onOpenRequirement={onOpenRequirement} onOpenFeaturesStep={onOpenFeaturesStep} />
+      <TasksWorkspaceSummaryStrip view={view} />
 
       {view.hasConfirmedTaskSet ? (
         <div className="relative" style={{ border: "1px solid #bbf7d0", borderRadius: 12, padding: 10, background: "#f0fdf4" }}>

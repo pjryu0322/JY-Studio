@@ -319,12 +319,6 @@ export default function ProjectDetailPage() {
   }, [reloadSessionContext]);
 
   useEffect(() => {
-    if (!projectId) return;
-    if (workspaceView === "workspace") return;
-    router.replace(`/requirements?projectId=${encodeURIComponent(projectId)}`);
-  }, [projectId, workspaceView, router]);
-
-  useEffect(() => {
     if (!projectId || loading || !project) return;
     if (!isRequirementsPendingWorkflow(project.workflowStatus)) return;
     if (workspaceView !== "workspace") return;
@@ -2906,7 +2900,14 @@ export default function ProjectDetailPage() {
 
           {mainTab !== "overview" ? (
             <div data-ui-label="[P-4-4] Project Region — Members (unified)">
-              {mainTab === "members" ? <ProjectMembersSummaryPanel projectId={projectId} members={memberRows} /> : null}
+              {mainTab === "members" ? (
+                <ProjectMembersSummaryPanel
+                  projectId={projectId}
+                  members={memberRows}
+                  canInvite={rbac.canManageMembers}
+                  onMembersChanged={() => void reloadSessionContext()}
+                />
+              ) : null}
             </div>
           ) : null}
         </>

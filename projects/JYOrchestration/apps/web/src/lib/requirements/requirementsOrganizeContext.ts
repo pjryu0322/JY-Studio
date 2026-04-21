@@ -2,17 +2,26 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import { getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import type { RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 
-/** memory_facts 섹션 키(저장·API 공통) */
-export const ORGANIZE_MEMORY_FACT_KEYS = [
-  "user",
-  "problemPoints",
-  "featureRequirements",
+/** 정리·산출물용 memory_facts 정식 키(저장·API) */
+export const ORGANIZE_MEMORY_FACT_CANONICAL_KEYS = [
+  "coreUser",
+  "currentProblems",
+  "existingSolutions",
+  "improvementNeed",
+  "coreFeatureRequirements",
   "decisions",
   "openItems",
+  "mandatoryRequirements",
   "constraints",
 ] as const;
 
-export type OrganizeMemoryFactKey = (typeof ORGANIZE_MEMORY_FACT_KEYS)[number];
+export type OrganizeMemoryFactKey = (typeof ORGANIZE_MEMORY_FACT_CANONICAL_KEYS)[number];
+
+const LEGACY_KEY_MAP: Record<string, OrganizeMemoryFactKey> = {
+  user: "coreUser",
+  problemPoints: "currentProblems",
+  featureRequirements: "coreFeatureRequirements",
+};
 
 export type OrganizeMemoryFactValue = {
   text: string;
@@ -45,11 +54,14 @@ export type RequirementsOrganizeContextV1 = {
 export const DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT = 24;
 
 const FACT_LABELS_KR: Record<OrganizeMemoryFactKey, string> = {
-  user: "사용자",
-  problemPoints: "문제점",
-  featureRequirements: "기능 요구사항",
-  decisions: "결정사항",
-  openItems: "미결정사항",
+  coreUser: "핵심 사용자",
+  currentProblems: "현재 문제점",
+  existingSolutions: "기존 해결 방식",
+  improvementNeed: "개선 필요성",
+  coreFeatureRequirements: "핵심 기능 요구",
+  decisions: "결정 사항",
+  openItems: "미결정 사항",
+  mandatoryRequirements: "필수 요구사항(MANDATORY)",
   constraints: "강제조건",
 };
 
@@ -57,18 +69,36 @@ function trimText(s: unknown): string {
   return typeof s === "string" ? s.trim() : "";
 }
 
+function readFactBlock(raw: unknown): OrganizeMemoryFactValue | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const text = trimText(r.text);
+  if (!text) return null;
+  const mandatory = r.mandatory === true;
+  return { text, ...(mandatory ? { mandatory: true } : {}) };
+}
+
+function normalizeIncomingKey(k: string): OrganizeMemoryFactKey | null {
+  if ((ORGANIZE_MEMORY_FACT_CANONICAL_KEYS as readonly string[]).includes(k)) return k as OrganizeMemoryFactKey;
+  return LEGACY_KEY_MAP[k] ?? null;
+}
+
+/** JSON(구·신 키 혼용) → 정식 키만 갖는 memory_facts */
 export function parseOrganizeMemoryFacts(raw: unknown): OrganizeMemoryFacts | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const o = raw as Record<string, unknown>;
   const out: OrganizeMemoryFacts = {};
-  for (const k of ORGANIZE_MEMORY_FACT_KEYS) {
-    const v = o[k];
-    if (!v || typeof v !== "object") continue;
-    const r = v as Record<string, unknown>;
-    const text = trimText(r.text);
-    if (!text) continue;
-    const mandatory = r.mandatory === true;
-    out[k] = { text, ...(mandatory ? { mandatory: true } : {}) };
+  for (const [rawKey, val] of Object.entries(o)) {
+    const canon = normalizeIncomingKey(rawKey);
+    if (!canon) continue;
+    const block = readFactBlock(val);
+    if (!block) continue;
+    const existing = out[canon];
+    if (!existing?.text) {
+      out[canon] = block;
+    } else if (!existing.text.includes(block.text.slice(0, 40))) {
+      out[canon] = { text: `${existing.text}\n\n${block.text}`, mandatory: Boolean(existing.mandatory || block.mandatory) };
+    }
   }
   return Object.keys(out).length ? out : undefined;
 }
@@ -136,17 +166,20 @@ export function bootstrapOrganizeMemoryFacts(input: {
 }): OrganizeMemoryFacts {
   const out: OrganizeMemoryFacts = {};
   const u = input.targetUsers.trim();
-  if (u) out.user = { text: u };
+  if (u) out.coreUser = { text: u };
   const goals = input.goals.trim();
   const open = input.openIssues.trim();
-  const prob = [goals && `목표/맥락: ${goals}`, open && `열린 이슈: ${open}`].filter(Boolean).join("\n");
-  if (prob) out.problemPoints = { text: prob };
+  const prob = [goals && `목표·맥락: ${goals}`, open && `열린 이슈: ${open}`].filter(Boolean).join("\n");
+  if (prob) out.currentProblems = { text: prob };
   const pf = input.priorityFeatures.trim();
   const si = input.scopeIn.trim();
   const feats = [pf && `우선 기능: ${pf}`, si && `범위(포함): ${si}`].filter(Boolean).join("\n");
-  if (feats) out.featureRequirements = { text: feats };
+  if (feats) out.coreFeatureRequirements = { text: feats };
   const sc = input.success.trim();
-  if (sc) out.decisions = { text: `합의·성공 기준(초안): ${sc}` };
+  if (sc) {
+    out.decisions = { text: `합의·성공 기준(초안): ${sc}` };
+    out.mandatoryRequirements = { text: `필수 반영: ${sc}`, mandatory: true };
+  }
   if (open) out.openItems = { text: open };
   const so = input.scopeOut.trim();
   const nfr = input.nfr.trim();
@@ -161,7 +194,7 @@ export function mergeOrganizeMemoryFactsPreserveMandatory(
 ): OrganizeMemoryFacts {
   const out: OrganizeMemoryFacts = { ...(incoming ?? {}) };
   const prev = previous ?? {};
-  for (const k of ORGANIZE_MEMORY_FACT_KEYS) {
+  for (const k of ORGANIZE_MEMORY_FACT_CANONICAL_KEYS) {
     const p = prev[k];
     if (!p?.mandatory) continue;
     const n = out[k];
@@ -189,13 +222,16 @@ export function buildOrganizeMemoryFactsFromDraft(
   const ex = draft.excluded.map((s) => s.trim()).filter(Boolean).join("\n");
   const nfr = draft.nonFunctional.map((s) => s.trim()).filter(Boolean).join("\n");
   const out: OrganizeMemoryFacts = {};
-  if (users) out.user = { text: users };
+  if (users) out.coreUser = { text: users };
   const prob = [draft.overview.trim() && `개요: ${draft.overview.trim()}`, goals && `목표: ${goals}`, open && `이슈: ${open}`]
     .filter(Boolean)
     .join("\n");
-  if (prob) out.problemPoints = { text: prob };
-  if (features) out.featureRequirements = { text: features };
-  if (success) out.decisions = { text: success };
+  if (prob) out.currentProblems = { text: prob };
+  if (features) out.coreFeatureRequirements = { text: features };
+  if (success) {
+    out.decisions = { text: success };
+    out.mandatoryRequirements = { text: `정리본 기준 필수: ${success.slice(0, 2000)}`, mandatory: true };
+  }
   if (open) out.openItems = { text: open };
   const cons = [ex && `제외: ${ex}`, nfr && `비기능/제약: ${nfr}`].filter(Boolean).join("\n");
   if (cons) out.constraints = { text: cons };
@@ -220,7 +256,7 @@ export function buildRollingSummaryFromDraft(draft: Pick<RequirementsDraftDoc, "
 export function formatMemoryFactsForModel(facts: OrganizeMemoryFacts | null | undefined): string {
   if (!facts) return "";
   const lines: string[] = [];
-  for (const k of ORGANIZE_MEMORY_FACT_KEYS) {
+  for (const k of ORGANIZE_MEMORY_FACT_CANONICAL_KEYS) {
     const row = facts[k];
     if (!row?.text?.trim()) continue;
     const m = row.mandatory ? " [mandatory: 반드시 존중]" : "";
@@ -230,7 +266,7 @@ export function formatMemoryFactsForModel(facts: OrganizeMemoryFacts | null | un
 }
 
 export function formatMandatoryReminderForModel(facts: OrganizeMemoryFacts | null | undefined): string {
-  const keys = ORGANIZE_MEMORY_FACT_KEYS.filter((k) => facts?.[k]?.mandatory && facts[k]?.text?.trim());
+  const keys = ORGANIZE_MEMORY_FACT_CANONICAL_KEYS.filter((k) => facts?.[k]?.mandatory && facts[k]?.text?.trim());
   if (!keys.length) return "";
   return `[필수 유지 항목]\n다음 memory_facts 섹션은 mandatory입니다. 최종 JSON에서 이 내용과 모순되게 바꾸거나 삭제하지 마세요.\n${keys.map((k) => `- ${FACT_LABELS_KR[k]}`).join("\n")}`;
 }

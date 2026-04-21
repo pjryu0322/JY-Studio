@@ -105,7 +105,8 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
   }
 
   const onRequirementsPage = current === "requirements";
-  const hideGuidanceFooter = onRequirementsPage;
+  const onProjectHubPage = /^\/projects\/[^/?#]+/.test(pathname);
+  const hideGuidanceFooter = onRequirementsPage || onProjectHubPage;
   const showGuidanceFooter = Boolean(guidanceProjectId) && !hideGuidanceFooter;
 
   return (

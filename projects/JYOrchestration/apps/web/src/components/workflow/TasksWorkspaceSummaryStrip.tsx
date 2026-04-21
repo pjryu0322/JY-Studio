@@ -2,19 +2,16 @@
 
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 
 type Props = {
   view: TasksWorkspaceView;
-  onOpenRequirement: () => void;
-  onOpenFeaturesStep: () => void;
 };
 
-/** Single compact row: context, source, navigation. */
-export function TasksWorkspaceSummaryStrip({ view, onOpenRequirement, onOpenFeaturesStep }: Props) {
+/** Single compact row: context and source (단계 이동은 ProjectWorkflowNav만 사용). */
+export function TasksWorkspaceSummaryStrip({ view }: Props) {
   const showScreenLabels = useShowScreenLabels();
 
   return (
@@ -57,10 +54,6 @@ export function TasksWorkspaceSummaryStrip({ view, onOpenRequirement, onOpenFeat
               {view.taskSource === "collaboration_snapshot" ? "메모리 전용입니다." : "작업 초안을 생성하거나 기능 정리 단계에서 맥락을 보강하세요."}
               {view.hasConfirmedTaskSet ? " 이 세션에 공식 확정 작업 세트가 있습니다." : ""}
             </span>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {view.requirementId ? <WorkflowActionButton label="요구사항" onClick={onOpenRequirement} /> : null}
-            <WorkflowActionButton label="기능 정리" variant="primary" onClick={onOpenFeaturesStep} />
           </div>
         </div>
       </WorkflowCard>

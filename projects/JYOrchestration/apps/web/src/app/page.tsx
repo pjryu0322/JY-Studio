@@ -6,11 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import {
-  readAiFacilitatorAutoJoin,
-  readAutoEnterAfterCreate,
-  readAutoOpenLastProject,
-} from "@/lib/preferences/globalPreferences";
+import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
 
@@ -59,6 +55,8 @@ export default function HomePage() {
   const [description, setDescription] = useState("");
   const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [highlightProjectId, setHighlightProjectId] = useState<string | null>(null);
+  const [createToast, setCreateToast] = useState(false);
   const defaultProjectType = "web-service";
   const defaultBranch = "main";
 
@@ -147,9 +145,8 @@ export default function HomePage() {
       setName("");
       setDescription("");
       await loadProjects();
-      if (readAutoEnterAfterCreate()) {
-        router.push(`/requirements?projectId=${encodeURIComponent(newId)}`);
-      }
+      setHighlightProjectId(newId);
+      setCreateToast(true);
     } catch (error) {
       console.error("Failed to create project:", error);
       setErrorMessage("프로젝트 생성 중 오류가 발생했습니다.");
@@ -165,6 +162,18 @@ export default function HomePage() {
   useEffect(() => {
     void loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    if (!highlightProjectId) return;
+    const t = window.setTimeout(() => setHighlightProjectId(null), 10_000);
+    return () => window.clearTimeout(t);
+  }, [highlightProjectId]);
+
+  useEffect(() => {
+    if (!createToast) return;
+    const t = window.setTimeout(() => setCreateToast(false), 5000);
+    return () => window.clearTimeout(t);
+  }, [createToast]);
 
   /** 설정「최근 프로젝트 자동 열기」: 외부·직접 진입 등에서만 세션의 마지막 프로젝트로 이동(앱 내부에서 홈으로 온 경우는 제외). */
   useEffect(() => {
@@ -204,6 +213,28 @@ export default function HomePage() {
       data-ui-label="[A] Home"
     >
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
+
+      {createToast ? (
+        <div
+          role="status"
+          data-testid="home-project-created-toast"
+          style={{
+            position: "fixed",
+            top: 72,
+            right: 24,
+            zIndex: 60,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "#0f766e",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 700,
+            boxShadow: "0 12px 32px -8px rgba(15, 118, 110, 0.45)",
+          }}
+        >
+          프로젝트가 생성되었습니다
+        </div>
+      ) : null}
 
       <section
         className="relative mx-auto mb-5 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
@@ -311,10 +342,14 @@ export default function HomePage() {
               <div
                 key={project.id}
                 className="relative"
+                data-testid={`project-card-${project.id}`}
+                data-project-highlight={highlightProjectId === project.id ? "1" : undefined}
                 style={{
-                  border: "1px solid #e5e5e5",
+                  border: highlightProjectId === project.id ? "2px solid #0d9488" : "1px solid #e5e5e5",
                   borderRadius: 10,
                   padding: 16,
+                  background: highlightProjectId === project.id ? "#f0fdfa" : undefined,
+                  boxShadow: highlightProjectId === project.id ? "0 0 0 3px rgba(13, 148, 136, 0.2)" : undefined,
                 }}
               >
                 <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드" visible={showScreenLabels} />
@@ -360,7 +395,7 @@ export default function HomePage() {
                   <div className="relative" style={{ display: "inline-block" }}>
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-상세보기버튼" visible={showScreenLabels} />
                     <Link
-                      href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
+                      href={`/projects/${encodeURIComponent(project.id)}`}
                       data-testid={
                         project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
                       }
