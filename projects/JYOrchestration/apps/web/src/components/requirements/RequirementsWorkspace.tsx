@@ -999,21 +999,26 @@ export function RequirementsWorkspace({
     setOrganizeState("running");
     setOrganizeError(null);
     try {
-      const organizeUserMessage =
-        "지금까지의 대화를 바탕으로 아이디어를 문서 형태로 정리해줘. 필수 항목(개요/사용자/기능/성공기준)이 빠지면 추론해서 채우고, 불확실하면 미결정 이슈로 남겨줘.";
+      const requestedType: IdeationDeliverableType = "problem_statement";
       const promptMetaIso = new Date().toISOString();
       const organizePromptView = buildPromptPresenterView({
         projectName: project?.name ?? "",
         projectDescription: project?.description ?? "",
         targetName: "AI 기획자",
         messages: conversationMessages,
-        latestUserMessage: organizeUserMessage,
+        latestUserMessage: `정리요청(플래너 리뷰): ${requestedType}`,
       });
       await persistStateJsonOnly({
         lastPromptView: organizePromptView,
         lastPromptText: organizePromptView.copyText,
         lastPromptGeneratedAt: promptMetaIso,
         lastUserDraftText: input,
+        organizePlannerState: {
+          requestedType,
+          pendingQuestions: [],
+          slotStatus: null,
+          lastAnalyzerResult: null,
+        },
       });
       const prevCtx = stateJsonRef.current.organizeContext ?? null;
       const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
@@ -1039,7 +1044,7 @@ export function RequirementsWorkspace({
       const useRaw = organizeRawFallbackRef.current;
       organizeRawFallbackRef.current = false;
       const excerpt = formatDialogueExcerpt(conversationMessages);
-      const res = await fetch("/api/requirements/draft-generate", {
+      const res = await fetch("/api/requirements/organize-analyze", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1047,15 +1052,10 @@ export function RequirementsWorkspace({
           projectId: pid,
           projectName: project?.name ?? "",
           projectDescription: project?.description ?? "",
-          stage: "requirements",
-          userMessage: organizeUserMessage,
-          dialogueExcerpt: useRaw ? excerpt : "",
           memoryFacts: memoryFactsForApi,
           rollingSummary: rolling,
-          recentMessages: recentBlock,
-          useRawDialogueFallback: useRaw,
-          existingDraft: draftDoc,
-          aiResponseStyle: readAiResponseStyle(),
+          recentMessages: useRaw ? excerpt : recentBlock,
+          requestedType,
         }),
       });
       const json = (await res.json()) as {
@@ -1063,19 +1063,13 @@ export function RequirementsWorkspace({
         code?: string;
         message?: string;
         data?: {
-          draft?: {
-            overview: string;
-            goals: string[];
-            users: string[];
-            features: string[];
-            excluded: string[];
-            nonFunctional: string[];
-            successCriteria: string[];
-            openIssues: string[];
-          };
+          ready?: boolean;
+          message?: string;
+          questions?: string[];
+          slotStatus?: Record<string, "filled" | "missing">;
         };
       };
-      if (!res.ok || !json.success || !json.data?.draft) {
+      if (!res.ok || !json.success || !json.data || typeof json.data.ready !== "boolean") {
         const code = String(json.code ?? "");
         if (code === "NO_KEY") {
           throw new Error("AI 정리를 사용하려면 서버에 OPENAI_API_KEY 설정이 필요합니다.");
@@ -1083,39 +1077,162 @@ export function RequirementsWorkspace({
         throw new Error(json.message || "정리 요청 처리에 실패했습니다.");
       }
 
-      const nextDraft = bumpDraftVersion(draftDoc, {
-        projectId: pid,
-        overview: json.data.draft.overview,
-        goals: json.data.draft.goals,
-        users: json.data.draft.users,
-        features: json.data.draft.features,
-        excluded: json.data.draft.excluded,
-        nonFunctional: json.data.draft.nonFunctional,
-        successCriteria: json.data.draft.successCriteria,
-        openIssues: json.data.draft.openIssues,
-        createdAt: new Date().toISOString(),
-        source: { messageCount: conversationMessages.length, lastMessageAt: conversationMessages[conversationMessages.length - 1]?.createdAt },
+      const analyzerMessage = String(json.data.message ?? "").trim() || "확인 중입니다.";
+      const questions = Array.isArray(json.data.questions)
+        ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 2)
+        : [];
+
+      if (!json.data.ready) {
+        const body = questions.length
+          ? `${analyzerMessage}\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
+          : analyzerMessage;
+        const notice = newChatMessage({
+          role: "ai",
+          body,
+          speakerType: "AI",
+          speakerId: VIRTUAL_AI_PLANNER_ID,
+          speakerName: "AI 기획자",
+          messageType: "ANSWER",
+        });
+        const nextRoom: RequirementsRoomStateV3 = {
+          ...room,
+          requirementsConversation: {
+            ...room.requirementsConversation,
+            projectId: pid,
+            messages: [...conversationMessages, notice],
+          },
+        };
+        await persistRemote(nextRoom, {}, {
+          organizePlannerState: {
+            requestedType,
+            pendingQuestions: questions,
+            slotStatus: json.data.slotStatus ?? null,
+            lastAnalyzerResult: {
+              ready: false,
+              message: analyzerMessage,
+              questions,
+              analyzedAt: new Date().toISOString(),
+            },
+          },
+        });
+        setOrganizeState("done");
+        return;
+      }
+
+      const readyNotice = newChatMessage({
+        role: "ai",
+        body: analyzerMessage || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.",
+        speakerType: "AI",
+        speakerId: VIRTUAL_AI_PLANNER_ID,
+        speakerName: "AI 기획자",
+        messageType: "ANSWER",
       });
 
-      const nextRoom: RequirementsRoomStateV3 = {
-        ...room,
-        requirementsDraft: nextDraft,
-        requirementsConversation: {
-          ...room.requirementsConversation,
+      {
+        // writer: 산출물 1종 생성 + 저장 + 채팅 프리뷰 카드
+        const excerptForDeliverable = formatDialogueExcerpt(conversationMessages);
+        const chatSummary = [
+          goals.trim() && `저장 요약 — 목표/핵심:\n${goals.trim()}`,
+          targetUsers.trim() && `저장 요약 — 대상 사용자:\n${targetUsers.trim()}`,
+          scopeIn.trim() && `저장 요약 — 범위(포함):\n${scopeIn.trim()}`,
+          scopeOut.trim() && `저장 요약 — 범위(제외):\n${scopeOut.trim()}`,
+          success.trim() && `저장 요약 — 성공 기준:\n${success.trim()}`,
+          nfr.trim() && `저장 요약 — NFR 등:\n${nfr.trim()}`,
+          openIssues.trim() && `저장 요약 — 열린 이슈:\n${openIssues.trim()}`,
+          priorityFeatures.trim() && `저장 요약 — 우선 기능:\n${priorityFeatures.trim()}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+
+        const genRes = await fetch("/api/requirements/deliverables-generate", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: pid,
+            projectName: project?.name ?? "",
+            projectDescription: project?.description ?? "",
+            chatSummary,
+            dialogueExcerpt: excerptForDeliverable,
+            outputTypes: [requestedType],
+            aiResponseStyle: readAiResponseStyle(),
+          }),
+        });
+        const genJson = (await genRes.json()) as {
+          success?: boolean;
+          code?: string;
+          message?: string;
+          data?: { outputs?: Partial<Record<IdeationDeliverableType, string>> };
+        };
+        if (!genRes.ok || !genJson.success || !genJson.data?.outputs) {
+          const code = String(genJson.code ?? "");
+          if (code === "NO_KEY") {
+            throw new Error("AI 산출물 생성을 사용하려면 서버에 OPENAI_API_KEY 설정이 필요합니다.");
+          }
+          throw new Error(genJson.message || "산출물 생성에 실패했습니다.");
+        }
+
+        const existing =
+          parseRequirementsStateJson(project?.requirementsStateJson).deliverableAssets ??
+          stateJsonRef.current.deliverableAssets ??
+          [];
+        const { merged, created } = appendIdeationDeliverableAssets({
           projectId: pid,
-          messages: conversationMessages,
-        },
-      };
-      const organizedIso = new Date().toISOString();
-      setOrganizedAt(organizedIso);
-      const nextOrganizeContext = mergeOrganizeContextAfterDraft({
-        previous: prevCtx ?? undefined,
-        draft: nextDraft,
-        messages: conversationMessages,
-        recentSnapshot: recentBlock,
-        recentCount,
-      });
-      await persistRemote(nextRoom, {}, { lastOrganizedAt: organizedIso, organizeContext: nextOrganizeContext });
+          existing,
+          outputs: genJson.data.outputs,
+          typesRequested: [requestedType],
+        });
+        if (!created.length) {
+          throw new Error("생성된 본문이 비어 있습니다.");
+        }
+
+        const items = created.map((c) => ({
+          assetId: c.id,
+          type: c.type,
+          title: c.title,
+          version: c.version,
+          previewLines: extractPreviewLinesFromMarkdown(c.content),
+        }));
+        const payload: IdeationDeliverableChatPayload = {
+          kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
+          mode: "single",
+          headline: `${IDEATION_DELIVERABLE_LABELS[created[0].type]} 초안이 생성되었습니다.`,
+          requestedTypes: [requestedType],
+          items,
+        };
+        const notice = newChatMessage({
+          role: "ai",
+          body: JSON.stringify(payload),
+          speakerType: "AI",
+          speakerId: VIRTUAL_AI_PLANNER_ID,
+          speakerName: "AI 기획자",
+          messageType: "NOTICE",
+          meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
+        });
+        const afterWrite: RequirementsRoomStateV3 = {
+          ...room,
+          requirementsConversation: {
+            ...room.requirementsConversation,
+            projectId: pid,
+            messages: [...conversationMessages, readyNotice, notice],
+          },
+        };
+        await persistRemote(afterWrite, {}, {
+          deliverableAssets: merged,
+          organizePlannerState: {
+            requestedType,
+            pendingQuestions: [],
+            slotStatus: json.data.slotStatus ?? null,
+            lastAnalyzerResult: {
+              ready: true,
+              message: analyzerMessage,
+              questions: [],
+              analyzedAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
+      await persistStateJsonOnly({ organizePlannerState: null, lastOrganizedAt: new Date().toISOString() });
       setOrganizeState("done");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "오류";
@@ -1328,6 +1445,7 @@ export function RequirementsWorkspace({
       });
       const msgs = [...conversationMessages, userMsg];
       const turn = room.aiQuestionIndex ?? 0;
+      const plannerState = stateJsonRef.current.organizePlannerState ?? null;
 
       if (anyAi) {
         const primaryId = primaryAi?.id ?? targets[0].id;
@@ -1354,6 +1472,155 @@ export function RequirementsWorkspace({
         const pid = resolvedProjectId.trim();
         let finalRoom: RequirementsRoomStateV3;
         try {
+          // 정리요청(플래너 리뷰) 진행 중이면: 일반 대화 대신 Analyzer → (질문/생성) 흐름만 수행
+          const pending = plannerState && plannerState.pendingQuestions && plannerState.pendingQuestions.length > 0;
+          if (pending && pid) {
+            const requestedType: IdeationDeliverableType = plannerState.requestedType;
+            const prevCtx = stateJsonRef.current.organizeContext ?? null;
+            const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
+            const recentBlock = formatOrganizeRecentMessages(msgs, recentCount, 12_000);
+            const bootFacts = bootstrapOrganizeMemoryFacts({
+              goals,
+              targetUsers,
+              scopeIn,
+              scopeOut,
+              success,
+              nfr,
+              openIssues,
+              priorityFeatures,
+            });
+            const memoryFactsForApi = mergeOrganizeMemoryFactsPreserveMandatory(prevCtx?.memoryFacts ?? undefined, bootFacts);
+            const rolling =
+              (typeof prevCtx?.rollingSummary === "string" && prevCtx.rollingSummary.trim()) ||
+              buildRollingSummaryFromIdeationFields({ goals, openIssues, priorityFeatures });
+            const excerpt = formatDialogueExcerpt(msgs);
+
+            const res = await fetch("/api/requirements/organize-analyze", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                projectId: pid,
+                projectName: project?.name ?? "",
+                projectDescription: project?.description ?? "",
+                requestedType,
+                memoryFacts: memoryFactsForApi,
+                rollingSummary: rolling,
+                recentMessages: excerpt || recentBlock,
+              }),
+            });
+            const json = (await res.json()) as {
+              success?: boolean;
+              code?: string;
+              message?: string;
+              data?: { ready?: boolean; message?: string; questions?: string[]; slotStatus?: Record<string, "filled" | "missing"> };
+            };
+            if (!res.ok || !json.success || !json.data || typeof json.data.ready !== "boolean") {
+              const errMsg = json.message || "정리 요청 처리에 실패했습니다.";
+              setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
+              finalRoom = {
+                ...withCalling,
+                aiQuestionIndex: turn + 1,
+                requirementsConversation: {
+                  ...withCalling.requirementsConversation,
+                  messages: [
+                    ...withCalling.requirementsConversation.messages,
+                    newChatMessage({
+                      role: "system",
+                      body: "정리 요청 처리에 실패했습니다. 다시 시도해 주세요.",
+                      speakerType: "SYSTEM",
+                      speakerId: "system",
+                      speakerName: "시스템",
+                      messageType: "FRIENDLY_ERROR",
+                    }),
+                  ],
+                },
+              };
+            } else if (!json.data.ready) {
+              const analyzerMessage = String(json.data.message ?? "").trim() || "좋은 초안을 위해 두 가지만 더 확인하겠습니다.";
+              const questions = Array.isArray(json.data.questions)
+                ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 2)
+                : [];
+              const body = questions.length
+                ? `${analyzerMessage}\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
+                : analyzerMessage;
+              finalRoom = {
+                ...withCalling,
+                aiQuestionIndex: turn + 1,
+                requirementsConversation: {
+                  ...withCalling.requirementsConversation,
+                  messages: [
+                    ...withCalling.requirementsConversation.messages,
+                    newChatMessage({
+                      role: "ai",
+                      body,
+                      speakerType: "AI",
+                      speakerId: primaryId,
+                      speakerName: aiName,
+                      messageType: "ANSWER",
+                    }),
+                  ],
+                },
+              };
+              await persistRemote(finalRoom, {}, {
+                organizePlannerState: {
+                  requestedType,
+                  pendingQuestions: questions,
+                  slotStatus: json.data.slotStatus ?? null,
+                  lastAnalyzerResult: {
+                    ready: false,
+                    message: analyzerMessage,
+                    questions,
+                    analyzedAt: new Date().toISOString(),
+                  },
+                },
+              });
+              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              setInput("");
+              setReplyTo(null);
+              return;
+            } else {
+              const analyzerMessage = String(json.data.message ?? "").trim() || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.";
+              finalRoom = {
+                ...withCalling,
+                aiQuestionIndex: turn + 1,
+                requirementsConversation: {
+                  ...withCalling.requirementsConversation,
+                  messages: [
+                    ...withCalling.requirementsConversation.messages,
+                    newChatMessage({
+                      role: "ai",
+                      body: analyzerMessage,
+                      speakerType: "AI",
+                      speakerId: primaryId,
+                      speakerName: aiName,
+                      messageType: "ANSWER",
+                    }),
+                  ],
+                },
+              };
+              await persistRemote(finalRoom, {}, {
+                organizePlannerState: {
+                  requestedType,
+                  pendingQuestions: [],
+                  slotStatus: json.data.slotStatus ?? null,
+                  lastAnalyzerResult: {
+                    ready: true,
+                    message: analyzerMessage,
+                    questions: [],
+                    analyzedAt: new Date().toISOString(),
+                  },
+                },
+              });
+              await handleGenerateDeliverables([requestedType]);
+              await persistStateJsonOnly({ organizePlannerState: null, lastOrganizedAt: new Date().toISOString() });
+              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              setInput("");
+              setReplyTo(null);
+              return;
+            }
+          }
+
           const excerpt = formatDialogueExcerpt(conversationMessages);
           const endpoint = isDraftIntent(text) ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
           const res = await fetch(endpoint, {
