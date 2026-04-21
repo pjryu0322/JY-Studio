@@ -210,9 +210,9 @@ export function PlatformTopNav() {
                   letterSpacing: "-0.01em",
                   padding: "5px 11px",
                   borderRadius: 999,
-                  border: requirementsStatus.complete ? "1px solid #6ee7b7" : "1px solid #bfdbfe",
-                  background: requirementsStatus.complete ? "#ecfdf5" : "#eff6ff",
-                  color: requirementsStatus.complete ? "#047857" : "#1e40af",
+                  border: requirementsStatus.complete ? "1px solid #6ee7b7" : "1px solid #cbd5e1",
+                  background: requirementsStatus.complete ? "#ecfdf5" : "#f1f5f9",
+                  color: requirementsStatus.complete ? "#047857" : "#475569",
                   boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
                 }}
               >

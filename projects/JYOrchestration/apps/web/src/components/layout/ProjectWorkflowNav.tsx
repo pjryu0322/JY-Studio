@@ -69,15 +69,15 @@ const linkProcess = (active: boolean): CSSProperties => ({
 });
 
 const linkMgmt = (active: boolean): CSSProperties => ({
-  padding: "6px 12px",
+  padding: "5px 11px",
   borderRadius: 999,
-  fontSize: 12.5,
-  fontWeight: 600,
+  fontSize: 12,
+  fontWeight: active ? 600 : 500,
   textDecoration: "none",
   whiteSpace: "nowrap",
   border: active ? "1px solid #e2e8f0" : "1px solid transparent",
   background: active ? "#f8fafc" : "transparent",
-  color: active ? "#475569" : "#94a3b8",
+  color: active ? "#475569" : "#a1a1aa",
 });
 
 /**
@@ -117,7 +117,7 @@ function ProjectWorkflowNavInner() {
         display: "flex",
         flexWrap: "wrap",
         alignItems: "center",
-        columnGap: 20,
+        columnGap: 22,
         rowGap: 12,
       }}
     >
@@ -139,15 +139,16 @@ function ProjectWorkflowNavInner() {
         role="separator"
         aria-hidden
         style={{
-          width: 1,
+          width: 2,
           minHeight: 28,
           alignSelf: "stretch",
-          background: "#cbd5e1",
-          opacity: 0.75,
+          margin: "0 2px",
+          borderRadius: 999,
+          background: "linear-gradient(180deg, rgba(148,163,184,0.15) 0%, rgba(100,116,139,0.55) 45%, rgba(148,163,184,0.15) 100%)",
           flexShrink: 0,
         }}
       />
-      <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+      <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         {admin.map((item) => {
           const base = item.href.split("?")[0] ?? item.href;
           const active = isAdminPathActive(pathname, base);
