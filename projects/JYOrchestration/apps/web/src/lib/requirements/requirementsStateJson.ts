@@ -1,4 +1,6 @@
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
+import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
+import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
 
 function unwrapDbJsonField(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
@@ -18,6 +20,8 @@ export type RequirementsStateJson = {
   lastSavedAt?: string;
   lastOrganizedAt?: string;
   selectedTargetId?: string | null;
+  /** 좌측 멤버·멘션으로 지정한 질문 대상(복수) */
+  selectedMembers?: Array<{ id: string; name: string }> | null;
   onboardingShown?: boolean;
   openIssues?: string;
   priorityFeatures?: string;
@@ -30,6 +34,8 @@ export type RequirementsStateJson = {
   lastUserDraftText?: string;
   /** 4/4 완료 안내 AI 메시지를 대화에 1회만 삽입했는지 */
   ideationCompletionAiNoticeSent?: boolean;
+  /** AI 산출물 초안(회의 요약·문제정의서 등), 버전은 유형별로 증가 */
+  deliverableAssets?: IdeationDeliverableAsset[] | null;
 };
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
@@ -65,6 +71,20 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
     selectedTargetId:
       typeof o.selectedTargetId === "string" ? o.selectedTargetId : o.selectedTargetId === null ? null : undefined,
+    selectedMembers: Array.isArray(o.selectedMembers)
+      ? (o.selectedMembers as unknown[])
+          .map((row) => {
+            if (!row || typeof row !== "object") return null;
+            const r = row as Record<string, unknown>;
+            const id = typeof r.id === "string" ? r.id.trim() : "";
+            const name = typeof r.name === "string" ? r.name.trim() : "";
+            if (!id) return null;
+            return { id, name: name || id };
+          })
+          .filter((x): x is { id: string; name: string } => Boolean(x))
+      : o.selectedMembers === null
+        ? null
+        : undefined,
     onboardingShown: typeof o.onboardingShown === "boolean" ? o.onboardingShown : undefined,
     openIssues: typeof o.openIssues === "string" ? o.openIssues : undefined,
     priorityFeatures: typeof o.priorityFeatures === "string" ? o.priorityFeatures : undefined,
@@ -74,6 +94,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     lastUserDraftText: typeof o.lastUserDraftText === "string" ? o.lastUserDraftText : undefined,
     ideationCompletionAiNoticeSent:
       typeof o.ideationCompletionAiNoticeSent === "boolean" ? o.ideationCompletionAiNoticeSent : undefined,
+    deliverableAssets: o.deliverableAssets === null ? null : parseDeliverableAssetsFromState(o.deliverableAssets),
   };
 }
 

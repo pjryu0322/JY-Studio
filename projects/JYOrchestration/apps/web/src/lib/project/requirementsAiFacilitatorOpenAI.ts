@@ -1,3 +1,6 @@
+import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
+import { buildIdeationDeliverableBasePrompt, buildIdeationDeliverablesUserPrompt } from "@/lib/requirements/ideationDeliverables";
+
 const DEFAULT_MODEL = "gpt-4o-mini";
 
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
@@ -343,6 +346,105 @@ ${input.userMessage.trim()}
     return { ok: false, code: "SCHEMA", message: "초안 필수 항목이 비어 있습니다." };
   }
   return { ok: true, draft, model };
+}
+
+export type IdeationDeliverablesOpenAiResult =
+  | { ok: true; outputs: Partial<Record<IdeationDeliverableType, string>>; model: string }
+  | { ok: false; code: string; message: string };
+
+/**
+ * 아이디어 협의실: 선택한 산출물 유형별 본문을 한 번에 생성(JSON).
+ */
+export async function runIdeationDeliverablesOpenAI(input: {
+  projectName: string;
+  projectDescription: string;
+  chatSummary: string;
+  dialogueExcerpt: string;
+  selectedTypes: readonly IdeationDeliverableType[];
+  responseStyle?: RequirementsAiResponseStyle;
+}): Promise<IdeationDeliverablesOpenAiResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  }
+  const types = input.selectedTypes.filter(Boolean);
+  if (!types.length) {
+    return { ok: false, code: "NO_TYPES", message: "선택된 산출물이 없습니다." };
+  }
+
+  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const excerpt = input.dialogueExcerpt.trim().slice(0, 24_000);
+  const base = buildIdeationDeliverableBasePrompt({
+    projectName: input.projectName.trim() || "(이름 없음)",
+    projectDescription: input.projectDescription.trim() || "(설명 없음)",
+    chatSummary: input.chatSummary.trim() || "(저장된 요약 없음)",
+    recentMessages: excerpt || "(최근 대화 없음)",
+  });
+  const userBlock = buildIdeationDeliverablesUserPrompt(types);
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `You are a Korean product planning assistant. Output only one valid JSON object. No markdown fences.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
+        },
+        {
+          role: "user",
+          content: `${base}\n\n${userBlock}`,
+        },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    return {
+      ok: false,
+      code: `HTTP_${res.status}`,
+      message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
+    };
+  }
+
+  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+  const text = body.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return { ok: false, code: "JSON_PARSE", message: "OpenAI JSON 파싱에 실패했습니다." };
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, code: "SCHEMA", message: "OpenAI 응답 스키마가 올바르지 않습니다." };
+  }
+  const root = parsed as Record<string, unknown>;
+  const outRaw = root.outputs;
+  if (!outRaw || typeof outRaw !== "object") {
+    return { ok: false, code: "SCHEMA", message: 'OpenAI 응답에 "outputs" 객체가 없습니다.' };
+  }
+  const outputs: Partial<Record<IdeationDeliverableType, string>> = {};
+  for (const t of types) {
+    const v = (outRaw as Record<string, unknown>)[t];
+    const s = typeof v === "string" ? v.trim() : "";
+    if (!s) {
+      return { ok: false, code: "SCHEMA", message: `산출물 "${t}" 본문이 비어 있습니다.` };
+    }
+    outputs[t] = s;
+  }
+
+  return { ok: true, outputs, model };
 }
 
 export type OpenAiModelsPingResult =

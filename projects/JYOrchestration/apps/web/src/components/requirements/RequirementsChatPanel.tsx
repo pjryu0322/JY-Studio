@@ -6,6 +6,11 @@ import { normalizeRequirementsMessageText } from "@/lib/requirements/requirement
 import { formatTargetNamesForUi } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
+import {
+  IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
+  parseIdeationDeliverableChatPayload,
+} from "@/lib/requirements/ideationDeliverables";
+import { RequirementsDeliverableChatCard } from "@/components/requirements/RequirementsDeliverableChatCard";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
@@ -69,6 +74,10 @@ export function RequirementsChatPanel({
   typingIndicator,
   onInsertComposerPrompt,
   onSetReplyTo,
+  onOpenDeliverableDocument,
+  onOpenDeliverableDocuments,
+  onRegenerateDeliverables,
+  onConfirmDeliverables,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
   readonly composer: ReactNode;
@@ -77,6 +86,10 @@ export function RequirementsChatPanel({
   readonly onInsertComposerPrompt?: (text: string) => void;
   /** 답글 달기: replyTo messageId 설정 */
   readonly onSetReplyTo?: (messageId: string, preview: string) => void;
+  readonly onOpenDeliverableDocument?: (assetId: string) => void;
+  readonly onOpenDeliverableDocuments?: (assetIds: readonly string[]) => void;
+  readonly onRegenerateDeliverables?: (requestedTypes: readonly string[]) => void;
+  readonly onConfirmDeliverables?: (assetIds: readonly string[]) => void;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -431,10 +444,27 @@ export function RequirementsChatPanel({
             if (m.role === "ai") {
               const text = normalizeRequirementsMessageText(m.content);
               const isErr = m.messageType === "FRIENDLY_ERROR";
+              const deliverPayload =
+                !isErr &&
+                m.messageType === "NOTICE" &&
+                m.meta?.internalType === IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE
+                  ? parseIdeationDeliverableChatPayload(m.content)
+                  : null;
               const tone = isErr ? "error" : m.messageType === "NOTICE" ? "notice" : "default";
               const plannerTitle =
                 m.speakerId === VIRTUAL_AI_PLANNER_ID || (m.speakerName ?? "").includes("기획") ? "AI 기획자" : m.speakerName || "AI";
               const showHoverActions = m.messageType === "ANSWER" && !isErr;
+              const aiBody = deliverPayload ? (
+                <RequirementsDeliverableChatCard
+                  payload={deliverPayload}
+                  onOpenDocument={(id) => onOpenDeliverableDocument?.(id)}
+                  onOpenAll={(ids) => onOpenDeliverableDocuments?.(ids)}
+                  onRegenerate={(types) => onRegenerateDeliverables?.(types)}
+                  onConfirm={(ids) => onConfirmDeliverables?.(ids)}
+                />
+              ) : (
+                <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
+              );
 
               return (
                 <div
@@ -481,9 +511,7 @@ export function RequirementsChatPanel({
                         >
                           {plannerTitle}
                         </div>
-                        <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>
-                          <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
-                        </div>
+                        <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>{aiBody}</div>
                         {showHoverActions && hoveredId === m.id ? (
                           <div
                             style={{
@@ -554,9 +582,7 @@ export function RequirementsChatPanel({
                     >
                       {plannerTitle}
                     </div>
-                    <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>
-                      <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
-                    </div>
+                    <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>{aiBody}</div>
                     {showHoverActions && hoveredId === m.id ? (
                       <div
                         style={{
