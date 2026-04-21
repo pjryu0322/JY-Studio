@@ -19,6 +19,10 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
 import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
+import {
+  IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
+  sanitizeIdeationInterviewFirstQuestion,
+} from "@/lib/requirements/ideationInterviewBootstrap";
 import { bumpDraftVersion, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import {
@@ -41,7 +45,7 @@ import { newConversation, type RequirementsConversation } from "@/lib/requiremen
 import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/appFlowModel";
 
 const IDEATION_COMPLETION_NOTICE =
-  "핵심 정보가 정리되었습니다. 상단 워크플로에서 「기능 정리」로 이동할 수 있습니다.";
+  "핵심 정보가 정리되었습니다. 이제 「정리 요청」으로 정리본을 만들 수 있습니다. 필요하면 상단 워크플로에서 「기능 정리」로 이동하세요.";
 
 function notifyAppFlowProjectContextChanged() {
   if (typeof window === "undefined") return;
@@ -223,6 +227,8 @@ export function RequirementsWorkspace({
 
   const stateJsonRef = useRef<RequirementsStateJson>({});
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
+  const ideationBootstrapFlightRef = useRef<string | null>(null);
 
   useEffect(() => {
     setResolvedProjectId(initialProjectId.trim());
@@ -879,42 +885,81 @@ export function RequirementsWorkspace({
       setOnboardingAppliedKey(onboardingKey);
       return;
     }
-    // first entry: no history -> insert AI planner guide once per projectId
-    const pname = (project.name ?? "").trim() || "(이름 없음)";
-    const pdesc = (project.description ?? "").trim();
-    const guide = [
-      `${pname}${pdesc ? ` (${pdesc.slice(0, 60)}${pdesc.length > 60 ? "…" : ""})` : ""}를 기준으로 아이디어를 함께 구체화해 볼게요.`,
-      "",
-      "먼저 아래 질문 4개만 답해 주세요.",
-      "1) 누가 사용하는 서비스인가요? (예: 내부 직원 / 관리자 / 외부 고객)",
-      "2) 사용자가 반드시 해야 하는 핵심 기능 3가지는? (예: 작성·검색·공유)",
-      "3) 권한/역할이 필요한가요? (예: 작성자/검토자/관리자)",
-      "4) 검색·보관·첨부(파일)·알림 같은 운영 요구가 있나요?",
-      "",
-      "짧게 예시로 이렇게 시작해도 좋아요: “내부 직원이 회의록을 작성·검색·공유하고, 관리자는 권한과 보관 정책을 설정해야 해요.”",
-    ].join("\n");
+    if (ideationBootstrapFlightRef.current === onboardingKey) return;
+    ideationBootstrapFlightRef.current = onboardingKey;
 
-    const nextRoom: RequirementsRoomStateV3 = {
-      ...room,
-      requirementsConversation: {
-        ...room.requirementsConversation,
-        projectId: pid,
-        messages: [
-          newChatMessage({
-            role: "ai",
-            body: guide,
-            speakerType: "AI",
-            speakerId: VIRTUAL_AI_PLANNER_ID,
-            speakerName: "AI 기획자",
-            messageType: "NOTICE",
+    let cancelled = false;
+    const flightKey = onboardingKey;
+
+    void (async () => {
+      const persistFirstQuestion = async (bodyText: string): Promise<boolean> => {
+        const nextRoom: RequirementsRoomStateV3 = {
+          ...room,
+          requirementsConversation: {
+            ...room.requirementsConversation,
+            projectId: pid,
+            messages: [
+              newChatMessage({
+                role: "ai",
+                body: bodyText,
+                speakerType: "AI",
+                speakerId: VIRTUAL_AI_PLANNER_ID,
+                speakerName: "AI 기획자",
+                messageType: "ANSWER",
+                meta: { internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE },
+              }),
+            ],
+          },
+        };
+        try {
+          await persistRemote(nextRoom, {}, { onboardingShown: true });
+          if (!cancelled) setOnboardingAppliedKey(onboardingKey);
+          return true;
+        } catch (pe) {
+          if (!cancelled) {
+            setError(pe instanceof Error ? pe.message : "저장에 실패했습니다.");
+            ideationBootstrapFlightRef.current = null;
+          }
+          return false;
+        }
+      };
+
+      try {
+        const res = await fetch("/api/requirements/ai-facilitator", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: pid,
+            projectName: project.name ?? "",
+            projectDescription: project.description ?? "",
+            stage: "requirements",
+            bootstrapInterview: true,
           }),
-        ],
-      },
+        });
+        const json = (await res.json()) as { success?: boolean; data?: { reply?: string }; message?: string };
+        const raw = res.ok && json.success && json.data?.reply ? String(json.data.reply) : "";
+        const bodyText = sanitizeIdeationInterviewFirstQuestion(raw);
+        if (cancelled) return;
+        const ok = await persistFirstQuestion(bodyText);
+        if (!ok && !cancelled) {
+          ideationBootstrapFlightRef.current = null;
+          await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""));
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "인터뷰 시작에 실패했습니다.");
+        ideationBootstrapFlightRef.current = null;
+        await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (ideationBootstrapFlightRef.current === flightKey) {
+        ideationBootstrapFlightRef.current = null;
+      }
     };
-    setOnboardingAppliedKey(onboardingKey);
-    void persistRemote(nextRoom, {}).catch((e) => {
-      setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
-    });
   }, [conversationStatus, resolvedProjectId, loadedConversationProjectId, project, onboardingAppliedKey, onboardingKey, room, persistRemote]);
 
   useEffect(() => {
@@ -1437,7 +1482,25 @@ export function RequirementsWorkspace({
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
       />
 
-      <div style={{ marginBottom: 6 }} />
+      {resolvedProjectId.trim() && conversationStatus === "loaded" && ideationComplete ? (
+        <div
+          style={{
+            marginTop: 8,
+            marginBottom: 6,
+            padding: "8px 12px",
+            borderRadius: 10,
+            background: "#ecfdf5",
+            border: "1px solid #a7f3d0",
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#065f46",
+          }}
+        >
+          정리본 생성이 가능합니다. 입력창 + 메뉴에서 「정리 요청」을 선택하세요.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 6 }} />
+      )}
 
       {workflowGuidanceBanner ? (
         <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 8 }}>{workflowGuidanceBanner}</div>

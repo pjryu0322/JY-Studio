@@ -50,6 +50,10 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   stage: "requirements";
   userMessage: string;
   dialogueExcerpt: string;
+  /** 질문 대상 멤버(복수) — 모델 맥락용 */
+  mentionTargetsSummary?: string;
+  /** 전송 메타(감사·디버그용, 본문에만 포함) */
+  senderSummary?: string;
   /** 클라이언트 전역 설정과 동기 */
   responseStyle?: RequirementsAiResponseStyle;
 }): Promise<RequirementsFacilitatorOpenAiResult> {
@@ -62,6 +66,12 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   const excerpt = input.dialogueExcerpt.trim().slice(0, 24_000);
   const projectName = input.projectName.trim();
   const projectDescription = input.projectDescription.trim();
+  const mentionBlock = (input.mentionTargetsSummary ?? "").trim()
+    ? `\n\n[질문 대상 멤버]\n${(input.mentionTargetsSummary ?? "").trim()}`
+    : "";
+  const senderBlock = (input.senderSummary ?? "").trim()
+    ? `\n\n[발신]\n${(input.senderSummary ?? "").trim()}`
+    : "";
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -97,8 +107,93 @@ export async function runRequirementsFacilitatorOpenAI(input: {
 ${excerpt || "(이전 메시지 없음)"}
 
 [이번 사용자 메시지]
-${input.userMessage.trim()}`,
+${input.userMessage.trim()}${mentionBlock}${senderBlock}`,
         },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    return {
+      ok: false,
+      code: `HTTP_${res.status}`,
+      message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
+    };
+  }
+
+  const body = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  const text = body.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
+  }
+
+  return { ok: true, text, model };
+}
+
+/**
+ * 아이디어 구체화: 대화가 비어 있을 때 AI 기획자가 인터뷰 첫 질문만 던지도록 부트스트랩.
+ * 일반 요구사항 AI 기획자 프롬프트와 분리해, 질문 1개·설명 금지 규칙을 강하게 둡니다.
+ */
+export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
+  projectName: string;
+  projectDescription: string;
+}): Promise<RequirementsFacilitatorOpenAiResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  }
+
+  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const pn = input.projectName.trim() || "(이름 없음)";
+  const pd = input.projectDescription.trim() || "(설명 없음)";
+
+  const system = `당신은 숙련된 서비스 기획자입니다.
+
+목표:
+사용자의 프로젝트 아이디어를 구체화하기 위해 문제정의 인터뷰를 진행하십시오.
+
+프로젝트명:
+${pn}
+
+프로젝트 설명:
+${pd}
+
+운영원칙:
+- 가장 중요한 질문 1개만 한다
+- 한 번에 여러 질문 금지
+- 답변 받으면 후속 질문
+- 짧고 명확하게 질문
+- 사용자 맞춤형 질문
+
+수집 목표:
+- 핵심 사용자
+- 현재 문제점
+- 기존 해결 방식
+- 개선 필요성
+
+지금 첫 질문을 시작하라.
+
+[출력 형식 — 반드시 준수]
+- 이번 응답은 질문 한 문장만 출력한다.
+- 인사·설명·부연·마크다운·목록·머리글 금지.
+- 문장 끝은 반드시 물음표(?)로 끝낸다.`;
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.35,
+      max_tokens: 120,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: "지금 첫 질문을 시작하라." },
       ],
     }),
   });
