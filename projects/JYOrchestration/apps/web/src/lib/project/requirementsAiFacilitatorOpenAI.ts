@@ -267,22 +267,27 @@ export async function runRequirementsDraftOpenAI(input: {
   const memoryFactsText = formatMemoryFactsForModel(input.memoryFacts ?? undefined).trim();
   const mandatoryReminder = formatMandatoryReminderForModel(input.memoryFacts ?? undefined).trim();
   const rolling = String(input.rollingSummary ?? "").trim();
-  const recent = String(input.recentMessages ?? "").trim().slice(0, 24_000);
   const useRaw = Boolean(input.useRawDialogueFallback);
-  const hasStructured = Boolean(memoryFactsText || rolling || recent);
+  const recentTrim = String(input.recentMessages ?? "").trim();
+  const recentForModel = recentTrim
+    ? recentTrim.slice(0, 24_000)
+    : !useRaw && excerpt
+      ? excerpt.slice(0, 24_000)
+      : "";
+  const hasStructured = Boolean(memoryFactsText || rolling || recentForModel);
 
   const contextBlock = hasStructured
     ? [
         memoryFactsText && `[memory_facts]\n${memoryFactsText}`,
         rolling && `[rolling_summary]\n${rolling}`,
-        recent && `[recent_messages]\n${recent}`,
+        recentForModel && `[recent_messages]\n${recentForModel}`,
         mandatoryReminder && `${mandatoryReminder}`,
         useRaw && excerpt && `[전체 대화 원문(폴백)]\n${excerpt}`,
         !useRaw && `[전체 대화 원문]\n전체 원문은 제공하지 않는다. 위 memory_facts·rolling_summary·recent_messages만 근거로 삼아라. 빈약하면 openIssues에 '확인 필요'로 남겨라.`,
       ]
         .filter(Boolean)
         .join("\n\n")
-    : `[최근 대화 발췌]\n${excerpt || "(이전 메시지 없음)"}`;
+    : `[memory_facts]\n(없음)\n\n[rolling_summary]\n(없음)\n\n[recent_messages]\n(없음)\n\n프로젝트 이름·설명·사용자 요청만으로 초안을 구성하고, 불확실한 항목은 openIssues에 '확인 필요'로 남겨라.`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",

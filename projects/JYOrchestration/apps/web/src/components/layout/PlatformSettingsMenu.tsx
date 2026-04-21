@@ -200,15 +200,6 @@ export function PlatformSettingsMenu() {
               style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
             />
           )}
-          {row(
-            "프로젝트 생성 후 자동 진입",
-            <input
-              type="checkbox"
-              checked={prefs.autoEnterAfterCreate}
-              onChange={(e) => prefs.setAutoEnterAfterCreate(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />
-          )}
 
           {sectionTitle("AI")}
           {row(

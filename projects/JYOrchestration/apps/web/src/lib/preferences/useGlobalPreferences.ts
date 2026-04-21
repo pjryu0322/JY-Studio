@@ -6,7 +6,6 @@ import {
   subscribeGlobalPreferences,
   writeAiFacilitatorAutoJoin,
   writeAiResponseStyle,
-  writeAutoEnterAfterCreate,
   writeAutoOpenLastProject,
   writeCompactMode,
   writeDevPanelVisible,
@@ -19,7 +18,6 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
   setCompactMode: (v: boolean) => void;
   setReduceMotion: (v: boolean) => void;
   setAutoOpenLastProject: (v: boolean) => void;
-  setAutoEnterAfterCreate: (v: boolean) => void;
   setAiFacilitatorAutoJoin: (v: boolean) => void;
   setAiResponseStyle: (v: AiResponseStyle) => void;
   setDevPanelVisible: (v: boolean) => void;
@@ -43,10 +41,6 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
     writeAutoOpenLastProject(v);
     setSnap(readGlobalPreferencesSnapshot());
   }, []);
-  const setAutoEnterAfterCreate = useCallback((v: boolean) => {
-    writeAutoEnterAfterCreate(v);
-    setSnap(readGlobalPreferencesSnapshot());
-  }, []);
   const setAiFacilitatorAutoJoin = useCallback((v: boolean) => {
     writeAiFacilitatorAutoJoin(v);
     setSnap(readGlobalPreferencesSnapshot());
@@ -66,7 +60,6 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
       setCompactMode,
       setReduceMotion,
       setAutoOpenLastProject,
-      setAutoEnterAfterCreate,
       setAiFacilitatorAutoJoin,
       setAiResponseStyle,
       setDevPanelVisible,
@@ -76,7 +69,6 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
       setCompactMode,
       setReduceMotion,
       setAutoOpenLastProject,
-      setAutoEnterAfterCreate,
       setAiFacilitatorAutoJoin,
       setAiResponseStyle,
       setDevPanelVisible,

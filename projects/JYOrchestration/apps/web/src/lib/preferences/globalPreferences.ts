@@ -5,7 +5,6 @@ const KEYS = {
   compactMode: "jyo:pref:compact-mode",
   reduceMotion: "jyo:pref:reduce-motion",
   autoOpenLastProject: "jyo:pref:auto-open-last-project",
-  autoEnterAfterCreate: "jyo:pref:auto-enter-after-create",
   aiFacilitatorAutoJoin: "jyo:pref:ai-facilitator-auto-join",
   aiResponseStyle: "jyo:pref:ai-response-style",
   devPanelVisible: "jyo:pref:dev-panel-visible",
@@ -70,15 +69,6 @@ export function writeAutoOpenLastProject(value: boolean): void {
   writeBool(KEYS.autoOpenLastProject, value);
 }
 
-/** 홈에서 프로젝트 생성 직후 자동 이동에 쓰이던 값(현재 앱은 생성 후 목록에 유지). UI 설정은 유지하나 라우팅에는 사용하지 않는다. */
-export function readAutoEnterAfterCreate(): boolean {
-  return readBool(KEYS.autoEnterAfterCreate, true);
-}
-
-export function writeAutoEnterAfterCreate(value: boolean): void {
-  writeBool(KEYS.autoEnterAfterCreate, value);
-}
-
 export function readAiFacilitatorAutoJoin(): boolean {
   return readBool(KEYS.aiFacilitatorAutoJoin, true);
 }
@@ -123,7 +113,6 @@ export type GlobalPreferencesSnapshot = {
   compactMode: boolean;
   reduceMotion: boolean;
   autoOpenLastProject: boolean;
-  autoEnterAfterCreate: boolean;
   aiFacilitatorAutoJoin: boolean;
   aiResponseStyle: AiResponseStyle;
   devPanelVisible: boolean;
@@ -134,7 +123,6 @@ export function readGlobalPreferencesSnapshot(): GlobalPreferencesSnapshot {
     compactMode: readCompactMode(),
     reduceMotion: readReduceMotion(),
     autoOpenLastProject: readAutoOpenLastProject(),
-    autoEnterAfterCreate: readAutoEnterAfterCreate(),
     aiFacilitatorAutoJoin: readAiFacilitatorAutoJoin(),
     aiResponseStyle: readAiResponseStyle(),
     devPanelVisible: readDevPanelVisible(),
