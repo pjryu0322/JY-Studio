@@ -1,5 +1,7 @@
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { buildIdeationDeliverableBasePrompt, buildIdeationDeliverablesUserPrompt } from "@/lib/requirements/ideationDeliverables";
+import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
+import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 
@@ -237,18 +239,44 @@ export async function runRequirementsDraftOpenAI(input: {
   projectName: string;
   projectDescription: string;
   stage: "requirements";
-  dialogueExcerpt: string;
+  /** 구버전 호환: 구조화 입력이 없을 때만 주력으로 사용 */
+  dialogueExcerpt?: string;
   userMessage: string;
   existingDraft?: unknown;
   responseStyle?: RequirementsAiResponseStyle;
+  memoryFacts?: OrganizeMemoryFacts | null;
+  rollingSummary?: string;
+  recentMessages?: string;
+  /** true면 dialogueExcerpt를 전체 원문 폴백으로 추가 제공 */
+  useRawDialogueFallback?: boolean;
 }): Promise<RequirementsDraftOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
   }
   const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
-  const excerpt = input.dialogueExcerpt.trim().slice(0, 24_000);
+  const excerpt = String(input.dialogueExcerpt ?? "").trim().slice(0, 24_000);
   const existingDraftText = input.existingDraft ? JSON.stringify(input.existingDraft).slice(0, 12_000) : "";
+
+  const memoryFactsText = formatMemoryFactsForModel(input.memoryFacts ?? undefined).trim();
+  const mandatoryReminder = formatMandatoryReminderForModel(input.memoryFacts ?? undefined).trim();
+  const rolling = String(input.rollingSummary ?? "").trim();
+  const recent = String(input.recentMessages ?? "").trim().slice(0, 24_000);
+  const useRaw = Boolean(input.useRawDialogueFallback);
+  const hasStructured = Boolean(memoryFactsText || rolling || recent);
+
+  const contextBlock = hasStructured
+    ? [
+        memoryFactsText && `[memory_facts]\n${memoryFactsText}`,
+        rolling && `[rolling_summary]\n${rolling}`,
+        recent && `[recent_messages]\n${recent}`,
+        mandatoryReminder && `${mandatoryReminder}`,
+        useRaw && excerpt && `[전체 대화 원문(폴백)]\n${excerpt}`,
+        !useRaw && `[전체 대화 원문]\n전체 원문은 제공하지 않는다. 위 memory_facts·rolling_summary·recent_messages만 근거로 삼아라. 빈약하면 openIssues에 '확인 필요'로 남겨라.`,
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+    : `[최근 대화 발췌]\n${excerpt || "(이전 메시지 없음)"}`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -277,8 +305,7 @@ export async function runRequirementsDraftOpenAI(input: {
 [현재 단계]
 - Requirements(요구사항)
 
-[최근 대화 발췌]
-${excerpt || "(이전 메시지 없음)"}
+${contextBlock}
 
 [기존 정리본(있다면)]
 ${existingDraftText || "(없음)"}
