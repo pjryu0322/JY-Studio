@@ -2145,7 +2145,7 @@ export function RequirementsWorkspace({
             color: "#065f46",
           }}
         >
-          정리본 생성이 가능합니다. 입력창 왼쪽 + 메뉴에서 「정리 요청」 또는 「산출물 생성」을 선택하세요.
+          정리본 생성이 가능합니다. 입력창 왼쪽 + 메뉴에서 「정리 요청」을 선택하세요.
         </div>
       ) : (
         <div style={{ marginBottom: 6 }} />
@@ -2258,23 +2258,6 @@ export function RequirementsWorkspace({
                     organizeDisabled: busy || remoteLocked,
                     draftViewAvailable: Boolean(draftDoc),
                     onOpenDraftView: () => setDraftDrawerOpen(true),
-                    onOpenPromptView: () => setPromptDrawerOpen(true),
-                    onOpenSummaryEdit: () => setSummaryModalOpen(true),
-                    onGenerateDeliverables: handleGenerateDeliverables,
-                    deliverableGenerateBusy,
-                    onAttachFiles: (files) => {
-                      const names = Array.from(files)
-                        .map((f) => f.name.trim())
-                        .filter(Boolean);
-                      if (!names.length) return;
-                      setInput((prev) => {
-                        const tail = prev && !/\n$/.test(prev) ? "\n" : "";
-                        return `${prev}${tail}[첨부: ${names.join(", ")}]\n`;
-                      });
-                    },
-                    devAckStep: isNextPublicDevWorkflowToolsEnabled()
-                      ? { onClick: () => void ackDev(), disabled: busy || remoteLocked || !resolvedProjectId.trim() }
-                      : null,
                   }}
                 />
               </div>
