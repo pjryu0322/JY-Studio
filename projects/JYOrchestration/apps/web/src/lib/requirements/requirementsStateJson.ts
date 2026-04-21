@@ -22,7 +22,9 @@ function unwrapDbJsonField(raw: unknown): unknown {
  */
 export type RequirementsOrganizePlannerState = {
   requestedType: IdeationDeliverableType;
+  requestedLabel?: string;
   pendingQuestions: string[];
+  requiredSlots?: string[] | null;
   slotStatus?: Record<string, "filled" | "missing"> | null;
   lastAnalyzerResult?: {
     ready: boolean;
@@ -88,9 +90,16 @@ function parseOrganizePlannerState(raw: unknown): RequirementsOrganizePlannerSta
   if (!raw || typeof raw !== "object") return undefined;
   const o = raw as Record<string, unknown>;
   const requestedType = isIdeationDeliverableType(o.requestedType) ? o.requestedType : "";
+  const requestedLabel = typeof o.requestedLabel === "string" ? o.requestedLabel.trim() : "";
   const pendingQuestions = Array.isArray(o.pendingQuestions)
     ? o.pendingQuestions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 4)
     : [];
+  const requiredSlots =
+    Array.isArray(o.requiredSlots)
+      ? o.requiredSlots.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24)
+      : o.requiredSlots === null
+        ? null
+        : undefined;
   if (!requestedType || pendingQuestions.length === 0) {
     // allow stored state with empty questions only if explicitly null (treated as no state)
     if (!requestedType) return undefined;
@@ -126,7 +135,9 @@ function parseOrganizePlannerState(raw: unknown): RequirementsOrganizePlannerSta
 
   return {
     requestedType,
+    ...(requestedLabel ? { requestedLabel } : {}),
     pendingQuestions,
+    ...(requiredSlots !== undefined ? { requiredSlots } : {}),
     ...(slotStatus !== undefined ? { slotStatus } : {}),
     ...(lastAnalyzerResult !== undefined ? { lastAnalyzerResult } : {}),
   };

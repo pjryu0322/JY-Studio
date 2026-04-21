@@ -41,6 +41,7 @@ import {
   parseRequirementsStateJson,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import { getPlannerSlotSchema, plannerDeliverableLabelKr, PLANNER_DELIVERABLE_TYPES } from "@/lib/requirements/plannerSlots";
 import {
   bootstrapOrganizeMemoryFacts,
   buildRollingSummaryFromIdeationFields,
@@ -238,6 +239,8 @@ export function RequirementsWorkspace({
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [plannerTypePickerOpen, setPlannerTypePickerOpen] = useState(false);
+  const [plannerTypePicked, setPlannerTypePicked] = useState<IdeationDeliverableType>("problem_statement");
   const [saveToastVisible, setSaveToastVisible] = useState(false);
   const saveToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSaveStateRef = useRef<"idle" | "saving" | "saved" | "error">("idle");
@@ -975,6 +978,12 @@ export function RequirementsWorkspace({
   }, [conversationStatus, resolvedProjectId, loadedConversationProjectId, project, onboardingAppliedKey, onboardingKey, room, persistRemote]);
 
   const onOrganizeRequirements = useCallback(async () => {
+    // 플래너 검토형 정리 요청: 먼저 산출물 유형을 단일 선택
+    setPlannerTypePickerOpen(true);
+    return;
+  }, []);
+
+  const runPlannerOrganize = useCallback(async (requestedType: IdeationDeliverableType) => {
     const pid = resolvedProjectId.trim();
     if (!pid) {
       setError("프로젝트에 연결된 뒤 정리 요청을 사용할 수 있습니다.");
@@ -999,14 +1008,14 @@ export function RequirementsWorkspace({
     setOrganizeState("running");
     setOrganizeError(null);
     try {
-      const requestedType: IdeationDeliverableType = "problem_statement";
+      const schema = getPlannerSlotSchema(requestedType);
       const promptMetaIso = new Date().toISOString();
       const organizePromptView = buildPromptPresenterView({
         projectName: project?.name ?? "",
         projectDescription: project?.description ?? "",
         targetName: "AI 기획자",
         messages: conversationMessages,
-        latestUserMessage: `정리요청(플래너 리뷰): ${requestedType}`,
+        latestUserMessage: `정리요청(플래너 검토형): ${schema.labelKr}`,
       });
       await persistStateJsonOnly({
         lastPromptView: organizePromptView,
@@ -1015,7 +1024,9 @@ export function RequirementsWorkspace({
         lastUserDraftText: input,
         organizePlannerState: {
           requestedType,
+          requestedLabel: schema.labelKr,
           pendingQuestions: [],
+          requiredSlots: [...schema.requiredSlots],
           slotStatus: null,
           lastAnalyzerResult: null,
         },
@@ -1056,6 +1067,7 @@ export function RequirementsWorkspace({
           rollingSummary: rolling,
           recentMessages: useRaw ? excerpt : recentBlock,
           requestedType,
+          requiredSlots: schema.requiredSlots,
         }),
       });
       const json = (await res.json()) as {
@@ -1105,7 +1117,9 @@ export function RequirementsWorkspace({
         await persistRemote(nextRoom, {}, {
           organizePlannerState: {
             requestedType,
+            requestedLabel: schema.labelKr,
             pendingQuestions: questions,
+            requiredSlots: [...schema.requiredSlots],
             slotStatus: json.data.slotStatus ?? null,
             lastAnalyzerResult: {
               ready: false,
@@ -1121,7 +1135,9 @@ export function RequirementsWorkspace({
 
       const readyNotice = newChatMessage({
         role: "ai",
-        body: analyzerMessage || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.",
+        body:
+          analyzerMessage ||
+          `현재 정보로 ${schema.labelKr} 초안 작성이 가능합니다.\n생성을 시작합니다.`,
         speakerType: "AI",
         speakerId: VIRTUAL_AI_PLANNER_ID,
         speakerName: "AI 기획자",
@@ -1221,7 +1237,9 @@ export function RequirementsWorkspace({
           deliverableAssets: merged,
           organizePlannerState: {
             requestedType,
+            requestedLabel: schema.labelKr,
             pendingQuestions: [],
+            requiredSlots: [...schema.requiredSlots],
             slotStatus: json.data.slotStatus ?? null,
             lastAnalyzerResult: {
               ready: true,
@@ -1476,6 +1494,7 @@ export function RequirementsWorkspace({
           const pending = plannerState && plannerState.pendingQuestions && plannerState.pendingQuestions.length > 0;
           if (pending && pid) {
             const requestedType: IdeationDeliverableType = plannerState.requestedType;
+            const schema = getPlannerSlotSchema(requestedType);
             const prevCtx = stateJsonRef.current.organizeContext ?? null;
             const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
             const recentBlock = formatOrganizeRecentMessages(msgs, recentCount, 12_000);
@@ -1504,6 +1523,10 @@ export function RequirementsWorkspace({
                 projectName: project?.name ?? "",
                 projectDescription: project?.description ?? "",
                 requestedType,
+                requiredSlots:
+                  Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
+                    ? plannerState.requiredSlots
+                    : schema.requiredSlots,
                 memoryFacts: memoryFactsForApi,
                 rollingSummary: rolling,
                 recentMessages: excerpt || recentBlock,
@@ -1565,7 +1588,12 @@ export function RequirementsWorkspace({
               await persistRemote(finalRoom, {}, {
                 organizePlannerState: {
                   requestedType,
+                  requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
                   pendingQuestions: questions,
+                  requiredSlots:
+                    Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
+                      ? plannerState.requiredSlots
+                      : [...schema.requiredSlots],
                   slotStatus: json.data.slotStatus ?? null,
                   lastAnalyzerResult: {
                     ready: false,
@@ -1602,7 +1630,12 @@ export function RequirementsWorkspace({
               await persistRemote(finalRoom, {}, {
                 organizePlannerState: {
                   requestedType,
+                  requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
                   pendingQuestions: [],
+                  requiredSlots:
+                    Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
+                      ? plannerState.requiredSlots
+                      : [...schema.requiredSlots],
                   slotStatus: json.data.slotStatus ?? null,
                   lastAnalyzerResult: {
                     ready: true,
@@ -1897,6 +1930,126 @@ export function RequirementsWorkspace({
   return (
     <div style={shellStyle}>
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
+
+      {plannerTypePickerOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="정리 요청 유형 선택"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(15,23,42,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 18,
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPlannerTypePickerOpen(false);
+          }}
+        >
+          <div
+            style={{
+              width: "min(560px, 100%)",
+              background: "#fff",
+              borderRadius: 14,
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 30px 80px -30px rgba(15, 23, 42, 0.45)",
+              padding: 16,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>정리 요청</div>
+              <button
+                type="button"
+                onClick={() => setPlannerTypePickerOpen(false)}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  color: "#334155",
+                }}
+              >
+                닫기
+              </button>
+            </div>
+            <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.55, marginBottom: 12 }}>
+              정보를 검토하고 부족한 내용을 질문한 뒤 결과물을 작성합니다.
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {PLANNER_DELIVERABLE_TYPES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setPlannerTypePicked(t)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: plannerTypePicked === t ? "2px solid #0f766e" : "1px solid #e2e8f0",
+                    background: plannerTypePicked === t ? "#f0fdfa" : "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>{plannerDeliverableLabelKr(t)}</span>
+                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                    {getPlannerSlotSchema(t).requiredSlots.length} 슬롯
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={() => setPlannerTypePickerOpen(false)}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  color: "#334155",
+                }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                disabled={busy || remoteLocked}
+                onClick={() => {
+                  const picked = plannerTypePicked;
+                  setPlannerTypePickerOpen(false);
+                  void runPlannerOrganize(picked);
+                }}
+                style={{
+                  border: "1px solid #0f766e",
+                  background: "#0f766e",
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: busy || remoteLocked ? "not-allowed" : "pointer",
+                  opacity: busy || remoteLocked ? 0.6 : 1,
+                  color: "#fff",
+                }}
+              >
+                시작
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {saveToastVisible ? (
         <div

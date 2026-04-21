@@ -4,12 +4,14 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { isIdeationDeliverableType, type IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { parseOrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
+import { getPlannerSlotSchema } from "@/lib/requirements/plannerSlots";
 
 type Body = {
   projectId?: string;
   projectName?: string;
   projectDescription?: string;
   requestedType?: string;
+  requiredSlots?: unknown;
   memoryFacts?: unknown;
   rollingSummary?: string;
   recentMessages?: string;
@@ -21,27 +23,21 @@ type AnalyzeResult =
   | { ok: true; ready: boolean; message: string; questions: string[]; slotStatus: SlotStatus; model: string }
   | { ok: false; code: string; message: string };
 
-function buildSlotList(type: IdeationDeliverableType): string[] {
-  switch (type) {
-    case "problem_statement":
-      return ["핵심 사용자", "핵심 문제", "현재 해결 방식", "개선 필요성", "우선 고객군"];
-    case "feature_list":
-      return ["핵심 사용자", "주요 시나리오", "핵심 가치", "필요한 기능", "우선순위"];
-    case "kpi":
-      return ["목표 사용자 행동", "측정 지표", "목표 수치", "측정 주기"];
-    case "mvp_scope":
-      return ["핵심 사용자", "필수 기능", "제외 기능", "출시 판단 기준"];
-    case "meeting_summary":
-      return ["핵심 논의사항", "합의 내용", "미결정 사항", "다음 액션"];
-    case "full_plan":
-      return ["문제정의", "사용자", "핵심 가치", "기능", "KPI", "MVP 범위"];
-    default:
-      return ["핵심 사용자", "핵심 목표", "핵심 기능", "성공 기준"];
+function parseRequiredSlots(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: string[] = [];
+  for (const x of raw) {
+    const s = String(x ?? "").trim();
+    if (!s) continue;
+    out.push(s);
+    if (out.length >= 12) break;
   }
+  return out.length ? out : null;
 }
 
 async function runOrganizeAnalyzerOpenAI(input: {
   requestedType: IdeationDeliverableType;
+  requiredSlots: readonly string[];
   projectName: string;
   projectDescription: string;
   memoryFactsText: string;
@@ -52,7 +48,7 @@ async function runOrganizeAnalyzerOpenAI(input: {
   if (!apiKey) return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
 
   const model = process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini";
-  const slots = buildSlotList(input.requestedType);
+  const slots = [...input.requiredSlots].map((s) => String(s ?? "").trim()).filter(Boolean);
   const context = [
     input.memoryFactsText && `[memory_facts]\n${input.memoryFactsText}`,
     input.rollingSummary && `[saved_summary]\n${input.rollingSummary}`,
@@ -162,6 +158,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "requestedType이 올바르지 않습니다." }, { status: 400 });
     }
     const requestedType = requestedTypeRaw as IdeationDeliverableType;
+    const requiredSlots = parseRequiredSlots(body.requiredSlots) ?? getPlannerSlotSchema(requestedType).requiredSlots;
 
     try {
       await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/requirements/organize-analyze");
@@ -174,6 +171,7 @@ export async function POST(request: NextRequest) {
     const memoryFactsText = memoryFacts ? JSON.stringify(memoryFacts).slice(0, 8000) : "";
     const result = await runOrganizeAnalyzerOpenAI({
       requestedType,
+      requiredSlots,
       projectName,
       projectDescription,
       memoryFactsText,

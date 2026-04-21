@@ -92,12 +92,15 @@ function ComposerHubMenuItems({
           }}
           style={menuItemStyle(Boolean(tools.deliverableGenerateBusy))}
         >
-          <span>산출물 생성</span>
+          <span>산출물 생성 (즉시 생성형)</span>
           <span style={{ fontSize: 16, color: "#94a3b8", fontWeight: 700 }} aria-hidden>
             ›
           </span>
         </button>
       ) : null}
+      <div style={{ padding: "6px 14px 2px", fontSize: 11, fontWeight: 900, color: "#94a3b8", letterSpacing: "0.02em" }}>
+        산출물 작업
+      </div>
       {tools.draftViewAvailable ? (
         <button
           type="button"
@@ -172,8 +175,13 @@ function ComposerHubMenuItems({
         }}
         style={menuItemStyle(tools.organizeDisabled)}
       >
-        정리 요청
+        정리 요청 (플래너 검토형)
       </button>
+      {canDeliver ? (
+        <div style={{ padding: "0 14px 6px", fontSize: 12, color: "#64748b", lineHeight: 1.35 }}>
+          정보를 검토하고 부족한 내용을 질문한 뒤 결과물을 작성합니다.
+        </div>
+      ) : null}
       {tools.devAckStep ? (
         <button
           type="button"
@@ -769,7 +777,7 @@ export function RequirementsComposerGpt({
                 gap: 10,
               }}
             >
-              <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>산출물 생성</div>
+              <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>산출물 생성 (즉시 생성형)</div>
               <button
                 type="button"
                 onClick={closeDeliverPanel}
@@ -789,7 +797,7 @@ export function RequirementsComposerGpt({
             </div>
             <div style={{ padding: "12px 16px", overflowY: "auto", flex: 1, minHeight: 0 }}>
               <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.5, marginBottom: 12, fontWeight: 600 }}>
-                전체 기획안은 종합 산출물이므로 단독 선택만 가능합니다.
+                현재 대화 내용을 기준으로 즉시 생성합니다. 전체 기획안은 종합 산출물이므로 단독 선택만 가능합니다.
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {IDEATION_DELIVERABLE_ORDER.map((t) => {
