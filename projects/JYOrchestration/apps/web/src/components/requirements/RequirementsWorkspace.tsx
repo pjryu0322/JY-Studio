@@ -11,6 +11,7 @@ import { RequirementsHeader } from "@/components/requirements/RequirementsHeader
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
@@ -18,6 +19,16 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
+import {
+  appendIdeationDeliverableAssets,
+  extractPreviewLinesFromMarkdown,
+  IDEATION_DELIVERABLE_LABELS,
+  IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
+  markDeliverableAssetsConfirmed,
+  isIdeationDeliverableType,
+  type IdeationDeliverableChatPayload,
+  type IdeationDeliverableType,
+} from "@/lib/requirements/ideationDeliverables";
 import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
@@ -216,6 +227,10 @@ export function RequirementsWorkspace({
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
+  const [deliverableGenerateBusy, setDeliverableGenerateBusy] = useState(false);
+  const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
+  const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
+  const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveToastVisible, setSaveToastVisible] = useState(false);
@@ -572,6 +587,16 @@ export function RequirementsWorkspace({
   const persistedPromptState = useMemo(
     () => parseRequirementsStateJson(project?.requirementsStateJson),
     [project?.requirementsStateJson]
+  );
+
+  const deliverableAssetsFromProject = useMemo(
+    () => persistedPromptState.deliverableAssets ?? [],
+    [persistedPromptState.deliverableAssets]
+  );
+
+  const deliverableViewerAssets = useMemo(
+    () => deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id)),
+    [deliverableAssetsFromProject, deliverableViewerIds]
   );
 
   const workflowGuidanceBanner = useMemo(() => {
@@ -1134,6 +1159,148 @@ export function RequirementsWorkspace({
     input,
   ]);
 
+  const handleGenerateDeliverables = useCallback(
+    async (types: readonly IdeationDeliverableType[]) => {
+      const pid = resolvedProjectId.trim();
+      if (!pid) {
+        setError("프로젝트에 연결된 뒤 산출물 생성을 사용할 수 있습니다.");
+        throw new Error("GUARD");
+      }
+      if (conversationStatus !== "loaded") {
+        setError("대화 이력을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+        throw new Error("GUARD");
+      }
+      if (types.includes("full_plan") && types.length > 1) {
+        setError("전체 기획안은 다른 산출물과 함께 선택할 수 없습니다.");
+        throw new Error("GUARD");
+      }
+      setDeliverableGenerateBusy(true);
+      setError(null);
+      try {
+        const chatSummary = [
+          goals.trim() && `저장 요약 — 목표/핵심:\n${goals.trim()}`,
+          targetUsers.trim() && `저장 요약 — 대상 사용자:\n${targetUsers.trim()}`,
+          scopeIn.trim() && `저장 요약 — 범위(포함):\n${scopeIn.trim()}`,
+          scopeOut.trim() && `저장 요약 — 범위(제외):\n${scopeOut.trim()}`,
+          success.trim() && `저장 요약 — 성공 기준:\n${success.trim()}`,
+          nfr.trim() && `저장 요약 — NFR 등:\n${nfr.trim()}`,
+          openIssues.trim() && `저장 요약 — 열린 이슈:\n${openIssues.trim()}`,
+          priorityFeatures.trim() && `저장 요약 — 우선 기능:\n${priorityFeatures.trim()}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+
+        const excerpt = formatDialogueExcerpt(conversationMessages);
+        const res = await fetch("/api/requirements/deliverables-generate", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: pid,
+            projectName: project?.name ?? "",
+            projectDescription: project?.description ?? "",
+            chatSummary,
+            dialogueExcerpt: excerpt,
+            outputTypes: types,
+            aiResponseStyle: readAiResponseStyle(),
+          }),
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          code?: string;
+          message?: string;
+          data?: { outputs?: Partial<Record<IdeationDeliverableType, string>> };
+        };
+        if (!res.ok || !json.success || !json.data?.outputs) {
+          const code = String(json.code ?? "");
+          if (code === "NO_KEY") {
+            throw new Error("AI 산출물 생성을 사용하려면 서버에 OPENAI_API_KEY 설정이 필요합니다.");
+          }
+          throw new Error(json.message || "산출물 생성에 실패했습니다.");
+        }
+
+        const existing =
+          parseRequirementsStateJson(project?.requirementsStateJson).deliverableAssets ??
+          stateJsonRef.current.deliverableAssets ??
+          [];
+
+        const { merged, created } = appendIdeationDeliverableAssets({
+          projectId: pid,
+          existing,
+          outputs: json.data.outputs,
+          typesRequested: types,
+        });
+        if (!created.length) {
+          throw new Error("생성된 본문이 비어 있습니다.");
+        }
+
+        const items = created.map((c) => ({
+          assetId: c.id,
+          type: c.type,
+          title: c.title,
+          version: c.version,
+          previewLines: extractPreviewLinesFromMarkdown(c.content),
+        }));
+        const mode: IdeationDeliverableChatPayload["mode"] = created.length === 1 ? "single" : "batch";
+        const headline =
+          mode === "single"
+            ? `${IDEATION_DELIVERABLE_LABELS[created[0].type]} 초안이 생성되었습니다.`
+            : `${created.length}개의 산출물이 생성되었습니다.`;
+        const payload: IdeationDeliverableChatPayload = {
+          kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
+          mode,
+          headline,
+          requestedTypes: [...types],
+          items,
+        };
+        const notice = newChatMessage({
+          role: "ai",
+          body: JSON.stringify(payload),
+          speakerType: "AI",
+          speakerId: VIRTUAL_AI_PLANNER_ID,
+          speakerName: "AI 기획자",
+          messageType: "NOTICE",
+          meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
+        });
+        const nextRoom: RequirementsRoomStateV3 = {
+          ...room,
+          requirementsConversation: {
+            ...room.requirementsConversation,
+            projectId: pid,
+            messages: [...conversationMessages, notice],
+          },
+        };
+        await persistRemote(nextRoom, {}, { deliverableAssets: merged });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "오류";
+        if (msg !== "GUARD") {
+          setError(msg);
+        }
+        throw e;
+      } finally {
+        setDeliverableGenerateBusy(false);
+      }
+    },
+    [
+      resolvedProjectId,
+      conversationStatus,
+      goals,
+      targetUsers,
+      scopeIn,
+      scopeOut,
+      success,
+      nfr,
+      openIssues,
+      priorityFeatures,
+      conversationMessages,
+      project?.name,
+      project?.description,
+      project?.requirementsStateJson,
+      room,
+      persistRemote,
+    ]
+  );
+
   const isAiTarget = useCallback(
     (targetId: string) => {
       if (targetId === VIRTUAL_AI_PLANNER_ID) return true;
@@ -1421,6 +1588,26 @@ export function RequirementsWorkspace({
     });
   }, []);
 
+  const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
+    setDeliverableViewerIds([...ids]);
+    setDeliverableViewerFocusId(focusId ?? null);
+    setDeliverableViewerOpen(true);
+  }, []);
+
+  const handleConfirmDeliverableAssets = useCallback(
+    async (ids: readonly string[]) => {
+      const pid = resolvedProjectId.trim();
+      if (!pid) return;
+      const cur =
+        parseRequirementsStateJson(project?.requirementsStateJson).deliverableAssets ??
+        stateJsonRef.current.deliverableAssets ??
+        [];
+      const next = markDeliverableAssetsConfirmed(cur, ids);
+      await persistStateJsonOnly({ deliverableAssets: next });
+    },
+    [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly]
+  );
+
   const inviteEmphasis = humanOthers.length === 0;
 
   const existingHumanUserIds = useMemo(
@@ -1496,7 +1683,7 @@ export function RequirementsWorkspace({
             color: "#065f46",
           }}
         >
-          정리본 생성이 가능합니다. 입력창 + 메뉴에서 「정리 요청」을 선택하세요.
+          정리본 생성이 가능합니다. 입력창 왼쪽 + 메뉴에서 「정리 요청」 또는 「산출물 생성」을 선택하세요.
         </div>
       ) : (
         <div style={{ marginBottom: 6 }} />
@@ -1554,6 +1741,13 @@ export function RequirementsWorkspace({
               setReplyTo({ id: messageId, preview });
               window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);
             }}
+            onOpenDeliverableDocument={(id) => openDeliverableViewer([id], id)}
+            onOpenDeliverableDocuments={(ids) => openDeliverableViewer(ids, ids[0] ?? null)}
+            onRegenerateDeliverables={(types) => {
+              const next = types.filter(isIdeationDeliverableType);
+              if (next.length) void handleGenerateDeliverables(next);
+            }}
+            onConfirmDeliverables={(ids) => void handleConfirmDeliverableAssets(ids)}
             composer={
               <div
                 style={{
@@ -1604,6 +1798,18 @@ export function RequirementsWorkspace({
                     onOpenDraftView: () => setDraftDrawerOpen(true),
                     onOpenPromptView: () => setPromptDrawerOpen(true),
                     onOpenSummaryEdit: () => setSummaryModalOpen(true),
+                    onGenerateDeliverables: handleGenerateDeliverables,
+                    deliverableGenerateBusy,
+                    onAttachFiles: (files) => {
+                      const names = Array.from(files)
+                        .map((f) => f.name.trim())
+                        .filter(Boolean);
+                      if (!names.length) return;
+                      setInput((prev) => {
+                        const tail = prev && !/\n$/.test(prev) ? "\n" : "";
+                        return `${prev}${tail}[첨부: ${names.join(", ")}]\n`;
+                      });
+                    },
                     devAckStep: isNextPublicDevWorkflowToolsEnabled()
                       ? { onClick: () => void ackDev(), disabled: busy || remoteLocked || !resolvedProjectId.trim() }
                       : null,
@@ -1655,6 +1861,22 @@ export function RequirementsWorkspace({
         onOpenIssuesChange={setOpenIssues}
         onSuccessChange={setSuccess}
         onBlurSave={() => void onPanelBlurSave()}
+      />
+
+      {draftDoc ? (
+        <RequirementsDraftDocumentDrawer
+          open={draftDrawerOpen}
+          onClose={() => setDraftDrawerOpen(false)}
+          draft={draftDoc}
+          exportBaseName={project?.name?.trim() ?? ""}
+        />
+      ) : null}
+
+      <RequirementsDeliverableViewerModal
+        open={deliverableViewerOpen}
+        onClose={() => setDeliverableViewerOpen(false)}
+        assets={deliverableViewerAssets}
+        initialAssetId={deliverableViewerFocusId}
       />
     </div>
   );
