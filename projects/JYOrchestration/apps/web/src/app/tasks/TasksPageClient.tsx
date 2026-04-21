@@ -24,16 +24,6 @@ export function TasksPageClient() {
 
   const hasContext = Boolean(view.requirementId || view.sessionId);
 
-  const openRequirement = () => {
-    if (view.requirementId) {
-      router.push(`/requirements/${encodeURIComponent(view.requirementId)}?tab=tasks`);
-    }
-  };
-
-  const openFeaturesStep = () => {
-    router.push("/features");
-  };
-
   return (
     <div>
       <WorkflowPageHeader
@@ -71,7 +61,7 @@ export function TasksPageClient() {
             <WorkflowDemoSampleBanner>
               이 작업 공간은 URL로 연결된 아이디어·세션에서 온 초안 중심입니다. 프로젝트 단위 작업·생성 작업은 생성 준비(홈)에서 이어집니다.
             </WorkflowDemoSampleBanner>
-            <TasksWorkspaceContent view={view} onOpenRequirement={openRequirement} onOpenFeaturesStep={openFeaturesStep} />
+            <TasksWorkspaceContent view={view} />
           </>
         ) : null}
       </div>
