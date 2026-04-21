@@ -8,9 +8,17 @@ export const IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE = "ideation-interview-bo
  */
 export function sanitizeIdeationInterviewFirstQuestion(raw: string): string {
   let t = String(raw ?? "").trim();
-  if (!t) return "핵심 사용자는 누구이며, 어떤 상황에서 이 서비스가 필요하나요?";
+  if (!t) return "지금 이 서비스가 가장 먼저 풀어야 할 사용자의 문제는 무엇인가요?";
   t = t.replace(/^["'`“”]+|["'`“”]+$/g, "");
   t = t.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/^#{1,6}\s+/gm, "");
+  t = t.replace(/^\s*\d+[\.)]\s+/, "").trim();
+  /** 번호·불릿으로 이어지는 여러 질문이 한 응답에 오면 첫 질문만 사용 */
+  t = t.replace(/\n\s*(?:\d+[\.)]|[-*•]|[①-⑨])\s+[\s\S]*$/, "").trim();
+  const qGlobal = (t.match(/\?/g) ?? []).length;
+  if (qGlobal > 1) {
+    const first = t.indexOf("?");
+    t = t.slice(0, first + 1).trim();
+  }
   const lines = t
     .split(/\n+/)
     .map((s) => s.trim())

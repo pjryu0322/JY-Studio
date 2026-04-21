@@ -105,8 +105,16 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
   }
 
   const onRequirementsPage = current === "requirements";
-  const onProjectHubPage = /^\/projects\/[^/?#]+/.test(pathname);
-  const hideGuidanceFooter = onRequirementsPage || onProjectHubPage;
+  const onProjectsPath = /^\/projects\/[^/?#]+/.test(pathname);
+  const onMainWorkflowStep =
+    current === "requirements" ||
+    current === "features" ||
+    current === "tasks" ||
+    current === "execution" ||
+    current === "trace" ||
+    current === "planning";
+  /** 프로젝트 단계 탭(ProjectWorkflowNav)이 있는 화면에서는 하단「다음 단계」블록을 숨긴다. */
+  const hideGuidanceFooter = onProjectsPath || (Boolean(guidanceProjectId) && onMainWorkflowStep);
   const showGuidanceFooter = Boolean(guidanceProjectId) && !hideGuidanceFooter;
 
   return (

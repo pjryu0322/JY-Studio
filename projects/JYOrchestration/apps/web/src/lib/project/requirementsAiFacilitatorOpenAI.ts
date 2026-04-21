@@ -185,10 +185,11 @@ ${pd}
 
 IMPORTANT:
 Only ask ONE question.
+The entire response must contain exactly one question mark (?).
 
 [출력 형식 — 반드시 준수]
 - 이번 응답은 질문 한 문장만 출력한다.
-- 인사·설명·부연·마크다운·목록·머리글 금지.
+- 인사·설명·부연·마크다운·목록·머리글·번호 매기기(1. 2. 등) 금지.
 - 문장 끝은 반드시 물음표(?)로 끝낸다.`;
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -199,11 +200,11 @@ Only ask ONE question.
     },
     body: JSON.stringify({
       model,
-      temperature: 0.35,
-      max_tokens: 120,
+      temperature: 0.2,
+      max_tokens: 72,
       messages: [
         { role: "system", content: system },
-        { role: "user", content: "지금 첫 질문을 시작하라." },
+        { role: "user", content: "한국어로 질문 한 문장만 출력하라. 물음표는 하나만." },
       ],
     }),
   });

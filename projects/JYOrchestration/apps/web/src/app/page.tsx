@@ -147,6 +147,12 @@ export default function HomePage() {
       await loadProjects();
       setHighlightProjectId(newId);
       setCreateToast(true);
+      /** 최근 프로젝트 키만 갱신(자동 열기는 프로젝트 허브로). 생성 직후 아이디어 화면으로 보내지 않음 — readAutoEnterAfterCreate는 사용하지 않음. */
+      try {
+        sessionStorage.setItem(APP_FLOW_LAST_PROJECT_KEY, newId);
+      } catch {
+        /* ignore */
+      }
     } catch (error) {
       console.error("Failed to create project:", error);
       setErrorMessage("프로젝트 생성 중 오류가 발생했습니다.");
@@ -199,7 +205,7 @@ export default function HomePage() {
     }
     const id = last.trim();
     if (!id) return;
-    router.replace(`/requirements?projectId=${encodeURIComponent(id)}`);
+    router.replace(`/projects/${encodeURIComponent(id)}`);
   }, [router]);
 
   return (
