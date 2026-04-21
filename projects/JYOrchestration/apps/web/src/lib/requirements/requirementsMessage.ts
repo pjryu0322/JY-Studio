@@ -1,5 +1,8 @@
 export type RequirementsMessageRole = "user" | "ai" | "human" | "system";
 
+/** 사용자 질문의 복수 대상(단일 targetId/targetName과 병행 저장 가능) */
+export type RequirementsMessageTarget = { id: string; name: string };
+
 export type RequirementsSpeakerType = "USER" | "AI" | "HUMAN" | "SYSTEM";
 export type RequirementsVisibility = "PUBLIC";
 export type RequirementsMessageType = "QUESTION" | "STATEMENT" | "ANSWER" | "NOTICE" | "FRIENDLY_ERROR";
@@ -18,8 +21,12 @@ export type RequirementsMessage = {
   speakerType: RequirementsSpeakerType;
   speakerId: string;
   speakerName: string;
+  /** 답글(스레드)용: 어떤 메시지에 대한 reply인지 */
+  replyTo?: string | null;
   targetId?: string | null;
   targetName?: string | null;
+  /** 복수 질문 대상(없으면 targetId/targetName만 사용) */
+  targets?: readonly RequirementsMessageTarget[] | null;
   visibility: RequirementsVisibility;
   messageType: RequirementsMessageType;
   content: string;
@@ -41,14 +48,18 @@ export function newRequirementsMessage(input: Omit<RequirementsMessage, "id" | "
       ? crypto.randomUUID()
       : `m-${Date.now()}-${Math.random()}`);
   const createdAt = input.createdAt ?? new Date().toISOString();
+  const targets =
+    Array.isArray(input.targets) && input.targets.length > 0 ? (input.targets.map((t) => ({ id: String(t.id), name: String(t.name) })) as RequirementsMessageTarget[]) : undefined;
   return {
     id,
     role: input.role,
     speakerType: input.speakerType,
     speakerId: String(input.speakerId ?? ""),
     speakerName: String(input.speakerName ?? ""),
+    replyTo: typeof input.replyTo === "string" ? input.replyTo : input.replyTo === null ? null : undefined,
     targetId: input.targetId ?? null,
     targetName: input.targetName ?? null,
+    ...(targets && targets.length ? { targets } : {}),
     visibility: input.visibility ?? "PUBLIC",
     messageType: input.messageType,
     content: input.content,
@@ -181,11 +192,27 @@ export function coerceRequirementsMessage(v: unknown): RequirementsMessage | nul
           ? o.directedToName
           : undefined;
 
+  const replyTo =
+    o.replyTo === null ? null : typeof o.replyTo === "string" && o.replyTo.trim() ? o.replyTo.trim() : undefined;
+
   const visibility: RequirementsVisibility = o.visibility === "PUBLIC" ? "PUBLIC" : "PUBLIC";
 
   const metaIn = o.meta;
   const metaPartial =
     metaIn && typeof metaIn === "object" && metaIn !== null ? (metaIn as Partial<RequirementsMessageMeta>) : undefined;
+
+  let targets: RequirementsMessageTarget[] | undefined;
+  if (Array.isArray(o.targets)) {
+    const parsed: RequirementsMessageTarget[] = [];
+    for (const row of o.targets) {
+      if (!row || typeof row !== "object") continue;
+      const r = row as Record<string, unknown>;
+      const tid = typeof r.id === "string" ? r.id.trim() : "";
+      const tnm = typeof r.name === "string" ? r.name.trim() : "";
+      if (tid) parsed.push({ id: tid, name: tnm || tid });
+    }
+    if (parsed.length) targets = parsed;
+  }
 
   return newRequirementsMessage({
     id,
@@ -193,8 +220,10 @@ export function coerceRequirementsMessage(v: unknown): RequirementsMessage | nul
     speakerType,
     speakerId,
     speakerName,
+    ...(replyTo !== undefined ? { replyTo } : {}),
     targetId: targetId ?? null,
     targetName: targetName ?? null,
+    ...(targets && targets.length ? { targets } : {}),
     visibility,
     messageType,
     content,

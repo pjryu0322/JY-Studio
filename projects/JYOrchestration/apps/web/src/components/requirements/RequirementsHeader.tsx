@@ -7,17 +7,13 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 export function RequirementsHeader({
   projectName,
   showProjectWorkflowNav,
-  ideationStatusLine,
 }: {
   /** 실제 프로젝트명(또는 로딩·오류 시 사람이 읽을 수 있는 짧은 문구). raw projectId 축약 문자열 금지. */
   readonly projectName: string;
   /** 프로젝트가 열려 있을 때 워크플로·멤버/설정/추적 탭을 헤더 하단에 표시 */
   readonly showProjectWorkflowNav: boolean;
-  /** 프로젝트 연결 시에만: 진행률 또는 완료 문구 */
-  readonly ideationStatusLine?: string | null;
 }) {
   const showScreenLabels = useShowScreenLabels();
-  const status = (ideationStatusLine ?? "").trim();
 
   return (
     <header
@@ -45,19 +41,6 @@ export function RequirementsHeader({
         >
           {projectName}
         </div>
-        {status ? (
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 14,
-              fontWeight: 700,
-              color: status.includes("완료") ? "#047857" : "#475569",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {status}
-          </div>
-        ) : null}
       </div>
 
       {showProjectWorkflowNav ? (
