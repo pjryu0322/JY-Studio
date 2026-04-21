@@ -2,8 +2,11 @@ import {
   isRequirementsMessage,
   newRequirementsMessage,
   type RequirementsMessage,
+  type RequirementsMessageMeta,
   type RequirementsMessageRole,
+  type RequirementsMessageTarget,
 } from "@/lib/requirements/requirementsMessage";
+import { dedupeMemberRefs } from "@/lib/requirements/requirementsTargets";
 import { newConversation, type RequirementsConversation } from "@/lib/requirements/conversationStore";
 import type { RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 
@@ -133,27 +136,50 @@ export function newChatMessage(partial: {
   authorName?: string;
   directedToId?: string | null;
   directedToName?: string | null;
+  /** 복수 질문 대상(있으면 directedTo*와 동기화) */
+  targets?: readonly RequirementsMessageTarget[] | null;
+  /** 답글(스레드)용 */
+  replyTo?: string | null;
   speakerId?: string;
   speakerName?: string;
   speakerType?: "USER" | "AI" | "HUMAN" | "SYSTEM";
   messageType?: "QUESTION" | "STATEMENT" | "ANSWER" | "NOTICE" | "FRIENDLY_ERROR";
+  meta?: Partial<RequirementsMessageMeta>;
 }): RequirementsMessage {
   const role = partial.role;
   const speakerType =
     partial.speakerType ?? (role === "user" ? "USER" : role === "ai" ? "AI" : role === "human" ? "HUMAN" : "SYSTEM");
   const speakerName =
     partial.speakerName ?? partial.authorName ?? (role === "user" ? "나" : role === "ai" ? "AI" : role === "human" ? "멤버" : "시스템");
+  const rawTargets: RequirementsMessageTarget[] =
+    partial.targets && partial.targets.length > 0
+      ? dedupeMemberRefs(partial.targets)
+      : partial.directedToId
+        ? [
+            {
+              id: String(partial.directedToId),
+              name: String(partial.directedToName ?? "").trim() || String(partial.directedToId),
+            },
+          ]
+        : [];
+  const first = rawTargets[0];
+  const hasNamedTargets = rawTargets.length > 0;
+  const replyTo =
+    partial.replyTo === null ? null : typeof partial.replyTo === "string" && partial.replyTo.trim() ? partial.replyTo.trim() : undefined;
   return newRequirementsMessage({
     role,
     speakerType,
     speakerId: partial.speakerId ?? (speakerType === "USER" ? "me" : speakerType === "AI" ? "ai" : speakerType === "HUMAN" ? "member" : "system"),
     speakerName,
-    targetId: partial.directedToId ?? null,
-    targetName: partial.directedToName ?? null,
+    ...(replyTo !== undefined ? { replyTo } : {}),
+    targetId: first?.id ?? partial.directedToId ?? null,
+    targetName: first?.name ?? partial.directedToName ?? null,
+    ...(rawTargets.length > 0 ? { targets: rawTargets } : {}),
     messageType:
       partial.messageType ??
-      (role === "system" ? "NOTICE" : role === "ai" ? "ANSWER" : partial.directedToName ? "QUESTION" : "STATEMENT"),
+      (role === "system" ? "NOTICE" : role === "ai" ? "ANSWER" : hasNamedTargets ? "QUESTION" : "STATEMENT"),
     content: partial.body,
+    ...(partial.meta ? { meta: partial.meta } : {}),
   });
 }
 

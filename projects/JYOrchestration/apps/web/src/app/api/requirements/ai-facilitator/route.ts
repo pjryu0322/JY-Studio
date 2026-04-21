@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { runRequirementsFacilitatorOpenAI, type RequirementsAiResponseStyle } from "@/lib/project/requirementsAiFacilitatorOpenAI";
+import {
+  runRequirementsFacilitatorOpenAI,
+  runRequirementsIdeationInterviewBootstrapOpenAI,
+  type RequirementsAiResponseStyle,
+} from "@/lib/project/requirementsAiFacilitatorOpenAI";
 
 type Body = {
   projectId?: string;
@@ -12,6 +16,14 @@ type Body = {
   userMessage?: string;
   dialogueExcerpt?: string;
   aiResponseStyle?: string;
+  /** 질문 대상 멤버 id·이름 */
+  targets?: Array<{ id?: string; name?: string }>;
+  /** 발신자 */
+  sender?: { id?: string; name?: string };
+  /** 답글(스레드)용: 어떤 메시지에 대한 reply인지 */
+  replyTo?: string | null;
+  /** 대화 비어 있을 때 인터뷰 첫 질문만 생성(별도 시스템 프롬프트) */
+  bootstrapInterview?: boolean;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
@@ -31,6 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as Body;
+    const bootstrapInterview = Boolean(body.bootstrapInterview);
     const projectId = String(body.projectId ?? "").trim();
     const projectName = String(body.projectName ?? "").trim();
     const projectDescription = String(body.projectDescription ?? "");
@@ -38,9 +51,31 @@ export async function POST(request: NextRequest) {
     const userMessage = String(body.userMessage ?? "").trim();
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
     const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
+    const targetsRaw = Array.isArray(body.targets) ? body.targets : [];
+    const mentionTargetsSummary = targetsRaw
+      .map((t) => {
+        const id = String(t?.id ?? "").trim();
+        const name = String(t?.name ?? "").trim();
+        if (!id && !name) return "";
+        return name ? `- ${name}${id ? ` (${id})` : ""}` : `- ${id}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+    const sender = body.sender && typeof body.sender === "object" ? body.sender : null;
+    const senderSummary =
+      sender && (String(sender.name ?? "").trim() || String(sender.id ?? "").trim())
+        ? `${String(sender.name ?? "").trim() || "발신"}${String(sender.id ?? "").trim() ? ` · ${String(sender.id).trim()}` : ""}`
+        : "";
 
-    if (!userMessage) {
+    if (!bootstrapInterview && !userMessage) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
+    }
+
+    if (bootstrapInterview && !projectId) {
+      return NextResponse.json(
+        { success: false, message: "인터뷰 자동 시작에는 projectId가 필요합니다." },
+        { status: 400 }
+      );
     }
 
     if (projectId) {
@@ -56,14 +91,21 @@ export async function POST(request: NextRequest) {
     }
 
     const stage = stageRaw === "requirements" ? "requirements" : "requirements";
-    const result = await runRequirementsFacilitatorOpenAI({
-      projectName,
-      projectDescription,
-      stage,
-      userMessage,
-      dialogueExcerpt,
-      responseStyle,
-    });
+    const result = bootstrapInterview
+      ? await runRequirementsIdeationInterviewBootstrapOpenAI({
+          projectName,
+          projectDescription,
+        })
+      : await runRequirementsFacilitatorOpenAI({
+          projectName,
+          projectDescription,
+          stage,
+          userMessage,
+          dialogueExcerpt,
+          responseStyle,
+          mentionTargetsSummary: mentionTargetsSummary || undefined,
+          senderSummary: senderSummary || undefined,
+        });
     if (!result.ok) {
       return NextResponse.json({
         success: false,
