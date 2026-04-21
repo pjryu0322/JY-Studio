@@ -41,6 +41,14 @@ import {
   parseRequirementsStateJson,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import {
+  bootstrapOrganizeMemoryFacts,
+  buildRollingSummaryFromIdeationFields,
+  DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT,
+  formatOrganizeRecentMessages,
+  mergeOrganizeContextAfterDraft,
+  mergeOrganizeMemoryFactsPreserveMandatory,
+} from "@/lib/requirements/requirementsOrganizeContext";
 import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr, splitSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
@@ -244,6 +252,8 @@ export function RequirementsWorkspace({
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
   const ideationBootstrapFlightRef = useRef<string | null>(null);
+  /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
+  const organizeRawFallbackRef = useRef(false);
 
   useEffect(() => {
     setResolvedProjectId(initialProjectId.trim());
@@ -1068,6 +1078,29 @@ export function RequirementsWorkspace({
         lastPromptGeneratedAt: promptMetaIso,
         lastUserDraftText: input,
       });
+      const prevCtx = stateJsonRef.current.organizeContext ?? null;
+      const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
+      const recentBlock = formatOrganizeRecentMessages(conversationMessages, recentCount, 12_000);
+      const bootFacts = bootstrapOrganizeMemoryFacts({
+        goals,
+        targetUsers,
+        scopeIn,
+        scopeOut,
+        success,
+        nfr,
+        openIssues,
+        priorityFeatures,
+      });
+      const memoryFactsForApi = mergeOrganizeMemoryFactsPreserveMandatory(prevCtx?.memoryFacts ?? undefined, bootFacts);
+      const rolling =
+        (typeof prevCtx?.rollingSummary === "string" && prevCtx.rollingSummary.trim()) ||
+        buildRollingSummaryFromIdeationFields({
+          goals,
+          openIssues,
+          priorityFeatures,
+        });
+      const useRaw = organizeRawFallbackRef.current;
+      organizeRawFallbackRef.current = false;
       const excerpt = formatDialogueExcerpt(conversationMessages);
       const res = await fetch("/api/requirements/draft-generate", {
         method: "POST",
@@ -1079,7 +1112,11 @@ export function RequirementsWorkspace({
           projectDescription: project?.description ?? "",
           stage: "requirements",
           userMessage: organizeUserMessage,
-          dialogueExcerpt: excerpt,
+          dialogueExcerpt: useRaw ? excerpt : "",
+          memoryFacts: memoryFactsForApi,
+          rollingSummary: rolling,
+          recentMessages: recentBlock,
+          useRawDialogueFallback: useRaw,
           existingDraft: draftDoc,
           aiResponseStyle: readAiResponseStyle(),
         }),
@@ -1134,7 +1171,14 @@ export function RequirementsWorkspace({
       };
       const organizedIso = new Date().toISOString();
       setOrganizedAt(organizedIso);
-      await persistRemote(nextRoom, {}, { lastOrganizedAt: organizedIso });
+      const nextOrganizeContext = mergeOrganizeContextAfterDraft({
+        previous: prevCtx ?? undefined,
+        draft: nextDraft,
+        messages: conversationMessages,
+        recentSnapshot: recentBlock,
+        recentCount,
+      });
+      await persistRemote(nextRoom, {}, { lastOrganizedAt: organizedIso, organizeContext: nextOrganizeContext });
       setOrganizeState("done");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "오류";
@@ -1157,6 +1201,14 @@ export function RequirementsWorkspace({
     persistRemote,
     persistStateJsonOnly,
     input,
+    goals,
+    targetUsers,
+    scopeIn,
+    scopeOut,
+    success,
+    nfr,
+    openIssues,
+    priorityFeatures,
   ]);
 
   const handleGenerateDeliverables = useCallback(
@@ -1822,9 +1874,37 @@ export function RequirementsWorkspace({
       </div>
 
       {error ? (
-        <p style={{ color: "#b91c1c", fontWeight: 600, fontSize: 13 }} role="alert">
-          {error}
-        </p>
+        <div style={{ marginTop: 4 }}>
+          <p style={{ color: "#b91c1c", fontWeight: 600, fontSize: 13 }} role="alert">
+            {error}
+          </p>
+          {organizeState === "error" && organizeError ? (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  organizeRawFallbackRef.current = true;
+                  setOrganizeState("idle");
+                  setOrganizeError(null);
+                  setError(null);
+                  void onOrganizeRequirements();
+                }}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  background: "#f8fafc",
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: "#0f172a",
+                  cursor: "pointer",
+                }}
+              >
+                전체 대화 원문으로 다시 정리하기
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       <RequirementsMemberInviteModal

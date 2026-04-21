@@ -3,6 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { runRequirementsDraftOpenAI, type RequirementsAiResponseStyle } from "@/lib/project/requirementsAiFacilitatorOpenAI";
+import { parseOrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 
 type Body = {
   projectId?: string;
@@ -13,6 +14,10 @@ type Body = {
   dialogueExcerpt?: string;
   existingDraft?: unknown;
   aiResponseStyle?: string;
+  memoryFacts?: unknown;
+  rollingSummary?: string;
+  recentMessages?: string;
+  useRawDialogueFallback?: boolean;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
@@ -35,6 +40,10 @@ export async function POST(request: NextRequest) {
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
     const existingDraft = body.existingDraft;
     const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
+    const memoryFacts = parseOrganizeMemoryFacts(body.memoryFacts);
+    const rollingSummary = String(body.rollingSummary ?? "").trim();
+    const recentMessages = String(body.recentMessages ?? "").trim();
+    const useRawDialogueFallback = Boolean(body.useRawDialogueFallback);
 
     if (!userMessage) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
@@ -58,6 +67,10 @@ export async function POST(request: NextRequest) {
       dialogueExcerpt,
       existingDraft,
       responseStyle,
+      memoryFacts,
+      rollingSummary,
+      recentMessages,
+      useRawDialogueFallback,
     });
     if (!result.ok) {
       return NextResponse.json({ success: false, code: result.code, message: result.message }, { status: 502 });

@@ -1,6 +1,10 @@
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
+import {
+  parseRequirementsOrganizeContextV1,
+  type RequirementsOrganizeContextV1,
+} from "@/lib/requirements/requirementsOrganizeContext";
 
 function unwrapDbJsonField(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
@@ -36,6 +40,11 @@ export type RequirementsStateJson = {
   ideationCompletionAiNoticeSent?: boolean;
   /** AI 산출물 초안(회의 요약·문제정의서 등), 버전은 유형별로 증가 */
   deliverableAssets?: IdeationDeliverableAsset[] | null;
+  /**
+   * 정리 요청용 맥락(원문 대화는 `requirementsConversationJson`이 단일 소스).
+   * `memoryFacts`·`rollingSummary`·`recentMessagesSnapshot`으로 AI 입력을 압축한다.
+   */
+  organizeContext?: RequirementsOrganizeContextV1 | null;
 };
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
@@ -95,6 +104,11 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ideationCompletionAiNoticeSent:
       typeof o.ideationCompletionAiNoticeSent === "boolean" ? o.ideationCompletionAiNoticeSent : undefined,
     deliverableAssets: o.deliverableAssets === null ? null : parseDeliverableAssetsFromState(o.deliverableAssets),
+    organizeContext: !("organizeContext" in o)
+      ? undefined
+      : o.organizeContext === null
+        ? null
+        : parseRequirementsOrganizeContextV1(o.organizeContext) ?? null,
   };
 }
 
