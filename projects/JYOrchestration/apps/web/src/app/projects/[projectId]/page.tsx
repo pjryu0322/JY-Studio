@@ -148,7 +148,7 @@ export default function ProjectDetailPage() {
       >
         <h2 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 900, color: "#0f172a" }}>요약</h2>
         <p style={{ margin: 0, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
-          워크플로 단계로 이동하려면 상단 네비게이션을 사용하세요. 멤버/설정은 관리 링크 또는 아래 카드에서 바로 이동할 수 있습니다.
+          상단 워크플로로 이동하고, 아래 카드에서 관리 기능을 빠르게 실행할 수 있습니다.
         </p>
       </section>
 
@@ -207,7 +207,7 @@ export default function ProjectDetailPage() {
       </section>
 
       <section
-        aria-label="빠른 이동"
+        aria-label="관리 바로가기"
         style={{
           marginBottom: 18,
           padding: "14px 16px",
@@ -216,22 +216,10 @@ export default function ProjectDetailPage() {
           background: "#ffffff",
         }}
       >
-        <h2 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 900, color: "#0f172a" }}>빠른 이동</h2>
+        <h2 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 900, color: "#0f172a" }}>관리 바로가기</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <Link href={`/requirements?projectId=${encodedProjectId}`} style={quickLinkStyle()}>
-            아이디어 구체화
-          </Link>
-          <Link href={`/features?projectId=${encodedProjectId}`} style={quickLinkStyle()}>
-            기능 정리
-          </Link>
-          <Link href={`/tasks?projectId=${encodedProjectId}`} style={quickLinkStyle()}>
-            작업 정리
-          </Link>
           <Link href={`/projects/${encodedProjectId}?view=workspace`} style={quickLinkStyle()}>
-            생성 준비
-          </Link>
-          <Link href={`/execution?projectId=${encodedProjectId}`} style={quickLinkStyle()}>
-            프로토타입 생성
+            실행 준비
           </Link>
           <Link href={membersHref} style={quickLinkStyle()}>
             프로젝트 멤버
