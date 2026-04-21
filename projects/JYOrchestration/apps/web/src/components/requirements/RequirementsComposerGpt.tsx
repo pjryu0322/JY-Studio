@@ -46,7 +46,7 @@ function PlusIcon() {
 function menuItemStyle(disabled: boolean): CSSProperties {
   return {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 10,
     width: "100%",
@@ -66,6 +66,23 @@ function MenuDivider() {
   return <div style={{ height: 1, background: "#f1f5f9", margin: "4px 8px" }} aria-hidden />;
 }
 
+function MenuGroupLabel({ children }: { readonly children: string }) {
+  return (
+    <div style={{ padding: "8px 14px 4px", fontSize: 11, fontWeight: 900, color: "#94a3b8", letterSpacing: "0.02em" }}>
+      {children}
+    </div>
+  );
+}
+
+function MenuItemText({ title, sub }: { readonly title: string; readonly sub?: string }) {
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.2, color: "inherit" }}>{title}</span>
+      {sub ? <span style={{ fontSize: 12, fontWeight: 600, color: "#64748b", lineHeight: 1.25 }}>{sub}</span> : null}
+    </span>
+  );
+}
+
 function ComposerHubMenuItems({
   tools,
   onPick,
@@ -81,26 +98,42 @@ function ComposerHubMenuItems({
   return (
     <>
       {canDeliver ? (
-        <button
-          type="button"
-          role="menuitem"
-          disabled={Boolean(tools.deliverableGenerateBusy)}
-          onClick={() => {
-            if (tools.deliverableGenerateBusy) return;
-            onOpenDeliverPanel();
-            onPick();
-          }}
-          style={menuItemStyle(Boolean(tools.deliverableGenerateBusy))}
-        >
-          <span>산출물 생성 (즉시 생성형)</span>
-          <span style={{ fontSize: 16, color: "#94a3b8", fontWeight: 700 }} aria-hidden>
-            ›
-          </span>
-        </button>
+        <>
+          <MenuGroupLabel>산출물 작업</MenuGroupLabel>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={tools.organizeDisabled}
+            onClick={() => {
+              if (tools.organizeDisabled) return;
+              tools.onOrganizeRequirements();
+              onPick();
+            }}
+            style={menuItemStyle(tools.organizeDisabled)}
+          >
+            <MenuItemText title="정리 요청 (플래너 검토형)" sub="정보 검토 후 생성" />
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={Boolean(tools.deliverableGenerateBusy)}
+            onClick={() => {
+              if (tools.deliverableGenerateBusy) return;
+              onOpenDeliverPanel();
+              onPick();
+            }}
+            style={menuItemStyle(Boolean(tools.deliverableGenerateBusy))}
+          >
+            <MenuItemText title="산출물 생성 (즉시 생성형)" sub="현재 내용으로 즉시 생성" />
+            <span style={{ fontSize: 16, color: "#94a3b8", fontWeight: 700, marginTop: 1 }} aria-hidden>
+              ›
+            </span>
+          </button>
+          <MenuDivider />
+        </>
       ) : null}
-      <div style={{ padding: "6px 14px 2px", fontSize: 11, fontWeight: 900, color: "#94a3b8", letterSpacing: "0.02em" }}>
-        산출물 작업
-      </div>
+
+      <MenuGroupLabel>문서 보기</MenuGroupLabel>
       {tools.draftViewAvailable ? (
         <button
           type="button"
@@ -111,7 +144,7 @@ function ComposerHubMenuItems({
           }}
           style={menuItemStyle(false)}
         >
-          정리본 보기
+          <MenuItemText title="정리본 보기" sub="저장된 초안 확인" />
         </button>
       ) : null}
       <button
@@ -123,8 +156,11 @@ function ComposerHubMenuItems({
         }}
         style={menuItemStyle(false)}
       >
-        프롬프트 보기
+        <MenuItemText title="프롬프트 보기" sub="AI 전달 내용 확인" />
       </button>
+      <MenuDivider />
+
+      <MenuGroupLabel>편집</MenuGroupLabel>
       <button
         type="button"
         role="menuitem"
@@ -134,10 +170,13 @@ function ComposerHubMenuItems({
         }}
         style={menuItemStyle(false)}
       >
-        요약 편집
+        <MenuItemText title="요약 편집" sub="목표/범위 직접 수정" />
       </button>
+      <MenuDivider />
+
       {tools.onAttachFiles ? (
         <>
+          <MenuGroupLabel>파일</MenuGroupLabel>
           <input
             ref={fileInputRef}
             type="file"
@@ -159,28 +198,9 @@ function ComposerHubMenuItems({
             }}
             style={menuItemStyle(false)}
           >
-            파일 첨부
+            <MenuItemText title="파일 첨부" />
           </button>
         </>
-      ) : null}
-      <MenuDivider />
-      <button
-        type="button"
-        role="menuitem"
-        disabled={tools.organizeDisabled}
-        onClick={() => {
-          if (tools.organizeDisabled) return;
-          tools.onOrganizeRequirements();
-          onPick();
-        }}
-        style={menuItemStyle(tools.organizeDisabled)}
-      >
-        정리 요청 (플래너 검토형)
-      </button>
-      {canDeliver ? (
-        <div style={{ padding: "0 14px 6px", fontSize: 12, color: "#64748b", lineHeight: 1.35 }}>
-          정보를 검토하고 부족한 내용을 질문한 뒤 결과물을 작성합니다.
-        </div>
       ) : null}
       {tools.devAckStep ? (
         <button
@@ -195,7 +215,7 @@ function ComposerHubMenuItems({
           }}
           style={menuItemStyle(tools.devAckStep.disabled)}
         >
-          (DEV) 단계 건너뛰기
+          <MenuItemText title="(DEV) 단계 건너뛰기" />
         </button>
       ) : null}
     </>
@@ -388,6 +408,14 @@ export function RequirementsComposerGpt({
     () => [...selectedDeliverableTypes].some((x) => x !== IDEATION_DELIVERABLE_FULL_PLAN),
     [selectedDeliverableTypes]
   );
+
+  const deliverPanelHelper = useMemo(() => {
+    if (hasFullPlanSelected) return "전체 기획안을 종합 생성합니다.";
+    const n = selectedDeliverableTypes.size;
+    if (n >= 2) return `선택한 ${n}개 산출물을 생성합니다.`;
+    if (n === 1) return "현재 대화 내용을 기준으로 즉시 생성합니다.\n추가 질문 없이 빠르게 초안을 만듭니다.";
+    return "현재 대화 내용을 기준으로 즉시 생성합니다.\n추가 질문 없이 빠르게 초안을 만듭니다.";
+  }, [hasFullPlanSelected, selectedDeliverableTypes]);
 
   const pickTargetItem = useCallback(
     (targets: readonly { id: string; name: string }[]) => {
@@ -796,8 +824,9 @@ export function RequirementsComposerGpt({
               </button>
             </div>
             <div style={{ padding: "12px 16px", overflowY: "auto", flex: 1, minHeight: 0 }}>
-              <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.5, marginBottom: 12, fontWeight: 600 }}>
-                현재 대화 내용을 기준으로 즉시 생성합니다. 전체 기획안은 종합 산출물이므로 단독 선택만 가능합니다.
+              <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.5, marginBottom: 12, fontWeight: 600, whiteSpace: "pre-wrap" }}>
+                {deliverPanelHelper}
+                {"\n"}전체 기획안은 종합 산출물이므로 단독 선택만 가능합니다.
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {IDEATION_DELIVERABLE_ORDER.map((t) => {

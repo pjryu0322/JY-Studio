@@ -241,6 +241,8 @@ export function RequirementsWorkspace({
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [plannerTypePickerOpen, setPlannerTypePickerOpen] = useState(false);
   const [plannerTypePicked, setPlannerTypePicked] = useState<IdeationDeliverableType>("problem_statement");
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const successToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saveToastVisible, setSaveToastVisible] = useState(false);
   const saveToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSaveStateRef = useRef<"idle" | "saving" | "saved" | "error">("idle");
@@ -888,6 +890,27 @@ export function RequirementsWorkspace({
     };
   }, []);
 
+  const showSuccessToast = useCallback((message: string) => {
+    if (successToastHideTimerRef.current) {
+      clearTimeout(successToastHideTimerRef.current);
+      successToastHideTimerRef.current = null;
+    }
+    setSuccessToast(message);
+    successToastHideTimerRef.current = setTimeout(() => {
+      setSuccessToast(null);
+      successToastHideTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (successToastHideTimerRef.current) {
+        clearTimeout(successToastHideTimerRef.current);
+        successToastHideTimerRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (conversationStatus !== "loaded") return;
     const pid = resolvedProjectId.trim();
@@ -1251,6 +1274,7 @@ export function RequirementsWorkspace({
         });
       }
       await persistStateJsonOnly({ organizePlannerState: null, lastOrganizedAt: new Date().toISOString() });
+      showSuccessToast(`${schema.labelKr} 생성 완료`);
       setOrganizeState("done");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "오류";
@@ -1395,6 +1419,11 @@ export function RequirementsWorkspace({
           },
         };
         await persistRemote(nextRoom, {}, { deliverableAssets: merged });
+        if (created.length === 1 && created[0]) {
+          showSuccessToast(`${IDEATION_DELIVERABLE_LABELS[created[0].type]} 생성 완료`);
+        } else {
+          showSuccessToast(`${created.length}개 산출물 생성 완료`);
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "오류";
         if (msg !== "GUARD") {
@@ -1422,6 +1451,7 @@ export function RequirementsWorkspace({
       project?.requirementsStateJson,
       room,
       persistRemote,
+      showSuccessToast,
     ]
   );
 
@@ -1647,6 +1677,7 @@ export function RequirementsWorkspace({
               });
               await handleGenerateDeliverables([requestedType]);
               await persistStateJsonOnly({ organizePlannerState: null, lastOrganizedAt: new Date().toISOString() });
+              showSuccessToast(`${plannerState.requestedLabel ?? schema.labelKr} 생성 완료`);
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
               setInput("");
               setReplyTo(null);
@@ -2073,6 +2104,28 @@ export function RequirementsWorkspace({
         </div>
       ) : null}
 
+      {successToast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            top: 120,
+            right: 24,
+            zIndex: 60,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "#0f766e",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 800,
+            boxShadow: "0 12px 32px -8px rgba(15, 118, 110, 0.45)",
+          }}
+        >
+          {successToast}
+        </div>
+      ) : null}
+
       <RequirementsHeader
         projectName={headerProjectName}
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
@@ -2244,6 +2297,11 @@ export function RequirementsWorkspace({
                   setOrganizeState("idle");
                   setOrganizeError(null);
                   setError(null);
+                  const reuse = (stateJsonRef.current.organizePlannerState?.requestedType as IdeationDeliverableType | undefined) ?? undefined;
+                  if (reuse) {
+                    void runPlannerOrganize(reuse);
+                    return;
+                  }
                   void onOrganizeRequirements();
                 }}
                 style={{
@@ -2257,8 +2315,9 @@ export function RequirementsWorkspace({
                   cursor: "pointer",
                 }}
               >
-                전체 대화 원문으로 다시 정리하기
+                같은 유형으로 전체 대화 기준 다시 시도
               </button>
+              <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 600 }}>이전 선택 유형 유지</div>
             </div>
           ) : null}
         </div>
