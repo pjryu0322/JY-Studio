@@ -1,5 +1,5 @@
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
-import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
+import type { IdeationDeliverableAsset, IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
 import {
   parseRequirementsOrganizeContextV1,
@@ -20,6 +20,18 @@ function unwrapDbJsonField(raw: unknown): unknown {
 /**
  * `Project.requirementsStateJson` — 클라이언트·서버 공통 형태(필드 추가 시 하위 호환 유지).
  */
+export type RequirementsOrganizePlannerState = {
+  requestedType: IdeationDeliverableType;
+  pendingQuestions: string[];
+  slotStatus?: Record<string, "filled" | "missing"> | null;
+  lastAnalyzerResult?: {
+    ready: boolean;
+    message: string;
+    questions: string[];
+    analyzedAt: string;
+  } | null;
+};
+
 export type RequirementsStateJson = {
   lastSavedAt?: string;
   lastOrganizedAt?: string;
@@ -43,6 +55,11 @@ export type RequirementsStateJson = {
    * `memoryFacts`·`rollingSummary`·`recentMessagesSnapshot`으로 AI 입력을 압축한다.
    */
   organizeContext?: RequirementsOrganizeContextV1 | null;
+  /**
+   * 정리요청(플래너 내부 리뷰) 상태: 부족한 슬롯이 있으면 1~2개 질문을 남기고,
+   * 충분하면 산출물 생성(writer)로 이어진다.
+   */
+  organizePlannerState?: RequirementsOrganizePlannerState | null;
 };
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
@@ -59,6 +76,60 @@ export function isRequirementsPromptPresenterView(v: unknown): v is Requirements
     typeof o.latestUserQuestion === "string" &&
     typeof o.targetName === "string"
   );
+}
+
+function isIdeationDeliverableType(v: unknown): v is IdeationDeliverableType {
+  // keep permissive for forward-compat (server/client may add new types)
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+function parseOrganizePlannerState(raw: unknown): RequirementsOrganizePlannerState | undefined {
+  if (raw === null) return undefined;
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const requestedType = isIdeationDeliverableType(o.requestedType) ? o.requestedType : "";
+  const pendingQuestions = Array.isArray(o.pendingQuestions)
+    ? o.pendingQuestions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 4)
+    : [];
+  if (!requestedType || pendingQuestions.length === 0) {
+    // allow stored state with empty questions only if explicitly null (treated as no state)
+    if (!requestedType) return undefined;
+  }
+
+  const slotStatusRaw = o.slotStatus;
+  const slotStatus: Record<string, "filled" | "missing"> | null | undefined =
+    slotStatusRaw && typeof slotStatusRaw === "object"
+      ? (Object.fromEntries(
+          Object.entries(slotStatusRaw as Record<string, unknown>).map(([k, v]) => {
+            const key = String(k);
+            const val: "filled" | "missing" = v === "filled" ? "filled" : "missing";
+            return [key, val] as const;
+          })
+        ) as Record<string, "filled" | "missing">)
+      : slotStatusRaw === null
+        ? null
+        : undefined;
+
+  const lastRaw = o.lastAnalyzerResult;
+  let lastAnalyzerResult: RequirementsOrganizePlannerState["lastAnalyzerResult"];
+  if (lastRaw === null) lastAnalyzerResult = null;
+  else if (lastRaw && typeof lastRaw === "object") {
+    const r = lastRaw as Record<string, unknown>;
+    const analyzedAt = typeof r.analyzedAt === "string" ? r.analyzedAt.trim() : "";
+    const message = typeof r.message === "string" ? r.message.trim() : "";
+    const ready = r.ready === true;
+    const questions = Array.isArray(r.questions) ? r.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 4) : [];
+    if (analyzedAt && message) {
+      lastAnalyzerResult = { ready, message, questions, analyzedAt };
+    }
+  }
+
+  return {
+    requestedType,
+    pendingQuestions,
+    ...(slotStatus !== undefined ? { slotStatus } : {}),
+    ...(lastAnalyzerResult !== undefined ? { lastAnalyzerResult } : {}),
+  };
 }
 
 export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson {
@@ -105,6 +176,11 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
       : o.organizeContext === null
         ? null
         : parseRequirementsOrganizeContextV1(o.organizeContext) ?? null,
+    organizePlannerState: !("organizePlannerState" in o)
+      ? undefined
+      : o.organizePlannerState === null
+        ? null
+        : parseOrganizePlannerState(o.organizePlannerState) ?? null,
   };
 }
 
