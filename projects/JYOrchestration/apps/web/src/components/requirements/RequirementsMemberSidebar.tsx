@@ -14,7 +14,7 @@ function sortForSidebar(participants: readonly ParticipantOption[]): Participant
 
 function statusSubtitle(p: ParticipantOption, selected: boolean): string {
   const parts: string[] = [];
-  if (selected) parts.push("선택됨");
+  if (selected) parts.push("질문 대상");
   if (p.kind === "ai") {
     parts.push("AI");
     const s = p.aiStatusLabel?.trim();
@@ -30,16 +30,16 @@ function statusSubtitle(p: ParticipantOption, selected: boolean): string {
  */
 export function RequirementsMemberSidebar({
   participants,
-  selectedId,
-  onSelect,
+  selectedMemberIds,
+  onToggleMember,
   showInvite,
   inviteDisabled,
   inviteEmphasis,
   onInviteClick,
 }: {
   readonly participants: readonly ParticipantOption[];
-  readonly selectedId: string;
-  readonly onSelect: (id: string, name: string) => void;
+  readonly selectedMemberIds: readonly string[];
+  readonly onToggleMember: (id: string, name: string) => void;
   readonly showInvite: boolean;
   readonly inviteDisabled: boolean;
   readonly inviteEmphasis: boolean;
@@ -71,12 +71,12 @@ export function RequirementsMemberSidebar({
       </div>
       <div style={{ flex: "1 1 auto", overflowY: "auto", padding: "0 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
         {ordered.map((p) => {
-          const active = p.id === selectedId;
+          const active = selectedMemberIds.includes(p.id);
           return (
             <button
               key={p.id}
               type="button"
-              onClick={() => onSelect(p.id, p.name)}
+              onClick={() => onToggleMember(p.id, p.name)}
               style={{
                 textAlign: "left",
                 width: "100%",

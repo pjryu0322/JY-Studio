@@ -27,6 +27,38 @@ import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import type { Project } from "@/components/project-spec/types";
 
 type ProjectColumnName = string;
+
+/**
+ * JSONB PATCH 값 정규화.
+ *
+ * Next.js `request.json()`은 JSON을 JS 값으로 파싱하므로, 클라이언트가 JSON 문자열을내면
+ * 여기서는 `string`으로 들어올 수 있습니다. 이 상태를 `JSON.stringify`로 한 번 더 감싸면
+ * PG `::jsonb` 캐스팅이 깨질 수 있어(22P02), 가능하면 `JSON.parse`로 "진짜 JSON 값"으로 복원합니다.
+ */
+function normalizeJsonbPatchValue(v: unknown): Prisma.InputJsonValue | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    // 객체/배열 JSON 문자열이면 parse (이중 stringify 방지)
+    if (s.startsWith("{") || s.startsWith("[")) {
+      try {
+        return JSON.parse(s) as Prisma.InputJsonValue;
+      } catch {
+        throw new Error("INVALID_JSON_STRING");
+      }
+    }
+    // JSON literal (boolean/null/number/quoted string)
+    try {
+      return JSON.parse(s) as Prisma.InputJsonValue;
+    } catch {
+      // 일반 텍스트는 JSON 문자열로 저장
+      return s;
+    }
+  }
+  return v as Prisma.InputJsonValue;
+}
+
 /**
  * Prisma/PostgreSQL는 camelCase 컬럼을 따옴표로 생성합니다.
  * information_schema.columns.column_name 은 소문자만 주는 경우가 있어 UPDATE 식별자와 불일치할 수 있으므로
@@ -534,21 +566,32 @@ export async function PATCH(
           ? null
           : String(body.selectedPlanCandidateId);
     }
-    if (body.requirementsRoomState !== undefined) {
-      data.requirementsRoomState =
-        body.requirementsRoomState === null ? null : (body.requirementsRoomState as Prisma.InputJsonValue);
-    }
-    if (body.requirementsConversationJson !== undefined) {
-      data.requirementsConversationJson =
-        body.requirementsConversationJson === null ? null : (body.requirementsConversationJson as Prisma.InputJsonValue);
-    }
-    if (body.requirementsDraftJson !== undefined) {
-      data.requirementsDraftJson =
-        body.requirementsDraftJson === null ? null : (body.requirementsDraftJson as Prisma.InputJsonValue);
-    }
-    if (body.requirementsStateJson !== undefined) {
-      data.requirementsStateJson =
-        body.requirementsStateJson === null ? null : (body.requirementsStateJson as Prisma.InputJsonValue);
+    try {
+      if (body.requirementsRoomState !== undefined) {
+        data.requirementsRoomState =
+          body.requirementsRoomState === null ? null : normalizeJsonbPatchValue(body.requirementsRoomState);
+      }
+      if (body.requirementsConversationJson !== undefined) {
+        data.requirementsConversationJson =
+          body.requirementsConversationJson === null ? null : normalizeJsonbPatchValue(body.requirementsConversationJson);
+      }
+      if (body.requirementsDraftJson !== undefined) {
+        data.requirementsDraftJson =
+          body.requirementsDraftJson === null ? null : normalizeJsonbPatchValue(body.requirementsDraftJson);
+      }
+      if (body.requirementsStateJson !== undefined) {
+        data.requirementsStateJson =
+          body.requirementsStateJson === null ? null : normalizeJsonbPatchValue(body.requirementsStateJson);
+      }
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "";
+      if (code === "INVALID_JSON_STRING") {
+        return NextResponse.json(
+          { success: false, message: "JSON 필드(requirements*) 값이 올바른 JSON 문자열이 아닙니다." },
+          { status: 400 }
+        );
+      }
+      throw e;
     }
 
     const hasPromptPatch = body.specPromptTemplate !== undefined || body.specPromptPreset !== undefined;

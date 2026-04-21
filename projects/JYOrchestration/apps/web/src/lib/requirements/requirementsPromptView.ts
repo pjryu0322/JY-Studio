@@ -1,4 +1,5 @@
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { getMessageTargets } from "@/lib/requirements/requirementsTargets";
 
 export type RequirementsPromptView = {
   systemPrompt: string;
@@ -32,7 +33,8 @@ export function buildConversationExcerpt(messages: readonly RequirementsMessage[
           : m.speakerType === "HUMAN"
             ? `멤버(${m.speakerName || "멤버"})`
             : "시스템";
-    const target = m.targetName ? ` → @${m.targetName}` : "";
+    const tgs = getMessageTargets(m);
+    const target = tgs.length ? ` → ${tgs.map((t) => `@${t.name}`).join(", ")}` : m.targetName ? ` → @${m.targetName}` : "";
     return `${who}${target}: ${m.content}`.trim();
   });
   return lines.join("\n").slice(-maxChars);
