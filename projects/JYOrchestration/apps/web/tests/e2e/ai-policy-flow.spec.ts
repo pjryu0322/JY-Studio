@@ -8,6 +8,7 @@ test.describe("E2E AI policy", () => {
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/$/, { timeout: 30_000 });
     await page.getByTestId("project-settings-seed").click();
+    await page.getByRole("link", { name: "설정으로 이동" }).click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
     await page.getByRole("link", { name: "멤버 관리로 이동" }).click();
     await page.waitForURL(/\/project-admin\/members/, { timeout: 30_000 });
