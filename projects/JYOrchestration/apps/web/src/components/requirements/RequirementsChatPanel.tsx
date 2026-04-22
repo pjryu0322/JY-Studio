@@ -369,7 +369,20 @@ export function RequirementsChatPanel({
                   }}
                   style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}
                 >
-                  {meta}
+                  {directed ? (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: "#0f766e",
+                        textAlign: "right",
+                        paddingRight: 4,
+                        letterSpacing: "-0.01em",
+                      }}
+                    >
+                      {directed}
+                    </div>
+                  ) : null}
                   {replyToId ? (
                     <div style={threadWrapStyle(true)}>
                       <div aria-hidden style={threadLineStyle(true)} />
@@ -386,19 +399,6 @@ export function RequirementsChatPanel({
                       </div>
                     </div>
                   ) : null}
-                  {directed ? (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: "#99f6e4",
-                        textAlign: "right",
-                        paddingRight: 4,
-                      }}
-                    >
-                      {directed}
-                    </div>
-                  ) : null}
                   {replyToId ? (
                     <div style={threadWrapStyle(true)}>
                       <div aria-hidden style={threadLineStyle(true)} />
@@ -407,6 +407,7 @@ export function RequirementsChatPanel({
                   ) : (
                     <div style={userBubble}>{text}</div>
                   )}
+                  {meta}
                 </div>
               );
             }
