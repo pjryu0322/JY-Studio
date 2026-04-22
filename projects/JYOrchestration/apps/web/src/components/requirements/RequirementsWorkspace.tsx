@@ -82,6 +82,15 @@ function notifyAppFlowProjectContextChanged() {
   window.dispatchEvent(new Event(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT));
 }
 
+function isProbablyOriginalProjectDescription(desc: string): boolean {
+  const t = String(desc ?? "").trim();
+  if (!t) return false;
+  if (t.length > 280) return false;
+  if (t.includes("\n")) return false;
+  if (/@@|질문:|대화|dialogueExcerpt|role:|speaker/i.test(t)) return false;
+  return true;
+}
+
 const LOCAL_SHELL_KEY = "jyo:requirements-workspace-local-v3";
 
 type LocalShell = {
@@ -430,7 +439,7 @@ export function RequirementsWorkspace({
       setServiceFlow(state.serviceFlowV1 ?? null);
       if (typeof state.originalProjectDescription !== "string") {
         const cur = (p.description ?? "").trim();
-        if (cur) void persistStateJsonOnly({ originalProjectDescription: cur });
+        if (isProbablyOriginalProjectDescription(cur)) void persistStateJsonOnly({ originalProjectDescription: cur });
       }
       if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
         setInput(state.lastUserDraftText);
@@ -718,8 +727,7 @@ export function RequirementsWorkspace({
         selectedTargetId: null,
         selectedMembers: null,
         // Project card description should remain bound to the original creation description.
-        originalProjectDescription:
-          stateJsonRef.current.originalProjectDescription ?? (project?.description ?? ""),
+        originalProjectDescription: stateJsonRef.current.originalProjectDescription ?? "",
         onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
         openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
         priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
@@ -1672,6 +1680,11 @@ export function RequirementsWorkspace({
             const next = buildNextProblemInterviewQuestion(updated, turn);
             if (next && !problemInterviewIsCovered(updated, next.slot)) {
               const asked = withAskedSlot(updated, next.slot, nowIso);
+              const understanding =
+                (asked.currentMethod || (asked.partial ?? {}).currentMethod) && asked.notes?.currentMethod
+                  ? asked.notes.currentMethod.split("\n")[0]?.trim()
+                  : text;
+              const aiBody = `핵심 이해:\n${understanding}\n\n질문:\n${next.question}`;
               finalRoom = {
                 ...withCalling,
                 aiQuestionIndex: turn + 1,
@@ -1681,7 +1694,7 @@ export function RequirementsWorkspace({
                     ...withCalling.requirementsConversation.messages,
                     newChatMessage({
                       role: "ai",
-                      body: next.question,
+                      body: aiBody,
                       speakerType: "AI",
                       speakerId: primaryId,
                       speakerName: aiName,
