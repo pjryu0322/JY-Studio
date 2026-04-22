@@ -20,6 +20,7 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
+import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProjectDescription";
 import {
   appendIdeationDeliverableAssets,
   extractPreviewLinesFromMarkdown,
@@ -80,15 +81,6 @@ import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } fro
 function notifyAppFlowProjectContextChanged() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT));
-}
-
-function isProbablyOriginalProjectDescription(desc: string): boolean {
-  const t = String(desc ?? "").trim();
-  if (!t) return false;
-  if (t.length > 280) return false;
-  if (t.includes("\n")) return false;
-  if (/@@|질문:|대화|dialogueExcerpt|role:|speaker/i.test(t)) return false;
-  return true;
 }
 
 const LOCAL_SHELL_KEY = "jyo:requirements-workspace-local-v3";
@@ -897,6 +889,7 @@ export function RequirementsWorkspace({
 
     void (async () => {
       const persistFirstQuestion = async (bodyText: string): Promise<boolean> => {
+        const nowIso = new Date().toISOString();
         const nextRoom: RequirementsRoomStateV3 = {
           ...room,
           requirementsConversation: {
@@ -916,7 +909,7 @@ export function RequirementsWorkspace({
           },
         };
         try {
-          await persistRemote(nextRoom, {}, { onboardingShown: true });
+          await persistRemote(nextRoom, {}, { onboardingShown: true, problemInterview: emptyProblemInterviewState(nowIso) });
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
           return true;
         } catch (pe) {
@@ -2330,7 +2323,11 @@ export function RequirementsWorkspace({
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
       />
 
-      {resolvedProjectId.trim() && conversationStatus === "loaded" && ideationComplete ? (
+      {resolvedProjectId.trim() &&
+      !inServiceFlowStage &&
+      conversationStatus === "loaded" &&
+      ideationComplete &&
+      !(problemInterviewState && problemInterviewState.active !== false && problemInterviewCovered < 4) ? (
         <div
           style={{
             marginTop: 8,
@@ -2424,13 +2421,15 @@ export function RequirementsWorkspace({
         >
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-              문제정의 인터뷰 진행중 ({problemInterviewCovered}/4 확보)
+              {problemInterviewCovered >= 4
+                ? "문제정의 정보 확보 완료"
+                : `문제정의 인터뷰 진행중 (${problemInterviewCovered}/4 확보)`}
             </div>
             <div style={{ marginTop: 6, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, color: "#475569" }}>
               {(["currentMethod", "painPoint", "coreUser", "needForImprovement"] as const).map((slot) => {
                 const filled = Boolean((problemInterviewState as any)[slot]);
                 const partial = Boolean((problemInterviewState.partial ?? ({} as any))[slot]);
-                const mark = filled ? "✓" : partial ? "✓(부분)" : "□";
+                const mark = filled ? "✓" : partial ? "△" : "□";
                 return (
                   <span key={slot} style={{ fontWeight: filled ? 900 : partial ? 800 : 700 }}>
                     {mark} {problemInterviewSlotLabelKr(slot as unknown as ProblemInterviewSlot)}
@@ -2439,9 +2438,28 @@ export function RequirementsWorkspace({
               })}
             </div>
           </div>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-            답변을 바탕으로 다음 질문을 자동으로 이어갑니다.
-          </div>
+          {problemInterviewCovered >= 4 ? (
+            <button
+              type="button"
+              data-testid="requirements-organize-cta-after-interview"
+              disabled={busy || remoteLocked}
+              onClick={() => void onOrganizeRequirements()}
+              style={{
+                flexShrink: 0,
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #0f766e",
+                background: "#0f766e",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: busy || remoteLocked ? "not-allowed" : "pointer",
+                opacity: busy || remoteLocked ? 0.55 : 1,
+              }}
+            >
+              정리 요청
+            </button>
+          ) : null}
         </div>
       ) : null}
 

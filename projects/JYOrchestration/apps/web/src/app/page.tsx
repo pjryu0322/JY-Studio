@@ -10,17 +10,9 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/preferences/globalPreferences";
+import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProjectDescription";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
-
-function isProbablyOriginalProjectDescription(desc: string): boolean {
-  const t = String(desc ?? "").trim();
-  if (!t) return false;
-  if (t.length > 280) return false;
-  if (t.includes("\n")) return false;
-  if (/@@|질문:|대화|dialogueExcerpt|role:|speaker/i.test(t)) return false;
-  return true;
-}
 
 function ProjectCardSettingsIcon() {
   return (
