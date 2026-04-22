@@ -59,8 +59,8 @@ import {
   VIRTUAL_AI_PLANNER_ID,
   type RequirementsRoomStateV3,
 } from "@/lib/project/requirementsRoomState";
-import { coerceRequirementsMessage, type RequirementsMessage, type RequirementsMessageTarget } from "@/lib/requirements/requirementsMessage";
-import { dedupeMemberRefs, resolveMentionTargetsFromText, getMessageTargets } from "@/lib/requirements/requirementsTargets";
+import { coerceRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { dedupeMemberRefs, computedTargetsFromInput, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { newConversation, type RequirementsConversation } from "@/lib/requirements/conversationStore";
 import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/appFlowModel";
 
@@ -223,7 +223,6 @@ export function RequirementsWorkspace({
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [selectedMembers, setSelectedMembers] = useState<RequirementsMessageTarget[]>([]);
   const [fetchNonce, setFetchNonce] = useState(0);
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
@@ -402,14 +401,6 @@ export function RequirementsWorkspace({
       setPriorityFeatures(state.priorityFeatures ?? legacy.priorityFeatures ?? "");
       setLastSavedAt(state.lastSavedAt ?? null);
       setOrganizedAt(state.lastOrganizedAt ?? null);
-      const sm = state.selectedMembers;
-      if (Array.isArray(sm) && sm.length > 0) {
-        setSelectedMembers(dedupeMemberRefs(sm as RequirementsMessageTarget[]));
-      } else if (typeof state.selectedTargetId === "string" && state.selectedTargetId.trim()) {
-        setSelectedMembers([{ id: state.selectedTargetId.trim(), name: "AI 기획자" }]);
-      } else {
-        setSelectedMembers([]);
-      }
       if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
         setInput(state.lastUserDraftText);
       }
@@ -445,18 +436,6 @@ export function RequirementsWorkspace({
 
   const humanOthers = useMemo(() => members.filter((m) => m.memberType === "HUMAN" && !m.isOwner), [members]);
   const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
-
-  useEffect(() => {
-    setSelectedMembers((prev) => {
-      const onlyVirtual = prev.length === 1 && prev[0].id === VIRTUAL_AI_PLANNER_ID;
-      if (!onlyVirtual) return prev;
-      const planner = aiMembers.find((m) => m.aiOrchestrationRole === "planner" && m.orchestrationStage === "spec");
-      if (!planner) return prev;
-      return dedupeMemberRefs([
-        { id: planner.memberId, name: (planner.displayName ?? "AI 기획자").trim() || "AI 기획자" },
-      ]);
-    });
-  }, [aiMembers]);
 
   const aiPlannerStatusLabel = useMemo(() => {
     if (aiInvokePending) return "응답 대기 중(OpenAI 호출 중)";
@@ -516,23 +495,6 @@ export function RequirementsWorkspace({
       return true;
     });
   }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel]);
-
-  useEffect(() => {
-    setSelectedMembers((prev) => {
-      if (!prev.length) return prev;
-      const refs = participants.map((p) => ({ id: p.id, name: p.name }));
-      let changed = false;
-      const next = prev.map((m) => {
-        const hit = refs.find((r) => r.id === m.id);
-        if (hit && hit.name !== m.name) {
-          changed = true;
-          return { id: m.id, name: hit.name };
-        }
-        return m;
-      });
-      return changed ? dedupeMemberRefs(next) : prev;
-    });
-  }, [participants]);
 
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
@@ -647,55 +609,10 @@ export function RequirementsWorkspace({
     [resolvedProjectId]
   );
 
-  const removeMemberTarget = useCallback(
-    (id: string) => {
-      setSelectedMembers((prev) => {
-        const next = prev.filter((x) => x.id !== id);
-        if (next.length === prev.length) return prev;
-        const pid = resolvedProjectId.trim();
-        if (pid) {
-          void persistStateJsonOnly({
-            selectedMembers: next.length ? next : null,
-            selectedTargetId: next[0]?.id ?? null,
-          });
-        }
-        return next;
-      });
-    },
-    [resolvedProjectId, persistStateJsonOnly]
+  const composerPlaceholder = useMemo(
+    () => "@@멤버이름 으로 지정하거나, 멘션 없이 입력하면 AI 기획자에게 전달됩니다",
+    []
   );
-
-  const handleComposerInputChange = useCallback(
-    (v: string) => {
-      setInput(v);
-      const refs = participants.map((p) => ({ id: p.id, name: p.name }));
-      const extra = resolveMentionTargetsFromText(v, refs);
-      if (!extra.length) return;
-      setSelectedMembers((prev) => {
-        const merged = dedupeMemberRefs([...prev, ...extra]);
-        const unchanged =
-          merged.length === prev.length && merged.every((m, i) => m.id === prev[i]?.id && m.name === prev[i]?.name);
-        if (unchanged) return prev;
-        const pid = resolvedProjectId.trim();
-        if (pid) {
-          void persistStateJsonOnly({
-            selectedMembers: merged,
-            selectedTargetId: merged[0]?.id ?? null,
-          });
-        }
-        return merged;
-      });
-    },
-    [participants, resolvedProjectId, persistStateJsonOnly]
-  );
-
-  const composerPlaceholder = useMemo(() => {
-    if (selectedMembers.length === 0) {
-      return "@@로 멤버를 지정하거나, 그대로 입력하면 AI 기획자에게 전달됩니다";
-    }
-    if (selectedMembers.length === 1) return `${selectedMembers[0].name}에게 질문하세요`;
-    return `선택한 ${selectedMembers.length}명에게 질문하세요`;
-  }, [selectedMembers]);
 
   const targetPickerItems = useMemo<readonly RequirementsComposerTargetPickerItem[]>(() => {
     return participants.map((p) => ({
@@ -704,24 +621,6 @@ export function RequirementsWorkspace({
       targets: [{ id: p.id, name: p.name }],
     }));
   }, [participants]);
-
-  const addMemberTargets = useCallback(
-    (targets: readonly { id: string; name: string }[]) => {
-      if (!targets.length) return;
-      setSelectedMembers((prev) => {
-        const merged = dedupeMemberRefs([...prev, ...(targets as RequirementsMessageTarget[])]);
-        const pid = resolvedProjectId.trim();
-        if (pid) {
-          void persistStateJsonOnly({
-            selectedMembers: merged,
-            selectedTargetId: merged[0]?.id ?? null,
-          });
-        }
-        return merged;
-      });
-    },
-    [resolvedProjectId, persistStateJsonOnly]
-  );
 
   const persistRemote = useCallback(
     async (nextRoom: RequirementsRoomStateV3, spec: Partial<Project>, meta?: Partial<RequirementsStateJson>) => {
@@ -753,8 +652,8 @@ export function RequirementsWorkspace({
       const baseState = mergeRequirementsStateJson(stateJsonRef.current, {
         lastSavedAt: nextSavedAt,
         lastOrganizedAt: organizedAt ?? stateJsonRef.current.lastOrganizedAt,
-        selectedTargetId: selectedMembers[0]?.id ?? null,
-        selectedMembers: selectedMembers.length ? [...selectedMembers] : null,
+        selectedTargetId: null,
+        selectedMembers: null,
         onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
         openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
         priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
@@ -815,7 +714,6 @@ export function RequirementsWorkspace({
       openIssues,
       priorityFeatures,
       organizedAt,
-      selectedMembers,
       onboardingAppliedKey,
       onboardingKey,
       goals,
@@ -1469,8 +1367,10 @@ export function RequirementsWorkspace({
     setBusy(true);
     setError(null);
     try {
+      const mentionRefs = participants.map((p) => ({ id: p.id, name: p.name }));
+      const fromMentions = computedTargetsFromInput(text, mentionRefs);
       const targets = dedupeMemberRefs(
-        selectedMembers.length ? selectedMembers : [{ id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" }]
+        fromMentions.length ? fromMentions : [{ id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" }]
       );
       const anyAi = targets.some((t) => isAiTarget(t.id));
       const primaryAi = targets.find((t) => isAiTarget(t.id));
@@ -1778,7 +1678,7 @@ export function RequirementsWorkspace({
     busy,
     room,
     conversationMessages,
-    selectedMembers,
+    participants,
     isAiTarget,
     persistRemote,
     resolvedProjectId,
@@ -2232,15 +2132,12 @@ export function RequirementsWorkspace({
                 <RequirementsComposerGpt
                   textAreaRef={composerTextAreaRef}
                   value={input}
-                  onChange={handleComposerInputChange}
+                  onChange={setInput}
                   onSend={() => void onSend()}
                   busy={busy}
                   disabled={false}
                   placeholder={composerPlaceholder}
-                  questionTargets={selectedMembers}
-                  onRemoveQuestionTarget={removeMemberTarget}
                   targetPickerItems={targetPickerItems}
-                  onAddQuestionTargets={addMemberTargets}
                   toolsMenu={{
                     onOrganizeRequirements: () => void onOrganizeRequirements(),
                     organizeDisabled: busy || remoteLocked,

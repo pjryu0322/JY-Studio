@@ -35,6 +35,45 @@ export function formatTargetNamesForUi(m: RequirementsMessage): string {
 }
 
 /**
+ * 본문에 포함된 `@@표시이름` 토큰을 순서대로 찾아 대상 멤버로 해석합니다.
+ * (이름이 겹칠 때는 더 긴 표시 이름을 먼저 매칭합니다.)
+ */
+export function resolveDoubleAtMentions(text: string, participants: readonly RequirementMemberRef[]): RequirementMemberRef[] {
+  const refs = participants
+    .map((p) => ({ id: String(p.id ?? "").trim(), name: String(p.name ?? "").trim() }))
+    .filter((p) => p.id && p.name);
+  if (!text || !refs.length) return [];
+  const byNameLen = [...refs].sort((a, b) => b.name.length - a.name.length);
+  const found: RequirementMemberRef[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = text.indexOf("@@", i);
+    if (idx < 0) break;
+    const rest = text.slice(idx + 2);
+    let matched: RequirementMemberRef | null = null;
+    for (const p of byNameLen) {
+      if (!rest.startsWith(p.name)) continue;
+      const boundary = rest[p.name.length] ?? "";
+      if (boundary && !/[\s,.!?;:，。、]/.test(boundary)) continue;
+      matched = { id: p.id, name: p.name };
+      i = idx + 2 + p.name.length;
+      break;
+    }
+    if (matched) {
+      found.push(matched);
+    } else {
+      i = idx + 2;
+    }
+  }
+  return dedupeMemberRefs(found);
+}
+
+/** 전송 시: 본문의 @@멘션만으로 대상 목록을 계산합니다. */
+export function computedTargetsFromInput(text: string, participants: readonly RequirementMemberRef[]): RequirementMemberRef[] {
+  return resolveDoubleAtMentions(text, participants);
+}
+
+/**
  * 입력 텍스트의 @토큰을 참가자 이름과 매칭해 대상 후보를 반환합니다.
  * (이름 전체 일치 > 이름이 토큰으로 시작 > 토큰이 이름 접두로 시작)
  */

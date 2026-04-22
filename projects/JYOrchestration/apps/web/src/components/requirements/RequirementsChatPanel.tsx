@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { normalizeRequirementsMessageText } from "@/lib/requirements/requirementsMessageDisplay";
-import { formatTargetNamesForUi } from "@/lib/requirements/requirementsTargets";
+import { formatTargetNamesForUi, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
@@ -317,8 +317,12 @@ export function RequirementsChatPanel({
 
           {(messages ?? []).map((m) => {
             const mine = m.role === "user";
+            const tg = getMessageTargets(m);
             const targetLine = formatTargetNamesForUi(m) || (m.targetName ? String(m.targetName) : "");
-            const directed = mine && targetLine ? `${m.speakerName} → ${targetLine}` : null;
+            const showToMeta =
+              mine &&
+              targetLine &&
+              (tg.length > 1 || tg.some((t) => t.id !== VIRTUAL_AI_PLANNER_ID));
             const replyToId = typeof m.replyTo === "string" && m.replyTo.trim() ? m.replyTo.trim() : null;
             const replied = replyToId ? messageById.get(replyToId) ?? null : null;
             const replyPreview = replied ? quoteTextFor(replied.content) : "";
@@ -341,6 +345,9 @@ export function RequirementsChatPanel({
                   {roleLabel(m.role)}
                   {m.speakerName ? ` · ${m.speakerName}` : ""} ·{" "}
                   {new Date(m.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                  {showToMeta ? (
+                    <span style={{ fontWeight: 600, color: "#94a3b8" }}> · To: {targetLine}</span>
+                  ) : null}
                 </span>
                 {replies.length > 0 ? (
                   <button
@@ -369,20 +376,6 @@ export function RequirementsChatPanel({
                   }}
                   style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}
                 >
-                  {directed ? (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 800,
-                        color: "#0f766e",
-                        textAlign: "right",
-                        paddingRight: 4,
-                        letterSpacing: "-0.01em",
-                      }}
-                    >
-                      {directed}
-                    </div>
-                  ) : null}
                   {replyToId ? (
                     <div style={threadWrapStyle(true)}>
                       <div aria-hidden style={threadLineStyle(true)} />

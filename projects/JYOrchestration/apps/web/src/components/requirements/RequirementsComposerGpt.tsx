@@ -107,10 +107,7 @@ export function RequirementsComposerGpt({
   placeholder,
   toolsMenu,
   textAreaRef,
-  questionTargets: _questionTargets,
-  onRemoveQuestionTarget: _onRemoveQuestionTarget,
   targetPickerItems,
-  onAddQuestionTargets,
 }: {
   readonly value: string;
   readonly onChange: (v: string) => void;
@@ -122,13 +119,8 @@ export function RequirementsComposerGpt({
   readonly toolsMenu?: RequirementsComposerToolsMenu;
   /** 부모에서 포커스·커서 제어용(선택) */
   readonly textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
-  /** 질문 대상 칩(복수) */
-  readonly questionTargets?: readonly { id: string; name: string }[];
-  readonly onRemoveQuestionTarget?: (memberId: string) => void;
-  /** `@@` 입력 시 노출할 질문 대상 선택 팝업 항목 */
+  /** `@@` 입력 시 노출할 멘션 후보(멤버별 1행) */
   readonly targetPickerItems?: readonly RequirementsComposerTargetPickerItem[];
-  /** `@@` 팝업에서 선택한 질문 대상을 상위 상태에 추가 */
-  readonly onAddQuestionTargets?: (targets: readonly { id: string; name: string }[]) => void;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -141,7 +133,7 @@ export function RequirementsComposerGpt({
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [lastAtAtIndex, setLastAtAtIndex] = useState<number | null>(null);
 
-  const hasTargetPicker = Boolean(targetPickerItems && targetPickerItems.length && onAddQuestionTargets);
+  const hasTargetPicker = Boolean(targetPickerItems && targetPickerItems.length);
   const normalizedTargetPickerItems = useMemo(() => {
     const items = targetPickerItems ?? [];
     const seen = new Set<string>();
@@ -177,10 +169,8 @@ export function RequirementsComposerGpt({
       return;
     }
     const before = idx === 0 ? "" : value[idx - 1] ?? "";
-    const after = value[idx + 2] ?? "";
     const okBefore = !before || /\s/.test(before);
-    const okAfter = !after || /\s/.test(after);
-    if (!okBefore || !okAfter) {
+    if (!okBefore) {
       setTargetPickerOpen(false);
       setLastAtAtIndex(null);
       return;
@@ -236,18 +226,19 @@ export function RequirementsComposerGpt({
 
   const pickTargetItem = useCallback(
     (targets: readonly { id: string; name: string }[]) => {
-      if (!onAddQuestionTargets) return;
-      onAddQuestionTargets(targets);
+      if (!targets.length) return;
+      const fragment = targets.map((t) => `@@${t.name}`).join(" ");
       if (lastAtAtIndex !== null && lastAtAtIndex >= 0) {
         const before = value.slice(0, lastAtAtIndex);
-        const after = value.slice(lastAtAtIndex + 2);
-        const next = `${before}${after}`.replace(/\s{2,}/g, " ");
-        onChange(next);
+        const afterRaw = value.slice(lastAtAtIndex + 2);
+        const tail = afterRaw.replace(/^[^\s\n]*/, "");
+        const merged = `${before}${fragment}${tail.length ? tail : " "}`.replace(/\s{2,}/g, " ");
+        onChange(merged);
       }
       setTargetPickerOpen(false);
       window.setTimeout(() => taRef.current?.focus(), 0);
     },
-    [onAddQuestionTargets, lastAtAtIndex, value, onChange]
+    [lastAtAtIndex, value, onChange]
   );
 
   return (
@@ -340,7 +331,7 @@ export function RequirementsComposerGpt({
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>
-                @@ 입력 후 멤버를 선택하세요 (여러 명이면 @@를 반복)
+                멤버를 고르면 본문에 @@이름이 삽입됩니다. 여러 명은 @@를 반복하세요.
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {normalizedTargetPickerItems.map((item) => (
