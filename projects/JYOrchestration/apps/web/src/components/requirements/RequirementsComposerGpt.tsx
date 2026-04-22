@@ -330,9 +330,6 @@ export function RequirementsComposerGpt({
                 zIndex: MENU_Z,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>
-                멤버를 고르면 본문에 @@이름이 삽입됩니다. 여러 명은 @@를 반복하세요.
-              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {normalizedTargetPickerItems.map((item) => (
                   <button
@@ -342,7 +339,6 @@ export function RequirementsComposerGpt({
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
                       gap: 10,
                       width: "100%",
                       textAlign: "left",
@@ -357,9 +353,6 @@ export function RequirementsComposerGpt({
                     }}
                   >
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b", flexShrink: 0 }}>
-                      {item.targets.length > 1 ? `${item.targets.length}명` : "추가"}
-                    </span>
                   </button>
                 ))}
               </div>
