@@ -130,11 +130,17 @@ async function rawUpdateProjectByIdSafe(
   projectId: string,
   patch: Record<string, unknown>
 ): Promise<{ ok: true; applied: boolean; degraded?: { code: string; message: string } } | { ok: false; message: string }> {
+  // Guard: do not build multi-megabyte SQL strings (can crash with "Invalid string length")
+  // We degrade by skipping oversized JSONB patches rather than failing the entire save.
+  const MAX_JSONB_TEXT_CHARS = 1_500_000;
+  const MAX_SCALAR_TEXT_CHARS = 300_000;
+
   const colMap = await getProjectColumnMap();
   const entries: Array<
     | { col: string; kind: "jsonb"; jsonText: string | null }
     | { col: string; kind: "scalar"; value: ReturnType<typeof scalarForRawUpdate> }
   > = [];
+  let degraded: { code: string; message: string } | null = null;
 
   for (const [k, v] of Object.entries(patch)) {
     const actualCol = colMap.get(k.toLowerCase());
@@ -146,10 +152,27 @@ async function rawUpdateProjectByIdSafe(
       lower === "requirementsdraftjson" ||
       lower === "requirementsstatejson"
     ) {
-      entries.push({ col: actualCol, kind: "jsonb", jsonText: jsonbTextOrNull(v) });
+      const jsonText = jsonbTextOrNull(v);
+      if (jsonText && jsonText.length > MAX_JSONB_TEXT_CHARS) {
+        degraded = {
+          code: "PAYLOAD_TOO_LARGE",
+          message: "저장할 데이터가 너무 커 일부 내용은 저장되지 않았습니다. 대화가 길다면 새 프로젝트로 분리해 주세요.",
+        };
+        continue;
+      }
+      entries.push({ col: actualCol, kind: "jsonb", jsonText });
       continue;
     }
-    entries.push({ col: actualCol, kind: "scalar", value: scalarForRawUpdate(v) });
+    const scalar = scalarForRawUpdate(v);
+    if (typeof scalar === "string" && scalar.length > MAX_SCALAR_TEXT_CHARS) {
+      degraded = degraded ?? {
+        code: "PAYLOAD_TOO_LARGE",
+        message: "저장할 데이터가 너무 커 일부 내용은 저장되지 않았습니다. 대화가 길다면 새 프로젝트로 분리해 주세요.",
+      };
+      entries.push({ col: actualCol, kind: "scalar", value: scalar.slice(0, MAX_SCALAR_TEXT_CHARS) });
+    } else {
+      entries.push({ col: actualCol, kind: "scalar", value: scalar });
+    }
   }
 
   if (entries.length === 0) {
@@ -179,7 +202,7 @@ async function rawUpdateProjectByIdSafe(
 
   try {
     await prisma.$executeRawUnsafe(sql);
-    return { ok: true, applied: true };
+    return { ok: true, applied: true, ...(degraded ? { degraded } : {}) };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, message: msg };
