@@ -7,9 +7,10 @@ test.describe("E2E AI policy", () => {
     await page.getByTestId("login-password").fill("JyoTest!123");
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/$/, { timeout: 30_000 });
-    await page.getByTestId("project-open-seed").click();
+    await page.getByTestId("project-settings-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-tab-members").click();
+    await page.getByRole("link", { name: "멤버 관리로 이동" }).click();
+    await page.waitForURL(/\/project-admin\/members/, { timeout: 30_000 });
     await page.getByTestId("project-unified-members-table-wrap").getByRole("button", { name: "AI" }).click();
     await page.getByTestId("project-unified-members-row").filter({ hasText: "OpenAI Reviewer" }).click();
     await expect(page.getByTestId("ai-reviewer-policy-section").first()).toBeVisible();

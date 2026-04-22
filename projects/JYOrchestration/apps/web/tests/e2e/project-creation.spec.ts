@@ -32,10 +32,6 @@ test.describe("E2E project", () => {
     await expect(page.getByTestId(`project-card-${projectId}`)).toBeVisible({ timeout: 15_000 });
 
     await page.getByTestId(`project-open-${projectId}`).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`), { timeout: 20_000 });
-    await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
-
-    await page.getByRole("link", { name: "아이디어 구체화" }).click();
     await expect(page).toHaveURL(
       (url) => {
         try {
@@ -47,6 +43,7 @@ test.describe("E2E project", () => {
       },
       { timeout: 20_000 }
     );
+    await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByTestId("requirements-chat-input").fill(`E2E 아이디어: ${name}`);
     await page.getByRole("button", { name: "전송" }).click();
@@ -61,12 +58,22 @@ test.describe("E2E project", () => {
     await expect(page).toHaveURL(/\/features/, { timeout: 20_000 });
     await page.goto("/");
     await page.getByTestId(`project-open-${projectId}`).click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${projectId}$`), { timeout: 20_000 });
+    await expect(page).toHaveURL(
+      (url) => {
+        try {
+          const u = new URL(url);
+          return u.pathname === "/requirements" && u.searchParams.get("projectId") === projectId;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 20_000 }
+    );
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("[E2E-PRJ-003] 상세 — 실행 환경은 프로젝트 관리 설정으로 이동(요약만 상세에 유지)", async ({ page }) => {
-    await page.getByTestId("project-open-seed").click();
+    await page.getByTestId("project-settings-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
     await page.getByTestId("project-execution-readiness-settings-link").click();
     await expect(page).toHaveURL(/\/project-admin\/settings\?projectId=/, { timeout: 15_000 });
@@ -78,7 +85,7 @@ test.describe("E2E project", () => {
   });
 
   test("[E2E-PRJ-004] 설정 — 실행 환경 연결 UI", async ({ page }) => {
-    await page.getByTestId("project-open-seed").click();
+    await page.getByTestId("project-settings-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
     await page.getByTestId("project-execution-readiness-settings-link").click();
     await expect(page).toHaveURL(/\/project-admin\/settings\?projectId=/, { timeout: 15_000 });
@@ -92,11 +99,12 @@ test.describe("E2E project", () => {
 
   test("[E2E-PRJ-002] 시드 프로젝트 진입", async ({ page }) => {
     await page.getByTestId("project-open-seed").click();
-    await expect(page).toHaveURL(/\/projects\/.+/);
+    await expect(page).toHaveURL(/\/requirements\?.*projectId=/, { timeout: 20_000 });
     await expect(page.getByText("Web Meeting MVP").first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("[E2E-PRJ-AI-001] Overview: 워크스페이스·저장 계획 기반 Spec 생성 UI (프롬프트 노출 없음)", async ({ page }) => {
+    test.skip(true, "프로젝트 허브 MVP에서 ProjectSpecWorkspace 임베드가 제거되어 이 시나리오는 더 이상 허브에서 검증할 수 없습니다.");
     await page.getByTestId("project-open-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
 

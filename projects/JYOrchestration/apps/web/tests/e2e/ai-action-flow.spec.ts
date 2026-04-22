@@ -7,14 +7,15 @@ test.describe("E2E AI action", () => {
     await page.getByTestId("login-password").fill("JyoTest!123");
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/$/, { timeout: 30_000 });
-    await page.getByTestId("project-open-seed").click();
+    await page.getByTestId("project-settings-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-tab-members").click();
+    await page.getByRole("link", { name: "멤버 관리로 이동" }).click();
+    await page.waitForURL(/\/project-admin\/members/, { timeout: 30_000 });
     await expect(page.getByTestId("ai-dispatch-run-once")).toBeVisible();
   });
 
   test("[E2E-AI-001] SUMMARY 요청 후 run-once로 DONE", async ({ page }) => {
-    const projectId = new URL(page.url()).pathname.split("/projects/")[1] ?? "";
+    const projectId = new URL(page.url()).searchParams.get("projectId") ?? "";
     expect(projectId.length).toBeGreaterThan(4);
 
     const membersRes = await page.request.get(
