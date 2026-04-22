@@ -40,6 +40,8 @@ export type RequirementsStateJson = {
   selectedTargetId?: string | null;
   /** 좌측 멤버·멘션으로 지정한 질문 대상(복수) */
   selectedMembers?: Array<{ id: string; name: string }> | null;
+  /** 액터 및 서비스 흐름 정의(단계 2) — MVP v1 */
+  serviceFlowV1?: RequirementsServiceFlowV1 | null;
   onboardingShown?: boolean;
   openIssues?: string;
   priorityFeatures?: string;
@@ -62,6 +64,33 @@ export type RequirementsStateJson = {
    * 충분하면 산출물 생성(writer)로 이어진다.
    */
   organizePlannerState?: RequirementsOrganizePlannerState | null;
+};
+
+export type RequirementsServiceFlowActorKind = "human" | "system";
+
+export type RequirementsServiceFlowActorV1 = {
+  id: string;
+  name: string;
+  kind: RequirementsServiceFlowActorKind;
+  description?: string | null;
+};
+
+export type RequirementsServiceFlowStepV1 = {
+  id: string;
+  order: number;
+  title: string;
+  purpose: string;
+  primaryActorId: string;
+  secondaryActorIds: string[];
+  approved: boolean;
+  updatedAt: string;
+};
+
+export type RequirementsServiceFlowV1 = {
+  createdAt: string;
+  updatedAt: string;
+  steps: RequirementsServiceFlowStepV1[];
+  actors: RequirementsServiceFlowActorV1[];
 };
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
@@ -155,6 +184,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? lastPromptViewRaw
         : undefined;
 
+  const serviceFlowRaw = "serviceFlowV1" in o ? (o.serviceFlowV1 as unknown) : undefined;
+  const serviceFlowV1 =
+    serviceFlowRaw === undefined
+      ? undefined
+      : serviceFlowRaw === null
+        ? null
+        : parseRequirementsServiceFlowV1(serviceFlowRaw) ?? null;
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -177,6 +214,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     onboardingShown: typeof o.onboardingShown === "boolean" ? o.onboardingShown : undefined,
     openIssues: typeof o.openIssues === "string" ? o.openIssues : undefined,
     priorityFeatures: typeof o.priorityFeatures === "string" ? o.priorityFeatures : undefined,
+    ...(serviceFlowV1 !== undefined ? { serviceFlowV1 } : {}),
     ...(lastPromptView !== undefined ? { lastPromptView } : {}),
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
     lastPromptGeneratedAt: typeof o.lastPromptGeneratedAt === "string" ? o.lastPromptGeneratedAt : undefined,
@@ -197,4 +235,48 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
 
 export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: Partial<RequirementsStateJson>): RequirementsStateJson {
   return { ...base, ...patch };
+}
+
+function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const createdAt = typeof o.createdAt === "string" ? o.createdAt : "";
+  const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt : "";
+  const stepsRaw = Array.isArray(o.steps) ? (o.steps as unknown[]) : [];
+  const actorsRaw = Array.isArray(o.actors) ? (o.actors as unknown[]) : [];
+  const steps: RequirementsServiceFlowStepV1[] = stepsRaw
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const id = typeof r.id === "string" ? r.id.trim() : "";
+      const order = typeof r.order === "number" && Number.isFinite(r.order) ? r.order : NaN;
+      const title = typeof r.title === "string" ? r.title.trim() : "";
+      const purpose = typeof r.purpose === "string" ? r.purpose.trim() : "";
+      const primaryActorId = typeof r.primaryActorId === "string" ? r.primaryActorId.trim() : "";
+      const secondaryActorIds = Array.isArray(r.secondaryActorIds)
+        ? (r.secondaryActorIds as unknown[]).map((x) => String(x ?? "").trim()).filter(Boolean)
+        : [];
+      const approved = typeof r.approved === "boolean" ? r.approved : false;
+      const updatedAt = typeof r.updatedAt === "string" ? r.updatedAt : "";
+      if (!id || !Number.isFinite(order) || !title || !purpose || !primaryActorId || !updatedAt) return null;
+      return { id, order, title, purpose, primaryActorId, secondaryActorIds, approved, updatedAt };
+    })
+    .filter((x): x is RequirementsServiceFlowStepV1 => Boolean(x));
+
+  const actors: RequirementsServiceFlowActorV1[] = actorsRaw
+    .map((row) => {
+      if (!row || typeof row !== "object") return null;
+      const r = row as Record<string, unknown>;
+      const id = typeof r.id === "string" ? r.id.trim() : "";
+      const name = typeof r.name === "string" ? r.name.trim() : "";
+      const kind = r.kind === "human" || r.kind === "system" ? (r.kind as RequirementsServiceFlowActorKind) : null;
+      const description =
+        r.description === null ? null : typeof r.description === "string" ? r.description.trim() : undefined;
+      if (!id || !name || !kind) return null;
+      return { id, name, kind, ...(description !== undefined ? { description } : {}) };
+    })
+    .filter((x): x is RequirementsServiceFlowActorV1 => Boolean(x));
+
+  if (!createdAt || !updatedAt) return null;
+  return { createdAt, updatedAt, steps, actors };
 }

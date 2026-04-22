@@ -73,6 +73,7 @@ export function computeFlowGates(input: {
 
 export function stepReachableInStrip(stepId: AppFlowStepId, gates: ReturnType<typeof computeFlowGates>): boolean {
   if (stepId === "requirements") return true;
+  if (stepId === "service_flow") return true;
   if (stepId === "features") return gates.featuresEnabled;
   if (stepId === "tasks") return gates.tasksEnabled;
   if (stepId === "planning") return gates.planningEnabled;

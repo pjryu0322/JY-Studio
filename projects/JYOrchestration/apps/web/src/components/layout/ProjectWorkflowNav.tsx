@@ -50,6 +50,7 @@ function withProjectQuery(path: string, projectId: string | null): string {
 
 const WORKFLOW_TOP_NAV: { stepId: AppFlowStepId; label: string; screenLabel: string }[] = [
   { stepId: "requirements", label: "아이디어 구체화", screenLabel: "공통-상단내비-워크플로우-요구사항" },
+  { stepId: "service_flow", label: "액터 및 서비스 흐름 정의", screenLabel: "공통-상단내비-워크플로우-서비스흐름" },
   { stepId: "features", label: "기능 정리", screenLabel: "공통-상단내비-워크플로우-기능" },
   { stepId: "tasks", label: "작업 정리", screenLabel: "공통-상단내비-워크플로우-작업" },
   { stepId: "planning", label: "생성 준비", screenLabel: "공통-상단내비-워크플로우-실행계획" },

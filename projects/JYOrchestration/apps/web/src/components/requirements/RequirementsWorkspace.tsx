@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
@@ -10,6 +10,7 @@ import type { RequirementsComposerTargetPickerItem } from "@/components/requirem
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
+import { RequirementsServiceFlowStage } from "@/components/requirements/RequirementsServiceFlowStage";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
@@ -40,6 +41,7 @@ import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
   type RequirementsStateJson,
+  type RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
 import { getPlannerSlotSchema, plannerDeliverableLabelKr, PLANNER_DELIVERABLE_TYPES } from "@/lib/requirements/plannerSlots";
 import {
@@ -198,6 +200,7 @@ export function RequirementsWorkspace({
   readonly initialWorkflowNotice: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
 
   const [resolvedProjectId, setResolvedProjectId] = useState(() => initialProjectId.trim());
@@ -255,6 +258,11 @@ export function RequirementsWorkspace({
   const ideationBootstrapFlightRef = useRef<string | null>(null);
   /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
   const organizeRawFallbackRef = useRef(false);
+
+  const stage = useMemo(() => String(searchParams?.get("stage") ?? "").trim().toLowerCase(), [searchParams]);
+  const inServiceFlowStage = stage === "service-flow";
+
+  const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
 
   useEffect(() => {
     setResolvedProjectId(initialProjectId.trim());
@@ -401,6 +409,7 @@ export function RequirementsWorkspace({
       setPriorityFeatures(state.priorityFeatures ?? legacy.priorityFeatures ?? "");
       setLastSavedAt(state.lastSavedAt ?? null);
       setOrganizedAt(state.lastOrganizedAt ?? null);
+      setServiceFlow(state.serviceFlowV1 ?? null);
       if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
         setInput(state.lastUserDraftText);
       }
@@ -609,6 +618,14 @@ export function RequirementsWorkspace({
     [resolvedProjectId]
   );
 
+  const persistServiceFlow = useCallback(
+    async (next: RequirementsServiceFlowV1 | null) => {
+      setServiceFlow(next);
+      await persistStateJsonOnly({ serviceFlowV1: next });
+    },
+    [persistStateJsonOnly]
+  );
+
   const composerPlaceholder = useMemo(
     () => "@@멤버이름 으로 지정하거나, 멘션 없이 입력하면 AI 기획자에게 전달됩니다",
     []
@@ -621,6 +638,15 @@ export function RequirementsWorkspace({
       targets: [{ id: p.id, name: p.name }],
     }));
   }, [participants]);
+
+  const ideationAssets = useMemo(() => stateJsonRef.current.deliverableAssets ?? [], [fetchNonce, project?.requirementsStateJson]);
+  const ideationReadyForServiceFlow = useMemo(() => {
+    const assets = ideationAssets ?? [];
+    if (!assets.length) return false;
+    const ok = new Set(["meeting_summary", "problem_statement", "kpi", "full_plan", "mvp_scope", "feature_list"]);
+    return assets.some((a) => ok.has(String(a.type)));
+  }, [ideationAssets]);
+  const ideationReadyNotice = "현재 단계로 이동하려면\n아이디어 구체화 단계에서\n기획 산출물 정리가 필요합니다.";
 
   const persistRemote = useCallback(
     async (nextRoom: RequirementsRoomStateV3, spec: Partial<Project>, meta?: Partial<RequirementsStateJson>) => {
@@ -1771,6 +1797,123 @@ export function RequirementsWorkspace({
     [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly]
   );
 
+  const handleGenerateServiceFlowDraft = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) {
+      setError("프로젝트에 연결된 뒤 사용할 수 있습니다.");
+      return;
+    }
+    if (!ideationReadyForServiceFlow) {
+      setError(ideationReadyNotice);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const assets = (stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
+        type: a.type,
+        title: a.title,
+        content: a.content,
+      }));
+      const res = await fetch("/api/requirements/service-flow-draft", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: pid,
+          projectName: project?.name ?? "",
+          projectDescription: project?.description ?? "",
+          ideationAssets: assets,
+        }),
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        code?: string;
+        message?: string;
+        data?: {
+          steps?: Array<{ title?: string; purpose?: string; primary?: string; secondary?: string[] }>;
+          actors?: Array<{ name?: string; kind?: string; description?: string }>;
+          reviewPoints?: string[];
+        };
+      };
+      if (!res.ok || !json.success || !json.data) {
+        throw new Error(json.message || "AI 초안 생성에 실패했습니다.");
+      }
+      const now = new Date().toISOString();
+      const actorsRaw = Array.isArray(json.data.actors) ? json.data.actors : [];
+      const stepsRaw = Array.isArray(json.data.steps) ? json.data.steps : [];
+
+      const actorIdByName = new Map<string, string>();
+      const actors = actorsRaw
+        .map((a) => {
+          const name = String(a?.name ?? "").trim();
+          const kind = String(a?.kind ?? "").trim().toLowerCase();
+          if (!name) return null;
+          const id = `actor:${name}`;
+          actorIdByName.set(name, id);
+          return {
+            id,
+            name,
+            kind: kind === "system" ? ("system" as const) : ("human" as const),
+            description: typeof a?.description === "string" ? a.description.trim() : null,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => Boolean(x));
+      if (!actors.length) {
+        actors.push({ id: "actor:사용자", name: "사용자", kind: "human" as const, description: null });
+      }
+
+      const steps = stepsRaw
+        .map((s, idx) => {
+          const title = String(s?.title ?? "").trim();
+          const purpose = String(s?.purpose ?? "").trim();
+          const primaryName = String(s?.primary ?? "").trim();
+          const primaryActorId = actorIdByName.get(primaryName) ?? (primaryName ? `actor:${primaryName}` : actors[0]!.id);
+          const secondary = Array.isArray(s?.secondary) ? s.secondary.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+          const secondaryActorIds = secondary.map((nm) => actorIdByName.get(nm) ?? `actor:${nm}`);
+          if (!title || !purpose) return null;
+          return {
+            id: `step:${idx + 1}:${title}`,
+            order: idx + 1,
+            title,
+            purpose,
+            primaryActorId,
+            secondaryActorIds,
+            approved: false,
+            updatedAt: now,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+      const next: RequirementsServiceFlowV1 = {
+        createdAt: serviceFlow?.createdAt ?? now,
+        updatedAt: now,
+        steps,
+        actors,
+      };
+      await persistServiceFlow(next);
+      showSuccessToast("서비스 흐름 초안 생성 완료");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "오류";
+      setError(msg);
+      showErrorToast(msg);
+    } finally {
+      setBusy(false);
+    }
+  }, [resolvedProjectId, ideationReadyForServiceFlow, ideationReadyNotice, project?.name, project?.description, persistServiceFlow, serviceFlow?.createdAt, showSuccessToast, showErrorToast]);
+
+  const handleApproveAllServiceFlowSteps = useCallback(async () => {
+    if (!serviceFlow) return;
+    const now = new Date().toISOString();
+    const next: RequirementsServiceFlowV1 = {
+      ...serviceFlow,
+      updatedAt: now,
+      steps: serviceFlow.steps.map((s) => ({ ...s, approved: true, updatedAt: now })),
+    };
+    await persistServiceFlow(next);
+    showSuccessToast("전체 단계 승인 완료");
+  }, [serviceFlow, persistServiceFlow, showSuccessToast]);
+
   const inviteEmphasis = humanOthers.length === 0;
 
   const existingHumanUserIds = useMemo(
@@ -1800,6 +1943,77 @@ export function RequirementsWorkspace({
     boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.18)",
     minHeight: 0,
   };
+
+  const chatPanel = (
+    <div style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
+      <RequirementsChatPanel
+        messages={messages}
+        typingIndicator={aiInvokePending}
+        onInsertComposerPrompt={insertComposerPrompt}
+        onSetReplyTo={(messageId, preview) => {
+          setReplyTo({ id: messageId, preview });
+          window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);
+        }}
+        onOpenDeliverableDocument={(id) => openDeliverableViewer([id], id)}
+        onOpenDeliverableDocuments={(ids) => openDeliverableViewer(ids, ids[0] ?? null)}
+        onRegenerateDeliverables={(types) => {
+          const next = types.filter(isIdeationDeliverableType);
+          if (next.length) void handleGenerateDeliverables(next);
+        }}
+        onConfirmDeliverables={(ids) => void handleConfirmDeliverableAssets(ids)}
+        composer={
+          <div
+            style={{
+              padding: "12px 18px 16px",
+              background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+            }}
+          >
+            {replyTo ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#475569", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  답글 대상: <span style={{ fontWeight: 700, color: "#0f172a" }}>{replyTo.preview || replyTo.id}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyTo(null)}
+                  style={{
+                    border: "1px solid #e2e8f0",
+                    background: "#fff",
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#475569",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  취소 ×
+                </button>
+              </div>
+            ) : null}
+            <RequirementsComposerGpt
+              textAreaRef={composerTextAreaRef}
+              value={input}
+              onChange={setInput}
+              onSend={() => void onSend()}
+              busy={busy}
+              disabled={false}
+              placeholder={composerPlaceholder}
+              targetPickerItems={targetPickerItems}
+              toolsMenu={{
+                onOrganizeRequirements: () => void onOrganizeRequirements(),
+                organizeDisabled: busy || remoteLocked,
+                draftViewAvailable: Boolean(draftDoc),
+                onOpenDraftView: () => setDraftDrawerOpen(true),
+              }}
+            />
+          </div>
+        }
+      />
+    </div>
+  );
 
   return (
     <div style={shellStyle}>
@@ -2074,81 +2288,36 @@ export function RequirementsWorkspace({
       ) : null}
 
       <div style={mainRow} className="jyo-requirements-workspace-main">
-        <RequirementsMemberSidebar
-          participants={participants}
-          showInvite={Boolean(resolvedProjectId.trim())}
-          inviteDisabled={remoteLocked}
-          inviteEmphasis={inviteEmphasis}
-          onInviteClick={() => setInviteOpen(true)}
-        />
-        <div style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
-          <RequirementsChatPanel
-            messages={messages}
-            typingIndicator={aiInvokePending}
-            onInsertComposerPrompt={insertComposerPrompt}
-            onSetReplyTo={(messageId, preview) => {
-              setReplyTo({ id: messageId, preview });
-              window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);
-            }}
-            onOpenDeliverableDocument={(id) => openDeliverableViewer([id], id)}
-            onOpenDeliverableDocuments={(ids) => openDeliverableViewer(ids, ids[0] ?? null)}
-            onRegenerateDeliverables={(types) => {
-              const next = types.filter(isIdeationDeliverableType);
-              if (next.length) void handleGenerateDeliverables(next);
-            }}
-            onConfirmDeliverables={(ids) => void handleConfirmDeliverableAssets(ids)}
-            composer={
-              <div
-                style={{
-                  padding: "12px 18px 16px",
-                  background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-                }}
-              >
-                {replyTo ? (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 800, color: "#475569", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      답글 대상: <span style={{ fontWeight: 700, color: "#0f172a" }}>{replyTo.preview || replyTo.id}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setReplyTo(null)}
-                      style={{
-                        border: "1px solid #e2e8f0",
-                        background: "#fff",
-                        borderRadius: 999,
-                        padding: "6px 10px",
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: "#475569",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      취소 ×
-                    </button>
-                  </div>
-                ) : null}
-                <RequirementsComposerGpt
-                  textAreaRef={composerTextAreaRef}
-                  value={input}
-                  onChange={setInput}
-                  onSend={() => void onSend()}
-                  busy={busy}
-                  disabled={false}
-                  placeholder={composerPlaceholder}
-                  targetPickerItems={targetPickerItems}
-                  toolsMenu={{
-                    onOrganizeRequirements: () => void onOrganizeRequirements(),
-                    organizeDisabled: busy || remoteLocked,
-                    draftViewAvailable: Boolean(draftDoc),
-                    onOpenDraftView: () => setDraftDrawerOpen(true),
-                  }}
-                />
-              </div>
-            }
-          />
-        </div>
+        {inServiceFlowStage ? (
+          <div style={{ padding: 14, width: "100%", minWidth: 0, overflow: "auto" }}>
+            <RequirementsServiceFlowStage
+              ideationReady={ideationReadyForServiceFlow}
+              ideationReadyNotice={ideationReadyNotice}
+              flow={serviceFlow}
+              onChangeFlow={(next) => void persistServiceFlow(next)}
+              onGenerateAiDraft={() => void handleGenerateServiceFlowDraft()}
+              onApproveAll={() => void handleApproveAllServiceFlowSteps()}
+              onNavigateToFeaturesHref={resolvedProjectId.trim() ? `/features?projectId=${encodeURIComponent(resolvedProjectId.trim())}` : "/features"}
+              chat={chatPanel}
+            />
+            <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setInviteOpen(true)} style={{ border: 0, background: "none", cursor: "pointer", fontWeight: 800, color: "#2563eb", textDecoration: "underline", padding: 6 }}>
+                멤버 초대
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <RequirementsMemberSidebar
+              participants={participants}
+              showInvite={Boolean(resolvedProjectId.trim())}
+              inviteDisabled={remoteLocked}
+              inviteEmphasis={inviteEmphasis}
+              onInviteClick={() => setInviteOpen(true)}
+            />
+            {chatPanel}
+          </>
+        )}
       </div>
 
       {error ? (

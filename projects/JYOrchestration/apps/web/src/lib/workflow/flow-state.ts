@@ -5,6 +5,7 @@ export const APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT = "jyo:app-flow-project-cont
 
 export type AppFlowStepId =
   | "requirements"
+  | "service_flow"
   | "features"
   | "tasks"
   | "planning"
@@ -18,6 +19,7 @@ export type AppFlowStepDef = Readonly<{
 
 export const APP_FLOW_STEPS: readonly AppFlowStepDef[] = [
   { id: "requirements", label: "아이디어 구체화" },
+  { id: "service_flow", label: "액터 및 서비스 흐름 정의" },
   { id: "features", label: "기능 정리" },
   { id: "tasks", label: "작업 정리" },
   { id: "planning", label: "생성 준비" },
@@ -32,6 +34,10 @@ export function appFlowStepHref(stepId: AppFlowStepId, projectId: string | null)
   switch (stepId) {
     case "requirements":
       return `/requirements${q}`;
+    case "service_flow":
+      return pid
+        ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=service-flow`
+        : "/requirements?stage=service-flow";
     case "features":
       return `/features${q}`;
     case "tasks":
@@ -52,7 +58,11 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   const p = pathname || "/";
   if (p === "/login" || p.startsWith("/login/")) return null;
   if (p.startsWith("/admin")) return null;
-  if (p === "/requirements" || p.startsWith("/requirements/")) return "requirements";
+  if (p === "/requirements" || p.startsWith("/requirements/")) {
+    const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
+    if (stage === "service-flow") return "service_flow";
+    return "requirements";
+  }
   if (p === "/collaboration" || p.startsWith("/collaboration/")) return null;
   if (p === "/features" || p.startsWith("/features/")) return "features";
   if (p === "/tasks" || p.startsWith("/tasks/")) return "tasks";
@@ -114,7 +124,13 @@ export function isWorkflowStepNavActive(
   }
   if (stepId === "requirements") {
     if (!(pathname === "/requirements" || pathname.startsWith("/requirements/"))) return false;
-    return qp === ctx;
+    const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
+    return qp === ctx && stage !== "service-flow";
+  }
+  if (stepId === "service_flow") {
+    if (!(pathname === "/requirements" || pathname.startsWith("/requirements/"))) return false;
+    const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
+    return qp === ctx && stage === "service-flow";
   }
   if (stepId === "features") {
     if (!(pathname === "/features" || pathname.startsWith("/features/"))) return false;
