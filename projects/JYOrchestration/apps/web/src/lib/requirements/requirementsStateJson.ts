@@ -40,6 +40,8 @@ export type RequirementsStateJson = {
   selectedTargetId?: string | null;
   /** 좌측 멤버·멘션으로 지정한 질문 대상(복수) */
   selectedMembers?: Array<{ id: string; name: string }> | null;
+  /** 프로젝트 생성 시 입력한 원본 설명(프로젝트 카드 표시는 이 값만 사용) */
+  originalProjectDescription?: string | null;
   /** 액터 및 서비스 흐름 정의(단계 2) — MVP v1 */
   serviceFlowV1?: RequirementsServiceFlowV1 | null;
   onboardingShown?: boolean;
@@ -192,6 +194,16 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? null
         : parseRequirementsServiceFlowV1(serviceFlowRaw) ?? null;
 
+  const originalProjectDescriptionRaw = "originalProjectDescription" in o ? (o.originalProjectDescription as unknown) : undefined;
+  const originalProjectDescription =
+    originalProjectDescriptionRaw === undefined
+      ? undefined
+      : originalProjectDescriptionRaw === null
+        ? null
+        : typeof originalProjectDescriptionRaw === "string"
+          ? originalProjectDescriptionRaw
+          : String(originalProjectDescriptionRaw ?? "");
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -214,6 +226,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     onboardingShown: typeof o.onboardingShown === "boolean" ? o.onboardingShown : undefined,
     openIssues: typeof o.openIssues === "string" ? o.openIssues : undefined,
     priorityFeatures: typeof o.priorityFeatures === "string" ? o.priorityFeatures : undefined,
+    ...(originalProjectDescription !== undefined ? { originalProjectDescription } : {}),
     ...(serviceFlowV1 !== undefined ? { serviceFlowV1 } : {}),
     ...(lastPromptView !== undefined ? { lastPromptView } : {}),
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
