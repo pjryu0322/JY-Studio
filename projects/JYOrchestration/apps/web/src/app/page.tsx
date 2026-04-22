@@ -10,7 +10,6 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/preferences/globalPreferences";
-import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProjectDescription";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
 
@@ -738,20 +737,8 @@ export default function HomePage() {
                   {(() => {
                     const state = parseRequirementsStateJson(project.requirementsStateJson);
                     const original = typeof state.originalProjectDescription === "string" ? state.originalProjectDescription.trim() : "";
-                    if (original) return original;
-                    const fallback = String(project.description ?? "").trim();
-                    return isProbablyOriginalProjectDescription(fallback) ? fallback : "설명 없음";
+                    return original || "설명 없음";
                   })()}
-                </div>
-
-                <div style={{ fontSize: 13, color: "#64748b" }}>
-                  {project.repoUrl ? (
-                    <>
-                      저장소 연결됨 · 브랜치 {project.defaultBranch || "main"}
-                    </>
-                  ) : (
-                    <>저장소 미연결 · 기본 브랜치 {project.defaultBranch || "main"}</>
-                  )}
                 </div>
               </div>
               );
