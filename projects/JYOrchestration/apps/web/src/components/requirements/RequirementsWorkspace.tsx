@@ -223,9 +223,7 @@ export function RequirementsWorkspace({
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [selectedMembers, setSelectedMembers] = useState<RequirementsMessageTarget[]>([
-    { id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" },
-  ]);
+  const [selectedMembers, setSelectedMembers] = useState<RequirementsMessageTarget[]>([]);
   const [fetchNonce, setFetchNonce] = useState(0);
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
@@ -243,6 +241,8 @@ export function RequirementsWorkspace({
   const [plannerTypePicked, setPlannerTypePicked] = useState<IdeationDeliverableType>("problem_statement");
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const successToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const errorToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saveToastVisible, setSaveToastVisible] = useState(false);
   const saveToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevSaveStateRef = useRef<"idle" | "saving" | "saved" | "error">("idle");
@@ -407,6 +407,8 @@ export function RequirementsWorkspace({
         setSelectedMembers(dedupeMemberRefs(sm as RequirementsMessageTarget[]));
       } else if (typeof state.selectedTargetId === "string" && state.selectedTargetId.trim()) {
         setSelectedMembers([{ id: state.selectedTargetId.trim(), name: "AI 기획자" }]);
+      } else {
+        setSelectedMembers([]);
       }
       if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
         setInput(state.lastUserDraftText);
@@ -481,6 +483,7 @@ export function RequirementsWorkspace({
         kind: "ai",
         onlineHint: false,
         aiStatusLabel: aiPlannerStatusLabel,
+        roleLabel: "AI",
       });
     }
     for (const m of aiMembers) {
@@ -490,16 +493,20 @@ export function RequirementsWorkspace({
         kind: "ai",
         onlineHint: false,
         aiStatusLabel: aiPlannerStatusLabel,
+        roleLabel: (m.aiOrchestrationRole || m.role || "AI").slice(0, 32),
       });
     }
     for (const m of members) {
       if (m.memberType !== "HUMAN") continue;
       const uid = m.userId ?? null;
+      const invited = !uid;
       list.push({
         id: m.memberId,
         name: (m.displayName || m.email || "멤버").slice(0, 24),
         kind: "human",
         onlineHint: Boolean(sessionUser?.id && uid && sessionUser.id === uid),
+        roleLabel: (m.role || "멤버").slice(0, 32),
+        invited,
       });
     }
     const seen = new Set<string>();
@@ -640,39 +647,15 @@ export function RequirementsWorkspace({
     [resolvedProjectId]
   );
 
-  const toggleMemberTarget = useCallback(
-    (id: string, name: string) => {
-      setSelectedMembers((prev) => {
-        const exists = prev.some((x) => x.id === id);
-        let next: RequirementsMessageTarget[];
-        if (exists) {
-          if (prev.length <= 1) return prev;
-          next = prev.filter((x) => x.id !== id);
-        } else {
-          next = dedupeMemberRefs([...prev, { id, name }]);
-        }
-        const pid = resolvedProjectId.trim();
-        if (pid) {
-          void persistStateJsonOnly({
-            selectedMembers: next,
-            selectedTargetId: next[0]?.id ?? null,
-          });
-        }
-        return next;
-      });
-    },
-    [resolvedProjectId, persistStateJsonOnly]
-  );
-
   const removeMemberTarget = useCallback(
     (id: string) => {
       setSelectedMembers((prev) => {
-        if (prev.length <= 1) return prev;
         const next = prev.filter((x) => x.id !== id);
+        if (next.length === prev.length) return prev;
         const pid = resolvedProjectId.trim();
         if (pid) {
           void persistStateJsonOnly({
-            selectedMembers: next,
+            selectedMembers: next.length ? next : null,
             selectedTargetId: next[0]?.id ?? null,
           });
         }
@@ -707,21 +690,19 @@ export function RequirementsWorkspace({
   );
 
   const composerPlaceholder = useMemo(() => {
-    if (selectedMembers.length === 0) return "예: 내부 직원이 회의록을 작성·검색·공유할 수 있는 서비스를 만들고 싶어요";
+    if (selectedMembers.length === 0) {
+      return "@@로 멤버를 지정하거나, 그대로 입력하면 AI 기획자에게 전달됩니다";
+    }
     if (selectedMembers.length === 1) return `${selectedMembers[0].name}에게 질문하세요`;
     return `선택한 ${selectedMembers.length}명에게 질문하세요`;
   }, [selectedMembers]);
 
   const targetPickerItems = useMemo<readonly RequirementsComposerTargetPickerItem[]>(() => {
-    const humans = participants.filter((p) => p.kind === "human").map((p) => ({ id: p.id, name: p.name }));
-    const all = participants.map((p) => ({ id: p.id, name: p.name }));
-    const plannerAi = participants.find((p) => p.kind === "ai" && /기획/.test(p.name)) ?? null;
-    const plannerTarget = plannerAi ? { id: plannerAi.id, name: plannerAi.name } : { id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" };
-    return [
-      { id: "picker:ai-planner", label: "AI 기획자", targets: [plannerTarget] },
-      { id: "picker:humans", label: "사람 멤버", targets: humans },
-      { id: "picker:all", label: "전체 멤버", targets: all },
-    ];
+    return participants.map((p) => ({
+      id: `picker:participant:${p.id}`,
+      label: p.invited ? `${p.name} (초대됨)` : p.name,
+      targets: [{ id: p.id, name: p.name }],
+    }));
   }, [participants]);
 
   const addMemberTargets = useCallback(
@@ -772,7 +753,7 @@ export function RequirementsWorkspace({
       const baseState = mergeRequirementsStateJson(stateJsonRef.current, {
         lastSavedAt: nextSavedAt,
         lastOrganizedAt: organizedAt ?? stateJsonRef.current.lastOrganizedAt,
-        selectedTargetId: selectedMembers[0]?.id ?? stateJsonRef.current.selectedTargetId ?? null,
+        selectedTargetId: selectedMembers[0]?.id ?? null,
         selectedMembers: selectedMembers.length ? [...selectedMembers] : null,
         onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
         openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
@@ -902,11 +883,27 @@ export function RequirementsWorkspace({
     }, 2000);
   }, []);
 
+  const showErrorToast = useCallback((message: string) => {
+    if (errorToastHideTimerRef.current) {
+      clearTimeout(errorToastHideTimerRef.current);
+      errorToastHideTimerRef.current = null;
+    }
+    setErrorToast(message);
+    errorToastHideTimerRef.current = setTimeout(() => {
+      setErrorToast(null);
+      errorToastHideTimerRef.current = null;
+    }, 4500);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (successToastHideTimerRef.current) {
         clearTimeout(successToastHideTimerRef.current);
         successToastHideTimerRef.current = null;
+      }
+      if (errorToastHideTimerRef.current) {
+        clearTimeout(errorToastHideTimerRef.current);
+        errorToastHideTimerRef.current = null;
       }
     };
   }, []);
@@ -1569,24 +1566,12 @@ export function RequirementsWorkspace({
             if (!res.ok || !json.success || !json.data || typeof json.data.ready !== "boolean") {
               const errMsg = json.message || "정리 요청 처리에 실패했습니다.";
               setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-              finalRoom = {
-                ...withCalling,
-                aiQuestionIndex: turn + 1,
-                requirementsConversation: {
-                  ...withCalling.requirementsConversation,
-                  messages: [
-                    ...withCalling.requirementsConversation.messages,
-                    newChatMessage({
-                      role: "system",
-                      body: "정리 요청 처리에 실패했습니다. 다시 시도해 주세요.",
-                      speakerType: "SYSTEM",
-                      speakerId: "system",
-                      speakerName: "시스템",
-                      messageType: "FRIENDLY_ERROR",
-                    }),
-                  ],
-                },
-              };
+              showErrorToast(errMsg);
+              finalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
+              setInput("");
+              setReplyTo(null);
+              await persistRemote(finalRoom, {}, { lastUserDraftText: "" });
+              return;
             } else if (!json.data.ready) {
               const analyzerMessage = String(json.data.message ?? "").trim() || "좋은 초안을 위해 한 가지만 더 확인하겠습니다.";
               const questions = Array.isArray(json.data.questions)
@@ -1756,46 +1741,14 @@ export function RequirementsWorkspace({
           } else {
             const errMsg = json.message || "응답 생성 실패";
             setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-            finalRoom = {
-              ...withCalling,
-              aiQuestionIndex: turn + 1,
-              requirementsConversation: {
-                ...withCalling.requirementsConversation,
-                messages: [
-                  ...withCalling.requirementsConversation.messages,
-                  newChatMessage({
-                    role: "system",
-                    body: "AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.",
-                    speakerType: "SYSTEM",
-                    speakerId: "system",
-                    speakerName: "시스템",
-                    messageType: "FRIENDLY_ERROR",
-                  }),
-                ],
-              },
-            };
+            showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
+            finalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
           }
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);
           setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-          finalRoom = {
-            ...withCalling,
-            aiQuestionIndex: turn + 1,
-            requirementsConversation: {
-              ...withCalling.requirementsConversation,
-              messages: [
-                ...withCalling.requirementsConversation.messages,
-                newChatMessage({
-                  role: "system",
-                  body: "AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.",
-                  speakerType: "SYSTEM",
-                  speakerId: "system",
-                  speakerName: "시스템",
-                  messageType: "FRIENDLY_ERROR",
-                }),
-              ],
-            },
-          };
+          showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
+          finalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
         } finally {
           setAiInvokePending(false);
         }
@@ -1808,17 +1761,7 @@ export function RequirementsWorkspace({
           requirementsConversation: {
             ...room.requirementsConversation,
             projectId: resolvedProjectId.trim(),
-            messages: [
-              ...msgs,
-              newChatMessage({
-                role: "system",
-                body: `${targets.map((t) => `@${t.name}`).join(", ")}님께 공개 질문으로 전달되었습니다. 답변은 이 대화에 이어서 남겨 주세요.`,
-                speakerType: "SYSTEM",
-                speakerId: "system",
-                speakerName: "시스템",
-                messageType: "NOTICE",
-              }),
-            ],
+            messages: msgs,
           },
         };
         setInput("");
@@ -1845,6 +1788,10 @@ export function RequirementsWorkspace({
     project?.description,
     draftDoc,
     replyTo,
+    showErrorToast,
+    handleGenerateDeliverables,
+    showSuccessToast,
+    isDraftIntent,
   ]);
 
   const onPanelBlurSave = useCallback(async () => {
@@ -2122,6 +2069,29 @@ export function RequirementsWorkspace({
         </div>
       ) : null}
 
+      {errorToast ? (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: "fixed",
+            top: 176,
+            right: 24,
+            zIndex: 61,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "#b91c1c",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 800,
+            boxShadow: "0 12px 32px -8px rgba(185, 28, 28, 0.45)",
+            maxWidth: 360,
+          }}
+        >
+          {errorToast}
+        </div>
+      ) : null}
+
       <RequirementsHeader
         projectName={headerProjectName}
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
@@ -2206,8 +2176,6 @@ export function RequirementsWorkspace({
       <div style={mainRow} className="jyo-requirements-workspace-main">
         <RequirementsMemberSidebar
           participants={participants}
-          selectedMemberIds={selectedMembers.map((m) => m.id)}
-          onToggleMember={toggleMemberTarget}
           showInvite={Boolean(resolvedProjectId.trim())}
           inviteDisabled={remoteLocked}
           inviteEmphasis={inviteEmphasis}

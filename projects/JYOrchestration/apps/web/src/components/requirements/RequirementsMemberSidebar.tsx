@@ -12,14 +12,18 @@ function sortForSidebar(participants: readonly ParticipantOption[]): Participant
   return [...ais, ...self, ...others];
 }
 
-function statusSubtitle(p: ParticipantOption, selected: boolean): string {
+function statusSubtitle(p: ParticipantOption): string {
   const parts: string[] = [];
-  if (selected) parts.push("질문 대상");
   if (p.kind === "ai") {
-    parts.push("AI");
+    const role = p.roleLabel?.trim();
+    if (role) parts.push(role);
+    else parts.push("AI");
     const s = p.aiStatusLabel?.trim();
     if (s) parts.push(s.length > 36 ? `${s.slice(0, 36)}…` : s);
   } else {
+    const role = p.roleLabel?.trim();
+    if (role) parts.push(role);
+    if (p.invited) parts.push("초대됨");
     parts.push(p.onlineHint ? "온라인" : "오프라인");
   }
   return parts.join(" · ");
@@ -30,16 +34,12 @@ function statusSubtitle(p: ParticipantOption, selected: boolean): string {
  */
 export function RequirementsMemberSidebar({
   participants,
-  selectedMemberIds,
-  onToggleMember,
   showInvite,
   inviteDisabled,
   inviteEmphasis,
   onInviteClick,
 }: {
   readonly participants: readonly ParticipantOption[];
-  readonly selectedMemberIds: readonly string[];
-  readonly onToggleMember: (id: string, name: string) => void;
   readonly showInvite: boolean;
   readonly inviteDisabled: boolean;
   readonly inviteEmphasis: boolean;
@@ -66,46 +66,44 @@ export function RequirementsMemberSidebar({
       }}
     >
       <div className="relative" style={{ position: "relative", padding: "12px 12px 8px" }}>
-        <ScreenLabel label="요구사항-참가자영역-질문대상리스트" visible={showScreenLabels} />
+        <ScreenLabel label="요구사항-참가자영역-멤버리스트" visible={showScreenLabels} />
         <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.02em", textTransform: "uppercase" }}>참여 멤버</div>
       </div>
-      <div style={{ flex: "1 1 auto", overflowY: "auto", padding: "0 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
-        {ordered.map((p) => {
-          const active = selectedMemberIds.includes(p.id);
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onToggleMember(p.id, p.name)}
+      <div
+        role="list"
+        style={{ flex: "1 1 auto", overflowY: "auto", padding: "0 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}
+      >
+        {ordered.map((p) => (
+          <div
+            key={p.id}
+            role="listitem"
+            style={{
+              textAlign: "left",
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              boxShadow: "none",
+            }}
+          >
+            <div
               style={{
-                textAlign: "left",
-                width: "100%",
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: active ? "2px solid #0d7377" : "1px solid #e2e8f0",
-                background: active ? "#ecfdf5" : "#fff",
-                cursor: "pointer",
-                boxShadow: active ? "0 1px 2px rgba(15, 23, 42, 0.06)" : "none",
+                fontSize: 13,
+                fontWeight: 800,
+                color: "#0f172a",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {p.name}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35, wordBreak: "break-word" }}>
-                {statusSubtitle(p, active)}
-              </div>
-            </button>
-          );
-        })}
+              {p.name}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35, wordBreak: "break-word" }}>
+              {statusSubtitle(p)}
+            </div>
+          </div>
+        ))}
       </div>
       {showInvite ? (
         <div className="relative" style={{ position: "relative", padding: "10px 10px 12px", borderTop: "1px solid #e2e8f0", background: "rgba(255,255,255,0.65)" }}>

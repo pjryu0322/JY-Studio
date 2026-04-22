@@ -340,7 +340,7 @@ export function RequirementsComposerGpt({
               }}
             >
               <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>
-                `@@`로 질문 대상을 선택하세요
+                @@ 입력 후 멤버를 선택하세요 (여러 명이면 @@를 반복)
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {normalizedTargetPickerItems.map((item) => (
@@ -367,7 +367,7 @@ export function RequirementsComposerGpt({
                   >
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b", flexShrink: 0 }}>
-                      {item.targets.length}명
+                      {item.targets.length > 1 ? `${item.targets.length}명` : "추가"}
                     </span>
                   </button>
                 ))}
