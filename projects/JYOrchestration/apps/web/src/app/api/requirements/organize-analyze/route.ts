@@ -66,7 +66,7 @@ You must output ONLY valid JSON. No markdown fences.`;
 프로젝트명: ${input.projectName || "(이름 없음)"}
 프로젝트 설명: ${input.projectDescription || "(설명 없음)"}
 
-아래 컨텍스트를 근거로, 산출물 작성에 필요한 슬롯 충족 여부를 평가하고, 부족하면 가장 가치가 큰 질문 1~2개만 뽑아라.
+아래 컨텍스트를 근거로, 산출물 작성에 필요한 슬롯 충족 여부를 평가하고, 부족하면 가장 가치가 큰 질문을 정확히 1개만 뽑아라.
 
 [필수 슬롯]
 ${slots.map((s) => `- ${s}`).join("\n")}
@@ -77,14 +77,14 @@ ${context || "(없음)"}
 [출력 JSON 스키마]
 {
   "ready": true|false,
-  "message": "사용자에게 보여줄 자연스러운 한두 문장(한국어)",
-  "questions": ["질문1?", "질문2?"],
+  "message": "사용자에게 보여줄 자연스러운 한두 문장(한국어). 가능하면 짧은 핵심 이해 후 질문 1개 맥락만 담을 것.",
+  "questions": ["가장 중요한 질문 1개만"],
   "slotStatus": { "슬롯명": "filled"|"missing" }
 }
 
 [규칙]
 - ready=true면 questions는 빈 배열.
-- ready=false면 questions는 1~2개.
+- ready=false면 questions는 정확히 1개(문자열 하나만 담은 배열).
 - 질문은 비난하지 말고, 필요한 이유를 과하게 설명하지 말고, 자연스럽게.
 - slotStatus는 위 필수 슬롯 키를 모두 포함하라.
 - 한국어로 작성.`;
@@ -122,7 +122,7 @@ ${context || "(없음)"}
   const o = parsed as Record<string, unknown>;
   const ready = o.ready === true;
   const message = typeof o.message === "string" ? o.message.trim() : "";
-  const questions = Array.isArray(o.questions) ? o.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 2) : [];
+  const questions = Array.isArray(o.questions) ? o.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1) : [];
   const slotStatusRaw = o.slotStatus && typeof o.slotStatus === "object" ? (o.slotStatus as Record<string, unknown>) : null;
   const slotStatus: SlotStatus = {};
   for (const s of slots) {
@@ -132,7 +132,7 @@ ${context || "(없음)"}
 
   if (!message) return { ok: false, code: "SCHEMA", message: "Analyzer message가 비어 있습니다." };
   if (ready && questions.length) return { ok: false, code: "SCHEMA", message: "ready=true인데 questions가 비어있지 않습니다." };
-  if (!ready && (questions.length < 1 || questions.length > 2)) return { ok: false, code: "SCHEMA", message: "ready=false인데 질문 수가 1~2개가 아닙니다." };
+  if (!ready && questions.length !== 1) return { ok: false, code: "SCHEMA", message: "ready=false인데 질문이 정확히 1개가 아닙니다." };
 
   return { ok: true, ready, message, questions, slotStatus, model };
 }

@@ -31,7 +31,7 @@ test.describe("E2E project", () => {
     await expect(page.getByTestId("home-project-created-toast")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId(`project-card-${projectId}`)).toBeVisible({ timeout: 15_000 });
 
-    await page.getByTestId(`project-card-${projectId}`).click();
+    await page.getByTestId(`project-open-${projectId}`).click();
     await expect(page).toHaveURL(
       (url) => {
         try {
@@ -57,7 +57,7 @@ test.describe("E2E project", () => {
     await page.getByRole("link", { name: "기능 정리" }).click();
     await expect(page).toHaveURL(/\/features/, { timeout: 20_000 });
     await page.goto("/");
-    await page.getByTestId(`project-card-${projectId}`).click();
+    await page.getByTestId(`project-open-${projectId}`).click();
     await expect(page).toHaveURL(
       (url) => {
         try {
@@ -100,7 +100,7 @@ test.describe("E2E project", () => {
   });
 
   test("[E2E-PRJ-002] 시드 프로젝트 진입", async ({ page }) => {
-    await page.getByRole("button", { name: "프로젝트 열기: Web Meeting MVP" }).click();
+    await page.getByTestId("project-open-seed").click();
     await expect(page).toHaveURL(/\/requirements\?.*projectId=/, { timeout: 20_000 });
     await expect(page.getByText("Web Meeting MVP").first()).toBeVisible({ timeout: 15_000 });
   });

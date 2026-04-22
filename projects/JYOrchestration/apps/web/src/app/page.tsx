@@ -433,21 +433,18 @@ export default function HomePage() {
                 Boolean(sessionUser) &&
                 project.ownerUserId === sessionUser?.id &&
                 project.status !== PROJECT_LIFECYCLE_DELETED;
-              const menuActionStyle: CSSProperties = {
+              const openBtnStyle: CSSProperties = {
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: "100%",
-                padding: "8px 10px",
+                padding: "8px 12px",
                 borderRadius: 8,
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                color: "#0f172a",
-                fontSize: 12,
+                border: "1px solid #0d9488",
+                background: "#ecfdf5",
+                color: "#0f766e",
+                fontSize: 13,
                 fontWeight: 800,
                 textDecoration: "none",
-                marginTop: 6,
-                boxSizing: "border-box",
               };
               return (
               <div
@@ -455,27 +452,12 @@ export default function HomePage() {
                 className="relative"
                 data-testid={`project-card-${project.id}`}
                 data-project-highlight={highlightProjectId === project.id ? "1" : undefined}
-                tabIndex={canOpenProject ? 0 : -1}
-                role={canOpenProject ? "button" : undefined}
-                aria-label={canOpenProject ? `프로젝트 열기: ${project.name}` : undefined}
-                onKeyDown={(e) => {
-                  if (!canOpenProject) return;
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/requirements?projectId=${encodeURIComponent(project.id)}`);
-                  }
-                }}
-                onClick={() => {
-                  if (!canOpenProject) return;
-                  router.push(`/requirements?projectId=${encodeURIComponent(project.id)}`);
-                }}
                 style={{
                   border: highlightProjectId === project.id ? "2px solid #0d9488" : "1px solid #e5e5e5",
                   borderRadius: 10,
                   padding: 16,
                   background: highlightProjectId === project.id ? "#f0fdfa" : undefined,
                   boxShadow: highlightProjectId === project.id ? "0 0 0 3px rgba(13, 148, 136, 0.2)" : undefined,
-                  cursor: canOpenProject ? "pointer" : "default",
                 }}
               >
                 <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드" visible={showScreenLabels} />
@@ -493,12 +475,58 @@ export default function HomePage() {
                     <strong>{project.name}</strong>
                   </div>
                   <div
-                    data-home-project-card-menu-root={project.id}
-                    className="relative"
-                    style={{ flexShrink: 0 }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexShrink: 0,
+                      flexWrap: "wrap",
+                      justifyContent: "flex-end",
+                    }}
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
+                    {canOpenProject ? (
+                      <Link
+                        href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
+                        data-testid={
+                          project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                        style={openBtnStyle}
+                      >
+                        열기
+                      </Link>
+                    ) : null}
+                    {showOwnerDelete ? (
+                      <div className="relative">
+                        <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
+                        <button
+                          type="button"
+                          data-testid={`home-delete-project-${project.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget({ id: project.id, name: project.name });
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #fecaca",
+                            background: "#fff",
+                            color: "#b91c1c",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ) : null}
+                    <div data-home-project-card-menu-root={project.id} className="relative">
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-메뉴" visible={showScreenLabels} />
                     <button
                       type="button"
@@ -531,7 +559,7 @@ export default function HomePage() {
                     {menuOpen ? (
                       <div
                         role="dialog"
-                        aria-label="프로젝트 메뉴"
+                        aria-label="프로젝트 상태"
                         style={{
                           position: "absolute",
                           top: "calc(100% + 6px)",
@@ -609,47 +637,32 @@ export default function HomePage() {
                         {projectCardMenuError && project.status !== PROJECT_LIFECYCLE_DELETED ? (
                           <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{projectCardMenuError}</p>
                         ) : null}
-                        <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", margin: "12px 0 6px 0" }}>작업</div>
-                        {canOpenProject ? (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f1f5f9" }}>
                           <Link
-                            href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
+                            href={`/projects/${encodeURIComponent(project.id)}`}
                             onClick={() => setProjectCardMenuId(null)}
-                            style={{ ...menuActionStyle, marginTop: 0, border: "1px solid #0d9488", color: "#0f766e", background: "#ecfdf5" }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "100%",
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #cbd5e1",
+                              background: "#f8fafc",
+                              color: "#0f172a",
+                              fontSize: 12,
+                              fontWeight: 800,
+                              textDecoration: "none",
+                              boxSizing: "border-box",
+                            }}
                           >
-                            열기
+                            설정으로 이동
                           </Link>
-                        ) : null}
-                        <Link
-                          href={`/projects/${encodeURIComponent(project.id)}`}
-                          onClick={() => setProjectCardMenuId(null)}
-                          style={menuActionStyle}
-                        >
-                          설정으로 이동
-                        </Link>
-                        {showOwnerDelete ? (
-                          <div className="relative">
-                            <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
-                            <button
-                              type="button"
-                              data-testid={`home-delete-project-${project.id}`}
-                              onClick={() => {
-                                setProjectCardMenuId(null);
-                                setDeleteTarget({ id: project.id, name: project.name });
-                              }}
-                              style={{
-                                ...menuActionStyle,
-                                border: "1px solid #fecaca",
-                                background: "#fff",
-                                color: "#b91c1c",
-                                cursor: "pointer",
-                              }}
-                            >
-                              삭제
-                            </button>
-                          </div>
-                        ) : null}
+                        </div>
                       </div>
                     ) : null}
+                  </div>
                   </div>
                 </div>
 
