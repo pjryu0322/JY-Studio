@@ -30,7 +30,7 @@ function statusSubtitle(p: ParticipantOption): string {
 }
 
 /**
- * 아이디어 구체화 협업 영역 좌측: 참여 멤버 선택 + 멤버 초대(프로젝트 연결 시).
+ * 아이디어 구체화 협업 영역 좌측: 참여 멤버 표시(프레즌스) + 멤버 초대(프로젝트 연결 시).
  */
 export function RequirementsMemberSidebar({
   participants,
