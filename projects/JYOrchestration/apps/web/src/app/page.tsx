@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
@@ -68,11 +68,11 @@ export default function HomePage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [highlightProjectId, setHighlightProjectId] = useState<string | null>(null);
   const [createToast, setCreateToast] = useState(false);
-  /** 홈 카드 상태 배지 인라인 팝오버(한 번에 하나만) */
-  const [statusPopoverProjectId, setStatusPopoverProjectId] = useState<string | null>(null);
-  const [statusPopoverLoading, setStatusPopoverLoading] = useState(false);
-  const [statusPopoverError, setStatusPopoverError] = useState<string | null>(null);
-  const [statusPopoverReadiness, setStatusPopoverReadiness] = useState<ReturnType<typeof computeProjectExecutionReadiness> | null>(null);
+  /** 홈 카드 설정 아이콘 메뉴(상태 요약 + 작업, 한 번에 하나만) */
+  const [projectCardMenuId, setProjectCardMenuId] = useState<string | null>(null);
+  const [projectCardMenuLoading, setProjectCardMenuLoading] = useState(false);
+  const [projectCardMenuError, setProjectCardMenuError] = useState<string | null>(null);
+  const [projectCardMenuReadiness, setProjectCardMenuReadiness] = useState<ReturnType<typeof computeProjectExecutionReadiness> | null>(null);
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
   const defaultProjectType = "web-service";
@@ -227,60 +227,60 @@ export default function HomePage() {
   }, [router]);
 
   useEffect(() => {
-    const pid = statusPopoverProjectId?.trim();
+    const pid = projectCardMenuId?.trim();
     if (!pid) {
-      setStatusPopoverLoading(false);
-      setStatusPopoverError(null);
-      setStatusPopoverReadiness(null);
+      setProjectCardMenuLoading(false);
+      setProjectCardMenuError(null);
+      setProjectCardMenuReadiness(null);
       return;
     }
     const row = projectsRef.current.find((p) => p.id === pid);
     if (row?.status === PROJECT_LIFECYCLE_DELETED) {
-      setStatusPopoverLoading(false);
-      setStatusPopoverError(null);
-      setStatusPopoverReadiness(null);
+      setProjectCardMenuLoading(false);
+      setProjectCardMenuError(null);
+      setProjectCardMenuReadiness(null);
       return;
     }
     let cancelled = false;
-    setStatusPopoverLoading(true);
-    setStatusPopoverError(null);
-    setStatusPopoverReadiness(null);
+    setProjectCardMenuLoading(true);
+    setProjectCardMenuError(null);
+    setProjectCardMenuReadiness(null);
     void (async () => {
       try {
         const { res, json } = await fetchExecutionSetup(pid);
         if (cancelled) return;
         if (!res.ok || !json.success) {
-          setStatusPopoverError(json.message || "실행 환경 정보를 불러오지 못했습니다.");
-          setStatusPopoverReadiness(null);
+          setProjectCardMenuError(json.message || "실행 환경 정보를 불러오지 못했습니다.");
+          setProjectCardMenuReadiness(null);
         } else {
-          setStatusPopoverReadiness(computeProjectExecutionReadiness(json.data ?? null));
-          setStatusPopoverError(null);
+          setProjectCardMenuReadiness(computeProjectExecutionReadiness(json.data ?? null));
+          setProjectCardMenuError(null);
         }
       } catch {
         if (!cancelled) {
-          setStatusPopoverError("실행 환경 정보를 불러오지 못했습니다.");
-          setStatusPopoverReadiness(null);
+          setProjectCardMenuError("실행 환경 정보를 불러오지 못했습니다.");
+          setProjectCardMenuReadiness(null);
         }
       } finally {
-        if (!cancelled) setStatusPopoverLoading(false);
+        if (!cancelled) setProjectCardMenuLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [statusPopoverProjectId]);
+  }, [projectCardMenuId]);
 
   useEffect(() => {
-    if (!statusPopoverProjectId) return;
+    if (!projectCardMenuId) return;
     const onPointerDown = (e: MouseEvent) => {
       const t = e.target as Node | null;
       if (!t) return;
-      const root = document.querySelector(`[data-home-status-popover-root="${statusPopoverProjectId}"]`);
+      const root = document.querySelector(`[data-home-project-card-menu-root="${projectCardMenuId}"]`);
       if (root instanceof HTMLElement && root.contains(t)) return;
-      setStatusPopoverProjectId(null);
+      setProjectCardMenuId(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setStatusPopoverProjectId(null);
+      if (e.key === "Escape") setProjectCardMenuId(null);
     };
     document.addEventListener("mousedown", onPointerDown);
     window.addEventListener("keydown", onKey);
@@ -288,7 +288,7 @@ export default function HomePage() {
       document.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("keydown", onKey);
     };
-  }, [statusPopoverProjectId]);
+  }, [projectCardMenuId]);
 
   return (
     <main
@@ -426,18 +426,56 @@ export default function HomePage() {
           <p>등록된 프로젝트가 없습니다.</p>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
-            {projects.map((project) => (
+            {projects.map((project) => {
+              const menuOpen = projectCardMenuId === project.id;
+              const canOpenProject = project.status !== PROJECT_LIFECYCLE_DELETED;
+              const showOwnerDelete =
+                Boolean(sessionUser) &&
+                project.ownerUserId === sessionUser?.id &&
+                project.status !== PROJECT_LIFECYCLE_DELETED;
+              const menuActionStyle: CSSProperties = {
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                color: "#0f172a",
+                fontSize: 12,
+                fontWeight: 800,
+                textDecoration: "none",
+                marginTop: 6,
+                boxSizing: "border-box",
+              };
+              return (
               <div
                 key={project.id}
                 className="relative"
                 data-testid={`project-card-${project.id}`}
                 data-project-highlight={highlightProjectId === project.id ? "1" : undefined}
+                tabIndex={canOpenProject ? 0 : -1}
+                role={canOpenProject ? "button" : undefined}
+                aria-label={canOpenProject ? `프로젝트 열기: ${project.name}` : undefined}
+                onKeyDown={(e) => {
+                  if (!canOpenProject) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/requirements?projectId=${encodeURIComponent(project.id)}`);
+                  }
+                }}
+                onClick={() => {
+                  if (!canOpenProject) return;
+                  router.push(`/requirements?projectId=${encodeURIComponent(project.id)}`);
+                }}
                 style={{
                   border: highlightProjectId === project.id ? "2px solid #0d9488" : "1px solid #e5e5e5",
                   borderRadius: 10,
                   padding: 16,
                   background: highlightProjectId === project.id ? "#f0fdfa" : undefined,
                   boxShadow: highlightProjectId === project.id ? "0 0 0 3px rgba(13, 148, 136, 0.2)" : undefined,
+                  cursor: canOpenProject ? "pointer" : "default",
                 }}
               >
                 <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드" visible={showScreenLabels} />
@@ -454,15 +492,27 @@ export default function HomePage() {
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-프로젝트명" visible={showScreenLabels} />
                     <strong>{project.name}</strong>
                   </div>
-                  <div className="relative" style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                    <Link
-                      href={`/projects/${encodeURIComponent(project.id)}`}
+                  <div
+                    data-home-project-card-menu-root={project.id}
+                    className="relative"
+                    style={{ flexShrink: 0 }}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-메뉴" visible={showScreenLabels} />
+                    <button
+                      type="button"
                       data-testid={
                         project.name === "Web Meeting MVP" ? "project-settings-seed" : `project-card-settings-${project.id}`
                       }
-                      aria-label="프로젝트 관리 및 설정"
-                      title="프로젝트 관리 및 설정"
-                      onClick={(e) => e.stopPropagation()}
+                      aria-expanded={menuOpen}
+                      aria-haspopup="dialog"
+                      aria-label="프로젝트 메뉴"
+                      title="프로젝트 메뉴"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProjectCardMenuId((cur) => (cur === project.id ? null : project.id));
+                      }}
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
@@ -473,146 +523,133 @@ export default function HomePage() {
                         border: "1px solid #e2e8f0",
                         background: "#fff",
                         color: "#64748b",
-                        textDecoration: "none",
+                        cursor: "pointer",
                       }}
                     >
                       <ProjectCardSettingsIcon />
-                    </Link>
-                    <div
-                      data-home-status-popover-root={project.id}
-                      style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
-                    >
-                      <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-상태배지" visible={showScreenLabels} />
-                      <button
-                        type="button"
-                        data-testid={`home-project-status-badge-${project.id}`}
-                        aria-expanded={statusPopoverProjectId === project.id}
-                        aria-haspopup="dialog"
-                        aria-label="프로젝트 상태 요약 보기"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setStatusPopoverProjectId((cur) => (cur === project.id ? null : project.id));
-                        }}
+                    </button>
+                    {menuOpen ? (
+                      <div
+                        role="dialog"
+                        aria-label="프로젝트 메뉴"
                         style={{
-                          fontSize: 13,
-                          color: project.status === PROJECT_LIFECYCLE_DELETED ? "#b91c1c" : "#64748b",
-                          fontWeight: project.status === PROJECT_LIFECYCLE_DELETED ? 600 : 500,
-                          cursor: "pointer",
+                          position: "absolute",
+                          top: "calc(100% + 6px)",
+                          right: 0,
+                          zIndex: 50,
+                          width: "min(92vw, 280px)",
+                          padding: "12px 14px",
+                          borderRadius: 10,
                           border: "1px solid #e2e8f0",
-                          borderRadius: 8,
-                          padding: "6px 10px",
                           background: "#fff",
-                          lineHeight: 1.2,
+                          boxShadow: "0 14px 40px -12px rgba(15, 23, 42, 0.25)",
                         }}
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {project.status === PROJECT_LIFECYCLE_DELETED ? "삭제됨" : formatProjectStatusForUi(project.status)}
-                      </button>
-                      {statusPopoverProjectId === project.id ? (
-                        <div
-                          role="dialog"
-                          aria-label="프로젝트 상태"
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>상태 요약</div>
+                        <dl
                           style={{
-                            position: "absolute",
-                            top: "calc(100% + 6px)",
-                            right: 0,
-                            zIndex: 50,
-                            width: "min(92vw, 280px)",
-                            padding: "12px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
-                            boxShadow: "0 14px 40px -12px rgba(15, 23, 42, 0.25)",
+                            margin: 0,
+                            display: "grid",
+                            gap: 6,
+                            fontSize: 12,
+                            color: "#334155",
+                            gridTemplateColumns: "96px 1fr",
                           }}
-                          onClick={(e) => e.stopPropagation()}
                         >
-                          <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>상태 요약</div>
-                          <dl
-                            style={{
-                              margin: 0,
-                              display: "grid",
-                              gap: 6,
-                              fontSize: 12,
-                              color: "#334155",
-                              gridTemplateColumns: "96px 1fr",
-                            }}
+                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>프로젝트</dt>
+                          <dd style={{ margin: 0, fontWeight: 700 }}>
+                            {project.status === PROJECT_LIFECYCLE_DELETED ? (
+                              <span style={{ color: "#b91c1c" }}>삭제됨</span>
+                            ) : (
+                              formatProjectStatusForUi(project.status)
+                            )}
+                          </dd>
+                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>Git 연결</dt>
+                          <dd style={{ margin: 0 }}>
+                            {project.status === PROJECT_LIFECYCLE_DELETED
+                              ? "—"
+                              : projectCardMenuLoading
+                                ? "불러오는 중…"
+                                : projectCardMenuReadiness?.gitLabel ?? (projectCardMenuError ? "확인 불가" : "—")}
+                          </dd>
+                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>GitHub 인증</dt>
+                          <dd style={{ margin: 0 }}>
+                            {project.status === PROJECT_LIFECYCLE_DELETED
+                              ? "—"
+                              : projectCardMenuLoading
+                                ? "불러오는 중…"
+                                : projectCardMenuReadiness?.githubLabel ?? (projectCardMenuError ? "확인 불가" : "—")}
+                          </dd>
+                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>Cursor 연결</dt>
+                          <dd style={{ margin: 0 }}>
+                            {project.status === PROJECT_LIFECYCLE_DELETED
+                              ? "—"
+                              : projectCardMenuLoading
+                                ? "불러오는 중…"
+                                : projectCardMenuReadiness?.cursorLabel ?? (projectCardMenuError ? "확인 불가" : "—")}
+                          </dd>
+                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>실행 가능</dt>
+                          <dd style={{ margin: 0, fontWeight: 800 }}>
+                            {project.status === PROJECT_LIFECYCLE_DELETED ? (
+                              "—"
+                            ) : projectCardMenuLoading ? (
+                              "불러오는 중…"
+                            ) : projectCardMenuReadiness ? (
+                              <span style={{ color: projectCardMenuReadiness.runnable ? "#15803d" : "#b45309" }}>
+                                {projectCardMenuReadiness.runnable ? "가능" : "불가"}
+                              </span>
+                            ) : projectCardMenuError ? (
+                              <span style={{ color: "#b45309" }}>확인 불가</span>
+                            ) : (
+                              "—"
+                            )}
+                          </dd>
+                        </dl>
+                        {projectCardMenuError && project.status !== PROJECT_LIFECYCLE_DELETED ? (
+                          <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{projectCardMenuError}</p>
+                        ) : null}
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", margin: "12px 0 6px 0" }}>작업</div>
+                        {canOpenProject ? (
+                          <Link
+                            href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
+                            onClick={() => setProjectCardMenuId(null)}
+                            style={{ ...menuActionStyle, marginTop: 0, border: "1px solid #0d9488", color: "#0f766e", background: "#ecfdf5" }}
                           >
-                            <dt style={{ fontWeight: 700, color: "#94a3b8" }}>프로젝트</dt>
-                            <dd style={{ margin: 0, fontWeight: 700 }}>
-                              {project.status === PROJECT_LIFECYCLE_DELETED ? (
-                                <span style={{ color: "#b91c1c" }}>삭제됨</span>
-                              ) : (
-                                formatProjectStatusForUi(project.status)
-                              )}
-                            </dd>
-                            <dt style={{ fontWeight: 700, color: "#94a3b8" }}>Git 연결</dt>
-                            <dd style={{ margin: 0 }}>
-                              {project.status === PROJECT_LIFECYCLE_DELETED
-                                ? "—"
-                                : statusPopoverLoading
-                                  ? "불러오는 중…"
-                                  : statusPopoverReadiness?.gitLabel ?? (statusPopoverError ? "확인 불가" : "—")}
-                            </dd>
-                            <dt style={{ fontWeight: 700, color: "#94a3b8" }}>GitHub 인증</dt>
-                            <dd style={{ margin: 0 }}>
-                              {project.status === PROJECT_LIFECYCLE_DELETED
-                                ? "—"
-                                : statusPopoverLoading
-                                  ? "불러오는 중…"
-                                  : statusPopoverReadiness?.githubLabel ?? (statusPopoverError ? "확인 불가" : "—")}
-                            </dd>
-                            <dt style={{ fontWeight: 700, color: "#94a3b8" }}>Cursor 연결</dt>
-                            <dd style={{ margin: 0 }}>
-                              {project.status === PROJECT_LIFECYCLE_DELETED
-                                ? "—"
-                                : statusPopoverLoading
-                                  ? "불러오는 중…"
-                                  : statusPopoverReadiness?.cursorLabel ?? (statusPopoverError ? "확인 불가" : "—")}
-                            </dd>
-                            <dt style={{ fontWeight: 700, color: "#94a3b8" }}>실행 가능</dt>
-                            <dd style={{ margin: 0, fontWeight: 800 }}>
-                              {project.status === PROJECT_LIFECYCLE_DELETED ? (
-                                "—"
-                              ) : statusPopoverLoading ? (
-                                "불러오는 중…"
-                              ) : statusPopoverReadiness ? (
-                                <span style={{ color: statusPopoverReadiness.runnable ? "#15803d" : "#b45309" }}>
-                                  {statusPopoverReadiness.runnable ? "가능" : "불가"}
-                                </span>
-                              ) : statusPopoverError ? (
-                                <span style={{ color: "#b45309" }}>확인 불가</span>
-                              ) : (
-                                "—"
-                              )}
-                            </dd>
-                          </dl>
-                          {statusPopoverError && project.status !== PROJECT_LIFECYCLE_DELETED ? (
-                            <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{statusPopoverError}</p>
-                          ) : null}
-                          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f1f5f9" }}>
-                            <Link
-                              href={`/projects/${encodeURIComponent(project.id)}`}
-                              onClick={() => setStatusPopoverProjectId(null)}
+                            열기
+                          </Link>
+                        ) : null}
+                        <Link
+                          href={`/projects/${encodeURIComponent(project.id)}`}
+                          onClick={() => setProjectCardMenuId(null)}
+                          style={menuActionStyle}
+                        >
+                          설정으로 이동
+                        </Link>
+                        {showOwnerDelete ? (
+                          <div className="relative">
+                            <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
+                            <button
+                              type="button"
+                              data-testid={`home-delete-project-${project.id}`}
+                              onClick={() => {
+                                setProjectCardMenuId(null);
+                                setDeleteTarget({ id: project.id, name: project.name });
+                              }}
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                width: "100%",
-                                padding: "8px 10px",
-                                borderRadius: 8,
-                                border: "1px solid #cbd5e1",
-                                background: "#f8fafc",
-                                color: "#0f172a",
-                                fontSize: 12,
-                                fontWeight: 800,
-                                textDecoration: "none",
+                                ...menuActionStyle,
+                                border: "1px solid #fecaca",
+                                background: "#fff",
+                                color: "#b91c1c",
+                                cursor: "pointer",
                               }}
                             >
-                              설정으로 이동
-                            </Link>
+                              삭제
+                            </button>
                           </div>
-                        </div>
-                      ) : null}
-                    </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -630,55 +667,9 @@ export default function HomePage() {
                     <>저장소 미연결 · 기본 브랜치 {project.defaultBranch || "main"}</>
                   )}
                 </div>
-                <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                  <div className="relative" style={{ display: "inline-block" }}>
-                    <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-상세보기버튼" visible={showScreenLabels} />
-                    <Link
-                      href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
-                      data-testid={
-                        project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
-                      }
-                      style={{
-                        display: "inline-block",
-                        padding: "8px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #ccc",
-                        color: "#111",
-                        textDecoration: "none",
-                        fontSize: 14,
-                        fontWeight: 600,
-                      }}
-                    >
-                      열기
-                    </Link>
-                  </div>
-                  {sessionUser &&
-                  project.ownerUserId === sessionUser.id &&
-                  project.status !== PROJECT_LIFECYCLE_DELETED ? (
-                    <div className="relative" style={{ display: "inline-block" }}>
-                      <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
-                      <button
-                        type="button"
-                        data-testid={`home-delete-project-${project.id}`}
-                        onClick={() => setDeleteTarget({ id: project.id, name: project.name })}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #fecaca",
-                          background: "#fff",
-                          color: "#b91c1c",
-                          fontSize: 14,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         </div>
