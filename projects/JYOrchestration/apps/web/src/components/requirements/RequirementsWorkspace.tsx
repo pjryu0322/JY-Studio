@@ -195,9 +195,11 @@ async function fetchProjectWithRetry(projectId: string): Promise<{ project: Proj
 export function RequirementsWorkspace({
   initialProjectId,
   initialWorkflowNotice,
+  initialStage,
 }: {
   readonly initialProjectId: string;
   readonly initialWorkflowNotice: string;
+  readonly initialStage?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -259,7 +261,12 @@ export function RequirementsWorkspace({
   /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
   const organizeRawFallbackRef = useRef(false);
 
-  const stage = useMemo(() => String(searchParams?.get("stage") ?? "").trim().toLowerCase(), [searchParams]);
+  const stage = useMemo(() => {
+    const urlStage = String(searchParams?.get("stage") ?? "").trim().toLowerCase();
+    if (urlStage) return urlStage;
+    const propStage = String(initialStage ?? "").trim().toLowerCase();
+    return propStage;
+  }, [searchParams, initialStage]);
   const inServiceFlowStage = stage === "service-flow";
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
@@ -642,10 +649,16 @@ export function RequirementsWorkspace({
   const ideationAssets = useMemo(() => stateJsonRef.current.deliverableAssets ?? [], [fetchNonce, project?.requirementsStateJson]);
   const ideationReadyForServiceFlow = useMemo(() => {
     const assets = ideationAssets ?? [];
-    if (!assets.length) return false;
+    if (assets.length > 0) return true;
+    // MVP gate: allow entry if any meaningful ideation text exists (even before deliverables)
+    if (goals.trim() || targetUsers.trim() || success.trim()) return true;
+    const lastPrompt = String(stateJsonRef.current.lastPromptText ?? "").trim();
+    if (lastPrompt) return true;
+    const draftText = String(stateJsonRef.current.lastUserDraftText ?? "").trim();
+    if (draftText) return true;
     const ok = new Set(["meeting_summary", "problem_statement", "kpi", "full_plan", "mvp_scope", "feature_list"]);
     return assets.some((a) => ok.has(String(a.type)));
-  }, [ideationAssets]);
+  }, [ideationAssets, goals, targetUsers, success, fetchNonce]);
   const ideationReadyNotice = "현재 단계로 이동하려면\n아이디어 구체화 단계에서\n기획 산출물 정리가 필요합니다.";
 
   const persistRemote = useCallback(

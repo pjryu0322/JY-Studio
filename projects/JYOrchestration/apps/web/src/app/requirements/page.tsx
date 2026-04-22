@@ -13,10 +13,11 @@ export default async function RequirementsPage({
   const sp = await searchParams;
   const projectId = pickFirst(sp.projectId);
   const workflowNotice = pickFirst(sp.workflowNotice);
+  const stage = pickFirst(sp.stage);
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 8px" }}>
-      <RequirementsWorkspace initialProjectId={projectId} initialWorkflowNotice={workflowNotice} />
+      <RequirementsWorkspace initialProjectId={projectId} initialWorkflowNotice={workflowNotice} initialStage={stage} />
     </div>
   );
 }
