@@ -35,6 +35,17 @@ import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
   sanitizeIdeationInterviewFirstQuestion,
 } from "@/lib/requirements/ideationInterviewBootstrap";
+import {
+  buildNextProblemInterviewQuestion,
+  emptyProblemInterviewState,
+  problemInterviewCoveredCount,
+  problemInterviewIsCovered,
+  problemInterviewSlotLabelKr,
+  updateProblemInterviewFromUserMessage,
+  withAskedSlot,
+  type ProblemInterviewSlot,
+  type ProblemInterviewState,
+} from "@/lib/requirements/problemInterview";
 import { bumpDraftVersion, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import {
@@ -550,6 +561,15 @@ export function RequirementsWorkspace({
     const done = ideationItems.filter((i) => i.done).length;
     return `아이디어 구체화 진행 중 (${done}/4)`;
   }, [resolvedProjectId, ideationComplete, ideationItems]);
+
+  const problemInterviewState = useMemo(
+    () => parseRequirementsStateJson(project?.requirementsStateJson).problemInterview ?? null,
+    [project?.requirementsStateJson]
+  );
+  const problemInterviewCovered = useMemo(
+    () => problemInterviewCoveredCount(problemInterviewState),
+    [problemInterviewState]
+  );
 
   useEffect(() => {
     const pid = resolvedProjectId.trim();
@@ -1600,7 +1620,22 @@ export function RequirementsWorkspace({
                 },
               });
               await handleGenerateDeliverables([requestedType]);
-              await persistStateJsonOnly({ organizePlannerState: null, lastOrganizedAt: new Date().toISOString() });
+              const archivedAt = new Date().toISOString();
+              const prevInterview = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
+              const prevHistory = (stateJsonRef.current.problemInterviewHistory as Array<{ archivedAt: string; state: ProblemInterviewState }> | null | undefined) ?? null;
+              await persistStateJsonOnly({
+                organizePlannerState: null,
+                lastOrganizedAt: archivedAt,
+                ...(prevInterview
+                  ? {
+                      problemInterview: null,
+                      problemInterviewHistory: [
+                        ...(Array.isArray(prevHistory) ? prevHistory : []),
+                        { archivedAt, state: prevInterview },
+                      ].slice(-24),
+                    }
+                  : {}),
+              });
               showSuccessToast(`${plannerState.requestedLabel ?? schema.labelKr} 생성 완료`);
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
               setInput("");
@@ -1611,6 +1646,60 @@ export function RequirementsWorkspace({
 
           const excerpt = formatDialogueExcerpt(conversationMessages);
           const endpoint = isDraftIntent(text) ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
+
+          // --------------------------------------------------
+          // 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지)
+          // --------------------------------------------------
+          const isIdeationInterviewFlow = (() => {
+            if (endpoint !== "/api/requirements/ai-facilitator") return false;
+            if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
+            // organize 플로우(정리요청)에는 개입하지 않음
+            if (stateJsonRef.current.organizePlannerState) return false;
+            const lastAi = [...msgs].reverse().find((m) => m.role === "ai");
+            const internal = lastAi && (lastAi as any).meta && (lastAi as any).meta.internalType;
+            const boot = internal === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE;
+            const pi = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
+            const active = Boolean(pi && pi.active !== false);
+            return boot || active;
+          })();
+
+          if (isIdeationInterviewFlow) {
+            const nowIso = new Date().toISOString();
+            const prevPi = (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
+            const seeded = prevPi ?? emptyProblemInterviewState(nowIso);
+            const updated = updateProblemInterviewFromUserMessage(seeded, text, nowIso);
+
+            const next = buildNextProblemInterviewQuestion(updated, turn);
+            if (next && !problemInterviewIsCovered(updated, next.slot)) {
+              const asked = withAskedSlot(updated, next.slot, nowIso);
+              finalRoom = {
+                ...withCalling,
+                aiQuestionIndex: turn + 1,
+                requirementsConversation: {
+                  ...withCalling.requirementsConversation,
+                  messages: [
+                    ...withCalling.requirementsConversation.messages,
+                    newChatMessage({
+                      role: "ai",
+                      body: next.question,
+                      speakerType: "AI",
+                      speakerId: primaryId,
+                      speakerName: aiName,
+                      messageType: "ANSWER",
+                    }),
+                  ],
+                },
+              };
+              await persistRemote(finalRoom, {}, { problemInterview: asked });
+              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              setInput("");
+              setReplyTo(null);
+              return;
+            }
+
+            // 슬롯 4개 확보 완료: 인터뷰 모드 종료 후 일반 대화로 전환
+            await persistStateJsonOnly({ problemInterview: { ...updated, active: false, updatedAt: nowIso } });
+          }
           const res = await fetch(endpoint, {
             method: "POST",
             credentials: "include",
@@ -2301,6 +2390,45 @@ export function RequirementsWorkspace({
           <button type="button" onClick={() => router.push("/")} style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
             홈에서 프로젝트 만들기
           </button>
+        </div>
+      ) : null}
+
+      {!inServiceFlowStage && resolvedProjectId.trim() && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
+        <div
+          style={{
+            marginTop: 6,
+            marginBottom: 10,
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #e2e8f0",
+            background: "#f8fafc",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 10,
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
+              문제정의 인터뷰 진행중 ({problemInterviewCovered}/4 확보)
+            </div>
+            <div style={{ marginTop: 6, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, color: "#475569" }}>
+              {(["currentMethod", "painPoint", "coreUser", "needForImprovement"] as const).map((slot) => {
+                const filled = Boolean((problemInterviewState as any)[slot]);
+                const partial = Boolean((problemInterviewState.partial ?? ({} as any))[slot]);
+                const mark = filled ? "✓" : partial ? "✓(부분)" : "□";
+                return (
+                  <span key={slot} style={{ fontWeight: filled ? 900 : partial ? 800 : 700 }}>
+                    {mark} {problemInterviewSlotLabelKr(slot as unknown as ProblemInterviewSlot)}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+            답변을 바탕으로 다음 질문을 자동으로 이어갑니다.
+          </div>
         </div>
       ) : null}
 

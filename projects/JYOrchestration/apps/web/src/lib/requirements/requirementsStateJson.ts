@@ -1,6 +1,7 @@
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { IdeationDeliverableAsset, IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
+import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import {
   parseRequirementsOrganizeContextV1,
   type RequirementsOrganizeContextV1,
@@ -42,6 +43,10 @@ export type RequirementsStateJson = {
   selectedMembers?: Array<{ id: string; name: string }> | null;
   /** 프로젝트 생성 시 입력한 원본 설명(프로젝트 카드 표시는 이 값만 사용) */
   originalProjectDescription?: string | null;
+  /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
+  problemInterview?: ProblemInterviewState | null;
+  /** 정리 요청 완료 시 아카이브 */
+  problemInterviewHistory?: Array<{ archivedAt: string; state: ProblemInterviewState }> | null;
   /** 액터 및 서비스 흐름 정의(단계 2) — MVP v1 */
   serviceFlowV1?: RequirementsServiceFlowV1 | null;
   onboardingShown?: boolean;
@@ -204,6 +209,34 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
           ? originalProjectDescriptionRaw
           : String(originalProjectDescriptionRaw ?? "");
 
+  const problemInterviewRaw = "problemInterview" in o ? (o.problemInterview as unknown) : undefined;
+  const problemInterview =
+    problemInterviewRaw === undefined
+      ? undefined
+      : problemInterviewRaw === null
+        ? null
+        : parseProblemInterview(problemInterviewRaw);
+
+  const problemInterviewHistoryRaw = "problemInterviewHistory" in o ? (o.problemInterviewHistory as unknown) : undefined;
+  const problemInterviewHistory =
+    problemInterviewHistoryRaw === undefined
+      ? undefined
+      : problemInterviewHistoryRaw === null
+        ? null
+        : Array.isArray(problemInterviewHistoryRaw)
+          ? (problemInterviewHistoryRaw as unknown[])
+              .map((row) => {
+                if (!row || typeof row !== "object") return null;
+                const r = row as Record<string, unknown>;
+                const archivedAt = typeof r.archivedAt === "string" ? r.archivedAt : "";
+                const state = parseProblemInterview(r.state);
+                if (!archivedAt || !state) return null;
+                return { archivedAt, state };
+              })
+              .filter((x): x is { archivedAt: string; state: ProblemInterviewState } => Boolean(x))
+              .slice(-24)
+          : undefined;
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -227,6 +260,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     openIssues: typeof o.openIssues === "string" ? o.openIssues : undefined,
     priorityFeatures: typeof o.priorityFeatures === "string" ? o.priorityFeatures : undefined,
     ...(originalProjectDescription !== undefined ? { originalProjectDescription } : {}),
+    ...(problemInterview !== undefined ? { problemInterview } : {}),
+    ...(problemInterviewHistory !== undefined ? { problemInterviewHistory } : {}),
     ...(serviceFlowV1 !== undefined ? { serviceFlowV1 } : {}),
     ...(lastPromptView !== undefined ? { lastPromptView } : {}),
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
@@ -248,6 +283,48 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
 
 export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: Partial<RequirementsStateJson>): RequirementsStateJson {
   return { ...base, ...patch };
+}
+
+function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const coreUser = typeof o.coreUser === "boolean" ? o.coreUser : false;
+  const painPoint = typeof o.painPoint === "boolean" ? o.painPoint : false;
+  const currentMethod = typeof o.currentMethod === "boolean" ? o.currentMethod : false;
+  const needForImprovement = typeof o.needForImprovement === "boolean" ? o.needForImprovement : false;
+  const notesRaw = o.notes && typeof o.notes === "object" ? (o.notes as Record<string, unknown>) : null;
+  const notes: Record<string, string> = {};
+  if (notesRaw) {
+    for (const [k, v] of Object.entries(notesRaw)) {
+      const key = String(k ?? "").trim();
+      const val = typeof v === "string" ? v : String(v ?? "");
+      if (key && val.trim()) notes[key] = val.trim().slice(0, 8000);
+    }
+  }
+  const partialRaw = o.partial && typeof o.partial === "object" ? (o.partial as Record<string, unknown>) : null;
+  const partial: Record<string, boolean> = {};
+  if (partialRaw) {
+    for (const [k, v] of Object.entries(partialRaw)) {
+      const key = String(k ?? "").trim();
+      if (!key) continue;
+      partial[key] = v === true;
+    }
+  }
+  const askedSlotsRaw = Array.isArray(o.askedSlots) ? (o.askedSlots as unknown[]) : null;
+  const askedSlots = askedSlotsRaw ? askedSlotsRaw.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 32) : undefined;
+  const active = typeof o.active === "boolean" ? o.active : undefined;
+  const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt : undefined;
+  return {
+    coreUser,
+    painPoint,
+    currentMethod,
+    needForImprovement,
+    notes,
+    ...(Object.keys(partial).length ? { partial } : {}),
+    ...(askedSlots ? { askedSlots: askedSlots as any } : {}),
+    ...(active !== undefined ? { active } : {}),
+    ...(updatedAt ? { updatedAt } : {}),
+  };
 }
 
 function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1 | null {
