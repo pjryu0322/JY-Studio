@@ -10,7 +10,7 @@ import type { RequirementsComposerTargetPickerItem } from "@/components/requirem
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
-import { RequirementsServiceFlowStage } from "@/components/requirements/RequirementsServiceFlowStage";
+import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
@@ -2290,15 +2290,17 @@ export function RequirementsWorkspace({
       <div style={mainRow} className="jyo-requirements-workspace-main">
         {inServiceFlowStage ? (
           <div style={{ padding: 14, width: "100%", minWidth: 0, overflow: "auto" }}>
-            <RequirementsServiceFlowStage
-              ideationReady={ideationReadyForServiceFlow}
-              ideationReadyNotice={ideationReadyNotice}
+            <ServiceFlowWorkspace
+              projectId={resolvedProjectId.trim()}
+              project={project}
+              participants={participants}
+              chatPanel={chatPanel}
               flow={serviceFlow}
-              onChangeFlow={(next) => void persistServiceFlow(next)}
+              ideationReady={ideationReadyForServiceFlow}
+              onRetryGate={() => setFetchNonce((n) => n + 1)}
               onGenerateAiDraft={() => void handleGenerateServiceFlowDraft()}
               onApproveAll={() => void handleApproveAllServiceFlowSteps()}
-              onNavigateToFeaturesHref={resolvedProjectId.trim() ? `/features?projectId=${encodeURIComponent(resolvedProjectId.trim())}` : "/features"}
-              chat={chatPanel}
+              onUpdateFlow={(next) => void persistServiceFlow(next)}
             />
             <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
               <button type="button" onClick={() => setInviteOpen(true)} style={{ border: 0, background: "none", cursor: "pointer", fontWeight: 800, color: "#2563eb", textDecoration: "underline", padding: 6 }}>
