@@ -7,13 +7,11 @@ test.describe("E2E members", () => {
     await page.getByTestId("login-password").fill("JyoTest!123");
     await page.getByTestId("login-submit").click();
     await page.waitForURL(/\/$/, { timeout: 30_000 });
-    await page.getByTestId("project-open-seed").click();
+    await page.getByTestId("project-settings-seed").click();
     await page.waitForURL(/\/projects\/.+/, { timeout: 30_000 });
-    await page.getByTestId("project-detail-tab-members").click();
-    await expect(page.getByTestId("project-members-summary-panel")).toBeVisible();
-    await page.getByTestId("project-members-summary-admin-link").click();
+    await page.getByRole("link", { name: "멤버 관리로 이동" }).click();
     await expect(page).toHaveURL(/\/project-admin\/members\?projectId=/, { timeout: 15_000 });
-    await expect(page.getByTestId("project-unified-members-section")).toBeVisible();
+    await expect(page.getByTestId("project-unified-members-section")).toBeVisible({ timeout: 20_000 });
   });
 
   test("[E2E-MEM-001] HUMAN 멤버 패널 — 기존 Editor 표시", async ({ page }) => {

@@ -10,6 +10,15 @@ import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/prefer
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
 
+function ProjectCardSettingsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
 function formatProjectStatusForUi(status: string): string {
   if (status === PROJECT_LIFECYCLE_ACTIVE) return "활성";
   if (status === PROJECT_LIFECYCLE_DELETED) return "삭제됨";
@@ -147,7 +156,7 @@ export default function HomePage() {
       await loadProjects();
       setHighlightProjectId(newId);
       setCreateToast(true);
-      /** 최근 프로젝트 키 갱신(자동 열기 시 프로젝트 허브로만 이동). 생성 직후 요구사항 화면으로는 이동하지 않음. */
+      /** 최근 프로젝트 키 갱신(자동 열기 시 아이디어 구체화로 이동). 생성 직후에는 홈에 유지. */
       try {
         sessionStorage.setItem(APP_FLOW_LAST_PROJECT_KEY, newId);
       } catch {
@@ -181,7 +190,7 @@ export default function HomePage() {
     return () => window.clearTimeout(t);
   }, [createToast]);
 
-  /** 설정「최근 프로젝트 자동 열기」: 외부·직접 진입 등에서만 세션의 마지막 프로젝트로 이동(앱 내부에서 홈으로 온 경우는 제외). */
+  /** 설정「최근 프로젝트 자동 열기」: 외부·직접 진입 등에서만 세션의 마지막 프로젝트 아이디어 구체화 화면으로 이동(앱 내부에서 홈으로 온 경우는 제외). */
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!readAutoOpenLastProject()) return;
@@ -205,7 +214,7 @@ export default function HomePage() {
     }
     const id = last.trim();
     if (!id) return;
-    router.replace(`/projects/${encodeURIComponent(id)}`);
+    router.replace(`/requirements?projectId=${encodeURIComponent(id)}`);
   }, [router]);
 
   return (
@@ -363,15 +372,39 @@ export default function HomePage() {
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
+                    alignItems: "flex-start",
                     gap: 12,
                     marginBottom: 8,
                   }}
                 >
-                  <div className="relative" style={{ minWidth: 0 }}>
+                  <div className="relative" style={{ minWidth: 0, flex: 1 }}>
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-프로젝트명" visible={showScreenLabels} />
                     <strong>{project.name}</strong>
                   </div>
-                  <div className="relative">
+                  <div className="relative" style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                    <Link
+                      href={`/projects/${encodeURIComponent(project.id)}`}
+                      data-testid={
+                        project.name === "Web Meeting MVP" ? "project-settings-seed" : `project-card-settings-${project.id}`
+                      }
+                      aria-label="프로젝트 관리 및 설정"
+                      title="프로젝트 관리 및 설정"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 36,
+                        height: 36,
+                        borderRadius: 8,
+                        border: "1px solid #e2e8f0",
+                        background: "#fff",
+                        color: "#64748b",
+                        textDecoration: "none",
+                      }}
+                    >
+                      <ProjectCardSettingsIcon />
+                    </Link>
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-상태배지" visible={showScreenLabels} />
                     <span style={{ fontSize: 13, color: "#64748b" }}>
                       {project.status === PROJECT_LIFECYCLE_DELETED ? (
@@ -401,7 +434,7 @@ export default function HomePage() {
                   <div className="relative" style={{ display: "inline-block" }}>
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-상세보기버튼" visible={showScreenLabels} />
                     <Link
-                      href={`/projects/${encodeURIComponent(project.id)}`}
+                      href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
                       data-testid={
                         project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
                       }
