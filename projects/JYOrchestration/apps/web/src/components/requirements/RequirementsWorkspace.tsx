@@ -417,6 +417,10 @@ export function RequirementsWorkspace({
       setLastSavedAt(state.lastSavedAt ?? null);
       setOrganizedAt(state.lastOrganizedAt ?? null);
       setServiceFlow(state.serviceFlowV1 ?? null);
+      if (typeof state.originalProjectDescription !== "string") {
+        const cur = (p.description ?? "").trim();
+        if (cur) void persistStateJsonOnly({ originalProjectDescription: cur });
+      }
       if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
         setInput(state.lastUserDraftText);
       }
@@ -693,6 +697,9 @@ export function RequirementsWorkspace({
         lastOrganizedAt: organizedAt ?? stateJsonRef.current.lastOrganizedAt,
         selectedTargetId: null,
         selectedMembers: null,
+        // Project card description should remain bound to the original creation description.
+        originalProjectDescription:
+          stateJsonRef.current.originalProjectDescription ?? (project?.description ?? ""),
         onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
         openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
         priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
@@ -709,9 +716,6 @@ export function RequirementsWorkspace({
           priorityFeatures: priorityFeatures.trim() || undefined,
         },
       };
-      if (userBlob) {
-        body.description = userBlob.slice(0, 60000);
-      }
       if (spec.specCoreGoals !== undefined) body.specCoreGoals = spec.specCoreGoals;
       if (spec.specScopeIn !== undefined) body.specScopeIn = spec.specScopeIn;
       if (spec.specScopeOut !== undefined) body.specScopeOut = spec.specScopeOut;

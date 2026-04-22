@@ -8,6 +8,7 @@ import { computeProjectExecutionReadiness } from "@/components/project/projectEx
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
@@ -31,6 +32,7 @@ type Project = {
   id: string;
   name: string;
   description: string | null;
+  requirementsStateJson?: unknown;
   ownerUserId?: string;
   projectType: string;
   repoUrl: string | null;
@@ -668,7 +670,11 @@ export default function HomePage() {
 
                 <div className="relative" style={{ color: "#555", marginBottom: 8 }}>
                   <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-설명" visible={showScreenLabels} />
-                  {project.description || "설명 없음"}
+                  {(() => {
+                    const state = parseRequirementsStateJson(project.requirementsStateJson);
+                    const original = typeof state.originalProjectDescription === "string" ? state.originalProjectDescription.trim() : "";
+                    return original || "설명 없음";
+                  })()}
                 </div>
 
                 <div style={{ fontSize: 13, color: "#64748b" }}>
