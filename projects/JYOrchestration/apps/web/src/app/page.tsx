@@ -8,7 +8,7 @@ import { computeProjectExecutionReadiness } from "@/components/project/projectEx
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/preferences/globalPreferences";
 import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProjectDescription";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
@@ -69,6 +69,10 @@ export default function HomePage() {
   const [description, setDescription] = useState("");
   const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [editDescTarget, setEditDescTarget] = useState<{ id: string; name: string } | null>(null);
+  const [editDescValue, setEditDescValue] = useState("");
+  const [editDescBusy, setEditDescBusy] = useState(false);
+  const [editDescError, setEditDescError] = useState<string | null>(null);
   const [highlightProjectId, setHighlightProjectId] = useState<string | null>(null);
   const [createToast, setCreateToast] = useState(false);
   /** 홈 카드 설정 아이콘 메뉴(상태 요약 + 작업, 한 번에 하나만) */
@@ -292,6 +296,44 @@ export default function HomePage() {
       window.removeEventListener("keydown", onKey);
     };
   }, [projectCardMenuId]);
+
+  const openEditDescription = useCallback((project: Project) => {
+    const state = parseRequirementsStateJson(project.requirementsStateJson);
+    const original = typeof state.originalProjectDescription === "string" ? state.originalProjectDescription : "";
+    setEditDescTarget({ id: project.id, name: project.name });
+    setEditDescValue(original);
+    setEditDescError(null);
+    setProjectCardMenuId(null);
+  }, []);
+
+  const saveEditDescription = useCallback(async () => {
+    if (!editDescTarget) return;
+    if (editDescBusy) return;
+    setEditDescBusy(true);
+    setEditDescError(null);
+    try {
+      const p = projectsRef.current.find((x) => x.id === editDescTarget.id);
+      if (!p) throw new Error("프로젝트를 찾을 수 없습니다.");
+      const prevState = parseRequirementsStateJson(p.requirementsStateJson);
+      const nextState = mergeRequirementsStateJson(prevState, { originalProjectDescription: editDescValue.trim() });
+      const res = await fetch(`/api/projects/${encodeURIComponent(editDescTarget.id)}/spec-workspace`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requirementsStateJson: nextState }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) throw new Error(json.message || "저장에 실패했습니다.");
+      setProjects((cur) =>
+        cur.map((row) => (row.id === editDescTarget.id ? { ...row, requirementsStateJson: nextState } : row))
+      );
+      setEditDescTarget(null);
+    } catch (e) {
+      setEditDescError(e instanceof Error ? e.message : "저장 중 오류가 발생했습니다.");
+    } finally {
+      setEditDescBusy(false);
+    }
+  }, [editDescTarget, editDescBusy, editDescValue]);
 
   return (
     <main
@@ -662,6 +704,28 @@ export default function HomePage() {
                           >
                             설정으로 이동
                           </Link>
+                          <button
+                            type="button"
+                            onClick={() => openEditDescription(project)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "100%",
+                              marginTop: 8,
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #cbd5e1",
+                              background: "#fff",
+                              color: "#0f172a",
+                              fontSize: 12,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              boxSizing: "border-box",
+                            }}
+                          >
+                            프로젝트 설명 수정
+                          </button>
                         </div>
                       </div>
                     ) : null}
@@ -704,6 +768,99 @@ export default function HomePage() {
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => void loadProjects()}
         />
+      ) : null}
+
+      {editDescTarget ? (
+        <div
+          role="dialog"
+          aria-label="프로젝트 설명 수정"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(15, 23, 42, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onMouseDown={() => {
+            if (!editDescBusy) setEditDescTarget(null);
+          }}
+        >
+          <div
+            style={{
+              width: "min(92vw, 560px)",
+              borderRadius: 12,
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 18px 60px -12px rgba(15, 23, 42, 0.35)",
+              padding: 16,
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>프로젝트 설명 수정</div>
+            <div style={{ marginTop: 10 }}>
+              <textarea
+                value={editDescValue}
+                onChange={(e) => setEditDescValue(e.target.value)}
+                placeholder="설명을 입력해 주세요 (비워두면 '설명 없음')"
+                rows={6}
+                style={{
+                  width: "100%",
+                  resize: "vertical",
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  fontSize: 13,
+                  lineHeight: 1.45,
+                  outline: "none",
+                }}
+              />
+              {editDescError ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c", fontWeight: 800 }}>{editDescError}</div>
+              ) : null}
+            </div>
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                type="button"
+                disabled={editDescBusy}
+                onClick={() => setEditDescTarget(null)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#0f172a",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: editDescBusy ? "not-allowed" : "pointer",
+                  opacity: editDescBusy ? 0.6 : 1,
+                }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                disabled={editDescBusy}
+                onClick={() => void saveEditDescription()}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #0f766e",
+                  background: "#0f766e",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  cursor: editDescBusy ? "not-allowed" : "pointer",
+                  opacity: editDescBusy ? 0.7 : 1,
+                }}
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </main>
   );
