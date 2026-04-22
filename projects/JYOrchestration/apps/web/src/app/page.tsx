@@ -13,6 +13,15 @@ import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/prefer
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
 
+function isProbablyOriginalProjectDescription(desc: string): boolean {
+  const t = String(desc ?? "").trim();
+  if (!t) return false;
+  if (t.length > 280) return false;
+  if (t.includes("\n")) return false;
+  if (/@@|질문:|대화|dialogueExcerpt|role:|speaker/i.test(t)) return false;
+  return true;
+}
+
 function ProjectCardSettingsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -673,7 +682,9 @@ export default function HomePage() {
                   {(() => {
                     const state = parseRequirementsStateJson(project.requirementsStateJson);
                     const original = typeof state.originalProjectDescription === "string" ? state.originalProjectDescription.trim() : "";
-                    return original || "설명 없음";
+                    if (original) return original;
+                    const fallback = String(project.description ?? "").trim();
+                    return isProbablyOriginalProjectDescription(fallback) ? fallback : "설명 없음";
                   })()}
                 </div>
 
