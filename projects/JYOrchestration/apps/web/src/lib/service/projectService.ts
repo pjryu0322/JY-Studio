@@ -49,7 +49,13 @@ export async function listProjectsAccessibleToUser(
       orderBy: { createdAt: "desc" },
     });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022") {
+    const msg = e instanceof Error ? e.message : String(e ?? "");
+    // Prisma NAPI can fail on invalid/oversized strings in DB rows. Fall back to raw select.
+    const shouldFallback =
+      (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2022") ||
+      /Failed to convert rust `String` into napi `string`/i.test(msg) ||
+      /GenericFailure/i.test(msg);
+    if (shouldFallback) {
       skipPrismaProjectListDueToP2022 = true;
       return listProjectsAccessibleToUserViaRawSelect(userId, includeDeleted);
     }
