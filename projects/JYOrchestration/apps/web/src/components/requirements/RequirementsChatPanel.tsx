@@ -453,8 +453,6 @@ export function RequirementsChatPanel({
                   ? parseIdeationDeliverableChatPayload(m.content)
                   : null;
               const tone = isErr ? "error" : m.messageType === "NOTICE" ? "notice" : "default";
-              const plannerTitle =
-                m.speakerId === VIRTUAL_AI_PLANNER_ID || (m.speakerName ?? "").includes("기획") ? "AI 기획자" : m.speakerName || "AI";
               const showHoverActions = m.messageType === "ANSWER" && !isErr;
               const aiBody = deliverPayload ? (
                 <RequirementsDeliverableChatCard
@@ -500,19 +498,6 @@ export function RequirementsChatPanel({
                         onMouseEnter={() => setHoveredId(m.id)}
                         onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
                       >
-                        <div
-                          style={{
-                            padding: "10px 14px",
-                            borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
-                            background: tone === "error" ? "#fee2e2" : tone === "notice" ? "#e0f2fe" : "#f8fafc",
-                            fontSize: 12,
-                            fontWeight: 800,
-                            color: tone === "error" ? "#991b1b" : "#0f766e",
-                            letterSpacing: "0.02em",
-                          }}
-                        >
-                          {plannerTitle}
-                        </div>
                         <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>{aiBody}</div>
                         {showHoverActions && hoveredId === m.id ? (
                           <div
@@ -571,19 +556,6 @@ export function RequirementsChatPanel({
                       onMouseEnter={() => setHoveredId(m.id)}
                       onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
                     >
-                    <div
-                      style={{
-                        padding: "10px 14px",
-                        borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
-                        background: tone === "error" ? "#fee2e2" : tone === "notice" ? "#e0f2fe" : "#f8fafc",
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: tone === "error" ? "#991b1b" : "#0f766e",
-                        letterSpacing: "0.02em",
-                      }}
-                    >
-                      {plannerTitle}
-                    </div>
                     <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>{aiBody}</div>
                     {showHoverActions && hoveredId === m.id ? (
                       <div
@@ -683,18 +655,6 @@ export function RequirementsChatPanel({
                 AI · AI 기획자 · {new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
               </div>
               <div style={aiCardShell("notice")}>
-                <div
-                  style={{
-                    padding: "10px 14px",
-                    borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
-                    background: "#e0f2fe",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: "#0f766e",
-                  }}
-                >
-                  AI 기획자
-                </div>
                 <div style={{ padding: "14px 16px", fontSize: 15, color: "#0f172a" }}>
                   <span style={{ fontWeight: 800, marginRight: 6 }}>생각 중입니다</span>
                   <span className="jyo-typing" aria-label="typing indicator">
