@@ -107,8 +107,8 @@ export function RequirementsComposerGpt({
   placeholder,
   toolsMenu,
   textAreaRef,
-  questionTargets,
-  onRemoveQuestionTarget,
+  questionTargets: _questionTargets,
+  onRemoveQuestionTarget: _onRemoveQuestionTarget,
   targetPickerItems,
   onAddQuestionTargets,
 }: {
@@ -263,61 +263,6 @@ export function RequirementsComposerGpt({
         gap: 10,
       }}
     >
-      {questionTargets && questionTargets.length > 0 ? (
-        <div className="relative" style={{ position: "relative" }}>
-          <ScreenLabel label="요구사항-입력창-질문대상표시" visible={showScreenLabels} />
-          <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.45 }}>
-            <span style={{ fontWeight: 800 }}>질문 대상:</span>{" "}
-            <span style={{ fontWeight: 600 }}>{questionTargets.map((t) => t.name).join(", ")}</span>
-          </div>
-          {onRemoveQuestionTarget ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-              {questionTargets.map((t) => (
-                <span
-                  key={t.id}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "4px 8px 4px 10px",
-                    borderRadius: 999,
-                    background: "#ecfdf5",
-                    border: "1px solid #a7f3d0",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: "#065f46",
-                  }}
-                >
-                  {t.name}
-                  <button
-                    type="button"
-                    aria-label={`${t.name} 질문 대상에서 제거`}
-                    onClick={() => onRemoveQuestionTarget(t.id)}
-                    style={{
-                      border: "none",
-                      background: "rgba(255,255,255,0.65)",
-                      borderRadius: 999,
-                      width: 20,
-                      height: 20,
-                      lineHeight: 1,
-                      cursor: "pointer",
-                      fontSize: 14,
-                      fontWeight: 900,
-                      color: "#047857",
-                      padding: 0,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {toolsMenu ? (
           <div className="relative" style={{ position: "relative", flexShrink: 0 }}>

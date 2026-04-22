@@ -1114,13 +1114,11 @@ export function RequirementsWorkspace({
 
       const analyzerMessage = String(json.data.message ?? "").trim() || "확인 중입니다.";
       const questions = Array.isArray(json.data.questions)
-        ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 2)
+        ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
         : [];
 
       if (!json.data.ready) {
-        const body = questions.length
-          ? `${analyzerMessage}\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
-          : analyzerMessage;
+        const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
         const notice = newChatMessage({
           role: "ai",
           body,
@@ -1590,13 +1588,11 @@ export function RequirementsWorkspace({
                 },
               };
             } else if (!json.data.ready) {
-              const analyzerMessage = String(json.data.message ?? "").trim() || "좋은 초안을 위해 두 가지만 더 확인하겠습니다.";
+              const analyzerMessage = String(json.data.message ?? "").trim() || "좋은 초안을 위해 한 가지만 더 확인하겠습니다.";
               const questions = Array.isArray(json.data.questions)
-                ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 2)
+                ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
                 : [];
-              const body = questions.length
-                ? `${analyzerMessage}\n\n${questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`
-                : analyzerMessage;
+              const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
               finalRoom = {
                 ...withCalling,
                 aiQuestionIndex: turn + 1,
@@ -2136,16 +2132,40 @@ export function RequirementsWorkspace({
           style={{
             marginTop: 8,
             marginBottom: 6,
-            padding: "8px 12px",
+            padding: "10px 14px",
             borderRadius: 10,
             background: "#ecfdf5",
             border: "1px solid #a7f3d0",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#065f46",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 12,
+            justifyContent: "space-between",
           }}
         >
-          정리본 생성이 가능합니다. 입력창 왼쪽 + 메뉴에서 「정리 요청」을 선택하세요.
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#065f46", lineHeight: 1.45 }}>
+            정리 요청으로 문제정의서를 만들 수 있습니다.
+          </span>
+          <button
+            type="button"
+            data-testid="requirements-organize-cta"
+            disabled={busy || remoteLocked}
+            onClick={() => void onOrganizeRequirements()}
+            style={{
+              flexShrink: 0,
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #0f766e",
+              background: "#0f766e",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: busy || remoteLocked ? "not-allowed" : "pointer",
+              opacity: busy || remoteLocked ? 0.55 : 1,
+            }}
+          >
+            정리 요청
+          </button>
         </div>
       ) : (
         <div style={{ marginBottom: 6 }} />
