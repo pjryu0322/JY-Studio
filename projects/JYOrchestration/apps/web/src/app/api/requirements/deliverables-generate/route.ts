@@ -46,13 +46,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "outputTypes가 필요합니다." }, { status: 400 });
     }
 
-    const exclusive = outputTypes.includes("full_plan");
-    if (exclusive && outputTypes.length > 1) {
-      return NextResponse.json(
-        { success: false, message: "전체 기획안은 다른 산출물과 함께 선택할 수 없습니다." },
-        { status: 400 }
-      );
-    }
+    // 과거에는 full_plan을 단독으로만 허용했으나,
+    // UX 요구사항상 기본 산출물 세트(문제정의서/기능목록/MVP/KPI/전체기획안)를 한 번에 생성해야 한다.
 
     try {
       await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/requirements/deliverables-generate");
