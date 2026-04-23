@@ -663,10 +663,7 @@ export function RequirementsWorkspace({
     [persistStateJsonOnly]
   );
 
-  const composerPlaceholder = useMemo(
-    () => "@@멤버이름 으로 지정하거나, 멘션 없이 입력하면 AI 기획자에게 전달됩니다",
-    []
-  );
+  const composerPlaceholder = "메시지를 입력하세요";
 
   const targetPickerItems = useMemo<readonly RequirementsComposerTargetPickerItem[]>(() => {
     return participants.map((p) => ({
