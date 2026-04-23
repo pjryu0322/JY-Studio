@@ -657,7 +657,13 @@ export function RequirementsWorkspace({
     const local = stateJsonRef.current.deliverableAssets;
     if (Array.isArray(local) && local.length) return local;
     return persistedPromptState.deliverableAssets ?? [];
-  }, [persistedPromptState.deliverableAssets, project?.requirementsStateJson, saveState, fetchNonce]);
+  }, [
+    persistedPromptState.deliverableAssets,
+    project?.requirementsStateJson,
+    saveState,
+    fetchNonce,
+    room.requirementsConversation.messages.length,
+  ]);
 
   const deliverableViewerAssets = useMemo(
     () => deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id)),
@@ -751,6 +757,9 @@ export function RequirementsWorkspace({
       const pid = resolvedProjectId.trim();
       setRoom(nextRoom);
       if (!pid) {
+        if (meta) {
+          stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, meta);
+        }
         const g = spec.specCoreGoals !== undefined ? String(spec.specCoreGoals ?? "") : goals;
         const si = spec.specScopeIn !== undefined ? String(spec.specScopeIn ?? "") : scopeIn;
         const so = spec.specScopeOut !== undefined ? String(spec.specScopeOut ?? "") : scopeOut;
