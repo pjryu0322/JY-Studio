@@ -115,6 +115,22 @@ function pgQuoteStringLiteral(s: string): string {
   return `'${s.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
 }
 
+/**
+ * JSON 텍스트를 UPDATE에 넣을 때 SQL 단일인용부(`'`) 이스케이프로는 깨질 수 있어
+ * PostgreSQL dollar-quoted string을 사용한다(본문 내 `'`·`\` 그대로 허용).
+ */
+function pgDollarQuotedForJsonBody(body: string): string {
+  let tag = "JwReqJson";
+  for (let i = 0; i < 64; i++) {
+    const open = `$${tag}$`;
+    if (!body.includes(open)) {
+      return `${open}${body}${open}`;
+    }
+    tag = `JwReqJson_${i}_${Math.random().toString(36).slice(2, 11)}`;
+  }
+  throw new Error("JSON dollar-quote delimiter collision");
+}
+
 function scalarSqlRhs(value: ReturnType<typeof scalarForRawUpdate>): string {
   if (value === null) return "NULL";
   if (typeof value === "number") {
@@ -160,6 +176,16 @@ async function rawUpdateProjectByIdSafe(
         };
         continue;
       }
+      if (jsonText) {
+        try {
+          JSON.parse(jsonText);
+        } catch {
+          return {
+            ok: false,
+            message: "요구사항 JSON 직렬화가 올바르지 않습니다. 새로고침 후 다시 시도해 주세요.",
+          };
+        }
+      }
       entries.push({ col: actualCol, kind: "jsonb", jsonText });
       continue;
     }
@@ -192,7 +218,7 @@ async function rawUpdateProjectByIdSafe(
     const colQ = pgQuoteIdent(e.col);
     if (e.kind === "jsonb") {
       if (e.jsonText === null) setParts.push(`${colQ} = NULL`);
-      else setParts.push(`${colQ} = ${pgQuoteStringLiteral(e.jsonText)}::jsonb`);
+      else setParts.push(`${colQ} = ${pgDollarQuotedForJsonBody(e.jsonText)}::jsonb`);
     } else {
       setParts.push(`${colQ} = ${scalarSqlRhs(e.value)}`);
     }
