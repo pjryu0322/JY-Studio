@@ -28,6 +28,7 @@ import {
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
   markDeliverableAssetsConfirmed,
   isIdeationDeliverableType,
+  type IdeationDeliverableAsset,
   type IdeationDeliverableChatPayload,
   type IdeationDeliverableType,
 } from "@/lib/requirements/ideationDeliverables";
@@ -795,6 +796,8 @@ export function RequirementsWorkspace({
       });
       const mergedState = meta ? mergeRequirementsStateJson(baseState, meta) : baseState;
       stateJsonRef.current = mergedState;
+      const deliverableAssetsSnapshot =
+        meta && Array.isArray(meta.deliverableAssets) && meta.deliverableAssets.length ? meta.deliverableAssets : null;
       const body: Record<string, unknown> = {
         requirementsConversationJson: nextRoom.requirementsConversation,
         requirementsDraftJson: nextRoom.requirementsDraft ?? null,
@@ -836,6 +839,15 @@ export function RequirementsWorkspace({
       }
       setProject(json.data.project);
       stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
+      // 서버가 대형 JSONB 저장을 degrade(스킵)한 경우에도, 카드가 가리키는 산출물은 "문서 열기"에서 즉시 열려야 한다.
+      if (deliverableAssetsSnapshot) {
+        const after = stateJsonRef.current.deliverableAssets as IdeationDeliverableAsset[] | null | undefined;
+        if (!Array.isArray(after) || after.length === 0) {
+          stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+            deliverableAssets: deliverableAssetsSnapshot,
+          });
+        }
+      }
       notifyAppFlowProjectContextChanged();
       setSaveState("saved");
       setLastSavedAt(mergedState.lastSavedAt ?? nextSavedAt);
