@@ -65,7 +65,6 @@ export async function getProjectSpecContext(projectId: string): Promise<ProjectS
 
 export type ProjectSpecContextPatchInput = {
   name?: string;
-  description?: string | null;
   projectType?: string;
   coreGoals?: string | null;
   inScope?: string | null;
@@ -83,9 +82,6 @@ export async function updateProjectSpecContext(
   const data: Record<string, unknown> = {};
   if (patch.name !== undefined) {
     data.name = patch.name;
-  }
-  if (patch.description !== undefined) {
-    data.description = patch.description;
   }
   if (patch.projectType !== undefined) {
     data.projectType = patch.projectType;

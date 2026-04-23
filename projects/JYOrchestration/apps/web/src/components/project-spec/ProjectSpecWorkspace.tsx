@@ -605,7 +605,6 @@ export function ProjectSpecWorkspace({
       const { res, json } = await patchProjectSpecContext({
         projectId,
         name: form.name.trim(),
-        description: form.description.trim() ? form.description : null,
         projectType: form.projectType,
         coreGoals: effectiveSpecSlice.specCoreGoals.trim() || null,
         inScope: effectiveSpecSlice.specScopeIn.trim() || null,
