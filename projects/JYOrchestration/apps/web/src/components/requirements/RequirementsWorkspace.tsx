@@ -34,6 +34,8 @@ import {
 import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
+  IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE,
+  IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
   sanitizeIdeationInterviewFirstQuestion,
 } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
@@ -1561,12 +1563,22 @@ export function RequirementsWorkspace({
           ...room,
           requirementsConversation: { ...room.requirementsConversation, projectId: resolvedProjectId.trim(), messages: msgs },
         };
+        const problemInterviewSnapshot =
+          (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
         await persistRemote(withCalling, {}, {
           lastPromptView: pv,
           lastPromptText: pv.copyText,
           lastPromptGeneratedAt: promptMetaIso,
           lastUserDraftText: text,
+          ...(problemInterviewSnapshot ? { problemInterview: problemInterviewSnapshot } : {}),
         });
+        const piAfterUserPersist = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
+        if (problemInterviewSnapshot && (piAfterUserPersist === undefined || piAfterUserPersist === null)) {
+          stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+            problemInterview: problemInterviewSnapshot,
+          });
+          ideationSendDevLog("problemInterview-restored", `id=${sendTraceId}`);
+        }
         ideationSendDevLog("user-appended", `id=${sendTraceId} userMsg=${userMsg.id}`);
         setAiInvokePending(true);
         const pid = resolvedProjectId.trim();
@@ -1761,11 +1773,18 @@ export function RequirementsWorkspace({
             if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
             if (stateJsonRef.current.organizePlannerState) return false;
             const lastAi = [...msgs].reverse().find((m) => m.role === "ai");
-            const internal = lastAi && (lastAi as any).meta && (lastAi as any).meta.internalType;
+            const internal =
+              lastAi && typeof (lastAi as { meta?: { internalType?: string } }).meta?.internalType === "string"
+                ? String((lastAi as { meta?: { internalType?: string } }).meta?.internalType)
+                : "";
             const boot = internal === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE;
+            const interviewTurn = internal === IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE;
+            const looksLikeComposedInterview =
+              lastAi?.speakerId === VIRTUAL_AI_PLANNER_ID &&
+              /\n\n질문:\n/.test(String((lastAi as { content?: string }).content ?? ""));
             const pi = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
             const active = Boolean(pi && pi.active !== false);
-            return boot || active;
+            return boot || interviewTurn || looksLikeComposedInterview || active;
           })();
 
           if (runProblemInterviewAnalyzeFlow) {
@@ -1863,6 +1882,10 @@ export function RequirementsWorkspace({
                       speakerId: primaryId,
                       speakerName: aiName,
                       messageType: "ANSWER",
+                      meta: {
+                        internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
+                        problemInterviewLastSlot: slotForAsked,
+                      },
                     }),
                   ],
                 },
@@ -1907,6 +1930,7 @@ export function RequirementsWorkspace({
                     speakerId: primaryId,
                     speakerName: aiName,
                     messageType: "ANSWER",
+                    meta: { internalType: IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE },
                   }),
                 ],
               },

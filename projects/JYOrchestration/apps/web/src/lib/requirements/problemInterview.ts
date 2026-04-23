@@ -454,9 +454,13 @@ export function pickNextAskableInterviewSlot(
   for (const s of PROBLEM_INTERVIEW_QUESTION_PRIORITY) {
     if (!ordered.includes(s)) ordered.push(s);
   }
+  const lastAsked = asked && asked.length > 0 ? asked[asked.length - 1]! : null;
   for (const slot of ordered) {
     if (slotStrictlyFilled(state, slot)) continue;
     if (isDoubleRepeatAsk(asked, slot)) continue;
+    if (lastAsked === slot && interviewSlotLevelFromState(state, slot) === "empty") {
+      continue;
+    }
     return slot;
   }
   return null;
