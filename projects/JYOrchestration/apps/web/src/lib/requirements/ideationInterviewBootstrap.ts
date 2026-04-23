@@ -1,6 +1,12 @@
 /** `RequirementsMessage.meta.internalType` — 아이디어 구체화 자동 인터뷰 시작 메시지 식별용 */
 export const IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE = "ideation-interview-bootstrap" as const;
 
+/** 문제정의 인터뷰 턴(핵심 이해 + 질문) AI 메시지 식별 — `problemInterview` JSON 유실 시에도 파이프라인 유지용 */
+export const IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE = "ideation-problem-interview-turn" as const;
+
+/** 인터뷰 완료 안내 AI 메시지 식별 */
+export const IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE = "ideation-problem-interview-complete" as const;
+
 /**
  * 모델이 설명문을 섞어도 UI/저장은 질문 한 덩어리만 쓰도록 정리합니다.
  * - 첫 `?`까지 한 문장만 사용

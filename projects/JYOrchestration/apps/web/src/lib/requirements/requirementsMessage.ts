@@ -12,6 +12,8 @@ export type RequirementsMessageMeta = {
   promptVersion?: string;
   /** 내부 처리용(사용자 노출 금지) */
   internalType?: string;
+  /** 문제정의 인터뷰에서 직전에 물은 슬롯(반복 질문 방지·복원용) */
+  problemInterviewLastSlot?: string;
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */
