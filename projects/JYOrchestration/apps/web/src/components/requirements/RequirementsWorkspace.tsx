@@ -2233,6 +2233,14 @@ export function RequirementsWorkspace({
     setDeliverableViewerOpen(true);
   }, []);
 
+  const openDeliverableList = useCallback(
+    (focusId: string | null) => {
+      const allIds = deliverableAssetsFromProject.map((a) => a.id);
+      openDeliverableViewer(allIds, focusId ?? allIds[0] ?? null);
+    },
+    [deliverableAssetsFromProject, openDeliverableViewer]
+  );
+
   const handleConfirmDeliverableAssets = useCallback(
     async (ids: readonly string[]) => {
       const pid = resolvedProjectId.trim();
@@ -2407,6 +2415,7 @@ export function RequirementsWorkspace({
           window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);
         }}
         onOpenDeliverableDocument={(id) => openDeliverableViewer([id], id)}
+        onOpenDeliverableList={(focusId) => openDeliverableList(focusId)}
         onOpenDeliverableDocuments={(ids) => openDeliverableViewer(ids, ids[0] ?? null)}
         onRegenerateDeliverables={(types) => {
           const next = types.filter(isIdeationDeliverableType);

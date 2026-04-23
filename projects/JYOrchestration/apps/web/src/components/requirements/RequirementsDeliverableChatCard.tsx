@@ -17,18 +17,22 @@ const btnBase = {
 export function RequirementsDeliverableChatCard({
   payload,
   onOpenDocument,
+  onOpenList,
   onOpenAll,
   onRegenerate,
   onConfirm,
 }: {
   readonly payload: IdeationDeliverableChatPayload;
   readonly onOpenDocument: (assetId: string) => void;
+  /** 현재 프로젝트 산출물 목록(탐색) */
+  readonly onOpenList: (focusAssetId: string | null) => void;
   readonly onOpenAll: (assetIds: readonly string[]) => void;
   readonly onRegenerate: (requestedTypes: readonly string[]) => void;
   readonly onConfirm: (assetIds: readonly string[]) => void;
 }) {
   const ids = payload.items.map((i) => i.assetId);
   const types = payload.requestedTypes.length ? payload.requestedTypes : payload.items.map((i) => i.type);
+  const focusId = payload.items[0]?.assetId ?? null;
 
   return (
     <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>
@@ -53,6 +57,9 @@ export function RequirementsDeliverableChatCard({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {payload.mode === "single" && payload.items[0] ? (
           <>
+            <button type="button" style={btnBase} onClick={() => onOpenList(focusId)}>
+              문서목록
+            </button>
             <button type="button" style={btnBase} onClick={() => onOpenDocument(payload.items[0].assetId)}>
               문서 열기
             </button>
@@ -69,8 +76,15 @@ export function RequirementsDeliverableChatCard({
           </>
         ) : (
           <>
-            <button type="button" style={{ ...btnBase, border: "1px solid #0f766e", background: "#ecfdf5", color: "#065f46" }} onClick={() => onOpenAll(ids)}>
-              모두 보기
+            <button type="button" style={btnBase} onClick={() => onOpenList(focusId)}>
+              문서목록
+            </button>
+            <button
+              type="button"
+              style={{ ...btnBase, border: "1px solid #0f766e", background: "#ecfdf5", color: "#065f46" }}
+              onClick={() => onOpenAll(ids)}
+            >
+              문서 열기
             </button>
             <button type="button" style={btnBase} onClick={() => onRegenerate([...types])}>
               재생성
