@@ -1587,20 +1587,10 @@ export function RequirementsWorkspace({
 
         type IdeationPlannerTail = { needsTailPersist: true; finalRoom: RequirementsRoomStateV3 } | { needsTailPersist: false };
 
-        const runExclusiveIdeationPlannerPipeline = async (): Promise<IdeationPlannerTail> => {
-          let ideationPlannerAiAppendedThisCycle = false;
-          const consumeIdeationPlannerAiAppend = (reason: string): boolean => {
-            if (ideationPlannerAiAppendedThisCycle) {
-              ideationSendDevLog("duplicate-blocked", reason);
-              return false;
-            }
-            ideationPlannerAiAppendedThisCycle = true;
-            return true;
-          };
-
-          // 정리요청(플래너 리뷰) 진행 중이면: 일반 대화 대신 Analyzer → (질문/생성) 흐름만 수행
+        /** 정리요청(플래너 리뷰) pending일 때만; 아니면 null */
+        const runOrganizePlannerIfPending = async (): Promise<IdeationPlannerTail | null> => {
           const pending = plannerState && plannerState.pendingQuestions && plannerState.pendingQuestions.length > 0;
-          if (pending && pid) {
+          if (!pending || !pid) return null;
             const requestedType: IdeationDeliverableType = plannerState.requestedType;
             const schema = getPlannerSlotSchema(requestedType);
             const prevCtx = stateJsonRef.current.organizeContext ?? null;
@@ -1665,9 +1655,6 @@ export function RequirementsWorkspace({
                 ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
                 : [];
               const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
-              if (!consumeIdeationPlannerAiAppend("organize-more-questions")) {
-                return { needsTailPersist: false };
-              }
               ideationSendDevLog("ai-appended", "organize-more-questions");
               const moreQuestionsRoom = {
                 ...withCalling,
@@ -1712,9 +1699,6 @@ export function RequirementsWorkspace({
               return { needsTailPersist: false };
             } else {
               const analyzerMessage = String(json.data.message ?? "").trim() || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.";
-              if (!consumeIdeationPlannerAiAppend("organize-ready")) {
-                return { needsTailPersist: false };
-              }
               ideationSendDevLog("ai-appended", "organize-ready");
               const readyRoom = {
                 ...withCalling,
@@ -1776,195 +1760,80 @@ export function RequirementsWorkspace({
               setReplyTo(null);
               return { needsTailPersist: false };
             }
-          }
+        };
 
-          const wantsDraftEndpoint = isDraftIntent(text);
-          const excerpt = augmentDialogueExcerptForReplyParent(
-            formatDialogueExcerpt(msgs),
-            msgs,
-            effectiveReplyTo
+        const wantsDraftEndpoint = isDraftIntent(text);
+        const excerpt = augmentDialogueExcerptForReplyParent(
+          formatDialogueExcerpt(msgs),
+          msgs,
+          effectiveReplyTo
+        );
+        const endpoint = wantsDraftEndpoint ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
+
+        const isIdeationProblemInterviewPlannerContext = (): boolean => {
+          if (wantsDraftEndpoint) return false;
+          if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
+          if (stateJsonRef.current.organizePlannerState) return false;
+          const lastAi = [...msgs].reverse().find((m) => m.role === "ai");
+          const internal =
+            lastAi && typeof (lastAi as { meta?: { internalType?: string } }).meta?.internalType === "string"
+              ? String((lastAi as { meta?: { internalType?: string } }).meta?.internalType)
+              : "";
+          const boot = internal === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE;
+          const interviewTurn = internal === IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE;
+          const looksLikeComposedInterview =
+            lastAi?.speakerId === VIRTUAL_AI_PLANNER_ID &&
+            /\n\n질문:\n/.test(String((lastAi as { content?: string }).content ?? ""));
+          const pi = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
+          const active = Boolean(pi && pi.active !== false);
+          return boot || interviewTurn || looksLikeComposedInterview || active;
+        };
+
+        type InterviewAnalyzerCallOutcome =
+          | { kind: "parsed"; payload: InterviewAnalyzerPayload }
+          | { kind: "http-ok-parse-fail" }
+          | { kind: "remote-fail" };
+
+        const commitInterviewPlannerReplyOnce = async (
+          merged: ProblemInterviewState,
+          analyzerForPlan: InterviewAnalyzerPayload | null
+        ): Promise<IdeationPlannerTail> => {
+          const nowIso = new Date().toISOString();
+          const plan = planNextInterviewTurn(
+            merged,
+            analyzerForPlan,
+            merged.askedSlots,
+            turn,
+            INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
+            text
           );
-          const endpoint = wantsDraftEndpoint ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
-
-          // --------------------------------------------------
-          // 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지)
-          // 초안 의도(draft-generate)와 무관하게, 인터뷰 활성 시에는 이 블록만 타고 ai-facilitator는 호출하지 않는다.
-          // --------------------------------------------------
-          const runProblemInterviewAnalyzeFlow = (() => {
-            if (wantsDraftEndpoint) return false;
-            if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
-            if (stateJsonRef.current.organizePlannerState) return false;
-            const lastAi = [...msgs].reverse().find((m) => m.role === "ai");
-            const internal =
-              lastAi && typeof (lastAi as { meta?: { internalType?: string } }).meta?.internalType === "string"
-                ? String((lastAi as { meta?: { internalType?: string } }).meta?.internalType)
-                : "";
-            const boot = internal === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE;
-            const interviewTurn = internal === IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE;
-            const looksLikeComposedInterview =
-              lastAi?.speakerId === VIRTUAL_AI_PLANNER_ID &&
-              /\n\n질문:\n/.test(String((lastAi as { content?: string }).content ?? ""));
-            const pi = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
-            const active = Boolean(pi && pi.active !== false);
-            return boot || interviewTurn || looksLikeComposedInterview || active;
-          })();
-
-          if (runProblemInterviewAnalyzeFlow) {
-            const nowIso = new Date().toISOString();
-            const prevPi = (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
-            const seeded = prevPi ?? emptyProblemInterviewState(nowIso);
-            const latestAiTurn = [...msgs].reverse().find((m) => m.role === "ai");
-            const latestAiQuestion = String(latestAiTurn?.content ?? "").trim();
-
-            let merged: ProblemInterviewState = seeded;
-            let analyzer: InterviewAnalyzerPayload | null = null;
-            let remoteAnalyzeOk = false;
-            if (pid) {
-              try {
-                ideationSendDevLog("analyzer-request", `id=${sendTraceId}`);
-                const ar = await fetch("/api/requirements/interview-analyze", {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    projectId: pid,
-                    projectName: project?.name ?? "",
-                    projectDescription: project?.description ?? "",
-                    userMessage: text,
-                    latestAiQuestion,
-                    currentInterviewState: problemInterviewStateToAnalyzerWire(seeded),
-                  }),
-                });
-                const aj = (await ar.json()) as { success?: boolean; data?: unknown };
-                remoteAnalyzeOk = ar.ok && Boolean(aj.success) && aj.data != null;
-                if (ar.ok && aj.success && aj.data) {
-                  const parsed = coerceInterviewAnalyzerPayload(aj.data);
-                  if (parsed) {
-                    analyzer = parsed;
-                    merged = mergeAnalyzerIntoProblemInterview(seeded, parsed, nowIso);
-                    ideationSendDevLog("analyzer-success", `id=${sendTraceId}`);
-                  }
-                }
-              } catch {
-                remoteAnalyzeOk = false;
-              }
-            }
-            if (!analyzer) {
-              if (!remoteAnalyzeOk) {
-                merged = emergencyFallbackProblemInterviewFromUserMessageRegex(seeded, text, nowIso);
-                ideationSendDevLog("analyzer-fallback", `reason=request-or-empty id=${sendTraceId}`);
-              } else {
-                merged = { ...seeded, updatedAt: nowIso };
-                ideationSendDevLog("analyzer-fallback", `reason=parse-or-coerce id=${sendTraceId}`);
-              }
-            }
-
-            merged = mergeImplicitAskedFromLastBootstrapQuestion(msgs, merged);
-
-            const plan = planNextInterviewTurn(
-              merged,
-              analyzer,
-              merged.askedSlots,
-              turn,
-              INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
-              text
-            );
-            if (plan) {
-              const aiBody = composeInterviewPlannerReply(plan.summary, plan.question);
-              const slotForAsked =
-                plan.kind === "slot"
-                  ? plan.slot
-                  : pickNextAskableInterviewSlot(merged, merged.askedSlots, null) ?? ("painPoint" as ProblemInterviewSlot);
-              const asked = withAskedSlot(merged, slotForAsked, nowIso);
-              const baseMsgs = withCalling.requirementsConversation.messages;
-              if (
-                primaryId === VIRTUAL_AI_PLANNER_ID &&
-                shouldSkipIdeationDuplicateAppend({
-                  messages: baseMsgs,
-                  role: "ai",
-                  body: aiBody,
-                  matchVirtualPlannerAi: true,
-                })
-              ) {
-                ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId}`);
-                await persistRemote(withCalling, {}, { problemInterview: asked });
-                setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-                ideationSendDevLog("return:success", `interview-dedupe-no-ai id=${sendTraceId}`);
-                setInput("");
-                setReplyTo(null);
-                return { needsTailPersist: false };
-              }
-              if (!consumeIdeationPlannerAiAppend("interview-next")) {
-                await persistRemote(withCalling, {}, { problemInterview: asked });
-                setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-                ideationSendDevLog("return:success", `interview-blocked-duplicate id=${sendTraceId}`);
-                setInput("");
-                setReplyTo(null);
-                return { needsTailPersist: false };
-              }
-              ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=interview-next`);
-              const interviewNextRoom: RequirementsRoomStateV3 = {
-                ...withCalling,
-                aiQuestionIndex: turn + 1,
-                requirementsConversation: {
-                  ...withCalling.requirementsConversation,
-                  messages: [
-                    ...withCalling.requirementsConversation.messages,
-                    newChatMessage({
-                      role: "ai",
-                      body: aiBody,
-                      speakerType: "AI",
-                      speakerId: primaryId,
-                      speakerName: aiName,
-                      messageType: "ANSWER",
-                      meta: {
-                        internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
-                        problemInterviewLastSlot: slotForAsked,
-                      },
-                    }),
-                  ],
-                },
-              };
-              await persistRemote(interviewNextRoom, {}, { problemInterview: asked });
-              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog(
-                analyzer ? "return:success" : "return:fallback",
-                `interview-next id=${sendTraceId}`
-              );
-              setInput("");
-              setReplyTo(null);
-              return { needsTailPersist: false };
-            }
-
-            const doneInterview = { ...merged, active: false, updatedAt: nowIso };
-            const completionBody = INTERVIEW_COMPLETION_NOTICE_KR;
+          if (plan) {
+            const aiBody = composeInterviewPlannerReply(plan.summary, plan.question);
+            const slotForAsked =
+              plan.kind === "slot"
+                ? plan.slot
+                : pickNextAskableInterviewSlot(merged, merged.askedSlots, null) ?? ("painPoint" as ProblemInterviewSlot);
+            const asked = withAskedSlot(merged, slotForAsked, nowIso);
+            const baseMsgs = withCalling.requirementsConversation.messages;
             if (
               primaryId === VIRTUAL_AI_PLANNER_ID &&
               shouldSkipIdeationDuplicateAppend({
-                messages: withCalling.requirementsConversation.messages,
+                messages: baseMsgs,
                 role: "ai",
-                body: completionBody,
+                body: aiBody,
                 matchVirtualPlannerAi: true,
               })
             ) {
-              ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=interview-complete`);
-              await persistRemote(withCalling, {}, { problemInterview: doneInterview });
+              ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId}`);
+              await persistRemote(withCalling, {}, { problemInterview: asked });
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog("return:success", `interview-complete-dedupe id=${sendTraceId}`);
+              ideationSendDevLog("return:success", `interview-dedupe-no-ai id=${sendTraceId}`);
               setInput("");
               setReplyTo(null);
               return { needsTailPersist: false };
             }
-            if (!consumeIdeationPlannerAiAppend("interview-complete")) {
-              await persistRemote(withCalling, {}, { problemInterview: doneInterview });
-              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog("return:success", `interview-complete-blocked-duplicate id=${sendTraceId}`);
-              setInput("");
-              setReplyTo(null);
-              return { needsTailPersist: false };
-            }
-            ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=interview-complete`);
-            const interviewDoneRoom: RequirementsRoomStateV3 = {
+            ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=interview-next`);
+            const interviewNextRoom: RequirementsRoomStateV3 = {
               ...withCalling,
               aiQuestionIndex: turn + 1,
               requirementsConversation: {
@@ -1973,26 +1842,145 @@ export function RequirementsWorkspace({
                   ...withCalling.requirementsConversation.messages,
                   newChatMessage({
                     role: "ai",
-                    body: completionBody,
+                    body: aiBody,
                     speakerType: "AI",
                     speakerId: primaryId,
                     speakerName: aiName,
                     messageType: "ANSWER",
-                    meta: { internalType: IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE },
+                    meta: {
+                      internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
+                      problemInterviewLastSlot: slotForAsked,
+                    },
                   }),
                 ],
               },
             };
-            await persistRemote(interviewDoneRoom, {}, { problemInterview: doneInterview });
+            await persistRemote(interviewNextRoom, {}, { problemInterview: asked });
             setAiLastInvoke({ ok: true, at: new Date().toISOString() });
             ideationSendDevLog(
-              analyzer ? "return:success" : "return:fallback",
-              `interview-complete id=${sendTraceId}`
+              analyzerForPlan ? "return:success" : "return:fallback",
+              `interview-next id=${sendTraceId}`
             );
             setInput("");
             setReplyTo(null);
             return { needsTailPersist: false };
+          }
+
+          const doneInterview = { ...merged, active: false, updatedAt: nowIso };
+          const completionBody = INTERVIEW_COMPLETION_NOTICE_KR;
+          if (
+            primaryId === VIRTUAL_AI_PLANNER_ID &&
+            shouldSkipIdeationDuplicateAppend({
+              messages: withCalling.requirementsConversation.messages,
+              role: "ai",
+              body: completionBody,
+              matchVirtualPlannerAi: true,
+            })
+          ) {
+            ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=interview-complete`);
+            await persistRemote(withCalling, {}, { problemInterview: doneInterview });
+            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+            ideationSendDevLog("return:success", `interview-complete-dedupe id=${sendTraceId}`);
+            setInput("");
+            setReplyTo(null);
+            return { needsTailPersist: false };
+          }
+          ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=interview-complete`);
+          const interviewDoneRoom: RequirementsRoomStateV3 = {
+            ...withCalling,
+            aiQuestionIndex: turn + 1,
+            requirementsConversation: {
+              ...withCalling.requirementsConversation,
+              messages: [
+                ...withCalling.requirementsConversation.messages,
+                newChatMessage({
+                  role: "ai",
+                  body: completionBody,
+                  speakerType: "AI",
+                  speakerId: primaryId,
+                  speakerName: aiName,
+                  messageType: "ANSWER",
+                  meta: { internalType: IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE },
+                }),
+              ],
+            },
+          };
+          await persistRemote(interviewDoneRoom, {}, { problemInterview: doneInterview });
+          setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+          ideationSendDevLog(
+            analyzerForPlan ? "return:success" : "return:fallback",
+            `interview-complete id=${sendTraceId}`
+          );
+          setInput("");
+          setReplyTo(null);
+          return { needsTailPersist: false };
+        };
+
+        /** 문제정의 인터뷰: 분석기 성공 경로와 실패 경로를 분리하고, 각각 한 번의 AI append 후 즉시 반환한다. */
+        const runIdeationProblemInterviewPipeline = async (): Promise<IdeationPlannerTail> => {
+          const nowIso = new Date().toISOString();
+          const prevPi = (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
+          const seeded = prevPi ?? emptyProblemInterviewState(nowIso);
+          const latestAiTurn = [...msgs].reverse().find((m) => m.role === "ai");
+          const latestAiQuestion = String(latestAiTurn?.content ?? "").trim();
+
+          let outcome: InterviewAnalyzerCallOutcome = { kind: "remote-fail" };
+          if (pid) {
+            try {
+              ideationSendDevLog("analyzer-request", `id=${sendTraceId}`);
+              const ar = await fetch("/api/requirements/interview-analyze", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  projectId: pid,
+                  projectName: project?.name ?? "",
+                  projectDescription: project?.description ?? "",
+                  userMessage: text,
+                  latestAiQuestion,
+                  currentInterviewState: problemInterviewStateToAnalyzerWire(seeded),
+                }),
+              });
+              const aj = (await ar.json()) as { success?: boolean; data?: unknown };
+              const remotePayloadOk = ar.ok && Boolean(aj.success) && aj.data != null;
+              if (remotePayloadOk) {
+                const parsed = coerceInterviewAnalyzerPayload(aj.data);
+                if (parsed) {
+                  outcome = { kind: "parsed", payload: parsed };
+                } else {
+                  outcome = { kind: "http-ok-parse-fail" };
+                }
+              } else {
+                outcome = { kind: "remote-fail" };
+              }
+            } catch {
+              outcome = { kind: "remote-fail" };
+            }
+          }
+
+          if (outcome.kind === "parsed") {
+            ideationSendDevLog("analyzer-success", `id=${sendTraceId}`);
+            const merged = mergeImplicitAskedFromLastBootstrapQuestion(
+              msgs,
+              mergeAnalyzerIntoProblemInterview(seeded, outcome.payload, nowIso)
+            );
+            return commitInterviewPlannerReplyOnce(merged, outcome.payload);
+          }
+
+          if (outcome.kind === "http-ok-parse-fail") {
+            ideationSendDevLog("analyzer-fallback", `reason=parse-or-coerce id=${sendTraceId}`);
           } else {
+            ideationSendDevLog("analyzer-fallback", `reason=request-or-empty id=${sendTraceId}`);
+          }
+          const mergedFallback =
+            outcome.kind === "http-ok-parse-fail"
+              ? { ...seeded, updatedAt: nowIso }
+              : emergencyFallbackProblemInterviewFromUserMessageRegex(seeded, text, nowIso);
+          const merged = mergeImplicitAskedFromLastBootstrapQuestion(msgs, mergedFallback);
+          return commitInterviewPlannerReplyOnce(merged, null);
+        };
+
+        const runFacilitatorOrDraftPipeline = async (): Promise<IdeationPlannerTail> => {
           let facilitatorFinalRoom: RequirementsRoomStateV3;
           try {
             const res = await fetch(endpoint, {
@@ -2058,9 +2046,6 @@ export function RequirementsWorkspace({
                 ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=facilitator`);
                 facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
                 ideationSendDevLog("return:success", `facilitator-dedupe id=${sendTraceId}`);
-              } else if (!consumeIdeationPlannerAiAppend("facilitator")) {
-                facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
-                ideationSendDevLog("return:success", `facilitator-blocked-duplicate id=${sendTraceId}`);
               } else {
                 ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=facilitator`);
                 facilitatorFinalRoom = {
@@ -2099,12 +2084,20 @@ export function RequirementsWorkspace({
             ideationSendDevLog("return:fallback", `facilitator-throw id=${sendTraceId}`);
             return { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } };
           }
+        };
+
+        const runAiPlannerAfterUserPersist = async (): Promise<IdeationPlannerTail> => {
+          const organized = await runOrganizePlannerIfPending();
+          if (organized) return organized;
+          if (isIdeationProblemInterviewPlannerContext()) {
+            return runIdeationProblemInterviewPipeline();
           }
+          return runFacilitatorOrDraftPipeline();
         };
 
         let plannerTail: IdeationPlannerTail;
         try {
-          plannerTail = await runExclusiveIdeationPlannerPipeline();
+          plannerTail = await runAiPlannerAfterUserPersist();
         } finally {
           setAiInvokePending(false);
         }
