@@ -1,5 +1,10 @@
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
-import { buildIdeationDeliverableBasePrompt, buildIdeationDeliverablesUserPrompt } from "@/lib/requirements/ideationDeliverables";
+import {
+  buildIdeationDeliverableBasePrompt,
+  buildIdeationDeliverablesUserPrompt,
+  extractIdeationDeliverableOutputsFromRoot,
+  stripJsonMarkdownFences,
+} from "@/lib/requirements/ideationDeliverables";
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
 
@@ -421,70 +426,77 @@ export async function runIdeationDeliverablesOpenAI(input: {
     recentMessages: excerpt || "(최근 대화 없음)",
   });
   const userBlock = buildIdeationDeliverablesUserPrompt(types);
+  const keysLine = types.map((t) => `"${t}"`).join(", ");
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `You are a Korean product planning assistant. Output only one valid JSON object. No markdown fences.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
-        },
-        {
-          role: "user",
-          content: `${base}\n\n${userBlock}`,
-        },
-      ],
-    }),
-  });
+  const callModel = async (userContent: string) => {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `You are a Korean product planning assistant. Output only one valid JSON object. No markdown fences.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
+          },
+          {
+            role: "user",
+            content: userContent,
+          },
+        ],
+      }),
+    });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return {
-      ok: false,
-      code: `HTTP_${res.status}`,
-      message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
-    };
-  }
-
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-  const text = body.choices?.[0]?.message?.content?.trim();
-  if (!text) {
-    return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text) as unknown;
-  } catch {
-    return { ok: false, code: "JSON_PARSE", message: "OpenAI JSON 파싱에 실패했습니다." };
-  }
-  if (!parsed || typeof parsed !== "object") {
-    return { ok: false, code: "SCHEMA", message: "OpenAI 응답 스키마가 올바르지 않습니다." };
-  }
-  const root = parsed as Record<string, unknown>;
-  const outRaw = root.outputs;
-  if (!outRaw || typeof outRaw !== "object") {
-    return { ok: false, code: "SCHEMA", message: 'OpenAI 응답에 "outputs" 객체가 없습니다.' };
-  }
-  const outputs: Partial<Record<IdeationDeliverableType, string>> = {};
-  for (const t of types) {
-    const v = (outRaw as Record<string, unknown>)[t];
-    const s = typeof v === "string" ? v.trim() : "";
-    if (!s) {
-      return { ok: false, code: "SCHEMA", message: `산출물 "${t}" 본문이 비어 있습니다.` };
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      return {
+        ok: false as const,
+        code: `HTTP_${res.status}`,
+        message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
+      };
     }
-    outputs[t] = s;
+
+    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+    const text = body.choices?.[0]?.message?.content?.trim();
+    if (!text) {
+      return { ok: false as const, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stripJsonMarkdownFences(text)) as unknown;
+    } catch {
+      return { ok: false as const, code: "JSON_PARSE", message: "OpenAI JSON 파싱에 실패했습니다." };
+    }
+
+    const extracted = extractIdeationDeliverableOutputsFromRoot(parsed, types);
+    if (!extracted.ok) {
+      return { ok: false as const, code: "SCHEMA", message: extracted.message };
+    }
+    return { ok: true as const, outputs: extracted.outputs };
+  };
+
+  const first = await callModel(`${base}\n\n${userBlock}`);
+  if (first.ok) {
+    return { ok: true, outputs: first.outputs, model };
   }
 
-  return { ok: true, outputs, model };
+  const retryable = first.code === "SCHEMA" || first.code === "JSON_PARSE";
+  if (!retryable) {
+    return first;
+  }
+
+  const repair = `\n\n[재시도 — 필수]\n직전 응답이 규격에 맞지 않았습니다. 다시 **유효한 JSON 한 개만** 출력하세요.\n최상위에 "outputs" 객체를 두고, 키 ${keysLine} 각각에 **비어 있지 않은 마크다운 문자열**을 넣으세요.\n각 문자열은 최소 400자 이상의 실질 본문이어야 합니다. 공백만 있는 값 금지.`;
+  const second = await callModel(`${base}\n\n${userBlock}${repair}`);
+  if (second.ok) {
+    return { ok: true, outputs: second.outputs, model };
+  }
+  return second;
 }
 
 export type OpenAiModelsPingResult =

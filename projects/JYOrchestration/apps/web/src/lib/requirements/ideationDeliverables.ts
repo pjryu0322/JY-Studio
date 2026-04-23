@@ -140,7 +140,91 @@ export function buildIdeationDeliverablesUserPrompt(selected: readonly IdeationD
 - 최상위 키는 반드시 "outputs" 이다.
 - "outputs" 값은 객체이며, 다음 키만 포함한다: ${keys}
 - 각 값은 해당 산출물 전체 본문(마크다운 허용) 문자열이다.
-- 요청한 키는 빠지면 안 된다. 빈 문자열 금지.`;
+- 요청한 키는 빠지면 안 된다. 빈 문자열·공백만 있는 문자열 금지.
+- 각 문자열은 실질적인 문서 본문이어야 한다(예: 문제정의서는 최소 수백 자 수준).`;
+}
+
+/** 모델이 마크다운 코드 펜스로 JSON을 감싼 경우 본문만 남긴다. */
+export function stripJsonMarkdownFences(raw: string): string {
+  let t = String(raw ?? "").trim();
+  if (!t) return t;
+  if (t.startsWith("```")) {
+    t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+  }
+  return t;
+}
+
+const DELIVERABLE_OUTPUT_KEY_ALIASES: Record<IdeationDeliverableType, readonly string[]> = {
+  meeting_summary: ["meetingSummary", "meeting-summary"],
+  problem_statement: ["problemStatement", "problem-statement", "문제정의서", "문제_정의서", "problemDefinition"],
+  feature_list: ["featureList", "feature-list", "features", "기능목록"],
+  mvp_scope: ["mvpScope", "mvp-scope", "MVP범위"],
+  kpi: ["KPI", "kpiMetrics"],
+  full_plan: ["fullPlan", "full-plan", "plan", "전체기획안", "productPlan"],
+};
+
+function coerceDeliverableBodyText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") {
+    return v.replace(/\u200b/g, "").trim();
+  }
+  if (typeof v === "number" || typeof v === "boolean") {
+    return String(v).trim();
+  }
+  if (Array.isArray(v)) {
+    const parts = v.map(coerceDeliverableBodyText).filter((s) => s.length > 0);
+    return parts.join("\n\n").trim();
+  }
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    for (const key of ["content", "body", "markdown", "md", "text", "value", "본문", "문서"]) {
+      if (Object.prototype.hasOwnProperty.call(o, key)) {
+        const s = coerceDeliverableBodyText(o[key]);
+        if (s) return s;
+      }
+    }
+    return "";
+  }
+  return "";
+}
+
+/** outputs 객체에서 스네이크 케이스 키와 흔한 별칭으로 본문 문자열을 읽는다. */
+export function readDeliverableOutputFromModel(outputsObj: unknown, type: IdeationDeliverableType): string {
+  if (!outputsObj || typeof outputsObj !== "object") return "";
+  const o = outputsObj as Record<string, unknown>;
+  const keys = [type, ...(DELIVERABLE_OUTPUT_KEY_ALIASES[type] ?? [])];
+  for (const k of keys) {
+    if (!Object.prototype.hasOwnProperty.call(o, k)) continue;
+    const s = coerceDeliverableBodyText(o[k]);
+    if (s.length > 0) return s;
+  }
+  return "";
+}
+
+/**
+ * 파싱된 JSON 루트에서 outputs를 읽어 요청된 산출물만 추출한다.
+ * 실패 시 어떤 키가 비었는지 message에 포함한다.
+ */
+export function extractIdeationDeliverableOutputsFromRoot(
+  root: unknown,
+  types: readonly IdeationDeliverableType[]
+): { ok: true; outputs: Partial<Record<IdeationDeliverableType, string>> } | { ok: false; message: string } {
+  if (!root || typeof root !== "object") {
+    return { ok: false, message: "OpenAI 응답 스키마가 올바르지 않습니다." };
+  }
+  const outRaw = (root as Record<string, unknown>).outputs;
+  if (!outRaw || typeof outRaw !== "object") {
+    return { ok: false, message: 'OpenAI 응답에 "outputs" 객체가 없습니다.' };
+  }
+  const outputs: Partial<Record<IdeationDeliverableType, string>> = {};
+  for (const t of types) {
+    const s = readDeliverableOutputFromModel(outRaw, t);
+    if (!s) {
+      return { ok: false, message: `산출물 "${t}" 본문이 비어 있습니다.` };
+    }
+    outputs[t] = s;
+  }
+  return { ok: true, outputs };
 }
 
 export function parseIdeationDeliverableChatPayload(raw: string): IdeationDeliverableChatPayload | null {
