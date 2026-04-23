@@ -46,6 +46,7 @@ import {
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   INTERVIEW_COMPLETION_NOTICE_KR,
   mergeAnalyzerIntoProblemInterview,
+  mergeImplicitAskedFromLastBootstrapQuestion,
   pickNextAskableInterviewSlot,
   planNextInterviewTurn,
   problemInterviewCoveredCount,
@@ -1857,6 +1858,8 @@ export function RequirementsWorkspace({
                 ideationSendDevLog("analyzer-fallback", `reason=parse-or-coerce id=${sendTraceId}`);
               }
             }
+
+            merged = mergeImplicitAskedFromLastBootstrapQuestion(msgs, merged);
 
             const plan = planNextInterviewTurn(
               merged,
