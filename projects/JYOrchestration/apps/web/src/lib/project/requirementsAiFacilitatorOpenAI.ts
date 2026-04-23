@@ -1,6 +1,6 @@
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import type { InterviewAnalyzerPayload, ProblemInterviewState } from "@/lib/requirements/problemInterview";
-import { parseInterviewAnalyzerPayloadFromModelText } from "@/lib/requirements/problemInterview";
+import { parseInterviewAnalyzerPayloadFromModelText, problemInterviewStateToAnalyzerWire } from "@/lib/requirements/problemInterview";
 import {
   buildIdeationDeliverableBasePrompt,
   buildIdeationDeliverablesUserPrompt,
@@ -510,17 +510,7 @@ export type InterviewAnalyzeOpenAiResult =
   | { ok: false; code: string; message: string };
 
 function interviewStateJsonForAnalyzer(state: ProblemInterviewState): string {
-  return JSON.stringify({
-    coreUser: state.coreUser,
-    painPoint: state.painPoint,
-    currentMethod: state.currentMethod,
-    needForImprovement: state.needForImprovement,
-    partial: state.partial ?? {},
-    notes: Object.fromEntries(
-      Object.entries(state.notes ?? {}).map(([k, v]) => [k, String(v).slice(0, 1200)])
-    ),
-    askedSlots: state.askedSlots ?? [],
-  });
+  return JSON.stringify(problemInterviewStateToAnalyzerWire(state));
 }
 
 /**
@@ -553,7 +543,8 @@ export async function runInterviewAnalyzeOpenAI(input: {
 - 의미 기반으로 판단한다(키워드만 맞추지 않는다).
 - 같은 의미의 다른 표현은 동일하게 매핑한다.
 - 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
-- filledSlots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나.
+- slots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나(구 키 filledSlots는 쓰지 말 것).
+- 네 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
 - nextBestSlot은 아직 filled가 아니면서 이번 답으로 가장 보강해야 할 슬롯 하나(없으면 null).
 - confidence는 0~1 실수(모델 확신도).
 - notes에는 해당 슬롯에서 뽑은 짧은 근거 불릿(한국어) 문자열만 배열로 넣는다.
@@ -561,7 +552,7 @@ export async function runInterviewAnalyzeOpenAI(input: {
 JSON 스키마(키 이름·형식 엄수):
 {
   "summary": "한두 문장 한국어 요약",
-  "filledSlots": {
+  "slots": {
     "coreUser": "empty|partial|filled",
     "painPoint": "empty|partial|filled",
     "currentMethod": "empty|partial|filled",

@@ -3,11 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { runInterviewAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
-import {
-  emptyProblemInterviewState,
-  type ProblemInterviewSlot,
-  type ProblemInterviewState,
-} from "@/lib/requirements/problemInterview";
+import { problemInterviewStateFromAnalyzerWireInput } from "@/lib/requirements/problemInterview";
 
 type Body = {
   projectId?: string;
@@ -17,31 +13,6 @@ type Body = {
   latestAiQuestion?: string;
   currentInterviewState?: unknown;
 };
-
-function coerceInterviewState(raw: unknown, nowIso: string): ProblemInterviewState {
-  if (!raw || typeof raw !== "object") return emptyProblemInterviewState(nowIso);
-  const o = raw as Record<string, unknown>;
-  const base = emptyProblemInterviewState(nowIso);
-  return {
-    ...base,
-    coreUser: typeof o.coreUser === "boolean" ? o.coreUser : base.coreUser,
-    painPoint: typeof o.painPoint === "boolean" ? o.painPoint : base.painPoint,
-    currentMethod: typeof o.currentMethod === "boolean" ? o.currentMethod : base.currentMethod,
-    needForImprovement: typeof o.needForImprovement === "boolean" ? o.needForImprovement : base.needForImprovement,
-    notes: typeof o.notes === "object" && o.notes !== null ? { ...(o.notes as Record<string, string>) } : base.notes,
-    partial: typeof o.partial === "object" && o.partial !== null ? { ...(o.partial as Record<string, boolean>) } : base.partial,
-    askedSlots: Array.isArray(o.askedSlots)
-      ? ((o.askedSlots as unknown[])
-          .map((x) => String(x ?? "").trim())
-          .filter(Boolean)
-          .filter((x): x is ProblemInterviewSlot =>
-            x === "coreUser" || x === "painPoint" || x === "currentMethod" || x === "needForImprovement"
-          ) as ProblemInterviewSlot[])
-      : base.askedSlots,
-    active: typeof o.active === "boolean" ? o.active : base.active,
-    updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : base.updatedAt,
-  };
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,7 +26,7 @@ export async function POST(request: NextRequest) {
     const userMessage = String(body.userMessage ?? "").trim();
     const latestAiQuestion = String(body.latestAiQuestion ?? "").trim();
     const nowIso = new Date().toISOString();
-    const currentInterviewState = coerceInterviewState(body.currentInterviewState, nowIso);
+    const currentInterviewState = problemInterviewStateFromAnalyzerWireInput(body.currentInterviewState, nowIso);
 
     if (!userMessage) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
@@ -83,6 +54,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, code: result.code, message: result.message },
         { status: result.code === "NO_KEY" ? 503 : 502 }
+      );
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      const s = result.payload.slots;
+      console.log(
+        "[problemInterview-analyzer]",
+        `user="${userMessage.slice(0, 120).replace(/\s+/g, " ")}"`,
+        `slots=${JSON.stringify(s)}`,
+        `next=${JSON.stringify(result.payload.nextBestSlot)}`,
+        `confidence=${result.payload.confidence}`
       );
     }
 
