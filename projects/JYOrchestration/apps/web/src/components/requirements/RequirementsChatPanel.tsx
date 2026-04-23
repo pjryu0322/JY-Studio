@@ -75,6 +75,7 @@ export function RequirementsChatPanel({
   onInsertComposerPrompt,
   onSetReplyTo,
   onOpenDeliverableDocument,
+  onOpenDeliverableList,
   onOpenDeliverableDocuments,
   onRegenerateDeliverables,
   onConfirmDeliverables,
@@ -88,6 +89,8 @@ export function RequirementsChatPanel({
   /** 답글 달기: replyTo messageId 설정 */
   readonly onSetReplyTo?: (messageId: string, preview: string) => void;
   readonly onOpenDeliverableDocument?: (assetId: string) => void;
+  /** 프로젝트 산출물 목록(탐색) */
+  readonly onOpenDeliverableList?: (focusAssetId: string | null) => void;
   readonly onOpenDeliverableDocuments?: (assetIds: readonly string[]) => void;
   readonly onRegenerateDeliverables?: (requestedTypes: readonly string[]) => void;
   readonly onConfirmDeliverables?: (assetIds: readonly string[]) => void;
@@ -495,6 +498,7 @@ export function RequirementsChatPanel({
                 <RequirementsDeliverableChatCard
                   payload={deliverPayload}
                   onOpenDocument={(id) => onOpenDeliverableDocument?.(id)}
+                  onOpenList={(focusId) => onOpenDeliverableList?.(focusId)}
                   onOpenAll={(ids) => onOpenDeliverableDocuments?.(ids)}
                   onRegenerate={(types) => onRegenerateDeliverables?.(types)}
                   onConfirm={(ids) => onConfirmDeliverables?.(ids)}
