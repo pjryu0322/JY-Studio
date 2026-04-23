@@ -1,4 +1,5 @@
 import { stripJsonMarkdownFences } from "@/lib/requirements/ideationDeliverables";
+import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
 
 export type ProblemInterviewSlot = "coreUser" | "painPoint" | "currentMethod" | "needForImprovement";
 
@@ -185,6 +186,77 @@ export function withAskedSlot(state: ProblemInterviewState, slot: ProblemIntervi
   const asked = Array.isArray(state.askedSlots) ? [...state.askedSlots] : [];
   asked.push(slot);
   return { ...state, askedSlots: asked.slice(-16), updatedAt: nowIso };
+}
+
+/**
+ * 인터뷰 첫 질문(bootstrap) 등 자유 질문이 어떤 슬롯을 겨냥했는지 휴리스틱으로 추정한다.
+ * bootstrap은 `askedSlots`에 남지 않아, 답변 직후 플래너가 같은 슬롯을 다시 고르는 것을 막기 위해 사용한다.
+ */
+export function inferInterviewSlotsLikelyAddressedByPlannerQuestionBody(body: string): ProblemInterviewSlot[] {
+  const t = String(body ?? "").trim();
+  if (!t) return [];
+  const seen = new Set<ProblemInterviewSlot>();
+  const ordered: ProblemInterviewSlot[] = [];
+  const push = (s: ProblemInterviewSlot) => {
+    if (seen.has(s)) return;
+    seen.add(s);
+    ordered.push(s);
+  };
+
+  if (
+    /(회의록|녹취|문서화|작성\s*방식|절차|프로세스|운영\s*방식|관리\s*방식|어떻게\s*이루어|지금은\s*어떻게|현재는\s*어떻게|공유\s*방식|메일|이메일|열람|접근\s*권한|권한\s*관리)/.test(
+      t
+    )
+  ) {
+    push("currentMethod");
+  }
+  if (/(누구|어떤\s*사람|주요\s*사용자|핵심\s*사용자|사용자\s*층|대상(?:은|이)?|역할|담당)/.test(t)) {
+    push("coreUser");
+  }
+  if (/(문제점|문제(?:은|가)?|불편|어렵|힘들|비효율|오류|누락|리스크)/.test(t)) {
+    push("painPoint");
+  }
+  if (/(개선|필요성|기대|자동화|효율(?:을|화)?|원하(?:는|시))/.test(t)) {
+    push("needForImprovement");
+  }
+
+  return ordered;
+}
+
+/**
+ * 사용자가 방금 답한 직전 AI가 bootstrap이면, 그 질문이 이미 다룬 슬롯을 `askedSlots`에 합쳐
+ * `pickNextAskableInterviewSlot`이 동일 주제·동일 슬롯을 연속으로 고르지 않게 한다.
+ */
+export function mergeImplicitAskedFromLastBootstrapQuestion(
+  messages: readonly { role: string; content?: string; meta?: { internalType?: string } }[],
+  merged: ProblemInterviewState
+): ProblemInterviewState {
+  if (!messages.length) return merged;
+  const last = messages[messages.length - 1]!;
+  if (last.role !== "user") return merged;
+  let lastAiIdx = -1;
+  for (let i = messages.length - 2; i >= 0; i--) {
+    if (messages[i]!.role === "ai") {
+      lastAiIdx = i;
+      break;
+    }
+  }
+  if (lastAiIdx < 0) return merged;
+  const lastAi = messages[lastAiIdx]!;
+  const it = typeof lastAi.meta?.internalType === "string" ? String(lastAi.meta.internalType) : "";
+  if (it !== IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE) return merged;
+  const inferred = inferInterviewSlotsLikelyAddressedByPlannerQuestionBody(String(lastAi.content ?? ""));
+  if (!inferred.length) return merged;
+  const asked = [...(merged.askedSlots ?? [])];
+  let changed = false;
+  for (const s of inferred) {
+    if (!asked.includes(s)) {
+      asked.push(s);
+      changed = true;
+    }
+  }
+  if (!changed) return merged;
+  return { ...merged, askedSlots: asked.slice(-16), updatedAt: merged.updatedAt };
 }
 
 // ---------------------------------------------------------------------------
