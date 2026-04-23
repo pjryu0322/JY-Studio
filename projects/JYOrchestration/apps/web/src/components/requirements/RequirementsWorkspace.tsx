@@ -175,6 +175,7 @@ function writeLocalShell(s: LocalShell) {
 
 const IDEATION_SEND_DEV = process.env.NODE_ENV !== "production";
 
+/** `[ideation-send:…]` — 개발에서만 (요청된 이벤트 이름과 일치) */
 function ideationSendDevLog(event: string, detail?: string) {
   if (!IDEATION_SEND_DEV) return;
   console.log(`[ideation-send:${event}]${detail ? ` ${detail}` : ""}`);
@@ -1494,36 +1495,36 @@ export function RequirementsWorkspace({
 
   const onSend = useCallback(async () => {
     if (requirementsSendFlightRef.current) {
-      ideationSendDevLog("start", "id=(ignored-duplicate-in-flight)");
-      return;
-    }
-    if (draftDebounceTimerRef.current) {
-      clearTimeout(draftDebounceTimerRef.current);
-      draftDebounceTimerRef.current = null;
-    }
-    const text = input.trim();
-    if (!text || busy || aiInvokePending) return;
-    if (
-      shouldSkipIdeationDuplicateAppend({
-        messages: conversationMessages,
-        role: "user",
-        body: text,
-        speakerId: sessionUser?.id ?? "me",
-      })
-    ) {
-      ideationSendDevLog("dedupe-user-skip", text.slice(0, 80));
+      ideationSendDevLog("start", "ignored-in-flight");
       return;
     }
     requirementsSendFlightRef.current = true;
-    const sendTraceId =
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `send-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
-    const replyMode = Boolean(replyTo?.id?.trim());
-    ideationSendDevLog("start", `id=${sendTraceId} mode=${replyMode ? "reply" : "normal"}`);
-    setBusy(true);
-    setError(null);
     try {
+      if (draftDebounceTimerRef.current) {
+        clearTimeout(draftDebounceTimerRef.current);
+        draftDebounceTimerRef.current = null;
+      }
+      const text = input.trim();
+      if (!text || busy || aiInvokePending) return;
+      if (
+        shouldSkipIdeationDuplicateAppend({
+          messages: conversationMessages,
+          role: "user",
+          body: text,
+          speakerId: sessionUser?.id ?? "me",
+        })
+      ) {
+        ideationSendDevLog("dedupe-user-skip", text.slice(0, 80));
+        return;
+      }
+      const sendTraceId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `send-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+      const replyMode = Boolean(replyTo?.id?.trim());
+      ideationSendDevLog("start", `mode=${replyMode ? "reply" : "normal"}`);
+      setBusy(true);
+      setError(null);
       const mentionRefs = participants.map((p) => ({ id: p.id, name: p.name }));
       const fromMentions = computedTargetsFromInput(text, mentionRefs);
       const targets = dedupeMemberRefs(
@@ -1579,13 +1580,23 @@ export function RequirementsWorkspace({
           });
           ideationSendDevLog("problemInterview-restored", `id=${sendTraceId}`);
         }
-        ideationSendDevLog("user-appended", `id=${sendTraceId} userMsg=${userMsg.id}`);
+        ideationSendDevLog("user-appended", `id=${sendTraceId}`);
         setAiInvokePending(true);
         const pid = resolvedProjectId.trim();
 
         type IdeationPlannerTail = { needsTailPersist: true; finalRoom: RequirementsRoomStateV3 } | { needsTailPersist: false };
 
         const runExclusiveIdeationPlannerPipeline = async (): Promise<IdeationPlannerTail> => {
+          let ideationPlannerAiAppendedThisCycle = false;
+          const consumeIdeationPlannerAiAppend = (reason: string): boolean => {
+            if (ideationPlannerAiAppendedThisCycle) {
+              ideationSendDevLog("duplicate-blocked", reason);
+              return false;
+            }
+            ideationPlannerAiAppendedThisCycle = true;
+            return true;
+          };
+
           // 정리요청(플래너 리뷰) 진행 중이면: 일반 대화 대신 Analyzer → (질문/생성) 흐름만 수행
           const pending = plannerState && plannerState.pendingQuestions && plannerState.pendingQuestions.length > 0;
           if (pending && pid) {
@@ -1653,6 +1664,10 @@ export function RequirementsWorkspace({
                 ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
                 : [];
               const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
+              if (!consumeIdeationPlannerAiAppend("organize-more-questions")) {
+                return { needsTailPersist: false };
+              }
+              ideationSendDevLog("ai-appended", "organize-more-questions");
               const moreQuestionsRoom = {
                 ...withCalling,
                 aiQuestionIndex: turn + 1,
@@ -1690,11 +1705,16 @@ export function RequirementsWorkspace({
                 },
               });
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              ideationSendDevLog("return:success", "organize-more-questions");
               setInput("");
               setReplyTo(null);
               return { needsTailPersist: false };
             } else {
               const analyzerMessage = String(json.data.message ?? "").trim() || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.";
+              if (!consumeIdeationPlannerAiAppend("organize-ready")) {
+                return { needsTailPersist: false };
+              }
+              ideationSendDevLog("ai-appended", "organize-ready");
               const readyRoom = {
                 ...withCalling,
                 aiQuestionIndex: turn + 1,
@@ -1750,6 +1770,7 @@ export function RequirementsWorkspace({
               });
               showSuccessToast(`${plannerState.requestedLabel ?? schema.labelKr} 생성 완료`);
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              ideationSendDevLog("return:success", "organize-deliverable");
               setInput("");
               setReplyTo(null);
               return { needsTailPersist: false };
@@ -1799,6 +1820,7 @@ export function RequirementsWorkspace({
             let remoteAnalyzeOk = false;
             if (pid) {
               try {
+                ideationSendDevLog("analyzer-request", `id=${sendTraceId}`);
                 const ar = await fetch("/api/requirements/interview-analyze", {
                   method: "POST",
                   credentials: "include",
@@ -1829,9 +1851,10 @@ export function RequirementsWorkspace({
             if (!analyzer) {
               if (!remoteAnalyzeOk) {
                 merged = emergencyFallbackProblemInterviewFromUserMessageRegex(seeded, text, nowIso);
-                ideationSendDevLog("fallback-used", `id=${sendTraceId}`);
+                ideationSendDevLog("analyzer-fallback", `reason=request-or-empty id=${sendTraceId}`);
               } else {
                 merged = { ...seeded, updatedAt: nowIso };
+                ideationSendDevLog("analyzer-fallback", `reason=parse-or-coerce id=${sendTraceId}`);
               }
             }
 
@@ -1863,6 +1886,15 @@ export function RequirementsWorkspace({
                 ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId}`);
                 await persistRemote(withCalling, {}, { problemInterview: asked });
                 setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+                ideationSendDevLog("return:success", `interview-dedupe-no-ai id=${sendTraceId}`);
+                setInput("");
+                setReplyTo(null);
+                return { needsTailPersist: false };
+              }
+              if (!consumeIdeationPlannerAiAppend("interview-next")) {
+                await persistRemote(withCalling, {}, { problemInterview: asked });
+                setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+                ideationSendDevLog("return:success", `interview-blocked-duplicate id=${sendTraceId}`);
                 setInput("");
                 setReplyTo(null);
                 return { needsTailPersist: false };
@@ -1892,6 +1924,10 @@ export function RequirementsWorkspace({
               };
               await persistRemote(interviewNextRoom, {}, { problemInterview: asked });
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              ideationSendDevLog(
+                analyzer ? "return:success" : "return:fallback",
+                `interview-next id=${sendTraceId}`
+              );
               setInput("");
               setReplyTo(null);
               return { needsTailPersist: false };
@@ -1911,6 +1947,15 @@ export function RequirementsWorkspace({
               ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=interview-complete`);
               await persistRemote(withCalling, {}, { problemInterview: doneInterview });
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              ideationSendDevLog("return:success", `interview-complete-dedupe id=${sendTraceId}`);
+              setInput("");
+              setReplyTo(null);
+              return { needsTailPersist: false };
+            }
+            if (!consumeIdeationPlannerAiAppend("interview-complete")) {
+              await persistRemote(withCalling, {}, { problemInterview: doneInterview });
+              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+              ideationSendDevLog("return:success", `interview-complete-blocked-duplicate id=${sendTraceId}`);
               setInput("");
               setReplyTo(null);
               return { needsTailPersist: false };
@@ -1937,11 +1982,14 @@ export function RequirementsWorkspace({
             };
             await persistRemote(interviewDoneRoom, {}, { problemInterview: doneInterview });
             setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+            ideationSendDevLog(
+              analyzer ? "return:success" : "return:fallback",
+              `interview-complete id=${sendTraceId}`
+            );
             setInput("");
             setReplyTo(null);
             return { needsTailPersist: false };
-          }
-
+          } else {
           let facilitatorFinalRoom: RequirementsRoomStateV3;
           try {
             const res = await fetch(endpoint, {
@@ -2006,6 +2054,10 @@ export function RequirementsWorkspace({
               ) {
                 ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=facilitator`);
                 facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
+                ideationSendDevLog("return:success", `facilitator-dedupe id=${sendTraceId}`);
+              } else if (!consumeIdeationPlannerAiAppend("facilitator")) {
+                facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
+                ideationSendDevLog("return:success", `facilitator-blocked-duplicate id=${sendTraceId}`);
               } else {
                 ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=facilitator`);
                 facilitatorFinalRoom = {
@@ -2027,19 +2079,23 @@ export function RequirementsWorkspace({
                   },
                   ...(nextDraftDoc ? { requirementsDraft: nextDraftDoc } : {}),
                 };
+                ideationSendDevLog("return:success", `facilitator-ai id=${sendTraceId}`);
               }
             } else {
               const errMsg = json.message || "응답 생성 실패";
               setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
               showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
               facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
+              ideationSendDevLog("return:fallback", `facilitator-http id=${sendTraceId}`);
             }
             return { needsTailPersist: true, finalRoom: facilitatorFinalRoom };
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
             showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
+            ideationSendDevLog("return:fallback", `facilitator-throw id=${sendTraceId}`);
             return { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } };
+          }
           }
         };
 
