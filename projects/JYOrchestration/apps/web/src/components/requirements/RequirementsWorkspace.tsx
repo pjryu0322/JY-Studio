@@ -284,6 +284,8 @@ export function RequirementsWorkspace({
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
   const ideationBootstrapFlightRef = useRef<string | null>(null);
+  /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
+  const requirementsSendFlightRef = useRef(false);
   /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
   const organizeRawFallbackRef = useRef(false);
 
@@ -1453,12 +1455,22 @@ export function RequirementsWorkspace({
   );
 
   const onSend = useCallback(async () => {
+    if (requirementsSendFlightRef.current) {
+      console.log("[send-start] id=(ignored-duplicate-in-flight)");
+      return;
+    }
     if (draftDebounceTimerRef.current) {
       clearTimeout(draftDebounceTimerRef.current);
       draftDebounceTimerRef.current = null;
     }
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || aiInvokePending) return;
+    requirementsSendFlightRef.current = true;
+    const sendTraceId =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `send-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+    console.log(`[send-start] id=${sendTraceId}`);
     setBusy(true);
     setError(null);
     try {
@@ -1470,7 +1482,9 @@ export function RequirementsWorkspace({
       const anyAi = targets.some((t) => isAiTarget(t.id));
       const primaryAi = targets.find((t) => isAiTarget(t.id));
       const combinedLabel = targets.map((t) => t.name).join(" · ");
-      const effectiveReplyTo = inferRecentAiQuestionReplyParentId(conversationMessages, replyTo?.id ?? null);
+      const effectiveReplyTo = replyTo?.id?.trim()
+        ? replyTo.id.trim()
+        : inferRecentAiQuestionReplyParentId(conversationMessages, null);
 
       const userMsg = newChatMessage({
         role: "user",
@@ -1507,6 +1521,7 @@ export function RequirementsWorkspace({
           lastPromptGeneratedAt: promptMetaIso,
           lastUserDraftText: text,
         });
+        console.log(`[user-appended] id=${sendTraceId} userMsg=${userMsg.id}`);
         setAiInvokePending(true);
         const pid = resolvedProjectId.trim();
         let finalRoom: RequirementsRoomStateV3;
@@ -1681,20 +1696,21 @@ export function RequirementsWorkspace({
             }
           }
 
+          const wantsDraftEndpoint = isDraftIntent(text);
           const excerpt = augmentDialogueExcerptForReplyParent(
-            formatDialogueExcerpt(conversationMessages),
-            conversationMessages,
+            formatDialogueExcerpt(msgs),
+            msgs,
             effectiveReplyTo
           );
-          const endpoint = isDraftIntent(text) ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
+          const endpoint = wantsDraftEndpoint ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
 
           // --------------------------------------------------
           // 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지)
+          // 초안 의도(draft-generate)와 무관하게, 인터뷰 활성 시에는 이 블록만 타고 ai-facilitator는 호출하지 않는다.
           // --------------------------------------------------
-          const isIdeationInterviewFlow = (() => {
-            if (endpoint !== "/api/requirements/ai-facilitator") return false;
+          const runProblemInterviewAnalyzeFlow = (() => {
+            if (wantsDraftEndpoint) return false;
             if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
-            // organize 플로우(정리요청)에는 개입하지 않음
             if (stateJsonRef.current.organizePlannerState) return false;
             const lastAi = [...msgs].reverse().find((m) => m.role === "ai");
             const internal = lastAi && (lastAi as any).meta && (lastAi as any).meta.internalType;
@@ -1704,11 +1720,11 @@ export function RequirementsWorkspace({
             return boot || active;
           })();
 
-          if (isIdeationInterviewFlow) {
+          if (runProblemInterviewAnalyzeFlow) {
             const nowIso = new Date().toISOString();
             const prevPi = (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
             const seeded = prevPi ?? emptyProblemInterviewState(nowIso);
-            const latestAiTurn = [...conversationMessages].reverse().find((m) => m.role === "ai");
+            const latestAiTurn = [...msgs].reverse().find((m) => m.role === "ai");
             const latestAiQuestion = String(latestAiTurn?.content ?? "").trim();
 
             let merged: ProblemInterviewState = seeded;
@@ -1736,6 +1752,7 @@ export function RequirementsWorkspace({
                   if (parsed) {
                     analyzer = parsed;
                     merged = mergeAnalyzerIntoProblemInterview(seeded, parsed, nowIso);
+                    console.log(`[analyzer-success] id=${sendTraceId}`);
                   }
                 }
               } catch {
@@ -1745,6 +1762,7 @@ export function RequirementsWorkspace({
             if (!analyzer) {
               if (!remoteAnalyzeOk) {
                 merged = emergencyFallbackProblemInterviewFromUserMessageRegex(seeded, text, nowIso);
+                console.log(`[fallback-used] id=${sendTraceId}`);
               } else {
                 merged = { ...seeded, updatedAt: nowIso };
               }
@@ -1765,6 +1783,7 @@ export function RequirementsWorkspace({
                   ? plan.slot
                   : pickNextAskableInterviewSlot(merged, merged.askedSlots, null) ?? ("painPoint" as ProblemInterviewSlot);
               const asked = withAskedSlot(merged, slotForAsked, nowIso);
+              console.log(`[ai-appended] id=${sendTraceId} kind=interview-next`);
               finalRoom = {
                 ...withCalling,
                 aiQuestionIndex: turn + 1,
@@ -1791,6 +1810,7 @@ export function RequirementsWorkspace({
             }
 
             const doneInterview = { ...merged, active: false, updatedAt: nowIso };
+            console.log(`[ai-appended] id=${sendTraceId} kind=interview-complete`);
             finalRoom = {
               ...withCalling,
               aiQuestionIndex: turn + 1,
@@ -1815,6 +1835,7 @@ export function RequirementsWorkspace({
             setReplyTo(null);
             return;
           }
+
           const res = await fetch(endpoint, {
             method: "POST",
             credentials: "include",
@@ -1866,6 +1887,7 @@ export function RequirementsWorkspace({
                   )
                 : null;
 
+            console.log(`[ai-appended] id=${sendTraceId} kind=facilitator`);
             finalRoom = {
               ...withCalling,
               aiQuestionIndex: turn + 1,
@@ -1918,11 +1940,13 @@ export function RequirementsWorkspace({
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류");
     } finally {
+      requirementsSendFlightRef.current = false;
       setBusy(false);
     }
   }, [
     input,
     busy,
+    aiInvokePending,
     room,
     conversationMessages,
     participants,
@@ -2220,7 +2244,7 @@ export function RequirementsWorkspace({
               value={input}
               onChange={setInput}
               onSend={() => void onSend()}
-              busy={busy}
+              busy={busy || aiInvokePending}
               disabled={false}
               placeholder={composerPlaceholder}
               targetPickerItems={targetPickerItems}
