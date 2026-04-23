@@ -650,6 +650,7 @@ export async function fetchExecutionRuns(projectId: string, opts?: { taskId?: st
 export type ProjectSpecContextDto = {
   projectId: string;
   name: string;
+  /** 공식 프로젝트 설명(읽기 전용). 저장은 별도 "프로젝트 설명 수정"에서만 합니다. */
   description: string | null;
   projectType: string;
   coreGoals: string | null;
@@ -671,7 +672,6 @@ export async function fetchProjectSpecContext(projectId: string) {
 export async function patchProjectSpecContext(body: {
   projectId: string;
   name?: string;
-  description?: string | null;
   projectType?: string;
   coreGoals?: string | null;
   inScope?: string | null;

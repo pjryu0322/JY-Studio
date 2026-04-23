@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
 type PatchBody = {
   projectId?: string;
   name?: string;
+  /** project.description은 별도 명시적 편집에서만 수정되어야 함 (여기서는 reject) */
   description?: string | null;
   projectType?: string;
   coreGoals?: string | null;
@@ -113,10 +114,18 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ success: false, message: "projectType이 비어 있습니다." }, { status: 400 });
       }
     }
+    if (body.description !== undefined) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "project.description은 이 엔드포인트에서 수정할 수 없습니다. 프로젝트 설명 수정 기능을 사용해 주세요.",
+        },
+        { status: 400 }
+      );
+    }
 
     const updated = await updateProjectSpecContext(projectId, {
       name: body.name !== undefined ? String(body.name).trim() : undefined,
-      description: body.description,
       projectType: body.projectType !== undefined ? String(body.projectType).trim() : undefined,
       coreGoals: body.coreGoals,
       inScope: body.inScope,
