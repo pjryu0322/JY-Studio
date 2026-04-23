@@ -297,10 +297,8 @@ export default function HomePage() {
   }, [projectCardMenuId]);
 
   const openEditDescription = useCallback((project: Project) => {
-    const state = parseRequirementsStateJson(project.requirementsStateJson);
-    const original = typeof state.originalProjectDescription === "string" ? state.originalProjectDescription : "";
     setEditDescTarget({ id: project.id, name: project.name });
-    setEditDescValue(original);
+    setEditDescValue(String(project.description ?? ""));
     setEditDescError(null);
     setProjectCardMenuId(null);
   }, []);
@@ -313,18 +311,16 @@ export default function HomePage() {
     try {
       const p = projectsRef.current.find((x) => x.id === editDescTarget.id);
       if (!p) throw new Error("프로젝트를 찾을 수 없습니다.");
-      const prevState = parseRequirementsStateJson(p.requirementsStateJson);
-      const nextState = mergeRequirementsStateJson(prevState, { originalProjectDescription: editDescValue.trim() });
       const res = await fetch(`/api/projects/${encodeURIComponent(editDescTarget.id)}/spec-workspace`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requirementsStateJson: nextState }),
+        body: JSON.stringify({ description: editDescValue.trim() || null }),
       });
       const json = (await res.json()) as { success?: boolean; message?: string };
       if (!res.ok || !json.success) throw new Error(json.message || "저장에 실패했습니다.");
       setProjects((cur) =>
-        cur.map((row) => (row.id === editDescTarget.id ? { ...row, requirementsStateJson: nextState } : row))
+        cur.map((row) => (row.id === editDescTarget.id ? { ...row, description: editDescValue.trim() || null } : row))
       );
       setEditDescTarget(null);
     } catch (e) {
@@ -732,12 +728,26 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className="relative" style={{ color: "#555", marginBottom: 8 }}>
+                <div
+                  className="relative"
+                  style={{
+                    color: "#555",
+                    marginBottom: 8,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    lineHeight: 1.45,
+                    maxHeight: "calc(1.45em * 2)",
+                    wordBreak: "break-word",
+                  }}
+                >
                   <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-설명" visible={showScreenLabels} />
                   {(() => {
-                    const state = parseRequirementsStateJson(project.requirementsStateJson);
-                    const original = typeof state.originalProjectDescription === "string" ? state.originalProjectDescription.trim() : "";
-                    return original || "설명 없음";
+                    const raw = String(project.description ?? "");
+                    const normalized = raw.replace(/\s+/g, " ").trim();
+                    return normalized || "설명 없음";
                   })()}
                 </div>
               </div>
