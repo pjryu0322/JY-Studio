@@ -1591,175 +1591,175 @@ export function RequirementsWorkspace({
         const runOrganizePlannerIfPending = async (): Promise<IdeationPlannerTail | null> => {
           const pending = plannerState && plannerState.pendingQuestions && plannerState.pendingQuestions.length > 0;
           if (!pending || !pid) return null;
-            const requestedType: IdeationDeliverableType = plannerState.requestedType;
-            const schema = getPlannerSlotSchema(requestedType);
-            const prevCtx = stateJsonRef.current.organizeContext ?? null;
-            const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
-            const recentBlock = formatOrganizeRecentMessages(msgs, recentCount, 12_000);
-            const bootFacts = bootstrapOrganizeMemoryFacts({
-              goals,
-              targetUsers,
-              scopeIn,
-              scopeOut,
-              success,
-              nfr,
-              openIssues,
-              priorityFeatures,
-            });
-            const memoryFactsForApi = mergeOrganizeMemoryFactsPreserveMandatory(prevCtx?.memoryFacts ?? undefined, bootFacts);
-            const rolling =
-              (typeof prevCtx?.rollingSummary === "string" && prevCtx.rollingSummary.trim()) ||
-              buildRollingSummaryFromIdeationFields({ goals, openIssues, priorityFeatures });
-            const excerpt = augmentDialogueExcerptForReplyParent(
-              formatDialogueExcerpt(msgs),
-              msgs,
-              effectiveReplyTo
-            );
+          const requestedType: IdeationDeliverableType = plannerState.requestedType;
+          const schema = getPlannerSlotSchema(requestedType);
+          const prevCtx = stateJsonRef.current.organizeContext ?? null;
+          const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
+          const recentBlock = formatOrganizeRecentMessages(msgs, recentCount, 12_000);
+          const bootFacts = bootstrapOrganizeMemoryFacts({
+            goals,
+            targetUsers,
+            scopeIn,
+            scopeOut,
+            success,
+            nfr,
+            openIssues,
+            priorityFeatures,
+          });
+          const memoryFactsForApi = mergeOrganizeMemoryFactsPreserveMandatory(prevCtx?.memoryFacts ?? undefined, bootFacts);
+          const rolling =
+            (typeof prevCtx?.rollingSummary === "string" && prevCtx.rollingSummary.trim()) ||
+            buildRollingSummaryFromIdeationFields({ goals, openIssues, priorityFeatures });
+          const excerpt = augmentDialogueExcerptForReplyParent(
+            formatDialogueExcerpt(msgs),
+            msgs,
+            effectiveReplyTo
+          );
 
-            const res = await fetch("/api/requirements/organize-analyze", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                projectId: pid,
-                projectName: project?.name ?? "",
-                projectDescription: project?.description ?? "",
+          const res = await fetch("/api/requirements/organize-analyze", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId: pid,
+              projectName: project?.name ?? "",
+              projectDescription: project?.description ?? "",
+              requestedType,
+              requiredSlots:
+                Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
+                  ? plannerState.requiredSlots
+                  : schema.requiredSlots,
+              memoryFacts: memoryFactsForApi,
+              rollingSummary: rolling,
+              recentMessages: excerpt || recentBlock,
+            }),
+          });
+          const json = (await res.json()) as {
+            success?: boolean;
+            code?: string;
+            message?: string;
+            data?: { ready?: boolean; message?: string; questions?: string[]; slotStatus?: Record<string, "filled" | "missing"> };
+          };
+          if (!res.ok || !json.success || !json.data || typeof json.data.ready !== "boolean") {
+            const errMsg = json.message || "정리 요청 처리에 실패했습니다.";
+            setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
+            showErrorToast(errMsg);
+            const errRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
+            setInput("");
+            setReplyTo(null);
+            await persistRemote(errRoom, {}, { lastUserDraftText: "" });
+            return { needsTailPersist: false };
+          } else if (!json.data.ready) {
+            const analyzerMessage = String(json.data.message ?? "").trim() || "좋은 초안을 위해 한 가지만 더 확인하겠습니다.";
+            const questions = Array.isArray(json.data.questions)
+              ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
+              : [];
+            const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
+            ideationSendDevLog("ai-appended", "organize-more-questions");
+            const moreQuestionsRoom = {
+              ...withCalling,
+              aiQuestionIndex: turn + 1,
+              requirementsConversation: {
+                ...withCalling.requirementsConversation,
+                messages: [
+                  ...withCalling.requirementsConversation.messages,
+                  newChatMessage({
+                    role: "ai",
+                    body,
+                    speakerType: "AI",
+                    speakerId: primaryId,
+                    speakerName: aiName,
+                    messageType: "ANSWER",
+                  }),
+                ],
+              },
+            };
+            await persistRemote(moreQuestionsRoom, {}, {
+              organizePlannerState: {
                 requestedType,
+                requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
+                pendingQuestions: questions,
                 requiredSlots:
                   Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
                     ? plannerState.requiredSlots
-                    : schema.requiredSlots,
-                memoryFacts: memoryFactsForApi,
-                rollingSummary: rolling,
-                recentMessages: excerpt || recentBlock,
-              }),
+                    : [...schema.requiredSlots],
+                slotStatus: json.data.slotStatus ?? null,
+                lastAnalyzerResult: {
+                  ready: false,
+                  message: analyzerMessage,
+                  questions,
+                  analyzedAt: new Date().toISOString(),
+                },
+              },
             });
-            const json = (await res.json()) as {
-              success?: boolean;
-              code?: string;
-              message?: string;
-              data?: { ready?: boolean; message?: string; questions?: string[]; slotStatus?: Record<string, "filled" | "missing"> };
+            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+            ideationSendDevLog("return", "organize-more-questions");
+            setInput("");
+            setReplyTo(null);
+            return { needsTailPersist: false };
+          } else {
+            const analyzerMessage = String(json.data.message ?? "").trim() || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.";
+            ideationSendDevLog("ai-appended", "organize-ready");
+            const readyRoom = {
+              ...withCalling,
+              aiQuestionIndex: turn + 1,
+              requirementsConversation: {
+                ...withCalling.requirementsConversation,
+                messages: [
+                  ...withCalling.requirementsConversation.messages,
+                  newChatMessage({
+                    role: "ai",
+                    body: analyzerMessage,
+                    speakerType: "AI",
+                    speakerId: primaryId,
+                    speakerName: aiName,
+                    messageType: "ANSWER",
+                  }),
+                ],
+              },
             };
-            if (!res.ok || !json.success || !json.data || typeof json.data.ready !== "boolean") {
-              const errMsg = json.message || "정리 요청 처리에 실패했습니다.";
-              setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-              showErrorToast(errMsg);
-              const errRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
-              setInput("");
-              setReplyTo(null);
-              await persistRemote(errRoom, {}, { lastUserDraftText: "" });
-              return { needsTailPersist: false };
-            } else if (!json.data.ready) {
-              const analyzerMessage = String(json.data.message ?? "").trim() || "좋은 초안을 위해 한 가지만 더 확인하겠습니다.";
-              const questions = Array.isArray(json.data.questions)
-                ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
-                : [];
-              const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
-              ideationSendDevLog("ai-appended", "organize-more-questions");
-              const moreQuestionsRoom = {
-                ...withCalling,
-                aiQuestionIndex: turn + 1,
-                requirementsConversation: {
-                  ...withCalling.requirementsConversation,
-                  messages: [
-                    ...withCalling.requirementsConversation.messages,
-                    newChatMessage({
-                      role: "ai",
-                      body,
-                      speakerType: "AI",
-                      speakerId: primaryId,
-                      speakerName: aiName,
-                      messageType: "ANSWER",
-                    }),
-                  ],
+            await persistRemote(readyRoom, {}, {
+              organizePlannerState: {
+                requestedType,
+                requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
+                pendingQuestions: [],
+                requiredSlots:
+                  Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
+                    ? plannerState.requiredSlots
+                    : [...schema.requiredSlots],
+                slotStatus: json.data.slotStatus ?? null,
+                lastAnalyzerResult: {
+                  ready: true,
+                  message: analyzerMessage,
+                  questions: [],
+                  analyzedAt: new Date().toISOString(),
                 },
-              };
-              await persistRemote(moreQuestionsRoom, {}, {
-                organizePlannerState: {
-                  requestedType,
-                  requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
-                  pendingQuestions: questions,
-                  requiredSlots:
-                    Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
-                      ? plannerState.requiredSlots
-                      : [...schema.requiredSlots],
-                  slotStatus: json.data.slotStatus ?? null,
-                  lastAnalyzerResult: {
-                    ready: false,
-                    message: analyzerMessage,
-                    questions,
-                    analyzedAt: new Date().toISOString(),
-                  },
-                },
-              });
-              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog("return:success", "organize-more-questions");
-              setInput("");
-              setReplyTo(null);
-              return { needsTailPersist: false };
-            } else {
-              const analyzerMessage = String(json.data.message ?? "").trim() || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.";
-              ideationSendDevLog("ai-appended", "organize-ready");
-              const readyRoom = {
-                ...withCalling,
-                aiQuestionIndex: turn + 1,
-                requirementsConversation: {
-                  ...withCalling.requirementsConversation,
-                  messages: [
-                    ...withCalling.requirementsConversation.messages,
-                    newChatMessage({
-                      role: "ai",
-                      body: analyzerMessage,
-                      speakerType: "AI",
-                      speakerId: primaryId,
-                      speakerName: aiName,
-                      messageType: "ANSWER",
-                    }),
-                  ],
-                },
-              };
-              await persistRemote(readyRoom, {}, {
-                organizePlannerState: {
-                  requestedType,
-                  requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
-                  pendingQuestions: [],
-                  requiredSlots:
-                    Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
-                      ? plannerState.requiredSlots
-                      : [...schema.requiredSlots],
-                  slotStatus: json.data.slotStatus ?? null,
-                  lastAnalyzerResult: {
-                    ready: true,
-                    message: analyzerMessage,
-                    questions: [],
-                    analyzedAt: new Date().toISOString(),
-                  },
-                },
-              });
-              await handleGenerateDeliverables([requestedType]);
-              const archivedAt = new Date().toISOString();
-              const prevInterview = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
-              const prevHistory = (stateJsonRef.current.problemInterviewHistory as Array<{ archivedAt: string; state: ProblemInterviewState }> | null | undefined) ?? null;
-              await persistStateJsonOnly({
-                organizePlannerState: null,
-                lastOrganizedAt: archivedAt,
-                ...(prevInterview
-                  ? {
-                      problemInterview: null,
-                      problemInterviewHistory: [
-                        ...(Array.isArray(prevHistory) ? prevHistory : []),
-                        { archivedAt, state: prevInterview },
-                      ].slice(-24),
-                    }
-                  : {}),
-              });
-              showSuccessToast(`${plannerState.requestedLabel ?? schema.labelKr} 생성 완료`);
-              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog("return:success", "organize-deliverable");
-              setInput("");
-              setReplyTo(null);
-              return { needsTailPersist: false };
-            }
+              },
+            });
+            await handleGenerateDeliverables([requestedType]);
+            const archivedAt = new Date().toISOString();
+            const prevInterview = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
+            const prevHistory = (stateJsonRef.current.problemInterviewHistory as Array<{ archivedAt: string; state: ProblemInterviewState }> | null | undefined) ?? null;
+            await persistStateJsonOnly({
+              organizePlannerState: null,
+              lastOrganizedAt: archivedAt,
+              ...(prevInterview
+                ? {
+                    problemInterview: null,
+                    problemInterviewHistory: [
+                      ...(Array.isArray(prevHistory) ? prevHistory : []),
+                      { archivedAt, state: prevInterview },
+                    ].slice(-24),
+                  }
+                : {}),
+            });
+            showSuccessToast(`${plannerState.requestedLabel ?? schema.labelKr} 생성 완료`);
+            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+            ideationSendDevLog("return", "organize-deliverable");
+            setInput("");
+            setReplyTo(null);
+            return { needsTailPersist: false };
+          }
         };
 
         const wantsDraftEndpoint = isDraftIntent(text);
@@ -1827,7 +1827,7 @@ export function RequirementsWorkspace({
               ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId}`);
               await persistRemote(withCalling, {}, { problemInterview: asked });
               setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog("return:success", `interview-dedupe-no-ai id=${sendTraceId}`);
+              ideationSendDevLog("return", `interview-dedupe-no-ai id=${sendTraceId}`);
               setInput("");
               setReplyTo(null);
               return { needsTailPersist: false };
@@ -1857,10 +1857,7 @@ export function RequirementsWorkspace({
             };
             await persistRemote(interviewNextRoom, {}, { problemInterview: asked });
             setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog(
-              analyzerForPlan ? "return:success" : "return:fallback",
-              `interview-next id=${sendTraceId}`
-            );
+            ideationSendDevLog("return", `interview-next ok=${Boolean(analyzerForPlan)} id=${sendTraceId}`);
             setInput("");
             setReplyTo(null);
             return { needsTailPersist: false };
@@ -1880,7 +1877,7 @@ export function RequirementsWorkspace({
             ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=interview-complete`);
             await persistRemote(withCalling, {}, { problemInterview: doneInterview });
             setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return:success", `interview-complete-dedupe id=${sendTraceId}`);
+            ideationSendDevLog("return", `interview-complete-dedupe id=${sendTraceId}`);
             setInput("");
             setReplyTo(null);
             return { needsTailPersist: false };
@@ -1907,10 +1904,7 @@ export function RequirementsWorkspace({
           };
           await persistRemote(interviewDoneRoom, {}, { problemInterview: doneInterview });
           setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-          ideationSendDevLog(
-            analyzerForPlan ? "return:success" : "return:fallback",
-            `interview-complete id=${sendTraceId}`
-          );
+          ideationSendDevLog("return", `interview-complete ok=${Boolean(analyzerForPlan)} id=${sendTraceId}`);
           setInput("");
           setReplyTo(null);
           return { needsTailPersist: false };
@@ -2045,7 +2039,7 @@ export function RequirementsWorkspace({
               ) {
                 ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=facilitator`);
                 facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
-                ideationSendDevLog("return:success", `facilitator-dedupe id=${sendTraceId}`);
+                ideationSendDevLog("return", `facilitator-dedupe id=${sendTraceId}`);
               } else {
                 ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=facilitator`);
                 facilitatorFinalRoom = {
@@ -2067,21 +2061,21 @@ export function RequirementsWorkspace({
                   },
                   ...(nextDraftDoc ? { requirementsDraft: nextDraftDoc } : {}),
                 };
-                ideationSendDevLog("return:success", `facilitator-ai id=${sendTraceId}`);
+                ideationSendDevLog("return", `facilitator-ai id=${sendTraceId}`);
               }
             } else {
               const errMsg = json.message || "응답 생성 실패";
               setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
               showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
               facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
-              ideationSendDevLog("return:fallback", `facilitator-http id=${sendTraceId}`);
+              ideationSendDevLog("return", `facilitator-http id=${sendTraceId}`);
             }
             return { needsTailPersist: true, finalRoom: facilitatorFinalRoom };
           } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
             showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
-            ideationSendDevLog("return:fallback", `facilitator-throw id=${sendTraceId}`);
+            ideationSendDevLog("return", `facilitator-throw id=${sendTraceId}`);
             return { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } };
           }
         };
