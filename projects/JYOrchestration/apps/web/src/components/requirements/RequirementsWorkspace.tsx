@@ -24,6 +24,7 @@ import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProj
 import {
   appendIdeationDeliverableAssets,
   extractPreviewLinesFromMarkdown,
+  IDEATION_DEFAULT_DELIVERABLE_SET,
   IDEATION_DELIVERABLE_LABELS,
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
   markDeliverableAssetsConfirmed,
@@ -1206,7 +1207,7 @@ export function RequirementsWorkspace({
       });
 
       {
-        // writer: 산출물 1종 생성 + 저장 + 채팅 프리뷰 카드
+        // writer: 기본 산출물 세트 생성 + 저장 + 채팅 프리뷰 카드(문서별 단건 카드)
         const excerptForDeliverable = formatDialogueExcerpt(conversationMessages);
         const chatSummary = [
           goals.trim() && `저장 요약 — 목표/핵심:\n${goals.trim()}`,
@@ -1231,7 +1232,7 @@ export function RequirementsWorkspace({
             projectDescription: project?.description ?? "",
             chatSummary,
             dialogueExcerpt: excerptForDeliverable,
-            outputTypes: [requestedType],
+            outputTypes: [...IDEATION_DEFAULT_DELIVERABLE_SET],
             aiResponseStyle: readAiResponseStyle(),
           }),
         });
@@ -1266,41 +1267,44 @@ export function RequirementsWorkspace({
           projectId: pid,
           existing,
           outputs: genJson.data.outputs,
-          typesRequested: [requestedType],
+          typesRequested: [...IDEATION_DEFAULT_DELIVERABLE_SET],
         });
         if (!created.length) {
           throw new Error("생성된 본문이 비어 있습니다.");
         }
 
-        const items = created.map((c) => ({
-          assetId: c.id,
-          type: c.type,
-          title: c.title,
-          version: c.version,
-          previewLines: extractPreviewLinesFromMarkdown(c.content),
-        }));
-        const payload: IdeationDeliverableChatPayload = {
-          kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
-          mode: "single",
-          headline: `${IDEATION_DELIVERABLE_LABELS[created[0].type]} 초안이 생성되었습니다.`,
-          requestedTypes: [requestedType],
-          items,
-        };
-        const notice = newChatMessage({
-          role: "ai",
-          body: JSON.stringify(payload),
-          speakerType: "AI",
-          speakerId: VIRTUAL_AI_PLANNER_ID,
-          speakerName: "AI 기획자",
-          messageType: "NOTICE",
-          meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
+        const notices = created.map((c) => {
+          const payload: IdeationDeliverableChatPayload = {
+            kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
+            mode: "single",
+            headline: `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
+            requestedTypes: [c.type],
+            items: [
+              {
+                assetId: c.id,
+                type: c.type,
+                title: c.title,
+                version: c.version,
+                previewLines: extractPreviewLinesFromMarkdown(c.content),
+              },
+            ],
+          };
+          return newChatMessage({
+            role: "ai",
+            body: JSON.stringify(payload),
+            speakerType: "AI",
+            speakerId: VIRTUAL_AI_PLANNER_ID,
+            speakerName: "AI 기획자",
+            messageType: "NOTICE",
+            meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
+          });
         });
         const afterWrite: RequirementsRoomStateV3 = {
         ...room,
         requirementsConversation: {
           ...room.requirementsConversation,
           projectId: pid,
-            messages: [...conversationMessages, readyNotice, notice],
+            messages: [...conversationMessages, readyNotice, ...notices],
           },
         };
         await persistRemote(afterWrite, {}, {
@@ -1363,10 +1367,6 @@ export function RequirementsWorkspace({
       }
       if (conversationStatus !== "loaded") {
         setError("대화 이력을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
-        throw new Error("GUARD");
-      }
-      if (types.includes("full_plan") && types.length > 1) {
-        setError("전체 기획안은 다른 산출물과 함께 선택할 수 없습니다.");
         throw new Error("GUARD");
       }
       setDeliverableGenerateBusy(true);
@@ -1438,48 +1438,42 @@ export function RequirementsWorkspace({
           throw new Error("생성된 본문이 비어 있습니다.");
         }
 
-        const items = created.map((c) => ({
-          assetId: c.id,
-          type: c.type,
-          title: c.title,
-          version: c.version,
-          previewLines: extractPreviewLinesFromMarkdown(c.content),
-        }));
-        const mode: IdeationDeliverableChatPayload["mode"] = created.length === 1 ? "single" : "batch";
-        const headline =
-          mode === "single"
-            ? `${IDEATION_DELIVERABLE_LABELS[created[0].type]} 초안이 생성되었습니다.`
-            : `${created.length}개의 산출물이 생성되었습니다.`;
-        const payload: IdeationDeliverableChatPayload = {
-          kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
-          mode,
-          headline,
-          requestedTypes: [...types],
-          items,
-        };
-        const notice = newChatMessage({
-          role: "ai",
-          body: JSON.stringify(payload),
-          speakerType: "AI",
-          speakerId: VIRTUAL_AI_PLANNER_ID,
-          speakerName: "AI 기획자",
-          messageType: "NOTICE",
-          meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
+        const notices = created.map((c) => {
+          const payload: IdeationDeliverableChatPayload = {
+            kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
+            mode: "single",
+            headline: `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
+            requestedTypes: [c.type],
+            items: [
+              {
+                assetId: c.id,
+                type: c.type,
+                title: c.title,
+                version: c.version,
+                previewLines: extractPreviewLinesFromMarkdown(c.content),
+              },
+            ],
+          };
+          return newChatMessage({
+            role: "ai",
+            body: JSON.stringify(payload),
+            speakerType: "AI",
+            speakerId: VIRTUAL_AI_PLANNER_ID,
+            speakerName: "AI 기획자",
+            messageType: "NOTICE",
+            meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
+          });
         });
         const nextRoom: RequirementsRoomStateV3 = {
           ...room,
           requirementsConversation: {
             ...room.requirementsConversation,
             projectId: pid,
-            messages: [...conversationMessages, notice],
+            messages: [...conversationMessages, ...notices],
           },
         };
         await persistRemote(nextRoom, {}, { deliverableAssets: merged });
-        if (created.length === 1 && created[0]) {
-          showSuccessToast(`${IDEATION_DELIVERABLE_LABELS[created[0].type]} 생성 완료`);
-        } else {
-          showSuccessToast(`${created.length}개 산출물 생성 완료`);
-        }
+        showSuccessToast(`${created.length}개 산출물 생성 완료`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "오류";
         if (msg !== "GUARD") {
@@ -1764,7 +1758,7 @@ export function RequirementsWorkspace({
                 },
               },
             });
-            await handleGenerateDeliverables([requestedType]);
+            await handleGenerateDeliverables([...IDEATION_DEFAULT_DELIVERABLE_SET]);
             const archivedAt = new Date().toISOString();
             const prevInterview = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
             const prevHistory = (stateJsonRef.current.problemInterviewHistory as Array<{ archivedAt: string; state: ProblemInterviewState }> | null | undefined) ?? null;

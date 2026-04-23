@@ -24,6 +24,18 @@ export const IDEATION_DELIVERABLE_ORDER: readonly IdeationDeliverableType[] = [
   "full_plan",
 ] as const;
 
+/**
+ * 아이디어 구체화 후 자동 생성되는 기본 산출물 세트.
+ * - 문제정의서, 기능목록, MVP 범위, KPI, 전체 기획안
+ */
+export const IDEATION_DEFAULT_DELIVERABLE_SET: readonly IdeationDeliverableType[] = [
+  "problem_statement",
+  "feature_list",
+  "mvp_scope",
+  "kpi",
+  "full_plan",
+] as const;
+
 export const IDEATION_DELIVERABLE_LABELS: Record<IdeationDeliverableType, string> = {
   meeting_summary: "회의 요약",
   problem_statement: "문제정의서",
