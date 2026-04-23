@@ -392,7 +392,7 @@ export function RequirementsComposerGpt({
                 onSend();
               }
             }}
-            placeholder={placeholder ?? "무엇을 만들고 싶은지 입력하세요"}
+            placeholder={placeholder ?? "메시지를 입력하세요"}
             style={{
               width: "100%",
               boxSizing: "border-box",
