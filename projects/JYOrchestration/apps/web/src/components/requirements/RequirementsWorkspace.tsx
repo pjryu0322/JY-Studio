@@ -39,16 +39,18 @@ import {
 import {
   composeInterviewPlannerReply,
   coerceInterviewAnalyzerPayload,
+  emergencyFallbackProblemInterviewFromUserMessageRegex,
   emptyProblemInterviewState,
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
+  INTERVIEW_COMPLETION_NOTICE_KR,
   mergeAnalyzerIntoProblemInterview,
   pickNextAskableInterviewSlot,
   planNextInterviewTurn,
   problemInterviewCoveredCount,
   problemInterviewIsCovered,
   problemInterviewSlotLabelKr,
+  problemInterviewStateToAnalyzerWire,
   PROBLEM_INTERVIEW_SLOTS,
-  updateProblemInterviewFromUserMessage,
   withAskedSlot,
   type InterviewAnalyzerPayload,
   type ProblemInterviewSlot,
@@ -1711,6 +1713,7 @@ export function RequirementsWorkspace({
 
             let merged: ProblemInterviewState = seeded;
             let analyzer: InterviewAnalyzerPayload | null = null;
+            let remoteAnalyzeOk = false;
             if (pid) {
               try {
                 const ar = await fetch("/api/requirements/interview-analyze", {
@@ -1723,10 +1726,11 @@ export function RequirementsWorkspace({
                     projectDescription: project?.description ?? "",
                     userMessage: text,
                     latestAiQuestion,
-                    currentInterviewState: seeded,
+                    currentInterviewState: problemInterviewStateToAnalyzerWire(seeded),
                   }),
                 });
                 const aj = (await ar.json()) as { success?: boolean; data?: unknown };
+                remoteAnalyzeOk = ar.ok && Boolean(aj.success) && aj.data != null;
                 if (ar.ok && aj.success && aj.data) {
                   const parsed = coerceInterviewAnalyzerPayload(aj.data);
                   if (parsed) {
@@ -1735,11 +1739,15 @@ export function RequirementsWorkspace({
                   }
                 }
               } catch {
-                /* LLM 분석 실패 시 규칙 기반으로 폴백 */
+                remoteAnalyzeOk = false;
               }
             }
             if (!analyzer) {
-              merged = updateProblemInterviewFromUserMessage(seeded, text, nowIso);
+              if (!remoteAnalyzeOk) {
+                merged = emergencyFallbackProblemInterviewFromUserMessageRegex(seeded, text, nowIso);
+              } else {
+                merged = { ...seeded, updatedAt: nowIso };
+              }
             }
 
             const plan = planNextInterviewTurn(
@@ -1750,7 +1758,7 @@ export function RequirementsWorkspace({
               INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
               text
             );
-            if (plan && !PROBLEM_INTERVIEW_SLOTS.every((s) => problemInterviewIsCovered(merged, s))) {
+            if (plan) {
               const aiBody = composeInterviewPlannerReply(plan.summary, plan.question);
               const slotForAsked =
                 plan.kind === "slot"
@@ -1782,7 +1790,30 @@ export function RequirementsWorkspace({
               return;
             }
 
-            await persistStateJsonOnly({ problemInterview: { ...merged, active: false, updatedAt: nowIso } });
+            const doneInterview = { ...merged, active: false, updatedAt: nowIso };
+            finalRoom = {
+              ...withCalling,
+              aiQuestionIndex: turn + 1,
+              requirementsConversation: {
+                ...withCalling.requirementsConversation,
+                messages: [
+                  ...withCalling.requirementsConversation.messages,
+                  newChatMessage({
+                    role: "ai",
+                    body: INTERVIEW_COMPLETION_NOTICE_KR,
+                    speakerType: "AI",
+                    speakerId: primaryId,
+                    speakerName: aiName,
+                    messageType: "ANSWER",
+                  }),
+                ],
+              },
+            };
+            await persistRemote(finalRoom, {}, { problemInterview: doneInterview });
+            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+            setInput("");
+            setReplyTo(null);
+            return;
           }
           const res = await fetch(endpoint, {
             method: "POST",

@@ -74,11 +74,10 @@ function addNote(notes: ProblemInterviewNotes, key: string, value: string) {
 }
 
 /**
- * 매우 가벼운 키워드 기반 해석기(LLM 없이도 반복 질문을 방지할 최소 요건).
- * - filled: 명확한 진술
- * - partial: 힌트만 존재
+ * 비상 폴백 전용: 키워드/정규식 휴리스틱으로 슬롯을 채운다.
+ * 정상 경로는 `/api/requirements/interview-analyze` LLM 분석기이며, 이 함수는 API 불가 시에만 사용한다.
  */
-export function updateProblemInterviewFromUserMessage(
+export function emergencyFallbackProblemInterviewFromUserMessageRegex(
   prev: ProblemInterviewState | null | undefined,
   userText: string,
   nowIso: string
@@ -143,6 +142,7 @@ export function updateProblemInterviewFromUserMessage(
   return { ...base, notes, partial, updatedAt: nowIso, active: base.active !== false };
 }
 
+/** 레거시 비-LLM 경로(플래너 외부에서만 참조 시 사용). */
 export function chooseNextProblemInterviewSlot(state: ProblemInterviewState): ProblemInterviewSlot | null {
   // Priority: painPoint -> coreUser -> needForImprovement -> refinement(currentMethod if missing)
   const priority: ProblemInterviewSlot[] = ["painPoint", "coreUser", "needForImprovement", "currentMethod"];
@@ -152,6 +152,7 @@ export function chooseNextProblemInterviewSlot(state: ProblemInterviewState): Pr
   return null;
 }
 
+/** 레거시 비-LLM 경로. 정상 인터뷰는 `planNextInterviewTurn` + `composeInterviewPlannerReply`를 사용한다. */
 export function buildNextProblemInterviewQuestion(state: ProblemInterviewState, turnSeed: number): { slot: ProblemInterviewSlot; question: string } | null {
   const slot = chooseNextProblemInterviewSlot(state);
   if (!slot) return null;
@@ -194,11 +195,16 @@ export type InterviewSlotLevel = "empty" | "partial" | "filled";
 
 export type InterviewAnalyzerPayload = {
   summary: string;
-  filledSlots: Record<ProblemInterviewSlot, InterviewSlotLevel>;
+  /** 모델 출력 키 `slots`(구 `filledSlots` 호환). */
+  slots: Record<ProblemInterviewSlot, InterviewSlotLevel>;
   notes: Partial<Record<ProblemInterviewSlot, string[]>>;
   nextBestSlot: ProblemInterviewSlot | null;
   confidence: number;
 };
+
+/** 인터뷰 완료 시 채팅에 한 번 보여줄 고정 안내(플랫폼 문구). */
+export const INTERVIEW_COMPLETION_NOTICE_KR =
+  "문제정의 정보가 확보되었습니다.\n정리 요청으로 문제정의서를 생성할 수 있습니다.";
 
 /** 질문 후보 우선순위(플랫폼). 분석기 힌트는 이 순서 안에서만 조정한다. */
 export const PROBLEM_INTERVIEW_QUESTION_PRIORITY: readonly ProblemInterviewSlot[] = [
@@ -232,6 +238,97 @@ export function interviewSlotLevelFromState(state: ProblemInterviewState, slot: 
   if (slotFilledBool(state, slot)) return "filled";
   if ((state.partial ?? {})[slot]) return "partial";
   return "empty";
+}
+
+function normalizeAskedSlotsFromWire(raw: unknown): ProblemInterviewSlot[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x) => String(x ?? "").trim())
+    .filter((x): x is ProblemInterviewSlot => isProblemInterviewSlot(x));
+}
+
+/**
+ * API 요청 바디 `currentInterviewState`를 플랫폼 `ProblemInterviewState`로 변환한다.
+ * - 레거시: 슬롯별 boolean + `partial` + 문자열 `notes`
+ * - 신규: 슬롯별 `"empty"|"partial"|"filled"` + `notes`를 슬롯별 문자열 배열로 병합
+ */
+export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso: string): ProblemInterviewState {
+  if (!raw || typeof raw !== "object") return emptyProblemInterviewState(nowIso);
+  const o = raw as Record<string, unknown>;
+  const asked = normalizeAskedSlotsFromWire(o.askedSlots);
+  if (typeof o.coreUser === "boolean") {
+    const base = emptyProblemInterviewState(nowIso);
+    return {
+      ...base,
+      coreUser: Boolean(o.coreUser),
+      painPoint: Boolean(o.painPoint),
+      currentMethod: Boolean(o.currentMethod),
+      needForImprovement: Boolean(o.needForImprovement),
+      notes:
+        typeof o.notes === "object" && o.notes !== null && !Array.isArray(o.notes)
+          ? { ...(o.notes as Record<string, string>) }
+          : {},
+      partial:
+        typeof o.partial === "object" && o.partial !== null
+          ? { ...(o.partial as Record<string, boolean>) }
+          : {},
+      askedSlots: asked.length ? asked : base.askedSlots,
+      active: typeof o.active === "boolean" ? o.active : base.active,
+      updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : nowIso,
+    };
+  }
+  const st = emptyProblemInterviewState(nowIso);
+  const partial: Partial<Record<ProblemInterviewSlot, boolean>> = {};
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    const lv = String(o[slot] ?? "").trim().toLowerCase();
+    const row = st as unknown as Record<string, boolean>;
+    if (lv === "filled") {
+      row[slot] = true;
+    } else if (lv === "partial") {
+      row[slot] = false;
+      partial[slot] = true;
+    } else {
+      row[slot] = false;
+    }
+  }
+  if (Object.keys(partial).length) st.partial = { ...(st.partial ?? {}), ...partial };
+  const nRaw = o.notes;
+  if (nRaw && typeof nRaw === "object") {
+    const notes: ProblemInterviewNotes = { ...(st.notes ?? {}) };
+    for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+      const arr = (nRaw as Record<string, unknown>)[slot];
+      if (!Array.isArray(arr)) continue;
+      const joined = arr.map((x) => String(x ?? "").trim()).filter(Boolean).join("\n").slice(0, 8000);
+      if (joined) notes[slot] = joined;
+    }
+    st.notes = notes;
+  }
+  if (asked.length) st.askedSlots = asked;
+  if (typeof o.active === "boolean") st.active = o.active;
+  if (typeof o.updatedAt === "string") st.updatedAt = o.updatedAt;
+  return st;
+}
+
+/** 플랫폼 상태 → 분석 API에 보낼 `currentInterviewState` (슬롯 레벨 + notes 배열 + askedSlots). */
+export function problemInterviewStateToAnalyzerWire(state: ProblemInterviewState): Record<string, unknown> {
+  const notesWire: Record<string, string[]> = {};
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    const raw = String(state.notes?.[slot] ?? "").trim();
+    notesWire[slot] = raw
+      ? raw
+          .split(/\n/)
+          .map((x) => x.trim())
+          .filter(Boolean)
+          .slice(0, 40)
+      : [];
+  }
+  const out: Record<string, unknown> = { notes: notesWire, askedSlots: [...(state.askedSlots ?? [])] };
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    out[slot] = interviewSlotLevelFromState(state, slot);
+  }
+  out.active = state.active !== false;
+  out.updatedAt = state.updatedAt ?? "";
+  return out;
 }
 
 function interviewMaxLevel(a: InterviewSlotLevel, b: InterviewSlotLevel): InterviewSlotLevel {
@@ -270,7 +367,7 @@ export function mergeAnalyzerIntoProblemInterview(
   };
 
   for (const slot of PROBLEM_INTERVIEW_SLOTS) {
-    const incoming: InterviewSlotLevel = analyzer.filledSlots[slot] ?? "empty";
+    const incoming: InterviewSlotLevel = analyzer.slots[slot] ?? "empty";
     const prevLevel = interviewSlotLevelFromState(prev, slot);
     const merged = interviewMaxLevel(prevLevel, incoming);
 
@@ -353,7 +450,7 @@ export function pickNextAskableInterviewSlot(
   hint: ProblemInterviewSlot | null
 ): ProblemInterviewSlot | null {
   const ordered: ProblemInterviewSlot[] = [];
-  if (hint && isProblemInterviewSlot(hint)) ordered.push(hint);
+  if (hint && isProblemInterviewSlot(hint) && !slotStrictlyFilled(state, hint)) ordered.push(hint);
   for (const s of PROBLEM_INTERVIEW_QUESTION_PRIORITY) {
     if (!ordered.includes(s)) ordered.push(s);
   }
@@ -433,16 +530,22 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
   const o = parsed as Record<string, unknown>;
   const summary = typeof o.summary === "string" ? o.summary.trim() : "";
   const confRaw = o.confidence;
-  const confidence = typeof confRaw === "number" && Number.isFinite(confRaw) ? Math.min(1, Math.max(0, confRaw)) : 0;
-  const fsRaw = o.filledSlots;
-  const filledSlots = {} as Record<ProblemInterviewSlot, InterviewSlotLevel>;
+  const confidence =
+    typeof confRaw === "number" && Number.isFinite(confRaw) ? Math.min(1, Math.max(0, confRaw)) : 0.35;
+  const fsRaw =
+    o.slots && typeof o.slots === "object"
+      ? (o.slots as Record<string, unknown>)
+      : o.filledSlots && typeof o.filledSlots === "object"
+        ? (o.filledSlots as Record<string, unknown>)
+        : null;
+  const slots = {} as Record<ProblemInterviewSlot, InterviewSlotLevel>;
   for (const slot of PROBLEM_INTERVIEW_SLOTS) {
     let v: InterviewSlotLevel = "empty";
-    if (fsRaw && typeof fsRaw === "object") {
-      const x = String((fsRaw as Record<string, unknown>)[slot] ?? "").trim().toLowerCase();
+    if (fsRaw) {
+      const x = String(fsRaw[slot] ?? "").trim().toLowerCase();
       if (x === "filled" || x === "partial" || x === "empty") v = x;
     }
-    filledSlots[slot] = v;
+    slots[slot] = v;
   }
   const notes: Partial<Record<ProblemInterviewSlot, string[]>> = {};
   const nRaw = o.notes;
@@ -459,7 +562,11 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
   if (nb === null) nextBestSlot = null;
   else if (typeof nb === "string" && isProblemInterviewSlot(nb.trim())) nextBestSlot = nb.trim() as ProblemInterviewSlot;
 
-  return { summary, filledSlots, notes, nextBestSlot, confidence };
+  const allModelFilled = PROBLEM_INTERVIEW_SLOTS.every((s) => slots[s] === "filled");
+  if (allModelFilled) nextBestSlot = null;
+  if (nextBestSlot && slots[nextBestSlot] === "filled") nextBestSlot = null;
+
+  return { summary, slots, notes, nextBestSlot, confidence };
 }
 
 /** API 응답 객체를 분석 페이로드로 정규화한다. */
