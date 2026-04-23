@@ -1,4 +1,6 @@
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
+import type { InterviewAnalyzerPayload, ProblemInterviewState } from "@/lib/requirements/problemInterview";
+import { parseInterviewAnalyzerPayloadFromModelText } from "@/lib/requirements/problemInterview";
 import {
   buildIdeationDeliverableBasePrompt,
   buildIdeationDeliverablesUserPrompt,
@@ -502,6 +504,126 @@ export async function runIdeationDeliverablesOpenAI(input: {
 export type OpenAiModelsPingResult =
   | { ok: true }
   | { ok: false; code: string; message: string };
+
+export type InterviewAnalyzeOpenAiResult =
+  | { ok: true; payload: InterviewAnalyzerPayload; model: string }
+  | { ok: false; code: string; message: string };
+
+function interviewStateJsonForAnalyzer(state: ProblemInterviewState): string {
+  return JSON.stringify({
+    coreUser: state.coreUser,
+    painPoint: state.painPoint,
+    currentMethod: state.currentMethod,
+    needForImprovement: state.needForImprovement,
+    partial: state.partial ?? {},
+    notes: Object.fromEntries(
+      Object.entries(state.notes ?? {}).map(([k, v]) => [k, String(v).slice(0, 1200)])
+    ),
+    askedSlots: state.askedSlots ?? [],
+  });
+}
+
+/**
+ * 문제정의 인터뷰: 사용자 한 턴을 슬롯 상태로만 해석(JSON). 채팅 응답을 생성하지 않는다.
+ */
+export async function runInterviewAnalyzeOpenAI(input: {
+  projectName: string;
+  projectDescription: string;
+  userMessage: string;
+  latestAiQuestion: string;
+  currentInterviewState: ProblemInterviewState;
+}): Promise<InterviewAnalyzeOpenAiResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  }
+  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
+
+  const system = `당신은 문제정의 인터뷰 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
+역할: 사용자의 최신 한 문단 답변만 읽고, 네 가지 슬롯에 정보가 얼마나 담겼는지 분류합니다.
+
+슬롯 정의:
+- coreUser: 핵심 사용자·주 사용자·역할 주체
+- painPoint: 현재 문제점·비효율·리스크·불편
+- currentMethod: 현재 운영 방식·기존 해결 방식·사용 도구·절차
+- needForImprovement: 개선 필요성·기대 효과·도입 이유
+
+규칙:
+- 의미 기반으로 판단한다(키워드만 맞추지 않는다).
+- 같은 의미의 다른 표현은 동일하게 매핑한다.
+- 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
+- filledSlots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나.
+- nextBestSlot은 아직 filled가 아니면서 이번 답으로 가장 보강해야 할 슬롯 하나(없으면 null).
+- confidence는 0~1 실수(모델 확신도).
+- notes에는 해당 슬롯에서 뽑은 짧은 근거 불릿(한국어) 문자열만 배열로 넣는다.
+
+JSON 스키마(키 이름·형식 엄수):
+{
+  "summary": "한두 문장 한국어 요약",
+  "filledSlots": {
+    "coreUser": "empty|partial|filled",
+    "painPoint": "empty|partial|filled",
+    "currentMethod": "empty|partial|filled",
+    "needForImprovement": "empty|partial|filled"
+  },
+  "notes": { "coreUser": [], "painPoint": [], "currentMethod": [], "needForImprovement": [] },
+  "nextBestSlot": "coreUser" | "painPoint" | "currentMethod" | "needForImprovement" | null,
+  "confidence": 0.0
+}`;
+
+  const userBlock = `[프로젝트]
+이름: ${input.projectName.trim() || "(이름 없음)"}
+설명: ${input.projectDescription.trim() || "(설명 없음)"}
+
+[직전 AI 질문(맥락)]
+${input.latestAiQuestion.trim() || "(없음)"}
+
+[현재 인터뷰 상태 JSON]
+${stateJson}
+
+[사용자 최신 답변]
+${input.userMessage.trim()}`;
+
+  const callOnce = async (repair: string) => {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.12,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: repair ? `${userBlock}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.` : userBlock,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      return { ok: false as const, code: `HTTP_${res.status}`, message: errText.slice(0, 400) };
+    }
+    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+    const text = body.choices?.[0]?.message?.content?.trim();
+    if (!text) return { ok: false as const, code: "EMPTY", message: "응답 본문이 비어 있습니다." };
+    const payload = parseInterviewAnalyzerPayloadFromModelText(text);
+    if (!payload) return { ok: false as const, code: "PARSE", message: "JSON 파싱 실패" };
+    return { ok: true as const, payload, model };
+  };
+
+  let r = await callOnce("");
+  if (!r.ok && r.code === "PARSE") {
+    r = await callOnce("retry");
+  }
+  if (!r.ok) return r;
+  return { ok: true, payload: r.payload, model: r.model };
+}
 
 /** API 키 유효성·네트워크를 가볍게 확인합니다. */
 export async function pingOpenAiModelsList(): Promise<OpenAiModelsPingResult> {

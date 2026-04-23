@@ -37,13 +37,20 @@ import {
   sanitizeIdeationInterviewFirstQuestion,
 } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
-  buildNextProblemInterviewQuestion,
+  composeInterviewPlannerReply,
+  coerceInterviewAnalyzerPayload,
   emptyProblemInterviewState,
+  INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
+  mergeAnalyzerIntoProblemInterview,
+  pickNextAskableInterviewSlot,
+  planNextInterviewTurn,
   problemInterviewCoveredCount,
   problemInterviewIsCovered,
   problemInterviewSlotLabelKr,
+  PROBLEM_INTERVIEW_SLOTS,
   updateProblemInterviewFromUserMessage,
   withAskedSlot,
+  type InterviewAnalyzerPayload,
   type ProblemInterviewSlot,
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
@@ -1699,16 +1706,57 @@ export function RequirementsWorkspace({
             const nowIso = new Date().toISOString();
             const prevPi = (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
             const seeded = prevPi ?? emptyProblemInterviewState(nowIso);
-            const updated = updateProblemInterviewFromUserMessage(seeded, text, nowIso);
+            const latestAiTurn = [...conversationMessages].reverse().find((m) => m.role === "ai");
+            const latestAiQuestion = String(latestAiTurn?.content ?? "").trim();
 
-            const next = buildNextProblemInterviewQuestion(updated, turn);
-            if (next && !problemInterviewIsCovered(updated, next.slot)) {
-              const asked = withAskedSlot(updated, next.slot, nowIso);
-              const understanding =
-                (asked.currentMethod || (asked.partial ?? {}).currentMethod) && asked.notes?.currentMethod
-                  ? asked.notes.currentMethod.split("\n")[0]?.trim()
-                  : text;
-              const aiBody = `핵심 이해:\n${understanding}\n\n질문:\n${next.question}`;
+            let merged: ProblemInterviewState = seeded;
+            let analyzer: InterviewAnalyzerPayload | null = null;
+            if (pid) {
+              try {
+                const ar = await fetch("/api/requirements/interview-analyze", {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    projectId: pid,
+                    projectName: project?.name ?? "",
+                    projectDescription: project?.description ?? "",
+                    userMessage: text,
+                    latestAiQuestion,
+                    currentInterviewState: seeded,
+                  }),
+                });
+                const aj = (await ar.json()) as { success?: boolean; data?: unknown };
+                if (ar.ok && aj.success && aj.data) {
+                  const parsed = coerceInterviewAnalyzerPayload(aj.data);
+                  if (parsed) {
+                    analyzer = parsed;
+                    merged = mergeAnalyzerIntoProblemInterview(seeded, parsed, nowIso);
+                  }
+                }
+              } catch {
+                /* LLM 분석 실패 시 규칙 기반으로 폴백 */
+              }
+            }
+            if (!analyzer) {
+              merged = updateProblemInterviewFromUserMessage(seeded, text, nowIso);
+            }
+
+            const plan = planNextInterviewTurn(
+              merged,
+              analyzer,
+              merged.askedSlots,
+              turn,
+              INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
+              text
+            );
+            if (plan && !PROBLEM_INTERVIEW_SLOTS.every((s) => problemInterviewIsCovered(merged, s))) {
+              const aiBody = composeInterviewPlannerReply(plan.summary, plan.question);
+              const slotForAsked =
+                plan.kind === "slot"
+                  ? plan.slot
+                  : pickNextAskableInterviewSlot(merged, merged.askedSlots, null) ?? ("painPoint" as ProblemInterviewSlot);
+              const asked = withAskedSlot(merged, slotForAsked, nowIso);
               finalRoom = {
                 ...withCalling,
                 aiQuestionIndex: turn + 1,
@@ -1734,8 +1782,7 @@ export function RequirementsWorkspace({
               return;
             }
 
-            // 슬롯 4개 확보 완료: 인터뷰 모드 종료 후 일반 대화로 전환
-            await persistStateJsonOnly({ problemInterview: { ...updated, active: false, updatedAt: nowIso } });
+            await persistStateJsonOnly({ problemInterview: { ...merged, active: false, updatedAt: nowIso } });
           }
           const res = await fetch(endpoint, {
             method: "POST",
