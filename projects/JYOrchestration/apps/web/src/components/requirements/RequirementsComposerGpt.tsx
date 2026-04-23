@@ -389,6 +389,7 @@ export function RequirementsComposerGpt({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
+                if (busy || disabled) return;
                 onSend();
               }
             }}
