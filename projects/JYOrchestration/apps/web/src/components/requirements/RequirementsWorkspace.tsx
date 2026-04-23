@@ -1156,12 +1156,21 @@ export function RequirementsWorkspace({
             aiResponseStyle: readAiResponseStyle(),
           }),
         });
-        const genJson = (await genRes.json()) as {
+        let genJson: {
           success?: boolean;
           code?: string;
           message?: string;
           data?: { outputs?: Partial<Record<IdeationDeliverableType, string>> };
         };
+        try {
+          genJson = (await genRes.json()) as typeof genJson;
+        } catch {
+          throw new Error(
+            genRes.status === 502 || genRes.status === 503
+              ? "산출물 생성 API가 비정상 응답을 반환했습니다. 서버 로그와 OpenAI(OPENAI_API_KEY·쿼터)를 확인해 주세요."
+              : "산출물 생성 응답을 해석하지 못했습니다."
+          );
+        }
         if (!genRes.ok || !genJson.success || !genJson.data?.outputs) {
           const code = String(genJson.code ?? "");
           if (code === "NO_KEY") {
@@ -1312,12 +1321,21 @@ export function RequirementsWorkspace({
             aiResponseStyle: readAiResponseStyle(),
           }),
         });
-        const json = (await res.json()) as {
+        let json: {
           success?: boolean;
           code?: string;
           message?: string;
           data?: { outputs?: Partial<Record<IdeationDeliverableType, string>> };
         };
+        try {
+          json = (await res.json()) as typeof json;
+        } catch {
+          throw new Error(
+            res.status === 502 || res.status === 503
+              ? "산출물 생성 API가 비정상 응답을 반환했습니다. 서버 로그와 OpenAI(OPENAI_API_KEY·쿼터)를 확인해 주세요."
+              : "산출물 생성 응답을 해석하지 못했습니다."
+          );
+        }
         if (!res.ok || !json.success || !json.data?.outputs) {
           const code = String(json.code ?? "");
           if (code === "NO_KEY") {
@@ -1387,6 +1405,7 @@ export function RequirementsWorkspace({
         const msg = e instanceof Error ? e.message : "오류";
         if (msg !== "GUARD") {
           setError(msg);
+          showErrorToast(msg);
         }
         throw e;
       } finally {
@@ -1411,6 +1430,7 @@ export function RequirementsWorkspace({
       room,
       persistRemote,
       showSuccessToast,
+      showErrorToast,
     ]
   );
 

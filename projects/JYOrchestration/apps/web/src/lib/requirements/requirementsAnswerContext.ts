@@ -1,9 +1,14 @@
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { normalizeRequirementsMessageText } from "@/lib/requirements/requirementsMessageDisplay";
 
+function safeMessageText(m: RequirementsMessage): string {
+  const raw = typeof m.content === "string" ? m.content : "";
+  return normalizeRequirementsMessageText(raw);
+}
+
 function looksLikeAiQuestion(m: RequirementsMessage): boolean {
   if (m.role !== "ai") return false;
-  const t = normalizeRequirementsMessageText(m.content);
+  const t = safeMessageText(m);
   if (t.includes("?")) return true;
   if (/\n질문\s*[:：]/.test(t) || /^질문\s*[:：]/m.test(t)) return true;
   if (m.messageType === "QUESTION") return true;
@@ -39,7 +44,7 @@ export function augmentDialogueExcerptForReplyParent(
   if (!parentId) return excerpt;
   const parent = messages.find((m) => m.id === parentId);
   if (!parent || parent.role !== "ai") return excerpt;
-  const clip = normalizeRequirementsMessageText(parent.content).trim().slice(0, 1200);
+  const clip = safeMessageText(parent).trim().slice(0, 1200);
   const who = parent.speakerName?.trim() || "AI";
   const prefix = `[사용자는 아래 AI 메시지에 이어서 답합니다]\nAI(${who}): ${clip}\n\n---\n`;
   return (prefix + excerpt).slice(-24_000);
