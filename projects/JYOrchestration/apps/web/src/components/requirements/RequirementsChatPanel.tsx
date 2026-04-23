@@ -78,6 +78,7 @@ export function RequirementsChatPanel({
   onOpenDeliverableDocuments,
   onRegenerateDeliverables,
   onConfirmDeliverables,
+  expandControls,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
   readonly composer: ReactNode;
@@ -90,6 +91,8 @@ export function RequirementsChatPanel({
   readonly onOpenDeliverableDocuments?: (assetIds: readonly string[]) => void;
   readonly onRegenerateDeliverables?: (requestedTypes: readonly string[]) => void;
   readonly onConfirmDeliverables?: (assetIds: readonly string[]) => void;
+  /** 채팅 영역 확대/축소(아이디어 구체화 등) */
+  readonly expandControls?: { expanded: boolean; onToggle: () => void } | null;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -266,19 +269,53 @@ export function RequirementsChatPanel({
     []
   );
 
+  const expanded = Boolean(expandControls?.expanded);
+
   return (
     <section
       data-testid="requirements-chat-panel"
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "clamp(560px, 72vh, 820px)",
+        height: expanded ? "clamp(640px, 84vh, 960px)" : "clamp(560px, 72vh, 820px)",
         minWidth: 280,
         maxWidth: "100%",
         overflow: "hidden",
       }}
       aria-label="아이디어 구체화 채팅"
     >
+      {expandControls ? (
+        <div
+          style={{
+            flex: "0 0 auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 8,
+            padding: "8px 12px",
+            borderBottom: "1px solid #e2e8f0",
+            background: "#fff",
+          }}
+        >
+          <button
+            type="button"
+            data-testid="requirements-chat-expand-toggle"
+            onClick={() => expandControls.onToggle()}
+            style={{
+              border: "1px solid #cbd5e1",
+              background: expanded ? "#f0fdfa" : "#fff",
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 900,
+              color: "#0f172a",
+              cursor: "pointer",
+            }}
+          >
+            {expanded ? "채팅 축소" : "채팅 확대"}
+          </button>
+        </div>
+      ) : null}
       <div
         className="relative"
         style={{

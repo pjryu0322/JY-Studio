@@ -73,6 +73,10 @@ import {
   VIRTUAL_AI_PLANNER_ID,
   type RequirementsRoomStateV3,
 } from "@/lib/project/requirementsRoomState";
+import {
+  augmentDialogueExcerptForReplyParent,
+  inferRecentAiQuestionReplyParentId,
+} from "@/lib/requirements/requirementsAnswerContext";
 import { coerceRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { dedupeMemberRefs, computedTargetsFromInput, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { newConversation, type RequirementsConversation } from "@/lib/requirements/conversationStore";
@@ -246,6 +250,7 @@ export function RequirementsWorkspace({
   const [aiInvokePending, setAiInvokePending] = useState(false);
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
   const [deliverableGenerateBusy, setDeliverableGenerateBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
@@ -1439,12 +1444,13 @@ export function RequirementsWorkspace({
       const anyAi = targets.some((t) => isAiTarget(t.id));
       const primaryAi = targets.find((t) => isAiTarget(t.id));
       const combinedLabel = targets.map((t) => t.name).join(" · ");
+      const effectiveReplyTo = inferRecentAiQuestionReplyParentId(conversationMessages, replyTo?.id ?? null);
 
       const userMsg = newChatMessage({
         role: "user",
         body: text,
         targets,
-        ...(replyTo?.id ? { replyTo: replyTo.id } : {}),
+        ...(effectiveReplyTo ? { replyTo: effectiveReplyTo } : {}),
         speakerId: sessionUser?.id ?? "me",
         speakerName: sessionUser?.name ?? "나",
         speakerType: "USER",
@@ -1501,7 +1507,11 @@ export function RequirementsWorkspace({
             const rolling =
               (typeof prevCtx?.rollingSummary === "string" && prevCtx.rollingSummary.trim()) ||
               buildRollingSummaryFromIdeationFields({ goals, openIssues, priorityFeatures });
-            const excerpt = formatDialogueExcerpt(msgs);
+            const excerpt = augmentDialogueExcerptForReplyParent(
+              formatDialogueExcerpt(msgs),
+              msgs,
+              effectiveReplyTo
+            );
 
             const res = await fetch("/api/requirements/organize-analyze", {
               method: "POST",
@@ -1645,7 +1655,11 @@ export function RequirementsWorkspace({
             }
           }
 
-          const excerpt = formatDialogueExcerpt(conversationMessages);
+          const excerpt = augmentDialogueExcerptForReplyParent(
+            formatDialogueExcerpt(conversationMessages),
+            conversationMessages,
+            effectiveReplyTo
+          );
           const endpoint = isDraftIntent(text) ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
 
           // --------------------------------------------------
@@ -1720,7 +1734,7 @@ export function RequirementsWorkspace({
               aiResponseStyle: readAiResponseStyle(),
               targets: targets.map((t) => ({ id: t.id, name: t.name })),
               sender: { id: sessionUser?.id ?? "", name: sessionUser?.name ?? "나" },
-              replyTo: replyTo?.id ?? null,
+              replyTo: effectiveReplyTo ?? null,
             }),
           });
           const json = (await res.json()) as {
@@ -2053,7 +2067,7 @@ export function RequirementsWorkspace({
     overflow: "hidden",
     background: "#fff",
     boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.18)",
-    minHeight: 0,
+    minHeight: chatExpanded && !inServiceFlowStage ? 640 : 0,
   };
 
   const chatPanel = (
@@ -2062,6 +2076,7 @@ export function RequirementsWorkspace({
       <RequirementsChatPanel
         messages={messages}
         typingIndicator={aiInvokePending}
+        expandControls={{ expanded: chatExpanded, onToggle: () => setChatExpanded((v) => !v) }}
         onInsertComposerPrompt={insertComposerPrompt}
         onSetReplyTo={(messageId, preview) => {
           setReplyTo({ id: messageId, preview });
@@ -2486,13 +2501,15 @@ export function RequirementsWorkspace({
           </div>
         ) : (
           <>
-            <RequirementsMemberSidebar
-              participants={participants}
-              showInvite={Boolean(resolvedProjectId.trim())}
-              inviteDisabled={remoteLocked}
-              inviteEmphasis={inviteEmphasis}
-              onInviteClick={() => setInviteOpen(true)}
-            />
+            {!chatExpanded ? (
+              <RequirementsMemberSidebar
+                participants={participants}
+                showInvite={Boolean(resolvedProjectId.trim())}
+                inviteDisabled={remoteLocked}
+                inviteEmphasis={inviteEmphasis}
+                onInviteClick={() => setInviteOpen(true)}
+              />
+            ) : null}
             {chatPanel}
           </>
         )}
