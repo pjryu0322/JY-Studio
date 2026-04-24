@@ -402,6 +402,59 @@ function normalizeLegacyInterviewSlotId(s: string): ProblemInterviewSlot | null 
   return null;
 }
 
+function normalizeUserTextForSimilarity(raw: string): string {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\u200b]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function isDelegationIntentUserReply(raw: string): boolean {
+  const t = normalizeUserTextForSimilarity(raw);
+  if (!t) return false;
+  // “AI가 판단해줘 / 알아서 해줘 / 추천해줘 / 네가 정해줘 …” 류
+  return (
+    /(ai|너|네가|니가|네|너가).*(판단|결정|정해|골라|선택|추천|제안)/.test(t) ||
+    /(알아서|알아|임의로).*(해줘|정해|결정|추천)/.test(t) ||
+    /(추천해줘|정해줘|판단해줘|결정해줘|골라줘|선택해줘)/.test(t)
+  );
+}
+
+function roughSimilarity(a: string, b: string): number {
+  const na = normalizeUserTextForSimilarity(a);
+  const nb = normalizeUserTextForSimilarity(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  // 짧은 위임 문장은 부분 포함으로도 충분히 유사 판정
+  if (na.length <= 18 || nb.length <= 18) {
+    if (na.includes(nb) || nb.includes(na)) return 0.92;
+  }
+  const aSet = new Set(na.split(" ").filter(Boolean));
+  const bSet = new Set(nb.split(" ").filter(Boolean));
+  if (!aSet.size || !bSet.size) return 0;
+  let inter = 0;
+  for (const x of aSet) if (bSet.has(x)) inter += 1;
+  const union = aSet.size + bSet.size - inter;
+  return union ? inter / union : 0;
+}
+
+/**
+ * 최근 3턴 사용자 입력이 모두 위임 의사이며, 서로 충분히 유사하면 "루프 위험"으로 판단한다.
+ * (사용자가 같은 위임 답만 반복하는 케이스 방지)
+ */
+export function isDelegationLoopInRecentUserTurns(userTurns: readonly string[]): boolean {
+  const last3 = [...userTurns].map((s) => String(s ?? "")).filter((s) => s.trim()).slice(-3);
+  if (last3.length < 3) return false;
+  if (!last3.every(isDelegationIntentUserReply)) return false;
+  const s01 = roughSimilarity(last3[0]!, last3[1]!);
+  const s12 = roughSimilarity(last3[1]!, last3[2]!);
+  const s02 = roughSimilarity(last3[0]!, last3[2]!);
+  return s01 >= 0.75 && s12 >= 0.75 && s02 >= 0.7;
+}
+
 function interviewLevelRank(l: InterviewSlotLevel): number {
   if (l === "filled") return 2;
   if (l === "partial") return 1;
@@ -729,9 +782,14 @@ export function pickNextAskableInterviewSlot(
     if (!ordered.includes(s)) ordered.push(s);
   }
   const avoid = new Set((opts?.avoidSlots ?? []).filter(Boolean) as ProblemInterviewSlot[]);
+  const askedList = asked ?? [];
+  const askedCount = new Map<ProblemInterviewSlot, number>();
+  for (const s of askedList) askedCount.set(s, (askedCount.get(s) ?? 0) + 1);
   const lastAsked = asked && asked.length > 0 ? asked[asked.length - 1]! : null;
   for (const slot of ordered) {
     if (avoid.has(slot)) continue;
+    // 같은 슬롯 질문 2회 이상 반복 금지(아직 filled가 아니더라도 다른 슬롯 우선)
+    if ((askedCount.get(slot) ?? 0) >= 2 && !slotStrictlyFilled(state, slot)) continue;
     if (slotStrictlyFilled(state, slot)) continue;
     if (isDoubleRepeatAsk(asked, slot)) continue;
     if (lastAsked === slot && interviewSlotLevelFromState(state, slot) === "empty") {
