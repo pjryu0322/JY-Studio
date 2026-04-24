@@ -652,13 +652,13 @@ export function RequirementsWorkspace({
     [problemInterviewState]
   );
   const nextNeededSlot = useMemo(() => {
-    if (!problemInterviewState || problemInterviewState.active === false) return null;
-    return pickNextAskableInterviewSlot(problemInterviewState, problemInterviewState.askedSlots, null);
+    const base = problemInterviewState ?? emptyProblemInterviewState("");
+    return pickNextAskableInterviewSlot(base, base.askedSlots, null);
   }, [problemInterviewState]);
   const remainingQuestionsEstimate = useMemo(() => {
-    if (!problemInterviewState || problemInterviewState.active === false) return 0;
-    const strict = problemInterviewStrictFilledCount(problemInterviewState);
-    const partialOnly = problemInterviewPartialOnlyCount(problemInterviewState);
+    const base = problemInterviewState ?? emptyProblemInterviewState("");
+    const strict = problemInterviewStrictFilledCount(base);
+    const partialOnly = problemInterviewPartialOnlyCount(base);
     const readinessScore = strict + 0.5 * partialOnly;
     return Math.max(0, Math.ceil(PROBLEM_INTERVIEW_SLOT_TOTAL - readinessScore));
   }, [problemInterviewState]);
@@ -2481,13 +2481,9 @@ export function RequirementsWorkspace({
         typingIndicator={aiInvokePending}
         expandControls={{ expanded: chatExpanded, onToggle: () => setChatExpanded((v) => !v) }}
         ideationInterviewUi={
-          !inServiceFlowStage &&
-          resolvedProjectId.trim() &&
-          conversationStatus === "loaded" &&
-          problemInterviewState &&
-          problemInterviewState.active !== false
+          !inServiceFlowStage && conversationStatus === "loaded"
             ? {
-                active: true,
+                active: Boolean(problemInterviewState && problemInterviewState.active !== false),
                 readinessPercent: proposalReadinessPercentVal,
                 covered: problemInterviewCovered,
                 strictFilled: problemInterviewStrictFilled,
@@ -2495,7 +2491,7 @@ export function RequirementsWorkspace({
                 nextSlot: nextNeededSlot,
                 remainingQuestionsEstimate,
                 slotState: problemInterviewState,
-                recentAskedSlots: (problemInterviewState.askedSlots ?? []).slice(-8) as unknown as ProblemInterviewSlot[],
+                recentAskedSlots: ((problemInterviewState?.askedSlots ?? []).slice(-8) as unknown) as ProblemInterviewSlot[],
                 onForceGeneratePlanNow,
               }
             : null

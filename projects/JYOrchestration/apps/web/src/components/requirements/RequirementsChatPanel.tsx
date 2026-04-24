@@ -365,7 +365,7 @@ export function RequirementsChatPanel({
             background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
           }}
         >
-          {interviewUi && interviewUi.active ? (
+          {interviewUi ? (
             <div
               style={{
                 position: "sticky",
