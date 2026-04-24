@@ -390,6 +390,7 @@ export function RequirementsComposerGpt({
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 if (busy || disabled) return;
+                // 입력 비움은 부모(RequirementsWorkspace)에서 flushSync로 즉시 처리
                 onSend();
               }
             }}
