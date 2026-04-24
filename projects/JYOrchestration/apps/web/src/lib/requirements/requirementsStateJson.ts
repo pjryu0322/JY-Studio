@@ -298,17 +298,17 @@ export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: P
 function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const coreUser = typeof o.coreUser === "boolean" ? o.coreUser : false;
-  const painPoint = typeof o.painPoint === "boolean" ? o.painPoint : false;
-  const currentMethod = typeof o.currentMethod === "boolean" ? o.currentMethod : false;
-  const needForImprovement = typeof o.needForImprovement === "boolean" ? o.needForImprovement : false;
+  // new slots (v2)
+  const productGoal = typeof o.productGoal === "boolean" ? o.productGoal : false;
+  const targetUser = typeof o.targetUser === "boolean" ? o.targetUser : false;
+  const platformType = typeof o.platformType === "boolean" ? o.platformType : false;
   const coreFeatures = typeof o.coreFeatures === "boolean" ? o.coreFeatures : false;
-  const legacyMvp = typeof (o as Record<string, unknown>).mvpPriority === "boolean" ? Boolean((o as Record<string, unknown>).mvpPriority) : false;
-  const featurePriority = typeof o.featurePriority === "boolean" ? o.featurePriority : legacyMvp;
-  const mvpScope = typeof o.mvpScope === "boolean" ? o.mvpScope : legacyMvp;
-  const kpiSuccess = typeof o.kpiSuccess === "boolean" ? o.kpiSuccess : false;
-  const constraints = typeof o.constraints === "boolean" ? o.constraints : false;
-  const operations = typeof o.operations === "boolean" ? o.operations : false;
+  const authNeed = typeof o.authNeed === "boolean" ? o.authNeed : false;
+  const mainScreens = typeof o.mainScreens === "boolean" ? o.mainScreens : false;
+  const dataEntities = typeof o.dataEntities === "boolean" ? o.dataEntities : false;
+  const integrations = typeof o.integrations === "boolean" ? o.integrations : false;
+  const mvpScope = typeof o.mvpScope === "boolean" ? o.mvpScope : false;
+  const designLevel = typeof o.designLevel === "boolean" ? o.designLevel : false;
   const notesRaw = o.notes && typeof o.notes === "object" ? (o.notes as Record<string, unknown>) : null;
   const notes: Record<string, string> = {};
   if (notesRaw) {
@@ -326,10 +326,30 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
       if (!key) continue;
       partial[key] = v === true;
     }
-    if ((partial as Record<string, boolean>).mvpPriority) {
-      partial.featurePriority = true;
+    // migrate legacy slot ids to new ids (best-effort)
+    if (partial.coreUser) {
+      partial.targetUser = true;
+      delete partial.coreUser;
+    }
+    if (partial.painPoint || partial.needForImprovement || partial.currentMethod || partial.kpiSuccess) {
+      partial.productGoal = true;
+      delete partial.painPoint;
+      delete partial.needForImprovement;
+      delete partial.currentMethod;
+      delete partial.kpiSuccess;
+    }
+    if (partial.constraints) {
+      partial.integrations = true;
+      delete partial.constraints;
+    }
+    if (partial.operations) {
+      partial.platformType = true;
+      delete partial.operations;
+    }
+    if (partial.featurePriority || partial.mvpPriority) {
       partial.mvpScope = true;
-      delete (partial as Record<string, boolean>).mvpPriority;
+      delete partial.featurePriority;
+      delete partial.mvpPriority;
     }
   }
   const askedSlotsRaw = Array.isArray(o.askedSlots) ? (o.askedSlots as unknown[]) : null;
@@ -338,7 +358,13 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
         .map((x) => {
           const s = String(x ?? "").trim();
           if (!s) return "";
-          return s === "mvpPriority" ? "featurePriority" : s;
+          // legacy -> new id mapping (best-effort)
+          if (s === "coreUser") return "targetUser";
+          if (s === "painPoint" || s === "needForImprovement" || s === "currentMethod" || s === "kpiSuccess") return "productGoal";
+          if (s === "constraints") return "integrations";
+          if (s === "operations") return "platformType";
+          if (s === "featurePriority" || s === "mvpPriority") return "mvpScope";
+          return s;
         })
         .filter(Boolean)
         .slice(0, 32)
@@ -346,16 +372,16 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
   const active = typeof o.active === "boolean" ? o.active : undefined;
   const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt : undefined;
   return {
-    coreUser,
-    painPoint,
-    currentMethod,
-    needForImprovement,
+    productGoal,
+    targetUser,
+    platformType,
     coreFeatures,
-    featurePriority,
+    authNeed,
+    mainScreens,
+    dataEntities,
+    integrations,
     mvpScope,
-    kpiSuccess,
-    constraints,
-    operations,
+    designLevel,
     notes,
     ...(Object.keys(partial).length ? { partial } : {}),
     ...(askedSlots ? { askedSlots: askedSlots as any } : {}),
