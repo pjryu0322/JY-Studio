@@ -757,6 +757,12 @@ export function applyGlobalDelegationDefaults(state: ProblemInterviewState, nowI
     next.notes[slot] = next.notes[slot] ? `${next.notes[slot]}\n${line}`.trim() : line;
   }
 
+  // 인터뷰 슬롯에는 없지만, 통합 기획안에 필요한 리스크 기본 세트는 notes에 남긴다.
+  // (slot 계산에는 영향 없음)
+  const riskDefault =
+    "기본 리스크 세트(초안):\n- 일정 지연(요구사항 변동/리소스)\n- 데이터 품질·정합성(입력·연동)\n- 권한·보안(접근통제/감사로그)\n- 운영 부담(문의·장애 대응)\n- 사용자 정착(변화관리/교육)";
+  next.notes["risks"] = next.notes["risks"] ? `${next.notes["risks"]}\n\n${riskDefault}`.trim() : riskDefault;
+
   // 나머지 미확보 슬롯은 partial로만 채워 점수를 끌어올리되, filled는 강제하지 않는다.
   const partial = { ...(next.partial ?? {}) } as Record<string, boolean>;
   for (const slot of PROBLEM_INTERVIEW_SLOTS) {
