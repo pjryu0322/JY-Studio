@@ -84,6 +84,7 @@ export function OrganizeProposalDraggableModal({
   const endDrag = useCallback(() => {
     if (!dragRef.current.active) return;
     dragRef.current.active = false;
+    dragRef.current.moved = false;
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", endDrag);
     window.removeEventListener("pointercancel", endDrag);

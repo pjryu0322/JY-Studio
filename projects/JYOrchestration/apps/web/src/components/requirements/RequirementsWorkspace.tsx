@@ -54,9 +54,10 @@ import {
   mergeImplicitAskedFromLastBootstrapQuestion,
   pickNextAskableInterviewSlot,
   planNextInterviewTurn,
-  problemInterviewCoveredCount,
   problemInterviewIsCovered,
   problemInterviewStateToAnalyzerWire,
+  problemInterviewStrictFilledCount,
+  proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
   withAskedSlot,
   type InterviewAnalyzerPayload,
@@ -631,8 +632,12 @@ export function RequirementsWorkspace({
     () => parseRequirementsStateJson(project?.requirementsStateJson).problemInterview ?? null,
     [project?.requirementsStateJson]
   );
-  const problemInterviewCovered = useMemo(
-    () => problemInterviewCoveredCount(problemInterviewState),
+  const problemInterviewStrictFilled = useMemo(
+    () => problemInterviewStrictFilledCount(problemInterviewState),
+    [problemInterviewState]
+  );
+  const proposalReadinessPercentVal = useMemo(
+    () => proposalInterviewReadinessPercent(problemInterviewState),
     [problemInterviewState]
   );
 
@@ -2617,7 +2622,7 @@ export function RequirementsWorkspace({
       !inServiceFlowStage &&
       conversationStatus === "loaded" &&
       ideationComplete &&
-      !(problemInterviewState && problemInterviewState.active !== false && problemInterviewCovered < PROBLEM_INTERVIEW_SLOT_TOTAL) ? (
+      !(problemInterviewState && problemInterviewState.active !== false && problemInterviewStrictFilled < PROBLEM_INTERVIEW_SLOT_TOTAL) ? (
         <div
           style={{
             marginTop: 8,
@@ -2705,14 +2710,12 @@ export function RequirementsWorkspace({
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-            기획안 준비도{" "}
-            {Math.min(100, Math.round((problemInterviewCovered / PROBLEM_INTERVIEW_SLOT_TOTAL) * 100))}% (
-            {problemInterviewCovered} / {PROBLEM_INTERVIEW_SLOT_TOTAL} 슬롯 확보)
+            기획안 준비도 {proposalReadinessPercentVal}% ({problemInterviewStrictFilled} / {PROBLEM_INTERVIEW_SLOT_TOTAL} 슬롯 확정)
           </div>
           <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
             <div
               style={{
-                width: `${Math.min(100, Math.round((problemInterviewCovered / PROBLEM_INTERVIEW_SLOT_TOTAL) * 100))}%`,
+                width: `${proposalReadinessPercentVal}%`,
                 height: "100%",
                 borderRadius: 999,
                 background: "#0f766e",

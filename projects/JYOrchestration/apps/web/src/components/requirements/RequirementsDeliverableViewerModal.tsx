@@ -48,6 +48,7 @@ export function RequirementsDeliverableViewerModal({
   if (!open) return null;
 
   const active = ordered.find((a) => a.id === activeId) ?? ordered[0] ?? null;
+  const onlyFullPlanAssets = ordered.length > 0 && ordered.every((a) => a.type === "full_plan");
   const formatCreatedAt = (ts: string) => {
     const d = new Date(ts);
     if (!Number.isFinite(d.getTime())) return ts;
@@ -136,7 +137,9 @@ export function RequirementsDeliverableViewerModal({
               background: "#fbfdff",
             }}
           >
-            <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a", margin: "2px 4px 10px" }}>문서목록</div>
+            <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a", margin: "2px 4px 10px" }}>
+              {onlyFullPlanAssets ? "기획안 버전" : "문서목록"}
+            </div>
             {ordered.length ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {ordered
@@ -152,6 +155,9 @@ export function RequirementsDeliverableViewerModal({
                     const isLatest = typeof a.version === "number" && typeof maxVer === "number" ? a.version === maxVer : false;
                     const isConfirmed = Boolean(a.confirmedAt);
                     const typeLabel = isIdeationDeliverableType(a.type) ? IDEATION_DELIVERABLE_LABELS[a.type] : String(a.type);
+                    const typeLine = onlyFullPlanAssets ? null : (
+                      <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>{typeLabel}</span>
+                    );
                     return (
                       <button
                         key={a.id}
@@ -194,8 +200,8 @@ export function RequirementsDeliverableViewerModal({
                             )}
                           </div>
                         </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>{typeLabel}</span>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          {typeLine}
                           <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>v{a.version}</span>
                         </div>
                         <div style={{ fontSize: 11.5, fontWeight: 800, color: "#64748b" }}>{formatCreatedAt(a.createdAt)}</div>
