@@ -53,6 +53,7 @@ import {
   mergeAnalyzerIntoProblemInterview,
   formatProposalInterviewReadinessLine,
   mergeImplicitAskedFromLastBootstrapQuestion,
+  problemInterviewPartialOnlyCount,
   pickNextAskableInterviewSlot,
   planNextInterviewTurn,
   problemInterviewCoveredCount,
@@ -650,6 +651,17 @@ export function RequirementsWorkspace({
     () => proposalInterviewCoachingHintLine(problemInterviewState, problemInterviewState?.askedSlots),
     [problemInterviewState]
   );
+  const nextNeededSlot = useMemo(() => {
+    if (!problemInterviewState || problemInterviewState.active === false) return null;
+    return pickNextAskableInterviewSlot(problemInterviewState, problemInterviewState.askedSlots, null);
+  }, [problemInterviewState]);
+  const remainingQuestionsEstimate = useMemo(() => {
+    if (!problemInterviewState || problemInterviewState.active === false) return 0;
+    const strict = problemInterviewStrictFilledCount(problemInterviewState);
+    const partialOnly = problemInterviewPartialOnlyCount(problemInterviewState);
+    const readinessScore = strict + 0.5 * partialOnly;
+    return Math.max(0, Math.ceil(PROBLEM_INTERVIEW_SLOT_TOTAL - readinessScore));
+  }, [problemInterviewState]);
 
   useEffect(() => {
     const pid = resolvedProjectId.trim();
@@ -2434,6 +2446,10 @@ export function RequirementsWorkspace({
     [members]
   );
   const remoteLocked = !resolvedProjectId.trim();
+  const onForceGeneratePlanNow = useCallback(() => {
+    if (busy || deliverableGenerateBusy || remoteLocked) return;
+    void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
+  }, [busy, deliverableGenerateBusy, remoteLocked, handleGenerateDeliverables]);
 
   const trimmedProjectName = project?.name?.trim();
   const headerProjectName = trimmedProjectName
@@ -2464,6 +2480,26 @@ export function RequirementsWorkspace({
         messages={messages}
         typingIndicator={aiInvokePending}
         expandControls={{ expanded: chatExpanded, onToggle: () => setChatExpanded((v) => !v) }}
+        ideationInterviewUi={
+          !inServiceFlowStage &&
+          resolvedProjectId.trim() &&
+          conversationStatus === "loaded" &&
+          problemInterviewState &&
+          problemInterviewState.active !== false
+            ? {
+                active: true,
+                readinessPercent: proposalReadinessPercentVal,
+                covered: problemInterviewCovered,
+                strictFilled: problemInterviewStrictFilled,
+                total: PROBLEM_INTERVIEW_SLOT_TOTAL,
+                nextSlot: nextNeededSlot,
+                remainingQuestionsEstimate,
+                slotState: problemInterviewState,
+                recentAskedSlots: (problemInterviewState.askedSlots ?? []).slice(-8) as unknown as ProblemInterviewSlot[],
+                onForceGeneratePlanNow,
+              }
+            : null
+        }
         onInsertComposerPrompt={insertComposerPrompt}
         onSetReplyTo={(messageId, preview) => {
           setReplyTo({ id: messageId, preview });
