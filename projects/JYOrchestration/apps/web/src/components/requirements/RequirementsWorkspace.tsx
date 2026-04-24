@@ -1322,7 +1322,7 @@ export function RequirementsWorkspace({
           existing,
           outputs: genJson.data.outputs,
           typesRequested: [...IDEATION_UNIFIED_PROPOSAL_OUTPUT],
-          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 기획안 v${v}` : undefined),
+          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 아이디어 초안 v${v}` : undefined),
         });
         if (!created.length) {
           throw new Error("생성된 본문이 비어 있습니다.");
@@ -1333,7 +1333,7 @@ export function RequirementsWorkspace({
             kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
             mode: "single",
             headline:
-              c.type === "full_plan" ? `${planBaseName} 기획안 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
+              c.type === "full_plan" ? `${planBaseName} 아이디어 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
             requestedTypes: [c.type],
             items: [
               {
@@ -1494,7 +1494,7 @@ export function RequirementsWorkspace({
           existing,
           outputs: json.data.outputs,
           typesRequested: types,
-          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 기획안 v${v}` : undefined),
+          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 아이디어 초안 v${v}` : undefined),
         });
         if (!created.length) {
           throw new Error("생성된 본문이 비어 있습니다.");
@@ -1505,7 +1505,7 @@ export function RequirementsWorkspace({
             kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
             mode: "single",
             headline:
-              c.type === "full_plan" ? `${planBaseName} 기획안 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
+              c.type === "full_plan" ? `${planBaseName} 아이디어 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
             requestedTypes: [c.type],
             items: [
               {
@@ -1539,7 +1539,7 @@ export function RequirementsWorkspace({
         if (types.length === 1 && types[0] === "full_plan") {
           const fp = created.find((c) => c.type === "full_plan");
           if (fp) setProposalPlanPreview({ open: true, assetId: fp.id });
-          showSuccessToast(`${planBaseName} 기획안 생성 완료`);
+          showSuccessToast(`${planBaseName} 아이디어 초안 생성 완료`);
         } else {
           showSuccessToast(`${created.length}개 산출물 생성 완료`);
         }
@@ -2829,7 +2829,7 @@ export function RequirementsWorkspace({
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-            기획안 준비도 {proposalReadinessPercentVal}% ({problemInterviewCovered} / {PROBLEM_INTERVIEW_SLOT_TOTAL} 슬롯 확보,{" "}
+            아이디어 정리도 {proposalReadinessPercentVal}% ({problemInterviewCovered} / {PROBLEM_INTERVIEW_SLOT_TOTAL} 슬롯 확보,{" "}
             {problemInterviewStrictFilled} 확정)
           </div>
           <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
@@ -2844,7 +2844,7 @@ export function RequirementsWorkspace({
             />
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", fontWeight: 600, lineHeight: 1.45 }}>
-            {interviewCoachingHint ?? "기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다."}
+            {interviewCoachingHint ?? "아이디어 초안 완성도를 위해 핵심만 더 확인하겠습니다."}
           </div>
         </div>
       ) : null}
@@ -2975,7 +2975,7 @@ export function RequirementsWorkspace({
 
       <ProposalPlanPreviewModal
         open={proposalPlanPreview.open}
-        title={`${(project?.name ?? "").trim() || "프로젝트"} 기획안 미리보기`}
+        title={`${(project?.name ?? "").trim() || "프로젝트"} 아이디어 초안 미리보기`}
         markdown={proposalPreviewMarkdown}
         projectName={(project?.name ?? "").trim() || "프로젝트"}
         version={proposalPreviewVersion}

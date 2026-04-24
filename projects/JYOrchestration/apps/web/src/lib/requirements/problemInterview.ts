@@ -2,30 +2,26 @@ import { stripJsonMarkdownFences } from "@/lib/requirements/ideationDeliverables
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
 
 export type ProblemInterviewSlot =
-  | "productGoal"
+  | "serviceIdea"
   | "targetUser"
-  | "platformType"
-  | "coreFeatures"
-  | "authNeed"
-  | "mainScreens"
-  | "dataEntities"
-  | "integrations"
-  | "mvpScope"
-  | "designLevel";
+  | "coreProblem"
+  | "expectedOutcome"
+  | "roughActors"
+  | "roughFlow"
+  | "mustHaveFeatures"
+  | "constraints";
 
 export type ProblemInterviewNotes = Record<string, string>;
 
 export type ProblemInterviewState = {
-  productGoal: boolean;
+  serviceIdea: boolean;
   targetUser: boolean;
-  platformType: boolean;
-  coreFeatures: boolean;
-  authNeed: boolean;
-  mainScreens: boolean;
-  dataEntities: boolean;
-  integrations: boolean;
-  mvpScope: boolean;
-  designLevel: boolean;
+  coreProblem: boolean;
+  expectedOutcome: boolean;
+  roughActors: boolean;
+  roughFlow: boolean;
+  mustHaveFeatures: boolean;
+  constraints: boolean;
   notes: ProblemInterviewNotes;
   /**
    * 부분 확보 표시용(예: 힌트만 있는 경우).
@@ -41,16 +37,14 @@ export type ProblemInterviewState = {
 };
 
 export const PROBLEM_INTERVIEW_SLOTS: ProblemInterviewSlot[] = [
-  "productGoal",
+  "serviceIdea",
   "targetUser",
-  "platformType",
-  "coreFeatures",
-  "authNeed",
-  "mainScreens",
-  "dataEntities",
-  "integrations",
-  "mvpScope",
-  "designLevel",
+  "coreProblem",
+  "expectedOutcome",
+  "roughActors",
+  "roughFlow",
+  "mustHaveFeatures",
+  "constraints",
 ];
 
 /** 기획안 인터뷰 전체 슬롯 수(진행률 표시용) */
@@ -58,16 +52,14 @@ export const PROBLEM_INTERVIEW_SLOT_TOTAL = PROBLEM_INTERVIEW_SLOTS.length;
 
 export function emptyProblemInterviewState(nowIso: string): ProblemInterviewState {
   return {
-    productGoal: false,
+    serviceIdea: false,
     targetUser: false,
-    platformType: false,
-    coreFeatures: false,
-    authNeed: false,
-    mainScreens: false,
-    dataEntities: false,
-    integrations: false,
-    mvpScope: false,
-    designLevel: false,
+    coreProblem: false,
+    expectedOutcome: false,
+    roughActors: false,
+    roughFlow: false,
+    mustHaveFeatures: false,
+    constraints: false,
     notes: {},
     partial: {},
     askedSlots: [],
@@ -77,16 +69,14 @@ export function emptyProblemInterviewState(nowIso: string): ProblemInterviewStat
 }
 
 export function problemInterviewSlotLabelKr(slot: ProblemInterviewSlot): string {
-  if (slot === "productGoal") return "무엇을 만들고 싶은가";
-  if (slot === "targetUser") return "누가 사용하는가";
-  if (slot === "platformType") return "플랫폼 형태(웹/모바일/관리자/혼합)";
-  if (slot === "coreFeatures") return "핵심 기능";
-  if (slot === "authNeed") return "로그인/권한 필요 여부";
-  if (slot === "mainScreens") return "주요 화면 구성";
-  if (slot === "dataEntities") return "저장 데이터 종류";
-  if (slot === "integrations") return "외부 연동";
-  if (slot === "mvpScope") return "MVP 범위";
-  return "디자인 수준(간단/일반/고급)";
+  if (slot === "serviceIdea") return "무엇을 만들고 싶은가";
+  if (slot === "targetUser") return "주 사용자";
+  if (slot === "coreProblem") return "가장 큰 문제";
+  if (slot === "expectedOutcome") return "기대 효과";
+  if (slot === "roughActors") return "개략 액터";
+  if (slot === "roughFlow") return "개략 흐름";
+  if (slot === "mustHaveFeatures") return "핵심 기능(3개 내외)";
+  return "큰 제약사항";
 }
 
 export function problemInterviewCoveredCount(state: ProblemInterviewState | null | undefined): number {
@@ -129,19 +119,19 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
   const notes: ProblemInterviewNotes = { ...(base.notes ?? {}) };
   const partial = { ...(base.partial ?? {}) };
 
-  // productGoal (무엇을 만들고 싶은가)
-  const goalStrong =
-    /(만들|구현|개발|서비스|플랫폼|프로덕트|앱|웹|시스템).*(하고\s*싶|만들고\s*싶|필요|원해|원합니다|하려고)/.test(t) ||
-    /(자동화|생성|관리|정리|대시보드|프로토타입)/.test(t);
-  if (goalStrong) {
-    base.productGoal = true;
-    addNote(notes, "productGoal", t);
-  } else if (!base.productGoal && /(만들|앱|웹|서비스|플랫폼)/.test(t)) {
-    partial.productGoal = true;
-    addNote(notes, "productGoalHint", t);
+  // serviceIdea (무엇을 만들고 싶은가)
+  const ideaStrong =
+    /(서비스|플랫폼|앱|웹|시스템|프로덕트).*(만들|구현|개발|하려고|원해|필요)/.test(t) ||
+    /(자동화|생성|관리|정리|프로토타입)/.test(t);
+  if (ideaStrong) {
+    base.serviceIdea = true;
+    addNote(notes, "serviceIdea", t);
+  } else if (!base.serviceIdea && /(앱|웹|서비스|플랫폼)/.test(t)) {
+    partial.serviceIdea = true;
+    addNote(notes, "serviceIdeaHint", t);
   }
 
-  // targetUser (누가 사용하는가)
+  // targetUser (주 사용자)
   const userHit =
     /(사용자|고객|회원|관리자|운영자|담당자|팀장|직원|강사|학생|환자|의사|상담사|매니저)/.test(t) &&
     /(누구|대상|주로|가장|자주|주체|하는\s*사람)/.test(t);
@@ -153,77 +143,64 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
     addNote(notes, "targetUserHint", t);
   }
 
-  // platformType (웹/모바일/관리자/혼합)
-  const platformHit = /(웹|모바일|앱|ios|안드로이드|관리자|어드민|admin|혼합|웹앱)/i.test(t);
-  if (platformHit) {
-    base.platformType = true;
-    addNote(notes, "platformType", t);
-  } else if (!base.platformType && /(웹|앱|관리자)/.test(t)) {
-    partial.platformType = true;
-    addNote(notes, "platformTypeHint", t);
+  // coreProblem (가장 큰 문제)
+  const problemStrong =
+    /(불편|문제|어렵|힘들|번거|귀찮|시간.*(많|오래)|자주.*(누락|실수)|비효율|오류|중복|지연)/.test(t) ||
+    /(늦|느리|헷갈|정리.*(힘|어렵))/i.test(t);
+  if (problemStrong) {
+    base.coreProblem = true;
+    addNote(notes, "coreProblem", t);
+  } else if (!base.coreProblem && /(불편|문제|힘들|어렵|시간|늦)/.test(t)) {
+    partial.coreProblem = true;
+    addNote(notes, "coreProblemHint", t);
   }
 
-  // coreFeatures
-  if (/(기능|화면|대시보드|알림|검색|업로드|다운로드|승인\s*흐름)/.test(t) && /(필요|구현|만들|추가|포함)/.test(t)) {
-    base.coreFeatures = true;
-    addNote(notes, "coreFeatures", t);
-  } else if (!base.coreFeatures && /(기능|화면|대시보드)/.test(t)) {
-    partial.coreFeatures = true;
-    addNote(notes, "coreFeaturesHint", t);
+  // expectedOutcome (기대 효과)
+  const outcomeStrong =
+    /(원하|기대|되면|되었으면|하고\s*싶|목표|줄이|단축|자동|개선|빠르|즉시|정확)/.test(t) &&
+    /(싶|원합니다|원해요|되면|되었으면)/.test(t);
+  if (outcomeStrong) {
+    base.expectedOutcome = true;
+    addNote(notes, "expectedOutcome", t);
+  } else if (!base.expectedOutcome && /(자동|개선|빠르|단축|줄이|정확)/.test(t)) {
+    partial.expectedOutcome = true;
+    addNote(notes, "expectedOutcomeHint", t);
   }
 
-  // authNeed (로그인/권한)
-  if (/(로그인|회원가입|권한|역할|role|rbac|접근\s*제어|인증|oauth|ss[o0])/i.test(t)) {
-    base.authNeed = true;
-    addNote(notes, "authNeed", t);
-  } else if (!base.authNeed && /(로그인|권한|인증)/.test(t)) {
-    partial.authNeed = true;
-    addNote(notes, "authNeedHint", t);
+  // roughActors (개략 액터)
+  if (/(사용자|고객|회원|관리자|운영자|담당자|상담사|강사|학생|직원)/.test(t) && /(\/|,|및|와|과)/.test(t)) {
+    base.roughActors = true;
+    addNote(notes, "roughActors", t);
+  } else if (!base.roughActors && /(관리자|사용자|고객|회원|운영자|상담사)/.test(t)) {
+    partial.roughActors = true;
+    addNote(notes, "roughActorsHint", t);
   }
 
-  // mainScreens (주요 화면)
-  if (/(화면|페이지|뷰|탭|플로우|대시보드|리스트|상세|작성|편집)/.test(t) && /(구성|필요|있|원해|포함)/.test(t)) {
-    base.mainScreens = true;
-    addNote(notes, "mainScreens", t);
-  } else if (!base.mainScreens && /(화면|페이지|대시보드|리스트|상세)/.test(t)) {
-    partial.mainScreens = true;
-    addNote(notes, "mainScreensHint", t);
+  // roughFlow (개략 흐름)
+  if (/(→|->|▶|흐름|과정|절차)/.test(t) || /(가입|등록|업로드|분석|확인|예약|결제|상담)/.test(t)) {
+    base.roughFlow = true;
+    addNote(notes, "roughFlow", t);
+  } else if (!base.roughFlow && /(업로드|확인|예약|결제)/.test(t)) {
+    partial.roughFlow = true;
+    addNote(notes, "roughFlowHint", t);
   }
 
-  // dataEntities (저장 데이터)
-  if (/(데이터|저장|DB|테이블|엔티티|모델|필드|레코드)/i.test(t) && /(무엇|종류|구성|필요|있)/.test(t)) {
-    base.dataEntities = true;
-    addNote(notes, "dataEntities", t);
-  } else if (!base.dataEntities && /(DB|데이터|저장)/i.test(t)) {
-    partial.dataEntities = true;
-    addNote(notes, "dataEntitiesHint", t);
+  // mustHaveFeatures (핵심 기능 3개 내외)
+  if (/(기능|필요|해야|지원|제공)/.test(t) && /(업로드|검색|요약|정리|공유|알림|예약|결제|상담|관리)/.test(t)) {
+    base.mustHaveFeatures = true;
+    addNote(notes, "mustHaveFeatures", t);
+  } else if (!base.mustHaveFeatures && /(업로드|검색|요약|공유|알림|예약|결제|관리)/.test(t)) {
+    partial.mustHaveFeatures = true;
+    addNote(notes, "mustHaveFeaturesHint", t);
   }
 
-  // integrations (외부 연동)
-  if (/(연동|API|웹훅|메일|결제|슬랙|카카오|구글|드라이브|파일|S3|AI|LLM|크롤링)/i.test(t)) {
-    base.integrations = true;
-    addNote(notes, "integrations", t);
-  } else if (!base.integrations && /(연동|API|결제|메일|파일|AI)/i.test(t)) {
-    partial.integrations = true;
-    addNote(notes, "integrationsHint", t);
-  }
-
-  // mvpScope (MVP 포함/제외 범위)
-  if (/(MVP|최소|1차\s*출시|첫\s*버전|포함\s*범위|제외|후순위)/i.test(t)) {
-    base.mvpScope = true;
-    addNote(notes, "mvpScope", t);
-  } else if (!base.mvpScope && /(포함|빼|일단|범위)/.test(t)) {
-    partial.mvpScope = true;
-    addNote(notes, "mvpScopeHint", t);
-  }
-
-  // designLevel (간단/일반/고급)
-  if (/(간단|심플|단순|기본|일반|보통|고급|완성도|디자인|UI|UX)/i.test(t)) {
-    base.designLevel = true;
-    addNote(notes, "designLevel", t);
-  } else if (!base.designLevel && /(디자인|UI|UX)/i.test(t)) {
-    partial.designLevel = true;
-    addNote(notes, "designLevelHint", t);
+  // constraints (큰 제약사항)
+  if (/(예산|기간|일정|보안|법|규정|개인정보|정책|제약|필수)/i.test(t)) {
+    base.constraints = true;
+    addNote(notes, "constraints", t);
+  } else if (!base.constraints && /(안\s*되|불가|못\s*함|필수)/.test(t)) {
+    partial.constraints = true;
+    addNote(notes, "constraintsHint", t);
   }
 
   return { ...base, notes, partial, updatedAt: nowIso, active: base.active !== false };
@@ -232,16 +209,14 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
 /** 레거시 비-LLM 경로(플래너 외부에서만 참조 시 사용). */
 export function chooseNextProblemInterviewSlot(state: ProblemInterviewState): ProblemInterviewSlot | null {
   const priority: ProblemInterviewSlot[] = [
-    "productGoal",
+    "serviceIdea",
     "targetUser",
-    "platformType",
-    "coreFeatures",
-    "authNeed",
-    "mainScreens",
-    "dataEntities",
-    "integrations",
-    "mvpScope",
-    "designLevel",
+    "coreProblem",
+    "expectedOutcome",
+    "roughActors",
+    "roughFlow",
+    "mustHaveFeatures",
+    "constraints",
   ];
   for (const slot of priority) {
     if (!problemInterviewIsCovered(state, slot)) return slot;
@@ -270,35 +245,29 @@ export function inferInterviewSlotsLikelyAddressedByPlannerQuestionBody(body: st
     ordered.push(s);
   };
 
-  if (/(무엇|어떤\s*서비스|만들고|구현|프로덕트|앱|웹|플랫폼)/.test(t)) {
-    push("productGoal");
+  if (/(무엇|어떤\s*(서비스|앱|웹)|만들고|아이디어|서비스\s*개요|한\s*문장)/.test(t)) {
+    push("serviceIdea");
   }
   if (/(누구|대상(?:은|이)?|사용자|고객|관리자|운영자|역할)/.test(t)) {
     push("targetUser");
   }
-  if (/(웹|모바일|앱|ios|안드로이드|관리자|어드민|admin|혼합)/i.test(t)) {
-    push("platformType");
+  if (/(가장\s*큰\s*(문제|불편)|문제점|불편|힘들|어렵|지연|비효율|오류|누락)/.test(t)) {
+    push("coreProblem");
   }
-  if (/(기능|화면|요구\s*사항|필요\s*기능)/.test(t)) {
-    push("coreFeatures");
+  if (/(기대\s*효과|원하는\s*상태|어떻게\s*개선|목표|되면\s*좋|원하)/.test(t)) {
+    push("expectedOutcome");
   }
-  if (/(로그인|회원가입|권한|role|rbac|인증|oauth|SSO)/i.test(t)) {
-    push("authNeed");
+  if (/(액터|역할|사용자\s*종류|누가\s*쓰|관리자\s*포함)/.test(t)) {
+    push("roughActors");
   }
-  if (/(주요\s*화면|화면\s*구성|페이지|대시보드|리스트|상세|작성|편집)/.test(t)) {
-    push("mainScreens");
+  if (/(흐름|한\s*줄|단계|과정|→|->|업로드|분석|확인|예약|결제|상담)/.test(t)) {
+    push("roughFlow");
   }
-  if (/(데이터|DB|엔티티|테이블|저장|모델)/i.test(t)) {
-    push("dataEntities");
+  if (/(핵심\s*기능|꼭\s*필요|필수\s*기능|3개)/.test(t)) {
+    push("mustHaveFeatures");
   }
-  if (/(연동|API|웹훅|메일|결제|슬랙|카카오|구글|드라이브|파일|S3|AI|LLM)/i.test(t)) {
-    push("integrations");
-  }
-  if (/(MVP|1차|첫\s*출시|필수\s*포함|제외|후순위|범위)/.test(t)) {
-    push("mvpScope");
-  }
-  if (/(디자인|UI|UX|간단|일반|고급|완성도)/i.test(t)) {
-    push("designLevel");
+  if (/(제약|예산|기간|일정|보안|정책|개인정보|필수)/i.test(t)) {
+    push("constraints");
   }
 
   return ordered;
@@ -364,26 +333,24 @@ export type InterviewAnalyzerPayload = {
 
 /** 인터뷰 완료 시 채팅에 한 번 보여줄 고정 안내(플랫폼 문구). */
 export const INTERVIEW_COMPLETION_NOTICE_KR =
-  "기획안 작성에 필요한 핵심 정보가 모두 확보되었습니다.\n정리 요청으로 프로젝트 기획안을 생성할 수 있습니다.";
+  "아이디어 초안에 필요한 핵심 정보가 모두 확보되었습니다.\n정리 요청으로 아이디어 초안을 생성할 수 있습니다.";
 
 /** 질문 후보 우선순위(플랫폼). 분석기 힌트는 이 순서 안에서만 조정한다. */
 export const PROBLEM_INTERVIEW_QUESTION_PRIORITY: readonly ProblemInterviewSlot[] = [
-  "productGoal",
+  "serviceIdea",
   "targetUser",
-  "platformType",
-  "coreFeatures",
-  "authNeed",
-  "mainScreens",
-  "dataEntities",
-  "integrations",
-  "mvpScope",
-  "designLevel",
+  "coreProblem",
+  "expectedOutcome",
+  "roughActors",
+  "roughFlow",
+  "mustHaveFeatures",
+  "constraints",
 ] as const;
 
 export const INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD = 0.55;
 
 export const INTERVIEW_CLARIFICATION_QUESTION_KR =
-  "말씀하신 내용을 이해했습니다.\n현재 방식에서 가장 큰 불편 요소가 무엇인지 한 가지만 알려주실 수 있을까요?";
+  "말씀하신 내용을 이해했습니다.\n가장 큰 문제(불편)를 한 문장으로만 알려주실 수 있을까요?";
 
 function isProblemInterviewSlot(s: string): s is ProblemInterviewSlot {
   return (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(s);
@@ -394,14 +361,19 @@ function normalizeLegacyInterviewSlotId(s: string): ProblemInterviewSlot | null 
   const t = String(s ?? "").trim();
   // legacy -> new slot mapping (best-effort)
   if (t === "coreUser") return "targetUser";
-  if (t === "painPoint") return "productGoal";
-  if (t === "needForImprovement") return "productGoal";
-  if (t === "currentMethod") return "productGoal";
-  if (t === "featurePriority") return "mvpScope";
-  if (t === "mvpPriority") return "mvpScope";
-  if (t === "kpiSuccess") return "productGoal";
-  if (t === "constraints") return "integrations";
-  if (t === "operations") return "platformType";
+  if (t === "productGoal") return "serviceIdea";
+  if (t === "painPoint") return "coreProblem";
+  if (t === "needForImprovement") return "expectedOutcome";
+  if (t === "currentMethod") return "serviceIdea";
+  if (t === "coreFeatures") return "mustHaveFeatures";
+  if (t === "featurePriority") return "mustHaveFeatures";
+  if (t === "mvpPriority") return "mustHaveFeatures";
+  if (t === "mvpScope") return "mustHaveFeatures";
+  if (t === "kpiSuccess") return "expectedOutcome";
+  if (t === "constraints") return "constraints";
+  if (t === "operations") return "roughActors";
+  if (t === "platformType") return "roughActors";
+  if (t === "roughFlow") return "roughFlow";
   if (isProblemInterviewSlot(t)) return t;
   return null;
 }
@@ -522,15 +494,16 @@ export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso:
     };
 
     setFromLegacy("coreUser", "targetUser");
-    setFromLegacy("painPoint", "productGoal");
-    setFromLegacy("needForImprovement", "productGoal");
-    setFromLegacy("currentMethod", "productGoal");
-    setFromLegacy("coreFeatures", "coreFeatures");
-    setFromLegacy("featurePriority", "mvpScope");
-    setFromLegacy("mvpScope", "mvpScope");
-    setFromLegacy("kpiSuccess", "productGoal");
-    setFromLegacy("constraints", "integrations");
-    setFromLegacy("operations", "platformType");
+    setFromLegacy("productGoal", "serviceIdea");
+    setFromLegacy("painPoint", "coreProblem");
+    setFromLegacy("needForImprovement", "expectedOutcome");
+    setFromLegacy("currentMethod", "serviceIdea");
+    setFromLegacy("coreFeatures", "mustHaveFeatures");
+    setFromLegacy("featurePriority", "mustHaveFeatures");
+    setFromLegacy("mvpScope", "mustHaveFeatures");
+    setFromLegacy("kpiSuccess", "expectedOutcome");
+    setFromLegacy("constraints", "constraints");
+    setFromLegacy("operations", "roughActors");
 
     const notesLegacy =
       typeof o.notes === "object" && o.notes !== null && !Array.isArray(o.notes)
@@ -731,10 +704,10 @@ export function proposalInterviewReadinessScore(state: ProblemInterviewState | n
 }
 
 const GLOBAL_DELEGATION_DEFAULTS: Partial<Record<ProblemInterviewSlot, string>> = {
-  platformType: "기본 플랫폼 형태(초안): 웹(사용자용) + 관리자(어드민) 혼합으로 가정합니다.",
-  authNeed: "기본 인증(초안): 로그인/역할 기반 권한(RBAC) 적용을 기본으로 가정합니다.",
-  integrations: "기본 연동(초안): 이메일 알림·파일 업로드를 우선 가정하고, 결제는 필요 시 확장합니다.",
-  designLevel: "기본 디자인 수준(초안): 일반(실무형 UI, 과도한 커스텀 디자인 제외)로 가정합니다.",
+  roughActors: "기본 액터(초안): 일반 사용자 / 관리자 2가지 역할로 가정합니다.",
+  roughFlow: "기본 흐름(초안): 입력(업로드/등록) → 처리(분석/정리) → 결과 확인 → 공유/저장.",
+  mustHaveFeatures: "기본 핵심 기능(초안): 입력(업로드/작성) · AI 처리(요약/분류) · 결과 공유.",
+  constraints: "기본 제약(초안): 개인정보 보호 및 최소 2~4주 내 MVP 가정.",
 };
 
 /** globalDelegation=true일 때 남은 슬롯을 기본안으로 보완한다. */
@@ -747,8 +720,8 @@ export function applyGlobalDelegationDefaults(state: ProblemInterviewState, nowI
     updatedAt: nowIso,
   };
 
-  // 실행/프로토타입 생성에 직접적인 기본 옵션은 "기본안 확정"으로 처리(재질문 최소화)
-  for (const slot of ["platformType", "authNeed", "integrations", "designLevel"] as const) {
+  // 아이디어 구체화 단계에서는 거친 초안만으로 진행할 수 있도록 일부 슬롯을 기본안으로 "확정" 처리
+  for (const slot of ["roughActors", "roughFlow", "mustHaveFeatures", "constraints"] as const) {
     if (slotStrictlyFilled(next, slot)) continue;
     (next as any)[slot] = true;
     if (next.partial && slot in next.partial) {
@@ -784,49 +757,41 @@ export function formatProposalInterviewReadinessLine(state: ProblemInterviewStat
   const pct = proposalInterviewReadinessPercent(state);
   const strict = problemInterviewStrictFilledCount(state);
   const total = PROBLEM_INTERVIEW_SLOT_TOTAL;
-  return `현재 기획안 준비도는 ${pct}%입니다 (${strict} / ${total} 슬롯 확정). 기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다.`;
+  return `현재 아이디어 정리도는 ${pct}%입니다 (${strict} / ${total} 슬롯 확정). 간단히 핵심만 더 확인하겠습니다.`;
 }
 
 const CONTROLLED_SLOT_QUESTIONS: Record<ProblemInterviewSlot, readonly string[]> = {
-  productGoal: [
-    "무엇을 만들고 싶은가요? (한 문장으로: 사용자가 무엇을 할 수 있게 만들고 싶나요?)",
-    "이 아이디어로 최종적으로 자동화/생성/관리하고 싶은 것은 무엇인가요?",
+  serviceIdea: [
+    "무엇을 만들고 싶은가요? (예: 회의록 자동화 웹서비스, 중고차 비교 앱)",
+    "한 문장으로 서비스 아이디어를 적어주실 수 있을까요?",
   ],
   targetUser: [
-    "누가 사용하나요? (주 사용자 역할 1~2개: 예. 사용자/관리자/운영자)",
-    "가장 자주 쓰는 사람은 누구이며, 어떤 업무를 하다가 이 기능이 필요해졌나요?",
+    "주 사용자는 누구인가요? (예: 회사 직원, 소상공인, 학생, 관리자)",
+    "이 서비스를 가장 자주 쓰게 될 사람(역할)은 누구인가요?",
   ],
-  platformType: [
-    "플랫폼 형태는 무엇이 좋나요? (웹 / 모바일 / 관리자 / 혼합)",
-    "사용자용 화면과 관리자(어드민) 화면이 모두 필요한가요?",
+  coreProblem: [
+    "현재 가장 큰 불편/문제는 무엇인가요? (한 문장)",
+    "지금 가장 시간이 많이 들거나 자주 막히는 지점은 어디인가요?",
   ],
-  coreFeatures: [
-    "핵심 기능 3가지만 적어주세요. (가능하면 동사형: 예. 업로드/검색/자동 요약)",
-    "프로토타입에서 ‘반드시 동작해야 하는 것’ 3가지는 무엇인가요?",
+  expectedOutcome: [
+    "어떻게 개선되길 원하나요? (예: 5분 내 자동 생성, 즉시 응답)",
+    "이 서비스가 성공했다고 느끼려면 무엇이 달라져야 하나요?",
   ],
-  authNeed: [
-    "로그인/권한이 필요하나요? (필요/불필요 + 필요하면 역할 예: 관리자/일반사용자)",
-    "익명 사용 가능인가요, 아니면 회원/조직 단위로 구분해야 하나요?",
+  roughActors: [
+    "사용자 종류를 개략적으로만 적어주세요. (예: 일반 사용자 / 관리자)",
+    "누가 누굴 위해 쓰나요? (예: 고객 / 상담사 / 관리자)",
   ],
-  mainScreens: [
-    "주요 화면 구성은 어떻게 되나요? (예: 목록/상세/작성/관리자 대시보드)",
-    "사용자가 처음 들어왔을 때부터 목표를 달성할 때까지 화면 흐름을 3~6개로 적어주세요.",
+  roughFlow: [
+    "서비스 흐름을 한 줄로만 적어주세요. (예: 업로드 → 분석 → 결과 확인)",
+    "사용자가 처음부터 끝까지 하는 과정을 3~5단계로만 적어주실 수 있나요?",
   ],
-  dataEntities: [
-    "저장해야 하는 데이터 종류는 무엇인가요? (예: 사용자, 프로젝트, 문서, 작업(Task) 등)",
-    "각 데이터에서 최소로 필요한 필드가 있다면 알려주세요. (예: 제목/상태/작성자/첨부파일)",
+  mustHaveFeatures: [
+    "반드시 필요한 핵심 기능을 3개 내외로 적어주세요. (예: 파일 업로드, 자동 요약, 공유 링크)",
+    "없으면 서비스가 성립하지 않는 기능 3가지는 무엇인가요?",
   ],
-  integrations: [
-    "외부 연동이 필요하나요? (메일/결제/AI/파일/슬랙 등) 필요하면 무엇인가요?",
-    "현재 쓰는 시스템(구글드라이브/노션/슬랙/사내DB 등)과 연결이 필요한가요?",
-  ],
-  mvpScope: [
-    "초기 버전(MVP)에 꼭 필요한 범위만 남긴다면 무엇을 포함/제외할까요?",
-    "프로토타입 1차에서 ‘없어도 되는 것’ 3개를 먼저 빼보면 무엇인가요?",
-  ],
-  designLevel: [
-    "디자인 수준은 어느 정도가 좋나요? (간단 / 일반 / 고급)",
-    "UI는 빠른 프로토타입(간단)로 갈까요, 아니면 실서비스 수준(일반/고급)에 가깝게 할까요?",
+  constraints: [
+    "큰 제약사항이 있나요? (예: 1개월 MVP, 개인정보 필수 보호, 모바일 우선)",
+    "기간/예산/정책/보안 등 반드시 지켜야 할 조건이 있으면 적어주세요.",
   ],
 };
 
@@ -886,18 +851,16 @@ export function proposalInterviewCoachingHintLine(
   const next = pickNextAskableInterviewSlot(state, asked ?? state.askedSlots, null);
   if (!next) return null;
   const hints: Partial<Record<ProblemInterviewSlot, string>> = {
-    productGoal: "무엇을 만들지 한 문장으로 정리해 주시면 다음 단계(화면/데이터)로 빠르게 넘어갈 수 있어요.",
-    targetUser: "주 사용자(역할)를 정하면 화면/권한/데이터 구조를 더 정확히 잡을 수 있어요.",
-    platformType: "웹/모바일/관리자(어드민) 여부를 정하면 프로토타입 구조가 명확해져요.",
-    coreFeatures: "핵심 기능 3개만 확정하면 바로 Task 분해가 가능해져요.",
-    authNeed: "로그인/권한 여부를 정하면 사용자 흐름과 데이터 접근 규칙을 만들 수 있어요.",
-    mainScreens: "주요 화면 구성이 정해지면 프로토타입 화면/라우팅을 바로 설계할 수 있어요.",
-    dataEntities: "저장 데이터 종류가 정해지면 DB 스키마와 API를 바로 설계할 수 있어요.",
-    integrations: "외부 연동 여부를 정하면 필요한 API/권한/키 관리 범위를 정할 수 있어요.",
-    mvpScope: "MVP 범위를 좁히면 질문 수가 줄고, 더 빠르게 프로토타입을 만들 수 있어요.",
-    designLevel: "디자인 수준을 정하면 UI 작업량과 프로토타입 완성도를 맞출 수 있어요.",
+    serviceIdea: "서비스 아이디어를 한 문장으로 정리하면 나머지 질문이 짧아집니다.",
+    targetUser: "주 사용자(역할)만 정해도 이후 단계(액터/흐름) 품질이 좋아집니다.",
+    coreProblem: "가장 큰 문제 1개만 먼저 확정해 주세요.",
+    expectedOutcome: "원하는 개선 결과(한 문장)만 정해도 방향이 선명해집니다.",
+    roughActors: "액터는 ‘사용자 종류’만 개략적으로 잡으면 충분해요. 상세 권한은 다음 탭에서 다룹니다.",
+    roughFlow: "흐름은 한 줄만이면 됩니다. 상세 플로우는 다음 탭에서 다룹니다.",
+    mustHaveFeatures: "핵심 기능 3개만 정하면 다음 단계에서 기능/Task 정리가 쉬워집니다.",
+    constraints: "큰 제약(기간/보안/정책)만 먼저 잡아두면 나중에 되돌림이 줄어듭니다.",
   };
-  return hints[next] ?? "기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다.";
+  return hints[next] ?? "아이디어 초안 완성도를 위해 핵심만 더 확인하겠습니다.";
 }
 
 export type InterviewQuestionPlan =
@@ -990,11 +953,14 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
     if (!fsRaw) return "empty";
     // legacy analyzers may output old slot ids; try them as aliases
     const legacyAliases: Partial<Record<ProblemInterviewSlot, readonly string[]>> = {
-      productGoal: ["painPoint", "needForImprovement", "currentMethod", "kpiSuccess"],
+      serviceIdea: ["productGoal", "currentMethod"],
       targetUser: ["coreUser"],
-      platformType: ["operations"],
-      integrations: ["constraints"],
-      mvpScope: ["featurePriority", "mvpPriority"],
+      coreProblem: ["painPoint"],
+      expectedOutcome: ["needForImprovement", "kpiSuccess"],
+      roughActors: ["operations", "platformType"],
+      roughFlow: ["mainScreens"],
+      mustHaveFeatures: ["coreFeatures", "featurePriority", "mvpPriority", "mvpScope"],
+      constraints: ["constraints", "integrations"],
     };
     const keys = [slot, ...(legacyAliases[slot] ?? [])];
     for (const key of keys) {
@@ -1021,7 +987,7 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
     if (Array.isArray(legacyMvp)) {
       const lines = legacyMvp.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24);
       if (lines.length) {
-        if (!notes.mvpScope?.length) notes.mvpScope = [...lines];
+        if (!notes.mustHaveFeatures?.length) notes.mustHaveFeatures = [...lines];
       }
     }
   }

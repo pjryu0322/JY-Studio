@@ -185,16 +185,14 @@ ${pd}
 6. 질문은 맞춤형이어야 한다.
 7. 최종적으로 아래가 모두 드러나도록 순차적으로 물어라(한 번에 다 묻지 말 것):
 
-- 무엇을 만들고 싶은가(productGoal)
-- 누가 사용하는가(targetUser)
-- 플랫폼 형태(platformType: 웹/모바일/관리자/혼합)
-- 핵심 기능 3개(coreFeatures)
-- 로그인/권한 필요 여부(authNeed)
-- 주요 화면 구성(mainScreens)
-- 저장 데이터 종류(dataEntities)
-- 외부 연동 필요 여부(integrations)
-- 초기 버전에 꼭 필요한 범위(mvpScope)
-- 디자인 수준(designLevel: 간단/일반/고급)
+- 무엇을 만들고 싶은가(serviceIdea)
+- 주 사용자는 누구인가(targetUser)
+- 가장 큰 문제는 무엇인가(coreProblem)
+- 어떻게 개선되길 원하는가(expectedOutcome)
+- 개략 액터는 무엇인가(roughActors)
+- 개략 흐름은 무엇인가(roughFlow)
+- 핵심 기능 3개 내외는 무엇인가(mustHaveFeatures)
+- 큰 제약사항이 있는가(constraints)
 
 지금 첫 질문을 시작하라.
 
@@ -540,22 +538,26 @@ export async function runInterviewAnalyzeOpenAI(input: {
   const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
   const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
 
-  const system = `당신은 프로젝트 기획안 작성 전 인터뷰 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
+  const system = `당신은 아이디어 구체화 단계(고수준 디스커버리) 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
 역할:
-1) 사용자의 최신 답변을 읽고, 아래 10개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
+1) 사용자의 최신 답변을 읽고, 아래 8개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
 2) 사용자의 답변 intent를 분류합니다(질문에 직접 답하지 않아도 "AI에게 판단을 위임"이면 delegate_to_ai).
 
-슬롯 정의(프로토타입 생성용 10개):
-- productGoal: 무엇을 만들고 싶은가(최종 사용 가치/자동화 대상)
-- targetUser: 누가 사용하는가(주 사용자 역할)
-- platformType: 웹/모바일/관리자/혼합 중 무엇인가
-- coreFeatures: 핵심 기능 3개(동사형)
-- authNeed: 로그인/권한 필요 여부(역할 포함)
-- mainScreens: 주요 화면 구성(흐름/페이지)
-- dataEntities: 저장 데이터 종류(엔티티)
-- integrations: 외부 연동 필요 여부(메일/결제/AI/파일 등)
-- mvpScope: 초기 버전에 꼭 필요한 범위(포함/제외)
-- designLevel: 디자인 수준(간단/일반/고급)
+슬롯 정의(아이디어 구체화용 8개 — 다음 단계로 넘길 고수준 정보만):
+- serviceIdea: 무엇을 만들고 싶은가(서비스 아이디어 한 문장)
+- targetUser: 주 사용자(역할)
+- coreProblem: 현재 가장 큰 불편/문제(1개)
+- expectedOutcome: 어떻게 개선되길 원하는가(기대 효과/목표 상태)
+- roughActors: 사용자 종류(개략: 예. 일반 사용자/관리자)
+- roughFlow: 서비스 흐름(한 줄: 예. 업로드 → 분석 → 결과 확인)
+- mustHaveFeatures: 반드시 필요한 핵심 기능 3개 내외
+- constraints: 예산/기간/정책/보안 등 큰 제약
+
+핵심 원칙:
+- 상세 액터 시나리오/권한 매트릭스 금지
+- 상세 화면 플로우 금지
+- 세부 CRUD/DB 구조/API 상세 금지
+- 위 상세 내용은 다음 탭(액터/흐름 정의, 기능 정리, 작업 정리 등)에서 다룬다.
 
 규칙:
 - 의미 기반으로 판단한다(키워드만 맞추지 않는다).
@@ -575,7 +577,7 @@ export async function runInterviewAnalyzeOpenAI(input: {
   - globalDelegation=true일 때는 delegatedSlot이 null이어도 된다.
 - 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
 - slots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나(구 키 filledSlots는 쓰지 말 것).
-- 10개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
+- 8개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
 - nextBestSlot은 아직 filled가 아니면서 이번 답으로 가장 보강해야 할 슬롯 하나(없으면 null).
 - confidence는 0~1 실수(모델 확신도).
 - notes에는 해당 슬롯에서 뽑은 짧은 근거 불릿(한국어) 문자열만 배열로 넣는다.
@@ -583,27 +585,25 @@ export async function runInterviewAnalyzeOpenAI(input: {
 JSON 스키마(키 이름·형식 엄수):
 {
   "intent": "answer|delegate_to_ai|skip|unclear",
-  "delegatedSlot": "productGoal|targetUser|platformType|coreFeatures|authNeed|mainScreens|dataEntities|integrations|mvpScope|designLevel|null",
+  "delegatedSlot": "serviceIdea|targetUser|coreProblem|expectedOutcome|roughActors|roughFlow|mustHaveFeatures|constraints|null",
   "delegatedDefault": "AI가 적용할 기본안 설명(짧게)",
   "globalDelegation": true|false,
   "summary": "한두 문장 한국어 요약",
   "slots": {
-    "productGoal": "empty|partial|filled",
+    "serviceIdea": "empty|partial|filled",
     "targetUser": "empty|partial|filled",
-    "platformType": "empty|partial|filled",
-    "coreFeatures": "empty|partial|filled",
-    "authNeed": "empty|partial|filled",
-    "mainScreens": "empty|partial|filled",
-    "dataEntities": "empty|partial|filled",
-    "integrations": "empty|partial|filled",
-    "mvpScope": "empty|partial|filled",
-    "designLevel": "empty|partial|filled"
+    "coreProblem": "empty|partial|filled",
+    "expectedOutcome": "empty|partial|filled",
+    "roughActors": "empty|partial|filled",
+    "roughFlow": "empty|partial|filled",
+    "mustHaveFeatures": "empty|partial|filled",
+    "constraints": "empty|partial|filled"
   },
   "notes": {
-    "productGoal": [], "targetUser": [], "platformType": [], "coreFeatures": [],
-    "authNeed": [], "mainScreens": [], "dataEntities": [], "integrations": [], "mvpScope": [], "designLevel": []
+    "serviceIdea": [], "targetUser": [], "coreProblem": [], "expectedOutcome": [],
+    "roughActors": [], "roughFlow": [], "mustHaveFeatures": [], "constraints": []
   },
-  "nextBestSlot": "productGoal" | "targetUser" | "platformType" | "coreFeatures" | "authNeed" | "mainScreens" | "dataEntities" | "integrations" | "mvpScope" | "designLevel" | null,
+  "nextBestSlot": "serviceIdea" | "targetUser" | "coreProblem" | "expectedOutcome" | "roughActors" | "roughFlow" | "mustHaveFeatures" | "constraints" | null,
   "confidence": 0.0
 }`;
 

@@ -394,9 +394,9 @@ export function RequirementsChatPanel({
                     gap: 8,
                     maxWidth: "min(100%, 360px)",
                   }}
-                  title="기획안 준비도 상세 보기"
+                  title="아이디어 정리도 상세 보기"
                 >
-                  <span style={{ whiteSpace: "nowrap" }}>기획안 준비도 {interviewUi.readinessPercent}%</span>
+                  <span style={{ whiteSpace: "nowrap" }}>아이디어 정리도 {interviewUi.readinessPercent}%</span>
                   <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
                   <span style={{ whiteSpace: "nowrap", color: "#334155" }}>
                     {interviewUi.covered}/{interviewUi.total}
@@ -406,7 +406,7 @@ export function RequirementsChatPanel({
                 {popoverOpen ? (
                   <div
                     role="dialog"
-                    aria-label="기획안 준비도 상세"
+                    aria-label="아이디어 정리도 상세"
                     style={{
                       position: "absolute",
                       left: 0,
@@ -422,7 +422,7 @@ export function RequirementsChatPanel({
                   >
                     <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
                       <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>
-                        기획안 준비도 {interviewUi.readinessPercent}% · {interviewUi.covered}/{interviewUi.total}
+                        아이디어 정리도 {interviewUi.readinessPercent}% · {interviewUi.covered}/{interviewUi.total}
                       </div>
                       <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
                         <div
