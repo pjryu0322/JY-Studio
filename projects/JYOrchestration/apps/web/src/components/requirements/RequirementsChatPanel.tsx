@@ -125,6 +125,7 @@ export function RequirementsChatPanel({
   const endRef = useRef<HTMLDivElement | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const headerRef = useRef<HTMLDivElement | null>(null);
   /** 원문 messageId → 다음에 스크롤할 답글 인덱스(순환) */
   const replyCycleIndexRef = useRef<Map<string, number>>(new Map());
 
@@ -298,7 +299,53 @@ export function RequirementsChatPanel({
 
   const expanded = Boolean(expandControls?.expanded);
   const interviewUi = ideationInterviewUi ?? null;
+  const [popoverOpen, setPopoverOpen] = useState(false);
   const [slotDetailsOpen, setSlotDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!popoverOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setPopoverOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [popoverOpen]);
+
+  useEffect(() => {
+    if (!popoverOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (headerRef.current?.contains(t)) return;
+      setPopoverOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [popoverOpen]);
+
+  const ExpandIcon = useCallback(({ expanded }: { expanded: boolean }) => {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+        {expanded ? (
+          <>
+            <path d="M9 3H5a2 2 0 0 0-2 2v4" />
+            <path d="M15 21h4a2 2 0 0 0 2-2v-4" />
+            <path d="M3 9l7-7" />
+            <path d="M21 15l-7 7" />
+          </>
+        ) : (
+          <>
+            <path d="M15 3h4a2 2 0 0 1 2 2v4" />
+            <path d="M9 21H5a2 2 0 0 1-2-2v-4" />
+            <path d="M21 9l-7-7" />
+            <path d="M3 15l7 7" />
+          </>
+        )}
+      </svg>
+    );
+  }, []);
 
   return (
     <section
@@ -313,36 +360,225 @@ export function RequirementsChatPanel({
       }}
       aria-label="아이디어 구체화 채팅"
     >
-      {expandControls ? (
+      {expandControls || interviewUi ? (
         <div
+          ref={headerRef}
           style={{
             flex: "0 0 auto",
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             gap: 8,
             padding: "8px 12px",
             borderBottom: "1px solid #e2e8f0",
             background: "#fff",
           }}
         >
-          <button
-            type="button"
-            data-testid="requirements-chat-expand-toggle"
-            onClick={() => expandControls.onToggle()}
-            style={{
-              border: "1px solid #cbd5e1",
-              background: expanded ? "#f0fdfa" : "#fff",
-              borderRadius: 8,
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 900,
-              color: "#0f172a",
-              cursor: "pointer",
-            }}
-          >
-            {expanded ? "채팅 축소" : "채팅 확대"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            {interviewUi ? (
+              <div style={{ position: "relative", minWidth: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => setPopoverOpen((v) => !v)}
+                  style={{
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    color: "#0f172a",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    maxWidth: "min(100%, 360px)",
+                  }}
+                  title="기획안 준비도 상세 보기"
+                >
+                  <span style={{ whiteSpace: "nowrap" }}>기획안 준비도 {interviewUi.readinessPercent}%</span>
+                  <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
+                  <span style={{ whiteSpace: "nowrap", color: "#334155" }}>
+                    {interviewUi.covered}/{interviewUi.total}
+                  </span>
+                </button>
+
+                {popoverOpen ? (
+                  <div
+                    role="dialog"
+                    aria-label="기획안 준비도 상세"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: "calc(100% + 8px)",
+                      zIndex: 6,
+                      width: "min(92vw, 520px)",
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      boxShadow: "0 24px 64px -28px rgba(15, 23, 42, 0.35)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>
+                        기획안 준비도 {interviewUi.readinessPercent}% · {interviewUi.covered}/{interviewUi.total}
+                      </div>
+                      <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            width: `${Math.min(100, Math.max(0, interviewUi.readinessPercent))}%`,
+                            height: "100%",
+                            borderRadius: 999,
+                            background: "#0f766e",
+                            transition: "width 0.25s ease-out",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
+                          확보 슬롯: {interviewUi.covered}/{interviewUi.total}
+                        </div>
+                        {interviewUi.nextSlot ? (
+                          <div style={{ fontSize: 12, fontWeight: 900, color: "#0f766e" }}>
+                            다음 필요 정보: {problemInterviewSlotLabelKr(interviewUi.nextSlot)}
+                          </div>
+                        ) : null}
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
+                          예상 남은 질문: {Math.max(0, interviewUi.remainingQuestionsEstimate)}개
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => setSlotDetailsOpen((v) => !v)}
+                          style={{
+                            border: "1px solid #e2e8f0",
+                            background: "#fff",
+                            borderRadius: 10,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontWeight: 900,
+                            color: "#334155",
+                            cursor: "pointer",
+                          }}
+                        >
+                          슬롯 상세 {slotDetailsOpen ? "접기" : "보기"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => interviewUi.onForceGeneratePlanNow()}
+                          style={{
+                            border: "1px solid #0f766e",
+                            background: "#ecfdf5",
+                            borderRadius: 10,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontWeight: 900,
+                            color: "#065f46",
+                            cursor: "pointer",
+                          }}
+                        >
+                          지금까지 내용으로 기획안 만들기
+                        </button>
+                      </div>
+
+                      {slotDetailsOpen ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                            <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>표시:</span>
+                            <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>✔ 완료</span>
+                            <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>△ 부분</span>
+                            <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>□ 미확보</span>
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                            {PROBLEM_INTERVIEW_SLOTS.map((slot) => {
+                              const level = interviewUi.slotState ? interviewSlotLevelFromState(interviewUi.slotState, slot) : "empty";
+                              const icon = level === "filled" ? "✔" : level === "partial" ? "△" : "□";
+                              const color =
+                                level === "filled" ? "#065f46" : level === "partial" ? "#92400e" : "#475569";
+                              const bg =
+                                level === "filled" ? "#ecfdf5" : level === "partial" ? "#fffbeb" : "#f8fafc";
+                              const border =
+                                level === "filled" ? "1px solid #a7f3d0" : level === "partial" ? "1px solid #fde68a" : "1px solid #e2e8f0";
+                              return (
+                                <div
+                                  key={slot}
+                                  style={{
+                                    border,
+                                    background: bg,
+                                    borderRadius: 12,
+                                    padding: "8px 10px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                  }}
+                                >
+                                  <span style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>{problemInterviewSlotLabelKr(slot)}</span>
+                                  <span style={{ fontSize: 12, fontWeight: 900, color }}>{icon}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {interviewUi.recentAskedSlots.length ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                              <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>최근 질문:</span>
+                              {interviewUi.recentAskedSlots.slice(-6).map((s, idx) => (
+                                <span
+                                  key={`${s}-${idx}`}
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 900,
+                                    color: "#334155",
+                                    background: "#fff",
+                                    border: "1px solid #e2e8f0",
+                                    borderRadius: 999,
+                                    padding: "3px 8px",
+                                  }}
+                                >
+                                  {problemInterviewSlotLabelKr(s)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          {expandControls ? (
+            <button
+              type="button"
+              data-testid="requirements-chat-expand-toggle"
+              onClick={() => expandControls.onToggle()}
+              aria-label={expanded ? "채팅 축소" : "채팅 확대"}
+              title={expanded ? "채팅 축소" : "채팅 확대"}
+              style={{
+                border: "1px solid #cbd5e1",
+                background: expanded ? "#f0fdfa" : "#fff",
+                borderRadius: 10,
+                width: 36,
+                height: 36,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#0f172a",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <ExpandIcon expanded={expanded} />
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div
@@ -365,169 +601,6 @@ export function RequirementsChatPanel({
             background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
           }}
         >
-          {interviewUi ? (
-            <div
-              style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 3,
-                maxWidth: 720,
-                margin: "0 auto 12px",
-                width: "100%",
-              }}
-            >
-              <div
-                style={{
-                  border: "1px solid rgba(226, 232, 240, 0.95)",
-                  background: "rgba(255,255,255,0.88)",
-                  backdropFilter: "blur(10px)",
-                  borderRadius: 14,
-                  padding: "10px 12px",
-                  boxShadow: "0 16px 40px -26px rgba(15, 23, 42, 0.35)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "baseline" }}>
-                      <span style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-                        기획안 준비도 {interviewUi.readinessPercent}%
-                      </span>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
-                        슬롯 {interviewUi.covered}/{interviewUi.total}
-                      </span>
-                      {interviewUi.nextSlot ? (
-                        <span style={{ fontSize: 12, fontWeight: 900, color: "#0f766e" }}>
-                          다음: {problemInterviewSlotLabelKr(interviewUi.nextSlot)}
-                        </span>
-                      ) : null}
-                      <span style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-                        예상 남은 질문 {Math.max(0, interviewUi.remainingQuestionsEstimate)}개
-                      </span>
-                    </div>
-                    <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-                      <div
-                        style={{
-                          width: `${Math.min(100, Math.max(0, interviewUi.readinessPercent))}%`,
-                          height: "100%",
-                          borderRadius: 999,
-                          background: "#0f766e",
-                          transition: "width 0.25s ease-out",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => setSlotDetailsOpen((v) => !v)}
-                      style={{
-                        border: "1px solid #e2e8f0",
-                        background: "#fff",
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        fontSize: 12,
-                        fontWeight: 900,
-                        color: "#334155",
-                        cursor: "pointer",
-                      }}
-                    >
-                      슬롯 상세 {slotDetailsOpen ? "접기" : "보기"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => interviewUi.onForceGeneratePlanNow()}
-                      style={{
-                        border: "1px solid #0f766e",
-                        background: "#ecfdf5",
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        fontSize: 12,
-                        fontWeight: 900,
-                        color: "#065f46",
-                        cursor: "pointer",
-                      }}
-                      title="슬롯이 부족해도 지금까지 내용으로 통합 기획안을 생성합니다"
-                    >
-                      지금까지 내용으로 기획안 만들기
-                    </button>
-                  </div>
-                </div>
-
-                {slotDetailsOpen ? (
-                  <div
-                    style={{
-                      borderTop: "1px solid rgba(226, 232, 240, 0.85)",
-                      paddingTop: 10,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>표시:</span>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>✔ 완료</span>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>△ 부분</span>
-                      <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>□ 미확보</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                      {PROBLEM_INTERVIEW_SLOTS.map((slot) => {
-                        const level = interviewUi.slotState ? interviewSlotLevelFromState(interviewUi.slotState, slot) : "empty";
-                        const icon = level === "filled" ? "✔" : level === "partial" ? "△" : "□";
-                        const color =
-                          level === "filled" ? "#065f46" : level === "partial" ? "#92400e" : "#475569";
-                        const bg =
-                          level === "filled" ? "#ecfdf5" : level === "partial" ? "#fffbeb" : "#f8fafc";
-                        const border =
-                          level === "filled" ? "1px solid #a7f3d0" : level === "partial" ? "1px solid #fde68a" : "1px solid #e2e8f0";
-                        return (
-                          <div
-                            key={slot}
-                            style={{
-                              border,
-                              background: bg,
-                              borderRadius: 12,
-                              padding: "8px 10px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 10,
-                            }}
-                          >
-                            <span style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>{problemInterviewSlotLabelKr(slot)}</span>
-                            <span style={{ fontSize: 12, fontWeight: 900, color }}>{icon}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {interviewUi.recentAskedSlots.length ? (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                        <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>최근 질문:</span>
-                        {interviewUi.recentAskedSlots.slice(-6).map((s, idx) => (
-                          <span
-                            key={`${s}-${idx}`}
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 900,
-                              color: "#334155",
-                              background: "#fff",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: 999,
-                              padding: "3px 8px",
-                            }}
-                          >
-                            {problemInterviewSlotLabelKr(s)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
         <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
         {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
 
