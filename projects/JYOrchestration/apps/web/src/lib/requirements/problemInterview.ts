@@ -720,15 +720,18 @@ export function buildNextProblemInterviewQuestion(state: ProblemInterviewState, 
 export function pickNextAskableInterviewSlot(
   state: ProblemInterviewState,
   asked: readonly ProblemInterviewSlot[] | undefined,
-  hint: ProblemInterviewSlot | null
+  hint: ProblemInterviewSlot | null,
+  opts?: { avoidSlots?: readonly ProblemInterviewSlot[] | null }
 ): ProblemInterviewSlot | null {
   const ordered: ProblemInterviewSlot[] = [];
   if (hint && isProblemInterviewSlot(hint) && !slotStrictlyFilled(state, hint)) ordered.push(hint);
   for (const s of PROBLEM_INTERVIEW_QUESTION_PRIORITY) {
     if (!ordered.includes(s)) ordered.push(s);
   }
+  const avoid = new Set((opts?.avoidSlots ?? []).filter(Boolean) as ProblemInterviewSlot[]);
   const lastAsked = asked && asked.length > 0 ? asked[asked.length - 1]! : null;
   for (const slot of ordered) {
+    if (avoid.has(slot)) continue;
     if (slotStrictlyFilled(state, slot)) continue;
     if (isDoubleRepeatAsk(asked, slot)) continue;
     if (lastAsked === slot && interviewSlotLevelFromState(state, slot) === "empty") {
@@ -778,7 +781,8 @@ export function planNextInterviewTurn(
   asked: readonly ProblemInterviewSlot[] | undefined,
   turnSeed: number,
   confidenceThreshold = INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
-  fallbackSummary?: string
+  fallbackSummary?: string,
+  opts?: { avoidNextSlot?: readonly ProblemInterviewSlot[] | null }
 ): InterviewQuestionPlan | null {
   if (PROBLEM_INTERVIEW_SLOTS.every((s) => slotStrictlyFilled(mergedState, s))) {
     return null;
@@ -799,7 +803,7 @@ export function planNextInterviewTurn(
   }
 
   const hint = analyzer?.nextBestSlot ?? null;
-  const slot = pickNextAskableInterviewSlot(mergedState, asked, hint);
+  const slot = pickNextAskableInterviewSlot(mergedState, asked, hint, { avoidSlots: opts?.avoidNextSlot ?? null });
   if (!slot) {
     return { kind: "clarification", question: INTERVIEW_CLARIFICATION_QUESTION_KR, summary };
   }
