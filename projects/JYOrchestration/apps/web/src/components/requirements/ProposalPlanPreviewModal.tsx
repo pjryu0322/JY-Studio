@@ -13,21 +13,29 @@ export function ProposalPlanPreviewModal({
   open,
   title,
   markdown,
+  projectName,
+  version,
   busy,
   onClose,
   onRegenerate,
+  onRequestRevision,
   onConfirm,
 }: {
   readonly open: boolean;
   readonly title: string;
   readonly markdown: string;
+  readonly projectName: string;
+  readonly version: number;
   readonly busy: boolean;
   readonly onClose: () => void;
   readonly onRegenerate: () => void;
+  readonly onRequestRevision: (requestText: string) => void;
   readonly onConfirm: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<Pos>({ x: 0, y: 0 });
+  const [revOpen, setRevOpen] = useState(false);
+  const [revText, setRevText] = useState("");
   const dragRef = useRef<{
     active: boolean;
     moved: boolean;
@@ -130,6 +138,27 @@ export function ProposalPlanPreviewModal({
 
   if (!open) return null;
 
+  const baseName = String(projectName || "프로젝트").trim() || "프로젝트";
+  const safeBase = baseName
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const v = Number.isFinite(version) && version > 0 ? Math.floor(version) : 1;
+  const fileName = `${safeBase}_기획안_v${v}.md`;
+
+  const downloadMarkdown = () => {
+    const blob = new Blob([markdown ?? ""], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <button
@@ -185,7 +214,6 @@ export function ProposalPlanPreviewModal({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: 1 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: 0.3 }}>드래그하여 이동</span>
             <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", lineHeight: 1.35 }}>{title}</div>
           </div>
           <button
@@ -255,6 +283,28 @@ export function ProposalPlanPreviewModal({
             onClick={(e) => {
               e.stopPropagation();
               if (dragRef.current.moved) return;
+              setRevOpen(true);
+            }}
+            style={{
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              borderRadius: 10,
+              padding: "9px 12px",
+              fontSize: 13,
+              fontWeight: 900,
+              color: "#334155",
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.55 : 1,
+            }}
+          >
+            수정 요청
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (dragRef.current.moved) return;
               onRegenerate();
             }}
             style={{
@@ -270,6 +320,28 @@ export function ProposalPlanPreviewModal({
             }}
           >
             재생성
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (dragRef.current.moved) return;
+              downloadMarkdown();
+            }}
+            style={{
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              borderRadius: 10,
+              padding: "9px 12px",
+              fontSize: 13,
+              fontWeight: 900,
+              color: "#334155",
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.55 : 1,
+            }}
+          >
+            다운로드
           </button>
           <button
             type="button"
@@ -295,6 +367,156 @@ export function ProposalPlanPreviewModal({
           </button>
         </div>
       </div>
+
+      {revOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="수정 요청 닫기"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 84,
+              border: 0,
+              padding: 0,
+              margin: 0,
+              background: "rgba(2, 6, 23, 0.28)",
+              cursor: "pointer",
+            }}
+            onClick={() => setRevOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="기획안 수정 요청"
+            style={{
+              position: "fixed",
+              zIndex: 85,
+              left: "50%",
+              top: "12%",
+              transform: "translateX(-50%)",
+              width: "min(92vw, 640px)",
+              borderRadius: 14,
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              boxShadow: "0 24px 64px -20px rgba(15, 23, 42, 0.35)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 14px",
+                borderBottom: "1px solid #e2e8f0",
+                background: "#f8fafc",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>수정 요청</div>
+              <button
+                type="button"
+                aria-label="닫기"
+                onClick={() => setRevOpen(false)}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  borderRadius: 999,
+                  width: 34,
+                  height: 34,
+                  fontSize: 18,
+                  lineHeight: 1,
+                  fontWeight: 800,
+                  color: "#475569",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: "12px 14px" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>
+                원하는 변경사항을 적어주세요. (예: 섹션 추가/삭제, 표현 톤, 범위 조정, KPI 보강 등)
+              </div>
+              <textarea
+                value={revText}
+                onChange={(e) => setRevText(e.target.value)}
+                placeholder="예) MVP 범위를 더 좁혀서 2주 내 가능한 수준으로 조정하고, KPI는 MAU/업무시간절감 중심으로 다시 써줘."
+                style={{
+                  width: "100%",
+                  minHeight: 120,
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  outline: "none",
+                  resize: "vertical",
+                }}
+                disabled={busy}
+              />
+            </div>
+
+            <div
+              style={{
+                padding: "12px 14px 14px",
+                borderTop: "1px solid #e2e8f0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 8,
+                background: "#fff",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setRevOpen(false)}
+                style={{
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  color: "#334155",
+                  cursor: busy ? "not-allowed" : "pointer",
+                  opacity: busy ? 0.55 : 1,
+                }}
+                disabled={busy}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const text = revText.trim();
+                  if (!text) return;
+                  setRevOpen(false);
+                  setRevText("");
+                  onRequestRevision(text);
+                }}
+                style={{
+                  border: "1px solid #0f766e",
+                  background: "#ecfdf5",
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  fontSize: 13,
+                  fontWeight: 900,
+                  color: "#065f46",
+                  cursor: busy ? "not-allowed" : "pointer",
+                  opacity: busy ? 0.55 : 1,
+                }}
+                disabled={busy || !revText.trim()}
+              >
+                적용해서 다시 만들기
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </>
   );
 }

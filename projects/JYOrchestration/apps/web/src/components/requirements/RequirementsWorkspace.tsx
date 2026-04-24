@@ -715,11 +715,14 @@ export function RequirementsWorkspace({
     return [...list].sort((a, b) => b.version - a.version)[0] ?? null;
   }, [deliverableAssetsFromProject]);
 
-  const proposalPreviewMarkdown = useMemo(() => {
+  const proposalPreviewAsset = useMemo(() => {
     const id = proposalPlanPreview.assetId;
-    if (!id) return "";
-    return deliverableAssetsFromProject.find((a) => a.id === id)?.content ?? "";
+    if (!id) return null;
+    return deliverableAssetsFromProject.find((a) => a.id === id) ?? null;
   }, [proposalPlanPreview.assetId, deliverableAssetsFromProject]);
+
+  const proposalPreviewMarkdown = useMemo(() => proposalPreviewAsset?.content ?? "", [proposalPreviewAsset]);
+  const proposalPreviewVersion = useMemo(() => proposalPreviewAsset?.version ?? 1, [proposalPreviewAsset]);
 
   const workflowGuidanceBanner = useMemo(() => {
     const fromUrl = initialWorkflowNotice.trim();
@@ -1415,7 +1418,7 @@ export function RequirementsWorkspace({
   ]);
 
   const handleGenerateDeliverables = useCallback(
-    async (types: readonly IdeationDeliverableType[]) => {
+    async (types: readonly IdeationDeliverableType[], opts?: { readonly revisionRequest?: string }) => {
       const pid = resolvedProjectId.trim();
       if (!pid) {
         setError("프로젝트에 연결된 뒤 산출물 생성을 사용할 수 있습니다.");
@@ -1453,6 +1456,7 @@ export function RequirementsWorkspace({
             projectDescription: project?.description ?? "",
             chatSummary,
             dialogueExcerpt: excerpt,
+            revisionRequest: opts?.revisionRequest ?? "",
             outputTypes: types,
             aiResponseStyle: readAiResponseStyle(),
           }),
@@ -2973,9 +2977,12 @@ export function RequirementsWorkspace({
         open={proposalPlanPreview.open}
         title={`${(project?.name ?? "").trim() || "프로젝트"} 기획안 미리보기`}
         markdown={proposalPreviewMarkdown}
+        projectName={(project?.name ?? "").trim() || "프로젝트"}
+        version={proposalPreviewVersion}
         busy={busy || deliverableGenerateBusy}
         onClose={() => setProposalPlanPreview({ open: false, assetId: null })}
         onRegenerate={() => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT])}
+        onRequestRevision={(text) => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT], { revisionRequest: text })}
         onConfirm={() => {
           const id = proposalPlanPreview.assetId;
           if (!id) return;
