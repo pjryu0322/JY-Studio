@@ -48,11 +48,13 @@ import {
   coerceInterviewAnalyzerPayload,
   emergencyFallbackProblemInterviewFromUserMessageRegex,
   emptyProblemInterviewState,
+  interviewSlotLevelFromState,
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   INTERVIEW_COMPLETION_NOTICE_KR,
   mergeAnalyzerIntoProblemInterview,
   formatProposalInterviewReadinessLine,
   mergeImplicitAskedFromLastBootstrapQuestion,
+  PROBLEM_INTERVIEW_SLOTS,
   problemInterviewPartialOnlyCount,
   pickNextAskableInterviewSlot,
   planNextInterviewTurn,
@@ -1882,18 +1884,36 @@ export function RequirementsWorkspace({
           | { kind: "http-ok-parse-fail" }
           | { kind: "remote-fail" };
 
+        const levelRank = (l: "empty" | "partial" | "filled" | null | undefined): number => {
+          if (l === "filled") return 2;
+          if (l === "partial") return 1;
+          return 0;
+        };
+
         const commitInterviewPlannerReplyOnce = async (
           merged: ProblemInterviewState,
-          analyzerForPlan: InterviewAnalyzerPayload | null
+          analyzerForPlan: InterviewAnalyzerPayload | null,
+          ctx?: { prevState?: ProblemInterviewState; lastAskedSlot?: ProblemInterviewSlot | null }
         ): Promise<IdeationPlannerTail> => {
           const nowIso = new Date().toISOString();
+          // 직전 AI가 물은 슬롯(있다면). 사용자가 다른 얘기를 해도 전체 슬롯 분석/저장은 유지하되,
+          // 직전 슬롯에서 진전이 없으면 같은 슬롯을 즉시 반복 질문하지 않게 한다.
+          const lastAskedSlot = ctx?.lastAskedSlot ?? null;
+          const prev = ctx?.prevState ?? merged;
+          const prevLevel = lastAskedSlot ? interviewSlotLevelFromState(prev, lastAskedSlot) : null;
+          const nextLevel = lastAskedSlot ? interviewSlotLevelFromState(merged, lastAskedSlot) : null;
+          const avoidImmediateRepeat =
+            lastAskedSlot ? levelRank(nextLevel) <= levelRank(prevLevel) : false;
+          const avoidSlotsForNext = avoidImmediateRepeat && lastAskedSlot ? ([lastAskedSlot] as const) : null;
+
           const plan = planNextInterviewTurn(
             merged,
             analyzerForPlan,
             merged.askedSlots,
             turn,
             INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
-            text
+            text,
+            { avoidNextSlot: avoidSlotsForNext }
           );
           if (plan) {
             const readiness = formatProposalInterviewReadinessLine(merged);
@@ -1902,7 +1922,8 @@ export function RequirementsWorkspace({
             const slotForAsked =
               plan.kind === "slot"
                 ? plan.slot
-                : pickNextAskableInterviewSlot(merged, merged.askedSlots, null) ?? ("painPoint" as ProblemInterviewSlot);
+                : pickNextAskableInterviewSlot(merged, merged.askedSlots, null, { avoidSlots: avoidSlotsForNext }) ??
+                  ("painPoint" as ProblemInterviewSlot);
             const asked = withAskedSlot(merged, slotForAsked, nowIso);
             const baseMsgs = withCalling.requirementsConversation.messages;
             if (
@@ -2048,7 +2069,10 @@ export function RequirementsWorkspace({
               msgs,
               mergeAnalyzerIntoProblemInterview(seeded, outcome.payload, nowIso)
             );
-            return commitInterviewPlannerReplyOnce(merged, outcome.payload);
+            const lastSlotRaw = String(latestAiTurn?.meta?.problemInterviewLastSlot ?? "").trim();
+            const lastSlot: ProblemInterviewSlot | null =
+              lastSlotRaw && (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(lastSlotRaw) ? (lastSlotRaw as ProblemInterviewSlot) : null;
+            return commitInterviewPlannerReplyOnce(merged, outcome.payload, { prevState: seeded, lastAskedSlot: lastSlot });
           }
 
           if (outcome.kind === "http-ok-parse-fail") {
@@ -2061,7 +2085,10 @@ export function RequirementsWorkspace({
               ? { ...seeded, updatedAt: nowIso }
               : emergencyFallbackProblemInterviewFromUserMessageRegex(seeded, text, nowIso);
           const merged = mergeImplicitAskedFromLastBootstrapQuestion(msgs, mergedFallback);
-          return commitInterviewPlannerReplyOnce(merged, null);
+          const lastSlotRaw = String(latestAiTurn?.meta?.problemInterviewLastSlot ?? "").trim();
+          const lastSlot: ProblemInterviewSlot | null =
+            lastSlotRaw && (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(lastSlotRaw) ? (lastSlotRaw as ProblemInterviewSlot) : null;
+          return commitInterviewPlannerReplyOnce(merged, null, { prevState: seeded, lastAskedSlot: lastSlot });
         };
 
         const runFacilitatorOrDraftPipeline = async (): Promise<IdeationPlannerTail> => {
