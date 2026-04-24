@@ -7,7 +7,8 @@ export type ProblemInterviewSlot =
   | "currentMethod"
   | "needForImprovement"
   | "coreFeatures"
-  | "mvpPriority"
+  | "featurePriority"
+  | "mvpScope"
   | "kpiSuccess"
   | "constraints"
   | "operations";
@@ -20,7 +21,8 @@ export type ProblemInterviewState = {
   currentMethod: boolean;
   needForImprovement: boolean;
   coreFeatures: boolean;
-  mvpPriority: boolean;
+  featurePriority: boolean;
+  mvpScope: boolean;
   kpiSuccess: boolean;
   constraints: boolean;
   operations: boolean;
@@ -44,7 +46,8 @@ export const PROBLEM_INTERVIEW_SLOTS: ProblemInterviewSlot[] = [
   "currentMethod",
   "needForImprovement",
   "coreFeatures",
-  "mvpPriority",
+  "featurePriority",
+  "mvpScope",
   "kpiSuccess",
   "constraints",
   "operations",
@@ -60,7 +63,8 @@ export function emptyProblemInterviewState(nowIso: string): ProblemInterviewStat
     currentMethod: false,
     needForImprovement: false,
     coreFeatures: false,
-    mvpPriority: false,
+    featurePriority: false,
+    mvpScope: false,
     kpiSuccess: false,
     constraints: false,
     operations: false,
@@ -78,7 +82,8 @@ export function problemInterviewSlotLabelKr(slot: ProblemInterviewSlot): string 
   if (slot === "currentMethod") return "기존 해결 방식";
   if (slot === "needForImprovement") return "개선 필요성";
   if (slot === "coreFeatures") return "핵심 기능";
-  if (slot === "mvpPriority") return "MVP 우선순위";
+  if (slot === "featurePriority") return "기능 우선순위";
+  if (slot === "mvpScope") return "MVP 범위";
   if (slot === "kpiSuccess") return "KPI·성공기준";
   if (slot === "constraints") return "제약사항";
   return "운영 조건";
@@ -183,13 +188,22 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
     addNote(notes, "coreFeaturesHint", t);
   }
 
-  // mvpPriority
-  if (/(MVP|최소|1차\s*출시|첫\s*버전|우선\s*순위|먼저|나중에|제외)/i.test(t)) {
-    base.mvpPriority = true;
-    addNote(notes, "mvpPriority", t);
-  } else if (!base.mvpPriority && /(포함|빼|후순위|일단)/.test(t)) {
-    partial.mvpPriority = true;
-    addNote(notes, "mvpPriorityHint", t);
+  // featurePriority (기능·요구 우선순위)
+  if (/(우선\s*순위|먼저|나중에|MoSCoW|Must|Should|Could|급한|중요도)/i.test(t) && /(기능|요구|화면|작업)/i.test(t)) {
+    base.featurePriority = true;
+    addNote(notes, "featurePriority", t);
+  } else if (!base.featurePriority && /(우선|순위|먼저|나중)/.test(t)) {
+    partial.featurePriority = true;
+    addNote(notes, "featurePriorityHint", t);
+  }
+
+  // mvpScope (MVP 포함/제외 범위)
+  if (/(MVP|최소|1차\s*출시|첫\s*버전|포함\s*범위|제외|후순위)/i.test(t)) {
+    base.mvpScope = true;
+    addNote(notes, "mvpScope", t);
+  } else if (!base.mvpScope && /(포함|빼|일단|범위)/.test(t)) {
+    partial.mvpScope = true;
+    addNote(notes, "mvpScopeHint", t);
   }
 
   // kpiSuccess
@@ -231,7 +245,8 @@ export function chooseNextProblemInterviewSlot(state: ProblemInterviewState): Pr
     "needForImprovement",
     "currentMethod",
     "coreFeatures",
-    "mvpPriority",
+    "featurePriority",
+    "mvpScope",
     "kpiSuccess",
     "constraints",
     "operations",
@@ -282,8 +297,11 @@ export function inferInterviewSlotsLikelyAddressedByPlannerQuestionBody(body: st
   if (/(기능|화면|요구\s*사항|필요\s*기능)/.test(t)) {
     push("coreFeatures");
   }
-  if (/(MVP|우선\s*순위|1차|첫\s*출시|필수\s*포함|제외|후순위)/.test(t)) {
-    push("mvpPriority");
+  if (/(우선\s*순위|MoSCoW|먼저\s*만들|중요도|급한)/.test(t)) {
+    push("featurePriority");
+  }
+  if (/(MVP|1차|첫\s*출시|필수\s*포함|제외|후순위|범위)/.test(t)) {
+    push("mvpScope");
   }
   if (/(KPI|지표|성공\s*기준|측정|목표\s*수치)/.test(t)) {
     push("kpiSuccess");
@@ -360,7 +378,8 @@ export const PROBLEM_INTERVIEW_QUESTION_PRIORITY: readonly ProblemInterviewSlot[
   "needForImprovement",
   "currentMethod",
   "coreFeatures",
-  "mvpPriority",
+  "featurePriority",
+  "mvpScope",
   "kpiSuccess",
   "constraints",
   "operations",
@@ -373,6 +392,14 @@ export const INTERVIEW_CLARIFICATION_QUESTION_KR =
 
 function isProblemInterviewSlot(s: string): s is ProblemInterviewSlot {
   return (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(s);
+}
+
+/** API·저장소 레거시 `mvpPriority` 문자열을 신규 슬롯으로 매핑 */
+function normalizeLegacyInterviewSlotId(s: string): ProblemInterviewSlot | null {
+  const t = String(s ?? "").trim();
+  if (t === "mvpPriority") return "featurePriority";
+  if (isProblemInterviewSlot(t)) return t;
+  return null;
 }
 
 function interviewLevelRank(l: InterviewSlotLevel): number {
@@ -395,8 +422,8 @@ export function interviewSlotLevelFromState(state: ProblemInterviewState, slot: 
 function normalizeAskedSlotsFromWire(raw: unknown): ProblemInterviewSlot[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((x) => String(x ?? "").trim())
-    .filter((x): x is ProblemInterviewSlot => isProblemInterviewSlot(x));
+    .map((x) => normalizeLegacyInterviewSlotId(String(x ?? "").trim()))
+    .filter((x): x is ProblemInterviewSlot => x != null);
 }
 
 /**
@@ -410,6 +437,14 @@ export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso:
   const asked = normalizeAskedSlotsFromWire(o.askedSlots);
   if (typeof o.coreUser === "boolean") {
     const base = emptyProblemInterviewState(nowIso);
+    const legacyMvp = typeof (o as Record<string, unknown>).mvpPriority === "boolean" ? Boolean((o as Record<string, unknown>).mvpPriority) : false;
+    const partialRaw =
+      typeof o.partial === "object" && o.partial !== null ? { ...(o.partial as Record<string, boolean>) } : {};
+    if (partialRaw.mvpPriority) {
+      partialRaw.featurePriority = true;
+      partialRaw.mvpScope = true;
+      delete partialRaw.mvpPriority;
+    }
     return {
       ...base,
       coreUser: Boolean(o.coreUser),
@@ -417,7 +452,8 @@ export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso:
       currentMethod: Boolean(o.currentMethod),
       needForImprovement: Boolean(o.needForImprovement),
       coreFeatures: typeof o.coreFeatures === "boolean" ? o.coreFeatures : false,
-      mvpPriority: typeof o.mvpPriority === "boolean" ? o.mvpPriority : false,
+      featurePriority: typeof o.featurePriority === "boolean" ? o.featurePriority : legacyMvp,
+      mvpScope: typeof o.mvpScope === "boolean" ? o.mvpScope : legacyMvp,
       kpiSuccess: typeof o.kpiSuccess === "boolean" ? o.kpiSuccess : false,
       constraints: typeof o.constraints === "boolean" ? o.constraints : false,
       operations: typeof o.operations === "boolean" ? o.operations : false,
@@ -425,10 +461,7 @@ export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso:
         typeof o.notes === "object" && o.notes !== null && !Array.isArray(o.notes)
           ? { ...(o.notes as Record<string, string>) }
           : {},
-      partial:
-        typeof o.partial === "object" && o.partial !== null
-          ? { ...(o.partial as Record<string, boolean>) }
-          : {},
+      partial: Object.keys(partialRaw).length ? partialRaw : {},
       askedSlots: asked.length ? asked : base.askedSlots,
       active: typeof o.active === "boolean" ? o.active : base.active,
       updatedAt: typeof o.updatedAt === "string" ? o.updatedAt : nowIso,
@@ -446,6 +479,17 @@ export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso:
       partial[slot] = true;
     } else {
       row[slot] = false;
+    }
+  }
+  const legacyMvpWire = String((o as Record<string, unknown>)["mvpPriority"] ?? "").trim().toLowerCase();
+  if (legacyMvpWire === "filled" || legacyMvpWire === "partial") {
+    const row = st as unknown as Record<string, boolean>;
+    if (legacyMvpWire === "filled") {
+      row.featurePriority = true;
+      row.mvpScope = true;
+    } else {
+      partial.featurePriority = true;
+      partial.mvpScope = true;
     }
   }
   if (Object.keys(partial).length) st.partial = { ...(st.partial ?? {}), ...partial };
@@ -634,9 +678,13 @@ const CONTROLLED_SLOT_QUESTIONS: Record<ProblemInterviewSlot, readonly string[]>
     "반드시 들어가야 할 핵심 기능(또는 화면)을 3가지 이내로 짚어 주실 수 있을까요?",
     "사용자가 가장 자주 쓰게 될 핵심 기능은 무엇인가요?",
   ],
-  mvpPriority: [
-    "첫 출시(MVP)에 꼭 포함해야 할 것과, 당장은 빼도 되는 것을 구분해 주실 수 있을까요?",
-    "MVP에서 가장 먼저 구현해야 할 우선순위는 어떻게 되나요?",
+  featurePriority: [
+    "기능·요구사항 기준으로 구현 우선순위를 어떻게 두고 싶으신가요? (예: 긴급/중요/후순위)",
+    "리소스가 한정될 때 가장 먼저 만들어야 할 것은 무엇인가요?",
+  ],
+  mvpScope: [
+    "첫 출시(MVP)에 반드시 포함할 범위와, 이번 버전에서는 빼도 되는 범위를 구분해 주실 수 있을까요?",
+    "MVP에서 ‘절대 빠지면 안 되는 것’과 ‘나중에 넣어도 되는 것’을 나눠 주세요.",
   ],
   kpiSuccess: [
     "도입 후 성과를 어떤 지표로 보고 싶으신가요? (예: 시간 절감, 오류 감소, 만족도 등)",
@@ -689,6 +737,29 @@ export function pickNextAskableInterviewSlot(
     return slot;
   }
   return null;
+}
+
+/** 진행 배너·힌트용: 다음으로 물을 슬롯 기준 짧은 안내(정리 요청 유도 없음). */
+export function proposalInterviewCoachingHintLine(
+  state: ProblemInterviewState | null | undefined,
+  asked: readonly ProblemInterviewSlot[] | undefined
+): string | null {
+  if (!state || state.active === false) return null;
+  const next = pickNextAskableInterviewSlot(state, asked ?? state.askedSlots, null);
+  if (!next) return null;
+  const hints: Partial<Record<ProblemInterviewSlot, string>> = {
+    painPoint: "현재 문제를 한 가지만 더 구체적으로 알려주시면 준비도가 올라갑니다.",
+    coreUser: "핵심 사용자·역할을 짚어 주시면 준비도가 올라갑니다.",
+    needForImprovement: "개선이 필요한 이유나 기대 효과를 알려주시면 준비도가 올라갑니다.",
+    currentMethod: "지금의 처리 방식·도구를 알려주시면 준비도가 올라갑니다.",
+    coreFeatures: "핵심 기능 우선순위를 알려주시면 완성도가 올라갑니다.",
+    featurePriority: "기능 간 우선순위(무엇을 먼저)를 알려주시면 완성도가 올라갑니다.",
+    mvpScope: "MVP에 포함할 범위와 제외할 범위를 나눠 주시면 완성도가 올라갑니다.",
+    kpiSuccess: "성공 기준이나 측정 지표를 알려주시면 완성도가 올라갑니다.",
+    constraints: "제약사항(일정·보안·연동 등)을 알려주시면 완성도가 올라갑니다.",
+    operations: "운영 방식(담당·승인·지원)을 알려주시면 완성도가 올라갑니다.",
+  };
+  return hints[next] ?? "기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다.";
 }
 
 export type InterviewQuestionPlan =
@@ -768,14 +839,24 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
       : o.filledSlots && typeof o.filledSlots === "object"
         ? (o.filledSlots as Record<string, unknown>)
         : null;
+  const slotLevelFromFsRaw = (slot: ProblemInterviewSlot): InterviewSlotLevel => {
+    if (!fsRaw) return "empty";
+    const keys =
+      slot === "featurePriority"
+        ? (["featurePriority", "mvpPriority"] as const)
+        : slot === "mvpScope"
+          ? (["mvpScope", "mvpPriority"] as const)
+          : [slot];
+    for (const key of keys) {
+      const x = String((fsRaw as Record<string, unknown>)[key] ?? "").trim().toLowerCase();
+      if (x === "filled" || x === "partial" || x === "empty") return x;
+    }
+    return "empty";
+  };
+
   const slots = {} as Record<ProblemInterviewSlot, InterviewSlotLevel>;
   for (const slot of PROBLEM_INTERVIEW_SLOTS) {
-    let v: InterviewSlotLevel = "empty";
-    if (fsRaw) {
-      const x = String(fsRaw[slot] ?? "").trim().toLowerCase();
-      if (x === "filled" || x === "partial" || x === "empty") v = x;
-    }
-    slots[slot] = v;
+    slots[slot] = slotLevelFromFsRaw(slot);
   }
   const notes: Partial<Record<ProblemInterviewSlot, string[]>> = {};
   const nRaw = o.notes;
@@ -786,11 +867,23 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
       const lines = arr.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24);
       if (lines.length) notes[slot] = lines;
     }
+    const legacyMvp = (nRaw as Record<string, unknown>)["mvpPriority"];
+    if (Array.isArray(legacyMvp)) {
+      const lines = legacyMvp.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24);
+      if (lines.length) {
+        if (!notes.featurePriority?.length) notes.featurePriority = lines;
+        if (!notes.mvpScope?.length) notes.mvpScope = [...lines];
+      }
+    }
   }
   let nextBestSlot: ProblemInterviewSlot | null = null;
   const nb = o.nextBestSlot;
   if (nb === null) nextBestSlot = null;
-  else if (typeof nb === "string" && isProblemInterviewSlot(nb.trim())) nextBestSlot = nb.trim() as ProblemInterviewSlot;
+  else if (typeof nb === "string") {
+    const rawNb = nb.trim();
+    const mapped = rawNb === "mvpPriority" ? "featurePriority" : rawNb;
+    if (isProblemInterviewSlot(mapped)) nextBestSlot = mapped;
+  }
 
   const allModelFilled = PROBLEM_INTERVIEW_SLOTS.every((s) => slots[s] === "filled");
   if (allModelFilled) nextBestSlot = null;

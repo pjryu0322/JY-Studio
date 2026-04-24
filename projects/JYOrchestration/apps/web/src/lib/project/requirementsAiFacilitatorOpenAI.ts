@@ -190,10 +190,11 @@ ${pd}
 - 기존 해결 방식
 - 개선 필요성
 - 핵심 기능
-- MVP 우선순위
+- 기능 우선순위(무엇을 먼저 만들지)
+- MVP 범위(포함·제외)
 - KPI·성공 기준
 - 제약사항
-- 운영 조건
+- 운영 방식
 
 지금 첫 질문을 시작하라.
 
@@ -536,7 +537,7 @@ export async function runInterviewAnalyzeOpenAI(input: {
   const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
 
   const system = `당신은 프로젝트 기획안 작성 전 인터뷰 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
-역할: 사용자의 최신 한 문단 답변만 읽고, 아래 9개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
+역할: 사용자의 최신 한 문단 답변만 읽고, 아래 10개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
 
 슬롯 정의:
 - coreUser: 핵심 사용자·주 사용자·역할 주체
@@ -544,18 +545,19 @@ export async function runInterviewAnalyzeOpenAI(input: {
 - currentMethod: 현재 운영 방식·기존 해결 방식·사용 도구·절차
 - needForImprovement: 개선 필요성·기대 효과·도입 이유
 - coreFeatures: 꼭 필요한 핵심 기능·주요 화면·업무 단위
-- mvpPriority: MVP(첫 출시) 포함/제외/후순위·우선순위
+- featurePriority: 기능·요구 간 구현 우선순위(무엇을 먼저/나중에)
+- mvpScope: MVP(첫 출시) 반드시 포함 vs 제외·후순위 범위
 - kpiSuccess: KPI·측정 지표·성공 기준·목표 수치
 - constraints: 예산·일정·보안·법규·연동 등 제약
 - operations: 운영 주체·승인/배포·지원·운영 리듬
 
 규칙:
 - 의미 기반으로 판단한다(키워드만 맞추지 않는다).
-- 문제정의 4슬롯만 채워졌다고 끝내지 말고, 기획안에 필요한 나머지 슬롯도 채울 때까지 partial/empty를 남긴다.
+- 문제정의·현재 방식만 채워졌다고 끝내지 말고, 나머지 슬롯도 채울 때까지 partial/empty를 남긴다.
 - "filled"는 사용자가 그 슬롯을 문맥상 명확히 답했을 때만 부여한다. 한마디·암시만 있으면 partial 또는 empty로 둔다.
 - 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
 - slots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나(구 키 filledSlots는 쓰지 말 것).
-- 9개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
+- 10개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
 - nextBestSlot은 아직 filled가 아니면서 이번 답으로 가장 보강해야 할 슬롯 하나(없으면 null).
 - confidence는 0~1 실수(모델 확신도).
 - notes에는 해당 슬롯에서 뽑은 짧은 근거 불릿(한국어) 문자열만 배열로 넣는다.
@@ -569,16 +571,17 @@ JSON 스키마(키 이름·형식 엄수):
     "currentMethod": "empty|partial|filled",
     "needForImprovement": "empty|partial|filled",
     "coreFeatures": "empty|partial|filled",
-    "mvpPriority": "empty|partial|filled",
+    "featurePriority": "empty|partial|filled",
+    "mvpScope": "empty|partial|filled",
     "kpiSuccess": "empty|partial|filled",
     "constraints": "empty|partial|filled",
     "operations": "empty|partial|filled"
   },
   "notes": {
     "coreUser": [], "painPoint": [], "currentMethod": [], "needForImprovement": [],
-    "coreFeatures": [], "mvpPriority": [], "kpiSuccess": [], "constraints": [], "operations": []
+    "coreFeatures": [], "featurePriority": [], "mvpScope": [], "kpiSuccess": [], "constraints": [], "operations": []
   },
-  "nextBestSlot": "coreUser" | "painPoint" | "currentMethod" | "needForImprovement" | "coreFeatures" | "mvpPriority" | "kpiSuccess" | "constraints" | "operations" | null,
+  "nextBestSlot": "coreUser" | "painPoint" | "currentMethod" | "needForImprovement" | "coreFeatures" | "featurePriority" | "mvpScope" | "kpiSuccess" | "constraints" | "operations" | null,
   "confidence": 0.0
 }`;
 

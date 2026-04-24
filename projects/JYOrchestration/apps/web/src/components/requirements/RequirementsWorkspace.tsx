@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
@@ -54,9 +55,10 @@ import {
   mergeImplicitAskedFromLastBootstrapQuestion,
   pickNextAskableInterviewSlot,
   planNextInterviewTurn,
-  problemInterviewIsCovered,
+  problemInterviewCoveredCount,
   problemInterviewStateToAnalyzerWire,
   problemInterviewStrictFilledCount,
+  proposalInterviewCoachingHintLine,
   proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
   withAskedSlot,
@@ -638,6 +640,14 @@ export function RequirementsWorkspace({
   );
   const proposalReadinessPercentVal = useMemo(
     () => proposalInterviewReadinessPercent(problemInterviewState),
+    [problemInterviewState]
+  );
+  const problemInterviewCovered = useMemo(
+    () => problemInterviewCoveredCount(problemInterviewState),
+    [problemInterviewState]
+  );
+  const interviewCoachingHint = useMemo(
+    () => proposalInterviewCoachingHintLine(problemInterviewState, problemInterviewState?.askedSlots),
     [problemInterviewState]
   );
 
@@ -1581,7 +1591,9 @@ export function RequirementsWorkspace({
         return;
       }
       sendDraftRestoreRef.current = text;
-      setInput("");
+      flushSync(() => {
+        setInput("");
+      });
       const sendTraceId =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
@@ -2710,7 +2722,8 @@ export function RequirementsWorkspace({
           }}
         >
           <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-            기획안 준비도 {proposalReadinessPercentVal}% ({problemInterviewStrictFilled} / {PROBLEM_INTERVIEW_SLOT_TOTAL} 슬롯 확정)
+            기획안 준비도 {proposalReadinessPercentVal}% ({problemInterviewCovered} / {PROBLEM_INTERVIEW_SLOT_TOTAL} 슬롯 확보,{" "}
+            {problemInterviewStrictFilled} 확정)
           </div>
           <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
             <div
@@ -2724,7 +2737,7 @@ export function RequirementsWorkspace({
             />
           </div>
           <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", fontWeight: 600, lineHeight: 1.45 }}>
-            기획안에 필요한 정보가 모두 모이면 AI가 안내하고, 상단에서 정리 요청을 진행할 수 있습니다.
+            {interviewCoachingHint ?? "기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다."}
           </div>
         </div>
       ) : null}

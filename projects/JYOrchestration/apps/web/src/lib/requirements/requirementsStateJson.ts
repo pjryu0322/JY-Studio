@@ -293,7 +293,9 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
   const currentMethod = typeof o.currentMethod === "boolean" ? o.currentMethod : false;
   const needForImprovement = typeof o.needForImprovement === "boolean" ? o.needForImprovement : false;
   const coreFeatures = typeof o.coreFeatures === "boolean" ? o.coreFeatures : false;
-  const mvpPriority = typeof o.mvpPriority === "boolean" ? o.mvpPriority : false;
+  const legacyMvp = typeof (o as Record<string, unknown>).mvpPriority === "boolean" ? Boolean((o as Record<string, unknown>).mvpPriority) : false;
+  const featurePriority = typeof o.featurePriority === "boolean" ? o.featurePriority : legacyMvp;
+  const mvpScope = typeof o.mvpScope === "boolean" ? o.mvpScope : legacyMvp;
   const kpiSuccess = typeof o.kpiSuccess === "boolean" ? o.kpiSuccess : false;
   const constraints = typeof o.constraints === "boolean" ? o.constraints : false;
   const operations = typeof o.operations === "boolean" ? o.operations : false;
@@ -314,9 +316,23 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
       if (!key) continue;
       partial[key] = v === true;
     }
+    if ((partial as Record<string, boolean>).mvpPriority) {
+      partial.featurePriority = true;
+      partial.mvpScope = true;
+      delete (partial as Record<string, boolean>).mvpPriority;
+    }
   }
   const askedSlotsRaw = Array.isArray(o.askedSlots) ? (o.askedSlots as unknown[]) : null;
-  const askedSlots = askedSlotsRaw ? askedSlotsRaw.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 32) : undefined;
+  const askedSlots = askedSlotsRaw
+    ? askedSlotsRaw
+        .map((x) => {
+          const s = String(x ?? "").trim();
+          if (!s) return "";
+          return s === "mvpPriority" ? "featurePriority" : s;
+        })
+        .filter(Boolean)
+        .slice(0, 32)
+    : undefined;
   const active = typeof o.active === "boolean" ? o.active : undefined;
   const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt : undefined;
   return {
@@ -325,7 +341,8 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
     currentMethod,
     needForImprovement,
     coreFeatures,
-    mvpPriority,
+    featurePriority,
+    mvpScope,
     kpiSuccess,
     constraints,
     operations,
