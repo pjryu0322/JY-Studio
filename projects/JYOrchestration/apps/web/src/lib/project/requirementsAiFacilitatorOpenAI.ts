@@ -530,21 +530,26 @@ export async function runInterviewAnalyzeOpenAI(input: {
   const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
   const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
 
-  const system = `당신은 문제정의 인터뷰 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
-역할: 사용자의 최신 한 문단 답변만 읽고, 네 가지 슬롯에 정보가 얼마나 담겼는지 분류합니다.
+  const system = `당신은 프로젝트 기획안 작성 전 인터뷰 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
+역할: 사용자의 최신 한 문단 답변만 읽고, 아래 9개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
 
 슬롯 정의:
 - coreUser: 핵심 사용자·주 사용자·역할 주체
 - painPoint: 현재 문제점·비효율·리스크·불편
 - currentMethod: 현재 운영 방식·기존 해결 방식·사용 도구·절차
 - needForImprovement: 개선 필요성·기대 효과·도입 이유
+- coreFeatures: 꼭 필요한 핵심 기능·주요 화면·업무 단위
+- mvpPriority: MVP(첫 출시) 포함/제외/후순위·우선순위
+- kpiSuccess: KPI·측정 지표·성공 기준·목표 수치
+- constraints: 예산·일정·보안·법규·연동 등 제약
+- operations: 운영 주체·승인/배포·지원·운영 리듬
 
 규칙:
 - 의미 기반으로 판단한다(키워드만 맞추지 않는다).
-- 같은 의미의 다른 표현은 동일하게 매핑한다.
+- 문제정의 4슬롯만 채워졌다고 끝내지 말고, 기획안에 필요한 나머지 슬롯도 채울 때까지 partial/empty를 남긴다.
 - 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
 - slots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나(구 키 filledSlots는 쓰지 말 것).
-- 네 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
+- 9개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
 - nextBestSlot은 아직 filled가 아니면서 이번 답으로 가장 보강해야 할 슬롯 하나(없으면 null).
 - confidence는 0~1 실수(모델 확신도).
 - notes에는 해당 슬롯에서 뽑은 짧은 근거 불릿(한국어) 문자열만 배열로 넣는다.
@@ -556,10 +561,18 @@ JSON 스키마(키 이름·형식 엄수):
     "coreUser": "empty|partial|filled",
     "painPoint": "empty|partial|filled",
     "currentMethod": "empty|partial|filled",
-    "needForImprovement": "empty|partial|filled"
+    "needForImprovement": "empty|partial|filled",
+    "coreFeatures": "empty|partial|filled",
+    "mvpPriority": "empty|partial|filled",
+    "kpiSuccess": "empty|partial|filled",
+    "constraints": "empty|partial|filled",
+    "operations": "empty|partial|filled"
   },
-  "notes": { "coreUser": [], "painPoint": [], "currentMethod": [], "needForImprovement": [] },
-  "nextBestSlot": "coreUser" | "painPoint" | "currentMethod" | "needForImprovement" | null,
+  "notes": {
+    "coreUser": [], "painPoint": [], "currentMethod": [], "needForImprovement": [],
+    "coreFeatures": [], "mvpPriority": [], "kpiSuccess": [], "constraints": [], "operations": []
+  },
+  "nextBestSlot": "coreUser" | "painPoint" | "currentMethod" | "needForImprovement" | "coreFeatures" | "mvpPriority" | "kpiSuccess" | "constraints" | "operations" | null,
   "confidence": 0.0
 }`;
 

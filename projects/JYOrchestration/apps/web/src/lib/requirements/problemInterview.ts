@@ -1,7 +1,16 @@
 import { stripJsonMarkdownFences } from "@/lib/requirements/ideationDeliverables";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
 
-export type ProblemInterviewSlot = "coreUser" | "painPoint" | "currentMethod" | "needForImprovement";
+export type ProblemInterviewSlot =
+  | "coreUser"
+  | "painPoint"
+  | "currentMethod"
+  | "needForImprovement"
+  | "coreFeatures"
+  | "mvpPriority"
+  | "kpiSuccess"
+  | "constraints"
+  | "operations";
 
 export type ProblemInterviewNotes = Record<string, string>;
 
@@ -10,6 +19,11 @@ export type ProblemInterviewState = {
   painPoint: boolean;
   currentMethod: boolean;
   needForImprovement: boolean;
+  coreFeatures: boolean;
+  mvpPriority: boolean;
+  kpiSuccess: boolean;
+  constraints: boolean;
+  operations: boolean;
   notes: ProblemInterviewNotes;
   /**
    * 부분 확보 표시용(예: painPoint는 힌트만 있는 경우).
@@ -29,7 +43,15 @@ export const PROBLEM_INTERVIEW_SLOTS: ProblemInterviewSlot[] = [
   "painPoint",
   "currentMethod",
   "needForImprovement",
+  "coreFeatures",
+  "mvpPriority",
+  "kpiSuccess",
+  "constraints",
+  "operations",
 ];
+
+/** 기획안 인터뷰 전체 슬롯 수(진행률 표시용) */
+export const PROBLEM_INTERVIEW_SLOT_TOTAL = PROBLEM_INTERVIEW_SLOTS.length;
 
 export function emptyProblemInterviewState(nowIso: string): ProblemInterviewState {
   return {
@@ -37,6 +59,11 @@ export function emptyProblemInterviewState(nowIso: string): ProblemInterviewStat
     painPoint: false,
     currentMethod: false,
     needForImprovement: false,
+    coreFeatures: false,
+    mvpPriority: false,
+    kpiSuccess: false,
+    constraints: false,
+    operations: false,
     notes: {},
     partial: {},
     askedSlots: [],
@@ -49,18 +76,34 @@ export function problemInterviewSlotLabelKr(slot: ProblemInterviewSlot): string 
   if (slot === "coreUser") return "핵심 사용자";
   if (slot === "painPoint") return "현재 문제점";
   if (slot === "currentMethod") return "기존 해결 방식";
-  return "개선 필요성";
+  if (slot === "needForImprovement") return "개선 필요성";
+  if (slot === "coreFeatures") return "핵심 기능";
+  if (slot === "mvpPriority") return "MVP 우선순위";
+  if (slot === "kpiSuccess") return "KPI·성공기준";
+  if (slot === "constraints") return "제약사항";
+  return "운영 조건";
 }
 
 export function problemInterviewCoveredCount(state: ProblemInterviewState | null | undefined): number {
   if (!state) return 0;
-  const partial = state.partial ?? {};
   let n = 0;
-  if (state.coreUser || partial.coreUser) n += 1;
-  if (state.painPoint || partial.painPoint) n += 1;
-  if (state.currentMethod || partial.currentMethod) n += 1;
-  if (state.needForImprovement || partial.needForImprovement) n += 1;
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    if (problemInterviewIsCovered(state, slot)) n += 1;
+  }
   return n;
+}
+
+/** filled 또는 partial 포함 슬롯 수(기획안 준비도 분모와 동일 기준) */
+export function proposalInterviewFilledCount(state: ProblemInterviewState | null | undefined): number {
+  return problemInterviewCoveredCount(state);
+}
+
+/** 인터뷰 AI 요약 앞에 붙이는 준비도 한 줄 */
+export function formatProposalInterviewReadinessLine(state: ProblemInterviewState | null | undefined): string {
+  const filled = proposalInterviewFilledCount(state);
+  const total = PROBLEM_INTERVIEW_SLOT_TOTAL;
+  const pct = total ? Math.round((filled / total) * 100) : 0;
+  return `기획안 준비도 ${pct}% (${filled} / ${total} 슬롯 확보). 기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다.`;
 }
 
 export function problemInterviewIsCovered(state: ProblemInterviewState, slot: ProblemInterviewSlot): boolean {
@@ -146,40 +189,21 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
 /** 레거시 비-LLM 경로(플래너 외부에서만 참조 시 사용). */
 export function chooseNextProblemInterviewSlot(state: ProblemInterviewState): ProblemInterviewSlot | null {
   // Priority: painPoint -> coreUser -> needForImprovement -> refinement(currentMethod if missing)
-  const priority: ProblemInterviewSlot[] = ["painPoint", "coreUser", "needForImprovement", "currentMethod"];
+  const priority: ProblemInterviewSlot[] = [
+    "painPoint",
+    "coreUser",
+    "needForImprovement",
+    "currentMethod",
+    "coreFeatures",
+    "mvpPriority",
+    "kpiSuccess",
+    "constraints",
+    "operations",
+  ];
   for (const slot of priority) {
     if (!problemInterviewIsCovered(state, slot)) return slot;
   }
   return null;
-}
-
-/** 레거시 비-LLM 경로. 정상 인터뷰는 `planNextInterviewTurn` + `composeInterviewPlannerReply`를 사용한다. */
-export function buildNextProblemInterviewQuestion(state: ProblemInterviewState, turnSeed: number): { slot: ProblemInterviewSlot; question: string } | null {
-  const slot = chooseNextProblemInterviewSlot(state);
-  if (!slot) return null;
-  // Duplicate guard: never ask a slot that is already covered (filled or partial)
-  if (problemInterviewIsCovered(state, slot)) return null;
-
-  const variants: Record<ProblemInterviewSlot, string[]> = {
-    painPoint: [
-      "현재 방식에서 가장 불편하거나 시간이 많이 드는 지점은 무엇인가요?",
-      "지금 겪고 있는 문제를 한 문장으로 말하면 어떤 점이 가장 큰가요?",
-    ],
-    coreUser: [
-      "이 문제를 가장 자주 겪는 핵심 사용자는 누구인가요? (예: 사용자/관리자/운영자 등)",
-      "이 업무/상황의 주 사용자는 누구이며, 어떤 역할을 하나요?",
-    ],
-    needForImprovement: [
-      "개선이 꼭 필요하다고 느끼는 이유나 기대하는 변화는 무엇인가요?",
-      "무엇이 바뀌면 '이 문제는 해결됐다'고 느낄 수 있나요?",
-    ],
-    currentMethod: [
-      "현재(기존)에는 이 문제를 어떤 방식으로 해결/관리하고 있나요?",
-      "지금은 어떤 도구나 프로세스로 처리하고 있나요? (예: 엑셀, 메신저, 수기 등)",
-    ],
-  };
-  const pick = variants[slot][turnSeed % variants[slot].length] ?? variants[slot][0];
-  return { slot, question: pick };
 }
 
 export function withAskedSlot(state: ProblemInterviewState, slot: ProblemInterviewSlot, nowIso: string): ProblemInterviewState {
@@ -218,6 +242,21 @@ export function inferInterviewSlotsLikelyAddressedByPlannerQuestionBody(body: st
   }
   if (/(개선|필요성|기대|자동화|효율(?:을|화)?|원하(?:는|시))/.test(t)) {
     push("needForImprovement");
+  }
+  if (/(기능|화면|요구\s*사항|필요\s*기능)/.test(t)) {
+    push("coreFeatures");
+  }
+  if (/(MVP|우선\s*순위|1차|첫\s*출시|필수\s*포함|제외|후순위)/.test(t)) {
+    push("mvpPriority");
+  }
+  if (/(KPI|지표|성공\s*기준|측정|목표\s*수치)/.test(t)) {
+    push("kpiSuccess");
+  }
+  if (/(제약|보안|법|규정|예산|일정|SLA|연동)/.test(t)) {
+    push("constraints");
+  }
+  if (/(운영|담당|승인|배포|장애|지원|주간|월간)/.test(t)) {
+    push("operations");
   }
 
   return ordered;
@@ -276,7 +315,7 @@ export type InterviewAnalyzerPayload = {
 
 /** 인터뷰 완료 시 채팅에 한 번 보여줄 고정 안내(플랫폼 문구). */
 export const INTERVIEW_COMPLETION_NOTICE_KR =
-  "문제정의 정보가 확보되었습니다.\n정리 요청으로 문제정의서를 생성할 수 있습니다.";
+  "기획안 작성에 필요한 핵심 정보가 모두 확보되었습니다.\n정리 요청으로 프로젝트 기획안을 생성할 수 있습니다.";
 
 /** 질문 후보 우선순위(플랫폼). 분석기 힌트는 이 순서 안에서만 조정한다. */
 export const PROBLEM_INTERVIEW_QUESTION_PRIORITY: readonly ProblemInterviewSlot[] = [
@@ -284,6 +323,11 @@ export const PROBLEM_INTERVIEW_QUESTION_PRIORITY: readonly ProblemInterviewSlot[
   "coreUser",
   "needForImprovement",
   "currentMethod",
+  "coreFeatures",
+  "mvpPriority",
+  "kpiSuccess",
+  "constraints",
+  "operations",
 ] as const;
 
 export const INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD = 0.55;
@@ -336,6 +380,11 @@ export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso:
       painPoint: Boolean(o.painPoint),
       currentMethod: Boolean(o.currentMethod),
       needForImprovement: Boolean(o.needForImprovement),
+      coreFeatures: typeof o.coreFeatures === "boolean" ? o.coreFeatures : false,
+      mvpPriority: typeof o.mvpPriority === "boolean" ? o.mvpPriority : false,
+      kpiSuccess: typeof o.kpiSuccess === "boolean" ? o.kpiSuccess : false,
+      constraints: typeof o.constraints === "boolean" ? o.constraints : false,
+      operations: typeof o.operations === "boolean" ? o.operations : false,
       notes:
         typeof o.notes === "object" && o.notes !== null && !Array.isArray(o.notes)
           ? { ...(o.notes as Record<string, string>) }
@@ -505,12 +554,40 @@ const CONTROLLED_SLOT_QUESTIONS: Record<ProblemInterviewSlot, readonly string[]>
     "기존에는 회의록을 어떻게 작성하고 관리하고 있나요?",
     "지금은 어떤 도구나 절차로 처리하고 있나요? (예: 이메일, 문서, 메신저 등)",
   ],
+  coreFeatures: [
+    "반드시 들어가야 할 핵심 기능(또는 화면)을 3가지 이내로 짚어 주실 수 있을까요?",
+    "사용자가 가장 자주 쓰게 될 핵심 기능은 무엇인가요?",
+  ],
+  mvpPriority: [
+    "첫 출시(MVP)에 꼭 포함해야 할 것과, 당장은 빼도 되는 것을 구분해 주실 수 있을까요?",
+    "MVP에서 가장 먼저 구현해야 할 우선순위는 어떻게 되나요?",
+  ],
+  kpiSuccess: [
+    "도입 후 성과를 어떤 지표로 보고 싶으신가요? (예: 시간 절감, 오류 감소, 만족도 등)",
+    "성공했다고 판단할 수 있는 기준(수치·주기)이 있으면 알려 주세요.",
+  ],
+  constraints: [
+    "예산, 일정, 보안, 법규, 연동 시스템 등 반드시 지켜야 할 제약이 있나요?",
+    "절대로 하면 안 되는 방식이나 범위가 있다면 무엇인가요?",
+  ],
+  operations: [
+    "운영 주체(누가 관리·승인·배포)와 운영 리듬(주간/월간 등)은 어떻게 되나요?",
+    "장애나 문의가 생겼을 때 대응 방식은 어떻게 되나요?",
+  ],
 };
 
 export function getControlledQuestionForSlot(slot: ProblemInterviewSlot, turnSeed: number): string {
   const variants = CONTROLLED_SLOT_QUESTIONS[slot];
   const pick = variants[Math.abs(turnSeed) % variants.length] ?? variants[0];
   return pick;
+}
+
+/** 레거시 비-LLM 경로. 정상 인터뷰는 `planNextInterviewTurn` + `composeInterviewPlannerReply`를 사용한다. */
+export function buildNextProblemInterviewQuestion(state: ProblemInterviewState, turnSeed: number): { slot: ProblemInterviewSlot; question: string } | null {
+  const slot = chooseNextProblemInterviewSlot(state);
+  if (!slot) return null;
+  if (problemInterviewIsCovered(state, slot)) return null;
+  return { slot, question: getControlledQuestionForSlot(slot, turnSeed) };
 }
 
 /**
