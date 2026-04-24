@@ -49,6 +49,7 @@ import {
   emergencyFallbackProblemInterviewFromUserMessageRegex,
   emptyProblemInterviewState,
   interviewSlotLevelFromState,
+  isDelegationLoopInRecentUserTurns,
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   INTERVIEW_COMPLETION_NOTICE_KR,
   mergeAnalyzerIntoProblemInterview,
@@ -64,6 +65,7 @@ import {
   proposalInterviewCoachingHintLine,
   proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
+  slotStrictlyFilled,
   withAskedSlot,
   type InterviewAnalyzerPayload,
   type ProblemInterviewSlot,
@@ -1906,25 +1908,51 @@ export function RequirementsWorkspace({
             lastAskedSlot ? levelRank(nextLevel) <= levelRank(prevLevel) : false;
           const avoidSlotsForNext = avoidImmediateRepeat && lastAskedSlot ? ([lastAskedSlot] as const) : null;
 
+          // 최근 3턴 위임 답변 루프 감지 → 직전 질문 슬롯을 "기본 추천안"으로 partial 채우고 다음 슬롯으로 이동
+          const recentUserTurns = msgs.filter((m) => m.role === "user").map((m) => String(m.content ?? ""));
+          const delegationLoop = isDelegationLoopInRecentUserTurns(recentUserTurns);
+          let mergedForPlan = merged;
+          let autoAppliedDelegationDefault = false;
+          if (delegationLoop && lastAskedSlot && !slotStrictlyFilled(merged, lastAskedSlot)) {
+            const partial = { ...(merged.partial ?? {}) } as Record<string, boolean>;
+            partial[lastAskedSlot] = true;
+            const notes = { ...(merged.notes ?? {}) } as Record<string, string>;
+            const line = "AI 기본 추천안 사용(사용자 위임 응답)";
+            notes[lastAskedSlot] = notes[lastAskedSlot] ? `${notes[lastAskedSlot]}\n${line}`.trim() : line;
+            mergedForPlan = { ...merged, partial, notes, updatedAt: nowIso };
+            autoAppliedDelegationDefault = true;
+          }
+
           const plan = planNextInterviewTurn(
-            merged,
+            mergedForPlan,
             analyzerForPlan,
-            merged.askedSlots,
+            mergedForPlan.askedSlots,
             turn,
             INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
             text,
-            { avoidNextSlot: avoidSlotsForNext }
+            { avoidNextSlot: [
+              ...(avoidSlotsForNext ?? []),
+              ...(autoAppliedDelegationDefault && lastAskedSlot ? [lastAskedSlot] : []),
+            ] }
           );
           if (plan) {
-            const readiness = formatProposalInterviewReadinessLine(merged);
-            const mergedSummary = `${readiness}\n\n${plan.summary}`.trim();
+            const readiness = formatProposalInterviewReadinessLine(mergedForPlan);
+            const extra = autoAppliedDelegationDefault
+              ? "해당 기준은 기본 추천안으로 반영하겠습니다."
+              : "";
+            const mergedSummary = `${readiness}\n\n${extra ? `${extra}\n` : ""}${plan.summary}`.trim();
             const aiBody = composeInterviewPlannerReply(mergedSummary, plan.question);
             const slotForAsked =
               plan.kind === "slot"
                 ? plan.slot
-                : pickNextAskableInterviewSlot(merged, merged.askedSlots, null, { avoidSlots: avoidSlotsForNext }) ??
+                : pickNextAskableInterviewSlot(mergedForPlan, mergedForPlan.askedSlots, null, {
+                    avoidSlots: [
+                      ...(avoidSlotsForNext ?? []),
+                      ...(autoAppliedDelegationDefault && lastAskedSlot ? [lastAskedSlot] : []),
+                    ],
+                  }) ??
                   ("painPoint" as ProblemInterviewSlot);
-            const asked = withAskedSlot(merged, slotForAsked, nowIso);
+            const asked = withAskedSlot(mergedForPlan, slotForAsked, nowIso);
             const baseMsgs = withCalling.requirementsConversation.messages;
             if (
               primaryId === VIRTUAL_AI_PLANNER_ID &&
