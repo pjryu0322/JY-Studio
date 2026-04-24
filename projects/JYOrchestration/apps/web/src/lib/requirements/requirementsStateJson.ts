@@ -292,6 +292,11 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
   const painPoint = typeof o.painPoint === "boolean" ? o.painPoint : false;
   const currentMethod = typeof o.currentMethod === "boolean" ? o.currentMethod : false;
   const needForImprovement = typeof o.needForImprovement === "boolean" ? o.needForImprovement : false;
+  const coreFeatures = typeof o.coreFeatures === "boolean" ? o.coreFeatures : false;
+  const mvpPriority = typeof o.mvpPriority === "boolean" ? o.mvpPriority : false;
+  const kpiSuccess = typeof o.kpiSuccess === "boolean" ? o.kpiSuccess : false;
+  const constraints = typeof o.constraints === "boolean" ? o.constraints : false;
+  const operations = typeof o.operations === "boolean" ? o.operations : false;
   const notesRaw = o.notes && typeof o.notes === "object" ? (o.notes as Record<string, unknown>) : null;
   const notes: Record<string, string> = {};
   if (notesRaw) {
@@ -319,6 +324,11 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
     painPoint,
     currentMethod,
     needForImprovement,
+    coreFeatures,
+    mvpPriority,
+    kpiSuccess,
+    constraints,
+    operations,
     notes,
     ...(Object.keys(partial).length ? { partial } : {}),
     ...(askedSlots ? { askedSlots: askedSlots as any } : {}),

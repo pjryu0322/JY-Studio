@@ -24,17 +24,8 @@ export const IDEATION_DELIVERABLE_ORDER: readonly IdeationDeliverableType[] = [
   "full_plan",
 ] as const;
 
-/**
- * 아이디어 구체화 후 자동 생성되는 기본 산출물 세트.
- * - 문제정의서, 기능목록, MVP 범위, KPI, 전체 기획안
- */
-export const IDEATION_DEFAULT_DELIVERABLE_SET: readonly IdeationDeliverableType[] = [
-  "problem_statement",
-  "feature_list",
-  "mvp_scope",
-  "kpi",
-  "full_plan",
-] as const;
+/** 정리 요청 등에서 생성하는 단일 통합 기획안(내부에 섹션 포함). */
+export const IDEATION_UNIFIED_PROPOSAL_OUTPUT: readonly IdeationDeliverableType[] = ["full_plan"] as const;
 
 export const IDEATION_DELIVERABLE_LABELS: Record<IdeationDeliverableType, string> = {
   meeting_summary: "회의 요약",
@@ -102,15 +93,29 @@ const OUTPUT_SPECS: Record<IdeationDeliverableType, string> = {
 3. 목표 수치(초안)
 4. 우선순위`,
 
-  full_plan: `전체 기획안:
-1. 프로젝트 개요
-2. 문제정의
-3. 사용자 정의
-4. 핵심 가치
-5. 기능 목록
-6. KPI
-7. MVP 범위
-8. 다음 단계 제안`,
+  full_plan: `통합 기획안(단일 문서, 마크다운):
+반드시 아래 "##" 제목을 그대로 사용하고, 각 절 아래에 실무형 본문을 작성한다.
+
+## 1. 문제정의
+- 핵심 사용자, 현재 문제, 기존 방식, 개선 필요성
+
+## 2. 기능목록
+- 기능 후보명, 설명, 우선순위(또는 MoSCoW)
+
+## 3. MVP 범위
+- 반드시 포함 / 제외 / 후순위 를 명확히 구분
+
+## 4. KPI
+- 도입 후 성과 측정 지표, 측정 방식, 목표(초안)
+
+## 5. 실행 로드맵
+- 단계(예: 0~8주), 마일스톤, 의존성
+
+## 6. 리스크 및 제약사항
+- 기술·운영·규제·일정 리스크와 완화 방향
+
+(선택) ## 7. 다음 액션
+- 바로 착수할 일 3~5개`,
 };
 
 export function isIdeationDeliverableType(v: unknown): v is IdeationDeliverableType {
@@ -294,6 +299,8 @@ export function appendIdeationDeliverableAssets(input: {
   existing: readonly IdeationDeliverableAsset[] | undefined;
   outputs: Partial<Record<IdeationDeliverableType, string>>;
   typesRequested: readonly IdeationDeliverableType[];
+  /** 제목 커스터마이즈(예: "{프로젝트명} 기획안 v3"). 미반환 시 기본 라벨 사용 */
+  getAssetTitle?: (type: IdeationDeliverableType, version: number) => string | undefined;
 }): { merged: IdeationDeliverableAsset[]; created: IdeationDeliverableAsset[] } {
   const base = [...(input.existing ?? [])];
   const created: IdeationDeliverableAsset[] = [];
@@ -302,7 +309,7 @@ export function appendIdeationDeliverableAssets(input: {
     const content = String(input.outputs[t] ?? "").trim();
     if (!content) continue;
     const version = nextVersionForDeliverableType(base, t);
-    const title = `${IDEATION_DELIVERABLE_LABELS[t]} v${version}`;
+    const title = input.getAssetTitle?.(t, version)?.trim() || `${IDEATION_DELIVERABLE_LABELS[t]} v${version}`;
     const id =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()

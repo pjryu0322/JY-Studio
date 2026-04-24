@@ -12,6 +12,8 @@ import { RequirementsMemberInviteModal } from "@/components/requirements/Require
 import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
 import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import { OrganizeProposalDraggableModal } from "@/components/requirements/OrganizeProposalDraggableModal";
+import { ProposalPlanPreviewModal } from "@/components/requirements/ProposalPlanPreviewModal";
 import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
@@ -24,8 +26,8 @@ import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProj
 import {
   appendIdeationDeliverableAssets,
   extractPreviewLinesFromMarkdown,
-  IDEATION_DEFAULT_DELIVERABLE_SET,
   IDEATION_DELIVERABLE_LABELS,
+  IDEATION_UNIFIED_PROPOSAL_OUTPUT,
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
   markDeliverableAssetsConfirmed,
   isIdeationDeliverableType,
@@ -48,14 +50,14 @@ import {
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   INTERVIEW_COMPLETION_NOTICE_KR,
   mergeAnalyzerIntoProblemInterview,
+  formatProposalInterviewReadinessLine,
   mergeImplicitAskedFromLastBootstrapQuestion,
   pickNextAskableInterviewSlot,
   planNextInterviewTurn,
   problemInterviewCoveredCount,
   problemInterviewIsCovered,
-  problemInterviewSlotLabelKr,
   problemInterviewStateToAnalyzerWire,
-  PROBLEM_INTERVIEW_SLOTS,
+  PROBLEM_INTERVIEW_SLOT_TOTAL,
   withAskedSlot,
   type InterviewAnalyzerPayload,
   type ProblemInterviewSlot,
@@ -69,7 +71,7 @@ import {
   type RequirementsStateJson,
   type RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
-import { getPlannerSlotSchema, plannerDeliverableLabelKr, PLANNER_DELIVERABLE_TYPES } from "@/lib/requirements/plannerSlots";
+import { getPlannerSlotSchema } from "@/lib/requirements/plannerSlots";
 import {
   bootstrapOrganizeMemoryFacts,
   buildRollingSummaryFromIdeationFields,
@@ -310,7 +312,10 @@ export function RequirementsWorkspace({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [plannerTypePickerOpen, setPlannerTypePickerOpen] = useState(false);
-  const [plannerTypePicked, setPlannerTypePicked] = useState<IdeationDeliverableType>("problem_statement");
+  const [proposalPlanPreview, setProposalPlanPreview] = useState<{ open: boolean; assetId: string | null }>({
+    open: false,
+    assetId: null,
+  });
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const successToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
@@ -330,6 +335,7 @@ export function RequirementsWorkspace({
   const requirementsSendFlightRef = useRef(false);
   /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
   const organizeRawFallbackRef = useRef(false);
+  const sendDraftRestoreRef = useRef<string | null>(null);
 
   const stage = useMemo(() => {
     const urlStage = String(searchParams?.get("stage") ?? "").trim().toLowerCase();
@@ -671,6 +677,18 @@ export function RequirementsWorkspace({
     () => deliverableAssetsFromProject.filter((a) => deliverableViewerIds.includes(a.id)),
     [deliverableAssetsFromProject, deliverableViewerIds]
   );
+
+  const latestUnifiedProposal = useMemo(() => {
+    const list = deliverableAssetsFromProject.filter((a) => a.type === "full_plan");
+    if (!list.length) return null;
+    return [...list].sort((a, b) => b.version - a.version)[0] ?? null;
+  }, [deliverableAssetsFromProject]);
+
+  const proposalPreviewMarkdown = useMemo(() => {
+    const id = proposalPlanPreview.assetId;
+    if (!id) return "";
+    return deliverableAssetsFromProject.find((a) => a.id === id)?.content ?? "";
+  }, [proposalPlanPreview.assetId, deliverableAssetsFromProject]);
 
   const workflowGuidanceBanner = useMemo(() => {
     const fromUrl = initialWorkflowNotice.trim();
@@ -1047,7 +1065,8 @@ export function RequirementsWorkspace({
     return;
   }, []);
 
-  const runPlannerOrganize = useCallback(async (requestedType: IdeationDeliverableType) => {
+  const runPlannerOrganize = useCallback(async () => {
+    const requestedType: IdeationDeliverableType = "full_plan";
     const pid = resolvedProjectId.trim();
     if (!pid) {
       setError("프로젝트에 연결된 뒤 정리 요청을 사용할 수 있습니다.");
@@ -1079,7 +1098,7 @@ export function RequirementsWorkspace({
         projectDescription: project?.description ?? "",
         targetName: "AI 기획자",
         messages: conversationMessages,
-        latestUserMessage: `정리요청(플래너 검토형): ${schema.labelKr}`,
+        latestUserMessage: `정리요청(통합 기획안): ${schema.labelKr}`,
       });
       await persistStateJsonOnly({
         lastPromptView: organizePromptView,
@@ -1207,7 +1226,8 @@ export function RequirementsWorkspace({
       });
 
       {
-        // writer: 기본 산출물 세트 생성 + 저장 + 채팅 프리뷰 카드(문서별 단건 카드)
+        // writer: 통합 기획안(full_plan) 단일 문서 생성 + 저장 + 채팅 NOTICE
+        const planBaseName = (project?.name ?? "").trim() || "프로젝트";
         const excerptForDeliverable = formatDialogueExcerpt(conversationMessages);
         const chatSummary = [
           goals.trim() && `저장 요약 — 목표/핵심:\n${goals.trim()}`,
@@ -1232,7 +1252,7 @@ export function RequirementsWorkspace({
             projectDescription: project?.description ?? "",
             chatSummary,
             dialogueExcerpt: excerptForDeliverable,
-            outputTypes: [...IDEATION_DEFAULT_DELIVERABLE_SET],
+            outputTypes: [...IDEATION_UNIFIED_PROPOSAL_OUTPUT],
             aiResponseStyle: readAiResponseStyle(),
           }),
         });
@@ -1267,7 +1287,8 @@ export function RequirementsWorkspace({
           projectId: pid,
           existing,
           outputs: genJson.data.outputs,
-          typesRequested: [...IDEATION_DEFAULT_DELIVERABLE_SET],
+          typesRequested: [...IDEATION_UNIFIED_PROPOSAL_OUTPUT],
+          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 기획안 v${v}` : undefined),
         });
         if (!created.length) {
           throw new Error("생성된 본문이 비어 있습니다.");
@@ -1277,7 +1298,8 @@ export function RequirementsWorkspace({
           const payload: IdeationDeliverableChatPayload = {
             kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
             mode: "single",
-            headline: `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
+            headline:
+              c.type === "full_plan" ? `${planBaseName} 기획안 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
             requestedTypes: [c.type],
             items: [
               {
@@ -1299,6 +1321,8 @@ export function RequirementsWorkspace({
             meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
           });
         });
+        const fp = created.find((c) => c.type === "full_plan");
+        if (fp) setProposalPlanPreview({ open: true, assetId: fp.id });
         const afterWrite: RequirementsRoomStateV3 = {
         ...room,
         requirementsConversation: {
@@ -1325,7 +1349,7 @@ export function RequirementsWorkspace({
         });
       }
       await persistStateJsonOnly({ organizePlannerState: null, lastOrganizedAt: new Date().toISOString() });
-      showSuccessToast(`${schema.labelKr} 생성 완료`);
+      showSuccessToast(`${(project?.name ?? "").trim() || "프로젝트"} 기획안 생성 완료`);
       setOrganizeState("done");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "오류";
@@ -1356,6 +1380,7 @@ export function RequirementsWorkspace({
     nfr,
     openIssues,
     priorityFeatures,
+    setProposalPlanPreview,
   ]);
 
   const handleGenerateDeliverables = useCallback(
@@ -1386,6 +1411,7 @@ export function RequirementsWorkspace({
           .join("\n\n");
 
         const excerpt = formatDialogueExcerpt(conversationMessages);
+        const planBaseName = (project?.name ?? "").trim() || "프로젝트";
         const res = await fetch("/api/requirements/deliverables-generate", {
           method: "POST",
           credentials: "include",
@@ -1433,6 +1459,7 @@ export function RequirementsWorkspace({
           existing,
           outputs: json.data.outputs,
           typesRequested: types,
+          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 기획안 v${v}` : undefined),
         });
         if (!created.length) {
           throw new Error("생성된 본문이 비어 있습니다.");
@@ -1442,7 +1469,8 @@ export function RequirementsWorkspace({
           const payload: IdeationDeliverableChatPayload = {
             kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
             mode: "single",
-            headline: `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
+            headline:
+              c.type === "full_plan" ? `${planBaseName} 기획안 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
             requestedTypes: [c.type],
             items: [
               {
@@ -1473,7 +1501,13 @@ export function RequirementsWorkspace({
           },
         };
         await persistRemote(nextRoom, {}, { deliverableAssets: merged });
-        showSuccessToast(`${created.length}개 산출물 생성 완료`);
+        if (types.length === 1 && types[0] === "full_plan") {
+          const fp = created.find((c) => c.type === "full_plan");
+          if (fp) setProposalPlanPreview({ open: true, assetId: fp.id });
+          showSuccessToast(`${planBaseName} 기획안 생성 완료`);
+        } else {
+          showSuccessToast(`${created.length}개 산출물 생성 완료`);
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "오류";
         if (msg !== "GUARD") {
@@ -1504,6 +1538,7 @@ export function RequirementsWorkspace({
       persistRemote,
       showSuccessToast,
       showErrorToast,
+      setProposalPlanPreview,
     ]
   );
 
@@ -1540,6 +1575,8 @@ export function RequirementsWorkspace({
         ideationSendDevLog("dedupe-user-skip", text.slice(0, 80));
         return;
       }
+      sendDraftRestoreRef.current = text;
+      setInput("");
       const sendTraceId =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
@@ -1758,7 +1795,7 @@ export function RequirementsWorkspace({
                 },
               },
             });
-            await handleGenerateDeliverables([...IDEATION_DEFAULT_DELIVERABLE_SET]);
+            await handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
             const archivedAt = new Date().toISOString();
             const prevInterview = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
             const prevHistory = (stateJsonRef.current.problemInterviewHistory as Array<{ archivedAt: string; state: ProblemInterviewState }> | null | undefined) ?? null;
@@ -1830,7 +1867,9 @@ export function RequirementsWorkspace({
             text
           );
           if (plan) {
-            const aiBody = composeInterviewPlannerReply(plan.summary, plan.question);
+            const readiness = formatProposalInterviewReadinessLine(merged);
+            const mergedSummary = `${readiness}\n\n${plan.summary}`.trim();
+            const aiBody = composeInterviewPlannerReply(mergedSummary, plan.question);
             const slotForAsked =
               plan.kind === "slot"
                 ? plan.slot
@@ -2120,7 +2159,7 @@ export function RequirementsWorkspace({
         if (plannerTail.needsTailPersist) {
           await persistRemote(plannerTail.finalRoom, {}, { lastUserDraftText: "" });
         }
-        setInput("");
+        sendDraftRestoreRef.current = null;
         setReplyTo(null);
         ideationSendDevLog("end", `id=${sendTraceId}`);
       } else {
@@ -2132,12 +2171,16 @@ export function RequirementsWorkspace({
             messages: msgs,
           },
         };
-        setInput("");
+        sendDraftRestoreRef.current = null;
         setReplyTo(null);
         await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "오류");
+      if (sendDraftRestoreRef.current) {
+        setInput(sendDraftRestoreRef.current);
+        sendDraftRestoreRef.current = null;
+      }
     } finally {
       requirementsSendFlightRef.current = false;
       setBusy(false);
@@ -2162,6 +2205,7 @@ export function RequirementsWorkspace({
     handleGenerateDeliverables,
     showSuccessToast,
     isDraftIntent,
+    formatProposalInterviewReadinessLine,
   ]);
 
   const onPanelBlurSave = useCallback(async () => {
@@ -2473,125 +2517,29 @@ export function RequirementsWorkspace({
     <div style={shellStyle}>
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
 
-      {plannerTypePickerOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="정리 요청 유형 선택"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 80,
-            background: "rgba(15,23,42,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 18,
-          }}
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setPlannerTypePickerOpen(false);
-          }}
-        >
-          <div
-            style={{
-              width: "min(560px, 100%)",
-              background: "#fff",
-              borderRadius: 14,
-              border: "1px solid #e2e8f0",
-              boxShadow: "0 30px 80px -30px rgba(15, 23, 42, 0.45)",
-              padding: 16,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
-              <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>정리 요청</div>
-              <button
-                type="button"
-                onClick={() => setPlannerTypePickerOpen(false)}
-                style={{
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
-                  borderRadius: 999,
-                  padding: "6px 10px",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  color: "#334155",
-                }}
-              >
-                닫기
-              </button>
-            </div>
-            <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.55, marginBottom: 12 }}>
-              정보를 검토하고 부족한 내용을 질문한 뒤 결과물을 작성합니다.
-            </div>
-            <div style={{ display: "grid", gap: 8 }}>
-              {PLANNER_DELIVERABLE_TYPES.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setPlannerTypePicked(t)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: plannerTypePicked === t ? "2px solid #0f766e" : "1px solid #e2e8f0",
-                    background: plannerTypePicked === t ? "#f0fdfa" : "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  <span style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>{plannerDeliverableLabelKr(t)}</span>
-                  <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
-                    {getPlannerSlotSchema(t).requiredSlots.length} 슬롯
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={() => setPlannerTypePickerOpen(false)}
-                style={{
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
-                  borderRadius: 10,
-                  padding: "9px 12px",
-                  fontSize: 13,
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  color: "#334155",
-                }}
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                disabled={busy || remoteLocked}
-                onClick={() => {
-                  const picked = plannerTypePicked;
-                  setPlannerTypePickerOpen(false);
-                  void runPlannerOrganize(picked);
-                }}
-                style={{
-                  border: "1px solid #0f766e",
-                  background: "#0f766e",
-                  borderRadius: 10,
-                  padding: "9px 12px",
-                  fontSize: 13,
-                  fontWeight: 900,
-                  cursor: busy || remoteLocked ? "not-allowed" : "pointer",
-                  opacity: busy || remoteLocked ? 0.6 : 1,
-                  color: "#fff",
-                }}
-              >
-                시작
-              </button>
-            </div>
-          </div>
+      <OrganizeProposalDraggableModal
+        open={plannerTypePickerOpen}
+        onClose={() => setPlannerTypePickerOpen(false)}
+        busy={busy || organizeState === "running"}
+        showRegenerate={Boolean(latestUnifiedProposal)}
+        regenerateDisabled={busy || deliverableGenerateBusy || remoteLocked}
+        onRegenerate={() => {
+          setPlannerTypePickerOpen(false);
+          void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
+        }}
+        onStart={() => {
+          setPlannerTypePickerOpen(false);
+          void runPlannerOrganize();
+        }}
+      >
+        <div>
+          AI가 대화와 저장 요약을 검토한 뒤, 부족한 부분만 질문하고 마지막에{" "}
+          <strong style={{ color: "#0f172a" }}>{(project?.name ?? "").trim() || "프로젝트"} 기획안</strong>을 생성합니다.
         </div>
-      ) : null}
+        <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b", fontWeight: 600, lineHeight: 1.5 }}>
+          문서 종류를 고르지 않아도 됩니다. 준비가 되면 시작을 눌러 주세요.
+        </div>
+      </OrganizeProposalDraggableModal>
 
       {saveToastVisible ? (
         <div
@@ -2669,7 +2617,7 @@ export function RequirementsWorkspace({
       !inServiceFlowStage &&
       conversationStatus === "loaded" &&
       ideationComplete &&
-      !(problemInterviewState && problemInterviewState.active !== false && problemInterviewCovered < 4) ? (
+      !(problemInterviewState && problemInterviewState.active !== false && problemInterviewCovered < PROBLEM_INTERVIEW_SLOT_TOTAL) ? (
         <div
           style={{
             marginTop: 8,
@@ -2686,7 +2634,7 @@ export function RequirementsWorkspace({
           }}
         >
           <span style={{ fontSize: 13, fontWeight: 700, color: "#065f46", lineHeight: 1.45 }}>
-            정리 요청으로 문제정의서를 만들 수 있습니다.
+            정리 요청으로 프로젝트 기획안을 만들 수 있습니다.
           </span>
           <button
             type="button"
@@ -2746,62 +2694,35 @@ export function RequirementsWorkspace({
       ) : null}
 
       {!inServiceFlowStage && resolvedProjectId.trim() && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
-              <div
-                style={{
+        <div
+          style={{
             marginTop: 6,
             marginBottom: 10,
             padding: "10px 14px",
             borderRadius: 10,
             border: "1px solid #e2e8f0",
             background: "#f8fafc",
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-            gap: 10,
-            justifyContent: "space-between",
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-              {problemInterviewCovered >= 4
-                ? "문제정의 정보 확보 완료"
-                : `문제정의 인터뷰 진행중 (${problemInterviewCovered}/4 확보)`}
-            </div>
-            <div style={{ marginTop: 6, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, color: "#475569" }}>
-              {(["currentMethod", "painPoint", "coreUser", "needForImprovement"] as const).map((slot) => {
-                const filled = Boolean((problemInterviewState as any)[slot]);
-                const partial = Boolean((problemInterviewState.partial ?? ({} as any))[slot]);
-                const mark = filled ? "✓" : partial ? "△" : "□";
-                return (
-                  <span key={slot} style={{ fontWeight: filled ? 900 : partial ? 800 : 700 }}>
-                    {mark} {problemInterviewSlotLabelKr(slot as unknown as ProblemInterviewSlot)}
-                  </span>
-                );
-              })}
-            </div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
+            기획안 준비도{" "}
+            {Math.min(100, Math.round((problemInterviewCovered / PROBLEM_INTERVIEW_SLOT_TOTAL) * 100))}% (
+            {problemInterviewCovered} / {PROBLEM_INTERVIEW_SLOT_TOTAL} 슬롯 확보)
           </div>
-          {problemInterviewCovered >= 4 ? (
-          <button
-            type="button"
-              data-testid="requirements-organize-cta-after-interview"
-              disabled={busy || remoteLocked}
-              onClick={() => void onOrganizeRequirements()}
-            style={{
-                flexShrink: 0,
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #0f766e",
+          <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+            <div
+              style={{
+                width: `${Math.min(100, Math.round((problemInterviewCovered / PROBLEM_INTERVIEW_SLOT_TOTAL) * 100))}%`,
+                height: "100%",
+                borderRadius: 999,
                 background: "#0f766e",
-                color: "#fff",
-              fontSize: 13,
-                fontWeight: 800,
-                cursor: busy || remoteLocked ? "not-allowed" : "pointer",
-                opacity: busy || remoteLocked ? 0.55 : 1,
-            }}
-          >
-              정리 요청
-          </button>
-          ) : null}
+                transition: "width 0.25s ease-out",
+              }}
+            />
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", fontWeight: 600, lineHeight: 1.45 }}>
+            기획안에 필요한 정보가 모두 모이면 AI가 안내하고, 상단에서 정리 요청을 진행할 수 있습니다.
+          </div>
         </div>
       ) : null}
 
@@ -2856,12 +2777,7 @@ export function RequirementsWorkspace({
                   setOrganizeState("idle");
                   setOrganizeError(null);
                   setError(null);
-                  const reuse = (stateJsonRef.current.organizePlannerState?.requestedType as IdeationDeliverableType | undefined) ?? undefined;
-                  if (reuse) {
-                    void runPlannerOrganize(reuse);
-                    return;
-                  }
-                  void onOrganizeRequirements();
+                  void runPlannerOrganize();
                 }}
             style={{
                   border: "1px solid #e2e8f0",
@@ -2874,9 +2790,9 @@ export function RequirementsWorkspace({
               cursor: "pointer",
             }}
           >
-                같은 유형으로 전체 대화 기준 다시 시도
+                전체 대화 기준으로 다시 시도
           </button>
-              <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 600 }}>이전 선택 유형 유지</div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 600 }}>정리 요청(기획안) 흐름을 다시 실행합니다</div>
             </div>
         ) : null}
       </div>
@@ -2932,6 +2848,21 @@ export function RequirementsWorkspace({
         onClose={() => setDeliverableViewerOpen(false)}
         assets={deliverableViewerAssets}
         initialAssetId={deliverableViewerFocusId}
+      />
+
+      <ProposalPlanPreviewModal
+        open={proposalPlanPreview.open}
+        title={`${(project?.name ?? "").trim() || "프로젝트"} 기획안 미리보기`}
+        markdown={proposalPreviewMarkdown}
+        busy={busy || deliverableGenerateBusy}
+        onClose={() => setProposalPlanPreview({ open: false, assetId: null })}
+        onRegenerate={() => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT])}
+        onConfirm={() => {
+          const id = proposalPlanPreview.assetId;
+          if (!id) return;
+          void handleConfirmDeliverableAssets([id]);
+          setProposalPlanPreview({ open: false, assetId: null });
+        }}
       />
     </div>
   );
