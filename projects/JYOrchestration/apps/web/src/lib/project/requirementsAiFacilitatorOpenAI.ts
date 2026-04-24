@@ -537,7 +537,9 @@ export async function runInterviewAnalyzeOpenAI(input: {
   const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
 
   const system = `당신은 프로젝트 기획안 작성 전 인터뷰 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
-역할: 사용자의 최신 한 문단 답변만 읽고, 아래 10개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
+역할:
+1) 사용자의 최신 답변을 읽고, 아래 10개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
+2) 사용자의 답변 intent를 분류합니다(질문에 직접 답하지 않아도 "AI에게 판단을 위임"이면 delegate_to_ai).
 
 슬롯 정의:
 - coreUser: 핵심 사용자·주 사용자·역할 주체
@@ -555,6 +557,15 @@ export async function runInterviewAnalyzeOpenAI(input: {
 - 의미 기반으로 판단한다(키워드만 맞추지 않는다).
 - 문제정의·현재 방식만 채워졌다고 끝내지 말고, 나머지 슬롯도 채울 때까지 partial/empty를 남긴다.
 - "filled"는 사용자가 그 슬롯을 문맥상 명확히 답했을 때만 부여한다. 한마디·암시만 있으면 partial 또는 empty로 둔다.
+- intent 판단:
+  - answer: 사용자가 실제 정보를 제공함(질문과 불일치해도 정보가 있으면 answer)
+  - delegate_to_ai: 사용자가 판단/선택/기준 설정을 AI에게 위임함(예: 알아서/추천/네가 정해/좋은 방식으로)
+  - skip: 해당 질문을 건너뜀/모르겠음/응답 거부
+  - unclear: 의미가 불명확
+  - 위 예시에만 의존하지 말고 의미로 판단하라.
+- delegate_to_ai인 경우:
+  - delegatedSlot을 지정한다: (직전 질문 슬롯이 적절하면 그것을, 아니면 가장 근접한 슬롯)
+  - delegatedDefault에 AI가 적용할 기본안 한 줄을 쓴다(예: “기본 추천안 적용”, “업계 일반 기준으로 설정”)
 - 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
 - slots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나(구 키 filledSlots는 쓰지 말 것).
 - 10개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
@@ -564,6 +575,9 @@ export async function runInterviewAnalyzeOpenAI(input: {
 
 JSON 스키마(키 이름·형식 엄수):
 {
+  "intent": "answer|delegate_to_ai|skip|unclear",
+  "delegatedSlot": "coreUser|painPoint|currentMethod|needForImprovement|coreFeatures|featurePriority|mvpScope|kpiSuccess|constraints|operations|null",
+  "delegatedDefault": "AI가 적용할 기본안 설명(짧게)",
   "summary": "한두 문장 한국어 요약",
   "slots": {
     "coreUser": "empty|partial|filled",
