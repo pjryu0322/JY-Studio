@@ -298,17 +298,15 @@ export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: P
 function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  // new slots (v2)
-  const productGoal = typeof o.productGoal === "boolean" ? o.productGoal : false;
+  // new slots (v3 - ideation high-level)
+  const serviceIdea = typeof o.serviceIdea === "boolean" ? o.serviceIdea : false;
   const targetUser = typeof o.targetUser === "boolean" ? o.targetUser : false;
-  const platformType = typeof o.platformType === "boolean" ? o.platformType : false;
-  const coreFeatures = typeof o.coreFeatures === "boolean" ? o.coreFeatures : false;
-  const authNeed = typeof o.authNeed === "boolean" ? o.authNeed : false;
-  const mainScreens = typeof o.mainScreens === "boolean" ? o.mainScreens : false;
-  const dataEntities = typeof o.dataEntities === "boolean" ? o.dataEntities : false;
-  const integrations = typeof o.integrations === "boolean" ? o.integrations : false;
-  const mvpScope = typeof o.mvpScope === "boolean" ? o.mvpScope : false;
-  const designLevel = typeof o.designLevel === "boolean" ? o.designLevel : false;
+  const coreProblem = typeof o.coreProblem === "boolean" ? o.coreProblem : false;
+  const expectedOutcome = typeof o.expectedOutcome === "boolean" ? o.expectedOutcome : false;
+  const roughActors = typeof o.roughActors === "boolean" ? o.roughActors : false;
+  const roughFlow = typeof o.roughFlow === "boolean" ? o.roughFlow : false;
+  const mustHaveFeatures = typeof o.mustHaveFeatures === "boolean" ? o.mustHaveFeatures : false;
+  const constraints = typeof o.constraints === "boolean" ? o.constraints : false;
   const notesRaw = o.notes && typeof o.notes === "object" ? (o.notes as Record<string, unknown>) : null;
   const notes: Record<string, string> = {};
   if (notesRaw) {
@@ -326,31 +324,44 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
       if (!key) continue;
       partial[key] = v === true;
     }
-    // migrate legacy slot ids to new ids (best-effort)
+    // migrate legacy slot ids (best-effort)
     if (partial.coreUser) {
       partial.targetUser = true;
       delete partial.coreUser;
     }
-    if (partial.painPoint || partial.needForImprovement || partial.currentMethod || partial.kpiSuccess) {
-      partial.productGoal = true;
+    if (partial.productGoal) {
+      partial.serviceIdea = true;
+      delete partial.productGoal;
+    }
+    if (partial.painPoint) {
+      partial.coreProblem = true;
       delete partial.painPoint;
+    }
+    if (partial.needForImprovement) {
+      partial.expectedOutcome = true;
       delete partial.needForImprovement;
+    }
+    if (partial.currentMethod) {
+      partial.serviceIdea = true;
       delete partial.currentMethod;
-      delete partial.kpiSuccess;
     }
-    if (partial.constraints) {
-      partial.integrations = true;
-      delete partial.constraints;
-    }
-    if (partial.operations) {
-      partial.platformType = true;
-      delete partial.operations;
-    }
-    if (partial.featurePriority || partial.mvpPriority) {
-      partial.mvpScope = true;
+    if (partial.coreFeatures || partial.featurePriority || partial.mvpPriority || partial.mvpScope) {
+      partial.mustHaveFeatures = true;
+      delete partial.coreFeatures;
       delete partial.featurePriority;
       delete partial.mvpPriority;
+      delete partial.mvpScope;
     }
+    if (partial.operations || partial.platformType) {
+      partial.roughActors = true;
+      delete partial.operations;
+      delete partial.platformType;
+    }
+    if (partial.kpiSuccess) {
+      partial.expectedOutcome = true;
+      delete partial.kpiSuccess;
+    }
+    // constraints stays constraints
   }
   const askedSlotsRaw = Array.isArray(o.askedSlots) ? (o.askedSlots as unknown[]) : null;
   const askedSlots = askedSlotsRaw
@@ -360,10 +371,13 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
           if (!s) return "";
           // legacy -> new id mapping (best-effort)
           if (s === "coreUser") return "targetUser";
-          if (s === "painPoint" || s === "needForImprovement" || s === "currentMethod" || s === "kpiSuccess") return "productGoal";
-          if (s === "constraints") return "integrations";
-          if (s === "operations") return "platformType";
-          if (s === "featurePriority" || s === "mvpPriority") return "mvpScope";
+          if (s === "productGoal") return "serviceIdea";
+          if (s === "painPoint") return "coreProblem";
+          if (s === "needForImprovement") return "expectedOutcome";
+          if (s === "currentMethod") return "serviceIdea";
+          if (s === "coreFeatures" || s === "featurePriority" || s === "mvpPriority" || s === "mvpScope") return "mustHaveFeatures";
+          if (s === "kpiSuccess") return "expectedOutcome";
+          if (s === "operations" || s === "platformType") return "roughActors";
           return s;
         })
         .filter(Boolean)
@@ -372,16 +386,14 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
   const active = typeof o.active === "boolean" ? o.active : undefined;
   const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt : undefined;
   return {
-    productGoal,
+    serviceIdea,
     targetUser,
-    platformType,
-    coreFeatures,
-    authNeed,
-    mainScreens,
-    dataEntities,
-    integrations,
-    mvpScope,
-    designLevel,
+    coreProblem,
+    expectedOutcome,
+    roughActors,
+    roughFlow,
+    mustHaveFeatures,
+    constraints,
     notes,
     ...(Object.keys(partial).length ? { partial } : {}),
     ...(askedSlots ? { askedSlots: askedSlots as any } : {}),
