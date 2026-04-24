@@ -185,16 +185,16 @@ ${pd}
 6. 질문은 맞춤형이어야 한다.
 7. 최종적으로 아래가 모두 드러나도록 순차적으로 물어라(한 번에 다 묻지 말 것):
 
-- 핵심 사용자
-- 현재 문제점
-- 기존 해결 방식
-- 개선 필요성
-- 핵심 기능
-- 기능 우선순위(무엇을 먼저 만들지)
-- MVP 범위(포함·제외)
-- KPI·성공 기준
-- 제약사항
-- 운영 방식
+- 무엇을 만들고 싶은가(productGoal)
+- 누가 사용하는가(targetUser)
+- 플랫폼 형태(platformType: 웹/모바일/관리자/혼합)
+- 핵심 기능 3개(coreFeatures)
+- 로그인/권한 필요 여부(authNeed)
+- 주요 화면 구성(mainScreens)
+- 저장 데이터 종류(dataEntities)
+- 외부 연동 필요 여부(integrations)
+- 초기 버전에 꼭 필요한 범위(mvpScope)
+- 디자인 수준(designLevel: 간단/일반/고급)
 
 지금 첫 질문을 시작하라.
 
@@ -545,17 +545,17 @@ export async function runInterviewAnalyzeOpenAI(input: {
 1) 사용자의 최신 답변을 읽고, 아래 10개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
 2) 사용자의 답변 intent를 분류합니다(질문에 직접 답하지 않아도 "AI에게 판단을 위임"이면 delegate_to_ai).
 
-슬롯 정의:
-- coreUser: 핵심 사용자·주 사용자·역할 주체
-- painPoint: 현재 문제점·비효율·리스크·불편
-- currentMethod: 현재 운영 방식·기존 해결 방식·사용 도구·절차
-- needForImprovement: 개선 필요성·기대 효과·도입 이유
-- coreFeatures: 꼭 필요한 핵심 기능·주요 화면·업무 단위
-- featurePriority: 기능·요구 간 구현 우선순위(무엇을 먼저/나중에)
-- mvpScope: MVP(첫 출시) 반드시 포함 vs 제외·후순위 범위
-- kpiSuccess: KPI·측정 지표·성공 기준·목표 수치
-- constraints: 예산·일정·보안·법규·연동 등 제약
-- operations: 운영 주체·승인/배포·지원·운영 리듬
+슬롯 정의(프로토타입 생성용 10개):
+- productGoal: 무엇을 만들고 싶은가(최종 사용 가치/자동화 대상)
+- targetUser: 누가 사용하는가(주 사용자 역할)
+- platformType: 웹/모바일/관리자/혼합 중 무엇인가
+- coreFeatures: 핵심 기능 3개(동사형)
+- authNeed: 로그인/권한 필요 여부(역할 포함)
+- mainScreens: 주요 화면 구성(흐름/페이지)
+- dataEntities: 저장 데이터 종류(엔티티)
+- integrations: 외부 연동 필요 여부(메일/결제/AI/파일 등)
+- mvpScope: 초기 버전에 꼭 필요한 범위(포함/제외)
+- designLevel: 디자인 수준(간단/일반/고급)
 
 규칙:
 - 의미 기반으로 판단한다(키워드만 맞추지 않는다).
@@ -583,27 +583,27 @@ export async function runInterviewAnalyzeOpenAI(input: {
 JSON 스키마(키 이름·형식 엄수):
 {
   "intent": "answer|delegate_to_ai|skip|unclear",
-  "delegatedSlot": "coreUser|painPoint|currentMethod|needForImprovement|coreFeatures|featurePriority|mvpScope|kpiSuccess|constraints|operations|null",
+  "delegatedSlot": "productGoal|targetUser|platformType|coreFeatures|authNeed|mainScreens|dataEntities|integrations|mvpScope|designLevel|null",
   "delegatedDefault": "AI가 적용할 기본안 설명(짧게)",
   "globalDelegation": true|false,
   "summary": "한두 문장 한국어 요약",
   "slots": {
-    "coreUser": "empty|partial|filled",
-    "painPoint": "empty|partial|filled",
-    "currentMethod": "empty|partial|filled",
-    "needForImprovement": "empty|partial|filled",
+    "productGoal": "empty|partial|filled",
+    "targetUser": "empty|partial|filled",
+    "platformType": "empty|partial|filled",
     "coreFeatures": "empty|partial|filled",
-    "featurePriority": "empty|partial|filled",
+    "authNeed": "empty|partial|filled",
+    "mainScreens": "empty|partial|filled",
+    "dataEntities": "empty|partial|filled",
+    "integrations": "empty|partial|filled",
     "mvpScope": "empty|partial|filled",
-    "kpiSuccess": "empty|partial|filled",
-    "constraints": "empty|partial|filled",
-    "operations": "empty|partial|filled"
+    "designLevel": "empty|partial|filled"
   },
   "notes": {
-    "coreUser": [], "painPoint": [], "currentMethod": [], "needForImprovement": [],
-    "coreFeatures": [], "featurePriority": [], "mvpScope": [], "kpiSuccess": [], "constraints": [], "operations": []
+    "productGoal": [], "targetUser": [], "platformType": [], "coreFeatures": [],
+    "authNeed": [], "mainScreens": [], "dataEntities": [], "integrations": [], "mvpScope": [], "designLevel": []
   },
-  "nextBestSlot": "coreUser" | "painPoint" | "currentMethod" | "needForImprovement" | "coreFeatures" | "featurePriority" | "mvpScope" | "kpiSuccess" | "constraints" | "operations" | null,
+  "nextBestSlot": "productGoal" | "targetUser" | "platformType" | "coreFeatures" | "authNeed" | "mainScreens" | "dataEntities" | "integrations" | "mvpScope" | "designLevel" | null,
   "confidence": 0.0
 }`;
 
