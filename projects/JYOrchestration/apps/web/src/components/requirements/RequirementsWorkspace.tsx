@@ -48,6 +48,7 @@ import {
   coerceInterviewAnalyzerPayload,
   emergencyFallbackProblemInterviewFromUserMessageRegex,
   emptyProblemInterviewState,
+  applyGlobalDelegationDefaults,
   interviewSlotLevelFromState,
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   INTERVIEW_COMPLETION_NOTICE_KR,
@@ -1912,6 +1913,7 @@ export function RequirementsWorkspace({
           let autoAppliedDelegationDefault = false;
           let delegatedSlot: ProblemInterviewSlot | null = null;
           let delegatedDefaultLine = "";
+          const globalDelegation = Boolean(analyzerForPlan && analyzerForPlan.globalDelegation === true);
           if (analyzerForPlan && analyzerForPlan.intent === "delegate_to_ai") {
             delegatedSlot = analyzerForPlan.delegatedSlot ?? lastAskedSlot ?? null;
             delegatedDefaultLine = (analyzerForPlan.delegatedDefault || "AI 기본 추천안 적용").trim();
@@ -1930,20 +1932,25 @@ export function RequirementsWorkspace({
             }
           }
 
+          // 글로벌 위임이면 남은 슬롯을 기본 템플릿으로 보완하고, 조기 종료(>=85%)를 허용한다.
+          const mergedWithGlobalDelegation = globalDelegation ? applyGlobalDelegationDefaults(mergedForPlan, nowIso) : mergedForPlan;
+
           const plan = planNextInterviewTurn(
-            mergedForPlan,
+            mergedWithGlobalDelegation,
             analyzerForPlan,
-            mergedForPlan.askedSlots,
+            mergedWithGlobalDelegation.askedSlots,
             turn,
             INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
             text,
             { avoidNextSlot: [
               ...(avoidSlotsForNext ?? []),
               ...(autoAppliedDelegationDefault && (delegatedSlot ?? lastAskedSlot) ? [((delegatedSlot ?? lastAskedSlot) as ProblemInterviewSlot)] : []),
-            ] }
+            ],
+              ...(globalDelegation ? { allowEarlyFinishScore: 8.5 } : {}),
+            }
           );
           if (plan) {
-            const readiness = formatProposalInterviewReadinessLine(mergedForPlan);
+            const readiness = formatProposalInterviewReadinessLine(mergedWithGlobalDelegation);
             const extra = autoAppliedDelegationDefault
               ? "해당 항목은 AI 기본안으로 반영하겠습니다."
               : "";
@@ -1952,14 +1959,14 @@ export function RequirementsWorkspace({
             const slotForAsked =
               plan.kind === "slot"
                 ? plan.slot
-                : pickNextAskableInterviewSlot(mergedForPlan, mergedForPlan.askedSlots, null, {
+                : pickNextAskableInterviewSlot(mergedWithGlobalDelegation, mergedWithGlobalDelegation.askedSlots, null, {
                     avoidSlots: [
                       ...(avoidSlotsForNext ?? []),
                       ...(autoAppliedDelegationDefault && (delegatedSlot ?? lastAskedSlot) ? [((delegatedSlot ?? lastAskedSlot) as ProblemInterviewSlot)] : []),
                     ],
                   }) ??
                   ("painPoint" as ProblemInterviewSlot);
-            const asked = withAskedSlot(mergedForPlan, slotForAsked, nowIso);
+            const asked = withAskedSlot(mergedWithGlobalDelegation, slotForAsked, nowIso);
             const baseMsgs = withCalling.requirementsConversation.messages;
             if (
               primaryId === VIRTUAL_AI_PLANNER_ID &&
@@ -2001,7 +2008,7 @@ export function RequirementsWorkspace({
                 ],
               },
             };
-            await persistRemote(interviewNextRoom, {}, { problemInterview: asked });
+            await persistRemote(interviewNextRoom, {}, { problemInterview: asked, ...(globalDelegation ? { globalDelegation: true } : {}) });
             setAiLastInvoke({ ok: true, at: new Date().toISOString() });
             ideationSendDevLog("return", `interview-next ok=${Boolean(analyzerForPlan)} id=${sendTraceId}`);
             setInput("");
@@ -2009,8 +2016,10 @@ export function RequirementsWorkspace({
             return { needsTailPersist: false };
           }
 
-          const doneInterview = { ...merged, active: false, updatedAt: nowIso };
-          const completionBody = INTERVIEW_COMPLETION_NOTICE_KR;
+          const doneInterview = { ...(mergedWithGlobalDelegation as any), active: false, updatedAt: nowIso } as ProblemInterviewState;
+          const completionBody = globalDelegation
+            ? "남은 항목은 AI 권장안으로 보완하겠습니다.\n이제 기획안 생성을 진행할 수 있습니다."
+            : INTERVIEW_COMPLETION_NOTICE_KR;
           if (
             primaryId === VIRTUAL_AI_PLANNER_ID &&
             shouldSkipIdeationDuplicateAppend({
@@ -2021,7 +2030,7 @@ export function RequirementsWorkspace({
             })
           ) {
             ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=interview-complete`);
-            await persistRemote(withCalling, {}, { problemInterview: doneInterview });
+            await persistRemote(withCalling, {}, { problemInterview: doneInterview, ...(globalDelegation ? { globalDelegation: true } : {}) });
             setAiLastInvoke({ ok: true, at: new Date().toISOString() });
             ideationSendDevLog("return", `interview-complete-dedupe id=${sendTraceId}`);
             setInput("");
@@ -2048,7 +2057,7 @@ export function RequirementsWorkspace({
               ],
             },
           };
-          await persistRemote(interviewDoneRoom, {}, { problemInterview: doneInterview });
+          await persistRemote(interviewDoneRoom, {}, { problemInterview: doneInterview, ...(globalDelegation ? { globalDelegation: true } : {}) });
           setAiLastInvoke({ ok: true, at: new Date().toISOString() });
           ideationSendDevLog("return", `interview-complete ok=${Boolean(analyzerForPlan)} id=${sendTraceId}`);
           setInput("");

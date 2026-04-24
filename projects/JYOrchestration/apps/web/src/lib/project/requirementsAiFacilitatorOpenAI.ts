@@ -566,6 +566,9 @@ export async function runInterviewAnalyzeOpenAI(input: {
 - delegate_to_ai인 경우:
   - delegatedSlot을 지정한다: (직전 질문 슬롯이 적절하면 그것을, 아니면 가장 근접한 슬롯)
   - delegatedDefault에 AI가 적용할 기본안 한 줄을 쓴다(예: “기본 추천안 적용”, “업계 일반 기준으로 설정”)
+- globalDelegation 판단:
+  - 사용자가 "이후 질문은 AI가 알아서/추가 질문 없이 진행/남은 건 AI가 판단"처럼 **남은 모든 결정을 위임**하면 globalDelegation=true.
+  - globalDelegation=true일 때는 delegatedSlot이 null이어도 된다.
 - 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
 - slots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나(구 키 filledSlots는 쓰지 말 것).
 - 10개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.
@@ -578,6 +581,7 @@ JSON 스키마(키 이름·형식 엄수):
   "intent": "answer|delegate_to_ai|skip|unclear",
   "delegatedSlot": "coreUser|painPoint|currentMethod|needForImprovement|coreFeatures|featurePriority|mvpScope|kpiSuccess|constraints|operations|null",
   "delegatedDefault": "AI가 적용할 기본안 설명(짧게)",
+  "globalDelegation": true|false,
   "summary": "한두 문장 한국어 요약",
   "slots": {
     "coreUser": "empty|partial|filled",

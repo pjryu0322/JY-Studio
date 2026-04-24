@@ -365,6 +365,8 @@ export type InterviewAnalyzerPayload = {
   intent: InterviewIntent;
   delegatedSlot: ProblemInterviewSlot | null;
   delegatedDefault: string;
+  /** 사용자가 "추가 질문 없이 진행"을 명시적으로 위임했는지 */
+  globalDelegation: boolean;
   /** 모델 출력 키 `slots`(구 `filledSlots` 호환). */
   slots: Record<ProblemInterviewSlot, InterviewSlotLevel>;
   notes: Partial<Record<ProblemInterviewSlot, string[]>>;
@@ -720,6 +722,55 @@ export function proposalInterviewReadinessPercent(state: ProblemInterviewState |
   return Math.min(100, Math.round(((strict + 0.5 * partialOnly) / total) * 100));
 }
 
+export function proposalInterviewReadinessScore(state: ProblemInterviewState | null | undefined): number {
+  if (!state) return 0;
+  const strict = problemInterviewStrictFilledCount(state);
+  const partialOnly = problemInterviewPartialOnlyCount(state);
+  return strict + 0.5 * partialOnly;
+}
+
+const GLOBAL_DELEGATION_DEFAULTS: Partial<Record<ProblemInterviewSlot, string>> = {
+  kpiSuccess: "기본 KPI 템플릿 적용: 활성사용/업무시간 절감/오류율 감소/만족도(초안).",
+  operations: "표준 운영안 적용: 담당자 지정·승인 흐름·주간 점검·문의 대응(초안).",
+  constraints: "일반 SaaS 기준 적용: 개인정보·권한관리·감사로그·가용성·연동 제약(초안).",
+};
+
+/** globalDelegation=true일 때 남은 슬롯을 기본안으로 보완한다. */
+export function applyGlobalDelegationDefaults(state: ProblemInterviewState, nowIso: string): ProblemInterviewState {
+  const next: ProblemInterviewState = {
+    ...state,
+    notes: { ...(state.notes ?? {}) },
+    partial: { ...(state.partial ?? {}) },
+    askedSlots: [...(state.askedSlots ?? [])],
+    updatedAt: nowIso,
+  };
+
+  // KPI/운영/제약은 "기본안 확정"으로 처리(재질문 금지)
+  for (const slot of ["kpiSuccess", "operations", "constraints"] as const) {
+    if (slotStrictlyFilled(next, slot)) continue;
+    (next as any)[slot] = true;
+    if (next.partial && slot in next.partial) {
+      const { [slot]: _removed, ...rest } = next.partial;
+      next.partial = Object.keys(rest).length ? rest : undefined;
+    }
+    const line = GLOBAL_DELEGATION_DEFAULTS[slot] ?? "AI 권장 기본안 적용(초안).";
+    next.notes[slot] = next.notes[slot] ? `${next.notes[slot]}\n${line}`.trim() : line;
+  }
+
+  // 나머지 미확보 슬롯은 partial로만 채워 점수를 끌어올리되, filled는 강제하지 않는다.
+  const partial = { ...(next.partial ?? {}) } as Record<string, boolean>;
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    if (slotStrictlyFilled(next, slot)) continue;
+    if (problemInterviewIsCovered(next, slot)) continue;
+    partial[slot] = true;
+    next.notes[slot] = next.notes[slot]
+      ? `${next.notes[slot]}\nAI 권장 기본안으로 보완(사용자 위임).`.trim()
+      : "AI 권장 기본안으로 보완(사용자 위임).";
+  }
+  next.partial = Object.keys(partial).length ? partial : undefined;
+  return next;
+}
+
 /** 인터뷰 AI 요약 앞에 붙이는 준비도 한 줄 */
 export function formatProposalInterviewReadinessLine(state: ProblemInterviewState | null | undefined): string {
   const pct = proposalInterviewReadinessPercent(state);
@@ -858,9 +909,13 @@ export function planNextInterviewTurn(
   turnSeed: number,
   confidenceThreshold = INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   fallbackSummary?: string,
-  opts?: { avoidNextSlot?: readonly ProblemInterviewSlot[] | null }
+  opts?: { avoidNextSlot?: readonly ProblemInterviewSlot[] | null; allowEarlyFinishScore?: number | null }
 ): InterviewQuestionPlan | null {
   if (PROBLEM_INTERVIEW_SLOTS.every((s) => slotStrictlyFilled(mergedState, s))) {
+    return null;
+  }
+  const early = typeof opts?.allowEarlyFinishScore === "number" ? opts.allowEarlyFinishScore : null;
+  if (early !== null && proposalInterviewReadinessScore(mergedState) >= early) {
     return null;
   }
   const summaryFromAnalyzer = (analyzer?.summary ?? "").trim();
@@ -913,6 +968,7 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
   const intent = interviewIntentFromWire(o.intent);
   const delegatedSlot = normalizeDelegatedSlotId(o.delegatedSlot);
   const delegatedDefault = typeof o.delegatedDefault === "string" ? o.delegatedDefault.trim().slice(0, 400) : "";
+  const globalDelegation = o.globalDelegation === true;
   const confRaw = o.confidence;
   const confidence =
     typeof confRaw === "number" && Number.isFinite(confRaw) ? Math.min(1, Math.max(0, confRaw)) : 0.35;
@@ -972,7 +1028,7 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
   if (allModelFilled) nextBestSlot = null;
   if (nextBestSlot && slots[nextBestSlot] === "filled") nextBestSlot = null;
 
-  return { summary, intent, delegatedSlot, delegatedDefault, slots, notes, nextBestSlot, confidence };
+  return { summary, intent, delegatedSlot, delegatedDefault, globalDelegation, slots, notes, nextBestSlot, confidence };
 }
 
 /** API 응답 객체를 분석 페이로드로 정규화한다. */
