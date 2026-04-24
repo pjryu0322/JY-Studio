@@ -14,6 +14,7 @@ type Body = {
   projectDescription?: string;
   chatSummary?: string;
   dialogueExcerpt?: string;
+  revisionRequest?: string;
   outputTypes?: unknown[];
   aiResponseStyle?: string;
 };
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
     const projectDescription = String(body.projectDescription ?? "");
     const chatSummary = String(body.chatSummary ?? "");
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
+    const revisionRequest = String(body.revisionRequest ?? "");
     const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
     const rawTypes = Array.isArray(body.outputTypes) ? body.outputTypes : [];
     const outputTypes = rawTypes.map((x) => String(x ?? "").trim()).filter(isIdeationDeliverableType) as IdeationDeliverableType[];
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
       projectDescription,
       chatSummary,
       dialogueExcerpt,
+      revisionRequest,
       selectedTypes: outputTypes,
       responseStyle,
     });

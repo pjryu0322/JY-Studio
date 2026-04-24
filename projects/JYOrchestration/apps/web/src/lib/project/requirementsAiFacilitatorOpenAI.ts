@@ -413,6 +413,7 @@ export async function runIdeationDeliverablesOpenAI(input: {
   projectDescription: string;
   chatSummary: string;
   dialogueExcerpt: string;
+  revisionRequest?: string;
   selectedTypes: readonly IdeationDeliverableType[];
   responseStyle?: RequirementsAiResponseStyle;
 }): Promise<IdeationDeliverablesOpenAiResult> {
@@ -435,6 +436,9 @@ export async function runIdeationDeliverablesOpenAI(input: {
   });
   const userBlock = buildIdeationDeliverablesUserPrompt(types);
   const keysLine = types.map((t) => `"${t}"`).join(", ");
+  const revisionBlock = input.revisionRequest?.trim()
+    ? `\n\n[수정 요청 — 반드시 반영]\n아래 수정 요청을 최우선으로 반영하여 산출물 본문을 **개정**하세요.\n- 가능하면 기존 구조/섹션을 유지하되, 요청 사항을 반영해 내용과 표현을 개선합니다.\n- 요청과 충돌하는 기존 내용이 있다면 요청을 우선합니다.\n\n수정 요청:\n${input.revisionRequest.trim()}`
+    : "";
 
   const callModel = async (userContent: string) => {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -489,7 +493,7 @@ export async function runIdeationDeliverablesOpenAI(input: {
     return { ok: true as const, outputs: extracted.outputs };
   };
 
-  const first = await callModel(`${base}\n\n${userBlock}`);
+  const first = await callModel(`${base}${revisionBlock}\n\n${userBlock}`);
   if (first.ok) {
     return { ok: true, outputs: first.outputs, model };
   }
@@ -500,7 +504,7 @@ export async function runIdeationDeliverablesOpenAI(input: {
   }
 
   const repair = `\n\n[재시도 — 필수]\n직전 응답이 규격에 맞지 않았습니다. 다시 **유효한 JSON 한 개만** 출력하세요.\n최상위에 "outputs" 객체를 두고, 키 ${keysLine} 각각에 **비어 있지 않은 마크다운 문자열**을 넣으세요.\n각 문자열은 최소 400자 이상의 실질 본문이어야 합니다. 공백만 있는 값 금지.`;
-  const second = await callModel(`${base}\n\n${userBlock}${repair}`);
+  const second = await callModel(`${base}${revisionBlock}\n\n${userBlock}${repair}`);
   if (second.ok) {
     return { ok: true, outputs: second.outputs, model };
   }
