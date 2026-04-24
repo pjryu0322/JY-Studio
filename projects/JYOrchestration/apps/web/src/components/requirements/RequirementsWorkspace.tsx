@@ -49,7 +49,6 @@ import {
   emergencyFallbackProblemInterviewFromUserMessageRegex,
   emptyProblemInterviewState,
   interviewSlotLevelFromState,
-  isDelegationLoopInRecentUserTurns,
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   INTERVIEW_COMPLETION_NOTICE_KR,
   mergeAnalyzerIntoProblemInterview,
@@ -1908,19 +1907,27 @@ export function RequirementsWorkspace({
             lastAskedSlot ? levelRank(nextLevel) <= levelRank(prevLevel) : false;
           const avoidSlotsForNext = avoidImmediateRepeat && lastAskedSlot ? ([lastAskedSlot] as const) : null;
 
-          // 최근 3턴 위임 답변 루프 감지 → 직전 질문 슬롯을 "기본 추천안"으로 partial 채우고 다음 슬롯으로 이동
-          const recentUserTurns = msgs.filter((m) => m.role === "user").map((m) => String(m.content ?? ""));
-          const delegationLoop = isDelegationLoopInRecentUserTurns(recentUserTurns);
+          // LLM analyzer intent 기반 위임 처리: delegate_to_ai면 기본안을 반영하고 같은 슬롯을 다시 묻지 않는다.
           let mergedForPlan = merged;
           let autoAppliedDelegationDefault = false;
-          if (delegationLoop && lastAskedSlot && !slotStrictlyFilled(merged, lastAskedSlot)) {
-            const partial = { ...(merged.partial ?? {}) } as Record<string, boolean>;
-            partial[lastAskedSlot] = true;
-            const notes = { ...(merged.notes ?? {}) } as Record<string, string>;
-            const line = "AI 기본 추천안 사용(사용자 위임 응답)";
-            notes[lastAskedSlot] = notes[lastAskedSlot] ? `${notes[lastAskedSlot]}\n${line}`.trim() : line;
-            mergedForPlan = { ...merged, partial, notes, updatedAt: nowIso };
-            autoAppliedDelegationDefault = true;
+          let delegatedSlot: ProblemInterviewSlot | null = null;
+          let delegatedDefaultLine = "";
+          if (analyzerForPlan && analyzerForPlan.intent === "delegate_to_ai") {
+            delegatedSlot = analyzerForPlan.delegatedSlot ?? lastAskedSlot ?? null;
+            delegatedDefaultLine = (analyzerForPlan.delegatedDefault || "AI 기본 추천안 적용").trim();
+            if (delegatedSlot && !slotStrictlyFilled(merged, delegatedSlot)) {
+              // 위임=기본안 확정으로 처리(재질문 금지 + 진행률 증가)
+              const nextRow = { ...(merged as unknown as Record<string, unknown>) } as Record<string, unknown>;
+              nextRow[delegatedSlot] = true;
+              const partial = { ...(merged.partial ?? {}) } as Record<string, boolean>;
+              if (delegatedSlot in partial) delete partial[delegatedSlot];
+              const notes = { ...(merged.notes ?? {}) } as Record<string, string>;
+              notes[delegatedSlot] = notes[delegatedSlot]
+                ? `${notes[delegatedSlot]}\n${delegatedDefaultLine}`.trim()
+                : delegatedDefaultLine;
+              mergedForPlan = { ...(merged as any), ...nextRow, partial, notes, updatedAt: nowIso } as ProblemInterviewState;
+              autoAppliedDelegationDefault = true;
+            }
           }
 
           const plan = planNextInterviewTurn(
@@ -1932,13 +1939,13 @@ export function RequirementsWorkspace({
             text,
             { avoidNextSlot: [
               ...(avoidSlotsForNext ?? []),
-              ...(autoAppliedDelegationDefault && lastAskedSlot ? [lastAskedSlot] : []),
+              ...(autoAppliedDelegationDefault && (delegatedSlot ?? lastAskedSlot) ? [((delegatedSlot ?? lastAskedSlot) as ProblemInterviewSlot)] : []),
             ] }
           );
           if (plan) {
             const readiness = formatProposalInterviewReadinessLine(mergedForPlan);
             const extra = autoAppliedDelegationDefault
-              ? "해당 기준은 기본 추천안으로 반영하겠습니다."
+              ? "해당 항목은 AI 기본안으로 반영하겠습니다."
               : "";
             const mergedSummary = `${readiness}\n\n${extra ? `${extra}\n` : ""}${plan.summary}`.trim();
             const aiBody = composeInterviewPlannerReply(mergedSummary, plan.question);
@@ -1948,7 +1955,7 @@ export function RequirementsWorkspace({
                 : pickNextAskableInterviewSlot(mergedForPlan, mergedForPlan.askedSlots, null, {
                     avoidSlots: [
                       ...(avoidSlotsForNext ?? []),
-                      ...(autoAppliedDelegationDefault && lastAskedSlot ? [lastAskedSlot] : []),
+                      ...(autoAppliedDelegationDefault && (delegatedSlot ?? lastAskedSlot) ? [((delegatedSlot ?? lastAskedSlot) as ProblemInterviewSlot)] : []),
                     ],
                   }) ??
                   ("painPoint" as ProblemInterviewSlot);

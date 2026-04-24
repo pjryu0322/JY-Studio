@@ -358,8 +358,13 @@ export function mergeImplicitAskedFromLastBootstrapQuestion(
 
 export type InterviewSlotLevel = "empty" | "partial" | "filled";
 
+export type InterviewIntent = "answer" | "delegate_to_ai" | "skip" | "unclear";
+
 export type InterviewAnalyzerPayload = {
   summary: string;
+  intent: InterviewIntent;
+  delegatedSlot: ProblemInterviewSlot | null;
+  delegatedDefault: string;
   /** 모델 출력 키 `slots`(구 `filledSlots` 호환). */
   slots: Record<ProblemInterviewSlot, InterviewSlotLevel>;
   notes: Partial<Record<ProblemInterviewSlot, string[]>>;
@@ -459,6 +464,19 @@ function interviewLevelRank(l: InterviewSlotLevel): number {
   if (l === "filled") return 2;
   if (l === "partial") return 1;
   return 0;
+}
+
+export function interviewIntentFromWire(raw: unknown): InterviewIntent {
+  const t = String(raw ?? "").trim();
+  if (t === "answer" || t === "delegate_to_ai" || t === "skip" || t === "unclear") return t;
+  return "answer";
+}
+
+function normalizeDelegatedSlotId(raw: unknown): ProblemInterviewSlot | null {
+  if (raw === null) return null;
+  const t = String(raw ?? "").trim();
+  if (!t) return null;
+  return normalizeLegacyInterviewSlotId(t);
 }
 
 function slotFilledBool(state: ProblemInterviewState, slot: ProblemInterviewSlot): boolean {
@@ -892,6 +910,9 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
   if (!parsed || typeof parsed !== "object") return null;
   const o = parsed as Record<string, unknown>;
   const summary = typeof o.summary === "string" ? o.summary.trim() : "";
+  const intent = interviewIntentFromWire(o.intent);
+  const delegatedSlot = normalizeDelegatedSlotId(o.delegatedSlot);
+  const delegatedDefault = typeof o.delegatedDefault === "string" ? o.delegatedDefault.trim().slice(0, 400) : "";
   const confRaw = o.confidence;
   const confidence =
     typeof confRaw === "number" && Number.isFinite(confRaw) ? Math.min(1, Math.max(0, confRaw)) : 0.35;
@@ -951,7 +972,7 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
   if (allModelFilled) nextBestSlot = null;
   if (nextBestSlot && slots[nextBestSlot] === "filled") nextBestSlot = null;
 
-  return { summary, slots, notes, nextBestSlot, confidence };
+  return { summary, intent, delegatedSlot, delegatedDefault, slots, notes, nextBestSlot, confidence };
 }
 
 /** API 응답 객체를 분석 페이로드로 정규화한다. */
