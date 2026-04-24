@@ -168,7 +168,7 @@ export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
 
 목표:
 사용자의 프로젝트 아이디어를 구체화하기 위해
-1단계 문제정의 인터뷰를 진행하십시오.
+통합 기획안(단일 문서) 작성 전 인터뷰를 진행하십시오.
 
 프로젝트명:
 ${pn}
@@ -183,12 +183,17 @@ ${pd}
 4. 여러 질문 동시 금지.
 5. 답변 후 후속 질문으로 좁혀가라.
 6. 질문은 맞춤형이어야 한다.
-7. 확보 목표:
+7. 최종적으로 아래가 모두 드러나도록 순차적으로 물어라(한 번에 다 묻지 말 것):
 
 - 핵심 사용자
 - 현재 문제점
 - 기존 해결 방식
 - 개선 필요성
+- 핵심 기능
+- MVP 우선순위
+- KPI·성공 기준
+- 제약사항
+- 운영 조건
 
 지금 첫 질문을 시작하라.
 
@@ -514,7 +519,7 @@ function interviewStateJsonForAnalyzer(state: ProblemInterviewState): string {
 }
 
 /**
- * 문제정의 인터뷰: 사용자 한 턴을 슬롯 상태로만 해석(JSON). 채팅 응답을 생성하지 않는다.
+ * 기획안 인터뷰: 사용자 한 턴을 슬롯 상태로만 해석(JSON). 채팅 응답을 생성하지 않는다.
  */
 export async function runInterviewAnalyzeOpenAI(input: {
   projectName: string;
@@ -547,6 +552,7 @@ export async function runInterviewAnalyzeOpenAI(input: {
 규칙:
 - 의미 기반으로 판단한다(키워드만 맞추지 않는다).
 - 문제정의 4슬롯만 채워졌다고 끝내지 말고, 기획안에 필요한 나머지 슬롯도 채울 때까지 partial/empty를 남긴다.
+- "filled"는 사용자가 그 슬롯을 문맥상 명확히 답했을 때만 부여한다. 한마디·암시만 있으면 partial 또는 empty로 둔다.
 - 출력은 JSON 한 개만이다. 마크다운·코드펜스·JSON 밖의 설명 금지.
 - slots의 각 값은 반드시 "empty" | "partial" | "filled" 중 하나(구 키 filledSlots는 쓰지 말 것).
 - 9개 슬롯이 모두 "filled"이면 nextBestSlot은 반드시 null.

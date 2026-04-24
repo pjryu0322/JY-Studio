@@ -98,14 +98,6 @@ export function proposalInterviewFilledCount(state: ProblemInterviewState | null
   return problemInterviewCoveredCount(state);
 }
 
-/** 인터뷰 AI 요약 앞에 붙이는 준비도 한 줄 */
-export function formatProposalInterviewReadinessLine(state: ProblemInterviewState | null | undefined): string {
-  const filled = proposalInterviewFilledCount(state);
-  const total = PROBLEM_INTERVIEW_SLOT_TOTAL;
-  const pct = total ? Math.round((filled / total) * 100) : 0;
-  return `기획안 준비도 ${pct}% (${filled} / ${total} 슬롯 확보). 기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다.`;
-}
-
 export function problemInterviewIsCovered(state: ProblemInterviewState, slot: ProblemInterviewSlot): boolean {
   const partial = state.partial ?? {};
   return Boolean((state as any)[slot]) || Boolean((partial as any)[slot]);
@@ -129,7 +121,6 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
   const base = prev ? { ...prev } : emptyProblemInterviewState(nowIso);
   const t = String(userText ?? "").trim();
   if (!t) return { ...base, updatedAt: nowIso };
-  const lower = t.toLowerCase();
   const notes: ProblemInterviewNotes = { ...(base.notes ?? {}) };
   const partial = { ...(base.partial ?? {}) };
 
@@ -181,6 +172,51 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
   } else if (!base.needForImprovement && needHint) {
     partial.needForImprovement = true;
     addNote(notes, "needForImprovementHint", t);
+  }
+
+  // coreFeatures
+  if (/(기능|화면|대시보드|알림|검색|업로드|다운로드|승인\s*흐름)/.test(t) && /(필요|구현|만들|추가|포함)/.test(t)) {
+    base.coreFeatures = true;
+    addNote(notes, "coreFeatures", t);
+  } else if (!base.coreFeatures && /(기능|화면|대시보드)/.test(t)) {
+    partial.coreFeatures = true;
+    addNote(notes, "coreFeaturesHint", t);
+  }
+
+  // mvpPriority
+  if (/(MVP|최소|1차\s*출시|첫\s*버전|우선\s*순위|먼저|나중에|제외)/i.test(t)) {
+    base.mvpPriority = true;
+    addNote(notes, "mvpPriority", t);
+  } else if (!base.mvpPriority && /(포함|빼|후순위|일단)/.test(t)) {
+    partial.mvpPriority = true;
+    addNote(notes, "mvpPriorityHint", t);
+  }
+
+  // kpiSuccess
+  if (/(KPI|지표|성공\s*기준|측정|목표|감소|절감|%)/i.test(t)) {
+    base.kpiSuccess = true;
+    addNote(notes, "kpiSuccess", t);
+  } else if (!base.kpiSuccess && /(줄이|개선|효과)/.test(t)) {
+    partial.kpiSuccess = true;
+    addNote(notes, "kpiSuccessHint", t);
+  }
+
+  // constraints
+  if (/(예산|일정|보안|법|규정|개인정보|GDPR|SLA|연동|레거시|제약)/i.test(t)) {
+    base.constraints = true;
+    addNote(notes, "constraints", t);
+  } else if (!base.constraints && /(안\s*되|불가|못\s*함)/.test(t)) {
+    partial.constraints = true;
+    addNote(notes, "constraintsHint", t);
+  }
+
+  // operations
+  if (/(운영|담당|승인|배포|장애|지원|주간|월간|근무)/.test(t)) {
+    base.operations = true;
+    addNote(notes, "operations", t);
+  } else if (!base.operations && /(팀|조직|부서)/.test(t)) {
+    partial.operations = true;
+    addNote(notes, "operationsHint", t);
   }
 
   return { ...base, notes, partial, updatedAt: nowIso, active: base.active !== false };
@@ -537,6 +573,46 @@ export function slotStrictlyFilled(state: ProblemInterviewState, slot: ProblemIn
   return slotFilledBool(state, slot);
 }
 
+/** boolean 슬롯만 카운트(인터뷰 종료·정리 요청 노출 등 엄격 기준). */
+export function problemInterviewStrictFilledCount(state: ProblemInterviewState | null | undefined): number {
+  if (!state) return 0;
+  let n = 0;
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    if (slotStrictlyFilled(state, slot)) n += 1;
+  }
+  return n;
+}
+
+/** covered이지만 아직 strict filled가 아닌 슬롯 수 */
+export function problemInterviewPartialOnlyCount(state: ProblemInterviewState | null | undefined): number {
+  if (!state) return 0;
+  let n = 0;
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    if (problemInterviewIsCovered(state, slot) && !slotStrictlyFilled(state, slot)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * UI 진행률(0~100): 확정 슬롯은 1, 부분 슬롯은 0.5 가중.
+ * 인터뷰 종료는 `problemInterviewStrictFilledCount === 전체`일 때만 한다.
+ */
+export function proposalInterviewReadinessPercent(state: ProblemInterviewState | null | undefined): number {
+  const total = PROBLEM_INTERVIEW_SLOT_TOTAL;
+  if (!state || !total) return 0;
+  const strict = problemInterviewStrictFilledCount(state);
+  const partialOnly = problemInterviewPartialOnlyCount(state);
+  return Math.min(100, Math.round(((strict + 0.5 * partialOnly) / total) * 100));
+}
+
+/** 인터뷰 AI 요약 앞에 붙이는 준비도 한 줄 */
+export function formatProposalInterviewReadinessLine(state: ProblemInterviewState | null | undefined): string {
+  const pct = proposalInterviewReadinessPercent(state);
+  const strict = problemInterviewStrictFilledCount(state);
+  const total = PROBLEM_INTERVIEW_SLOT_TOTAL;
+  return `현재 기획안 준비도는 ${pct}%입니다 (${strict} / ${total} 슬롯 확정). 기획안 완성도를 높이기 위해 몇 가지만 더 확인하겠습니다.`;
+}
+
 const CONTROLLED_SLOT_QUESTIONS: Record<ProblemInterviewSlot, readonly string[]> = {
   painPoint: [
     "현재 방식에서 가장 불편하거나 시간이 많이 드는 지점은 무엇인가요?",
@@ -622,7 +698,8 @@ export type InterviewQuestionPlan =
 /**
  * 병합된 상태 + 분석기 결과로 사용자에게 보여줄 한 턴을 결정한다.
  * - confidence 낮으면 확인형 질문 1개만(슬롯 고정 문구 아님).
- * - 모든 슬롯이 covered(부분 포함)면 null → 인터뷰 종료.
+ * - 모든 슬롯이 엄격 확정(filled boolean)일 때만 null → 인터뷰 종료.
+ *   partial만으로는 종료하지 않는다(문제정의만으로 끝나는 것 방지).
  */
 export function planNextInterviewTurn(
   mergedState: ProblemInterviewState,
@@ -632,7 +709,7 @@ export function planNextInterviewTurn(
   confidenceThreshold = INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   fallbackSummary?: string
 ): InterviewQuestionPlan | null {
-  if (PROBLEM_INTERVIEW_SLOTS.every((s) => problemInterviewIsCovered(mergedState, s))) {
+  if (PROBLEM_INTERVIEW_SLOTS.every((s) => slotStrictlyFilled(mergedState, s))) {
     return null;
   }
   const summaryFromAnalyzer = (analyzer?.summary ?? "").trim();

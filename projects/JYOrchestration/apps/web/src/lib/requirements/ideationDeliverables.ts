@@ -33,7 +33,7 @@ export const IDEATION_DELIVERABLE_LABELS: Record<IdeationDeliverableType, string
   feature_list: "기능 목록",
   mvp_scope: "MVP 범위",
   kpi: "KPI",
-  full_plan: "전체 기획안",
+  full_plan: "프로젝트 기획안",
 };
 
 export type IdeationDeliverableAsset = {
@@ -93,8 +93,9 @@ const OUTPUT_SPECS: Record<IdeationDeliverableType, string> = {
 3. 목표 수치(초안)
 4. 우선순위`,
 
-  full_plan: `통합 기획안(단일 문서, 마크다운):
+  full_plan: `통합 기획안(단일 마크다운 문서 — 사용자에게는 파일 하나로 보이게):
 반드시 아래 "##" 제목을 그대로 사용하고, 각 절 아래에 실무형 본문을 작성한다.
+본문 1~6절이 곧 내부 첨부(부록) 역할을 한다: 각 절은 독립적으로 읽혀도 되도록 소제목·불릿을 갖춘다.
 
 ## 1. 문제정의
 - 핵심 사용자, 현재 문제, 기존 방식, 개선 필요성
@@ -114,7 +115,15 @@ const OUTPUT_SPECS: Record<IdeationDeliverableType, string> = {
 ## 6. 리스크 및 제약사항
 - 기술·운영·규제·일정 리스크와 완화 방향
 
-(선택) ## 7. 다음 액션
+## 7. 부록 — 구조화 요약 (한눈에)
+- 부록 A: 문제정의 요약(5줄 이내)
+- 부록 B: 기능 목록 표(이름·설명·우선순위)
+- 부록 C: MVP 포함/제외 표
+- 부록 D: KPI·성공기준 표
+- 부록 E: 로드맵 타임라인(주차 또는 단계)
+- 부록 F: 리스크·제약 체크리스트
+
+(선택) ## 8. 다음 액션
 - 바로 착수할 일 3~5개`,
 };
 

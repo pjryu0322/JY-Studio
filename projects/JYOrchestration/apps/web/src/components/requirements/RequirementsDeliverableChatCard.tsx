@@ -33,6 +33,7 @@ export function RequirementsDeliverableChatCard({
   const ids = payload.items.map((i) => i.assetId);
   const types = payload.requestedTypes.length ? payload.requestedTypes : payload.items.map((i) => i.type);
   const focusId = payload.items[0]?.assetId ?? null;
+  const unifiedFullPlanOnly = types.length === 1 && types[0] === "full_plan";
 
   return (
     <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>
@@ -99,9 +100,15 @@ export function RequirementsDeliverableChatCard({
           </>
         )}
       </div>
-      <div style={{ marginTop: 12, fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>
-        유형: {types.map((t) => (isIdeationDeliverableType(t) ? IDEATION_DELIVERABLE_LABELS[t] : t)).join(" · ")}
-      </div>
+      {unifiedFullPlanOnly ? (
+        <div style={{ marginTop: 12, fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>
+          형식: 통합 기획안(문제정의·기능·MVP·KPI·로드맵·리스크 등 내부 섹션 포함)
+        </div>
+      ) : (
+        <div style={{ marginTop: 12, fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>
+          유형: {types.map((t) => (isIdeationDeliverableType(t) ? IDEATION_DELIVERABLE_LABELS[t] : t)).join(" · ")}
+        </div>
+      )}
     </div>
   );
 }
