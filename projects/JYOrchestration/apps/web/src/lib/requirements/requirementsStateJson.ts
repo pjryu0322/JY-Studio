@@ -45,6 +45,11 @@ export type RequirementsStateJson = {
   originalProjectDescription?: string | null;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
   problemInterview?: ProblemInterviewState | null;
+  /**
+   * 사용자가 "추가 질문 없이 진행"을 명시적으로 위임한 상태.
+   * true면 인터뷰는 잔여 슬롯을 기본안으로 보완하고 종료할 수 있다.
+   */
+  globalDelegation?: boolean;
   /** 정리 요청 완료 시 아카이브 */
   problemInterviewHistory?: Array<{ archivedAt: string; state: ProblemInterviewState }> | null;
   /** 액터 및 서비스 흐름 정의(단계 2) — MVP v1 */
@@ -217,6 +222,10 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? null
         : parseProblemInterview(problemInterviewRaw);
 
+  const globalDelegationRaw = "globalDelegation" in o ? (o.globalDelegation as unknown) : undefined;
+  const globalDelegation =
+    globalDelegationRaw === undefined ? undefined : globalDelegationRaw === null ? null : globalDelegationRaw === true;
+
   const problemInterviewHistoryRaw = "problemInterviewHistory" in o ? (o.problemInterviewHistory as unknown) : undefined;
   const problemInterviewHistory =
     problemInterviewHistoryRaw === undefined
@@ -261,6 +270,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     priorityFeatures: typeof o.priorityFeatures === "string" ? o.priorityFeatures : undefined,
     ...(originalProjectDescription !== undefined ? { originalProjectDescription } : {}),
     ...(problemInterview !== undefined ? { problemInterview } : {}),
+    ...(globalDelegation !== undefined ? { globalDelegation: globalDelegation === null ? undefined : globalDelegation } : {}),
     ...(problemInterviewHistory !== undefined ? { problemInterviewHistory } : {}),
     ...(serviceFlowV1 !== undefined ? { serviceFlowV1 } : {}),
     ...(lastPromptView !== undefined ? { lastPromptView } : {}),
