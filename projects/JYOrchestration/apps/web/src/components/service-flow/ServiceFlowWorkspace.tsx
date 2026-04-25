@@ -69,7 +69,11 @@ export function ServiceFlowWorkspace({
 }) {
   const approvedCount = useMemo(() => (flow?.steps ?? []).filter((s) => s.approved).length, [flow?.steps]);
   const totalCount = flow?.steps?.length ?? 0;
-  const progressLabel = totalCount ? `${approvedCount} / ${totalCount} 승인됨` : "승인 단계가 아직 없습니다";
+  const actorIds = useMemo(() => new Set((flow?.actors ?? []).map((a) => a.id)), [flow?.actors]);
+  const allMapped = Boolean(flow && totalCount > 0 && flow.actors.length > 0 && flow.steps.every((s) => s.primaryActorId && actorIds.has(s.primaryActorId)));
+  const progressLabel = totalCount
+    ? `${approvedCount} / ${totalCount} 승인됨 · ${allMapped ? "액터 매핑 완료" : "액터 매핑 필요"}`
+    : "승인 단계가 아직 없습니다";
 
   const featuresHref = useMemo(() => (projectId ? `/features?projectId=${encodeURIComponent(projectId)}` : "/features"), [projectId]);
   const ideationHref = useMemo(() => (projectId ? `/requirements?projectId=${encodeURIComponent(projectId)}` : "/requirements"), [projectId]);
@@ -91,7 +95,13 @@ export function ServiceFlowWorkspace({
           <button type="button" onClick={onGenerateAiDraft} style={btnPrimary} disabled={renderGate}>
             AI 초안 생성
           </button>
-          <button type="button" onClick={onApproveAll} style={btn} disabled={!flow || totalCount === 0}>
+          <button
+            type="button"
+            onClick={onApproveAll}
+            style={{ ...btn, opacity: allMapped ? 1 : 0.55, cursor: allMapped ? "pointer" : "not-allowed" }}
+            disabled={!allMapped}
+            title={!allMapped ? "단계 1개 이상, 액터 1개 이상, 모든 단계의 주 담당 액터가 필요합니다." : "전체 단계를 승인합니다."}
+          >
             전체 승인
           </button>
           <Link href={featuresHref} style={btn}>
@@ -120,15 +130,12 @@ export function ServiceFlowWorkspace({
           </WorkflowCard>
         </div>
       ) : (
-        <div style={{ padding: 14, minHeight: 0 }}>
+        <div style={{ padding: 14, minHeight: 0, flex: "1 1 auto", overflow: "hidden" }}>
           <RequirementsServiceFlowStage
             ideationReady={ideationReady}
             ideationReadyNotice="현재 단계로 이동하려면\n아이디어 구체화 단계에서\n기획 산출물 정리가 필요합니다."
             flow={flow}
             onChangeFlow={onUpdateFlow}
-            onGenerateAiDraft={onGenerateAiDraft}
-            onApproveAll={onApproveAll}
-            onNavigateToFeaturesHref={featuresHref}
           />
         </div>
       )}

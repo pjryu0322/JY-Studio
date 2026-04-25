@@ -2410,9 +2410,24 @@ export function RequirementsWorkspace({
           const title = String(s?.title ?? "").trim();
           const purpose = String(s?.purpose ?? "").trim();
           const primaryName = String(s?.primary ?? "").trim();
-          const primaryActorId = actorIdByName.get(primaryName) ?? (primaryName ? `actor:${primaryName}` : actors[0]!.id);
+          let primaryActorId = actorIdByName.get(primaryName) ?? "";
+          if (!primaryActorId && primaryName) {
+            primaryActorId = `actor:${primaryName}`;
+            actorIdByName.set(primaryName, primaryActorId);
+            actors.push({ id: primaryActorId, name: primaryName, kind: "human" as const, description: null });
+          }
+          if (!primaryActorId) primaryActorId = actors[0]!.id;
           const secondary = Array.isArray(s?.secondary) ? s.secondary.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
-          const secondaryActorIds = secondary.map((nm) => actorIdByName.get(nm) ?? `actor:${nm}`);
+          const secondaryActorIds = secondary
+            .map((nm) => {
+              const known = actorIdByName.get(nm);
+              if (known) return known;
+              const id = `actor:${nm}`;
+              actorIdByName.set(nm, id);
+              actors.push({ id, name: nm, kind: "system" as const, description: null });
+              return id;
+            })
+            .filter((id) => id !== primaryActorId);
           if (!title || !purpose) return null;
           return {
             id: `step:${idx + 1}:${title}`,
@@ -2446,6 +2461,17 @@ export function RequirementsWorkspace({
 
   const handleApproveAllServiceFlowSteps = useCallback(async () => {
     if (!serviceFlow) return;
+    const actorIds = new Set(serviceFlow.actors.map((a) => a.id));
+    const invalid =
+      serviceFlow.steps.length === 0 ||
+      serviceFlow.actors.length === 0 ||
+      serviceFlow.steps.some((s) => !s.primaryActorId || !actorIds.has(s.primaryActorId));
+    if (invalid) {
+      const msg = "전체 승인 전 서비스 흐름 단계, 액터, 모든 단계의 주 담당 액터를 확인해 주세요.";
+      setError(msg);
+      showErrorToast(msg);
+      return;
+    }
     const now = new Date().toISOString();
     const next: RequirementsServiceFlowV1 = {
       ...serviceFlow,
@@ -2453,8 +2479,9 @@ export function RequirementsWorkspace({
       steps: serviceFlow.steps.map((s) => ({ ...s, approved: true, updatedAt: now })),
     };
     await persistServiceFlow(next);
+    await persistStateJsonOnly({ serviceFlowCompletedAt: now, serviceFlowV1: next });
     showSuccessToast("전체 단계 승인 완료");
-  }, [serviceFlow, persistServiceFlow, showSuccessToast]);
+  }, [serviceFlow, persistServiceFlow, persistStateJsonOnly, showSuccessToast, showErrorToast]);
 
   const inviteEmphasis = humanOthers.length === 0;
 

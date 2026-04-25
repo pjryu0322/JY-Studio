@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
@@ -82,17 +82,11 @@ export function RequirementsServiceFlowStage({
   ideationReadyNotice,
   flow,
   onChangeFlow,
-  onGenerateAiDraft,
-  onApproveAll,
-  onNavigateToFeaturesHref,
 }: {
   readonly ideationReady: boolean;
   readonly ideationReadyNotice: string;
   readonly flow: RequirementsServiceFlowV1 | null;
   readonly onChangeFlow: (next: RequirementsServiceFlowV1) => void;
-  readonly onGenerateAiDraft: () => void;
-  readonly onApproveAll: () => void;
-  readonly onNavigateToFeaturesHref: string;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const nowIso = () => new Date().toISOString();
@@ -101,7 +95,19 @@ export function RequirementsServiceFlowStage({
   const actors = flow?.actors ?? [];
 
   const [selectedActorId, setSelectedActorId] = useState<string | null>(actors[0]?.id ?? null);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(steps[0]?.id ?? null);
+  const selectedStep = steps.find((s) => s.id === selectedStepId) ?? steps[0] ?? null;
   const selectedActor = actors.find((a) => a.id === selectedActorId) ?? null;
+
+  useEffect(() => {
+    if (selectedStepId && steps.some((s) => s.id === selectedStepId)) return;
+    setSelectedStepId(steps[0]?.id ?? null);
+  }, [selectedStepId, steps]);
+
+  useEffect(() => {
+    if (selectedActorId && actors.some((a) => a.id === selectedActorId)) return;
+    setSelectedActorId(actors[0]?.id ?? null);
+  }, [actors, selectedActorId]);
 
   const actorStats = useMemo(() => {
     const byId = new Map<string, { stepIds: string[]; primaryCount: number }>();
@@ -137,27 +143,25 @@ export function RequirementsServiceFlowStage({
     return base;
   };
 
-  const upsertFlow = (patch: Partial<RequirementsServiceFlowV1>) => {
-    const base = ensureBase();
-    onChangeFlow({ ...base, ...patch, updatedAt: nowIso() });
-  };
-
   const addStep = () => {
     const base = ensureBase();
+    const primaryActorId = base.actors[0]?.id ?? "";
+    const id = uuid();
     const nextSteps = normalizeOrder([
       ...base.steps,
       {
-        id: uuid(),
+        id,
         order: base.steps.length + 1,
         title: "새 단계",
         purpose: "목적을 한 줄로 작성",
-        primaryActorId: base.actors[0]?.id ?? "actor:user",
+        primaryActorId,
         secondaryActorIds: [],
         approved: false,
         updatedAt: nowIso(),
       },
     ]);
     onChangeFlow({ ...base, steps: nextSteps, updatedAt: nowIso() });
+    setSelectedStepId(id);
   };
 
   const removeStep = (id: string) => {
@@ -203,6 +207,30 @@ export function RequirementsServiceFlowStage({
     onChangeFlow({ ...base, actors: nextActors, updatedAt: nowIso() });
   };
 
+  const removeActor = (id: string) => {
+    const base = ensureBase();
+    const nextActors = base.actors.filter((a) => a.id !== id);
+    const fallbackActorId = nextActors[0]?.id ?? "";
+    const nextSteps = base.steps.map((s) => ({
+      ...s,
+      primaryActorId: s.primaryActorId === id ? fallbackActorId : s.primaryActorId,
+      secondaryActorIds: s.secondaryActorIds.filter((aid) => aid !== id),
+      approved: false,
+      updatedAt: nowIso(),
+    }));
+    onChangeFlow({ ...base, actors: nextActors, steps: nextSteps, updatedAt: nowIso() });
+    if (selectedActorId === id) setSelectedActorId(fallbackActorId || null);
+  };
+
+  const setSupportingActorsFromSelect = (stepId: string, selected: HTMLCollectionOf<HTMLOptionElement>) => {
+    updateStep(stepId, {
+      secondaryActorIds: Array.from(selected)
+        .filter((o) => o.selected)
+        .map((o) => o.value)
+        .filter(Boolean),
+    });
+  };
+
   return (
     <section className="relative jyo-service-flow-stage" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflowX: "hidden" }}>
       <style>{`
@@ -223,26 +251,6 @@ export function RequirementsServiceFlowStage({
         }
       `}</style>
       <ScreenLabel label="요구사항-서비스흐름-페이지-섹션" visible={showScreenLabels} />
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ minWidth: 240 }}>
-          <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", letterSpacing: "-0.02em" }}>액터 및 서비스 흐름 정의</div>
-          <div style={{ fontSize: 12.5, fontWeight: 600, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
-            서비스 흐름을 먼저 정리한 뒤 액터·책임을 확정합니다.
-          </div>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <button type="button" onClick={onGenerateAiDraft} style={btnPrimary} disabled={!ideationReady} title={!ideationReady ? ideationReadyNotice : "AI로 초안을 생성합니다"}>
-            AI 초안 생성
-          </button>
-          <button type="button" onClick={onApproveAll} style={btn} disabled={!flow || steps.length === 0}>
-            전체 승인
-          </button>
-          <Link href={onNavigateToFeaturesHref} style={{ ...btn, display: "inline-block", textDecoration: "none" }}>
-            기능 정리로 이동
-          </Link>
-        </div>
-      </div>
 
       {!ideationReady ? (
         <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 12, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", fontSize: 13, fontWeight: 700, lineHeight: 1.55 }}>
@@ -266,18 +274,30 @@ export function RequirementsServiceFlowStage({
               <div style={{ padding: "12px 10px", fontSize: 13, color: "#64748b" }}>아직 단계가 없습니다. “단계 추가” 또는 “AI 초안 생성”을 사용하세요.</div>
             ) : null}
             {normalizeOrder(steps).map((s) => {
+              const selected = selectedStep?.id === s.id;
               const primary = actors.find((a) => a.id === s.primaryActorId)?.name ?? s.primaryActorId;
               const secondaryNames =
                 s.secondaryActorIds
                   .map((id) => actors.find((a) => a.id === id)?.name ?? id)
                   .filter(Boolean);
               return (
-                <div key={s.id} style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", padding: "10px 10px 10px" }}>
+                <div
+                  key={s.id}
+                  onClick={() => setSelectedStepId(s.id)}
+                  style={{
+                    border: selected ? "2px solid #0f766e" : "1px solid #e2e8f0",
+                    borderRadius: 12,
+                    background: selected ? "#f0fdfa" : "#fff",
+                    padding: "10px 10px 10px",
+                    cursor: "pointer",
+                  }}
+                >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       [{s.order}]{" "}
                       <input
                         value={s.title}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) => updateStep(s.id, { title: e.target.value })}
                         style={{ border: "none", outline: "none", font: "inherit", fontWeight: 900, width: "calc(100% - 54px)" }}
                       />
@@ -297,47 +317,14 @@ export function RequirementsServiceFlowStage({
                       <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 4 }}>목적</div>
                       <input
                         value={s.purpose}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) => updateStep(s.id, { purpose: e.target.value })}
                         style={{ width: "100%", borderRadius: 10, border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13 }}
                       />
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 4 }}>주 담당</div>
-                        <select
-                          value={s.primaryActorId}
-                          onChange={(e) => updateStep(s.id, { primaryActorId: e.target.value })}
-                          style={{ width: "100%", borderRadius: 10, border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, background: "#fff" }}
-                        >
-                          {actors.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {a.name} ({a.kind === "human" ? "사람" : "시스템"})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 4 }}>보조(복수)</div>
-                        <input
-                          value={secondaryNames.join(", ")}
-                          onChange={(e) => {
-                            const tokens = e.target.value
-                              .split(",")
-                              .map((x) => x.trim())
-                              .filter(Boolean);
-                            const ids = tokens
-                              .map((name) => actors.find((a) => a.name === name)?.id)
-                              .filter((x): x is string => Boolean(x));
-                            updateStep(s.id, { secondaryActorIds: ids });
-                          }}
-                          placeholder="예: 시스템, 관리자"
-                          style={{ width: "100%", borderRadius: 10, border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13 }}
-                        />
-                      </div>
-                    </div>
                     <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: s.approved ? "#166534" : "#b45309" }}>
-                        {s.approved ? "승인됨" : "미승인"} · 주 담당: {primary}{secondaryNames.length ? ` · 보조: ${secondaryNames.join(", ")}` : ""}
+                      <div style={{ fontSize: 12, fontWeight: 800, color: s.approved ? "#166534" : s.primaryActorId ? "#334155" : "#b45309" }}>
+                        {s.approved ? "승인됨" : "미승인"} · 주 담당: {primary || "미지정"}{secondaryNames.length ? ` · 보조: ${secondaryNames.join(", ")}` : ""}
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button type="button" style={btn} onClick={() => approveStep(s.id)} disabled={s.approved}>
@@ -357,8 +344,8 @@ export function RequirementsServiceFlowStage({
 
         <div style={panel}>
           <div style={panelHeader}>
-            <div style={headerTitle}>액터 목록 / 역할 정보</div>
-            <div style={headerSub}>단계에서 등장하는 사람·시스템을 분리해 관리합니다.</div>
+            <div style={headerTitle}>액터 매핑 / 역할 정보</div>
+            <div style={headerSub}>선택한 단계의 주 담당과 보조 액터를 연결합니다.</div>
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button type="button" onClick={() => addActor("human")} style={btn}>
                 사람 액터 추가
@@ -370,6 +357,53 @@ export function RequirementsServiceFlowStage({
           </div>
 
           <div style={{ padding: 10, overflowY: "auto", minHeight: 0, display: "grid", gap: 10 }}>
+            <div style={{ border: "1px solid #ccfbf1", background: "#f0fdfa", borderRadius: 12, padding: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>
+                선택 단계 매핑
+              </div>
+              {selectedStep ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f766e" }}>
+                    [{selectedStep.order}] {selectedStep.title || "이름 없는 단계"}
+                  </div>
+                  <label style={{ display: "grid", gap: 4, fontSize: 11, fontWeight: 900, color: "#64748b" }}>
+                    주 담당 액터
+                    <select
+                      value={selectedStep.primaryActorId}
+                      onChange={(e) => updateStep(selectedStep.id, { primaryActorId: e.target.value, approved: false })}
+                      style={{ width: "100%", borderRadius: 10, border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, background: "#fff" }}
+                    >
+                      <option value="">주 담당 선택</option>
+                      {actors.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} ({a.kind === "human" ? "사람" : "시스템"})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 4, fontSize: 11, fontWeight: 900, color: "#64748b" }}>
+                    보조 액터(선택)
+                    <select
+                      multiple
+                      value={selectedStep.secondaryActorIds}
+                      onChange={(e) => setSupportingActorsFromSelect(selectedStep.id, e.currentTarget.options)}
+                      style={{ width: "100%", borderRadius: 10, border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, background: "#fff", minHeight: 92 }}
+                    >
+                      {actors
+                        .filter((a) => a.id !== selectedStep.primaryActorId)
+                        .map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name} ({a.kind === "human" ? "사람" : "시스템"})
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12.5, color: "#64748b", fontWeight: 700 }}>단계를 선택하거나 추가해 주세요.</div>
+              )}
+            </div>
+
             {[{ kind: "human" as const, list: humans }, { kind: "system" as const, list: systems }].map((group) => (
               <div key={group.kind}>
                 <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b", marginBottom: 6 }}>{actorKindLabel(group.kind)}</div>
@@ -391,8 +425,11 @@ export function RequirementsServiceFlowStage({
                           cursor: "pointer",
                         }}
                       >
-                        <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {a.name}
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                          <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {a.name}
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 900, color: "#64748b" }}>{a.kind === "human" ? "사람" : "시스템"}</span>
                         </div>
                         <div style={{ fontSize: 11.5, fontWeight: 700, color: "#64748b", marginTop: 3 }}>
                           참여 단계 {stat?.stepIds.length ?? 0} · 주 담당 {stat?.primaryCount ?? 0}
@@ -418,6 +455,11 @@ export function RequirementsServiceFlowStage({
                   placeholder="역할을 한두 문장으로 정의하세요"
                   style={{ width: "100%", marginTop: 8, borderRadius: 10, border: "1px solid #e2e8f0", padding: "8px 10px", fontSize: 13, minHeight: 80, resize: "vertical" }}
                 />
+                <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+                  <button type="button" style={btn} onClick={() => removeActor(selectedActor.id)} disabled={actors.length <= 1}>
+                    액터 삭제
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
