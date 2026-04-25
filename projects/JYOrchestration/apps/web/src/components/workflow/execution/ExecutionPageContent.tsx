@@ -23,8 +23,6 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
         title="프로토타입 생성"
         subtitle="프로젝트에서 만든 결과물(프로토타입)을 요청·진행·검토하는 단계입니다. 협업 세션에 연결된 비즈니스 실행 흐름을 다루며,
         저장소·PR·머지에 해당하는 환경 실행은 프로젝트 설정에서 이어집니다."
-        backHref="/"
-        backLabel="생성 준비(홈)"
       />
 
       <div style={{ marginTop: 12, marginBottom: 4 }}>

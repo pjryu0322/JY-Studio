@@ -1,10 +1,9 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { TasksWorkspaceContent } from "@/components/workflow/TasksWorkspaceContent";
-import { WorkflowActionButton } from "@/components/workflow/primitives/WorkflowActionButton";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
@@ -13,7 +12,6 @@ import { getTasksPageSubtitle, getTasksWorkspaceView } from "@/lib/workflow/task
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
 
 export function TasksPageClient() {
-  const router = useRouter();
   const search = useSearchParams();
   const sessionResultsVersion = useCollaborationSessionResultsVersion();
 
@@ -29,8 +27,6 @@ export function TasksPageClient() {
       <WorkflowPageHeader
         title="작업 정리"
         subtitle={getTasksPageSubtitle(view, hasContext)}
-        backHref="/requirements"
-        backLabel="아이디어 구체화로"
       />
 
       <div style={{ marginTop: 12, marginBottom: 4 }}>
@@ -48,10 +44,6 @@ export function TasksPageClient() {
             <div style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.5 }}>
               아이디어 구체화 화면에서 작업 워크스페이스 열기를 사용하거나, URL에 <code style={{ fontSize: 12 }}>?requirementId=</code> /{" "}
               <code style={{ fontSize: 12 }}>?sessionId=</code> 를 추가하세요.
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-              <WorkflowActionButton label="아이디어 구체화" onClick={() => router.push("/requirements")} />
-              <WorkflowActionButton label="기능 정리" onClick={() => router.push("/features")} variant="primary" />
             </div>
           </WorkflowCard>
         ) : null}
