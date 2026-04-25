@@ -15,11 +15,9 @@ function sortForSidebar(participants: readonly ParticipantOption[]): Participant
 function statusSubtitle(p: ParticipantOption): string {
   const parts: string[] = [];
   if (p.kind === "ai") {
-    const role = p.roleLabel?.trim();
-    if (role) parts.push(role);
-    else parts.push("AI");
     const s = p.aiStatusLabel?.trim();
     if (s) parts.push(s.length > 36 ? `${s.slice(0, 36)}…` : s);
+    else parts.push("AI");
   } else {
     const role = p.roleLabel?.trim();
     if (role) parts.push(role);

@@ -25,6 +25,7 @@ import { RequirementsDeliverableChatCard } from "@/components/requirements/Requi
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
+import { displayedAiOrchestrator, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 
 function roleLabel(role: RequirementsMessage["role"]): string {
   if (role === "user") return "나";
@@ -645,7 +646,12 @@ export function RequirementsChatPanel({
               >
                 <span>
                   {roleLabel(m.role)}
-                  {m.speakerName ? ` · ${m.speakerName}` : ""} ·{" "}
+                  {m.speakerName || m.role === "ai"
+                    ? ` · ${
+                        m.role === "ai" && !showInternalAgents ? displayedAiOrchestrator().name : String(m.speakerName ?? "").trim()
+                      }`
+                    : ""}{" "}
+                  ·{" "}
                   {new Date(m.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
                   {showToMeta ? (
                     <span style={{ fontWeight: 600, color: "#94a3b8" }}> · To: {targetLine}</span>

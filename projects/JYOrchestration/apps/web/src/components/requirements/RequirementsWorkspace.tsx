@@ -21,6 +21,12 @@ import { RequirementsPromptDocumentDrawer } from "@/components/requirements/Requ
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import {
+  displayedAiOrchestrator,
+  displayedAiStatusForStage,
+  showInternalAgents,
+  visibleStageFromRequirementsStage,
+} from "@/lib/ai-member/visibleAiOrchestrator";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
 import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProjectDescription";
@@ -626,25 +632,54 @@ export function RequirementsWorkspace({
 
   const participants = useMemo((): ParticipantOption[] => {
     const list: ParticipantOption[] = [];
-    if (aiMembers.length === 0) {
+    if (showInternalAgents) {
+      if (aiMembers.length === 0) {
+        list.push({
+          id: VIRTUAL_AI_PLANNER_ID,
+          name: "AI 기획자",
+          kind: "ai",
+          onlineHint: false,
+          aiStatusLabel: aiPlannerStatusLabel,
+          roleLabel: "AI",
+        });
+      }
+      for (const m of aiMembers) {
+        list.push({
+          id: m.memberId,
+          name: (m.displayName || m.email || "AI").slice(0, 24),
+          kind: "ai",
+          onlineHint: false,
+          aiStatusLabel: aiPlannerStatusLabel,
+          roleLabel: (m.aiOrchestrationRole || m.role || "AI").slice(0, 32),
+        });
+      }
+    } else {
+      const stageKey = visibleStageFromRequirementsStage(activeStage);
+      const orch = displayedAiOrchestrator();
       list.push({
-        id: VIRTUAL_AI_PLANNER_ID,
-        name: "AI 기획자",
+        id: "visible:ai-orchestrator",
+        name: orch.name,
         kind: "ai",
         onlineHint: false,
-        aiStatusLabel: aiPlannerStatusLabel,
+        aiStatusLabel: displayedAiStatusForStage(stageKey),
         roleLabel: "AI",
       });
-    }
-    for (const m of aiMembers) {
-      list.push({
-        id: m.memberId,
-        name: (m.displayName || m.email || "AI").slice(0, 24),
-        kind: "ai",
-        onlineHint: false,
-        aiStatusLabel: aiPlannerStatusLabel,
-        roleLabel: (m.aiOrchestrationRole || m.role || "AI").slice(0, 32),
+
+      // Optional expert (only if invited/added to project members)
+      const expert = aiMembers.find((m) => {
+        const r = String(m.aiOrchestrationRole ?? "").trim();
+        return r === "domain-expert" || r === "domainExpert";
       });
+      if (expert) {
+        list.push({
+          id: expert.memberId,
+          name: "업무 전문가",
+          kind: "ai",
+          onlineHint: false,
+          aiStatusLabel: aiPlannerStatusLabel,
+          roleLabel: "전문가",
+        });
+      }
     }
     for (const m of members) {
       if (m.memberType !== "HUMAN") continue;
@@ -665,7 +700,7 @@ export function RequirementsWorkspace({
       seen.add(p.id);
       return true;
     });
-  }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel]);
+  }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel, activeStage]);
 
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
@@ -2629,11 +2664,10 @@ export function RequirementsWorkspace({
     overflow: "hidden",
     background: "#fff",
     boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.18)",
-    minHeight: chatExpanded && inIdeationStage ? 640 : 0,
   };
 
   const chatPanel = (
-    <div style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div className="jyo-requirements-chat-panel-shell" style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
       <RequirementsChatPanel
         messages={messages}
@@ -2739,6 +2773,24 @@ export function RequirementsWorkspace({
   const serviceFlowStage = (
     <div key="service-flow" style={{ display: "contents" }}>
       <ServiceFlowWorkspace
+        projectId={resolvedProjectId.trim()}
+        projectName={headerProjectName}
+        projectDescription={String(project?.description ?? "")}
+        ideationParticipantHumanMemberIds={(() => {
+          // "아이디어 구체화에 참여했던 멤버" = requirementsConversation에서 role==="human"으로 발화한 멤버(memberId 기준)
+          const ids = new Set<string>();
+          for (const m of messages ?? []) {
+            if (m.role !== "human") continue;
+            const id = String(m.speakerId ?? "").trim();
+            if (id) ids.add(id);
+          }
+          return [...ids];
+        })()}
+        ideationAssets={(stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
+          type: a.type,
+          title: a.title,
+          content: a.content,
+        }))}
         flow={serviceFlow}
         ideationReady={ideationReadyForServiceFlow}
         generatingDraft={serviceFlowDraftBusy}
@@ -2949,7 +3001,13 @@ export function RequirementsWorkspace({
         </div>
       ) : null}
 
-      <div style={mainRow} className="jyo-requirements-workspace-main">
+      <div
+        style={{
+          ...mainRow,
+          ...(chatExpanded && inIdeationStage ? { minHeight: 640 } : null),
+        }}
+        className="jyo-requirements-workspace-main"
+      >
         <StageRenderer activeStage={activeStage} ideationStage={ideationStage} serviceFlowStage={serviceFlowStage} />
       </div>
 

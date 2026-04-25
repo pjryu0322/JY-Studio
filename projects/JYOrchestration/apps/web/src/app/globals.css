@@ -81,7 +81,8 @@ html[data-jyo-reduce-motion="1"] *::after {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  min-height: min(520px, 70vh);
+  min-height: max(520px, 70vh);
+  height: max(520px, 70vh);
 }
 
 /* 공통: 상위 워크플로 탭 워크스페이스 최소 높이(아이디어 구체화 기준) */
@@ -91,7 +92,8 @@ html[data-jyo-reduce-motion="1"] *::after {
   overflow: hidden;
   background: #fff;
   box-shadow: 0 18px 50px -24px rgba(15, 23, 42, 0.18);
-  min-height: min(520px, 70vh);
+  min-height: max(520px, 70vh);
+  height: max(520px, 70vh);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -101,6 +103,7 @@ html[data-jyo-reduce-motion="1"] *::after {
   .jyo-requirements-workspace-main {
     flex-direction: column;
     min-height: 0;
+    height: auto;
   }
 
   .jyo-requirements-member-sidebar {
