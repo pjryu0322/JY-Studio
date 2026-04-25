@@ -1691,7 +1691,7 @@ export function RequirementsWorkspace({
           : `send-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
       const replyMode = Boolean(replyTo?.id?.trim());
       ideationSendDevLog("start", `mode=${replyMode ? "reply" : "normal"}`);
-    setBusy(true);
+    setServiceFlowDraftBusy(true);
     setError(null);
       const mentionRefs = participants.map((p) => ({ id: p.id, name: p.name }));
       const fromMentions = computedTargetsFromInput(text, mentionRefs);
@@ -2527,8 +2527,10 @@ export function RequirementsWorkspace({
     await persistStateJsonOnly({ serviceFlowCompletedAt: now, serviceFlowV1: next, priorityFeatures: priorityFeatureText });
     setPriorityFeatures(priorityFeatureText);
     notifyAppFlowProjectContextChanged();
-    showSuccessToast("전체 단계 승인 완료. 기능 정리 단계로 이동할 수 있습니다.");
-  }, [serviceFlow, persistServiceFlow, persistStateJsonOnly, showSuccessToast, showErrorToast]);
+    showSuccessToast("전체 단계 승인 완료. 기능 정리 단계로 이동합니다.");
+    const pid = resolvedProjectId.trim();
+    router.push(pid ? `/features?projectId=${encodeURIComponent(pid)}` : "/features");
+  }, [serviceFlow, persistServiceFlow, persistStateJsonOnly, resolvedProjectId, router, showSuccessToast, showErrorToast]);
 
   const inviteEmphasis = humanOthers.length === 0;
 
@@ -2717,8 +2719,6 @@ export function RequirementsWorkspace({
   const serviceFlowStage = (
     <div key="service-flow" style={{ padding: 14, width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
       <ServiceFlowWorkspace
-        projectId={resolvedProjectId.trim()}
-        project={project}
         flow={serviceFlow}
         ideationReady={ideationReadyForServiceFlow}
         generatingDraft={serviceFlowDraftBusy}
@@ -2728,11 +2728,6 @@ export function RequirementsWorkspace({
         onApproveAll={() => void handleApproveAllServiceFlowSteps()}
         onUpdateFlow={(next) => void persistServiceFlow(next)}
       />
-      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-        <button type="button" onClick={() => setInviteOpen(true)} style={{ border: 0, background: "none", cursor: "pointer", fontWeight: 800, color: "#2563eb", textDecoration: "underline", padding: 6 }}>
-          멤버 초대
-        </button>
-      </div>
     </div>
   );
 
