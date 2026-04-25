@@ -2398,11 +2398,47 @@ export function RequirementsWorkspace({
     [members]
   );
   const remoteLocked = !resolvedProjectId.trim();
+
+  const latestProblemInterviewStateForGate = useCallback((): ProblemInterviewState | null => {
+    const candidates = [
+      problemInterviewState,
+      parseRequirementsStateJson(project?.requirementsStateJson).problemInterview ?? null,
+      (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null,
+    ].filter((x): x is ProblemInterviewState => Boolean(x));
+    if (!candidates.length) return null;
+    return candidates.reduce((best, cur) => {
+      const bestCount = problemInterviewStrictFilledCount(best);
+      const curCount = problemInterviewStrictFilledCount(cur);
+      if (curCount !== bestCount) return curCount > bestCount ? cur : best;
+      const bestTime = Date.parse(String(best.updatedAt ?? ""));
+      const curTime = Date.parse(String(cur.updatedAt ?? ""));
+      return Number.isFinite(curTime) && (!Number.isFinite(bestTime) || curTime > bestTime) ? cur : best;
+    });
+  }, [problemInterviewState, project?.requirementsStateJson]);
+
+  const organizeStartGenerateFinalProposal = useCallback(async () => {
+    if (busy || deliverableGenerateBusy || remoteLocked) return;
+    const latestInterviewState = latestProblemInterviewStateForGate();
+    const gate = ideationDraftGateStatus(latestInterviewState);
+    if (!gate.ready) {
+      const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(latestInterviewState ?? emptyProblemInterviewState(""), slot));
+      const msg = missingRequired.length
+        ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
+        : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
+      setError(msg);
+      showErrorToast(msg);
+      return;
+    }
+    setPlannerTypePickerOpen(false);
+    await handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
+  }, [busy, deliverableGenerateBusy, remoteLocked, latestProblemInterviewStateForGate, handleGenerateDeliverables, showErrorToast]);
+
   const onForceGeneratePlanNow = useCallback(() => {
     if (busy || deliverableGenerateBusy || remoteLocked) return;
-    const gate = ideationDraftGateStatus(problemInterviewState);
+    const latestInterviewState = latestProblemInterviewStateForGate();
+    const gate = ideationDraftGateStatus(latestInterviewState);
     if (!gate.ready) {
-      const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(problemInterviewState ?? emptyProblemInterviewState(""), slot));
+      const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(latestInterviewState ?? emptyProblemInterviewState(""), slot));
       const msg = missingRequired.length
         ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
         : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
@@ -2411,7 +2447,7 @@ export function RequirementsWorkspace({
       return;
     }
     void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
-  }, [busy, deliverableGenerateBusy, remoteLocked, problemInterviewState, handleGenerateDeliverables, showErrorToast]);
+  }, [busy, deliverableGenerateBusy, remoteLocked, latestProblemInterviewStateForGate, handleGenerateDeliverables, showErrorToast]);
 
   const trimmedProjectName = project?.name?.trim();
   const headerProjectName = trimmedProjectName
@@ -2531,7 +2567,7 @@ export function RequirementsWorkspace({
       <OrganizeProposalDraggableModal
         open={plannerTypePickerOpen}
         onClose={() => setPlannerTypePickerOpen(false)}
-        busy={busy || organizeState === "running"}
+        busy={busy || deliverableGenerateBusy || organizeState === "running"}
         showRegenerate={Boolean(latestUnifiedProposal)}
         regenerateDisabled={busy || deliverableGenerateBusy || remoteLocked}
         onRegenerate={() => {
@@ -2539,16 +2575,12 @@ export function RequirementsWorkspace({
           void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
         }}
         onStart={() => {
-          setPlannerTypePickerOpen(false);
-          void runPlannerOrganize();
+          void organizeStartGenerateFinalProposal();
         }}
       >
         <div>
-          AI가 대화와 저장 요약을 검토한 뒤, 부족한 부분만 질문하고 마지막에{" "}
-          <strong style={{ color: "#0f172a" }}>{(project?.name ?? "").trim() || "프로젝트"} 아이디어 초안</strong>을 생성합니다.
-        </div>
-        <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b", fontWeight: 600, lineHeight: 1.5 }}>
-          문서 종류를 고르지 않아도 됩니다. 준비가 되면 시작을 눌러 주세요.
+          현재 확보된 내용을 바탕으로{" "}
+          <strong style={{ color: "#0f172a" }}>{(project?.name ?? "").trim() || "프로젝트"} 기획안</strong>을 생성합니다.
         </div>
       </OrganizeProposalDraggableModal>
 
@@ -2768,11 +2800,10 @@ export function RequirementsWorkspace({
           <button
             type="button"
                 onClick={() => {
-                  organizeRawFallbackRef.current = true;
                   setOrganizeState("idle");
                   setOrganizeError(null);
                   setError(null);
-                  void runPlannerOrganize();
+                  void organizeStartGenerateFinalProposal();
                 }}
             style={{
                   border: "1px solid #e2e8f0",
@@ -2785,9 +2816,9 @@ export function RequirementsWorkspace({
               cursor: "pointer",
             }}
           >
-                전체 대화 기준으로 다시 시도
+                기획안 생성 다시 시도
           </button>
-              <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 600 }}>정리 요청(아이디어 초안) 흐름을 다시 실행합니다</div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 600 }}>현재 확보된 내용으로 기획안을 다시 생성합니다</div>
             </div>
         ) : null}
       </div>
