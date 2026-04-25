@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, type CSSProperties } from "react";
-import Link from "next/link";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import type { Project } from "@/components/project-spec/types";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
@@ -49,7 +48,6 @@ const btn: CSSProperties = {
 const btnPrimary: CSSProperties = { ...btn, border: "1px solid #0f766e", background: "#0f766e", color: "#fff" };
 
 export function ServiceFlowWorkspace({
-  projectId,
   project,
   flow,
   ideationReady,
@@ -58,7 +56,6 @@ export function ServiceFlowWorkspace({
   onApproveAll,
   onUpdateFlow,
 }: {
-  readonly projectId: string;
   readonly project: Project | null;
   readonly flow: RequirementsServiceFlowV1 | null;
   readonly ideationReady: boolean;
@@ -74,9 +71,6 @@ export function ServiceFlowWorkspace({
   const progressLabel = totalCount
     ? `${approvedCount} / ${totalCount} 승인됨 · ${allMapped ? "액터 매핑 완료" : "액터 매핑 필요"}`
     : "승인 단계가 아직 없습니다";
-
-  const featuresHref = useMemo(() => (projectId ? `/features?projectId=${encodeURIComponent(projectId)}` : "/features"), [projectId]);
-  const ideationHref = useMemo(() => (projectId ? `/requirements?projectId=${encodeURIComponent(projectId)}` : "/requirements"), [projectId]);
 
   const renderGate = !ideationReady;
 
@@ -104,9 +98,6 @@ export function ServiceFlowWorkspace({
           >
             전체 승인
           </button>
-          <Link href={featuresHref} style={btn}>
-            기능 정리로 이동
-          </Link>
         </div>
       </div>
 
@@ -120,9 +111,6 @@ export function ServiceFlowWorkspace({
               현재 단계로 이동하려면 아이디어 구체화 단계에서 기획 산출물 정리가 필요합니다.
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              <Link href={ideationHref} style={btnPrimary}>
-                아이디어 구체화로 이동
-              </Link>
               <button type="button" onClick={onRetryGate} style={btn}>
                 다시 확인
               </button>

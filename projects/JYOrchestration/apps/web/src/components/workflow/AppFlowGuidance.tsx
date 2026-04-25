@@ -85,12 +85,10 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
 
   return (
     <div data-testid="app-flow-guidance">
-      <div style={{ marginBottom: 20 }}>{children}</div>
       {showPlanningInlineWarning ? (
         <div
           role="status"
           style={{
-            marginTop: -8,
             marginBottom: 12,
             padding: "8px 10px",
             border: "1px solid #fde68a",
@@ -104,6 +102,7 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
           생성 준비 확인: {gates.executionReason}
         </div>
       ) : null}
+      <div style={{ marginBottom: 20 }}>{children}</div>
     </div>
   );
 }

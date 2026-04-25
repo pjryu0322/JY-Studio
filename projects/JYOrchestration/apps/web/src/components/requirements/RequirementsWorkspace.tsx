@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
@@ -108,6 +108,24 @@ function notifyAppFlowProjectContextChanged() {
 }
 
 const LOCAL_SHELL_KEY = "jyo:requirements-workspace-local-v3";
+
+type RequirementsWorkspaceStage = "ideation" | "service-flow";
+
+function resolveRequirementsWorkspaceStage(rawStage: string): RequirementsWorkspaceStage {
+  return rawStage === "service-flow" ? "service-flow" : "ideation";
+}
+
+function StageRenderer({
+  activeStage,
+  ideationStage,
+  serviceFlowStage,
+}: {
+  readonly activeStage: RequirementsWorkspaceStage;
+  readonly ideationStage: ReactNode;
+  readonly serviceFlowStage: ReactNode;
+}) {
+  return <>{activeStage === "service-flow" ? serviceFlowStage : ideationStage}</>;
+}
 
 type LocalShell = {
   room: RequirementsRoomStateV3;
@@ -380,12 +398,13 @@ export function RequirementsWorkspace({
     const propStage = String(initialStage ?? "").trim().toLowerCase();
     return propStage;
   }, [searchParams, initialStage]);
-  const inServiceFlowStage = stage === "service-flow";
+  const activeStage = useMemo(() => resolveRequirementsWorkspaceStage(stage), [stage]);
+  const inIdeationStage = activeStage === "ideation";
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
 
   useEffect(() => {
-    if (!inServiceFlowStage) return;
+    if (inIdeationStage) return;
     setSummaryModalOpen(false);
     setPromptDrawerOpen(false);
     setDraftDrawerOpen(false);
@@ -399,7 +418,7 @@ export function RequirementsWorkspace({
     setOrganizeState("idle");
     setOrganizeError(null);
     setError(null);
-  }, [inServiceFlowStage]);
+  }, [inIdeationStage]);
 
   useEffect(() => {
     setResolvedProjectId(initialProjectId.trim());
@@ -2560,7 +2579,7 @@ export function RequirementsWorkspace({
     overflow: "hidden",
     background: "#fff",
     boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.18)",
-    minHeight: chatExpanded && !inServiceFlowStage ? 640 : 0,
+    minHeight: chatExpanded && inIdeationStage ? 640 : 0,
   };
 
   const chatPanel = (
@@ -2571,7 +2590,7 @@ export function RequirementsWorkspace({
         typingIndicator={aiInvokePending}
         expandControls={{ expanded: chatExpanded, onToggle: () => setChatExpanded((v) => !v) }}
         ideationInterviewUi={
-          !inServiceFlowStage && conversationStatus === "loaded"
+          inIdeationStage && conversationStatus === "loaded"
             ? {
                 active: Boolean(problemInterviewState && problemInterviewState.active !== false),
                 readinessPercent: proposalReadinessPercentVal,
@@ -2652,29 +2671,65 @@ export function RequirementsWorkspace({
     </div>
   );
 
+  const ideationStage = (
+    <div key="ideation" style={{ display: "contents" }}>
+      {!chatExpanded ? (
+        <RequirementsMemberSidebar
+          participants={participants}
+          showInvite={Boolean(resolvedProjectId.trim())}
+          inviteDisabled={remoteLocked}
+          inviteEmphasis={inviteEmphasis}
+          onInviteClick={() => setInviteOpen(true)}
+        />
+      ) : null}
+      {chatPanel}
+    </div>
+  );
+
+  const serviceFlowStage = (
+    <div key="service-flow" style={{ padding: 14, width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+      <ServiceFlowWorkspace
+        project={project}
+        flow={serviceFlow}
+        ideationReady={ideationReadyForServiceFlow}
+        onRetryGate={() => setFetchNonce((n) => n + 1)}
+        onGenerateAiDraft={() => void handleGenerateServiceFlowDraft()}
+        onApproveAll={() => void handleApproveAllServiceFlowSteps()}
+        onUpdateFlow={(next) => void persistServiceFlow(next)}
+      />
+      <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+        <button type="button" onClick={() => setInviteOpen(true)} style={{ border: 0, background: "none", cursor: "pointer", fontWeight: 800, color: "#2563eb", textDecoration: "underline", padding: 6 }}>
+          멤버 초대
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div style={shellStyle}>
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
 
-      <OrganizeProposalDraggableModal
-        open={!inServiceFlowStage && plannerTypePickerOpen}
-        onClose={() => setPlannerTypePickerOpen(false)}
-        busy={busy || deliverableGenerateBusy || organizeState === "running"}
-        showRegenerate={Boolean(latestUnifiedProposal)}
-        regenerateDisabled={busy || deliverableGenerateBusy || remoteLocked}
-        onRegenerate={() => {
-          setPlannerTypePickerOpen(false);
-          void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
-        }}
-        onStart={() => {
-          void organizeStartGenerateFinalProposal();
-        }}
-      >
-        <div>
-          현재 확보된 내용을 바탕으로{" "}
-          <strong style={{ color: "#0f172a" }}>{(project?.name ?? "").trim() || "프로젝트"} 기획안</strong>을 생성합니다.
-        </div>
-      </OrganizeProposalDraggableModal>
+      {inIdeationStage ? (
+        <OrganizeProposalDraggableModal
+          open={plannerTypePickerOpen}
+          onClose={() => setPlannerTypePickerOpen(false)}
+          busy={busy || deliverableGenerateBusy || organizeState === "running"}
+          showRegenerate={Boolean(latestUnifiedProposal)}
+          regenerateDisabled={busy || deliverableGenerateBusy || remoteLocked}
+          onRegenerate={() => {
+            setPlannerTypePickerOpen(false);
+            void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
+          }}
+          onStart={() => {
+            void organizeStartGenerateFinalProposal();
+          }}
+        >
+          <div>
+            현재 확보된 내용을 바탕으로{" "}
+            <strong style={{ color: "#0f172a" }}>{(project?.name ?? "").trim() || "프로젝트"} 기획안</strong>을 생성합니다.
+          </div>
+        </OrganizeProposalDraggableModal>
+      ) : null}
 
       {saveToastVisible ? (
         <div
@@ -2749,7 +2804,7 @@ export function RequirementsWorkspace({
       />
 
       {resolvedProjectId.trim() &&
-      !inServiceFlowStage &&
+      inIdeationStage &&
       conversationStatus === "loaded" &&
       ideationComplete &&
       !(problemInterviewState && problemInterviewState.active !== false && problemInterviewStrictFilled < PROBLEM_INTERVIEW_SLOT_TOTAL) ? (
@@ -2828,7 +2883,7 @@ export function RequirementsWorkspace({
         </div>
       ) : null}
 
-      {!inServiceFlowStage && resolvedProjectId.trim() && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
+      {inIdeationStage && resolvedProjectId.trim() && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
         <div
           style={{
             marginTop: 6,
@@ -2846,38 +2901,7 @@ export function RequirementsWorkspace({
       ) : null}
 
       <div style={mainRow} className="jyo-requirements-workspace-main">
-        {inServiceFlowStage ? (
-          <div style={{ padding: 14, width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
-            <ServiceFlowWorkspace
-              projectId={resolvedProjectId.trim()}
-              project={project}
-              flow={serviceFlow}
-              ideationReady={ideationReadyForServiceFlow}
-              onRetryGate={() => setFetchNonce((n) => n + 1)}
-              onGenerateAiDraft={() => void handleGenerateServiceFlowDraft()}
-              onApproveAll={() => void handleApproveAllServiceFlowSteps()}
-              onUpdateFlow={(next) => void persistServiceFlow(next)}
-            />
-            <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setInviteOpen(true)} style={{ border: 0, background: "none", cursor: "pointer", fontWeight: 800, color: "#2563eb", textDecoration: "underline", padding: 6 }}>
-                멤버 초대
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {!chatExpanded ? (
-              <RequirementsMemberSidebar
-                participants={participants}
-                showInvite={Boolean(resolvedProjectId.trim())}
-                inviteDisabled={remoteLocked}
-                inviteEmphasis={inviteEmphasis}
-                onInviteClick={() => setInviteOpen(true)}
-              />
-            ) : null}
-            {chatPanel}
-          </>
-        )}
+        <StageRenderer activeStage={activeStage} ideationStage={ideationStage} serviceFlowStage={serviceFlowStage} />
       </div>
 
       {error ? (
@@ -2922,66 +2946,70 @@ export function RequirementsWorkspace({
         existingHumanUserIds={existingHumanUserIds}
       />
 
-      <RequirementsPromptDocumentDrawer
-        open={!inServiceFlowStage && promptDrawerOpen}
-        onClose={() => setPromptDrawerOpen(false)}
-        view={persistedPromptState.lastPromptView ?? null}
-        lastPromptText={persistedPromptState.lastPromptText}
-        lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
-        conversationMessages={conversationStatus === "loaded" ? conversationMessages : null}
-        exportBaseName={project?.name?.trim() ?? ""}
-      />
+      {inIdeationStage ? (
+        <>
+          <RequirementsPromptDocumentDrawer
+            open={promptDrawerOpen}
+            onClose={() => setPromptDrawerOpen(false)}
+            view={persistedPromptState.lastPromptView ?? null}
+            lastPromptText={persistedPromptState.lastPromptText}
+            lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
+            conversationMessages={conversationStatus === "loaded" ? conversationMessages : null}
+            exportBaseName={project?.name?.trim() ?? ""}
+          />
 
-      <RequirementsSummaryModal
-        open={!inServiceFlowStage && summaryModalOpen}
-        onClose={() => setSummaryModalOpen(false)}
-        goals={goals}
-        targetUsers={targetUsers}
-        scopeIn={scopeIn}
-        scopeOut={scopeOut}
-        openIssues={openIssues}
-        success={success}
-        onGoalsChange={setGoals}
-        onTargetUsersChange={setTargetUsers}
-        onScopeInChange={setScopeIn}
-        onScopeOutChange={setScopeOut}
-        onOpenIssuesChange={setOpenIssues}
-        onSuccessChange={setSuccess}
-        onBlurSave={() => void onPanelBlurSave()}
-      />
+          <RequirementsSummaryModal
+            open={summaryModalOpen}
+            onClose={() => setSummaryModalOpen(false)}
+            goals={goals}
+            targetUsers={targetUsers}
+            scopeIn={scopeIn}
+            scopeOut={scopeOut}
+            openIssues={openIssues}
+            success={success}
+            onGoalsChange={setGoals}
+            onTargetUsersChange={setTargetUsers}
+            onScopeInChange={setScopeIn}
+            onScopeOutChange={setScopeOut}
+            onOpenIssuesChange={setOpenIssues}
+            onSuccessChange={setSuccess}
+            onBlurSave={() => void onPanelBlurSave()}
+          />
 
-      {draftDoc ? (
-        <RequirementsDraftDocumentDrawer
-          open={!inServiceFlowStage && draftDrawerOpen}
-          onClose={() => setDraftDrawerOpen(false)}
-          draft={draftDoc}
-          exportBaseName={project?.name?.trim() ?? ""}
-        />
+          {draftDoc ? (
+            <RequirementsDraftDocumentDrawer
+              open={draftDrawerOpen}
+              onClose={() => setDraftDrawerOpen(false)}
+              draft={draftDoc}
+              exportBaseName={project?.name?.trim() ?? ""}
+            />
+          ) : null}
+
+          <RequirementsDeliverableViewerModal
+            open={deliverableViewerOpen}
+            onClose={() => setDeliverableViewerOpen(false)}
+            assets={deliverableViewerAssets}
+            initialAssetId={deliverableViewerFocusId}
+          />
+
+          <ProposalPlanPreviewModal
+            open={proposalPlanPreview.open}
+            title={`${(project?.name ?? "").trim() || "프로젝트"} 아이디어 초안 미리보기`}
+            markdown={proposalPreviewMarkdown}
+            projectName={(project?.name ?? "").trim() || "프로젝트"}
+            version={proposalPreviewVersion}
+            busy={busy || deliverableGenerateBusy}
+            onClose={() => setProposalPlanPreview({ open: false, assetId: null })}
+            onRegenerate={() => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT])}
+            onRequestRevision={(text) => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT], { revisionRequest: text })}
+            onConfirm={() => {
+              const id = proposalPlanPreview.assetId;
+              if (!id) return;
+              void handleConfirmDeliverableAssets([id]);
+            }}
+          />
+        </>
       ) : null}
-
-      <RequirementsDeliverableViewerModal
-        open={!inServiceFlowStage && deliverableViewerOpen}
-        onClose={() => setDeliverableViewerOpen(false)}
-        assets={deliverableViewerAssets}
-        initialAssetId={deliverableViewerFocusId}
-      />
-
-      <ProposalPlanPreviewModal
-        open={!inServiceFlowStage && proposalPlanPreview.open}
-        title={`${(project?.name ?? "").trim() || "프로젝트"} 아이디어 초안 미리보기`}
-        markdown={proposalPreviewMarkdown}
-        projectName={(project?.name ?? "").trim() || "프로젝트"}
-        version={proposalPreviewVersion}
-        busy={busy || deliverableGenerateBusy}
-        onClose={() => setProposalPlanPreview({ open: false, assetId: null })}
-        onRegenerate={() => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT])}
-        onRequestRevision={(text) => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT], { revisionRequest: text })}
-        onConfirm={() => {
-          const id = proposalPlanPreview.assetId;
-          if (!id) return;
-          void handleConfirmDeliverableAssets([id]);
-        }}
-      />
     </div>
   );
 }

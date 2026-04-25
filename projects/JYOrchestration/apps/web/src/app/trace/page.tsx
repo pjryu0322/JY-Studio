@@ -44,8 +44,6 @@ export default function TracePage() {
       <WorkflowPageHeader
         title="추적"
         subtitle="아이디어 구체화 ↔ 기능 정리 ↔ 작업 정리 ↔ 프로토타입 결과를 한눈에 잇는 화면입니다. 데이터가 쌓이면 타임라인이 채워집니다."
-        backHref="/execution"
-        backLabel="프로토타입 생성으로"
       />
 
       <div style={{ marginTop: 12, marginBottom: 4 }}>
