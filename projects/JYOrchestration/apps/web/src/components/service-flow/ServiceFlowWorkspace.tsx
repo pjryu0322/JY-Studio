@@ -48,17 +48,23 @@ const btn: CSSProperties = {
 const btnPrimary: CSSProperties = { ...btn, border: "1px solid #0f766e", background: "#0f766e", color: "#fff" };
 
 export function ServiceFlowWorkspace({
+  projectId,
   project,
   flow,
   ideationReady,
+  generatingDraft,
+  draftGenerationCount,
   onRetryGate,
   onGenerateAiDraft,
   onApproveAll,
   onUpdateFlow,
 }: {
+  readonly projectId: string;
   readonly project: Project | null;
   readonly flow: RequirementsServiceFlowV1 | null;
   readonly ideationReady: boolean;
+  readonly generatingDraft: boolean;
+  readonly draftGenerationCount: number;
   readonly onRetryGate: () => void;
   readonly onGenerateAiDraft: () => void;
   readonly onApproveAll: () => void;
@@ -67,27 +73,28 @@ export function ServiceFlowWorkspace({
   const approvedCount = useMemo(() => (flow?.steps ?? []).filter((s) => s.approved).length, [flow?.steps]);
   const totalCount = flow?.steps?.length ?? 0;
   const actorIds = useMemo(() => new Set((flow?.actors ?? []).map((a) => a.id)), [flow?.actors]);
-  const allMapped = Boolean(flow && totalCount > 0 && flow.actors.length > 0 && flow.steps.every((s) => s.primaryActorId && actorIds.has(s.primaryActorId)));
-  const progressLabel = totalCount
-    ? `${approvedCount} / ${totalCount} 승인됨 · ${allMapped ? "액터 매핑 완료" : "액터 매핑 필요"}`
-    : "승인 단계가 아직 없습니다";
+  const allMapped = Boolean(flow && totalCount >= 3 && flow.actors.length >= 2 && flow.steps.every((s) => s.primaryActorId && actorIds.has(s.primaryActorId)));
+  const allApproved = Boolean(allMapped && totalCount > 0 && approvedCount === totalCount);
+  const featureHref = projectId ? `/features?projectId=${encodeURIComponent(projectId)}` : "/features";
 
   const renderGate = !ideationReady;
 
   const title = "액터 및 서비스 흐름 정의";
-  const subtitle = project?.name?.trim() ? `프로젝트: ${project.name.trim()}` : "아이디어 구체화 다음 단계";
+  const subtitle = "AI와 전문가가 함께 실제 운영 흐름을 구체화합니다. 다음 단계 기능 정리에 필요한 현실 정보를 확보합니다.";
 
   return (
     <section style={wrap} aria-label={title}>
       <div style={topBar}>
         <div style={{ minWidth: 240 }}>
           <div style={{ fontSize: 16.5, fontWeight: 900, color: "#0f172a", letterSpacing: "-0.02em" }}>{title}</div>
-          <div style={{ marginTop: 3, fontSize: 12, fontWeight: 700, color: "#64748b" }}>{subtitle}</div>
+          <div style={{ marginTop: 3, fontSize: 12, fontWeight: 700, color: "#64748b", lineHeight: 1.45 }}>
+            {subtitle}
+            {project?.name?.trim() ? <span style={{ marginLeft: 8, color: "#94a3b8" }}>프로젝트: {project.name.trim()}</span> : null}
+          </div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 12, fontWeight: 900, color: "#475569" }}>진행률: {progressLabel}</span>
-          <button type="button" onClick={onGenerateAiDraft} style={btnPrimary} disabled={renderGate}>
-            AI 초안 생성
+          <button type="button" onClick={onGenerateAiDraft} style={btnPrimary} disabled={renderGate || generatingDraft}>
+            {generatingDraft ? "생성 중..." : "AI 초안 생성"}
           </button>
           <button
             type="button"
@@ -97,6 +104,17 @@ export function ServiceFlowWorkspace({
             title={!allMapped ? "단계 1개 이상, 액터 1개 이상, 모든 단계의 주 담당 액터가 필요합니다." : "전체 단계를 승인합니다."}
           >
             전체 승인
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = featureHref;
+            }}
+            style={{ ...btn, opacity: allApproved ? 1 : 0.55, cursor: allApproved ? "pointer" : "not-allowed" }}
+            disabled={!allApproved}
+            title={!allApproved ? "전체 승인 후 기능 정리로 이동할 수 있습니다." : "기능 정리 단계로 이동합니다."}
+          >
+            기능 정리로 이동
           </button>
         </div>
       </div>
@@ -124,6 +142,7 @@ export function ServiceFlowWorkspace({
             ideationReadyNotice="현재 단계로 이동하려면\n아이디어 구체화 단계에서\n기획 산출물 정리가 필요합니다."
             flow={flow}
             onChangeFlow={onUpdateFlow}
+            draftGenerationCount={draftGenerationCount}
           />
         </div>
       )}
