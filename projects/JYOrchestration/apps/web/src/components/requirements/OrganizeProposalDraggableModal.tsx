@@ -255,7 +255,7 @@ export function OrganizeProposalDraggableModal({
               color: "#fff",
             }}
           >
-            시작
+            {busy ? "생성 중..." : "시작"}
           </button>
         </div>
       </div>
