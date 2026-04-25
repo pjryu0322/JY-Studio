@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
@@ -13,10 +13,12 @@ import type {
 
 const colWrap: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "320px minmax(0, 1fr) 300px",
+  gridTemplateColumns: "minmax(0, 55fr) minmax(280px, 45fr)",
   gap: 14,
   alignItems: "stretch",
   minHeight: 0,
+  flex: "1 1 auto",
+  overflowX: "hidden",
 };
 
 const panel: CSSProperties = {
@@ -25,6 +27,7 @@ const panel: CSSProperties = {
   background: "#fff",
   overflow: "hidden",
   minHeight: 0,
+  minWidth: 0,
   display: "flex",
   flexDirection: "column",
 };
@@ -82,7 +85,6 @@ export function RequirementsServiceFlowStage({
   onGenerateAiDraft,
   onApproveAll,
   onNavigateToFeaturesHref,
-  chat,
 }: {
   readonly ideationReady: boolean;
   readonly ideationReadyNotice: string;
@@ -91,7 +93,6 @@ export function RequirementsServiceFlowStage({
   readonly onGenerateAiDraft: () => void;
   readonly onApproveAll: () => void;
   readonly onNavigateToFeaturesHref: string;
-  readonly chat: ReactNode;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const nowIso = () => new Date().toISOString();
@@ -203,7 +204,24 @@ export function RequirementsServiceFlowStage({
   };
 
   return (
-    <section className="relative" style={{ marginTop: 14 }}>
+    <section className="relative jyo-service-flow-stage" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflowX: "hidden" }}>
+      <style>{`
+        .jyo-service-flow-grid {
+          grid-template-columns: minmax(0, 55fr) minmax(280px, 45fr);
+        }
+        @media (max-width: 920px) {
+          .jyo-service-flow-grid {
+            grid-template-columns: minmax(0, 1fr);
+            overflow-y: auto;
+          }
+        }
+        .jyo-service-flow-stage input,
+        .jyo-service-flow-stage textarea,
+        .jyo-service-flow-stage select {
+          box-sizing: border-box;
+          max-width: 100%;
+        }
+      `}</style>
       <ScreenLabel label="요구사항-서비스흐름-페이지-섹션" visible={showScreenLabels} />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -232,7 +250,7 @@ export function RequirementsServiceFlowStage({
         </div>
       ) : null}
 
-      <div style={colWrap}>
+      <div className="jyo-service-flow-grid" style={colWrap}>
         <div style={panel}>
           <div style={panelHeader}>
             <div style={headerTitle}>서비스 흐름 리스트</div>
@@ -336,8 +354,6 @@ export function RequirementsServiceFlowStage({
             })}
           </div>
         </div>
-
-        <div style={{ minHeight: 0 }}>{chat}</div>
 
         <div style={panel}>
           <div style={panelHeader}>
