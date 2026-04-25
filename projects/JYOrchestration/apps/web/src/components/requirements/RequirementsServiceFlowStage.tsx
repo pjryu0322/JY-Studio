@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
@@ -309,6 +309,19 @@ export function RequirementsServiceFlowStage({
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
 
+  const messagesRef = useRef<WorkshopMessage[]>(messages);
+  const flowRef = useRef<RequirementsServiceFlowV1 | null>(flow);
+  const latestAiQuestionRef = useRef<string>(latestAiQuestion);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  useEffect(() => {
+    flowRef.current = flow;
+  }, [flow]);
+  useEffect(() => {
+    latestAiQuestionRef.current = latestAiQuestion;
+  }, [latestAiQuestion]);
+
   const actors = flow?.actors ?? [];
   const steps = useMemo(() => normalizeOrder(flow?.steps ?? []), [flow?.steps]);
   const humans = actors.filter((a) => a.kind === "human");
@@ -367,14 +380,13 @@ export function RequirementsServiceFlowStage({
     setReplying(true);
     setQuickReplies(null);
 
-    if (!opts?.silentUserAppend) {
-      const userMessage: WorkshopMessage = { id: uid("msg"), role: "user", name: "사용자", body };
-      setMessages((prev) => [...prev, userMessage]);
-    }
+    const userMessage: WorkshopMessage = { id: uid("msg"), role: "user", name: "사용자", body };
+    if (!opts?.silentUserAppend) setMessages((prev) => [...prev, userMessage]);
 
     void (async () => {
       try {
-        const recentMessages = messages
+        const transcript = [...(messagesRef.current ?? []), ...(opts?.silentUserAppend ? [] : [userMessage])];
+        const recentMessages = transcript
           .slice(-24)
           .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
           .join("\n")
@@ -389,9 +401,9 @@ export function RequirementsServiceFlowStage({
             projectDescription,
             ideationAssets,
             userMessage: body,
-            currentFlow: flow,
+            currentFlow: flowRef.current,
             recentMessages,
-            latestAiQuestion,
+            latestAiQuestion: latestAiQuestionRef.current,
           }),
         });
         const json = (await res.json()) as {
