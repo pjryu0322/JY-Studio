@@ -749,14 +749,6 @@ export function applyGlobalDelegationDefaults(state: ProblemInterviewState, nowI
   return next;
 }
 
-/** 인터뷰 AI 요약 앞에 붙이는 준비도 한 줄 */
-export function formatProposalInterviewReadinessLine(state: ProblemInterviewState | null | undefined): string {
-  const pct = proposalInterviewReadinessPercent(state);
-  const strict = problemInterviewStrictFilledCount(state);
-  const total = PROBLEM_INTERVIEW_SLOT_TOTAL;
-  return `현재 아이디어 정리도는 ${pct}%입니다 (${strict} / ${total} 슬롯 확정). 간단히 핵심만 더 확인하겠습니다.`;
-}
-
 const CONTROLLED_SLOT_QUESTIONS: Record<ProblemInterviewSlot, readonly string[]> = {
   serviceIdea: [
     "무엇을 만들고 싶은가요? (예: 회의록 자동화 웹서비스, 중고차 비교 앱)",
@@ -917,7 +909,7 @@ export function planNextInterviewTurn(
 export function composeInterviewPlannerReply(summary: string, question: string): string {
   const s = summary.trim();
   const q = question.trim();
-  return `핵심 이해:\n${s || "이전 답변을 반영했습니다."}\n\n질문:\n${q}`;
+  return s ? `${s}\n\n${q}` : q;
 }
 
 /** OpenAI 응답 텍스트에서 분석 JSON 파싱(스키마 완화 + 기본값). */
