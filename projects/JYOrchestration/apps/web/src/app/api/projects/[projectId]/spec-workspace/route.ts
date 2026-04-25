@@ -525,8 +525,10 @@ type PatchBody = {
   specScopeOut?: string | null;
   specTargetUsers?: string | null;
   specSuccessCriteria?: string | null;
+  confirmedSpecMarkdown?: string | null;
   executionPlanMarkdown?: string | null;
   selectedPlanCandidateId?: string | null;
+  workflowStatus?: string | null;
   specPromptTemplate?: string | null;
   specPromptPreset?: string | null;
   requirementsRoomState?: unknown | null;
@@ -606,8 +608,14 @@ export async function PATCH(
     if (body.specSuccessCriteria !== undefined) {
       data.specSuccessCriteria = body.specSuccessCriteria === null ? null : String(body.specSuccessCriteria);
     }
+    if (body.confirmedSpecMarkdown !== undefined) {
+      data.confirmedSpecMarkdown = body.confirmedSpecMarkdown === null ? null : String(body.confirmedSpecMarkdown);
+    }
     if (body.executionPlanMarkdown !== undefined) {
       data.executionPlanMarkdown = body.executionPlanMarkdown === null ? null : String(body.executionPlanMarkdown);
+    }
+    if (body.workflowStatus !== undefined) {
+      data.workflowStatus = body.workflowStatus === null ? null : String(body.workflowStatus);
     }
     if (body.selectedPlanCandidateId !== undefined) {
       data.selectedPlanCandidateId =
