@@ -39,7 +39,6 @@ import {
 import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
-  IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE,
   IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
   sanitizeIdeationInterviewFirstQuestion,
 } from "@/lib/requirements/ideationInterviewBootstrap";
@@ -51,7 +50,6 @@ import {
   applyGlobalDelegationDefaults,
   interviewSlotLevelFromState,
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
-  INTERVIEW_COMPLETION_NOTICE_KR,
   mergeAnalyzerIntoProblemInterview,
   formatProposalInterviewReadinessLine,
   getControlledQuestionForSlot,
@@ -284,32 +282,6 @@ function ideationDraftGateStatus(state: ProblemInterviewState | null | undefined
     requiredCovered,
     ready: strictFilled >= IDEATION_DRAFT_MIN_FILLED_SLOTS && requiredCovered,
   };
-}
-
-function isExplicitIdeationSummaryRequestText(text: string): boolean {
-  const t = text.trim();
-  if (!t) return false;
-  return /(요약|정리\s*(해|해줘|해 줘|요청|본|해라)|초안\s*(만들|작성|생성)|문서화|아이디어.*(초안|정리|요약)|정리요청)/i.test(t);
-}
-
-function isConfirmingIdeationDraftSuggestion(text: string, previousAiText: string): boolean {
-  const t = text.trim().toLowerCase();
-  if (!t) return false;
-  const previousSuggested = /(초안|정리|생성|만들|진행).{0,30}(가능|할 수|진행|생성|만들)/i.test(previousAiText);
-  if (!previousSuggested) return false;
-  return /^(네|예|응|좋아|좋습니다|오케이|ok|okay|진행|진행해|시작|시작해|확정|확정해|생성|생성해|만들어|만들어줘|그렇게|그렇게 해)[\s.!?]*$/i.test(t);
-}
-
-function canGenerateIdeationDraftFromInterview(
-  state: ProblemInterviewState | null | undefined,
-  text: string,
-  previousAiText: string,
-  opts?: { explicitOverride?: boolean }
-): boolean {
-  const gate = ideationDraftGateStatus(state);
-  if (!gate.ready) return false;
-  if (opts?.explicitOverride) return true;
-  return isExplicitIdeationSummaryRequestText(text) || isConfirmingIdeationDraftSuggestion(text, previousAiText);
 }
 
 export function RequirementsWorkspace({
@@ -655,12 +627,6 @@ export function RequirementsWorkspace({
 
   const onboardingKey = useMemo(() => (resolvedProjectId.trim() ? `pid:${resolvedProjectId.trim()}` : "no-pid"), [resolvedProjectId]);
   const [onboardingAppliedKey, setOnboardingAppliedKey] = useState<string | null>(null);
-
-  const isDraftIntent = useCallback((text: string) => {
-    const t = text.trim();
-    if (!t) return false;
-    return /(초안|문서화|문서 형태|정리해줘|정리해 줘|요구사항.*(만들|작성)|요구사항\s*초안\s*생성|아이디어.*(정리|문서))/i.test(t);
-  }, []);
 
   const requirementsPending = project ? isRequirementsPendingWorkflow(project.workflowStatus) : true;
 
@@ -1161,6 +1127,16 @@ export function RequirementsWorkspace({
       clearTimeout(draftDebounceTimerRef.current);
       draftDebounceTimerRef.current = null;
     }
+    const gate = ideationDraftGateStatus(problemInterviewState);
+    if (!gate.ready) {
+      const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(problemInterviewState ?? emptyProblemInterviewState(""), slot));
+      const msg = missingRequired.length
+        ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
+        : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
+      setError(msg);
+      showErrorToast(msg);
+      return;
+    }
     setBusy(true);
     setError(null);
     setOrganizeState("running");
@@ -1293,7 +1269,7 @@ export function RequirementsWorkspace({
         role: "ai",
         body:
           analyzerMessage ||
-          `현재 정보로 ${schema.labelKr} 초안 작성이 가능합니다.\n생성을 시작합니다.`,
+          `현재 정보로 ${schema.labelKr} 생성을 시작합니다.`,
         speakerType: "AI",
         speakerId: VIRTUAL_AI_PLANNER_ID,
         speakerName: "AI 기획자",
@@ -1440,6 +1416,7 @@ export function RequirementsWorkspace({
     conversationStatus,
     conversationMessages,
     organizeState,
+    problemInterviewState,
     project?.name,
     project?.description,
     draftDoc,
@@ -1456,6 +1433,7 @@ export function RequirementsWorkspace({
     openIssues,
     priorityFeatures,
     setProposalPlanPreview,
+    showErrorToast,
   ]);
 
   const handleGenerateDeliverables = useCallback(
@@ -1685,7 +1663,6 @@ export function RequirementsWorkspace({
       });
       const msgs = [...conversationMessages, userMsg];
       const turn = room.aiQuestionIndex ?? 0;
-      const plannerState = stateJsonRef.current.organizePlannerState ?? null;
 
       if (anyAi) {
         const primaryId = primaryAi?.id ?? targets[0].id;
@@ -1724,188 +1701,12 @@ export function RequirementsWorkspace({
 
         type IdeationPlannerTail = { needsTailPersist: true; finalRoom: RequirementsRoomStateV3 } | { needsTailPersist: false };
 
-        /** 정리요청(플래너 리뷰) pending일 때만; 아니면 null */
-        const runOrganizePlannerIfPending = async (): Promise<IdeationPlannerTail | null> => {
-          const pending = plannerState && plannerState.pendingQuestions && plannerState.pendingQuestions.length > 0;
-          if (!pending || !pid) return null;
-          const requestedType: IdeationDeliverableType = plannerState.requestedType;
-          const schema = getPlannerSlotSchema(requestedType);
-          const prevCtx = stateJsonRef.current.organizeContext ?? null;
-          const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
-          const recentBlock = formatOrganizeRecentMessages(msgs, recentCount, 12_000);
-          const bootFacts = bootstrapOrganizeMemoryFacts({
-            goals,
-            targetUsers,
-            scopeIn,
-            scopeOut,
-            success,
-            nfr,
-            openIssues,
-            priorityFeatures,
-          });
-          const memoryFactsForApi = mergeOrganizeMemoryFactsPreserveMandatory(prevCtx?.memoryFacts ?? undefined, bootFacts);
-          const rolling =
-            (typeof prevCtx?.rollingSummary === "string" && prevCtx.rollingSummary.trim()) ||
-            buildRollingSummaryFromIdeationFields({ goals, openIssues, priorityFeatures });
-          const excerpt = augmentDialogueExcerptForReplyParent(
-            formatDialogueExcerpt(msgs),
-            msgs,
-            effectiveReplyTo
-          );
-
-          const res = await fetch("/api/requirements/organize-analyze", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId: pid,
-              projectName: project?.name ?? "",
-              projectDescription: project?.description ?? "",
-              requestedType,
-              requiredSlots:
-                Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
-                  ? plannerState.requiredSlots
-                  : schema.requiredSlots,
-              memoryFacts: memoryFactsForApi,
-              rollingSummary: rolling,
-              recentMessages: excerpt || recentBlock,
-            }),
-          });
-          const json = (await res.json()) as {
-            success?: boolean;
-            code?: string;
-            message?: string;
-            data?: { ready?: boolean; message?: string; questions?: string[]; slotStatus?: Record<string, "filled" | "missing"> };
-          };
-          if (!res.ok || !json.success || !json.data || typeof json.data.ready !== "boolean") {
-            const errMsg = json.message || "정리 요청 처리에 실패했습니다.";
-            setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-            showErrorToast(errMsg);
-            const errRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
-            setInput("");
-            setReplyTo(null);
-            await persistRemote(errRoom, {}, { lastUserDraftText: "" });
-            return { needsTailPersist: false };
-          } else if (!json.data.ready) {
-            const analyzerMessage = String(json.data.message ?? "").trim() || "좋은 초안을 위해 한 가지만 더 확인하겠습니다.";
-            const questions = Array.isArray(json.data.questions)
-              ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
-              : [];
-            const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
-            ideationSendDevLog("ai-appended", "organize-more-questions");
-            const moreQuestionsRoom = {
-              ...withCalling,
-              aiQuestionIndex: turn + 1,
-              requirementsConversation: {
-                ...withCalling.requirementsConversation,
-                messages: [
-                  ...withCalling.requirementsConversation.messages,
-                  newChatMessage({
-                    role: "ai",
-                    body,
-                    speakerType: "AI",
-                    speakerId: primaryId,
-                    speakerName: aiName,
-                    messageType: "ANSWER",
-                  }),
-                ],
-              },
-            };
-            await persistRemote(moreQuestionsRoom, {}, {
-              organizePlannerState: {
-                requestedType,
-                requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
-                pendingQuestions: questions,
-                requiredSlots:
-                  Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
-                    ? plannerState.requiredSlots
-                    : [...schema.requiredSlots],
-                slotStatus: json.data.slotStatus ?? null,
-                lastAnalyzerResult: {
-                  ready: false,
-                  message: analyzerMessage,
-                  questions,
-                  analyzedAt: new Date().toISOString(),
-                },
-              },
-            });
-            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return", "organize-more-questions");
-            setInput("");
-            setReplyTo(null);
-            return { needsTailPersist: false };
-          } else {
-            const analyzerMessage = String(json.data.message ?? "").trim() || "현재 논의 내용으로 초안 작성이 가능합니다. 초안을 생성합니다.";
-            ideationSendDevLog("ai-appended", "organize-ready");
-            const readyRoom = {
-              ...withCalling,
-              aiQuestionIndex: turn + 1,
-              requirementsConversation: {
-                ...withCalling.requirementsConversation,
-                messages: [
-                  ...withCalling.requirementsConversation.messages,
-                  newChatMessage({
-                    role: "ai",
-                    body: analyzerMessage,
-                    speakerType: "AI",
-                    speakerId: primaryId,
-                    speakerName: aiName,
-                    messageType: "ANSWER",
-                  }),
-                ],
-              },
-            };
-            await persistRemote(readyRoom, {}, {
-              organizePlannerState: {
-                requestedType,
-                requestedLabel: plannerState.requestedLabel ?? schema.labelKr,
-                pendingQuestions: [],
-                requiredSlots:
-                  Array.isArray(plannerState.requiredSlots) && plannerState.requiredSlots.length
-                    ? plannerState.requiredSlots
-                    : [...schema.requiredSlots],
-                slotStatus: json.data.slotStatus ?? null,
-                lastAnalyzerResult: {
-                  ready: true,
-                  message: analyzerMessage,
-                  questions: [],
-                  analyzedAt: new Date().toISOString(),
-                },
-              },
-            });
-            await handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
-            const archivedAt = new Date().toISOString();
-            const prevInterview = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
-            const prevHistory = (stateJsonRef.current.problemInterviewHistory as Array<{ archivedAt: string; state: ProblemInterviewState }> | null | undefined) ?? null;
-            await persistStateJsonOnly({
-              organizePlannerState: null,
-              lastOrganizedAt: archivedAt,
-              ...(prevInterview
-                ? {
-                    problemInterview: null,
-                    problemInterviewHistory: [
-                      ...(Array.isArray(prevHistory) ? prevHistory : []),
-                      { archivedAt, state: prevInterview },
-                    ].slice(-24),
-                  }
-                : {}),
-            });
-            showSuccessToast(`${plannerState.requestedLabel ?? schema.labelKr} 생성 완료`);
-            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return", "organize-deliverable");
-            setInput("");
-            setReplyTo(null);
-            return { needsTailPersist: false };
-          }
-        };
-
-        const wantsDraftEndpoint = isDraftIntent(text);
         const excerpt = augmentDialogueExcerptForReplyParent(
           formatDialogueExcerpt(msgs),
           msgs,
           effectiveReplyTo
         );
-        const endpoint = wantsDraftEndpoint ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
+        const endpoint = "/api/requirements/ai-facilitator";
 
         const isIdeationProblemInterviewPlannerContext = (): boolean => {
           if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
@@ -1939,10 +1740,9 @@ export function RequirementsWorkspace({
         const commitInterviewPlannerReplyOnce = async (
           merged: ProblemInterviewState,
           analyzerForPlan: InterviewAnalyzerPayload | null,
-          ctx?: { prevState?: ProblemInterviewState; lastAskedSlot?: ProblemInterviewSlot | null; latestAiText?: string }
+          ctx?: { prevState?: ProblemInterviewState; lastAskedSlot?: ProblemInterviewSlot | null }
         ): Promise<IdeationPlannerTail> => {
           const nowIso = new Date().toISOString();
-          const latestAiTextForGate = String(ctx?.latestAiText ?? "");
           // 직전 AI가 물은 슬롯(있다면). 사용자가 다른 얘기를 해도 전체 슬롯 분석/저장은 유지하되,
           // 직전 슬롯에서 진전이 없으면 같은 슬롯을 즉시 반복 질문하지 않게 한다.
           const lastAskedSlot = ctx?.lastAskedSlot ?? null;
@@ -1972,30 +1772,19 @@ export function RequirementsWorkspace({
               notes[delegatedSlot] = notes[delegatedSlot]
                 ? `${notes[delegatedSlot]}\n${delegatedDefaultLine}`.trim()
                 : delegatedDefaultLine;
-              mergedForPlan = { ...(merged as any), ...nextRow, partial, notes, updatedAt: nowIso } as ProblemInterviewState;
+              mergedForPlan = {
+                ...(merged as unknown as Record<string, unknown>),
+                ...nextRow,
+                partial,
+                notes,
+                updatedAt: nowIso,
+              } as unknown as ProblemInterviewState;
               autoAppliedDelegationDefault = true;
             }
           }
 
           // 글로벌 위임이면 남은 슬롯을 기본 템플릿으로 보완하고, 조기 종료(>=85%)를 허용한다.
           const mergedWithGlobalDelegation = globalDelegation ? applyGlobalDelegationDefaults(mergedForPlan, nowIso) : mergedForPlan;
-
-          const canGenerateDraftNow = canGenerateIdeationDraftFromInterview(
-            mergedWithGlobalDelegation,
-            text,
-            latestAiTextForGate,
-            { explicitOverride: globalDelegation }
-          );
-          if (canGenerateDraftNow) {
-            const doneInterview = { ...(mergedWithGlobalDelegation as any), active: false, updatedAt: nowIso } as ProblemInterviewState;
-            await persistRemote(withCalling, {}, { problemInterview: doneInterview, ...(globalDelegation ? { globalDelegation: true } : {}) });
-            await handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
-            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return", `interview-gated-generate id=${sendTraceId}`);
-            setInput("");
-            setReplyTo(null);
-            return { needsTailPersist: false };
-          }
 
           const plan = planNextInterviewTurn(
             mergedWithGlobalDelegation,
@@ -2078,54 +1867,18 @@ export function RequirementsWorkspace({
             return { needsTailPersist: false };
           }
 
-          if (!canGenerateDraftNow) {
-            const nextSlot = pickNextAskableInterviewSlot(mergedWithGlobalDelegation, mergedWithGlobalDelegation.askedSlots, null, {
-              avoidSlots: avoidSlotsForNext,
-            });
-            if (nextSlot) {
-              const readiness = formatProposalInterviewReadinessLine(mergedWithGlobalDelegation);
-              const question = getControlledQuestionForSlot(nextSlot, turn);
-              const aiBody = composeInterviewPlannerReply(
-                `${readiness}\n\n${analyzerForPlan?.summary?.trim() || "이전 답변을 반영했습니다."}`.trim(),
-                question
-              );
-              const asked = withAskedSlot(mergedWithGlobalDelegation, nextSlot, nowIso);
-              const interviewNextRoom: RequirementsRoomStateV3 = {
-                ...withCalling,
-                aiQuestionIndex: turn + 1,
-                requirementsConversation: {
-                  ...withCalling.requirementsConversation,
-                  messages: [
-                    ...withCalling.requirementsConversation.messages,
-                    newChatMessage({
-                      role: "ai",
-                      body: aiBody,
-                      speakerType: "AI",
-                      speakerId: primaryId,
-                      speakerName: aiName,
-                      messageType: "ANSWER",
-                      meta: {
-                        internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
-                        problemInterviewLastSlot: nextSlot,
-                      },
-                    }),
-                  ],
-                },
-              };
-              await persistRemote(interviewNextRoom, {}, { problemInterview: asked, ...(globalDelegation ? { globalDelegation: true } : {}) });
-              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog("return", `interview-gated-next id=${sendTraceId}`);
-              setInput("");
-              setReplyTo(null);
-              return { needsTailPersist: false };
-            }
-
-            const gate = ideationDraftGateStatus(mergedWithGlobalDelegation);
-            const blockedBody = gate.ready
-              ? "아이디어 초안 생성 준비는 되었습니다. 생성하려면 “정리해줘” 또는 “아이디어 초안 만들어줘”라고 요청해 주세요."
-              : "아이디어를 조금 더 정리한 뒤 초안을 만들 수 있습니다. 먼저 주 사용자, 핵심 문제, 기대 효과를 간단히 확인하겠습니다.";
-            const blockedState = { ...mergedWithGlobalDelegation, active: true, updatedAt: nowIso } as ProblemInterviewState;
-            const blockedRoom: RequirementsRoomStateV3 = {
+          const nextSlot = pickNextAskableInterviewSlot(mergedWithGlobalDelegation, mergedWithGlobalDelegation.askedSlots, null, {
+            avoidSlots: avoidSlotsForNext,
+          });
+          if (nextSlot) {
+            const readiness = formatProposalInterviewReadinessLine(mergedWithGlobalDelegation);
+            const question = getControlledQuestionForSlot(nextSlot, turn);
+            const aiBody = composeInterviewPlannerReply(
+              `${readiness}\n\n${analyzerForPlan?.summary?.trim() || "이전 답변을 반영했습니다."}`.trim(),
+              question
+            );
+            const asked = withAskedSlot(mergedWithGlobalDelegation, nextSlot, nowIso);
+            const interviewNextRoom: RequirementsRoomStateV3 = {
               ...withCalling,
               aiQuestionIndex: turn + 1,
               requirementsConversation: {
@@ -2134,47 +1887,30 @@ export function RequirementsWorkspace({
                   ...withCalling.requirementsConversation.messages,
                   newChatMessage({
                     role: "ai",
-                    body: blockedBody,
+                    body: aiBody,
                     speakerType: "AI",
                     speakerId: primaryId,
                     speakerName: aiName,
                     messageType: "ANSWER",
-                    meta: { internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE },
+                    meta: {
+                      internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
+                      problemInterviewLastSlot: nextSlot,
+                    },
                   }),
                 ],
               },
             };
-            await persistRemote(blockedRoom, {}, { problemInterview: blockedState, ...(globalDelegation ? { globalDelegation: true } : {}) });
+            await persistRemote(interviewNextRoom, {}, { problemInterview: asked, ...(globalDelegation ? { globalDelegation: true } : {}) });
             setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return", `interview-gated-block id=${sendTraceId}`);
+            ideationSendDevLog("return", `interview-gated-next id=${sendTraceId}`);
             setInput("");
             setReplyTo(null);
             return { needsTailPersist: false };
           }
 
-          const doneInterview = { ...(mergedWithGlobalDelegation as any), active: false, updatedAt: nowIso } as ProblemInterviewState;
-          const completionBody = globalDelegation
-            ? "남은 항목은 AI 권장안으로 보완하겠습니다.\n아이디어 초안을 생성하려면 “정리해줘”라고 요청해 주세요."
-            : INTERVIEW_COMPLETION_NOTICE_KR;
-          if (
-            primaryId === VIRTUAL_AI_PLANNER_ID &&
-            shouldSkipIdeationDuplicateAppend({
-              messages: withCalling.requirementsConversation.messages,
-              role: "ai",
-              body: completionBody,
-              matchVirtualPlannerAi: true,
-            })
-          ) {
-            ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=interview-complete`);
-            await persistRemote(withCalling, {}, { problemInterview: doneInterview, ...(globalDelegation ? { globalDelegation: true } : {}) });
-            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return", `interview-complete-dedupe id=${sendTraceId}`);
-            setInput("");
-            setReplyTo(null);
-            return { needsTailPersist: false };
-          }
-          ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=interview-complete`);
-          const interviewDoneRoom: RequirementsRoomStateV3 = {
+          const blockedBody = "정리는 하단 + 메뉴의 [정리 요청]에서 실행할 수 있습니다.\n먼저 아이디어 구체화에 필요한 정보를 조금 더 확인하겠습니다.";
+          const blockedState = { ...mergedWithGlobalDelegation, active: true, updatedAt: nowIso } as ProblemInterviewState;
+          const blockedRoom: RequirementsRoomStateV3 = {
             ...withCalling,
             aiQuestionIndex: turn + 1,
             requirementsConversation: {
@@ -2183,19 +1919,19 @@ export function RequirementsWorkspace({
                 ...withCalling.requirementsConversation.messages,
                 newChatMessage({
                   role: "ai",
-                  body: completionBody,
+                  body: blockedBody,
                   speakerType: "AI",
                   speakerId: primaryId,
                   speakerName: aiName,
                   messageType: "ANSWER",
-                  meta: { internalType: IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE },
+                  meta: { internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE },
                 }),
               ],
             },
           };
-          await persistRemote(interviewDoneRoom, {}, { problemInterview: doneInterview, ...(globalDelegation ? { globalDelegation: true } : {}) });
+          await persistRemote(blockedRoom, {}, { problemInterview: blockedState, ...(globalDelegation ? { globalDelegation: true } : {}) });
           setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-          ideationSendDevLog("return", `interview-complete ok=${Boolean(analyzerForPlan)} id=${sendTraceId}`);
+          ideationSendDevLog("return", `interview-gated-block id=${sendTraceId}`);
           setInput("");
           setReplyTo(null);
           return { needsTailPersist: false };
@@ -2252,7 +1988,7 @@ export function RequirementsWorkspace({
             const lastSlotRaw = String(latestAiTurn?.meta?.problemInterviewLastSlot ?? "").trim();
             const lastSlot: ProblemInterviewSlot | null =
               lastSlotRaw && (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(lastSlotRaw) ? (lastSlotRaw as ProblemInterviewSlot) : null;
-            return commitInterviewPlannerReplyOnce(merged, outcome.payload, { prevState: seeded, lastAskedSlot: lastSlot, latestAiText: latestAiQuestion });
+            return commitInterviewPlannerReplyOnce(merged, outcome.payload, { prevState: seeded, lastAskedSlot: lastSlot });
           }
 
           if (outcome.kind === "http-ok-parse-fail") {
@@ -2268,7 +2004,7 @@ export function RequirementsWorkspace({
           const lastSlotRaw = String(latestAiTurn?.meta?.problemInterviewLastSlot ?? "").trim();
           const lastSlot: ProblemInterviewSlot | null =
             lastSlotRaw && (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(lastSlotRaw) ? (lastSlotRaw as ProblemInterviewSlot) : null;
-          return commitInterviewPlannerReplyOnce(merged, null, { prevState: seeded, lastAskedSlot: lastSlot, latestAiText: latestAiQuestion });
+          return commitInterviewPlannerReplyOnce(merged, null, { prevState: seeded, lastAskedSlot: lastSlot });
         };
 
         const runFacilitatorOrDraftPipeline = async (): Promise<IdeationPlannerTail> => {
@@ -2378,11 +2114,6 @@ export function RequirementsWorkspace({
         };
 
         const runAiPlannerAfterUserPersist = async (): Promise<IdeationPlannerTail> => {
-          const organized = await runOrganizePlannerIfPending();
-          if (organized) return organized;
-          if (primaryId === VIRTUAL_AI_PLANNER_ID && wantsDraftEndpoint) {
-            return runIdeationProblemInterviewPipeline();
-          }
           if (isIdeationProblemInterviewPlannerContext()) {
             return runIdeationProblemInterviewPipeline();
           }
@@ -2441,9 +2172,7 @@ export function RequirementsWorkspace({
     draftDoc,
     replyTo,
     showErrorToast,
-    handleGenerateDeliverables,
     showSuccessToast,
-    isDraftIntent,
     formatProposalInterviewReadinessLine,
   ]);
 
