@@ -1908,7 +1908,6 @@ export function RequirementsWorkspace({
         const endpoint = wantsDraftEndpoint ? "/api/requirements/draft-generate" : "/api/requirements/ai-facilitator";
 
         const isIdeationProblemInterviewPlannerContext = (): boolean => {
-          if (wantsDraftEndpoint) return false;
           if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
           if (stateJsonRef.current.organizePlannerState) return false;
           const lastAi = [...msgs].reverse().find((m) => m.role === "ai");
@@ -1981,6 +1980,23 @@ export function RequirementsWorkspace({
           // 글로벌 위임이면 남은 슬롯을 기본 템플릿으로 보완하고, 조기 종료(>=85%)를 허용한다.
           const mergedWithGlobalDelegation = globalDelegation ? applyGlobalDelegationDefaults(mergedForPlan, nowIso) : mergedForPlan;
 
+          const canGenerateDraftNow = canGenerateIdeationDraftFromInterview(
+            mergedWithGlobalDelegation,
+            text,
+            latestAiTextForGate,
+            { explicitOverride: globalDelegation }
+          );
+          if (canGenerateDraftNow) {
+            const doneInterview = { ...(mergedWithGlobalDelegation as any), active: false, updatedAt: nowIso } as ProblemInterviewState;
+            await persistRemote(withCalling, {}, { problemInterview: doneInterview, ...(globalDelegation ? { globalDelegation: true } : {}) });
+            await handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
+            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
+            ideationSendDevLog("return", `interview-gated-generate id=${sendTraceId}`);
+            setInput("");
+            setReplyTo(null);
+            return { needsTailPersist: false };
+          }
+
           const plan = planNextInterviewTurn(
             mergedWithGlobalDelegation,
             analyzerForPlan,
@@ -1994,12 +2010,6 @@ export function RequirementsWorkspace({
             ],
               ...(globalDelegation ? { allowEarlyFinishScore: 8.5 } : {}),
             }
-          );
-          const canGenerateDraftNow = canGenerateIdeationDraftFromInterview(
-            mergedWithGlobalDelegation,
-            text,
-            latestAiTextForGate,
-            { explicitOverride: globalDelegation }
           );
           if (plan) {
             const readiness = formatProposalInterviewReadinessLine(mergedWithGlobalDelegation);
@@ -2292,7 +2302,7 @@ export function RequirementsWorkspace({
             const aiReply =
               json.data?.reply ??
               (createdDraft
-                ? `정리 초안을 만들었습니다.\n\n- 프로젝트 개요: ${createdDraft.overview}\n- 대상 사용자: ${createdDraft.users.join(", ")}\n- 핵심 기능: ${createdDraft.features.join(", ")}\n- 성공 기준: ${createdDraft.successCriteria.join(", ")}\n${createdDraft.openIssues.length ? `- 미결정 이슈: ${createdDraft.openIssues.join(", ")}` : ""}`.trim()
+                ? `요구사항 문서 초안을 만들었습니다.\n\n- 개요 ${createdDraft.overview}\n- 사용자 ${createdDraft.users.join(", ")}\n- 기능 ${createdDraft.features.join(", ")}\n- 기준 ${createdDraft.successCriteria.join(", ")}\n${createdDraft.openIssues.length ? `- 남은 확인사항 ${createdDraft.openIssues.join(", ")}` : ""}`.trim()
                 : "");
 
             const nextDraftDoc =
@@ -2370,6 +2380,9 @@ export function RequirementsWorkspace({
         const runAiPlannerAfterUserPersist = async (): Promise<IdeationPlannerTail> => {
           const organized = await runOrganizePlannerIfPending();
           if (organized) return organized;
+          if (primaryId === VIRTUAL_AI_PLANNER_ID && wantsDraftEndpoint) {
+            return runIdeationProblemInterviewPipeline();
+          }
           if (isIdeationProblemInterviewPlannerContext()) {
             return runIdeationProblemInterviewPipeline();
           }
