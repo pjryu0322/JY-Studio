@@ -54,6 +54,8 @@ export type RequirementsStateJson = {
   problemInterviewHistory?: Array<{ archivedAt: string; state: ProblemInterviewState }> | null;
   /** 액터 및 서비스 흐름 정의(단계 2) — MVP v1 */
   serviceFlowV1?: RequirementsServiceFlowV1 | null;
+  /** 액터 및 서비스 흐름 정의 단계를 완료한 시각 */
+  serviceFlowCompletedAt?: string;
   /** 아이디어 초안 확정으로 아이디어 구체화 단계를 완료한 시각 */
   ideationStageCompletedAt?: string;
   /** 아이디어 구체화 완료의 기준이 된 산출물 id */
@@ -281,6 +283,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(globalDelegation !== undefined ? { globalDelegation: globalDelegation === null ? undefined : globalDelegation } : {}),
     ...(problemInterviewHistory !== undefined ? { problemInterviewHistory } : {}),
     ...(serviceFlowV1 !== undefined ? { serviceFlowV1 } : {}),
+    serviceFlowCompletedAt:
+      typeof o.serviceFlowCompletedAt === "string" ? o.serviceFlowCompletedAt : undefined,
     ...(lastPromptView !== undefined ? { lastPromptView } : {}),
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
     lastPromptGeneratedAt: typeof o.lastPromptGeneratedAt === "string" ? o.lastPromptGeneratedAt : undefined,
