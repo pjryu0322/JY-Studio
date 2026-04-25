@@ -2269,9 +2269,57 @@ export function RequirementsWorkspace({
         stateJsonRef.current.deliverableAssets ??
         [];
       const next = markDeliverableAssetsConfirmed(cur, ids);
-      await persistStateJsonOnly({ deliverableAssets: next });
+      const idSet = new Set(ids.map((x) => String(x).trim()).filter(Boolean));
+      const confirmedFullPlan = next.find((a) => idSet.has(a.id) && a.type === "full_plan") ?? null;
+      if (!confirmedFullPlan) {
+        await persistStateJsonOnly({ deliverableAssets: next });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const completedInterview = stateJsonRef.current.problemInterview
+        ? { ...stateJsonRef.current.problemInterview, active: false, updatedAt: now }
+        : undefined;
+      const completedState = mergeRequirementsStateJson(stateJsonRef.current, {
+        deliverableAssets: next,
+        ideationStageCompletedAt: now,
+        ideationConfirmedAssetId: confirmedFullPlan.id,
+        organizePlannerState: null,
+        ...(completedInterview ? { problemInterview: completedInterview } : {}),
+        lastSavedAt: now,
+      });
+      stateJsonRef.current = completedState;
+      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requirementsStateJson: completedState,
+          confirmedSpecMarkdown: confirmedFullPlan.content,
+          workflowStatus: null,
+        }),
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { project?: Project; patchApplied?: boolean; message?: string };
+      };
+      if (!res.ok || !json.success || !json.data?.project || json.data.patchApplied === false) {
+        const msg = json.data?.message || json.message || "아이디어 초안 확정 저장에 실패했습니다.";
+        setError(msg);
+        showErrorToast(msg);
+        return;
+      }
+      setProject(json.data.project);
+      stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
+      setProposalPlanPreview({ open: false, assetId: null });
+      setDeliverableViewerOpen(false);
+      setAiInvokePending(false);
+      notifyAppFlowProjectContextChanged();
+      showSuccessToast("아이디어 초안이 확정되었습니다. 다음 단계로 이동합니다.");
+      router.push(`/requirements?projectId=${encodeURIComponent(pid)}&stage=service-flow`);
     },
-    [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly]
+    [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly, router, showErrorToast, showSuccessToast]
   );
 
   const handleGenerateServiceFlowDraft = useCallback(async () => {
@@ -2890,7 +2938,6 @@ export function RequirementsWorkspace({
           const id = proposalPlanPreview.assetId;
           if (!id) return;
           void handleConfirmDeliverableAssets([id]);
-          setProposalPlanPreview({ open: false, assetId: null });
         }}
       />
     </div>

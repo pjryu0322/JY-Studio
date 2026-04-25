@@ -54,6 +54,10 @@ export type RequirementsStateJson = {
   problemInterviewHistory?: Array<{ archivedAt: string; state: ProblemInterviewState }> | null;
   /** 액터 및 서비스 흐름 정의(단계 2) — MVP v1 */
   serviceFlowV1?: RequirementsServiceFlowV1 | null;
+  /** 아이디어 초안 확정으로 아이디어 구체화 단계를 완료한 시각 */
+  ideationStageCompletedAt?: string;
+  /** 아이디어 구체화 완료의 기준이 된 산출물 id */
+  ideationConfirmedAssetId?: string;
   onboardingShown?: boolean;
   openIssues?: string;
   priorityFeatures?: string;
@@ -266,6 +270,10 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? null
         : undefined,
     onboardingShown: typeof o.onboardingShown === "boolean" ? o.onboardingShown : undefined,
+    ideationStageCompletedAt:
+      typeof o.ideationStageCompletedAt === "string" ? o.ideationStageCompletedAt : undefined,
+    ideationConfirmedAssetId:
+      typeof o.ideationConfirmedAssetId === "string" ? o.ideationConfirmedAssetId : undefined,
     openIssues: typeof o.openIssues === "string" ? o.openIssues : undefined,
     priorityFeatures: typeof o.priorityFeatures === "string" ? o.priorityFeatures : undefined,
     ...(originalProjectDescription !== undefined ? { originalProjectDescription } : {}),
