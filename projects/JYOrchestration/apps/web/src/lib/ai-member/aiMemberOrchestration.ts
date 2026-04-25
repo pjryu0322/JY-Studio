@@ -4,6 +4,8 @@
 
 export type AiMemberRole =
   | "planner"
+  | "service-designer"
+  | "domain-expert"
   | "reviewer"
   | "security-reviewer"
   | "quality-reviewer"
@@ -11,7 +13,7 @@ export type AiMemberRole =
   | "task-reviewer"
   | "scm-manager";
 
-export type OrchestrationStage = "spec" | "task" | "execution-review" | "scm-manager";
+export type OrchestrationStage = "spec" | "service-flow" | "task" | "execution-review" | "scm-manager";
 
 export type AiMemberConfig = {
   id: string;
@@ -24,6 +26,8 @@ export type AiMemberConfig = {
 
 const AI_MEMBER_ROLES: ReadonlySet<string> = new Set([
   "planner",
+  "service-designer",
+  "domain-expert",
   "reviewer",
   "security-reviewer",
   "quality-reviewer",
@@ -32,7 +36,7 @@ const AI_MEMBER_ROLES: ReadonlySet<string> = new Set([
   "scm-manager",
 ]);
 
-const ORCHESTRATION_STAGES: ReadonlySet<string> = new Set(["spec", "task", "execution-review", "scm-manager"]);
+const ORCHESTRATION_STAGES: ReadonlySet<string> = new Set(["spec", "service-flow", "task", "execution-review", "scm-manager"]);
 
 /** Cursor 실행 후 검토 파이프라인에 참여하는 역할(순서) */
 export const EXECUTION_REVIEW_ROLE_ORDER: readonly AiMemberRole[] = [
@@ -78,6 +82,8 @@ export const DEFAULT_REVIEWER_MODEL_BY_ROLE: Partial<Record<AiMemberRole, string
   "quality-reviewer": "gpt-5-mini",
   "spec-reviewer": "gpt-5-mini",
   "task-reviewer": "gpt-5-mini",
+  "service-designer": "gpt-5-mini",
+  "domain-expert": "gpt-5-mini",
   planner: "gpt-5-mini",
 };
 

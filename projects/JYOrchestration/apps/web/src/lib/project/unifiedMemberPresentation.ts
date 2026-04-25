@@ -22,7 +22,9 @@ const ORCH_TITLE: Record<string, string> = {
   "quality-reviewer": "품질 리뷰어",
   "spec-reviewer": "Spec 리뷰어",
   "task-reviewer": "Task 리뷰어",
-  planner: "Planner",
+  planner: "AI 기획자",
+  "service-designer": "AI 서비스 설계자",
+  "domain-expert": "업무 전문가",
   "scm-manager": "SCM Manager",
 };
 
