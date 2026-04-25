@@ -1,6 +1,7 @@
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import type { InterviewAnalyzerPayload, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import { parseInterviewAnalyzerPayloadFromModelText, problemInterviewStateToAnalyzerWire } from "@/lib/requirements/problemInterview";
+import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import {
   buildIdeationDeliverableBasePrompt,
   buildIdeationDeliverablesUserPrompt,
@@ -517,8 +518,281 @@ export type InterviewAnalyzeOpenAiResult =
   | { ok: true; payload: InterviewAnalyzerPayload; model: string }
   | { ok: false; code: string; message: string };
 
+export type ServiceFlowAnalyzeIntent =
+  | "add_actor"
+  | "update_actor"
+  | "add_step"
+  | "update_step"
+  | "update_mapping"
+  | "show_summary"
+  | "delegate_to_ai"
+  | "unclear";
+
+export type ServiceFlowAnalyzeOpenAiResult =
+  | {
+      ok: true;
+      data: {
+        assistantMessage: string;
+        updatedFlow: RequirementsServiceFlowV1;
+        intent: ServiceFlowAnalyzeIntent;
+        nextQuestion: string | null;
+        quickReplies: string[] | null;
+        readiness: {
+          score: number;
+          actorsReady: boolean;
+          stepsReady: boolean;
+          mappingReady: boolean;
+          readyForNext: boolean;
+        };
+      };
+      model: string;
+    }
+  | { ok: false; code: string; message: string };
+
 function interviewStateJsonForAnalyzer(state: ProblemInterviewState): string {
   return JSON.stringify(problemInterviewStateToAnalyzerWire(state));
+}
+
+function clamp01Score(n: unknown): number {
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+function safeText(v: unknown, max = 520): string {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+function ensureServiceFlowShape(v: unknown, nowIso: string): RequirementsServiceFlowV1 | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const actorsRaw = Array.isArray(o.actors) ? o.actors : [];
+  const stepsRaw = Array.isArray(o.steps) ? o.steps : [];
+
+  const actors = actorsRaw
+    .map((a) => {
+      const aa = a as Record<string, unknown>;
+      const id = safeText(aa.id, 90);
+      const name = safeText(aa.name, 60);
+      const kind = safeText(aa.kind, 16) === "system" ? "system" : "human";
+      const description = safeText(aa.description, 140);
+      if (!id || !name) return null;
+      return { id, name, kind, description };
+    })
+    .filter(Boolean) as RequirementsServiceFlowV1["actors"];
+
+  const actorIds = new Set(actors.map((a) => a.id));
+  const steps = stepsRaw
+    .map((s) => {
+      const ss = s as Record<string, unknown>;
+      const id = safeText(ss.id, 140);
+      const title = safeText(ss.title, 80);
+      const purpose = safeText(ss.purpose, 240);
+      const order = Number(ss.order);
+      const primaryActorId = safeText(ss.primaryActorId, 90);
+      const secondaryActorIds = Array.isArray(ss.secondaryActorIds)
+        ? (ss.secondaryActorIds.map((x) => safeText(x, 90)).filter(Boolean) as string[])
+        : [];
+      const approved = Boolean(ss.approved);
+      const updatedAt = safeText(ss.updatedAt, 40) || nowIso;
+      if (!id || !title || !Number.isFinite(order)) return null;
+      return {
+        id,
+        title,
+        purpose,
+        order: Math.max(1, Math.round(order)),
+        primaryActorId: primaryActorId && actorIds.has(primaryActorId) ? primaryActorId : "",
+        secondaryActorIds: secondaryActorIds.filter((x) => actorIds.has(x)),
+        approved,
+        updatedAt,
+      };
+    })
+    .filter(Boolean) as RequirementsServiceFlowV1["steps"];
+
+  return {
+    createdAt: safeText(o.createdAt, 40) || nowIso,
+    updatedAt: safeText(o.updatedAt, 40) || nowIso,
+    actors,
+    steps,
+  };
+}
+
+export async function runServiceFlowAnalyzeOpenAI(input: {
+  projectName: string;
+  projectDescription: string;
+  ideationAssets?: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
+  userMessage: string;
+  currentFlow: RequirementsServiceFlowV1 | null;
+  recentMessages: string;
+  latestAiQuestion: string;
+}): Promise<ServiceFlowAnalyzeOpenAiResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  }
+  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const nowIso = new Date().toISOString();
+  const flowJson = JSON.stringify(input.currentFlow ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
+  const recent = safeText(input.recentMessages, 18_000);
+  const assetsBlock = (input.ideationAssets ?? [])
+    .map((a) => {
+      const type = String(a?.type ?? "").trim();
+      const title = String(a?.title ?? "").trim();
+      const content = String(a?.content ?? "").trim();
+      if (!content) return "";
+      return `- ${type || "산출물"}${title ? `: ${title}` : ""}\n${content.slice(0, 2500)}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+
+  const system = `당신은 "액터 및 서비스 흐름 정의" 단계 전용 AI 기획자입니다.
+목표:
+사용자의 자연어 발화를 의미 기반으로 해석하여, 액터/서비스 단계/담당 매핑 상태(updatedFlow)를 업데이트하고,
+사용자가 이해하기 쉬운 짧은 응답(assistantMessage)과 다음 질문(nextQuestion)을 만든다.
+
+중요 규칙:
+- 키워드 매칭/룰 기반으로 판단하지 말고 의미로 판단한다.
+- assistantMessage는 반드시 updatedFlow와 일치해야 한다(말만 하고 상태가 안 바뀌면 실패).
+- 사용자가 "액터목록을 보여줘/액터 목록 보여줘" 등 요약 요청이면 intent=show_summary로 두고,
+  assistantMessage에 현재 updatedFlow의 액터 목록을 그대로 출력한다.
+- nextQuestion은 필요한 경우에만(모호하거나 빠진 정보가 있을 때) 1문장 질문으로 넣고, 없으면 null.
+- nextQuestion이 있을 때는, 가능하면 quickReplies(최대 3개)를 같이 제안한다. (예: ["시스템 자동 생성", "작성자가 직접", "둘 다"])
+- quickReplies는 사용자가 클릭해 답할 수 있는 짧은 선택지 문자열만. 없으면 null.
+- 이 단계는 "인터뷰형" UX다. 사용자가 백지로 길게 쓰지 않아도 되도록 질문을 단계적으로 진행한다.
+- 질문은 한 번에 하나만. (설문처럼 여러 문항을 나열하지 말 것)
+- 인터뷰 질문 순서(표현은 자연스럽게 바꿔도 되며, 항상 다음 1개만 묻는다):
+  Q1 초안 작성 주체
+  Q2 수정 요청 가능 주체
+  Q3 최종 승인자
+  Q4 공유 대상/채널
+  Q5 모바일 사용 여부
+  Q6 권한 분리 필요 여부
+- latestAiQuestion과 updatedFlow/readiness를 참고해 "다음 질문"을 결정한다.
+- userMessage가 "인터뷰 시작"으로 시작하면, 반드시 Q1을 질문하고 quickReplies는 ["시스템 자동 생성", "작성자가 직접", "둘 다"]를 우선 제안한다.
+- 인터뷰가 충분히 채워졌고(readyForNext=true가 될 수 있을 정도) nextQuestion이 null이면, assistantMessage는 짧게 마무리한다.
+- 응답은 반드시 JSON 1개만 출력(마크다운/설명/코드펜스 금지).
+
+의도(intent) 분류:
+add_actor|update_actor|add_step|update_step|update_mapping|show_summary|delegate_to_ai|unclear
+
+Readiness:
+- actorsReady: actors.length >= 2
+- stepsReady: steps.length >= 3
+- mappingReady: 모든 step.primaryActorId가 존재하고 actors에 포함
+- readyForNext: 위 3개 모두 true
+- score: 0~100`;
+
+  const user = `[프로젝트]
+이름: ${input.projectName.trim() || "(이름 없음)"}
+설명: ${input.projectDescription.trim() || "(설명 없음)"}
+
+[직전 AI 질문(맥락)]
+${input.latestAiQuestion.trim() || "(없음)"}
+
+[최근 대화(발췌)]
+${recent || "(없음)"}
+
+[아이디어 구체화 산출물]
+${assetsBlock || "(없음)"}
+
+[현재 서비스흐름 상태 JSON]
+${flowJson}
+
+[사용자 최신 발화]
+${input.userMessage.trim()}
+
+[출력 스키마]
+{
+  "assistantMessage": "사용자에게 보여줄 메시지(짧게)",
+  "updatedFlow": { "createdAt": "...", "updatedAt": "...", "actors": [], "steps": [] },
+  "intent": "add_actor|update_actor|add_step|update_step|update_mapping|show_summary|delegate_to_ai|unclear",
+  "nextQuestion": "질문 한 문장?" | null,
+  "quickReplies": ["선택지1", "선택지2", "선택지3"] | null,
+  "readiness": { "score": 0, "actorsReady": true, "stepsReady": true, "mappingReady": true, "readyForNext": true }
+}`;
+
+  const callOnce = async (repair: boolean) => {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        temperature: 0.18,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: repair
+              ? `${user}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.`
+              : user,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      return { ok: false as const, code: `HTTP_${res.status}`, message: errText.slice(0, 400) };
+    }
+    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+    const text = body.choices?.[0]?.message?.content?.trim();
+    if (!text) return { ok: false as const, code: "EMPTY", message: "응답 본문이 비어 있습니다." };
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      return { ok: false as const, code: "PARSE", message: "JSON 파싱 실패" };
+    }
+    return { ok: true as const, parsed };
+  };
+
+  let r = await callOnce(false);
+  if (!r.ok && (r.code === "PARSE" || r.code === "EMPTY")) r = await callOnce(true);
+  if (!r.ok) return r;
+
+  const root = r.parsed as Record<string, unknown>;
+  const updatedFlow = ensureServiceFlowShape(root.updatedFlow, nowIso);
+  if (!updatedFlow) return { ok: false, code: "SCHEMA", message: "updatedFlow 스키마가 올바르지 않습니다." };
+
+  const intentRaw = safeText(root.intent, 40) as ServiceFlowAnalyzeIntent;
+  const allowed: ServiceFlowAnalyzeIntent[] = [
+    "add_actor",
+    "update_actor",
+    "add_step",
+    "update_step",
+    "update_mapping",
+    "show_summary",
+    "delegate_to_ai",
+    "unclear",
+  ];
+  const intent: ServiceFlowAnalyzeIntent = allowed.includes(intentRaw) ? intentRaw : "unclear";
+
+  const readinessRaw = (root.readiness ?? {}) as Record<string, unknown>;
+  const readiness = {
+    score: clamp01Score(readinessRaw.score),
+    actorsReady: Boolean(readinessRaw.actorsReady),
+    stepsReady: Boolean(readinessRaw.stepsReady),
+    mappingReady: Boolean(readinessRaw.mappingReady),
+    readyForNext: Boolean(readinessRaw.readyForNext),
+  };
+
+  const quickReplies = Array.isArray(root.quickReplies)
+    ? (root.quickReplies.map((x) => safeText(x, 40)).filter(Boolean).slice(0, 3) as string[])
+    : null;
+
+  return {
+    ok: true,
+    model,
+    data: {
+      assistantMessage: safeText(root.assistantMessage, 900) || "반영했습니다.",
+      updatedFlow,
+      intent,
+      nextQuestion: safeText(root.nextQuestion, 240) || null,
+      quickReplies: quickReplies && quickReplies.length ? quickReplies : null,
+      readiness,
+    },
+  };
 }
 
 /**

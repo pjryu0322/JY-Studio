@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 import type {
   RequirementsServiceFlowActorV1,
   RequirementsServiceFlowStepV1,
@@ -73,9 +75,12 @@ const REQUIRED_SLOTS: readonly ServiceFlowSlotKey[] = ["humanActors", "systemAct
 const RECOMMENDED_SLOTS: readonly ServiceFlowSlotKey[] = ["exceptionFlow", "accessControl", "handoffToFeatures"];
 
 const shell: CSSProperties = {
-  height: "100%",
+  flex: "1 1 auto",
   minHeight: 0,
+  minWidth: 0,
   display: "grid",
+  gridTemplateRows: "minmax(0, 1fr)",
+  alignItems: "stretch",
   overflow: "hidden",
   background: "#fff",
 };
@@ -86,6 +91,7 @@ const memberSidebar: CSSProperties = {
   background: "#f8fafc",
   display: "flex",
   flexDirection: "column",
+  height: "100%",
   minHeight: 0,
   overflow: "hidden",
 };
@@ -96,6 +102,7 @@ const chatWrap: CSSProperties = {
   background: "#f8fafc",
   display: "flex",
   flexDirection: "column",
+  height: "100%",
   overflow: "hidden",
   position: "relative",
 };
@@ -146,19 +153,11 @@ function missingSlotQuestions(slots: Record<ServiceFlowSlotKey, boolean>, limit 
 }
 
 function initialMessages(hasDraft: boolean, slots: Record<ServiceFlowSlotKey, boolean>): WorkshopMessage[] {
-  const qs = missingSlotQuestions(slots, 2);
-  return [
-    {
-      id: hasDraft ? "seed-ai" : "empty-ai",
-      role: "ai",
-      name: "AI 서비스 설계자",
-      body: hasDraft
-        ? qs.length
-          ? `초안을 준비했습니다. 부족한 부분만 확인하겠습니다.\n${qs.map((q) => `- ${q}`).join("\n")}`
-          : "초안을 준비했습니다. 필수 슬롯은 채워졌고, 권장 슬롯만 함께 다듬으면 됩니다."
-        : "상단의 AI 초안 생성 버튼을 누르면 아이디어 초안을 바탕으로 액터, 흐름, 담당 매핑을 먼저 정리합니다.",
-    },
-  ];
+  // Guided interview UX: do not ask user to free-type on entry.
+  // The first AI question is bootstrapped via /api/requirements/service-flow-analyze.
+  void hasDraft;
+  void slots;
+  return [];
 }
 
 function messageTone(role: WorkshopRole): CSSProperties {
@@ -175,97 +174,7 @@ function participantMessageRole(member: ServiceFlowParticipant): WorkshopRole {
   return "ai";
 }
 
-function participantOpinion(member: ServiceFlowParticipant, text: string, slots: Record<ServiceFlowSlotKey, boolean>): string {
-  const role = member.roleLabel.trim();
-  const nextQuestions = missingSlotQuestions(slots, 1);
-  if (role === "service-designer") {
-    if (text.includes("수정") || text.includes("반려") || text.includes("재처리")) return "예외 흐름으로 반영하겠습니다. 단계별 책임자와 권한 범위도 함께 확인하겠습니다.";
-    if (text.includes("권한") || text.includes("열람") || text.includes("관리자")) return "권한 범위를 서비스 흐름의 확인 단계로 정리하겠습니다.";
-    return nextQuestions.length ? `흐름에 반영했습니다. 다음으로 확인할 질문은 "${nextQuestions[0]}"입니다.` : "필수 슬롯 기준으로 보면 다음 단계로 넘길 수 있습니다.";
-  }
-  if (role === "planner") return "아이디어 구체화에서 정리한 목표와 이어지도록 흐름 초안을 맞춰 보겠습니다.";
-  if (role === "domain-expert" || role === "domainExpert") return "현업 관점에서는 수정 요청, 반려, 재처리처럼 예외 상황이 실제로 필요한지 확인하는 것이 좋겠습니다.";
-  if (role === "serviceFlowExpert") return "단계별 주 담당 액터가 빠지지 않도록 매핑을 같이 점검하겠습니다.";
-  return "검토자 관점에서 사용자가 헷갈릴 수 있는 단계와 권한 범위를 확인하겠습니다.";
-}
-
-function followUpMessages(text: string, slots: Record<ServiceFlowSlotKey, boolean>, participants: readonly ServiceFlowParticipant[]): WorkshopMessage[] {
-  const nextQuestions = missingSlotQuestions(slots, 2);
-  const seen = new Set<string>();
-  const opinions = participants
-    .filter((p) => {
-      const key = `${p.name}:${p.roleLabel}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((p) => ({
-      id: uid("msg"),
-      role: participantMessageRole(p),
-      name: p.name,
-      body: participantOpinion(p, text, slots),
-    }));
-  if (opinions.length) return opinions;
-  return [
-    {
-      id: uid("msg"),
-      role: "ai",
-      name: "AI 서비스 설계자",
-      body: nextQuestions.length
-        ? `반영했습니다. 남은 슬롯만 짧게 확인하겠습니다.\n${nextQuestions.map((q) => `- ${q}`).join("\n")}`
-        : "반영했습니다. 필수 슬롯은 충족되어 다음 단계로 넘길 수 있습니다.",
-    },
-  ];
-}
-
-function applyChatToFlow(flow: RequirementsServiceFlowV1 | null, text: string): RequirementsServiceFlowV1 | null {
-  if (!flow) return null;
-  const now = new Date().toISOString();
-  let actors = [...flow.actors];
-  let steps = [...flow.steps];
-
-  const ensureActor = (name: string, kind: "human" | "system", description: string): string => {
-    const found = actors.find((a) => a.name === name);
-    if (found) return found.id;
-    const id = `actor:${name}`;
-    actors = [...actors, { id, name, kind, description }];
-    return id;
-  };
-
-  const ensureStep = (title: string, purpose: string, primaryActorId: string) => {
-    if (steps.some((s) => s.title === title)) return;
-    steps = [
-      ...steps,
-      {
-        id: `step:${steps.length + 1}:${title}`,
-        order: steps.length + 1,
-        title,
-        purpose,
-        primaryActorId,
-        secondaryActorIds: [],
-        approved: false,
-        updatedAt: now,
-      },
-    ];
-  };
-
-  if (text.includes("참석자") || text.includes("사용자")) ensureActor("참석자", "human", "결과 확인 및 수정 요청을 수행하는 사용자");
-  if (text.includes("시스템") || text.includes("자동")) ensureActor("자동 처리 시스템", "system", "자동 변환, 알림, 상태 갱신을 수행");
-  if (text.includes("수정") || text.includes("반려") || text.includes("재처리")) {
-    const actorId = ensureActor("업무 담당자", "human", "수정 요청과 재처리 여부를 판단");
-    ensureStep("수정 요청 및 재처리", "반려나 수정 요청이 발생하면 담당자가 내용을 보완", actorId);
-  }
-  if (text.includes("권한") || text.includes("관리자") || text.includes("열람")) {
-    const actorId = ensureActor("관리자", "human", "열람, 수정, 공유 범위를 관리하는 담당자");
-    ensureStep("권한 확인", "사용자별 열람 및 수정 가능 범위를 확인", actorId);
-  }
-  if (text.includes("기능") || text.includes("후보") || text.includes("알림")) {
-    const actorId = ensureActor("알림 시스템", "system", "상태 변경과 승인 요청을 관련자에게 전달");
-    ensureStep("기능 후보 정리", "다음 기능 정의 단계로 넘길 후보를 정리", actorId);
-  }
-
-  return { ...flow, actors, steps: normalizeOrder(steps), updatedAt: now };
-}
+// LLM-first: rule/keyword based helpers intentionally removed.
 
 function roleLabelForMember(m: ProjectMemberForServiceFlow): string {
   if (m.memberType === "AI") return (m.aiOrchestrationRole || "AI").trim();
@@ -284,8 +193,13 @@ function serviceFlowParticipants(members: readonly ProjectMemberForServiceFlow[]
   const rows = [...members]
     .filter((m) => {
       if (m.memberType === "AI") {
+        if (showInternalAgents) {
+          const role = (m.aiOrchestrationRole ?? "").trim();
+          return role === "planner" || role === "service-designer" || role === "domain-expert" || role === "serviceFlowExpert" || role === "domainExpert";
+        }
+        // UI simplified: only show optional expert AI (domain-expert) as separate row.
         const role = (m.aiOrchestrationRole ?? "").trim();
-        return role === "planner" || role === "service-designer" || role === "domain-expert" || role === "serviceFlowExpert" || role === "domainExpert";
+        return role === "domain-expert" || role === "domainExpert";
       }
       return m.memberType === "HUMAN";
     })
@@ -308,13 +222,29 @@ function serviceFlowParticipants(members: readonly ProjectMemberForServiceFlow[]
       const isAi = m.memberType === "AI";
       return {
         id: m.memberId,
-        name: (m.displayName || m.email || (isAi ? "AI 멤버" : "사용자")).slice(0, 28),
+        name: (
+          isAi
+            ? showInternalAgents
+              ? m.displayName || m.email || "AI 멤버"
+              : role === "domain-expert" || role === "domainExpert"
+                ? "업무 전문가"
+                : "AI 멤버"
+            : m.displayName || m.email || "사용자"
+        ).slice(0, 28),
         roleLabel: role,
         connection: isAi ? (replying ? "응답중" : "연결됨") : currentUserId && m.userId === currentUserId ? "온라인" : "대기",
         lastResponse: isAi ? (replying ? "응답 대기" : "마지막 응답 성공") : undefined,
       };
     });
-  if (!rows.some((p) => p.roleLabel === "service-designer")) {
+  if (!showInternalAgents) {
+    rows.unshift({
+      id: "visible:ai-orchestrator",
+      name: displayedAiOrchestrator().name,
+      roleLabel: "AI",
+      connection: replying ? "응답중" : "연결됨",
+      lastResponse: replying ? displayedAiStatusForStage("service-flow") : "마지막 응답 성공",
+    });
+  } else if (!rows.some((p) => p.roleLabel === "service-designer")) {
     rows.splice(1, 0, {
       id: "virtual:service-designer",
       name: "AI 서비스 설계자",
@@ -327,6 +257,11 @@ function serviceFlowParticipants(members: readonly ProjectMemberForServiceFlow[]
 }
 
 export function RequirementsServiceFlowStage({
+  projectId,
+  projectName,
+  projectDescription,
+  ideationParticipantHumanMemberIds,
+  ideationAssets,
   ideationReady,
   ideationReadyNotice,
   flow,
@@ -341,6 +276,11 @@ export function RequirementsServiceFlowStage({
   onApproveAll,
   onRetryGate,
 }: {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly ideationParticipantHumanMemberIds: readonly string[];
+  readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
   readonly ideationReady: boolean;
   readonly ideationReadyNotice: string;
   readonly flow: RequirementsServiceFlowV1 | null;
@@ -355,21 +295,43 @@ export function RequirementsServiceFlowStage({
   readonly onApproveAll: () => void;
   readonly onRetryGate: () => void;
 }) {
+  const router = useRouter();
+  const search = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
   const [messages, setMessages] = useState<WorkshopMessage[]>(() => initialMessages(Boolean(flow?.steps.length), approval.slots));
   const [input, setInput] = useState("");
   const [replying, setReplying] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<string[] | null>(null);
   const [canvasOpen, setCanvasOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [resultTab, setResultTab] = useState<ResultTab>("flow");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(flow?.steps[0]?.id ?? null);
+  const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const actors = flow?.actors ?? [];
   const steps = useMemo(() => normalizeOrder(flow?.steps ?? []), [flow?.steps]);
   const humans = actors.filter((a) => a.kind === "human");
   const systems = actors.filter((a) => a.kind === "system");
   const selectedStep = steps.find((s) => s.id === selectedStepId) ?? steps[0] ?? null;
-  const participants = useMemo(() => serviceFlowParticipants(members, currentUserId, replying), [members, currentUserId, replying]);
+  const participants = useMemo(() => {
+    const allowSet = new Set(ideationParticipantHumanMemberIds);
+    // default include current user even if they haven't produced "human" message
+    // (they show as USER messages in the chat model)
+    const filtered = members.filter((m) => {
+      if (m.memberType === "AI") return true;
+      // Only include humans who participated in ideation (human messages) OR are current user.
+      if (currentUserId && m.userId && m.userId === currentUserId) return true;
+      return allowSet.has(m.memberId);
+    });
+    return serviceFlowParticipants(filtered, currentUserId, replying);
+  }, [members, currentUserId, replying, ideationParticipantHumanMemberIds]);
+
+  const goNextStage = () => {
+    const params = new URLSearchParams(search?.toString() ?? "");
+    params.set("stage", "features");
+    router.replace(`/requirements?${params.toString()}`);
+  };
 
   useEffect(() => {
     if (draftGenerationCount <= 0) return;
@@ -399,22 +361,191 @@ export function RequirementsServiceFlowStage({
     onChangeFlow({ ...flow, steps: normalizeOrder(nextSteps), updatedAt: now });
   };
 
+  const callAnalyze = (userMessageText: string, opts?: { silentUserAppend?: boolean }) => {
+    const body = userMessageText.trim();
+    if (!body) return;
+    setReplying(true);
+    setQuickReplies(null);
+
+    if (!opts?.silentUserAppend) {
+      const userMessage: WorkshopMessage = { id: uid("msg"), role: "user", name: "사용자", body };
+      setMessages((prev) => [...prev, userMessage]);
+    }
+
+    void (async () => {
+      try {
+        const recentMessages = messages
+          .slice(-24)
+          .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
+          .join("\n")
+          .slice(0, 12000);
+
+        const res = await fetch("/api/requirements/service-flow-analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            projectName,
+            projectDescription,
+            ideationAssets,
+            userMessage: body,
+            currentFlow: flow,
+            recentMessages,
+            latestAiQuestion,
+          }),
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: {
+            assistantMessage?: string;
+            updatedFlow?: RequirementsServiceFlowV1;
+            nextQuestion?: string | null;
+            quickReplies?: string[] | null;
+            readiness?: { score?: number; readyForNext?: boolean } | null;
+          };
+          code?: string;
+          message?: string;
+        };
+        if (!res.ok || !json.success || !json.data?.updatedFlow) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: uid("msg"),
+              role: "ai",
+              name: displayedAiOrchestrator().name,
+              body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요.",
+            },
+          ]);
+          setReplying(false);
+          return;
+        }
+
+        const nextFlow = json.data.updatedFlow;
+        onChangeFlow(nextFlow);
+
+        const nextQ = String(json.data.nextQuestion ?? "").trim();
+        if (nextQ) setLatestAiQuestion(nextQ);
+
+        const replies = Array.isArray(json.data.quickReplies)
+          ? json.data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 3)
+          : [];
+        setQuickReplies(replies.length ? replies : null);
+
+        const aiBody = [String(json.data.assistantMessage ?? "").trim(), nextQ].filter(Boolean).join("\n");
+        const done = !nextQ && Boolean(json.data.readiness?.readyForNext);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid("msg"),
+            role: "ai",
+            name: displayedAiOrchestrator().name,
+            body:
+              (aiBody || "반영했습니다.") +
+              (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : ""),
+          },
+        ]);
+        setReplying(false);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." },
+        ]);
+        setReplying(false);
+      }
+    })();
+  };
+
   const sendMessage = () => {
     const body = input.trim();
     if (!body) return;
     setInput("");
+    callAnalyze(body);
+  };
+
+  useEffect(() => {
+    // On first entry: immediately start guided interview (no blank-input requirement).
+    if (replying) return;
+    if (messages.length > 0) return;
+    callAnalyze(
+      "인터뷰 시작. 운영 흐름을 빠르게 정리하겠습니다. 먼저 회의록 초안은 누가 작성하나요?",
+      { silentUserAppend: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const requestOrganize = () => {
+    setToolsOpen(false);
     setReplying(true);
-    const nextFlow = applyChatToFlow(flow, body);
-    if (nextFlow) onChangeFlow(nextFlow);
-    const userMessage: WorkshopMessage = { id: uid("msg"), role: "user", name: "사용자", body };
-    window.setTimeout(() => {
-      setMessages((prev) => [...prev, userMessage, ...followUpMessages(body, approval.slots, participants)]);
-      setReplying(false);
-    }, 160);
+    void (async () => {
+      const excerpt = [...messages, { id: "tmp", role: "user" as const, name: "사용자", body: "(정리 요청)" }]
+        .slice(-24)
+        .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
+        .join("\n")
+        .slice(0, 12000);
+      try {
+        const res = await fetch("/api/requirements/service-flow-analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            projectName,
+            projectDescription,
+            ideationAssets,
+            userMessage: "정리 요청: 지금까지의 대화와 기존 초안을 바탕으로 액터/흐름/담당 매핑을 최신 상태로 다시 정리해 주세요.",
+            recentMessages: excerpt,
+            latestAiQuestion,
+            currentFlow: flow,
+          }),
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: { updatedFlow?: RequirementsServiceFlowV1; assistantMessage?: string; nextQuestion?: string | null };
+          message?: string;
+        };
+        if (!res.ok || !json.success || !json.data?.updatedFlow) {
+          setMessages((prev) => [
+            ...prev,
+            { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." },
+          ]);
+          setReplying(false);
+          return;
+        }
+        onChangeFlow(json.data.updatedFlow);
+        const nextQ = String(json.data?.nextQuestion ?? "").trim();
+        if (nextQ) setLatestAiQuestion(nextQ);
+        setQuickReplies(null);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid("msg"),
+            role: "ai",
+            name: displayedAiOrchestrator().name,
+            body: [String(json.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n"),
+          },
+        ]);
+        setReplying(false);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." },
+        ]);
+        setReplying(false);
+      }
+    })();
   };
 
   return (
-    <section className="jyo-service-flow-stage" style={{ height: "100%", minHeight: 0 }}>
+    <section
+      className="jyo-service-flow-stage"
+      style={{
+        flex: "1 1 auto",
+        minHeight: 0,
+        minWidth: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <style>{`
         @media (max-width: 760px) {
           .jyo-service-flow-stage-shell {
@@ -424,6 +555,9 @@ export function RequirementsServiceFlowStage({
           .jyo-service-flow-stage-members {
             min-height: 180px !important;
           }
+        }
+        .jyo-service-flow-stage-shell {
+          height: 100%;
         }
         .jyo-service-flow-stage input,
         .jyo-service-flow-stage select {
@@ -438,6 +572,7 @@ export function RequirementsServiceFlowStage({
         style={{
           ...shell,
           gridTemplateColumns: chatExpanded ? "minmax(0, 1fr)" : "220px minmax(0, 1fr)",
+          height: "100%",
         }}
       >
         {!chatExpanded ? (
@@ -457,18 +592,12 @@ export function RequirementsServiceFlowStage({
         </aside>
         ) : null}
 
-        <main style={chatWrap} aria-label="협업 채팅">
+        <main className="jyo-service-flow-chat-shell" style={chatWrap} aria-label="협업 채팅">
           <div style={{ flex: "0 0 auto", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 999, padding: "8px 12px", fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
               서비스 흐름 정리도 {approval.progressPercent}% · {approval.filledSlotCount}/7
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button type="button" onClick={onGenerateAiDraft} disabled={!ideationReady || generatingDraft} style={{ ...primaryBtn, opacity: !ideationReady || generatingDraft ? 0.55 : 1 }}>
-                {generatingDraft ? "초안 만드는 중..." : "AI 초안 생성"}
-              </button>
-              <button type="button" onClick={onApproveAll} disabled={!approval.ready} style={{ ...btn, opacity: approval.ready ? 1 : 0.55 }}>
-                확정
-              </button>
               <button
                 type="button"
                 onClick={() => setChatExpanded((v) => !v)}
@@ -494,6 +623,7 @@ export function RequirementsServiceFlowStage({
           </div>
 
           <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "0 20px 14px", display: "grid", gap: 10, alignContent: "start" }}>
+            <DraftSummaryCard flowReady={Boolean(actors.length || steps.length)} onOpenCanvas={() => setCanvasOpen(true)} />
             {!ideationReady ? (
               <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb", maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.5 }}>{ideationReadyNotice}</div>
@@ -503,14 +633,45 @@ export function RequirementsServiceFlowStage({
             {messages.map((message) => (
               <div key={message.id} style={{ ...messageTone(message.role), border: "1px solid", borderRadius: 14, padding: "10px 12px", maxWidth: message.role === "user" ? "78%" : 620, boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)" }}>
                 <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: "#64748b" }}>
-                  {message.role === "user" ? "사용자" : message.role === "member" ? `멤버 · ${message.name}` : `AI · ${message.name}`}
+                  {message.role === "user"
+                    ? "사용자"
+                    : message.role === "member"
+                      ? `멤버 · ${message.name}`
+                      : message.role === "expert"
+                        ? `업무 전문가 · ${message.name}`
+                        : `AI · ${showInternalAgents ? message.name : displayedAiOrchestrator().name}`}
                 </div>
                 <div style={{ fontSize: 14, color: "#0f172a", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{message.body}</div>
               </div>
             ))}
-            <DraftSummaryCard flowReady={Boolean(actors.length || steps.length)} onOpenCanvas={() => setCanvasOpen(true)} />
-            {replying ? <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>AI 서비스 설계자와 업무 전문가가 반영 중입니다...</div> : null}
+            {replying ? <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>AI 기획자가 반영 중입니다...</div> : null}
           </div>
+
+        {quickReplies && quickReplies.length && !replying ? (
+          <div style={{ flex: "0 0 auto", padding: "0 20px 10px" }}>
+            <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {quickReplies.map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => callAnalyze(label)}
+                  style={{
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    borderRadius: 999,
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: "#0f172a",
+                    cursor: "pointer",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
           {canvasOpen ? (
             <DraftCanvas
@@ -521,19 +682,65 @@ export function RequirementsServiceFlowStage({
               selectedStep={selectedStep}
               resultTab={resultTab}
               approval={approval}
+              ideationReady={ideationReady}
+              generatingDraft={generatingDraft}
               actorName={actorName}
               onClose={() => setCanvasOpen(false)}
               onSelectTab={setResultTab}
               onSelectStep={setSelectedStepId}
               onUpdateStep={updateStep}
+              onGenerateAiDraft={onGenerateAiDraft}
+              onApproveAll={onApproveAll}
+              onGoNextStage={goNextStage}
             />
           ) : null}
 
-          <div style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
+          <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
             <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0", borderRadius: 20, background: "#fff", padding: 10, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
-              <button type="button" onClick={() => setCanvasOpen(true)} aria-label="액터 및 서비스 흐름 초안 열기" style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontSize: 24, lineHeight: 1, cursor: "pointer" }}>
-                +
-              </button>
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setToolsOpen((v) => !v)}
+                  aria-label="도구 열기"
+                  style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontSize: 24, lineHeight: 1, cursor: "pointer" }}
+                >
+                  +
+                </button>
+                {toolsOpen ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      bottom: 52,
+                      width: 220,
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.22)",
+                      padding: 8,
+                      zIndex: 20,
+                    }}
+                    role="menu"
+                  >
+                    <button type="button" onClick={requestOrganize} style={{ ...btn, width: "100%", textAlign: "left" }}>
+                      정리 요청
+                    </button>
+                    <div style={{ height: 6 }} />
+                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed" }}>
+                      초안 다시 만들기 (준비중)
+                    </button>
+                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed", marginTop: 6 }}>
+                      액터 재정리 (준비중)
+                    </button>
+                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed", marginTop: 6 }}>
+                      흐름 재정리 (준비중)
+                    </button>
+                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed", marginTop: 6 }}>
+                      담당 매핑 재정리 (준비중)
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -621,11 +828,16 @@ function DraftCanvas({
   selectedStep,
   resultTab,
   approval,
+  ideationReady,
+  generatingDraft,
   actorName,
   onClose,
   onSelectTab,
   onSelectStep,
   onUpdateStep,
+  onGenerateAiDraft,
+  onApproveAll,
+  onGoNextStage,
 }: {
   readonly actors: readonly RequirementsServiceFlowActorV1[];
   readonly humans: readonly RequirementsServiceFlowActorV1[];
@@ -634,11 +846,16 @@ function DraftCanvas({
   readonly selectedStep: RequirementsServiceFlowStepV1 | null;
   readonly resultTab: ResultTab;
   readonly approval: ApprovalState;
+  readonly ideationReady: boolean;
+  readonly generatingDraft: boolean;
   readonly actorName: (id: string) => string;
   readonly onClose: () => void;
   readonly onSelectTab: (tab: ResultTab) => void;
   readonly onSelectStep: (id: string) => void;
   readonly onUpdateStep: (id: string, patch: Partial<RequirementsServiceFlowStepV1>) => void;
+  readonly onGenerateAiDraft: () => void;
+  readonly onApproveAll: () => void;
+  readonly onGoNextStage: () => void;
 }) {
   return (
     <div
@@ -659,13 +876,29 @@ function DraftCanvas({
       }}
     >
       <div style={{ flex: "0 0 auto", padding: "14px 16px", borderBottom: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>액터 및 서비스 흐름 초안</div>
           <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: "#64748b" }}>서비스 흐름 정리도 {approval.progressPercent}% · {approval.filledSlotCount}/7</div>
         </div>
-        <button type="button" onClick={onClose} style={{ ...btn, borderRadius: 999 }}>
-          닫기
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={onGenerateAiDraft}
+            disabled={!ideationReady || generatingDraft}
+            style={{ ...primaryBtn, opacity: !ideationReady || generatingDraft ? 0.55 : 1 }}
+          >
+            {generatingDraft ? "초안 만드는 중..." : "AI 초안 생성"}
+          </button>
+          <button type="button" onClick={onApproveAll} disabled={!approval.ready} style={{ ...btn, opacity: approval.ready ? 1 : 0.55 }}>
+            확정
+          </button>
+          <button type="button" onClick={onGoNextStage} disabled={!approval.approved} style={{ ...btn, opacity: approval.approved ? 1 : 0.55 }}>
+            이대로 다음 단계로
+          </button>
+          <button type="button" onClick={onClose} style={{ ...btn, borderRadius: 999 }}>
+            닫기
+          </button>
+        </div>
       </div>
       <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: 16 }}>
         <ResultCard
@@ -714,13 +947,9 @@ function ResultCard({
   return (
     <div style={{ maxWidth: 680, border: "1px solid #bfdbfe", borderRadius: 16, background: "#eff6ff", padding: 14, display: "grid", gap: 12 }}>
       <div>
-        <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>액터 및 서비스 흐름 초안이 정리됩니다.</div>
-        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {([...REQUIRED_SLOTS, ...RECOMMENDED_SLOTS] as const).map((slot) => (
-            <span key={slot} style={{ border: "1px solid #dbeafe", borderRadius: 999, background: approval.slots[slot] ? "#ecfdf5" : "#fff", color: approval.slots[slot] ? "#047857" : "#64748b", padding: "4px 8px", fontSize: 11, fontWeight: 800 }}>
-              {approval.slots[slot] ? "✔" : "□"} {SLOT_LABELS[slot]}
-            </span>
-          ))}
+        <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>액터 · 서비스 흐름 · 담당 매핑</div>
+        <div style={{ marginTop: 6, fontSize: 12.5, fontWeight: 700, color: "#475569", lineHeight: 1.45 }}>
+          사용자가 이해하기 쉬운 3가지 정보만 보여줍니다. (내부 메타 정보는 숨김)
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -731,27 +960,81 @@ function ResultCard({
       {actors.length || steps.length ? (
         <div style={{ display: "grid", gap: 8 }}>
           {resultTab === "actors" ? (
-            <>
-              <ActorGroup title="사람 액터" actors={humans} />
-              <ActorGroup title="시스템 액터" actors={systems} />
-            </>
-          ) : resultTab === "flow" ? (
-            steps.map((step) => <StepCard key={step.id} step={step} actorName={actorName} active={selectedStep?.id === step.id} onClick={() => onSelectStep(step.id)} />)
-          ) : (
-            <>
-              {steps.map((step) => <StepCard key={step.id} step={step} actorName={actorName} active={selectedStep?.id === step.id} onClick={() => onSelectStep(step.id)} />)}
-              {selectedStep ? (
-                <div style={{ marginTop: 2, display: "grid", gap: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 900, color: "#64748b" }}>선택 단계 주 담당 액터</div>
-                  <select value={selectedStep.primaryActorId} onChange={(e) => onUpdateStep(selectedStep.id, { primaryActorId: e.target.value })} style={{ width: "100%", borderRadius: 10, border: "1px solid #bfdbfe", padding: "8px 10px", fontSize: 13, background: "#fff" }}>
-                    <option value="">담당자 선택</option>
-                    {actors.map((actor) => (
-                      <option key={actor.id} value={actor.id}>{actor.name}</option>
-                    ))}
-                  </select>
+            <div style={{ display: "grid", gap: 6 }}>
+              {actors.map((actor) => (
+                <div key={actor.id} style={{ border: "1px solid #dbeafe", borderRadius: 12, padding: 10, background: "#fff" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a" }}>{actor.name}</div>
+                  {actor.description ? <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.45, color: "#64748b" }}>{actor.description}</div> : null}
                 </div>
-              ) : null}
-            </>
+              ))}
+            </div>
+          ) : resultTab === "flow" ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {steps.map((step) => (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => onSelectStep(step.id)}
+                  style={{
+                    textAlign: "left",
+                    border: selectedStep?.id === step.id ? "2px solid #0f766e" : "1px solid #dbeafe",
+                    borderRadius: 14,
+                    background: selectedStep?.id === step.id ? "#ecfdf5" : "#fff",
+                    padding: "10px 12px",
+                    cursor: "pointer",
+                    display: "grid",
+                    gridTemplateColumns: "28px minmax(0, 1fr)",
+                    gap: 10,
+                    alignItems: "start",
+                  }}
+                >
+                  <div style={{ width: 26, height: 26, borderRadius: 999, background: "#0f766e", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 900 }}>
+                    {step.order}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a" }}>{step.title}</div>
+                    <div style={{ marginTop: 4, fontSize: 12.5, lineHeight: 1.45, color: "#475569" }}>{step.purpose}</div>
+                    {step.primaryActorId ? (
+                      <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>담당: {actorName(step.primaryActorId)}</div>
+                    ) : null}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, background: "#fff", border: "1px solid #dbeafe", borderRadius: 14, overflow: "hidden" }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", fontSize: 12, fontWeight: 900, color: "#64748b", padding: "10px 12px", borderBottom: "1px solid #dbeafe", background: "#f8fafc" }}>단계</th>
+                    <th style={{ textAlign: "left", fontSize: 12, fontWeight: 900, color: "#64748b", padding: "10px 12px", borderBottom: "1px solid #dbeafe", background: "#f8fafc" }}>담당자</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {steps.map((step) => (
+                    <tr key={step.id}>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #eef2ff", fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+                        {step.order}. {step.title}
+                      </td>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #eef2ff" }}>
+                        <select
+                          value={step.primaryActorId}
+                          onChange={(e) => onUpdateStep(step.id, { primaryActorId: e.target.value })}
+                          style={{ width: "100%", borderRadius: 10, border: "1px solid #bfdbfe", padding: "8px 10px", fontSize: 13, background: "#fff" }}
+                        >
+                          <option value="">담당자 선택</option>
+                          {actors.map((actor) => (
+                            <option key={actor.id} value={actor.id}>
+                              {actor.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       ) : (
@@ -759,11 +1042,6 @@ function ResultCard({
           AI 초안 생성을 누르면 액터, 서비스 흐름, 담당 매핑이 여기에 카드로 표시됩니다.
         </div>
       )}
-      {approval.ready && RECOMMENDED_SLOTS.some((slot) => approval.recommendedMissing[slot]) ? (
-        <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.45 }}>
-          권장 슬롯이 남아 있어도 승인할 수 있습니다: {RECOMMENDED_SLOTS.filter((slot) => approval.recommendedMissing[slot]).map((slot) => SLOT_LABELS[slot]).join(", ")}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -776,29 +1054,4 @@ function TabButton({ active, onClick, children }: { readonly active: boolean; re
   );
 }
 
-function ActorGroup({ title, actors }: { readonly title: string; readonly actors: readonly RequirementsServiceFlowActorV1[] }) {
-  return (
-    <div>
-      <div style={{ marginBottom: 6, fontSize: 11, fontWeight: 900, color: "#64748b" }}>{title}</div>
-      <div style={{ display: "grid", gap: 6 }}>
-        {actors.length ? actors.map((actor) => (
-          <div key={actor.id} style={{ border: "1px solid #dbeafe", borderRadius: 10, padding: 9, background: "#fff" }}>
-            <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>{actor.name}</div>
-            {actor.description ? <div style={{ marginTop: 3, fontSize: 11.5, lineHeight: 1.4, color: "#64748b" }}>{actor.description}</div> : null}
-          </div>
-        )) : <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>아직 없음</div>}
-      </div>
-    </div>
-  );
-}
-
-function StepCard({ step, actorName, active, onClick }: { readonly step: RequirementsServiceFlowStepV1; readonly actorName: (id: string) => string; readonly active: boolean; readonly onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} style={{ textAlign: "left", border: active ? "2px solid #0f766e" : "1px solid #dbeafe", borderRadius: 12, background: active ? "#ecfdf5" : "#fff", padding: 10, cursor: "pointer" }}>
-      <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>{step.order}. {step.title}</div>
-      <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.45, color: "#475569" }}>{step.purpose}</div>
-      <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: step.primaryActorId ? "#475569" : "#b45309" }}>주 담당: {step.primaryActorId ? actorName(step.primaryActorId) : "정해야 함"}</div>
-      {step.secondaryActorIds.length ? <div style={{ marginTop: 3, fontSize: 11.5, fontWeight: 700, color: "#64748b" }}>함께 참여: {step.secondaryActorIds.map(actorName).join(", ")}</div> : null}
-    </button>
-  );
-}
+// (ActorGroup/StepCard removed) — UI simplified to 3 tabs only.

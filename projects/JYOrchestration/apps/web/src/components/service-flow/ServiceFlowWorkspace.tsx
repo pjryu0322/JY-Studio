@@ -40,6 +40,11 @@ const wrap: CSSProperties = {
 };
 
 export function ServiceFlowWorkspace({
+  projectId,
+  projectName,
+  projectDescription,
+  ideationParticipantHumanMemberIds,
+  ideationAssets,
   flow,
   ideationReady,
   generatingDraft,
@@ -52,6 +57,11 @@ export function ServiceFlowWorkspace({
   onApproveAll,
   onUpdateFlow,
 }: {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly ideationParticipantHumanMemberIds: readonly string[];
+  readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
   readonly flow: RequirementsServiceFlowV1 | null;
   readonly ideationReady: boolean;
   readonly generatingDraft: boolean;
@@ -103,8 +113,13 @@ export function ServiceFlowWorkspace({
 
   return (
     <section style={wrap} aria-label="액터 및 서비스 흐름 정의">
-      <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex" }}>
+      <div style={{ flex: "1 1 auto", minHeight: 0, minWidth: 0, display: "flex", height: "100%" }}>
         <RequirementsServiceFlowStage
+          projectId={projectId}
+          projectName={projectName}
+          projectDescription={projectDescription}
+          ideationParticipantHumanMemberIds={ideationParticipantHumanMemberIds}
+          ideationAssets={ideationAssets}
           ideationReady={ideationReady}
           ideationReadyNotice="먼저 아이디어 초안을 확정하면 이 단계에서 흐름을 함께 정리할 수 있습니다."
           flow={flow}
