@@ -9,15 +9,10 @@ import {
   APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT,
   computeFlowGates,
   loadAppFlowProjectContext,
-  nextStepAfter,
   projectIdFromPathname,
   resolveAppFlowStepFromLocation,
 } from "@/lib/workflow/appFlowModel";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
-import { buildAppFlowStatusLines } from "@/lib/workflow/flow-status-lines";
-import { stripStepReachableForUi, gateReasonForStep } from "@/components/workflow/flowStripHelpers";
-import { FlowStatusSummary } from "@/components/workflow/FlowStatusSummary";
-import { FlowNextActionCard } from "@/components/workflow/FlowNextActionCard";
 
 export function AppFlowGuidance({ children }: { readonly children: React.ReactNode }) {
   const pathname = usePathname() || "/";
@@ -31,7 +26,6 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
   );
 
   const [project, setProject] = useState<Project | null>(null);
-  const [taskCount, setTaskCount] = useState(0);
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
 
   useEffect(() => {
@@ -47,14 +41,12 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
   const reloadFlowData = useCallback(async () => {
     if (!guidanceProjectId) {
       setProject(null);
-      setTaskCount(0);
       setExecutionSetup(null);
       return;
     }
     try {
       const ctx = await loadAppFlowProjectContext(guidanceProjectId);
       setProject(ctx.project);
-      setTaskCount(ctx.taskCount);
       setExecutionSetup(ctx.executionSetup);
     } catch {
       /* ignore transient load errors */
@@ -84,62 +76,32 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
     [guidanceProjectId, project, executionSetup]
   );
 
-  const offFlow = current === null && !pathname.startsWith("/login");
-  const next = current ? nextStepAfter(current) : null;
-  const nextReachable = next ? stripStepReachableForUi(next.id, current, gates) : false;
-  const nextBlockReason = next && !nextReachable ? gateReasonForStep(next.id, gates) : null;
-
-  const statusLines = useMemo(
-    () =>
-      buildAppFlowStatusLines({
-        effectiveProjectId: guidanceProjectId,
-        project,
-        taskCount,
-        gates,
-      }),
-    [guidanceProjectId, project, taskCount, gates]
-  );
-
   if (current === null && pathname.startsWith("/login")) {
     return <>{children}</>;
   }
 
-  const onRequirementsPage = current === "requirements";
-  const onProjectsPath = /^\/projects\/[^/?#]+/.test(pathname);
-  const onMainWorkflowStep =
-    current === "requirements" ||
-    current === "features" ||
-    current === "tasks" ||
-    current === "execution" ||
-    current === "trace" ||
-    current === "planning";
-  /** 프로젝트 단계 탭(ProjectWorkflowNav)이 있는 화면에서는 하단「다음 단계」블록을 숨긴다. */
-  const hideGuidanceFooter = onProjectsPath || (Boolean(guidanceProjectId) && onMainWorkflowStep);
-  const showGuidanceFooter = Boolean(guidanceProjectId) && !hideGuidanceFooter;
+  const showPlanningInlineWarning =
+    current === "planning" && Boolean(guidanceProjectId) && !gates.executionEnabled && Boolean(gates.executionReason);
 
   return (
     <div data-testid="app-flow-guidance">
       <div style={{ marginBottom: 20 }}>{children}</div>
-
-      {showGuidanceFooter ? (
+      {showPlanningInlineWarning ? (
         <div
+          role="status"
           style={{
-            marginTop: 8,
-            paddingTop: 16,
-            borderTop: "1px solid #e5e7eb",
-            display: "grid",
-            gap: 12,
+            marginTop: -8,
+            marginBottom: 12,
+            padding: "8px 10px",
+            border: "1px solid #fde68a",
+            borderRadius: 10,
+            background: "#fffbeb",
+            color: "#92400e",
+            fontSize: 12,
+            fontWeight: 800,
           }}
         >
-          <FlowStatusSummary lines={statusLines} />
-          <FlowNextActionCard
-            offFlow={offFlow}
-            currentIsRequirements={onRequirementsPage}
-            next={next}
-            nextReachable={nextReachable}
-            nextBlockReason={nextBlockReason}
-            projectId={guidanceProjectId}
-          />
+          생성 준비 확인: {gates.executionReason}
         </div>
       ) : null}
     </div>
