@@ -51,7 +51,6 @@ import {
   interviewSlotLevelFromState,
   INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
   mergeAnalyzerIntoProblemInterview,
-  formatProposalInterviewReadinessLine,
   getControlledQuestionForSlot,
   mergeImplicitAskedFromLastBootstrapQuestion,
   PROBLEM_INTERVIEW_SLOTS,
@@ -282,6 +281,21 @@ function ideationDraftGateStatus(state: ProblemInterviewState | null | undefined
     requiredCovered,
     ready: strictFilled >= IDEATION_DRAFT_MIN_FILLED_SLOTS && requiredCovered,
   };
+}
+
+function ideationInterviewMilestoneLine(
+  prev: ProblemInterviewState | null | undefined,
+  next: ProblemInterviewState | null | undefined
+): string {
+  const prevStrict = problemInterviewStrictFilledCount(prev);
+  const nextStrict = problemInterviewStrictFilledCount(next);
+  const prevReady = ideationDraftGateStatus(prev).ready;
+  const nextReady = ideationDraftGateStatus(next).ready;
+  if (!prevReady && nextReady) return "정리 요청 가능 상태입니다.";
+  if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL) return "필요한 핵심 정보가 모두 모였습니다.";
+  if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL - 1 && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL - 1) return "마지막 정보 1개만 더 확인하겠습니다.";
+  if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL / 2 && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL / 2) return "아이디어 정리도가 절반을 넘었습니다.";
+  return "";
 }
 
 export function RequirementsWorkspace({
@@ -1801,11 +1815,11 @@ export function RequirementsWorkspace({
             }
           );
           if (plan) {
-            const readiness = formatProposalInterviewReadinessLine(mergedWithGlobalDelegation);
+            const milestone = ideationInterviewMilestoneLine(prev, mergedWithGlobalDelegation);
             const extra = autoAppliedDelegationDefault
               ? "해당 항목은 AI 기본안으로 반영하겠습니다."
               : "";
-            const mergedSummary = `${readiness}\n\n${extra ? `${extra}\n` : ""}${plan.summary}`.trim();
+            const mergedSummary = [milestone, extra].filter(Boolean).join("\n");
             const aiBody = composeInterviewPlannerReply(mergedSummary, plan.question);
             const slotForAsked =
               plan.kind === "slot"
@@ -1871,10 +1885,10 @@ export function RequirementsWorkspace({
             avoidSlots: avoidSlotsForNext,
           });
           if (nextSlot) {
-            const readiness = formatProposalInterviewReadinessLine(mergedWithGlobalDelegation);
             const question = getControlledQuestionForSlot(nextSlot, turn);
+            const milestone = ideationInterviewMilestoneLine(prev, mergedWithGlobalDelegation);
             const aiBody = composeInterviewPlannerReply(
-              `${readiness}\n\n${analyzerForPlan?.summary?.trim() || "이전 답변을 반영했습니다."}`.trim(),
+              milestone,
               question
             );
             const asked = withAskedSlot(mergedWithGlobalDelegation, nextSlot, nowIso);
@@ -2173,7 +2187,6 @@ export function RequirementsWorkspace({
     replyTo,
     showErrorToast,
     showSuccessToast,
-    formatProposalInterviewReadinessLine,
   ]);
 
   const onPanelBlurSave = useCallback(async () => {
