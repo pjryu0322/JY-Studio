@@ -83,12 +83,12 @@ export function problemInterviewCoveredCount(state: ProblemInterviewState | null
   if (!state) return 0;
   let n = 0;
   for (const slot of PROBLEM_INTERVIEW_SLOTS) {
-    if (problemInterviewIsCovered(state, slot)) n += 1;
+    if (slotStrictlyFilled(state, slot)) n += 1;
   }
   return n;
 }
 
-/** filled 또는 partial 포함 슬롯 수(기획안 준비도 분모와 동일 기준) */
+/** filled 슬롯 수(아이디어 정리도 분모와 동일 기준). partial은 filled로 세지 않는다. */
 export function proposalInterviewFilledCount(state: ProblemInterviewState | null | undefined): number {
   return problemInterviewCoveredCount(state);
 }
@@ -685,22 +685,19 @@ export function problemInterviewPartialOnlyCount(state: ProblemInterviewState | 
 }
 
 /**
- * UI 진행률(0~100): 확정 슬롯은 1, 부분 슬롯은 0.5 가중.
+ * UI 진행률(0~100): 확정 슬롯만 계산한다. partial은 filled로 세지 않는다.
  * 인터뷰 종료는 `problemInterviewStrictFilledCount === 전체`일 때만 한다.
  */
 export function proposalInterviewReadinessPercent(state: ProblemInterviewState | null | undefined): number {
   const total = PROBLEM_INTERVIEW_SLOT_TOTAL;
   if (!state || !total) return 0;
   const strict = problemInterviewStrictFilledCount(state);
-  const partialOnly = problemInterviewPartialOnlyCount(state);
-  return Math.min(100, Math.round(((strict + 0.5 * partialOnly) / total) * 100));
+  return Math.min(100, Math.round((strict / total) * 100));
 }
 
 export function proposalInterviewReadinessScore(state: ProblemInterviewState | null | undefined): number {
   if (!state) return 0;
-  const strict = problemInterviewStrictFilledCount(state);
-  const partialOnly = problemInterviewPartialOnlyCount(state);
-  return strict + 0.5 * partialOnly;
+  return problemInterviewStrictFilledCount(state);
 }
 
 const GLOBAL_DELEGATION_DEFAULTS: Partial<Record<ProblemInterviewSlot, string>> = {
