@@ -5,6 +5,7 @@ import { ExecutionProgressSection } from "@/components/workflow/execution/Execut
 import { ExecutionRunMonitoringSection } from "@/components/workflow/execution/ExecutionRunMonitoringSection";
 import { ExecutionStatusSection } from "@/components/workflow/execution/ExecutionStatusSection";
 import { ExecutionWorkflowStepsSection } from "@/components/workflow/execution/ExecutionWorkflowStepsSection";
+import { StageWorkspaceLayout } from "@/components/workspace/StageWorkspaceLayout";
 import type { ExecutionPageContentProps } from "./executionPageTypes";
 
 export type { ExecutionPageContentActions, ExecutionPageContentProps } from "./executionPageTypes";
@@ -29,21 +30,25 @@ export function ExecutionPageContent(props: ExecutionPageContentProps) {
         <ProjectWorkflowNav />
       </div>
 
-      <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
-        <ExecutionStatusSection sessionId={sessionId} summary={summary} pageActions={pageActions} />
-        <ExecutionProgressSection progress={views.progress} />
-        <ExecutionRunMonitoringSection
-          sessionId={sessionId}
-          pre={pre}
-          monitoring={monitoring}
-          actions={actions}
-          pageActions={pageActions}
-          runView={runView}
-          connectorView={connectorView}
-          recentEvents={recentEvents}
-        />
-        <ExecutionWorkflowStepsSection sessionId={sessionId} pre={pre} actions={actions} pageActions={pageActions} />
-        <ExecutionAdvancedDiagnosticsSection sessionId={sessionId} pre={pre} nextAction={nextAction} pageActions={pageActions} />
+      <div style={{ marginTop: 14 }}>
+        <StageWorkspaceLayout>
+          <div style={{ padding: 14, display: "grid", gap: 14 }}>
+            <ExecutionStatusSection sessionId={sessionId} summary={summary} pageActions={pageActions} />
+            <ExecutionProgressSection progress={views.progress} />
+            <ExecutionRunMonitoringSection
+              sessionId={sessionId}
+              pre={pre}
+              monitoring={monitoring}
+              actions={actions}
+              pageActions={pageActions}
+              runView={runView}
+              connectorView={connectorView}
+              recentEvents={recentEvents}
+            />
+            <ExecutionWorkflowStepsSection sessionId={sessionId} pre={pre} actions={actions} pageActions={pageActions} />
+            <ExecutionAdvancedDiagnosticsSection sessionId={sessionId} pre={pre} nextAction={nextAction} pageActions={pageActions} />
+          </div>
+        </StageWorkspaceLayout>
       </div>
     </div>
   );

@@ -2737,7 +2737,7 @@ export function RequirementsWorkspace({
   );
 
   const serviceFlowStage = (
-    <div key="service-flow" style={{ padding: 14, width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+    <div key="service-flow" style={{ display: "contents" }}>
       <ServiceFlowWorkspace
         flow={serviceFlow}
         ideationReady={ideationReadyForServiceFlow}
