@@ -10,6 +10,11 @@ type Body = {
   ideationAssets?: Array<{ type?: string; title?: string; content?: string }>;
 };
 
+type OpenAiChatCompletionResponse = {
+  choices?: Array<{ message?: { content?: string } }>;
+  error?: { message?: string };
+};
+
 export async function POST(request: NextRequest) {
   try {
     const userId = await requireSessionUserId(request);
@@ -50,7 +55,7 @@ export async function POST(request: NextRequest) {
       .join("\n\n");
 
     const sys = `당신은 소프트웨어 서비스 워크숍을 진행하는 AI 서비스 설계자입니다.
-목표: 아이디어 산출물을 바탕으로 실제 운영에 가까운 "서비스 흐름 단계"와 "액터 목록"을 초안으로 생성합니다.
+목표: 아이디어 산출물을 바탕으로 액터 및 서비스 흐름 정의 단계의 7개 슬롯을 최대한 채우는 초안을 생성합니다.
 규칙:
 - 한국어로 작성합니다.
 - 사용자가 빈 화면을 직접 작성하지 않도록, 현실적인 초안을 충분히 채웁니다.
@@ -58,7 +63,9 @@ export async function POST(request: NextRequest) {
 - 보조(secondary)는 0개 이상 가능합니다.
 - 액터는 사람(human) / 시스템(system)으로 구분합니다.
 - 사람 액터와 시스템 액터를 모두 포함합니다.
-- 수정 요청, 최종 승인, 공유/배포, 예외 흐름 검토를 가능한 한 반영합니다.
+- 아래 7개 슬롯이 채워지도록 작성합니다: humanActors, systemActors, mainFlow, actorResponsibility, exceptionFlow, accessControl, handoffToFeatures.
+- 수정 요청, 반려, 재처리 같은 예외 흐름과 열람/수정 권한 범위, 다음 단계 기능 후보를 가능한 한 단계명/목적에 반영합니다.
+- reviewPoints에는 아직 부족한 슬롯에 대한 질문만 넣습니다.
 - 출력은 반드시 JSON 하나만 반환합니다(설명 문장 금지).`;
 
     const user = `프로젝트명: ${projectName || "(이름 없음)"}
@@ -94,7 +101,7 @@ ${assetBlock || "(산출물 없음)"}
       }),
     });
 
-    const json = (await res.json()) as any;
+    const json = (await res.json()) as OpenAiChatCompletionResponse;
     if (!res.ok) {
       return NextResponse.json({ success: false, message: json?.error?.message ?? `HTTP ${res.status}` }, { status: 500 });
     }

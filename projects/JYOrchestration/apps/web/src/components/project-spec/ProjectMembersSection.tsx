@@ -90,6 +90,8 @@ const ROLE_OPTIONS: ProjectRole[] = ["OWNER", "EDITOR", "REVIEWER", "VIEWER"];
 const AI_ORCHESTRATION_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "(오케스트레이션 역할 없음)" },
   { value: "planner", label: "planner" },
+  { value: "service-designer", label: "service-designer (서비스 설계)" },
+  { value: "domain-expert", label: "domain-expert (업무 전문가)" },
   { value: "reviewer", label: "reviewer (실행 리뷰)" },
   { value: "security-reviewer", label: "security-reviewer (보안)" },
   { value: "quality-reviewer", label: "quality-reviewer (품질)" },
@@ -101,6 +103,7 @@ const AI_ORCHESTRATION_ROLE_OPTIONS: { value: string; label: string }[] = [
 const ORCHESTRATION_STAGE_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "(스테이지 없음)" },
   { value: "spec", label: "spec" },
+  { value: "service-flow", label: "service-flow (액터·서비스 흐름)" },
   { value: "task", label: "task" },
   { value: "execution-review", label: "execution-review (Cursor 실행 후)" },
   { value: "scm-manager", label: "scm-manager (PR/merge)" },
@@ -130,6 +133,14 @@ const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> =
   planner: {
     title: "Planner",
     description: "기획·분해 단계(실행 계획·태스크)에 참여하는 역할입니다.",
+  },
+  "service-designer": {
+    title: "AI 서비스 설계자",
+    description: "액터와 서비스 흐름 초안을 구조화하는 역할입니다.",
+  },
+  "domain-expert": {
+    title: "업무 전문가",
+    description: "현업 절차·예외 흐름을 검토하는 역할입니다.",
   },
   "scm-manager": {
     title: "SCM Manager",
