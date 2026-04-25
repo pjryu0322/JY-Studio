@@ -385,6 +385,23 @@ export function RequirementsWorkspace({
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
 
   useEffect(() => {
+    if (!inServiceFlowStage) return;
+    setSummaryModalOpen(false);
+    setPromptDrawerOpen(false);
+    setDraftDrawerOpen(false);
+    setDeliverableViewerOpen(false);
+    setDeliverableViewerIds([]);
+    setDeliverableViewerFocusId(null);
+    setPlannerTypePickerOpen(false);
+    setProposalPlanPreview({ open: false, assetId: null });
+    setReplyTo(null);
+    setChatExpanded(false);
+    setOrganizeState("idle");
+    setOrganizeError(null);
+    setError(null);
+  }, [inServiceFlowStage]);
+
+  useEffect(() => {
     setResolvedProjectId(initialProjectId.trim());
   }, [initialProjectId]);
 
@@ -2613,7 +2630,7 @@ export function RequirementsWorkspace({
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
 
       <OrganizeProposalDraggableModal
-        open={plannerTypePickerOpen}
+        open={!inServiceFlowStage && plannerTypePickerOpen}
         onClose={() => setPlannerTypePickerOpen(false)}
         busy={busy || deliverableGenerateBusy || organizeState === "running"}
         showRegenerate={Boolean(latestUnifiedProposal)}
@@ -2803,12 +2820,10 @@ export function RequirementsWorkspace({
 
       <div style={mainRow} className="jyo-requirements-workspace-main">
         {inServiceFlowStage ? (
-          <div style={{ padding: 14, width: "100%", minWidth: 0, overflow: "auto" }}>
+          <div style={{ padding: 14, width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
             <ServiceFlowWorkspace
               projectId={resolvedProjectId.trim()}
               project={project}
-              participants={participants}
-              chatPanel={chatPanel}
               flow={serviceFlow}
               ideationReady={ideationReadyForServiceFlow}
               onRetryGate={() => setFetchNonce((n) => n + 1)}
@@ -2881,7 +2896,7 @@ export function RequirementsWorkspace({
       />
 
       <RequirementsPromptDocumentDrawer
-        open={promptDrawerOpen}
+        open={!inServiceFlowStage && promptDrawerOpen}
         onClose={() => setPromptDrawerOpen(false)}
         view={persistedPromptState.lastPromptView ?? null}
         lastPromptText={persistedPromptState.lastPromptText}
@@ -2891,7 +2906,7 @@ export function RequirementsWorkspace({
       />
 
       <RequirementsSummaryModal
-        open={summaryModalOpen}
+        open={!inServiceFlowStage && summaryModalOpen}
         onClose={() => setSummaryModalOpen(false)}
         goals={goals}
         targetUsers={targetUsers}
@@ -2910,7 +2925,7 @@ export function RequirementsWorkspace({
 
       {draftDoc ? (
         <RequirementsDraftDocumentDrawer
-          open={draftDrawerOpen}
+          open={!inServiceFlowStage && draftDrawerOpen}
           onClose={() => setDraftDrawerOpen(false)}
           draft={draftDoc}
           exportBaseName={project?.name?.trim() ?? ""}
@@ -2918,14 +2933,14 @@ export function RequirementsWorkspace({
       ) : null}
 
       <RequirementsDeliverableViewerModal
-        open={deliverableViewerOpen}
+        open={!inServiceFlowStage && deliverableViewerOpen}
         onClose={() => setDeliverableViewerOpen(false)}
         assets={deliverableViewerAssets}
         initialAssetId={deliverableViewerFocusId}
       />
 
       <ProposalPlanPreviewModal
-        open={proposalPlanPreview.open}
+        open={!inServiceFlowStage && proposalPlanPreview.open}
         title={`${(project?.name ?? "").trim() || "프로젝트"} 아이디어 초안 미리보기`}
         markdown={proposalPreviewMarkdown}
         projectName={(project?.name ?? "").trim() || "프로젝트"}

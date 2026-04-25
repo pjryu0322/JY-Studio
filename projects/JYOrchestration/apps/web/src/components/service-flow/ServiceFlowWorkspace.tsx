@@ -1,16 +1,16 @@
 "use client";
 
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useMemo, type CSSProperties } from "react";
 import Link from "next/link";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import type { Project } from "@/components/project-spec/types";
-import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { RequirementsServiceFlowStage } from "@/components/requirements/RequirementsServiceFlowStage";
 
 const wrap: CSSProperties = {
   flex: "1 1 auto",
   minHeight: 0,
+  height: "calc(100vh - 220px)",
   border: "1px solid #e2e8f0",
   borderRadius: 16,
   overflow: "hidden",
@@ -21,6 +21,8 @@ const wrap: CSSProperties = {
 };
 
 const topBar: CSSProperties = {
+  position: "relative",
+  zIndex: 10,
   padding: "12px 14px",
   borderBottom: "1px solid #e2e8f0",
   background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
@@ -49,8 +51,6 @@ const btnPrimary: CSSProperties = { ...btn, border: "1px solid #0f766e", backgro
 export function ServiceFlowWorkspace({
   projectId,
   project,
-  participants,
-  chatPanel,
   flow,
   ideationReady,
   onRetryGate,
@@ -60,8 +60,6 @@ export function ServiceFlowWorkspace({
 }: {
   readonly projectId: string;
   readonly project: Project | null;
-  readonly participants: readonly ParticipantOption[];
-  readonly chatPanel: ReactNode;
   readonly flow: RequirementsServiceFlowV1 | null;
   readonly ideationReady: boolean;
   readonly onRetryGate: () => void;
@@ -131,7 +129,6 @@ export function ServiceFlowWorkspace({
             onGenerateAiDraft={onGenerateAiDraft}
             onApproveAll={onApproveAll}
             onNavigateToFeaturesHref={featuresHref}
-            chat={chatPanel}
           />
         </div>
       )}
