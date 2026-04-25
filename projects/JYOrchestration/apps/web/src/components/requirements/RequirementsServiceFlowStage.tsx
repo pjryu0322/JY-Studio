@@ -233,22 +233,16 @@ export function RequirementsServiceFlowStage({
   flow,
   onChangeFlow,
   draftGenerationCount = 0,
-  generatingDraft,
   approval,
   onRetryGate,
-  onGenerateAiDraft,
-  onApproveAll,
 }: {
   readonly ideationReady: boolean;
   readonly ideationReadyNotice: string;
   readonly flow: RequirementsServiceFlowV1 | null;
   readonly onChangeFlow: (next: RequirementsServiceFlowV1) => void;
   readonly draftGenerationCount?: number;
-  readonly generatingDraft: boolean;
   readonly approval: ApprovalState;
   readonly onRetryGate: () => void;
-  readonly onGenerateAiDraft: () => void;
-  readonly onApproveAll: () => void;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const [messages, setMessages] = useState<WorkshopMessage[]>(() => defaultMessages(Boolean(flow?.steps.length)));
@@ -368,9 +362,6 @@ export function RequirementsServiceFlowStage({
         <main style={centerPanel}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
             <div style={{ fontSize: 13, fontWeight: 900, color: "#475569" }}>협업 채팅</div>
-            <button type="button" onClick={onGenerateAiDraft} disabled={!ideationReady || generatingDraft} style={{ ...primaryBtn, opacity: !ideationReady || generatingDraft ? 0.55 : 1 }}>
-              {generatingDraft ? "초안 생성 중..." : "AI 초안 생성"}
-            </button>
           </div>
 
           <div style={{ padding: 16, overflowY: "auto", minHeight: 0, flex: "1 1 auto", display: "grid", alignContent: "start", gap: 10 }}>
@@ -475,9 +466,6 @@ export function RequirementsServiceFlowStage({
                 ) : null}
                 <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
                   <StatusBlock title="승인 가능 여부" lines={[approval.ready ? "승인 가능" : "승인 조건 미충족", approval.approved ? "승인 완료" : "승인 대기"]} />
-                  <button type="button" onClick={onApproveAll} disabled={!approval.ready} style={{ ...primaryBtn, width: "100%", marginTop: 10, opacity: approval.ready ? 1 : 0.55 }}>
-                    전체 승인
-                  </button>
                 </div>
               </>
             )}
