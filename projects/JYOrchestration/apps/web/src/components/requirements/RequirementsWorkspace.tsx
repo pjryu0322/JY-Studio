@@ -381,6 +381,8 @@ export function RequirementsWorkspace({
   const [organizeState, setOrganizeState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [organizeError, setOrganizeError] = useState<string | null>(null);
   const [organizedAt, setOrganizedAt] = useState<string | null>(null);
+  const [serviceFlowDraftBusy, setServiceFlowDraftBusy] = useState(false);
+  const [serviceFlowDraftGenerationCount, setServiceFlowDraftGenerationCount] = useState(0);
 
   const stateJsonRef = useRef<RequirementsStateJson>({});
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1187,7 +1189,7 @@ export function RequirementsWorkspace({
       showErrorToast(msg);
       return;
     }
-    setBusy(true);
+    setServiceFlowDraftBusy(true);
     setError(null);
     setOrganizeState("running");
     setOrganizeError(null);
@@ -2468,13 +2470,14 @@ export function RequirementsWorkspace({
         actors,
       };
       await persistServiceFlow(next);
+      setServiceFlowDraftGenerationCount((n) => n + 1);
       showSuccessToast("서비스 흐름 초안 생성 완료");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "오류";
       setError(msg);
       showErrorToast(msg);
     } finally {
-      setBusy(false);
+      setServiceFlowDraftBusy(false);
     }
   }, [resolvedProjectId, ideationReadyForServiceFlow, ideationReadyNotice, project?.name, project?.description, persistServiceFlow, serviceFlow?.createdAt, showSuccessToast, showErrorToast]);
 
@@ -2482,11 +2485,11 @@ export function RequirementsWorkspace({
     if (!serviceFlow) return;
     const actorIds = new Set(serviceFlow.actors.map((a) => a.id));
     const invalid =
-      serviceFlow.steps.length === 0 ||
-      serviceFlow.actors.length === 0 ||
+      serviceFlow.actors.length < 2 ||
+      serviceFlow.steps.length < 3 ||
       serviceFlow.steps.some((s) => !s.primaryActorId || !actorIds.has(s.primaryActorId));
     if (invalid) {
-      const msg = "전체 승인 전 서비스 흐름 단계, 액터, 모든 단계의 주 담당 액터를 확인해 주세요.";
+      const msg = "전체 승인 전 액터 2개 이상, 서비스 흐름 3단계 이상, 모든 단계의 주 담당 액터를 확인해 주세요.";
       setError(msg);
       showErrorToast(msg);
       return;
@@ -2497,9 +2500,34 @@ export function RequirementsWorkspace({
       updatedAt: now,
       steps: serviceFlow.steps.map((s) => ({ ...s, approved: true, updatedAt: now })),
     };
+    const featureCandidates = Array.from(
+      new Set(
+        next.steps
+          .map((s) => {
+            const title = s.title.trim();
+            if (!title) return "";
+            if (title.includes("업로드")) return "파일 업로드";
+            if (title.includes("텍스트") || title.includes("변환")) return "음성 텍스트 변환";
+            if (title.includes("화자")) return "화자 구분";
+            if (title.includes("수정")) return "수정 요청 워크플로우";
+            if (title.includes("승인")) return "승인 기능";
+            if (title.includes("알림")) return "알림 기능";
+            if (title.includes("공유") || title.includes("배포")) return "공유/배포";
+            return title;
+          })
+          .filter(Boolean)
+      )
+    );
+    const actorDrivenCandidates = [
+      next.actors.some((a) => a.name.includes("관리자")) ? "권한 관리" : "",
+      "모바일 대응",
+    ].filter(Boolean);
+    const priorityFeatureText = [...featureCandidates, ...actorDrivenCandidates].map((x) => `- ${x}`).join("\n");
     await persistServiceFlow(next);
-    await persistStateJsonOnly({ serviceFlowCompletedAt: now, serviceFlowV1: next });
-    showSuccessToast("전체 단계 승인 완료");
+    await persistStateJsonOnly({ serviceFlowCompletedAt: now, serviceFlowV1: next, priorityFeatures: priorityFeatureText });
+    setPriorityFeatures(priorityFeatureText);
+    notifyAppFlowProjectContextChanged();
+    showSuccessToast("전체 단계 승인 완료. 기능 정리 단계로 이동할 수 있습니다.");
   }, [serviceFlow, persistServiceFlow, persistStateJsonOnly, showSuccessToast, showErrorToast]);
 
   const inviteEmphasis = humanOthers.length === 0;
@@ -2689,9 +2717,12 @@ export function RequirementsWorkspace({
   const serviceFlowStage = (
     <div key="service-flow" style={{ padding: 14, width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
       <ServiceFlowWorkspace
+        projectId={resolvedProjectId.trim()}
         project={project}
         flow={serviceFlow}
         ideationReady={ideationReadyForServiceFlow}
+        generatingDraft={serviceFlowDraftBusy}
+        draftGenerationCount={serviceFlowDraftGenerationCount}
         onRetryGate={() => setFetchNonce((n) => n + 1)}
         onGenerateAiDraft={() => void handleGenerateServiceFlowDraft()}
         onApproveAll={() => void handleApproveAllServiceFlowSteps()}
