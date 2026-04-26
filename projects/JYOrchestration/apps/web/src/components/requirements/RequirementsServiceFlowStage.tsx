@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { PrototypePreviewPanel } from "@/components/preview/PrototypePreviewPanel";
 import type {
   RequirementsServiceFlowActorV1,
   RequirementsServiceFlowStepV1,
@@ -12,7 +13,7 @@ import type {
 } from "@/lib/requirements/requirementsStateJson";
 
 type WorkshopRole = "ai" | "expert" | "member" | "user";
-type ResultTab = "actors" | "flow" | "mapping";
+type ResultTab = "actors" | "flow" | "mapping" | "preview";
 type ServiceFlowSlotKey =
   | "humanActors"
   | "systemActors"
@@ -927,6 +928,23 @@ function ResultCard({
   readonly onSelectStep: (id: string) => void;
   readonly onUpdateStep: (id: string, patch: Partial<RequirementsServiceFlowStepV1>) => void;
 }) {
+  const previewActors = useMemo(
+    () =>
+      actors.map((a) => ({
+        name: a.name,
+        role: a.kind === "human" ? "사람 액터" : "시스템 액터",
+      })),
+    [actors]
+  );
+  const previewSteps = useMemo(
+    () =>
+      steps.map((s) => ({
+        title: s.title,
+        owner: s.primaryActorId ? actorName(s.primaryActorId) : undefined,
+      })),
+    [steps, actorName]
+  );
+
   return (
     <div style={{ maxWidth: 680, border: "1px solid #bfdbfe", borderRadius: 16, background: "#eff6ff", padding: 14, display: "grid", gap: 12 }}>
       <div>
@@ -939,6 +957,7 @@ function ResultCard({
         <TabButton active={resultTab === "actors"} onClick={() => onSelectTab("actors")}>액터</TabButton>
         <TabButton active={resultTab === "flow"} onClick={() => onSelectTab("flow")}>서비스 흐름</TabButton>
         <TabButton active={resultTab === "mapping"} onClick={() => onSelectTab("mapping")}>담당 매핑</TabButton>
+        <TabButton active={resultTab === "preview"} onClick={() => onSelectTab("preview")}>프로토타입 미리보기</TabButton>
       </div>
       {actors.length || steps.length ? (
         <div style={{ display: "grid", gap: 8 }}>
@@ -984,7 +1003,7 @@ function ResultCard({
                 </button>
               ))}
             </div>
-          ) : (
+          ) : resultTab === "mapping" ? (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, background: "#fff", border: "1px solid #dbeafe", borderRadius: 14, overflow: "hidden" }}>
                 <thead>
@@ -1017,6 +1036,15 @@ function ResultCard({
                   ))}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            <div style={{ borderRadius: 14, border: "1px solid #dbeafe", background: "#fff", padding: 12 }}>
+              <PrototypePreviewPanel
+                projectName={undefined}
+                projectDescription={undefined}
+                actors={previewActors}
+                flowSteps={previewSteps}
+              />
             </div>
           )}
         </div>
