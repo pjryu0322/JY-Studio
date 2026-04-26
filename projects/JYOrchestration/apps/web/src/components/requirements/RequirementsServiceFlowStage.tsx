@@ -180,6 +180,43 @@ function progressHint(approval: ApprovalState): string | null {
   return null;
 }
 
+function deriveApprovalFromFlow(flow: RequirementsServiceFlowV1 | null): ApprovalState {
+  const actorIds = new Set((flow?.actors ?? []).map((a) => a.id));
+  const text = `${(flow?.actors ?? []).map((a) => `${a.name} ${a.description ?? ""}`).join(" ")} ${(flow?.steps ?? []).map((s) => `${s.title} ${s.purpose}`).join(" ")}`;
+  const hasHumanActors = (flow?.actors ?? []).some((a) => a.kind === "human");
+  const hasSystemActors = (flow?.actors ?? []).some((a) => a.kind === "system");
+  const stepsReady = (flow?.steps.length ?? 0) >= 3;
+  const mapped = Boolean(flow?.steps.length) && (flow?.steps ?? []).every((s) => s.primaryActorId && actorIds.has(s.primaryActorId));
+  const slots: Record<ServiceFlowSlotKey, boolean> = {
+    humanActors: hasHumanActors,
+    systemActors: hasSystemActors,
+    mainFlow: stepsReady,
+    actorResponsibility: mapped,
+    exceptionFlow: /예외|수정|반려|재처리|실패|오류|누락/.test(text),
+    accessControl: /권한|열람|수정 가능|공유 범위|접근|관리자/.test(text),
+    handoffToFeatures: /기능|후보|알림|업로드|공유|승인|요청|관리/.test(text),
+  };
+  const filledSlotCount = Object.values(slots).filter(Boolean).length;
+  const progressPercent = Math.round((filledSlotCount / 7) * 100);
+  const actorsReady = slots.humanActors && slots.systemActors;
+  const approved = Boolean(actorsReady && stepsReady && mapped && flow?.steps.every((s) => s.approved));
+  return {
+    actorsReady,
+    stepsReady,
+    mapped,
+    approved,
+    ready: slots.humanActors && slots.systemActors && slots.mainFlow && slots.actorResponsibility,
+    slots,
+    filledSlotCount,
+    progressPercent,
+    recommendedMissing: {
+      exceptionFlow: !slots.exceptionFlow,
+      accessControl: !slots.accessControl,
+      handoffToFeatures: !slots.handoffToFeatures,
+    },
+  };
+}
+
 function participantMessageRole(member: ServiceFlowParticipant): WorkshopRole {
   const role = member.roleLabel.trim();
   if (role === "domain-expert" || role === "domainExpert") return "expert";
@@ -297,7 +334,8 @@ export function RequirementsServiceFlowStage({
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
 
-  const hint = progressHint(approval);
+  const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
+  const hint = progressHint(derivedApproval);
 
   const messagesRef = useRef<WorkshopMessage[]>(messages);
   const flowRef = useRef<RequirementsServiceFlowV1 | null>(flow);
@@ -611,7 +649,7 @@ export function RequirementsServiceFlowStage({
             }}
           >
             <div style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 999, padding: "8px 12px", fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-              서비스 흐름 정리도 {approval.progressPercent}%{hint ? ` (${hint})` : ""} · {approval.filledSlotCount}/7
+              서비스 흐름 정리도 {derivedApproval.progressPercent}%{hint ? ` (${hint})` : ""} · {derivedApproval.filledSlotCount}/7
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button
@@ -629,7 +667,7 @@ export function RequirementsServiceFlowStage({
                   goNextStage();
                 }}
                 disabled={!approval.ready}
-                style={{ ...primaryBtn, opacity: approval.ready ? 1 : 0.55 }}
+                style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55 }}
               >
                 확정
               </button>
@@ -715,7 +753,7 @@ export function RequirementsServiceFlowStage({
               steps={steps}
               selectedStep={selectedStep}
               resultTab={resultTab}
-              approval={approval}
+                approval={derivedApproval}
               actorName={actorName}
               onClose={() => setCanvasOpen(false)}
               onSelectTab={setResultTab}
