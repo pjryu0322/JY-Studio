@@ -13,6 +13,7 @@ import {
 } from "@/components/project-spec/api";
 import { ProjectSpecAiDraftPlanSection } from "@/components/project-spec/ProjectSpecAiDraftPlanSection";
 import { TaskDraftPanel, type TaskDraftWorkflowExecutionProps } from "@/components/project-spec/TaskDraftPanel";
+import { PrototypePreviewPanel } from "@/components/preview/PrototypePreviewPanel";
 import type { Project, ProjectSpecResponseRecord, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
@@ -37,6 +38,7 @@ import {
   type SpecPromptPresetId,
 } from "@/lib/project-spec/specPromptPresets";
 import { summarizeMarkdownSectionDiff } from "@/lib/project-spec/specCompareSummary";
+import { PROTOTYPE_TEMPLATES, recommendPrototypeTemplate, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 
 /** 자동 초안 API 중복 호출 방지 (동시에 하나만) */
 const specAutoDraftInFlightByProject = new Map<string, boolean>();
@@ -157,6 +159,8 @@ export function ProjectSpecWorkspace({
   const [specDraftMarkdown, setSpecDraftMarkdown] = useState("");
   const [draftRefreshKey, setDraftRefreshKey] = useState(0);
   const [lastTaskDraftSync, setLastTaskDraftSync] = useState<TaskDraftSyncResultDto | null>(null);
+  const [serviceFlowTab, setServiceFlowTab] = useState<"actors" | "roles" | "preview">("preview");
+  const [prototypeTemplateId, setPrototypeTemplateId] = useState<PrototypeTemplateType>("dashboard");
   const [generatingContext, setGeneratingContext] = useState(false);
   const isGeneratingRef = useRef(false);
   const prevProjectIdRef = useRef<string | null>(null);
@@ -169,6 +173,12 @@ export function ProjectSpecWorkspace({
       specAutoDraftSucceededByProject.delete(prev);
     }
     prevProjectIdRef.current = projectId;
+  }, [projectId]);
+
+  useEffect(() => {
+    // Mock Preview only: keep a best-effort recommended template as the default.
+    setPrototypeTemplateId(rec.templateId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(() => {
@@ -1112,6 +1122,11 @@ export function ProjectSpecWorkspace({
   if (!projectId) {
     return null;
   }
+
+  const projectName = (workspace?.project.name ?? project?.name ?? "").trim();
+  const projectDescription = (workspace?.project.description ?? project?.description ?? "").trim();
+  const rec = recommendPrototypeTemplate(`${projectName} ${projectDescription}`.trim());
+  const recommendedTemplate = PROTOTYPE_TEMPLATES.find((t) => t.id === rec.templateId) ?? PROTOTYPE_TEMPLATES[0];
 
   const compareLeft = compareIds[0] ? workspace?.responses.find((r) => r.id === compareIds[0]) : undefined;
   const compareRight = compareIds[1] ? workspace?.responses.find((r) => r.id === compareIds[1]) : undefined;
@@ -2784,6 +2799,159 @@ export function ProjectSpecWorkspace({
         )}
       </div>
 
+      {/* [B] 액터 및 서비스 흐름 정의 + Preview (Mock) */}
+      <div
+        style={{
+          marginBottom: 16,
+          padding: 16,
+          borderRadius: 12,
+          border: "1px solid #e2e8f0",
+          background: "#ffffff",
+        }}
+        aria-label="액터 및 서비스 흐름 정의"
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>액터 및 서비스 흐름 정의</div>
+            <div style={{ marginTop: 6, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
+              여기서는 역할/흐름을 정리하고, 템플릿 기반 Mock Preview로 화면 구조를 빠르게 확인합니다.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setServiceFlowTab("actors")}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: serviceFlowTab === "actors" ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                background: serviceFlowTab === "actors" ? "#eff6ff" : "#fff",
+                color: serviceFlowTab === "actors" ? "#1e40af" : "#0f172a",
+                fontSize: 12.5,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              액터
+            </button>
+            <button
+              type="button"
+              onClick={() => setServiceFlowTab("roles")}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: serviceFlowTab === "roles" ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                background: serviceFlowTab === "roles" ? "#eff6ff" : "#fff",
+                color: serviceFlowTab === "roles" ? "#1e40af" : "#0f172a",
+                fontSize: 12.5,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              역할
+            </button>
+            <button
+              type="button"
+              onClick={() => setServiceFlowTab("preview")}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: serviceFlowTab === "preview" ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                background: serviceFlowTab === "preview" ? "#eff6ff" : "#fff",
+                color: serviceFlowTab === "preview" ? "#1e40af" : "#0f172a",
+                fontSize: 12.5,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              Preview
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          {(() => {
+            const fallbackActors = [
+              { name: "사용자", role: "요청/확인" },
+              { name: "AI 기획자", role: "정리/추천" },
+              { name: "시스템", role: "자동 처리" },
+              { name: "관리자", role: "권한/승인" },
+            ];
+            const fallbackSteps = [
+              { title: "아이디어 입력", owner: "사용자" },
+              { title: "서비스 흐름 정의", owner: "AI 기획자" },
+              { title: "화면 구조 확인", owner: "사용자" },
+              { title: "기능 정리", owner: "AI 기획자" },
+              { title: "프로토타입 생성", owner: "시스템" },
+            ];
+
+            if (serviceFlowTab === "actors") {
+              return (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>예시 액터(임시)</div>
+                  <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                    {fallbackActors.map((a) => (
+                      <div key={a.name} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#fff" }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 900, color: "#0f172a" }}>{a.name}</div>
+                        <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.5 }}>{a.role}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            if (serviceFlowTab === "roles") {
+              return (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>역할/권한(임시)</div>
+                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>권장 역할 분리</div>
+                    <ul style={{ margin: "8px 0 0 18px", padding: 0, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
+                      <li>사용자: 요청/검토</li>
+                      <li>관리자: 승인/권한</li>
+                      <li>시스템: 자동 처리(변환/분류/초안)</li>
+                      <li>AI 기획자: 정리/추천(Preview/템플릿 안내)</li>
+                    </ul>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>
+                    추천 템플릿: {recommendedTemplate.nameKo} ({rec.score}%)
+                  </span>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto", fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>
+                    템플릿
+                    <select
+                      value={prototypeTemplateId}
+                      onChange={(e) => setPrototypeTemplateId(e.target.value as PrototypeTemplateType)}
+                      style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#fff", fontSize: 12.5 }}
+                    >
+                      {PROTOTYPE_TEMPLATES.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nameKo}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <PrototypePreviewPanel
+                  projectName={projectName}
+                  projectDescription={projectDescription}
+                  actors={fallbackActors}
+                  flowSteps={fallbackSteps}
+                  initialTemplateId={prototypeTemplateId}
+                />
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
       <TaskDraftPanel
         projectId={projectId}
         canEdit={canEdit}
@@ -2796,6 +2964,48 @@ export function ProjectSpecWorkspace({
         workflowExecution={workflowExecution}
         onAfterTaskDraftsGenerate={onAfterTaskDraftsGenerate}
       />
+
+      {/* [C] 프로토타입 생성 (Mock placeholder) */}
+      <div
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 12,
+          border: "1px solid #e2e8f0",
+          background: "#ffffff",
+          display: "grid",
+          gap: 10,
+        }}
+        aria-label="프로토타입 생성"
+      >
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>프로토타입 생성</div>
+            <div style={{ marginTop: 6, fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
+              현재는 <strong>Mock Preview</strong> 단계입니다. 확정된 템플릿과 흐름을 기반으로, 후속 단계에서 고도화 생성(Curso/GitHub 연동)을 제공합니다.
+            </div>
+          </div>
+          <button type="button" disabled style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#94a3b8", fontWeight: 900, cursor: "not-allowed" }}>
+            Cursor 연동 생성(후속)
+          </button>
+        </div>
+        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>선택/추천 템플릿</div>
+            <div style={{ marginTop: 6, fontSize: 14, fontWeight: 900, color: "#0f172a" }}>
+              {PROTOTYPE_TEMPLATES.find((t) => t.id === prototypeTemplateId)?.nameKo ?? recommendedTemplate.nameKo}
+            </div>
+          </div>
+          <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>현재 성숙도</div>
+            <div style={{ marginTop: 6, fontSize: 14, fontWeight: 900, color: "#0f172a" }}>Mock Preview</div>
+          </div>
+          <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>다음 단계</div>
+            <div style={{ marginTop: 6, fontSize: 14, fontWeight: 900, color: "#0f172a" }}>고도화 생성</div>
+          </div>
+        </div>
+      </div>
 
       {/* 실행 환경·Git 저장소: 프로젝트 관리 → 설정 [F-1-3-6] */}
 

@@ -8,6 +8,7 @@ import type { Project } from "@/components/project-spec/types";
 import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
 import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { ProjectExecutionReadinessSummary } from "@/components/project/ProjectExecutionReadinessSummary";
+import { ProjectDetailGearMenu } from "@/components/project/ProjectDetailGearMenu";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 
 export default function ProjectDetailPage() {
@@ -112,8 +113,11 @@ export default function ProjectDetailPage() {
             ← 플랫폼 홈(프로젝트 목록)
           </Link>
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: "#0f172a" }}>{projectName}</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: "#0f172a" }}>{projectName}</h1>
+          </div>
+          <ProjectDetailGearMenu projectId={projectId} />
         </div>
         {projectDescription ? (
           <p style={{ margin: "8px 0 0 0", fontSize: 14, color: "#475569", lineHeight: 1.6 }}>

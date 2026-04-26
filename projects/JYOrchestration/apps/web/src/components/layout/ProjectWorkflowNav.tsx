@@ -48,12 +48,11 @@ function withProjectQuery(path: string, projectId: string | null): string {
   return `${base}?${sp.toString()}`;
 }
 
+// User-facing primary workflow: keep it minimal.
 const WORKFLOW_TOP_NAV: { stepId: AppFlowStepId; label: string; screenLabel: string }[] = [
   { stepId: "requirements", label: "아이디어 구체화", screenLabel: "공통-상단내비-워크플로우-요구사항" },
   { stepId: "service_flow", label: "액터 및 서비스 흐름 정의", screenLabel: "공통-상단내비-워크플로우-서비스흐름" },
   { stepId: "features", label: "기능 정리", screenLabel: "공통-상단내비-워크플로우-기능" },
-  { stepId: "tasks", label: "작업 정리", screenLabel: "공통-상단내비-워크플로우-작업" },
-  { stepId: "planning", label: "생성 준비", screenLabel: "공통-상단내비-워크플로우-실행계획" },
   { stepId: "execution", label: "프로토타입 생성", screenLabel: "공통-상단내비-워크플로우-실행" },
 ];
 
@@ -96,13 +95,8 @@ function ProjectWorkflowNavInner() {
   );
   const hasProjectContext = Boolean(projectContextId?.trim());
 
-  const admin: NavItem[] = useMemo(
-    () => [
-      { label: "프로젝트 멤버", href: withProjectQuery("/project-admin/members", projectContextId), screenLabel: "공통-상단내비-관리-프로젝트멤버" },
-      { label: "설정", href: withProjectQuery("/project-admin/settings", projectContextId), screenLabel: "공통-상단내비-관리-설정" },
-    ],
-    [projectContextId]
-  );
+  // Admin links are available via the gear/settings entry point (not primary workflow).
+  const admin: NavItem[] = useMemo(() => [], []);
 
   const insight: NavItem[] = useMemo(() => {
     if (!SHOW_PROJECT_TRACE_NAV) return [];
@@ -136,37 +130,38 @@ function ProjectWorkflowNavInner() {
           );
         })}
       </nav>
-      <span
-        role="separator"
-        aria-hidden
-        style={{
-          width: 2,
-          minHeight: 28,
-          alignSelf: "stretch",
-          margin: "0 2px",
-          borderRadius: 999,
-          background: "linear-gradient(180deg, rgba(148,163,184,0.15) 0%, rgba(100,116,139,0.55) 45%, rgba(148,163,184,0.15) 100%)",
-          flexShrink: 0,
-        }}
-      />
-      <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        {admin.map((item) => {
-          const base = item.href.split("?")[0] ?? item.href;
-          const active = isAdminPathActive(pathname, base);
-          return (
-            <span key={item.label + item.href} className="relative">
-              <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-              <Link
-                href={item.href}
-                style={linkMgmt(active)}
-                aria-current={active ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            </span>
-          );
-        })}
-      </nav>
+      {admin.length ? (
+        <>
+          <span
+            role="separator"
+            aria-hidden
+            style={{
+              width: 2,
+              minHeight: 28,
+              alignSelf: "stretch",
+              margin: "0 2px",
+              borderRadius: 999,
+              background:
+                "linear-gradient(180deg, rgba(148,163,184,0.15) 0%, rgba(100,116,139,0.55) 45%, rgba(148,163,184,0.15) 100%)",
+              flexShrink: 0,
+            }}
+          />
+          <nav aria-label="프로젝트 관리" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            {admin.map((item) => {
+              const base = item.href.split("?")[0] ?? item.href;
+              const active = isAdminPathActive(pathname, base);
+              return (
+                <span key={item.label + item.href} className="relative">
+                  <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
+                  <Link href={item.href} style={linkMgmt(active)} aria-current={active ? "page" : undefined}>
+                    {item.label}
+                  </Link>
+                </span>
+              );
+            })}
+          </nav>
+        </>
+      ) : null}
       {SHOW_PROJECT_TRACE_NAV ? (
         <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
           {insight.map((item) => {

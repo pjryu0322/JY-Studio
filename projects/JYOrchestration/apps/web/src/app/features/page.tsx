@@ -17,8 +17,8 @@ function FeaturesPageInner() {
 
   useEffect(() => {
     if (!projectId) {
-      setFlowSummary(null);
-      return;
+      const t = window.setTimeout(() => setFlowSummary(null), 0);
+      return () => window.clearTimeout(t);
     }
     let cancelled = false;
     void (async () => {
@@ -27,7 +27,9 @@ function FeaturesPageInner() {
       const state = parseRequirementsStateJson(project?.requirementsStateJson);
       const flow = state.serviceFlowV1 ?? null;
       if (!flow || !Array.isArray(flow.steps) || flow.steps.length === 0) {
-        setFlowSummary(null);
+        window.setTimeout(() => {
+          if (!cancelled) setFlowSummary(null);
+        }, 0);
         return;
       }
       const total = flow.steps.length;
@@ -37,7 +39,9 @@ function FeaturesPageInner() {
         .sort((a, b) => a.order - b.order)
         .slice(0, 6)
         .map((s) => s.title);
-      setFlowSummary({ approved, total, titles });
+      window.setTimeout(() => {
+        if (!cancelled) setFlowSummary({ approved, total, titles });
+      }, 0);
     })();
     return () => {
       cancelled = true;
