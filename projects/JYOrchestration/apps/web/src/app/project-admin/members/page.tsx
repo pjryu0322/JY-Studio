@@ -69,32 +69,48 @@ function ProjectAdminMembersInner() {
   }, [projectId]);
 
   useEffect(() => {
-    void reloadSessionContext();
+    const t = window.setTimeout(() => void reloadSessionContext(), 0);
+    return () => window.clearTimeout(t);
   }, [reloadSessionContext]);
 
   useEffect(() => {
     if (!projectId) {
-      setProject(null);
-      setErrorMessage(null);
-      setLoading(false);
-      setTasks([]);
-      setTaskPrompts([]);
-      setGitRequests([]);
+      const t = window.setTimeout(() => {
+        setProject(null);
+        setErrorMessage(null);
+        setLoading(false);
+        setTasks([]);
+        setTaskPrompts([]);
+        setGitRequests([]);
+      }, 0);
+      return () => window.clearTimeout(t);
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setErrorMessage(null);
+    window.setTimeout(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setErrorMessage(null);
+      }
+    }, 0);
     void (async () => {
       const { project: p, errorMessage: err } = await fetchProjectById(projectId);
       if (cancelled) return;
-      setLoading(false);
+      window.setTimeout(() => {
+        if (!cancelled) setLoading(false);
+      }, 0);
       if (err || !p) {
-        setProject(null);
-        setErrorMessage(err || "프로젝트를 불러오지 못했습니다.");
+        window.setTimeout(() => {
+          if (!cancelled) {
+            setProject(null);
+            setErrorMessage(err || "프로젝트를 불러오지 못했습니다.");
+          }
+        }, 0);
         return;
       }
-      setProject(p);
+      window.setTimeout(() => {
+        if (!cancelled) setProject(p);
+      }, 0);
     })();
     return () => {
       cancelled = true;

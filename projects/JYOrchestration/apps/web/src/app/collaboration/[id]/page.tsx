@@ -74,13 +74,16 @@ export default function CollaborationWorkspacePage() {
     if (!boot) {
       return;
     }
-    setDisplayedMinutes(boot.minutes);
-    setDisplayedFeatures(boot.features);
-    setDisplayedTaskDrafts(boot.taskDrafts);
-    setDisplayedAnalysis(null);
-    setDisplayedIdeas([]);
-    setSuggestedFeaturesFromIdeas([]);
-    setActionState({ status: "idle", latest: null });
+    const t = window.setTimeout(() => {
+      setDisplayedMinutes(boot.minutes);
+      setDisplayedFeatures(boot.features);
+      setDisplayedTaskDrafts(boot.taskDrafts);
+      setDisplayedAnalysis(null);
+      setDisplayedIdeas([]);
+      setSuggestedFeaturesFromIdeas([]);
+      setActionState({ status: "idle", latest: null });
+    }, 0);
+    return () => window.clearTimeout(t);
   }, [sessionId]);
 
   const workspaceImpact = useMemo(() => getCollaborationWorkspaceImpact(actionState.latest), [actionState.latest]);
