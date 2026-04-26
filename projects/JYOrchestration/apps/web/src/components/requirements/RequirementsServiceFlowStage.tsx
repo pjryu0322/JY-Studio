@@ -521,11 +521,13 @@ export function RequirementsServiceFlowStage({
             body: [String(json.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n"),
           },
         ]);
+        // After successful organize, open result view automatically.
+        setCanvasOpen(true);
         setReplying(false);
       } catch {
         setMessages((prev) => [
           ...prev,
-          { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." },
+          { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "자동 정리에 실패했습니다. 다시 시도해주세요." },
         ]);
         setReplying(false);
       }
@@ -591,11 +593,45 @@ export function RequirementsServiceFlowStage({
         ) : null}
 
         <main className="jyo-service-flow-chat-shell" style={chatWrap} aria-label="협업 채팅">
-          <div style={{ flex: "0 0 auto", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div
+            style={{
+              flex: "0 0 auto",
+              padding: "10px 20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              position: "sticky",
+              top: 0,
+              zIndex: 6,
+              background: "rgba(248,250,252,0.92)",
+              backdropFilter: "blur(8px)",
+              borderBottom: "1px solid rgba(226,232,240,0.75)",
+            }}
+          >
             <div style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 999, padding: "8px 12px", fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
               서비스 흐름 정리도 {approval.progressPercent}%{hint ? ` (${hint})` : ""} · {approval.filledSlotCount}/7
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={() => setCanvasOpen(true)}
+                disabled={!(actors.length || steps.length)}
+                style={{ ...btn, opacity: actors.length || steps.length ? 1 : 0.55 }}
+              >
+                결과물 보기
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onApproveAll();
+                  goNextStage();
+                }}
+                disabled={!approval.ready}
+                style={{ ...primaryBtn, opacity: approval.ready ? 1 : 0.55 }}
+              >
+                확정
+              </button>
               <button
                 type="button"
                 onClick={() => setChatExpanded((v) => !v)}
@@ -620,10 +656,7 @@ export function RequirementsServiceFlowStage({
             </div>
           </div>
 
-          <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "0 20px 14px", display: "grid", gap: 10, alignContent: "start" }}>
-            <div style={{ position: "sticky", top: 0, zIndex: 4, paddingTop: 12, background: "linear-gradient(180deg, #f8fafc 70%, rgba(248,250,252,0))" }}>
-              <DraftSummaryCard flowReady={Boolean(actors.length || steps.length)} onOpenCanvas={() => setCanvasOpen(true)} />
-            </div>
+          <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "12px 20px 14px", display: "grid", gap: 10, alignContent: "start" }}>
             {!ideationReady ? (
               <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb", maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.5 }}>{ideationReadyNotice}</div>
@@ -682,16 +715,11 @@ export function RequirementsServiceFlowStage({
               selectedStep={selectedStep}
               resultTab={resultTab}
               approval={approval}
-              ideationReady={ideationReady}
-              generatingDraft={generatingDraft}
               actorName={actorName}
               onClose={() => setCanvasOpen(false)}
               onSelectTab={setResultTab}
               onSelectStep={setSelectedStepId}
               onUpdateStep={updateStep}
-              onGenerateAiDraft={onGenerateAiDraft}
-              onApproveAll={onApproveAll}
-              onGoNextStage={goNextStage}
             />
           ) : null}
 
@@ -726,8 +754,28 @@ export function RequirementsServiceFlowStage({
                       정리 요청
                     </button>
                     <div style={{ height: 6 }} />
-                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed" }}>
-                      초안 다시 만들기 (준비중)
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsOpen(false);
+                        setCanvasOpen(true);
+                      }}
+                      disabled={!(actors.length || steps.length)}
+                      style={{ ...btn, width: "100%", textAlign: "left", opacity: actors.length || steps.length ? 1 : 0.55 }}
+                    >
+                      결과물 보기
+                    </button>
+                    <div style={{ height: 6 }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsOpen(false);
+                        onGenerateAiDraft();
+                      }}
+                      disabled={!ideationReady || generatingDraft}
+                      style={{ ...btn, width: "100%", textAlign: "left", opacity: !ideationReady || generatingDraft ? 0.55 : 1 }}
+                    >
+                      {generatingDraft ? "초안 다시 만들기 (생성 중...)" : "초안 다시 만들기"}
                     </button>
                     <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed", marginTop: 6 }}>
                       액터 재정리 (준비중)
@@ -796,29 +844,7 @@ function ExpandIcon({ expanded }: { readonly expanded: boolean }) {
   );
 }
 
-function DraftSummaryCard({ flowReady, onOpenCanvas }: { readonly flowReady: boolean; readonly onOpenCanvas: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpenCanvas}
-      style={{
-        maxWidth: 620,
-        textAlign: "left",
-        border: "1px solid #bfdbfe",
-        borderRadius: 16,
-        background: "#eff6ff",
-        padding: 14,
-        cursor: "pointer",
-      }}
-    >
-      <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>액터 및 서비스 흐름 초안</div>
-      <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.55, color: "#475569" }}>
-        {flowReady ? "하단 + 버튼 또는 이 카드를 눌러 캔버스에서 액터, 흐름, 담당 매핑을 확인하세요." : "AI 초안 생성 후 캔버스에서 액터, 흐름, 담당 매핑을 확인할 수 있습니다."}
-      </div>
-      <div style={{ marginTop: 10, fontSize: 12, fontWeight: 900, color: "#0f766e" }}>캔버스 열기</div>
-    </button>
-  );
-}
+// DraftSummaryCard removed: chat is Q/A only. Results are viewed via "결과물 보기".
 
 function DraftCanvas({
   actors,
@@ -828,16 +854,11 @@ function DraftCanvas({
   selectedStep,
   resultTab,
   approval,
-  ideationReady,
-  generatingDraft,
   actorName,
   onClose,
   onSelectTab,
   onSelectStep,
   onUpdateStep,
-  onGenerateAiDraft,
-  onApproveAll,
-  onGoNextStage,
 }: {
   readonly actors: readonly RequirementsServiceFlowActorV1[];
   readonly humans: readonly RequirementsServiceFlowActorV1[];
@@ -846,16 +867,11 @@ function DraftCanvas({
   readonly selectedStep: RequirementsServiceFlowStepV1 | null;
   readonly resultTab: ResultTab;
   readonly approval: ApprovalState;
-  readonly ideationReady: boolean;
-  readonly generatingDraft: boolean;
   readonly actorName: (id: string) => string;
   readonly onClose: () => void;
   readonly onSelectTab: (tab: ResultTab) => void;
   readonly onSelectStep: (id: string) => void;
   readonly onUpdateStep: (id: string, patch: Partial<RequirementsServiceFlowStepV1>) => void;
-  readonly onGenerateAiDraft: () => void;
-  readonly onApproveAll: () => void;
-  readonly onGoNextStage: () => void;
 }) {
   return (
     <div
@@ -883,20 +899,6 @@ function DraftCanvas({
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={onGenerateAiDraft}
-            disabled={!ideationReady || generatingDraft}
-            style={{ ...primaryBtn, opacity: !ideationReady || generatingDraft ? 0.55 : 1 }}
-          >
-            {generatingDraft ? "초안 만드는 중..." : "AI 초안 생성"}
-          </button>
-          <button type="button" onClick={onApproveAll} disabled={!approval.ready} style={{ ...btn, opacity: approval.ready ? 1 : 0.55 }}>
-            확정
-          </button>
-          <button type="button" onClick={onGoNextStage} disabled={!approval.approved} style={{ ...btn, opacity: approval.approved ? 1 : 0.55 }}>
-            이대로 다음 단계로
-          </button>
           <button type="button" onClick={onClose} style={{ ...btn, borderRadius: 999 }}>
             닫기
           </button>
