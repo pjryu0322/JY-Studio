@@ -1010,9 +1010,6 @@ function DraftCanvas({
       <div style={{ flex: "0 0 auto", padding: "14px 16px", borderBottom: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>액터 및 서비스 흐름 초안</div>
-          <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-            서비스 흐름 준비도 {approval.progressPercent}%{progressHint(approval) ? ` (${progressHint(approval)})` : ""} · {approval.filledSlotCount}/8
-          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <button type="button" onClick={onClose} style={{ ...btn, borderRadius: 999 }}>
@@ -1085,9 +1082,6 @@ function ResultCard({
     <div style={{ maxWidth: 680, border: "1px solid #bfdbfe", borderRadius: 16, background: "#eff6ff", padding: 14, display: "grid", gap: 12 }}>
       <div>
         <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>액터 · 서비스 흐름 · 담당 매핑</div>
-        <div style={{ marginTop: 6, fontSize: 12.5, fontWeight: 700, color: "#475569", lineHeight: 1.45 }}>
-          사용자가 이해하기 쉬운 3가지 정보만 보여줍니다. (내부 메타 정보는 숨김)
-        </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <TabButton active={resultTab === "actors"} onClick={() => onSelectTab("actors")}>액터</TabButton>
