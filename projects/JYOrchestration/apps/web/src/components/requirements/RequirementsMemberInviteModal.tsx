@@ -12,7 +12,7 @@ const ROLE_OPTIONS: readonly { value: ProjectRole; label: string; description: s
 
 const AI_ROLE_OPTIONS = [
   { value: "planner", label: "AI 기획자", displayName: "AI 기획자", stage: "spec" },
-  { value: "service-designer", label: "AI 서비스 설계자", displayName: "AI 서비스 설계자", stage: "service-flow" },
+  { value: "service-designer", label: "AI 기획자", displayName: "AI 기획자", stage: "service-flow" },
   { value: "domain-expert", label: "업무 전문가", displayName: "업무 전문가", stage: "service-flow" },
   { value: "security-reviewer", label: "보안 전문가", displayName: "보안 전문가", stage: "execution-review" },
   { value: "", label: "사용자/검토자", displayName: "", stage: "" },
