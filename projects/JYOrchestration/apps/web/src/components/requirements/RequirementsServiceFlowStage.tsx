@@ -203,7 +203,9 @@ function deriveApprovalFromFlow(flow: RequirementsServiceFlowV1 | null): Approva
     handoffToFeatures: /기능|후보|알림|업로드|공유|승인|요청|관리/.test(text),
   };
   const filledSlotCount = Object.values(slots).filter(Boolean).length;
-  const progressPercent = Math.round((filledSlotCount / 8) * 100);
+  const basePercent = Math.round((filledSlotCount / 8) * 100);
+  const draftVisible = (flow?.actors?.length ?? 0) >= 1 && (flow?.steps?.length ?? 0) >= 3;
+  const progressPercent = draftVisible ? Math.max(basePercent, 35) : basePercent;
   const actorsReady = slots.humanActors && slots.systemActors;
   const approved = Boolean(actorsReady && stepsReady && mapped && flow?.steps.every((s) => s.approved));
   return {
@@ -514,7 +516,6 @@ export function RequirementsServiceFlowStage({
     if (replying) return;
     if (messages.length > 0) return;
     const t = window.setTimeout(() => {
-      const hasActors = Boolean(flow?.actors?.length);
       const hasSteps = Boolean(flow?.steps?.length);
       if (hasSteps) {
         const list = normalizeOrder(flow?.steps ?? [])
@@ -532,19 +533,11 @@ export function RequirementsServiceFlowStage({
         ]);
         return;
       }
-      if (hasActors && !hasSteps) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid("msg"),
-            role: "ai",
-            name: displayedAiOrchestrator().name,
-            body: "현재 액터는 정리되었습니다. 이제 실제 처리 순서를 검증하겠습니다.\n첫 단계는 무엇입니까?",
-          },
-        ]);
+      if ((ideationAssets?.length ?? 0) > 0) {
+        callAnalyze("아이디어 구체화 내용을 기반으로 초안 생성", { silentUserAppend: true });
         return;
       }
-      callAnalyze("인터뷰 시작", { silentUserAppend: true });
+      callAnalyze("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
     }, 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -706,7 +699,7 @@ export function RequirementsServiceFlowStage({
                   onApproveAll();
                   goNextStage();
                 }}
-                disabled={!approval.ready}
+                disabled={!derivedApproval.ready}
                 style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55 }}
               >
                 확정
