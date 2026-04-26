@@ -1250,11 +1250,30 @@ export function RequirementsServiceFlowStage({
                   </div>
                 ))}
                 {replying ? <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>AI 기획자가 반영 중입니다...</div> : null}
+                {!generatingDraft && !replying && messages.length === 0 ? (
+                  <div
+                    style={{
+                      ...messageTone("ai"),
+                      border: "1px solid",
+                      borderRadius: 14,
+                      padding: "10px 12px",
+                      maxWidth: 620,
+                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+                    }}
+                  >
+                    <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: "#64748b" }}>AI · {displayedAiOrchestrator().name}</div>
+                    <div style={{ fontSize: 14, color: "#0f172a", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
+                      {structureLocked
+                        ? "서비스 흐름 구조가 확정된 상태입니다.\n\n「구조 편집」에서 단계별 담당을 조정할 수 있고, 이 채팅에서는 메시지를 입력해 흐름·액터·문구를 추가로 다듬을 수 있습니다."
+                        : "표시할 메시지가 없습니다.\n\n메시지를 입력하거나 아래 빠른 동작 칩을 눌러 AI 기획자와 흐름을 함께 정리해 보세요."}
+                    </div>
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>
 
-        {chatActive && quickReplies && quickReplies.length && !replying ? (
+        {ideationReady && chatActive && quickReplies && quickReplies.length && !replying ? (
           <div style={{ flex: "0 0 auto", padding: "0 20px 10px" }}>
             <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
               {quickReplies.map((label) => (
@@ -1280,7 +1299,7 @@ export function RequirementsServiceFlowStage({
           </div>
         ) : null}
 
-        {chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
+        {ideationReady && chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
           <div style={{ flex: "0 0 auto", padding: "0 20px 10px" }}>
             <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
               {(steps.length >= 1
