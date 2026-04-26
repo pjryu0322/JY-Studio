@@ -1,7 +1,7 @@
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { IdeationDeliverableAsset, IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { parseDeliverableAssetsFromState } from "@/lib/requirements/ideationDeliverables";
-import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
+import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import {
   parseRequirementsOrganizeContextV1,
   type RequirementsOrganizeContextV1,
@@ -84,6 +84,23 @@ export type RequirementsStateJson = {
   organizePlannerState?: RequirementsOrganizePlannerState | null;
 };
 
+/** 서비스 흐름 체크리스트 8슬롯(클라이언트·저장 JSON 공통 키) */
+export const REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS = [
+  "humanActors",
+  "systemActors",
+  "mainFlow",
+  "actorResponsibility",
+  "approvalStep",
+  "exceptionFlow",
+  "accessControl",
+  "handoffToFeatures",
+] as const;
+
+export type RequirementsServiceFlowChecklistKey = (typeof REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS)[number];
+
+/** 미정의 허용(pending) / 다음 단계로 이월(deferred_next) */
+export type RequirementsServiceFlowChecklistDeferralKind = "pending" | "deferred_next";
+
 export type RequirementsServiceFlowActorKind = "human" | "system";
 
 export type RequirementsServiceFlowActorV1 = {
@@ -109,6 +126,15 @@ export type RequirementsServiceFlowV1 = {
   updatedAt: string;
   steps: RequirementsServiceFlowStepV1[];
   actors: RequirementsServiceFlowActorV1[];
+  /**
+   * 서비스 흐름(단계/액터) 구조 확정 시각. 설정되면 LLM 인터뷰 대신 단계별 담당 지정·승인 UX로 전환한다.
+   */
+  structureLockedAt?: string | null;
+  /**
+   * 체크리스트 슬롯별 사용자 결정(미정의 허용 / 다음 단계 이월).
+   * 키가 없으면 해당 슬롯은 아직 사용자가 위임하지 않은 것으로 본다.
+   */
+  checklistDeferrals?: Partial<Record<RequirementsServiceFlowChecklistKey, RequirementsServiceFlowChecklistDeferralKind>> | null;
 };
 
 export function isRequirementsPromptPresenterView(v: unknown): v is RequirementsPromptPresenterView {
@@ -408,7 +434,7 @@ function parseProblemInterview(raw: unknown): ProblemInterviewState | null {
     constraints,
     notes,
     ...(Object.keys(partial).length ? { partial } : {}),
-    ...(askedSlots ? { askedSlots: askedSlots as any } : {}),
+    ...(askedSlots ? { askedSlots: askedSlots as ProblemInterviewSlot[] } : {}),
     ...(active !== undefined ? { active } : {}),
     ...(updatedAt ? { updatedAt } : {}),
   };
@@ -455,5 +481,36 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
     .filter((x): x is RequirementsServiceFlowActorV1 => Boolean(x));
 
   if (!createdAt || !updatedAt) return null;
-  return { createdAt, updatedAt, steps, actors };
+  let structureLockedAt: string | null | undefined;
+  if ("structureLockedAt" in o) {
+    if (o.structureLockedAt === null) structureLockedAt = null;
+    else if (typeof o.structureLockedAt === "string" && o.structureLockedAt.trim()) structureLockedAt = o.structureLockedAt.trim();
+    else structureLockedAt = undefined;
+  }
+
+  const keySet = new Set<string>(REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS);
+  let checklistDeferrals: Partial<Record<RequirementsServiceFlowChecklistKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined;
+  if ("checklistDeferrals" in o) {
+    if (o.checklistDeferrals === null) checklistDeferrals = null;
+    else if (o.checklistDeferrals && typeof o.checklistDeferrals === "object") {
+      const d = o.checklistDeferrals as Record<string, unknown>;
+      const partial: Partial<Record<RequirementsServiceFlowChecklistKey, RequirementsServiceFlowChecklistDeferralKind>> = {};
+      for (const [k, v] of Object.entries(d)) {
+        if (!keySet.has(k)) continue;
+        if (v === "pending" || v === "deferred_next") {
+          partial[k as RequirementsServiceFlowChecklistKey] = v;
+        }
+      }
+      checklistDeferrals = Object.keys(partial).length ? partial : undefined;
+    } else checklistDeferrals = undefined;
+  }
+
+  return {
+    createdAt,
+    updatedAt,
+    steps,
+    actors,
+    ...(structureLockedAt !== undefined ? { structureLockedAt } : {}),
+    ...(checklistDeferrals !== undefined ? { checklistDeferrals } : {}),
+  };
 }
