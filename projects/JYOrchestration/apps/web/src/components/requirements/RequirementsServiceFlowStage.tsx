@@ -386,21 +386,21 @@ export function RequirementsServiceFlowStage({
   useEffect(() => {
     if (draftGenerationCount <= 0) return;
     const timer = window.setTimeout(() => {
-      const qs = missingSlotQuestions(approval.slots, 3);
+      const qs = missingSlotQuestions(derivedApproval.slots, 3);
       setMessages((prev) => [
         ...prev,
         {
           id: uid("msg"),
           role: "ai",
           name: displayedAiOrchestrator().name,
-          body: qs.length
-            ? `아이디어 초안을 바탕으로 정리했습니다. 부족한 슬롯만 이어서 질문하겠습니다.\n${qs.map((q) => `- ${q}`).join("\n")}`
-            : "아이디어 초안을 바탕으로 필요한 내용이 모두 정리되었습니다. 실제 업무 예외만 마지막으로 확인해 주세요.",
+          body:
+            "초안을 준비했습니다. 수정할 부분만 말씀해 주세요.\n" +
+            (qs.length ? `\n(빠르게 확인)\n${qs.map((q) => `- ${q}`).join("\n")}` : ""),
         },
       ]);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [draftGenerationCount, approval.slots]);
+  }, [draftGenerationCount, derivedApproval.slots]);
 
   const actorName = (id: string) => actors.find((a) => a.id === id)?.name ?? id;
 
@@ -619,6 +619,7 @@ export function RequirementsServiceFlowStage({
       }}
     >
       <style>{`
+        @keyframes jyo-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @media (max-width: 760px) {
           .jyo-service-flow-stage-shell {
             grid-template-columns: minmax(0, 1fr) !important;
@@ -733,6 +734,24 @@ export function RequirementsServiceFlowStage({
               <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb", maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.5 }}>{ideationReadyNotice}</div>
                 <button type="button" onClick={onRetryGate} style={{ ...btn, marginTop: 8 }}>다시 확인</button>
+              </div>
+            ) : null}
+            {generatingDraft ? (
+              <div style={{ border: "1px solid #c7d2fe", borderRadius: 14, padding: 12, background: "#eef2ff", maxWidth: 620 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    aria-hidden
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 999,
+                      border: "2px solid #94a3b8",
+                      borderTopColor: "#1d4ed8",
+                      animation: "jyo-spin 900ms linear infinite",
+                    }}
+                  />
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#1e293b" }}>아이디어 내용을 바탕으로 서비스 흐름 초안을 만드는 중...</div>
+                </div>
               </div>
             ) : null}
             {messages.map((message) => (

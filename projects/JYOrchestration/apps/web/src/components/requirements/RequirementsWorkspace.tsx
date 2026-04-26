@@ -394,6 +394,8 @@ export function RequirementsWorkspace({
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
   const ideationBootstrapFlightRef = useRef<string | null>(null);
+  /** 서비스흐름 자동 초안 생성 1회 실행(StrictMode/rerender) 방지 */
+  const serviceFlowAutoBootstrapRef = useRef<string | null>(null);
   /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
   const requirementsSendFlightRef = useRef(false);
   /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
@@ -2395,7 +2397,7 @@ export function RequirementsWorkspace({
     [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly, router, showErrorToast, showSuccessToast]
   );
 
-  const handleGenerateServiceFlowDraft = useCallback(async () => {
+  const handleGenerateServiceFlowDraft = useCallback(async (opts?: { silent?: boolean }) => {
     const pid = resolvedProjectId.trim();
     if (!pid) {
       setError("프로젝트에 연결된 뒤 사용할 수 있습니다.");
@@ -2405,7 +2407,7 @@ export function RequirementsWorkspace({
       setError(ideationReadyNotice);
       return;
     }
-    setBusy(true);
+    setServiceFlowDraftBusy(true);
     setError(null);
     try {
       const assets = (stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
@@ -2413,6 +2415,13 @@ export function RequirementsWorkspace({
         title: a.title,
         content: a.content,
       }));
+      const extraAssets: Array<{ type?: string; title?: string; content?: string }> = [];
+      const lastPrompt = String(stateJsonRef.current.lastPromptText ?? "").trim();
+      if (lastPrompt) extraAssets.push({ type: "ideation_summary", title: "아이디어 요약", content: lastPrompt });
+      const draftText = String(stateJsonRef.current.lastUserDraftText ?? "").trim();
+      if (draftText) extraAssets.push({ type: "requirements_draft", title: "사용자 초안", content: draftText });
+      const convo = concatUserContext(room.requirementsConversation.messages).trim();
+      if (convo) extraAssets.push({ type: "requirements_conversation", title: "최근 대화", content: convo.slice(0, 8000) });
       const res = await fetch("/api/requirements/service-flow-draft", {
         method: "POST",
         credentials: "include",
@@ -2421,7 +2430,7 @@ export function RequirementsWorkspace({
           projectId: pid,
           projectName: project?.name ?? "",
           projectDescription: project?.description ?? "",
-          ideationAssets: assets,
+          ideationAssets: [...assets, ...extraAssets],
         }),
       });
       const json = (await res.json()) as {
@@ -2506,15 +2515,44 @@ export function RequirementsWorkspace({
       };
       await persistServiceFlow(next);
       setServiceFlowDraftGenerationCount((n) => n + 1);
-      showSuccessToast("서비스 흐름 초안 생성 완료");
+      if (!opts?.silent) showSuccessToast("서비스 흐름 초안 생성 완료");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "오류";
       setError(msg);
-      showErrorToast(msg);
+      if (!opts?.silent) showErrorToast(msg);
     } finally {
       setServiceFlowDraftBusy(false);
     }
-  }, [resolvedProjectId, ideationReadyForServiceFlow, ideationReadyNotice, project?.name, project?.description, persistServiceFlow, serviceFlow?.createdAt, showSuccessToast, showErrorToast]);
+  }, [
+    resolvedProjectId,
+    ideationReadyForServiceFlow,
+    ideationReadyNotice,
+    project?.name,
+    project?.description,
+    persistServiceFlow,
+    serviceFlow?.createdAt,
+    showSuccessToast,
+    showErrorToast,
+    room.requirementsConversation.messages,
+  ]);
+
+  useEffect(() => {
+    if (activeStage !== "service-flow") return;
+    if (serviceFlowDraftBusy) return;
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    const flowEmpty = !serviceFlow || !(serviceFlow.actors?.length || serviceFlow.steps?.length);
+    if (!flowEmpty) return;
+    const assets = stateJsonRef.current.deliverableAssets ?? [];
+    const hasIdeationAssets = assets.length > 0;
+    const hasConversation = room.requirementsConversation.messages.some((m) => m.role === "human" && String(m.content ?? "").trim());
+    if (!(hasIdeationAssets || hasConversation)) return;
+    if (!ideationReadyForServiceFlow) return;
+    const flightKey = `${pid}:${fetchNonce}:${assets.length}`;
+    if (serviceFlowAutoBootstrapRef.current === flightKey) return;
+    serviceFlowAutoBootstrapRef.current = flightKey;
+    void handleGenerateServiceFlowDraft({ silent: true });
+  }, [activeStage, serviceFlowDraftBusy, resolvedProjectId, serviceFlow, ideationReadyForServiceFlow, fetchNonce, room.requirementsConversation.messages, handleGenerateServiceFlowDraft]);
 
   const handleApproveAllServiceFlowSteps = useCallback(async () => {
     if (!serviceFlow) return;
