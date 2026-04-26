@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
+import { PrototypePreviewPanel } from "@/components/preview/PrototypePreviewPanel";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
@@ -12,6 +13,9 @@ import type {
   RequirementsServiceFlowChecklistDeferralKind,
 } from "@/lib/requirements/requirementsStateJson";
 import { REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { newChatMessage, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
+import { SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE } from "@/lib/requirements/serviceFlowConversation";
 
 type WorkshopRole = "ai" | "expert" | "member" | "user";
 type WorkspaceMode = "chat" | "mapping" | "summary";
@@ -144,19 +148,6 @@ const primaryBtn: CSSProperties = {
   color: "#fff",
 };
 
-const headerMetricBadge: CSSProperties = {
-  display: "inline-flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  gap: 2,
-  border: "1px solid #e2e8f0",
-  background: "#fff",
-  borderRadius: 12,
-  padding: "6px 12px",
-  minWidth: 0,
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-};
-
 const headerMetricBadgeLabel: CSSProperties = {
   fontSize: 11,
   fontWeight: 800,
@@ -164,45 +155,51 @@ const headerMetricBadgeLabel: CSSProperties = {
   letterSpacing: "0.01em",
 };
 
-const headerMetricBadgeValue: CSSProperties = {
-  fontSize: 15,
-  fontWeight: 900,
-  color: "#0f172a",
-  lineHeight: 1.2,
-};
-
-const modeSegmentShell: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "stretch",
-  borderRadius: 12,
-  border: "1px solid #e2e8f0",
-  background: "#f1f5f9",
-  padding: 3,
-  gap: 2,
-  flexShrink: 0,
-};
-
-function modeSegmentBtn(active: boolean): CSSProperties {
-  return {
-    border: "none",
-    borderRadius: 9,
-    padding: "8px 14px",
-    fontSize: 13,
-    fontWeight: 900,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    background: active ? "#fff" : "transparent",
-    color: active ? "#0f172a" : "#64748b",
-    boxShadow: active ? "0 1px 3px rgba(15, 23, 42, 0.12)" : "none",
-  };
-}
-
 function uid(prefix: string): string {
   try {
     return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2)}`;
   } catch {
     return `${prefix}:${Math.random().toString(16).slice(2)}`;
   }
+}
+
+function workshopMessageFromPersisted(m: RequirementsMessage, aiDisplayName: string): WorkshopMessage {
+  const body = String(m.content ?? "").trim();
+  if (m.role === "user") {
+    return { id: m.id, role: "user", name: "사용자", body };
+  }
+  if (m.role === "human") {
+    return { id: m.id, role: "member", name: (m.speakerName || "멤버").trim() || "멤버", body };
+  }
+  if (m.role === "ai") {
+    const name = showInternalAgents ? (m.speakerName || aiDisplayName).trim() || aiDisplayName : aiDisplayName;
+    return { id: m.id, role: "ai", name, body };
+  }
+  return { id: m.id, role: "expert", name: (m.speakerName || "시스템").trim() || "시스템", body };
+}
+
+function buildServiceFlowUserPersist(body: string, currentUserId: string | null): RequirementsMessage {
+  return newChatMessage({
+    role: "user",
+    body,
+    speakerType: "USER",
+    speakerId: currentUserId?.trim() || "me",
+    messageType: "STATEMENT",
+    meta: { internalType: SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE },
+  });
+}
+
+function buildServiceFlowAiPersist(body: string): RequirementsMessage {
+  const name = displayedAiOrchestrator().name;
+  return newChatMessage({
+    role: "ai",
+    body,
+    speakerType: "AI",
+    speakerId: VIRTUAL_AI_PLANNER_ID,
+    speakerName: name,
+    messageType: "ANSWER",
+    meta: { internalType: SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE },
+  });
 }
 
 function normalizeOrder(steps: RequirementsServiceFlowStepV1[]): RequirementsServiceFlowStepV1[] {
@@ -223,14 +220,6 @@ function missingSlotQuestions(slots: Record<ServiceFlowSlotKey, boolean>, limit 
     handoffToFeatures: "다음 기능 정리로 넘길 핵심 기능 후보는 무엇인가요?",
   };
   return ([...REQUIRED_SLOTS, ...RECOMMENDED_SLOTS] as const).filter((slot) => !slots[slot]).slice(0, limit).map((slot) => questions[slot]);
-}
-
-function initialMessages(hasDraft: boolean, slots: Record<ServiceFlowSlotKey, boolean>): WorkshopMessage[] {
-  // Guided interview UX: do not ask user to free-type on entry.
-  // The first AI question is bootstrapped via /api/requirements/service-flow-analyze.
-  void hasDraft;
-  void slots;
-  return [];
 }
 
 function messageTone(role: WorkshopRole): CSSProperties {
@@ -399,6 +388,8 @@ export function RequirementsServiceFlowStage({
   onGenerateAiDraft,
   onApproveAll,
   onRetryGate,
+  persistedServiceFlowMessages,
+  onAppendPersistedServiceFlowMessages,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -418,21 +409,28 @@ export function RequirementsServiceFlowStage({
   readonly onGenerateAiDraft: () => void;
   readonly onApproveAll: () => void;
   readonly onRetryGate: () => void;
+  readonly persistedServiceFlowMessages: readonly RequirementsMessage[];
+  readonly onAppendPersistedServiceFlowMessages: (
+    incoming: readonly RequirementsMessage[],
+  ) => Promise<readonly RequirementsMessage[]>;
 }) {
   void onGenerateAiDraft;
-  const router = useRouter();
-  const search = useSearchParams();
+  void onApproveAll;
   const showScreenLabels = useShowScreenLabels();
-  const [messages, setMessages] = useState<WorkshopMessage[]>(() => initialMessages(Boolean(flow?.steps.length), approval.slots));
+  const aiDisplayName = displayedAiOrchestrator().name;
+  const displayMessages = useMemo(
+    () => persistedServiceFlowMessages.map((m) => workshopMessageFromPersisted(m, aiDisplayName)),
+    [persistedServiceFlowMessages, aiDisplayName],
+  );
   const [input, setInput] = useState("");
   const [replying, setReplying] = useState(false);
   const [quickReplies, setQuickReplies] = useState<string[] | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("chat");
   const [remainingPanelOpen, setRemainingPanelOpen] = useState(false);
-  const [nextStageGateOpen, setNextStageGateOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [prototypePreviewOpen, setPrototypePreviewOpen] = useState(false);
 
   const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
   const hint = progressHint(derivedApproval);
@@ -445,14 +443,6 @@ export function RequirementsServiceFlowStage({
   const chatActive = workspaceMode === "chat";
   const mappingActive = workspaceMode === "mapping";
   const summaryActive = workspaceMode === "summary";
-
-  const modeHydratedRef = useRef(false);
-  useEffect(() => {
-    if (modeHydratedRef.current) return;
-    if (!flow) return;
-    modeHydratedRef.current = true;
-    if (flow.structureLockedAt) setWorkspaceMode("mapping");
-  }, [flow]);
 
   const slotResolveUserMessages: Record<ServiceFlowSlotKey, string> = {
     humanActors: "사람 액터를 누가 쓰는지 정리해 주세요. 액터 목록을 사람/시스템으로 나눠 반영해 주세요.",
@@ -488,12 +478,12 @@ export function RequirementsServiceFlowStage({
     resizeComposer();
   }, [input]);
 
-  const messagesRef = useRef<WorkshopMessage[]>(messages);
+  const messagesRef = useRef<WorkshopMessage[]>(displayMessages);
   const flowRef = useRef<RequirementsServiceFlowV1 | null>(flow);
   const latestAiQuestionRef = useRef<string>(latestAiQuestion);
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+    messagesRef.current = displayMessages;
+  }, [displayMessages]);
   useEffect(() => {
     flowRef.current = flow;
   }, [flow]);
@@ -515,12 +505,6 @@ export function RequirementsServiceFlowStage({
     });
     return serviceFlowParticipants(filtered, currentUserId, replying);
   }, [members, currentUserId, replying, ideationParticipantHumanMemberIds]);
-
-  const goNextStage = () => {
-    const params = new URLSearchParams(search?.toString() ?? "");
-    params.set("stage", "features");
-    router.replace(`/requirements?${params.toString()}`);
-  };
 
   const lockStructureForAssignment = () => {
     if (!flow) return;
@@ -571,22 +555,37 @@ export function RequirementsServiceFlowStage({
     if (draftGenerationCount <= 0) return;
     const timer = window.setTimeout(() => {
       const qs = missingSlotQuestions(derivedApproval.slots, 3);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid("msg"),
-          role: "ai",
-          name: displayedAiOrchestrator().name,
-          body:
-            "초안을 준비했습니다. 수정할 부분만 말씀해 주세요.\n" +
-            (qs.length ? `\n(빠르게 확인)\n${qs.map((q) => `- ${q}`).join("\n")}` : ""),
-        },
-      ]);
+      const body =
+        "초안을 준비했습니다. 수정할 부분만 말씀해 주세요.\n" +
+        (qs.length ? `\n(빠르게 확인)\n${qs.map((q) => `- ${q}`).join("\n")}` : "");
+      void onAppendPersistedServiceFlowMessages([buildServiceFlowAiPersist(body)]);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [draftGenerationCount, derivedApproval.slots, flow?.structureLockedAt]);
+  }, [draftGenerationCount, derivedApproval.slots, flow?.structureLockedAt, onAppendPersistedServiceFlowMessages]);
 
   const actorName = (id: string) => actors.find((a) => a.id === id)?.name ?? id;
+
+  const prototypePreviewFlowStepsDetailed = useMemo(
+    () =>
+      steps.map((s) => ({
+        id: s.id,
+        title: s.title,
+        purpose: s.purpose,
+        primaryActorId: s.primaryActorId,
+        secondaryActorIds: s.secondaryActorIds,
+      })),
+    [steps],
+  );
+  const prototypePreviewActorsDetailed = useMemo(
+    () =>
+      actors.map((a) => ({
+        id: a.id,
+        name: a.name,
+        kind: a.kind,
+        description: a.description,
+      })),
+    [actors],
+  );
 
   const updateStep = (id: string, patch: Partial<RequirementsServiceFlowStepV1>) => {
     if (!flow) return;
@@ -607,15 +606,16 @@ export function RequirementsServiceFlowStage({
     setReplying(true);
     setQuickReplies(null);
 
-    const userMessage: WorkshopMessage = { id: uid("msg"), role: "user", name: "사용자", body };
-    if (!opts?.silentUserAppend) {
-      autoScrollPendingRef.current = true;
-      setMessages((prev) => [...prev, userMessage]);
-    }
-
     void (async () => {
       try {
-        const transcript = [...(messagesRef.current ?? []), ...(opts?.silentUserAppend ? [] : [userMessage])];
+        if (!opts?.silentUserAppend) {
+          autoScrollPendingRef.current = true;
+          const userPersisted = buildServiceFlowUserPersist(body, currentUserId);
+          const nextSlice = await onAppendPersistedServiceFlowMessages([userPersisted]);
+          messagesRef.current = nextSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+        }
+
+        const transcript = [...(messagesRef.current ?? [])];
         const recentMessages = transcript
           .slice(-24)
           .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
@@ -649,15 +649,11 @@ export function RequirementsServiceFlowStage({
           message?: string;
         };
         if (!res.ok || !json.success || !json.data?.updatedFlow) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: uid("msg"),
-              role: "ai",
-              name: displayedAiOrchestrator().name,
-              body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요.",
-            },
+          autoScrollPendingRef.current = true;
+          const errSlice = await onAppendPersistedServiceFlowMessages([
+            buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
           ]);
+          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           setReplying(false);
           return;
         }
@@ -676,25 +672,22 @@ export function RequirementsServiceFlowStage({
         const aiBody = [String(json.data.assistantMessage ?? "").trim(), nextQ].filter(Boolean).join("\n");
         const done = !nextQ && Boolean(json.data.readiness?.readyForNext);
         autoScrollPendingRef.current = true;
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid("msg"),
-            role: "ai",
-            name: displayedAiOrchestrator().name,
-            body:
-              (aiBody || "반영했습니다.") +
-              (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : ""),
-          },
-        ]);
+        const combined =
+          (aiBody || "반영했습니다.") +
+          (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : "");
+        const okSlice = await onAppendPersistedServiceFlowMessages([buildServiceFlowAiPersist(combined)]);
+        messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         setReplying(false);
       } catch {
         autoScrollPendingRef.current = true;
-        setMessages((prev) => [
-          ...prev,
-          { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." },
-        ]);
-        setReplying(false);
+        try {
+          const errSlice = await onAppendPersistedServiceFlowMessages([
+            buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
+          ]);
+          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+        } finally {
+          setReplying(false);
+        }
       }
     })();
   };
@@ -720,66 +713,6 @@ export function RequirementsServiceFlowStage({
     }, 0);
   };
 
-  const mappingIncomplete = Boolean(flow?.structureLockedAt && flow.steps.some((s) => !s.approved));
-  const canProceedToFeatures = Boolean(flow?.structureLockedAt && flow.steps.length && flow.steps.every((s) => s.primaryActorId));
-
-  const tryOpenNextStageGateOrGo = () => {
-    if (!flow?.structureLockedAt) return;
-    if (!flow.steps.every((s) => s.primaryActorId)) return;
-    const eff = countEffectiveRemainingSlots(derivedApproval.slots, flow.checklistDeferrals ?? null);
-    if (eff > 0 || mappingIncomplete) {
-      setNextStageGateOpen(true);
-      return;
-    }
-    onApproveAll();
-    goNextStage();
-  };
-
-  const finishNextStageAsIs = () => {
-    setNextStageGateOpen(false);
-    onApproveAll();
-    goNextStage();
-  };
-
-  const finishNextStageWithPendingMarks = () => {
-    if (!flow) {
-      setNextStageGateOpen(false);
-      return;
-    }
-    const now = new Date().toISOString();
-    const nextD: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> = { ...(flow.checklistDeferrals ?? {}) };
-    for (const k of REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS) {
-      if (!derivedApproval.slots[k] && !nextD[k]) nextD[k] = "pending";
-    }
-    const steps2 = normalizeOrder(
-      flow.steps.map((s) => ({
-        ...s,
-        approved: s.primaryActorId ? true : s.approved,
-        updatedAt: now,
-      })),
-    );
-    onChangeFlow({
-      ...flow,
-      checklistDeferrals: nextD,
-      steps: steps2,
-      updatedAt: now,
-    });
-    setNextStageGateOpen(false);
-    window.setTimeout(() => {
-      onApproveAll();
-      goNextStage();
-    }, 0);
-  };
-
-  const gateBullets = useMemo(() => {
-    const out: string[] = [];
-    for (const k of REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS) {
-      if (!derivedApproval.slots[k] && !deferrals?.[k]) out.push(SLOT_LABELS[k]);
-    }
-    if (mappingIncomplete) out.push("단계별 담당 확정 미완료");
-    return out;
-  }, [derivedApproval.slots, deferrals, mappingIncomplete]);
-
   const bootOnceRef = useRef(false);
   useEffect(() => {
     if (flow?.structureLockedAt) return;
@@ -787,7 +720,7 @@ export function RequirementsServiceFlowStage({
     // Boot message should NOT race with auto draft bootstrap (workspace-level).
     if (bootOnceRef.current) return;
     if (replying) return;
-    if (messages.length > 0) return;
+    if (persistedServiceFlowMessages.length > 0) return;
     if (!ideationReady) return;
     if (generatingDraft) return;
 
@@ -801,14 +734,10 @@ export function RequirementsServiceFlowStage({
         .map((s) => `${s.order}. ${s.title}`)
         .join("\n");
       bootOnceRef.current = true;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid("msg"),
-          role: "ai",
-          name: displayedAiOrchestrator().name,
-          body: `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
-        },
+      void onAppendPersistedServiceFlowMessages([
+        buildServiceFlowAiPersist(
+          `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
+        ),
       ]);
       return;
     }
@@ -819,19 +748,30 @@ export function RequirementsServiceFlowStage({
     bootOnceRef.current = true;
     callAnalyze("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot boot; including callAnalyze would retrigger unnecessarily
-  }, [replying, messages.length, ideationReady, generatingDraft, flow?.steps?.length, flow?.actors?.length, ideationAssets?.length, flow?.structureLockedAt, workspaceMode]);
+  }, [
+    replying,
+    persistedServiceFlowMessages.length,
+    ideationReady,
+    generatingDraft,
+    flow?.steps?.length,
+    flow?.actors?.length,
+    ideationAssets?.length,
+    flow?.structureLockedAt,
+    workspaceMode,
+    onAppendPersistedServiceFlowMessages,
+  ]);
 
   useEffect(() => {
     if (!autoScrollPendingRef.current) return;
     scrollChatToBottom();
-  }, [messages.length, replying]);
+  }, [displayMessages.length, replying]);
 
   const requestOrganize = () => {
     if (workspaceMode !== "chat") return;
     setToolsOpen(false);
     setReplying(true);
     void (async () => {
-      const excerpt = [...messages, { id: "tmp", role: "user" as const, name: "사용자", body: "(정리 요청)" }]
+      const excerpt = [...displayMessages, { id: "tmp", role: "user" as const, name: "사용자", body: "(정리 요청)" }]
         .slice(-24)
         .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
         .join("\n")
@@ -857,10 +797,10 @@ export function RequirementsServiceFlowStage({
           message?: string;
         };
         if (!res.ok || !json.success || !json.data?.updatedFlow) {
-          setMessages((prev) => [
-            ...prev,
-            { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." },
+          const errSlice = await onAppendPersistedServiceFlowMessages([
+            buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
           ]);
+          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           setReplying(false);
           return;
         }
@@ -868,23 +808,21 @@ export function RequirementsServiceFlowStage({
         const nextQ = String(json.data?.nextQuestion ?? "").trim();
         if (nextQ) setLatestAiQuestion(nextQ);
         setQuickReplies(null);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid("msg"),
-            role: "ai",
-            name: displayedAiOrchestrator().name,
-            body: [String(json.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n"),
-          },
+        const okSlice = await onAppendPersistedServiceFlowMessages([
+          buildServiceFlowAiPersist([String(json.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n")),
         ]);
+        messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         setWorkspaceMode("summary");
         setReplying(false);
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "자동 정리에 실패했습니다. 다시 시도해주세요." },
-        ]);
-        setReplying(false);
+        try {
+          const errSlice = await onAppendPersistedServiceFlowMessages([
+            buildServiceFlowAiPersist("자동 정리에 실패했습니다. 다시 시도해주세요."),
+          ]);
+          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+        } finally {
+          setReplying(false);
+        }
       }
     })();
   };
@@ -953,9 +891,6 @@ export function RequirementsServiceFlowStage({
             style={{
               flex: "0 0 auto",
               padding: "10px 20px 8px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
               position: "sticky",
               top: 0,
               zIndex: 6,
@@ -964,108 +899,86 @@ export function RequirementsServiceFlowStage({
               borderBottom: "1px solid rgba(226,232,240,0.75)",
             }}
           >
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={modeSegmentShell} role="tablist" aria-label="작업 모드">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={workspaceMode === "chat"}
-                  style={modeSegmentBtn(workspaceMode === "chat")}
-                  onClick={() => setWorkspaceMode("chat")}
-                >
-                  채팅 협업
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={workspaceMode === "mapping"}
-                  style={modeSegmentBtn(workspaceMode === "mapping")}
-                  onClick={() => setWorkspaceMode("mapping")}
-                >
-                  구조 편집
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={workspaceMode === "summary"}
-                  style={modeSegmentBtn(workspaceMode === "summary")}
-                  onClick={() => setWorkspaceMode("summary")}
-                >
-                  요약 보기
-                </button>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                {structureLocked ? (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "nowrap",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                minWidth: 0,
+                overflowX: "auto",
+                overscrollBehaviorX: "contain",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "nowrap",
+                  alignItems: "center",
+                  gap: 10,
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#0f172a",
+                  lineHeight: 1.35,
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span title={hint ?? undefined}>
+                  <span style={headerMetricBadgeLabel}>설계 완성도</span>{" "}
+                  <span style={{ fontWeight: 900, fontSize: 15 }}>{derivedApproval.progressPercent}%</span>
+                </span>
+                <span style={{ color: "#cbd5e1", fontWeight: 500 }} aria-hidden>
+                  |
+                </span>
+                {remainingChecklistItems > 0 ? (
                   <button
                     type="button"
-                    onClick={tryOpenNextStageGateOrGo}
-                    disabled={!canProceedToFeatures}
-                    style={{ ...primaryBtn, opacity: canProceedToFeatures ? 1 : 0.55 }}
+                    onClick={() => setRemainingPanelOpen(true)}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      padding: 0,
+                      margin: 0,
+                      cursor: "pointer",
+                      font: "inherit",
+                      color: "inherit",
+                      textAlign: "left",
+                    }}
                   >
-                    기능 정리로 이동
+                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
+                    <span style={{ fontWeight: 900, fontSize: 15, color: "#0369a1" }}>{remainingChecklistItems}개</span>
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => lockStructureForAssignment()}
-                    disabled={!derivedApproval.ready}
-                    style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55 }}
-                  >
-                    서비스 흐름 확정
-                  </button>
+                  <span>
+                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
+                    <span style={{ fontWeight: 900, fontSize: 15 }}>0개</span>
+                  </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setChatExpanded((v) => !v)}
-                  aria-label={chatExpanded ? "채팅 축소" : "채팅 확대"}
-                  title={chatExpanded ? "채팅 축소" : "채팅 확대"}
-                  style={{
-                    border: "1px solid #cbd5e1",
-                    background: chatExpanded ? "#f0fdfa" : "#fff",
-                    borderRadius: 10,
-                    width: 36,
-                    height: 36,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#0f172a",
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  <ExpandIcon expanded={chatExpanded} />
-                </button>
               </div>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 8 }}>
-              <div style={headerMetricBadge} title={hint ?? undefined}>
-                <span style={headerMetricBadgeLabel}>설계 완성도</span>
-                <span style={headerMetricBadgeValue}>{derivedApproval.progressPercent}%</span>
-              </div>
-              <div style={headerMetricBadge}>
-                <span style={headerMetricBadgeLabel}>흐름 단계</span>
-                <span style={headerMetricBadgeValue}>{flow?.steps?.length ?? 0}개</span>
-              </div>
-              {remainingChecklistItems > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setRemainingPanelOpen(true)}
-                  style={{
-                    ...headerMetricBadge,
-                    cursor: "pointer",
-                    borderColor: "#38bdf8",
-                    background: "#f0f9ff",
-                  }}
-                >
-                  <span style={headerMetricBadgeLabel}>남은 결정사항</span>
-                  <span style={headerMetricBadgeValue}>{remainingChecklistItems}개</span>
-                </button>
-              ) : (
-                <div style={headerMetricBadge}>
-                  <span style={headerMetricBadgeLabel}>남은 결정사항</span>
-                  <span style={headerMetricBadgeValue}>0개</span>
-                </div>
-              )}
+              <div style={{ flex: "1 1 8px", minWidth: 0 }} aria-hidden />
+              <button
+                type="button"
+                onClick={() => setChatExpanded((v) => !v)}
+                aria-label={chatExpanded ? "채팅 축소" : "채팅 확대"}
+                title={chatExpanded ? "채팅 축소" : "채팅 확대"}
+                style={{
+                  border: "1px solid #cbd5e1",
+                  background: chatExpanded ? "#f0fdfa" : "#fff",
+                  borderRadius: 10,
+                  width: 36,
+                  height: 36,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#0f172a",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <ExpandIcon expanded={chatExpanded} />
+              </button>
             </div>
           </div>
 
@@ -1136,26 +1049,10 @@ export function RequirementsServiceFlowStage({
             ) : null}
             {ideationReady && mappingActive ? (
               <div style={{ maxWidth: 660, margin: "0 auto", width: "100%", display: "grid", gap: 12 }}>
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
-                  <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
-                    ← 채팅 협업으로
-                  </button>
-                  <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
-                    요약 보기
-                  </button>
-                </div>
                 {!structureLocked ? (
                   <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb" }}>
                     <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e", lineHeight: 1.55 }}>
-                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬거나 아래에서 구조를 확정하세요.
-                    </div>
-                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn }}>
-                        채팅으로 돌아가기
-                      </button>
-                      <button type="button" onClick={() => lockStructureForAssignment()} disabled={!derivedApproval.ready} style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55 }}>
-                        서비스 흐름 확정
-                      </button>
+                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 하단의 「서비스 흐름 확정」으로 구조를 확정하세요.
                     </div>
                   </div>
                 ) : (
@@ -1235,7 +1132,7 @@ export function RequirementsServiceFlowStage({
                     </div>
                   </div>
                 ) : null}
-                {messages.map((message) => (
+                {displayMessages.map((message) => (
                   <div key={message.id} style={{ ...messageTone(message.role), border: "1px solid", borderRadius: 14, padding: "10px 12px", maxWidth: message.role === "user" ? "78%" : 620, boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)" }}>
                     <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: "#64748b" }}>
                       {message.role === "user"
@@ -1250,7 +1147,7 @@ export function RequirementsServiceFlowStage({
                   </div>
                 ))}
                 {replying ? <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>AI 기획자가 반영 중입니다...</div> : null}
-                {!generatingDraft && !replying && messages.length === 0 ? (
+                {!generatingDraft && !replying && displayMessages.length === 0 ? (
                   <div
                     style={{
                       ...messageTone("ai"),
@@ -1264,7 +1161,7 @@ export function RequirementsServiceFlowStage({
                     <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: "#64748b" }}>AI · {displayedAiOrchestrator().name}</div>
                     <div style={{ fontSize: 14, color: "#0f172a", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
                       {structureLocked
-                        ? "서비스 흐름 구조가 확정된 상태입니다.\n\n「구조 편집」에서 단계별 담당을 조정할 수 있고, 이 채팅에서는 메시지를 입력해 흐름·액터·문구를 추가로 다듬을 수 있습니다."
+                        ? "서비스 흐름 구조가 확정된 상태입니다.\n\n입력창 왼쪽 + 메뉴의 「구조 편집」에서 단계별 담당을 조정할 수 있고, 이 채팅에서는 메시지를 입력해 흐름·액터·문구를 추가로 다듬을 수 있습니다."
                         : "표시할 메시지가 없습니다.\n\n메시지를 입력하거나 아래 빠른 동작 칩을 눌러 AI 기획자와 흐름을 함께 정리해 보세요."}
                     </div>
                   </div>
@@ -1308,12 +1205,10 @@ export function RequirementsServiceFlowStage({
                     { label: "담당 지정", action: () => callAnalyze("각 단계 담당자를 지정하려고 합니다. 단계별 담당을 제안하고 primaryActorId로 반영해 주세요.") },
                     { label: "승인 추가", action: () => callAnalyze("승인/확정 단계가 필요합니다. 승인 단계를 흐름에 추가하고 담당도 지정해 주세요.") },
                     { label: "예외 흐름", action: () => callAnalyze("수정 요청/반려 같은 예외 흐름이 필요합니다. 예외 단계를 흐름에 반영해 주세요.") },
-                    { label: "요약 보기", action: () => setWorkspaceMode("summary") },
                   ]
                 : [
                     { label: "액터 추가", action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요.") },
                     { label: "흐름 정리", action: () => callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요.") },
-                    { label: "요약 보기", action: () => setWorkspaceMode("summary") },
                   ]
               ).map((it) => (
                 <button
@@ -1363,10 +1258,27 @@ export function RequirementsServiceFlowStage({
                   justifyContent: "space-between",
                 }}
               >
-                <span>요약 모드입니다. 채팅에서 계속 다듬을 수 있습니다.</span>
-                <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
-                  ← 채팅 협업
+                <button type="button" onClick={() => setPrototypePreviewOpen(true)} style={{ ...btn, borderRadius: 999 }}>
+                  프로토타입 미리보기
                 </button>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginLeft: "auto" }}>
+                  {!structureLocked ? (
+                    <button
+                      type="button"
+                      onClick={() => lockStructureForAssignment()}
+                      disabled={!derivedApproval.ready}
+                      style={{ ...primaryBtn, borderRadius: 999, opacity: derivedApproval.ready ? 1 : 0.55 }}
+                    >
+                      서비스 흐름 확정
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={() => setWorkspaceMode("mapping")} style={{ ...btn, borderRadius: 999 }}>
+                    구조 편집
+                  </button>
+                  <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
+                    ← 채팅 협업
+                  </button>
+                </div>
               </div>
             </div>
           ) : mappingActive && structureLocked ? (
@@ -1375,14 +1287,19 @@ export function RequirementsServiceFlowStage({
               style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}
             >
               <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-                <button
-                  type="button"
-                  onClick={approveAllMappingOwners}
-                  disabled={!steps.length || !steps.every((s) => s.primaryActorId)}
-                  style={{ ...primaryBtn, opacity: steps.length && steps.every((s) => s.primaryActorId) ? 1 : 0.55 }}
-                >
-                  모든 담당 확정
-                </button>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={approveAllMappingOwners}
+                    disabled={!steps.length || !steps.every((s) => s.primaryActorId)}
+                    style={{ ...primaryBtn, opacity: steps.length && steps.every((s) => s.primaryActorId) ? 1 : 0.55 }}
+                  >
+                    모든 담당 확정
+                  </button>
+                  <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
+                    요약 보기
+                  </button>
+                </div>
                 <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
                   ← 채팅 협업
                 </button>
@@ -1393,7 +1310,20 @@ export function RequirementsServiceFlowStage({
               className="jyo-service-flow-composer-shell"
               style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}
             >
-              <div style={{ maxWidth: 660, margin: "0 auto" }}>
+              <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => lockStructureForAssignment()}
+                    disabled={!derivedApproval.ready}
+                    style={{ ...primaryBtn, borderRadius: 999, opacity: derivedApproval.ready ? 1 : 0.55 }}
+                  >
+                    서비스 흐름 확정
+                  </button>
+                  <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
+                    요약 보기
+                  </button>
+                </div>
                 <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
                   ← 채팅 협업
                 </button>
@@ -1401,6 +1331,18 @@ export function RequirementsServiceFlowStage({
             </div>
           ) : (
             <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
+              {!structureLocked ? (
+                <div style={{ maxWidth: 660, margin: "0 auto 10px", display: "flex", flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => lockStructureForAssignment()}
+                    disabled={!derivedApproval.ready}
+                    style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55, whiteSpace: "nowrap" }}
+                  >
+                    서비스 흐름 확정
+                  </button>
+                </div>
+              ) : null}
               <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0", borderRadius: 20, background: "#fff", padding: 10, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
                 <div style={{ position: "relative" }}>
                   <button
@@ -1429,6 +1371,17 @@ export function RequirementsServiceFlowStage({
                     >
                       <button type="button" onClick={requestOrganize} style={{ ...btn, width: "100%", textAlign: "left" }}>
                         정리 요청
+                      </button>
+                      <div style={{ height: 6 }} />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setToolsOpen(false);
+                          setWorkspaceMode("mapping");
+                        }}
+                        style={{ ...btn, width: "100%", textAlign: "left" }}
+                      >
+                        구조 편집
                       </button>
                       <div style={{ height: 6 }} />
                       <button
@@ -1543,55 +1496,20 @@ export function RequirementsServiceFlowStage({
             </div>
           ) : null}
 
-          {nextStageGateOpen ? (
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="다음 단계 진행"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 46,
-                background: "rgba(15,23,42,0.45)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 16,
-              }}
-              onClick={() => setNextStageGateOpen(false)}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  width: "min(480px, 100%)",
-                  borderRadius: 16,
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
-                  padding: 16,
-                }}
-              >
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>아직 확정되지 않은 항목이 있습니다.</div>
-                <ul style={{ margin: "12px 0 0", paddingLeft: 20, fontSize: 13.5, color: "#334155", lineHeight: 1.55 }}>
-                  {gateBullets.map((b) => (
-                    <li key={b}>{b}</li>
-                  ))}
-                </ul>
-                <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800, color: "#64748b" }}>어떻게 진행하시겠습니까?</div>
-                <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
-                  <button type="button" onClick={finishNextStageAsIs} style={{ ...primaryBtn, width: "100%" }}>
-                    현재 상태로 확정 후 이동
-                  </button>
-                  <button type="button" onClick={finishNextStageWithPendingMarks} style={{ ...btn, width: "100%" }}>
-                    미정의 상태로 이동
-                  </button>
-                  <button type="button" onClick={() => setNextStageGateOpen(false)} style={{ ...btn, width: "100%" }}>
-                    계속 보완하기
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
+          <PrototypePreviewDraggableShell
+            open={prototypePreviewOpen}
+            onClose={() => setPrototypePreviewOpen(false)}
+            title="프로토타입 미리보기"
+          >
+            <PrototypePreviewPanel
+              projectName={projectName}
+              projectDescription={projectDescription}
+              ideationAssets={ideationAssets}
+              flowSteps={prototypePreviewFlowStepsDetailed}
+              actors={prototypePreviewActorsDetailed}
+            />
+          </PrototypePreviewDraggableShell>
+
         </main>
       </div>
     </section>
