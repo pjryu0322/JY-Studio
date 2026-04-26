@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import { PrototypePreviewPanel } from "@/components/preview/PrototypePreviewPanel";
+import {
+  buildFlowFingerprintJson,
+  buildIdeationFingerprint,
+  computeDesignFingerprint,
+} from "@/lib/prototype/prototypeGenerationLocalStore";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
@@ -416,6 +421,7 @@ export function RequirementsServiceFlowStage({
 }) {
   void onGenerateAiDraft;
   void onApproveAll;
+  void approval;
   const showScreenLabels = useShowScreenLabels();
   const aiDisplayName = displayedAiOrchestrator().name;
   const displayMessages = useMemo(
@@ -585,6 +591,24 @@ export function RequirementsServiceFlowStage({
         description: a.description,
       })),
     [actors],
+  );
+
+  const prototypeDesignFingerprint = useMemo(
+    () =>
+      computeDesignFingerprint({
+        flowFingerprint: buildFlowFingerprintJson(flow),
+        ideationFingerprint: buildIdeationFingerprint(ideationAssets),
+        featureTitlesFingerprint: "",
+      }),
+    [flow, ideationAssets],
+  );
+
+  const prototypeChecklistGapLabels = useMemo(
+    () =>
+      unresolvedChecklistEntries(derivedApproval.slots, deferrals)
+        .filter((row) => !row.deferral)
+        .map((row) => `${row.label} 미정`),
+    [derivedApproval.slots, deferrals],
   );
 
   const updateStep = (id: string, patch: Partial<RequirementsServiceFlowStepV1>) => {
@@ -1259,7 +1283,7 @@ export function RequirementsServiceFlowStage({
                 }}
               >
                 <button type="button" onClick={() => setPrototypePreviewOpen(true)} style={{ ...btn, borderRadius: 999 }}>
-                  프로토타입 미리보기
+                  프로토타입 생성
                 </button>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginLeft: "auto" }}>
                   {!structureLocked ? (
@@ -1499,14 +1523,25 @@ export function RequirementsServiceFlowStage({
           <PrototypePreviewDraggableShell
             open={prototypePreviewOpen}
             onClose={() => setPrototypePreviewOpen(false)}
-            title="프로토타입 미리보기"
+            title="프로토타입 생성"
+            modalWidth="min(1180px, calc(100vw - 20px))"
           >
             <PrototypePreviewPanel
+              key={projectId}
+              projectId={projectId}
               projectName={projectName}
               projectDescription={projectDescription}
               ideationAssets={ideationAssets}
               flowSteps={prototypePreviewFlowStepsDetailed}
               actors={prototypePreviewActorsDetailed}
+              designReadinessPercent={derivedApproval.progressPercent}
+              checklistGapLabels={prototypeChecklistGapLabels}
+              unresolvedChecklistCount={remainingChecklistItems}
+              designFingerprint={prototypeDesignFingerprint}
+              onNavigateFix={() => {
+                setPrototypePreviewOpen(false);
+                setWorkspaceMode("chat");
+              }}
             />
           </PrototypePreviewDraggableShell>
 

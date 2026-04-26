@@ -19,11 +19,14 @@ export function PrototypePreviewDraggableShell({
   onClose,
   title,
   children,
+  modalWidth = "min(960px, calc(100vw - 32px))",
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly title: string;
   readonly children: ReactNode;
+  /** CSS width for the dialog panel (e.g. min(1180px, calc(100vw - 20px))) */
+  readonly modalWidth?: string;
 }) {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -124,7 +127,7 @@ export function PrototypePreviewDraggableShell({
           position: "fixed",
           left: position.x,
           top: position.y,
-          width: "min(960px, calc(100vw - 32px))",
+          width: modalWidth,
           maxHeight: "min(106vh, 1035px)",
           display: "flex",
           flexDirection: "column",
