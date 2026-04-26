@@ -511,37 +511,44 @@ export function RequirementsServiceFlowStage({
     callAnalyze(body);
   };
 
+  const bootOnceRef = useRef(false);
   useEffect(() => {
-    // On first entry: immediately start guided interview (no blank-input requirement).
+    // Boot message should NOT race with auto draft bootstrap (workspace-level).
+    if (bootOnceRef.current) return;
     if (replying) return;
     if (messages.length > 0) return;
-    const t = window.setTimeout(() => {
-      const hasSteps = Boolean(flow?.steps?.length);
-      if (hasSteps) {
-        const list = normalizeOrder(flow?.steps ?? [])
-          .slice(0, 8)
-          .map((s) => `${s.order}. ${s.title}`)
-          .join("\n");
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid("msg"),
-            role: "ai",
-            name: displayedAiOrchestrator().name,
-            body: `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
-          },
-        ]);
-        return;
-      }
-      if ((ideationAssets?.length ?? 0) > 0) {
-        callAnalyze("아이디어 구체화 내용을 기반으로 초안 생성", { silentUserAppend: true });
-        return;
-      }
-      callAnalyze("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
-    }, 0);
-    return () => window.clearTimeout(t);
+    if (!ideationReady) return;
+    if (generatingDraft) return;
+
+    const hasSteps = Boolean(flow?.steps?.length);
+    const hasAnyFlow = Boolean(flow?.actors?.length || flow?.steps?.length);
+    const hasIdeationAssets = (ideationAssets?.length ?? 0) > 0;
+
+    if (hasSteps) {
+      const list = normalizeOrder(flow?.steps ?? [])
+        .slice(0, 8)
+        .map((s) => `${s.order}. ${s.title}`)
+        .join("\n");
+      bootOnceRef.current = true;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: uid("msg"),
+          role: "ai",
+          name: displayedAiOrchestrator().name,
+          body: `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
+        },
+      ]);
+      return;
+    }
+
+    // If ideation context exists but flow is still empty, wait for auto-bootstrap draft to populate state.
+    if (hasIdeationAssets && !hasAnyFlow) return;
+
+    bootOnceRef.current = true;
+    callAnalyze("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [replying, messages.length, ideationReady, generatingDraft, flow?.steps?.length, flow?.actors?.length, ideationAssets?.length]);
 
   const requestOrganize = () => {
     setToolsOpen(false);
