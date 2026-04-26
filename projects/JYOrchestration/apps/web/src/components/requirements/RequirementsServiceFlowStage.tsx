@@ -167,6 +167,18 @@ function messageTone(role: WorkshopRole): CSSProperties {
   return { background: "#fff", borderColor: "#e2e8f0", justifySelf: "start" };
 }
 
+function progressHint(approval: ApprovalState): string | null {
+  const slots = approval.slots;
+  if (!slots.humanActors) return "사람 액터 미확정";
+  if (!slots.systemActors) return "시스템 액터 미확정";
+  if (!slots.mainFlow) return "주요 서비스 흐름 미확정";
+  if (!slots.actorResponsibility) return "담당(매핑) 미확정";
+  if (!slots.accessControl) return "권한 범위 미확정";
+  if (!slots.exceptionFlow) return "예외/수정 흐름 미확정";
+  if (!slots.handoffToFeatures) return "핵심 기능 후보 미확정";
+  return null;
+}
+
 function participantMessageRole(member: ServiceFlowParticipant): WorkshopRole {
   const role = member.roleLabel.trim();
   if (role === "domain-expert" || role === "domainExpert") return "expert";
@@ -192,15 +204,8 @@ function serviceFlowParticipants(members: readonly ProjectMemberForServiceFlow[]
   ]);
   const rows = [...members]
     .filter((m) => {
-      if (m.memberType === "AI") {
-        if (showInternalAgents) {
-          const role = (m.aiOrchestrationRole ?? "").trim();
-          return role === "planner" || role === "service-designer" || role === "domain-expert" || role === "serviceFlowExpert" || role === "domainExpert";
-        }
-        // UI simplified: only show optional expert AI (domain-expert) as separate row.
-        const role = (m.aiOrchestrationRole ?? "").trim();
-        return role === "domain-expert" || role === "domainExpert";
-      }
+      // UI policy: show a single AI persona row ("AI 기획자") in this stage.
+      if (m.memberType === "AI") return false;
       return m.memberType === "HUMAN";
     })
     .sort((a, b) => {
@@ -222,37 +227,19 @@ function serviceFlowParticipants(members: readonly ProjectMemberForServiceFlow[]
       const isAi = m.memberType === "AI";
       return {
         id: m.memberId,
-        name: (
-          isAi
-            ? showInternalAgents
-              ? m.displayName || m.email || "AI 멤버"
-              : role === "domain-expert" || role === "domainExpert"
-                ? "업무 전문가"
-                : "AI 멤버"
-            : m.displayName || m.email || "사용자"
-        ).slice(0, 28),
+        name: (isAi ? displayedAiOrchestrator().name : m.displayName || m.email || "사용자").slice(0, 28),
         roleLabel: role,
         connection: isAi ? (replying ? "응답중" : "연결됨") : currentUserId && m.userId === currentUserId ? "온라인" : "대기",
         lastResponse: isAi ? (replying ? "응답 대기" : "마지막 응답 성공") : undefined,
       };
     });
-  if (!showInternalAgents) {
-    rows.unshift({
-      id: "visible:ai-orchestrator",
-      name: displayedAiOrchestrator().name,
-      roleLabel: "AI",
-      connection: replying ? "응답중" : "연결됨",
-      lastResponse: replying ? displayedAiStatusForStage("service-flow") : "마지막 응답 성공",
-    });
-  } else if (!rows.some((p) => p.roleLabel === "service-designer")) {
-    rows.splice(1, 0, {
-      id: "virtual:service-designer",
-      name: "AI 서비스 설계자",
-      roleLabel: "service-designer",
-      connection: replying ? "응답중" : "연결됨",
-      lastResponse: replying ? "응답 대기" : "마지막 응답 성공",
-    });
-  }
+  rows.unshift({
+    id: "visible:ai-orchestrator",
+    name: displayedAiOrchestrator().name,
+    roleLabel: "AI",
+    connection: replying ? "응답중" : "연결됨",
+    lastResponse: replying ? displayedAiStatusForStage("service-flow") : "마지막 응답 성공",
+  });
   return rows;
 }
 
@@ -309,6 +296,8 @@ export function RequirementsServiceFlowStage({
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
 
+  const hint = progressHint(approval);
+
   const messagesRef = useRef<WorkshopMessage[]>(messages);
   const flowRef = useRef<RequirementsServiceFlowV1 | null>(flow);
   const latestAiQuestionRef = useRef<string>(latestAiQuestion);
@@ -355,7 +344,7 @@ export function RequirementsServiceFlowStage({
         {
           id: uid("msg"),
           role: "ai",
-          name: "AI 서비스 설계자",
+          name: displayedAiOrchestrator().name,
           body: qs.length
             ? `아이디어 초안을 바탕으로 정리했습니다. 부족한 슬롯만 이어서 질문하겠습니다.\n${qs.map((q) => `- ${q}`).join("\n")}`
             : "아이디어 초안을 바탕으로 필요한 내용이 모두 정리되었습니다. 실제 업무 예외만 마지막으로 확인해 주세요.",
@@ -478,10 +467,7 @@ export function RequirementsServiceFlowStage({
     // On first entry: immediately start guided interview (no blank-input requirement).
     if (replying) return;
     if (messages.length > 0) return;
-    callAnalyze(
-      "인터뷰 시작. 운영 흐름을 빠르게 정리하겠습니다. 먼저 회의록 초안은 누가 작성하나요?",
-      { silentUserAppend: true }
-    );
+    callAnalyze("인터뷰 시작", { silentUserAppend: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -607,7 +593,7 @@ export function RequirementsServiceFlowStage({
         <main className="jyo-service-flow-chat-shell" style={chatWrap} aria-label="협업 채팅">
           <div style={{ flex: "0 0 auto", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 999, padding: "8px 12px", fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-              서비스 흐름 정리도 {approval.progressPercent}% · {approval.filledSlotCount}/7
+              서비스 흐름 정리도 {approval.progressPercent}%{hint ? ` (${hint})` : ""} · {approval.filledSlotCount}/7
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button
@@ -635,7 +621,9 @@ export function RequirementsServiceFlowStage({
           </div>
 
           <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "0 20px 14px", display: "grid", gap: 10, alignContent: "start" }}>
-            <DraftSummaryCard flowReady={Boolean(actors.length || steps.length)} onOpenCanvas={() => setCanvasOpen(true)} />
+            <div style={{ position: "sticky", top: 0, zIndex: 4, paddingTop: 12, background: "linear-gradient(180deg, #f8fafc 70%, rgba(248,250,252,0))" }}>
+              <DraftSummaryCard flowReady={Boolean(actors.length || steps.length)} onOpenCanvas={() => setCanvasOpen(true)} />
+            </div>
             {!ideationReady ? (
               <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb", maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.5 }}>{ideationReadyNotice}</div>
@@ -890,7 +878,9 @@ function DraftCanvas({
       <div style={{ flex: "0 0 auto", padding: "14px 16px", borderBottom: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>액터 및 서비스 흐름 초안</div>
-          <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: "#64748b" }}>서비스 흐름 정리도 {approval.progressPercent}% · {approval.filledSlotCount}/7</div>
+          <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: "#64748b" }}>
+            서비스 흐름 정리도 {approval.progressPercent}%{progressHint(approval) ? ` (${progressHint(approval)})` : ""} · {approval.filledSlotCount}/7
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <button
