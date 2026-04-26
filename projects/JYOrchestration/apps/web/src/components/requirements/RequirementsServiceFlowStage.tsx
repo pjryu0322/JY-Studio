@@ -346,6 +346,30 @@ export function RequirementsServiceFlowStage({
   const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
   const hint = progressHint(derivedApproval);
 
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollPendingRef = useRef(false);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const scrollChatToBottom = () => {
+    autoScrollPendingRef.current = true;
+    window.requestAnimationFrame(() => {
+      const el = chatScrollRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+      autoScrollPendingRef.current = false;
+    });
+  };
+
+  const resizeComposer = () => {
+    const el = composerTextareaRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  };
+  useEffect(() => {
+    resizeComposer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]);
+
   const messagesRef = useRef<WorkshopMessage[]>(messages);
   const flowRef = useRef<RequirementsServiceFlowV1 | null>(flow);
   const latestAiQuestionRef = useRef<string>(latestAiQuestion);
@@ -418,7 +442,10 @@ export function RequirementsServiceFlowStage({
     setQuickReplies(null);
 
     const userMessage: WorkshopMessage = { id: uid("msg"), role: "user", name: "사용자", body };
-    if (!opts?.silentUserAppend) setMessages((prev) => [...prev, userMessage]);
+    if (!opts?.silentUserAppend) {
+      autoScrollPendingRef.current = true;
+      setMessages((prev) => [...prev, userMessage]);
+    }
 
     void (async () => {
       try {
@@ -482,6 +509,7 @@ export function RequirementsServiceFlowStage({
 
         const aiBody = [String(json.data.assistantMessage ?? "").trim(), nextQ].filter(Boolean).join("\n");
         const done = !nextQ && Boolean(json.data.readiness?.readyForNext);
+        autoScrollPendingRef.current = true;
         setMessages((prev) => [
           ...prev,
           {
@@ -495,6 +523,7 @@ export function RequirementsServiceFlowStage({
         ]);
         setReplying(false);
       } catch {
+        autoScrollPendingRef.current = true;
         setMessages((prev) => [
           ...prev,
           { id: uid("msg"), role: "ai", name: displayedAiOrchestrator().name, body: "지금은 자동 반영에 실패했습니다. 다시 시도해 주세요." },
@@ -509,6 +538,7 @@ export function RequirementsServiceFlowStage({
     if (!body) return;
     setInput("");
     callAnalyze(body);
+    scrollChatToBottom();
   };
 
   const bootOnceRef = useRef(false);
@@ -549,6 +579,12 @@ export function RequirementsServiceFlowStage({
     callAnalyze("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replying, messages.length, ideationReady, generatingDraft, flow?.steps?.length, flow?.actors?.length, ideationAssets?.length]);
+
+  useEffect(() => {
+    if (!autoScrollPendingRef.current) return;
+    scrollChatToBottom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, replying]);
 
   const requestOrganize = () => {
     setToolsOpen(false);
@@ -736,7 +772,10 @@ export function RequirementsServiceFlowStage({
             </div>
           </div>
 
-          <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "12px 20px 14px", display: "grid", gap: 10, alignContent: "start" }}>
+          <div
+            ref={chatScrollRef}
+            style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "12px 20px 14px", display: "grid", gap: 10, alignContent: "start" }}
+          >
             {!ideationReady ? (
               <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb", maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.5 }}>{ideationReadyNotice}</div>
@@ -905,7 +944,8 @@ export function RequirementsServiceFlowStage({
                   </div>
                 ) : null}
               </div>
-              <input
+              <textarea
+                ref={composerTextareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -915,7 +955,21 @@ export function RequirementsServiceFlowStage({
                   }
                 }}
                 placeholder="메시지를 입력하세요"
-                style={{ flex: 1, minWidth: 0, border: "none", outline: "none", borderRadius: 14, background: "#f1f5f9", padding: "14px 16px", fontSize: 14 }}
+                rows={1}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  border: "none",
+                  outline: "none",
+                  borderRadius: 14,
+                  background: "#f1f5f9",
+                  padding: "14px 16px",
+                  fontSize: 14,
+                  resize: "none",
+                  maxHeight: 160,
+                  overflowY: "auto",
+                  lineHeight: 1.35,
+                }}
               />
               <button type="button" onClick={sendMessage} aria-label="전송" style={{ width: 46, height: 46, borderRadius: 999, border: "1px solid #0f766e", background: "#0f766e", color: "#fff", fontSize: 18, fontWeight: 900, cursor: "pointer" }}>
                 ▶
