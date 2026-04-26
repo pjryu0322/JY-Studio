@@ -740,7 +740,7 @@ export function RequirementsServiceFlowStage({
                       position: "absolute",
                       left: 0,
                       bottom: 52,
-                      width: 220,
+                      width: 200,
                       borderRadius: 14,
                       border: "1px solid #e2e8f0",
                       background: "#fff",
@@ -764,27 +764,6 @@ export function RequirementsServiceFlowStage({
                       style={{ ...btn, width: "100%", textAlign: "left", opacity: actors.length || steps.length ? 1 : 0.55 }}
                     >
                       결과물 보기
-                    </button>
-                    <div style={{ height: 6 }} />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setToolsOpen(false);
-                        onGenerateAiDraft();
-                      }}
-                      disabled={!ideationReady || generatingDraft}
-                      style={{ ...btn, width: "100%", textAlign: "left", opacity: !ideationReady || generatingDraft ? 0.55 : 1 }}
-                    >
-                      {generatingDraft ? "초안 다시 만들기 (생성 중...)" : "초안 다시 만들기"}
-                    </button>
-                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed", marginTop: 6 }}>
-                      액터 재정리 (준비중)
-                    </button>
-                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed", marginTop: 6 }}>
-                      흐름 재정리 (준비중)
-                    </button>
-                    <button type="button" disabled style={{ ...btn, width: "100%", textAlign: "left", opacity: 0.5, cursor: "not-allowed", marginTop: 6 }}>
-                      담당 매핑 재정리 (준비중)
                     </button>
                   </div>
                 ) : null}
