@@ -19,6 +19,7 @@ type ServiceFlowSlotKey =
   | "systemActors"
   | "mainFlow"
   | "actorResponsibility"
+  | "approvalStep"
   | "exceptionFlow"
   | "accessControl"
   | "handoffToFeatures";
@@ -67,13 +68,14 @@ const SLOT_LABELS: Record<ServiceFlowSlotKey, string> = {
   systemActors: "시스템 액터",
   mainFlow: "주요 흐름",
   actorResponsibility: "단계별 담당",
+  approvalStep: "승인/확정 단계",
   exceptionFlow: "예외 흐름",
   accessControl: "권한 범위",
   handoffToFeatures: "기능 후보",
 };
 
 const REQUIRED_SLOTS: readonly ServiceFlowSlotKey[] = ["humanActors", "systemActors", "mainFlow", "actorResponsibility"];
-const RECOMMENDED_SLOTS: readonly ServiceFlowSlotKey[] = ["exceptionFlow", "accessControl", "handoffToFeatures"];
+const RECOMMENDED_SLOTS: readonly ServiceFlowSlotKey[] = ["approvalStep", "exceptionFlow", "accessControl", "handoffToFeatures"];
 
 const shell: CSSProperties = {
   flex: "1 1 auto",
@@ -146,6 +148,7 @@ function missingSlotQuestions(slots: Record<ServiceFlowSlotKey, boolean>, limit 
     systemActors: "시스템이 자동으로 처리하는 단계는 무엇인가요?",
     mainFlow: "사용자가 처음부터 끝까지 거치는 주요 순서를 3단계 이상으로 말해 주실 수 있나요?",
     actorResponsibility: "각 단계의 최종 책임자는 누구인가요?",
+    approvalStep: "승인/확정(결재) 단계가 필요한가요? 필요하다면 누가 승인하나요?",
     exceptionFlow: "반려, 수정 요청, 재처리 같은 예외 흐름이 필요한가요?",
     accessControl: "누가 열람하거나 수정할 수 있는지 권한 범위가 있나요?",
     handoffToFeatures: "다음 기능 정리로 넘길 핵심 기능 후보는 무엇인가요?",
@@ -174,6 +177,7 @@ function progressHint(approval: ApprovalState): string | null {
   if (!slots.systemActors) return "시스템 액터 미확정";
   if (!slots.mainFlow) return "주요 서비스 흐름 미확정";
   if (!slots.actorResponsibility) return "담당(매핑) 미확정";
+  if (!slots.approvalStep) return "승인/확정 단계 미확정";
   if (!slots.accessControl) return "권한 범위 미확정";
   if (!slots.exceptionFlow) return "예외/수정 흐름 미확정";
   if (!slots.handoffToFeatures) return "핵심 기능 후보 미확정";
@@ -187,17 +191,19 @@ function deriveApprovalFromFlow(flow: RequirementsServiceFlowV1 | null): Approva
   const hasSystemActors = (flow?.actors ?? []).some((a) => a.kind === "system");
   const stepsReady = (flow?.steps.length ?? 0) >= 3;
   const mapped = Boolean(flow?.steps.length) && (flow?.steps ?? []).every((s) => s.primaryActorId && actorIds.has(s.primaryActorId));
+  const hasApprovalStep = /승인|확정|결재|결정/.test(text);
   const slots: Record<ServiceFlowSlotKey, boolean> = {
     humanActors: hasHumanActors,
     systemActors: hasSystemActors,
     mainFlow: stepsReady,
     actorResponsibility: mapped,
+    approvalStep: hasApprovalStep,
     exceptionFlow: /예외|수정|반려|재처리|실패|오류|누락/.test(text),
     accessControl: /권한|열람|수정 가능|공유 범위|접근|관리자/.test(text),
     handoffToFeatures: /기능|후보|알림|업로드|공유|승인|요청|관리/.test(text),
   };
   const filledSlotCount = Object.values(slots).filter(Boolean).length;
-  const progressPercent = Math.round((filledSlotCount / 7) * 100);
+  const progressPercent = Math.round((filledSlotCount / 8) * 100);
   const actorsReady = slots.humanActors && slots.systemActors;
   const approved = Boolean(actorsReady && stepsReady && mapped && flow?.steps.every((s) => s.approved));
   return {
@@ -210,6 +216,7 @@ function deriveApprovalFromFlow(flow: RequirementsServiceFlowV1 | null): Approva
     filledSlotCount,
     progressPercent,
     recommendedMissing: {
+      approvalStep: !slots.approvalStep,
       exceptionFlow: !slots.exceptionFlow,
       accessControl: !slots.accessControl,
       handoffToFeatures: !slots.handoffToFeatures,
@@ -506,7 +513,40 @@ export function RequirementsServiceFlowStage({
     // On first entry: immediately start guided interview (no blank-input requirement).
     if (replying) return;
     if (messages.length > 0) return;
-    callAnalyze("인터뷰 시작", { silentUserAppend: true });
+    const t = window.setTimeout(() => {
+      const hasActors = Boolean(flow?.actors?.length);
+      const hasSteps = Boolean(flow?.steps?.length);
+      if (hasSteps) {
+        const list = normalizeOrder(flow?.steps ?? [])
+          .slice(0, 8)
+          .map((s) => `${s.order}. ${s.title}`)
+          .join("\n");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid("msg"),
+            role: "ai",
+            name: displayedAiOrchestrator().name,
+            body: `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
+          },
+        ]);
+        return;
+      }
+      if (hasActors && !hasSteps) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uid("msg"),
+            role: "ai",
+            name: displayedAiOrchestrator().name,
+            body: "현재 액터는 정리되었습니다. 이제 실제 처리 순서를 검증하겠습니다.\n첫 단계는 무엇입니까?",
+          },
+        ]);
+        return;
+      }
+      callAnalyze("인터뷰 시작", { silentUserAppend: true });
+    }, 0);
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -649,7 +689,7 @@ export function RequirementsServiceFlowStage({
             }}
           >
             <div style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 999, padding: "8px 12px", fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-              서비스 흐름 정리도 {derivedApproval.progressPercent}%{hint ? ` (${hint})` : ""} · {derivedApproval.filledSlotCount}/7
+              서비스 흐름 준비도 {derivedApproval.progressPercent}%{hint ? ` (${hint})` : ""} · {derivedApproval.filledSlotCount}/8
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button
@@ -739,6 +779,45 @@ export function RequirementsServiceFlowStage({
                   }}
                 >
                   {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!replying && (!quickReplies || !quickReplies.length) ? (
+          <div style={{ flex: "0 0 auto", padding: "0 20px 10px" }}>
+            <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(steps.length >= 1
+                ? [
+                    { label: "단계 수정", action: () => callAnalyze("단계 수정이 필요합니다. 수정할 단계와 변경 내용을 반영해 주세요.") },
+                    { label: "담당 지정", action: () => callAnalyze("각 단계 담당자를 지정하려고 합니다. 단계별 담당을 제안하고 primaryActorId로 반영해 주세요.") },
+                    { label: "승인 추가", action: () => callAnalyze("승인/확정 단계가 필요합니다. 승인 단계를 흐름에 추가하고 담당도 지정해 주세요.") },
+                    { label: "예외 흐름", action: () => callAnalyze("수정 요청/반려 같은 예외 흐름이 필요합니다. 예외 단계를 흐름에 반영해 주세요.") },
+                    { label: "결과 확인", action: () => setCanvasOpen(true) },
+                  ]
+                : [
+                    { label: "액터 추가", action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요.") },
+                    { label: "흐름 정리", action: () => callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요.") },
+                    { label: "결과 확인", action: () => setCanvasOpen(true) },
+                  ]
+              ).map((it) => (
+                <button
+                  key={it.label}
+                  type="button"
+                  onClick={it.action}
+                  style={{
+                    border: "1px solid #dbeafe",
+                    background: "#fff",
+                    borderRadius: 999,
+                    padding: "9px 12px",
+                    fontSize: 12.5,
+                    fontWeight: 900,
+                    color: "#1e40af",
+                    cursor: "pointer",
+                  }}
+                >
+                  {it.label}
                 </button>
               ))}
             </div>
@@ -913,7 +992,7 @@ function DraftCanvas({
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>액터 및 서비스 흐름 초안</div>
           <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-            서비스 흐름 정리도 {approval.progressPercent}%{progressHint(approval) ? ` (${progressHint(approval)})` : ""} · {approval.filledSlotCount}/7
+            서비스 흐름 준비도 {approval.progressPercent}%{progressHint(approval) ? ` (${progressHint(approval)})` : ""} · {approval.filledSlotCount}/8
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>

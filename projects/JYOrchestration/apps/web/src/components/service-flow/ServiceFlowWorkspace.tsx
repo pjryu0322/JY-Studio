@@ -21,6 +21,7 @@ type ServiceFlowSlotKey =
   | "systemActors"
   | "mainFlow"
   | "actorResponsibility"
+  | "approvalStep"
   | "exceptionFlow"
   | "accessControl"
   | "handoffToFeatures";
@@ -81,17 +82,19 @@ export function ServiceFlowWorkspace({
     const hasSystemActors = (flow?.actors ?? []).some((a) => a.kind === "system");
     const stepsReady = (flow?.steps.length ?? 0) >= 3;
     const mapped = Boolean(flow?.steps.length) && (flow?.steps ?? []).every((s) => s.primaryActorId && actorIds.has(s.primaryActorId));
+    const hasApprovalStep = /승인|확정|결재|결정/.test(text);
     const slots: SlotState = {
       humanActors: hasHumanActors,
       systemActors: hasSystemActors,
       mainFlow: stepsReady,
       actorResponsibility: mapped,
+      approvalStep: hasApprovalStep,
       exceptionFlow: /예외|수정|반려|재처리|실패|오류|누락/.test(text),
       accessControl: /권한|열람|수정 가능|공유 범위|접근|관리자/.test(text),
       handoffToFeatures: /기능|후보|알림|업로드|공유|승인|요청|관리/.test(text),
     };
     const filledSlotCount = Object.values(slots).filter(Boolean).length;
-    const progressPercent = Math.round((filledSlotCount / 7) * 100);
+    const progressPercent = Math.round((filledSlotCount / 8) * 100);
     const actorsReady = slots.humanActors && slots.systemActors;
     const approved = Boolean(actorsReady && stepsReady && mapped && flow?.steps.every((s) => s.approved));
     return {
@@ -104,6 +107,7 @@ export function ServiceFlowWorkspace({
       filledSlotCount,
       progressPercent,
       recommendedMissing: {
+        approvalStep: !slots.approvalStep,
         exceptionFlow: !slots.exceptionFlow,
         accessControl: !slots.accessControl,
         handoffToFeatures: !slots.handoffToFeatures,
