@@ -16,8 +16,8 @@ export const PROTOTYPE_TEMPLATES: readonly PrototypeTemplate[] = [
     id: "dashboard",
     nameKo: "대시보드",
     nameEn: "Dashboard",
-    description: "운영/관리 중심으로 상태·지표·요청을 한 화면에서 확인하는 형태",
-    keywords: ["관리자", "운영", "통계", "권한", "업무", "내부"],
+    description: "내부 운영·처리 현황을 한눈에 보는 형태",
+    keywords: ["관리자", "운영", "통계", "권한", "업무", "내부", "회의록", "녹취", "문서", "워크플로", "파이프라인"],
     navigationItems: ["대시보드", "요청 관리", "사용자 관리", "통계", "설정"],
     summaryCards: ["승인 대기", "진행 중", "최근 요청", "사용자 수"],
     primarySections: ["최근 요청 리스트", "상태별 처리 현황", "주요 지표"],
@@ -58,6 +58,37 @@ function normalize(text: string): string {
   return String(text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+export type PrototypeRecommendationContext = Readonly<{
+  projectName?: string;
+  projectDescription?: string;
+  ideationAssets?: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
+  flowStepTitles?: readonly string[];
+  actorNames?: readonly string[];
+}>;
+
+/** 서비스 흐름·아이디어 자산·액터까지 합쳐 템플릿 추천에 사용하는 코퍼스 */
+export function buildPrototypeRecommendationCorpus(ctx: PrototypeRecommendationContext): string {
+  const parts: string[] = [];
+  if (ctx.projectName) parts.push(ctx.projectName);
+  if (ctx.projectDescription) parts.push(ctx.projectDescription);
+  for (const a of ctx.ideationAssets ?? []) {
+    if (a.type) parts.push(a.type);
+    if (a.title) parts.push(a.title);
+    if (a.content) parts.push(String(a.content).slice(0, 4000));
+  }
+  for (const t of ctx.flowStepTitles ?? []) parts.push(t);
+  for (const n of ctx.actorNames ?? []) parts.push(n);
+  return parts.join("\n");
+}
+
+export function recommendPrototypeTemplateFromContext(ctx: PrototypeRecommendationContext): {
+  templateId: PrototypeTemplateType;
+  score: number;
+  matchedKeywords: string[];
+} {
+  return recommendPrototypeTemplate(buildPrototypeRecommendationCorpus(ctx));
+}
+
 export function recommendPrototypeTemplate(input: string): {
   templateId: PrototypeTemplateType;
   score: number;
@@ -71,7 +102,7 @@ export function recommendPrototypeTemplate(input: string): {
     { id: "booking", keywords: ["예약", "일정", "상담"] },
     { id: "marketplace", keywords: ["상품", "판매", "주문", "매칭"] },
     { id: "landing", keywords: ["소개", "홍보", "가입", "사전예약"] },
-    { id: "dashboard", keywords: ["관리자", "운영", "통계", "권한", "업무"] },
+    { id: "dashboard", keywords: ["관리자", "운영", "통계", "권한", "업무", "회의록", "녹취", "문서", "워크플로", "승인", "배포"] },
   ];
   for (const r of ruleOrder) {
     const matched = r.keywords.filter((k) => text.includes(normalize(k)));
