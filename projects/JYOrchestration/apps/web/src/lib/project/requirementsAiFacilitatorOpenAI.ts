@@ -662,6 +662,11 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
 6) 기능 정리 단계로 넘길 준비 확인
 
 중요 규칙:
+- ideationAssets가 존재하면, 그 내용을 이 단계의 source of truth로 우선 사용한다(현재 flow가 비어 있어도 초안을 추론/생성하라).
+- 사용자가 이미 말한 내용을 다시 질문하지 않는다(재진술 후 검증 질문 1개로 좁혀라).
+- 최초 응답은 "질문"보다 "초안 제시"가 우선이다(assistantMessage에 먼저 초안/요약을 제시하고, nextQuestion으로 검증 질문 1개).
+- "없습니다/모르겠습니다" 같은 무지성 응답 금지. 정보가 부족하면 합리적 기본안을 제안하고 검증 질문으로 확인한다.
+- 이 단계는 discovery가 아니라 refinement/confirmation 단계다.
 - 키워드 매칭/룰 기반으로 판단하지 말고 의미로 판단한다.
 - assistantMessage는 반드시 updatedFlow와 일치해야 한다(말만 하고 상태가 안 바뀌면 실패).
 - 사용자가 "액터목록을 보여줘/액터 목록 보여줘" 등 요약 요청이면 intent=show_summary로 두고,
