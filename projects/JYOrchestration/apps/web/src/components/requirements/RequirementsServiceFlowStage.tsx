@@ -77,14 +77,15 @@ const SLOT_LABELS: Record<ServiceFlowSlotKey, string> = {
 };
 
 const REQUIRED_SLOTS: readonly ServiceFlowSlotKey[] = ["humanActors", "systemActors", "mainFlow", "actorResponsibility"];
-const RECOMMENDED_SLOTS: readonly ServiceFlowSlotKey[] = ["approvalStep", "exceptionFlow", "accessControl", "handoffToFeatures"];
+const RECOMMENDED_SLOTS: readonly ServiceFlowSlotKey[] = ["approvalStep", "exceptionFlow"];
+const DECISION_SLOTS: readonly ServiceFlowSlotKey[] = [...REQUIRED_SLOTS, ...RECOMMENDED_SLOTS];
 
 function countEffectiveRemainingSlots(
   slots: Record<ServiceFlowSlotKey, boolean>,
   deferrals: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined,
 ): number {
   let n = 0;
-  for (const k of REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS) {
+  for (const k of DECISION_SLOTS) {
     if (!slots[k] && !deferrals?.[k]) n += 1;
   }
   return n;
@@ -95,7 +96,7 @@ function unresolvedChecklistEntries(
   deferrals: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined,
 ): Array<{ key: ServiceFlowSlotKey; label: string; deferral?: RequirementsServiceFlowChecklistDeferralKind }> {
   const rows: Array<{ key: ServiceFlowSlotKey; label: string; deferral?: RequirementsServiceFlowChecklistDeferralKind }> = [];
-  for (const k of REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS) {
+  for (const k of DECISION_SLOTS) {
     if (slots[k]) continue;
     rows.push({ key: k, label: SLOT_LABELS[k], deferral: deferrals?.[k] });
   }
@@ -221,10 +222,13 @@ function missingSlotQuestions(slots: Record<ServiceFlowSlotKey, boolean>, limit 
     actorResponsibility: "각 단계의 최종 책임자는 누구인가요?",
     approvalStep: "승인/확정(결재) 단계가 필요한가요? 필요하다면 누가 승인하나요?",
     exceptionFlow: "반려, 수정 요청, 재처리 같은 예외 흐름이 필요한가요?",
-    accessControl: "누가 열람하거나 수정할 수 있는지 권한 범위가 있나요?",
-    handoffToFeatures: "다음 기능 정리로 넘길 핵심 기능 후보는 무엇인가요?",
+    accessControl: "권한 범위는 다음 단계에서 정리합니다.",
+    handoffToFeatures: "기능 후보는 다음 기능 정리 단계에서 정리합니다.",
   };
-  return ([...REQUIRED_SLOTS, ...RECOMMENDED_SLOTS] as const).filter((slot) => !slots[slot]).slice(0, limit).map((slot) => questions[slot]);
+  return DECISION_SLOTS
+    .filter((slot) => !slots[slot])
+    .slice(0, limit)
+    .map((slot) => questions[slot]);
 }
 
 function messageTone(role: WorkshopRole): CSSProperties {
@@ -241,9 +245,7 @@ function progressHint(approval: ApprovalState): string | null {
   if (!slots.mainFlow) return "주요 서비스 흐름 미확정";
   if (!slots.actorResponsibility) return "담당(매핑) 미확정";
   if (!slots.approvalStep) return "승인/확정 단계 미확정";
-  if (!slots.accessControl) return "권한 범위 미확정";
   if (!slots.exceptionFlow) return "예외/수정 흐름 미확정";
-  if (!slots.handoffToFeatures) return "핵심 기능 후보 미확정";
   return null;
 }
 
@@ -262,11 +264,12 @@ function deriveApprovalFromFlow(flow: RequirementsServiceFlowV1 | null): Approva
     actorResponsibility: mapped,
     approvalStep: hasApprovalStep,
     exceptionFlow: /예외|수정|반려|재처리|실패|오류|누락/.test(text),
-    accessControl: /권한|열람|수정 가능|공유 범위|접근|관리자/.test(text),
-    handoffToFeatures: /기능|후보|알림|업로드|공유|승인|요청|관리/.test(text),
+    // 다음 단계(기능정리)에서 다룰 항목: 이 단계의 remaining decisions에 포함하지 않는다.
+    accessControl: true,
+    handoffToFeatures: true,
   };
-  const filledSlotCount = Object.values(slots).filter(Boolean).length;
-  const basePercent = Math.round((filledSlotCount / 8) * 100);
+  const filledSlotCount = DECISION_SLOTS.filter((k) => slots[k]).length;
+  const basePercent = Math.round((filledSlotCount / DECISION_SLOTS.length) * 100);
   const draftVisible = (flow?.actors?.length ?? 0) >= 1 && (flow?.steps?.length ?? 0) >= 3;
   const progressPercent = draftVisible ? Math.max(basePercent, 35) : basePercent;
   const actorsReady = slots.humanActors && slots.systemActors;
@@ -283,8 +286,6 @@ function deriveApprovalFromFlow(flow: RequirementsServiceFlowV1 | null): Approva
     recommendedMissing: {
       approvalStep: !slots.approvalStep,
       exceptionFlow: !slots.exceptionFlow,
-      accessControl: !slots.accessControl,
-      handoffToFeatures: !slots.handoffToFeatures,
     },
   };
 }
@@ -420,7 +421,6 @@ export function RequirementsServiceFlowStage({
   ) => Promise<readonly RequirementsMessage[]>;
 }) {
   void onGenerateAiDraft;
-  void onApproveAll;
   void approval;
   const showScreenLabels = useShowScreenLabels();
   const aiDisplayName = displayedAiOrchestrator().name;
@@ -457,8 +457,8 @@ export function RequirementsServiceFlowStage({
     actorResponsibility: "각 단계의 주 담당(primaryActorId)을 흐름에 맞게 반영해 주세요.",
     approvalStep: "승인/확정 단계가 필요한지와 담당을 흐름에 반영해 주세요.",
     exceptionFlow: "예외·수정·반려 같은 예외 흐름을 흐름 설명에 반영해 주세요.",
-    accessControl: "권한·열람·수정 범위를 흐름/액터 설명에 반영해 주세요.",
-    handoffToFeatures: "다음 기능 정리로 넘길 핵심 기능 후보를 흐름/메모에 반영해 주세요.",
+    accessControl: "권한 범위는 다음 기능정리 단계에서 진행됩니다.",
+    handoffToFeatures: "세부 기능 정의는 다음 기능정리 단계에서 진행됩니다.",
   };
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
@@ -521,6 +521,12 @@ export function RequirementsServiceFlowStage({
     setLatestAiQuestion("");
     setWorkspaceMode("mapping");
     autoScrollPendingRef.current = true;
+  };
+
+  const tempSave = () => {
+    if (!flow) return;
+    const now = new Date().toISOString();
+    onChangeFlow({ ...flow, updatedAt: now });
   };
 
   const patchChecklistDeferral = (key: ServiceFlowSlotKey, kind: RequirementsServiceFlowChecklistDeferralKind | null) => {
@@ -1076,7 +1082,7 @@ export function RequirementsServiceFlowStage({
                 {!structureLocked ? (
                   <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb" }}>
                     <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e", lineHeight: 1.55 }}>
-                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 하단의 「서비스 흐름 확정」으로 구조를 확정하세요.
+                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 하단의 「담당자 지정 시작」으로 구조를 확정하세요.
                     </div>
                   </div>
                 ) : (
@@ -1286,16 +1292,18 @@ export function RequirementsServiceFlowStage({
                   프로토타입 미리보기
                 </button>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginLeft: "auto" }}>
-                  {!structureLocked ? (
-                    <button
-                      type="button"
-                      onClick={() => lockStructureForAssignment()}
-                      disabled={!derivedApproval.ready}
-                      style={{ ...primaryBtn, borderRadius: 999, opacity: derivedApproval.ready ? 1 : 0.55 }}
-                    >
-                      서비스 흐름 확정
-                    </button>
-                  ) : null}
+                  <button type="button" onClick={() => tempSave()} style={{ ...btn, borderRadius: 999 }}>
+                    임시 저장
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onApproveAll()}
+                    disabled={remainingChecklistItems > 0}
+                    style={{ ...primaryBtn, borderRadius: 999, opacity: remainingChecklistItems === 0 ? 1 : 0.55 }}
+                    title={remainingChecklistItems > 0 ? "남은 결정사항을 먼저 해결해 주세요." : undefined}
+                  >
+                    기능정리 단계로 이동
+                  </button>
                   <button type="button" onClick={() => setWorkspaceMode("mapping")} style={{ ...btn, borderRadius: 999 }}>
                     구조 편집
                   </button>
@@ -1342,7 +1350,7 @@ export function RequirementsServiceFlowStage({
                     disabled={!derivedApproval.ready}
                     style={{ ...primaryBtn, borderRadius: 999, opacity: derivedApproval.ready ? 1 : 0.55 }}
                   >
-                    서비스 흐름 확정
+                    담당자 지정 시작
                   </button>
                   <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
                     요약 보기
@@ -1356,14 +1364,26 @@ export function RequirementsServiceFlowStage({
           ) : (
             <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
               {!structureLocked ? (
-                <div style={{ maxWidth: 660, margin: "0 auto 10px", display: "flex", flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ maxWidth: 660, margin: "0 auto 10px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
                   <button
                     type="button"
                     onClick={() => lockStructureForAssignment()}
                     disabled={!derivedApproval.ready}
                     style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55, whiteSpace: "nowrap" }}
                   >
-                    서비스 흐름 확정
+                    담당자 지정 시작
+                  </button>
+                  <button type="button" onClick={() => tempSave()} style={{ ...btn, whiteSpace: "nowrap" }}>
+                    임시 저장
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onApproveAll()}
+                    disabled={remainingChecklistItems > 0}
+                    style={{ ...primaryBtn, opacity: remainingChecklistItems === 0 ? 1 : 0.55, whiteSpace: "nowrap" }}
+                    title={remainingChecklistItems > 0 ? "남은 결정사항을 먼저 해결해 주세요." : undefined}
+                  >
+                    기능정리 단계로 이동
                   </button>
                 </div>
               ) : null}
