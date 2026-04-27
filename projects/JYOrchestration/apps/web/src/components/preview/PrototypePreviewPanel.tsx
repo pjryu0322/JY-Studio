@@ -133,6 +133,9 @@ export function PrototypePreviewPanel({
   const [automationAvailable, setAutomationAvailable] = useState(false);
   const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
   const [protoBusy, setProtoBusy] = useState(false);
+  const [readinessDetailOpen, setReadinessDetailOpen] = useState(false);
+  const [progressDetailOpen, setProgressDetailOpen] = useState(false);
+  const [futurePipelineOpen, setFuturePipelineOpen] = useState(false);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -462,7 +465,6 @@ export function PrototypePreviewPanel({
     return () => window.clearTimeout(t);
   }, [loadEnv]);
 
-  const tpl = PROTOTYPE_TEMPLATES.find((t) => t.id === effectiveTemplate);
   const isRecommended = effectiveTemplate === analysis.recommendedTemplate && !templateOverride;
   const expectedPageCount = Math.max(3, Math.min(9, Math.round((analysis.recommendedPages?.length ?? 5) || 5)));
   const difficultyKr = analysis.workflowComplexity === "high" ? "높음" : analysis.workflowComplexity === "low" ? "낮음" : "보통";
@@ -479,6 +481,16 @@ export function PrototypePreviewPanel({
     return statusLabel(record.runStatus, Boolean(previewUrl));
   }, [latestRun, record.runStatus, previewUrl]);
 
+  const progressSummaryLine = useMemo(() => {
+    if (!latestRun?.id) {
+      if (!canRequestGeneration.designOk) return "실행 없음 · 설계 보완 필요";
+      return "실행 없음 · 생성 시작 가능";
+    }
+    return `${prototypeRunStatusLabelKo(latestRun.status)}`;
+  }, [latestRun, canRequestGeneration.designOk]);
+
+  const resultUrlSummary = previewUrl ? "결과 URL 연결됨" : "결과 URL 없음";
+
   return (
     <div style={{ position: "relative" }}>
       {toast ? (
@@ -487,296 +499,318 @@ export function PrototypePreviewPanel({
         </div>
       ) : null}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 520px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
-        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
-          <div style={card}>
-            <div style={cardTitle}>설계 준비도 {designReadinessPercentLocal}%</div>
-            <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-              <div style={{ width: `${designReadinessPercentLocal}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#0f172a" }}>
-              <div style={row}><span style={envPill(ideaOk ? "ok" : "needs")}>{ideaOk ? "OK" : "필요"}</span>아이디어 구체화 완료</div>
-              <div style={row}><span style={envPill(actorsOk ? "ok" : "needs")}>{actorsOk ? "OK" : "필요"}</span>액터 정의 완료</div>
-              <div style={row}><span style={envPill(flowOk ? "ok" : "needs")}>{flowOk ? "OK" : "필요"}</span>서비스 흐름 정의 완료</div>
-              <div style={row}><span style={envPill(ownersOk ? "ok" : "needs")}>{ownersOk ? "OK" : `${ownerAssignedRatio}%`}</span>담당자 지정</div>
-              <div style={row}><span style={envPill(featureDraftTitles?.length ? "ok" : "loading")}>{featureDraftTitles?.length ? "있음" : "선택"}</span>기능 정리</div>
-            </div>
-            {checklistGapLabels.length ? (
-              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: "#b45309" }}>
-                남은 항목: {checklistGapLabels.slice(0, 4).join(" · ")}
-              </div>
-            ) : null}
-            {unresolvedChecklistCount > 0 ? (
-              <div style={{ marginTop: 6, fontSize: 12.5, color: "#64748b" }}>미해결 항목 {unresolvedChecklistCount}개</div>
-            ) : null}
-            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <button type="button" onClick={() => onNavigateFix?.()} style={btnPrimary}>지금 보완</button>
-            </div>
-          </div>
-
-          <div style={card}>
-            <div style={cardTitle}>실행 환경 준비도 {envReadinessPercent}%</div>
-            <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-              <div style={{ width: `${envReadinessPercent}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, color: "#0f172a" }}>
-              <div style={row}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>Git 연결</div>
-              <div style={row}><span style={envPill(envStatus.github)}>{labelEnv(envStatus.github)}</span>GitHub 인증</div>
-              <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
-              <div style={row}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
-            </div>
-            {executionSetup?.gitRepoName ? (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
-                저장소: <strong>{executionSetup.gitRepoName}</strong>
-                <span style={{ marginLeft: 10, color: "#64748b" }}>기본 브랜치: {executionSetup.baseBranch}</span>
-              </div>
-            ) : null}
-            {envStatus.message ? <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>{envStatus.message}</div> : null}
-            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>환경설정</a>
-              <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btnMuted, opacity: envBusy ? 0.6 : 1 }}>
-                다시 점검
-              </button>
-              <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>예시 템플릿 보기</button>
-            </div>
-          </div>
-
-          <div style={card}>
-            <div style={cardTitle}>설계·실행 준비</div>
-            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 800 }}>
-                <span style={{ color: "#64748b", fontWeight: 700 }}>[설계]</span>
-                <span style={{ color: canRequestGeneration.designOk ? "#047857" : "#b45309" }}>
-                  {canRequestGeneration.designOk ? "프롬프트 작성 가능" : "설계 보완 필요"}
-                </span>
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 800 }}>
-                <span style={{ color: "#64748b", fontWeight: 700 }}>[환경]</span>
-                <span style={{ color: canRequestGeneration.envOk ? "#047857" : "#b45309" }}>
-                  {canRequestGeneration.envOk ? "실행 준비 완료" : "환경설정 필요"}
-                </span>
-              </div>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12.5, color: "#475569", lineHeight: 1.5 }}>
-              프롬프트 복사는 설계가 충족되면 가능합니다. 커밋·푸시·PR까지 하려면 환경을 완료하세요.
-            </div>
-            {!canRequestGeneration.envOk ? (
-              <div style={{ marginTop: 10 }}>
-                <a href={settingsHref} style={{ ...btnPrimary, textDecoration: "none" }}>환경설정으로 이동</a>
-              </div>
-            ) : null}
-          </div>
-
-          <div style={card}>
-            <div style={cardTitle}>템플릿 선택</div>
-            <div style={{ marginTop: 8, display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>{tpl?.nameKo}</div>
-              {isRecommended ? <span style={badge}>추천됨</span> : <span style={badgeMuted}>사용자 선택</span>}
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12.5, color: "#475569" }}>
-              예상 화면 수: {expectedPageCount} · 난이도: {difficultyKr}
-              <span style={{ marginLeft: 8, color: "#64748b" }}>AI 추천 기준: 현재 서비스 흐름 분석</span>
-            </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <select
-                value={effectiveTemplate}
-                onChange={(e) => {
-                  const next = e.target.value as PrototypeTemplateType;
-                  setTemplateOverride(next);
-                  savePrototypeGenerationRecord(projectId, { selectedTemplate: next });
-                  refreshRecord();
-                }}
-                style={selectStyle}
-              >
-                {PROTOTYPE_TEMPLATES.map((t) => (
-                  <option key={t.id} value={t.id}>{t.nameKo}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => {
-                  setTemplateOverride(null);
-                  savePrototypeGenerationRecord(projectId, { selectedTemplate: null });
-                  refreshRecord();
-                }}
-                style={btn}
-              >
-                추천으로
-              </button>
-            </div>
-          </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span style={summaryChip}>설계 {designReadinessPercentLocal}%</span>
+          <span style={summaryChip}>환경 {envReadinessPercent}%</span>
+          <span style={automationAvailable ? { ...summaryChip, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1e40af" } : summaryChip}>
+            {automationAvailable ? "자동 생성 모드" : "수동 생성 모드"}
+          </span>
+          <span style={summaryChip}>{resultUrlSummary}</span>
+          <button type="button" onClick={() => setReadinessDetailOpen((v) => !v)} style={btnMuted}>
+            {readinessDetailOpen ? "상세 접기" : "상세 보기"}
+          </button>
         </div>
 
-        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
-          <div style={card}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={cardTitle}>생성 요청</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={automationAvailable ? badge : badgeMuted}>{automationAvailable ? "자동 생성 모드" : "수동 생성 모드"}</span>
-                {latestRun?.id ? (
-                  <span style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700 }}>실행 {latestRun.id.slice(0, 8)}…</span>
-                ) : null}
+        {readinessDetailOpen ? (
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))" }}>
+            <div style={card}>
+              <div style={cardTitle}>설계 준비도 {designReadinessPercentLocal}%</div>
+              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+                <div style={{ width: `${designReadinessPercentLocal}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#0f172a" }}>
+                <div style={row}><span style={envPill(ideaOk ? "ok" : "needs")}>{ideaOk ? "OK" : "필요"}</span>아이디어 구체화 완료</div>
+                <div style={row}><span style={envPill(actorsOk ? "ok" : "needs")}>{actorsOk ? "OK" : "필요"}</span>액터 정의 완료</div>
+                <div style={row}><span style={envPill(flowOk ? "ok" : "needs")}>{flowOk ? "OK" : "필요"}</span>서비스 흐름 정의 완료</div>
+                <div style={row}><span style={envPill(ownersOk ? "ok" : "needs")}>{ownersOk ? "OK" : `${ownerAssignedRatio}%`}</span>담당자 지정</div>
+                <div style={row}><span style={envPill(featureDraftTitles?.length ? "ok" : "loading")}>{featureDraftTitles?.length ? "있음" : "선택"}</span>기능 정리</div>
+              </div>
+              {checklistGapLabels.length ? (
+                <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: "#b45309" }}>
+                  남은 항목: {checklistGapLabels.slice(0, 4).join(" · ")}
+                </div>
+              ) : null}
+              {unresolvedChecklistCount > 0 ? (
+                <div style={{ marginTop: 6, fontSize: 12.5, color: "#64748b" }}>미해결 항목 {unresolvedChecklistCount}개</div>
+              ) : null}
+              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button type="button" onClick={() => onNavigateFix?.()} style={btnPrimary}>지금 보완</button>
               </div>
             </div>
-            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              {!latestRun?.id && canRequestGeneration.designOk ? (
+
+            <div style={card}>
+              <div style={cardTitle}>실행 환경 준비도 {envReadinessPercent}%</div>
+              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+                <div style={{ width: `${envReadinessPercent}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, color: "#0f172a" }}>
+                <div style={row}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>Git 연결</div>
+                <div style={row}><span style={envPill(envStatus.github)}>{labelEnv(envStatus.github)}</span>GitHub 인증</div>
+                <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
+                <div style={row}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
+              </div>
+              {executionSetup?.gitRepoName ? (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
+                  저장소: <strong>{executionSetup.gitRepoName}</strong>
+                  <span style={{ marginLeft: 10, color: "#64748b" }}>기본 브랜치: {executionSetup.baseBranch}</span>
+                </div>
+              ) : null}
+              {envStatus.message ? <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>{envStatus.message}</div> : null}
+              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>환경설정</a>
+                <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btnMuted, opacity: envBusy ? 0.6 : 1 }}>
+                  다시 점검
+                </button>
+                <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>예시 템플릿 보기</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+            gap: 14,
+            alignItems: "start",
+          }}
+        >
+          <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
+            <div style={card}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={cardTitle}>생성 요청</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <span style={automationAvailable ? badge : badgeMuted}>{automationAvailable ? "자동 생성 모드" : "수동 생성 모드"}</span>
+                  {latestRun?.id ? (
+                    <span style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700 }}>실행 {latestRun.id.slice(0, 8)}…</span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 12.5, color: "#475569" }}>
+                <span style={{ fontWeight: 800, color: "#64748b" }}>템플릿:</span>
+                <select
+                  value={effectiveTemplate}
+                  onChange={(e) => {
+                    const next = e.target.value as PrototypeTemplateType;
+                    setTemplateOverride(next);
+                    savePrototypeGenerationRecord(projectId, { selectedTemplate: next });
+                    refreshRecord();
+                  }}
+                  style={selectStyle}
+                >
+                  {PROTOTYPE_TEMPLATES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.nameKo}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
-                  onClick={() => void onStartGeneration()}
-                  disabled={protoBusy}
-                  style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
+                  onClick={() => {
+                    setTemplateOverride(null);
+                    savePrototypeGenerationRecord(projectId, { selectedTemplate: null });
+                    refreshRecord();
+                  }}
+                  style={btn}
                 >
-                  생성 시작
+                  추천으로
                 </button>
-              ) : null}
-              {automationAvailable && canRequestGeneration.designOk ? (
+                {isRecommended ? <span style={badge}>추천</span> : <span style={badgeMuted}>사용자 선택</span>}
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>
+                예상 화면 {expectedPageCount} · 난이도 {difficultyKr}
+              </div>
+
+              <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
+                상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{pipelineStatusText}</span>
+              </div>
+
+              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                {!latestRun?.id && canRequestGeneration.designOk ? (
+                  <button
+                    type="button"
+                    onClick={() => void onStartGeneration()}
+                    disabled={protoBusy}
+                    style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
+                  >
+                    생성 시작
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => void onCursorAutoRequest()}
-                  disabled={protoBusy || !canRequestGeneration.designOk}
-                  style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
+                  onClick={() => void onCopyGenerationPrompt()}
+                  disabled={!canRequestGeneration.designOk || protoBusy}
+                  style={
+                    automationAvailable && canRequestGeneration.designOk
+                      ? { ...btn, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
+                      : { ...btnPrimary, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
+                  }
                 >
-                  Cursor 자동 생성 요청
+                  생성 프롬프트 복사
                 </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void onCopyGenerationPrompt()}
-                disabled={!canRequestGeneration.designOk || protoBusy}
-                style={
-                  automationAvailable && canRequestGeneration.designOk
-                    ? { ...btn, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
-                    : { ...btnPrimary, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
-                }
-              >
-                생성 프롬프트 복사
-              </button>
-              <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn} disabled={protoBusy}>
-                생성 프롬프트 보기
-              </button>
-              <button type="button" onClick={() => void copyPrompt()} style={btn} disabled={protoBusy}>
-                복사
-              </button>
-              {latestRun?.id ? (
                 <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                   상태 새로고침
                 </button>
-              ) : null}
-              <span style={{ marginLeft: "auto", fontSize: 12.5, color: "#64748b" }}>
-                상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{pipelineStatusText}</span>
-              </span>
-            </div>
-            {!canRequestGeneration.envOk && canRequestGeneration.designOk ? (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: "#b45309", lineHeight: 1.5, fontWeight: 700 }}>
-                환경설정이 완료되지 않았습니다. Cursor 실행 전 Git/GitHub/Cursor 설정을 완료하세요.
+                {automationAvailable && canRequestGeneration.designOk ? (
+                  <button
+                    type="button"
+                    onClick={() => void onCursorAutoRequest()}
+                    disabled={protoBusy || !canRequestGeneration.designOk}
+                    style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
+                  >
+                    Cursor 자동 생성 요청
+                  </button>
+                ) : null}
               </div>
-            ) : null}
-            <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b", lineHeight: 1.5 }}>
-              {automationAvailable
-                ? "자동 생성 모드: Cursor Cloud Agent API로 에이전트를 시작할 수 있습니다. 수동으로 진행하려면 프롬프트 복사만 사용하세요."
-                : "수동 생성 모드: Cursor API 자동 실행을 쓰려면 실행 환경 검증(validated)과 Cursor API 키가 필요합니다. (스텁·미설정 시 수동만 가능)"}
-              {automationBlockReason ? (
-                <span style={{ display: "block", marginTop: 6, color: "#b45309", fontWeight: 700 }}>
-                  자동 불가 사유: {automationBlockReason}
-                </span>
-              ) : null}
-            </div>
-            {promptOpen ? (
-              <textarea
-                readOnly
-                value={promptPackage}
-                style={{
-                  marginTop: 10,
-                  width: "100%",
-                  minHeight: 260,
-                  fontSize: 11.5,
-                  fontFamily: "ui-monospace, monospace",
-                  borderRadius: 10,
-                  border: "1px solid #cbd5e1",
-                  padding: 10,
-                  boxSizing: "border-box",
-                  resize: "vertical",
-                }}
-              />
-            ) : null}
-            {staleRegenerate ? (
-              <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 900, color: "#92400e" }}>설계 변경됨 — 다시 생성 필요</div>
-            ) : null}
-          </div>
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn} disabled={protoBusy}>
+                  생성 프롬프트 보기
+                </button>
+                <button type="button" onClick={() => void copyPrompt()} style={btn} disabled={protoBusy}>
+                  복사
+                </button>
+              </div>
 
-          <div style={card}>
-            <div style={cardTitle}>진행 상태</div>
-            <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>파이프라인 저장</div>
-              <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.45 }}>
-                실행 기록은 서버 측 파일 저장소에 보관됩니다(DB 마이그레이션 전). PR/Merge 전용 경로는 ENV_TEST와 분리되어 있습니다.
-              </div>
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-              {timeline.map((s) => (
-                <div key={s.label} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, color: "#0f172a" }}>
-                  <span style={timelineDot(s.status)} />
-                  <span style={{ fontWeight: 800 }}>{s.label}</span>
+              {!canRequestGeneration.envOk ? (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>
+                  자동 실행은 환경설정 완료 후 사용할 수 있습니다.
                 </div>
-              ))}
+              ) : null}
+              {automationBlockReason ? (
+                <div style={{ marginTop: 6, fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>
+                  자동 불가 사유: {automationBlockReason}
+                </div>
+              ) : null}
+
+              {promptOpen ? (
+                <textarea
+                  readOnly
+                  value={promptPackage}
+                  style={{
+                    marginTop: 10,
+                    width: "100%",
+                    minHeight: 220,
+                    fontSize: 11.5,
+                    fontFamily: "ui-monospace, monospace",
+                    borderRadius: 10,
+                    border: "1px solid #cbd5e1",
+                    padding: 10,
+                    boxSizing: "border-box",
+                    resize: "vertical",
+                  }}
+                />
+              ) : null}
+              {staleRegenerate ? (
+                <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 900, color: "#92400e" }}>설계 변경됨 — 다시 생성 필요</div>
+              ) : null}
             </div>
-            <div style={{ marginTop: 12, fontSize: 12.5, color: "#64748b" }}>
-              <span style={{ marginRight: 12 }}><span style={timelineDot("success")} /> 실제 완료</span>
-              <span style={{ marginRight: 12 }}><span style={timelineDot("running")} /> 진행 가능</span>
-              <span style={{ marginRight: 12 }}><span style={timelineDot("pending")} /> 미연동</span>
-              <span style={{ marginRight: 12 }}><span style={timelineDot("blocked")} /> 수동 처리</span>
-              <span><span style={timelineDot("failed")} /> 오류</span>
+
+            <div style={card}>
+              <div style={cardTitle}>실제 결과물 미리보기</div>
+              {!previewUrl ? (
+                <>
+                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      value={urlDraft || record.previewUrl || ""}
+                      onChange={(e) => setUrlDraft(e.target.value)}
+                      placeholder="https://…"
+                      style={inputStyle}
+                    />
+                    <button type="button" onClick={() => void applyPreviewUrl()} disabled={protoBusy} style={btnPrimary}>
+                      URL 적용
+                    </button>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12.5, color: "#64748b" }}>아직 결과물이 연결되지 않았습니다.</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      value={urlDraft || record.previewUrl || ""}
+                      onChange={(e) => setUrlDraft(e.target.value)}
+                      placeholder="https://…"
+                      style={inputStyle}
+                    />
+                    <button type="button" onClick={() => void applyPreviewUrl()} disabled={protoBusy} style={btnPrimary}>
+                      URL 적용
+                    </button>
+                    <button type="button" onClick={() => setResultOpen(true)} style={btnMuted}>결과물 보기</button>
+                    <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btnMuted, textDecoration: "none" }}>새 탭 열기</a>
+                    <button type="button" onClick={clearPreviewUrl} style={btn}>초기화</button>
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
+                    결과 URL: <span style={{ color: "#0f172a", fontWeight: 800, wordBreak: "break-all" }}>{previewUrl}</span>
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12.5, color: "#64748b" }}>
+                    최근 생성 요청 시간:{" "}
+                    {latestRun?.updatedAt
+                      ? new Date(latestRun.updatedAt).toLocaleString()
+                      : record.lastRequestedAt
+                        ? new Date(record.lastRequestedAt).toLocaleString()
+                        : "—"}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          <div style={card}>
-            <div style={cardTitle}>실제 결과물 미리보기</div>
-            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input
-                value={urlDraft || record.previewUrl || ""}
-                onChange={(e) => setUrlDraft(e.target.value)}
-                placeholder="https://…"
-                style={inputStyle}
-              />
-              <button type="button" onClick={() => void applyPreviewUrl()} disabled={protoBusy} style={btnPrimary}>
-                URL 적용
+          <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
+            <div style={card}>
+              <div style={cardTitle}>진행 상태</div>
+              <div style={{ marginTop: 8, fontSize: 13, color: "#0f172a" }}>
+                진행 상태: <span style={{ fontWeight: 800 }}>{progressSummaryLine}</span>
+              </div>
+              <button type="button" onClick={() => setProgressDetailOpen((v) => !v)} style={{ ...btnMuted, marginTop: 10 }}>
+                {progressDetailOpen ? "진행 상세 접기" : "진행 상세 보기"}
               </button>
-              {previewUrl ? (
+              {progressDetailOpen ? (
                 <>
-                  <button type="button" onClick={() => setResultOpen(true)} style={btnMuted}>결과물 보기</button>
-                  <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btnMuted, textDecoration: "none" }}>새 탭 열기</a>
-                  <button type="button" onClick={clearPreviewUrl} style={btn}>초기화</button>
+                  <div style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>파이프라인 저장</div>
+                    <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.45 }}>
+                      실행 기록은 서버 측 파일 저장소에 보관됩니다(DB 마이그레이션 전). PR/Merge 전용 경로는 ENV_TEST와 분리되어 있습니다.
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {timeline.map((s) => (
+                      <div key={s.label} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, color: "#0f172a" }}>
+                        <span style={timelineDot(s.status)} />
+                        <span style={{ fontWeight: 800 }}>{s.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 12, fontSize: 12.5, color: "#64748b" }}>
+                    <span style={{ marginRight: 12 }}><span style={timelineDot("success")} /> 실제 완료</span>
+                    <span style={{ marginRight: 12 }}><span style={timelineDot("running")} /> 진행 가능</span>
+                    <span style={{ marginRight: 12 }}><span style={timelineDot("pending")} /> 미연동</span>
+                    <span style={{ marginRight: 12 }}><span style={timelineDot("blocked")} /> 수동 처리</span>
+                    <span><span style={timelineDot("failed")} /> 오류</span>
+                  </div>
                 </>
               ) : null}
             </div>
-            <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
-              {previewUrl ? "결과가 준비되었습니다." : "아직 결과물이 연결되지 않았습니다."}
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#64748b" }}>
-              <div>결과 URL: {previewUrl ? <span style={{ color: "#0f172a", fontWeight: 800 }}>{previewUrl}</span> : "아직 결과물이 연결되지 않았습니다."}</div>
-              <div>
-                최근 생성 요청 시간:{" "}
-                {latestRun?.updatedAt
-                  ? new Date(latestRun.updatedAt).toLocaleString()
-                  : record.lastRequestedAt
-                    ? new Date(record.lastRequestedAt).toLocaleString()
-                    : "—"}
-              </div>
-            </div>
-          </div>
 
-          <div style={card}>
-            <div style={cardTitle}>향후 자동화 파이프라인</div>
-            <ol style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
-              <li>Cursor 수동 생성 → API 연동(예정)</li>
-              <li>Git Commit 감지</li>
-              <li>AI 기획자 소스 점검</li>
-              <li>보완 요청(필요시)</li>
-              <li>PR 생성</li>
-              <li>Merge</li>
-              <li>자동 배포</li>
-              <li>결과물 연결</li>
-            </ol>
+            <div style={card}>
+              <button
+                type="button"
+                onClick={() => setFuturePipelineOpen((v) => !v)}
+                style={{ ...btnMuted, width: "100%", justifyContent: "center", display: "inline-flex" }}
+              >
+                {futurePipelineOpen ? "향후 자동화 파이프라인 접기" : "향후 자동화 파이프라인 보기"}
+              </button>
+              {futurePipelineOpen ? (
+                <ol style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
+                  <li>Cursor 수동 생성 → API 연동(예정)</li>
+                  <li>Git Commit 감지</li>
+                  <li>AI 기획자 소스 점검</li>
+                  <li>보완 요청(필요시)</li>
+                  <li>PR 생성</li>
+                  <li>Merge</li>
+                  <li>자동 배포</li>
+                  <li>결과물 연결</li>
+                </ol>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
@@ -823,6 +857,16 @@ export function PrototypePreviewPanel({
 
 // Re-export alias for new name usage (same behavior).
 export const PrototypeGenerationWorkspace = PrototypePreviewPanel;
+
+const summaryChip: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 900,
+  padding: "6px 10px",
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#f8fafc",
+  color: "#0f172a",
+};
 
 const card: CSSProperties = {
   border: "1px solid #e2e8f0",
