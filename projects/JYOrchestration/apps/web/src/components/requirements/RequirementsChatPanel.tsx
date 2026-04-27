@@ -354,7 +354,9 @@ export function RequirementsChatPanel({
       style={{
         display: "flex",
         flexDirection: "column",
-        height: expanded ? "clamp(640px, 84vh, 960px)" : "clamp(560px, 72vh, 820px)",
+        flex: "1 1 auto",
+        height: "100%",
+        minHeight: expanded ? 640 : 0,
         minWidth: 280,
         maxWidth: "100%",
         overflow: "hidden",

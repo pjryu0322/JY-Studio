@@ -5,18 +5,12 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
-import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
-import { ProjectAdminWorkflowScopeNote } from "@/components/project/ProjectAdminWorkflowScopeNote";
 import { canEditSpec } from "@/lib/rbac/projectPermissions";
 import type { ProjectRole } from "@/lib/rbac/projectPermissions";
 function ProjectAdminSettingsInner() {
   const searchParams = useSearchParams();
   const projectId = String(searchParams.get("projectId") ?? "").trim();
-  const envNoteRaw = searchParams.get("envNote");
-  const envNote = envNoteRaw != null && String(envNoteRaw).trim() ? String(envNoteRaw).trim() : null;
-  // Default to prototype purpose when opened from project flow without explicit envNote.
-  const isPrototypePurpose = envNote === "prototype" || envNote == null;
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
@@ -126,14 +120,6 @@ function ProjectAdminSettingsInner() {
         </Link>
       </div>
 
-      {projectId ? (
-        <div style={{ marginBottom: 14 }}>
-          {isPrototypePurpose ? null : <ProjectWorkflowNav />}
-        </div>
-      ) : null}
-
-      {isPrototypePurpose ? null : <ProjectAdminWorkflowScopeNote />}
-
       {!projectId ? (
         <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
           <p style={{ margin: "0 0 10px 0" }}>
@@ -160,35 +146,9 @@ function ProjectAdminSettingsInner() {
               프로토타입 자동 생성 환경설정
             </h1>
             <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-              Git·GitHub·Cursor 연결과 자동 실행 정책/검증을 설정합니다.
+              Git·GitHub·Cursor 연결과 자동 실행 정책을 설정합니다.
             </p>
           </header>
-
-          {isPrototypePurpose ? null : (
-            <section aria-labelledby="settings-env-sections" style={{ marginBottom: 14 }}>
-              <h2
-                id="settings-env-sections"
-                style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", margin: "0 0 8px 0" }}
-              >
-                환경 준비
-              </h2>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "#475569",
-                  lineHeight: 1.55,
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <strong style={{ color: "#0f172a" }}>구성</strong> — ① <strong>연결 설정</strong>(Git 저장소·GitHub
-                토큰·Cursor API) ② <strong>실행 정책</strong>(승인·푸시·재시도 등) ③ <strong>환경 검증</strong>(저장소·Cursor
-                접근·권한)은 아래 패널에서 진행합니다.
-              </div>
-            </section>
-          )}
 
           <div id="execution-setup-panel">
             <ProjectExecutionEnvironmentPanel
@@ -197,32 +157,30 @@ function ProjectAdminSettingsInner() {
               canEdit={rbac.canEditSpec}
               canRevealCursorApiKey={projectRole === "OWNER"}
               settingsSurface="admin"
-              settingsPurpose={isPrototypePurpose ? "prototype" : "env-test"}
+              settingsPurpose="prototype"
             />
           </div>
 
-          {isPrototypePurpose ? (
-            <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#475569", fontWeight: 800 }}>
-                설정 도움말 보기
-              </summary>
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 12.5,
-                  color: "#475569",
-                  lineHeight: 1.55,
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <strong style={{ color: "#0f172a" }}>순서</strong> — ① Git 저장소 ② GitHub 인증 ③ Cursor API ④ 실행 정책
-                ⑤ 환경 검증
-              </div>
-            </details>
-          ) : null}
+          <details style={{ marginTop: 10 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#475569", fontWeight: 800 }}>
+              설정 도움말 보기
+            </summary>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12.5,
+                color: "#475569",
+                lineHeight: 1.55,
+                padding: "10px 12px",
+                borderRadius: 8,
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <strong style={{ color: "#0f172a" }}>순서</strong> — ① Git 저장소 ② GitHub 인증 ③ Cursor API ④ 실행 정책
+              ⑤ 환경 검증
+            </div>
+          </details>
         </>
       ) : null}
     </main>
