@@ -2,7 +2,6 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PrototypeMockFallbackPanel } from "@/components/preview/PrototypeMockFallbackPanel";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import type {
   PrototypeWorkspaceActor,
@@ -101,10 +100,8 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
   } = props;
 
   const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => loadPrototypeGenerationRecord(projectId));
-  const [promptOpen, setPromptOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const [mockOpen, setMockOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
   const [templateOverride, setTemplateOverride] = useState<PrototypeTemplateType | null>(null);
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
@@ -204,17 +201,7 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
     window.setTimeout(() => setToast(null), 3200);
   };
 
-  const copyPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(promptPackage);
-      showToast("프롬프트를 클립보드에 복사했습니다.");
-    } catch {
-      showToast("복사에 실패했습니다. 프롬프트 보기에서 직접 선택해 주세요.");
-    }
-  };
-
   const onCursorRequest = async () => {
-    await copyPrompt();
     const now = new Date().toISOString();
     savePrototypeGenerationRecord(projectId, {
       runStatus: "awaiting_preview",
@@ -379,7 +366,6 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
               >
                 추천으로
               </button>
-              <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>예시 템플릿 보기</button>
             </div>
           </div>
 
@@ -408,31 +394,11 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
           <div style={card}>
             <div style={cardTitle}>생성 요청 / 진행 상태</div>
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn}>생성 프롬프트 보기</button>
-              <button type="button" onClick={() => void copyPrompt()} style={btn}>복사</button>
               <button type="button" onClick={() => void onCursorRequest()} style={btnPrimary}>Cursor 생성 요청</button>
               <span style={{ marginLeft: "auto", fontSize: 12.5, color: "#64748b" }}>
                 상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{statusLabel(record.runStatus, Boolean(record.previewUrl && isLikelyPreviewUrl(record.previewUrl)))}</span>
               </span>
             </div>
-            {promptOpen ? (
-              <textarea
-                readOnly
-                value={promptPackage}
-                style={{
-                  marginTop: 10,
-                  width: "100%",
-                  minHeight: 240,
-                  fontSize: 11.5,
-                  fontFamily: "ui-monospace, monospace",
-                  borderRadius: 10,
-                  border: "1px solid #cbd5e1",
-                  padding: 10,
-                  boxSizing: "border-box",
-                  resize: "vertical",
-                }}
-              />
-            ) : null}
             {staleRegenerate ? (
               <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 900, color: "#92400e" }}>설계 변경됨 — 다시 생성 필요</div>
             ) : null}
@@ -468,25 +434,6 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
           </div>
         </div>
       </div>
-
-      <PrototypePreviewDraggableShell
-        open={mockOpen}
-        onClose={() => setMockOpen(false)}
-        title="예시 템플릿 보기"
-        modalWidth="min(860px, calc(100vw - 20px))"
-      >
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#92400e", marginBottom: 10 }}>
-          예시 화면이며 실제 생성 결과가 아닙니다.
-        </div>
-        <PrototypeMockFallbackPanel
-          projectName={projectName}
-          projectDescription={projectDescription}
-          ideationAssets={ideationAssets}
-          flowSteps={flowSteps}
-          actors={actors}
-          recommendedTemplateOverride={effectiveTemplate}
-        />
-      </PrototypePreviewDraggableShell>
 
       <PrototypePreviewDraggableShell
         open={resultOpen}

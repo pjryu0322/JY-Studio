@@ -2,7 +2,6 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PrototypeMockFallbackPanel } from "@/components/preview/PrototypeMockFallbackPanel";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import type {
   PrototypeWorkspaceActor as PrototypePreviewActor,
@@ -120,10 +119,8 @@ export function PrototypePreviewPanel({
 }) {
   // used in design readiness details
   const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => loadPrototypeGenerationRecord(projectId));
-  const [promptOpen, setPromptOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const [mockOpen, setMockOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
   const [templateOverride, setTemplateOverride] = useState<PrototypeTemplateType | null>(null);
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
@@ -264,55 +261,6 @@ export function PrototypePreviewPanel({
     window.setTimeout(() => setToast(null), 3200);
   };
 
-  const copyPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(promptPackage);
-      showToast("복사했습니다.");
-    } catch {
-      showToast("복사에 실패했습니다.");
-    }
-  };
-
-  const onCopyGenerationPrompt = async () => {
-    if (!canRequestGeneration.designOk) return;
-    setProtoBusy(true);
-    try {
-      try {
-        await navigator.clipboard.writeText(promptPackage);
-      } catch {
-        showToast("복사에 실패했습니다.");
-        return;
-      }
-      const res = await postCreatePrototypeRun({
-        projectId,
-        selectedTemplate: effectiveTemplate,
-        promptSnapshot: promptPackage.slice(0, 50_000),
-        startCursorAgent: false,
-      });
-      if (res.success && res.data?.run) {
-        setLatestRun(res.data.run);
-        setAutomationAvailable(res.data.automationAvailable);
-        setAutomationBlockReason(res.data.automationBlockReason);
-      } else {
-        showToast(res.message ?? "서버 실행 기록 생성에 실패했습니다.");
-      }
-      const now = new Date().toISOString();
-      savePrototypeGenerationRecord(projectId, {
-        runStatus: "awaiting_preview",
-        fingerprintAtRequest: designFingerprint,
-        lastRequestedAt: now,
-        lastError: null,
-        selectedTemplate: effectiveTemplate,
-        lastPromptSnapshot: promptPackage.slice(0, 30_000),
-      });
-      refreshRecord();
-      showToast("생성 요청 후 결과 URL을 연결하세요.");
-    } finally {
-      setProtoBusy(false);
-      void refreshLatestRun();
-    }
-  };
-
   const onCursorAutoRequest = async () => {
     if (!canRequestGeneration.designOk || !automationAvailable) return;
     setProtoBusy(true);
@@ -348,7 +296,7 @@ export function PrototypePreviewPanel({
 
   const onRefreshPrototypeStatus = async () => {
     if (!latestRun?.id) {
-      showToast("먼저 자동 생성을 시작하거나 생성 프롬프트 복사로 실행을 만드세요.");
+      showToast("먼저 프로토타입 자동 생성을 시작하세요.");
       return;
     }
     setProtoBusy(true);
@@ -601,9 +549,6 @@ export function PrototypePreviewPanel({
                   추천으로
                 </button>
                 {isRecommended ? <span style={badge}>추천</span> : <span style={badgeMuted}>사용자 선택</span>}
-                <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>
-                  예시 템플릿 보기
-                </button>
               </div>
               <div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>
                 예상 화면 {expectedPageCount} · 난이도 {difficultyKr}
@@ -626,29 +571,12 @@ export function PrototypePreviewPanel({
                 >
                   프로토타입 자동 생성 시작
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void onCopyGenerationPrompt()}
-                  disabled={!canRequestGeneration.designOk || protoBusy}
-                  style={
-                    canStartPrototypeAutomation
-                      ? { ...btn, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
-                      : { ...btnPrimary, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
-                  }
-                >
-                  생성 프롬프트 복사
-                </button>
                 <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                   상태 새로고침
                 </button>
-              </div>
-              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn} disabled={protoBusy}>
-                  생성 프롬프트 보기
-                </button>
-                <button type="button" onClick={() => void copyPrompt()} style={btn} disabled={protoBusy}>
-                  복사
-                </button>
+                <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>
+                  환경설정
+                </a>
               </div>
 
               {!canRequestGeneration.designOk ? (
@@ -657,42 +585,15 @@ export function PrototypePreviewPanel({
                 </div>
               ) : null}
 
-              {!automationAvailable ? (
-                <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569", lineHeight: 1.5 }}>
-                  자동 실행을 사용할 수 없어 프롬프트 복사 방식으로 진행합니다.
-                </div>
-              ) : null}
               {!canRequestGeneration.envOk && automationAvailable ? (
                 <div style={{ marginTop: 10, fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>
-                  자동 실행은 환경설정 완료 후 사용할 수 있습니다.{" "}
-                  <a href={settingsHref} style={{ color: "#1d4ed8", fontWeight: 800 }}>
-                    환경설정
-                  </a>
+                  자동 실행 환경설정이 필요합니다.
                 </div>
               ) : null}
               {automationBlockReason ? (
                 <div style={{ marginTop: 6, fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>
                   자동 불가 사유: {automationBlockReason}
                 </div>
-              ) : null}
-
-              {promptOpen ? (
-                <textarea
-                  readOnly
-                  value={promptPackage}
-                  style={{
-                    marginTop: 10,
-                    width: "100%",
-                    minHeight: 220,
-                    fontSize: 11.5,
-                    fontFamily: "ui-monospace, monospace",
-                    borderRadius: 10,
-                    border: "1px solid #cbd5e1",
-                    padding: 10,
-                    boxSizing: "border-box",
-                    resize: "vertical",
-                  }}
-                />
               ) : null}
               {staleRegenerate ? (
                 <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 900, color: "#92400e" }}>설계 변경됨 — 다시 생성 필요</div>
@@ -792,16 +693,13 @@ export function PrototypePreviewPanel({
                     key={row.code}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "minmax(0,1.1fr) minmax(0,1.4fr) 52px",
+                      gridTemplateColumns: "minmax(0,1fr) 52px",
                       gap: 8,
                       alignItems: "center",
                       fontSize: 12,
                       color: "#0f172a",
                     }}
                   >
-                    <span style={{ fontFamily: "ui-monospace, monospace", color: "#64748b", fontWeight: 700, wordBreak: "break-all" }}>
-                      {row.code}
-                    </span>
                     <span style={{ fontWeight: 700 }}>{row.labelKo}</span>
                     <span
                       style={{
@@ -829,25 +727,6 @@ export function PrototypePreviewPanel({
           </div>
         </div>
       </div>
-
-      <PrototypePreviewDraggableShell
-        open={mockOpen}
-        onClose={() => setMockOpen(false)}
-        title="예시 템플릿 보기"
-        modalWidth="min(860px, calc(100vw - 20px))"
-      >
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#92400e", marginBottom: 10 }}>
-          예시 화면이며 실제 생성 결과가 아닙니다.
-        </div>
-        <PrototypeMockFallbackPanel
-          projectName={projectName}
-          projectDescription={projectDescription}
-          ideationAssets={ideationAssets}
-          flowSteps={flowSteps}
-          actors={actors}
-          recommendedTemplateOverride={effectiveTemplate}
-        />
-      </PrototypePreviewDraggableShell>
 
       <PrototypePreviewDraggableShell
         open={resultOpen}
