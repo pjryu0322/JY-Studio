@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, type CSSProperties } from "react";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { RequirementsServiceFlowStage } from "@/components/requirements/RequirementsServiceFlowStage";
 
@@ -57,6 +58,8 @@ export function ServiceFlowWorkspace({
   onGenerateAiDraft,
   onApproveAll,
   onUpdateFlow,
+  persistedServiceFlowMessages,
+  onAppendPersistedServiceFlowMessages,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -74,6 +77,10 @@ export function ServiceFlowWorkspace({
   readonly onGenerateAiDraft: () => void;
   readonly onApproveAll: () => void;
   readonly onUpdateFlow: (next: RequirementsServiceFlowV1) => void;
+  readonly persistedServiceFlowMessages: readonly RequirementsMessage[];
+  readonly onAppendPersistedServiceFlowMessages: (
+    incoming: readonly RequirementsMessage[],
+  ) => Promise<readonly RequirementsMessage[]>;
 }) {
   const approval = useMemo(() => {
     const actorIds = new Set((flow?.actors ?? []).map((a) => a.id));
@@ -137,6 +144,8 @@ export function ServiceFlowWorkspace({
           onGenerateAiDraft={onGenerateAiDraft}
           onApproveAll={onApproveAll}
           onRetryGate={onRetryGate}
+          persistedServiceFlowMessages={persistedServiceFlowMessages}
+          onAppendPersistedServiceFlowMessages={onAppendPersistedServiceFlowMessages}
         />
       </div>
     </section>

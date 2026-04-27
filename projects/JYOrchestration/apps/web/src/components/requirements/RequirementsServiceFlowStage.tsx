@@ -148,7 +148,7 @@ const btn: CSSProperties = {
 
 const primaryBtn: CSSProperties = {
   ...btn,
-  borderColor: "#0f766e",
+  border: "1px solid #0f766e",
   background: "#0f766e",
   color: "#fff",
 };
