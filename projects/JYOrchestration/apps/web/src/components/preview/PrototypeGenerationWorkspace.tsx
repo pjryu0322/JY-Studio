@@ -3,11 +3,17 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PrototypeMockFallbackPanel } from "@/components/preview/PrototypeMockFallbackPanel";
+import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import type {
   PrototypeWorkspaceActor,
   PrototypeWorkspaceFlowStep,
   PrototypeWorkspaceIdeationAsset,
 } from "@/components/preview/prototypeWorkspaceTypes";
+import {
+  fetchExecutionSetup,
+  postExecutionSetupValidate,
+  type ExecutionSetupDto,
+} from "@/components/project-spec/api";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
 import {
@@ -15,7 +21,7 @@ import {
   savePrototypeGenerationRecord,
   type PrototypeGenerationLocalRecord,
 } from "@/lib/prototype/prototypeGenerationLocalStore";
-import { PROTOTYPE_TEMPLATES } from "@/lib/templates/prototypeTemplates";
+import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 
 export type PrototypeGenerationWorkspaceProps = Readonly<{
   projectId: string;
@@ -55,6 +61,29 @@ function isLikelyPreviewUrl(url: string): boolean {
   return /^https?:\/\//i.test(u);
 }
 
+type EnvBadge = "ok" | "needs" | "error" | "loading";
+type EnvStatus = Readonly<{
+  git: EnvBadge;
+  github: EnvBadge;
+  cursor: EnvBadge;
+  runnable: EnvBadge;
+  message: string | null;
+}>;
+
+function labelEnv(b: EnvBadge): string {
+  if (b === "ok") return "완료";
+  if (b === "needs") return "필요";
+  if (b === "loading") return "확인중";
+  return "오류";
+}
+
+function envPill(b: EnvBadge): CSSProperties {
+  if (b === "ok") return { ...pill, background: "#ecfdf5", borderColor: "#a7f3d0", color: "#047857" };
+  if (b === "needs") return { ...pill, background: "#eff6ff", borderColor: "#bfdbfe", color: "#1e40af" };
+  if (b === "loading") return { ...pill, background: "#f1f5f9", borderColor: "#e2e8f0", color: "#475569" };
+  return { ...pill, background: "#fef2f2", borderColor: "#fecaca", color: "#b91c1c" };
+}
+
 export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspaceProps) {
   const {
     projectId,
@@ -75,6 +104,18 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
   const [promptOpen, setPromptOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [mockOpen, setMockOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [templateOverride, setTemplateOverride] = useState<PrototypeTemplateType | null>(null);
+  const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
+  const [envStatus, setEnvStatus] = useState<EnvStatus>({
+    git: "loading",
+    github: "loading",
+    cursor: "loading",
+    runnable: "loading",
+    message: null,
+  });
+  const [envBusy, setEnvBusy] = useState(false);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -101,6 +142,12 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
     [projectName, projectDescription, ideationAssets, flowSteps, actors, checklistGapLabels],
   );
 
+  const effectiveTemplate = templateOverride ?? analysis.recommendedTemplate;
+  const effectiveAnalysis = useMemo(
+    () => ({ ...analysis, recommendedTemplate: effectiveTemplate }),
+    [analysis, effectiveTemplate],
+  );
+
   const actorName = useCallback(
     (id: string) => actors.find((a) => a.id === id)?.name ?? id,
     [actors],
@@ -114,14 +161,14 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
       ownerName: actorName(s.primaryActorId),
     }));
     return buildCursorPrototypePromptPackage({
-      analysis,
+      analysis: effectiveAnalysis,
       projectName: projectName.trim() || "프로젝트",
       projectDescription: projectDescription.trim(),
       actors: actors.map((a) => ({ name: a.name, kind: a.kind, description: a.description })),
       flowSteps: stepsForPrompt,
       featureDraftTitles,
     });
-  }, [analysis, projectName, projectDescription, actors, flowSteps, featureDraftTitles, actorName]);
+  }, [effectiveAnalysis, projectName, projectDescription, actors, flowSteps, featureDraftTitles, actorName]);
 
   const prototypeReadinessPercent = useMemo(() => {
     const ownersOk = flowSteps.length > 0 && flowSteps.every((s) => String(s.primaryActorId ?? "").trim());
@@ -168,7 +215,7 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
       lastError: null,
     });
     refreshRecord();
-    showToast("Cursor에서 붙여넣어 생성을 진행한 뒤, 미리보기 URL을 입력하세요.");
+    showToast("생성 요청 후 결과 URL을 연결하세요.");
   };
 
   const applyPreviewUrl = () => {
@@ -198,166 +245,38 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
     refreshRecord();
   };
 
-  const tpl = PROTOTYPE_TEMPLATES.find((t) => t.id === analysis.recommendedTemplate);
+  const tpl = PROTOTYPE_TEMPLATES.find((t) => t.id === effectiveTemplate);
 
-  const leftCol = (
-    <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
-      <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>프로토타입 생성 준비도 {prototypeReadinessPercent}%</div>
-        <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-          <div style={{ width: `${prototypeReadinessPercent}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
-        </div>
-        <ul style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
-          <li>아이디어 요약: {projectDescription.trim().length > 24 || ideationAssets.length ? "있음" : "부족"}</li>
-          <li>액터: {actors.length >= 2 ? "충족" : "부족"}</li>
-          <li>서비스 흐름: {flowSteps.length >= 3 ? "충족" : "부족"}</li>
-          <li>담당 지정:{" "}
-            {flowSteps.length > 0 && flowSteps.every((s) => String(s.primaryActorId ?? "").trim()) ? "충족" : "미비"}
-          </li>
-          <li>미해결 체크리스트: {unresolvedChecklistCount}개</li>
-          <li>기능 정리 초안: {featureDraftTitles?.length ? `${featureDraftTitles.length}건` : "(선택)"}</li>
-        </ul>
-        {checklistGapLabels.length ? (
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: "#b45309" }}>
-            보완 권장: {checklistGapLabels.slice(0, 5).join(" · ")}
-          </div>
-        ) : null}
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <button type="button" onClick={() => onNavigateFix?.()} style={btnPrimary}>
-            지금 보완
-          </button>
-          <button type="button" onClick={proceedWithGaps} style={btn}>
-            미정의로 진행
-          </button>
-        </div>
-      </div>
-
-      <div style={card}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#64748b" }}>문맥 분석</div>
-        <div style={{ marginTop: 6, fontSize: 12.5, color: "#0f172a", lineHeight: 1.5 }}>
-          유형: <strong>{analysis.projectType}</strong>
-          <br />
-          사용자: {analysis.userType} · 복잡도: {analysis.workflowComplexity} · 신뢰도: {analysis.confidence}%
-        </div>
-      </div>
-
-      <div style={card}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#64748b" }}>추천 템플릿 (시드)</div>
-        <div style={{ marginTop: 6, fontSize: 14, fontWeight: 900, color: "#0f172a" }}>
-          {tpl?.nameKo} ({tpl?.nameEn})
-        </div>
-        {analysis.recommendedTemplateNotes.length ? (
-          <div style={{ marginTop: 6, fontSize: 12, color: "#475569" }}>{analysis.recommendedTemplateNotes.join(" · ")}</div>
-        ) : null}
-      </div>
-
-      <div style={card}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#64748b" }}>Cursor 실행 상태</div>
-        <div style={{ marginTop: 8, fontSize: 14, fontWeight: 900, color: "#0f172a" }}>
-          {statusLabel(record.runStatus, Boolean(record.previewUrl && isLikelyPreviewUrl(record.previewUrl)))}
-        </div>
-        {record.lastError ? <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>{record.lastError}</div> : null}
-        <div style={{ marginTop: 10, fontSize: 11.5, color: "#64748b", lineHeight: 1.45 }}>
-          서버 실행 엔진 없이 브라우저에만 상태를 저장합니다. Cursor에서 코드 생성 후 로컬/배포 URL을 붙여넣으면 iframe으로 열 수 있습니다.
-        </div>
-      </div>
-
-      <div style={card}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn}>
-            프롬프트 보기
-          </button>
-          <button type="button" onClick={() => void copyPrompt()} style={btn}>
-            복사
-          </button>
-          <button type="button" onClick={() => void onCursorRequest()} style={btnPrimary}>
-            Cursor 생성 요청
-          </button>
-        </div>
-        {promptOpen ? (
-          <textarea
-            readOnly
-            value={promptPackage}
-            style={{
-              marginTop: 10,
-              width: "100%",
-              minHeight: 220,
-              fontSize: 11.5,
-              fontFamily: "ui-monospace, monospace",
-              borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              padding: 10,
-              boxSizing: "border-box",
-              resize: "vertical",
-            }}
-          />
-        ) : null}
-      </div>
-
-      <div style={card}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#64748b" }}>생성 결과 URL</div>
-        <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input
-            value={urlDraft || record.previewUrl || ""}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            placeholder="https://… (로컬 dev 서버 또는 배포 URL)"
-            style={{
-              flex: "1 1 200px",
-              minWidth: 0,
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              fontSize: 12.5,
-            }}
-          />
-          <button type="button" onClick={applyPreviewUrl} style={btnPrimary}>
-            URL 적용
-          </button>
-          <button type="button" onClick={clearPreviewUrl} style={btn}>
-            초기화
-          </button>
-        </div>
-      </div>
-    </div>
+  const settingsHref = useMemo(
+    () => `/project-admin/settings?projectId=${encodeURIComponent(projectId)}&envNote=${encodeURIComponent("prototype")}`,
+    [projectId],
   );
 
-  const previewUrl = record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? record.previewUrl.trim() : null;
+  const loadEnv = useCallback(async () => {
+    if (!projectId.trim()) return;
+    setEnvBusy(true);
+    try {
+      const { res, json } = await fetchExecutionSetup(projectId);
+      if (res.ok && json.success) setExecutionSetup(json.data ?? null);
+      const v = await postExecutionSetupValidate(projectId, { scope: "all" });
+      const vData = v.res.ok && v.json.success ? v.json.data : null;
+      const git: EnvBadge = vData?.git ?? "needs";
+      const cursor: EnvBadge = vData?.cursor ?? "needs";
+      const github: EnvBadge = vData?.githubOperableOk === true ? "ok" : "needs";
+      const runnable: EnvBadge = vData ? (vData.git === "ok" && vData.cursor === "ok" ? "ok" : "needs") : "needs";
+      const msg = vData?.messages?.[0] ? vData.messages[0] : null;
+      setEnvStatus({ git, cursor, github, runnable, message: msg });
+    } catch {
+      setEnvStatus({ git: "error", github: "error", cursor: "error", runnable: "error", message: "환경 확인에 실패했습니다." });
+    } finally {
+      setEnvBusy(false);
+    }
+  }, [projectId]);
 
-  const rightCol = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 360, minWidth: 0 }}>
-      {staleRegenerate ? (
-        <div style={{ ...card, borderColor: "#fcd34d", background: "#fffbeb" }}>
-          <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e" }}>설계 변경됨 — 다시 생성 필요</div>
-          <div style={{ marginTop: 6, fontSize: 12.5, color: "#78350f", lineHeight: 1.45 }}>
-            액터·서비스 흐름 등이 마지막 생성 요청 이후 바뀌었습니다. Cursor에 다시 프롬프트를 보내고 미리보기 URL을 갱신해 주세요.
-          </div>
-        </div>
-      ) : null}
-
-      <div style={{ ...card, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>생성 미리보기</div>
-        {previewUrl ? (
-          <iframe
-            title="프로토타입 미리보기"
-            src={previewUrl}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            style={{ flex: 1, width: "100%", minHeight: 420, border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }}
-          />
-        ) : (
-          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-            <PrototypeMockFallbackPanel
-              projectName={projectName}
-              projectDescription={projectDescription}
-              ideationAssets={ideationAssets}
-              flowSteps={flowSteps}
-              actors={actors}
-              recommendedTemplateOverride={analysis.recommendedTemplate}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    const t = window.setTimeout(() => void loadEnv(), 0);
+    return () => window.clearTimeout(t);
+  }, [loadEnv]);
 
   return (
     <div style={{ position: "relative" }}>
@@ -382,10 +301,163 @@ export function PrototypeGenerationWorkspace(props: PrototypeGenerationWorkspace
         </div>
       ) : null}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "stretch" }}>
-        <div style={{ flex: "1 1 300px", maxWidth: 440, minWidth: 0 }}>{leftCol}</div>
-        <div style={{ flex: "3 1 420px", minWidth: 0 }}>{rightCol}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 520px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
+        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+          <div style={card}>
+            <div style={cardTitle}>생성 준비도</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 6 }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{prototypeReadinessPercent}%</div>
+              <div style={{ fontSize: 12.5, color: "#64748b" }}>미해결 {unresolvedChecklistCount}개</div>
+            </div>
+            <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+              <div style={{ width: `${prototypeReadinessPercent}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
+            </div>
+            <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#0f172a" }}>
+              <div style={checkRow}><span style={envPill(projectDescription.trim().length > 24 || ideationAssets.length ? "ok" : "needs")}>{projectDescription.trim().length > 24 || ideationAssets.length ? "OK" : "필요"}</span>아이디어 요약</div>
+              <div style={checkRow}><span style={envPill(actors.length >= 2 ? "ok" : "needs")}>{actors.length >= 2 ? "OK" : "필요"}</span>액터 정의 완료</div>
+              <div style={checkRow}><span style={envPill(flowSteps.length >= 3 ? "ok" : "needs")}>{flowSteps.length >= 3 ? "OK" : "필요"}</span>서비스 흐름 정의 완료</div>
+              <div style={checkRow}><span style={envPill(flowSteps.length > 0 && flowSteps.every((s) => String(s.primaryActorId ?? "").trim()) ? "ok" : "needs")}>{flowSteps.length > 0 && flowSteps.every((s) => String(s.primaryActorId ?? "").trim()) ? "OK" : "필요"}</span>담당자 지정 완료</div>
+              <div style={checkRow}><span style={envPill(featureDraftTitles?.length ? "ok" : "loading")}>{featureDraftTitles?.length ? "있음" : "선택"}</span>기능 정리 초안</div>
+            </div>
+            {checklistGapLabels.length ? (
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: "#b45309" }}>
+                미해결: {checklistGapLabels.slice(0, 4).join(" · ")}
+              </div>
+            ) : null}
+            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <button type="button" onClick={() => onNavigateFix?.()} style={btnPrimary}>지금 보완</button>
+              <button type="button" onClick={proceedWithGaps} style={btn}>미정의로 진행</button>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>추천 템플릿</div>
+            <div style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+              <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>{tpl?.nameKo}</div>
+              <div style={{ fontSize: 12.5, color: "#64748b" }}>{analysis.projectType} · {analysis.workflowComplexity}</div>
+            </div>
+            {analysis.recommendedTemplateNotes.length ? (
+              <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569" }}>{analysis.recommendedTemplateNotes.join(" · ")}</div>
+            ) : null}
+            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select value={effectiveTemplate} onChange={(e) => setTemplateOverride(e.target.value as PrototypeTemplateType)} style={selectStyle}>
+                {PROTOTYPE_TEMPLATES.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nameKo}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setTemplateOverride(null)} style={btn}>추천으로</button>
+              <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>참고 화면 보기</button>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={cardTitle}>환경 상태</div>
+              <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btn, marginLeft: "auto", opacity: envBusy ? 0.6 : 1 }}>
+                다시 점검
+              </button>
+            </div>
+            <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, color: "#0f172a" }}>
+              <div style={checkRow}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>Git 연결</div>
+              <div style={checkRow}><span style={envPill(envStatus.github)}>{labelEnv(envStatus.github)}</span>GitHub 인증</div>
+              <div style={checkRow}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
+              <div style={checkRow}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
+            </div>
+            {envStatus.message ? <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>{envStatus.message}</div> : null}
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>설정으로 이동</a>
+              {executionSetup?.gitRepoName ? <span style={{ fontSize: 11.5, color: "#64748b" }}>{executionSetup.gitRepoName}</span> : null}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+          <div style={card}>
+            <div style={cardTitle}>Cursor 생성 요청</div>
+            <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn}>프롬프트 보기</button>
+              <button type="button" onClick={() => void copyPrompt()} style={btn}>복사</button>
+              <button type="button" onClick={() => void onCursorRequest()} style={btnPrimary}>Cursor 생성 요청</button>
+              <span style={{ marginLeft: "auto", fontSize: 12.5, color: "#64748b" }}>
+                상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{statusLabel(record.runStatus, Boolean(record.previewUrl && isLikelyPreviewUrl(record.previewUrl)))}</span>
+              </span>
+            </div>
+            {promptOpen ? (
+              <textarea
+                readOnly
+                value={promptPackage}
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  minHeight: 240,
+                  fontSize: 11.5,
+                  fontFamily: "ui-monospace, monospace",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  padding: 10,
+                  boxSizing: "border-box",
+                  resize: "vertical",
+                }}
+              />
+            ) : null}
+            {staleRegenerate ? (
+              <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 900, color: "#92400e" }}>설계 변경됨 — 다시 생성 필요</div>
+            ) : null}
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>생성 결과</div>
+            <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input
+                value={urlDraft || record.previewUrl || ""}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                placeholder="https://…"
+                style={inputStyle}
+              />
+              <button type="button" onClick={applyPreviewUrl} style={btnPrimary}>URL 적용</button>
+              <button type="button" onClick={clearPreviewUrl} style={btn}>초기화</button>
+              {record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? (
+                <button type="button" onClick={() => setResultOpen(true)} style={btnMuted}>결과 보기</button>
+              ) : null}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>생성 요청 후 결과 URL을 연결하세요.</div>
+          </div>
+        </div>
       </div>
+
+      <PrototypePreviewDraggableShell
+        open={mockOpen}
+        onClose={() => setMockOpen(false)}
+        title="예시 템플릿 화면 (생성 결과 아님)"
+        modalWidth="min(860px, calc(100vw - 20px))"
+      >
+        <PrototypeMockFallbackPanel
+          projectName={projectName}
+          projectDescription={projectDescription}
+          ideationAssets={ideationAssets}
+          flowSteps={flowSteps}
+          actors={actors}
+          recommendedTemplateOverride={effectiveTemplate}
+        />
+      </PrototypePreviewDraggableShell>
+
+      <PrototypePreviewDraggableShell
+        open={resultOpen}
+        onClose={() => setResultOpen(false)}
+        title="생성 결과 보기"
+        modalWidth="min(980px, calc(100vw - 20px))"
+      >
+        {record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? (
+          <iframe
+            title="프로토타입 결과"
+            src={record.previewUrl.trim()}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            style={{ width: "100%", height: "70vh", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }}
+          />
+        ) : (
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>URL을 먼저 연결해 주세요.</div>
+        )}
+      </PrototypePreviewDraggableShell>
     </div>
   );
 }
@@ -396,6 +468,8 @@ const card: CSSProperties = {
   padding: 14,
   background: "#fff",
 };
+
+const cardTitle: CSSProperties = { fontSize: 12.5, fontWeight: 900, color: "#64748b" };
 
 const btn: CSSProperties = {
   padding: "8px 12px",
@@ -413,4 +487,45 @@ const btnPrimary: CSSProperties = {
   borderColor: "#0f766e",
   background: "#0f766e",
   color: "#fff",
+};
+
+const btnMuted: CSSProperties = {
+  ...btn,
+  borderColor: "#e2e8f0",
+  background: "#f8fafc",
+  color: "#0f172a",
+};
+
+const pill: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 22,
+  minWidth: 42,
+  padding: "0 8px",
+  borderRadius: 999,
+  border: "1px solid #e2e8f0",
+  fontSize: 11.5,
+  fontWeight: 900,
+};
+
+const checkRow: CSSProperties = { display: "flex", gap: 10, alignItems: "center" };
+
+const selectStyle: CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  fontSize: 12.5,
+  fontWeight: 800,
+  color: "#0f172a",
+};
+
+const inputStyle: CSSProperties = {
+  flex: "1 1 260px",
+  minWidth: 0,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  fontSize: 12.5,
 };
