@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
@@ -33,8 +32,6 @@ export function ProjectMembersSummaryPanel({
     const n = byRole[r];
     return n ? `${projectRoleLabelKr(r)} ${n}명` : null;
   }).filter(Boolean);
-
-  const adminHref = `/project-admin/members?projectId=${encodeURIComponent(projectId)}`;
 
   const existingHumanUserIds = useMemo(
     () => new Set(members.filter((m) => m.memberType === "HUMAN" && m.userId).map((m) => m.userId as string)),
@@ -83,11 +80,7 @@ export function ProjectMembersSummaryPanel({
         ) : null}
       </div>
       <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-        AI 기획자는 프로젝트 생성 시 자동으로 포함됩니다. 사람 멤버는 아래에서 초대하거나{" "}
-        <Link href={adminHref} style={{ color: "#2563eb", fontWeight: 700 }}>
-          멤버 관리
-        </Link>
-        에서 역할을 조정할 수 있습니다.
+        AI 기획자는 프로젝트 생성 시 자동으로 포함됩니다. 사람 멤버는 아래에서 초대하고, 역할은 멤버 목록에서 확인할 수 있습니다.
       </p>
       <div
         style={{
@@ -156,29 +149,6 @@ export function ProjectMembersSummaryPanel({
             ))}
           </ul>
         )}
-      </div>
-
-      <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8" }}>
-        고급 설정(역할 일괄·AI 멤버 구성)은 멤버 관리 화면을 사용하세요.
-      </div>
-      <div style={{ marginTop: 10 }}>
-        <Link
-          data-testid="project-members-summary-admin-link"
-          href={adminHref}
-          style={{
-            display: "inline-block",
-            padding: "8px 14px",
-            borderRadius: 10,
-            border: "1px solid #cbd5e1",
-            background: "#f8fafc",
-            color: "#334155",
-            fontWeight: 700,
-            fontSize: 13,
-            textDecoration: "none",
-          }}
-        >
-          멤버 관리로 이동
-        </Link>
       </div>
 
       <RequirementsMemberInviteModal

@@ -102,7 +102,6 @@ export default function ProjectDetailPage() {
   const memberCount = memberRows.length;
   const hasAnyAi = memberRows.some((m) => m.memberType === "AI");
 
-  const membersHref = `/project-admin/members?projectId=${encodedProjectId}`;
   const settingsHref = projectExecutionSettingsHref(projectId, { from: "planning" });
 
   return (
@@ -176,22 +175,6 @@ export default function ProjectDetailPage() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "#0f172a" }}>멤버</h2>
-          <Link
-            href={membersHref}
-            style={{
-              marginLeft: "auto",
-              padding: "6px 12px",
-              borderRadius: 8,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
-              color: "#0f172a",
-              fontSize: 12,
-              fontWeight: 800,
-              textDecoration: "none",
-            }}
-          >
-            멤버 관리로 이동
-          </Link>
         </div>
         <dl
           style={{
@@ -224,9 +207,6 @@ export default function ProjectDetailPage() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <Link href={`/projects/${encodedProjectId}?view=workspace`} style={quickLinkStyle()}>
             실행 준비
-          </Link>
-          <Link href={membersHref} style={quickLinkStyle()}>
-            프로젝트 멤버
           </Link>
           <Link href={settingsHref} style={quickLinkStyle()}>
             설정

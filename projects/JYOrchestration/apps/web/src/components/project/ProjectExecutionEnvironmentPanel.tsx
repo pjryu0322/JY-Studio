@@ -1250,8 +1250,7 @@ export function ProjectExecutionEnvironmentPanel({
   const stage1ValidationSlotExpanded = (
     <div>
             <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
-              <strong>연결 검증</strong>은 Cursor가 브랜치에 푸시하고 PR·머지까지 진행하는지 확인합니다. Stage 2(역할 분리) 테스트는{" "}
-              <strong>AI Members</strong> 탭에서 실행합니다.
+              <strong>연결 검증</strong>은 Cursor가 브랜치에 푸시하고 PR·머지까지 진행하는지 확인합니다.
             </p>
             <button
               type="button"
@@ -1285,9 +1284,6 @@ export function ProjectExecutionEnvironmentPanel({
             >
               {busyEnvTest ? "실행 중…" : "연결 테스트 실행 (Stage 1)"}
             </button>
-            <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
-              Stage 2(역할 분리) 환경 테스트는 <strong>AI Members</strong> 탭에서 실행합니다.
-            </p>
             {!specWorkflowConfirmed ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>Spec 확정 후 사용할 수 있습니다.</p>
             ) : null}

@@ -81,7 +81,7 @@ const linkMgmt = (active: boolean): CSSProperties => ({
 });
 
 /**
- * 프로젝트 컨텍스트가 있을 때만: 워크플로 단계 + 프로젝트 멤버/설정 (+ 옵션: 추적).
+ * 프로젝트 컨텍스트가 있을 때만: 워크플로 단계 (+ 옵션: 추적).
  * 글로벌 상단이 아닌 프로젝트 영역(요구사항 헤더·워크플로 페이지 등)에 배치합니다.
  */
 function ProjectWorkflowNavInner() {
