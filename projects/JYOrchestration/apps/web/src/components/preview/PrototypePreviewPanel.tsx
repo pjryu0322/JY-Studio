@@ -104,7 +104,7 @@ export function PrototypePreviewPanel({
   readonly designFingerprint: string;
   readonly onNavigateFix?: () => void;
 }) {
-  void unresolvedChecklistCount;
+  // used in design readiness details
   const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => loadPrototypeGenerationRecord(projectId));
   const [promptOpen, setPromptOpen] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
@@ -193,11 +193,23 @@ export function PrototypePreviewPanel({
     return Math.round((n / flowSteps.length) * 100);
   }, [flowSteps]);
 
-  const prototypeReadinessPercent = useMemo(() => {
+  const designReadinessPercentLocal = useMemo(() => {
     const base = Math.round(designReadinessPercent * 0.5 + analysis.confidence * 0.2);
     const bonus = (ideaOk ? 14 : 0) + (actorsOk ? 10 : 0) + (flowOk ? 10 : 0) + (ownersOk ? 12 : 0);
     return Math.min(100, base + bonus);
   }, [designReadinessPercent, analysis.confidence, ideaOk, actorsOk, flowOk, ownersOk]);
+
+  const envReadinessPercent = useMemo(() => {
+    const score = (b: EnvBadge) => (b === "ok" ? 25 : b === "needs" ? 10 : b === "loading" ? 0 : 0);
+    const raw = score(envStatus.git) + score(envStatus.github) + score(envStatus.cursor) + score(envStatus.runnable);
+    return Math.min(100, Math.max(0, raw));
+  }, [envStatus.cursor, envStatus.git, envStatus.github, envStatus.runnable]);
+
+  const canRequestGeneration = useMemo(() => {
+    const designOk = ideaOk && actorsOk && flowOk && ownerAssignedRatio >= 60;
+    const envOk = envStatus.runnable === "ok" || (envStatus.git === "ok" && envStatus.cursor === "ok");
+    return { designOk, envOk, ok: designOk && envOk };
+  }, [ideaOk, actorsOk, flowOk, ownerAssignedRatio, envStatus.runnable, envStatus.git, envStatus.cursor]);
 
   const staleRegenerate = Boolean(record.fingerprintAtRequest && record.fingerprintAtRequest !== designFingerprint);
   const previewUrl = record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? record.previewUrl.trim() : null;
@@ -216,7 +228,7 @@ export function PrototypePreviewPanel({
     }
   };
 
-  const onCursorRequest = async () => {
+  const onCopyGenerationPrompt = async () => {
     await copyPrompt();
     const now = new Date().toISOString();
     savePrototypeGenerationRecord(projectId, {
@@ -312,9 +324,9 @@ export function PrototypePreviewPanel({
       <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 520px) minmax(0, 1fr)", gap: 18, alignItems: "start" }}>
         <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
           <div style={card}>
-            <div style={cardTitle}>프로토타입 생성 준비도 {prototypeReadinessPercent}%</div>
+            <div style={cardTitle}>설계 준비도 {designReadinessPercentLocal}%</div>
             <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-              <div style={{ width: `${prototypeReadinessPercent}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
+              <div style={{ width: `${designReadinessPercentLocal}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#0f172a" }}>
               <div style={row}><span style={envPill(ideaOk ? "ok" : "needs")}>{ideaOk ? "OK" : "필요"}</span>아이디어 구체화 완료</div>
@@ -322,18 +334,56 @@ export function PrototypePreviewPanel({
               <div style={row}><span style={envPill(flowOk ? "ok" : "needs")}>{flowOk ? "OK" : "필요"}</span>서비스 흐름 정의 완료</div>
               <div style={row}><span style={envPill(ownersOk ? "ok" : "needs")}>{ownersOk ? "OK" : `${ownerAssignedRatio}%`}</span>담당자 지정</div>
               <div style={row}><span style={envPill(featureDraftTitles?.length ? "ok" : "loading")}>{featureDraftTitles?.length ? "있음" : "선택"}</span>기능 정리</div>
-              <div style={row}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>저장소 연결</div>
-              <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
-              <div style={row}><span style={envPill(previewUrl ? "ok" : "needs")}>{previewUrl ? "있음" : "없음"}</span>결과 URL</div>
             </div>
             {checklistGapLabels.length ? (
               <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: "#b45309" }}>
                 남은 항목: {checklistGapLabels.slice(0, 4).join(" · ")}
               </div>
             ) : null}
+            {unresolvedChecklistCount > 0 ? (
+              <div style={{ marginTop: 6, fontSize: 12.5, color: "#64748b" }}>미해결 항목 {unresolvedChecklistCount}개</div>
+            ) : null}
             <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
               <button type="button" onClick={() => onNavigateFix?.()} style={btnPrimary}>지금 보완</button>
             </div>
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>실행 환경 준비도 {envReadinessPercent}%</div>
+            <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+              <div style={{ width: `${envReadinessPercent}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
+            </div>
+            <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, color: "#0f172a" }}>
+              <div style={row}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>Git 연결</div>
+              <div style={row}><span style={envPill(envStatus.github)}>{labelEnv(envStatus.github)}</span>GitHub 인증</div>
+              <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
+              <div style={row}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
+            </div>
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>환경설정으로 이동</a>
+              <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btnMuted, opacity: envBusy ? 0.6 : 1 }}>
+                다시 점검
+              </button>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>최종 실행 가능 여부</div>
+            {canRequestGeneration.ok ? (
+              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 900, color: "#047857" }}>생성 요청 가능</div>
+            ) : (
+              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 900, color: "#b45309" }}>생성 요청 불가</div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 12.5, color: "#475569", lineHeight: 1.5 }}>
+              {canRequestGeneration.ok
+                ? "설계·환경 조건이 충족되었습니다."
+                : "먼저 환경설정을 완료하거나 설계 항목을 보완하세요."}
+            </div>
+            {!canRequestGeneration.envOk ? (
+              <div style={{ marginTop: 10 }}>
+                <a href={settingsHref} style={{ ...btnPrimary, textDecoration: "none" }}>환경설정으로 이동</a>
+              </div>
+            ) : null}
           </div>
 
           <div style={card}>
@@ -406,13 +456,21 @@ export function PrototypePreviewPanel({
           <div style={card}>
             <div style={cardTitle}>생성 요청</div>
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <button type="button" onClick={() => void onCursorRequest()} style={btnPrimary}>Cursor 생성 요청</button>
+              <button
+                type="button"
+                onClick={() => void onCopyGenerationPrompt()}
+                disabled={!canRequestGeneration.ok}
+                style={{ ...btnPrimary, opacity: canRequestGeneration.ok ? 1 : 0.55 }}
+              >
+                생성 프롬프트 복사
+              </button>
               <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn}>생성 프롬프트 보기</button>
               <button type="button" onClick={() => void copyPrompt()} style={btn}>복사</button>
               <span style={{ marginLeft: "auto", fontSize: 12.5, color: "#64748b" }}>
                 상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{statusLabel(record.runStatus, Boolean(previewUrl))}</span>
               </span>
             </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>Cursor에 붙여넣어 생성하세요.</div>
             {promptOpen ? (
               <textarea
                 readOnly
@@ -438,6 +496,14 @@ export function PrototypePreviewPanel({
 
           <div style={card}>
             <div style={cardTitle}>진행 상태</div>
+            <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
+              <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>현재 시스템 한계</div>
+              <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.45 }}>
+                현재 프로토타입 생성은 (1) Cursor 생성 (2) 결과 URL 연결 방식으로 동작합니다.
+                <br />
+                Commit 감지 / PR / Merge 자동화는 예정 단계입니다.
+              </div>
+            </div>
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
               {timeline.map((s) => (
                 <div key={s.label} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, color: "#0f172a" }}>
@@ -445,6 +511,12 @@ export function PrototypePreviewPanel({
                   <span style={{ fontWeight: 800 }}>{s.label}</span>
                 </div>
               ))}
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12.5, color: "#64748b" }}>
+              <span style={{ marginRight: 10 }}><span style={timelineDot("success")} /> 실제 완료</span>
+              <span style={{ marginRight: 10 }}><span style={timelineDot("running")} /> 대기 가능</span>
+              <span style={{ marginRight: 10 }}><span style={timelineDot("pending")} /> 미구현/예정</span>
+              <span><span style={timelineDot("blocked")} /> 수동 필요</span>
             </div>
           </div>
 
@@ -469,6 +541,25 @@ export function PrototypePreviewPanel({
             <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
               {previewUrl ? "결과가 준비되었습니다." : "생성이 완료되면 실제 결과물이 표시됩니다."}
             </div>
+            <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#64748b" }}>
+              <div>결과 URL: {previewUrl ? <span style={{ color: "#0f172a", fontWeight: 800 }}>{previewUrl}</span> : "아직 결과물이 연결되지 않았습니다."}</div>
+              <div>최근 반영 시간: {record.lastRequestedAt ? new Date(record.lastRequestedAt).toLocaleString() : "—"}</div>
+              <div>마지막 생성자: —</div>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={cardTitle}>향후 자동화 파이프라인</div>
+            <ol style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
+              <li>Cursor 생성</li>
+              <li>Git Commit 감지</li>
+              <li>AI 기획자 소스 점검</li>
+              <li>보완 요청(필요시)</li>
+              <li>PR 생성</li>
+              <li>Merge</li>
+              <li>자동 배포</li>
+              <li>결과물 연결</li>
+            </ol>
           </div>
         </div>
       </div>
