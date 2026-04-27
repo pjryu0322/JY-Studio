@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchExecutionSetup, fetchProjectById, type ExecutionSetupDto } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
@@ -14,6 +14,14 @@ import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSett
 export default function ProjectDetailPage() {
   const params = useParams<{ projectId: string }>();
   const projectId = typeof params?.projectId === "string" ? params.projectId : "";
+  const router = useRouter();
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    // This overview screen is deprecated in the main product flow.
+    router.replace(`/requirements?projectId=${encodeURIComponent(pid)}`);
+  }, [projectId, router]);
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);

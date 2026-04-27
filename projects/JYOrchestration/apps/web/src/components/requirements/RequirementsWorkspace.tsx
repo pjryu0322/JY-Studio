@@ -336,6 +336,11 @@ export function RequirementsWorkspace({
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
 
+  const autoOpenPrototypePreview = useMemo(() => {
+    const v = String(searchParams?.get("preview") ?? "").trim();
+    return v === "1";
+  }, [searchParams]);
+
   const [resolvedProjectId, setResolvedProjectId] = useState(() => initialProjectId.trim());
   const [project, setProject] = useState<Project | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -430,6 +435,19 @@ export function RequirementsWorkspace({
     setOrganizeError(null);
     setError(null);
   }, [inIdeationStage]);
+
+  useEffect(() => {
+    if (!autoOpenPrototypePreview) return;
+    if (activeStage !== "service-flow") return;
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    sp.delete("preview");
+    const next = `/requirements?${sp.toString()}`;
+    // Remove preview=1 after first open to prevent re-opening on every render/back.
+    router.replace(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: run when autoOpenPrototypePreview hits
+  }, [autoOpenPrototypePreview, activeStage, resolvedProjectId]);
 
   useEffect(() => {
     setResolvedProjectId(initialProjectId.trim());
@@ -2853,6 +2871,7 @@ export function RequirementsWorkspace({
         projectId={resolvedProjectId.trim()}
         projectName={headerProjectName}
         projectDescription={String(project?.description ?? "")}
+        initialPrototypePreviewOpen={autoOpenPrototypePreview}
         ideationParticipantHumanMemberIds={(() => {
           // "아이디어 구체화에 참여했던 멤버" = requirementsConversation에서 role==="human"으로 발화한 멤버(memberId 기준)
           const ids = new Set<string>();

@@ -45,6 +45,7 @@ export function ServiceFlowWorkspace({
   projectId,
   projectName,
   projectDescription,
+  initialPrototypePreviewOpen = false,
   ideationParticipantHumanMemberIds,
   ideationAssets,
   flow,
@@ -64,6 +65,7 @@ export function ServiceFlowWorkspace({
   readonly projectId: string;
   readonly projectName: string;
   readonly projectDescription: string;
+  readonly initialPrototypePreviewOpen?: boolean;
   readonly ideationParticipantHumanMemberIds: readonly string[];
   readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
   readonly flow: RequirementsServiceFlowV1 | null;
@@ -129,6 +131,7 @@ export function ServiceFlowWorkspace({
           projectId={projectId}
           projectName={projectName}
           projectDescription={projectDescription}
+          initialPrototypePreviewOpen={initialPrototypePreviewOpen}
           ideationParticipantHumanMemberIds={ideationParticipantHumanMemberIds}
           ideationAssets={ideationAssets}
           ideationReady={ideationReady}
