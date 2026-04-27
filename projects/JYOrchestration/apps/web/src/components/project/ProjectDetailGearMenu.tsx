@@ -177,8 +177,6 @@ export function ProjectDetailGearMenu({ projectId }: { readonly projectId?: stri
               href={hasPid ? `/projects/${encodedProjectId}?view=workspace` : "/"}
               disabled={!hasPid}
             />
-            <GearMenuRow onClose={() => setOpen(false)} label="프로젝트 멤버" href={href("/project-admin/members")} disabled={!hasPid} />
-            <GearMenuRow onClose={() => setOpen(false)} label="권한 관리" href={href("/project-admin/members")} disabled={!hasPid} />
           </div>
 
           <div style={sectionTitle}>연동</div>

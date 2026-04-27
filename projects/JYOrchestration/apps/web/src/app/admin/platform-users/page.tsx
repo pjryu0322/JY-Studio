@@ -71,7 +71,7 @@ export default function AdminPlatformUsersPage() {
           <Link href="/requirements" style={{ color: "#2563eb", fontWeight: 700 }}>
             아이디어 구체화
           </Link>
-          화면의 멤버 초대를 사용하세요. (프로젝트 멤버 ≠ 플랫폼 사용자)
+          화면의 멤버 초대를 사용하세요. (프로젝트별 멤버 ≠ 플랫폼 사용자)
         </p>
         <Link href="/" style={{ display: "inline-block", marginTop: 16, fontWeight: 700, color: "#2563eb" }}>
           홈으로
@@ -90,8 +90,7 @@ export default function AdminPlatformUsersPage() {
       <header style={{ marginBottom: 20 }}>
         <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>플랫폼 사용자</h1>
         <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
-          로그인 가능한 <strong>전역 계정</strong> 목록입니다(읽기 전용). 프로젝트 멤버십은 프로젝트별「프로젝트 멤버」화면에서
-          관리합니다.
+          로그인 가능한 <strong>전역 계정</strong> 목록입니다(읽기 전용). 프로젝트별 멤버 관리는 각 프로젝트 화면의 멤버 초대에서 진행하세요.
         </p>
       </header>
 
