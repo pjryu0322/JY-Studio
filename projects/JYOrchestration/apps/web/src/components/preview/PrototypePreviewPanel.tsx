@@ -299,19 +299,22 @@ export function PrototypePreviewPanel({
 
   const timeline: Array<{ label: string; status: TimelineStepStatus }> = useMemo(() => {
     const requested = Boolean(record.lastRequestedAt);
-    const running = record.runStatus === "awaiting_preview" || record.runStatus === "prompt_ready";
     const hasUrl = Boolean(previewUrl);
+    const promptReady: TimelineStepStatus = "success";
+    const requestDelivered: TimelineStepStatus = requested ? "success" : "pending";
+    const cursorPossible: TimelineStepStatus = canRequestGeneration.ok ? "running" : "blocked";
+    const urlConnected: TimelineStepStatus = hasUrl ? "success" : requested ? "pending" : "blocked";
     return [
-      { label: "요청 대기", status: requested ? "success" : "pending" },
-      { label: "Cursor 작업중", status: running ? "running" : requested ? "pending" : "blocked" },
-      { label: "Commit 감지", status: requested ? "pending" : "blocked" },
-      { label: "Push 확인", status: requested ? "pending" : "blocked" },
-      { label: "AI 기획자 검토중", status: requested ? "pending" : "blocked" },
-      { label: "PR 생성", status: requested ? "pending" : "blocked" },
-      { label: "Merge 완료", status: requested ? "pending" : "blocked" },
-      { label: "결과 반영", status: hasUrl ? "success" : requested ? "pending" : "blocked" },
+      { label: "프롬프트 생성", status: promptReady },
+      { label: "요청 전달", status: requestDelivered },
+      { label: "Cursor 생성 진행 가능", status: cursorPossible },
+      { label: "Commit 감지 미연동", status: "pending" },
+      { label: "PR 생성 미연동", status: "pending" },
+      { label: "AI 기획자 검토 수동 처리", status: "blocked" },
+      { label: "결과 승인 수동 처리", status: "blocked" },
+      { label: "결과 URL 연결", status: urlConnected },
     ];
-  }, [record.lastRequestedAt, record.runStatus, previewUrl]);
+  }, [record.lastRequestedAt, previewUrl, canRequestGeneration.ok]);
 
   return (
     <div style={{ position: "relative" }}>
@@ -359,11 +362,19 @@ export function PrototypePreviewPanel({
               <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
               <div style={row}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
             </div>
+            {executionSetup?.gitRepoName ? (
+              <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
+                저장소: <strong>{executionSetup.gitRepoName}</strong>
+                <span style={{ marginLeft: 10, color: "#64748b" }}>기본 브랜치: {executionSetup.baseBranch}</span>
+              </div>
+            ) : null}
+            {envStatus.message ? <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>{envStatus.message}</div> : null}
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>환경설정으로 이동</a>
+              <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>환경설정</a>
               <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btnMuted, opacity: envBusy ? 0.6 : 1 }}>
                 다시 점검
               </button>
+              <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>예시 템플릿 보기</button>
             </div>
           </div>
 
@@ -422,32 +433,6 @@ export function PrototypePreviewPanel({
               >
                 추천으로
               </button>
-            </div>
-          </div>
-
-          <div style={card}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={cardTitle}>실행 환경 상태</div>
-              <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btn, marginLeft: "auto", opacity: envBusy ? 0.6 : 1 }}>
-                다시 점검
-              </button>
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, color: "#0f172a" }}>
-              <div style={row}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>Git 연결</div>
-              <div style={row}><span style={envPill(envStatus.github)}>{labelEnv(envStatus.github)}</span>GitHub 인증</div>
-              <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
-              <div style={row}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
-            </div>
-            {executionSetup?.gitRepoName ? (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
-                저장소: <strong>{executionSetup.gitRepoName}</strong>
-                <span style={{ marginLeft: 10, color: "#64748b" }}>기본 브랜치: {executionSetup.baseBranch}</span>
-              </div>
-            ) : null}
-            {envStatus.message ? <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>{envStatus.message}</div> : null}
-            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>환경설정</a>
-              <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>예시 템플릿 보기</button>
             </div>
           </div>
         </div>
@@ -513,10 +498,11 @@ export function PrototypePreviewPanel({
               ))}
             </div>
             <div style={{ marginTop: 12, fontSize: 12.5, color: "#64748b" }}>
-              <span style={{ marginRight: 10 }}><span style={timelineDot("success")} /> 실제 완료</span>
-              <span style={{ marginRight: 10 }}><span style={timelineDot("running")} /> 대기 가능</span>
-              <span style={{ marginRight: 10 }}><span style={timelineDot("pending")} /> 미구현/예정</span>
-              <span><span style={timelineDot("blocked")} /> 수동 필요</span>
+              <span style={{ marginRight: 12 }}><span style={timelineDot("success")} /> 실제 완료</span>
+              <span style={{ marginRight: 12 }}><span style={timelineDot("running")} /> 진행 가능</span>
+              <span style={{ marginRight: 12 }}><span style={timelineDot("pending")} /> 미연동</span>
+              <span style={{ marginRight: 12 }}><span style={timelineDot("blocked")} /> 수동 처리</span>
+              <span><span style={timelineDot("failed")} /> 오류</span>
             </div>
           </div>
 
@@ -530,21 +516,20 @@ export function PrototypePreviewPanel({
                 style={inputStyle}
               />
               <button type="button" onClick={applyPreviewUrl} style={btnPrimary}>URL 적용</button>
-              <button type="button" onClick={clearPreviewUrl} style={btn}>초기화</button>
               {previewUrl ? (
                 <>
                   <button type="button" onClick={() => setResultOpen(true)} style={btnMuted}>결과물 보기</button>
                   <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btnMuted, textDecoration: "none" }}>새 탭 열기</a>
+                  <button type="button" onClick={clearPreviewUrl} style={btn}>초기화</button>
                 </>
               ) : null}
             </div>
             <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
-              {previewUrl ? "결과가 준비되었습니다." : "생성이 완료되면 실제 결과물이 표시됩니다."}
+              {previewUrl ? "결과가 준비되었습니다." : "아직 결과물이 연결되지 않았습니다."}
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#64748b" }}>
               <div>결과 URL: {previewUrl ? <span style={{ color: "#0f172a", fontWeight: 800 }}>{previewUrl}</span> : "아직 결과물이 연결되지 않았습니다."}</div>
-              <div>최근 반영 시간: {record.lastRequestedAt ? new Date(record.lastRequestedAt).toLocaleString() : "—"}</div>
-              <div>마지막 생성자: —</div>
+              <div>최근 생성 요청 시간: {record.lastRequestedAt ? new Date(record.lastRequestedAt).toLocaleString() : "—"}</div>
             </div>
           </div>
 
