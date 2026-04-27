@@ -80,6 +80,70 @@ const REQUIRED_SLOTS: readonly ServiceFlowSlotKey[] = ["humanActors", "systemAct
 const RECOMMENDED_SLOTS: readonly ServiceFlowSlotKey[] = ["approvalStep", "exceptionFlow"];
 const DECISION_SLOTS: readonly ServiceFlowSlotKey[] = [...REQUIRED_SLOTS, ...RECOMMENDED_SLOTS];
 
+function stepTitleContainsAny(steps: readonly RequirementsServiceFlowStepV1[], re: RegExp): boolean {
+  return steps.some((s) => re.test(String(s.title ?? "").trim()));
+}
+
+function computeDecisionResolution(input: {
+  flow: RequirementsServiceFlowV1 | null;
+  derivedSlots: Record<ServiceFlowSlotKey, boolean>;
+  deferrals: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined;
+}): {
+  requiredUnresolved: ServiceFlowSlotKey[];
+  optionalUnresolved: ServiceFlowSlotKey[];
+  headerLabel: string;
+  headerCount: number;
+  helperLine: string | null;
+} {
+  const { flow, derivedSlots, deferrals } = input;
+  const steps = flow?.steps ?? [];
+
+  const approvalResolved =
+    Boolean(deferrals?.approvalStep) ||
+    stepTitleContainsAny(steps, /승인|확정|결재/i) ||
+    Boolean(derivedSlots.approvalStep);
+
+  const exceptionResolved =
+    Boolean(deferrals?.exceptionFlow) ||
+    stepTitleContainsAny(steps, /수정|반려|재처리|예외/i) ||
+    Boolean(derivedSlots.exceptionFlow);
+
+  const resolved: Record<ServiceFlowSlotKey, boolean> = {
+    ...derivedSlots,
+    approvalStep: approvalResolved,
+    exceptionFlow: exceptionResolved,
+  };
+
+  const requiredUnresolved = REQUIRED_SLOTS.filter((k) => !resolved[k] && !deferrals?.[k]);
+  const optionalUnresolved = RECOMMENDED_SLOTS.filter((k) => !resolved[k] && !deferrals?.[k]);
+
+  if (requiredUnresolved.length > 0) {
+    return {
+      requiredUnresolved,
+      optionalUnresolved,
+      headerLabel: "남은 결정사항",
+      headerCount: requiredUnresolved.length,
+      helperLine: null,
+    };
+  }
+  if (optionalUnresolved.length > 0) {
+    return {
+      requiredUnresolved,
+      optionalUnresolved,
+      headerLabel: "권장 검토사항",
+      headerCount: optionalUnresolved.length,
+      helperLine: "남은 결정사항 0개 (권장 항목 미정)",
+    };
+  }
+  return {
+    requiredUnresolved,
+    optionalUnresolved,
+    headerLabel: "남은 결정사항 없음",
+    headerCount: 0,
+    helperLine: null,
+  };
+}
+
 function countEffectiveRemainingSlots(
   slots: Record<ServiceFlowSlotKey, boolean>,
   deferrals: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined,
@@ -442,10 +506,11 @@ export function RequirementsServiceFlowStage({
   const hint = progressHint(derivedApproval);
   const structureLocked = Boolean(flow?.structureLockedAt);
   const deferrals = flow?.checklistDeferrals ?? null;
-  const remainingChecklistItems = useMemo(
-    () => countEffectiveRemainingSlots(derivedApproval.slots, deferrals),
-    [derivedApproval.slots, deferrals],
+  const decision = useMemo(
+    () => computeDecisionResolution({ flow, derivedSlots: derivedApproval.slots, deferrals }),
+    [flow, derivedApproval.slots, deferrals],
   );
+  const remainingChecklistItems = decision.headerCount;
   const chatActive = workspaceMode === "chat";
   const mappingActive = workspaceMode === "mapping";
   const summaryActive = workspaceMode === "summary";
@@ -538,6 +603,32 @@ export function RequirementsServiceFlowStage({
     const checklistDeferrals = Object.keys(next).length ? next : null;
     onChangeFlow({ ...flow, checklistDeferrals, updatedAt: now });
   };
+
+  const optionalDecisionQuickActions = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+      {!decision.requiredUnresolved.length && decision.optionalUnresolved.includes("approvalStep") ? (
+        <button type="button" onClick={() => patchChecklistDeferral("approvalStep", "pending")} style={btn}>
+          승인 단계 없음
+        </button>
+      ) : null}
+      {!decision.requiredUnresolved.length && decision.optionalUnresolved.includes("exceptionFlow") ? (
+        <button type="button" onClick={() => patchChecklistDeferral("exceptionFlow", "pending")} style={btn}>
+          예외 흐름 없음
+        </button>
+      ) : null}
+      {!decision.requiredUnresolved.length && decision.optionalUnresolved.length ? (
+        <button
+          type="button"
+          onClick={() => {
+            for (const k of decision.optionalUnresolved) patchChecklistDeferral(k, "deferred_next");
+          }}
+          style={btn}
+        >
+          다음 단계에서 검토
+        </button>
+      ) : null}
+    </div>
+  );
 
   const approveAllMappingOwners = () => {
     if (!flow) return;
@@ -962,7 +1053,7 @@ export function RequirementsServiceFlowStage({
                 <span style={{ color: "#cbd5e1", fontWeight: 500 }} aria-hidden>
                   |
                 </span>
-                {remainingChecklistItems > 0 ? (
+                {decision.headerCount > 0 ? (
                   <button
                     type="button"
                     onClick={() => setRemainingPanelOpen(true)}
@@ -977,13 +1068,13 @@ export function RequirementsServiceFlowStage({
                       textAlign: "left",
                     }}
                   >
-                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
-                    <span style={{ fontWeight: 900, fontSize: 15, color: "#0369a1" }}>{remainingChecklistItems}개</span>
+                    <span style={headerMetricBadgeLabel}>{decision.headerLabel}</span>{" "}
+                    <span style={{ fontWeight: 900, fontSize: 15, color: "#0369a1" }}>{decision.headerCount}개</span>
                   </button>
                 ) : (
                   <span>
-                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
-                    <span style={{ fontWeight: 900, fontSize: 15 }}>0개</span>
+                    <span style={headerMetricBadgeLabel}>{decision.headerLabel}</span>{" "}
+                    <span style={{ fontWeight: 900, fontSize: 15 }}>{decision.headerCount ? `${decision.headerCount}개` : ""}</span>
                   </span>
                 )}
               </div>
@@ -1062,17 +1153,23 @@ export function RequirementsServiceFlowStage({
                   </div>
                 </div>
                 <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>[남은 결정사항]</div>
-                  {remainingChecklistItems === 0 ? (
-                    <div style={{ fontSize: 13, color: "#64748b" }}>없음</div>
+                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>[결정사항]</div>
+                  {decision.requiredUnresolved.length === 0 && decision.optionalUnresolved.length === 0 ? (
+                    <div style={{ fontSize: 13, color: "#64748b" }}>남은 결정사항 없음</div>
+                  ) : decision.requiredUnresolved.length === 0 ? (
+                    <div style={{ fontSize: 13, color: "#64748b" }}>
+                      {decision.helperLine ?? "남은 결정사항 0개 (권장 항목 미정)"}
+                      <div style={{ marginTop: 10 }}>{optionalDecisionQuickActions}</div>
+                    </div>
                   ) : (
-                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "#0f172a", lineHeight: 1.55 }}>
-                      {unresolvedChecklistEntries(derivedApproval.slots, deferrals)
-                        .filter((r) => !r.deferral)
-                        .map((r) => (
-                          <li key={r.key}>{r.label}</li>
+                    <>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>남은 결정사항은 다음과 같습니다.</div>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "#0f172a", lineHeight: 1.55 }}>
+                        {decision.requiredUnresolved.map((k) => (
+                          <li key={k}>{SLOT_LABELS[k]}</li>
                         ))}
-                    </ul>
+                      </ul>
+                    </>
                   )}
                 </div>
               </div>
@@ -1082,7 +1179,7 @@ export function RequirementsServiceFlowStage({
                 {!structureLocked ? (
                   <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb" }}>
                     <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e", lineHeight: 1.55 }}>
-                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 하단의 「담당자 지정 시작」으로 구조를 확정하세요.
+                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 하단의 「담당 지정으로 이동」으로 넘어가세요.
                     </div>
                   </div>
                 ) : (
@@ -1318,16 +1415,28 @@ export function RequirementsServiceFlowStage({
               className="jyo-service-flow-composer-shell"
               style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}
             >
-              <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                  <button
-                    type="button"
-                    onClick={approveAllMappingOwners}
-                    disabled={!steps.length || !steps.every((s) => s.primaryActorId)}
-                    style={{ ...primaryBtn, opacity: steps.length && steps.every((s) => s.primaryActorId) ? 1 : 0.55 }}
-                  >
-                    모든 담당 확정
-                  </button>
+                    {!steps.length || !steps.every((s) => s.primaryActorId && s.approved) ? (
+                      <button
+                        type="button"
+                        onClick={approveAllMappingOwners}
+                        disabled={!steps.length || !steps.every((s) => s.primaryActorId)}
+                        style={{ ...primaryBtn, opacity: steps.length && steps.every((s) => s.primaryActorId) ? 1 : 0.55 }}
+                      >
+                        담당 지정 완료
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onApproveAll()}
+                        disabled={decision.requiredUnresolved.length > 0}
+                        style={{ ...primaryBtn, opacity: decision.requiredUnresolved.length === 0 ? 1 : 0.55 }}
+                        title={decision.requiredUnresolved.length > 0 ? "남은 결정사항을 먼저 해결해 주세요." : undefined}
+                      >
+                        기능정리 단계로 이동
+                      </button>
+                    )}
                   <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
                     요약 보기
                   </button>
@@ -1350,7 +1459,7 @@ export function RequirementsServiceFlowStage({
                     disabled={!derivedApproval.ready}
                     style={{ ...primaryBtn, borderRadius: 999, opacity: derivedApproval.ready ? 1 : 0.55 }}
                   >
-                    담당자 지정 시작
+                    담당 지정으로 이동
                   </button>
                   <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
                     요약 보기
@@ -1363,28 +1472,25 @@ export function RequirementsServiceFlowStage({
             </div>
           ) : (
             <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
-              {!structureLocked ? (
+              {chatActive ? (
                 <div style={{ maxWidth: 660, margin: "0 auto 10px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
                   <button
                     type="button"
-                    onClick={() => lockStructureForAssignment()}
+                    onClick={() => {
+                      if (!structureLocked) lockStructureForAssignment();
+                      setWorkspaceMode("mapping");
+                    }}
                     disabled={!derivedApproval.ready}
                     style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55, whiteSpace: "nowrap" }}
                   >
-                    담당자 지정 시작
+                    담당 지정으로 이동
                   </button>
                   <button type="button" onClick={() => tempSave()} style={{ ...btn, whiteSpace: "nowrap" }}>
                     임시 저장
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onApproveAll()}
-                    disabled={remainingChecklistItems > 0}
-                    style={{ ...primaryBtn, opacity: remainingChecklistItems === 0 ? 1 : 0.55, whiteSpace: "nowrap" }}
-                    title={remainingChecklistItems > 0 ? "남은 결정사항을 먼저 해결해 주세요." : undefined}
-                  >
-                    기능정리 단계로 이동
-                  </button>
+                  {decision.requiredUnresolved.length === 0 && decision.optionalUnresolved.length > 0 ? (
+                    <div style={{ flex: "1 1 220px", minWidth: 220 }}>{optionalDecisionQuickActions}</div>
+                  ) : null}
                 </div>
               ) : null}
               <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0", borderRadius: 20, background: "#fff", padding: 10, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
