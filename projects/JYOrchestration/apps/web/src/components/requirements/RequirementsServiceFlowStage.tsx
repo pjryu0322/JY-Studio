@@ -499,7 +499,7 @@ export function RequirementsServiceFlowStage({
   const [remainingPanelOpen, setRemainingPanelOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
-  // composer actions minimized (no tools menu in input area)
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [prototypePreviewOpen, setPrototypePreviewOpen] = useState(false);
 
   const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
@@ -587,9 +587,6 @@ export function RequirementsServiceFlowStage({
     setWorkspaceMode("mapping");
     autoScrollPendingRef.current = true;
   };
-
-  void prototypePreviewOpen;
-  void setPrototypePreviewOpen;
 
   const patchChecklistDeferral = (key: ServiceFlowSlotKey, kind: RequirementsServiceFlowChecklistDeferralKind | null) => {
     if (!flow) return;
@@ -886,6 +883,7 @@ export function RequirementsServiceFlowStage({
 
   const requestOrganize = () => {
     if (workspaceMode !== "chat") return;
+    setToolsOpen(false);
     setReplying(true);
     void (async () => {
       const excerpt = [...displayMessages, { id: "tmp", role: "user" as const, name: "사용자", body: "(정리 요청)" }]
@@ -1383,6 +1381,83 @@ export function RequirementsServiceFlowStage({
 
           <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
             <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0", borderRadius: 20, background: "#fff", padding: 10, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setToolsOpen((v) => !v)}
+                  aria-label="도구 열기"
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 999,
+                    border: "1px solid #e2e8f0",
+                    background: "#fff",
+                    color: "#0f172a",
+                    fontSize: 24,
+                    lineHeight: 1,
+                    cursor: "pointer",
+                  }}
+                >
+                  +
+                </button>
+                {toolsOpen ? (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      bottom: 52,
+                      width: 220,
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.22)",
+                      padding: 8,
+                      zIndex: 20,
+                    }}
+                    role="menu"
+                  >
+                    <button type="button" onClick={requestOrganize} style={{ ...btn, width: "100%", textAlign: "left" }}>
+                      정리 요청
+                    </button>
+                    <div style={{ height: 6 }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsOpen(false);
+                        setWorkspaceMode("mapping");
+                      }}
+                      style={{ ...btn, width: "100%", textAlign: "left" }}
+                    >
+                      구조 편집
+                    </button>
+                    <div style={{ height: 6 }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsOpen(false);
+                        setWorkspaceMode("summary");
+                      }}
+                      disabled={!(actors.length || steps.length)}
+                      style={{ ...btn, width: "100%", textAlign: "left", opacity: actors.length || steps.length ? 1 : 0.55 }}
+                    >
+                      요약 보기
+                    </button>
+                    <div style={{ height: 6 }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsOpen(false);
+                        setPrototypePreviewOpen(true);
+                      }}
+                      disabled={!ideationReady}
+                      style={{ ...btn, width: "100%", textAlign: "left", opacity: ideationReady ? 1 : 0.55 }}
+                      title={!ideationReady ? ideationReadyNotice : "프로토타입 미리보기"}
+                    >
+                      프로토타입 미리보기
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <textarea
                 ref={composerTextareaRef}
                 value={input}
