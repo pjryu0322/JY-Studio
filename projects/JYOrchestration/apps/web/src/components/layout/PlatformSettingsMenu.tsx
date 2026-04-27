@@ -66,7 +66,9 @@ export function PlatformSettingsMenu() {
   const projectId = resolveWorkflowProjectContextId(pathname, searchParams);
   const encodedProjectId = projectId ? encodeURIComponent(projectId) : "";
   const hasProjectContext = Boolean(projectId?.trim());
-  const projectSettingsHref = hasProjectContext ? projectExecutionSettingsHref(projectId!) : "/project-admin/settings";
+  const projectSettingsHref = hasProjectContext
+    ? `${projectExecutionSettingsHref(projectId!, { envNote: "prototype" })}#execution-setup-panel`
+    : "/project-admin/settings";
 
   useEffect(() => {
     if (!open) return;

@@ -15,7 +15,8 @@ function ProjectAdminSettingsInner() {
   const projectId = String(searchParams.get("projectId") ?? "").trim();
   const envNoteRaw = searchParams.get("envNote");
   const envNote = envNoteRaw != null && String(envNoteRaw).trim() ? String(envNoteRaw).trim() : null;
-  const isPrototypePurpose = envNote === "prototype";
+  // Default to prototype purpose when opened from project flow without explicit envNote.
+  const isPrototypePurpose = envNote === "prototype" || envNote == null;
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
