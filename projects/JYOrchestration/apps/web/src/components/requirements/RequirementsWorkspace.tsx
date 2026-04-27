@@ -43,6 +43,7 @@ import {
   type IdeationDeliverableType,
 } from "@/lib/requirements/ideationDeliverables";
 import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
+import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from "@/lib/requirements/serviceFlowConversation";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
   IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
@@ -245,7 +246,7 @@ function shouldSkipIdeationDuplicateAppend(params: {
 
 function concatUserContext(messages: RequirementsRoomStateV3["requirementsConversation"]["messages"]): string {
   return messages
-    .filter((m) => m.role === "user")
+    .filter((m) => m.role === "user" && !isServiceFlowWorkshopMessage(m))
     .map((m) => m.content.trim())
     .filter(Boolean)
     .join("\n\n");
@@ -706,6 +707,14 @@ export function RequirementsWorkspace({
 
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
+  const ideationConversationOnly = useMemo(
+    () => filterIdeationConversationMessages(conversationMessages),
+    [conversationMessages],
+  );
+  const serviceFlowWorkshopPersisted = useMemo(
+    () => conversationMessages.filter(isServiceFlowWorkshopMessage),
+    [conversationMessages],
+  );
   // 로딩 중에는 null로 전달해 "기록 없음"으로 오판하지 않게 합니다.
   const messages = conversationStatus === "loaded" ? conversationMessages : null;
   const draftDoc = room.requirementsDraft ?? null;
@@ -1018,6 +1027,32 @@ export function RequirementsWorkspace({
     ]
   );
 
+  const roomRef = useRef(room);
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+
+  const appendServiceFlowWorkshopMessages = useCallback(
+    async (incoming: readonly RequirementsMessage[]): Promise<RequirementsMessage[]> => {
+      const pid = resolvedProjectId.trim();
+      if (!pid || incoming.length === 0) return [];
+      const r = roomRef.current;
+      const base = r.requirementsConversation.messages;
+      const appended = [...base, ...incoming];
+      const nextRoom: RequirementsRoomStateV3 = {
+        ...r,
+        requirementsConversation: {
+          ...r.requirementsConversation,
+          projectId: pid,
+          messages: appended,
+        },
+      };
+      await persistRemote(nextRoom, {}, {});
+      return appended.filter(isServiceFlowWorkshopMessage);
+    },
+    [resolvedProjectId, persistRemote],
+  );
+
   useEffect(() => {
     const pid = resolvedProjectId.trim();
     if (!pid || conversationStatus !== "loaded") {
@@ -1206,7 +1241,7 @@ export function RequirementsWorkspace({
       setError("대화 이력을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
-    const hasConversationContent = conversationMessages.some((m) => m.role === "user" && m.content.trim());
+    const hasConversationContent = ideationConversationOnly.some((m) => m.role === "user" && m.content.trim());
     if (!hasConversationContent) {
       setError("정리할 대화가 아직 없습니다. 먼저 AI 기획자와 아이디어를 대화로 다듬어 주세요.");
       return;
@@ -1237,7 +1272,7 @@ export function RequirementsWorkspace({
         projectName: project?.name ?? "",
         projectDescription: project?.description ?? "",
         targetName: "AI 기획자",
-        messages: conversationMessages,
+        messages: ideationConversationOnly,
         latestUserMessage: `정리요청(통합 기획안): ${schema.labelKr}`,
       });
       await persistStateJsonOnly({
@@ -1256,7 +1291,7 @@ export function RequirementsWorkspace({
       });
       const prevCtx = stateJsonRef.current.organizeContext ?? null;
       const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
-      const recentBlock = formatOrganizeRecentMessages(conversationMessages, recentCount, 12_000);
+      const recentBlock = formatOrganizeRecentMessages(ideationConversationOnly, recentCount, 12_000);
       const bootFacts = bootstrapOrganizeMemoryFacts({
         goals,
         targetUsers,
@@ -1277,7 +1312,7 @@ export function RequirementsWorkspace({
         });
       const useRaw = organizeRawFallbackRef.current;
       organizeRawFallbackRef.current = false;
-      const excerpt = formatDialogueExcerpt(conversationMessages);
+      const excerpt = formatDialogueExcerpt(ideationConversationOnly);
       const res = await fetch("/api/requirements/organize-analyze", {
         method: "POST",
         credentials: "include",
@@ -1368,7 +1403,7 @@ export function RequirementsWorkspace({
       {
         // writer: 통합 기획안(full_plan) 단일 문서 생성 + 저장 + 채팅 NOTICE
         const planBaseName = (project?.name ?? "").trim() || "프로젝트";
-        const excerptForDeliverable = formatDialogueExcerpt(conversationMessages);
+        const excerptForDeliverable = formatDialogueExcerpt(ideationConversationOnly);
         const chatSummary = [
           goals.trim() && `저장 요약 — 목표/핵심:\n${goals.trim()}`,
           targetUsers.trim() && `저장 요약 — 대상 사용자:\n${targetUsers.trim()}`,
@@ -1504,6 +1539,7 @@ export function RequirementsWorkspace({
     busy,
     conversationStatus,
     conversationMessages,
+    ideationConversationOnly,
     organizeState,
     problemInterviewState,
     project?.name,
@@ -1552,7 +1588,7 @@ export function RequirementsWorkspace({
           .filter(Boolean)
           .join("\n\n");
 
-        const excerpt = formatDialogueExcerpt(conversationMessages);
+        const excerpt = formatDialogueExcerpt(ideationConversationOnly);
         const planBaseName = (project?.name ?? "").trim() || "프로젝트";
         const res = await fetch("/api/requirements/deliverables-generate", {
           method: "POST",
@@ -1709,7 +1745,7 @@ export function RequirementsWorkspace({
       if (!text || busy || aiInvokePending) return;
       if (
         shouldSkipIdeationDuplicateAppend({
-          messages: conversationMessages,
+          messages: ideationConversationOnly,
           role: "user",
           body: text,
           speakerId: sessionUser?.id ?? "me",
@@ -1738,7 +1774,7 @@ export function RequirementsWorkspace({
       const anyAi = targets.some((t) => isAiTarget(t.id));
       const primaryAi = targets.find((t) => isAiTarget(t.id));
       const combinedLabel = targets.map((t) => t.name).join(" · ");
-      const effectiveReplyTo = inferRecentAiQuestionReplyParentId(conversationMessages, replyTo?.id ?? null);
+      const effectiveReplyTo = inferRecentAiQuestionReplyParentId(ideationConversationOnly, replyTo?.id ?? null);
 
       const userMsg = newChatMessage({
         role: "user",
@@ -1761,7 +1797,7 @@ export function RequirementsWorkspace({
           projectName: project?.name ?? "",
           projectDescription: project?.description ?? "",
           targetName: combinedLabel,
-          messages: conversationMessages,
+          messages: ideationConversationOnly,
           latestUserMessage: text,
         });
         const withCalling: RequirementsRoomStateV3 = {
@@ -1790,9 +1826,10 @@ export function RequirementsWorkspace({
 
         type IdeationPlannerTail = { needsTailPersist: true; finalRoom: RequirementsRoomStateV3 } | { needsTailPersist: false };
 
+        const msgsIdeationOnly = filterIdeationConversationMessages(msgs);
         const excerpt = augmentDialogueExcerptForReplyParent(
-          formatDialogueExcerpt(msgs),
-          msgs,
+          formatDialogueExcerpt(msgsIdeationOnly),
+          msgsIdeationOnly,
           effectiveReplyTo
         );
         const endpoint = "/api/requirements/ai-facilitator";
@@ -1800,7 +1837,7 @@ export function RequirementsWorkspace({
         const isIdeationProblemInterviewPlannerContext = (): boolean => {
           if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
           if (stateJsonRef.current.organizePlannerState) return false;
-          const lastAi = [...msgs].reverse().find((m) => m.role === "ai");
+          const lastAi = [...msgsIdeationOnly].reverse().find((m) => m.role === "ai");
           const internal =
             lastAi && typeof (lastAi as { meta?: { internalType?: string } }).meta?.internalType === "string"
               ? String((lastAi as { meta?: { internalType?: string } }).meta?.internalType)
@@ -2250,6 +2287,7 @@ export function RequirementsWorkspace({
     aiInvokePending,
     room,
     conversationMessages,
+    ideationConversationOnly,
     participants,
     isAiTarget,
     persistRemote,
@@ -2533,7 +2571,8 @@ export function RequirementsWorkspace({
     serviceFlow?.createdAt,
     showSuccessToast,
     showErrorToast,
-    room.requirementsConversation.messages,
+    room,
+    ideationConversationOnly,
   ]);
 
   useEffect(() => {
@@ -2545,14 +2584,14 @@ export function RequirementsWorkspace({
     if (!flowEmpty) return;
     const assets = stateJsonRef.current.deliverableAssets ?? [];
     const hasIdeationAssets = assets.length > 0;
-    const hasConversation = room.requirementsConversation.messages.some((m) => m.role === "human" && String(m.content ?? "").trim());
+    const hasConversation = ideationConversationOnly.some((m) => m.role === "human" && String(m.content ?? "").trim());
     if (!(hasIdeationAssets || hasConversation)) return;
     if (!ideationReadyForServiceFlow) return;
     const flightKey = `${pid}:${fetchNonce}:${assets.length}`;
     if (serviceFlowAutoBootstrapRef.current === flightKey) return;
     serviceFlowAutoBootstrapRef.current = flightKey;
     void handleGenerateServiceFlowDraft({ silent: true });
-  }, [activeStage, serviceFlowDraftBusy, resolvedProjectId, serviceFlow, ideationReadyForServiceFlow, fetchNonce, room.requirementsConversation.messages, handleGenerateServiceFlowDraft]);
+  }, [activeStage, serviceFlowDraftBusy, resolvedProjectId, serviceFlow, ideationReadyForServiceFlow, fetchNonce, ideationConversationOnly, handleGenerateServiceFlowDraft]);
 
   const handleApproveAllServiceFlowSteps = useCallback(async () => {
     if (!serviceFlow) return;
@@ -2708,7 +2747,7 @@ export function RequirementsWorkspace({
     <div className="jyo-requirements-chat-panel-shell" style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
       <RequirementsChatPanel
-        messages={messages}
+        messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
         typingIndicator={aiInvokePending}
         expandControls={{ expanded: chatExpanded, onToggle: () => setChatExpanded((v) => !v) }}
         ideationInterviewUi={
@@ -2817,13 +2856,15 @@ export function RequirementsWorkspace({
         ideationParticipantHumanMemberIds={(() => {
           // "아이디어 구체화에 참여했던 멤버" = requirementsConversation에서 role==="human"으로 발화한 멤버(memberId 기준)
           const ids = new Set<string>();
-          for (const m of messages ?? []) {
+          for (const m of ideationConversationOnly) {
             if (m.role !== "human") continue;
             const id = String(m.speakerId ?? "").trim();
             if (id) ids.add(id);
           }
           return [...ids];
         })()}
+        persistedServiceFlowMessages={serviceFlowWorkshopPersisted}
+        onAppendPersistedServiceFlowMessages={appendServiceFlowWorkshopMessages}
         ideationAssets={(stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
           type: a.type,
           title: a.title,
@@ -3099,7 +3140,7 @@ export function RequirementsWorkspace({
             view={persistedPromptState.lastPromptView ?? null}
             lastPromptText={persistedPromptState.lastPromptText}
             lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
-            conversationMessages={conversationStatus === "loaded" ? conversationMessages : null}
+            conversationMessages={conversationStatus === "loaded" ? ideationConversationOnly : null}
             exportBaseName={project?.name?.trim() ?? ""}
           />
 
