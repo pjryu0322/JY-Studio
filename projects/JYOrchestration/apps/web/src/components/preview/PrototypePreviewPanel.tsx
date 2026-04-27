@@ -14,6 +14,7 @@ import {
   postExecutionSetupValidate,
   type ExecutionSetupDto,
 } from "@/components/project-spec/api";
+import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
 import {
@@ -28,7 +29,12 @@ import {
   postPrototypeRunRefresh,
 } from "@/lib/prototype/prototypeRunApiClient";
 import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
-import { buildTimelineFromPrototypeRun, prototypeRunStatusLabelKo } from "@/lib/prototype/prototypeRunUiHelpers";
+import {
+  buildPrototypeLifecycleRows,
+  buildTimelineFromPrototypeRun,
+  prototypeLifecycleCellLabelKo,
+  prototypeRunStatusLabelKo,
+} from "@/lib/prototype/prototypeRunUiHelpers";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
@@ -65,7 +71,7 @@ function statusLabel(s: PrototypeGenerationLocalRecord["runStatus"], hasUrl: boo
   switch (s) {
     case "awaiting_preview":
     case "prompt_ready":
-      return "수동 생성 · URL 미연결";
+      return "프롬프트 대기 · URL 미연결";
     case "preview_ready":
       return "완료";
     case "failed":
@@ -135,7 +141,6 @@ export function PrototypePreviewPanel({
   const [protoBusy, setProtoBusy] = useState(false);
   const [readinessDetailOpen, setReadinessDetailOpen] = useState(false);
   const [progressDetailOpen, setProgressDetailOpen] = useState(false);
-  const [futurePipelineOpen, setFuturePipelineOpen] = useState(false);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -341,33 +346,9 @@ export function PrototypePreviewPanel({
     }
   };
 
-  const onStartGeneration = async () => {
-    if (!canRequestGeneration.designOk) return;
-    setProtoBusy(true);
-    try {
-      const res = await postCreatePrototypeRun({
-        projectId,
-        selectedTemplate: effectiveTemplate,
-        promptSnapshot: promptPackage.slice(0, 50_000),
-        startCursorAgent: false,
-      });
-      if (res.success && res.data?.run) {
-        setLatestRun(res.data.run);
-        setAutomationAvailable(res.data.automationAvailable);
-        setAutomationBlockReason(res.data.automationBlockReason);
-        showToast("생성 실행이 시작되었습니다. 프롬프트 복사로 이어가세요.");
-      } else {
-        showToast(res.message ?? "실행 생성에 실패했습니다.");
-      }
-    } finally {
-      setProtoBusy(false);
-      void refreshLatestRun();
-    }
-  };
-
   const onRefreshPrototypeStatus = async () => {
     if (!latestRun?.id) {
-      showToast("먼저 생성 시작 또는 프롬프트 복사로 실행을 만드세요.");
+      showToast("먼저 자동 생성을 시작하거나 생성 프롬프트 복사로 실행을 만드세요.");
       return;
     }
     setProtoBusy(true);
@@ -435,7 +416,7 @@ export function PrototypePreviewPanel({
   };
 
   const settingsHref = useMemo(
-    () => `/project-admin/settings?projectId=${encodeURIComponent(projectId)}&envNote=${encodeURIComponent("prototype")}`,
+    () => `${projectExecutionSettingsHref(projectId)}#execution-setup-panel`,
     [projectId],
   );
 
@@ -476,6 +457,16 @@ export function PrototypePreviewPanel({
     }));
   }, [latestRun]);
 
+  const lifecycleRows = useMemo(
+    () => buildPrototypeLifecycleRows(latestRun, automationBlockReason),
+    [latestRun, automationBlockReason],
+  );
+
+  const canStartPrototypeAutomation = useMemo(
+    () => automationAvailable && canRequestGeneration.designOk && canRequestGeneration.envOk,
+    [automationAvailable, canRequestGeneration.designOk, canRequestGeneration.envOk],
+  );
+
   const pipelineStatusText = useMemo(() => {
     if (latestRun) return prototypeRunStatusLabelKo(latestRun.status);
     return statusLabel(record.runStatus, Boolean(previewUrl));
@@ -484,7 +475,7 @@ export function PrototypePreviewPanel({
   const progressSummaryLine = useMemo(() => {
     if (!latestRun?.id) {
       if (!canRequestGeneration.designOk) return "실행 없음 · 설계 보완 필요";
-      return "실행 없음 · 생성 시작 가능";
+      return "자동화 대기 · 자동 생성 시작 가능";
     }
     return `${prototypeRunStatusLabelKo(latestRun.status)}`;
   }, [latestRun, canRequestGeneration.designOk]);
@@ -503,9 +494,7 @@ export function PrototypePreviewPanel({
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <span style={summaryChip}>설계 {designReadinessPercentLocal}%</span>
           <span style={summaryChip}>환경 {envReadinessPercent}%</span>
-          <span style={automationAvailable ? { ...summaryChip, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1e40af" } : summaryChip}>
-            {automationAvailable ? "자동 생성 모드" : "수동 생성 모드"}
-          </span>
+          <span style={{ ...summaryChip, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1e40af" }}>자동화 파이프라인</span>
           <span style={summaryChip}>{resultUrlSummary}</span>
           <button type="button" onClick={() => setReadinessDetailOpen((v) => !v)} style={btnMuted}>
             {readinessDetailOpen ? "상세 접기" : "상세 보기"}
@@ -562,7 +551,6 @@ export function PrototypePreviewPanel({
                 <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btnMuted, opacity: envBusy ? 0.6 : 1 }}>
                   다시 점검
                 </button>
-                <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>예시 템플릿 보기</button>
               </div>
             </div>
           </div>
@@ -580,12 +568,9 @@ export function PrototypePreviewPanel({
             <div style={card}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                 <div style={cardTitle}>생성 요청</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={automationAvailable ? badge : badgeMuted}>{automationAvailable ? "자동 생성 모드" : "수동 생성 모드"}</span>
-                  {latestRun?.id ? (
-                    <span style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700 }}>실행 {latestRun.id.slice(0, 8)}…</span>
-                  ) : null}
-                </div>
+                {latestRun?.id ? (
+                  <span style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700 }}>실행 {latestRun.id.slice(0, 8)}…</span>
+                ) : null}
               </div>
 
               <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 12.5, color: "#475569" }}>
@@ -616,6 +601,9 @@ export function PrototypePreviewPanel({
                   추천으로
                 </button>
                 {isRecommended ? <span style={badge}>추천</span> : <span style={badgeMuted}>사용자 선택</span>}
+                <button type="button" onClick={() => setMockOpen(true)} style={btnMuted}>
+                  예시 템플릿 보기
+                </button>
               </div>
               <div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>
                 예상 화면 {expectedPageCount} · 난이도 {difficultyKr}
@@ -626,22 +614,24 @@ export function PrototypePreviewPanel({
               </div>
 
               <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                {!latestRun?.id && canRequestGeneration.designOk ? (
-                  <button
-                    type="button"
-                    onClick={() => void onStartGeneration()}
-                    disabled={protoBusy}
-                    style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
-                  >
-                    생성 시작
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void onCursorAutoRequest()}
+                  disabled={!canStartPrototypeAutomation || protoBusy}
+                  style={{
+                    ...btnPrimary,
+                    opacity: !canStartPrototypeAutomation || protoBusy ? 0.55 : 1,
+                    cursor: !canStartPrototypeAutomation || protoBusy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  프로토타입 자동 생성 시작
+                </button>
                 <button
                   type="button"
                   onClick={() => void onCopyGenerationPrompt()}
                   disabled={!canRequestGeneration.designOk || protoBusy}
                   style={
-                    automationAvailable && canRequestGeneration.designOk
+                    canStartPrototypeAutomation
                       ? { ...btn, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
                       : { ...btnPrimary, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
                   }
@@ -651,16 +641,6 @@ export function PrototypePreviewPanel({
                 <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                   상태 새로고침
                 </button>
-                {automationAvailable && canRequestGeneration.designOk ? (
-                  <button
-                    type="button"
-                    onClick={() => void onCursorAutoRequest()}
-                    disabled={protoBusy || !canRequestGeneration.designOk}
-                    style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
-                  >
-                    Cursor 자동 생성 요청
-                  </button>
-                ) : null}
               </div>
               <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                 <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn} disabled={protoBusy}>
@@ -671,9 +651,23 @@ export function PrototypePreviewPanel({
                 </button>
               </div>
 
-              {!canRequestGeneration.envOk ? (
+              {!canRequestGeneration.designOk ? (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
+                  설계를 완료하면 프로토타입 자동 생성을 시작할 수 있습니다.
+                </div>
+              ) : null}
+
+              {!automationAvailable ? (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569", lineHeight: 1.5 }}>
+                  자동 실행을 사용할 수 없어 프롬프트 복사 방식으로 진행합니다.
+                </div>
+              ) : null}
+              {!canRequestGeneration.envOk && automationAvailable ? (
                 <div style={{ marginTop: 10, fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>
-                  자동 실행은 환경설정 완료 후 사용할 수 있습니다.
+                  자동 실행은 환경설정 완료 후 사용할 수 있습니다.{" "}
+                  <a href={settingsHref} style={{ color: "#1d4ed8", fontWeight: 800 }}>
+                    환경설정
+                  </a>
                 </div>
               ) : null}
               {automationBlockReason ? (
@@ -791,25 +785,46 @@ export function PrototypePreviewPanel({
             </div>
 
             <div style={card}>
-              <button
-                type="button"
-                onClick={() => setFuturePipelineOpen((v) => !v)}
-                style={{ ...btnMuted, width: "100%", justifyContent: "center", display: "inline-flex" }}
-              >
-                {futurePipelineOpen ? "향후 자동화 파이프라인 접기" : "향후 자동화 파이프라인 보기"}
-              </button>
-              {futurePipelineOpen ? (
-                <ol style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
-                  <li>Cursor 수동 생성 → API 연동(예정)</li>
-                  <li>Git Commit 감지</li>
-                  <li>AI 기획자 소스 점검</li>
-                  <li>보완 요청(필요시)</li>
-                  <li>PR 생성</li>
-                  <li>Merge</li>
-                  <li>자동 배포</li>
-                  <li>결과물 연결</li>
-                </ol>
-              ) : null}
+              <div style={cardTitle}>자동화 파이프라인 상태</div>
+              <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                {lifecycleRows.map((row) => (
+                  <div
+                    key={row.code}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0,1.1fr) minmax(0,1.4fr) 52px",
+                      gap: 8,
+                      alignItems: "center",
+                      fontSize: 12,
+                      color: "#0f172a",
+                    }}
+                  >
+                    <span style={{ fontFamily: "ui-monospace, monospace", color: "#64748b", fontWeight: 700, wordBreak: "break-all" }}>
+                      {row.code}
+                    </span>
+                    <span style={{ fontWeight: 700 }}>{row.labelKo}</span>
+                    <span
+                      style={{
+                        textAlign: "right",
+                        fontWeight: 900,
+                        fontSize: 11.5,
+                        color:
+                          row.cell === "not_wired"
+                            ? "#64748b"
+                            : row.cell === "failed"
+                              ? "#b91c1c"
+                              : row.cell === "blocked"
+                                ? "#b45309"
+                                : row.cell === "complete"
+                                  ? "#047857"
+                                  : "#0f172a",
+                      }}
+                    >
+                      {prototypeLifecycleCellLabelKo(row.cell)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
