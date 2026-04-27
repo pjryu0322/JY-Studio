@@ -1,4 +1,4 @@
-import type { PrototypeRun, PrototypeRunStatus } from "@/lib/prototype/prototypeRunTypes";
+import type { PrototypeRun, PrototypeRunStatus, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
 
 export type PrototypeTimelineStepStatus = "pending" | "running" | "success" | "failed" | "blocked";
 
@@ -117,4 +117,136 @@ export function prototypeRunStatusLabelKo(status: PrototypeRunStatus): string {
     BLOCKED: "차단",
   };
   return m[status] ?? status;
+}
+
+export type PrototypeLifecycleCell = "complete" | "in_progress" | "waiting" | "not_wired" | "failed" | "blocked";
+
+export type PrototypeLifecycleRow = Readonly<{
+  code: PrototypeRunStatus;
+  labelKo: string;
+  cell: PrototypeLifecycleCell;
+}>;
+
+export function prototypeLifecycleCellLabelKo(cell: PrototypeLifecycleCell): string {
+  const m: Record<PrototypeLifecycleCell, string> = {
+    complete: "완료",
+    in_progress: "진행",
+    waiting: "대기",
+    not_wired: "미연동",
+    failed: "실패",
+    blocked: "차단",
+  };
+  return m[cell];
+}
+
+function stepNotWired(step: PrototypeRunStatus, reason: PrototypeRunStatusReason | null): boolean {
+  if (step === "FAILED" || step === "BLOCKED") return false;
+  if (!reason) return false;
+  if (reason === "GIT_PIPELINE_NOT_IMPLEMENTED") {
+    return (
+      step === "COMMIT_DETECTED" ||
+      step === "PUSH_CONFIRMED" ||
+      step === "PR_OPENED" ||
+      step === "MERGED"
+    );
+  }
+  if (reason === "AI_REVIEW_NOT_IMPLEMENTED") {
+    return step === "AI_REVIEWING" || step === "REWORK_REQUIRED";
+  }
+  if (
+    reason === "CURSOR_API_NOT_CONNECTED" ||
+    reason === "CURSOR_NOT_CONNECTED" ||
+    reason === "STUB_CURSOR_ENABLED"
+  ) {
+    return step === "CURSOR_REQUESTED" || step === "CURSOR_RUNNING";
+  }
+  return false;
+}
+
+function failureOrderIndex(reason: PrototypeRunStatusReason | null): number {
+  switch (reason) {
+    case "CURSOR_LAUNCH_FAILED":
+    case "CURSOR_POLL_FAILED":
+      return ORDER.indexOf("CURSOR_RUNNING");
+    case "CURSOR_API_NOT_CONNECTED":
+    case "CURSOR_NOT_CONNECTED":
+    case "EXECUTION_SETUP_INVALID":
+    case "MANUAL_CURSOR_EXECUTION_REQUIRED":
+      return ORDER.indexOf("CURSOR_REQUESTED");
+    default:
+      return ORDER.indexOf("PROMPT_READY");
+  }
+}
+
+function computeLinearLifecycleCell(
+  run: PrototypeRun | null,
+  step: PrototypeRunStatus,
+  effectiveReason: PrototypeRunStatusReason | null,
+): PrototypeLifecycleCell {
+  if (stepNotWired(step, effectiveReason)) return "not_wired";
+  if (!run) return "waiting";
+
+  if (run.status === "FAILED") {
+    const fi = failureOrderIndex(run.statusReason);
+    const si = ORDER.indexOf(step);
+    if (si < 0) return "waiting";
+    if (si < fi) return "complete";
+    if (si === fi) return "failed";
+    return "waiting";
+  }
+
+  if (run.status === "BLOCKED") {
+    const bi = ORDER.indexOf("REWORK_REQUIRED");
+    const si = ORDER.indexOf(step);
+    if (si < 0) return "waiting";
+    if (si < bi) return "complete";
+    if (si === bi) return "blocked";
+    return "waiting";
+  }
+
+  if (run.status === "DRAFT") return "waiting";
+
+  if (run.status === "PREVIEW_READY" && step === "PREVIEW_READY") {
+    return run.previewUrl ? "complete" : "in_progress";
+  }
+
+  const si = ORDER.indexOf(step);
+  const ri = ORDER.indexOf(run.status);
+  if (si < 0 || ri < 0) return "waiting";
+  if (si < ri) return "complete";
+  if (si === ri) return "in_progress";
+  return "waiting";
+}
+
+function computeTerminalLifecycleCell(run: PrototypeRun | null, terminal: "FAILED" | "BLOCKED"): PrototypeLifecycleCell {
+  if (!run) return "waiting";
+  if (terminal === "FAILED") return run.status === "FAILED" ? "failed" : "waiting";
+  return run.status === "BLOCKED" ? "blocked" : "waiting";
+}
+
+/** PrototypeRun 단계별 표(자동화 파이프라인 상태). */
+export function buildPrototypeLifecycleRows(
+  run: PrototypeRun | null,
+  automationBlockReason: PrototypeRunStatusReason | null,
+): PrototypeLifecycleRow[] {
+  const effectiveReason = run?.statusReason ?? automationBlockReason;
+  const linearSteps = ORDER.slice(1) as PrototypeRunStatus[];
+  const rows: PrototypeLifecycleRow[] = linearSteps.map((code) => ({
+    code,
+    labelKo: prototypeRunStatusLabelKo(code),
+    cell: computeLinearLifecycleCell(run, code, effectiveReason),
+  }));
+  rows.push(
+    {
+      code: "FAILED",
+      labelKo: prototypeRunStatusLabelKo("FAILED"),
+      cell: computeTerminalLifecycleCell(run, "FAILED"),
+    },
+    {
+      code: "BLOCKED",
+      labelKo: prototypeRunStatusLabelKo("BLOCKED"),
+      cell: computeTerminalLifecycleCell(run, "BLOCKED"),
+    },
+  );
+  return rows;
 }
