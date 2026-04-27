@@ -1862,7 +1862,7 @@ export function ProjectExecutionEnvironmentPanel({
         style={{ marginTop: 4 }}
       >
         <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 900, color: "#64748b" }}>
-          고급/디버그: 연결 테스트(ENV_TEST Stage 1)
+          고급 검증 보기
         </summary>
         <div style={{ marginTop: 10 }}>{stage1ValidationSlotExpanded}</div>
       </details>
@@ -1876,36 +1876,38 @@ export function ProjectExecutionEnvironmentPanel({
       data-ui-label="[P-6-4] 실행 환경 — 연결·정책·검증"
       style={{ marginBottom: 8 }}
     >
-      <header style={{ marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
-          {isAdminSettings
-            ? effectivePurpose === "prototype"
-              ? "프로토타입 자동 생성 환경설정"
-              : "환경 검증/설정"
-            : "실행 환경"}
-        </h1>
-        <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-          {isAdminSettings
-            ? "Git 저장소·GitHub 인증·Cursor API를 연결하고, 실행 정책과 환경 검증을 완료하세요."
-            : "외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."}
-        </p>
-        {isAdminSettings ? null : (
-          <div
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #e9d5ff",
-              background: "#faf5ff",
-              fontSize: 13,
-              fontWeight: 700,
-              color: "#5b21b6",
-              lineHeight: 1.5,
-            }}
-          >
-            1. 외부 시스템 연결 → 2. 연결 테스트 실행 → 3. (선택) 실행 정책 설정
-          </div>
-        )}
-      </header>
+      {isAdminSettings && effectivePurpose === "prototype" ? null : (
+        <header style={{ marginBottom: 16 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
+            {isAdminSettings
+              ? effectivePurpose === "prototype"
+                ? "프로토타입 자동 생성 환경설정"
+                : "환경 검증/설정"
+              : "실행 환경"}
+          </h1>
+          <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+            {isAdminSettings
+              ? "Git 저장소·GitHub 인증·Cursor API를 연결하고, 실행 정책과 환경 검증을 완료하세요."
+              : "외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."}
+          </p>
+          {isAdminSettings ? null : (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #e9d5ff",
+                background: "#faf5ff",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#5b21b6",
+                lineHeight: 1.5,
+              }}
+            >
+              1. 외부 시스템 연결 → 2. 연결 테스트 실행 → 3. (선택) 실행 정책 설정
+            </div>
+          )}
+        </header>
+      )}
 
       <ExecutionSetupPanel
         projectId={projectId}

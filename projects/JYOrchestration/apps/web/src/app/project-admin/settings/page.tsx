@@ -125,7 +125,7 @@ function ProjectAdminSettingsInner() {
 
       {projectId ? (
         <div style={{ marginBottom: 14 }}>
-          <ProjectWorkflowNav />
+          {isPrototypePurpose ? null : <ProjectWorkflowNav />}
         </div>
       ) : null}
 
@@ -161,28 +161,7 @@ function ProjectAdminSettingsInner() {
             </p>
           </header>
 
-          {isPrototypePurpose ? (
-            <details style={{ marginBottom: 10 }}>
-              <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#475569", fontWeight: 800 }}>
-                설정 도움말 보기
-              </summary>
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 12.5,
-                  color: "#475569",
-                  lineHeight: 1.55,
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <strong style={{ color: "#0f172a" }}>순서</strong> — ① Git 저장소 ② GitHub 인증 ③ Cursor API ④ 실행 정책
-                ⑤ 환경 검증
-              </div>
-            </details>
-          ) : (
+          {isPrototypePurpose ? null : (
             <section aria-labelledby="settings-env-sections" style={{ marginBottom: 14 }}>
               <h2
                 id="settings-env-sections"
@@ -208,14 +187,39 @@ function ProjectAdminSettingsInner() {
             </section>
           )}
 
-          <ProjectExecutionEnvironmentPanel
-            projectId={projectId}
-            project={project}
-            canEdit={rbac.canEditSpec}
-            canRevealCursorApiKey={projectRole === "OWNER"}
-            settingsSurface="admin"
-            settingsPurpose={isPrototypePurpose ? "prototype" : "env-test"}
-          />
+          <div id="execution-setup-panel">
+            <ProjectExecutionEnvironmentPanel
+              projectId={projectId}
+              project={project}
+              canEdit={rbac.canEditSpec}
+              canRevealCursorApiKey={projectRole === "OWNER"}
+              settingsSurface="admin"
+              settingsPurpose={isPrototypePurpose ? "prototype" : "env-test"}
+            />
+          </div>
+
+          {isPrototypePurpose ? (
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#475569", fontWeight: 800 }}>
+                설정 도움말 보기
+              </summary>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  color: "#475569",
+                  lineHeight: 1.55,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <strong style={{ color: "#0f172a" }}>순서</strong> — ① Git 저장소 ② GitHub 인증 ③ Cursor API ④ 실행 정책
+                ⑤ 환경 검증
+              </div>
+            </details>
+          ) : null}
         </>
       ) : null}
     </main>

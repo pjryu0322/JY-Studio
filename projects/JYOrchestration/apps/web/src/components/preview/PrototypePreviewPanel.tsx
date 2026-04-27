@@ -364,7 +364,7 @@ export function PrototypePreviewPanel({
   };
 
   const settingsHref = useMemo(
-    () => `${projectExecutionSettingsHref(projectId)}#execution-setup-panel`,
+    () => `${projectExecutionSettingsHref(projectId, { envNote: "prototype" })}#execution-setup-panel`,
     [projectId],
   );
 
