@@ -15,6 +15,7 @@ function ProjectAdminSettingsInner() {
   const projectId = String(searchParams.get("projectId") ?? "").trim();
   const envNoteRaw = searchParams.get("envNote");
   const envNote = envNoteRaw != null && String(envNoteRaw).trim() ? String(envNoteRaw).trim() : null;
+  const isPrototypePurpose = envNote === "prototype";
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
@@ -112,7 +113,7 @@ function ProjectAdminSettingsInner() {
         </div>
       ) : null}
 
-      <ProjectAdminWorkflowScopeNote />
+      {isPrototypePurpose ? null : <ProjectAdminWorkflowScopeNote />}
 
       {!projectId ? (
         <div style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6 }}>
@@ -133,32 +134,14 @@ function ProjectAdminSettingsInner() {
         </p>
       ) : null}
 
-      {envNote && projectId ? (
-        <div
-          role="status"
-          style={{
-            marginBottom: 16,
-            padding: "12px 14px",
-            borderRadius: 10,
-            border: "1px solid #fdba74",
-            background: "#fffbeb",
-            color: "#9a3412",
-            fontSize: 13,
-            lineHeight: 1.55,
-          }}
-        >
-          <strong>안내</strong> {envNote}
-        </div>
-      ) : null}
-
       {projectId && project && !errorMessage ? (
         <>
-          <header style={{ marginBottom: 18 }}>
+          <header style={{ marginBottom: 12 }}>
             <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-              프로젝트 설정 · 프로토타입 생성 환경
+              프로토타입 생성 환경 설정
             </h1>
-            <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
-              연결·실행 정책·검증을 이 화면에서만 준비합니다. 스펙·작업 설계는{" "}
+            <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+              Git·GitHub·Cursor 연결과 실행 정책/검증을 이 화면에서 설정합니다.{" "}
               <Link href={backHref} style={{ color: "#1d4ed8", fontWeight: 700 }}>
                 생성 준비
               </Link>
@@ -166,26 +149,52 @@ function ProjectAdminSettingsInner() {
             </p>
           </header>
 
-          <section aria-labelledby="settings-env-sections" style={{ marginBottom: 14 }}>
-            <h2 id="settings-env-sections" style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", margin: "0 0 8px 0" }}>
-              환경 준비
-            </h2>
-            <div
-              style={{
-                fontSize: 13,
-                color: "#475569",
-                lineHeight: 1.55,
-                padding: "10px 12px",
-                borderRadius: 8,
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              <strong style={{ color: "#0f172a" }}>구성</strong> — ① <strong>연결 설정</strong>(Git 저장소·GitHub
-              토큰·Cursor API) ② <strong>실행 정책</strong>(승인·푸시·재시도 등) ③ <strong>환경 검증</strong>(저장소·Cursor
-              접근·권한)은 아래 패널에서 진행합니다.
-            </div>
-          </section>
+          {isPrototypePurpose ? (
+            <details style={{ marginBottom: 10 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#475569", fontWeight: 800 }}>
+                도움말 보기
+              </summary>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12.5,
+                  color: "#475569",
+                  lineHeight: 1.55,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <strong style={{ color: "#0f172a" }}>순서</strong> — ① Git 저장소 ② GitHub 인증 ③ Cursor API ④ 실행 정책
+                ⑤ 환경 검증
+              </div>
+            </details>
+          ) : (
+            <section aria-labelledby="settings-env-sections" style={{ marginBottom: 14 }}>
+              <h2
+                id="settings-env-sections"
+                style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", margin: "0 0 8px 0" }}
+              >
+                환경 준비
+              </h2>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#475569",
+                  lineHeight: 1.55,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <strong style={{ color: "#0f172a" }}>구성</strong> — ① <strong>연결 설정</strong>(Git 저장소·GitHub
+                토큰·Cursor API) ② <strong>실행 정책</strong>(승인·푸시·재시도 등) ③ <strong>환경 검증</strong>(저장소·Cursor
+                접근·권한)은 아래 패널에서 진행합니다.
+              </div>
+            </section>
+          )}
 
           <ProjectExecutionEnvironmentPanel
             projectId={projectId}
@@ -193,6 +202,7 @@ function ProjectAdminSettingsInner() {
             canEdit={rbac.canEditSpec}
             canRevealCursorApiKey={projectRole === "OWNER"}
             settingsSurface="admin"
+            settingsPurpose={isPrototypePurpose ? "prototype" : "env-test"}
           />
         </>
       ) : null}

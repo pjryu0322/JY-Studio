@@ -25,6 +25,7 @@ type Props = {
   canRevealCursorApiKey?: boolean;
   /** 프로젝트 관리 설정 화면 전용 톤(문구만 조정, 로직 동일) */
   settingsSurface?: "admin";
+  settingsPurpose?: "prototype" | "env-test";
 };
 
 const PLACEHOLDERS = {
@@ -421,8 +422,11 @@ export function ProjectExecutionEnvironmentPanel({
   canEdit,
   canRevealCursorApiKey = false,
   settingsSurface,
+  settingsPurpose,
 }: Props) {
   const isAdminSettings = settingsSurface === "admin";
+  const effectivePurpose: "prototype" | "env-test" =
+    settingsPurpose ?? (isAdminSettings ? "prototype" : "env-test");
   const [executionSetup, setExecutionSetup] = useState<
     Awaited<ReturnType<typeof fetchExecutionSetup>>["json"]["data"] | null
   >(null);
@@ -441,6 +445,7 @@ export function ProjectExecutionEnvironmentPanel({
   const [githubReplaceMode, setGithubReplaceMode] = useState(false);
   const [githubTokenRevealPlaintext, setGithubTokenRevealPlaintext] = useState<string | null>(null);
   const [stage1DetailsOpen, setStage1DetailsOpen] = useState(false);
+  const [advancedEnvTestOpen, setAdvancedEnvTestOpen] = useState(false);
   /** Stage1 경과: 클릭 시각 기준(실행 시작 리셋). `pending`은 POST 응답 전까지 */
   const [stage1TimerSession, setStage1TimerSession] = useState<{
     taskId: string;
@@ -1242,7 +1247,7 @@ export function ProjectExecutionEnvironmentPanel({
     </div>
   );
 
-  const stage1ValidationSlot = (
+  const stage1ValidationSlotExpanded = (
     <div>
             <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
               <strong>연결 검증</strong>은 Cursor가 브랜치에 푸시하고 PR·머지까지 진행하는지 확인합니다. Stage 2(역할 분리) 테스트는{" "}
@@ -1853,6 +1858,22 @@ export function ProjectExecutionEnvironmentPanel({
     </div>
   );
 
+  const stage1ValidationSlot =
+    effectivePurpose === "prototype" ? (
+      <details
+        open={advancedEnvTestOpen}
+        onToggle={(e) => setAdvancedEnvTestOpen((e.target as HTMLDetailsElement).open)}
+        style={{ marginTop: 4 }}
+      >
+        <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 900, color: "#64748b" }}>
+          고급/디버그: 연결 테스트(ENV_TEST Stage 1)
+        </summary>
+        <div style={{ marginTop: 10 }}>{stage1ValidationSlotExpanded}</div>
+      </details>
+    ) : (
+      stage1ValidationSlotExpanded
+    );
+
   return (
     <div
       data-testid="project-execution-environment-panel"
@@ -1861,11 +1882,11 @@ export function ProjectExecutionEnvironmentPanel({
     >
       <header style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
-          {isAdminSettings ? "실행 환경 준비" : "실행 환경"}
+          {isAdminSettings ? "프로토타입 생성 환경 설정" : "실행 환경"}
         </h1>
         <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
           {isAdminSettings
-            ? "저장소·GitHub·Cursor를 연결하고 검증을 통과하면 실행 계획 화면에서 실행을 시작할 수 있습니다."
+            ? "Git 저장소·GitHub 인증·Cursor API를 연결하고, 실행 정책과 환경 검증을 완료하세요."
             : "외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."}
         </p>
         {isAdminSettings ? null : (
