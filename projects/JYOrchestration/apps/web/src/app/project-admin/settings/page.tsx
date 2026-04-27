@@ -94,7 +94,9 @@ function ProjectAdminSettingsInner() {
     [projectRole]
   );
 
-  const backHref = projectId ? `/projects/${encodeURIComponent(projectId)}?view=workspace` : "/";
+  const backHref = projectId
+    ? `/requirements?projectId=${encodeURIComponent(projectId)}&stage=service-flow&preview=1`
+    : "/";
 
   useEffect(() => {
     if (!projectId) return;

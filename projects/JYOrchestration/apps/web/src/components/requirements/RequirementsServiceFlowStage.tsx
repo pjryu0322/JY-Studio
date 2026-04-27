@@ -443,6 +443,7 @@ export function RequirementsServiceFlowStage({
   projectId,
   projectName,
   projectDescription,
+  initialPrototypePreviewOpen = false,
   ideationParticipantHumanMemberIds,
   ideationAssets,
   ideationReady,
@@ -464,6 +465,7 @@ export function RequirementsServiceFlowStage({
   readonly projectId: string;
   readonly projectName: string;
   readonly projectDescription: string;
+  readonly initialPrototypePreviewOpen?: boolean;
   readonly ideationParticipantHumanMemberIds: readonly string[];
   readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
   readonly ideationReady: boolean;
@@ -501,6 +503,12 @@ export function RequirementsServiceFlowStage({
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [prototypePreviewOpen, setPrototypePreviewOpen] = useState(false);
+
+  useEffect(() => {
+    if (!initialPrototypePreviewOpen) return;
+    const t = window.setTimeout(() => setPrototypePreviewOpen(true), 0);
+    return () => window.clearTimeout(t);
+  }, [initialPrototypePreviewOpen]);
 
   const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
   const hint = progressHint(derivedApproval);
