@@ -499,7 +499,7 @@ export function RequirementsServiceFlowStage({
   const [remainingPanelOpen, setRemainingPanelOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
-  const [toolsOpen, setToolsOpen] = useState(false);
+  // composer actions minimized (no tools menu in input area)
   const [prototypePreviewOpen, setPrototypePreviewOpen] = useState(false);
 
   const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
@@ -588,11 +588,8 @@ export function RequirementsServiceFlowStage({
     autoScrollPendingRef.current = true;
   };
 
-  const tempSave = () => {
-    if (!flow) return;
-    const now = new Date().toISOString();
-    onChangeFlow({ ...flow, updatedAt: now });
-  };
+  void prototypePreviewOpen;
+  void setPrototypePreviewOpen;
 
   const patchChecklistDeferral = (key: ServiceFlowSlotKey, kind: RequirementsServiceFlowChecklistDeferralKind | null) => {
     if (!flow) return;
@@ -889,7 +886,6 @@ export function RequirementsServiceFlowStage({
 
   const requestOrganize = () => {
     if (workspaceMode !== "chat") return;
-    setToolsOpen(false);
     setReplying(true);
     void (async () => {
       const excerpt = [...displayMessages, { id: "tmp", role: "user" as const, name: "사용자", body: "(정리 요청)" }]
@@ -1053,7 +1049,7 @@ export function RequirementsServiceFlowStage({
                 <span style={{ color: "#cbd5e1", fontWeight: 500 }} aria-hidden>
                   |
                 </span>
-                {decision.headerCount > 0 ? (
+                {decision.requiredUnresolved.length > 0 ? (
                   <button
                     type="button"
                     onClick={() => setRemainingPanelOpen(true)}
@@ -1068,13 +1064,13 @@ export function RequirementsServiceFlowStage({
                       textAlign: "left",
                     }}
                   >
-                    <span style={headerMetricBadgeLabel}>{decision.headerLabel}</span>{" "}
-                    <span style={{ fontWeight: 900, fontSize: 15, color: "#0369a1" }}>{decision.headerCount}개</span>
+                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
+                    <span style={{ fontWeight: 900, fontSize: 15, color: "#0369a1" }}>{decision.requiredUnresolved.length}개</span>
                   </button>
                 ) : (
                   <span>
-                    <span style={headerMetricBadgeLabel}>{decision.headerLabel}</span>{" "}
-                    <span style={{ fontWeight: 900, fontSize: 15 }}>{decision.headerCount ? `${decision.headerCount}개` : ""}</span>
+                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
+                    <span style={{ fontWeight: 900, fontSize: 15 }}>0개</span>
                   </span>
                 )}
               </div>
@@ -1179,7 +1175,7 @@ export function RequirementsServiceFlowStage({
                 {!structureLocked ? (
                   <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb" }}>
                     <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e", lineHeight: 1.55 }}>
-                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 하단의 「담당 지정으로 이동」으로 넘어가세요.
+                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 상단 탭으로 이동해 주세요.
                     </div>
                   </div>
                 ) : (
@@ -1326,18 +1322,43 @@ export function RequirementsServiceFlowStage({
         {ideationReady && chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
           <div style={{ flex: "0 0 auto", padding: "0 20px 10px" }}>
             <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(steps.length >= 1
-                ? [
-                    { label: "단계 수정", action: () => callAnalyze("단계 수정이 필요합니다. 수정할 단계와 변경 내용을 반영해 주세요.") },
-                    { label: "담당 지정", action: () => callAnalyze("각 단계 담당자를 지정하려고 합니다. 단계별 담당을 제안하고 primaryActorId로 반영해 주세요.") },
-                    { label: "승인 추가", action: () => callAnalyze("승인/확정 단계가 필요합니다. 승인 단계를 흐름에 추가하고 담당도 지정해 주세요.") },
-                    { label: "예외 흐름", action: () => callAnalyze("수정 요청/반려 같은 예외 흐름이 필요합니다. 예외 단계를 흐름에 반영해 주세요.") },
-                  ]
-                : [
-                    { label: "액터 추가", action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요.") },
-                    { label: "흐름 정리", action: () => callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요.") },
-                  ]
-              ).map((it) => (
+              {(() => {
+                const design100 = derivedApproval.progressPercent >= 100;
+                const requiredZero = decision.requiredUnresolved.length === 0;
+                const shouldShowApproval = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("approvalStep");
+                const shouldShowException = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("exceptionFlow");
+
+                const base =
+                  steps.length >= 1
+                    ? [
+                        { label: "단계 수정", action: () => callAnalyze("단계 수정이 필요합니다. 수정할 단계와 변경 내용을 반영해 주세요.") },
+                        { label: "담당 지정", action: () => callAnalyze("각 단계 담당자를 지정하려고 합니다. 단계별 담당을 제안하고 primaryActorId로 반영해 주세요.") },
+                      ]
+                    : [
+                        { label: "액터 추가", action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요.") },
+                        { label: "흐름 정리", action: () => callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요.") },
+                      ];
+
+                const extras =
+                  steps.length >= 1
+                    ? [
+                        ...(shouldShowApproval
+                          ? [{ label: "승인 추가", action: () => callAnalyze("승인/확정 단계가 필요합니다. 승인 단계를 흐름에 추가하고 담당도 지정해 주세요.") }]
+                          : []),
+                        ...(shouldShowException
+                          ? [{ label: "예외 흐름", action: () => callAnalyze("수정 요청/반려 같은 예외 흐름이 필요합니다. 예외 단계를 흐름에 반영해 주세요.") }]
+                          : []),
+                      ]
+                    : [];
+
+                const chips = [...base, ...extras];
+
+                if (design100 && requiredZero) {
+                  // completion state: keep at most 2 chips
+                  return chips.filter((c) => c.label === "단계 수정" || c.label === "담당 지정").slice(0, 2);
+                }
+                return chips;
+              })().map((it) => (
                 <button
                   key={it.label}
                   type="button"
@@ -1360,227 +1381,40 @@ export function RequirementsServiceFlowStage({
           </div>
         ) : null}
 
-          {summaryActive ? (
-            <div
-              className="jyo-service-flow-composer-shell"
-              style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}
-            >
-              <div
-                style={{
-                  maxWidth: 660,
-                  margin: "0 auto",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 20,
-                  background: "#fff",
-                  padding: "12px 16px",
-                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: "#475569",
-                  lineHeight: 1.55,
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 10,
-                  alignItems: "center",
-                  justifyContent: "space-between",
+          <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
+            <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0", borderRadius: 20, background: "#fff", padding: 10, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
+              <textarea
+                ref={composerTextareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
                 }}
-              >
-                <button type="button" onClick={() => setPrototypePreviewOpen(true)} style={{ ...btn, borderRadius: 999 }}>
-                  프로토타입 미리보기
-                </button>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginLeft: "auto" }}>
-                  <button type="button" onClick={() => tempSave()} style={{ ...btn, borderRadius: 999 }}>
-                    임시 저장
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onApproveAll()}
-                    disabled={remainingChecklistItems > 0}
-                    style={{ ...primaryBtn, borderRadius: 999, opacity: remainingChecklistItems === 0 ? 1 : 0.55 }}
-                    title={remainingChecklistItems > 0 ? "남은 결정사항을 먼저 해결해 주세요." : undefined}
-                  >
-                    기능정리 단계로 이동
-                  </button>
-                  <button type="button" onClick={() => setWorkspaceMode("mapping")} style={{ ...btn, borderRadius: 999 }}>
-                    구조 편집
-                  </button>
-                  <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
-                    ← 채팅 협업
-                  </button>
-                </div>
-              </div>
+                placeholder="메시지를 입력하세요"
+                rows={1}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  border: "none",
+                  outline: "none",
+                  borderRadius: 14,
+                  background: "#f1f5f9",
+                  padding: "14px 16px",
+                  fontSize: 14,
+                  resize: "none",
+                  maxHeight: 160,
+                  overflowY: "auto",
+                  lineHeight: 1.35,
+                }}
+              />
+              <button type="button" onClick={sendMessage} aria-label="전송" style={{ width: 46, height: 46, borderRadius: 999, border: "1px solid #0f766e", background: "#0f766e", color: "#fff", fontSize: 18, fontWeight: 900, cursor: "pointer" }}>
+                ▶
+              </button>
             </div>
-          ) : mappingActive && structureLocked ? (
-            <div
-              className="jyo-service-flow-composer-shell"
-              style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}
-            >
-                <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                    {!steps.length || !steps.every((s) => s.primaryActorId && s.approved) ? (
-                      <button
-                        type="button"
-                        onClick={approveAllMappingOwners}
-                        disabled={!steps.length || !steps.every((s) => s.primaryActorId)}
-                        style={{ ...primaryBtn, opacity: steps.length && steps.every((s) => s.primaryActorId) ? 1 : 0.55 }}
-                      >
-                        담당 지정 완료
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onApproveAll()}
-                        disabled={decision.requiredUnresolved.length > 0}
-                        style={{ ...primaryBtn, opacity: decision.requiredUnresolved.length === 0 ? 1 : 0.55 }}
-                        title={decision.requiredUnresolved.length > 0 ? "남은 결정사항을 먼저 해결해 주세요." : undefined}
-                      >
-                        기능정리 단계로 이동
-                      </button>
-                    )}
-                  <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
-                    요약 보기
-                  </button>
-                </div>
-                <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
-                  ← 채팅 협업
-                </button>
-              </div>
-            </div>
-          ) : mappingActive && !structureLocked ? (
-            <div
-              className="jyo-service-flow-composer-shell"
-              style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}
-            >
-              <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                  <button
-                    type="button"
-                    onClick={() => lockStructureForAssignment()}
-                    disabled={!derivedApproval.ready}
-                    style={{ ...primaryBtn, borderRadius: 999, opacity: derivedApproval.ready ? 1 : 0.55 }}
-                  >
-                    담당 지정으로 이동
-                  </button>
-                  <button type="button" onClick={() => setWorkspaceMode("summary")} style={{ ...btn, borderRadius: 999 }}>
-                    요약 보기
-                  </button>
-                </div>
-                <button type="button" onClick={() => setWorkspaceMode("chat")} style={{ ...btn, borderRadius: 999 }}>
-                  ← 채팅 협업
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
-              {chatActive ? (
-                <div style={{ maxWidth: 660, margin: "0 auto 10px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!structureLocked) lockStructureForAssignment();
-                      setWorkspaceMode("mapping");
-                    }}
-                    disabled={!derivedApproval.ready}
-                    style={{ ...primaryBtn, opacity: derivedApproval.ready ? 1 : 0.55, whiteSpace: "nowrap" }}
-                  >
-                    담당 지정으로 이동
-                  </button>
-                  <button type="button" onClick={() => tempSave()} style={{ ...btn, whiteSpace: "nowrap" }}>
-                    임시 저장
-                  </button>
-                  {decision.requiredUnresolved.length === 0 && decision.optionalUnresolved.length > 0 ? (
-                    <div style={{ flex: "1 1 220px", minWidth: 220 }}>{optionalDecisionQuickActions}</div>
-                  ) : null}
-                </div>
-              ) : null}
-              <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0", borderRadius: 20, background: "#fff", padding: 10, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
-                <div style={{ position: "relative" }}>
-                  <button
-                    type="button"
-                    onClick={() => setToolsOpen((v) => !v)}
-                    aria-label="도구 열기"
-                    style={{ width: 42, height: 42, borderRadius: 999, border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontSize: 24, lineHeight: 1, cursor: "pointer" }}
-                  >
-                    +
-                  </button>
-                  {toolsOpen ? (
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        bottom: 52,
-                        width: 200,
-                        borderRadius: 14,
-                        border: "1px solid #e2e8f0",
-                        background: "#fff",
-                        boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.22)",
-                        padding: 8,
-                        zIndex: 20,
-                      }}
-                      role="menu"
-                    >
-                      <button type="button" onClick={requestOrganize} style={{ ...btn, width: "100%", textAlign: "left" }}>
-                        정리 요청
-                      </button>
-                      <div style={{ height: 6 }} />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToolsOpen(false);
-                          setWorkspaceMode("mapping");
-                        }}
-                        style={{ ...btn, width: "100%", textAlign: "left" }}
-                      >
-                        구조 편집
-                      </button>
-                      <div style={{ height: 6 }} />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToolsOpen(false);
-                          setWorkspaceMode("summary");
-                        }}
-                        disabled={!(actors.length || steps.length)}
-                        style={{ ...btn, width: "100%", textAlign: "left", opacity: actors.length || steps.length ? 1 : 0.55 }}
-                      >
-                        요약 보기
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                <textarea
-                  ref={composerTextareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder="메시지를 입력하세요"
-                  rows={1}
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    border: "none",
-                    outline: "none",
-                    borderRadius: 14,
-                    background: "#f1f5f9",
-                    padding: "14px 16px",
-                    fontSize: 14,
-                    resize: "none",
-                    maxHeight: 160,
-                    overflowY: "auto",
-                    lineHeight: 1.35,
-                  }}
-                />
-                <button type="button" onClick={sendMessage} aria-label="전송" style={{ width: 46, height: 46, borderRadius: 999, border: "1px solid #0f766e", background: "#0f766e", color: "#fff", fontSize: 18, fontWeight: 900, cursor: "pointer" }}>
-                  ▶
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
 
           {remainingPanelOpen ? (
             <div
@@ -1620,7 +1454,7 @@ export function RequirementsServiceFlowStage({
                       {row.deferral === "pending" ? (
                         <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>미정의로 진행됨</div>
                       ) : row.deferral === "deferred_next" ? (
-                        <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>다음 단계에서 결정</div>
+                        <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>다음 단계에서 검토</div>
                       ) : (
                         <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
                           <button type="button" onClick={() => jumpToResolveSlot(row.key)} style={{ ...btn }}>
@@ -1630,7 +1464,7 @@ export function RequirementsServiceFlowStage({
                             미정의로 진행
                           </button>
                           <button type="button" onClick={() => patchChecklistDeferral(row.key, "deferred_next")} style={{ ...btn }}>
-                            다음 단계에서 결정
+                            다음 단계에서 검토
                           </button>
                         </div>
                       )}
