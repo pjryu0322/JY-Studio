@@ -9,7 +9,7 @@ import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteCon
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { readAiFacilitatorAutoJoin, readAutoOpenLastProject } from "@/lib/preferences/globalPreferences";
+import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
 
@@ -204,33 +204,6 @@ export default function HomePage() {
     const t = window.setTimeout(() => setCreateToast(false), 5000);
     return () => window.clearTimeout(t);
   }, [createToast]);
-
-  /** 설정「최근 프로젝트 자동 열기」: 외부·직접 진입 등에서만 세션의 마지막 프로젝트 아이디어 구체화 화면으로 이동(앱 내부에서 홈으로 온 경우는 제외). */
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!readAutoOpenLastProject()) return;
-    try {
-      const ref = document.referrer;
-      if (ref) {
-        const u = new URL(ref);
-        if (u.origin === window.location.origin) {
-          const p = u.pathname;
-          if (p !== "/" && !p.startsWith("/login")) return;
-        }
-      }
-    } catch {
-      /* allow auto-open */
-    }
-    let last = "";
-    try {
-      last = sessionStorage.getItem(APP_FLOW_LAST_PROJECT_KEY) ?? "";
-    } catch {
-      return;
-    }
-    const id = last.trim();
-    if (!id) return;
-    router.replace(`/requirements?projectId=${encodeURIComponent(id)}`);
-  }, [router]);
 
   useEffect(() => {
     const pid = projectCardMenuId?.trim();

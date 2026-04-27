@@ -2,21 +2,9 @@
 export const GLOBAL_PREFERENCES_CHANGED_EVENT = "jyo:global-preferences-changed";
 
 const KEYS = {
-  compactMode: "jyo:pref:compact-mode",
-  reduceMotion: "jyo:pref:reduce-motion",
-  autoOpenLastProject: "jyo:pref:auto-open-last-project",
   aiFacilitatorAutoJoin: "jyo:pref:ai-facilitator-auto-join",
-  aiResponseStyle: "jyo:pref:ai-response-style",
   devPanelVisible: "jyo:pref:dev-panel-visible",
 } as const;
-
-export type AiResponseStyle = "brief" | "standard" | "detailed";
-
-export const AI_RESPONSE_STYLE_LABELS: Record<AiResponseStyle, string> = {
-  brief: "간단히",
-  standard: "표준",
-  detailed: "상세히",
-};
 
 function dispatchChanged(): void {
   if (typeof window === "undefined") return;
@@ -45,60 +33,12 @@ function writeBool(key: string, value: boolean): void {
   }
 }
 
-export function readCompactMode(): boolean {
-  return readBool(KEYS.compactMode, false);
-}
-
-export function writeCompactMode(value: boolean): void {
-  writeBool(KEYS.compactMode, value);
-}
-
-export function readReduceMotion(): boolean {
-  return readBool(KEYS.reduceMotion, false);
-}
-
-export function writeReduceMotion(value: boolean): void {
-  writeBool(KEYS.reduceMotion, value);
-}
-
-export function readAutoOpenLastProject(): boolean {
-  return readBool(KEYS.autoOpenLastProject, false);
-}
-
-export function writeAutoOpenLastProject(value: boolean): void {
-  writeBool(KEYS.autoOpenLastProject, value);
-}
-
 export function readAiFacilitatorAutoJoin(): boolean {
   return readBool(KEYS.aiFacilitatorAutoJoin, true);
 }
 
 export function writeAiFacilitatorAutoJoin(value: boolean): void {
   writeBool(KEYS.aiFacilitatorAutoJoin, value);
-}
-
-function parseAiResponseStyle(raw: string | null): AiResponseStyle {
-  if (raw === "brief" || raw === "detailed" || raw === "standard") return raw;
-  return "standard";
-}
-
-export function readAiResponseStyle(): AiResponseStyle {
-  if (typeof window === "undefined") return "standard";
-  try {
-    return parseAiResponseStyle(window.localStorage.getItem(KEYS.aiResponseStyle));
-  } catch {
-    return "standard";
-  }
-}
-
-export function writeAiResponseStyle(value: AiResponseStyle): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEYS.aiResponseStyle, value);
-    dispatchChanged();
-  } catch {
-    /* ignore */
-  }
 }
 
 export function readDevPanelVisible(): boolean {
@@ -110,21 +50,13 @@ export function writeDevPanelVisible(value: boolean): void {
 }
 
 export type GlobalPreferencesSnapshot = {
-  compactMode: boolean;
-  reduceMotion: boolean;
-  autoOpenLastProject: boolean;
   aiFacilitatorAutoJoin: boolean;
-  aiResponseStyle: AiResponseStyle;
   devPanelVisible: boolean;
 };
 
 export function readGlobalPreferencesSnapshot(): GlobalPreferencesSnapshot {
   return {
-    compactMode: readCompactMode(),
-    reduceMotion: readReduceMotion(),
-    autoOpenLastProject: readAutoOpenLastProject(),
     aiFacilitatorAutoJoin: readAiFacilitatorAutoJoin(),
-    aiResponseStyle: readAiResponseStyle(),
     devPanelVisible: readDevPanelVisible(),
   };
 }

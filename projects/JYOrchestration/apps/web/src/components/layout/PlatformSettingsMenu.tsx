@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useUiLabel } from "@/lib/ui-label/useUiLabel";
-import { AI_RESPONSE_STYLE_LABELS, type AiResponseStyle } from "@/lib/preferences/globalPreferences";
 import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
@@ -102,30 +101,6 @@ export function PlatformSettingsMenu() {
       cancelled = true;
     };
   }, [open]);
-
-  const styleButtons = (keys: AiResponseStyle[]) =>
-    keys.map((k) => {
-      const active = prefs.aiResponseStyle === k;
-      return (
-        <button
-          key={k}
-          type="button"
-          onClick={() => prefs.setAiResponseStyle(k)}
-          style={{
-            padding: "5px 10px",
-            borderRadius: 8,
-            fontSize: 12,
-            fontWeight: 700,
-            border: active ? "1px solid #2563eb" : "1px solid #e2e8f0",
-            background: active ? "#eff6ff" : "#fff",
-            color: active ? "#1d4ed8" : "#64748b",
-            cursor: "pointer",
-          }}
-        >
-          {AI_RESPONSE_STYLE_LABELS[k]}
-        </button>
-      );
-    });
 
   return (
     <div ref={rootRef} style={{ position: "relative", flexShrink: 0 }}>
@@ -235,35 +210,6 @@ export function PlatformSettingsMenu() {
               style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
             />
           )}
-          {row(
-            "컴팩트 모드",
-            <input
-              type="checkbox"
-              checked={prefs.compactMode}
-              onChange={(e) => prefs.setCompactMode(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />
-          )}
-          {row(
-            "애니메이션 최소화",
-            <input
-              type="checkbox"
-              checked={prefs.reduceMotion}
-              onChange={(e) => prefs.setReduceMotion(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />
-          )}
-
-          {sectionTitle("작업")}
-          {row(
-            "최근 프로젝트 자동 열기",
-            <input
-              type="checkbox"
-              checked={prefs.autoOpenLastProject}
-              onChange={(e) => prefs.setAutoOpenLastProject(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />
-          )}
 
           {sectionTitle("AI")}
           {row(
@@ -275,10 +221,6 @@ export function PlatformSettingsMenu() {
               style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
             />
           )}
-          <div style={{ padding: "6px 0 8px 0", borderBottom: "1px solid #f1f5f9" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#334155", marginBottom: 8 }}>응답 스타일</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{styleButtons(["brief", "standard", "detailed"])}</div>
-          </div>
 
           {isPlatformAdmin ? (
             <>

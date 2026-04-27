@@ -19,11 +19,6 @@ export function PlatformTopNav() {
   const showScreenLabels = useShowScreenLabels();
   const [me, setMe] = useState<MeState | null>(null);
   const [meReady, setMeReady] = useState(false);
-  const [requirementsStatus, setRequirementsStatus] = useState<{
-    text: string;
-    complete: boolean;
-    projectId: string;
-  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,25 +48,6 @@ export function PlatformTopNav() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useEffect(() => {
-    const onStatus = (e: Event) => {
-      const ce = e as CustomEvent<{ statusLine?: string | null; projectId?: string | null }>;
-      const pid = typeof ce.detail?.projectId === "string" ? ce.detail.projectId.trim() : "";
-      const statusLine = typeof ce.detail?.statusLine === "string" ? ce.detail.statusLine.trim() : "";
-      if (!pid || !statusLine) {
-        setRequirementsStatus(null);
-        return;
-      }
-      setRequirementsStatus({
-        text: statusLine,
-        complete: statusLine.includes("완료"),
-        projectId: pid,
-      });
-    };
-    window.addEventListener("jyo:requirementsStatus", onStatus as EventListener);
-    return () => window.removeEventListener("jyo:requirementsStatus", onStatus as EventListener);
   }, []);
 
   async function handleLogout() {
@@ -112,8 +88,9 @@ export function PlatformTopNav() {
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 14,
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 2,
             minWidth: 0,
             flex: "1 1 200px",
             overflow: "hidden",
@@ -143,10 +120,9 @@ export function PlatformTopNav() {
               lineHeight: 1.35,
               letterSpacing: "-0.01em",
               minWidth: 0,
-              flex: "1 1 120px",
               overflow: "hidden",
-              whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
+              whiteSpace: "normal",
+              textOverflow: "clip",
             }}
           >
             {PLATFORM_HEADER_TAGLINE}
@@ -196,29 +172,6 @@ export function PlatformTopNav() {
             ) : (
               <span style={{ fontSize: 13, color: "#94a3b8" }}>…</span>
             )}
-            {requirementsStatus ? (
-              <span
-                title={requirementsStatus.text}
-                style={{
-                  display: "inline-block",
-                  maxWidth: "min(100%, 340px)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  letterSpacing: "-0.01em",
-                  padding: "5px 11px",
-                  borderRadius: 999,
-                  border: requirementsStatus.complete ? "1px solid #6ee7b7" : "1px solid #cbd5e1",
-                  background: requirementsStatus.complete ? "#ecfdf5" : "#f1f5f9",
-                  color: requirementsStatus.complete ? "#047857" : "#475569",
-                  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-                }}
-              >
-                {requirementsStatus.text}
-              </span>
-            ) : null}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
             {me ? (

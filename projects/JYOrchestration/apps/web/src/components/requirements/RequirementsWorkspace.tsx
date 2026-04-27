@@ -28,7 +28,6 @@ import {
   visibleStageFromRequirementsStage,
 } from "@/lib/ai-member/visibleAiOrchestrator";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
-import { readAiResponseStyle } from "@/lib/preferences/globalPreferences";
 import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProjectDescription";
 import {
   appendIdeationDeliverableAssets,
@@ -752,13 +751,6 @@ export function RequirementsWorkspace({
   );
   const ideationItems = useMemo(() => ideationChecklistItems(ideationSlice), [ideationSlice]);
   const ideationComplete = useMemo(() => ideationChecklistComplete(ideationSlice), [ideationSlice]);
-  const ideationStatusLine = useMemo(() => {
-    const pid = resolvedProjectId.trim();
-    if (!pid) return null;
-    if (ideationComplete) return "아이디어 구체화 완료 ✓";
-    const done = ideationItems.filter((i) => i.done).length;
-    return `아이디어 구체화 진행 중 (${done}/4)`;
-  }, [resolvedProjectId, ideationComplete, ideationItems]);
 
   const problemInterviewState = useMemo(
     () => parseRequirementsStateJson(project?.requirementsStateJson).problemInterview ?? null,
@@ -789,20 +781,6 @@ export function RequirementsWorkspace({
     const strict = problemInterviewStrictFilledCount(base);
     return Math.max(0, PROBLEM_INTERVIEW_SLOT_TOTAL - strict);
   }, [problemInterviewState]);
-
-  useEffect(() => {
-    const pid = resolvedProjectId.trim();
-    window.dispatchEvent(
-      new CustomEvent("jyo:requirementsStatus", {
-        detail: { statusLine: ideationStatusLine, projectId: pid || null },
-      })
-    );
-    return () => {
-      window.dispatchEvent(
-        new CustomEvent("jyo:requirementsStatus", { detail: { statusLine: null, projectId: null } })
-      );
-    };
-  }, [ideationStatusLine, resolvedProjectId]);
 
   const persistedPromptState = useMemo(
     () => parseRequirementsStateJson(project?.requirementsStateJson),
@@ -1446,7 +1424,6 @@ export function RequirementsWorkspace({
             chatSummary,
             dialogueExcerpt: excerptForDeliverable,
             outputTypes: [...IDEATION_UNIFIED_PROPOSAL_OUTPUT],
-            aiResponseStyle: readAiResponseStyle(),
           }),
         });
         let genJson: {
@@ -1620,7 +1597,6 @@ export function RequirementsWorkspace({
             dialogueExcerpt: excerpt,
             revisionRequest: opts?.revisionRequest ?? "",
             outputTypes: types,
-            aiResponseStyle: readAiResponseStyle(),
           }),
         });
         let json: {
@@ -2165,10 +2141,9 @@ export function RequirementsWorkspace({
               stage: "requirements",
               userMessage: text,
               dialogueExcerpt: excerpt,
-              aiResponseStyle: readAiResponseStyle(),
-                targets: targets.map((t) => ({ id: t.id, name: t.name })),
-                sender: { id: sessionUser?.id ?? "", name: sessionUser?.name ?? "나" },
-                replyTo: effectiveReplyTo ?? null,
+              targets: targets.map((t) => ({ id: t.id, name: t.name })),
+              sender: { id: sessionUser?.id ?? "", name: sessionUser?.name ?? "나" },
+              replyTo: effectiveReplyTo ?? null,
             }),
           });
           const json = (await res.json()) as {
