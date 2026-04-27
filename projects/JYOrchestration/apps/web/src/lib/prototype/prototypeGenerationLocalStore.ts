@@ -5,6 +5,7 @@
 export type PrototypeGenerationRunStatus = "idle" | "prompt_ready" | "awaiting_preview" | "preview_ready" | "failed";
 
 export type PrototypeGenerationLocalRecord = Readonly<{
+  selectedTemplate: string | null;
   previewUrl: string | null;
   /** 마지막 "생성 요청" 시점의 설계 지문 */
   fingerprintAtRequest: string | null;
@@ -12,15 +13,18 @@ export type PrototypeGenerationLocalRecord = Readonly<{
   runStatus: PrototypeGenerationRunStatus;
   lastError: string | null;
   proceedWithGaps: boolean;
+  lastPromptSnapshot: string | null;
 }>;
 
 const defaultRecord: PrototypeGenerationLocalRecord = {
+  selectedTemplate: null,
   previewUrl: null,
   fingerprintAtRequest: null,
   lastRequestedAt: null,
   runStatus: "idle",
   lastError: null,
   proceedWithGaps: false,
+  lastPromptSnapshot: null,
 };
 
 function storageKey(projectId: string): string {
@@ -63,12 +67,14 @@ export function loadPrototypeGenerationRecord(projectId: string): PrototypeGener
     return {
       ...defaultRecord,
       ...o,
+      selectedTemplate: typeof o.selectedTemplate === "string" ? o.selectedTemplate : null,
       previewUrl: typeof o.previewUrl === "string" ? o.previewUrl : null,
       fingerprintAtRequest: typeof o.fingerprintAtRequest === "string" ? o.fingerprintAtRequest : null,
       lastRequestedAt: typeof o.lastRequestedAt === "string" ? o.lastRequestedAt : null,
       runStatus: (o.runStatus as PrototypeGenerationRunStatus) ?? "idle",
       lastError: typeof o.lastError === "string" ? o.lastError : null,
       proceedWithGaps: Boolean(o.proceedWithGaps),
+      lastPromptSnapshot: typeof o.lastPromptSnapshot === "string" ? o.lastPromptSnapshot : null,
     };
   } catch {
     return defaultRecord;

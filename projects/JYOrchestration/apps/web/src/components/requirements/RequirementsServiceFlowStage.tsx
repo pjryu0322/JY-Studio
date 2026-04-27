@@ -1283,7 +1283,7 @@ export function RequirementsServiceFlowStage({
                 }}
               >
                 <button type="button" onClick={() => setPrototypePreviewOpen(true)} style={{ ...btn, borderRadius: 999 }}>
-                  프로토타입 생성
+                  프로토타입 미리보기
                 </button>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginLeft: "auto" }}>
                   {!structureLocked ? (
@@ -1523,7 +1523,7 @@ export function RequirementsServiceFlowStage({
           <PrototypePreviewDraggableShell
             open={prototypePreviewOpen}
             onClose={() => setPrototypePreviewOpen(false)}
-            title="프로토타입 생성"
+            title="프로토타입 미리보기"
             modalWidth="min(1180px, calc(100vw - 20px))"
           >
             <PrototypePreviewPanel
