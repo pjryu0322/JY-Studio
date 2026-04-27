@@ -1882,7 +1882,11 @@ export function ProjectExecutionEnvironmentPanel({
     >
       <header style={{ marginBottom: 16 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
-          {isAdminSettings ? "프로토타입 생성 환경 설정" : "실행 환경"}
+          {isAdminSettings
+            ? effectivePurpose === "prototype"
+              ? "프로토타입 자동 생성 환경설정"
+              : "환경 검증/설정"
+            : "실행 환경"}
         </h1>
         <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
           {isAdminSettings

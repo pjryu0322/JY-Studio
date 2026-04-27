@@ -96,6 +96,22 @@ function ProjectAdminSettingsInner() {
 
   const backHref = projectId ? `/projects/${encodeURIComponent(projectId)}?view=workspace` : "/";
 
+  useEffect(() => {
+    if (!projectId) return;
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#execution-setup-panel") return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById("execution-setup-panel");
+      if (!el) return;
+      el.scrollIntoView({ block: "start", behavior: "smooth" });
+      if (el instanceof HTMLElement) {
+        if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+        el.focus({ preventScroll: true });
+      }
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [projectId]);
+
   return (
     <main data-testid="project-admin-settings-page" style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
       <div style={{ marginBottom: 16 }}>
