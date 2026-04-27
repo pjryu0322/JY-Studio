@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
-import { refreshPrototypeRunFromCursor } from "@/lib/prototype/prototypeRunPipeline";
-import { getPrototypeRunById } from "@/lib/prototype/prototypeRunService";
+import { refreshPrototypeRunState } from "@/lib/prototype/prototypeRunPipeline";
+import { getRun } from "@/lib/prototype/prototypeRunStore";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 
 export async function POST(
@@ -31,18 +31,18 @@ export async function POST(
   }
 
   try {
-    await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/prototype-runs/[runId]/status-refresh");
+    await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/prototype-runs/[runId]/refresh");
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;
     throw error;
   }
 
-  const existing = getPrototypeRunById(projectId, id);
+  const existing = getRun(projectId, id);
   if (!existing) {
     return NextResponse.json({ success: false, message: "해당 실행을 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const run = await refreshPrototypeRunFromCursor(projectId, id);
+  const run = await refreshPrototypeRunState(projectId, id);
   return NextResponse.json({ success: true, data: { run: run ?? existing } });
 }

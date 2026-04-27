@@ -1,15 +1,12 @@
 /**
- * 프로토타입 파이프라인 컴팩트 로그 (서버 콘솔; 추후 구조화 수집기로 교체 가능).
+ * 프로토타입 파이프라인 컴팩트 로그 (서버 콘솔).
  */
 
 export type PrototypeRunLogEvent =
   | "prototype_run_created"
-  | "prototype_prompt_ready"
   | "prototype_cursor_requested"
-  | "prototype_cursor_blocked"
   | "prototype_commit_detected"
-  | "prototype_ai_review_started"
-  | "prototype_rework_required"
+  | "prototype_review_started"
   | "prototype_pr_opened"
   | "prototype_merged"
   | "prototype_preview_ready"

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
-import { attachPreviewUrl, getPrototypeRunById } from "@/lib/prototype/prototypeRunService";
+import { attachPreviewUrl, getRun } from "@/lib/prototype/prototypeRunStore";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 
 function isLikelyHttpUrl(url: string): boolean {
@@ -50,7 +50,7 @@ export async function POST(
     throw error;
   }
 
-  const existing = getPrototypeRunById(projectId, id);
+  const existing = getRun(projectId, id);
   if (!existing) {
     return NextResponse.json({ success: false, message: "해당 실행을 찾을 수 없습니다." }, { status: 404 });
   }

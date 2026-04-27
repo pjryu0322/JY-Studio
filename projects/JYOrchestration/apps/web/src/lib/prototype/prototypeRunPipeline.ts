@@ -2,15 +2,17 @@
  * 프로토타입 전용 오케스트레이션 — Stage1/ENV_TEST 파이프라인을 import 하지 않습니다.
  */
 
-import { launchCursorAgent, pollCursorAgent, type ExecutionSetupRelaySlice } from "@/lib/execution/cursorExecutionAdapter";
+import { pollCursorAgent, type ExecutionSetupRelaySlice } from "@/lib/execution/cursorExecutionAdapter";
+import { requestCursorPrototypeRun } from "@/lib/prototype/prototypeCursorAdapter";
+import { refreshPrototypeGitState } from "@/lib/prototype/prototypeGitMonitor";
+import { reviewPrototypeRun } from "@/lib/prototype/prototypeAiReview";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import {
-  createPrototypeRun,
-  getPrototypeRunById,
+  createRun,
+  getRun,
   markFailed,
-  updatePrototypeRunStatus,
-} from "@/lib/prototype/prototypeRunService";
-import { reviewPrototypeCommit } from "@/lib/prototype/prototypeAiReviewService";
+  updateRun,
+} from "@/lib/prototype/prototypeRunStore";
 import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { prisma } from "@/lib/prisma";
@@ -28,28 +30,6 @@ function isTerminalAgentSuccess(status: string): boolean {
 function isTerminalAgentFailure(status: string): boolean {
   const s = status.toUpperCase();
   return s === "FAILED" || s === "ERROR" || s === "CANCELLED" || s === "CANCELED" || s === "STOPPED";
-}
-
-export async function evaluatePrototypeCursorAutomation(projectId: string): Promise<PrototypeAutomationGate> {
-  const setup = await withExecutionSetupSchemaHealRetry(() =>
-    prisma.executionSetup.findUnique({ where: { projectId } }),
-  );
-  if (!setup) {
-    return { automationAvailable: false, blockReason: "EXECUTION_SETUP_INVALID" };
-  }
-  if (String(setup.status) !== "validated") {
-    return { automationAvailable: false, blockReason: "EXECUTION_SETUP_INVALID" };
-  }
-  if (process.env.EXECUTION_LOOP_STUB_CURSOR === "1") {
-    return { automationAvailable: false, blockReason: "STUB_CURSOR_ENABLED" };
-  }
-  if (!String(setup.cursorApiToken ?? "").trim()) {
-    return { automationAvailable: false, blockReason: "CURSOR_API_NOT_CONNECTED" };
-  }
-  if (!String(setup.gitRepoUrl ?? "").trim() || !String(setup.baseBranch ?? "").trim()) {
-    return { automationAvailable: false, blockReason: "EXECUTION_SETUP_INVALID" };
-  }
-  return { automationAvailable: true, blockReason: null };
 }
 
 function toRelaySlice(setup: {
@@ -78,15 +58,36 @@ function toRelaySlice(setup: {
   };
 }
 
+export async function evaluatePrototypeCursorAutomation(projectId: string): Promise<PrototypeAutomationGate> {
+  const setup = await withExecutionSetupSchemaHealRetry(() =>
+    prisma.executionSetup.findUnique({ where: { projectId } }),
+  );
+  if (!setup) {
+    return { automationAvailable: false, blockReason: "EXECUTION_SETUP_INVALID" };
+  }
+  if (String(setup.status) !== "validated") {
+    return { automationAvailable: false, blockReason: "EXECUTION_SETUP_INVALID" };
+  }
+  if (process.env.EXECUTION_LOOP_STUB_CURSOR === "1") {
+    return { automationAvailable: false, blockReason: "STUB_CURSOR_ENABLED" };
+  }
+  if (!String(setup.cursorApiToken ?? "").trim()) {
+    return { automationAvailable: false, blockReason: "CURSOR_API_NOT_CONNECTED" };
+  }
+  if (!String(setup.gitRepoUrl ?? "").trim() || !String(setup.baseBranch ?? "").trim()) {
+    return { automationAvailable: false, blockReason: "EXECUTION_SETUP_INVALID" };
+  }
+  return { automationAvailable: true, blockReason: null };
+}
+
 /**
- * 신규 PrototypeRun 생성 후 수동/자동 분기까지 수행합니다.
+ * 신규 PrototypeRun: 기본 PROMPT_READY. 자동화 가능하면 Cursor 요청까지 진행.
  */
 export async function orchestrateNewPrototypeRun(input: {
   readonly projectId: string;
   readonly projectName: string;
   readonly selectedTemplate: string;
   readonly promptSnapshot: string;
-  /** true: Cursor Cloud Agent API 로 에이전트 시작 시도. false: 프롬프트 준비 상태만 기록. */
   readonly startCursorAgent: boolean;
 }): Promise<{
   readonly run: PrototypeRun;
@@ -95,22 +96,16 @@ export async function orchestrateNewPrototypeRun(input: {
   readonly message?: string;
 }> {
   const gate = await evaluatePrototypeCursorAutomation(input.projectId);
-  let run = createPrototypeRun({
+  let run = createRun({
     projectId: input.projectId,
     projectName: input.projectName,
     selectedTemplate: input.selectedTemplate,
     promptSnapshot: input.promptSnapshot,
-    initialStatus: "DRAFT",
-    statusReason: null,
+    initialStatus: "PROMPT_READY",
+    statusReason: input.startCursorAgent ? null : "MANUAL_CURSOR_EXECUTION_REQUIRED",
   });
 
   if (!input.startCursorAgent) {
-    run =
-      updatePrototypeRunStatus(input.projectId, run.id, {
-        status: "PROMPT_READY",
-        statusReason: "MANUAL_CURSOR_EXECUTION_REQUIRED",
-      }) ?? run;
-    logPrototypePipelineEvent("prototype_prompt_ready", { projectId: input.projectId, runId: run.id });
     return {
       run,
       automationAvailable: gate.automationAvailable,
@@ -121,15 +116,10 @@ export async function orchestrateNewPrototypeRun(input: {
 
   if (!gate.automationAvailable) {
     run =
-      updatePrototypeRunStatus(input.projectId, run.id, {
+      updateRun(input.projectId, run.id, {
         status: "PROMPT_READY",
         statusReason: gate.blockReason ?? "MANUAL_CURSOR_EXECUTION_REQUIRED",
       }) ?? run;
-    logPrototypePipelineEvent("prototype_prompt_ready", {
-      projectId: input.projectId,
-      runId: run.id,
-      reason: gate.blockReason,
-    });
     return {
       run,
       automationAvailable: false,
@@ -147,41 +137,48 @@ export async function orchestrateNewPrototypeRun(input: {
   }
 
   const relay = toRelaySlice(setup);
-  const launch = await launchCursorAgent({
+  const cursor = await requestCursorPrototypeRun({
     projectId: input.projectId,
-    workflowId: null,
     executionSetup: relay,
-    task: {
-      id: `prototype:${run.id}`,
-      title: "Prototype generation (workspace)",
-      description: `Template: ${input.selectedTemplate}`,
-      acceptanceCriteria: [],
-    },
-    suggestedBranchName: run.branchName,
-    prompt: input.promptSnapshot,
-    allowedPaths: undefined,
+    runId: run.id,
+    branchName: run.branchName,
+    promptSnapshot: input.promptSnapshot,
+    selectedTemplate: input.selectedTemplate,
   });
 
-  if (!launch.ok) {
-    const r = markFailed(input.projectId, run.id, "CURSOR_LAUNCH_FAILED", launch.error) ?? run;
+  if (!cursor.supported) {
+    if (cursor.reason === "CURSOR_LAUNCH_FAILED") {
+      const r = markFailed(input.projectId, run.id, "CURSOR_LAUNCH_FAILED", cursor.message) ?? run;
+      return {
+        run: r,
+        automationAvailable: true,
+        automationBlockReason: null,
+        message: cursor.message,
+      };
+    }
+    run =
+      updateRun(input.projectId, run.id, {
+        status: "PROMPT_READY",
+        statusReason: "CURSOR_NOT_CONNECTED",
+      }) ?? run;
     return {
-      run: r,
+      run,
       automationAvailable: true,
       automationBlockReason: null,
-      message: launch.error,
+      message: cursor.message,
     };
   }
 
   run =
-    updatePrototypeRunStatus(input.projectId, run.id, {
+    updateRun(input.projectId, run.id, {
       status: "CURSOR_REQUESTED",
-      cursorRunId: launch.agentId,
+      cursorRunId: cursor.cursorRunId,
       statusReason: null,
     }) ?? run;
   logPrototypePipelineEvent("prototype_cursor_requested", {
     projectId: input.projectId,
     runId: run.id,
-    cursorRunId: launch.agentId,
+    cursorRunId: cursor.cursorRunId,
   });
   return {
     run,
@@ -192,72 +189,92 @@ export async function orchestrateNewPrototypeRun(input: {
 }
 
 /**
- * 에이전트 한 번 폴링 후 커밋 메타가 있으면 COMMIT_DETECTED 로 올립니다. AI 검토는 플레이스홀더입니다.
+ * Cursor 폴링 + GitHub 브랜치 관측 + AI 검토(경계)까지 한 번에 시도합니다.
  */
-export async function refreshPrototypeRunFromCursor(projectId: string, runId: string): Promise<PrototypeRun | null> {
+export async function refreshPrototypeRunState(projectId: string, runId: string): Promise<PrototypeRun | null> {
   const gate = await evaluatePrototypeCursorAutomation(projectId);
-  if (!gate.automationAvailable) return null;
-
-  const run = getPrototypeRunById(projectId, runId);
-  if (!run?.cursorRunId) return run;
+  let run = getRun(projectId, runId);
+  if (!run) return null;
 
   const setup = await withExecutionSetupSchemaHealRetry(() =>
     prisma.executionSetup.findUnique({ where: { projectId } }),
   );
   const token = setup?.cursorApiToken?.trim();
-  if (!setup || !token) return run;
-
-  const polled = await pollCursorAgent({
-    cursorApiUrl: setup.cursorApiUrl,
-    cursorApiToken: token,
-    agentId: run.cursorRunId,
-    fallbackBranchName: run.branchName,
-  });
-  if (!polled.ok) {
-    return markFailed(projectId, runId, "CURSOR_POLL_FAILED", polled.error) ?? run;
-  }
-
-  let next = run;
-  if (isTerminalAgentFailure(polled.statusUpper)) {
-    next = markFailed(projectId, runId, "CURSOR_POLL_FAILED", `Agent status ${polled.statusUpper}`) ?? run;
-    return next;
-  }
-
-  if (polled.hints.commitHash) {
-    const withCommit =
-      updatePrototypeRunStatus(projectId, runId, {
-        status: "COMMIT_DETECTED",
-        commitSha: polled.hints.commitHash,
-        changedFiles: polled.hints.changedFiles ?? [],
-      }) ?? run;
-    logPrototypePipelineEvent("prototype_commit_detected", { projectId, runId, commitSha: polled.hints.commitHash });
-    logPrototypePipelineEvent("prototype_ai_review_started", { projectId, runId });
-    const review = await reviewPrototypeCommit({
-      run: withCommit,
-      changedFiles: polled.hints.changedFiles ?? [],
-      commitSha: polled.hints.commitHash,
+  if (gate.automationAvailable && run.cursorRunId && setup && token) {
+    const polled = await pollCursorAgent({
+      cursorApiUrl: setup.cursorApiUrl,
+      cursorApiToken: token,
+      agentId: run.cursorRunId,
+      fallbackBranchName: run.branchName,
     });
-    if (review.decision === "NOT_IMPLEMENTED") {
-      return (
-        updatePrototypeRunStatus(projectId, runId, {
-          status: "AI_REVIEWING",
-          aiReviewDecision: "NOT_IMPLEMENTED",
-          aiReviewSummary: review.summary,
-        }) ?? withCommit
-      );
+    if (!polled.ok) {
+      run = markFailed(projectId, runId, "CURSOR_POLL_FAILED", polled.error) ?? run;
+      return run;
     }
-    return withCommit;
+    if (isTerminalAgentFailure(polled.statusUpper)) {
+      run = markFailed(projectId, runId, "CURSOR_POLL_FAILED", `Agent status ${polled.statusUpper}`) ?? run;
+      return run;
+    }
+    if (polled.hints.commitHash) {
+      run =
+        updateRun(projectId, runId, {
+          status: "COMMIT_DETECTED",
+          commitSha: polled.hints.commitHash,
+          changedFiles: polled.hints.changedFiles ?? [],
+        }) ?? run;
+      logPrototypePipelineEvent("prototype_commit_detected", { projectId, runId, commitSha: polled.hints.commitHash });
+    } else if (isTerminalAgentSuccess(polled.statusUpper)) {
+      run =
+        updateRun(projectId, runId, {
+          status: "CURSOR_RUNNING",
+          changedFiles: polled.hints.changedFiles ?? [],
+        }) ?? run;
+    } else {
+      run = updateRun(projectId, runId, { status: "CURSOR_RUNNING" }) ?? run;
+    }
+    run = getRun(projectId, runId) ?? run;
   }
 
-  if (isTerminalAgentSuccess(polled.statusUpper)) {
-    next =
-      updatePrototypeRunStatus(projectId, runId, {
-        status: "CURSOR_RUNNING",
-        changedFiles: polled.hints.changedFiles ?? [],
-      }) ?? run;
-    return next;
+  if (setup?.gitRepoUrl && setup.githubAccessToken !== undefined) {
+    run = getRun(projectId, runId) ?? run;
+    const git = await refreshPrototypeGitState(run, {
+      projectId,
+      repoUrl: setup.gitRepoUrl,
+      baseBranch: setup.baseBranch,
+      githubAccessToken: setup.githubAccessToken ?? null,
+    });
+    if (git.patch) {
+      run = updateRun(projectId, runId, git.patch) ?? run;
+      if (git.patch.status === "COMMIT_DETECTED") {
+        logPrototypePipelineEvent("prototype_commit_detected", { projectId, runId, source: "github" });
+      }
+    }
   }
 
-  next = updatePrototypeRunStatus(projectId, runId, { status: "CURSOR_RUNNING" }) ?? run;
-  return next;
+  run = getRun(projectId, runId) ?? run;
+  run = getRun(projectId, runId) ?? run;
+  if (run.status === "COMMIT_DETECTED") {
+    logPrototypePipelineEvent("prototype_review_started", { projectId, runId, phase: "review" });
+    const rev = await reviewPrototypeRun(run);
+    if (rev.outcome === "REWORK_REQUIRED") {
+      run =
+        updateRun(projectId, runId, {
+          status: "REWORK_REQUIRED",
+          aiReviewDecision: "REWORK",
+          aiReviewSummary: rev.summary,
+        }) ?? run;
+    } else if (rev.outcome === "PASS") {
+      run = updateRun(projectId, runId, { status: "AI_REVIEWING", aiReviewDecision: "PASS" }) ?? run;
+    } else if (rev.outcome === "BLOCKED") {
+      const sr = rev.reason === "REVIEW_DATA_MISSING" ? "REVIEW_DATA_MISSING" : "REVIEW_ENGINE_NOT_READY";
+      run = updateRun(projectId, runId, { status: "BLOCKED", statusReason: sr }) ?? run;
+    }
+  }
+
+  return getRun(projectId, runId);
+}
+
+/** @deprecated refreshPrototypeRunState 사용 */
+export async function refreshPrototypeRunFromCursor(projectId: string, runId: string): Promise<PrototypeRun | null> {
+  return refreshPrototypeRunState(projectId, runId);
 }
