@@ -103,7 +103,7 @@ function ProjectAdminSettingsInner() {
           href={backHref}
           style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", textDecoration: "none" }}
         >
-          ← 생성 준비로 돌아가기
+          ← 프로토타입 미리보기로 돌아가기
         </Link>
       </div>
 
@@ -138,21 +138,17 @@ function ProjectAdminSettingsInner() {
         <>
           <header style={{ marginBottom: 12 }}>
             <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-              프로토타입 생성 환경 설정
+              프로토타입 자동 생성 환경설정
             </h1>
             <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-              Git·GitHub·Cursor 연결과 실행 정책/검증을 이 화면에서 설정합니다.{" "}
-              <Link href={backHref} style={{ color: "#1d4ed8", fontWeight: 700 }}>
-                생성 준비
-              </Link>
-              로 돌아가세요.
+              Git·GitHub·Cursor 연결과 자동 실행 정책/검증을 설정합니다.
             </p>
           </header>
 
           {isPrototypePurpose ? (
             <details style={{ marginBottom: 10 }}>
               <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#475569", fontWeight: 800 }}>
-                도움말 보기
+                설정 도움말 보기
               </summary>
               <div
                 style={{
