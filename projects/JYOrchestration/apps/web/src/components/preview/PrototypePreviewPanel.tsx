@@ -57,7 +57,7 @@ function statusLabel(s: PrototypeGenerationLocalRecord["runStatus"], hasUrl: boo
   switch (s) {
     case "awaiting_preview":
     case "prompt_ready":
-      return "Cursor 작업중";
+      return "수동 생성 · URL 미연결";
     case "preview_ready":
       return "완료";
     case "failed":
@@ -302,19 +302,20 @@ export function PrototypePreviewPanel({
     const hasUrl = Boolean(previewUrl);
     const promptReady: TimelineStepStatus = "success";
     const requestDelivered: TimelineStepStatus = requested ? "success" : "pending";
-    const cursorPossible: TimelineStepStatus = canRequestGeneration.ok ? "running" : "blocked";
+    /** 수동 생성: 설계만 충족되면 진행 가능(파랑), 아니면 보완 필요(주황·수동 처리 범주). */
+    const cursorManualPossible: TimelineStepStatus = canRequestGeneration.designOk ? "running" : "blocked";
     const urlConnected: TimelineStepStatus = hasUrl ? "success" : requested ? "pending" : "blocked";
     return [
       { label: "프롬프트 생성", status: promptReady },
       { label: "요청 전달", status: requestDelivered },
-      { label: "Cursor 생성 진행 가능", status: cursorPossible },
+      { label: "Cursor 수동 생성 가능", status: cursorManualPossible },
       { label: "Commit 감지 미연동", status: "pending" },
       { label: "PR 생성 미연동", status: "pending" },
-      { label: "AI 기획자 검토 수동 처리", status: "blocked" },
-      { label: "결과 승인 수동 처리", status: "blocked" },
+      { label: "AI 기획자 검토 (수동)", status: "blocked" },
+      { label: "결과 승인 (수동)", status: "blocked" },
       { label: "결과 URL 연결", status: urlConnected },
     ];
-  }, [record.lastRequestedAt, previewUrl, canRequestGeneration.ok]);
+  }, [record.lastRequestedAt, previewUrl, canRequestGeneration.designOk]);
 
   return (
     <div style={{ position: "relative" }}>
@@ -379,16 +380,23 @@ export function PrototypePreviewPanel({
           </div>
 
           <div style={card}>
-            <div style={cardTitle}>최종 실행 가능 여부</div>
-            {canRequestGeneration.ok ? (
-              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 900, color: "#047857" }}>생성 요청 가능</div>
-            ) : (
-              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 900, color: "#b45309" }}>생성 요청 불가</div>
-            )}
+            <div style={cardTitle}>설계·실행 준비</div>
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 800 }}>
+                <span style={{ color: "#64748b", fontWeight: 700 }}>[설계]</span>
+                <span style={{ color: canRequestGeneration.designOk ? "#047857" : "#b45309" }}>
+                  {canRequestGeneration.designOk ? "프롬프트 작성 가능" : "설계 보완 필요"}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 800 }}>
+                <span style={{ color: "#64748b", fontWeight: 700 }}>[환경]</span>
+                <span style={{ color: canRequestGeneration.envOk ? "#047857" : "#b45309" }}>
+                  {canRequestGeneration.envOk ? "실행 준비 완료" : "환경설정 필요"}
+                </span>
+              </div>
+            </div>
             <div style={{ marginTop: 8, fontSize: 12.5, color: "#475569", lineHeight: 1.5 }}>
-              {canRequestGeneration.ok
-                ? "설계·환경 조건이 충족되었습니다."
-                : "먼저 환경설정을 완료하거나 설계 항목을 보완하세요."}
+              프롬프트 복사는 설계가 충족되면 가능합니다. 커밋·푸시·PR까지 하려면 환경을 완료하세요.
             </div>
             {!canRequestGeneration.envOk ? (
               <div style={{ marginTop: 10 }}>
@@ -444,8 +452,8 @@ export function PrototypePreviewPanel({
               <button
                 type="button"
                 onClick={() => void onCopyGenerationPrompt()}
-                disabled={!canRequestGeneration.ok}
-                style={{ ...btnPrimary, opacity: canRequestGeneration.ok ? 1 : 0.55 }}
+                disabled={!canRequestGeneration.designOk}
+                style={{ ...btnPrimary, opacity: canRequestGeneration.designOk ? 1 : 0.55 }}
               >
                 생성 프롬프트 복사
               </button>
@@ -455,7 +463,14 @@ export function PrototypePreviewPanel({
                 상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{statusLabel(record.runStatus, Boolean(previewUrl))}</span>
               </span>
             </div>
-            <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>Cursor에 붙여넣어 생성하세요.</div>
+            {!canRequestGeneration.envOk && canRequestGeneration.designOk ? (
+              <div style={{ marginTop: 10, fontSize: 12.5, color: "#b45309", lineHeight: 1.5, fontWeight: 700 }}>
+                환경설정이 완료되지 않았습니다. Cursor 실행 전 Git/GitHub/Cursor 설정을 완료하세요.
+              </div>
+            ) : null}
+            <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
+              Cursor에 프롬프트를 붙여넣어 수동으로 생성합니다. (API 자동 실행 없음)
+            </div>
             {promptOpen ? (
               <textarea
                 readOnly
@@ -484,7 +499,7 @@ export function PrototypePreviewPanel({
             <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
               <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>현재 시스템 한계</div>
               <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.45 }}>
-                현재 프로토타입 생성은 (1) Cursor 생성 (2) 결과 URL 연결 방식으로 동작합니다.
+                현재는 (1) 프롬프트를 Cursor에 붙여넣기 (2) 생성 후 결과 URL을 여기에 연결하는 수동 흐름입니다.
                 <br />
                 Commit 감지 / PR / Merge 자동화는 예정 단계입니다.
               </div>
@@ -536,7 +551,7 @@ export function PrototypePreviewPanel({
           <div style={card}>
             <div style={cardTitle}>향후 자동화 파이프라인</div>
             <ol style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
-              <li>Cursor 생성</li>
+              <li>Cursor 수동 생성 → API 연동(예정)</li>
               <li>Git Commit 감지</li>
               <li>AI 기획자 소스 점검</li>
               <li>보완 요청(필요시)</li>
