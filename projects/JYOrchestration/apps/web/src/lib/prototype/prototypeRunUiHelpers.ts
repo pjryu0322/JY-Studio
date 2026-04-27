@@ -13,9 +13,7 @@ const ORDER: PrototypeRunStatus[] = [
   "PUSH_CONFIRMED",
   "AI_REVIEWING",
   "REWORK_REQUIRED",
-  "PR_READY",
   "PR_OPENED",
-  "MERGE_READY",
   "MERGED",
   "PREVIEW_READY",
 ];
@@ -34,26 +32,22 @@ function active(run: PrototypeRun, s: PrototypeRunStatus): boolean {
   return run.status === s;
 }
 
-/** 서버 PrototypeRun 이 있을 때 타임라인 행을 만듭니다(컴팩트). */
+/** 서버 PrototypeRun 기반 타임라인(한국어 라벨). */
 export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): PrototypeTimelineRow[] {
   if (!run) {
     return [
-      { label: "실행 기록 없음", status: "pending" },
-      { label: "프롬프트 준비", status: "pending" },
-      { label: "Cursor 수동/자동 생성", status: "pending" },
-      { label: "Commit 감지 (미연동)", status: "pending" },
-      { label: "PR / Merge (미연동)", status: "pending" },
-      { label: "결과 URL", status: "pending" },
+      { label: "실행 없음 — 생성 시작 가능", status: "pending" },
+      { label: prototypeRunStatusLabelKo("PROMPT_READY"), status: "pending" },
+      { label: prototypeRunStatusLabelKo("CURSOR_REQUESTED"), status: "pending" },
+      { label: prototypeRunStatusLabelKo("COMMIT_DETECTED"), status: "pending" },
+      { label: prototypeRunStatusLabelKo("AI_REVIEWING"), status: "pending" },
+      { label: prototypeRunStatusLabelKo("PREVIEW_READY"), status: "pending" },
     ];
   }
 
-  const rows: PrototypeTimelineRow[] = [
+  return [
     {
-      label: "프롬프트 스냅샷",
-      status: atLeast(run, "PROMPT_READY") || atLeast(run, "CURSOR_REQUESTED") ? "success" : run.status === "DRAFT" ? "running" : "pending",
-    },
-    {
-      label: run.status === "PROMPT_READY" ? "프롬프트 준비됨 (수동 실행 가능)" : "프롬프트 준비",
+      label: prototypeRunStatusLabelKo("PROMPT_READY"),
       status:
         atLeast(run, "CURSOR_REQUESTED") || atLeast(run, "CURSOR_RUNNING")
           ? "success"
@@ -62,7 +56,7 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
             : "pending",
     },
     {
-      label: "Cursor 에이전트",
+      label: prototypeRunStatusLabelKo("CURSOR_REQUESTED"),
       status:
         run.status === "FAILED" && (run.statusReason === "CURSOR_LAUNCH_FAILED" || run.statusReason === "CURSOR_POLL_FAILED")
           ? "failed"
@@ -75,42 +69,50 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
                 : "pending",
     },
     {
-      label: "Commit / Push",
-      status: atLeast(run, "COMMIT_DETECTED") ? "success" : active(run, "CURSOR_RUNNING") ? "blocked" : "pending",
+      label: prototypeRunStatusLabelKo("COMMIT_DETECTED"),
+      status: atLeast(run, "PUSH_CONFIRMED") ? "success" : active(run, "COMMIT_DETECTED") ? "running" : "pending",
     },
     {
-      label: "AI 검토",
+      label: prototypeRunStatusLabelKo("PUSH_CONFIRMED"),
+      status: atLeast(run, "AI_REVIEWING") || atLeast(run, "REWORK_REQUIRED") ? "success" : active(run, "PUSH_CONFIRMED") ? "running" : "pending",
+    },
+    {
+      label: prototypeRunStatusLabelKo("AI_REVIEWING"),
       status:
-        atLeast(run, "REWORK_REQUIRED") || atLeast(run, "PR_READY")
+        atLeast(run, "PR_OPENED") || atLeast(run, "MERGED")
           ? "success"
-          : active(run, "AI_REVIEWING")
+          : active(run, "AI_REVIEWING") || active(run, "REWORK_REQUIRED")
             ? "running"
             : "pending",
     },
     {
-      label: "결과 URL",
-      status: run.previewUrl ? "success" : atLeast(run, "MERGED") ? "running" : "pending",
+      label: prototypeRunStatusLabelKo("PR_OPENED"),
+      status: atLeast(run, "MERGED") ? "success" : active(run, "PR_OPENED") ? "running" : "pending",
+    },
+    {
+      label: prototypeRunStatusLabelKo("MERGED"),
+      status: atLeast(run, "PREVIEW_READY") ? "success" : active(run, "MERGED") ? "running" : "pending",
+    },
+    {
+      label: prototypeRunStatusLabelKo("PREVIEW_READY"),
+      status: run.previewUrl ? "success" : "pending",
     },
   ];
-
-  return rows;
 }
 
 export function prototypeRunStatusLabelKo(status: PrototypeRunStatus): string {
   const m: Record<PrototypeRunStatus, string> = {
     DRAFT: "초안",
-    PROMPT_READY: "프롬프트 준비됨",
+    PROMPT_READY: "프롬프트 준비 완료",
     CURSOR_REQUESTED: "Cursor 요청됨",
     CURSOR_RUNNING: "Cursor 실행 중",
-    COMMIT_DETECTED: "커밋 감지",
-    PUSH_CONFIRMED: "푸시 확인",
-    AI_REVIEWING: "AI 검토",
+    COMMIT_DETECTED: "커밋 감지됨",
+    PUSH_CONFIRMED: "푸시 확인됨",
+    AI_REVIEWING: "AI 검토중",
     REWORK_REQUIRED: "보완 필요",
-    PR_READY: "PR 준비",
-    PR_OPENED: "PR 열림",
-    MERGE_READY: "머지 준비",
+    PR_OPENED: "PR 생성 완료",
     MERGED: "머지 완료",
-    PREVIEW_READY: "미리보기 준비",
+    PREVIEW_READY: "결과물 연결 완료",
     FAILED: "실패",
     BLOCKED: "차단",
   };

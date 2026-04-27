@@ -57,11 +57,11 @@ export async function postPrototypePreviewUrl(
   return (await res.json()) as { success: boolean; data?: { run: PrototypeRun }; message?: string };
 }
 
-export async function postPrototypeRunStatusRefresh(
+export async function postPrototypeRunRefresh(
   runId: string,
   body: { projectId: string },
 ): Promise<{ success: boolean; data?: { run: PrototypeRun | null }; message?: string }> {
-  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/status-refresh`, {
+  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/refresh`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

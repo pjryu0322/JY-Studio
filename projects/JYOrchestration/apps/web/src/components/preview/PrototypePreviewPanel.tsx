@@ -25,7 +25,7 @@ import {
   fetchLatestPrototypeRun,
   postCreatePrototypeRun,
   postPrototypePreviewUrl,
-  postPrototypeRunStatusRefresh,
+  postPrototypeRunRefresh,
 } from "@/lib/prototype/prototypeRunApiClient";
 import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
 import { buildTimelineFromPrototypeRun, prototypeRunStatusLabelKo } from "@/lib/prototype/prototypeRunUiHelpers";
@@ -338,14 +338,38 @@ export function PrototypePreviewPanel({
     }
   };
 
+  const onStartGeneration = async () => {
+    if (!canRequestGeneration.designOk) return;
+    setProtoBusy(true);
+    try {
+      const res = await postCreatePrototypeRun({
+        projectId,
+        selectedTemplate: effectiveTemplate,
+        promptSnapshot: promptPackage.slice(0, 50_000),
+        startCursorAgent: false,
+      });
+      if (res.success && res.data?.run) {
+        setLatestRun(res.data.run);
+        setAutomationAvailable(res.data.automationAvailable);
+        setAutomationBlockReason(res.data.automationBlockReason);
+        showToast("생성 실행이 시작되었습니다. 프롬프트 복사로 이어가세요.");
+      } else {
+        showToast(res.message ?? "실행 생성에 실패했습니다.");
+      }
+    } finally {
+      setProtoBusy(false);
+      void refreshLatestRun();
+    }
+  };
+
   const onRefreshPrototypeStatus = async () => {
-    if (!latestRun?.id || !latestRun.cursorRunId) {
-      showToast("새로고침할 Cursor 실행이 없습니다.");
+    if (!latestRun?.id) {
+      showToast("먼저 생성 시작 또는 프롬프트 복사로 실행을 만드세요.");
       return;
     }
     setProtoBusy(true);
     try {
-      const res = await postPrototypeRunStatusRefresh(latestRun.id, { projectId });
+      const res = await postPrototypeRunRefresh(latestRun.id, { projectId });
       if (res.success && res.data?.run) {
         setLatestRun(res.data.run);
         showToast("상태를 갱신했습니다.");
@@ -595,6 +619,16 @@ export function PrototypePreviewPanel({
               </div>
             </div>
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              {!latestRun?.id && canRequestGeneration.designOk ? (
+                <button
+                  type="button"
+                  onClick={() => void onStartGeneration()}
+                  disabled={protoBusy}
+                  style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
+                >
+                  생성 시작
+                </button>
+              ) : null}
               {automationAvailable && canRequestGeneration.designOk ? (
                 <button
                   type="button"
@@ -623,7 +657,7 @@ export function PrototypePreviewPanel({
               <button type="button" onClick={() => void copyPrompt()} style={btn} disabled={protoBusy}>
                 복사
               </button>
-              {latestRun?.cursorRunId ? (
+              {latestRun?.id ? (
                 <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                   상태 새로고침
                 </button>

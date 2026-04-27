@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { evaluatePrototypeCursorAutomation } from "@/lib/prototype/prototypeRunPipeline";
-import { getLatestPrototypeRun } from "@/lib/prototype/prototypeRunService";
+import { getLatestRun } from "@/lib/prototype/prototypeRunStore";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 
 export async function GET(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   }
 
   const gate = await evaluatePrototypeCursorAutomation(projectId);
-  const run = getLatestPrototypeRun(projectId);
+  const run = getLatestRun(projectId);
 
   return NextResponse.json({
     success: true,
