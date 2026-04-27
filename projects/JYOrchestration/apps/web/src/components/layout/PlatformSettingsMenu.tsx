@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useUiLabel } from "@/lib/ui-label/useUiLabel";
 import { AI_RESPONSE_STYLE_LABELS, type AiResponseStyle } from "@/lib/preferences/globalPreferences";
 import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
+import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
+import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 
 function GearIcon() {
   return (
@@ -56,6 +60,13 @@ export function PlatformSettingsMenu() {
   const { enabled, setEnabled, ready } = useUiLabel();
   const prefs = useGlobalPreferences();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const pathname = usePathname() || "/";
+  const searchParams = useSearchParams();
+
+  const projectId = resolveWorkflowProjectContextId(pathname, searchParams);
+  const encodedProjectId = projectId ? encodeURIComponent(projectId) : "";
+  const hasProjectContext = Boolean(projectId?.trim());
+  const projectSettingsHref = hasProjectContext ? projectExecutionSettingsHref(projectId!) : "/project-admin/settings";
 
   useEffect(() => {
     if (!open) return;
@@ -161,7 +172,58 @@ export function PlatformSettingsMenu() {
           <p style={{ margin: "0 0 4px 0", fontSize: 15, fontWeight: 800, color: "#0f172a" }}>설정</p>
           <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#94a3b8" }}>이 기기에만 저장됩니다.</p>
 
-          {sectionTitle("화면", { first: true })}
+          {hasProjectContext ? (
+            <>
+              {sectionTitle("프로젝트", { first: true })}
+              {row(
+                "프로젝트 정보",
+                <Link
+                  href={`/requirements?projectId=${encodedProjectId}`}
+                  onClick={() => setOpen(false)}
+                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                >
+                  열기
+                </Link>
+              )}
+
+              {sectionTitle("연동")}
+              {row(
+                "GitHub",
+                <Link
+                  href={projectSettingsHref}
+                  onClick={() => setOpen(false)}
+                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                >
+                  열기
+                </Link>
+              )}
+              {row(
+                "Cursor",
+                <Link
+                  href={projectSettingsHref}
+                  onClick={() => setOpen(false)}
+                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                >
+                  열기
+                </Link>
+              )}
+              {row(
+                "실행 환경",
+                <Link
+                  href={projectSettingsHref}
+                  onClick={() => setOpen(false)}
+                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                >
+                  열기
+                </Link>
+              )}
+            </>
+          ) : (
+            <>
+              {sectionTitle("화면", { first: true })}
+            </>
+          )}
+
           {row(
             "화면 라벨 표시",
             <input
