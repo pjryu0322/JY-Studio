@@ -34,26 +34,6 @@ const PLACEHOLDERS = {
   baseBranch: "main",
 } as const;
 
-function toneColor(tone: "muted" | "ok" | "bad" | "warn"): string {
-  if (tone === "ok") return "#15803d";
-  if (tone === "bad") return "#b91c1c";
-  if (tone === "warn") return "#b45309";
-  return "#64748b";
-}
-
-function readinessTone(ok: boolean | null | undefined): "muted" | "ok" | "bad" | "warn" {
-  if (ok === true) return "ok";
-  if (ok === false) return "bad";
-  return "warn";
-}
-
-/** Step 1 상태 칩: 연결됨 / 연결 안 됨 / 미검증 */
-function externalConnectionChipLabel(ok: boolean | null | undefined): string {
-  if (ok === true) return "연결됨";
-  if (ok === false) return "연결 안 됨";
-  return "미검증";
-}
-
 function normalizeWorkflowForUi(w: string | null | undefined): string {
   return String(w ?? "").trim().toLowerCase();
 }
@@ -666,29 +646,6 @@ export function ProjectExecutionEnvironmentPanel({
     [executionSetup]
   );
 
-  const applyGithubExample = useCallback(() => {
-    const ex: GitLinkDraft = {
-      gitRepoUrl: "https://github.com/your-org/my-ai-chat",
-      gitRepoProvider: "github",
-      gitRepoName: "your-org/my-ai-chat",
-      baseBranch: "main",
-    };
-    if (executionSetup) {
-      setExecutionSetup((prev) =>
-        prev
-          ? {
-              ...prev,
-              ...ex,
-              gitRepoName: ex.gitRepoName,
-            }
-          : prev
-      );
-    } else {
-      setGitLinkDraft(ex);
-    }
-    setExecutionMessage("예시를 채웠습니다. 저장 후 검증하세요.");
-  }, [executionSetup]);
-
   const handleSaveGit = useCallback(async () => {
     if (!projectId.trim()) return;
     setBusyGit("save");
@@ -796,16 +753,6 @@ export function ProjectExecutionEnvironmentPanel({
   const baseBranchConfigured = Boolean(executionSetup?.baseBranch?.trim());
   const autoPushOn = executionSetup?.autoPush === true;
   const envTestStartOk = executionReady && baseBranchConfigured && autoPushOn;
-
-  const secondaryBtn: CSSProperties = {
-    padding: "6px 10px",
-    borderRadius: 8,
-    border: "1px solid #94a3b8",
-    background: "#fff",
-    fontWeight: 600,
-    fontSize: 12,
-    cursor: canEdit ? "pointer" : "not-allowed",
-  };
 
   const githubAuthSlot = (() => {
     const es = executionSetup;
@@ -1085,165 +1032,80 @@ export function ProjectExecutionEnvironmentPanel({
     );
   })();
 
-  const externalSetupConnectedCount =
-    (repoOk === true ? 1 : 0) + (githubEffectiveOk === true ? 1 : 0) + (cursorApiOk === true ? 1 : 0);
-
-  const externalSystemsConnectionSlot = (
-    <div style={{ ...stepBox, marginBottom: 0 }}>
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 900,
-              letterSpacing: "0.07em",
-              color: "#0369a1",
-              marginBottom: 6,
-            }}
-          >
-            STEP 1
-          </div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>외부 시스템 연결</div>
-          <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-            Git 저장소·GitHub 인증은 이 블록에서 설정합니다. Cursor API는 바로 아래 단계 카드에서 연결합니다.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-            <span
-              style={{
-                padding: "5px 10px",
-                borderRadius: 8,
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                fontSize: 11,
-                color: "#334155",
-              }}
-            >
-              Git 저장소:{" "}
-              <strong style={{ color: toneColor(readinessTone(repoOk)) }}>{externalConnectionChipLabel(repoOk)}</strong>
-            </span>
-            <span
-              style={{
-                padding: "5px 10px",
-                borderRadius: 8,
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                fontSize: 11,
-                color: "#334155",
-              }}
-            >
-              GitHub 인증:{" "}
-              <strong style={{ color: toneColor(readinessTone(githubEffectiveOk)) }}>
-                {externalConnectionChipLabel(githubEffectiveOk)}
-              </strong>
-            </span>
-            <span
-              style={{
-                padding: "5px 10px",
-                borderRadius: 8,
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                fontSize: 11,
-                color: "#334155",
-              }}
-            >
-              Cursor API:{" "}
-              <strong style={{ color: toneColor(readinessTone(cursorApiOk)) }}>
-                {externalConnectionChipLabel(cursorApiOk)}
-              </strong>
-            </span>
-          </div>
-          <p style={{ margin: "0 0 12px 0", fontSize: 11, fontWeight: 700, color: "#475569" }}>
-            연결 요약: {externalSetupConnectedCount}/3 항목 연결됨
-            {executionReady ? (
-              <span style={{ marginLeft: 8, color: "#15803d" }}>· 실행 준비 충족</span>
-            ) : null}
-          </p>
-          <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#94a3b8", fontFamily: "ui-monospace, monospace" }}>
-            예: {PLACEHOLDERS.gitRepoUrl} · {PLACEHOLDERS.gitRepoName} · {PLACEHOLDERS.baseBranch}
-          </p>
-          <div style={{ display: "grid", gap: 10, maxWidth: 720, marginBottom: 12 }}>
-            <label style={{ display: "grid", gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Repository URL</span>
-              <input
-                value={gitVals.gitRepoUrl}
-                disabled={!canEdit}
-                placeholder={PLACEHOLDERS.gitRepoUrl}
-                onChange={(e) => setGitField({ gitRepoUrl: e.target.value })}
-                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-              />
-            </label>
-            <label style={{ display: "grid", gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>호스팅 제공자</span>
-              <select
-                value={gitVals.gitRepoProvider}
-                disabled={!canEdit}
-                onChange={(e) => setGitField({ gitRepoProvider: e.target.value })}
-                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-              >
-                <option value="github">GitHub</option>
-                <option value="other">기타</option>
-              </select>
-            </label>
-            <label style={{ display: "grid", gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Repository full name (owner/repo)</span>
-              <input
-                value={gitVals.gitRepoName}
-                disabled={!canEdit}
-                placeholder={PLACEHOLDERS.gitRepoName}
-                onChange={(e) => setGitField({ gitRepoName: e.target.value })}
-                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-              />
-            </label>
-            <label style={{ display: "grid", gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Base branch</span>
-              <input
-                value={gitVals.baseBranch}
-                disabled={!canEdit}
-                placeholder={PLACEHOLDERS.baseBranch}
-                onChange={(e) => setGitField({ baseBranch: e.target.value })}
-                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-              />
-            </label>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            <button
-              type="button"
-              disabled={!canEdit || busyGit === "save"}
-              onClick={() => void handleSaveGit()}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #2563eb",
-                background: "#2563eb",
-                color: "#fff",
-                fontWeight: 800,
-                fontSize: 12,
-                cursor: !canEdit ? "not-allowed" : busyGit === "save" ? "wait" : "pointer",
-              }}
-            >
-              {busyGit === "save" ? "저장 중…" : "저장소 설정 저장"}
-            </button>
-            <button
-              type="button"
-              disabled={!canEdit || busyGit === "validate-repo" || !executionSetup}
-              onClick={() => void handleValidateGit()}
-              style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #0f766e",
-                background: "#0d9488",
-                color: "#fff",
-                fontWeight: 800,
-                fontSize: 12,
-                cursor: !canEdit || !executionSetup ? "not-allowed" : busyGit === "validate-repo" ? "wait" : "pointer",
-              }}
-              title={!executionSetup ? "먼저 저장하세요" : undefined}
-            >
-              {busyGit === "validate-repo" ? "검증 중…" : "저장소 연결 검증"}
-            </button>
-            <button type="button" disabled={!canEdit} onClick={() => void applyGithubExample()} style={secondaryBtn}>
-              GitHub 예시 적용
-            </button>
-          </div>
-          {githubAuthSlot}
+  const gitRepositorySlot = (
+    <div style={{ maxWidth: 720 }}>
+      <div style={{ marginBottom: 10, fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+        Git 저장소 URL과 기본 브랜치를 입력한 뒤 저장/검증을 실행하세요.
+      </div>
+      <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Git 저장소 URL</span>
+          <input
+            value={gitVals.gitRepoUrl}
+            disabled={!canEdit}
+            placeholder={PLACEHOLDERS.gitRepoUrl}
+            onChange={(e) => setGitField({ gitRepoUrl: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>저장소명 owner/repo</span>
+          <input
+            value={gitVals.gitRepoName}
+            disabled={!canEdit}
+            placeholder={PLACEHOLDERS.gitRepoName}
+            onChange={(e) => setGitField({ gitRepoName: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>기본 브랜치</span>
+          <input
+            value={gitVals.baseBranch}
+            disabled={!canEdit}
+            placeholder={PLACEHOLDERS.baseBranch}
+            onChange={(e) => setGitField({ baseBranch: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          disabled={!canEdit || busyGit === "save"}
+          onClick={() => void handleSaveGit()}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 8,
+            border: "1px solid #2563eb",
+            background: "#2563eb",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: !canEdit ? "not-allowed" : busyGit === "save" ? "wait" : "pointer",
+          }}
+        >
+          {busyGit === "save" ? "저장 중…" : "저장소 설정 저장"}
+        </button>
+        <button
+          type="button"
+          disabled={!canEdit || busyGit === "validate-repo" || !executionSetup}
+          onClick={() => void handleValidateGit()}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 8,
+            border: "1px solid #0f766e",
+            background: "#0d9488",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: !canEdit || !executionSetup ? "not-allowed" : busyGit === "validate-repo" ? "wait" : "pointer",
+          }}
+          title={!executionSetup ? "먼저 저장하세요" : undefined}
+        >
+          {busyGit === "validate-repo" ? "검증 중…" : "저장소 연결 검증"}
+        </button>
+      </div>
     </div>
   );
 
@@ -1919,8 +1781,10 @@ export function ProjectExecutionEnvironmentPanel({
         formatTestedAt={formatTestedAt}
         flatLayout
         unifiedExecutionEnvironment
-        executionEnvironmentFlow
-        connectionSlotBeforeCursor={externalSystemsConnectionSlot}
+        executionEnvironmentFlow={effectivePurpose !== "prototype"}
+        prototypeStagedLayout={effectivePurpose === "prototype"}
+        connectionSlotBeforeCursor={gitRepositorySlot}
+        connectionSlotGithubAuth={githubAuthSlot}
         connectionSlotAfterCursor={stage1ValidationSlot}
         canRevealCursorApiKey={canRevealCursorApiKey}
       />

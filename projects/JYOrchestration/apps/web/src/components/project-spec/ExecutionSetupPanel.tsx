@@ -60,10 +60,17 @@ export function ExecutionSetupPanel(props: {
   unifiedExecutionEnvironment?: boolean;
   /** unified + 연결 설정 상단에 Git 폼 삽입(부모 렌더) */
   connectionSlotBeforeCursor?: ReactNode;
+  /** prototype 목적: GitHub 인증을 별도 섹션으로 분리 */
+  connectionSlotGithubAuth?: ReactNode;
   /** 실행 환경 탭: 1→2→3 플로우, 모니터 섹션 생략, Stage1 슬롯 분리 */
   executionEnvironmentFlow?: boolean;
   /** flow 모드에서 Step 2(Stage1 연결 검증) 본문 */
   connectionSlotAfterCursor?: ReactNode;
+  /**
+   * prototype 목적 설정 화면: 5개 섹션(저장소/깃허브/커서/정책/검증)을 즉시 노출한다.
+   * (검증 로직은 기존 postExecutionSetupValidate/patchExecutionSetup 흐름 그대로)
+   */
+  prototypeStagedLayout?: boolean;
   /** 프로젝트 OWNER만 저장된 키 전체를 일시 표시 */
   canRevealCursorApiKey?: boolean;
 }) {
@@ -78,8 +85,10 @@ export function ExecutionSetupPanel(props: {
     flatLayout = false,
     unifiedExecutionEnvironment = false,
     connectionSlotBeforeCursor,
+    connectionSlotGithubAuth,
     executionEnvironmentFlow = false,
     connectionSlotAfterCursor,
+    prototypeStagedLayout = false,
     canRevealCursorApiKey = false,
   } = props;
 
@@ -166,7 +175,11 @@ export function ExecutionSetupPanel(props: {
         : "1px solid #e2e8f0";
   const frameBg = flatLayout ? "#fafafa" : ready ? "#f0fdf4" : "#fff";
 
-  if (!specWorkflowConfirmed) {
+  const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
+  const flowMode = Boolean(unified && executionEnvironmentFlow);
+  const stagedPrototype = Boolean(unified && prototypeStagedLayout);
+
+  if (!specWorkflowConfirmed && !stagedPrototype) {
     return (
       <div
         id="execution-setup-panel"
@@ -203,9 +216,6 @@ export function ExecutionSetupPanel(props: {
   const showCursorApiDetail = flatLayout
     ? Boolean(validationPayload && !validationPayload.overallOk && !executionReady)
     : cursorApiDetailOpen;
-
-  const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
-  const flowMode = Boolean(unified && executionEnvironmentFlow);
 
   const unifiedPolicyBody = (
     <ExecutionSetupUnifiedPolicyBody
@@ -671,7 +681,58 @@ export function ExecutionSetupPanel(props: {
               설정이 바뀌었습니다. 해당 항목을 저장한 뒤 필요한 검증을 다시 실행해 주세요.
             </div>
           ) : null}
-          {flowMode ? (
+          {stagedPrototype ? (
+            <>
+              {!specWorkflowConfirmed ? (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: 10,
+                    borderRadius: 10,
+                    background: "#fffbeb",
+                    border: "1px solid #fcd34d",
+                    color: "#92400e",
+                    fontSize: 12.5,
+                    lineHeight: 1.5,
+                    fontWeight: 700,
+                  }}
+                >
+                  아직 Spec 확정 전입니다. 설정은 미리 입력할 수 있으며, 연결 테스트/실행은 Spec 확정 후 진행됩니다.
+                </div>
+              ) : null}
+
+              {sectionCard("1. Git 저장소", null, connectionSlotBeforeCursor ?? null)}
+              {sectionCard("2. GitHub 인증", null, connectionSlotGithubAuth ?? null)}
+              {sectionCard("3. Cursor API", null, renderCursorConnectionBlock({ compactTitle: true }))}
+              {sectionCard("4. 실행 정책", null, unifiedPolicyBody)}
+
+              {connectionSlotAfterCursor ? (
+                <details
+                  style={{
+                    marginBottom: 16,
+                    borderRadius: 12,
+                    border: "1px solid #e2e8f0",
+                    background: "#fff",
+                    padding: "0 16px 16px",
+                  }}
+                >
+                  <summary
+                    style={{
+                      padding: "14px 0",
+                      cursor: "pointer",
+                      fontWeight: 900,
+                      fontSize: 13,
+                      color: "#64748b",
+                      listStyle: "none",
+                    }}
+                  >
+                    고급: Stage1 연결 테스트 보기
+                  </summary>
+                  <div style={{ marginTop: 10 }}>{connectionSlotAfterCursor}</div>
+                </details>
+              ) : null}
+            </>
+          ) : flowMode ? (
             <>
               {sectionCard(
                 "1 외부 시스템 연결",
@@ -744,7 +805,9 @@ export function ExecutionSetupPanel(props: {
               background: "#fff",
             }}
           >
-            <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 4px 0", color: "#0f172a" }}>실행 상태</h2>
+            <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 4px 0", color: "#0f172a" }}>
+              {stagedPrototype ? "5. 환경 검증" : "실행 상태"}
+            </h2>
             <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
               연결·검증 결과와 저장소 실행 가능 여부를 확인합니다. 실패 시 아래 사유를 참고하세요.
             </p>
