@@ -21,6 +21,14 @@ import {
   savePrototypeGenerationRecord,
   type PrototypeGenerationLocalRecord,
 } from "@/lib/prototype/prototypeGenerationLocalStore";
+import {
+  fetchLatestPrototypeRun,
+  postCreatePrototypeRun,
+  postPrototypePreviewUrl,
+  postPrototypeRunStatusRefresh,
+} from "@/lib/prototype/prototypeRunApiClient";
+import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
+import { buildTimelineFromPrototypeRun, prototypeRunStatusLabelKo } from "@/lib/prototype/prototypeRunUiHelpers";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
@@ -121,6 +129,10 @@ export function PrototypePreviewPanel({
     message: null,
   });
   const [envBusy, setEnvBusy] = useState(false);
+  const [latestRun, setLatestRun] = useState<PrototypeRun | null>(null);
+  const [automationAvailable, setAutomationAvailable] = useState(false);
+  const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
+  const [protoBusy, setProtoBusy] = useState(false);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -133,6 +145,26 @@ export function PrototypePreviewPanel({
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [refreshRecord]);
+
+  const refreshLatestRun = useCallback(async () => {
+    if (!projectId.trim()) return;
+    setProtoBusy(true);
+    try {
+      const r = await fetchLatestPrototypeRun(projectId);
+      if (r.success && r.data) {
+        setLatestRun(r.data.run);
+        setAutomationAvailable(r.data.automationAvailable);
+        setAutomationBlockReason(r.data.automationBlockReason);
+      }
+    } finally {
+      setProtoBusy(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => void refreshLatestRun(), 0);
+    return () => window.clearTimeout(t);
+  }, [refreshLatestRun]);
 
   const analysis = useMemo(
     () =>
@@ -212,7 +244,12 @@ export function PrototypePreviewPanel({
   }, [ideaOk, actorsOk, flowOk, ownerAssignedRatio, envStatus.runnable, envStatus.git, envStatus.cursor]);
 
   const staleRegenerate = Boolean(record.fingerprintAtRequest && record.fingerprintAtRequest !== designFingerprint);
-  const previewUrl = record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? record.previewUrl.trim() : null;
+  const previewUrl = useMemo(() => {
+    const fromServer =
+      latestRun?.previewUrl && isLikelyPreviewUrl(latestRun.previewUrl) ? latestRun.previewUrl.trim() : null;
+    if (fromServer) return fromServer;
+    return record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? record.previewUrl.trim() : null;
+  }, [latestRun?.previewUrl, record.previewUrl]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -229,30 +266,139 @@ export function PrototypePreviewPanel({
   };
 
   const onCopyGenerationPrompt = async () => {
-    await copyPrompt();
-    const now = new Date().toISOString();
-    savePrototypeGenerationRecord(projectId, {
-      runStatus: "awaiting_preview",
-      fingerprintAtRequest: designFingerprint,
-      lastRequestedAt: now,
-      lastError: null,
-      selectedTemplate: effectiveTemplate,
-      lastPromptSnapshot: promptPackage.slice(0, 30_000),
-    });
-    refreshRecord();
-    showToast("생성 요청 후 결과 URL을 연결하세요.");
+    if (!canRequestGeneration.designOk) return;
+    setProtoBusy(true);
+    try {
+      try {
+        await navigator.clipboard.writeText(promptPackage);
+      } catch {
+        showToast("복사에 실패했습니다.");
+        return;
+      }
+      const res = await postCreatePrototypeRun({
+        projectId,
+        selectedTemplate: effectiveTemplate,
+        promptSnapshot: promptPackage.slice(0, 50_000),
+        startCursorAgent: false,
+      });
+      if (res.success && res.data?.run) {
+        setLatestRun(res.data.run);
+        setAutomationAvailable(res.data.automationAvailable);
+        setAutomationBlockReason(res.data.automationBlockReason);
+      } else {
+        showToast(res.message ?? "서버 실행 기록 생성에 실패했습니다.");
+      }
+      const now = new Date().toISOString();
+      savePrototypeGenerationRecord(projectId, {
+        runStatus: "awaiting_preview",
+        fingerprintAtRequest: designFingerprint,
+        lastRequestedAt: now,
+        lastError: null,
+        selectedTemplate: effectiveTemplate,
+        lastPromptSnapshot: promptPackage.slice(0, 30_000),
+      });
+      refreshRecord();
+      showToast("생성 요청 후 결과 URL을 연결하세요.");
+    } finally {
+      setProtoBusy(false);
+      void refreshLatestRun();
+    }
   };
 
-  const applyPreviewUrl = () => {
+  const onCursorAutoRequest = async () => {
+    if (!canRequestGeneration.designOk || !automationAvailable) return;
+    setProtoBusy(true);
+    try {
+      const res = await postCreatePrototypeRun({
+        projectId,
+        selectedTemplate: effectiveTemplate,
+        promptSnapshot: promptPackage.slice(0, 50_000),
+        startCursorAgent: true,
+      });
+      if (res.success && res.data?.run) {
+        setLatestRun(res.data.run);
+        setAutomationAvailable(res.data.automationAvailable);
+        setAutomationBlockReason(res.data.automationBlockReason);
+        showToast(res.data.message ?? "Cursor 자동 생성을 요청했습니다.");
+        savePrototypeGenerationRecord(projectId, {
+          runStatus: "awaiting_preview",
+          fingerprintAtRequest: designFingerprint,
+          lastRequestedAt: new Date().toISOString(),
+          lastError: null,
+          selectedTemplate: effectiveTemplate,
+          lastPromptSnapshot: promptPackage.slice(0, 30_000),
+        });
+        refreshRecord();
+      } else {
+        showToast(res.message ?? "자동 생성 요청에 실패했습니다.");
+      }
+    } finally {
+      setProtoBusy(false);
+      void refreshLatestRun();
+    }
+  };
+
+  const onRefreshPrototypeStatus = async () => {
+    if (!latestRun?.id || !latestRun.cursorRunId) {
+      showToast("새로고침할 Cursor 실행이 없습니다.");
+      return;
+    }
+    setProtoBusy(true);
+    try {
+      const res = await postPrototypeRunStatusRefresh(latestRun.id, { projectId });
+      if (res.success && res.data?.run) {
+        setLatestRun(res.data.run);
+        showToast("상태를 갱신했습니다.");
+      } else {
+        showToast(res.message ?? "갱신에 실패했습니다.");
+      }
+    } finally {
+      setProtoBusy(false);
+      void refreshLatestRun();
+    }
+  };
+
+  const applyPreviewUrl = async () => {
     const u = urlDraft.trim();
     if (!isLikelyPreviewUrl(u)) {
       savePrototypeGenerationRecord(projectId, { lastError: "http(s) URL만 지원합니다.", runStatus: "failed" });
       refreshRecord();
       return;
     }
-    savePrototypeGenerationRecord(projectId, { previewUrl: u, runStatus: "preview_ready", lastError: null });
-    refreshRecord();
-    showToast("URL 적용");
+    setProtoBusy(true);
+    try {
+      let runId = latestRun?.id ?? null;
+      if (!runId) {
+        const cr = await postCreatePrototypeRun({
+          projectId,
+          selectedTemplate: effectiveTemplate,
+          promptSnapshot: promptPackage.slice(0, 50_000),
+          startCursorAgent: false,
+        });
+        if (!cr.success || !cr.data?.run) {
+          savePrototypeGenerationRecord(projectId, { previewUrl: u, runStatus: "preview_ready", lastError: null });
+          refreshRecord();
+          showToast("서버 기록 없이 로컬에만 URL을 저장했습니다.");
+          return;
+        }
+        runId = cr.data.run.id;
+        setLatestRun(cr.data.run);
+      }
+      const att = await postPrototypePreviewUrl(runId, { projectId, previewUrl: u });
+      if (att.success && att.data?.run) {
+        setLatestRun(att.data.run);
+        savePrototypeGenerationRecord(projectId, { previewUrl: u, runStatus: "preview_ready", lastError: null });
+        refreshRecord();
+        showToast("URL 적용");
+      } else {
+        savePrototypeGenerationRecord(projectId, { previewUrl: u, runStatus: "preview_ready", lastError: att.message ?? null });
+        refreshRecord();
+        showToast(att.message ?? "서버 반영 실패 — 로컬에만 저장했습니다.");
+      }
+    } finally {
+      setProtoBusy(false);
+      void refreshLatestRun();
+    }
   };
 
   const clearPreviewUrl = () => {
@@ -298,24 +444,16 @@ export function PrototypePreviewPanel({
   const difficultyKr = analysis.workflowComplexity === "high" ? "높음" : analysis.workflowComplexity === "low" ? "낮음" : "보통";
 
   const timeline: Array<{ label: string; status: TimelineStepStatus }> = useMemo(() => {
-    const requested = Boolean(record.lastRequestedAt);
-    const hasUrl = Boolean(previewUrl);
-    const promptReady: TimelineStepStatus = "success";
-    const requestDelivered: TimelineStepStatus = requested ? "success" : "pending";
-    /** 수동 생성: 설계만 충족되면 진행 가능(파랑), 아니면 보완 필요(주황·수동 처리 범주). */
-    const cursorManualPossible: TimelineStepStatus = canRequestGeneration.designOk ? "running" : "blocked";
-    const urlConnected: TimelineStepStatus = hasUrl ? "success" : requested ? "pending" : "blocked";
-    return [
-      { label: "프롬프트 생성", status: promptReady },
-      { label: "요청 전달", status: requestDelivered },
-      { label: "Cursor 수동 생성 가능", status: cursorManualPossible },
-      { label: "Commit 감지 미연동", status: "pending" },
-      { label: "PR 생성 미연동", status: "pending" },
-      { label: "AI 기획자 검토 (수동)", status: "blocked" },
-      { label: "결과 승인 (수동)", status: "blocked" },
-      { label: "결과 URL 연결", status: urlConnected },
-    ];
-  }, [record.lastRequestedAt, previewUrl, canRequestGeneration.designOk]);
+    return buildTimelineFromPrototypeRun(latestRun).map((row) => ({
+      label: row.label,
+      status: row.status as TimelineStepStatus,
+    }));
+  }, [latestRun]);
+
+  const pipelineStatusText = useMemo(() => {
+    if (latestRun) return prototypeRunStatusLabelKo(latestRun.status);
+    return statusLabel(record.runStatus, Boolean(previewUrl));
+  }, [latestRun, record.runStatus, previewUrl]);
 
   return (
     <div style={{ position: "relative" }}>
@@ -447,20 +585,51 @@ export function PrototypePreviewPanel({
 
         <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
           <div style={card}>
-            <div style={cardTitle}>생성 요청</div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={cardTitle}>생성 요청</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={automationAvailable ? badge : badgeMuted}>{automationAvailable ? "자동 생성 모드" : "수동 생성 모드"}</span>
+                {latestRun?.id ? (
+                  <span style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700 }}>실행 {latestRun.id.slice(0, 8)}…</span>
+                ) : null}
+              </div>
+            </div>
             <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              {automationAvailable && canRequestGeneration.designOk ? (
+                <button
+                  type="button"
+                  onClick={() => void onCursorAutoRequest()}
+                  disabled={protoBusy || !canRequestGeneration.designOk}
+                  style={{ ...btnPrimary, opacity: protoBusy ? 0.65 : 1 }}
+                >
+                  Cursor 자동 생성 요청
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void onCopyGenerationPrompt()}
-                disabled={!canRequestGeneration.designOk}
-                style={{ ...btnPrimary, opacity: canRequestGeneration.designOk ? 1 : 0.55 }}
+                disabled={!canRequestGeneration.designOk || protoBusy}
+                style={
+                  automationAvailable && canRequestGeneration.designOk
+                    ? { ...btn, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
+                    : { ...btnPrimary, opacity: canRequestGeneration.designOk && !protoBusy ? 1 : 0.55 }
+                }
               >
                 생성 프롬프트 복사
               </button>
-              <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn}>생성 프롬프트 보기</button>
-              <button type="button" onClick={() => void copyPrompt()} style={btn}>복사</button>
+              <button type="button" onClick={() => setPromptOpen((v) => !v)} style={btn} disabled={protoBusy}>
+                생성 프롬프트 보기
+              </button>
+              <button type="button" onClick={() => void copyPrompt()} style={btn} disabled={protoBusy}>
+                복사
+              </button>
+              {latestRun?.cursorRunId ? (
+                <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
+                  상태 새로고침
+                </button>
+              ) : null}
               <span style={{ marginLeft: "auto", fontSize: 12.5, color: "#64748b" }}>
-                상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{statusLabel(record.runStatus, Boolean(previewUrl))}</span>
+                상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{pipelineStatusText}</span>
               </span>
             </div>
             {!canRequestGeneration.envOk && canRequestGeneration.designOk ? (
@@ -468,8 +637,15 @@ export function PrototypePreviewPanel({
                 환경설정이 완료되지 않았습니다. Cursor 실행 전 Git/GitHub/Cursor 설정을 완료하세요.
               </div>
             ) : null}
-            <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
-              Cursor에 프롬프트를 붙여넣어 수동으로 생성합니다. (API 자동 실행 없음)
+            <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b", lineHeight: 1.5 }}>
+              {automationAvailable
+                ? "자동 생성 모드: Cursor Cloud Agent API로 에이전트를 시작할 수 있습니다. 수동으로 진행하려면 프롬프트 복사만 사용하세요."
+                : "수동 생성 모드: Cursor API 자동 실행을 쓰려면 실행 환경 검증(validated)과 Cursor API 키가 필요합니다. (스텁·미설정 시 수동만 가능)"}
+              {automationBlockReason ? (
+                <span style={{ display: "block", marginTop: 6, color: "#b45309", fontWeight: 700 }}>
+                  자동 불가 사유: {automationBlockReason}
+                </span>
+              ) : null}
             </div>
             {promptOpen ? (
               <textarea
@@ -497,11 +673,9 @@ export function PrototypePreviewPanel({
           <div style={card}>
             <div style={cardTitle}>진행 상태</div>
             <div style={{ marginTop: 8, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>현재 시스템 한계</div>
+              <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>파이프라인 저장</div>
               <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.45 }}>
-                현재는 (1) 프롬프트를 Cursor에 붙여넣기 (2) 생성 후 결과 URL을 여기에 연결하는 수동 흐름입니다.
-                <br />
-                Commit 감지 / PR / Merge 자동화는 예정 단계입니다.
+                실행 기록은 서버 측 파일 저장소에 보관됩니다(DB 마이그레이션 전). PR/Merge 전용 경로는 ENV_TEST와 분리되어 있습니다.
               </div>
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
@@ -530,7 +704,9 @@ export function PrototypePreviewPanel({
                 placeholder="https://…"
                 style={inputStyle}
               />
-              <button type="button" onClick={applyPreviewUrl} style={btnPrimary}>URL 적용</button>
+              <button type="button" onClick={() => void applyPreviewUrl()} disabled={protoBusy} style={btnPrimary}>
+                URL 적용
+              </button>
               {previewUrl ? (
                 <>
                   <button type="button" onClick={() => setResultOpen(true)} style={btnMuted}>결과물 보기</button>
@@ -544,7 +720,14 @@ export function PrototypePreviewPanel({
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#64748b" }}>
               <div>결과 URL: {previewUrl ? <span style={{ color: "#0f172a", fontWeight: 800 }}>{previewUrl}</span> : "아직 결과물이 연결되지 않았습니다."}</div>
-              <div>최근 생성 요청 시간: {record.lastRequestedAt ? new Date(record.lastRequestedAt).toLocaleString() : "—"}</div>
+              <div>
+                최근 생성 요청 시간:{" "}
+                {latestRun?.updatedAt
+                  ? new Date(latestRun.updatedAt).toLocaleString()
+                  : record.lastRequestedAt
+                    ? new Date(record.lastRequestedAt).toLocaleString()
+                    : "—"}
+              </div>
             </div>
           </div>
 
