@@ -30,6 +30,29 @@ function githubTokenMaskedForApiResponse(githubAccessToken: string | null | unde
   return t ? maskGithubTokenForUi(t) : null;
 }
 
+/** DB `*Masked` 컬럼과 평문 컬럼을 함께 본다(이전 마이그레이션·부분 저장 호환). */
+function clientGithubTokenMeta(row: {
+  githubAccessToken: string | null;
+  githubAccessTokenMasked: string | null;
+}): { masked: string | null; hasToken: boolean } {
+  const fromPlain = githubTokenMaskedForApiResponse(row.githubAccessToken);
+  const stored = String(row.githubAccessTokenMasked ?? "").trim();
+  const masked = fromPlain || (stored ? stored : null);
+  const hasToken = Boolean(String(row.githubAccessToken ?? "").trim()) || Boolean(stored);
+  return { masked, hasToken };
+}
+
+function clientCursorTokenMeta(row: {
+  cursorApiToken: string | null;
+  cursorApiTokenMasked: string | null;
+}): { masked: string | null; hasToken: boolean } {
+  const fromPlain = cursorTokenMaskedForApiResponse(row.cursorApiToken);
+  const stored = String(row.cursorApiTokenMasked ?? "").trim();
+  const masked = fromPlain || (stored ? stored : null);
+  const hasToken = Boolean(String(row.cursorApiToken ?? "").trim()) || Boolean(stored);
+  return { masked, hasToken };
+}
+
 function isLikelyUrl(s: string): boolean {
   try {
     const u = new URL(s);
@@ -140,6 +163,9 @@ export async function GET(
       });
     }
 
+    const ghTok = clientGithubTokenMeta(row);
+    const curTok = clientCursorTokenMeta(row);
+
     const projectMeta = await prisma.project.findUnique({
       where: { id: pid },
       select: { ownerUserId: true },
@@ -152,8 +178,8 @@ export async function GET(
     if (projectMeta?.ownerUserId) {
       const donor = await getUserDefaultExecutionCredentials(projectMeta.ownerUserId, pid);
       if (donor) {
-        const needsGh = !String(row.githubAccessToken ?? "").trim();
-        const needsCur = !String(row.cursorApiToken ?? "").trim();
+        const needsGh = !ghTok.hasToken;
+        const needsCur = !curTok.hasToken;
         const gh = needsGh ? donor.githubAccessTokenMasked : null;
         const cu = needsCur ? donor.cursorApiUrl : null;
         const ctm = needsCur ? donor.cursorApiTokenMasked : null;
@@ -179,15 +205,15 @@ export async function GET(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
-        githubAccessTokenMasked: githubTokenMaskedForApiResponse(row.githubAccessToken),
-        hasGithubAccessToken: Boolean(String(row.githubAccessToken ?? "").trim()),
+        githubAccessTokenMasked: ghTok.masked,
+        hasGithubAccessToken: ghTok.hasToken,
         githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
         githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
         githubAuthValidationError: row.githubAuthValidationError ?? null,
         githubCapabilityValidation: row.githubCapabilityValidation ?? null,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
-        cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
-        hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
+        cursorApiTokenMasked: curTok.masked,
+        hasCursorToken: curTok.hasToken,
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
@@ -564,6 +590,9 @@ export async function PATCH(
       }
     }
 
+    const ghTokPatch = clientGithubTokenMeta(row);
+    const curTokPatch = clientCursorTokenMeta(row);
+
     return NextResponse.json({
       success: true,
       message: "Execution setup을 저장했습니다.",
@@ -577,15 +606,15 @@ export async function PATCH(
         baseBranch: row.baseBranch,
         branchStrategy: row.branchStrategy,
         branchPrefix: row.branchPrefix,
-        githubAccessTokenMasked: githubTokenMaskedForApiResponse(row.githubAccessToken),
-        hasGithubAccessToken: Boolean(String(row.githubAccessToken ?? "").trim()),
+        githubAccessTokenMasked: ghTokPatch.masked,
+        hasGithubAccessToken: ghTokPatch.hasToken,
         githubAuthConnectionOk: row.githubAuthConnectionOk ?? null,
         githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
         githubAuthValidationError: row.githubAuthValidationError ?? null,
         githubCapabilityValidation: row.githubCapabilityValidation ?? null,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
-        cursorApiTokenMasked: cursorTokenMaskedForApiResponse(row.cursorApiToken),
-        hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
+        cursorApiTokenMasked: curTokPatch.masked,
+        hasCursorToken: curTokPatch.hasToken,
         workspacePath: "",
         allowedPathGlobs: Array.isArray(row.allowedPathGlobs) ? (row.allowedPathGlobs as string[]) : [],
         autoCommit: row.autoCommit,
