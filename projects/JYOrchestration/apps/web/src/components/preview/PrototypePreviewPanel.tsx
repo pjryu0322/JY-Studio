@@ -19,6 +19,7 @@ import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSett
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
 import {
+  defaultPrototypeGenerationRecord,
   loadPrototypeGenerationRecord,
   savePrototypeGenerationRecord,
   type PrototypeGenerationLocalRecord,
@@ -32,6 +33,7 @@ import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/pro
 import { buildTimelineFromPrototypeRun, prototypeRunStatusLabelKo } from "@/lib/prototype/prototypeRunUiHelpers";
 import { composeGithubPagesPreviewUrlFromRepoUrl, githubPagesSettingsUrl } from "@/lib/prototype/githubPagesPreviewUrl";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
+import { PrototypeTemplateMockPreview } from "@/components/preview/PrototypeTemplateMockPreview";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -116,9 +118,11 @@ export function PrototypePreviewPanel({
   readonly onNavigateFix?: () => void;
 }) {
   // used in design readiness details
-  const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => loadPrototypeGenerationRecord(projectId));
+  // Avoid hydration mismatch: do not read sessionStorage in initial render.
+  const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => defaultPrototypeGenerationRecord());
   const [toast, setToast] = useState<string | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
+  const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [templateOverride, setTemplateOverride] = useState<PrototypeTemplateType | null>(null);
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
@@ -135,12 +139,16 @@ export function PrototypePreviewPanel({
   const [automationAvailable, setAutomationAvailable] = useState(false);
   const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
   const [protoBusy, setProtoBusy] = useState(false);
-  const [readinessDetailOpen, setReadinessDetailOpen] = useState(false);
-  const [progressDetailOpen, setProgressDetailOpen] = useState(false);
+  // progress detail UI removed
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
   }, [projectId]);
+
+  useEffect(() => {
+    // Load browser sessionStorage after mount (prevents SSR/client divergence).
+    refreshRecord();
+  }, [refreshRecord]);
 
   useEffect(() => {
     const onVis = () => {
@@ -191,6 +199,10 @@ export function PrototypePreviewPanel({
   }, [projectId]);
 
   const effectiveTemplate = templateOverride ?? analysis.recommendedTemplate;
+  const effectiveTemplateDef = useMemo(
+    () => PROTOTYPE_TEMPLATES.find((t) => t.id === effectiveTemplate) ?? null,
+    [effectiveTemplate],
+  );
   const effectiveAnalysis = useMemo(
     () => ({ ...analysis, recommendedTemplate: effectiveTemplate }),
     [analysis, effectiveTemplate],
@@ -446,8 +458,6 @@ export function PrototypePreviewPanel({
   }, [loadEnv]);
 
   const isRecommended = effectiveTemplate === analysis.recommendedTemplate && !templateOverride;
-  const expectedPageCount = Math.max(3, Math.min(9, Math.round((analysis.recommendedPages?.length ?? 5) || 5)));
-  const difficultyKr = analysis.workflowComplexity === "high" ? "높음" : analysis.workflowComplexity === "low" ? "낮음" : "보통";
 
   const timeline: Array<{ label: string; status: TimelineStepStatus }> = useMemo(() => {
     return buildTimelineFromPrototypeRun(latestRun).map((row) => ({
@@ -509,8 +519,9 @@ export function PrototypePreviewPanel({
     const tasks = run?.plannerTasks ?? [];
     const total = run?.cursorTaskTotal ?? tasks.length;
     const current = run?.cursorTaskCurrent ?? 0;
-    const mk = (label: string, done: boolean, running: boolean) => `${done ? "●" : running ? "●" : "○"} ${label}`;
-    const rows: string[] = [];
+    type Row = { label: string; state: "done" | "running" | "pending" };
+    const mk = (label: string, done: boolean, running: boolean): Row => ({ label, state: done ? "done" : running ? "running" : "pending" });
+    const rows: Row[] = [];
     rows.push(mk("서비스 흐름 확정 완료", Boolean(run && run.status !== "DRAFT"), Boolean(run && run.status === "PROMPT_READY")));
     rows.push(
       mk(
@@ -566,72 +577,9 @@ export function PrototypePreviewPanel({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <span style={summaryChip}>설계 {designReadinessPercentLocal}%</span>
-          <span style={summaryChip}>환경 {envReadinessPercent}%</span>
           <span style={{ ...summaryChip, borderColor: "#bfdbfe", background: "#eff6ff", color: "#1e40af" }}>자동화 파이프라인</span>
           <span style={summaryChip}>{resultUrlSummary}</span>
-          <button type="button" onClick={() => setReadinessDetailOpen((v) => !v)} style={btnMuted}>
-            {readinessDetailOpen ? "상세 접기" : "상세 보기"}
-          </button>
         </div>
-
-        {readinessDetailOpen ? (
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))" }}>
-            <div style={card}>
-              <div style={cardTitle}>설계 준비도 {designReadinessPercentLocal}%</div>
-              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-                <div style={{ width: `${designReadinessPercentLocal}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
-              </div>
-              <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12.5, color: "#0f172a" }}>
-                <div style={row}><span style={envPill(ideaOk ? "ok" : "needs")}>{ideaOk ? "OK" : "필요"}</span>아이디어 구체화 완료</div>
-                <div style={row}><span style={envPill(actorsOk ? "ok" : "needs")}>{actorsOk ? "OK" : "필요"}</span>액터 정의 완료</div>
-                <div style={row}><span style={envPill(flowOk ? "ok" : "needs")}>{flowOk ? "OK" : "필요"}</span>서비스 흐름 정의 완료</div>
-                <div style={row}><span style={envPill(ownersOk ? "ok" : "needs")}>{ownersOk ? "OK" : `${ownerAssignedRatio}%`}</span>담당자 지정</div>
-                <div style={row}><span style={envPill(featureDraftTitles?.length ? "ok" : "loading")}>{featureDraftTitles?.length ? "있음" : "선택"}</span>기능 정리</div>
-              </div>
-              {checklistGapLabels.length ? (
-                <div style={{ marginTop: 10, fontSize: 12, fontWeight: 800, color: "#b45309" }}>
-                  남은 항목: {checklistGapLabels.slice(0, 4).join(" · ")}
-                </div>
-              ) : null}
-              {unresolvedChecklistCount > 0 ? (
-                <div style={{ marginTop: 6, fontSize: 12.5, color: "#64748b" }}>미해결 항목 {unresolvedChecklistCount}개</div>
-              ) : null}
-              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <button type="button" onClick={() => onNavigateFix?.()} style={btnPrimary}>지금 보완</button>
-              </div>
-            </div>
-
-            <div style={card}>
-              <div style={cardTitle}>실행 환경 준비도 {envReadinessPercent}%</div>
-              <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-                <div style={{ width: `${envReadinessPercent}%`, height: "100%", background: "#0f766e", borderRadius: 999 }} />
-              </div>
-              <div style={{ marginTop: 10, display: "grid", gap: 8, fontSize: 12.5, color: "#0f172a" }}>
-                <div style={row}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>Git 연결</div>
-                <div style={row}><span style={envPill(envStatus.github)}>{labelEnv(envStatus.github)}</span>GitHub 인증</div>
-                <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
-                <div style={row}>
-                  <span style={envPill(envStatus.connectionTest)}>{labelEnv(envStatus.connectionTest)}</span>연결 테스트
-                </div>
-                <div style={row}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
-              </div>
-              {executionSetup?.gitRepoName ? (
-                <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>
-                  저장소: <strong>{executionSetup.gitRepoName}</strong>
-                  <span style={{ marginLeft: 10, color: "#64748b" }}>기본 브랜치: {executionSetup.baseBranch}</span>
-                </div>
-              ) : null}
-              {envStatus.message ? <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>{envStatus.message}</div> : null}
-              <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>환경설정</a>
-                <button type="button" onClick={() => void loadEnv()} disabled={envBusy} style={{ ...btnMuted, opacity: envBusy ? 0.6 : 1 }}>
-                  다시 점검
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
 
         <div
           style={{
@@ -659,6 +607,7 @@ export function PrototypePreviewPanel({
                     setTemplateOverride(next);
                     savePrototypeGenerationRecord(projectId, { selectedTemplate: next });
                     refreshRecord();
+                    setTemplatePreviewOpen(true);
                     // 템플릿 선택 즉시 Planner(Task packages) 생성: Cursor 실행은 사용자가 "자동 생성 시작"을 눌렀을 때만.
                     if (canRequestGeneration.designOk) {
                       void (async () => {
@@ -696,9 +645,7 @@ export function PrototypePreviewPanel({
                 </button>
                 {isRecommended ? <span style={badge}>추천</span> : <span style={badgeMuted}>사용자 선택</span>}
               </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>
-                예상 화면 {expectedPageCount} · 난이도 {difficultyKr}
-              </div>
+              <div style={{ height: 6 }} />
 
               <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
                 상태:{" "}
@@ -776,9 +723,6 @@ export function PrototypePreviewPanel({
                 <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                   상태 새로고침
                 </button>
-                <a href={settingsHref} style={{ ...btn, textDecoration: "none" }}>
-                  환경설정
-                </a>
               </div>
 
               {isCancelRequested ? (
@@ -909,40 +853,43 @@ export function PrototypePreviewPanel({
               <div style={{ marginTop: 8, fontSize: 13, color: "#0f172a" }}>
                 진행 상태: <span style={{ fontWeight: 800 }}>{progressSummaryLine}</span>
               </div>
-              <button type="button" onClick={() => setProgressDetailOpen((v) => !v)} style={{ ...btnMuted, marginTop: 10 }}>
-                {progressDetailOpen ? "진행 상세 접기" : "진행 상세 보기"}
-              </button>
-              {progressDetailOpen ? (
-                <>
-                  <div style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>파이프라인 저장</div>
-                    <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.45 }}>
-                      실행 기록은 서버 측 파일 저장소에 보관됩니다(DB 마이그레이션 전). PR/Merge 전용 경로는 프로토타입 자동 생성 파이프라인과 연결 테스트 파이프라인이 서로 분리되어 있습니다.
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                    {timeline.map((s) => (
-                      <div key={s.label} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, color: "#0f172a" }}>
-                        <span style={timelineDot(s.status)} />
-                        <span style={{ fontWeight: 800 }}>{s.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: 12, fontSize: 12.5, color: "#64748b" }}>
-                    <span style={{ marginRight: 12 }}><span style={timelineDot("success")} /> 실제 완료</span>
-                    <span style={{ marginRight: 12 }}><span style={timelineDot("running")} /> 진행 가능</span>
-                    <span style={{ marginRight: 12 }}><span style={timelineDot("pending")} /> 미연동</span>
-                    <span style={{ marginRight: 12 }}><span style={timelineDot("blocked")} /> 수동 처리</span>
-                    <span><span style={timelineDot("failed")} /> 오류</span>
-                  </div>
-                </>
-              ) : null}
             </div>
 
             <div style={card}>
               <div style={cardTitle}>자동화 파이프라인 상태</div>
-              <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, color: "#0f172a", whiteSpace: "pre-wrap" }}>
-                {automationRows.join("\n")}
+              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", fontSize: 12.5, color: "#475569" }}>
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 999, background: "#22c55e", border: "2px solid #16a34a" }} />
+                  완료
+                </span>
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 999, background: "#3b82f6", border: "2px solid #2563eb" }} />
+                  진행중
+                </span>
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 999, background: "#e2e8f0", border: "2px solid #94a3b8" }} />
+                  대기
+                </span>
+              </div>
+              <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                {automationRows.map((r, idx) => (
+                  <div key={`${idx}:${r.label}`} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 999,
+                        marginTop: 3,
+                        background: r.state === "done" ? "#22c55e" : r.state === "running" ? "#3b82f6" : "#e2e8f0",
+                        border: `2px solid ${r.state === "done" ? "#16a34a" : r.state === "running" ? "#2563eb" : "#94a3b8"}`,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ fontSize: 13, lineHeight: 1.55, color: "#0f172a", fontWeight: r.state === "running" ? 900 : 700 }}>
+                      {r.label}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -954,7 +901,7 @@ export function PrototypePreviewPanel({
                   : "아직 작업 계획이 없습니다. 템플릿을 선택하면 AI 기획자가 작업분해(Task packages)를 생성합니다."}
               </div>
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <button type="button" onClick={() => setProgressDetailOpen(true)} style={btnMuted}>
+                <button type="button" onClick={() => {}} style={{ ...btnMuted, opacity: 0.6, cursor: "default" }} disabled>
                   전체 보기
                 </button>
                 <button
@@ -990,6 +937,27 @@ export function PrototypePreviewPanel({
           />
         ) : (
           <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>URL을 먼저 연결해 주세요.</div>
+        )}
+      </PrototypePreviewDraggableShell>
+
+      <PrototypePreviewDraggableShell
+        open={templatePreviewOpen}
+        onClose={() => setTemplatePreviewOpen(false)}
+        title="템플릿 미리보기"
+        modalWidth="min(980px, calc(100vw - 20px))"
+      >
+        {effectiveTemplateDef ? (
+          <div style={{ display: "grid", gap: 12 }}>
+            <PrototypeTemplateMockPreview template={effectiveTemplateDef} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" onClick={() => setTemplatePreviewOpen(false)} style={btnMuted}>닫기</button>
+              <button type="button" onClick={() => void onCursorAutoRequest()} disabled={!canStartPrototypeAutomation || protoBusy || isRunningState} style={btnPrimary}>
+                이 템플릿으로 자동 생성 시작
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>템플릿 정보를 찾을 수 없습니다.</div>
         )}
       </PrototypePreviewDraggableShell>
 
