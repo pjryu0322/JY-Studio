@@ -146,7 +146,9 @@ function ProjectAdminSettingsInner() {
               프로토타입 자동 생성 환경설정
             </h1>
             <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-              Git·GitHub·Cursor 연결과 자동 실행 정책을 설정합니다.
+              Git · GitHub · Cursor 연결과 자동 실행 정책을 설정합니다.
+              <br />
+              프로젝트 단계와 관계없이 언제든 수정할 수 있습니다.
             </p>
           </header>
 

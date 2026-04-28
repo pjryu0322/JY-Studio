@@ -47,7 +47,6 @@ function axisStatus(ok: boolean | null | undefined): { label: string; tone: "mut
 export function ExecutionSetupPanel(props: {
   projectId: string;
   canEdit: boolean;
-  specWorkflowConfirmed: boolean;
   executionSetup: ExecutionSetupDto | null | undefined;
   setExecutionSetup: Dispatch<SetStateAction<ExecutionSetupDto | null | undefined>>;
   setMessage: (msg: string | null) => void;
@@ -77,7 +76,6 @@ export function ExecutionSetupPanel(props: {
   const {
     projectId,
     canEdit,
-    specWorkflowConfirmed,
     executionSetup,
     setExecutionSetup,
     setMessage,
@@ -178,30 +176,6 @@ export function ExecutionSetupPanel(props: {
   const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
   const flowMode = Boolean(unified && executionEnvironmentFlow);
   const stagedPrototype = Boolean(unified && prototypeStagedLayout);
-
-  if (!specWorkflowConfirmed && !stagedPrototype) {
-    return (
-      <div
-        id="execution-setup-panel"
-        data-ui-label="[F-1-3-6] 실행 환경 설정 (실행 계획 미확정)"
-        style={{
-          marginTop: 16,
-          padding: 12,
-          borderRadius: 12,
-          border: "1px solid #e2e8f0",
-          background: "#f8fafc",
-        }}
-      >
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-          <WorkspaceLabelBadge section="executionSetup" />
-          <strong style={{ fontSize: 14 }}>{WORKSPACE_SECTION_META.executionSetup.title}</strong>
-          <span style={{ fontSize: 12, color: "#64748b" }}>
-            공식 실행 계획이 확정된 뒤 Git·GitHub·Cursor 연결과 실행 옵션·정책을 설정할 수 있습니다.
-          </span>
-        </div>
-      </div>
-    );
-  }
 
   const es = executionSetup ?? null;
   const validationPayload = es?.cursorApiValidation ?? null;
@@ -683,24 +657,6 @@ export function ExecutionSetupPanel(props: {
           ) : null}
           {stagedPrototype ? (
             <>
-              {!specWorkflowConfirmed ? (
-                <div
-                  style={{
-                    marginBottom: 12,
-                    padding: 10,
-                    borderRadius: 10,
-                    background: "#fffbeb",
-                    border: "1px solid #fcd34d",
-                    color: "#92400e",
-                    fontSize: 12.5,
-                    lineHeight: 1.5,
-                    fontWeight: 700,
-                  }}
-                >
-                  아직 Spec 확정 전입니다. 설정은 미리 입력할 수 있으며, 연결 테스트/실행은 Spec 확정 후 진행됩니다.
-                </div>
-              ) : null}
-
               {sectionCard("1. Git 저장소", null, connectionSlotBeforeCursor ?? null)}
               {sectionCard("2. GitHub 인증", null, connectionSlotGithubAuth ?? null)}
               {sectionCard("3. Cursor API", null, renderCursorConnectionBlock({ compactTitle: true }))}
