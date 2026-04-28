@@ -20,6 +20,10 @@ import {
   patchTaskExecutionRunStage2RuntimeMonitor,
 } from "@/lib/service/envTestStage2RuntimeMonitor";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
+import {
+  ENV_TEST_ROLE_SEP_EXECUTOR_ACK_FAIL_RETURN_MESSAGE,
+  ENV_TEST_ROLE_SEP_EXECUTOR_NOT_READY_LAST_EVAL,
+} from "@/lib/service/envTestUserFacingMessages";
 import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
@@ -120,7 +124,7 @@ export async function runEnvTestStage2PreCursorExecutorGate(input: {
         status: "FAILED",
         executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
         lastEvalResult: "env_test_stage2_executor_ack_failed",
-        lastEvalSummary: "Stage 2: Executor(OpenAI) 준비 확인이 PASS가 아닙니다.",
+        lastEvalSummary: ENV_TEST_ROLE_SEP_EXECUTOR_NOT_READY_LAST_EVAL,
       },
     });
     await refreshWorkflowStates(projectId);
@@ -151,7 +155,7 @@ export async function runEnvTestStage2PreCursorExecutorGate(input: {
       result: {
         ok: false,
         steps,
-        message: "Stage 2 Executor(OpenAI) ACK가 통과하지 못했습니다.",
+        message: ENV_TEST_ROLE_SEP_EXECUTOR_ACK_FAIL_RETURN_MESSAGE,
       },
     };
   }

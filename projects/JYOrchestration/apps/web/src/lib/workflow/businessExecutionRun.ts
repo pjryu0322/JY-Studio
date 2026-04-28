@@ -59,7 +59,7 @@ export function defaultBusinessExecutionRunMessage(status: BusinessExecutionRunS
     case "queued":
       return "대기 중(로컬 큐만 · 실제 디스패치 없음).";
     case "running":
-      return "진행 중(로컬 모니터링 · Stage1/Stage2 아님).";
+      return "진행 중(로컬 모니터링 · 환경 연결 테스트 아님).";
     case "completed":
       return "완료(로컬 목 · 환경 테스트 흐름 아님).";
     case "failed":
@@ -338,9 +338,9 @@ export function businessExecutionRunLatestStrip(
 export function businessExecutionRunSubtleNote(run: BusinessExecutionRun): string {
   switch (run.status) {
     case "queued":
-      return "비즈니스 실행 대기 · Stage1/Stage2 아님 · 아직 시작되지 않음.";
+      return "비즈니스 실행 대기 · 환경 연결 테스트 아님 · 아직 시작되지 않음.";
     case "running":
-      return "비즈니스 실행 중 · Stage1/Stage2 아님.";
+      return "비즈니스 실행 중 · 환경 연결 테스트 아님.";
     case "completed":
       return "비즈니스 실행 완료 · 환경 테스트 흐름 아님.";
     case "failed":

@@ -79,9 +79,9 @@ type ProjectMembersSectionProps = {
   currentUserId?: string | null;
   /** 탭 분리: 사람 멤버만 / AI만 / 전체 / 통합(사용자+AI 한 화면) */
   memberSurface?: "all" | "human" | "ai" | "unified";
-  /** AI Members: Stage 2 환경 테스트 실행(프로젝트 편집 권한) */
+  /** AI Members: 역할 분리 환경 검증 실행(프로젝트 편집 권한) */
   canRunStage2EnvTest?: boolean;
-  /** AI Members: 기본 Stage2 멤버 일괄 추가(OWNER 전용 API) */
+  /** AI Members: 기본 역할 분리용 AI 멤버 일괄 추가(OWNER 전용 API) */
   isProjectOwner?: boolean;
 };
 
@@ -1276,7 +1276,7 @@ export function ProjectMembersSection({
     memberSurface === "human"
       ? "프로젝트에 참여하는 사람 사용자를 초대·역할 변경합니다."
       : memberSurface === "ai"
-        ? "Stage 2에 사용하는 역할을 카드로 관리합니다. 상단에서 기본 멤버 추가와 역할 테스트를 실행할 수 있습니다."
+        ? "역할 분리 환경 검증에 쓰는 역할을 카드로 관리합니다. 상단에서 기본 멤버 추가와 역할 테스트를 실행할 수 있습니다."
         : memberSurface === "unified"
           ? "사람과 AI가 같은 멤버 목록에 표시됩니다. 역할은 동일하게 적용되며, AI만 모델·오케스트레이션 설정이 추가됩니다."
           : "HUMAN / AI 멤버를 프로젝트 단위로 관리합니다. AI 멤버에는 사람(actor)이 액션을 요청할 수 있습니다.";
@@ -1454,7 +1454,7 @@ export function ProjectMembersSection({
       >
         <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{meta.title}</div>
         {compact ? (
-          <div style={{ fontSize: 10, color: "#6d28d9", fontWeight: 800, margin: "4px 0 4px 0" }}>Stage 2 역할</div>
+          <div style={{ fontSize: 10, color: "#6d28d9", fontWeight: 800, margin: "4px 0 4px 0" }}>역할 분리 검증 역할</div>
         ) : null}
         {orchKey === "reviewer" && compact ? (
           <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#b45309", lineHeight: 1.45 }}>
@@ -1480,7 +1480,7 @@ export function ProjectMembersSection({
         ) : null}
         {compact && cardOrchRole ? (
           <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-            <span style={{ color: "#64748b" }}>모델:</span> openai · Stage2 기본{" "}
+            <span style={{ color: "#64748b" }}>모델:</span> openai · 역할 분리 기본{" "}
             <span style={{ fontFamily: "monospace" }}>gpt-4o-mini</span>
             {assigned[0]
               ? ` · 멤버 지정: ${reviewerModelDisplayLabel(cardOrchRole, assigned[0].aiModelOverride)}`
@@ -2063,7 +2063,7 @@ export function ProjectMembersSection({
               고급 · 품질 리뷰어 및 기획 역할
             </summary>
             <p style={{ margin: "10px 0 10px 0", fontSize: 12, color: "#64748b" }}>
-              Stage 2 기본 역할 카드에 포함되지 않는 오케스트레이션 역할입니다.
+              역할 분리 기본 역할 카드에 포함되지 않는 오케스트레이션 역할입니다.
             </p>
             <div style={{ display: "grid", gap: 12 }}>
               {renderOrchestrationRoleCard("quality-reviewer")}

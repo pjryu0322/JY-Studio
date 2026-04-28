@@ -141,12 +141,6 @@ function ProjectAdminSettingsInner() {
 
       {projectId && project && !errorMessage ? (
         <>
-          <header style={{ marginBottom: 12 }}>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
-              프로토타입 자동 생성 환경설정
-            </h1>
-          </header>
-
           <div id="execution-setup-panel">
             <ProjectExecutionEnvironmentPanel
               projectId={projectId}

@@ -1,4 +1,4 @@
-export type PrototypeTemplateType = "dashboard" | "booking" | "marketplace" | "landing";
+export type PrototypeTemplateType = "dashboard" | "booking" | "marketplace" | "landing" | "meeting-workspace";
 
 export type PrototypeTemplate = Readonly<{
   id: PrototypeTemplateType;
@@ -13,11 +13,21 @@ export type PrototypeTemplate = Readonly<{
 
 export const PROTOTYPE_TEMPLATES: readonly PrototypeTemplate[] = [
   {
+    id: "meeting-workspace",
+    nameKo: "회의 분석 워크스페이스",
+    nameEn: "Meeting Analysis Workspace",
+    description: "녹취 업로드·변환·화자 분리·회의록 초안/요약·스크립트 확인을 한 화면에서 처리",
+    keywords: ["회의록", "녹취", "음성파일", "stt", "화자", "화자분리", "스크립트", "회의 요약", "회의", "대화", "전사"],
+    navigationItems: ["워크스페이스", "회의 목록", "참여자", "설정"],
+    summaryCards: ["업로드 대기", "변환 중", "초안 생성", "완료"],
+    primarySections: ["회의 파일 목록", "타임라인", "요약/스크립트 패널"],
+  },
+  {
     id: "dashboard",
     nameKo: "대시보드",
     nameEn: "Dashboard",
     description: "내부 운영·처리 현황을 한눈에 보는 형태",
-    keywords: ["관리자", "운영", "통계", "권한", "업무", "내부", "회의록", "녹취", "문서", "워크플로", "파이프라인"],
+    keywords: ["관리자", "운영", "통계", "권한", "업무", "내부", "문서", "워크플로", "파이프라인"],
     navigationItems: ["대시보드", "요청 관리", "사용자 관리", "통계", "설정"],
     summaryCards: ["승인 대기", "진행 중", "최근 요청", "사용자 수"],
     primarySections: ["최근 요청 리스트", "상태별 처리 현황", "주요 지표"],
@@ -99,10 +109,11 @@ export function recommendPrototypeTemplate(input: string): {
 
   // Priority keyword buckets (explicit rules requested).
   const ruleOrder: Array<{ id: PrototypeTemplateType; keywords: readonly string[] }> = [
+    { id: "meeting-workspace", keywords: ["회의록", "녹취", "음성파일", "화자분리", "스크립트", "회의 요약", "전사", "stt"] },
     { id: "booking", keywords: ["예약", "일정", "상담"] },
     { id: "marketplace", keywords: ["상품", "판매", "주문", "매칭"] },
     { id: "landing", keywords: ["소개", "홍보", "가입", "사전예약"] },
-    { id: "dashboard", keywords: ["관리자", "운영", "통계", "권한", "업무", "회의록", "녹취", "문서", "워크플로", "승인", "배포"] },
+    { id: "dashboard", keywords: ["관리자", "운영", "통계", "권한", "업무", "문서", "워크플로", "승인", "배포"] },
   ];
   for (const r of ruleOrder) {
     const matched = r.keywords.filter((k) => text.includes(normalize(k)));

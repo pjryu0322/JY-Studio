@@ -49,7 +49,7 @@ export const AI_MEMBER_ROLE_DEFINITIONS: Record<AiMemberRoleKey, AiMemberRoleDef
     inviteDisplayName: null,
     roleBoundary: [
       "Cursor 실행 요청 시작",
-      "Stage 2 실행의 시작점",
+      "역할 분리 환경 검증의 시작점",
       "branch push까지 유도",
       "PR 생성·리뷰·보안·merge 판단은 하지 않음",
     ],

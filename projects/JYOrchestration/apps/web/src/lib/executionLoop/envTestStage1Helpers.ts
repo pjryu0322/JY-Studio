@@ -7,6 +7,13 @@ import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { prisma } from "@/lib/prisma";
 import { normalizeStage1EnvTestHeadBranch } from "@/lib/service/githubEnvTestPullRequestService";
+import {
+  ENV_TEST_BRANCH_NAME_UNKNOWN_MESSAGE,
+  ENV_TEST_BRANCH_NAME_UNKNOWN_SUMMARY,
+  ENV_TEST_COMMITTED_SUMMARY_PLATFORM_PR,
+  ENV_TEST_CONNECT_PR_FAIL_PREFIX,
+  formatEnvTestPrSmokeFailureUserMessage,
+} from "@/lib/service/envTestUserFacingMessages";
 import { parseStage2RuntimeMonitorFromValidationOutput } from "@/lib/service/envTestStage2RuntimeMonitor";
 import { patchTaskExecutionRunStage2Timing } from "@/lib/service/envTestStage2Telemetry";
 import type { LoopStepRecord, RunExecutionLoopResult } from "@/lib/executionLoop/runLoopTypes";
@@ -43,7 +50,7 @@ const ENV_TEST_STAGE1_PR_FIRST_RETRY_INTERVAL_MS = parsePositiveIntMs(
 );
 const ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX = parsePositiveInt(
   "CURSOR_ENV_TEST_STAGE1_PR_FIRST_RETRY_MAX",
-  6,
+  8,
   { min: 1, max: 8 }
 );
 
@@ -71,11 +78,21 @@ export async function applyStage1EnvTestPrCreateTerminalFailure(input: {
 }): Promise<void> {
   const http = input.httpStatus != null && Number.isFinite(input.httpStatus) ? input.httpStatus : null;
   const head = String(input.headBranch ?? "").trim() || null;
+  const headRaw = String(input.headBranchRaw ?? "").trim() || null;
+  const headNorm = String(input.headBranchNormalized ?? "").trim() || null;
+  const headSent = String(input.headSentToGithub ?? "").trim() || null;
   const ghCode = String(input.githubPrCode ?? "").trim();
-  const summaryPrefix = http != null ? `ENV_TEST(Stage1) PR 실패 [http=${http}]` : `ENV_TEST(Stage1) PR 실패`;
+  const summaryPrefix =
+    http != null ? `${ENV_TEST_CONNECT_PR_FAIL_PREFIX} [http=${http}]` : ENV_TEST_CONNECT_PR_FAIL_PREFIX;
   const ghPart = ghCode ? ` [gh=${ghCode}]` : "";
   const branchPart = head ? ` 브랜치=${head}` : "";
-  const lastEvalSummary = `${summaryPrefix}${ghPart}${branchPart}: ${input.message}`.slice(0, 2000);
+  const headMetaParts = [
+    headSent && headSent !== head ? `sent=${headSent}` : null,
+    headNorm && headNorm !== head ? `norm=${headNorm}` : null,
+    headRaw && headRaw !== head ? `raw=${headRaw}` : null,
+  ].filter(Boolean);
+  const headMeta = headMetaParts.length ? ` [${headMetaParts.join(" ")}]` : "";
+  const lastEvalSummary = `${summaryPrefix}${ghPart}${branchPart}${headMeta}: ${input.message}`.slice(0, 2000);
 
   await prisma.taskExecutionRun.update({
     where: { id: input.execRunId },
@@ -148,7 +165,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
         reason: "empty_branch_at_runStage1EnvTestPrSmokePath_entry",
       },
     });
-    throw new Error("[runStage1EnvTestPrSmokePath] Stage1 requires non-empty branchName.");
+    throw new Error("[runStage1EnvTestPrSmokePath] ENV_TEST requires non-empty branchName.");
   }
 
   appendTaskProgressLog({
@@ -187,7 +204,7 @@ export async function runStage1EnvTestPrSmokePath(input: {
     },
   });
 
-  const committedSummary = "ENV_TEST(Stage1): 스모크 — 플랫폼 PR 생성·머지.";
+  const committedSummary = ENV_TEST_COMMITTED_SUMMARY_PLATFORM_PR;
 
   await prisma.task.update({
     where: { id: input.taskId },
@@ -344,7 +361,7 @@ export async function runStage1EnvTestSimplePipeline(input: {
   });
   if (!isEnvTestStage1TaskKind(input.taskKind)) {
     throw new Error(
-      "[runStage1EnvTestSimplePipeline] taskKind must be ENV_TEST (Stage 1); Stage 2 uses reflection/bypass pipelines."
+      "[runStage1EnvTestSimplePipeline] taskKind must be ENV_TEST; role-separation tests use reflection/bypass pipelines."
     );
   }
 
@@ -381,7 +398,7 @@ export async function runStage1EnvTestSimplePipeline(input: {
       data: {
         executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
         lastEvalResult: "failed",
-        lastEvalSummary: "ENV_TEST(Stage1): 플랫폼이 부여한 브랜치 이름을 확인할 수 없습니다.",
+        lastEvalSummary: ENV_TEST_BRANCH_NAME_UNKNOWN_SUMMARY,
       },
     });
     await refreshWorkflowStates(projectId);
@@ -390,7 +407,7 @@ export async function runStage1EnvTestSimplePipeline(input: {
       result: {
         ok: false,
         steps: input.steps,
-        message: "ENV_TEST(Stage1): 브랜치 이름을 확인할 수 없습니다.",
+        message: ENV_TEST_BRANCH_NAME_UNKNOWN_MESSAGE,
       },
     };
   }
@@ -441,7 +458,7 @@ export async function runStage1EnvTestSimplePipeline(input: {
         result: {
           ok: false,
           steps: input.steps,
-          message: "ENV_TEST(Stage1): 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다.",
+          message: formatEnvTestPrSmokeFailureUserMessage(outPr.message),
         },
       };
     case "return":
@@ -465,7 +482,7 @@ export async function runStage1EnvTestSimplePipeline(input: {
         },
       });
       throw new Error(
-        "[runStage1EnvTestSimplePipeline] Stage1 must complete PR phase or explicit branch/PR failure; unexpected outcome from runStage1EnvTestPrSmokePath."
+        "[runStage1EnvTestSimplePipeline] ENV_TEST must complete PR phase or explicit branch/PR failure; unexpected outcome from runStage1EnvTestPrSmokePath."
       );
     }
   }

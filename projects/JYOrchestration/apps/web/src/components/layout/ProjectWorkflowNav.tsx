@@ -14,38 +14,10 @@ import {
   type AppFlowStepId,
 } from "@/lib/workflow/flow-state";
 
-/**
- * MVP: 프로젝트 워크플로 스트립에서 「추적」 비노출(`/trace` 라우트·기능은 유지).
- * 재도입 시 `true`로 변경하면 아래 `insight` 네비가 다시 렌더됩니다.
- */
-const SHOW_PROJECT_TRACE_NAV = false;
-
 type NavItem = { label: string; href: string; screenLabel: string };
 
 function isAdminPathActive(pathname: string, basePath: string): boolean {
   return pathname === basePath || pathname.startsWith(`${basePath}/`);
-}
-
-function isTraceNavActive(pathname: string, searchParams: URLSearchParams, contextProjectId: string | null, linkHref: string): boolean {
-  if (!(pathname === "/trace" || pathname.startsWith("/trace/"))) return false;
-  if (!contextProjectId?.trim()) return true;
-  try {
-    const u = new URL(linkHref, "http://localhost");
-    const want = (u.searchParams.get("projectId") ?? "").trim();
-    const got = (searchParams.get("projectId") ?? "").trim();
-    return want === got && want === contextProjectId.trim();
-  } catch {
-    return false;
-  }
-}
-
-function withProjectQuery(path: string, projectId: string | null): string {
-  if (!projectId?.trim()) return path;
-  const base = path.split("?")[0] ?? path;
-  const existing = path.includes("?") ? path.slice(path.indexOf("?")) : "";
-  const sp = new URLSearchParams(existing.replace("?", ""));
-  sp.set("projectId", projectId.trim());
-  return `${base}?${sp.toString()}`;
 }
 
 // User-facing primary workflow: keep it minimal.
@@ -81,8 +53,8 @@ const linkMgmt = (active: boolean): CSSProperties => ({
 });
 
 /**
- * 프로젝트 컨텍스트가 있을 때만: 워크플로 단계 (+ 옵션: 추적).
- * 글로벌 상단이 아닌 프로젝트 영역(요구사항 헤더·워크플로 페이지 등)에 배치합니다.
+ * 프로젝트 컨텍스트가 있을 때만: 워크플로 단계(및 확장 시 프로젝트 관리 링크).
+ * 프로젝트 영역(요구사항 헤더·워크플로 페이지 등)에 배치합니다.
  */
 function ProjectWorkflowNavInner() {
   const pathname = usePathname() || "/";
@@ -97,11 +69,6 @@ function ProjectWorkflowNavInner() {
 
   // Admin links are available via the gear/settings entry point (not primary workflow).
   const admin: NavItem[] = useMemo(() => [], []);
-
-  const insight: NavItem[] = useMemo(() => {
-    if (!SHOW_PROJECT_TRACE_NAV) return [];
-    return [{ label: "추적", href: withProjectQuery("/trace", projectContextId), screenLabel: "공통-상단내비-추적" }];
-  }, [projectContextId]);
 
   if (!hasProjectContext || !projectContextId) return null;
 
@@ -161,25 +128,6 @@ function ProjectWorkflowNavInner() {
             })}
           </nav>
         </>
-      ) : null}
-      {SHOW_PROJECT_TRACE_NAV ? (
-        <nav aria-label="인사이트" style={{ display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
-          {insight.map((item) => {
-            const isActive = isTraceNavActive(pathname, searchParams, projectContextId, item.href);
-            return (
-              <span key={item.href} className="relative">
-                <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-                <Link
-                  href={item.href}
-                  style={linkMgmt(isActive)}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              </span>
-            );
-          })}
-        </nav>
       ) : null}
     </div>
   );

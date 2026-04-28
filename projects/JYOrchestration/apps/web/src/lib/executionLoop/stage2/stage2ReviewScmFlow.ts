@@ -34,6 +34,17 @@ import {
   patchTaskExecutionRunStage2RuntimeMonitor,
 } from "@/lib/service/envTestStage2RuntimeMonitor";
 import { ENV_TEST_STAGE2_RUN_META_KEY } from "@/lib/service/envTestStage2Messages";
+import {
+  ENV_TEST_ROLE_SEP_SCM_APPROVED_MERGE_PENDING_SUMMARY,
+  ENV_TEST_ROLE_SEP_SCM_DECISION_MERGE_NOT_APPROVED_DEFAULT_SUMMARY,
+  ENV_TEST_ROLE_SEP_SCM_MISSING_REPO_BRANCH_SUMMARY,
+  ENV_TEST_ROLE_SEP_SCM_PLATFORM_FALLBACK_MERGE_PENDING_SUMMARY,
+  ENV_TEST_ROLE_SEP_SCM_PLATFORM_FALLBACK_PROGRESS_LOG,
+  formatEnvTestRoleSepReviewFailReturnMessage,
+  formatEnvTestRoleSepScmDecisionBlockedReturnMessage,
+  formatEnvTestRoleSepScmPreflightBlockedMessage,
+  formatEnvTestRoleSepSecurityFailReturnMessage,
+} from "@/lib/service/envTestUserFacingMessages";
 import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
 import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
@@ -90,7 +101,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
   await refreshWorkflowStates(input.projectId);
 
   const reviewRequest = buildEnvTestStage2ReviewRequest({
-    requestedIntent: "ENV_TEST Stage2 smoke",
+    requestedIntent: "ENV_TEST role_separation smoke",
     changedFiles,
     diffSummary,
   });
@@ -239,7 +250,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     });
     return {
       ok: false,
-      message: `Stage 2: 由щ럭 ?ㅽ뙣 ??${reviewResult.reason}`,
+      message: formatEnvTestRoleSepReviewFailReturnMessage(reviewResult.reason),
       blockedReason: "REVIEW_FAILED",
     };
   }
@@ -422,7 +433,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
     });
     return {
       ok: false,
-      message: `Stage 2: Security ?ㅽ뙣 ??${securityResult.reason}`,
+      message: formatEnvTestRoleSepSecurityFailReturnMessage(securityResult.reason),
       blockedReason: "SECURITY_FAILED",
     };
   }
@@ -511,7 +522,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
       projectId: input.projectId,
       taskId: input.taskId,
       userId: input.actorUserId,
-      detail: { message: "SCM 誘몃벑濡????뚮옯?쇱씠 merge쨌verify ?섑뻾" },
+      detail: { message: ENV_TEST_ROLE_SEP_SCM_PLATFORM_FALLBACK_PROGRESS_LOG },
     });
     logStage2CatalogEvent({
       phase: "scm_platform_fallback",
@@ -526,7 +537,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
       data: {
         executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
         lastEvalResult: "merge_pending",
-        lastEvalSummary: "Stage 2: SCM 誘몄꽕?????뚮옯??吏곸젒 merge",
+        lastEvalSummary: ENV_TEST_ROLE_SEP_SCM_PLATFORM_FALLBACK_MERGE_PENDING_SUMMARY,
       },
     });
     await refreshWorkflowStates(input.projectId);
@@ -579,7 +590,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
           executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_BLOCKED,
           status: "FAILED",
           lastEvalResult: "scm_blocked",
-          lastEvalSummary: "Stage 2 SCM ?먮떒???꾩슂??repo/base/branch ?뺣낫媛 遺議깊빀?덈떎.",
+          lastEvalSummary: ENV_TEST_ROLE_SEP_SCM_MISSING_REPO_BRANCH_SUMMARY,
         },
       });
       await refreshWorkflowStates(input.projectId);
@@ -592,7 +603,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
         detail: { step: "scm_preflight", reason: "missing_repo_branch" },
       });
       await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorScmDone(m, Date.now()));
-      return { ok: false, message: "Stage 2: SCM ?먮떒 遺덇?(??μ냼/釉뚮옖移??뺣낫 遺議?", blockedReason: "SCM_BLOCKED" };
+      return { ok: false, message: formatEnvTestRoleSepScmPreflightBlockedMessage(), blockedReason: "SCM_BLOCKED" };
     }
 
     const scmDecStarted = Date.now();
@@ -662,7 +673,9 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
           executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_BLOCKED,
           status: "FAILED",
           lastEvalResult: "scm_blocked",
-          lastEvalSummary: (scmDecision.summary ?? "SCM Manager媛 merge瑜??뱀씤?섏? ?딆븯?듬땲??").slice(0, 1500),
+          lastEvalSummary: (
+            scmDecision.summary ?? ENV_TEST_ROLE_SEP_SCM_DECISION_MERGE_NOT_APPROVED_DEFAULT_SUMMARY
+          ).slice(0, 1500),
         },
       });
       await refreshWorkflowStates(input.projectId);
@@ -677,7 +690,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
       await patchTaskExecutionRunStage2RuntimeMonitor(input.execRunId, (m) => monitorScmDone(m, Date.now()));
       return {
         ok: false,
-        message: `Stage 2: SCM 李⑤떒 ??${(scmDecision.summary ?? "hold/reject").slice(0, 800)}`,
+        message: formatEnvTestRoleSepScmDecisionBlockedReturnMessage(scmDecision.summary ?? ""),
         blockedReason: "SCM_BLOCKED",
       };
     }
@@ -687,7 +700,7 @@ export async function runEnvTestStage2ReviewScmAfterPrOpened(input: {
       data: {
         executionWorkflowStatus: EXECUTION_WORKFLOW.MERGE_PENDING,
         lastEvalResult: "merge_pending",
-        lastEvalSummary: "Stage 2: SCM approve_merge ???뚮옯??merge",
+        lastEvalSummary: ENV_TEST_ROLE_SEP_SCM_APPROVED_MERGE_PENDING_SUMMARY,
       },
     });
     await refreshWorkflowStates(input.projectId);

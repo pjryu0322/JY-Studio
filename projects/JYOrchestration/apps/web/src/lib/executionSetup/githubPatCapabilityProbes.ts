@@ -201,12 +201,22 @@ export async function runGithubPatCapabilityProbes(input: {
   );
   if (!repoRes.ok) {
     const body = await readBodySnippet(repoRes);
-    pushFail(
-      "repo_metadata",
-      repoRes,
-      `저장소 메타데이터 접근 실패 HTTP ${repoRes.status}: ${body}`,
-      repoAccepted
-    );
+    let detail = `저장소 메타데이터 접근 실패 HTTP ${repoRes.status}: ${body}`;
+    if (repoRes.status === 401) {
+      detail +=
+        " — GitHub가 PAT를 거부했습니다(Bad credentials). 토큰 만료·폐기·복사 오타, 다른 GitHub 계정용 토큰인지 확인하고 Settings → Developer settings에서 새 PAT를 발급한 뒤「새 토큰 교체」로 다시 저장하세요. 조직 저장소는 조직 SSO가 켜져 있으면 해당 조직에 토큰을 승인해야 합니다.";
+      const apiHost = (() => {
+        try {
+          return new URL(api).hostname;
+        } catch {
+          return "";
+        }
+      })();
+      if (apiHost && apiHost !== "api.github.com") {
+        detail += ` (현재 서버 GitHub API 호스트: ${apiHost} — github.com용 PAT와 호스트가 맞는지 확인하세요.)`;
+      }
+    }
+    pushFail("repo_metadata", repoRes, detail, repoAccepted);
     return finalizeSnapshot(
       steps,
       false,

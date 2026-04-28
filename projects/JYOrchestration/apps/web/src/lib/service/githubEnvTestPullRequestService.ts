@@ -6,21 +6,106 @@ import {
   resolveGithubRestTokenAndLog,
 } from "@/lib/integration/githubRestCommon";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
+import { ENV_TEST_PR_BODY_ROLE_SEP_LINE } from "@/lib/service/envTestUserFacingMessages";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 
-/** ENV_TEST Stage 1 플랫폼 PR 제목(머지 가드와 동일 문자열). */
+/** 기본(Hello World) 환경 연결 테스트 플랫폼 PR 제목(머지 가드와 동일 문자열). */
 export const ENV_TEST_PR_TITLE = "[JYO][ENV_TEST] Hello World environment validation";
 
-/** ENV_TEST Stage 2 — 역할 분리 readiness PR 제목(머지 가드가 이 문자열과 일치해야 함) */
+/** 역할 분리(ENV_TEST_STAGE2) readiness PR 제목(머지 가드가 이 문자열과 일치해야 함) */
 export const ENV_TEST_STAGE2_PR_TITLE = "[JYO][ENV_TEST_STAGE2] Role-separated readiness validation";
 
 export type EnvTestPullRequestStage = "stage1" | "stage2";
+
+function encodeGithubRefBranchPath(branch: string): string {
+  const s = String(branch ?? "").trim();
+  if (!s) return "";
+  // GitHub `.../git/ref/heads/<ref>` accepts slashes in <ref>; encode each segment but keep `/`.
+  return s
+    .split("/")
+    .filter((p) => p.length > 0)
+    .map((p) => encodeURIComponent(p))
+    .join("/");
+}
+
+export async function probeGithubHeadBranchRef(input: {
+  repoUrl: string;
+  headBranch: string;
+  githubAccessToken: string;
+  projectId?: string | null;
+  taskId?: string | null;
+  execRunId?: string | null;
+}): Promise<{ ok: true } | { ok: false; httpStatus?: number; message: string }> {
+  const parsed = resolveGithubOwnerRepoStrict(input.repoUrl);
+  if (!parsed) return { ok: false, message: "repoUrl을 해석할 수 없습니다." };
+  const head = String(input.headBranch ?? "").trim();
+  if (!head) return { ok: false, message: "headBranch가 비어 있습니다." };
+
+  const api = githubRestApiBase();
+  const refPath = encodeGithubRefBranchPath(head);
+  if (!refPath) return { ok: false, message: "headBranch 인코딩 실패" };
+  const url = `${api}/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}/git/ref/heads/${refPath}`;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${input.githubAccessToken}`,
+        "User-Agent": "JYOrchestration/env-test-pr",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    const txt = await res.text();
+    if (res.ok) {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_head_ref_probe_ok",
+        projectId: input.projectId ?? "",
+        taskId: input.taskId ?? undefined,
+        detail: {
+          executionId: input.execRunId ?? null,
+          headBranch: head,
+          httpStatus: res.status,
+        },
+      });
+      return { ok: true };
+    }
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_head_ref_probe_failed",
+      projectId: input.projectId ?? "",
+      taskId: input.taskId ?? undefined,
+      detail: {
+        executionId: input.execRunId ?? null,
+        headBranch: head,
+        httpStatus: res.status,
+        githubErrorBody: txt.slice(0, 1200),
+      },
+    });
+    return { ok: false, httpStatus: res.status, message: `head ref 확인 실패 (HTTP ${res.status})` };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    appendTaskProgressLog({
+      kind: "execution",
+      phase: "env_test_head_ref_probe_failed",
+      projectId: input.projectId ?? "",
+      taskId: input.taskId ?? undefined,
+      detail: {
+        executionId: input.execRunId ?? null,
+        headBranch: head,
+        httpStatus: null,
+        error: msg.slice(0, 1200),
+      },
+    });
+    return { ok: false, message: msg };
+  }
+}
 
 function buildEnvTestPullRequestBody(branchName: string, stage: EnvTestPullRequestStage): string {
   const taskType = stage === "stage2" ? "ENV_TEST_STAGE2" : "ENV_TEST";
   const taskName =
     stage === "stage2"
-      ? "환경 연결 테스트 Stage 2 - 역할 분리 readiness"
+      ? "환경 연결 테스트 — 역할 분리 readiness"
       : "환경 연결 테스트 - Hello World";
   const purpose =
     stage === "stage2"
@@ -33,7 +118,7 @@ purpose=${purpose}
 branchName=${branchName}
 -->
 
-${stage === "stage2" ? "ENV_TEST Stage 2(readiness) PR — 플랫폼이 생성·갱신합니다." : "환경 연결 테스트(Hello World)용 PR입니다. JYOrchestration 플랫폼에서 생성·갱신됩니다."}`;
+${stage === "stage2" ? ENV_TEST_PR_BODY_ROLE_SEP_LINE : "환경 연결 테스트(Hello World)용 PR입니다. JYOrchestration 플랫폼에서 생성·갱신됩니다."}`;
 }
 
 type PullRes = { html_url?: string; number?: number };
@@ -41,7 +126,7 @@ type PullRes = { html_url?: string; number?: number };
 /**
  * GitHub `POST /repos/{owner}/{repo}/pulls`: 동일 저장소에서는 `head`=브랜치 ref 이름만.
  * `refs/heads/x`·저장소 owner와 동일한 `owner:branch` 중복 접두어는 정규화에서 제거한다.
- * Stage1 동일 저장소 스모크는 브랜치명만 POST. Stage2에서만 422 `head` invalid 시 `owner:branch` 폴백을 시도한다.
+ * Stage1·Stage2 공통: 422 `head` invalid이면 `owner:branch` 한 번 더 POST(조직/네트워크·GitHub 해석 차이 대비).
  */
 export function normalizeGithubPrHeadForSameRepoCreate(
   repoOwner: string,
@@ -343,7 +428,6 @@ export async function createOrUpdateEnvTestPullRequest(params: {
     let parsedErr = parseGithubPullRequestCreateError(txt);
 
     if (
-      stage === "stage2" &&
       !res.ok &&
       res.status === 422 &&
       parsedErr.headFieldInvalid &&
@@ -478,7 +562,7 @@ export type EnvTestPullRequestErrorResult = Exclude<
 
 /**
  * Stage1 PR 외부 재시도: `ENV_TEST_PR_CREATE_FAILED` 만.
- * HTTP 404·502·503·504 만 재시도. 그 외(422 `head` invalid 포함)는 재시도 없음.
+ * HTTP 404·502·503·504 및, 푸시 직후 원격 ref 지연으로 흔한 422(`head` invalid / 미해결)도 짧게 재시도한다.
  */
 export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
   res: EnvTestPullRequestErrorResult,
@@ -488,5 +572,11 @@ export function isEnvTestPullRequestCreateRetryableForStage1HeadDelay(
   const http = (res as EnvTestPrCreateFailed).httpStatus;
   if (http === 404) return true;
   if (http === 502 || http === 503 || http === 504) return true;
+  if (http === 422) {
+    const failed = res as EnvTestPrCreateFailed;
+    if (failed.githubHeadFieldInvalid === true || failed.githubHeadBranchNotFoundish === true) {
+      return true;
+    }
+  }
   return false;
 }

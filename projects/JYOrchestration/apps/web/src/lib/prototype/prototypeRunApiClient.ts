@@ -60,7 +60,24 @@ export async function postPrototypePreviewUrl(
 export async function postPrototypeRunRefresh(
   runId: string,
   body: { projectId: string },
-): Promise<{ success: boolean; data?: { run: PrototypeRun | null }; message?: string }> {
+): Promise<{
+  success: boolean;
+  data?: {
+    run: PrototypeRun | null;
+    nextAction?:
+      | "WAIT_CURSOR"
+      | "WAIT_GITHUB_PUSH"
+      | "REVIEWING"
+      | "OPEN_PR"
+      | "MERGED"
+      | "CONNECT_PREVIEW_URL"
+      | "REWORK_REQUIRED"
+      | "FAILED"
+      | "BLOCKED";
+    userMessage?: string | null;
+  };
+  message?: string;
+}> {
   const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/refresh`, {
     method: "POST",
     credentials: "include",

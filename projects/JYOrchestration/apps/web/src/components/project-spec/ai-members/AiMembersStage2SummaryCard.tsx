@@ -22,7 +22,7 @@ export function AiMembersStage2SummaryCard(props: {
     securityLabel: string;
     scmLabel: string;
   };
-  /** 프로젝트 편집 권한(Stage 2 API 호출 가능) */
+  /** 프로젝트 편집 권한(역할 분리 환경 검증 API 호출 가능) */
   canRunStage2EnvTest: boolean;
   /** Cursor·GitHub 실행기 연결 완료 */
   executorReady: boolean;
@@ -47,9 +47,9 @@ export function AiMembersStage2SummaryCard(props: {
         background: "linear-gradient(180deg, #f5f3ff 0%, #fff 100%)",
       }}
     >
-      <div style={{ fontWeight: 900, fontSize: 14, color: "#4c1d95", marginBottom: 8 }}>Stage 2 역할 테스트</div>
+      <div style={{ fontWeight: 900, fontSize: 14, color: "#4c1d95", marginBottom: 8 }}>역할 분리 환경 검증</div>
       <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#5b21b6", lineHeight: 1.5 }}>
-        실행 환경(Stage 1)이 준비된 뒤, AI 역할 협업 경로를 검증합니다. Reviewer·Security는 플랫폼이 대신하지 않습니다.
+        기본 환경 연결 테스트가 준비된 뒤, AI 역할 협업 경로를 검증합니다. Reviewer·Security는 플랫폼이 대신하지 않습니다.
       </p>
       <div
         style={{
@@ -99,7 +99,7 @@ export function AiMembersStage2SummaryCard(props: {
             cursor: !props.canRunTest || props.busyRun || props.busyDefaults ? "not-allowed" : "pointer",
           }}
         >
-          {props.busyRun ? "실행 중…" : "Stage 2 역할 테스트 실행"}
+          {props.busyRun ? "실행 중…" : "역할 분리 환경 검증 실행"}
         </button>
       </div>
       {!props.canAddDefaults ? (
@@ -107,7 +107,7 @@ export function AiMembersStage2SummaryCard(props: {
       ) : null}
       {!props.canRunStage2EnvTest ? (
         <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#64748b" }}>
-          Stage 2 실행은 프로젝트 편집 권한이 필요합니다.
+          역할 분리 환경 검증은 프로젝트 편집 권한이 필요합니다.
         </p>
       ) : !props.executorReady ? (
         <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#64748b" }}>
@@ -130,7 +130,7 @@ export function AiMembersStage2SummaryCard(props: {
           <strong style={{ color: shortFinalColor(fin) }}>{fin}</strong>
         </div>
       ) : (
-        <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#94a3b8" }}>최근 Stage 2 완료 요약 없음</p>
+        <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#94a3b8" }}>최근 역할 분리 검증 완료 요약 없음</p>
       )}
     </div>
   );

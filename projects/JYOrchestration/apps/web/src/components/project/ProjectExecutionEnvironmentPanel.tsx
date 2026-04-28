@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import {
   fetchEnvironmentTestLast,
   fetchExecutionSetup,
+  type ExecutionSetupDto,
   patchExecutionSetup,
   postEnvironmentTestRun,
   postExecutionSetupValidate,
@@ -11,6 +12,7 @@ import {
   type EnvironmentTestLastDto,
 } from "@/components/project-spec/api";
 import { ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
+import { inferGithubHttpsUrlFromOwnerRepo } from "@/lib/executionSetup/inferGithubRepoUrl";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
 import {
@@ -19,6 +21,7 @@ import {
 } from "@/components/project-spec/ExecutionSetupPanel";
 import {
   githubCredentialLooksStored,
+  cursorCredentialLooksStored,
   peerGithubCredentialMasked,
   secretMaskedDisplay,
 } from "@/components/project-spec/credentialUiMask";
@@ -438,8 +441,11 @@ export function ProjectExecutionEnvironmentPanel({
   const isAdminSettings = settingsSurface === "admin";
   const effectivePurpose: "prototype" | "env-test" =
     settingsPurpose ?? (isAdminSettings ? "prototype" : "env-test");
-  const [executionSetup, setExecutionSetup] = useState<
-    Awaited<ReturnType<typeof fetchExecutionSetup>>["json"]["data"] | null
+  const isPrototypeMvpUi = effectivePurpose === "prototype";
+  const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
+  /** execution_setup 행이 없을 때 GET이 내려주는 동일 계정 peer 힌트 */
+  const [peerHintsWhenNoSetup, setPeerHintsWhenNoSetup] = useState<
+    NonNullable<ExecutionSetupDto["peerCredentialHints"]> | null
   >(null);
   const [executionMessage, setExecutionMessage] = useState<string | null>(null);
   const [gitLinkDraft, setGitLinkDraft] = useState<GitLinkDraft>({
@@ -489,14 +495,21 @@ export function ProjectExecutionEnvironmentPanel({
       const { res, json } = await fetchExecutionSetup(projectId);
       if (res.ok && json.success) {
         const row = json.data;
-        setExecutionSetup(
-          row
-            ? {
-                ...row,
-                allowedPathGlobs: row.allowedPathGlobs ?? [],
-              }
-            : null
-        );
+        if (row) {
+          setPeerHintsWhenNoSetup(null);
+          setExecutionSetup({
+            ...row,
+            allowedPathGlobs: row.allowedPathGlobs ?? [],
+          });
+        } else {
+          setExecutionSetup(null);
+          const hints = json.peerCredentialHints;
+          if (hints && (hints.githubAccessTokenMasked || hints.cursorApiTokenMasked)) {
+            setPeerHintsWhenNoSetup(hints);
+          } else {
+            setPeerHintsWhenNoSetup(null);
+          }
+        }
       }
     } catch (e) {
       console.error(e);
@@ -662,14 +675,34 @@ export function ProjectExecutionEnvironmentPanel({
       if (executionSetup) {
         setExecutionSetup((prev) => {
           if (!prev) return prev;
-          const next = { ...prev, ...patch };
+          const extra: Partial<ExecutionSetupDto> = {};
           if (patch.gitRepoName !== undefined) {
-            next.gitRepoName = patch.gitRepoName.trim() ? patch.gitRepoName.trim() : null;
+            const name = String(patch.gitRepoName ?? "").trim();
+            extra.gitRepoName = name ? name : null;
+            const urlEmpty = !String(prev.gitRepoUrl ?? "").trim();
+            const prov = String(prev.gitRepoProvider ?? "github").toLowerCase();
+            if (urlEmpty && (prov === "github" || !prov)) {
+              const inferred = inferGithubHttpsUrlFromOwnerRepo(name);
+              if (inferred) extra.gitRepoUrl = inferred;
+            }
+          }
+          return { ...prev, ...patch, ...extra };
+        });
+      } else {
+        setGitLinkDraft((d) => {
+          let next: GitLinkDraft = { ...d, ...patch };
+          if (patch.gitRepoName !== undefined) {
+            const name = String(patch.gitRepoName ?? "").trim();
+            next.gitRepoName = name;
+            const urlEmpty = !String(d.gitRepoUrl ?? "").trim();
+            const prov = String(d.gitRepoProvider ?? "github").toLowerCase();
+            if (urlEmpty && (prov === "github" || !prov)) {
+              const inferred = inferGithubHttpsUrlFromOwnerRepo(name);
+              if (inferred) next = { ...next, gitRepoUrl: inferred };
+            }
           }
           return next;
         });
-      } else {
-        setGitLinkDraft((d) => ({ ...d, ...patch }));
       }
     },
     [executionSetup]
@@ -679,16 +712,22 @@ export function ProjectExecutionEnvironmentPanel({
     if (!projectId.trim()) return;
     setBusyGit("save");
     try {
+      const nameTrim = gitVals.gitRepoName.trim();
+      const inferredUrl = inferGithubHttpsUrlFromOwnerRepo(nameTrim);
+      const gitRepoUrlResolved =
+        String(gitVals.gitRepoUrl ?? "").trim() ||
+        (String(gitVals.gitRepoProvider ?? "github").toLowerCase() === "github" ? inferredUrl ?? "" : "");
       const { res, json } = await patchExecutionSetup(projectId, {
-        gitRepoUrl: gitVals.gitRepoUrl,
+        gitRepoUrl: gitRepoUrlResolved,
         gitRepoProvider: gitVals.gitRepoProvider,
-        gitRepoName: gitVals.gitRepoName.trim() || null,
+        gitRepoName: nameTrim || null,
         baseBranch: gitVals.baseBranch,
       });
       if (!res.ok || !json.success || !json.data) {
         setExecutionMessage(json.message || "저장에 실패했습니다.");
         return;
       }
+      setPeerHintsWhenNoSetup(null);
       setExecutionSetup(json.data);
       setExecutionMessage("저장했습니다.");
     } finally {
@@ -700,11 +739,18 @@ export function ProjectExecutionEnvironmentPanel({
     if (!projectId.trim()) return;
     setBusyMvpSave(true);
     try {
+      const nameTrim = gitVals.gitRepoName.trim();
+      const inferredUrl = inferGithubHttpsUrlFromOwnerRepo(nameTrim);
+      const gitRepoUrlResolved =
+        String(gitVals.gitRepoUrl ?? "").trim() ||
+        (String(gitVals.gitRepoProvider ?? "github").toLowerCase() === "github" ? inferredUrl ?? "" : "");
+      const policyPatch = executionSetupPanelRef.current?.getPendingPrototypePolicyPatch?.() ?? {};
       const body: Parameters<typeof patchExecutionSetup>[1] = {
-        gitRepoUrl: gitVals.gitRepoUrl,
+        gitRepoUrl: gitRepoUrlResolved,
         gitRepoProvider: gitVals.gitRepoProvider,
         gitRepoName: gitVals.gitRepoName.trim() || null,
         baseBranch: gitVals.baseBranch,
+        ...policyPatch,
       };
       if (githubTokenDraft.trim()) body.githubAccessToken = githubTokenDraft.trim();
       const { res, json } = await patchExecutionSetup(projectId, body);
@@ -712,6 +758,7 @@ export function ProjectExecutionEnvironmentPanel({
         setExecutionMessage(json.message || "저장에 실패했습니다.");
         return;
       }
+      setPeerHintsWhenNoSetup(null);
       setExecutionSetup(json.data);
       setGithubTokenDraft("");
       setGithubReplaceMode(false);
@@ -749,6 +796,7 @@ export function ProjectExecutionEnvironmentPanel({
             : "skip";
       const { res, json } = await postEnvironmentTestRun(projectId, {
         mergeMode,
+        allowUnvalidated: isPrototypeMvpUi,
       });
       const apiSuccess = Boolean(json.success);
       const tidFromData =
@@ -836,7 +884,15 @@ export function ProjectExecutionEnvironmentPanel({
   const executionReady = repoOk === true && githubEffectiveOk && cursorApiOk === true && execOk === true;
   const baseBranchConfigured = Boolean(executionSetup?.baseBranch?.trim());
   const autoPushOn = executionSetup?.autoPush === true;
-  const envTestStartOk = executionReady && baseBranchConfigured && autoPushOn;
+  const envTestStartOk = (() => {
+    if (!isPrototypeMvpUi) return executionReady && baseBranchConfigured && autoPushOn;
+    const es = executionSetup ?? null;
+    if (!es) return false;
+    const repoConfigured = Boolean(String(es.gitRepoUrl ?? "").trim()) && Boolean(String(es.gitRepoName ?? "").trim());
+    const ghTokStored = githubCredentialLooksStored(es);
+    const curTokStored = cursorCredentialLooksStored(es);
+    return repoConfigured && baseBranchConfigured && autoPushOn && ghTokStored && curTokStored;
+  })();
 
   const githubAuthSlot = (() => {
     const es = executionSetup;
@@ -1196,7 +1252,7 @@ export function ProjectExecutionEnvironmentPanel({
           }}
           title={!executionSetup ? "먼저 저장하세요" : undefined}
         >
-          {busyGit === "validate-repo" ? "검증 중…" : "저장소 연결 검증"}
+          {busyGit === "validate-repo" ? "검증 중…" : "저장소·GitHub 검증"}
         </button>
       </div>
     </div>
@@ -1205,8 +1261,9 @@ export function ProjectExecutionEnvironmentPanel({
   const stage1ValidationSlotExpanded = (
     <div>
             <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
-              <strong>연결 테스트</strong>는 샘플 변경을 만들고 Cursor 요청·커밋·푸시·PR 생성까지 확인합니다. PR 이후
-              머지는 아래 옵션에 따릅니다.
+              <strong>연결 테스트</strong>를 누르면 Cursor가 Hello World 수준의 작은 파일을 만들고 Git에 커밋한 뒤 원격으로
+              푸시합니다. 그다음 <strong>플랫폼</strong>이 GitHub에서 PR을 열고, 아래 옵션에 따라 머지까지 진행합니다(PR은
+              Cursor가 만들지 않습니다).
             </p>
             <label
               style={{
@@ -1505,9 +1562,12 @@ export function ProjectExecutionEnvironmentPanel({
                               marginBottom: 6,
                             }}
                           >
-                            연결 테스트는 <strong style={{ color: "#475569" }}>Cursor 실행 → PR 생성 → 머지(옵션)</strong>
-                            순으로 보여 줍니다. 원격 브랜치 확인은 별도 단계가 아니라{" "}
-                            <strong style={{ color: "#475569" }}>PR 생성 흐름에 포함</strong>됩니다.
+                            연결 테스트는{" "}
+                            <strong style={{ color: "#475569" }}>
+                              Cursor(파일·커밋·푸시) → 플랫폼 PR → 머지(옵션)
+                            </strong>
+                            순으로 보여 줍니다. GitHub에 브랜치가 보이는지는{" "}
+                            <strong style={{ color: "#475569" }}>PR 생성 단계와 함께</strong> 확인합니다.
                           </div>
                           <div style={{ display: "grid", gap: 4 }}>
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -1830,12 +1890,12 @@ export function ProjectExecutionEnvironmentPanel({
 
   const stage1ValidationSlot = stage1ValidationSlotExpanded;
 
-  const isPrototypeMvpUi = effectivePurpose === "prototype";
-
   /** 이 프로젝트 execution_setup 행에만 저장된 토큰 */
   const githubTokenOnThisProject = githubCredentialLooksStored(executionSetup);
-  /** 동일 계정 다른 프로젝트에서 온 마스크 힌트 */
-  const githubPeerMask = peerGithubCredentialMasked(executionSetup);
+  /** 동일 계정 다른 프로젝트에서 온 마스크 힌트(행 없을 때 GET peerCredentialHints 포함) */
+  const githubPeerMask =
+    peerGithubCredentialMasked(executionSetup) ??
+    (String(peerHintsWhenNoSetup?.githubAccessTokenMasked ?? "").trim() || null);
 
   const mvpGithubRepoSection = isPrototypeMvpUi ? (
     <section
@@ -1935,7 +1995,7 @@ export function ProjectExecutionEnvironmentPanel({
               type="password"
               autoComplete="off"
               value={githubTokenDraft}
-              disabled={!canEdit || !executionSetup}
+              disabled={!canEdit}
               placeholder={
                 githubReplaceMode
                   ? "새 토큰 붙여넣기"
@@ -2072,113 +2132,74 @@ export function ProjectExecutionEnvironmentPanel({
     </section>
   ) : null;
 
-  const prototypeMvpActionBar = isPrototypeMvpUi ? (
-    <div style={{ marginTop: 4 }}>
-      <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-        연결 테스트는 GitHub·저장소·Cursor와 샘플 커밋·푸시·PR 생성을 확인합니다.
-        {executionSetup?.autoPush === true && executionSetup?.stopOnOutOfScopeChange === false
-          ? " 자동화가 「자동 Merge까지」이면 머지까지 시도합니다."
-          : null}
-      </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 14 }}>
-        <button
-          type="button"
-          disabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
-          onClick={() => void handleEnvironmentTest()}
-          style={{
-            padding: "12px 22px",
-            borderRadius: 10,
-            border: "1px solid #6d28d9",
-            background: "linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%)",
-            color: "#fff",
-            fontWeight: 800,
-            fontSize: 14,
-            cursor: !canEdit || busyEnvTest || !envTestStartOk || busyMvpSave ? "not-allowed" : "pointer",
-            boxShadow: "0 4px 14px rgba(124, 58, 237, 0.35)",
-          }}
-          title={
-            !executionReady
-              ? "저장소·GitHub·Cursor 검증을 통과해야 합니다"
-              : !baseBranchConfigured
-                ? "기본 브랜치가 필요합니다"
-                : !autoPushOn
-                  ? "자동화를 「자동 PR 생성까지」 이상으로 설정하세요"
-                  : undefined
-          }
-        >
-          {busyEnvTest ? "실행 중…" : "연결 테스트"}
-        </button>
-        <button
-          type="button"
-          disabled={!canEdit || busyMvpSave || busyEnvTest}
-          onClick={() => void handleMvpSaveAll()}
-          style={{
-            padding: "12px 22px",
-            borderRadius: 10,
-            border: "1px solid #2563eb",
-            background: "#2563eb",
-            color: "#fff",
-            fontWeight: 800,
-            fontSize: 14,
-            cursor: !canEdit || busyMvpSave || busyEnvTest ? "not-allowed" : "pointer",
-          }}
-        >
-          {busyMvpSave ? "저장 중…" : "저장"}
-        </button>
-        <span style={{ fontSize: 12, fontWeight: 700, color: connectionTestSatisfied ? "#15803d" : "#64748b" }}>
-          {connectionTestSatisfied ? "연결 테스트 완료" : "연결 테스트 미완료"}
-        </span>
-      </div>
-      {busyEnvTest ||
-      (stage1TimerSession?.taskId === "pending" && !stage1LastDtoShowsPipelineProgress(envTestLast, true)) ? (
-        <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#334155" }}>연결 테스트를 진행하는 중입니다…</p>
-      ) : null}
-      {envTestLast && isStage1EnvironmentTestLast(envTestLast) ? (
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #e2e8f0",
-            background: "#f8fafc",
-            fontSize: 12,
-            color: "#334155",
-            lineHeight: 1.55,
-          }}
-        >
-          <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>마지막 연결 테스트</div>
-          <div>
-            {(() => {
-              const wf = normalizeWorkflowForUi(envTestLast.workflowStatus);
-              const mergeInProgress =
-                wf === EXECUTION_WORKFLOW.PR_OPENED &&
-                Boolean(envTestLast.envTestMergeStartedAt) &&
-                !envTestLast.mergedAt;
-              return stage1EnvironmentHeadline(envTestLast, {
-                mergeInProgress,
-                syncLost: stage1PollSyncStopped,
-              });
-            })()}
-          </div>
-          {envTestLast.envTestStage1FailureLine ? (
-            <div style={{ marginTop: 8, color: "#b91c1c", fontWeight: 600 }}>{envTestLast.envTestStage1FailureLine}</div>
-          ) : null}
-          {envTestLast.prUrl ? (
-            <div style={{ marginTop: 8 }}>
-              <a href={envTestLast.prUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: "#2563eb" }}>
-                PR 열기
-              </a>
-            </div>
-          ) : null}
-          <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
-            상태:{" "}
-            <strong style={{ color: "#0f172a" }}>
-              {environmentTestWorkflowLabel(envTestLast.workflowStatus, false)}
-            </strong>
-          </div>
-        </div>
-      ) : null}
+  const prototypeMvpToolbar = isPrototypeMvpUi ? (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "flex-end" }}>
+      <button
+        type="button"
+        disabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
+        onClick={() => void handleEnvironmentTest()}
+        style={{
+          padding: "12px 22px",
+          borderRadius: 10,
+          border: "1px solid #6d28d9",
+          background: "linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%)",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: 14,
+          cursor: !canEdit || busyEnvTest || !envTestStartOk || busyMvpSave ? "not-allowed" : "pointer",
+          boxShadow: "0 4px 14px rgba(124, 58, 237, 0.35)",
+        }}
+        title={
+          isPrototypeMvpUi && !executionSetup
+            ? "먼저 저장을 눌러 실행 환경 설정을 생성하세요"
+            : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoUrl ?? "").trim()
+              ? "저장소 URL이 필요합니다"
+              : isPrototypeMvpUi && executionSetup && !String(executionSetup.gitRepoName ?? "").trim()
+                ? "owner/repo가 필요합니다"
+                : isPrototypeMvpUi && executionSetup && !githubCredentialLooksStored(executionSetup)
+                  ? "GitHub 토큰을 먼저 저장하세요"
+                  : isPrototypeMvpUi && executionSetup && !cursorCredentialLooksStored(executionSetup)
+                    ? "Cursor API 키를 먼저 저장하세요"
+                    : !executionReady
+                      ? "저장소·GitHub·Cursor 검증을 통과해야 합니다"
+                      : !baseBranchConfigured
+                        ? "기본 브랜치가 필요합니다"
+                        : !autoPushOn
+                          ? "자동화를 「자동 PR 생성까지」 이상으로 설정하세요"
+                          : undefined
+        }
+      >
+        {busyEnvTest ? "실행 중…" : "연결 테스트"}
+      </button>
+      <button
+        type="button"
+        disabled={!canEdit || busyMvpSave || busyEnvTest}
+        onClick={() => void handleMvpSaveAll()}
+        style={{
+          padding: "12px 22px",
+          borderRadius: 10,
+          border: "1px solid #2563eb",
+          background: "#2563eb",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: 14,
+          cursor: !canEdit || busyMvpSave || busyEnvTest ? "not-allowed" : "pointer",
+        }}
+      >
+        {busyMvpSave ? "저장 중…" : "저장"}
+      </button>
+      <span style={{ fontSize: 12, fontWeight: 700, color: connectionTestSatisfied ? "#15803d" : "#64748b" }}>
+        {connectionTestSatisfied ? "연결 테스트 완료" : "연결 테스트 미완료"}
+      </span>
     </div>
   ) : null;
+
+  const prototypeMvpEnvTestProgress =
+    isPrototypeMvpUi &&
+    (busyEnvTest ||
+      (stage1TimerSession?.taskId === "pending" && !stage1LastDtoShowsPipelineProgress(envTestLast, true))) ? (
+      <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#334155" }}>연결 테스트를 진행하는 중입니다…</p>
+    ) : null;
 
   return (
     <div
@@ -2186,19 +2207,42 @@ export function ProjectExecutionEnvironmentPanel({
       data-ui-label="[P-6-4] 실행 환경 — 연결·정책·검증"
       style={{ marginBottom: 8 }}
     >
-      {isAdminSettings && effectivePurpose === "prototype" ? null : (
+      {isAdminSettings && effectivePurpose === "prototype" ? (
+        <header style={{ marginBottom: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+            }}
+          >
+            <h1
+              style={{
+                fontSize: 22,
+                fontWeight: 800,
+                margin: 0,
+                color: "#0f172a",
+                flex: "1 1 240px",
+                lineHeight: 1.25,
+              }}
+            >
+              프로토타입 자동 생성 환경설정
+            </h1>
+            {prototypeMvpToolbar}
+          </div>
+          {prototypeMvpEnvTestProgress}
+        </header>
+      ) : (
         <header style={{ marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px 0", color: "#0f172a" }}>
-            {isAdminSettings
-              ? effectivePurpose === "prototype"
-                ? "프로토타입 자동 생성 환경설정"
-                : "환경 검증/설정"
-              : "실행 환경"}
+            {isAdminSettings ? "환경 검증/설정" : "실행 환경"}
           </h1>
           {!isAdminSettings ? (
             <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-              외부 시스템을 연결한 뒤 환경 검증에서 기본 검증과 연결 테스트로 실제 푸시·PR 경로를 확인합니다. 실행 정책은
-              필요할 때만 고급 설정에서 조정합니다.
+              외부 시스템을 연결한 뒤, 연결 테스트로 Cursor의 Hello World 수준 커밋·푸시와 플랫폼의 PR·머지 경로를 함께
+              확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다.
             </p>
           ) : null}
           {isAdminSettings ? null : (
@@ -2236,6 +2280,7 @@ export function ProjectExecutionEnvironmentPanel({
         prototypeStagedLayout={effectivePurpose === "prototype"}
         prototypeMvpLayout={isPrototypeMvpUi}
         connectionTestSatisfied={connectionTestSatisfied}
+        peerCredentialHintsFallback={peerHintsWhenNoSetup}
         connectionSlotBeforeCursor={isPrototypeMvpUi ? undefined : gitRepositorySlot}
         connectionSlotGithubAuth={isPrototypeMvpUi ? undefined : githubAuthSlot}
         connectionSlotAfterCursor={isPrototypeMvpUi ? undefined : stage1ValidationSlot}
@@ -2247,8 +2292,6 @@ export function ProjectExecutionEnvironmentPanel({
           {executionMessage}
         </p>
       ) : null}
-
-      {prototypeMvpActionBar}
     </div>
   );
 }

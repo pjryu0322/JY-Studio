@@ -89,7 +89,7 @@ function stubNonPilotExecutorConnector(executorType: ExecutionExecutorType): {
   rawStatus?: string;
   errorCode?: ExecutorConnectorErrorCode;
 } {
-  const baseMsg = "Stub connector (no external call · not Stage1/Stage2 · not env test).";
+  const baseMsg = "Stub connector (no external call · not env connection test · not env test).";
   switch (executorType) {
     case "scm":
       return {
@@ -240,14 +240,14 @@ export function executorConnectorResultSubtleNote(
   const isCursorPilot = result.connectorType?.startsWith("cursor_pilot") === true;
   switch (result.status) {
     case "accepted":
-      return "커넥터 수락됨 · Stage1/Stage2 아님 · 환경 테스트 아님.";
+      return "커넥터 수락됨 · 환경 연결 테스트 아님 · 환경 테스트 아님.";
     case "running":
       return isCursorPilot
         ? "Cursor 파일럿 실행 중 · 환경 절차 테스트 아님."
         : "실행기 실행 중(스텁) · 환경 절차 테스트 아님.";
     case "completed":
       return isCursorPilot
-        ? "Cursor 파일럿 완료 · Stage1/Stage2 아님 · 환경 테스트 아님."
+        ? "Cursor 파일럿 완료 · 환경 연결 테스트 아님 · 환경 테스트 아님."
         : "실행 완료(스텁) · 환경 테스트 흐름 아님.";
     case "failed":
       return isCursorPilot

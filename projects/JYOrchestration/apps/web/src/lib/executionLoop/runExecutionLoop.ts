@@ -38,6 +38,12 @@ import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { appendTaskHistory } from "@/lib/service/taskHistoryService";
 import { autoMergePullRequest, isAutoMergeEnabled } from "@/lib/service/githubAutoMergeService";
 import { fetchGithubCompareSnapshot } from "@/lib/service/githubCompareService";
+import {
+  ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
+  ENV_TEST_ROLE_SEPARATION_CURSOR_STUCK,
+  ENV_TEST_ROLE_SEPARATION_RUN_FAILED,
+  formatEnvTestCursorPollFailPrSmokeSummary,
+} from "@/lib/service/envTestUserFacingMessages";
 import { countScmManagerAiMembers, tryRunScmManagerWithAiMembers } from "@/lib/execution/scmManagerWithAiMembers";
 import { runStage1SmokePipeline } from "@/lib/executionLoop/envTestStage1Pipeline";
 import { runStage2EnvTestPipeline } from "@/lib/executionLoop/stage2/runStage2EnvTestPipeline";
@@ -71,6 +77,11 @@ export async function runExecutionLoop(params: {
   projectId: string;
   actorUserId: string;
   singleTaskId?: string;
+  /**
+   * prototype MVP 등: execution_setup validated 가 아니어도 단일 실행을 허용한다.
+   * (ENV_TEST는 별도 readiness 체크를 통과한 상태에서만 호출할 것)
+   */
+  allowUnvalidatedExecutionSetup?: boolean;
 }): Promise<RunExecutionLoopResult> {
   const { projectId, actorUserId, singleTaskId } = params;
   const steps: LoopStepRecord[] = [];
@@ -104,12 +115,13 @@ export async function runExecutionLoop(params: {
     if (!setup) {
       return { ok: false, steps, message: "Execution setup 이 없습니다." };
     }
-    if (String(setup.status) !== "validated") {
+    if (!params.allowUnvalidatedExecutionSetup && String(setup.status) !== "validated") {
       return {
         ok: false,
         steps,
         message:
-          "저장소 연결 검증과 Cursor 저장소 접근 검증을 모두 통과해야 실행할 수 있습니다. Git 연동·실행 환경 설정에서 검증을 완료하세요. (Execution setup 상태: validated)",
+          `저장소 연결 검증과 Cursor 저장소 접근 검증을 모두 통과해야 실행할 수 있습니다. ` +
+          `Git 연동·실행 환경 설정에서 검증을 완료하세요. (Execution setup 상태: ${String(setup.status ?? "")})`,
       };
     }
     if (setup.projectId !== projectId) {
@@ -163,25 +175,21 @@ export async function runExecutionLoop(params: {
       where: { id: projectId },
       select: { name: true, currentSpecVersionId: true },
     });
-    if (!project?.currentSpecVersionId) {
-      return {
-        ok: false,
-        steps,
-        message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 확정한 뒤 Task를 생성·확정하고 실행하세요.",
-      };
-    }
     const projectName = project?.name ?? projectId;
 
     await initializeLoopParticipants(projectId);
 
+    const singleTaskHead = singleTaskId
+      ? await prisma.task.findUnique({
+          where: { id: singleTaskId },
+          select: { taskKind: true, projectId: true },
+        })
+      : null;
+
     if (singleTaskId) {
-      const forcedHead = await prisma.task.findUnique({
-        where: { id: singleTaskId },
-        select: { taskKind: true, projectId: true },
-      });
       if (
-        forcedHead?.projectId === projectId &&
-        isEnvTestFamilyTaskKind(forcedHead.taskKind)
+        singleTaskHead?.projectId === projectId &&
+        isEnvTestFamilyTaskKind(singleTaskHead.taskKind)
       ) {
         appendTaskProgressLog({
           kind: "execution",
@@ -229,6 +237,21 @@ export async function runExecutionLoop(params: {
       }
     }
 
+    // 일반 실행(ENV_TEST 단일 실행 제외)은 확정된 실행 계획 버전이 필요
+    if (!project?.currentSpecVersionId) {
+      const envTestSingleWithoutSpec =
+        Boolean(singleTaskId) &&
+        singleTaskHead?.projectId === projectId &&
+        isEnvTestFamilyTaskKind(singleTaskHead.taskKind);
+      if (!envTestSingleWithoutSpec) {
+        return {
+          ok: false,
+          steps,
+          message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 확정한 뒤 Task를 생성·확정하고 실행하세요.",
+        };
+      }
+    }
+
     await reclaimStaleRunningWorkflowTasks(projectId);
 
     const firstRow = (await loadWorkflowGraphTasks(projectId))[0];
@@ -265,7 +288,7 @@ export async function runExecutionLoop(params: {
       const needsWorkflowResync = taskSetKey !== lastTaskSetKey || rows.some((r) => r.executionWorkflowStatus == null);
       if (needsWorkflowResync) {
         console.log("[execution-loop] tasks selected:", rows.length);
-        console.log("[execution-loop] specVersion:", project.currentSpecVersionId);
+        console.log("[execution-loop] specVersion:", project?.currentSpecVersionId ?? null);
         await refreshWorkflowStates(projectId);
         // 리프레시 이후 새로 READY로 전이된 Task 정보를 다시 로드한다.
         rows = await loadWorkflowGraphTasks(projectId);
@@ -725,7 +748,7 @@ export async function runExecutionLoop(params: {
                   ? out.message
                   : out.kind === "branch_timeout"
                     ? out.message
-                    : "Stage 2 실행이 실패했습니다.",
+                    : ENV_TEST_ROLE_SEPARATION_RUN_FAILED,
           };
         }
 
@@ -857,7 +880,7 @@ export async function runExecutionLoop(params: {
           if (trackedBranchName) {
             const syntheticCr: CursorRunResult = {
               runId: `stage1-after-cursor-poll-error:${execRun.id}`,
-              summary: `Stage1: Cursor polling failed (${errMsg.slice(0, 400)}); platform PR smoke with branch ${trackedBranchName}.`,
+              summary: formatEnvTestCursorPollFailPrSmokeSummary(trackedBranchName, errMsg.slice(0, 400)),
               changedFiles: [],
               branchName: trackedBranchName,
               commitHash: undefined,
@@ -914,7 +937,7 @@ export async function runExecutionLoop(params: {
               status: "FAILED",
               executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
               lastEvalResult: "CURSOR_NOT_STARTED",
-              lastEvalSummary: "Stage 2 실패: Cursor가 시작되지 않았습니다(CREATING 지속).",
+              lastEvalSummary: ENV_TEST_ROLE_SEPARATION_CURSOR_STUCK,
             },
           });
           await prisma.taskExecutionRun.update({
@@ -927,7 +950,7 @@ export async function runExecutionLoop(params: {
           });
           await refreshWorkflowStates(projectId);
           if (singleTaskId) {
-            return { ok: false, steps, message: "Stage 2 실패: Cursor가 시작되지 않았습니다(CREATING 지속)." };
+            return { ok: false, steps, message: ENV_TEST_ROLE_SEPARATION_CURSOR_STUCK };
           }
           continue;
         }
@@ -954,7 +977,7 @@ export async function runExecutionLoop(params: {
               ...(isStage2 ? { status: "FAILED" as const } : {}),
               executionWorkflowStatus: EXECUTION_WORKFLOW.FAILED,
               lastEvalResult: isStage2 ? "BRANCH_NOT_REFLECTED" : "failed",
-              lastEvalSummary: isStage2 ? "Stage 2 실패: Git branch 미반영" : errMsg.slice(0, 1500),
+              lastEvalSummary: isStage2 ? ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED : errMsg.slice(0, 1500),
             },
           });
           await prisma.taskExecutionRun.update({

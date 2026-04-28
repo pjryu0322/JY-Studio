@@ -97,6 +97,13 @@ function toStringOrNull(v: unknown): string | null {
   return s ? s : null;
 }
 
+/** owner/repo 입력의 앞뒤 슬래시·공백 제거(URL 파싱 결과와 맞춤) */
+function normalizeGitRepoNameForDb(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().replace(/^\/+/, "").replace(/\/+$/, "");
+  return s ? s : null;
+}
+
 function toBoolOrUndefined(v: unknown): boolean | undefined {
   if (typeof v === "boolean") return v;
   return undefined;
@@ -156,10 +163,30 @@ export async function GET(
       prisma.executionSetup.findUnique({ where: { projectId: pid } })
     );
     if (!row) {
+      const projectMetaNoRow = await prisma.project.findUnique({
+        where: { id: pid },
+        select: { ownerUserId: true },
+      });
+      let peerCredentialHintsNoRow: {
+        githubAccessTokenMasked: string | null;
+        cursorApiUrl: string | null;
+        cursorApiTokenMasked: string | null;
+      } | null = null;
+      if (projectMetaNoRow?.ownerUserId) {
+        const donor = await getUserDefaultExecutionCredentials(projectMetaNoRow.ownerUserId, pid);
+        if (donor && (donor.githubAccessTokenMasked || donor.cursorApiTokenMasked)) {
+          peerCredentialHintsNoRow = {
+            githubAccessTokenMasked: donor.githubAccessTokenMasked,
+            cursorApiUrl: donor.cursorApiUrl,
+            cursorApiTokenMasked: donor.cursorApiTokenMasked,
+          };
+        }
+      }
       return NextResponse.json({
         success: true,
         message: "Execution setup이 아직 없습니다.",
         data: null,
+        peerCredentialHints: peerCredentialHintsNoRow,
       });
     }
 
@@ -333,7 +360,7 @@ export async function PATCH(
             gitRepoProvider: String(body.gitRepoProvider ?? "").trim().toLowerCase() || "github",
           }
         : {}),
-      ...(body.gitRepoName !== undefined ? { gitRepoName: toStringOrNull(body.gitRepoName) } : {}),
+      ...(body.gitRepoName !== undefined ? { gitRepoName: normalizeGitRepoNameForDb(body.gitRepoName) } : {}),
       ...(body.baseBranch !== undefined ? { baseBranch: String(body.baseBranch ?? "").trim() } : {}),
       ...(body.branchStrategy !== undefined ? { branchStrategy: body.branchStrategy } : {}),
       ...(body.branchPrefix !== undefined ? { branchPrefix: toStringOrNull(body.branchPrefix) } : {}),
@@ -420,7 +447,7 @@ export async function PATCH(
             .trim()
             .toLowerCase() || "github";
     const nextGitRepoName =
-      body.gitRepoName !== undefined ? toStringOrNull(body.gitRepoName) : (existing?.gitRepoName ?? null);
+      body.gitRepoName !== undefined ? normalizeGitRepoNameForDb(body.gitRepoName) : (existing?.gitRepoName ?? null);
     const nextBranchStrategy =
       body.branchStrategy !== undefined ? body.branchStrategy : (existing?.branchStrategy ?? "manual");
     const nextBranchPrefix =

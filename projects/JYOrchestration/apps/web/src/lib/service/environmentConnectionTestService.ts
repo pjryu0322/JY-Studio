@@ -32,6 +32,10 @@ import {
   parseStage2RuntimeMonitorFromValidationOutput,
   stage2PhaseKeyForApi,
 } from "@/lib/service/envTestStage2RuntimeMonitor";
+import {
+  lastEvalSummaryLooksLikeEnvTestPrFailure,
+  lastEvalSummaryLooksLikeRoleSeparationEnvTestFailure,
+} from "@/lib/service/envTestUserFacingMessages";
 
 /** `applyStage1EnvTestPrCreateTerminalFailure`가 심는 lastEvalSummary에서 UI용 필드 추출 */
 function parseStage1PrCreateFailureFields(lastEvalSummary: string | null): {
@@ -40,7 +44,7 @@ function parseStage1PrCreateFailureFields(lastEvalSummary: string | null): {
   stage1PrCreateFailureGithubCode: string | null;
 } {
   const s = String(lastEvalSummary ?? "").trim();
-  if (!s.startsWith("ENV_TEST(Stage1) PR 실패")) {
+  if (!lastEvalSummaryLooksLikeEnvTestPrFailure(s)) {
     return {
       stage1PrCreateFailureHttpStatus: null,
       stage1PrCreateFailureBranch: null,
@@ -221,28 +225,30 @@ export { ENV_TEST_STAGE2_TASK_KIND, ENV_TEST_TASK_KIND };
 
 export const ENV_TEST_TASK_NAME = "환경 연결 테스트 - Hello World";
 
-const ENV_TEST_DESCRIPTION = `AI-Cursor-Git 연동 상태를 확인하기 위해 테스트 파일을 작성하고 커밋·푸시까지 수행한다.
+const ENV_TEST_DESCRIPTION = `Hello World 수준의 최소 변경으로 AI·Cursor·Git 연동과 이후 플랫폼 PR·머지 경로를 확인한다.
 
-**중요 (ENV_TEST 전용 계약)**
-- 플랫폼이 지정한 **정확한 브랜치 이름**을 사용한다. 브랜치 이름을 바꾸지 않는다.
-- **Pull Request는 생성하지 않는다.** PR은 플랫폼이 GitHub API로 연다.
-- 할 일: 아래 파일을 생성/수정 → 커밋 → 원격 브랜치로 **푸시**까지 완료한다(실행 환경에서 자동 푸시가 켜진 경우).
+**역할 분담**
+- **Cursor(실행기)**: 플랫폼이 지정한 브랜치에서 아래 허용 경로만 수정하고, Git에 **커밋**한 뒤 원격으로 **푸시**한다(실행 정책에서 자동 커밋·푸시가 허용되어야 한다).
+- **플랫폼**: GitHub API로 **PR을 생성·갱신**하고, 설정에 따라 **머지**까지 수행한다. Cursor는 PR을 만들지 않는다.
 
-변경은 반드시 다음 범위 안에서만 수행한다:
+**중요**
+- 플랫폼이 부여한 **브랜치 이름을 그대로** 쓴다.
 
-- 허용 경로: \`orchestration-test/**\` (이 디렉터리 트리만)
+변경 범위:
+
+- 허용 경로: \`orchestration-test/**\` 만
 - 권장: 작은 텍스트 파일 한 개, 짧은 한 줄(예: \`Hello World\`)`;
 
 const ENV_TEST_CRITERIA = [
   "test branch created (platform branch name)",
-  "smoke change under orchestration-test/** only (merge guard matches this scope)",
-  "commit created",
-  "push succeeded to remote branch",
-  "platform opens GitHub PR (not Cursor)",
-  "task state becomes PR_OPENED",
+  "Hello World–level smoke change under orchestration-test/** only (merge guard matches this scope)",
+  "commit created by Cursor executor",
+  "push succeeded to remote branch (Cursor executor; auto-push policy)",
+  "platform opens GitHub PR via API (not Cursor)",
+  "task state becomes PR_OPENED; optional platform merge smoke",
 ];
 
-export const ENV_TEST_STAGE2_TASK_NAME = "환경 연결 테스트 Stage 2 — 역할 분리 readiness";
+export const ENV_TEST_STAGE2_TASK_NAME = "환경 연결 테스트 — 역할 분리 readiness";
 
 /** DB 표시용. 실제 Cursor 지시는 buildCursorExecutionPrompt(compactHelloWorld)가 단일 근원. */
 const ENV_TEST_STAGE2_DESCRIPTION = `브랜치 이름 준수. 파일 1개 \`orchestration-test/hello-world.md\` → 커밋 → 푸시.`;
@@ -277,6 +283,8 @@ export async function createEnvironmentTestTask(input: {
   actorUserId: string;
   /** `skip`: success at PR creation. `auto` (default): run merge smoke after PR. */
   mergeMode?: EnvConnectionTestMergeMode;
+  /** prototype MVP: validated 전에도 시작 허용 */
+  allowUnvalidated?: boolean;
 }): Promise<{ ok: true; taskId: string } | { ok: false; message: string }> {
   const projectId = String(input.projectId ?? "").trim();
   const actorUserId = String(input.actorUserId ?? "").trim();
@@ -287,7 +295,11 @@ export async function createEnvironmentTestTask(input: {
     return { ok: false, message: "사용자 인증이 필요합니다." };
   }
 
-  const ready = await assertEnvTestStartReadiness({ projectId, userId: actorUserId });
+  const ready = await assertEnvTestStartReadiness({
+    projectId,
+    userId: actorUserId,
+    allowUnvalidated: input.allowUnvalidated === true,
+  });
   if (!ready.ok) {
     return { ok: false, message: ready.userMessage };
   }
@@ -296,14 +308,11 @@ export async function createEnvironmentTestTask(input: {
     where: { id: projectId },
     select: { ownerUserId: true, currentSpecVersionId: true },
   });
-  if (!project?.currentSpecVersionId) {
-    return {
-      ok: false,
-      message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 확정한 뒤 연결 테스트를 실행하세요.",
-    };
+  if (!project) {
+    return { ok: false, message: "프로젝트를 찾을 수 없습니다." };
   }
 
-  const specId = project.currentSpecVersionId;
+  const specId = project.currentSpecVersionId ?? null;
   const now = new Date();
 
   /** 이전 ENV_TEST는 재사용하지 않는다. 같은 Spec의 기존 ENV_TEST를 보관해 stuck run이 새 실행을 막지 않게 한다. */
@@ -361,6 +370,8 @@ export async function createEnvironmentTestTask(input: {
 export async function createEnvironmentStage2TestTask(input: {
   projectId: string;
   actorUserId: string;
+  /** prototype MVP: validated 전에도 시작 허용 */
+  allowUnvalidated?: boolean;
 }): Promise<{ ok: true; taskId: string } | { ok: false; message: string }> {
   const projectId = String(input.projectId ?? "").trim();
   const actorUserId = String(input.actorUserId ?? "").trim();
@@ -371,7 +382,11 @@ export async function createEnvironmentStage2TestTask(input: {
     return { ok: false, message: "사용자 인증이 필요합니다." };
   }
 
-  const ready = await assertEnvTestStartReadiness({ projectId, userId: actorUserId });
+  const ready = await assertEnvTestStartReadiness({
+    projectId,
+    userId: actorUserId,
+    allowUnvalidated: input.allowUnvalidated === true,
+  });
   if (!ready.ok) {
     return { ok: false, message: ready.userMessage };
   }
@@ -380,14 +395,11 @@ export async function createEnvironmentStage2TestTask(input: {
     where: { id: projectId },
     select: { ownerUserId: true, currentSpecVersionId: true },
   });
-  if (!project?.currentSpecVersionId) {
-    return {
-      ok: false,
-      message: "확정된 실행 계획 버전이 없습니다. 실행 계획을 확정한 뒤 연결 테스트를 실행하세요.",
-    };
+  if (!project) {
+    return { ok: false, message: "프로젝트를 찾을 수 없습니다." };
   }
 
-  const specId = project.currentSpecVersionId;
+  const specId = project.currentSpecVersionId ?? null;
   const now = new Date();
 
   const archived = await prisma.task.updateMany({
@@ -772,10 +784,9 @@ export async function getLatestEnvironmentTestTask(
     cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptCanViewRaw: canViewPromptRaw,
-    stage2FailureMessage:
-      String(rowResolved.lastEvalSummary ?? "").trim().startsWith("Stage 2 실패:")
-        ? String(rowResolved.lastEvalSummary ?? "").trim()
-        : null,
+    stage2FailureMessage: lastEvalSummaryLooksLikeRoleSeparationEnvTestFailure(rowResolved.lastEvalSummary)
+      ? String(rowResolved.lastEvalSummary ?? "").trim()
+      : null,
   };
 
   const wfNormMerge = String(rowResolved.executionWorkflowStatus ?? "").trim().toLowerCase();
@@ -962,10 +973,9 @@ export async function getLatestEnvironmentStage2TestTask(
     cursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptRaw: canViewPromptRaw ? run0?.promptSnapshot ?? null : null,
     stage2CursorPromptCanViewRaw: canViewPromptRaw,
-    stage2FailureMessage:
-      String(rowResolved.lastEvalSummary ?? "").trim().startsWith("Stage 2 실패:")
-        ? String(rowResolved.lastEvalSummary ?? "").trim()
-        : null,
+    stage2FailureMessage: lastEvalSummaryLooksLikeRoleSeparationEnvTestFailure(rowResolved.lastEvalSummary)
+      ? String(rowResolved.lastEvalSummary ?? "").trim()
+      : null,
   };
   if (runtimeMon) {
     const runtimeBreakdown = {

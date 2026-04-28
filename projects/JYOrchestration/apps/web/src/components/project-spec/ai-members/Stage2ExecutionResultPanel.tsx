@@ -85,7 +85,9 @@ export function Stage2ExecutionResultPanel(props: {
             background: "#eff6ff",
           }}
         >
-          <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 8 }}>Stage 2 실행 결과</div>
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 8 }}>
+            역할 분리 환경 검증 결과
+          </div>
           <strong style={{ fontSize: 12, color: "#1e3a8a" }}>실행 중</strong>
           {typeof stage2ElapsedMs === "number" ? (
             <span style={{ marginLeft: 8, fontSize: 12, color: "#1e3a8a" }}>
@@ -108,8 +110,12 @@ export function Stage2ExecutionResultPanel(props: {
           background: "#f8fafc",
         }}
       >
-        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 6 }}>Stage 2 실행 결과</div>
-        <p style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}>아직 완료된 Stage 2 기록이 없습니다.</p>
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 6 }}>
+          역할 분리 환경 검증 결과
+        </div>
+        <p style={{ margin: 0, fontSize: 12, color: "#94a3b8" }}>
+          아직 완료된 역할 분리 환경 검증 기록이 없습니다.
+        </p>
       </div>
     );
   }
@@ -124,7 +130,9 @@ export function Stage2ExecutionResultPanel(props: {
         background: "#fff",
       }}
     >
-      <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 10 }}>Stage 2 실행 결과</div>
+      <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", marginBottom: 10 }}>
+        역할 분리 환경 검증 결과
+      </div>
       {busyStage2 ? (
         <div
           style={{
