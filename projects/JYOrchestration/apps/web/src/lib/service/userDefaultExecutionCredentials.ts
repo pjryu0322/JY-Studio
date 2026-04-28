@@ -38,23 +38,41 @@ export async function getUserDefaultExecutionCredentials(
   });
 
   let githubAccessTokenMasked: string | null = null;
+  let githubFallbackMasked: string | null = null;
   for (const r of rows) {
     const t = String(r.githubAccessToken ?? "").trim();
-    if (t && r.githubAuthConnectionOk === true) {
-      githubAccessTokenMasked = maskGithubTokenForUi(t);
+    if (!t) continue;
+    const masked = maskGithubTokenForUi(t);
+    if (r.githubAuthConnectionOk === true) {
+      githubAccessTokenMasked = masked;
       break;
     }
+    if (!githubFallbackMasked) githubFallbackMasked = masked;
   }
+  if (!githubAccessTokenMasked) githubAccessTokenMasked = githubFallbackMasked;
 
   let cursorApiTokenMasked: string | null = null;
   let cursorApiUrl: string | null = null;
+  let cursorFallbackMasked: string | null = null;
+  let cursorFallbackUrl: string | null = null;
   for (const r of rows) {
     const t = String(r.cursorApiToken ?? "").trim();
-    if (t && r.cursorApiConnectionOk === true) {
-      cursorApiTokenMasked = maskCursorTokenForUi(t);
-      cursorApiUrl = normalizeCursorApiBaseUrl(r.cursorApiUrl);
+    if (!t) continue;
+    const masked = maskCursorTokenForUi(t);
+    const url = normalizeCursorApiBaseUrl(r.cursorApiUrl);
+    if (r.cursorApiConnectionOk === true) {
+      cursorApiTokenMasked = masked;
+      cursorApiUrl = url;
       break;
     }
+    if (!cursorFallbackMasked) {
+      cursorFallbackMasked = masked;
+      cursorFallbackUrl = url;
+    }
+  }
+  if (!cursorApiTokenMasked) {
+    cursorApiTokenMasked = cursorFallbackMasked;
+    cursorApiUrl = cursorFallbackUrl;
   }
 
   if (!githubAccessTokenMasked && !cursorApiTokenMasked) return null;

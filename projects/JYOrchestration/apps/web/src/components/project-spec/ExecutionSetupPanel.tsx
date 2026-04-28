@@ -19,6 +19,8 @@ import {
 } from "@/components/project-spec/api";
 import {
   cursorCredentialLooksStored,
+  peerCursorCredentialMasked,
+  peerCursorCredentialUrl,
   secretMaskedDisplay,
 } from "@/components/project-spec/credentialUiMask";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
@@ -290,6 +292,8 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
   const renderCursorConnectionBlock = (opts: { compactTitle: boolean; mvp?: boolean }) => {
     const mvp = Boolean(opts.mvp);
     const cursorLooksStored = cursorCredentialLooksStored(es);
+    const peerCursorMask = peerCursorCredentialMasked(es);
+    const peerCursorUrlHint = peerCursorCredentialUrl(es);
     const showKeyInput = !cursorLooksStored || cursorKeyReplaceMode;
     const cursorKeyBusy =
       busy === "save-cursor" || busy === "val-cursor-api" || busy === "del-cursor" || busy === "reveal-cursor";
@@ -327,6 +331,46 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
             </>
           )}
         </p>
+        {mvp && !cursorLooksStored && peerCursorMask ? (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #e9d5ff",
+              background: "#faf5ff",
+              fontSize: 12,
+              color: "#5b21b6",
+              lineHeight: 1.55,
+            }}
+          >
+            <div style={{ fontWeight: 900, marginBottom: 6, color: "#6d28d9" }}>다른 프로젝트에만 저장된 Cursor 키 (참고)</div>
+            <div style={{ fontSize: 11, color: "#6b21a8", marginBottom: 8 }}>
+              자동으로 이 프로젝트에 복사되지는 않습니다. 키를 붙여넣은 뒤 하단「저장」으로 이 프로젝트에 저장하세요.
+            </div>
+            {peerCursorUrlHint ? (
+              <div style={{ fontSize: 11, marginBottom: 6, color: "#5b21b6" }}>
+                참고 URL:{" "}
+                <code style={{ fontSize: 10, color: "#0f172a" }}>{peerCursorUrlHint}</code>
+              </div>
+            ) : null}
+            <code
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#fff",
+                border: "1px solid #ddd6fe",
+                fontSize: 12,
+                fontFamily: "ui-monospace, monospace",
+                wordBreak: "break-all",
+                color: "#0f172a",
+              }}
+            >
+              {peerCursorMask}
+            </code>
+          </div>
+        ) : null}
         <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API URL</span>
           <input
@@ -364,7 +408,9 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                   ? "새 키를 붙여넣기 (crsr_… / key_…)"
                   : cursorLooksStored
                     ? "(서버에 저장됨)"
-                    : "key_ 또는 crsr_ 로 시작하는 키를 붙여넣기"
+                    : peerCursorMask
+                      ? "이 프로젝트에 쓸 API 키 붙여넣기 (자동 복사 없음)"
+                      : "key_ 또는 crsr_ 로 시작하는 키를 붙여넣기"
               }
               onChange={(e) => setCursorApiKeyDraft(e.target.value)}
               style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}

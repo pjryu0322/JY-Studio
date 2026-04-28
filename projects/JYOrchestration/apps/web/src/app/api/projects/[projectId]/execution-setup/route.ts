@@ -593,6 +593,33 @@ export async function PATCH(
     const ghTokPatch = clientGithubTokenMeta(row);
     const curTokPatch = clientCursorTokenMeta(row);
 
+    let peerCredentialHintsPatch: {
+      githubAccessTokenMasked: string | null;
+      cursorApiUrl: string | null;
+      cursorApiTokenMasked: string | null;
+    } | null = null;
+    const projectMetaPatch = await prisma.project.findUnique({
+      where: { id: pid },
+      select: { ownerUserId: true },
+    });
+    if (projectMetaPatch?.ownerUserId) {
+      const donor = await getUserDefaultExecutionCredentials(projectMetaPatch.ownerUserId, pid);
+      if (donor) {
+        const needsGh = !ghTokPatch.hasToken;
+        const needsCur = !curTokPatch.hasToken;
+        const gh = needsGh ? donor.githubAccessTokenMasked : null;
+        const cu = needsCur ? donor.cursorApiUrl : null;
+        const ctm = needsCur ? donor.cursorApiTokenMasked : null;
+        if (gh || ctm) {
+          peerCredentialHintsPatch = {
+            githubAccessTokenMasked: gh,
+            cursorApiUrl: cu,
+            cursorApiTokenMasked: ctm,
+          };
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: "Execution setup을 저장했습니다.",
@@ -643,6 +670,7 @@ export async function PATCH(
         executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
         executorValidationError: row.executorValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
+        peerCredentialHints: peerCredentialHintsPatch,
       },
     });
   } catch (error) {
