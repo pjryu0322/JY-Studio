@@ -4,6 +4,51 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { refreshPrototypeRunState } from "@/lib/prototype/prototypeRunPipeline";
 import { getRun } from "@/lib/prototype/prototypeRunStore";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
+
+type NextAction =
+  | "WAIT_CURSOR"
+  | "WAIT_GITHUB_PUSH"
+  | "REVIEWING"
+  | "OPEN_PR"
+  | "MERGED"
+  | "CONNECT_PREVIEW_URL"
+  | "REWORK_REQUIRED"
+  | "FAILED"
+  | "BLOCKED";
+
+function computeNextAction(run: PrototypeRun): { nextAction: NextAction; userMessage: string | null } {
+  switch (run.status) {
+    case "PROMPT_READY":
+    case "CURSOR_REQUESTED":
+    case "CURSOR_RUNNING":
+      return { nextAction: "WAIT_CURSOR", userMessage: "Cursor 실행을 기다리는 중입니다." };
+    case "COMMIT_DETECTED":
+      return { nextAction: "WAIT_GITHUB_PUSH", userMessage: "원격 푸시 반영을 확인하는 중입니다." };
+    case "PUSH_CONFIRMED":
+      return { nextAction: "REVIEWING", userMessage: "AI 검토를 진행합니다." };
+    case "AI_REVIEWING":
+      return { nextAction: "OPEN_PR", userMessage: "PR 생성 단계를 진행합니다." };
+    case "REWORK_REQUIRED":
+      return { nextAction: "REWORK_REQUIRED", userMessage: run.aiReviewSummary ?? "보완이 필요합니다." };
+    case "PR_OPENED":
+      return run.previewUrl
+        ? { nextAction: "CONNECT_PREVIEW_URL", userMessage: "결과 URL이 연결되어 있습니다." }
+        : { nextAction: "CONNECT_PREVIEW_URL", userMessage: "소스 생성은 완료되었습니다. 결과 URL을 연결하세요." };
+    case "MERGED":
+      return run.previewUrl
+        ? { nextAction: "CONNECT_PREVIEW_URL", userMessage: "결과 URL이 연결되어 있습니다." }
+        : { nextAction: "CONNECT_PREVIEW_URL", userMessage: "머지까지 완료되었습니다. 결과 URL을 연결하세요." };
+    case "PREVIEW_READY":
+      return { nextAction: "CONNECT_PREVIEW_URL", userMessage: "결과 URL이 연결되었습니다." };
+    case "FAILED":
+      return { nextAction: "FAILED", userMessage: run.aiReviewSummary ?? "실행이 실패했습니다." };
+    case "BLOCKED":
+      return { nextAction: "BLOCKED", userMessage: "자동화가 중단되었습니다. 설정/승인을 확인하세요." };
+    default:
+      return { nextAction: "WAIT_CURSOR", userMessage: null };
+  }
+}
 
 export async function POST(
   request: NextRequest,
@@ -44,5 +89,7 @@ export async function POST(
   }
 
   const run = await refreshPrototypeRunState(projectId, id);
-  return NextResponse.json({ success: true, data: { run: run ?? existing } });
+  const resolved = run ?? existing;
+  const a = computeNextAction(resolved);
+  return NextResponse.json({ success: true, data: { run: resolved, ...a } });
 }

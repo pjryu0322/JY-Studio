@@ -18,9 +18,12 @@ export type EnvTestReadinessResult = { ok: true } | EnvTestReadinessBlocked;
 export async function assertEnvTestStartReadiness(input: {
   projectId: string;
   userId: string;
+  /** prototype MVP 등: validated 전에도 시작을 허용(최소 조건만 검사) */
+  allowUnvalidated?: boolean;
 }): Promise<EnvTestReadinessResult> {
   const projectId = String(input.projectId ?? "").trim();
   const userId = String(input.userId ?? "").trim();
+  const allowUnvalidated = input.allowUnvalidated === true;
 
   appendTaskProgressLog({
     kind: "execution",
@@ -35,12 +38,16 @@ export async function assertEnvTestStartReadiness(input: {
       where: { projectId },
       select: {
         status: true,
+        gitRepoUrl: true,
+        gitRepoName: true,
         baseBranch: true,
         autoPush: true,
         repoConnectionOk: true,
         githubAuthConnectionOk: true,
         cursorApiConnectionOk: true,
         executorConnectionOk: true,
+        githubAccessToken: true,
+        cursorApiToken: true,
       },
     })
   );
@@ -60,8 +67,18 @@ export async function assertEnvTestStartReadiness(input: {
     return block("NO_EXECUTION_SETUP", "실행 환경 준비가 완료되지 않았습니다");
   }
 
-  if (String(setup.status ?? "").trim() !== "validated") {
-    return block("EXECUTION_SETUP_NOT_VALIDATED", "실행 환경 준비가 완료되지 않았습니다");
+  if (allowUnvalidated) {
+    const repoUrlOk = Boolean(String(setup.gitRepoUrl ?? "").trim());
+    const repoNameOk = Boolean(String(setup.gitRepoName ?? "").trim());
+    const ghTokOk = Boolean(String(setup.githubAccessToken ?? "").trim());
+    const curTokOk = Boolean(String(setup.cursorApiToken ?? "").trim());
+    if (!repoUrlOk || !repoNameOk || !ghTokOk || !curTokOk) {
+      return block("EXECUTION_SETUP_MINIMAL_INCOMPLETE", "실행 환경 준비가 완료되지 않았습니다");
+    }
+  } else {
+    if (String(setup.status ?? "").trim() !== "validated") {
+      return block("EXECUTION_SETUP_NOT_VALIDATED", "실행 환경 준비가 완료되지 않았습니다");
+    }
   }
 
   const baseTrim = String(setup.baseBranch ?? "").trim();
@@ -84,17 +101,19 @@ export async function assertEnvTestStartReadiness(input: {
     detail: { baseBranch: baseTrim },
   });
 
-  if (setup.repoConnectionOk !== true) {
-    return block("REPO_CONNECTION", "저장소 연결이 필요합니다");
-  }
-  if (setup.githubAuthConnectionOk !== true) {
-    return block("GITHUB_AUTH", "GitHub 인증이 필요합니다");
-  }
-  if (setup.cursorApiConnectionOk !== true) {
-    return block("CURSOR_API", "Cursor 연결이 필요합니다");
-  }
-  if (setup.executorConnectionOk !== true) {
-    return block("EXECUTOR", "실행 환경 준비가 완료되지 않았습니다");
+  if (!allowUnvalidated) {
+    if (setup.repoConnectionOk !== true) {
+      return block("REPO_CONNECTION", "저장소 연결이 필요합니다");
+    }
+    if (setup.githubAuthConnectionOk !== true) {
+      return block("GITHUB_AUTH", "GitHub 인증이 필요합니다");
+    }
+    if (setup.cursorApiConnectionOk !== true) {
+      return block("CURSOR_API", "Cursor 연결이 필요합니다");
+    }
+    if (setup.executorConnectionOk !== true) {
+      return block("EXECUTOR", "실행 환경 준비가 완료되지 않았습니다");
+    }
   }
 
   appendTaskProgressLog({

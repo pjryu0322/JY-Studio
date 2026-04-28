@@ -91,7 +91,11 @@ function validateRepoStructure(row: {
   }
 
   const parsed = parseGitHubRepoFullName(row.gitRepoUrl);
-  const name = (row.gitRepoName ?? "").trim().toLowerCase();
+  const name = (row.gitRepoName ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
   if (parsed && name && parsed !== name) {
     git = "error";
     messages.push(`저장소: full name이 URL과 맞지 않습니다. (URL 기준 ${parsed})`);

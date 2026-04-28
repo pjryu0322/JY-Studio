@@ -20,6 +20,29 @@ export function buildCursorPrototypePromptPackage(input: PrototypePromptBuildInp
       input.featureDraftTitles.map((x, i) => `${i + 1}. ${x}`).join("\n")
     : "(아직 기능 정리 초안이 없으면 서비스 흐름만으로 1차 프로토타입 생성)";
 
+  const templateSpecific = (() => {
+    if (input.analysis.recommendedTemplate !== "meeting-workspace") return "";
+    return `
+Template-specific requirements (meeting-workspace):
+- Build a clean 3-column SaaS workspace layout (responsive).
+- Left sidebar:
+  - 회의 파일 목록
+  - 참여자/화자 목록
+  - 작업 상태
+- Center:
+  - 대화/작업 타임라인
+  - 업로드 카드 (mock interaction)
+  - AI 변환 상태 (progress-like UI)
+  - 하단 메시지 입력창 (mock)
+- Right panel:
+  - Tabs: 요약본 / 스크립트 (tab switch interaction)
+  - 요약본 탭: 핵심 안건, 결정사항, 할 일
+  - 스크립트 탭: 화자별 발언 목록
+- Use Korean labels and include mock data (sample meetings, speakers, transcript lines, summary items).
+- No backend. Static prototype only.
+`.trim();
+  })();
+
   return `Create a responsive web prototype for the following product context.
 
 Project:
@@ -34,6 +57,8 @@ Workflow complexity: ${input.analysis.workflowComplexity}
 
 Template seed (starting layout only — customize all labels, navigation, and flows):
 ${t?.nameEn ?? "Dashboard"} (${t?.nameKo ?? ""})
+
+${templateSpecific ? `${templateSpecific}\n` : ""}
 
 Suggested pages (rename/merge as needed):
 ${pages}

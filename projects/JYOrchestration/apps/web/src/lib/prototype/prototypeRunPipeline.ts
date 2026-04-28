@@ -6,11 +6,15 @@ import { pollCursorAgent, type ExecutionSetupRelaySlice } from "@/lib/execution/
 import { requestCursorPrototypeRun } from "@/lib/prototype/prototypeCursorAdapter";
 import { refreshPrototypeGitState } from "@/lib/prototype/prototypeGitMonitor";
 import { reviewPrototypeRun } from "@/lib/prototype/prototypeAiReview";
+import { openPrototypePr, mergePrototypePr } from "@/lib/prototype/prototypePrPipeline";
+import { composeGithubPagesPreviewUrlFromRepoUrl } from "@/lib/prototype/githubPagesPreviewUrl";
+import { probeHttpOk } from "@/lib/prototype/httpUrlProbe";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import {
   createRun,
   getRun,
   markFailed,
+  markBlocked,
   updateRun,
 } from "@/lib/prototype/prototypeRunStore";
 import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
@@ -56,6 +60,20 @@ function toRelaySlice(setup: {
     autoPr: setup.autoPr,
     requireTestsBeforePush: setup.requireTestsBeforePush,
   };
+}
+
+type PrototypePolicy = "manual_review" | "auto_pr" | "auto_merge";
+function derivePrototypePolicyFromExecutionSetup(setup: {
+  requireApprovalBeforeApply: boolean;
+  autoPush: boolean;
+  autoPr: boolean;
+  stopOnOutOfScopeChange: boolean;
+}): PrototypePolicy {
+  if (setup.requireApprovalBeforeApply) return "manual_review";
+  if (setup.autoPush && setup.autoPr) {
+    return setup.stopOnOutOfScopeChange === false ? "auto_merge" : "auto_pr";
+  }
+  return "manual_review";
 }
 
 export async function evaluatePrototypeCursorAutomation(projectId: string): Promise<PrototypeAutomationGate> {
@@ -248,12 +266,31 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       if (git.patch.status === "COMMIT_DETECTED") {
         logPrototypePipelineEvent("prototype_commit_detected", { projectId, runId, source: "github" });
       }
+      if (git.patch.status === "PUSH_CONFIRMED") {
+        logPrototypePipelineEvent("prototype_push_confirmed", { projectId, runId, source: "github" });
+      }
     }
   }
 
   run = getRun(projectId, runId) ?? run;
-  run = getRun(projectId, runId) ?? run;
-  if (run.status === "COMMIT_DETECTED") {
+  const policy = setup
+    ? derivePrototypePolicyFromExecutionSetup({
+        requireApprovalBeforeApply: Boolean(setup.requireApprovalBeforeApply),
+        autoPush: Boolean(setup.autoPush),
+        autoPr: Boolean(setup.autoPr),
+        stopOnOutOfScopeChange: setup.stopOnOutOfScopeChange !== false ? true : false,
+      })
+    : "manual_review";
+
+  // manual_review: 자동 파이프라인은 push 확인까지만 진행(그 이후는 사용자가 PR/merge 결정)
+  if (run.status === "PUSH_CONFIRMED" && policy === "manual_review") {
+    run = markBlocked(projectId, runId, "MANUAL_REVIEW_REQUIRED") ?? run;
+    return run;
+  }
+
+  // 리뷰는 commit 감지 이후(또는 push 확인 이후)부터 진행한다.
+  if (run.status === "COMMIT_DETECTED" || run.status === "PUSH_CONFIRMED") {
+    run = updateRun(projectId, runId, { status: "AI_REVIEWING", statusReason: null }) ?? run;
     logPrototypePipelineEvent("prototype_review_started", { projectId, runId, phase: "review" });
     const rev = await reviewPrototypeRun(run);
     if (rev.outcome === "REWORK_REQUIRED") {
@@ -263,11 +300,79 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
           aiReviewDecision: "REWORK",
           aiReviewSummary: rev.summary,
         }) ?? run;
-    } else if (rev.outcome === "PASS") {
-      run = updateRun(projectId, runId, { status: "AI_REVIEWING", aiReviewDecision: "PASS" }) ?? run;
-    } else if (rev.outcome === "BLOCKED") {
+      logPrototypePipelineEvent("prototype_rework_required", { projectId, runId });
+      return run;
+    }
+    if (rev.outcome === "BLOCKED") {
       const sr = rev.reason === "REVIEW_DATA_MISSING" ? "REVIEW_DATA_MISSING" : "REVIEW_ENGINE_NOT_READY";
       run = updateRun(projectId, runId, { status: "BLOCKED", statusReason: sr }) ?? run;
+      return run;
+    }
+    run =
+      updateRun(projectId, runId, {
+        status: "AI_REVIEWING",
+        aiReviewDecision: "PASS",
+        aiReviewSummary: rev.summary ?? null,
+      }) ?? run;
+    logPrototypePipelineEvent("prototype_review_passed", { projectId, runId });
+  }
+
+  // PR/merge 단계: auto_pr/auto_merge 정책에서만 진행
+  run = getRun(projectId, runId) ?? run;
+  if ((policy === "auto_pr" || policy === "auto_merge") && run.status === "AI_REVIEWING" && run.aiReviewDecision === "PASS") {
+    if (!setup?.gitRepoUrl || !setup.baseBranch) {
+      run = markFailed(projectId, runId, "EXECUTION_SETUP_INVALID", "repo/baseBranch 없음") ?? run;
+      return run;
+    }
+    const pr = await openPrototypePr({
+      run,
+      projectName: String((await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } }))?.name ?? "Project"),
+      repoUrl: setup.gitRepoUrl,
+      baseBranch: setup.baseBranch,
+      githubAccessToken: setup.githubAccessToken ?? null,
+      projectId,
+    });
+    if (!pr.ok) {
+      run = markFailed(projectId, runId, "PR_CREATE_FAILED", pr.message) ?? run;
+      return run;
+    }
+    run =
+      updateRun(projectId, runId, {
+        status: "PR_OPENED",
+        prUrl: pr.prUrl,
+        prNumber: pr.prNumber,
+        statusReason: null,
+      }) ?? run;
+
+    if (policy === "auto_merge") {
+      const merged = await mergePrototypePr({ run, githubAccessToken: setup.githubAccessToken ?? null, projectId });
+      if (!merged.ok) {
+        run = markFailed(projectId, runId, "PR_MERGE_FAILED", merged.message) ?? run;
+        return run;
+      }
+      run = updateRun(projectId, runId, { status: "MERGED", mergeSha: merged.mergeSha, statusReason: null }) ?? run;
+    }
+  }
+
+  // GitHub Pages 예상 URL 자동 구성 + (auto_merge && MERGED)일 때만 실제 HTTP 체크 후 자동 부착
+  run = getRun(projectId, runId) ?? run;
+  if ((run.status === "PR_OPENED" || run.status === "MERGED") && setup?.gitRepoUrl) {
+    const composed = composeGithubPagesPreviewUrlFromRepoUrl(setup.gitRepoUrl);
+    if (composed && composed.url && run.suggestedPreviewUrl !== composed.url) {
+      run = updateRun(projectId, runId, { suggestedPreviewUrl: composed.url }) ?? run;
+    }
+    run = getRun(projectId, runId) ?? run;
+    if (
+      run.status === "MERGED" &&
+      policy === "auto_merge" &&
+      !run.previewUrl &&
+      run.suggestedPreviewUrl &&
+      /^https?:\/\//i.test(run.suggestedPreviewUrl)
+    ) {
+      const ok = await probeHttpOk(run.suggestedPreviewUrl, { timeoutMs: 2500 });
+      if (ok.ok) {
+        run = updateRun(projectId, runId, { previewUrl: run.suggestedPreviewUrl, status: "PREVIEW_READY" }) ?? run;
+      }
     }
   }
 

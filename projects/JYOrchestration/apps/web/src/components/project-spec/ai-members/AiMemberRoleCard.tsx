@@ -98,7 +98,7 @@ export function AiMemberRoleCard(props: {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div>
           <div style={{ fontWeight: 900, fontSize: 15, color: "#0f172a" }}>{d.displayName}</div>
-          <div style={{ fontSize: 10, color: "#6d28d9", fontWeight: 800, marginTop: 4 }}>Stage 2 역할</div>
+          <div style={{ fontSize: 10, color: "#6d28d9", fontWeight: 800, marginTop: 4 }}>역할 분리 검증 역할</div>
         </div>
         {d.requiredForStage2 ? (
           <span
@@ -128,18 +128,18 @@ export function AiMemberRoleCard(props: {
       </div>
       <div style={{ fontSize: 11, color: "#b45309", marginBottom: 6, lineHeight: 1.45 }}>{fallbackLine}</div>
       <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
-        <span style={{ fontWeight: 700, color: "#334155" }}>Stage 2 포함</span> 예 · 이 역할이 ENV_TEST Stage2 파이프라인에
-        참여합니다.
+        <span style={{ fontWeight: 700, color: "#334155" }}>역할 분리 검증 포함</span> 예 · 이 역할이 역할 분리 환경 검증
+        파이프라인에 참여합니다.
       </div>
       {recentStage2Line ? (
         <div style={{ fontSize: 11, marginBottom: 10, color: "#0f172a" }}>
-          <span style={{ color: "#64748b" }}>최근 Stage 2</span> {recentStage2Line}
+          <span style={{ color: "#64748b" }}>최근 역할 분리 검증</span> {recentStage2Line}
         </div>
       ) : null}
 
       {d.roleKey === "executor" ? (
         <p style={{ fontSize: 11, color: "#b45309", margin: "0 0 8px 0", fontWeight: 700 }}>
-          Executor 필수 · Stage 2는 Cursor 실행기 없이 진행할 수 없으며 플랫폼이 대체하지 않습니다.
+          Executor 필수 · 역할 분리 검증은 Cursor 실행기 없이 진행할 수 없으며 플랫폼이 대체하지 않습니다.
         </p>
       ) : null}
       {d.roleKey === "executor" ? (

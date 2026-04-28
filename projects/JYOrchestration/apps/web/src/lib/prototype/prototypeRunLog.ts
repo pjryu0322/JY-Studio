@@ -5,8 +5,12 @@
 export type PrototypeRunLogEvent =
   | "prototype_run_created"
   | "prototype_cursor_requested"
+  | "prototype_branch_detected"
   | "prototype_commit_detected"
+  | "prototype_push_confirmed"
   | "prototype_review_started"
+  | "prototype_review_passed"
+  | "prototype_rework_required"
   | "prototype_pr_opened"
   | "prototype_merged"
   | "prototype_preview_ready"

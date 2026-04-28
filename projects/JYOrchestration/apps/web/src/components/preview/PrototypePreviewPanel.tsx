@@ -36,6 +36,7 @@ import {
   prototypeLifecycleCellLabelKo,
   prototypeRunStatusLabelKo,
 } from "@/lib/prototype/prototypeRunUiHelpers";
+import { composeGithubPagesPreviewUrlFromRepoUrl, githubPagesSettingsUrl } from "@/lib/prototype/githubPagesPreviewUrl";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
@@ -280,6 +281,25 @@ export function PrototypePreviewPanel({
     return record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? record.previewUrl.trim() : null;
   }, [latestRun?.previewUrl, record.previewUrl]);
 
+  const repoUrlForButtons = useMemo(() => {
+    const u = String(executionSetup?.gitRepoUrl ?? "").trim();
+    return /^https?:\/\//i.test(u) ? u : null;
+  }, [executionSetup?.gitRepoUrl]);
+
+  const prUrlForButtons = useMemo(() => {
+    const u = String(latestRun?.prUrl ?? "").trim();
+    return /^https?:\/\//i.test(u) ? u : null;
+  }, [latestRun?.prUrl]);
+
+  const suggestedPreview = useMemo(() => {
+    const fromRun = String(latestRun?.suggestedPreviewUrl ?? "").trim();
+    if (fromRun && isLikelyPreviewUrl(fromRun)) return { url: fromRun, source: "run" as const };
+    const repoUrl = String(executionSetup?.gitRepoUrl ?? "").trim();
+    const composed = repoUrl ? composeGithubPagesPreviewUrlFromRepoUrl(repoUrl) : null;
+    if (composed?.url) return { url: composed.url, source: "composed" as const, owner: composed.owner, repo: composed.repo };
+    return null;
+  }, [latestRun?.suggestedPreviewUrl, executionSetup?.gitRepoUrl]);
+
   const showToast = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 3200);
@@ -328,7 +348,7 @@ export function PrototypePreviewPanel({
       const res = await postPrototypeRunRefresh(latestRun.id, { projectId });
       if (res.success && res.data?.run) {
         setLatestRun(res.data.run);
-        showToast("상태를 갱신했습니다.");
+        showToast(res.data.userMessage?.trim() || "상태를 갱신했습니다.");
       } else {
         showToast(res.message ?? "갱신에 실패했습니다.");
       }
@@ -664,6 +684,73 @@ export function PrototypePreviewPanel({
               <div style={cardTitle}>실제 결과물 미리보기</div>
               {!previewUrl ? (
                 <>
+                  {latestRun &&
+                  (latestRun.status === "PR_OPENED" || latestRun.status === "MERGED") ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 12,
+                        borderRadius: 12,
+                        border: "1px solid #fed7aa",
+                        background: "#fff7ed",
+                        color: "#7c2d12",
+                        fontSize: 12.5,
+                        lineHeight: 1.55,
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: 6, color: "#9a3412" }}>소스 생성 완료</div>
+                      <div>PR/Merge까지 완료되었습니다. 결과 화면을 보려면 로컬 실행 또는 배포 URL을 연결하세요.</div>
+                      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        {prUrlForButtons ? (
+                          <a href={prUrlForButtons} target="_blank" rel="noreferrer" style={{ ...btnMuted, textDecoration: "none" }}>
+                            GitHub PR 열기
+                          </a>
+                        ) : null}
+                        {repoUrlForButtons ? (
+                          <a href={repoUrlForButtons} target="_blank" rel="noreferrer" style={{ ...btnMuted, textDecoration: "none" }}>
+                            GitHub 저장소 열기
+                          </a>
+                        ) : null}
+                      </div>
+                      {suggestedPreview?.url ? (
+                        <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed #fdba74" }}>
+                          <div style={{ fontWeight: 900, marginBottom: 6, color: "#9a3412" }}>예상 미리보기 URL</div>
+                          <div style={{ fontSize: 12.5, color: "#7c2d12", wordBreak: "break-all" }}>
+                            <code style={{ fontSize: 11.5 }}>{suggestedPreview.url}</code>
+                          </div>
+                          <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUrlDraft(suggestedPreview.url);
+                                showToast("예상 URL을 입력란에 넣었습니다. \"URL 적용\"을 누르세요.");
+                              }}
+                              disabled={protoBusy}
+                              style={btnMuted}
+                            >
+                              URL 적용
+                            </button>
+                            {"owner" in (suggestedPreview as any) && (suggestedPreview as any).owner && (suggestedPreview as any).repo ? (
+                              <a
+                                href={githubPagesSettingsUrl((suggestedPreview as any).owner, (suggestedPreview as any).repo)}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ ...btnMuted, textDecoration: "none" }}
+                              >
+                                GitHub Pages 설정 열기
+                              </a>
+                            ) : null}
+                          </div>
+                          <div style={{ marginTop: 8, fontSize: 11.5, color: "#9a3412" }}>
+                            GitHub Pages를 활성화하면 위 URL에서 확인할 수 있습니다. (현재는 <strong>예상 URL</strong>입니다)
+                          </div>
+                        </div>
+                      ) : null}
+                      <div style={{ marginTop: 10, fontSize: 11.5, color: "#9a3412" }}>
+                        로컬 실행 예: <code style={{ fontSize: 11 }}>pnpm install && pnpm dev</code>
+                      </div>
+                    </div>
+                  ) : null}
                   <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <input
                       value={urlDraft || record.previewUrl || ""}

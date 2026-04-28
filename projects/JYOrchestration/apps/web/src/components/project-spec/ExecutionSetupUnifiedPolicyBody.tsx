@@ -15,7 +15,7 @@ export function ExecutionSetupUnifiedPolicyBody(props: {
   projectId: string;
   canEdit: boolean;
   es: ExecutionSetupDto | null;
-  setExecutionSetup: Dispatch<SetStateAction<ExecutionSetupDto | null | undefined>>;
+  setExecutionSetup: Dispatch<SetStateAction<ExecutionSetupDto | null>>;
   setMessage: (msg: string | null) => void;
   examplesOpen: boolean;
   setExamplesOpen: Dispatch<SetStateAction<boolean>>;

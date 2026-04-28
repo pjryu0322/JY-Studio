@@ -11,6 +11,10 @@ import {
 } from "@/components/project-spec/api";
 import type { AiMemberRoleKey } from "@/lib/ai-member/aiMemberRoleDefinitions";
 import { AI_MEMBER_ROLE_DEFINITIONS, STAGE2_DEFAULT_DB_MEMBER_SLOTS } from "@/lib/ai-member/aiMemberRoleDefinitions";
+import {
+  ENV_TEST_ROLE_SEPARATION_RUN_FAILED,
+  ENV_TEST_ROLE_SEPARATION_RUN_OK,
+} from "@/lib/service/envTestUserFacingMessages";
 
 export type Stage2ReadinessSlot = "ready" | "missing" | "disabled";
 
@@ -147,7 +151,7 @@ export function useAiMembersState(input: {
       await loadStage2();
       setNote(
         (typeof json.message === "string" && json.message.trim()) ||
-          (res.ok ? "Stage 2 실행이 완료되었습니다." : "Stage 2 실행에 실패했습니다.")
+          (res.ok ? ENV_TEST_ROLE_SEPARATION_RUN_OK : ENV_TEST_ROLE_SEPARATION_RUN_FAILED)
       );
       await onAfterMutation();
     } finally {

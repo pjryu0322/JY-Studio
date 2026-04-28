@@ -17,6 +17,7 @@ import { normalizeStage1EnvTestHeadBranch } from "@/lib/service/githubEnvTestPul
 import { fetchGithubBranchHeadExists } from "@/lib/service/githubCompareService";
 import { findOpenPullRequestByHeadBranch } from "@/lib/service/githubOpenPullRequestByHeadService";
 import { getEnvTestStage1PrFirstRetryConfig, runStage1EnvTestPrSmokePath } from "@/lib/executionLoop/envTestStage1Helpers";
+import { formatEnvTestPrSmokeFailureUserMessage, ENV_TEST_GITHUB_BRANCH_PR_TIMEOUT_MESSAGE } from "@/lib/service/envTestUserFacingMessages";
 import { monitorCursorSignalPatch, patchTaskExecutionRunStage2RuntimeMonitor } from "@/lib/service/envTestStage2RuntimeMonitor";
 
 type EnvTestGithubProbeState = {
@@ -265,7 +266,11 @@ async function tryStage1PrSmokeFinalizeDuringPoll(input: {
     });
     return {
       kind: "return",
-      result: { ok: false, steps: ctx.steps, message: "ENV_TEST(Stage1): 플랫폼이 GitHub PR을 생성·갱신하지 못했습니다." },
+      result: {
+        ok: false,
+        steps: ctx.steps,
+        message: formatEnvTestPrSmokeFailureUserMessage(out.message),
+      },
     };
   }
 
@@ -472,7 +477,7 @@ export async function executeStage1CursorRunWithGithubFinalize(
   return {
     ok: false,
     error: enhanceCursorErrorIfBaseBranchRelated(
-      "ENV_TEST(Stage1): GitHub 브랜치/PR 반영이 제한 시간 내에 확인되지 않았습니다.",
+      ENV_TEST_GITHUB_BRANCH_PR_TIMEOUT_MESSAGE,
       branchCtx
     ),
     logs,

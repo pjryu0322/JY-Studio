@@ -18,15 +18,41 @@ async function currentWorkspaceSpecVersionId(projectId: string): Promise<string 
 
 export async function loadWorkflowGraphTasks(projectId: string) {
   const specId = await currentWorkspaceSpecVersionId(projectId);
+  const commonWhere = {
+    projectId,
+    taskKind: { in: ["PRIMARY", ENV_TEST_TASK_KIND, ENV_TEST_STAGE2_TASK_KIND] },
+    status: { notIn: ["BLOCKED", "CANCELLED"] },
+    archivedAt: null,
+  };
+
+  /** 확정 스펙이 없을 때는 소속 스펙이 없는 ENV_TEST 계열만 그래프에 포함한다(연결 테스트 등). */
   if (!specId) {
-    return [];
+    return prisma.task.findMany({
+      where: {
+        ...commonWhere,
+        taskKind: { in: [ENV_TEST_TASK_KIND, ENV_TEST_STAGE2_TASK_KIND] },
+        sourceSpecVersionId: null,
+      },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        projectId: true,
+        name: true,
+        description: true,
+        status: true,
+        order: true,
+        dependsOnTaskIds: true,
+        acceptanceCriteria: true,
+        executionWorkflowStatus: true,
+        loopRetryCount: true,
+        taskKind: true,
+      },
+    });
   }
+
   return prisma.task.findMany({
     where: {
-      projectId,
-      taskKind: { in: ["PRIMARY", ENV_TEST_TASK_KIND, ENV_TEST_STAGE2_TASK_KIND] },
-      status: { notIn: ["BLOCKED", "CANCELLED"] },
-      archivedAt: null,
+      ...commonWhere,
       sourceSpecVersionId: specId,
     },
     orderBy: [{ order: "asc" }, { createdAt: "asc" }],

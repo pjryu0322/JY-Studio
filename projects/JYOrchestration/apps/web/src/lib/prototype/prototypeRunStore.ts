@@ -74,6 +74,7 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
     prUrl: typeof raw.prUrl === "string" ? raw.prUrl : null,
     prNumber: typeof raw.prNumber === "number" && Number.isFinite(raw.prNumber) ? raw.prNumber : null,
     mergeSha,
+    suggestedPreviewUrl: typeof raw.suggestedPreviewUrl === "string" ? raw.suggestedPreviewUrl : null,
     previewUrl: typeof raw.previewUrl === "string" ? raw.previewUrl : null,
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
@@ -127,6 +128,7 @@ export function createRun(input: {
     prUrl: null,
     prNumber: null,
     mergeSha: null,
+    suggestedPreviewUrl: null,
     previewUrl: null,
     createdAt: t,
     updatedAt: t,
@@ -165,6 +167,7 @@ export function updateRun(
       | "prUrl"
       | "prNumber"
       | "mergeSha"
+      | "suggestedPreviewUrl"
       | "previewUrl"
       | "promptSnapshot"
     >

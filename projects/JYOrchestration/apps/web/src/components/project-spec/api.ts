@@ -342,10 +342,15 @@ export type ExecutionSetupDto = {
   } | null;
 };
 
+/** GET: `data`가 null일 때도 동일 계정 peer 힌트가 올 수 있음 */
+export type ExecutionSetupGetJson = ApiResponse<ExecutionSetupDto | null> & {
+  peerCredentialHints?: ExecutionSetupDto["peerCredentialHints"] | null;
+};
+
 export async function fetchExecutionSetup(projectId: string) {
   const encoded = encodeURIComponent(projectId);
   const res = await fetch(`/api/projects/${encoded}/execution-setup`, { credentials: "include" });
-  const json = (await res.json()) as ApiResponse<ExecutionSetupDto | null>;
+  const json = (await res.json()) as ExecutionSetupGetJson;
   return { res, json };
 }
 
@@ -580,15 +585,16 @@ export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage
 
 export async function postEnvironmentTestRun(
   projectId: string,
-  opts?: { stage?: 2; mergeMode?: "skip" | "auto" }
+  opts?: { stage?: 2; mergeMode?: "skip" | "auto"; allowUnvalidated?: boolean }
 ) {
   const encoded = encodeURIComponent(projectId);
   const body =
     opts?.stage === 2
       ? { stage: 2 }
-      : opts?.mergeMode != null
-        ? { mergeMode: opts.mergeMode }
-        : {};
+      : {
+          ...(opts?.mergeMode != null ? { mergeMode: opts.mergeMode } : {}),
+          ...(opts?.allowUnvalidated === true ? { allowUnvalidated: true } : {}),
+        };
   const res = await fetch(`/api/projects/${encoded}/environment-test`, {
     method: "POST",
     credentials: "include",

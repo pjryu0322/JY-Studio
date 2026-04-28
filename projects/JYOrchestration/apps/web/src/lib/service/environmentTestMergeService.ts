@@ -27,10 +27,11 @@ import {
 } from "@/lib/execution/envTestTaskKind";
 import { parseGithubPrUrl } from "@/lib/service/githubAutoMergeService";
 import { parsePrUrlFromRunPrStatus } from "@/lib/service/environmentConnectionTestService";
+import { ENV_TEST_MERGE_VERIFIED_LINE } from "@/lib/service/envTestUserFacingMessages";
 
 const ENV_TEST_MERGE_VERIFIED_SUMMARY = "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.";
 const ENV_TEST_MERGE_SUCCESS_USER_MESSAGE = "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.";
-const ENV_TEST_STAGE1_MERGE_VERIFIED_SUMMARY = "Stage1: 브랜치·PR·머지 확인 완료.";
+const ENV_TEST_STAGE1_MERGE_VERIFIED_SUMMARY = `환경 연결 테스트: ${ENV_TEST_MERGE_VERIFIED_LINE}`;
 const ENV_TEST_STAGE1_MERGE_SUCCESS_USER_MESSAGE = "연결 테스트 성공 (Merge 완료)";
 
 function envTestMergeVerifiedSummaryForTaskKind(taskKind: string | null | undefined): string {
@@ -127,7 +128,7 @@ export async function executeEnvTestPrMergeSmokeTest(input: {
     return {
       ok: false,
       message: stage2
-        ? "Stage 2: 리뷰 통과 후 MERGE_PENDING 상태에서만 SCM 머지를 실행합니다."
+        ? "역할 분리 환경 검증: 리뷰 통과 후 MERGE_PENDING 상태에서만 SCM 머지를 실행합니다."
         : "PR_OPENED 상태에서만 테스트 머지를 실행할 수 있습니다.",
       blockedReason: `현재 워크플로: ${task.executionWorkflowStatus ?? "없음"}`,
     };

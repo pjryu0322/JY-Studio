@@ -28,6 +28,11 @@ import {
   logStage2PrCreationCheck,
 } from "@/lib/executionLoop/envTestStage2Helpers";
 import { appendStage2ProgressPhase, STAGE2_PROGRESS_PHASE } from "@/lib/executionLoop/stage2/stage2CanonicalProgressPhases";
+import {
+  ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
+  ENV_TEST_ROLE_SEPARATION_NO_COMMIT,
+  ENV_TEST_ROLE_SEPARATION_NO_PR,
+} from "@/lib/service/envTestUserFacingMessages";
 
 export type EnvTestReflectionNotConfirmedBypassResult =
   | { kind: "return"; result: RunExecutionLoopResult }
@@ -60,7 +65,7 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
   });
   if (!isEnvTestStage2TaskKind(input.taskKind)) {
     throw new Error(
-      "[runEnvTestReflectionNotConfirmedGithubBypass] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestSimplePipeline"
+      "[runEnvTestReflectionNotConfirmedGithubBypass] ENV_TEST_STAGE2 only; ENV_TEST uses runStage1EnvTestSimplePipeline"
     );
   }
 
@@ -108,14 +113,14 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
       taskId,
       execRunId,
       code: "NO_COMMIT",
-      summaryKo: "Stage 2 실패: commit 미발생",
+      summaryKo: ENV_TEST_ROLE_SEPARATION_NO_COMMIT,
     });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "Stage 2 실패: commit 미발생",
+        message: ENV_TEST_ROLE_SEPARATION_NO_COMMIT,
       },
     };
   }
@@ -144,14 +149,14 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
       taskId,
       execRunId,
       code: "BRANCH_NOT_REFLECTED",
-      summaryKo: "Stage 2 실패: Git branch 미반영",
+      summaryKo: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
     });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "Stage 2 실패: Git branch 미반영",
+        message: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
       },
     };
   }
@@ -256,14 +261,14 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
         taskId,
         execRunId,
         code: "PR_NOT_OPENED",
-        summaryKo: "Stage 2 실패: PR 미생성",
+        summaryKo: ENV_TEST_ROLE_SEPARATION_NO_PR,
       });
       return {
         kind: "return",
         result: {
           ok: false,
           steps: input.steps,
-          message: "Stage 2 실패: PR 미생성",
+          message: ENV_TEST_ROLE_SEPARATION_NO_PR,
         },
       };
     }
@@ -275,14 +280,14 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
       taskId: input.taskId,
       execRunId: input.execRunId,
       code: "BRANCH_NOT_REFLECTED",
-      summaryKo: "Stage 2 실패: Git branch 미반영",
+      summaryKo: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
     });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "Stage 2 실패: Git branch 미반영",
+        message: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
       },
     };
   }
@@ -302,14 +307,14 @@ export async function runEnvTestReflectionNotConfirmedGithubBypass(input: {
     taskId,
     execRunId,
     code: "BRANCH_NOT_REFLECTED",
-    summaryKo: "Stage 2 실패: Git branch 미반영",
+    summaryKo: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
   });
   return {
     kind: "return",
     result: {
       ok: false,
       steps: input.steps,
-      message: "Stage 2 실패: Git branch 미반영",
+      message: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
     },
   };
 }
@@ -340,7 +345,7 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
   });
   if (!isEnvTestStage2TaskKind(input.taskKind)) {
     throw new Error(
-      "[runEnvTestReflectionConfirmedPipeline] Stage 2 (ENV_TEST_STAGE2) only; Stage 1 uses runStage1EnvTestSimplePipeline"
+      "[runEnvTestReflectionConfirmedPipeline] ENV_TEST_STAGE2 only; ENV_TEST uses runStage1EnvTestSimplePipeline"
     );
   }
 
@@ -387,14 +392,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       taskId,
       execRunId,
       code: "NO_COMMIT",
-      summaryKo: "Stage 2 실패: commit 미발생",
+      summaryKo: ENV_TEST_ROLE_SEPARATION_NO_COMMIT,
     });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "Stage 2 실패: commit 미발생",
+        message: ENV_TEST_ROLE_SEPARATION_NO_COMMIT,
       },
     };
   }
@@ -579,14 +584,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       taskId,
       execRunId,
       code: "BRANCH_NOT_REFLECTED",
-      summaryKo: "Stage 2 실패: Git branch 미반영",
+      summaryKo: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
     });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "Stage 2 실패: Git branch 미반영",
+        message: ENV_TEST_ROLE_SEPARATION_BRANCH_NOT_REFLECTED,
       },
     };
   }
@@ -631,14 +636,14 @@ export async function runEnvTestReflectionConfirmedPipeline(input: {
       taskId,
       execRunId,
       code: "PR_NOT_OPENED",
-      summaryKo: "Stage 2 실패: PR 미생성",
+      summaryKo: ENV_TEST_ROLE_SEPARATION_NO_PR,
     });
     return {
       kind: "return",
       result: {
         ok: false,
         steps: input.steps,
-        message: "Stage 2 실패: PR 미생성",
+        message: ENV_TEST_ROLE_SEPARATION_NO_PR,
       },
     };
   }

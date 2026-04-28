@@ -70,21 +70,23 @@ export async function POST(
 
     let runStage2 = false;
     let mergeMode: "skip" | "auto" = "auto";
+    let allowUnvalidated = false;
     try {
       const ct = request.headers.get("content-type") ?? "";
       if (ct.includes("application/json")) {
-        const b = (await request.json()) as { stage?: number; mergeMode?: string };
+        const b = (await request.json()) as { stage?: number; mergeMode?: string; allowUnvalidated?: boolean };
         if (b?.stage === 2) runStage2 = true;
         if (!runStage2 && b?.mergeMode === "skip") mergeMode = "skip";
         if (!runStage2 && b?.mergeMode === "auto") mergeMode = "auto";
+        if (b?.allowUnvalidated === true) allowUnvalidated = true;
       }
     } catch {
       /* empty body */
     }
 
     const created = runStage2
-      ? await createEnvironmentStage2TestTask({ projectId: pid, actorUserId: userId })
-      : await createEnvironmentTestTask({ projectId: pid, actorUserId: userId, mergeMode });
+      ? await createEnvironmentStage2TestTask({ projectId: pid, actorUserId: userId, allowUnvalidated })
+      : await createEnvironmentTestTask({ projectId: pid, actorUserId: userId, mergeMode, allowUnvalidated });
     if (!created.ok) {
       return NextResponse.json({ success: false, message: created.message }, { status: 422 });
     }
@@ -93,6 +95,7 @@ export async function POST(
       projectId: pid,
       actorUserId: userId,
       singleTaskId: created.taskId,
+      allowUnvalidatedExecutionSetup: allowUnvalidated,
     });
 
     const last = runStage2

@@ -11,8 +11,10 @@ import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import {
   createOrUpdateEnvTestPullRequest,
   isEnvTestPullRequestCreateRetryableForStage1HeadDelay,
+  probeGithubHeadBranchRef,
   type EnvTestPrCreateFailed,
 } from "@/lib/service/githubEnvTestPullRequestService";
+import { ENV_TEST_CONNECT_PR_CREATE_FAILED_BASE } from "@/lib/service/envTestUserFacingMessages";
 import {
   monitorPlatformPrDone,
   monitorPlatformPrStart,
@@ -141,6 +143,52 @@ export async function runEnvTestPlatformPrPhase(input: {
     let attemptCount = 0;
     while (true) {
       attemptCount += 1;
+      const token = String(input.githubAccessToken ?? "").trim();
+      // PR 생성 전에 원격 head ref가 보이는지 확인한다.
+      // 푸시 직후 전파 지연/푸시 실패 상황에서는 PR POST가 422(head invalid)로 실패하므로 먼저 대기한다.
+      if (token) {
+        const probe = await probeGithubHeadBranchRef({
+          repoUrl: input.repoUrl,
+          headBranch: input.headBranch,
+          githubAccessToken: token,
+          projectId: input.projectId,
+          taskId: input.taskId,
+          execRunId: input.execRunId ?? null,
+        });
+        if (!probe.ok && probe.httpStatus === 404) {
+          const stop = attemptCount >= retryCfg.maxAttempts;
+          if (stop) {
+            stage1PrFailureSuffix = ` (${retryCfg.maxAttempts}회 시도 후 중단)`;
+            return {
+              ok: false,
+              message: `GitHub에서 head 브랜치를 찾지 못했습니다(푸시 지연/푸시 실패/다른 저장소로 푸시됨 가능). (브랜치=${input.headBranch})`,
+              httpStatus: 422,
+              githubPrCode: "ENV_TEST_PR_CREATE_FAILED",
+              headSentToGithub: null,
+              headBranchRaw: input.headBranch,
+              headBranchNormalized: input.headBranch,
+              githubHeadFieldInvalid: true,
+            };
+          }
+          appendTaskProgressLog({
+            kind: "execution",
+            phase: "env_test_head_ref_wait_before_pr",
+            projectId: input.projectId,
+            taskId: input.taskId,
+            userId: input.actorUserId,
+            detail: {
+              attemptCount,
+              nextAttempt: attemptCount + 1,
+              intervalMs: retryCfg.intervalMs,
+              headBranch: input.headBranch,
+              executionId: input.execRunId ?? null,
+              reason: "head_ref_not_visible_yet",
+            },
+          });
+          await new Promise((r) => setTimeout(r, retryCfg.intervalMs));
+          continue;
+        }
+      }
       appendTaskProgressLog({
         kind: "execution",
         phase: "env_test_pr_create_attempt",
@@ -223,6 +271,26 @@ export async function runEnvTestPlatformPrPhase(input: {
         break;
       }
 
+      // 422 head invalid는 대부분 "push/전파 지연으로 원격 ref가 아직 없음".
+      // 다음 재시도 전에 원격 head ref 가시성을 한 번 확인해서 원인 분리를 돕는다.
+      if (
+        prRes.ok === false &&
+        prRes.code === "ENV_TEST_PR_CREATE_FAILED" &&
+        prRes.httpStatus === 422 &&
+        "githubHeadFieldInvalid" in prRes &&
+        prRes.githubHeadFieldInvalid === true &&
+        input.githubAccessToken
+      ) {
+        await probeGithubHeadBranchRef({
+          repoUrl: input.repoUrl,
+          headBranch: input.headBranch,
+          githubAccessToken: input.githubAccessToken,
+          projectId: input.projectId,
+          taskId: input.taskId,
+          execRunId: input.execRunId ?? null,
+        });
+      }
+
       appendTaskProgressLog({
         kind: "execution",
         phase: "env_test_pr_create_retry",
@@ -258,9 +326,20 @@ export async function runEnvTestPlatformPrPhase(input: {
     const githubPrCode = "code" in prRes && typeof prRes.code === "string" ? prRes.code : undefined;
     const prCreateFailed =
       prRes.ok === false && prRes.code === "ENV_TEST_PR_CREATE_FAILED" ? (prRes as EnvTestPrCreateFailed) : null;
+
+    const headSent = String(prCreateFailed?.headSentToGithub ?? "").trim() || null;
+    const headMetaParts = [headSent ? `head=${headSent}` : null, `브랜치=${input.headBranch}`].filter(Boolean);
+    const headMeta = headMetaParts.length ? `(${headMetaParts.join(" / ")})` : "";
+    const headInvalidHint =
+      httpStatus === 422 && prCreateFailed?.githubHeadFieldInvalid
+        ? `GitHub에서 head 브랜치를 찾지 못했습니다(푸시 지연/푸시 실패/다른 저장소로 푸시됨 가능). ${headMeta}`.trim()
+        : null;
+
+    // `formatEnvTestPrSmokeFailureUserMessage`가 공통 prefix를 붙이므로, 여기서는 detail만 유지한다.
+    const msg = headInvalidHint ? `${headInvalidHint} — ${prRes.message}${suffix}` : `${prRes.message}${suffix}`;
     return {
       ok: false,
-      message: `${prRes.message}${suffix}`.slice(0, 4000),
+      message: msg.replace(ENV_TEST_CONNECT_PR_CREATE_FAILED_BASE, "").trim().slice(0, 4000),
       httpStatus,
       githubPrCode,
       headSentToGithub: prCreateFailed?.headSentToGithub ?? null,

@@ -10,7 +10,7 @@ export function RequirementsHeader({
 }: {
   /** 실제 프로젝트명(또는 로딩·오류 시 사람이 읽을 수 있는 짧은 문구). raw projectId 축약 문자열 금지. */
   readonly projectName: string;
-  /** 프로젝트가 열려 있을 때 워크플로·멤버/설정/추적 탭을 헤더 하단에 표시 */
+  /** 프로젝트가 열려 있을 때 워크플로·멤버/설정 탭을 헤더 하단에 표시 */
   readonly showProjectWorkflowNav: boolean;
 }) {
   const showScreenLabels = useShowScreenLabels();

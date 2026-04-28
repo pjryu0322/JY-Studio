@@ -23,11 +23,14 @@ export type PrototypeRunStatus = (typeof PROTOTYPE_RUN_STATUSES)[number];
 /** 세부 사유 코드(표시·로그용). ENV_TEST taskKind 와 무관. */
 export type PrototypeRunStatusReason =
   | "MANUAL_CURSOR_EXECUTION_REQUIRED"
+  | "MANUAL_REVIEW_REQUIRED"
   | "CURSOR_API_NOT_CONNECTED"
   | "CURSOR_NOT_CONNECTED"
   | "EXECUTION_SETUP_INVALID"
   | "CURSOR_LAUNCH_FAILED"
   | "CURSOR_POLL_FAILED"
+  | "PR_CREATE_FAILED"
+  | "PR_MERGE_FAILED"
   | "STUB_CURSOR_ENABLED"
   | "AI_REVIEW_NOT_IMPLEMENTED"
   | "GIT_PIPELINE_NOT_IMPLEMENTED"
@@ -52,6 +55,8 @@ export type PrototypeRun = Readonly<{
   prUrl: string | null;
   prNumber: number | null;
   mergeSha: string | null;
+  /** repo owner/repo 기반 GitHub Pages 예상 URL */
+  suggestedPreviewUrl: string | null;
   previewUrl: string | null;
   createdAt: string;
   updatedAt: string;
