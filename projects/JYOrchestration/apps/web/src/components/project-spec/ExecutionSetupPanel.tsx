@@ -17,6 +17,10 @@ import {
   postRevealCursorApiToken,
   type ExecutionSetupDto,
 } from "@/components/project-spec/api";
+import {
+  cursorCredentialLooksStored,
+  secretMaskedDisplay,
+} from "@/components/project-spec/credentialUiMask";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
 import type { ExecutionSetupBusyKey as BusyKey } from "@/components/project-spec/executionSetupBusyKey";
 import {
@@ -125,7 +129,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
   }, []);
 
   useEffect(() => {
-    if (!executionSetup?.hasCursorToken) {
+    if (!cursorCredentialLooksStored(executionSetup)) {
       setCursorKeyRevealPlaintext(null);
       setCursorRevealSecondsRemaining(null);
       setCursorKeyReplaceMode(false);
@@ -134,7 +138,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
         revealCountdownRef.current = null;
       }
     }
-  }, [executionSetup?.hasCursorToken]);
+  }, [executionSetup]);
 
   function beginExecutionValidationRequest() {
     setLastValidateKind(null);
@@ -285,7 +289,8 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
 
   const renderCursorConnectionBlock = (opts: { compactTitle: boolean; mvp?: boolean }) => {
     const mvp = Boolean(opts.mvp);
-    const showKeyInput = !es?.hasCursorToken || cursorKeyReplaceMode;
+    const cursorLooksStored = cursorCredentialLooksStored(es);
+    const showKeyInput = !cursorLooksStored || cursorKeyReplaceMode;
     const cursorKeyBusy =
       busy === "save-cursor" || busy === "val-cursor-api" || busy === "del-cursor" || busy === "reveal-cursor";
     const saveLabel = (() => {
@@ -341,6 +346,14 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
         {showKeyInput ? (
           <label style={{ display: "grid", gap: 4, marginBottom: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API 키</span>
+            {cursorKeyReplaceMode && cursorLooksStored ? (
+              <div style={{ marginBottom: 6, fontSize: 11, color: "#475569", lineHeight: 1.45 }}>
+                현재 저장:{" "}
+                <code style={{ fontSize: 11, color: "#0f172a" }}>
+                  {secretMaskedDisplay(es?.cursorApiTokenMasked ?? null, cursorKeyRevealPlaintext, cursorLooksStored)}
+                </code>
+              </div>
+            ) : null}
             <input
               type="password"
               autoComplete="off"
@@ -349,7 +362,9 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
               placeholder={
                 cursorKeyReplaceMode
                   ? "새 키를 붙여넣기 (crsr_… / key_…)"
-                  : "key_ 또는 crsr_ 로 시작하는 키를 붙여넣기"
+                  : cursorLooksStored
+                    ? "(서버에 저장됨)"
+                    : "key_ 또는 crsr_ 로 시작하는 키를 붙여넣기"
               }
               onChange={(e) => setCursorApiKeyDraft(e.target.value)}
               style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
@@ -357,7 +372,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
           </label>
         ) : (
           <div style={{ marginBottom: 10, fontSize: 12, color: "#334155" }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>저장된 키</div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>저장된 키 (마스킹)</div>
             <code
               style={{
                 display: "block",
@@ -365,11 +380,13 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                 borderRadius: 8,
                 background: "#f5f3ff",
                 border: "1px solid #ddd6fe",
-                fontSize: 12,
+                fontSize: 13,
                 wordBreak: "break-all",
+                fontFamily: "ui-monospace, monospace",
+                color: "#0f172a",
               }}
             >
-              {cursorKeyRevealPlaintext ?? es?.cursorApiTokenMasked ?? "—"}
+              {secretMaskedDisplay(es?.cursorApiTokenMasked ?? null, cursorKeyRevealPlaintext, cursorLooksStored)}
             </code>
             {cursorKeyRevealPlaintext && cursorRevealSecondsRemaining != null ? (
               <div style={{ marginTop: 6, fontSize: 11, color: "#b45309" }}>
@@ -379,7 +396,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
           </div>
         )}
 
-        {es?.hasCursorToken && cursorKeyReplaceMode ? (
+        {cursorLooksStored && cursorKeyReplaceMode ? (
           <div style={{ marginBottom: 10 }}>
             <button
               type="button"
@@ -399,8 +416,8 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
           {!mvp ? (
             <button
               type="button"
-              disabled={!canEdit || !es || busy === "val-cursor-api" || !es?.hasCursorToken}
-              title={!es?.hasCursorToken ? "먼저 API 키를 저장하세요" : "저장된 키로 Cursor API 검증"}
+              disabled={!canEdit || !es || busy === "val-cursor-api" || !cursorLooksStored}
+              title={!cursorLooksStored ? "먼저 API 키를 저장하세요" : "저장된 키로 Cursor API 검증"}
               onClick={async () => {
                 if (!projectId || !es) return;
                 beginExecutionValidationRequest();
@@ -434,7 +451,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
                 fontWeight: 800,
                 fontSize: 12,
                 cursor:
-                  !canEdit || !es || !es.hasCursorToken || busy === "val-cursor-api" ? "not-allowed" : "pointer",
+                  !canEdit || !es || !cursorLooksStored || busy === "val-cursor-api" ? "not-allowed" : "pointer",
               }}
             >
               {busy === "val-cursor-api" ? "검증 중…" : "다시 검증"}
@@ -506,7 +523,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
 
           <button
             type="button"
-            disabled={!canEdit || !es || !es.hasCursorToken || cursorKeyBusy}
+            disabled={!canEdit || !es || !cursorLooksStored || cursorKeyBusy}
             onClick={async () => {
               const ok = window.confirm("저장된 Cursor API 키를 삭제합니다. 계속할까요?");
               if (!ok) return;
@@ -541,7 +558,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
             <button
               type="button"
               disabled={
-                !es?.hasCursorToken || busy === "reveal-cursor" || busy === "val-cursor-api" || busy === "del-cursor"
+                !cursorLooksStored || busy === "reveal-cursor" || busy === "val-cursor-api" || busy === "del-cursor"
               }
               onClick={async () => {
                 if (!projectId) return;
