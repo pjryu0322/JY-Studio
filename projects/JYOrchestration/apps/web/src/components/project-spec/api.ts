@@ -334,6 +334,12 @@ export type ExecutionSetupDto = {
   /** 검증 API 응답을 병합한 클라이언트 전용(조회 API에는 없음) */
   cursorApiValidation?: CursorApiValidationPayload | null;
   updatedAt: string;
+  /** 동일 소유자의 다른 프로젝트에서 마스킹된 힌트(현재 프로젝트에 토큰이 없을 때만 채워짐) */
+  peerCredentialHints?: {
+    githubAccessTokenMasked: string | null;
+    cursorApiUrl: string | null;
+    cursorApiTokenMasked: string | null;
+  } | null;
 };
 
 export async function fetchExecutionSetup(projectId: string) {
@@ -561,6 +567,7 @@ export type EnvironmentTestLastDto = {
   stage1ElapsedMsAtSnapshot?: number | null;
   stage1PollStaleThresholdMs?: number | null;
   stage1ExecutionRunId?: string | null;
+  connectionTestMergeMode?: "skip" | "auto" | null;
 };
 
 export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage?: 2 }) {
@@ -571,13 +578,22 @@ export async function fetchEnvironmentTestLast(projectId: string, opts?: { stage
   return { res, json };
 }
 
-export async function postEnvironmentTestRun(projectId: string, opts?: { stage?: 2 }) {
+export async function postEnvironmentTestRun(
+  projectId: string,
+  opts?: { stage?: 2; mergeMode?: "skip" | "auto" }
+) {
   const encoded = encodeURIComponent(projectId);
+  const body =
+    opts?.stage === 2
+      ? { stage: 2 }
+      : opts?.mergeMode != null
+        ? { mergeMode: opts.mergeMode }
+        : {};
   const res = await fetch(`/api/projects/${encoded}/environment-test`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(opts?.stage === 2 ? { stage: 2 } : {}),
+    body: JSON.stringify(body),
   });
   const json = (await res.json()) as ApiResponse<{
     taskId?: string;

@@ -7,6 +7,11 @@
  * 스코프: DB에 taskKind=ENV_TEST Task를 심을 뿐, 실제 Cursor/폴링/마무리는 runExecutionLoop + taskKind 게이트가 담당.
  */
 
+import {
+  buildEnvTestTaskDescriptionWithMergeMode,
+  parseEnvTestMergeModeFromTaskDescription,
+  type EnvConnectionTestMergeMode,
+} from "@/lib/service/envTestTaskMeta";
 import { evaluateNextTaskReadiness } from "@/lib/executionLoop/nextTaskReadiness";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { refreshWorkflowStates } from "@/lib/executionLoop/workflowState";
@@ -270,6 +275,8 @@ export function parsePrUrlFromRunPrStatus(prStatus: string | null | undefined): 
 export async function createEnvironmentTestTask(input: {
   projectId: string;
   actorUserId: string;
+  /** `skip`: success at PR creation. `auto` (default): run merge smoke after PR. */
+  mergeMode?: EnvConnectionTestMergeMode;
 }): Promise<{ ok: true; taskId: string } | { ok: false; message: string }> {
   const projectId = String(input.projectId ?? "").trim();
   const actorUserId = String(input.actorUserId ?? "").trim();
@@ -324,6 +331,11 @@ export async function createEnvironmentTestTask(input: {
     _max: { order: true },
   });
   const nextOrder = (maxRow._max.order ?? 0) + 1;
+  const mergeMode: EnvConnectionTestMergeMode = input.mergeMode === "skip" ? "skip" : "auto";
+  const taskDescription =
+    mergeMode === "skip"
+      ? buildEnvTestTaskDescriptionWithMergeMode(ENV_TEST_DESCRIPTION, "skip")
+      : ENV_TEST_DESCRIPTION;
 
   const task = await prisma.task.create({
     data: {
@@ -331,7 +343,7 @@ export async function createEnvironmentTestTask(input: {
       ownerUserId: project.ownerUserId,
       sourceSpecVersionId: specId,
       name: ENV_TEST_TASK_NAME,
-      description: ENV_TEST_DESCRIPTION,
+      description: taskDescription,
       taskKind: ENV_TEST_TASK_KIND,
       status: "TODO",
       order: nextOrder,
@@ -428,6 +440,8 @@ export type EnvironmentTestLastDto = {
   taskId: string;
   /** Stage 1 패널 구분용(기본 연결 테스트 API). */
   taskKind?: string | null;
+  /** Persisted per run: PR-only success vs merge smoke. */
+  connectionTestMergeMode?: EnvConnectionTestMergeMode | null;
   name: string;
   taskStatus: string;
   workflowStatus: string | null;
@@ -552,6 +566,7 @@ export async function getLatestEnvironmentTestTask(
           select: {
             id: true,
             name: true,
+            description: true,
             status: true,
             executionWorkflowStatus: true,
             lastEvalSummary: true,
@@ -593,6 +608,7 @@ export async function getLatestEnvironmentTestTask(
       select: {
         id: true,
         name: true,
+        description: true,
         status: true,
         executionWorkflowStatus: true,
         lastEvalSummary: true,
@@ -628,8 +644,15 @@ export async function getLatestEnvironmentTestTask(
   const branchName = rowResolved.lastOrchestrationBranch ?? run0?.branchName ?? null;
   const t1 = parseEnvTestStage2TimingFromValidationOutput(run0?.validationOutput ?? null);
   const stage1PrFail = parseStage1PrCreateFailureFields(rowResolved.lastEvalSummary);
+  const mergeMode = parseEnvTestMergeModeFromTaskDescription(rowResolved.description ?? null);
   const wfNorm = String(rowResolved.executionWorkflowStatus ?? "").trim().toLowerCase();
   const tsU = String(rowResolved.status ?? "").trim().toUpperCase();
+  const awaitingAutoMerge =
+    mergeMode === "auto" &&
+    wfNorm === EXECUTION_WORKFLOW.PR_OPENED &&
+    !run0?.mergedAt &&
+    tsU === "DONE" &&
+    !String(run0?.envTestMergeBlockedReason ?? "").trim();
   const failureLine = envTestStage1FailureOneLine({
     workflowStatus: rowResolved.executionWorkflowStatus,
     taskStatus: rowResolved.status,
@@ -641,7 +664,8 @@ export async function getLatestEnvironmentTestTask(
     wfNorm === EXECUTION_WORKFLOW.MERGED ||
     wfNorm === EXECUTION_WORKFLOW.FAILED ||
     wfNorm === EXECUTION_WORKFLOW.VERIFY_FAILED;
-  const taskTerminal = tsU === "DONE" || tsU === "FAILED" || tsU === "MERGED";
+  const taskTerminalBase = tsU === "DONE" || tsU === "FAILED" || tsU === "MERGED";
+  const taskTerminal = taskTerminalBase && !awaitingAutoMerge;
   const isTerminal = Boolean(
     wfTerminal ||
       taskTerminal ||
@@ -661,7 +685,7 @@ export async function getLatestEnvironmentTestTask(
   const isRunning = Boolean(
     !isTerminal &&
       !runFailed &&
-      (tsU === "IN_PROGRESS" || runSt === "running" || stage1WorkflowInFlight) &&
+      (tsU === "IN_PROGRESS" || runSt === "running" || stage1WorkflowInFlight || awaitingAutoMerge) &&
       (wfNorm === EXECUTION_WORKFLOW.RUNNING ||
         wfNorm === EXECUTION_WORKFLOW.COMMITTED ||
         wfNorm === EXECUTION_WORKFLOW.PENDING_APPLY ||
@@ -713,6 +737,7 @@ export async function getLatestEnvironmentTestTask(
   const base: EnvironmentTestLastDto = {
     taskId: rowResolved.id,
     taskKind: ENV_TEST_TASK_KIND,
+    connectionTestMergeMode: mergeMode,
     name: rowResolved.name,
     taskStatus: rowResolved.status,
     workflowStatus: rowResolved.executionWorkflowStatus,

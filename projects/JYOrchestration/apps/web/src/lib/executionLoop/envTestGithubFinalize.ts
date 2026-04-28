@@ -3,6 +3,7 @@
  * Stage1 merge semantics stay here; Stage2 post-PR orchestration delegates to stage2/stage2ReviewScmFlow.
  */
 import { isEnvTestStage1TaskKind, isEnvTestStage2TaskKind } from "@/lib/execution/envTestTaskKind";
+import { parseEnvTestMergeModeFromTaskDescription } from "@/lib/service/envTestTaskMeta";
 import { appendTaskProgressLog } from "@/lib/observability/taskProgressLog";
 import { prisma } from "@/lib/prisma";
 import { executeEnvTestPrMergeSmokeTest } from "@/lib/service/environmentTestMergeService";
@@ -82,26 +83,53 @@ export async function runEnvTestPostPrOpenedMergeAndReadiness(input: {
       where: { id: input.execRunId },
       select: { branchName: true, createdAt: true },
     });
-    appendTaskProgressLog({
-      kind: "execution",
-      phase: "env_test_stage1_merge_started",
-      projectId: input.projectId,
-      taskId: input.taskId,
-      userId: input.actorUserId,
-      detail: {
-        executionId: input.execRunId,
-        taskKind: input.taskKind,
-        branchName: stage1RunBranch?.branchName ?? null,
-        prNumber: input.prNumber,
-      },
+    const taskRow = await prisma.task.findUnique({
+      where: { id: input.taskId },
+      select: { description: true },
     });
-    const mergePhaseStartedAt = Date.now();
-    mergeRes = await executeEnvTestPrMergeSmokeTest({
-      projectId: input.projectId,
-      actorUserId: input.actorUserId,
-    });
-    const mergeElapsedMs = Date.now() - mergePhaseStartedAt;
-    await patchTaskExecutionRunStage2Timing(input.execRunId, { mergeTimeMs: mergeElapsedMs });
+    const mergeMode = parseEnvTestMergeModeFromTaskDescription(taskRow?.description ?? null);
+    let mergeElapsedMs: number | null = null;
+    if (mergeMode === "skip") {
+      mergeRes = {
+        ok: true,
+        message: "연결 테스트 성공 (PR 생성 완료)",
+        mergeCommitSha: null,
+        branchDeleted: false,
+      };
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_connection_merge_skipped",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: {
+          executionId: input.execRunId,
+          prNumber: input.prNumber,
+          mergeMode: "skip",
+        },
+      });
+    } else {
+      appendTaskProgressLog({
+        kind: "execution",
+        phase: "env_test_stage1_merge_started",
+        projectId: input.projectId,
+        taskId: input.taskId,
+        userId: input.actorUserId,
+        detail: {
+          executionId: input.execRunId,
+          taskKind: input.taskKind,
+          branchName: stage1RunBranch?.branchName ?? null,
+          prNumber: input.prNumber,
+        },
+      });
+      const mergePhaseStartedAt = Date.now();
+      mergeRes = await executeEnvTestPrMergeSmokeTest({
+        projectId: input.projectId,
+        actorUserId: input.actorUserId,
+      });
+      mergeElapsedMs = Date.now() - mergePhaseStartedAt;
+      await patchTaskExecutionRunStage2Timing(input.execRunId, { mergeTimeMs: mergeElapsedMs });
+    }
     if (mergeRes.ok === true) {
       const totalElapsedSinceRunMs =
         stage1RunBranch?.createdAt != null ? Date.now() - stage1RunBranch.createdAt.getTime() : null;
@@ -173,7 +201,7 @@ export async function finalizeEnvTestPrOpenedFromGithubOnly(input: {
     actorUserId: input.actorUserId,
   });
   const lastEvalSummary =
-    "플랫폼이 GitHub API로 ENV_TEST PR을 생성·갱신하고 PR_OPENED로 처리했습니다.";
+    "플랫폼이 GitHub API로 연결 테스트 PR을 생성·갱신하고 PR_OPENED로 처리했습니다.";
 
   const runMeta = await prisma.taskExecutionRun.findUnique({
     where: { id: input.execRunId },

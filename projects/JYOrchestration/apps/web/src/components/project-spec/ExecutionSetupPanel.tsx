@@ -70,6 +70,8 @@ export function ExecutionSetupPanel(props: {
    * (검증 로직은 기존 postExecutionSetupValidate/patchExecutionSetup 흐름 그대로)
    */
   prototypeStagedLayout?: boolean;
+  /** prototype 전용: 연결 테스트까지 성공해야 실행 준비 배지가 완료로 표시된다. */
+  connectionTestSatisfied?: boolean;
   /** 프로젝트 OWNER만 저장된 키 전체를 일시 표시 */
   canRevealCursorApiKey?: boolean;
 }) {
@@ -87,6 +89,7 @@ export function ExecutionSetupPanel(props: {
     executionEnvironmentFlow = false,
     connectionSlotAfterCursor,
     prototypeStagedLayout = false,
+    connectionTestSatisfied = false,
     canRevealCursorApiKey = false,
   } = props;
 
@@ -145,12 +148,16 @@ export function ExecutionSetupPanel(props: {
   const repoOk = executionSetup?.repoConnectionOk;
   const cursorApiOk = executionSetup?.cursorApiConnectionOk ?? null;
   const execOk = executionSetup?.executorConnectionOk;
+  const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
+  const stagedPrototype = Boolean(unified && prototypeStagedLayout);
+  const connectionGateOk = !stagedPrototype || connectionTestSatisfied === true;
   const ready =
     executionSetup?.status === "validated" &&
     !nr &&
     repoOk === true &&
     cursorApiOk === true &&
-    execOk === true;
+    execOk === true &&
+    connectionGateOk;
   /** 단일 진실 원천: 실행 준비 완료 여부(요약·상세·오류 표시 모두 이 값과 일치) */
   const executionReady = ready;
   const repoAxis = axisStatus(repoOk);
@@ -173,11 +180,22 @@ export function ExecutionSetupPanel(props: {
         : "1px solid #e2e8f0";
   const frameBg = flatLayout ? "#fafafa" : ready ? "#f0fdf4" : "#fff";
 
-  const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
   const flowMode = Boolean(unified && executionEnvironmentFlow);
-  const stagedPrototype = Boolean(unified && prototypeStagedLayout);
 
   const es = executionSetup ?? null;
+  const githubOperableOk =
+    es?.githubCapabilityValidation &&
+    typeof es.githubCapabilityValidation === "object" &&
+    (es.githubCapabilityValidation as { githubOperableOk?: boolean }).githubOperableOk === true;
+  const githubAuthConn = es?.githubAuthConnectionOk ?? null;
+  const githubAxis =
+    githubOperableOk === true
+      ? axisStatus(true)
+      : githubAuthConn === false
+        ? axisStatus(false)
+        : githubAuthConn === true
+          ? { label: "부분", tone: "warn" as const }
+          : axisStatus(null);
   const validationPayload = es?.cursorApiValidation ?? null;
   const validatingExecutionSetup =
     busy === "val-cursor-api" || busy === "val-cursor-exec" || busy === "val-all";
@@ -661,32 +679,6 @@ export function ExecutionSetupPanel(props: {
               {sectionCard("2. GitHub 인증", null, connectionSlotGithubAuth ?? null)}
               {sectionCard("3. Cursor API", null, renderCursorConnectionBlock({ compactTitle: true }))}
               {sectionCard("4. 실행 정책", null, unifiedPolicyBody)}
-
-              {connectionSlotAfterCursor ? (
-                <details
-                  style={{
-                    marginBottom: 16,
-                    borderRadius: 12,
-                    border: "1px solid #e2e8f0",
-                    background: "#fff",
-                    padding: "0 16px 16px",
-                  }}
-                >
-                  <summary
-                    style={{
-                      padding: "14px 0",
-                      cursor: "pointer",
-                      fontWeight: 900,
-                      fontSize: 13,
-                      color: "#64748b",
-                      listStyle: "none",
-                    }}
-                  >
-                    고급: Stage1 연결 테스트 보기
-                  </summary>
-                  <div style={{ marginTop: 10 }}>{connectionSlotAfterCursor}</div>
-                </details>
-              ) : null}
             </>
           ) : flowMode ? (
             <>
@@ -700,8 +692,8 @@ export function ExecutionSetupPanel(props: {
               )}
               {connectionSlotAfterCursor
                 ? sectionCard(
-                    "2 연결 검증 (Stage 1)",
-                    "1단계가 준비되면 연결 테스트로 실제 Cursor·GitHub·머지 경로를 확인합니다.",
+                    "2 연결 테스트",
+                    "1단계가 준비되면 샘플 작업·커밋·푸시·PR까지 실제 경로를 확인합니다.",
                     connectionSlotAfterCursor,
                     { variant: "stage1" }
                   )
@@ -729,7 +721,7 @@ export function ExecutionSetupPanel(props: {
                   <span style={{ fontWeight: 600, color: "#64748b", fontSize: 13 }}>(고급 설정 · 선택)</span>
                 </summary>
                 <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-                  Stage1 연결 테스트에 필수는 아닙니다. 브랜치·푸시·승인·재시도 규칙을 바꿀 때만 펼쳐 주세요.
+                  연결 테스트에 필수는 아닙니다. 브랜치·푸시·승인·재시도 규칙을 바꿀 때만 펼쳐 주세요.
                 </p>
                 {unifiedPolicyBody}
               </details>
@@ -765,8 +757,26 @@ export function ExecutionSetupPanel(props: {
               {stagedPrototype ? "5. 환경 검증" : "실행 상태"}
             </h2>
             <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-              연결·검증 결과와 저장소 실행 가능 여부를 확인합니다. 실패 시 아래 사유를 참고하세요.
+              {stagedPrototype
+                ? "기본 검증으로 Git·GitHub·Cursor를 확인한 뒤, 연결 테스트로 샘플 작업부터 PR까지 검증합니다."
+                : "연결·검증 결과와 저장소 실행 가능 여부를 확인합니다. 실패 시 아래 사유를 참고하세요."}
             </p>
+            {stagedPrototype ? (
+              <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
+                기존 연결 정보를 불러올 수 있으면 자동으로 사용합니다. 저장소명과 기본 브랜치는 프로젝트별로
+                설정합니다.
+              </p>
+            ) : null}
+            {stagedPrototype ? (
+              <div style={{ marginBottom: 14, fontSize: 12.5, color: "#334155", lineHeight: 1.65 }}>
+                <div style={{ fontWeight: 900, marginBottom: 6, color: "#0f172a" }}>기본 검증 실행</div>
+                <ul style={{ margin: "0 0 0 18px", padding: 0 }}>
+                  <li>Git 저장소</li>
+                  <li>GitHub 인증</li>
+                  <li>Cursor API</li>
+                </ul>
+              </div>
+            ) : null}
             <>
               <div
                 style={{
@@ -786,6 +796,18 @@ export function ExecutionSetupPanel(props: {
                       <span style={{ color: "#64748b", fontWeight: 500 }}> · {formatTestedAt(es.repoValidatedAt)}</span>
                     ) : null}
                   </div>
+                  {stagedPrototype ? (
+                    <div style={{ marginTop: 6 }}>
+                      <strong>GitHub 인증</strong>{" "}
+                      <span style={{ color: connectionToneColor(githubAxis.tone), fontWeight: 800 }}>{githubAxis.label}</span>
+                      {es?.githubAuthValidatedAt ? (
+                        <span style={{ color: "#64748b", fontWeight: 500 }}>
+                          {" "}
+                          · {formatTestedAt(es.githubAuthValidatedAt)}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div style={{ marginTop: 6 }}>
                     <strong>Cursor 연결 상태</strong> (API 검증){" "}
                     <span style={{ color: connectionToneColor(cursorApiAxis.tone), fontWeight: 800 }}>
@@ -987,7 +1009,7 @@ export function ExecutionSetupPanel(props: {
                     cursor: !canEdit || !es ? "not-allowed" : busy === "val-all" ? "wait" : "pointer",
                   }}
                 >
-                  {busy === "val-all" ? "검증 중…" : "세 단계 한 번에 검증"}
+                  {busy === "val-all" ? "검증 중…" : stagedPrototype ? "기본 검증 실행" : "세 단계 한 번에 검증"}
                 </button>
               </div>
               {es?.lastValidatedAt ? (
@@ -1001,6 +1023,26 @@ export function ExecutionSetupPanel(props: {
               !es.cursorApiValidationError &&
               !es.executorValidationError ? (
                 <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>{es.lastValidationError}</div>
+              ) : null}
+              {stagedPrototype && connectionSlotAfterCursor ? (
+                <div
+                  style={{
+                    marginTop: 18,
+                    paddingTop: 16,
+                    borderTop: "1px solid #e2e8f0",
+                  }}
+                >
+                  <div style={{ fontWeight: 900, marginBottom: 8, color: "#0f172a", fontSize: 13 }}>연결 테스트</div>
+                  <ul style={{ margin: "0 0 12px 18px", padding: 0, fontSize: 12.5, color: "#334155", lineHeight: 1.65 }}>
+                    <li>샘플 작업 생성</li>
+                    <li>Cursor 요청</li>
+                    <li>Commit 감지</li>
+                    <li>Push 감지</li>
+                    <li>PR 생성</li>
+                    <li>(옵션) Merge 완료</li>
+                  </ul>
+                  {connectionSlotAfterCursor}
+                </div>
               ) : null}
             </>
           </section>

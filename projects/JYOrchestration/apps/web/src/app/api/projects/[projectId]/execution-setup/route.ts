@@ -12,6 +12,7 @@ import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { maskCursorTokenForUi } from "@/lib/executionSetup/cursorTokenMask";
 import { maskGithubTokenForUi } from "@/lib/executionSetup/githubTokenMask";
+import { getUserDefaultExecutionCredentials } from "@/lib/service/userDefaultExecutionCredentials";
 import {
   probeGithubPatAgainstExecutionRepo,
   sanitizeGithubPatForStorage,
@@ -139,6 +140,33 @@ export async function GET(
       });
     }
 
+    const projectMeta = await prisma.project.findUnique({
+      where: { id: pid },
+      select: { ownerUserId: true },
+    });
+    let peerCredentialHints: {
+      githubAccessTokenMasked: string | null;
+      cursorApiUrl: string | null;
+      cursorApiTokenMasked: string | null;
+    } | null = null;
+    if (projectMeta?.ownerUserId) {
+      const donor = await getUserDefaultExecutionCredentials(projectMeta.ownerUserId, pid);
+      if (donor) {
+        const needsGh = !String(row.githubAccessToken ?? "").trim();
+        const needsCur = !String(row.cursorApiToken ?? "").trim();
+        const gh = needsGh ? donor.githubAccessTokenMasked : null;
+        const cu = needsCur ? donor.cursorApiUrl : null;
+        const ctm = needsCur ? donor.cursorApiTokenMasked : null;
+        if (gh || ctm) {
+          peerCredentialHints = {
+            githubAccessTokenMasked: gh,
+            cursorApiUrl: cu,
+            cursorApiTokenMasked: ctm,
+          };
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: "Execution setup을 조회했습니다.",
@@ -188,6 +216,7 @@ export async function GET(
         executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
         executorValidationError: row.executorValidationError ?? null,
         updatedAt: row.updatedAt.toISOString(),
+        peerCredentialHints,
       },
     });
   } catch (error) {

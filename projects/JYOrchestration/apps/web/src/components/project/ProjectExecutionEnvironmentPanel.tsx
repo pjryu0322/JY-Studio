@@ -310,17 +310,26 @@ function stage1EnvironmentHeadline(
   if (opts.mergeInProgress) return "머지 진행 중";
   if (opts.syncLost && !isStage1TerminalFromDto(last)) return "상태 동기화 중단";
   const wf = normalizeWorkflowForUi(last.workflowStatus);
+  const mergeMode = last.connectionTestMergeMode ?? "auto";
   if (wf === EXECUTION_WORKFLOW.FAILED) {
     const http = last.stage1PrCreateFailureHttpStatus;
     const line = String(last.envTestStage1FailureLine ?? "");
+    if (/403|권한|permission denied|forbidden/i.test(line)) return "권한 부족";
+    if (/cursor|Cursor 실행|cloud agent|agent/i.test(line)) return "Cursor 실행 실패";
+    if (/repo|저장소|404|not\s*found|compare/i.test(line)) return "저장소 접근 실패";
     if (http != null && (/head.*invalid|invalid.*head|422/i.test(line) || /\b422\b/.test(line))) {
       return `PR 생성 실패 (HTTP ${http} / head invalid)`;
     }
     if (http != null) return `PR 생성 실패 (HTTP ${http})`;
-    return "환경 연결 테스트에 실패했습니다";
+    return "연결 테스트 실패";
   }
-  if (wf === EXECUTION_WORKFLOW.MERGED) return "환경 연결 테스트가 정상 완료되었습니다.";
-  if (wf === EXECUTION_WORKFLOW.PR_OPENED) return "PR이 생성되었습니다. 머지를 진행합니다.";
+  if (wf === EXECUTION_WORKFLOW.MERGED) return "연결 테스트 성공 (Merge 완료)";
+  if (wf === EXECUTION_WORKFLOW.PR_OPENED) {
+    if (isStage1TerminalFromDto(last) && mergeMode === "skip" && !String(last.envTestStage1FailureLine ?? "").trim()) {
+      return "연결 테스트 성공 (PR 생성 완료)";
+    }
+    return "PR이 생성되었습니다. 머지를 진행합니다.";
+  }
   if (wf === EXECUTION_WORKFLOW.PENDING_APPLY) return "GitHub 반영 확인 중";
   if (wf === EXECUTION_WORKFLOW.COMMITTED || wf === EXECUTION_WORKFLOW.REVIEWING) {
     return "PR 생성 시도 중";
@@ -329,23 +338,35 @@ function stage1EnvironmentHeadline(
     return "실행 중";
   }
   const ts = String(last.taskStatus ?? "").trim();
-  if (ts === "MERGED" || ts === "DONE") return "PR이 생성되었습니다. 머지를 진행합니다.";
+  if (ts === "MERGED") return "연결 테스트 성공 (Merge 완료)";
+  if (ts === "DONE") {
+    const lw = normalizeWorkflowForUi(last.workflowStatus);
+    if (lw === EXECUTION_WORKFLOW.PR_OPENED && mergeMode === "skip") {
+      return String(last.envTestStage1FailureLine ?? "").trim()
+        ? "연결 테스트 실패"
+        : "연결 테스트 성공 (PR 생성 완료)";
+    }
+    return "PR이 생성되었습니다. 머지를 진행합니다.";
+  }
   return "마지막 연결 테스트 상태를 확인하세요.";
 }
 
 function environmentTestStatusMessage(
   wf: string | null | undefined,
   taskStatus: string | undefined,
-  taskKind?: string | null
+  taskKind?: string | null,
+  mergeMode?: "skip" | "auto" | null
 ): string {
   const w = normalizeWorkflowForUi(wf);
   const ts = String(taskStatus ?? "").trim();
   const stage1 = !taskKind || String(taskKind).trim() === ENV_TEST_TASK_KIND;
-  if (w === EXECUTION_WORKFLOW.FAILED) return "환경 연결 테스트에 실패했습니다";
+  const mode = mergeMode ?? "auto";
+  if (w === EXECUTION_WORKFLOW.FAILED) return "연결 테스트 실패";
   if (w === EXECUTION_WORKFLOW.MERGED) {
-    return stage1 ? "환경 연결 테스트가 정상 완료되었습니다." : "머지 완료";
+    return stage1 ? "연결 테스트 성공 (Merge 완료)" : "머지 완료";
   }
   if (w === EXECUTION_WORKFLOW.PR_OPENED) {
+    if (stage1 && mode === "skip") return "연결 테스트 성공 (PR 생성 완료)";
     return stage1 ? "PR이 생성되었습니다. 머지를 진행합니다." : "테스트 PR 생성이 완료되었습니다";
   }
   if (w === EXECUTION_WORKFLOW.PENDING_APPLY) {
@@ -357,8 +378,10 @@ function environmentTestStatusMessage(
   if (w === EXECUTION_WORKFLOW.RUNNING || w === normalizeWorkflowForUi(EXECUTION_WORKFLOW.REVIEW_PENDING)) {
     return "실행 중";
   }
-  if (ts === "MERGED") return stage1 ? "환경 연결 테스트가 정상 완료되었습니다." : "머지 완료";
-  if (ts === "DONE") return stage1 ? "PR이 생성되었습니다. 머지를 진행합니다." : "테스트 PR 생성이 완료되었습니다";
+  if (ts === "MERGED") return stage1 ? "연결 테스트 성공 (Merge 완료)" : "머지 완료";
+  if (ts === "DONE") {
+    return stage1 ? "PR이 생성되었습니다. 머지를 진행합니다." : "테스트 PR 생성이 완료되었습니다";
+  }
   return "마지막 연결 테스트 상태를 확인하세요.";
 }
 
@@ -425,7 +448,8 @@ export function ProjectExecutionEnvironmentPanel({
   const [githubReplaceMode, setGithubReplaceMode] = useState(false);
   const [githubTokenRevealPlaintext, setGithubTokenRevealPlaintext] = useState<string | null>(null);
   const [stage1DetailsOpen, setStage1DetailsOpen] = useState(false);
-  const [advancedEnvTestOpen, setAdvancedEnvTestOpen] = useState(false);
+  /** true = PR 생성 후 자동 Merge 테스트 (mergeMode `auto`) */
+  const [mergeAfterPr, setMergeAfterPr] = useState(false);
   /** Stage1 경과: 클릭 시각 기준(실행 시작 리셋). `pending`은 POST 응답 전까지 */
   const [stage1TimerSession, setStage1TimerSession] = useState<{
     taskId: string;
@@ -673,7 +697,9 @@ export function ProjectExecutionEnvironmentPanel({
     setStage1TimerSession({ taskId: "pending", startMs });
     setBusyEnvTest(true);
     try {
-      const { res, json } = await postEnvironmentTestRun(projectId);
+      const { res, json } = await postEnvironmentTestRun(projectId, {
+        mergeMode: mergeAfterPr ? "auto" : "skip",
+      });
       const apiSuccess = Boolean(json.success);
       const tidFromData =
         typeof json.data?.taskId === "string" && json.data.taskId.trim()
@@ -709,7 +735,7 @@ export function ProjectExecutionEnvironmentPanel({
     } finally {
       setBusyEnvTest(false);
     }
-  }, [projectId, loadEnvTestLast]);
+  }, [projectId, loadEnvTestLast, mergeAfterPr]);
 
   const handleValidateGit = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -733,6 +759,19 @@ export function ProjectExecutionEnvironmentPanel({
       setBusyGit(null);
     }
   }, [projectId, executionSetup]);
+
+  const connectionTestSatisfied = useMemo(() => {
+    const last = envTestLast;
+    if (!last || !isStage1EnvironmentTestLast(last)) return false;
+    if (!isStage1TerminalFromDto(last)) return false;
+    const wf = normalizeWorkflowForUi(last.workflowStatus);
+    if (wf === EXECUTION_WORKFLOW.FAILED || wf === EXECUTION_WORKFLOW.VERIFY_FAILED) return false;
+    if (String(last.envTestStage1FailureLine ?? "").trim()) return false;
+    if (wf === EXECUTION_WORKFLOW.MERGED) return true;
+    const mode = last.connectionTestMergeMode ?? "auto";
+    if (wf === EXECUTION_WORKFLOW.PR_OPENED && mode === "skip") return true;
+    return false;
+  }, [envTestLast]);
 
   if (!projectId.trim()) return null;
 
@@ -769,6 +808,15 @@ export function ProjectExecutionEnvironmentPanel({
           검증(다시 검증)은 서버에 저장된 토큰으로 수행됩니다. 토큰을 다시 입력할 필요가 없습니다. 권한 변경 시에는
           「새 토큰 교체」로 다시 저장하세요.
         </p>
+        {effectivePurpose === "prototype" &&
+        es?.peerCredentialHints?.githubAccessTokenMasked &&
+        !es?.hasGithubAccessToken ? (
+          <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#0369a1", lineHeight: 1.55 }}>
+            동일 계정의 다른 프로젝트에서 검증된 GitHub 토큰 마스크:{" "}
+            <code style={{ fontSize: 10 }}>{es.peerCredentialHints.githubAccessTokenMasked}</code> — 필요 시 그
+            프로젝트에서 토큰을 확인해 여기에 저장하세요.
+          </p>
+        ) : null}
         {showInput ? (
           <label style={{ display: "grid", gap: 4, marginBottom: 8, maxWidth: 720 }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>GitHub Access Token</span>
@@ -1107,8 +1155,34 @@ export function ProjectExecutionEnvironmentPanel({
   const stage1ValidationSlotExpanded = (
     <div>
             <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#475569", lineHeight: 1.55 }}>
-              <strong>연결 검증</strong>은 Cursor가 브랜치에 푸시하고 PR·머지까지 진행하는지 확인합니다.
+              <strong>연결 테스트</strong>는 샘플 변경을 만들고 Cursor 요청·커밋·푸시·PR 생성까지 확인합니다. PR 이후
+              머지는 아래 옵션에 따릅니다.
             </p>
+            <label
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                marginBottom: 12,
+                fontSize: 12.5,
+                color: "#334155",
+                cursor: !canEdit ? "not-allowed" : "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={mergeAfterPr}
+                disabled={!canEdit}
+                onChange={(e) => setMergeAfterPr(e.target.checked)}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <strong>PR 생성 후 자동 Merge 테스트</strong>
+                <span style={{ display: "block", fontSize: 11, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>
+                  ON이면 PR 생성 후 자동 머지까지 수행합니다. OFF이면 PR 생성 완료 시 성공으로 처리합니다.
+                </span>
+              </span>
+            </label>
             <button
               type="button"
               disabled={!canEdit || busyEnvTest || !envTestStartOk}
@@ -1130,11 +1204,11 @@ export function ProjectExecutionEnvironmentPanel({
                   : !baseBranchConfigured
                     ? "기본 브랜치 설정이 필요합니다"
                     : !autoPushOn
-                      ? "ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다"
+                      ? "연결 테스트는 Push 가능한 실행 정책에서만 실행할 수 있습니다"
                       : undefined
               }
             >
-              {busyEnvTest ? "실행 중…" : "연결 테스트 실행 (Stage 1)"}
+              {busyEnvTest ? "실행 중…" : "연결 테스트"}
             </button>
             {!executionReady ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>
@@ -1146,7 +1220,7 @@ export function ProjectExecutionEnvironmentPanel({
             ) : null}
             {executionReady && baseBranchConfigured && !autoPushOn ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>
-                ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다.
+                연결 테스트는 Push 가능한 실행 정책에서만 실행할 수 있습니다.
               </p>
             ) : null}
             {stage1TimerSession?.taskId === "pending" &&
@@ -1320,9 +1394,7 @@ export function ProjectExecutionEnvironmentPanel({
                               lineHeight: 1.55,
                             }}
                           >
-                            <div style={{ fontWeight: 800, color: "#991b1b", marginBottom: 6 }}>
-                              Stage1 PR 생성 실패
-                            </div>
+                            <div style={{ fontWeight: 800, color: "#991b1b", marginBottom: 6 }}>PR 생성 실패</div>
                             {envTestLast.stage1PrCreateFailureHttpStatus != null ? (
                               <div style={{ color: "#7f1d1d" }}>
                                 <span style={{ color: "#64748b" }}>HTTP</span>{" "}
@@ -1383,7 +1455,7 @@ export function ProjectExecutionEnvironmentPanel({
                               marginBottom: 6,
                             }}
                           >
-                            Stage1 연결 테스트는 <strong style={{ color: "#475569" }}>Cursor 실행 → PR 생성 → 머지</strong>
+                            연결 테스트는 <strong style={{ color: "#475569" }}>Cursor 실행 → PR 생성 → 머지(옵션)</strong>
                             순으로 보여 줍니다. 원격 브랜치 확인은 별도 단계가 아니라{" "}
                             <strong style={{ color: "#475569" }}>PR 생성 흐름에 포함</strong>됩니다.
                           </div>
@@ -1510,6 +1582,8 @@ export function ProjectExecutionEnvironmentPanel({
                               <span style={{ color: "#64748b" }}>머지 상태</span>{" "}
                               {envTestLast.envTestMergeBlockedReason ? (
                                 <span style={{ fontWeight: 800, color: "#b91c1c" }}>차단됨</span>
+                              ) : envTestLast.connectionTestMergeMode === "skip" && isStage1TerminalFromDto(envTestLast) ? (
+                                <span style={{ fontWeight: 700, color: "#15803d" }}>완료 (머지 생략)</span>
                               ) : envTestLast.envTestMergeStartedAt ? (
                                 <span style={{ fontWeight: 700 }}>진행 중</span>
                               ) : (
@@ -1612,7 +1686,8 @@ export function ProjectExecutionEnvironmentPanel({
                       : environmentTestStatusMessage(
                           envTestLast.workflowStatus,
                           envTestLast.taskStatus,
-                          envTestLast.taskKind
+                          envTestLast.taskKind,
+                          envTestLast.connectionTestMergeMode ?? null
                         )}
                   </div>
                   <div style={{ marginTop: 4 }}>
@@ -1703,21 +1778,7 @@ export function ProjectExecutionEnvironmentPanel({
     </div>
   );
 
-  const stage1ValidationSlot =
-    effectivePurpose === "prototype" ? (
-      <details
-        open={advancedEnvTestOpen}
-        onToggle={(e) => setAdvancedEnvTestOpen((e.target as HTMLDetailsElement).open)}
-        style={{ marginTop: 4 }}
-      >
-        <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 900, color: "#64748b" }}>
-          고급 검증 보기
-        </summary>
-        <div style={{ marginTop: 10 }}>{stage1ValidationSlotExpanded}</div>
-      </details>
-    ) : (
-      stage1ValidationSlotExpanded
-    );
+  const stage1ValidationSlot = stage1ValidationSlotExpanded;
 
   return (
     <div
@@ -1742,7 +1803,7 @@ export function ProjectExecutionEnvironmentPanel({
                 프로젝트 단계와 관계없이 언제든 수정할 수 있습니다.
               </>
             ) : (
-              "외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."
+              "외부 시스템을 연결한 뒤 환경 검증에서 기본 검증과 연결 테스트로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."
             )}
           </p>
           {isAdminSettings ? null : (
@@ -1758,7 +1819,7 @@ export function ProjectExecutionEnvironmentPanel({
                 lineHeight: 1.5,
               }}
             >
-              1. 외부 시스템 연결 → 2. 연결 테스트 실행 → 3. (선택) 실행 정책 설정
+              1. 외부 시스템 연결 → 2. 환경 검증(기본 검증·연결 테스트) → 3. (선택) 실행 정책 설정
             </div>
           )}
         </header>
@@ -1775,6 +1836,7 @@ export function ProjectExecutionEnvironmentPanel({
         unifiedExecutionEnvironment
         executionEnvironmentFlow={effectivePurpose !== "prototype"}
         prototypeStagedLayout={effectivePurpose === "prototype"}
+        connectionTestSatisfied={connectionTestSatisfied}
         connectionSlotBeforeCursor={gitRepositorySlot}
         connectionSlotGithubAuth={githubAuthSlot}
         connectionSlotAfterCursor={stage1ValidationSlot}
