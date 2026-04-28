@@ -17,6 +17,10 @@ import {
   ExecutionSetupPanel,
   type ExecutionSetupPanelHandle,
 } from "@/components/project-spec/ExecutionSetupPanel";
+import {
+  githubCredentialLooksStored,
+  secretMaskedDisplay,
+} from "@/components/project-spec/credentialUiMask";
 import { formatTestedAt } from "@/components/project-spec/format";
 import type { Project } from "@/components/project-spec/types";
 
@@ -1827,6 +1831,8 @@ export function ProjectExecutionEnvironmentPanel({
 
   const isPrototypeMvpUi = effectivePurpose === "prototype";
 
+  const githubTokenLooksStored = githubCredentialLooksStored(executionSetup);
+
   const mvpGithubRepoSection = isPrototypeMvpUi ? (
     <section
       style={{
@@ -1878,21 +1884,40 @@ export function ProjectExecutionEnvironmentPanel({
             <code style={{ fontSize: 10 }}>{executionSetup.peerCredentialHints.githubAccessTokenMasked}</code>
           </p>
         ) : null}
-        {!executionSetup?.hasGithubAccessToken || githubReplaceMode ? (
+        {!githubTokenLooksStored || githubReplaceMode ? (
           <label style={{ display: "grid", gap: 4, marginBottom: 8, maxWidth: 720 }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Personal Access Token</span>
+            {githubReplaceMode && githubTokenLooksStored ? (
+              <div style={{ marginBottom: 6, fontSize: 11, color: "#475569", lineHeight: 1.45 }}>
+                현재 저장:{" "}
+                <code style={{ fontSize: 11, color: "#0f172a" }}>
+                  {secretMaskedDisplay(
+                    executionSetup?.githubAccessTokenMasked ?? null,
+                    githubTokenRevealPlaintext,
+                    githubTokenLooksStored
+                  )}
+                </code>
+              </div>
+            ) : null}
             <input
               type="password"
               autoComplete="off"
               value={githubTokenDraft}
               disabled={!canEdit || !executionSetup}
-              placeholder={githubReplaceMode ? "새 토큰" : "ghp_… / github_pat_…"}
+              placeholder={
+                githubReplaceMode
+                  ? "새 토큰 붙여넣기"
+                  : githubTokenLooksStored
+                    ? "(서버에 저장됨)"
+                    : "ghp_… / github_pat_…"
+              }
               onChange={(e) => setGithubTokenDraft(e.target.value)}
               style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
             />
           </label>
         ) : (
           <div style={{ marginBottom: 10, fontSize: 12, color: "#334155", maxWidth: 720 }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>저장된 토큰 (마스킹)</div>
             <code
               style={{
                 display: "block",
@@ -1900,18 +1925,25 @@ export function ProjectExecutionEnvironmentPanel({
                 borderRadius: 8,
                 background: "#f0f9ff",
                 border: "1px solid #bae6fd",
-                fontSize: 12,
+                fontSize: 13,
                 wordBreak: "break-all",
+                fontFamily: "ui-monospace, monospace",
+                letterSpacing: 0.02,
+                color: "#0f172a",
               }}
             >
-              {githubTokenRevealPlaintext ?? executionSetup?.githubAccessTokenMasked ?? "—"}
+              {secretMaskedDisplay(
+                executionSetup?.githubAccessTokenMasked ?? null,
+                githubTokenRevealPlaintext,
+                githubTokenLooksStored
+              )}
             </code>
           </div>
         )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <button
             type="button"
-            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            disabled={!canEdit || !githubTokenLooksStored || busyGithubAuth != null}
             onClick={() => {
               setGithubReplaceMode(true);
               setGithubTokenDraft("");
@@ -1931,7 +1963,7 @@ export function ProjectExecutionEnvironmentPanel({
           </button>
           <button
             type="button"
-            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            disabled={!canEdit || !githubTokenLooksStored || busyGithubAuth != null}
             onClick={async () => {
               const ok = window.confirm("저장된 GitHub 토큰을 삭제합니다. 계속할까요?");
               if (!ok) return;
@@ -1967,7 +1999,7 @@ export function ProjectExecutionEnvironmentPanel({
           </button>
           <button
             type="button"
-            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            disabled={!canEdit || !githubTokenLooksStored || busyGithubAuth != null}
             onClick={async () => {
               if (!projectId.trim()) return;
               setBusyGithubAuth("reveal");
