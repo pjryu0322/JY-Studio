@@ -69,11 +69,14 @@ export async function POST(
     }
 
     let runStage2 = false;
+    let mergeMode: "skip" | "auto" = "auto";
     try {
       const ct = request.headers.get("content-type") ?? "";
       if (ct.includes("application/json")) {
-        const b = (await request.json()) as { stage?: number };
+        const b = (await request.json()) as { stage?: number; mergeMode?: string };
         if (b?.stage === 2) runStage2 = true;
+        if (!runStage2 && b?.mergeMode === "skip") mergeMode = "skip";
+        if (!runStage2 && b?.mergeMode === "auto") mergeMode = "auto";
       }
     } catch {
       /* empty body */
@@ -81,7 +84,7 @@ export async function POST(
 
     const created = runStage2
       ? await createEnvironmentStage2TestTask({ projectId: pid, actorUserId: userId })
-      : await createEnvironmentTestTask({ projectId: pid, actorUserId: userId });
+      : await createEnvironmentTestTask({ projectId: pid, actorUserId: userId, mergeMode });
     if (!created.ok) {
       return NextResponse.json({ success: false, message: created.message }, { status: 422 });
     }

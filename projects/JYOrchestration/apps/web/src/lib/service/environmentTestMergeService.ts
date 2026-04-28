@@ -31,7 +31,7 @@ import { parsePrUrlFromRunPrStatus } from "@/lib/service/environmentConnectionTe
 const ENV_TEST_MERGE_VERIFIED_SUMMARY = "ENV_TEST: GitHub에서 머지 완료가 확인되었습니다.";
 const ENV_TEST_MERGE_SUCCESS_USER_MESSAGE = "환경 연결 테스트가 완료되었습니다. GitHub 머지가 확인되었습니다.";
 const ENV_TEST_STAGE1_MERGE_VERIFIED_SUMMARY = "Stage1: 브랜치·PR·머지 확인 완료.";
-const ENV_TEST_STAGE1_MERGE_SUCCESS_USER_MESSAGE = "환경 연결 테스트가 정상 완료되었습니다.";
+const ENV_TEST_STAGE1_MERGE_SUCCESS_USER_MESSAGE = "연결 테스트 성공 (Merge 완료)";
 
 function envTestMergeVerifiedSummaryForTaskKind(taskKind: string | null | undefined): string {
   return isEnvTestStage2TaskKind(taskKind) ? ENV_TEST_MERGE_VERIFIED_SUMMARY : ENV_TEST_STAGE1_MERGE_VERIFIED_SUMMARY;

@@ -9,10 +9,12 @@ import type {
   PrototypeWorkspaceIdeationAsset,
 } from "@/components/preview/prototypeWorkspaceTypes";
 import {
+  fetchEnvironmentTestLast,
   fetchExecutionSetup,
   postExecutionSetupValidate,
   type ExecutionSetupDto,
 } from "@/components/project-spec/api";
+import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
@@ -41,6 +43,7 @@ type EnvStatus = Readonly<{
   git: EnvBadge;
   github: EnvBadge;
   cursor: EnvBadge;
+  connectionTest: EnvBadge;
   runnable: EnvBadge;
   message: string | null;
 }>;
@@ -128,6 +131,7 @@ export function PrototypePreviewPanel({
     git: "loading",
     github: "loading",
     cursor: "loading",
+    connectionTest: "loading",
     runnable: "loading",
     message: null,
   });
@@ -237,16 +241,36 @@ export function PrototypePreviewPanel({
   }, [designReadinessPercent, analysis.confidence, ideaOk, actorsOk, flowOk, ownersOk]);
 
   const envReadinessPercent = useMemo(() => {
-    const score = (b: EnvBadge) => (b === "ok" ? 25 : b === "needs" ? 10 : b === "loading" ? 0 : 0);
-    const raw = score(envStatus.git) + score(envStatus.github) + score(envStatus.cursor) + score(envStatus.runnable);
+    const score = (b: EnvBadge) => (b === "ok" ? 20 : b === "needs" ? 8 : b === "loading" ? 0 : 0);
+    const raw =
+      score(envStatus.git) +
+      score(envStatus.github) +
+      score(envStatus.cursor) +
+      score(envStatus.connectionTest) +
+      score(envStatus.runnable);
     return Math.min(100, Math.max(0, raw));
-  }, [envStatus.cursor, envStatus.git, envStatus.github, envStatus.runnable]);
+  }, [envStatus.connectionTest, envStatus.cursor, envStatus.git, envStatus.github, envStatus.runnable]);
 
   const canRequestGeneration = useMemo(() => {
     const designOk = ideaOk && actorsOk && flowOk && ownerAssignedRatio >= 60;
-    const envOk = envStatus.runnable === "ok" || (envStatus.git === "ok" && envStatus.cursor === "ok");
+    const envOk =
+      envStatus.runnable === "ok" ||
+      (envStatus.git === "ok" &&
+        envStatus.github === "ok" &&
+        envStatus.cursor === "ok" &&
+        envStatus.connectionTest === "ok");
     return { designOk, envOk, ok: designOk && envOk };
-  }, [ideaOk, actorsOk, flowOk, ownerAssignedRatio, envStatus.runnable, envStatus.git, envStatus.cursor]);
+  }, [
+    ideaOk,
+    actorsOk,
+    flowOk,
+    ownerAssignedRatio,
+    envStatus.runnable,
+    envStatus.git,
+    envStatus.github,
+    envStatus.cursor,
+    envStatus.connectionTest,
+  ]);
 
   const staleRegenerate = Boolean(record.fingerprintAtRequest && record.fingerprintAtRequest !== designFingerprint);
   const previewUrl = useMemo(() => {
@@ -379,11 +403,44 @@ export function PrototypePreviewPanel({
       const git: EnvBadge = vData?.git ?? "needs";
       const cursor: EnvBadge = vData?.cursor ?? "needs";
       const github: EnvBadge = vData?.githubOperableOk === true ? "ok" : "needs";
-      const runnable: EnvBadge = vData ? (vData.git === "ok" && vData.cursor === "ok" ? "ok" : "needs") : "needs";
+      let connectionTest: EnvBadge = "needs";
+      try {
+        const conn = await fetchEnvironmentTestLast(projectId);
+        if (conn.res.ok && conn.json.success && conn.json.data?.last) {
+          const last = conn.json.data.last;
+          const wf = String(last.workflowStatus ?? "").trim().toLowerCase();
+          const terminal = last.isTerminal === true;
+          const failLine = String(last.envTestStage1FailureLine ?? "").trim();
+          const failed =
+            wf === EXECUTION_WORKFLOW.FAILED ||
+            wf === EXECUTION_WORKFLOW.VERIFY_FAILED ||
+            Boolean(failLine);
+          const mode = last.connectionTestMergeMode ?? "auto";
+          const ok =
+            terminal &&
+            !failed &&
+            (wf === EXECUTION_WORKFLOW.MERGED || (wf === EXECUTION_WORKFLOW.PR_OPENED && mode === "skip"));
+          connectionTest = ok ? "ok" : terminal && failed ? "error" : "needs";
+        }
+      } catch {
+        connectionTest = "error";
+      }
+      const runnable: EnvBadge = vData
+        ? vData.git === "ok" && vData.cursor === "ok" && vData.githubOperableOk === true && connectionTest === "ok"
+          ? "ok"
+          : "needs"
+        : "needs";
       const msg = vData?.messages?.[0] ? vData.messages[0] : null;
-      setEnvStatus({ git, cursor, github, runnable, message: msg });
+      setEnvStatus({ git, cursor, github, connectionTest, runnable, message: msg });
     } catch {
-      setEnvStatus({ git: "error", github: "error", cursor: "error", runnable: "error", message: "환경 확인에 실패했습니다." });
+      setEnvStatus({
+        git: "error",
+        github: "error",
+        cursor: "error",
+        connectionTest: "error",
+        runnable: "error",
+        message: "환경 확인에 실패했습니다.",
+      });
     } finally {
       setEnvBusy(false);
     }
@@ -485,6 +542,9 @@ export function PrototypePreviewPanel({
                 <div style={row}><span style={envPill(envStatus.git)}>{labelEnv(envStatus.git)}</span>Git 연결</div>
                 <div style={row}><span style={envPill(envStatus.github)}>{labelEnv(envStatus.github)}</span>GitHub 인증</div>
                 <div style={row}><span style={envPill(envStatus.cursor)}>{labelEnv(envStatus.cursor)}</span>Cursor 연결</div>
+                <div style={row}>
+                  <span style={envPill(envStatus.connectionTest)}>{labelEnv(envStatus.connectionTest)}</span>연결 테스트
+                </div>
                 <div style={row}><span style={envPill(envStatus.runnable)}>{labelEnv(envStatus.runnable)}</span>실행 가능</div>
               </div>
               {executionSetup?.gitRepoName ? (
@@ -663,7 +723,7 @@ export function PrototypePreviewPanel({
                   <div style={{ marginTop: 10, border: "1px solid #e2e8f0", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
                     <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>파이프라인 저장</div>
                     <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.45 }}>
-                      실행 기록은 서버 측 파일 저장소에 보관됩니다(DB 마이그레이션 전). PR/Merge 전용 경로는 ENV_TEST와 분리되어 있습니다.
+                      실행 기록은 서버 측 파일 저장소에 보관됩니다(DB 마이그레이션 전). PR/Merge 전용 경로는 프로토타입 자동 생성 파이프라인과 연결 테스트 파이프라인이 서로 분리되어 있습니다.
                     </div>
                   </div>
                   <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
