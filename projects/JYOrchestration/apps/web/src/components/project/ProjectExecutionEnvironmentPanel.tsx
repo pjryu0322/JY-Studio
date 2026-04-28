@@ -613,11 +613,6 @@ export function ProjectExecutionEnvironmentPanel({
     }));
   }, [executionSetup, project?.repoUrl]);
 
-  const specWorkflowConfirmed = useMemo(
-    () => Boolean(project?.currentSpecVersionId || project?.confirmedSpecAt),
-    [project?.currentSpecVersionId, project?.confirmedSpecAt]
-  );
-
   const gitVals = useMemo((): GitLinkDraft => {
     if (!executionSetup) return gitLinkDraft;
     return {
@@ -1116,7 +1111,7 @@ export function ProjectExecutionEnvironmentPanel({
             </p>
             <button
               type="button"
-              disabled={!canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk}
+              disabled={!canEdit || busyEnvTest || !envTestStartOk}
               onClick={() => void handleEnvironmentTest()}
               style={{
                 padding: "12px 22px",
@@ -1126,38 +1121,30 @@ export function ProjectExecutionEnvironmentPanel({
                 color: "#fff",
                 fontWeight: 800,
                 fontSize: 14,
-                cursor:
-                  !canEdit || busyEnvTest || !specWorkflowConfirmed || !envTestStartOk
-                    ? "not-allowed"
-                    : "pointer",
+                cursor: !canEdit || busyEnvTest || !envTestStartOk ? "not-allowed" : "pointer",
                 boxShadow: "0 4px 14px rgba(124, 58, 237, 0.35)",
               }}
               title={
-                !specWorkflowConfirmed
-                  ? "Spec 확정 후 사용"
-                  : !executionReady
-                    ? "저장소·Cursor 검증 완료 필요"
-                    : !baseBranchConfigured
-                      ? "기본 브랜치 설정이 필요합니다"
-                      : !autoPushOn
-                        ? "ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다"
-                        : undefined
+                !executionReady
+                  ? "저장소·Cursor 검증 완료 필요"
+                  : !baseBranchConfigured
+                    ? "기본 브랜치 설정이 필요합니다"
+                    : !autoPushOn
+                      ? "ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다"
+                      : undefined
               }
             >
               {busyEnvTest ? "실행 중…" : "연결 테스트 실행 (Stage 1)"}
             </button>
-            {!specWorkflowConfirmed ? (
-              <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>Spec 확정 후 사용할 수 있습니다.</p>
-            ) : null}
-            {specWorkflowConfirmed && !executionReady ? (
+            {!executionReady ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>
                 저장소·Cursor 검증을 모두 통과한 뒤 실행하세요.
               </p>
             ) : null}
-            {specWorkflowConfirmed && executionReady && !baseBranchConfigured ? (
+            {executionReady && !baseBranchConfigured ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>기본 브랜치 설정이 필요합니다.</p>
             ) : null}
-            {specWorkflowConfirmed && executionReady && baseBranchConfigured && !autoPushOn ? (
+            {executionReady && baseBranchConfigured && !autoPushOn ? (
               <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b45309" }}>
                 ENV_TEST는 Push 가능한 실행 정책에서만 실행할 수 있습니다.
               </p>
@@ -1748,9 +1735,15 @@ export function ProjectExecutionEnvironmentPanel({
               : "실행 환경"}
           </h1>
           <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-            {isAdminSettings
-              ? "Git 저장소·GitHub 인증·Cursor API를 연결하고, 실행 정책과 환경 검증을 완료하세요."
-              : "외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."}
+            {isAdminSettings ? (
+              <>
+                Git · GitHub · Cursor 연결과 자동 실행 정책을 설정합니다.
+                <br />
+                프로젝트 단계와 관계없이 언제든 수정할 수 있습니다.
+              </>
+            ) : (
+              "외부 시스템을 연결한 뒤 Stage 1 연결 검증으로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."
+            )}
           </p>
           {isAdminSettings ? null : (
             <div
@@ -1774,7 +1767,6 @@ export function ProjectExecutionEnvironmentPanel({
       <ExecutionSetupPanel
         projectId={projectId}
         canEdit={canEdit}
-        specWorkflowConfirmed={specWorkflowConfirmed}
         executionSetup={executionSetup}
         setExecutionSetup={setExecutionSetup}
         setMessage={setExecutionMessage}
