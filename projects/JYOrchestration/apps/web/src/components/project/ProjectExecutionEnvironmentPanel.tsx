@@ -13,7 +13,10 @@ import {
 import { ENV_TEST_TASK_KIND } from "@/lib/execution/envTestTaskKind";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { mergeValidateIntoSetup, type ValidateResponseData } from "@/components/project-spec/executionSetupValidateMerge";
-import { ExecutionSetupPanel } from "@/components/project-spec/ExecutionSetupPanel";
+import {
+  ExecutionSetupPanel,
+  type ExecutionSetupPanelHandle,
+} from "@/components/project-spec/ExecutionSetupPanel";
 import { formatTestedAt } from "@/components/project-spec/format";
 import type { Project } from "@/components/project-spec/types";
 
@@ -450,6 +453,8 @@ export function ProjectExecutionEnvironmentPanel({
   const [stage1DetailsOpen, setStage1DetailsOpen] = useState(false);
   /** true = PR 생성 후 자동 Merge 테스트 (mergeMode `auto`) */
   const [mergeAfterPr, setMergeAfterPr] = useState(false);
+  const [busyMvpSave, setBusyMvpSave] = useState(false);
+  const executionSetupPanelRef = useRef<ExecutionSetupPanelHandle>(null);
   /** Stage1 경과: 클릭 시각 기준(실행 시작 리셋). `pending`은 POST 응답 전까지 */
   const [stage1TimerSession, setStage1TimerSession] = useState<{
     taskId: string;
@@ -686,6 +691,38 @@ export function ProjectExecutionEnvironmentPanel({
     }
   }, [projectId, gitVals]);
 
+  const handleMvpSaveAll = useCallback(async () => {
+    if (!projectId.trim()) return;
+    setBusyMvpSave(true);
+    try {
+      const body: Parameters<typeof patchExecutionSetup>[1] = {
+        gitRepoUrl: gitVals.gitRepoUrl,
+        gitRepoProvider: gitVals.gitRepoProvider,
+        gitRepoName: gitVals.gitRepoName.trim() || null,
+        baseBranch: gitVals.baseBranch,
+      };
+      if (githubTokenDraft.trim()) body.githubAccessToken = githubTokenDraft.trim();
+      const { res, json } = await patchExecutionSetup(projectId, body);
+      if (!res.ok || !json.success || !json.data) {
+        setExecutionMessage(json.message || "저장에 실패했습니다.");
+        return;
+      }
+      setExecutionSetup(json.data);
+      setGithubTokenDraft("");
+      setGithubReplaceMode(false);
+      setGithubTokenRevealPlaintext(null);
+      const cursorOk = (await executionSetupPanelRef.current?.saveCursorConnection(json.data)) ?? true;
+      if (!cursorOk) return;
+      const { res: vres, json: vjson } = await postExecutionSetupValidate(projectId, { scope: "all" });
+      if (vres.ok && vjson.success && vjson.data) {
+        setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, vjson.data as ValidateResponseData) : p));
+      }
+      setExecutionMessage("저장했습니다.");
+    } finally {
+      setBusyMvpSave(false);
+    }
+  }, [projectId, gitVals, githubTokenDraft, setExecutionSetup]);
+
   const handleEnvironmentTest = useCallback(async () => {
     if (!projectId.trim()) return;
     const startMs = Date.now();
@@ -697,8 +734,16 @@ export function ProjectExecutionEnvironmentPanel({
     setStage1TimerSession({ taskId: "pending", startMs });
     setBusyEnvTest(true);
     try {
+      const mergeMode: "auto" | "skip" =
+        effectivePurpose === "prototype"
+          ? executionSetup?.autoPush === true && executionSetup?.stopOnOutOfScopeChange === false
+            ? "auto"
+            : "skip"
+          : mergeAfterPr
+            ? "auto"
+            : "skip";
       const { res, json } = await postEnvironmentTestRun(projectId, {
-        mergeMode: mergeAfterPr ? "auto" : "skip",
+        mergeMode,
       });
       const apiSuccess = Boolean(json.success);
       const tidFromData =
@@ -735,7 +780,7 @@ export function ProjectExecutionEnvironmentPanel({
     } finally {
       setBusyEnvTest(false);
     }
-  }, [projectId, loadEnvTestLast, mergeAfterPr]);
+  }, [projectId, loadEnvTestLast, mergeAfterPr, effectivePurpose, executionSetup?.autoPush, executionSetup?.stopOnOutOfScopeChange]);
 
   const handleValidateGit = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -1780,6 +1825,295 @@ export function ProjectExecutionEnvironmentPanel({
 
   const stage1ValidationSlot = stage1ValidationSlotExpanded;
 
+  const isPrototypeMvpUi = effectivePurpose === "prototype";
+
+  const mvpGithubRepoSection = isPrototypeMvpUi ? (
+    <section
+      style={{
+        marginBottom: 16,
+        padding: 16,
+        borderRadius: 12,
+        border: "1px solid #e2e8f0",
+        background: "#fff",
+      }}
+    >
+      <h2 style={{ fontSize: 17, fontWeight: 800, margin: "0 0 12px 0", color: "#0f172a" }}>GitHub + 저장소 연결</h2>
+      <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>저장소 URL</span>
+          <input
+            value={gitVals.gitRepoUrl}
+            disabled={!canEdit}
+            placeholder={PLACEHOLDERS.gitRepoUrl}
+            onChange={(e) => setGitField({ gitRepoUrl: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>owner/repo</span>
+          <input
+            value={gitVals.gitRepoName}
+            disabled={!canEdit}
+            placeholder={PLACEHOLDERS.gitRepoName}
+            onChange={(e) => setGitField({ gitRepoName: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>기본 브랜치</span>
+          <input
+            value={gitVals.baseBranch}
+            disabled={!canEdit}
+            placeholder={PLACEHOLDERS.baseBranch}
+            onChange={(e) => setGitField({ baseBranch: e.target.value })}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          />
+        </label>
+      </div>
+      <div style={{ marginTop: 4, paddingTop: 14, borderTop: "1px solid #e2e8f0" }}>
+        <div style={{ fontWeight: 800, fontSize: 12, color: "#0f172a", marginBottom: 8 }}>GitHub Token</div>
+        {executionSetup?.peerCredentialHints?.githubAccessTokenMasked && !executionSetup?.hasGithubAccessToken ? (
+          <p style={{ margin: "0 0 8px 0", fontSize: 11, color: "#0369a1", lineHeight: 1.45 }}>
+            동일 계정 참고 마스크:{" "}
+            <code style={{ fontSize: 10 }}>{executionSetup.peerCredentialHints.githubAccessTokenMasked}</code>
+          </p>
+        ) : null}
+        {!executionSetup?.hasGithubAccessToken || githubReplaceMode ? (
+          <label style={{ display: "grid", gap: 4, marginBottom: 8, maxWidth: 720 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Personal Access Token</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={githubTokenDraft}
+              disabled={!canEdit || !executionSetup}
+              placeholder={githubReplaceMode ? "새 토큰" : "ghp_… / github_pat_…"}
+              onChange={(e) => setGithubTokenDraft(e.target.value)}
+              style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1" }}
+            />
+          </label>
+        ) : (
+          <div style={{ marginBottom: 10, fontSize: 12, color: "#334155", maxWidth: 720 }}>
+            <code
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#f0f9ff",
+                border: "1px solid #bae6fd",
+                fontSize: 12,
+                wordBreak: "break-all",
+              }}
+            >
+              {githubTokenRevealPlaintext ?? executionSetup?.githubAccessTokenMasked ?? "—"}
+            </code>
+          </div>
+        )}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            onClick={() => {
+              setGithubReplaceMode(true);
+              setGithubTokenDraft("");
+              setGithubTokenRevealPlaintext(null);
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: !canEdit ? "not-allowed" : "pointer",
+            }}
+          >
+            새 토큰 교체
+          </button>
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            onClick={async () => {
+              const ok = window.confirm("저장된 GitHub 토큰을 삭제합니다. 계속할까요?");
+              if (!ok) return;
+              if (!projectId.trim()) return;
+              setBusyGithubAuth("delete");
+              try {
+                const { res, json } = await patchExecutionSetup(projectId, { githubAccessToken: null });
+                if (!res.ok || !json.success || !json.data) {
+                  setExecutionMessage(json.message || "삭제에 실패했습니다.");
+                  return;
+                }
+                setExecutionSetup(json.data);
+                setGithubTokenDraft("");
+                setGithubReplaceMode(false);
+                setGithubTokenRevealPlaintext(null);
+                setExecutionMessage("GitHub 토큰을 삭제했습니다.");
+              } finally {
+                setBusyGithubAuth(null);
+              }
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #fecaca",
+              background: "#fff",
+              color: "#b91c1c",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: !canEdit ? "not-allowed" : "pointer",
+            }}
+          >
+            {busyGithubAuth === "delete" ? "삭제 중…" : "삭제"}
+          </button>
+          <button
+            type="button"
+            disabled={!canEdit || !executionSetup?.hasGithubAccessToken || busyGithubAuth != null}
+            onClick={async () => {
+              if (!projectId.trim()) return;
+              setBusyGithubAuth("reveal");
+              try {
+                const { res, json } = await postRevealGithubAccessToken(projectId);
+                if (!res.ok || !json.success || !json.data?.plaintext) {
+                  setExecutionMessage(json.message || "토큰을 표시할 수 없습니다. (프로젝트 소유자만 가능합니다.)");
+                  return;
+                }
+                setGithubTokenRevealPlaintext(json.data.plaintext);
+                setTimeout(() => setGithubTokenRevealPlaintext(null), 8000);
+              } finally {
+                setBusyGithubAuth(null);
+              }
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: !canEdit ? "not-allowed" : "pointer",
+            }}
+          >
+            {busyGithubAuth === "reveal" ? "불러오는 중…" : "토큰 보기"}
+          </button>
+        </div>
+        {executionSetup?.githubCapabilityValidation != null &&
+        executionSetup.githubCapabilityValidation.githubOperableOk === false ? (
+          <p style={{ margin: "10px 0 0 0", fontSize: 11, color: "#b91c1c", lineHeight: 1.45 }}>
+            {executionSetup.githubCapabilityValidation.lastErrorMessage ?? "GitHub 권한을 확인할 수 없습니다."}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  ) : null;
+
+  const prototypeMvpActionBar = isPrototypeMvpUi ? (
+    <div style={{ marginTop: 4 }}>
+      <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
+        연결 테스트는 GitHub·저장소·Cursor와 샘플 커밋·푸시·PR 생성을 확인합니다.
+        {executionSetup?.autoPush === true && executionSetup?.stopOnOutOfScopeChange === false
+          ? " 자동화가 「자동 Merge까지」이면 머지까지 시도합니다."
+          : null}
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 14 }}>
+        <button
+          type="button"
+          disabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
+          onClick={() => void handleEnvironmentTest()}
+          style={{
+            padding: "12px 22px",
+            borderRadius: 10,
+            border: "1px solid #6d28d9",
+            background: "linear-gradient(180deg, #7c3aed 0%, #6d28d9 100%)",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: 14,
+            cursor: !canEdit || busyEnvTest || !envTestStartOk || busyMvpSave ? "not-allowed" : "pointer",
+            boxShadow: "0 4px 14px rgba(124, 58, 237, 0.35)",
+          }}
+          title={
+            !executionReady
+              ? "저장소·GitHub·Cursor 검증을 통과해야 합니다"
+              : !baseBranchConfigured
+                ? "기본 브랜치가 필요합니다"
+                : !autoPushOn
+                  ? "자동화를 「자동 PR 생성까지」 이상으로 설정하세요"
+                  : undefined
+          }
+        >
+          {busyEnvTest ? "실행 중…" : "연결 테스트"}
+        </button>
+        <button
+          type="button"
+          disabled={!canEdit || busyMvpSave || busyEnvTest}
+          onClick={() => void handleMvpSaveAll()}
+          style={{
+            padding: "12px 22px",
+            borderRadius: 10,
+            border: "1px solid #2563eb",
+            background: "#2563eb",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: 14,
+            cursor: !canEdit || busyMvpSave || busyEnvTest ? "not-allowed" : "pointer",
+          }}
+        >
+          {busyMvpSave ? "저장 중…" : "저장"}
+        </button>
+        <span style={{ fontSize: 12, fontWeight: 700, color: connectionTestSatisfied ? "#15803d" : "#64748b" }}>
+          {connectionTestSatisfied ? "연결 테스트 완료" : "연결 테스트 미완료"}
+        </span>
+      </div>
+      {busyEnvTest ||
+      (stage1TimerSession?.taskId === "pending" && !stage1LastDtoShowsPipelineProgress(envTestLast, true)) ? (
+        <p style={{ margin: "0 0 8px 0", fontSize: 12, color: "#334155" }}>연결 테스트를 진행하는 중입니다…</p>
+      ) : null}
+      {envTestLast && isStage1EnvironmentTestLast(envTestLast) ? (
+        <div
+          style={{
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #e2e8f0",
+            background: "#f8fafc",
+            fontSize: 12,
+            color: "#334155",
+            lineHeight: 1.55,
+          }}
+        >
+          <div style={{ fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>마지막 연결 테스트</div>
+          <div>
+            {(() => {
+              const wf = normalizeWorkflowForUi(envTestLast.workflowStatus);
+              const mergeInProgress =
+                wf === EXECUTION_WORKFLOW.PR_OPENED &&
+                Boolean(envTestLast.envTestMergeStartedAt) &&
+                !envTestLast.mergedAt;
+              return stage1EnvironmentHeadline(envTestLast, {
+                mergeInProgress,
+                syncLost: stage1PollSyncStopped,
+              });
+            })()}
+          </div>
+          {envTestLast.envTestStage1FailureLine ? (
+            <div style={{ marginTop: 8, color: "#b91c1c", fontWeight: 600 }}>{envTestLast.envTestStage1FailureLine}</div>
+          ) : null}
+          {envTestLast.prUrl ? (
+            <div style={{ marginTop: 8 }}>
+              <a href={envTestLast.prUrl} target="_blank" rel="noreferrer" style={{ fontWeight: 700, color: "#2563eb" }}>
+                PR 열기
+              </a>
+            </div>
+          ) : null}
+          <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
+            상태:{" "}
+            <strong style={{ color: "#0f172a" }}>
+              {environmentTestWorkflowLabel(envTestLast.workflowStatus, false)}
+            </strong>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <div
       data-testid="project-execution-environment-panel"
@@ -1795,17 +2129,12 @@ export function ProjectExecutionEnvironmentPanel({
                 : "환경 검증/설정"
               : "실행 환경"}
           </h1>
-          <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-            {isAdminSettings ? (
-              <>
-                Git · GitHub · Cursor 연결과 자동 실행 정책을 설정합니다.
-                <br />
-                프로젝트 단계와 관계없이 언제든 수정할 수 있습니다.
-              </>
-            ) : (
-              "외부 시스템을 연결한 뒤 환경 검증에서 기본 검증과 연결 테스트로 실제 푸시·PR 경로를 확인합니다. 실행 정책은 필요할 때만 고급 설정에서 조정합니다."
-            )}
-          </p>
+          {!isAdminSettings ? (
+            <p style={{ margin: "0 0 10px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+              외부 시스템을 연결한 뒤 환경 검증에서 기본 검증과 연결 테스트로 실제 푸시·PR 경로를 확인합니다. 실행 정책은
+              필요할 때만 고급 설정에서 조정합니다.
+            </p>
+          ) : null}
           {isAdminSettings ? null : (
             <div
               style={{
@@ -1825,7 +2154,10 @@ export function ProjectExecutionEnvironmentPanel({
         </header>
       )}
 
+      {mvpGithubRepoSection}
+
       <ExecutionSetupPanel
+        ref={executionSetupPanelRef}
         projectId={projectId}
         canEdit={canEdit}
         executionSetup={executionSetup}
@@ -1836,10 +2168,11 @@ export function ProjectExecutionEnvironmentPanel({
         unifiedExecutionEnvironment
         executionEnvironmentFlow={effectivePurpose !== "prototype"}
         prototypeStagedLayout={effectivePurpose === "prototype"}
+        prototypeMvpLayout={isPrototypeMvpUi}
         connectionTestSatisfied={connectionTestSatisfied}
-        connectionSlotBeforeCursor={gitRepositorySlot}
-        connectionSlotGithubAuth={githubAuthSlot}
-        connectionSlotAfterCursor={stage1ValidationSlot}
+        connectionSlotBeforeCursor={isPrototypeMvpUi ? undefined : gitRepositorySlot}
+        connectionSlotGithubAuth={isPrototypeMvpUi ? undefined : githubAuthSlot}
+        connectionSlotAfterCursor={isPrototypeMvpUi ? undefined : stage1ValidationSlot}
         canRevealCursorApiKey={canRevealCursorApiKey}
       />
 
@@ -1848,6 +2181,8 @@ export function ProjectExecutionEnvironmentPanel({
           {executionMessage}
         </p>
       ) : null}
+
+      {prototypeMvpActionBar}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  forwardRef,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type CSSProperties,
@@ -25,10 +27,16 @@ import {
   POLICY_GATES,
 } from "@/components/project-spec/executionSetupPolicyRows";
 import { ExecutionSetupUnifiedPolicyBody } from "@/components/project-spec/ExecutionSetupUnifiedPolicyBody";
+import { PrototypeSimpleExecutionPolicy } from "@/components/project-spec/PrototypeSimpleExecutionPolicy";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 
 const CURSOR_API_DEFAULT_URL = "https://api.cursor.com";
+
+export type ExecutionSetupPanelHandle = {
+  /** Cursor URL·키를 서버에 저장합니다. 직전 Git PATCH로 갱신된 행을 넘기면 그 스냅샷으로 저장합니다. */
+  saveCursorConnection: (setupRow?: ExecutionSetupDto | null) => Promise<boolean>;
+};
 
 function connectionToneColor(tone: "muted" | "ok" | "bad" | "warn"): string {
   if (tone === "ok") return "#15803d";
@@ -44,7 +52,7 @@ function axisStatus(ok: boolean | null | undefined): { label: string; tone: "mut
   return { label: "미검증", tone: "warn" };
 }
 
-export function ExecutionSetupPanel(props: {
+type ExecutionSetupPanelProps = {
   projectId: string;
   canEdit: boolean;
   executionSetup: ExecutionSetupDto | null | undefined;
@@ -70,11 +78,16 @@ export function ExecutionSetupPanel(props: {
    * (검증 로직은 기존 postExecutionSetupValidate/patchExecutionSetup 흐름 그대로)
    */
   prototypeStagedLayout?: boolean;
+  /** prototype MVP: Cursor·자동화 두 카드만, 하단 검증 섹션 생략 */
+  prototypeMvpLayout?: boolean;
   /** prototype 전용: 연결 테스트까지 성공해야 실행 준비 배지가 완료로 표시된다. */
   connectionTestSatisfied?: boolean;
   /** 프로젝트 OWNER만 저장된 키 전체를 일시 표시 */
   canRevealCursorApiKey?: boolean;
-}) {
+};
+
+export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, ExecutionSetupPanelProps>(
+  function ExecutionSetupPanel(props, ref) {
   const {
     projectId,
     canEdit,
@@ -89,6 +102,7 @@ export function ExecutionSetupPanel(props: {
     executionEnvironmentFlow = false,
     connectionSlotAfterCursor,
     prototypeStagedLayout = false,
+    prototypeMvpLayout = false,
     connectionTestSatisfied = false,
     canRevealCursorApiKey = false,
   } = props;
@@ -97,7 +111,6 @@ export function ExecutionSetupPanel(props: {
   const [busy, setBusy] = useState<BusyKey>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [cursorApiDetailOpen, setCursorApiDetailOpen] = useState(false);
-  const [cursorHelpOpen, setCursorHelpOpen] = useState(false);
   const [cursorApiKeyDraft, setCursorApiKeyDraft] = useState("");
   const [lastValidateKind, setLastValidateKind] = useState<"cursor_api" | "cursor_execution" | "all" | null>(null);
   const [cursorKeyReplaceMode, setCursorKeyReplaceMode] = useState(false);
@@ -150,6 +163,7 @@ export function ExecutionSetupPanel(props: {
   const execOk = executionSetup?.executorConnectionOk;
   const unified = Boolean(unifiedExecutionEnvironment && flatLayout);
   const stagedPrototype = Boolean(unified && prototypeStagedLayout);
+  const prototypeMvp = Boolean(stagedPrototype && prototypeMvpLayout);
   const connectionGateOk = !stagedPrototype || connectionTestSatisfied === true;
   const ready =
     executionSetup?.status === "validated" &&
@@ -203,7 +217,6 @@ export function ExecutionSetupPanel(props: {
   const showCursorValidationCard =
     Boolean(validationPayload) && (!executionReady || Boolean(validationPayload?.overallOk));
   const showBody = flatLayout || open;
-  const showCursorHelp = flatLayout || cursorHelpOpen;
   const showExecExamples = flatLayout || examplesOpen;
   const showCursorApiDetail = flatLayout
     ? Boolean(validationPayload && !validationPayload.overallOk && !executionReady)
@@ -270,7 +283,8 @@ export function ExecutionSetupPanel(props: {
     </section>
   );
 
-  const renderCursorConnectionBlock = (opts: { compactTitle: boolean }) => {
+  const renderCursorConnectionBlock = (opts: { compactTitle: boolean; mvp?: boolean }) => {
+    const mvp = Boolean(opts.mvp);
     const showKeyInput = !es?.hasCursorToken || cursorKeyReplaceMode;
     const cursorKeyBusy =
       busy === "save-cursor" || busy === "val-cursor-api" || busy === "del-cursor" || busy === "reveal-cursor";
@@ -291,58 +305,23 @@ export function ExecutionSetupPanel(props: {
       cursor: canEdit && es && !cursorKeyBusy ? "pointer" : "not-allowed",
     };
 
-    return (
-      <div
-        style={{
-          marginBottom: 14,
-          padding: 12,
-          borderRadius: 12,
-          border: "1px solid #c4b5fd",
-          background: "#faf5ff",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 13, color: "#5b21b6", marginBottom: 4 }}>
-          {opts.compactTitle ? "Cursor API" : "2. Cursor 연결"}
-        </div>
+    const inner = (
+      <>
+        {!mvp ? (
+          <div style={{ fontWeight: 900, fontSize: 13, color: "#5b21b6", marginBottom: 4 }}>
+            {opts.compactTitle ? "Cursor API" : "2. Cursor 연결"}
+          </div>
+        ) : null}
         <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
-          검증(다시 검증)은 <strong>서버에 저장된 키</strong>로만 수행됩니다. 키를 다시 입력할 필요가 없습니다. 기본 URL:{" "}
-          {CURSOR_API_DEFAULT_URL}
+          {mvp ? (
+            <>기본 URL은 {CURSOR_API_DEFAULT_URL} 입니다. URL·키는 아래 저장으로 서버에 반영됩니다.</>
+          ) : (
+            <>
+              검증(다시 검증)은 <strong>서버에 저장된 키</strong>로만 수행됩니다. 키를 다시 입력할 필요가 없습니다. 기본 URL:{" "}
+              {CURSOR_API_DEFAULT_URL}
+            </>
+          )}
         </p>
-        {!flatLayout ? (
-          <button
-            type="button"
-            onClick={() => setCursorHelpOpen((v) => !v)}
-            style={{
-              marginBottom: 10,
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid #94a3b8",
-              background: "#fff",
-              fontWeight: 700,
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
-            {cursorHelpOpen ? "Cursor API 키 안내 접기" : "Cursor API 키 확인 방법"}
-          </button>
-        ) : null}
-        {showCursorHelp ? (
-          <ol
-            style={{
-              margin: "0 0 12px 0",
-              paddingLeft: 20,
-              fontSize: 12,
-              color: "#334155",
-              lineHeight: 1.6,
-            }}
-          >
-            <li>Cursor 대시보드(cursor.com)에 로그인합니다.</li>
-            <li>설정 → Integrations 또는 Cloud Agents 메뉴로 이동합니다.</li>
-            <li>API key를 생성합니다.</li>
-            <li>최초 1회 키를 저장한 뒤 「다시 검증」으로 연결을 확인합니다.</li>
-            <li>키 변경은 「새 키로 교체」에서 입력 후 저장합니다.</li>
-          </ol>
-        ) : null}
         <label style={{ display: "grid", gap: 4, marginBottom: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>Cursor API URL</span>
           <input
@@ -417,91 +396,95 @@ export function ExecutionSetupPanel(props: {
         ) : null}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <button
-            type="button"
-            disabled={!canEdit || !es || busy === "val-cursor-api" || !es?.hasCursorToken}
-            title={!es?.hasCursorToken ? "먼저 API 키를 저장하세요" : "저장된 키로 Cursor API 검증"}
-            onClick={async () => {
-              if (!projectId || !es) return;
-              beginExecutionValidationRequest();
-              setBusy("val-cursor-api");
-              try {
-                const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor_api" });
-                if (!res.ok || !json.success) {
-                  setMessage(json.message || "Cursor API 검증에 실패했습니다.");
-                  return;
-                }
-                if (json.data) {
-                  setLastValidateKind("cursor_api");
-                  setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
-                  const d = json.data as ValidateResponseData;
-                  if (d.cursorApiValidation) {
-                    setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
+          {!mvp ? (
+            <button
+              type="button"
+              disabled={!canEdit || !es || busy === "val-cursor-api" || !es?.hasCursorToken}
+              title={!es?.hasCursorToken ? "먼저 API 키를 저장하세요" : "저장된 키로 Cursor API 검증"}
+              onClick={async () => {
+                if (!projectId || !es) return;
+                beginExecutionValidationRequest();
+                setBusy("val-cursor-api");
+                try {
+                  const { res, json } = await postExecutionSetupValidate(projectId, { scope: "cursor_api" });
+                  if (!res.ok || !json.success) {
+                    setMessage(json.message || "Cursor API 검증에 실패했습니다.");
+                    return;
                   }
+                  if (json.data) {
+                    setLastValidateKind("cursor_api");
+                    setExecutionSetup((p) => (p ? mergeValidateIntoSetup(p, json.data as ValidateResponseData) : p));
+                    const d = json.data as ValidateResponseData;
+                    if (d.cursorApiValidation) {
+                      setCursorApiDetailOpen(!d.cursorApiValidation.overallOk);
+                    }
+                  }
+                  const detail = (json.data?.messages ?? []).join(" / ");
+                  setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
+                } finally {
+                  setBusy(null);
                 }
-                const detail = (json.data?.messages ?? []).join(" / ");
-                setMessage(detail ? `${json.message ?? ""} · ${detail}` : (json.message ?? ""));
-              } finally {
-                setBusy(null);
-              }
-            }}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #0f766e",
-              background: "#0d9488",
-              color: "#fff",
-              fontWeight: 800,
-              fontSize: 12,
-              cursor:
-                !canEdit || !es || !es.hasCursorToken || busy === "val-cursor-api" ? "not-allowed" : "pointer",
-            }}
-          >
-            {busy === "val-cursor-api" ? "검증 중…" : "다시 검증"}
-          </button>
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #0f766e",
+                background: "#0d9488",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor:
+                  !canEdit || !es || !es.hasCursorToken || busy === "val-cursor-api" ? "not-allowed" : "pointer",
+              }}
+            >
+              {busy === "val-cursor-api" ? "검증 중…" : "다시 검증"}
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            disabled={!canEdit || !es || busy === "save-cursor"}
-            onClick={async () => {
-              if (!projectId || !es) return;
-              setBusy("save-cursor");
-              const keyTouched = Boolean(cursorApiKeyDraft.trim());
-              try {
-                const body: Parameters<typeof patchExecutionSetup>[1] = {
-                  cursorApiUrl: es.cursorApiUrl?.trim() || CURSOR_API_DEFAULT_URL,
-                };
-                if (keyTouched) body.cursorApiToken = cursorApiKeyDraft.trim();
-                const { res, json } = await patchExecutionSetup(projectId, body);
-                if (!res.ok || !json.success || !json.data) {
-                  setMessage(json.message || "저장에 실패했습니다.");
-                  return;
+          {!mvp ? (
+            <button
+              type="button"
+              disabled={!canEdit || !es || busy === "save-cursor"}
+              onClick={async () => {
+                if (!projectId || !es) return;
+                setBusy("save-cursor");
+                const keyTouched = Boolean(cursorApiKeyDraft.trim());
+                try {
+                  const body: Parameters<typeof patchExecutionSetup>[1] = {
+                    cursorApiUrl: es.cursorApiUrl?.trim() || CURSOR_API_DEFAULT_URL,
+                  };
+                  if (keyTouched) body.cursorApiToken = cursorApiKeyDraft.trim();
+                  const { res, json } = await patchExecutionSetup(projectId, body);
+                  if (!res.ok || !json.success || !json.data) {
+                    setMessage(json.message || "저장에 실패했습니다.");
+                    return;
+                  }
+                  setExecutionSetup(json.data);
+                  setCursorApiKeyDraft("");
+                  if (keyTouched) setCursorKeyReplaceMode(false);
+                  setMessage(
+                    keyTouched
+                      ? "키를 저장했습니다. 「다시 검증」으로 연결을 확인할 수 있습니다."
+                      : "Cursor API URL을 저장했습니다."
+                  );
+                } finally {
+                  setBusy(null);
                 }
-                setExecutionSetup(json.data);
-                setCursorApiKeyDraft("");
-                if (keyTouched) setCursorKeyReplaceMode(false);
-                setMessage(
-                  keyTouched
-                    ? "키를 저장했습니다. 「다시 검증」으로 연결을 확인할 수 있습니다."
-                    : "Cursor API URL을 저장했습니다."
-                );
-              } finally {
-                setBusy(null);
-              }
-            }}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #7c3aed",
-              background: "#7c3aed",
-              color: "#fff",
-              fontWeight: 800,
-              fontSize: 12,
-              cursor: !canEdit || !es ? "not-allowed" : busy === "save-cursor" ? "wait" : "pointer",
-            }}
-          >
-            {saveLabel}
-          </button>
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #7c3aed",
+                background: "#7c3aed",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 12,
+                cursor: !canEdit || !es ? "not-allowed" : busy === "save-cursor" ? "wait" : "pointer",
+              }}
+            >
+              {saveLabel}
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -581,9 +564,59 @@ export function ExecutionSetupPanel(props: {
             </button>
           ) : null}
         </div>
+      </>
+    );
+
+    if (mvp) return <div style={{ marginBottom: 0 }}>{inner}</div>;
+    return (
+      <div
+        style={{
+          marginBottom: 14,
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #c4b5fd",
+          background: "#faf5ff",
+        }}
+      >
+        {inner}
       </div>
     );
   };
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      saveCursorConnection: async (setupRow?: ExecutionSetupDto | null) => {
+        if (!prototypeMvp) return true;
+        const cur = setupRow ?? executionSetup ?? null;
+        const pid = projectId.trim();
+        if (!pid || !cur) {
+          setMessage("GitHub·저장소 설정을 먼저 저장해 주세요.");
+          return false;
+        }
+        setBusy("save-cursor");
+        try {
+          const keyTouched = Boolean(cursorApiKeyDraft.trim());
+          const body: Parameters<typeof patchExecutionSetup>[1] = {
+            cursorApiUrl: cur.cursorApiUrl?.trim() || CURSOR_API_DEFAULT_URL,
+          };
+          if (keyTouched) body.cursorApiToken = cursorApiKeyDraft.trim();
+          const { res, json } = await patchExecutionSetup(pid, body);
+          if (!res.ok || !json.success || !json.data) {
+            setMessage(json.message || "Cursor 설정 저장에 실패했습니다.");
+            return false;
+          }
+          setExecutionSetup(json.data);
+          setCursorApiKeyDraft("");
+          if (keyTouched) setCursorKeyReplaceMode(false);
+          return true;
+        } finally {
+          setBusy(null);
+        }
+      },
+    }),
+    [prototypeMvp, projectId, executionSetup, cursorApiKeyDraft, setExecutionSetup, setMessage]
+  );
 
   return (
     <div
@@ -674,12 +707,47 @@ export function ExecutionSetupPanel(props: {
             </div>
           ) : null}
           {stagedPrototype ? (
-            <>
-              {sectionCard("1. Git 저장소", null, connectionSlotBeforeCursor ?? null)}
-              {sectionCard("2. GitHub 인증", null, connectionSlotGithubAuth ?? null)}
-              {sectionCard("3. Cursor API", null, renderCursorConnectionBlock({ compactTitle: true }))}
-              {sectionCard("4. 실행 정책", null, unifiedPolicyBody)}
-            </>
+            prototypeMvp ? (
+              <>
+                {sectionCard(
+                  "Cursor API 연결",
+                  null,
+                  renderCursorConnectionBlock({ compactTitle: true, mvp: true })
+                )}
+                {sectionCard(
+                  "자동화 설정",
+                  null,
+                  <PrototypeSimpleExecutionPolicy
+                    projectId={projectId}
+                    canEdit={canEdit}
+                    es={es}
+                    setExecutionSetup={setExecutionSetup}
+                    setMessage={setMessage}
+                    setBusy={setBusy}
+                    busy={busy}
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {sectionCard("1. Git 저장소", null, connectionSlotBeforeCursor ?? null)}
+                {sectionCard("2. GitHub 인증", null, connectionSlotGithubAuth ?? null)}
+                {sectionCard("3. Cursor API", null, renderCursorConnectionBlock({ compactTitle: true }))}
+                {sectionCard(
+                  "4. 실행 정책",
+                  "프로토타입 자동화에 필요한 최소 옵션만 표시합니다.",
+                  <PrototypeSimpleExecutionPolicy
+                    projectId={projectId}
+                    canEdit={canEdit}
+                    es={es}
+                    setExecutionSetup={setExecutionSetup}
+                    setMessage={setMessage}
+                    setBusy={setBusy}
+                    busy={busy}
+                  />
+                )}
+              </>
+            )
           ) : flowMode ? (
             <>
               {sectionCard(
@@ -743,7 +811,7 @@ export function ExecutionSetupPanel(props: {
               )}
             </>
           )}
-          {!flowMode ? (
+          {!flowMode && !prototypeMvp ? (
           <section
             style={{
               marginBottom: 16,
@@ -1718,4 +1786,6 @@ ${GLOB_PLACEHOLDER}`}
       )}
     </div>
   );
-}
+});
+
+ExecutionSetupPanel.displayName = "ExecutionSetupPanel";

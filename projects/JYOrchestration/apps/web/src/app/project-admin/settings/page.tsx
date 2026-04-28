@@ -142,14 +142,9 @@ function ProjectAdminSettingsInner() {
       {projectId && project && !errorMessage ? (
         <>
           <header style={{ marginBottom: 12 }}>
-            <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
               프로토타입 자동 생성 환경설정
             </h1>
-            <p style={{ margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-              Git · GitHub · Cursor 연결과 자동 실행 정책을 설정합니다.
-              <br />
-              프로젝트 단계와 관계없이 언제든 수정할 수 있습니다.
-            </p>
           </header>
 
           <div id="execution-setup-panel">
@@ -162,27 +157,6 @@ function ProjectAdminSettingsInner() {
               settingsPurpose="prototype"
             />
           </div>
-
-          <details style={{ marginTop: 10 }}>
-            <summary style={{ cursor: "pointer", fontSize: 12.5, color: "#475569", fontWeight: 800 }}>
-              설정 도움말 보기
-            </summary>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12.5,
-                color: "#475569",
-                lineHeight: 1.55,
-                padding: "10px 12px",
-                borderRadius: 8,
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-              }}
-            >
-              <strong style={{ color: "#0f172a" }}>순서</strong> — ① Git 저장소 ② GitHub 인증 ③ Cursor API ④ 실행 정책
-              ⑤ 환경 검증
-            </div>
-          </details>
         </>
       ) : null}
     </main>
