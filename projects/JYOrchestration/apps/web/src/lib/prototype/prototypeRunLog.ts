@@ -14,6 +14,14 @@ export type PrototypeRunLogEvent =
   | "prototype_pr_opened"
   | "prototype_merged"
   | "prototype_preview_ready"
+  | "prototype_cancel_requested"
+  | "prototype_cursor_cancel_requested"
+  | "prototype_cancelled"
+  | "prototype_resume_requested"
+  | "prototype_resumed"
+  | "prototype_restart_requested"
+  | "prototype_restarted"
+  | "prototype_cleanup_requested"
   | "prototype_failed";
 
 export function logPrototypePipelineEvent(

@@ -47,6 +47,7 @@ function saveEnvelope(projectId: string, envelope: PrototypeRunFileEnvelope): vo
 function migrateStatus(raw: string): PrototypeRunStatus {
   if (raw === "PR_READY") return "PR_OPENED";
   if (raw === "MERGE_READY") return "MERGED";
+  if (raw === "FLOW_CONFIRMED") return "PROMPT_READY";
   return raw as PrototypeRunStatus;
 }
 
@@ -58,6 +59,16 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
     null;
   const st = migrateStatus(String(raw.status ?? "DRAFT"));
   const files = Array.isArray(raw.changedFiles) ? (raw.changedFiles as string[]).filter(Boolean) : [];
+  const plannerTasksRaw = Array.isArray(raw.plannerTasks) ? (raw.plannerTasks as unknown[]) : [];
+  const plannerTasks = plannerTasksRaw
+    .map((t) => {
+      const o = t as { order?: unknown; title?: unknown };
+      const order = Number(o?.order);
+      const title = String(o?.title ?? "").trim();
+      if (!Number.isFinite(order) || order <= 0 || !title) return null;
+      return { order, title };
+    })
+    .filter(Boolean) as Array<{ order: number; title: string }>;
   return {
     id: String(raw.id ?? ""),
     projectId: String(raw.projectId ?? ""),
@@ -67,6 +78,12 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
     cursorRunId: typeof raw.cursorRunId === "string" ? raw.cursorRunId : null,
     status: st,
     statusReason: (raw.statusReason as PrototypeRunStatusReason) ?? null,
+    cancelRequestedAt: typeof raw.cancelRequestedAt === "string" ? raw.cancelRequestedAt : null,
+    cancelReason: typeof raw.cancelReason === "string" ? raw.cancelReason : null,
+    plannerStatus: (raw.plannerStatus as PrototypeRun["plannerStatus"]) ?? null,
+    plannerTasks,
+    cursorTaskCurrent: typeof raw.cursorTaskCurrent === "number" && Number.isFinite(raw.cursorTaskCurrent) ? raw.cursorTaskCurrent : null,
+    cursorTaskTotal: typeof raw.cursorTaskTotal === "number" && Number.isFinite(raw.cursorTaskTotal) ? raw.cursorTaskTotal : null,
     commitSha: typeof raw.commitSha === "string" ? raw.commitSha : null,
     changedFiles: files,
     aiReviewDecision: (raw.aiReviewDecision as PrototypeRun["aiReviewDecision"]) ?? null,
@@ -121,6 +138,12 @@ export function createRun(input: {
     cursorRunId: null,
     status: input.initialStatus,
     statusReason: input.statusReason,
+    cancelRequestedAt: null,
+    cancelReason: null,
+    plannerStatus: "PENDING",
+    plannerTasks: [],
+    cursorTaskCurrent: null,
+    cursorTaskTotal: null,
     commitSha: null,
     changedFiles: [],
     aiReviewDecision: null,
@@ -160,6 +183,12 @@ export function updateRun(
       | "status"
       | "statusReason"
       | "cursorRunId"
+      | "cancelRequestedAt"
+      | "cancelReason"
+      | "plannerStatus"
+      | "plannerTasks"
+      | "cursorTaskCurrent"
+      | "cursorTaskTotal"
       | "commitSha"
       | "changedFiles"
       | "aiReviewDecision"

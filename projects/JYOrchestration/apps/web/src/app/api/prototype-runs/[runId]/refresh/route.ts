@@ -20,6 +20,8 @@ type NextAction =
 function computeNextAction(run: PrototypeRun): { nextAction: NextAction; userMessage: string | null } {
   switch (run.status) {
     case "PROMPT_READY":
+    case "PLANNER_ANALYZING":
+    case "TASK_PACKAGES_READY":
     case "CURSOR_REQUESTED":
     case "CURSOR_RUNNING":
       return { nextAction: "WAIT_CURSOR", userMessage: "Cursor 실행을 기다리는 중입니다." };

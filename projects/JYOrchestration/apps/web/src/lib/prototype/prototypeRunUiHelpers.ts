@@ -7,6 +7,8 @@ export type PrototypeTimelineRow = Readonly<{ label: string; status: PrototypeTi
 const ORDER: PrototypeRunStatus[] = [
   "DRAFT",
   "PROMPT_READY",
+  "PLANNER_ANALYZING",
+  "TASK_PACKAGES_READY",
   "CURSOR_REQUESTED",
   "CURSOR_RUNNING",
   "COMMIT_DETECTED",
@@ -16,6 +18,8 @@ const ORDER: PrototypeRunStatus[] = [
   "PR_OPENED",
   "MERGED",
   "PREVIEW_READY",
+  "CANCEL_REQUESTED",
+  "CANCELLED",
 ];
 
 function idx(s: PrototypeRunStatus): number {
@@ -38,6 +42,8 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
     return [
       { label: "실행 없음 — 생성 시작 가능", status: "pending" },
       { label: prototypeRunStatusLabelKo("PROMPT_READY"), status: "pending" },
+      { label: prototypeRunStatusLabelKo("PLANNER_ANALYZING"), status: "pending" },
+      { label: prototypeRunStatusLabelKo("TASK_PACKAGES_READY"), status: "pending" },
       { label: prototypeRunStatusLabelKo("CURSOR_REQUESTED"), status: "pending" },
       { label: prototypeRunStatusLabelKo("COMMIT_DETECTED"), status: "pending" },
       { label: prototypeRunStatusLabelKo("AI_REVIEWING"), status: "pending" },
@@ -54,6 +60,22 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
           : active(run, "PROMPT_READY")
             ? "running"
             : "pending",
+    },
+    {
+      label: prototypeRunStatusLabelKo("PLANNER_ANALYZING"),
+      status: atLeast(run, "TASK_PACKAGES_READY")
+        ? "success"
+        : active(run, "PLANNER_ANALYZING")
+          ? "running"
+          : "pending",
+    },
+    {
+      label: prototypeRunStatusLabelKo("TASK_PACKAGES_READY"),
+      status: atLeast(run, "CURSOR_REQUESTED")
+        ? "success"
+        : active(run, "TASK_PACKAGES_READY")
+          ? "running"
+          : "pending",
     },
     {
       label: prototypeRunStatusLabelKo("CURSOR_REQUESTED"),
@@ -103,7 +125,9 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
 export function prototypeRunStatusLabelKo(status: PrototypeRunStatus): string {
   const m: Record<PrototypeRunStatus, string> = {
     DRAFT: "초안",
-    PROMPT_READY: "프롬프트 준비 완료",
+    PROMPT_READY: "서비스 흐름 확정 완료",
+    PLANNER_ANALYZING: "AI 기획자 작업분해 중",
+    TASK_PACKAGES_READY: "작업단위 생성 완료",
     CURSOR_REQUESTED: "Cursor 요청됨",
     CURSOR_RUNNING: "Cursor 실행 중",
     COMMIT_DETECTED: "커밋 감지됨",
@@ -113,6 +137,8 @@ export function prototypeRunStatusLabelKo(status: PrototypeRunStatus): string {
     PR_OPENED: "PR 생성 완료",
     MERGED: "머지 완료",
     PREVIEW_READY: "결과물 연결 완료",
+    CANCEL_REQUESTED: "중단 요청됨",
+    CANCELLED: "사용자가 중단함",
     FAILED: "실패",
     BLOCKED: "차단",
   };

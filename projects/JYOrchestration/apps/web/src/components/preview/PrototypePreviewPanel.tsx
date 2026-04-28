@@ -26,16 +26,10 @@ import {
 import {
   fetchLatestPrototypeRun,
   postCreatePrototypeRun,
-  postPrototypePreviewUrl,
   postPrototypeRunRefresh,
 } from "@/lib/prototype/prototypeRunApiClient";
 import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
-import {
-  buildPrototypeLifecycleRows,
-  buildTimelineFromPrototypeRun,
-  prototypeLifecycleCellLabelKo,
-  prototypeRunStatusLabelKo,
-} from "@/lib/prototype/prototypeRunUiHelpers";
+import { buildTimelineFromPrototypeRun, prototypeRunStatusLabelKo } from "@/lib/prototype/prototypeRunUiHelpers";
 import { composeGithubPagesPreviewUrlFromRepoUrl, githubPagesSettingsUrl } from "@/lib/prototype/githubPagesPreviewUrl";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 
@@ -123,9 +117,9 @@ export function PrototypePreviewPanel({
 }) {
   // used in design readiness details
   const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => loadPrototypeGenerationRecord(projectId));
-  const [urlDraft, setUrlDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [templateOverride, setTemplateOverride] = useState<PrototypeTemplateType | null>(null);
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
   const [envStatus, setEnvStatus] = useState<EnvStatus>({
@@ -300,10 +294,37 @@ export function PrototypePreviewPanel({
     return null;
   }, [latestRun?.suggestedPreviewUrl, executionSetup?.gitRepoUrl]);
 
+  const suggestedPreviewOwnerRepo = useMemo(() => {
+    if (!suggestedPreview || suggestedPreview.source !== "composed") return null;
+    const owner = String(suggestedPreview.owner ?? "").trim();
+    const repo = String(suggestedPreview.repo ?? "").trim();
+    return owner && repo ? { owner, repo } : null;
+  }, [suggestedPreview]);
+
   const showToast = (msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 3200);
   };
+
+  async function postPrototypeRunCancel(runId: string, input: { projectId: string; reason?: string }) {
+    const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/cancel`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    return (await res.json()) as { success: boolean; data?: { run: PrototypeRun }; message?: string };
+  }
+
+  async function postPrototypeRunResume(runId: string, input: { projectId: string; mode: "resume" | "restart" }) {
+    const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/resume`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    return (await res.json()) as { success: boolean; data?: { run: PrototypeRun }; message?: string };
+  }
 
   const onCursorAutoRequest = async () => {
     if (!canRequestGeneration.designOk || !automationAvailable) return;
@@ -358,54 +379,7 @@ export function PrototypePreviewPanel({
     }
   };
 
-  const applyPreviewUrl = async () => {
-    const u = urlDraft.trim();
-    if (!isLikelyPreviewUrl(u)) {
-      savePrototypeGenerationRecord(projectId, { lastError: "http(s) URL만 지원합니다.", runStatus: "failed" });
-      refreshRecord();
-      return;
-    }
-    setProtoBusy(true);
-    try {
-      let runId = latestRun?.id ?? null;
-      if (!runId) {
-        const cr = await postCreatePrototypeRun({
-          projectId,
-          selectedTemplate: effectiveTemplate,
-          promptSnapshot: promptPackage.slice(0, 50_000),
-          startCursorAgent: false,
-        });
-        if (!cr.success || !cr.data?.run) {
-          savePrototypeGenerationRecord(projectId, { previewUrl: u, runStatus: "preview_ready", lastError: null });
-          refreshRecord();
-          showToast("서버 기록 없이 로컬에만 URL을 저장했습니다.");
-          return;
-        }
-        runId = cr.data.run.id;
-        setLatestRun(cr.data.run);
-      }
-      const att = await postPrototypePreviewUrl(runId, { projectId, previewUrl: u });
-      if (att.success && att.data?.run) {
-        setLatestRun(att.data.run);
-        savePrototypeGenerationRecord(projectId, { previewUrl: u, runStatus: "preview_ready", lastError: null });
-        refreshRecord();
-        showToast("URL 적용");
-      } else {
-        savePrototypeGenerationRecord(projectId, { previewUrl: u, runStatus: "preview_ready", lastError: att.message ?? null });
-        refreshRecord();
-        showToast(att.message ?? "서버 반영 실패 — 로컬에만 저장했습니다.");
-      }
-    } finally {
-      setProtoBusy(false);
-      void refreshLatestRun();
-    }
-  };
-
-  const clearPreviewUrl = () => {
-    savePrototypeGenerationRecord(projectId, { previewUrl: null, runStatus: "idle", lastError: null });
-    setUrlDraft("");
-    refreshRecord();
-  };
+  // 수동 URL 입력 UX는 제거. 예상 URL(=GitHub Pages)만 읽기전용으로 표시한다.
 
   const settingsHref = useMemo(
     () => `${projectExecutionSettingsHref(projectId, { envNote: "prototype" })}#execution-setup-panel`,
@@ -482,10 +456,7 @@ export function PrototypePreviewPanel({
     }));
   }, [latestRun]);
 
-  const lifecycleRows = useMemo(
-    () => buildPrototypeLifecycleRows(latestRun, automationBlockReason),
-    [latestRun, automationBlockReason],
-  );
+  // 기존 lifecycleRows(단순 단계 나열)는 "자동화 파이프라인" 카드에서 대체 표시한다.
 
   const canStartPrototypeAutomation = useMemo(
     () => automationAvailable && canRequestGeneration.designOk && canRequestGeneration.envOk,
@@ -497,13 +468,91 @@ export function PrototypePreviewPanel({
     return statusLabel(record.runStatus, Boolean(previewUrl));
   }, [latestRun, record.runStatus, previewUrl]);
 
+  const plannerSummary = useMemo(() => {
+    const tasks = latestRun?.plannerTasks ?? [];
+    const total = latestRun?.cursorTaskTotal ?? (tasks.length || null);
+    const current = latestRun?.cursorTaskCurrent ?? null;
+    if (!latestRun) return { line1: pipelineStatusText, line2: "" };
+    if (latestRun.status === "PLANNER_ANALYZING") return { line1: "AI 기획자 작업분해 중", line2: "" };
+    if (latestRun.status === "TASK_PACKAGES_READY") return { line1: `Task ${tasks.length || 0}개 생성 완료`, line2: "" };
+    if (latestRun.status === "CANCEL_REQUESTED") return { line1: "중단 요청됨", line2: "" };
+    if (latestRun.status === "CANCELLED") return { line1: "사용자가 중단함", line2: "" };
+    if (latestRun.status === "CURSOR_REQUESTED" || latestRun.status === "CURSOR_RUNNING") {
+      if (total && current != null) return { line1: "Cursor 작업 진행중", line2: `(${current} / ${total})` };
+      if (tasks.length) return { line1: "Cursor 작업 진행중", line2: `(1 / ${tasks.length})` };
+      return { line1: "Cursor 작업 진행중", line2: "" };
+    }
+    if (tasks.length) return { line1: "AI 기획자 분석 완료", line2: `Task ${tasks.length}개` };
+    return { line1: pipelineStatusText, line2: "" };
+  }, [latestRun, pipelineStatusText]);
+
+  const isRunningState = useMemo(() => {
+    const s = latestRun?.status;
+    return (
+      s === "PLANNER_ANALYZING" ||
+      s === "TASK_PACKAGES_READY" ||
+      s === "CURSOR_REQUESTED" ||
+      s === "CURSOR_RUNNING" ||
+      s === "COMMIT_DETECTED" ||
+      s === "PUSH_CONFIRMED" ||
+      s === "AI_REVIEWING"
+    );
+  }, [latestRun]);
+
+  const isCancelRequested = latestRun?.status === "CANCEL_REQUESTED";
+  const isCancelled = latestRun?.status === "CANCELLED";
+  const isFailed = latestRun?.status === "FAILED";
+  const isCompleted = latestRun?.status === "PR_OPENED" || latestRun?.status === "MERGED" || latestRun?.status === "PREVIEW_READY";
+
+  const automationRows = useMemo(() => {
+    const run = latestRun;
+    const tasks = run?.plannerTasks ?? [];
+    const total = run?.cursorTaskTotal ?? tasks.length;
+    const current = run?.cursorTaskCurrent ?? 0;
+    const mk = (label: string, done: boolean, running: boolean) => `${done ? "●" : running ? "●" : "○"} ${label}`;
+    const rows: string[] = [];
+    rows.push(mk("서비스 흐름 확정 완료", Boolean(run && run.status !== "DRAFT"), Boolean(run && run.status === "PROMPT_READY")));
+    rows.push(
+      mk(
+        "AI 기획자 작업 분석 완료",
+        Boolean(run && (run.status === "TASK_PACKAGES_READY" || run.status === "CURSOR_REQUESTED" || run.status === "CURSOR_RUNNING" || run.status === "COMMIT_DETECTED" || run.status === "PUSH_CONFIRMED" || run.status === "AI_REVIEWING" || run.status === "PR_OPENED" || run.status === "MERGED" || run.status === "PREVIEW_READY")),
+        Boolean(run && run.status === "PLANNER_ANALYZING"),
+      ),
+    );
+    rows.push(mk(`Cursor 작업단위 ${total || tasks.length || 0}개 생성`, Boolean(tasks.length), Boolean(run && run.status === "TASK_PACKAGES_READY")));
+    if (tasks.length) {
+      tasks.forEach((t) => {
+        const isCursorPhase = run?.status === "CURSOR_REQUESTED" || run?.status === "CURSOR_RUNNING";
+        const running = isCursorPhase && current === t.order;
+        const done =
+          !isCursorPhase &&
+          (run?.status === "COMMIT_DETECTED" ||
+            run?.status === "PUSH_CONFIRMED" ||
+            run?.status === "AI_REVIEWING" ||
+            run?.status === "PR_OPENED" ||
+            run?.status === "MERGED" ||
+            run?.status === "PREVIEW_READY");
+        rows.push(mk(`Cursor Task ${t.order} ${running ? "진행중" : done ? "완료" : "대기"} — ${t.title}`, done, running));
+      });
+    }
+    rows.push(
+      mk(
+        "Git 반영 대기",
+        Boolean(run && (run.status === "COMMIT_DETECTED" || run.status === "PUSH_CONFIRMED" || run.status === "AI_REVIEWING" || run.status === "PR_OPENED" || run.status === "MERGED" || run.status === "PREVIEW_READY")),
+        Boolean(run && (run.status === "CURSOR_RUNNING" || run.status === "CURSOR_REQUESTED")),
+      ),
+    );
+    rows.push(mk("결과 URL 생성 대기", Boolean(run && Boolean(run.previewUrl)), Boolean(run && (run.status === "PR_OPENED" || run.status === "MERGED"))));
+    return rows;
+  }, [latestRun]);
+
   const progressSummaryLine = useMemo(() => {
     if (!latestRun?.id) {
       if (!canRequestGeneration.designOk) return "실행 없음 · 설계 보완 필요";
       return "자동화 대기 · 자동 생성 시작 가능";
     }
-    return `${prototypeRunStatusLabelKo(latestRun.status)}`;
-  }, [latestRun, canRequestGeneration.designOk]);
+    return `${plannerSummary.line1}${plannerSummary.line2 ? ` ${plannerSummary.line2}` : ""}`;
+  }, [latestRun, canRequestGeneration.designOk, plannerSummary.line1, plannerSummary.line2]);
 
   const resultUrlSummary = previewUrl ? "결과 URL 연결됨" : "결과 URL 없음";
 
@@ -610,6 +659,23 @@ export function PrototypePreviewPanel({
                     setTemplateOverride(next);
                     savePrototypeGenerationRecord(projectId, { selectedTemplate: next });
                     refreshRecord();
+                    // 템플릿 선택 즉시 Planner(Task packages) 생성: Cursor 실행은 사용자가 "자동 생성 시작"을 눌렀을 때만.
+                    if (canRequestGeneration.designOk) {
+                      void (async () => {
+                        try {
+                          setProtoBusy(true);
+                          const cr = await postCreatePrototypeRun({
+                            projectId,
+                            selectedTemplate: next,
+                            promptSnapshot: promptPackage.slice(0, 50_000),
+                            startCursorAgent: false,
+                          });
+                          if (cr.success && cr.data?.run) setLatestRun(cr.data.run);
+                        } finally {
+                          setProtoBusy(false);
+                        }
+                      })();
+                    }
                   }}
                   style={selectStyle}
                 >
@@ -635,22 +701,78 @@ export function PrototypePreviewPanel({
               </div>
 
               <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
-                상태: <span style={{ fontWeight: 900, color: "#0f172a" }}>{pipelineStatusText}</span>
+                상태:{" "}
+                <span style={{ fontWeight: 900, color: "#0f172a" }}>
+                  {plannerSummary.line1} {plannerSummary.line2 ? <span style={{ opacity: 0.8 }}>{plannerSummary.line2}</span> : null}
+                </span>
               </div>
 
               <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                 <button
                   type="button"
                   onClick={() => void onCursorAutoRequest()}
-                  disabled={!canStartPrototypeAutomation || protoBusy}
+                  disabled={!canStartPrototypeAutomation || protoBusy || isRunningState}
                   style={{
                     ...btnPrimary,
-                    opacity: !canStartPrototypeAutomation || protoBusy ? 0.55 : 1,
-                    cursor: !canStartPrototypeAutomation || protoBusy ? "not-allowed" : "pointer",
+                    opacity: !canStartPrototypeAutomation || protoBusy || isRunningState ? 0.55 : 1,
+                    cursor: !canStartPrototypeAutomation || protoBusy || isRunningState ? "not-allowed" : "pointer",
                   }}
                 >
                   프로토타입 자동 생성 시작
                 </button>
+                {isRunningState ? (
+                  <button type="button" onClick={() => setCancelConfirmOpen(true)} disabled={protoBusy} style={btn}>
+                    자동 생성 중단
+                  </button>
+                ) : null}
+                {isCancelled || isFailed ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rid = latestRun?.id;
+                        if (!rid) return;
+                        void (async () => {
+                          setProtoBusy(true);
+                          try {
+                            const r = await postPrototypeRunResume(rid, { projectId, mode: "resume" });
+                            if (r.success && r.data?.run) setLatestRun(r.data.run);
+                            if (r.message) showToast(r.message);
+                          } finally {
+                            setProtoBusy(false);
+                            void refreshLatestRun();
+                          }
+                        })();
+                      }}
+                      disabled={protoBusy || !latestRun?.id}
+                      style={btn}
+                    >
+                      이어서 진행
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rid = latestRun?.id;
+                        if (!rid) return;
+                        void (async () => {
+                          setProtoBusy(true);
+                          try {
+                            const r = await postPrototypeRunResume(rid, { projectId, mode: "restart" });
+                            if (r.success && r.data?.run) setLatestRun(r.data.run);
+                            if (r.message) showToast(r.message);
+                          } finally {
+                            setProtoBusy(false);
+                            void refreshLatestRun();
+                          }
+                        })();
+                      }}
+                      disabled={protoBusy || !latestRun?.id}
+                      style={btn}
+                    >
+                      처음부터 다시 생성
+                    </button>
+                  </>
+                ) : null}
                 <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                   상태 새로고침
                 </button>
@@ -658,6 +780,13 @@ export function PrototypePreviewPanel({
                   환경설정
                 </a>
               </div>
+
+              {isCancelRequested ? (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "#b45309", fontWeight: 900 }}>중단 요청됨 — 다음 단계 진행을 멈춥니다.</div>
+              ) : null}
+              {isCompleted ? (
+                <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569" }}>생성이 완료되었습니다. 필요하면 “처음부터 다시 생성”을 사용하세요.</div>
+              ) : null}
 
               {!canRequestGeneration.designOk ? (
                 <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
@@ -719,20 +848,9 @@ export function PrototypePreviewPanel({
                             <code style={{ fontSize: 11.5 }}>{suggestedPreview.url}</code>
                           </div>
                           <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setUrlDraft(suggestedPreview.url);
-                                showToast("예상 URL을 입력란에 넣었습니다. \"URL 적용\"을 누르세요.");
-                              }}
-                              disabled={protoBusy}
-                              style={btnMuted}
-                            >
-                              URL 적용
-                            </button>
-                            {"owner" in (suggestedPreview as any) && (suggestedPreview as any).owner && (suggestedPreview as any).repo ? (
+                            {suggestedPreviewOwnerRepo ? (
                               <a
-                                href={githubPagesSettingsUrl((suggestedPreview as any).owner, (suggestedPreview as any).repo)}
+                                href={githubPagesSettingsUrl(suggestedPreviewOwnerRepo.owner, suggestedPreviewOwnerRepo.repo)}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{ ...btnMuted, textDecoration: "none" }}
@@ -740,6 +858,14 @@ export function PrototypePreviewPanel({
                                 GitHub Pages 설정 열기
                               </a>
                             ) : null}
+                            <a
+                              href={suggestedPreview.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ ...btnMuted, textDecoration: "none" }}
+                            >
+                              결과 열기(예상 URL)
+                            </a>
                           </div>
                           <div style={{ marginTop: 8, fontSize: 11.5, color: "#9a3412" }}>
                             GitHub Pages를 활성화하면 위 URL에서 확인할 수 있습니다. (현재는 <strong>예상 URL</strong>입니다)
@@ -751,34 +877,15 @@ export function PrototypePreviewPanel({
                       </div>
                     </div>
                   ) : null}
-                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <input
-                      value={urlDraft || record.previewUrl || ""}
-                      onChange={(e) => setUrlDraft(e.target.value)}
-                      placeholder="https://…"
-                      style={inputStyle}
-                    />
-                    <button type="button" onClick={() => void applyPreviewUrl()} disabled={protoBusy} style={btnPrimary}>
-                      URL 적용
-                    </button>
+                  <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
+                    아직 결과 URL이 확인되지 않았습니다. GitHub Pages 예상 URL을 참고하거나 배포 URL을 연결하세요.
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 12.5, color: "#64748b" }}>아직 결과물이 연결되지 않았습니다.</div>
                 </>
               ) : (
                 <>
                   <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <input
-                      value={urlDraft || record.previewUrl || ""}
-                      onChange={(e) => setUrlDraft(e.target.value)}
-                      placeholder="https://…"
-                      style={inputStyle}
-                    />
-                    <button type="button" onClick={() => void applyPreviewUrl()} disabled={protoBusy} style={btnPrimary}>
-                      URL 적용
-                    </button>
                     <button type="button" onClick={() => setResultOpen(true)} style={btnMuted}>결과물 보기</button>
                     <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btnMuted, textDecoration: "none" }}>새 탭 열기</a>
-                    <button type="button" onClick={clearPreviewUrl} style={btn}>초기화</button>
                   </div>
                   <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
                     결과 URL: <span style={{ color: "#0f172a", fontWeight: 800, wordBreak: "break-all" }}>{previewUrl}</span>
@@ -834,41 +941,34 @@ export function PrototypePreviewPanel({
 
             <div style={card}>
               <div style={cardTitle}>자동화 파이프라인 상태</div>
-              <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-                {lifecycleRows.map((row) => (
-                  <div
-                    key={row.code}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0,1fr) 52px",
-                      gap: 8,
-                      alignItems: "center",
-                      fontSize: 12,
-                      color: "#0f172a",
-                    }}
-                  >
-                    <span style={{ fontWeight: 700 }}>{row.labelKo}</span>
-                    <span
-                      style={{
-                        textAlign: "right",
-                        fontWeight: 900,
-                        fontSize: 11.5,
-                        color:
-                          row.cell === "not_wired"
-                            ? "#64748b"
-                            : row.cell === "failed"
-                              ? "#b91c1c"
-                              : row.cell === "blocked"
-                                ? "#b45309"
-                                : row.cell === "complete"
-                                  ? "#047857"
-                                  : "#0f172a",
-                      }}
-                    >
-                      {prototypeLifecycleCellLabelKo(row.cell)}
-                    </span>
-                  </div>
-                ))}
+              <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, color: "#0f172a", whiteSpace: "pre-wrap" }}>
+                {automationRows.join("\n")}
+              </div>
+            </div>
+
+            <div style={card}>
+              <div style={cardTitle}>AI 작업 계획</div>
+              <div style={{ marginTop: 10, fontSize: 12.5, color: "#475569", whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+                {(latestRun?.plannerTasks?.length ?? 0) > 0
+                  ? latestRun!.plannerTasks.map((t) => `Task ${t.order}. ${t.title}`).join("\n")
+                  : "아직 작업 계획이 없습니다. 템플릿을 선택하면 AI 기획자가 작업분해(Task packages)를 생성합니다."}
+              </div>
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <button type="button" onClick={() => setProgressDetailOpen(true)} style={btnMuted}>
+                  전체 보기
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = latestRun?.promptSnapshot ?? "";
+                    if (!text) return;
+                    navigator.clipboard?.writeText(text).catch(() => {});
+                    showToast("Cursor 전달 프롬프트를 클립보드에 복사했습니다.");
+                  }}
+                  style={btnMuted}
+                >
+                  Cursor 전달 프롬프트 보기
+                </button>
               </div>
             </div>
           </div>
@@ -892,6 +992,68 @@ export function PrototypePreviewPanel({
           <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>URL을 먼저 연결해 주세요.</div>
         )}
       </PrototypePreviewDraggableShell>
+
+      {cancelConfirmOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 14,
+          }}
+          onClick={() => setCancelConfirmOpen(false)}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              background: "#fff",
+              borderRadius: 14,
+              border: "1px solid #e2e8f0",
+              padding: 14,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 14, fontWeight: 1000, color: "#0f172a" }}>자동 생성을 중단할까요?</div>
+            <div style={{ marginTop: 8, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
+              현재 진행 중인 Cursor/Git 작업은 이미 일부 반영되었을 수 있습니다.
+              <br />
+              중단하면 플랫폼은 다음 단계 진행을 멈춥니다.
+            </div>
+            <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setCancelConfirmOpen(false)} style={btnMuted}>
+                계속 진행
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const rid = latestRun?.id;
+                  if (!rid) return;
+                  void (async () => {
+                    setProtoBusy(true);
+                    try {
+                      const r = await postPrototypeRunCancel(rid, { projectId, reason: "user_requested" });
+                      if (r.success && r.data?.run) setLatestRun(r.data.run);
+                      showToast("중단 요청을 기록했습니다.");
+                      setCancelConfirmOpen(false);
+                      void refreshLatestRun();
+                    } finally {
+                      setProtoBusy(false);
+                    }
+                  })();
+                }}
+                disabled={protoBusy || !latestRun?.id}
+                style={btnPrimary}
+              >
+                중단
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -985,14 +1147,7 @@ const selectStyle: CSSProperties = {
   color: "#0f172a",
 };
 
-const inputStyle: CSSProperties = {
-  flex: "1 1 260px",
-  minWidth: 0,
-  padding: "8px 10px",
-  borderRadius: 10,
-  border: "1px solid #cbd5e1",
-  fontSize: 12.5,
-};
+// manual preview URL input removed
 
 const toastStyle: CSSProperties = {
   position: "fixed",

@@ -5,6 +5,8 @@
 export const PROTOTYPE_RUN_STATUSES = [
   "DRAFT",
   "PROMPT_READY",
+  "PLANNER_ANALYZING",
+  "TASK_PACKAGES_READY",
   "CURSOR_REQUESTED",
   "CURSOR_RUNNING",
   "COMMIT_DETECTED",
@@ -14,6 +16,8 @@ export const PROTOTYPE_RUN_STATUSES = [
   "PR_OPENED",
   "MERGED",
   "PREVIEW_READY",
+  "CANCEL_REQUESTED",
+  "CANCELLED",
   "FAILED",
   "BLOCKED",
 ] as const;
@@ -47,6 +51,12 @@ export type PrototypeRun = Readonly<{
   cursorRunId: string | null;
   status: PrototypeRunStatus;
   statusReason: PrototypeRunStatusReason;
+  cancelRequestedAt: string | null;
+  cancelReason: string | null;
+  plannerStatus: "PENDING" | "RUNNING" | "DONE" | "FAILED" | null;
+  plannerTasks: ReadonlyArray<{ order: number; title: string }>;
+  cursorTaskCurrent: number | null;
+  cursorTaskTotal: number | null;
   commitSha: string | null;
   /** Cursor/GitHub에서 수집한 변경 파일(검토·PR용). */
   changedFiles: readonly string[];

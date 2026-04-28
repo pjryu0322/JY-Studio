@@ -9,9 +9,11 @@ import { reviewPrototypeRun } from "@/lib/prototype/prototypeAiReview";
 import { openPrototypePr, mergePrototypePr } from "@/lib/prototype/prototypePrPipeline";
 import { composeGithubPagesPreviewUrlFromRepoUrl } from "@/lib/prototype/githubPagesPreviewUrl";
 import { probeHttpOk } from "@/lib/prototype/httpUrlProbe";
+import { cursorTaskProgressFromRun, planPrototypeTasks } from "@/lib/prototype/prototypePlannerService";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import {
   createRun,
+  getLatestRun,
   getRun,
   markFailed,
   markBlocked,
@@ -25,6 +27,17 @@ export type PrototypeAutomationGate = Readonly<{
   automationAvailable: boolean;
   blockReason: PrototypeRunStatusReason | null;
 }>;
+
+function isTerminalPrototypeRunStatus(status: string): boolean {
+  return (
+    status === "PREVIEW_READY" ||
+    status === "MERGED" ||
+    status === "PR_OPENED" ||
+    status === "FAILED" ||
+    status === "BLOCKED" ||
+    status === "CANCELLED"
+  );
+}
 
 function isTerminalAgentSuccess(status: string): boolean {
   const s = status.toUpperCase();
@@ -99,7 +112,7 @@ export async function evaluatePrototypeCursorAutomation(projectId: string): Prom
 }
 
 /**
- * 신규 PrototypeRun: 기본 PROMPT_READY. 자동화 가능하면 Cursor 요청까지 진행.
+ * 신규 PrototypeRun: PROMPT_READY부터 시작. 자동화 가능하면 Planner → Cursor 요청까지 진행.
  */
 export async function orchestrateNewPrototypeRun(input: {
   readonly projectId: string;
@@ -114,6 +127,18 @@ export async function orchestrateNewPrototypeRun(input: {
   readonly message?: string;
 }> {
   const gate = await evaluatePrototypeCursorAutomation(input.projectId);
+
+  // Run safety: reuse active run unless explicit restart.
+  const latest = getLatestRun(input.projectId);
+  if (latest && !isTerminalPrototypeRunStatus(latest.status)) {
+    return {
+      run: latest,
+      automationAvailable: gate.automationAvailable,
+      automationBlockReason: gate.blockReason,
+      message: "현재 실행이 진행 중입니다.",
+    };
+  }
+
   let run = createRun({
     projectId: input.projectId,
     projectName: input.projectName,
@@ -155,6 +180,33 @@ export async function orchestrateNewPrototypeRun(input: {
   }
 
   const relay = toRelaySlice(setup);
+
+  // Planner: task decomposition first
+  run =
+    updateRun(input.projectId, run.id, {
+      status: "PLANNER_ANALYZING",
+      plannerStatus: "RUNNING",
+      statusReason: null,
+    }) ?? run;
+  const planned = planPrototypeTasks({ selectedTemplate: input.selectedTemplate, promptSnapshot: input.promptSnapshot });
+  run =
+    updateRun(input.projectId, run.id, {
+      status: "TASK_PACKAGES_READY",
+      plannerStatus: "DONE",
+      plannerTasks: planned.tasks,
+      cursorTaskTotal: planned.tasks.length || null,
+      cursorTaskCurrent: 0,
+    }) ?? run;
+
+  if (!input.startCursorAgent) {
+    return {
+      run,
+      automationAvailable: gate.automationAvailable,
+      automationBlockReason: gate.blockReason,
+      message: "AI 작업 계획(Task packages)을 생성했습니다. Cursor 실행은 다음 단계에서 시작합니다.",
+    };
+  }
+
   const cursor = await requestCursorPrototypeRun({
     projectId: input.projectId,
     executionSetup: relay,
@@ -162,6 +214,7 @@ export async function orchestrateNewPrototypeRun(input: {
     branchName: run.branchName,
     promptSnapshot: input.promptSnapshot,
     selectedTemplate: input.selectedTemplate,
+    plannerTasks: planned.tasks,
   });
 
   if (!cursor.supported) {
@@ -176,7 +229,7 @@ export async function orchestrateNewPrototypeRun(input: {
     }
     run =
       updateRun(input.projectId, run.id, {
-        status: "PROMPT_READY",
+        status: "TASK_PACKAGES_READY",
         statusReason: "CURSOR_NOT_CONNECTED",
       }) ?? run;
     return {
@@ -214,11 +267,70 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
   let run = getRun(projectId, runId);
   if (!run) return null;
 
+  // Cancellation gate (observed)
+  if (run.status === "CANCEL_REQUESTED") {
+    run = updateRun(projectId, runId, { status: "CANCELLED" }) ?? run;
+    logPrototypePipelineEvent("prototype_cancelled", { projectId, runId });
+    return getRun(projectId, runId) ?? run;
+  }
+  if (run.status === "CANCELLED") return run;
+
+  // Planner can be re-run if tasks missing (e.g. older runs) after flow confirmed
+  if ((run.status === "PROMPT_READY" || run.status === "PLANNER_ANALYZING") && (!run.plannerTasks || run.plannerTasks.length === 0)) {
+    run =
+      updateRun(projectId, runId, {
+        status: "PLANNER_ANALYZING",
+        plannerStatus: "RUNNING",
+      }) ?? run;
+    const planned = planPrototypeTasks({ selectedTemplate: run.selectedTemplate, promptSnapshot: run.promptSnapshot });
+    run =
+      updateRun(projectId, runId, {
+        status: "TASK_PACKAGES_READY",
+        plannerStatus: "DONE",
+        plannerTasks: planned.tasks,
+        cursorTaskTotal: planned.tasks.length || null,
+        cursorTaskCurrent: 0,
+      }) ?? run;
+  }
+
   const setup = await withExecutionSetupSchemaHealRetry(() =>
     prisma.executionSetup.findUnique({ where: { projectId } }),
   );
+
+  // Resume path: if tasks ready but cursor not requested, allow request on refresh.
+  run = getRun(projectId, runId) ?? run;
+  if (gate.automationAvailable && setup && run.status === "TASK_PACKAGES_READY" && !run.cursorRunId) {
+    const relay = toRelaySlice(setup);
+    const cursor = await requestCursorPrototypeRun({
+      projectId,
+      executionSetup: relay,
+      runId,
+      branchName: run.branchName,
+      promptSnapshot: run.promptSnapshot,
+      selectedTemplate: run.selectedTemplate,
+      plannerTasks: run.plannerTasks,
+    });
+    if (cursor.supported) {
+      run =
+        updateRun(projectId, runId, {
+          status: "CURSOR_REQUESTED",
+          cursorRunId: cursor.cursorRunId,
+          statusReason: null,
+        }) ?? run;
+      logPrototypePipelineEvent("prototype_cursor_requested", { projectId, runId, cursorRunId: cursor.cursorRunId });
+    } else {
+      run =
+        updateRun(projectId, runId, {
+          statusReason: cursor.reason === "CURSOR_LAUNCH_FAILED" ? "CURSOR_LAUNCH_FAILED" : "CURSOR_NOT_CONNECTED",
+        }) ?? run;
+    }
+    run = getRun(projectId, runId) ?? run;
+  }
+
   const token = setup?.cursorApiToken?.trim();
   if (gate.automationAvailable && run.cursorRunId && setup && token) {
+    const latest = getRun(projectId, runId);
+    if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
     const polled = await pollCursorAgent({
       cursorApiUrl: setup.cursorApiUrl,
       cursorApiToken: token,
@@ -253,7 +365,18 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
     run = getRun(projectId, runId) ?? run;
   }
 
+  // Update cursor task progress counters (best-effort)
+  run = getRun(projectId, runId) ?? run;
+  const prog = cursorTaskProgressFromRun(run);
+  if (prog) {
+    if (run.cursorTaskTotal !== prog.total || run.cursorTaskCurrent !== prog.current) {
+      run = updateRun(projectId, runId, { cursorTaskTotal: prog.total, cursorTaskCurrent: prog.current }) ?? run;
+    }
+  }
+
   if (setup?.gitRepoUrl && setup.githubAccessToken !== undefined) {
+    const latest = getRun(projectId, runId);
+    if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
     run = getRun(projectId, runId) ?? run;
     const git = await refreshPrototypeGitState(run, {
       projectId,
@@ -290,6 +413,8 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
 
   // 리뷰는 commit 감지 이후(또는 push 확인 이후)부터 진행한다.
   if (run.status === "COMMIT_DETECTED" || run.status === "PUSH_CONFIRMED") {
+    const latest = getRun(projectId, runId);
+    if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
     run = updateRun(projectId, runId, { status: "AI_REVIEWING", statusReason: null }) ?? run;
     logPrototypePipelineEvent("prototype_review_started", { projectId, runId, phase: "review" });
     const rev = await reviewPrototypeRun(run);
@@ -320,6 +445,8 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
   // PR/merge 단계: auto_pr/auto_merge 정책에서만 진행
   run = getRun(projectId, runId) ?? run;
   if ((policy === "auto_pr" || policy === "auto_merge") && run.status === "AI_REVIEWING" && run.aiReviewDecision === "PASS") {
+    const latest = getRun(projectId, runId);
+    if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
     if (!setup?.gitRepoUrl || !setup.baseBranch) {
       run = markFailed(projectId, runId, "EXECUTION_SETUP_INVALID", "repo/baseBranch 없음") ?? run;
       return run;
@@ -345,6 +472,8 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       }) ?? run;
 
     if (policy === "auto_merge") {
+      const latest2 = getRun(projectId, runId);
+      if (latest2?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
       const merged = await mergePrototypePr({ run, githubAccessToken: setup.githubAccessToken ?? null, projectId });
       if (!merged.ok) {
         run = markFailed(projectId, runId, "PR_MERGE_FAILED", merged.message) ?? run;

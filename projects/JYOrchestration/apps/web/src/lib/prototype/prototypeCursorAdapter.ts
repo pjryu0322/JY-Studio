@@ -11,6 +11,7 @@ export type RequestCursorPrototypeInput = Readonly<{
   branchName: string;
   promptSnapshot: string;
   selectedTemplate: string;
+  plannerTasks?: ReadonlyArray<{ order: number; title: string }>;
 }>;
 
 export type RequestCursorPrototypeResult =
@@ -26,6 +27,14 @@ export async function requestCursorPrototypeRun(input: RequestCursorPrototypeInp
     return { supported: false, reason: "CURSOR_NOT_CONNECTED", message: "Cursor API 키가 없습니다." };
   }
 
+  const plannerBlock =
+    input.plannerTasks && input.plannerTasks.length
+      ? `\n\nAI Planner task packages (execute in order, report progress in summary):\n${input.plannerTasks
+          .map((t) => `- Task ${t.order}. ${t.title}`)
+          .join("\n")}\n`
+      : "";
+  const prompt = `${input.promptSnapshot}${plannerBlock}`.trim();
+
   const launch = await launchCursorAgent({
     projectId: input.projectId,
     workflowId: null,
@@ -37,7 +46,7 @@ export async function requestCursorPrototypeRun(input: RequestCursorPrototypeInp
       acceptanceCriteria: [],
     },
     suggestedBranchName: input.branchName,
-    prompt: input.promptSnapshot,
+    prompt,
     allowedPaths: undefined,
   });
 
