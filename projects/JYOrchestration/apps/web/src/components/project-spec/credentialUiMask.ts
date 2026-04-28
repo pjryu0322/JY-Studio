@@ -29,3 +29,25 @@ export function secretMaskedDisplay(
   if (looksStored) return "•••••••• (저장됨)";
   return "";
 }
+
+/** 동일 소유자의 다른 프로젝트에서 온 힌트(GET `peerCredentialHints`) */
+export function peerGithubCredentialMasked(
+  es: { peerCredentialHints?: { githubAccessTokenMasked?: string | null } | null } | null | undefined
+): string | null {
+  const m = String(es?.peerCredentialHints?.githubAccessTokenMasked ?? "").trim();
+  return m || null;
+}
+
+export function peerCursorCredentialMasked(
+  es: { peerCredentialHints?: { cursorApiTokenMasked?: string | null } | null } | null | undefined
+): string | null {
+  const m = String(es?.peerCredentialHints?.cursorApiTokenMasked ?? "").trim();
+  return m || null;
+}
+
+export function peerCursorCredentialUrl(
+  es: { peerCredentialHints?: { cursorApiUrl?: string | null } | null } | null | undefined
+): string | null {
+  const u = String(es?.peerCredentialHints?.cursorApiUrl ?? "").trim();
+  return u || null;
+}
