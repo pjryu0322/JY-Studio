@@ -23,6 +23,7 @@ import {
   type PlanPrototypeWorkUnitsInput,
   type PlanPrototypeWorkUnitsResolved,
 } from "@/lib/prototype/prototypePlannerService";
+import { buildWorkUnitCursorPrompt } from "@/lib/prototype/prototypeWorkUnitPromptBuilder";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import {
   createRun,
@@ -124,14 +125,26 @@ function replaceWorkUnit(units: readonly PrototypeWorkUnit[], id: string, patch:
   return units.map((u) => (u.id === id ? { ...u, ...patch } : u));
 }
 
+function parseFeatureDraftTitlesJson(json: string | null | undefined): readonly string[] {
+  if (!String(json ?? "").trim()) return [];
+  try {
+    const p = JSON.parse(String(json));
+    return Array.isArray(p) ? p.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 function activeWorkUnit(run: PrototypeRun): PrototypeWorkUnit | null {
   const sorted = [...run.workUnits].sort((a, b) => a.order - b.order);
-  return sorted.find((u) => u.status !== "MERGED" && u.status !== "FAILED") ?? null;
+  const failed = sorted.find((u) => u.status === "FAILED");
+  if (failed) return failed;
+  return sorted.find((u) => u.status !== "MERGED" && u.status !== "SKIPPED") ?? null;
 }
 
 function allWorkUnitsMerged(run: PrototypeRun): boolean {
   if (!run.workUnits.length) return false;
-  return run.workUnits.every((u) => u.status === "MERGED");
+  return run.workUnits.every((u) => u.status === "MERGED" || u.status === "SKIPPED");
 }
 
 const PLANNER_SUMMARY_FALLBACK_NO_KEY = "OpenAI API 키가 없어 보조모드로 작업계획을 생성했습니다.";
@@ -154,22 +167,79 @@ function formatPlannerRunSummary(plan: PlanPrototypeWorkUnitsResolved, verb: "�
   };
 }
 
-function inferPlannerInputFromRun(run: PrototypeRun, projectName: string): PlanPrototypeWorkUnitsInput {
+function inferPlannerInputFromRun(
+  run: PrototypeRun,
+  projectName: string,
+  dbProjectDescription?: string | null,
+): PlanPrototypeWorkUnitsInput {
   const snap = run.promptSnapshot;
+  const features = parseFeatureDraftTitlesJson(run.prototypeFeatureDraftTitlesJson);
+  const projectDescription =
+    String(run.prototypeProjectDescription ?? "").trim() ||
+    String(dbProjectDescription ?? "").trim() ||
+    snap.slice(0, 4000);
   return {
     projectId: run.projectId,
     projectName: projectName.trim() || "프로젝트",
-    projectDescription: snap.slice(0, 4000),
-    ideationSummary: "",
-    actorFlowSummary: "",
+    projectDescription,
+    ideationSummary: String(run.prototypeIdeationSummary ?? "").trim(),
+    actorFlowSummary: String(run.prototypeActorFlowSummary ?? "").trim(),
     selectedTemplate: run.selectedTemplate,
-    featureDraftTitles: [] as readonly string[],
+    featureDraftTitles: features.length ? features : ([] as readonly string[]),
     promptSnapshot: snap,
     repositoryStructureHint:
       "Vite React 웹은 `web/package.json`, `web/vite.config.ts`, `web/index.html`, `web/src/**` 구조를 기본으로 가정합니다.",
     userFeedback: "",
     previousWorkUnitsSummary: "",
   };
+}
+
+function computeCurrentWorkUnitOrderFromUnits(workUnits: readonly PrototypeWorkUnit[]): number | null {
+  const merged = [...workUnits].sort((a, b) => a.order - b.order);
+  const failed = merged.find((x) => x.status === "FAILED");
+  return failed?.order ?? merged.find((x) => x.status !== "MERGED" && x.status !== "SKIPPED")?.order ?? null;
+}
+
+function persistWorkUnitCursorPrompt(
+  projectId: string,
+  runId: string,
+  run: PrototypeRun,
+  active: PrototypeWorkUnit,
+  projectName: string,
+  projectDescriptionFromDb: string,
+  source: NonNullable<PrototypeWorkUnit["cursorPromptSource"]>,
+): string {
+  const goal =
+    String(run.prototypeProjectDescription ?? "").trim() ||
+    projectDescriptionFromDb.trim() ||
+    run.promptSnapshot.trim().slice(0, 4000) ||
+    "(프로젝트 설명 없음)";
+  const completed = [...run.workUnits]
+    .filter((u) => u.order < active.order && (u.status === "MERGED" || u.status === "SKIPPED"))
+    .sort((a, b) => a.order - b.order);
+  const features = parseFeatureDraftTitlesJson(run.prototypeFeatureDraftTitlesJson);
+  const prompt = buildWorkUnitCursorPrompt({
+    projectName,
+    projectDescription: goal,
+    selectedTemplate: run.selectedTemplate,
+    allWorkUnits: run.workUnits,
+    currentWorkUnit: active,
+    completedWorkUnits: completed,
+    ideationSummary: String(run.prototypeIdeationSummary ?? ""),
+    actorFlowSummary: String(run.prototypeActorFlowSummary ?? ""),
+    featureSummary: features.join(", "),
+  });
+  const now = new Date().toISOString();
+  const nextVer = (active.cursorPromptVersion ?? 0) + 1;
+  updateRun(projectId, runId, {
+    workUnits: replaceWorkUnit(run.workUnits, active.id, {
+      cursorPrompt: prompt,
+      cursorPromptGeneratedAt: now,
+      cursorPromptVersion: nextVer,
+      cursorPromptSource: source,
+    }),
+  });
+  return prompt;
 }
 
 export async function evaluatePrototypeCursorAutomation(projectId: string): Promise<PrototypeAutomationGate> {
@@ -247,6 +317,10 @@ export async function orchestrateNewPrototypeRun(input: {
         mergeSha: null,
         aiReviewDecision: null,
         aiReviewSummary: null,
+        prototypeIdeationSummary: null,
+        prototypeActorFlowSummary: null,
+        prototypeFeatureDraftTitlesJson: null,
+        prototypeProjectDescription: null,
       }) ?? latest;
   } else {
     run = createRun({
@@ -298,7 +372,8 @@ export async function orchestrateNewPrototypeRun(input: {
     }) ?? run;
 
   const ctx = input.plannerContext;
-  const inferred = inferPlannerInputFromRun(run, input.projectName);
+  const projectMeta = await prisma.project.findUnique({ where: { id: input.projectId }, select: { description: true } });
+  const inferred = inferPlannerInputFromRun(run, input.projectName, projectMeta?.description);
   const planIn: PlanPrototypeWorkUnitsInput = {
     projectId: input.projectId,
     plannerActorUserId: input.plannerActorUserId ?? null,
@@ -328,6 +403,10 @@ export async function orchestrateNewPrototypeRun(input: {
       plannerSummary,
       plannerError,
       workUnitsExecutionConfirmed: false,
+      prototypeIdeationSummary: planIn.ideationSummary.trim() || null,
+      prototypeActorFlowSummary: planIn.actorFlowSummary.trim() || null,
+      prototypeFeatureDraftTitlesJson: planIn.featureDraftTitles.length ? JSON.stringify([...planIn.featureDraftTitles]) : null,
+      prototypeProjectDescription: planIn.projectDescription.trim() || null,
     }) ?? run;
 
   const beforeLaunch = getRun(input.projectId, run.id);
@@ -353,7 +432,8 @@ async function maybeRunPlanner(projectId: string, runId: string, projectName: st
 
   run = updateRun(projectId, runId, { plannerStatus: "RUNNING" }) ?? run;
 
-  const inferred = inferPlannerInputFromRun(run, projectName);
+  const projectMeta = await prisma.project.findUnique({ where: { id: projectId }, select: { description: true } });
+  const inferred = inferPlannerInputFromRun(run, projectName, projectMeta?.description);
   const plan = await planPrototypeWorkUnitsResolved(inferred, run.id);
   const { plannerSummary, plannerError } = formatPlannerRunSummary(plan, "생성");
 
@@ -368,6 +448,10 @@ async function maybeRunPlanner(projectId: string, runId: string, projectName: st
       plannerSummary,
       plannerError,
       workUnitsExecutionConfirmed: run.runSchemaVersion >= 2 ? false : true,
+      prototypeIdeationSummary: inferred.ideationSummary.trim() || null,
+      prototypeActorFlowSummary: inferred.actorFlowSummary.trim() || null,
+      prototypeFeatureDraftTitlesJson: inferred.featureDraftTitles.length ? JSON.stringify([...inferred.featureDraftTitles]) : null,
+      prototypeProjectDescription: inferred.projectDescription.trim() || null,
     }) ?? run
   );
 }
@@ -605,8 +689,9 @@ async function advanceAfterUnitMerged(
  */
 export async function refreshPrototypeRunState(projectId: string, runId: string): Promise<PrototypeRun | null> {
   const gate = await evaluatePrototypeCursorAutomation(projectId);
-  const projectRow = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+  const projectRow = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, description: true } });
   const projectName = String(projectRow?.name ?? "Project");
+  const projectDescriptionFromDb = String(projectRow?.description ?? "");
 
   let run = getRun(projectId, runId);
   if (!run) return null;
@@ -657,12 +742,28 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
     !shouldDeferCursorLaunch(run)
   ) {
     const relay = toRelaySlice(setup);
+    let cursorPrompt = String(active.cursorPrompt ?? "").trim();
+    if (!cursorPrompt) {
+      const buildSource: NonNullable<PrototypeWorkUnit["cursorPromptSource"]> =
+        active.cursorPromptSource === "regenerated" ? "regenerated" : "planner";
+      cursorPrompt = persistWorkUnitCursorPrompt(
+        projectId,
+        runId,
+        run,
+        active,
+        projectName,
+        projectDescriptionFromDb,
+        buildSource,
+      );
+    }
+    run = getRun(projectId, runId) ?? run;
+    active = activeWorkUnit(run) ?? active;
     const cursor = await requestCursorPrototypeRun({
       projectId,
       executionSetup: relay,
       runId,
       branchName: active.branchName,
-      promptSnapshot: run.promptSnapshot,
+      cursorPrompt,
       selectedTemplate: run.selectedTemplate,
       workUnit: { order: active.order, title: active.title },
     });
@@ -672,6 +773,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
         status: "CURSOR_RUNNING",
         cursorRunId: cursor.cursorRunId,
         startedAt: active.startedAt ?? now,
+        executionStartedAt: active.executionStartedAt ?? now,
       });
       run =
         updateRun(projectId, runId, {
@@ -901,6 +1003,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
         status: "MERGED",
         mergeSha: merged.mergeSha,
         finishedAt: fin,
+        executionCompletedAt: fin,
       });
       run =
         updateRun(projectId, runId, {
@@ -954,7 +1057,8 @@ export async function regeneratePrototypeWorkPlan(input: {
   const cur = getRun(input.projectId, input.runId);
   if (!cur) return null;
   const prevSummary = summarizeWorkUnitsForPlanner(cur);
-  const inferred = inferPlannerInputFromRun(cur, input.projectName);
+  const projectMeta = await prisma.project.findUnique({ where: { id: input.projectId }, select: { description: true } });
+  const inferred = inferPlannerInputFromRun(cur, input.projectName, projectMeta?.description);
   const ctx = input.plannerContext;
   const planIn: PlanPrototypeWorkUnitsInput = {
     projectId: input.projectId,
@@ -996,7 +1100,106 @@ export async function regeneratePrototypeWorkPlan(input: {
       plannerSummary,
       plannerError,
       workUnitsExecutionConfirmed: false,
+      prototypeIdeationSummary: planIn.ideationSummary.trim() || null,
+      prototypeActorFlowSummary: planIn.actorFlowSummary.trim() || null,
+      prototypeFeatureDraftTitlesJson: planIn.featureDraftTitles.length ? JSON.stringify([...planIn.featureDraftTitles]) : null,
+      prototypeProjectDescription: planIn.projectDescription.trim() || null,
     }) ?? cur
+  );
+}
+
+export type RetryPrototypeWorkUnitMode = "same_prompt" | "regenerate_prompt" | "skip_admin";
+
+export function retryPrototypeWorkUnit(
+  projectId: string,
+  runId: string,
+  workUnitOrder: number,
+  mode: RetryPrototypeWorkUnitMode,
+): PrototypeRun | null {
+  const run = getRun(projectId, runId);
+  if (!run) return null;
+  const u = run.workUnits.find((x) => x.order === workUnitOrder);
+  if (!u) return null;
+
+  if (mode === "skip_admin") {
+    if (u.status !== "FAILED") return run;
+    const now = new Date().toISOString();
+    const skipPatch: Partial<PrototypeWorkUnit> = {
+      status: "SKIPPED",
+      cursorRunId: null,
+      commitSha: null,
+      changedFiles: [],
+      prUrl: null,
+      prNumber: null,
+      mergeSha: null,
+      reviewSummary: "관리자 건너뜀",
+      executionCompletedAt: now,
+      finishedAt: now,
+    };
+    const nextUnits = replaceWorkUnit(run.workUnits, u.id, skipPatch);
+    return (
+      updateRun(projectId, runId, {
+        status: "WORK_UNITS_READY",
+        statusReason: null,
+        cursorRunId: null,
+        commitSha: null,
+        changedFiles: [],
+        prUrl: null,
+        prNumber: null,
+        mergeSha: null,
+        aiReviewDecision: null,
+        aiReviewSummary: null,
+        workUnits: nextUnits,
+        currentWorkUnitOrder: computeCurrentWorkUnitOrderFromUnits(nextUnits),
+      }) ?? run
+    );
+  }
+
+  if (u.status !== "FAILED") return run;
+
+  const baseClear: Partial<PrototypeWorkUnit> = {
+    cursorRunId: null,
+    commitSha: null,
+    changedFiles: [],
+    prUrl: null,
+    prNumber: null,
+    mergeSha: null,
+    reviewSummary: null,
+    executionStartedAt: null,
+    executionCompletedAt: null,
+    startedAt: null,
+    finishedAt: null,
+    status: "PENDING",
+  };
+
+  const patch: Partial<PrototypeWorkUnit> =
+    mode === "regenerate_prompt"
+      ? {
+          ...baseClear,
+          cursorPrompt: null,
+          cursorPromptGeneratedAt: null,
+          cursorPromptVersion: 0,
+          /** 다음 materialize 시 `regenerated`로 저장되도록 표시 */
+          cursorPromptSource: "regenerated",
+        }
+      : { ...baseClear };
+
+  const nextUnits = replaceWorkUnit(run.workUnits, u.id, patch);
+  return (
+    updateRun(projectId, runId, {
+      status: "WORK_UNITS_READY",
+      statusReason: null,
+      cursorRunId: null,
+      commitSha: null,
+      changedFiles: [],
+      prUrl: null,
+      prNumber: null,
+      mergeSha: null,
+      aiReviewDecision: null,
+      aiReviewSummary: null,
+      workUnits: nextUnits,
+      currentWorkUnitOrder: computeCurrentWorkUnitOrderFromUnits(nextUnits),
+    }) ?? run
   );
 }
 

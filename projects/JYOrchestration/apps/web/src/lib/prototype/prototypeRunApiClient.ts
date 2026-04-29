@@ -38,6 +38,7 @@ export async function postCreatePrototypeRun(body: {
     projectDescription: string;
     actorFlowSummary: string;
     featureDraftTitles: readonly string[];
+    ideationSummary?: string;
   };
 }): Promise<CreatePrototypeRunResponse> {
   const res = await fetch("/api/prototype-runs", {
@@ -119,6 +120,21 @@ export async function postPrototypeRegeneratePlan(
   },
 ): Promise<{ success: boolean; data?: { run: PrototypeRun | null }; message?: string }> {
   const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/regenerate-plan`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as { success: boolean; data?: { run: PrototypeRun | null }; message?: string };
+}
+
+export type RetryPrototypeWorkUnitMode = "same_prompt" | "regenerate_prompt" | "skip_admin";
+
+export async function postPrototypeRetryWorkUnit(
+  runId: string,
+  body: { projectId: string; workUnitOrder: number; mode: RetryPrototypeWorkUnitMode },
+): Promise<{ success: boolean; data?: { run: PrototypeRun | null }; message?: string }> {
+  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/retry-work-unit`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

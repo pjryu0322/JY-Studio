@@ -9,7 +9,8 @@ export type RequestCursorPrototypeInput = Readonly<{
   executionSetup: ExecutionSetupRelaySlice;
   runId: string;
   branchName: string;
-  promptSnapshot: string;
+  /** WorkUnit 전용 Cursor 프롬프트(전역 기획 스냅샷과 분리). */
+  cursorPrompt: string;
   selectedTemplate: string;
   /** 이번 Cursor 실행에서 완료해야 할 단일 WorkUnit(다른 유닛은 요청하지 않음). */
   workUnit: Readonly<{ order: number; title: string }>;
@@ -28,9 +29,7 @@ export async function requestCursorPrototypeRun(input: RequestCursorPrototypeInp
     return { supported: false, reason: "CURSOR_NOT_CONNECTED", message: "Cursor API 키가 없습니다." };
   }
 
-  const unitBlock = `\n\n=== WorkUnit ${input.workUnit.order} (이번 실행에서 반드시 완료) ===\n${input.workUnit.title}\n\n다른 WorkUnit은 이번 세션에서 다루지 마세요. 이 WorkUnit만 구현하고 커밋/푸시까지 마무리하세요.\n`;
-
-  const prompt = `${input.promptSnapshot}${unitBlock}`.trim();
+  const prompt = `${input.cursorPrompt}\n\n=== 실행 메타 ===\nWorkUnit #${input.workUnit.order}: ${input.workUnit.title}\n템플릿: ${input.selectedTemplate}\n`.trim();
 
   const launch = await launchCursorAgent({
     projectId: input.projectId,

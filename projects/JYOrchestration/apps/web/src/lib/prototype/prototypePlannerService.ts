@@ -71,6 +71,12 @@ function workUnitFromDraft(
     prUrl: null,
     mergeSha: null,
     reviewSummary: null,
+    cursorPrompt: null,
+    cursorPromptGeneratedAt: null,
+    cursorPromptVersion: 0,
+    cursorPromptSource: null,
+    executionStartedAt: null,
+    executionCompletedAt: null,
     startedAt: null,
     finishedAt: null,
   };
@@ -206,9 +212,11 @@ export async function planPrototypeWorkUnitsResolved(
 export function workUnitProgressFromRun(run: PrototypeRun): { current: number; total: number; allMerged: boolean } | null {
   const total = run.totalWorkUnits > 0 ? run.totalWorkUnits : run.workUnits.length;
   if (!total) return null;
-  const merged = run.workUnits.filter((u) => u.status === "MERGED").length;
-  if (merged >= total) return { current: total, total, allMerged: true };
-  const unfinished = run.workUnits.find((u) => u.status !== "MERGED" && u.status !== "FAILED");
+  const doneCount = run.workUnits.filter((u) => u.status === "MERGED" || u.status === "SKIPPED").length;
+  if (doneCount >= total) return { current: total, total, allMerged: true };
+  const failed = run.workUnits.find((u) => u.status === "FAILED");
+  const unfinished =
+    failed ?? run.workUnits.find((u) => u.status !== "MERGED" && u.status !== "SKIPPED");
   const order = unfinished?.order ?? run.currentWorkUnitOrder ?? 1;
   return { current: order, total, allMerged: false };
 }
