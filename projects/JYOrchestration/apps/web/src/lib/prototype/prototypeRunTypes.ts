@@ -59,10 +59,13 @@ export type PrototypeWorkUnitStatus =
   | "REVIEW_REWORK"
   | "PR_OPENED"
   | "MERGED"
+  | "SKIPPED"
   | "FAILED";
 
 export type PrototypeWorkUnitRiskLevel = "low" | "medium" | "high";
 export type PrototypeWorkUnitComplexity = "low" | "medium" | "high";
+
+export type PrototypeWorkUnitCursorPromptSource = "planner" | "regenerated" | "retry";
 
 export type PrototypeWorkUnit = Readonly<{
   id: string;
@@ -79,6 +82,15 @@ export type PrototypeWorkUnit = Readonly<{
   status: PrototypeWorkUnitStatus;
   /** WorkUnit 전용 브랜치(Cursor/PR head). */
   branchName: string;
+  /** Cursor에 전달하는 단일 작업 프롬프트(전역 promptSnapshot과 분리). */
+  cursorPrompt: string | null;
+  cursorPromptGeneratedAt: string | null;
+  cursorPromptVersion: number;
+  cursorPromptSource: PrototypeWorkUnitCursorPromptSource | null;
+  /** Cursor 실행 시작(에이전트 요청) 시각. */
+  executionStartedAt: string | null;
+  /** 머지 완료 등 실행 종료 시각. */
+  executionCompletedAt: string | null;
   cursorRunId: string | null;
   commitSha: string | null;
   changedFiles: readonly string[];
@@ -98,7 +110,15 @@ export type PrototypeRun = Readonly<{
   id: string;
   projectId: string;
   selectedTemplate: string;
+  /** 기획·요구 스냅샷(아카이브). Cursor 실행 프롬프트는 WorkUnit.cursorPrompt 사용. */
   promptSnapshot: string;
+  /** 플래너 입력으로 저장된 맥락(Cursor 단위 프롬프트 생성용). */
+  prototypeIdeationSummary: string | null;
+  prototypeActorFlowSummary: string | null;
+  /** JSON 문자열 배열: 기능 제목 목록 */
+  prototypeFeatureDraftTitlesJson: string | null;
+  /** 플래너 입력의 프로젝트 설명(Goal). DB 설명과 함께 WorkUnit 프롬프트에 사용. */
+  prototypeProjectDescription: string | null;
   /** 2 이상이면 WorkUnit 미리보기·실행 확인 게이트 사용. */
   runSchemaVersion: number;
   /** false면 WorkUnit 미리보기 단계 — Cursor 자동 실행 금지. */

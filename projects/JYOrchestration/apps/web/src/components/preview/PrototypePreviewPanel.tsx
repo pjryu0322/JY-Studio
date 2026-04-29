@@ -2,6 +2,16 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityLogCard,
+  CurrentWorkUnitPanel,
+  DeploymentStatusPanel,
+  deriveActivityLogLines,
+  FailureStateCard,
+  WorkUnitPlanCard,
+  type WorkUnitPlanStats,
+} from "@/components/preview/prototypePreviewPanelCards";
+import { workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import type {
   PrototypeWorkspaceActor as PrototypePreviewActor,
@@ -23,69 +33,13 @@ import {
   postCreatePrototypeRun,
   postPrototypeConfirmExecution,
   postPrototypeRegeneratePlan,
+  postPrototypeRetryWorkUnit,
   postPrototypeRunRefresh,
 } from "@/lib/prototype/prototypeRunApiClient";
 import { workUnitProgressFromRun } from "@/lib/prototype/prototypePlannerService";
-import type { PrototypeRun, PrototypeRunStatusReason, PrototypeWorkUnit, PrototypeWorkUnitStatus } from "@/lib/prototype/prototypeRunTypes";
+import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 import { PrototypeTemplateMockPreview } from "@/components/preview/PrototypeTemplateMockPreview";
-
-const WU_STATUS_ORDER: PrototypeWorkUnitStatus[] = [
-  "PENDING",
-  "CURSOR_RUNNING",
-  "CURSOR_DONE",
-  "GIT_PUSHED",
-  "REVIEWING",
-  "REVIEW_PASS",
-  "PR_OPENED",
-  "MERGED",
-];
-
-function workUnitStatusRank(s: PrototypeWorkUnitStatus): number {
-  if (s === "FAILED") return -1;
-  if (s === "REVIEW_REWORK") return WU_STATUS_ORDER.indexOf("REVIEWING");
-  const i = WU_STATUS_ORDER.indexOf(s);
-  return i < 0 ? 0 : i;
-}
-
-function workUnitDetailLinesKo(u: PrototypeWorkUnit): readonly { label: string; state: string }[] {
-  const r = workUnitStatusRank(u.status);
-  const failed = u.status === "FAILED";
-  const rework = u.status === "REVIEW_REWORK";
-  const ix = (s: PrototypeWorkUnitStatus) => WU_STATUS_ORDER.indexOf(s);
-  const cell = (label: string, doneIdx: number, runIdx: number) => {
-    if (failed) return { label, state: "실패" };
-    if (r >= doneIdx) return { label, state: "완료" };
-    if (r >= runIdx) return { label, state: "진행중" };
-    return { label, state: "대기" };
-  };
-  return [
-    cell("Cursor", ix("CURSOR_DONE"), ix("CURSOR_RUNNING")),
-    cell("Git", ix("GIT_PUSHED"), ix("CURSOR_DONE")),
-    {
-      label: rework ? "AI 검토(보완 필요)" : "AI 검토",
-      state: failed ? "실패" : r >= ix("REVIEW_PASS") ? "완료" : r >= ix("GIT_PUSHED") ? "진행중" : "대기",
-    },
-    cell("PR", ix("PR_OPENED"), ix("REVIEW_PASS")),
-    cell("Merge", ix("MERGED"), ix("PR_OPENED")),
-  ];
-}
-
-function workUnitSummaryLabel(
-  unit: PrototypeWorkUnit,
-  run: PrototypeRun | null,
-  prog: ReturnType<typeof workUnitProgressFromRun>,
-): { dot: "done" | "running" | "pending"; text: string } {
-  if (unit.status === "MERGED") return { dot: "done", text: "완료" };
-  if (unit.status === "FAILED") return { dot: "pending", text: "실패" };
-  if (!prog || prog.allMerged) return { dot: "done", text: "완료" };
-  if (unit.order < prog.current) return { dot: "done", text: "완료" };
-  if (unit.order > prog.current) return { dot: "pending", text: "대기" };
-  if (unit.status === "PENDING" && run?.status === "WORK_UNITS_READY" && !run.cursorRunId) {
-    return { dot: "pending", text: "대기" };
-  }
-  return { dot: "running", text: "진행중" };
-}
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -160,7 +114,7 @@ export function PrototypePreviewPanel({
   const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
   const [protoBusy, setProtoBusy] = useState(false);
   const [plannerFeedback, setPlannerFeedback] = useState("");
-  // progress detail UI removed
+  const [wideLayout, setWideLayout] = useState(false);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -198,6 +152,14 @@ export function PrototypePreviewPanel({
     const t = window.setTimeout(() => void refreshLatestRun(), 0);
     return () => window.clearTimeout(t);
   }, [refreshLatestRun]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 960px)");
+    const apply = () => setWideLayout(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const analysis = useMemo(
     () =>
@@ -366,7 +328,8 @@ export function PrototypePreviewPanel({
 
   const onRefreshPrototypeStatus = async () => {
     if (!latestRun?.id) {
-      showToast("먼저 프로토타입 자동 생성을 시작하세요.");
+      await refreshLatestRun();
+      showToast("최신 실행 정보를 불러왔습니다.");
       return;
     }
     setProtoBusy(true);
@@ -458,13 +421,20 @@ export function PrototypePreviewPanel({
 
   const isRunningState = useMemo(() => {
     const s = latestRun?.status;
+    if (!s) return false;
     const prog = latestRun ? workUnitProgressFromRun(latestRun) : null;
+    const allWuMerged = latestRun ? workUnitProgressAllMerged(latestRun) : false;
     const mid =
       prog &&
       !prog.allMerged &&
       (s === "MERGED" || s === "PR_OPENED" || s === "DEPLOYING" || s === "CURSOR_REQUESTED" || s === "CURSOR_RUNNING");
     const wuReadyRunning = s === "WORK_UNITS_READY" && !awaitingExecutionConfirm;
+    const deployAfterUnits =
+      allWuMerged && (s === "MERGED" || s === "DEPLOY_CONFIGURING" || s === "DEPLOYING");
     return (
+      deployAfterUnits ||
+      s === "DEPLOY_CONFIGURING" ||
+      s === "DEPLOYING" ||
       s === "PLANNER_ANALYZING" ||
       wuReadyRunning ||
       s === "CURSOR_REQUESTED" ||
@@ -472,8 +442,6 @@ export function PrototypePreviewPanel({
       s === "COMMIT_DETECTED" ||
       s === "PUSH_CONFIRMED" ||
       s === "AI_REVIEWING" ||
-      s === "DEPLOY_CONFIGURING" ||
-      s === "DEPLOYING" ||
       Boolean(mid)
     );
   }, [latestRun, awaitingExecutionConfirm]);
@@ -481,75 +449,117 @@ export function PrototypePreviewPanel({
   const isCancelRequested = latestRun?.status === "CANCEL_REQUESTED";
   const isCancelled = latestRun?.status === "CANCELLED";
   const isFailed = latestRun?.status === "FAILED" || latestRun?.status === "DEPLOY_FAILED";
-  const isDeployFailed = latestRun?.status === "DEPLOY_FAILED";
   const isCompleted = latestRun?.status === "PREVIEW_READY";
 
-  const workUnitAggregate = useMemo(() => {
+  const workUnitPlanStats = useMemo((): WorkUnitPlanStats => {
     const wu = latestRun?.workUnits ?? [];
     const total = wu.length;
-    const merged = wu.filter((u) => u.status === "MERGED").length;
-    const failed = wu.filter((u) => u.status === "FAILED").length;
-    const running = wu.filter((u) => u.status === "CURSOR_RUNNING" || u.status === "CURSOR_DONE" || u.status === "GIT_PUSHED" || u.status === "REVIEWING" || u.status === "REVIEW_PASS" || u.status === "PR_OPENED").length;
-    const pending = wu.filter((u) => u.status === "PENDING").length;
-    const doneForProgress = merged + failed;
-    const pct = total ? Math.round((doneForProgress / total) * 100) : 0;
-    return { total, merged, running, pending, failed, pct };
+    const mergedForBar = wu.filter((u) => u.status === "MERGED").length;
+    const progressPercent = total ? Math.round((mergedForBar / total) * 100) : 0;
+    const summaryMerged = wu.filter((u) => u.status === "MERGED" || u.status === "SKIPPED").length;
+    const summaryRunning = wu.filter((u) =>
+      [
+        "CURSOR_RUNNING",
+        "CURSOR_DONE",
+        "GIT_PUSHED",
+        "REVIEWING",
+        "REVIEW_PASS",
+        "PR_OPENED",
+        "REVIEW_REWORK",
+      ].includes(u.status),
+    ).length;
+    const summaryPending = wu.filter((u) => u.status === "PENDING").length;
+    const summaryFailed = wu.filter((u) => u.status === "FAILED").length;
+    return { total, mergedForBar, progressPercent, summaryMerged, summaryRunning, summaryPending, summaryFailed };
   }, [latestRun?.workUnits]);
 
-  const automationRows = useMemo(() => {
-    const run = latestRun;
-    type Row = { label: string; state: "done" | "running" | "pending"; key: string };
-    const mk = (key: string, label: string, done: boolean, running: boolean): Row => ({
-      key,
-      label,
-      state: done ? "done" : running ? "running" : "pending",
-    });
-    const rows: Row[] = [];
-    if (!run?.workUnits?.length) {
-      rows.push(
-        mk(
-          "planner",
-          "AI 기획자 분석 완료",
-          Boolean(run && run.status !== "DRAFT" && run.status !== "PROMPT_READY"),
-          Boolean(run && run.status === "PLANNER_ANALYZING"),
-        ),
-      );
-      return rows;
-    }
-    const prog = workUnitProgressFromRun(run);
-    rows.push(
-      mk(
-        "planner-done",
-        "AI 기획자 분석 완료",
-        Boolean(prog && run.workUnits.length > 0 && run.status !== "PLANNER_ANALYZING"),
-        Boolean(run.status === "PLANNER_ANALYZING"),
-      ),
-    );
-    const sorted = [...run.workUnits].sort((a, b) => a.order - b.order);
-    sorted.forEach((u) => {
-      const { dot, text } = workUnitSummaryLabel(u, run, prog);
-      rows.push({
-        key: `wu:${u.id}`,
-        label: `WorkUnit ${u.order} ${text} — ${u.title}`,
-        state: dot,
-      });
-    });
-    rows.push(
-      mk(
-        "gh-pages",
-        "GitHub Pages 배포",
-        run.status === "PREVIEW_READY" || (run.status === "DEPLOY_FAILED" && Boolean(run.pagesDeployWorkflowRunUrl)),
-        run.status === "DEPLOYING" || run.status === "DEPLOY_CONFIGURING",
-      ),
-      mk(
-        "preview-url",
-        "결과 URL 연결",
-        Boolean(run.previewUrl && run.status === "PREVIEW_READY"),
-        Boolean(prog?.allMerged && (run.status === "MERGED" || run.status === "DEPLOYING" || run.status === "DEPLOY_CONFIGURING")),
-      ),
-    );
-    return rows;
-  }, [latestRun]);
+  const activityLogLines = useMemo(() => deriveActivityLogLines(latestRun, 24), [latestRun]);
+
+  const confirmExecution = useCallback(() => {
+    const rid = latestRun?.id;
+    if (!rid) return;
+    void (async () => {
+      setProtoBusy(true);
+      try {
+        const r = await postPrototypeConfirmExecution(rid, { projectId });
+        if (r.success && r.data?.run) setLatestRun(r.data.run);
+        if (r.message) showToast(r.message);
+        await postPrototypeRunRefresh(rid, { projectId }).then((x) => {
+          if (x.success && x.data?.run) setLatestRun(x.data.run);
+        });
+      } finally {
+        setProtoBusy(false);
+        void refreshLatestRun();
+      }
+    })();
+  }, [latestRun?.id, projectId, refreshLatestRun]);
+
+  const regeneratePlan = useCallback(() => {
+    const rid = latestRun?.id;
+    if (!rid) return;
+    void (async () => {
+      setProtoBusy(true);
+      try {
+        const r = await postPrototypeRegeneratePlan(rid, {
+          projectId,
+          userFeedback: plannerFeedback.trim() || undefined,
+          plannerContext: plannerContextPayload,
+        });
+        if (r.success && r.data?.run) setLatestRun(r.data.run);
+        if (r.message) showToast(r.message);
+        if (r.success) setPlannerFeedback("");
+      } finally {
+        setProtoBusy(false);
+        void refreshLatestRun();
+      }
+    })();
+  }, [latestRun?.id, plannerContextPayload, plannerFeedback, projectId, refreshLatestRun]);
+
+  const applyPlannerFeedback = useCallback(() => {
+    const rid = latestRun?.id;
+    if (!rid) return;
+    void (async () => {
+      setProtoBusy(true);
+      try {
+        const r = await postPrototypeRegeneratePlan(rid, {
+          projectId,
+          userFeedback: plannerFeedback.trim() || undefined,
+          plannerContext: plannerContextPayload,
+        });
+        if (r.success && r.data?.run) setLatestRun(r.data.run);
+        if (r.message) showToast(r.message);
+        if (r.success) setPlannerFeedback("");
+      } finally {
+        setProtoBusy(false);
+        void refreshLatestRun();
+      }
+    })();
+  }, [latestRun?.id, plannerContextPayload, plannerFeedback, projectId, refreshLatestRun]);
+
+  const retryWorkUnit = useCallback(
+    (mode: "same_prompt" | "regenerate_prompt" | "skip_admin") => (runId: string, order: number) => {
+      void (async () => {
+        setProtoBusy(true);
+        try {
+          const r = await postPrototypeRetryWorkUnit(runId, { projectId, workUnitOrder: order, mode });
+          if (r.success && r.data?.run) setLatestRun(r.data.run);
+          if (r.message) showToast(r.message);
+          await postPrototypeRunRefresh(runId, { projectId }).then((x) => {
+            if (x.success && x.data?.run) setLatestRun(x.data.run);
+          });
+        } finally {
+          setProtoBusy(false);
+          void refreshLatestRun();
+        }
+      })();
+    },
+    [projectId, refreshLatestRun],
+  );
+
+  const pagesSettingsHref = useMemo(
+    () => githubPagesSettingsUrlFromSuggestedPreview(latestRun?.suggestedPreviewUrl),
+    [latestRun?.suggestedPreviewUrl],
+  );
 
   return (
     <div style={{ position: "relative" }}>
@@ -665,65 +675,14 @@ export function PrototypePreviewPanel({
                   <>
                     <button
                       type="button"
-                      onClick={() => {
-                        const rid = latestRun.id;
-                        void (async () => {
-                          setProtoBusy(true);
-                          try {
-                            const r = await postPrototypeConfirmExecution(rid, { projectId });
-                            if (r.success && r.data?.run) setLatestRun(r.data.run);
-                            if (r.message) showToast(r.message);
-                            await postPrototypeRunRefresh(rid, { projectId }).then((x) => {
-                              if (x.success && x.data?.run) setLatestRun(x.data.run);
-                            });
-                          } finally {
-                            setProtoBusy(false);
-                            void refreshLatestRun();
-                          }
-                        })();
-                      }}
+                      onClick={() => confirmExecution()}
                       disabled={protoBusy || !automationAvailable}
                       style={btnPrimary}
                     >
-                      WorkUnit 실행 시작
+                      이 계획으로 실행
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const rid = latestRun.id;
-                        void (async () => {
-                          setProtoBusy(true);
-                          try {
-                            const r = await postPrototypeRegeneratePlan(rid, {
-                              projectId,
-                              userFeedback: plannerFeedback.trim() || undefined,
-                              plannerContext: plannerContextPayload,
-                            });
-                            if (r.success && r.data?.run) setLatestRun(r.data.run);
-                            if (r.message) showToast(r.message);
-                            setPlannerFeedback("");
-                          } finally {
-                            setProtoBusy(false);
-                            void refreshLatestRun();
-                          }
-                        })();
-                      }}
-                      disabled={protoBusy}
-                      style={btn}
-                    >
+                    <button type="button" onClick={() => regeneratePlan()} disabled={protoBusy} style={btn}>
                       작업계획 다시 생성
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const text = latestRun.promptSnapshot ?? "";
-                        if (!text) return;
-                        navigator.clipboard?.writeText(text).catch(() => {});
-                        showToast("Cursor 전달 프롬프트를 클립보드에 복사했습니다.");
-                      }}
-                      style={btnMuted}
-                    >
-                      Cursor 전달 프롬프트 보기
                     </button>
                     <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                       상태 새로고침
@@ -785,29 +744,6 @@ export function PrototypePreviewPanel({
                     >
                       처음부터 다시 생성
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const parts = [
-                          latestRun.statusReason ? `사유 코드: ${latestRun.statusReason}` : "",
-                          latestRun.aiReviewSummary ? `요약: ${latestRun.aiReviewSummary}` : "",
-                          latestRun.deployFailureDetail ? `배포: ${latestRun.deployFailureDetail}` : "",
-                        ].filter(Boolean);
-                        showToast(parts.join(" · ") || "상세 로그가 없습니다.");
-                      }}
-                      style={btnMuted}
-                    >
-                      상세 로그
-                    </button>
-                    {isDeployFailed && latestRun.pagesDeployWorkflowRunUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => window.open(latestRun.pagesDeployWorkflowRunUrl ?? "", "_blank", "noopener,noreferrer")}
-                        style={btn}
-                      >
-                        GitHub Actions 열기
-                      </button>
-                    ) : null}
                     <button type="button" onClick={() => void onRefreshPrototypeStatus()} disabled={protoBusy} style={btnMuted}>
                       상태 새로고침
                     </button>
@@ -846,15 +782,6 @@ export function PrototypePreviewPanel({
                     >
                       처음부터 다시 생성
                     </button>
-                    {latestRun.prUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => window.open(latestRun.prUrl ?? "", "_blank", "noopener,noreferrer")}
-                        style={btn}
-                      >
-                        GitHub PR 보기
-                      </button>
-                    ) : null}
                     {previewUrl || latestRun.previewUrl ? (
                       <button
                         type="button"
@@ -921,251 +848,96 @@ export function PrototypePreviewPanel({
               ) : null}
           </div>
 
-          <div style={card}>
-            <div style={cardTitle}>AI 작업 계획 · 자동화 파이프라인 상태</div>
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 950, color: "#64748b" }}>AI 작업 계획</span>
-              {latestRun?.plannerSource === "llm" ? (
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 900,
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    border: "1px solid #99f6e4",
-                    background: "#ecfdf5",
-                    color: "#0f766e",
-                  }}
-                >
-                  AI 기획자
-                </span>
-              ) : latestRun?.plannerSource === "fallback" ? (
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 900,
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    border: "1px solid #fcd34d",
-                    background: "#fffbeb",
-                    color: "#b45309",
-                  }}
-                >
-                  보조모드
-                </span>
-              ) : null}
+          {!latestRun?.id ? (
+            <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.5, marginTop: 4 }}>
+              아직 생성된 작업계획이 없습니다. 프로토타입 생성 시작을 누르면 AI가 WorkUnit을 생성합니다.
             </div>
-            {latestRun?.plannerSource === "fallback" && (latestRun.workUnits?.length ?? 0) > 0 ? (
-              <div style={{ fontSize: 12.5, color: "#92400e", lineHeight: 1.65, marginBottom: 10, fontWeight: 700 }}>
-                AI Planner를 사용할 수 없어 규칙 기반 보조 계획으로 생성되었습니다. OpenAI API 설정(실행 설정의 프로젝트 키 또는 계정 기본 키)을 확인하세요.
-              </div>
-            ) : null}
-            {(latestRun?.workUnits?.length ?? 0) === 0 ? (
-              <div style={{ fontSize: 12.5, color: "#475569", lineHeight: 1.65 }}>
-                <p style={{ margin: "0 0 10px" }}>
-                  AI 기획자가 이전 단계 결과를 분석해 Cursor가 효율적으로 작업할 수 있는 구현 단위(WorkUnit)를 생성합니다.
-                </p>
-                <div style={{ fontWeight: 900, color: "#334155", marginBottom: 6 }}>반영 항목</div>
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  <li>아이디어 구체화 반영</li>
-                  <li>액터 및 서비스 흐름 반영</li>
-                  <li>기능 정리 반영</li>
-                  <li>선택 템플릿 반영</li>
-                  <li>Cursor 실행 단위 최적화</li>
-                </ul>
-              </div>
-            ) : awaitingExecutionConfirm ? (
-              <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-                  {latestRun?.plannerSource === "llm" ? "AI 기획자가 " : "보조모드로 "}
-                  {latestRun!.workUnits.length}개의 Cursor 작업단위를 생성했습니다.
-                </div>
-                {latestRun?.plannerError ? (
-                  <details style={{ fontSize: 12.5, color: "#64748b" }}>
-                    <summary style={{ cursor: "pointer", fontWeight: 800 }}>상세 사유</summary>
-                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{latestRun.plannerError}</div>
-                  </details>
-                ) : null}
-                <div style={{ display: "grid", gap: 10 }}>
-                  {[...latestRun!.workUnits]
-                    .sort((a, b) => a.order - b.order)
-                    .map((u) => (
-                      <div
-                        key={u.id}
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 12,
-                          padding: 10,
-                          background: "#f8fafc",
-                        }}
-                      >
-                        <div style={{ fontSize: 12.5, fontWeight: 950, color: "#0f172a" }}>
-                          [{u.order}] {u.title}
-                        </div>
-                        <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>{u.description}</div>
-                        <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>
-                          대상: {u.targetArea || "—"} · 범위: {u.implementationScope || "—"} · 위험: {u.riskLevel} · 복잡도:{" "}
-                          {u.estimatedComplexity}
-                        </div>
-                        {u.acceptanceCriteria.length ? (
-                          <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: "#475569" }}>
-                            {u.acceptanceCriteria.map((c, i) => (
-                              <li key={i}>{c}</li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                    ))}
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 6 }}>사용자 의견 추가</div>
-                  <textarea
-                    value={plannerFeedback}
-                    onChange={(e) => setPlannerFeedback(e.target.value)}
-                    placeholder="작업계획에 반영할 의견을 입력하세요. 예: 채팅 기능도 추가해줘, 관리자 화면은 제외해줘."
-                    rows={3}
-                    style={{
-                      width: "100%",
-                      resize: "vertical",
-                      borderRadius: 10,
-                      border: "1px solid #cbd5e1",
-                      padding: 10,
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div style={{ fontSize: 12.5, color: "#475569", whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
-                {latestRun!.workUnits
-                  .slice()
-                  .sort((a, b) => a.order - b.order)
-                  .map((u) => `WorkUnit ${u.order}. ${u.title}`)
-                  .join("\n")}
-              </div>
-            )}
-            {(latestRun?.workUnits?.length ?? 0) > 0 ? (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b", lineHeight: 1.55 }}>
-                총 WorkUnit: {workUnitAggregate.total} · 완료: {workUnitAggregate.merged} · 진행중: {workUnitAggregate.running} · 대기:{" "}
-                {workUnitAggregate.pending} · 실패: {workUnitAggregate.failed} · 전체 진행률 {workUnitAggregate.pct}%
-              </div>
-            ) : null}
-            {!awaitingExecutionConfirm ? (
-              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = latestRun?.promptSnapshot ?? "";
-                    if (!text) return;
-                    navigator.clipboard?.writeText(text).catch(() => {});
-                    showToast("Cursor 전달 프롬프트를 클립보드에 복사했습니다.");
-                  }}
-                  style={btnMuted}
-                >
-                  Cursor 전달 프롬프트 보기
-                </button>
-              </div>
-            ) : null}
-            {latestRun?.suggestedPreviewUrl && !latestRun.previewUrl && !isCompleted ? (
-              <div style={{ marginTop: 10, fontSize: 12.5, color: "#64748b" }}>
-                예상 URL:{" "}
-                <span style={{ fontWeight: 900, color: "#0f172a" }}>{latestRun.suggestedPreviewUrl}</span>
-                <span style={{ marginLeft: 8 }}>GitHub Pages 배포 대기중</span>
-              </div>
-            ) : null}
-            {isDeployFailed && latestRun?.deployFailureDetail ? (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #fecaca",
-                  background: "#fef2f2",
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 950, color: "#b91c1c" }}>배포 설정 실패</div>
-                <div style={{ marginTop: 8, fontSize: 12.5, color: "#7f1d1d", lineHeight: 1.55 }}>{latestRun.deployFailureDetail}</div>
-                {githubPagesSettingsUrlFromSuggestedPreview(latestRun.suggestedPreviewUrl) ? (
-                  <div style={{ marginTop: 10 }}>
-                    <a
-                      href={githubPagesSettingsUrlFromSuggestedPreview(latestRun.suggestedPreviewUrl) ?? undefined}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        ...btnMuted,
-                        textDecoration: "none",
-                        display: "inline-block",
-                      }}
-                    >
-                      GitHub Pages 설정 열기
-                    </a>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+          ) : null}
 
+          {latestRun?.id ? (
             <div
               style={{
-                marginTop: 14,
-                paddingTop: 14,
-                borderTop: "1px solid #e2e8f0",
+                display: "grid",
+                gap: 14,
+                alignItems: "start",
+                gridTemplateColumns: wideLayout ? "minmax(0, 13fr) minmax(0, 7fr)" : "minmax(0,1fr)",
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 950, color: "#64748b", marginBottom: 8 }}>자동화 파이프라인</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", fontSize: 12.5, color: "#475569" }}>
-                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 999, background: "#22c55e", border: "2px solid #16a34a" }} />
-                  완료
-                </span>
-                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 999, background: "#3b82f6", border: "2px solid #2563eb" }} />
-                  진행중
-                </span>
-                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", fontWeight: 900 }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 999, background: "#e2e8f0", border: "2px solid #94a3b8" }} />
-                  대기
-                </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+                <WorkUnitPlanCard
+                  latestRun={latestRun}
+                  stats={workUnitPlanStats}
+                  protoBusy={protoBusy}
+                  plannerFeedback={plannerFeedback}
+                  onPlannerFeedbackChange={setPlannerFeedback}
+                  onApplyPlannerFeedbackRegenerate={() => applyPlannerFeedback()}
+                  onRetryWorkUnit={(runId, order, mode) => retryWorkUnit(mode)(runId, order)}
+                />
               </div>
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {automationRows.map((r) => (
-                  <div key={r.key} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <span
-                      style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: 999,
-                        marginTop: 3,
-                        background: r.state === "done" ? "#22c55e" : r.state === "running" ? "#3b82f6" : "#e2e8f0",
-                        border: `2px solid ${r.state === "done" ? "#16a34a" : r.state === "running" ? "#2563eb" : "#94a3b8"}`,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, lineHeight: 1.55, color: "#0f172a", fontWeight: r.state === "running" ? 900 : 700 }}>
-                        {r.label}
-                      </div>
-                      {r.key.startsWith("wu:") ? (
-                        <div style={{ marginTop: 6, paddingLeft: 2, fontSize: 12.5, color: "#64748b", lineHeight: 1.65 }}>
-                          {(() => {
-                            const id = r.key.slice("wu:".length);
-                            const u = latestRun?.workUnits.find((x) => x.id === id);
-                            if (!u) return null;
-                            return workUnitDetailLinesKo(u).map((line) => (
-                              <div key={line.label}>
-                                {line.label}: {line.state}
-                              </div>
-                            ));
-                          })()}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+                {latestRun?.status === "FAILED" ? (
+                  <FailureStateCard
+                    summary={
+                      [
+                        latestRun?.statusReason ? `사유: ${latestRun.statusReason}` : "",
+                        latestRun?.aiReviewSummary ? String(latestRun.aiReviewSummary) : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "실행이 중단되었거나 오류가 발생했습니다."
+                    }
+                    protoBusy={protoBusy}
+                    onResume={() => {
+                      const rid = latestRun?.id;
+                      if (!rid) return;
+                      void (async () => {
+                        setProtoBusy(true);
+                        try {
+                          const r = await postPrototypeRunResume(rid, { projectId, mode: "resume" });
+                          if (r.success && r.data?.run) setLatestRun(r.data.run);
+                          if (r.message) showToast(r.message);
+                        } finally {
+                          setProtoBusy(false);
+                          void refreshLatestRun();
+                        }
+                      })();
+                    }}
+                    onRestart={() => {
+                      const rid = latestRun?.id;
+                      if (!rid) return;
+                      void (async () => {
+                        setProtoBusy(true);
+                        try {
+                          const r = await postPrototypeRunResume(rid, { projectId, mode: "restart" });
+                          if (r.success && r.data?.run) setLatestRun(r.data.run);
+                          if (r.message) showToast(r.message);
+                        } finally {
+                          setProtoBusy(false);
+                          void refreshLatestRun();
+                        }
+                      })();
+                    }}
+                  />
+                ) : null}
+                <CurrentWorkUnitPanel latestRun={latestRun} />
+                <DeploymentStatusPanel
+                  latestRun={latestRun}
+                  previewUrl={previewUrl}
+                  pagesSettingsHref={pagesSettingsHref}
+                  onOpenPreview={() => {
+                    const u = previewUrl ?? latestRun?.previewUrl ?? "";
+                    if (u) window.open(u, "_blank", "noopener,noreferrer");
+                  }}
+                  onCopyPreviewUrl={() => {
+                    const u = previewUrl ?? latestRun?.previewUrl ?? "";
+                    if (!u) return;
+                    void navigator.clipboard?.writeText(u).catch(() => {});
+                    showToast("URL을 복사했습니다.");
+                  }}
+                />
+                <ActivityLogCard lines={activityLogLines} />
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
 
@@ -1275,8 +1047,6 @@ const card: CSSProperties = {
   padding: 14,
   background: "#fff",
 };
-
-const cardTitle: CSSProperties = { fontSize: 12.5, fontWeight: 900, color: "#64748b" };
 
 const btn: CSSProperties = {
   padding: "8px 12px",

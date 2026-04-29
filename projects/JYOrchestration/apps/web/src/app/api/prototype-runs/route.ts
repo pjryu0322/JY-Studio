@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       projectDescription?: string;
       actorFlowSummary?: string;
       featureDraftTitles?: string[];
+      ideationSummary?: string;
     };
   };
   try {
@@ -70,6 +71,7 @@ export async function POST(request: NextRequest) {
           projectDescription: String(ctx.projectDescription ?? "").trim(),
           actorFlowSummary: String(ctx.actorFlowSummary ?? "").trim(),
           featureDraftTitles: Array.isArray(ctx.featureDraftTitles) ? ctx.featureDraftTitles.map(String) : [],
+          ideationSummary: typeof ctx.ideationSummary === "string" ? ctx.ideationSummary.trim() : undefined,
         }
       : undefined,
   });

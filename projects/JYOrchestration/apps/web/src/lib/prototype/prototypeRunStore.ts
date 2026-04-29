@@ -102,6 +102,7 @@ function isNewWorkUnitStatus(x: unknown): x is PrototypeWorkUnitStatus {
     x === "REVIEW_REWORK" ||
     x === "PR_OPENED" ||
     x === "MERGED" ||
+    x === "SKIPPED" ||
     x === "FAILED"
   );
 }
@@ -145,6 +146,12 @@ function normalizeWorkUnitsJson(
         prUrl: null,
         mergeSha: null,
         reviewSummary: null,
+        cursorPrompt: null,
+        cursorPromptGeneratedAt: null,
+        cursorPromptVersion: 0,
+        cursorPromptSource: null,
+        executionStartedAt: null,
+        executionCompletedAt: null,
         startedAt: null,
         finishedAt: null,
       }));
@@ -173,6 +180,11 @@ function normalizeWorkUnitsJson(
     const changedFiles = Array.isArray(r?.changedFiles) ? (r.changedFiles as unknown[]).map(String).filter(Boolean) : [];
     const descRaw = String(r?.description ?? "").trim();
     const def = workUnitDefaultsFromTitle(title);
+    const cpv = Number((r as { cursorPromptVersion?: unknown }).cursorPromptVersion);
+    const cursorPromptVersion = Number.isFinite(cpv) && cpv >= 0 ? Math.floor(cpv) : 0;
+    const cps = (r as { cursorPromptSource?: unknown }).cursorPromptSource;
+    const cursorPromptSource =
+      cps === "planner" || cps === "regenerated" || cps === "retry" ? (cps as "planner" | "regenerated" | "retry") : null;
 
     out.push({
       id,
@@ -189,6 +201,21 @@ function normalizeWorkUnitsJson(
       estimatedComplexity: parseComplexityLevel(r?.estimatedComplexity),
       status,
       branchName: branchName || buildWorkUnitBranchName(projectNameForBranch, runId, order),
+      cursorPrompt: typeof (r as { cursorPrompt?: unknown }).cursorPrompt === "string" ? String((r as { cursorPrompt: string }).cursorPrompt) : null,
+      cursorPromptGeneratedAt:
+        typeof (r as { cursorPromptGeneratedAt?: unknown }).cursorPromptGeneratedAt === "string"
+          ? String((r as { cursorPromptGeneratedAt: string }).cursorPromptGeneratedAt)
+          : null,
+      cursorPromptVersion,
+      cursorPromptSource,
+      executionStartedAt:
+        typeof (r as { executionStartedAt?: unknown }).executionStartedAt === "string"
+          ? String((r as { executionStartedAt: string }).executionStartedAt)
+          : null,
+      executionCompletedAt:
+        typeof (r as { executionCompletedAt?: unknown }).executionCompletedAt === "string"
+          ? String((r as { executionCompletedAt: string }).executionCompletedAt)
+          : null,
       cursorRunId: typeof r?.cursorRunId === "string" ? String(r.cursorRunId) : null,
       commitSha: typeof r?.commitSha === "string" ? String(r.commitSha) : null,
       changedFiles,
@@ -252,7 +279,8 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
       : null;
 
   if (currentWorkUnitOrder == null && workUnits.length) {
-    const unfinished = workUnits.find((u) => u.status !== "MERGED" && u.status !== "FAILED");
+    const failed = workUnits.find((u) => u.status === "FAILED");
+    const unfinished = failed ?? workUnits.find((u) => u.status !== "MERGED" && u.status !== "SKIPPED");
     currentWorkUnitOrder = unfinished ? unfinished.order : null;
   }
 
@@ -275,6 +303,22 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
     projectId: String(raw.projectId ?? ""),
     selectedTemplate: String(raw.selectedTemplate ?? ""),
     promptSnapshot: String(raw.promptSnapshot ?? ""),
+    prototypeIdeationSummary:
+      typeof (raw as { prototypeIdeationSummary?: unknown }).prototypeIdeationSummary === "string"
+        ? String((raw as { prototypeIdeationSummary: string }).prototypeIdeationSummary)
+        : null,
+    prototypeActorFlowSummary:
+      typeof (raw as { prototypeActorFlowSummary?: unknown }).prototypeActorFlowSummary === "string"
+        ? String((raw as { prototypeActorFlowSummary: string }).prototypeActorFlowSummary)
+        : null,
+    prototypeFeatureDraftTitlesJson:
+      typeof (raw as { prototypeFeatureDraftTitlesJson?: unknown }).prototypeFeatureDraftTitlesJson === "string"
+        ? String((raw as { prototypeFeatureDraftTitlesJson: string }).prototypeFeatureDraftTitlesJson)
+        : null,
+    prototypeProjectDescription:
+      typeof (raw as { prototypeProjectDescription?: unknown }).prototypeProjectDescription === "string"
+        ? String((raw as { prototypeProjectDescription: string }).prototypeProjectDescription)
+        : null,
     runSchemaVersion: schemaVersion,
     workUnitsExecutionConfirmed,
     plannerSource,
@@ -341,6 +385,10 @@ export function createRun(input: {
     projectId: input.projectId.trim(),
     selectedTemplate: input.selectedTemplate,
     promptSnapshot: input.promptSnapshot,
+    prototypeIdeationSummary: null,
+    prototypeActorFlowSummary: null,
+    prototypeFeatureDraftTitlesJson: null,
+    prototypeProjectDescription: null,
     runSchemaVersion: 2,
     workUnitsExecutionConfirmed: false,
     plannerSource: null,
@@ -427,6 +475,10 @@ export function updateRun(
       | "suggestedPreviewUrl"
       | "previewUrl"
       | "promptSnapshot"
+      | "prototypeIdeationSummary"
+      | "prototypeActorFlowSummary"
+      | "prototypeFeatureDraftTitlesJson"
+      | "prototypeProjectDescription"
       | "runSchemaVersion"
       | "workUnitsExecutionConfirmed"
       | "plannerSource"
