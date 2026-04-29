@@ -105,6 +105,8 @@ export type PrototypeRun = Readonly<{
   workUnitsExecutionConfirmed: boolean;
   /** 마지막 플래너 소스(내부 표시·UI 힌트). */
   plannerSource: PrototypePlannerSource | null;
+  /** LLM 실패 시 요약(키 등 민감정보 없음). */
+  plannerError: string | null;
   status: PrototypeRunStatus;
   statusReason: PrototypeRunStatusReason;
   cancelRequestedAt: string | null;

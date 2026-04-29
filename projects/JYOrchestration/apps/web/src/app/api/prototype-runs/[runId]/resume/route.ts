@@ -71,6 +71,7 @@ export async function POST(request: NextRequest, segmentData: { params: Promise<
       selectedTemplate: run.selectedTemplate,
       promptSnapshot: run.promptSnapshot,
       startCursorAgent: true,
+      plannerActorUserId: userId,
     });
     logPrototypePipelineEvent("prototype_restarted", { projectId, oldRunId: id, runId: out.run.id });
     return NextResponse.json({ success: true, data: { run: out.run }, message: "새 실행으로 다시 시작합니다." });

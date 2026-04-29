@@ -1,6 +1,9 @@
 import type { PrototypeWorkUnitComplexity, PrototypeWorkUnitRiskLevel } from "@/lib/prototype/prototypeRunTypes";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+export type PrototypePlannerLlmAuth = Readonly<{
+  apiKey: string;
+  model: string;
+}>;
 
 export type PrototypePlannerLlmInput = Readonly<{
   projectName: string;
@@ -90,17 +93,16 @@ function normalizeDraftUnits(root: Record<string, unknown>): PrototypePlannerLlm
 
 /**
  * OpenAI JSON 모드로 구현 지향 WorkUnit 초안을 생성합니다.
+ * API 키는 호출부(`resolvePrototypePlannerOpenAiCredential`)에서만 결정합니다.
  */
 export async function generatePrototypeWorkUnitsWithOpenAI(
   input: PrototypePlannerLlmInput,
+  auth: PrototypePlannerLlmAuth,
 ): Promise<{ ok: true; units: PrototypePlannerLlmDraftUnit[] } | { ok: false; error: string }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return { ok: false, error: "OPENAI_API_KEY_NOT_CONFIGURED" };
+  const apiKey = auth.apiKey.trim();
+  if (!apiKey) return { ok: false, error: "OPENAI_API_KEY_MISSING" };
 
-  const model =
-    String(process.env.OPENAI_MODEL ?? "").trim() && String(process.env.OPENAI_MODEL).trim().length > 0
-      ? String(process.env.OPENAI_MODEL).trim()
-      : DEFAULT_MODEL;
+  const model = auth.model.trim() || "gpt-4o-mini";
 
   const userBlock = [
     `프로젝트명: ${input.projectName}`,
@@ -134,7 +136,7 @@ export async function generatePrototypeWorkUnitsWithOpenAI(
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${String(apiKey)}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

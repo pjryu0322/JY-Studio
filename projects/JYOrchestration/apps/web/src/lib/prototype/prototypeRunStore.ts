@@ -257,6 +257,7 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
   }
 
   const plannerSummary = typeof (raw as { plannerSummary?: unknown }).plannerSummary === "string" ? String((raw as { plannerSummary: string }).plannerSummary) : null;
+  const plannerError = typeof (raw as { plannerError?: unknown }).plannerError === "string" ? String((raw as { plannerError: string }).plannerError) : null;
 
   const schemaVersion =
     typeof (raw as { runSchemaVersion?: unknown }).runSchemaVersion === "number" &&
@@ -277,6 +278,7 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
     runSchemaVersion: schemaVersion,
     workUnitsExecutionConfirmed,
     plannerSource,
+    plannerError,
     branchName: String(raw.branchName ?? ""),
     cursorRunId: typeof raw.cursorRunId === "string" ? raw.cursorRunId : null,
     status: st,
@@ -342,6 +344,7 @@ export function createRun(input: {
     runSchemaVersion: 2,
     workUnitsExecutionConfirmed: false,
     plannerSource: null,
+    plannerError: null,
     branchName,
     cursorRunId: null,
     status: input.initialStatus,
@@ -427,6 +430,7 @@ export function updateRun(
       | "runSchemaVersion"
       | "workUnitsExecutionConfirmed"
       | "plannerSource"
+      | "plannerError"
       | "pagesDeployWorkflowRunUrl"
       | "deployFailureDetail"
       | "pagesDeployTriggerCommitSha"

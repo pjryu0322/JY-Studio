@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     selectedTemplate,
     promptSnapshot,
     startCursorAgent,
+    plannerActorUserId: userId,
     plannerContext: ctx
       ? {
           projectDescription: String(ctx.projectDescription ?? "").trim(),
