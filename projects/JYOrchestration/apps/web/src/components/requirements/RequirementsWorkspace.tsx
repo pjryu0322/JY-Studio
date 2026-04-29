@@ -2846,7 +2846,6 @@ export function RequirementsWorkspace({
         projectId={resolvedProjectId.trim()}
         projectName={headerProjectName}
         projectDescription={String(project?.description ?? "")}
-        initialPrototypePreviewOpen={autoOpenPrototypePreview}
         ideationParticipantHumanMemberIds={(() => {
           // "아이디어 구체화에 참여했던 멤버" = requirementsConversation에서 role==="human"으로 발화한 멤버(memberId 기준)
           const ids = new Set<string>();

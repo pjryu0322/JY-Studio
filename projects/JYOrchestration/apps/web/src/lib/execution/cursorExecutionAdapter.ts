@@ -410,6 +410,42 @@ export async function pollCursorAgent(input: {
   };
 }
 
+/**
+ * Best-effort cancel request for Cursor Cloud Agent.
+ *
+ * NOTE:
+ * - Cursor API cancel endpoint is not guaranteed across deployments.
+ * - This function NEVER throws; it only returns { ok }.
+ * - Callers must not claim remote cancellation unless ok===true.
+ */
+export async function cancelCursorAgent(input: {
+  cursorApiUrl: string;
+  cursorApiToken: string;
+  agentId: string;
+}): Promise<{ ok: true } | { ok: false; httpStatus?: number; message: string }> {
+  const base = normalizeCursorApiBaseUrl(input.cursorApiUrl);
+  const agentId = String(input.agentId ?? "").trim();
+  if (!base || !agentId) return { ok: false, message: "missing cursorApiUrl/agentId" };
+  const url = `${agentsBaseUrl(base)}/${encodeURIComponent(agentId)}/cancel`;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 4500);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: authHeaders(input.cursorApiToken),
+      redirect: "follow",
+      signal: ac.signal,
+    });
+    if (res.ok) return { ok: true };
+    return { ok: false, httpStatus: res.status, message: `cancel failed http=${res.status}` };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "cancel request failed";
+    return { ok: false, message: msg };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // NOTE: ENV_TEST(Stage1/2) GitHub/PR/finalize logic has been extracted out of this adapter.
 
 function isTerminalSuccess(status: string): boolean {

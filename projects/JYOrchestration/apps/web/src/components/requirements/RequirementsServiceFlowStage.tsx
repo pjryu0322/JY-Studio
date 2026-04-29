@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
-import { PrototypePreviewPanel } from "@/components/preview/PrototypePreviewPanel";
+import { appFlowStepHref } from "@/lib/workflow/flow-state";
 import {
   buildFlowFingerprintJson,
   buildIdeationFingerprint,
@@ -443,7 +442,6 @@ export function RequirementsServiceFlowStage({
   projectId,
   projectName,
   projectDescription,
-  initialPrototypePreviewOpen = false,
   ideationParticipantHumanMemberIds,
   ideationAssets,
   ideationReady,
@@ -465,7 +463,6 @@ export function RequirementsServiceFlowStage({
   readonly projectId: string;
   readonly projectName: string;
   readonly projectDescription: string;
-  readonly initialPrototypePreviewOpen?: boolean;
   readonly ideationParticipantHumanMemberIds: readonly string[];
   readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
   readonly ideationReady: boolean;
@@ -502,13 +499,6 @@ export function RequirementsServiceFlowStage({
   const [chatExpanded, setChatExpanded] = useState(false);
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [prototypePreviewOpen, setPrototypePreviewOpen] = useState(false);
-
-  useEffect(() => {
-    if (!initialPrototypePreviewOpen) return;
-    const t = window.setTimeout(() => setPrototypePreviewOpen(true), 0);
-    return () => window.clearTimeout(t);
-  }, [initialPrototypePreviewOpen]);
 
   const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
   const hint = progressHint(derivedApproval);
@@ -1451,18 +1441,22 @@ export function RequirementsServiceFlowStage({
                       요약 보기
                     </button>
                     <div style={{ height: 6 }} />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setToolsOpen(false);
-                        setPrototypePreviewOpen(true);
+                    <a
+                      href={appFlowStepHref("execution", projectId)}
+                      onClick={() => setToolsOpen(false)}
+                      aria-disabled={!ideationReady}
+                      style={{
+                        ...btn,
+                        width: "100%",
+                        textAlign: "left",
+                        textDecoration: "none",
+                        opacity: ideationReady ? 1 : 0.55,
+                        pointerEvents: ideationReady ? "auto" : "none",
                       }}
-                      disabled={!ideationReady}
-                      style={{ ...btn, width: "100%", textAlign: "left", opacity: ideationReady ? 1 : 0.55 }}
-                      title={!ideationReady ? ideationReadyNotice : "프로토타입 미리보기"}
+                      title={!ideationReady ? ideationReadyNotice : "프로토타입 생성"}
                     >
-                      프로토타입 미리보기
-                    </button>
+                      프로토타입 생성
+                    </a>
                   </div>
                 ) : null}
               </div>
@@ -1563,30 +1557,7 @@ export function RequirementsServiceFlowStage({
             </div>
           ) : null}
 
-          <PrototypePreviewDraggableShell
-            open={prototypePreviewOpen}
-            onClose={() => setPrototypePreviewOpen(false)}
-            title="프로토타입 미리보기"
-            modalWidth="min(1180px, calc(100vw - 20px))"
-          >
-            <PrototypePreviewPanel
-              key={projectId}
-              projectId={projectId}
-              projectName={projectName}
-              projectDescription={projectDescription}
-              ideationAssets={ideationAssets}
-              flowSteps={prototypePreviewFlowStepsDetailed}
-              actors={prototypePreviewActorsDetailed}
-              designReadinessPercent={derivedApproval.progressPercent}
-              checklistGapLabels={prototypeChecklistGapLabels}
-              unresolvedChecklistCount={remainingChecklistItems}
-              designFingerprint={prototypeDesignFingerprint}
-              onNavigateFix={() => {
-                setPrototypePreviewOpen(false);
-                setWorkspaceMode("chat");
-              }}
-            />
-          </PrototypePreviewDraggableShell>
+          {/* Prototype generation moved to /execution (workflow step). */}
 
         </main>
       </div>

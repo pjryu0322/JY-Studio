@@ -86,14 +86,19 @@ export async function openPrototypePr(input: Readonly<{
   baseBranch: string;
   githubAccessToken: string | null;
   projectId: string;
+  /** 기본값: run.branchName — WorkUnit별 head 브랜치 */
+  headBranch?: string;
+  /** PR 제목 접미(WorkUnit 구분) */
+  prTitleSuffix?: string;
 }>): Promise<
   | { readonly ok: true; readonly prUrl: string; readonly prNumber: number }
   | { readonly ok: false } & PrototypePrBlocked
 > {
+  const headBranch = String(input.headBranch ?? input.run.branchName ?? "").trim();
   // Guard: PR 생성 전에 head ref 가시성 확인(전파 지연 흡수)
   const guard = await waitForGithubHeadRefVisible({
     repoUrl: input.repoUrl,
-    headBranch: input.run.branchName,
+    headBranch,
     githubAccessToken: input.githubAccessToken,
     attempts: 10,
     intervalMs: 2000,
@@ -101,16 +106,17 @@ export async function openPrototypePr(input: Readonly<{
   if (!guard.ok) return guard;
 
   const shortId = input.run.id.replace(/-/g, "").slice(0, 8);
-  const title = `[Prototype] ${input.projectName} run ${shortId}`;
+  const suffix = input.prTitleSuffix?.trim() ? ` ${input.prTitleSuffix.trim()}` : "";
+  const title = `[Prototype] ${input.projectName} run ${shortId}${suffix}`;
   // Create PR with retry for 422 head invalid: re-check ref, then retry.
   let lastMsg: string | null = null;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const pr = await createGithubPullRequestFromBranch({
       repoUrl: input.repoUrl,
       baseBranch: input.baseBranch,
-      headBranch: input.run.branchName,
+      headBranch,
       title,
-      body: `Prototype automation run\n- template: ${input.run.selectedTemplate}\n- branch: ${input.run.branchName}`,
+      body: `Prototype automation run\n- template: ${input.run.selectedTemplate}\n- branch: ${headBranch}`,
       githubAccessToken: input.githubAccessToken,
       projectId: input.projectId,
     });
@@ -130,7 +136,7 @@ export async function openPrototypePr(input: Readonly<{
     // re-check ref, then retry
     const again = await waitForGithubHeadRefVisible({
       repoUrl: input.repoUrl,
-      headBranch: input.run.branchName,
+      headBranch,
       githubAccessToken: input.githubAccessToken,
       attempts: 5,
       intervalMs: 2000,
@@ -144,11 +150,13 @@ export async function mergePrototypePr(input: Readonly<{
   run: PrototypeRun;
   githubAccessToken: string | null;
   projectId: string;
+  /** 기본값: run.prUrl */
+  prUrl?: string | null;
 }>): Promise<
   | { readonly ok: true; readonly mergeSha: string | null }
   | { readonly ok: false } & PrototypePrBlocked
 > {
-  const url = input.run.prUrl?.trim();
+  const url = String(input.prUrl ?? input.run.prUrl ?? "").trim();
   if (!url) {
     return { ok: false, blocked: true, message: "PR URL 없음" };
   }

@@ -14,6 +14,11 @@ export async function POST(request: NextRequest) {
     selectedTemplate?: string;
     promptSnapshot?: string;
     startCursorAgent?: boolean;
+    plannerContext?: {
+      projectDescription?: string;
+      actorFlowSummary?: string;
+      featureDraftTitles?: string[];
+    };
   };
   try {
     body = (await request.json()) as typeof body;
@@ -52,12 +57,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
   }
 
+  const ctx = body.plannerContext;
   const out = await orchestrateNewPrototypeRun({
     projectId,
     projectName: project.name,
     selectedTemplate,
     promptSnapshot,
     startCursorAgent,
+    plannerContext: ctx
+      ? {
+          projectDescription: String(ctx.projectDescription ?? "").trim(),
+          actorFlowSummary: String(ctx.actorFlowSummary ?? "").trim(),
+          featureDraftTitles: Array.isArray(ctx.featureDraftTitles) ? ctx.featureDraftTitles.map(String) : [],
+        }
+      : undefined,
   });
 
   return NextResponse.json({
