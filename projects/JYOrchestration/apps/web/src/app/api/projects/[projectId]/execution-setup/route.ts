@@ -12,6 +12,7 @@ import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { DEFAULT_CURSOR_API_BASE, normalizeCursorApiBaseUrl } from "@/lib/executionSetup/cursorApiValidation";
 import { maskCursorTokenForUi } from "@/lib/executionSetup/cursorTokenMask";
 import { maskGithubTokenForUi } from "@/lib/executionSetup/githubTokenMask";
+import { maskOpenAiKeyForUi } from "@/lib/executionSetup/openAiKeyMask";
 import { getUserDefaultExecutionCredentials } from "@/lib/service/userDefaultExecutionCredentials";
 import {
   probeGithubPatAgainstExecutionRepo,
@@ -53,6 +54,18 @@ function clientCursorTokenMeta(row: {
   return { masked, hasToken };
 }
 
+function clientOpenAiPlannerKeyMeta(row: {
+  openaiPlannerApiKey?: string | null;
+  openaiPlannerApiKeyMasked?: string | null;
+}): { masked: string | null; hasToken: boolean } {
+  const plain = String(row.openaiPlannerApiKey ?? "").trim();
+  const fromPlain = plain ? maskOpenAiKeyForUi(plain) : "";
+  const stored = String(row.openaiPlannerApiKeyMasked ?? "").trim();
+  const masked = fromPlain || (stored ? stored : null);
+  const hasToken = Boolean(plain) || Boolean(stored);
+  return { masked, hasToken };
+}
+
 function isLikelyUrl(s: string): boolean {
   try {
     const u = new URL(s);
@@ -89,6 +102,8 @@ type PatchBody = Partial<{
   cursorApiUrl: string;
   cursorApiToken: string | null;
   githubAccessToken: string | null;
+  /** 프로토타입 AI 기획자용 OpenAI 키(프로젝트 단위) */
+  openaiPlannerApiKey: string | null;
 }>;
 
 function toStringOrNull(v: unknown): string | null {
@@ -192,6 +207,7 @@ export async function GET(
 
     const ghTok = clientGithubTokenMeta(row);
     const curTok = clientCursorTokenMeta(row);
+    const openAiTok = clientOpenAiPlannerKeyMeta(row);
 
     const projectMeta = await prisma.project.findUnique({
       where: { id: pid },
@@ -238,6 +254,8 @@ export async function GET(
         githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
         githubAuthValidationError: row.githubAuthValidationError ?? null,
         githubCapabilityValidation: row.githubCapabilityValidation ?? null,
+        openaiPlannerApiKeyMasked: openAiTok.masked,
+        hasOpenaiPlannerApiKey: openAiTok.hasToken,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: curTok.masked,
         hasCursorToken: curTok.hasToken,
@@ -430,6 +448,19 @@ export async function PATCH(
             };
           })()
         : {}),
+      ...(body.openaiPlannerApiKey !== undefined
+        ? (() => {
+            const raw = body.openaiPlannerApiKey;
+            if (raw === null || raw === "") {
+              return { openaiPlannerApiKey: null, openaiPlannerApiKeyMasked: null };
+            }
+            const tok = String(raw).trim();
+            return {
+              openaiPlannerApiKey: tok,
+              openaiPlannerApiKeyMasked: maskOpenAiKeyForUi(tok),
+            };
+          })()
+        : {}),
     };
 
     const existing = await withExecutionSetupSchemaHealRetry(() =>
@@ -516,6 +547,8 @@ export async function PATCH(
       branchPrefix: null,
       githubAccessToken: null,
       githubAccessTokenMasked: null,
+      openaiPlannerApiKey: null,
+      openaiPlannerApiKeyMasked: null,
       githubAuthConnectionOk: null,
       githubAuthValidatedAt: null,
       githubAuthValidationError: null,
@@ -619,6 +652,7 @@ export async function PATCH(
 
     const ghTokPatch = clientGithubTokenMeta(row);
     const curTokPatch = clientCursorTokenMeta(row);
+    const openAiTokPatch = clientOpenAiPlannerKeyMeta(row);
 
     let peerCredentialHintsPatch: {
       githubAccessTokenMasked: string | null;
@@ -666,6 +700,8 @@ export async function PATCH(
         githubAuthValidatedAt: row.githubAuthValidatedAt ? row.githubAuthValidatedAt.toISOString() : null,
         githubAuthValidationError: row.githubAuthValidationError ?? null,
         githubCapabilityValidation: row.githubCapabilityValidation ?? null,
+        openaiPlannerApiKeyMasked: openAiTokPatch.masked,
+        hasOpenaiPlannerApiKey: openAiTokPatch.hasToken,
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: curTokPatch.masked,
         hasCursorToken: curTokPatch.hasToken,

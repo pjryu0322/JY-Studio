@@ -27,7 +27,6 @@ import {
 } from "@/lib/prototype/prototypeRunApiClient";
 import { workUnitProgressFromRun } from "@/lib/prototype/prototypePlannerService";
 import type { PrototypeRun, PrototypeRunStatusReason, PrototypeWorkUnit, PrototypeWorkUnitStatus } from "@/lib/prototype/prototypeRunTypes";
-import { prototypeRunStatusLabelKo } from "@/lib/prototype/prototypeRunUiHelpers";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 import { PrototypeTemplateMockPreview } from "@/components/preview/PrototypeTemplateMockPreview";
 
@@ -98,25 +97,27 @@ type EnvStatus = Readonly<{
   message: string | null;
 }>;
 
+function githubPagesSettingsUrlFromSuggestedPreview(suggested: string | null | undefined): string | null {
+  const s = String(suggested ?? "").trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    const host = u.hostname.toLowerCase();
+    const m = /^([^.]+)\.github\.io$/i.exec(host);
+    if (!m) return null;
+    const owner = m[1];
+    const pathSeg = u.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean)[0];
+    if (!pathSeg) return `https://github.com/${owner}/${owner}/settings/pages`;
+    return `https://github.com/${owner}/${pathSeg}/settings/pages`;
+  } catch {
+    return null;
+  }
+}
+
 function isLikelyPreviewUrl(url: string): boolean {
   const u = url.trim();
   if (!u) return false;
   return /^https?:\/\//i.test(u);
-}
-
-function statusLabel(s: PrototypeGenerationLocalRecord["runStatus"], hasUrl: boolean): string {
-  if (hasUrl) return "완료";
-  switch (s) {
-    case "awaiting_preview":
-    case "prompt_ready":
-      return "프롬프트 대기 · URL 미연결";
-    case "preview_ready":
-      return "완료";
-    case "failed":
-      return "실패";
-    default:
-      return "요청 대기";
-  }
 }
 
 export function PrototypePreviewPanel({
@@ -444,11 +445,6 @@ export function PrototypePreviewPanel({
     [automationAvailable, canRequestGeneration.designOk, canRequestGeneration.envOk],
   );
 
-  const pipelineStatusText = useMemo(() => {
-    if (latestRun) return prototypeRunStatusLabelKo(latestRun.status);
-    return statusLabel(record.runStatus, Boolean(previewUrl));
-  }, [latestRun, record.runStatus, previewUrl]);
-
   const awaitingExecutionConfirm = useMemo(() => {
     const r = latestRun;
     if (!r) return false;
@@ -459,43 +455,6 @@ export function PrototypePreviewPanel({
       r.workUnitsExecutionConfirmed !== true
     );
   }, [latestRun]);
-
-  const plannerSummary = useMemo(() => {
-    const wu = latestRun?.workUnits ?? [];
-    const prog = latestRun ? workUnitProgressFromRun(latestRun) : null;
-    if (!latestRun) return { line1: pipelineStatusText, line2: "" };
-    if (latestRun.status === "PLANNER_ANALYZING") return { line1: "AI 기획자 작업분해 중", line2: "" };
-    if (latestRun.status === "WORK_UNITS_READY" && wu.length && awaitingExecutionConfirm) {
-      return { line1: `WorkUnit ${wu.length}개 미리보기`, line2: "실행을 확정하면 Cursor가 시작됩니다." };
-    }
-    if (latestRun.status === "WORK_UNITS_READY" && wu.length && !latestRun.cursorRunId) {
-      return { line1: `WorkUnit ${wu.length}개 생성 완료`, line2: "" };
-    }
-    if (latestRun.status === "CANCEL_REQUESTED") return { line1: "중단 요청됨", line2: "" };
-    if (latestRun.status === "CANCELLED") {
-      const merged = latestRun.workUnits.filter((u) => u.status === "MERGED").length;
-      const nextWu = latestRun.workUnits.find((u) => u.status !== "MERGED" && u.status !== "FAILED");
-      const t = latestRun.cancelRequestedAt ?? latestRun.updatedAt;
-      return {
-        line1: "이전 실행이 중단되었습니다. 이어 진행하거나 처음부터 다시 생성할 수 있습니다.",
-        line2: `중단 시각: ${t} · 완료 WorkUnit: ${merged}개 · 다음 실행 예정: ${nextWu ? `[${nextWu.order}] ${nextWu.title}` : "없음"}`,
-      };
-    }
-    if (latestRun.status === "DEPLOY_FAILED") {
-      return { line1: "배포 실패", line2: latestRun.deployFailureDetail ?? "" };
-    }
-    if (prog && prog.total > 0) {
-      if (prog.allMerged && latestRun.status === "PREVIEW_READY") {
-        return { line1: "전체 WorkUnit 완료", line2: `(${prog.total} / ${prog.total} 완료)` };
-      }
-      if (prog.allMerged) {
-        return { line1: "전체 WorkUnit 머지 완료", line2: `(${prog.total} / ${prog.total} 완료)` };
-      }
-      return { line1: "WorkUnit 자동화 진행중", line2: `(${prog.current} / ${prog.total})` };
-    }
-    if (wu.length) return { line1: "AI 기획자 분석 완료", line2: `WorkUnit ${wu.length}개` };
-    return { line1: pipelineStatusText, line2: "" };
-  }, [latestRun, pipelineStatusText, awaitingExecutionConfirm]);
 
   const isRunningState = useMemo(() => {
     const s = latestRun?.status;
@@ -592,14 +551,6 @@ export function PrototypePreviewPanel({
     return rows;
   }, [latestRun]);
 
-  const progressSummaryLine = useMemo(() => {
-    if (!latestRun?.id) {
-      if (!canRequestGeneration.designOk) return "실행 없음 · 설계 보완 필요";
-      return "자동화 대기 · 자동 생성 시작 가능";
-    }
-    return `${plannerSummary.line1}${plannerSummary.line2 ? ` ${plannerSummary.line2}` : ""}`;
-  }, [latestRun, canRequestGeneration.designOk, plannerSummary.line1, plannerSummary.line2]);
-
   return (
     <div style={{ position: "relative" }}>
       {toast ? (
@@ -690,23 +641,8 @@ export function PrototypePreviewPanel({
                   템플릿 보기
                 </button>
               </div>
-              <div style={{ height: 6 }} />
 
-              <div
-                style={{
-                  marginTop: 12,
-                  paddingTop: 12,
-                  borderTop: "1px solid #e2e8f0",
-                  fontSize: 13,
-                  color: "#0f172a",
-                  lineHeight: 1.55,
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 950, color: "#64748b", marginBottom: 6 }}>진행 요약</div>
-                <div style={{ fontWeight: 850, color: "#0f172a" }}>{progressSummaryLine}</div>
-              </div>
-
-              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
                 {!latestRun?.id ? (
                   <>
                     <button
@@ -988,7 +924,43 @@ export function PrototypePreviewPanel({
           <div style={card}>
             <div style={cardTitle}>AI 작업 계획 · 자동화 파이프라인 상태</div>
 
-            <div style={{ fontSize: 12, fontWeight: 950, color: "#64748b", marginTop: 10, marginBottom: 6 }}>AI 작업 계획</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 950, color: "#64748b" }}>AI 작업 계획</span>
+              {latestRun?.plannerSource === "llm" ? (
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 900,
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    border: "1px solid #99f6e4",
+                    background: "#ecfdf5",
+                    color: "#0f766e",
+                  }}
+                >
+                  AI 기획자
+                </span>
+              ) : latestRun?.plannerSource === "fallback" ? (
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 900,
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    border: "1px solid #fcd34d",
+                    background: "#fffbeb",
+                    color: "#b45309",
+                  }}
+                >
+                  보조모드
+                </span>
+              ) : null}
+            </div>
+            {latestRun?.plannerSource === "fallback" && (latestRun.workUnits?.length ?? 0) > 0 ? (
+              <div style={{ fontSize: 12.5, color: "#92400e", lineHeight: 1.65, marginBottom: 10, fontWeight: 700 }}>
+                AI Planner를 사용할 수 없어 규칙 기반 보조 계획으로 생성되었습니다. OpenAI API 설정(실행 설정의 프로젝트 키 또는 계정 기본 키)을 확인하세요.
+              </div>
+            ) : null}
             {(latestRun?.workUnits?.length ?? 0) === 0 ? (
               <div style={{ fontSize: 12.5, color: "#475569", lineHeight: 1.65 }}>
                 <p style={{ margin: "0 0 10px" }}>
@@ -1006,8 +978,15 @@ export function PrototypePreviewPanel({
             ) : awaitingExecutionConfirm ? (
               <div style={{ display: "grid", gap: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-                  AI 기획자가 {latestRun!.workUnits.length}개의 Cursor 작업단위를 생성했습니다.
+                  {latestRun?.plannerSource === "llm" ? "AI 기획자가 " : "보조모드로 "}
+                  {latestRun!.workUnits.length}개의 Cursor 작업단위를 생성했습니다.
                 </div>
+                {latestRun?.plannerError ? (
+                  <details style={{ fontSize: 12.5, color: "#64748b" }}>
+                    <summary style={{ cursor: "pointer", fontWeight: 800 }}>상세 사유</summary>
+                    <div style={{ marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{latestRun.plannerError}</div>
+                  </details>
+                ) : null}
                 <div style={{ display: "grid", gap: 10 }}>
                   {[...latestRun!.workUnits]
                     .sort((a, b) => a.order - b.order)
@@ -1094,6 +1073,36 @@ export function PrototypePreviewPanel({
                 예상 URL:{" "}
                 <span style={{ fontWeight: 900, color: "#0f172a" }}>{latestRun.suggestedPreviewUrl}</span>
                 <span style={{ marginLeft: 8 }}>GitHub Pages 배포 대기중</span>
+              </div>
+            ) : null}
+            {isDeployFailed && latestRun?.deployFailureDetail ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid #fecaca",
+                  background: "#fef2f2",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 950, color: "#b91c1c" }}>배포 설정 실패</div>
+                <div style={{ marginTop: 8, fontSize: 12.5, color: "#7f1d1d", lineHeight: 1.55 }}>{latestRun.deployFailureDetail}</div>
+                {githubPagesSettingsUrlFromSuggestedPreview(latestRun.suggestedPreviewUrl) ? (
+                  <div style={{ marginTop: 10 }}>
+                    <a
+                      href={githubPagesSettingsUrlFromSuggestedPreview(latestRun.suggestedPreviewUrl) ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        ...btnMuted,
+                        textDecoration: "none",
+                        display: "inline-block",
+                      }}
+                    >
+                      GitHub Pages 설정 열기
+                    </a>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

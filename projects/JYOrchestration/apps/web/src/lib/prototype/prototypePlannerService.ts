@@ -5,9 +5,16 @@ import {
   type PrototypePlannerLlmDraftUnit,
   type PrototypePlannerLlmInput,
 } from "@/lib/prototype/prototypePlannerLlm";
+import {
+  resolvePrototypePlannerOpenAiCredential,
+  type PrototypePlannerCredentialSource,
+} from "@/lib/prototype/prototypePlannerCredentialService";
 import type { PrototypeRun, PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
 
 export type PlanPrototypeWorkUnitsInput = Readonly<{
+  projectId: string;
+  /** 재생성 등 세션 사용자 키 우선 시 사용 */
+  plannerActorUserId?: string | null;
   projectName: string;
   projectDescription: string;
   ideationSummary: string;
@@ -138,15 +145,45 @@ function toLlmInput(input: PlanPrototypeWorkUnitsInput): PrototypePlannerLlmInpu
   };
 }
 
+export type PlanPrototypeWorkUnitsResolved = Readonly<{
+  workUnits: PrototypeWorkUnit[];
+  plannerSource: "llm" | "fallback";
+  plannerError: string | null;
+  plannerCredentialSource: PrototypePlannerCredentialSource;
+}>;
+
+function sanitizePlannerErrorForStorage(raw: string | null): string | null {
+  if (!raw) return null;
+  const t = raw.replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  return t.length > 400 ? `${t.slice(0, 400)}…` : t;
+}
+
 /**
- * LLM 우선, 실패 시 결정적 fallback. plannerSource는 호출부에서 기록.
+ * LLM 우선, 실패 시 결정적 fallback. plannerSource·plannerError는 호출부에서 기록.
  */
 export async function planPrototypeWorkUnitsResolved(
   input: PlanPrototypeWorkUnitsInput,
   runId: string,
-): Promise<{ workUnits: PrototypeWorkUnit[]; plannerSource: "llm" | "fallback"; plannerError: string | null }> {
+): Promise<PlanPrototypeWorkUnitsResolved> {
   const branchBase = input.projectName.trim() || "project";
-  const llm = await generatePrototypeWorkUnitsWithOpenAI(toLlmInput(input));
+  const cred = await resolvePrototypePlannerOpenAiCredential(input.projectId, {
+    actorUserId: input.plannerActorUserId ?? null,
+  });
+
+  if (!cred.apiKey) {
+    return {
+      workUnits: planPrototypeWorkUnitsFallback(input, runId),
+      plannerSource: "fallback",
+      plannerError: null,
+      plannerCredentialSource: "missing",
+    };
+  }
+
+  const llm = await generatePrototypeWorkUnitsWithOpenAI(toLlmInput(input), {
+    apiKey: cred.apiKey,
+    model: cred.model,
+  });
   if (llm.ok) {
     const sorted = [...llm.units].sort((a, b) => a.order - b.order);
     const normalized = sorted.map((u, idx) => ({ ...u, order: idx + 1 }));
@@ -154,12 +191,14 @@ export async function planPrototypeWorkUnitsResolved(
       workUnits: normalized.map((u) => workUnitFromDraft(u, runId, branchBase)),
       plannerSource: "llm",
       plannerError: null,
+      plannerCredentialSource: cred.source,
     };
   }
   return {
     workUnits: planPrototypeWorkUnitsFallback(input, runId),
     plannerSource: "fallback",
-    plannerError: llm.error,
+    plannerError: sanitizePlannerErrorForStorage(llm.error),
+    plannerCredentialSource: cred.source,
   };
 }
 

@@ -10,8 +10,10 @@ import { reviewPrototypeWorkUnit } from "@/lib/prototype/prototypeAiReview";
 import { openPrototypePr, mergePrototypePr } from "@/lib/prototype/prototypePrPipeline";
 import { composeGithubPagesPreviewUrlFromRepoUrl } from "@/lib/prototype/githubPagesPreviewUrl";
 import {
-  ensureGithubPagesDeploySetupOnMain,
+  ensureGithubPagesDeploySetupOnDeployBranch,
+  ensureGithubPagesWorkflowBuildEnabled,
   findWorkflowRunForHeadSha,
+  getRepoDefaultBranch,
   verifyGithubPagesUrlReachable,
 } from "@/lib/prototype/prototypeGithubPagesDeployService";
 import {
@@ -19,6 +21,7 @@ import {
   summarizeWorkUnitsForPlanner,
   workUnitProgressFromRun,
   type PlanPrototypeWorkUnitsInput,
+  type PlanPrototypeWorkUnitsResolved,
 } from "@/lib/prototype/prototypePlannerService";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import {
@@ -131,9 +134,30 @@ function allWorkUnitsMerged(run: PrototypeRun): boolean {
   return run.workUnits.every((u) => u.status === "MERGED");
 }
 
+const PLANNER_SUMMARY_FALLBACK_NO_KEY = "OpenAI API 키가 없어 보조모드로 작업계획을 생성했습니다.";
+const PLANNER_SUMMARY_FALLBACK_LLM = "AI Planner를 사용할 수 없어 규칙 기반 보조 계획으로 생성되었습니다. OpenAI API 설정을 확인하세요.";
+
+function formatPlannerRunSummary(plan: PlanPrototypeWorkUnitsResolved, verb: "생성" | "재생성"): { plannerSummary: string; plannerError: string | null } {
+  const n = plan.workUnits.length;
+  if (plan.plannerSource === "llm") {
+    return { plannerSummary: `[AI 기획자] WorkUnit ${n}개 ${verb}`, plannerError: null };
+  }
+  if (plan.plannerCredentialSource === "missing") {
+    return {
+      plannerSummary: `[보조모드] WorkUnit ${n}개 ${verb} — ${PLANNER_SUMMARY_FALLBACK_NO_KEY}`,
+      plannerError: null,
+    };
+  }
+  return {
+    plannerSummary: `[보조모드] WorkUnit ${n}개 ${verb} — ${PLANNER_SUMMARY_FALLBACK_LLM}`,
+    plannerError: plan.plannerError,
+  };
+}
+
 function inferPlannerInputFromRun(run: PrototypeRun, projectName: string): PlanPrototypeWorkUnitsInput {
   const snap = run.promptSnapshot;
   return {
+    projectId: run.projectId,
     projectName: projectName.trim() || "프로젝트",
     projectDescription: snap.slice(0, 4000),
     ideationSummary: "",
@@ -178,6 +202,8 @@ export async function orchestrateNewPrototypeRun(input: {
   readonly promptSnapshot: string;
   readonly startCursorAgent: boolean;
   readonly plannerContext?: OrchestratePlannerContext;
+  /** 세션 사용자 — 사용자 기본 OpenAI 키 조회 시 사용 */
+  readonly plannerActorUserId?: string | null;
 }): Promise<{
   readonly run: PrototypeRun;
   readonly automationAvailable: boolean;
@@ -209,6 +235,7 @@ export async function orchestrateNewPrototypeRun(input: {
         workUnitsExecutionConfirmed: false,
         plannerSource: null,
         plannerSummary: null,
+        plannerError: null,
         workUnits: [],
         totalWorkUnits: 0,
         currentWorkUnitOrder: null,
@@ -273,6 +300,8 @@ export async function orchestrateNewPrototypeRun(input: {
   const ctx = input.plannerContext;
   const inferred = inferPlannerInputFromRun(run, input.projectName);
   const planIn: PlanPrototypeWorkUnitsInput = {
+    projectId: input.projectId,
+    plannerActorUserId: input.plannerActorUserId ?? null,
     projectName: input.projectName,
     projectDescription: ctx?.projectDescription ?? inferred.projectDescription,
     ideationSummary: ctx?.ideationSummary ?? inferred.ideationSummary,
@@ -286,10 +315,7 @@ export async function orchestrateNewPrototypeRun(input: {
   };
 
   const plan = await planPrototypeWorkUnitsResolved(planIn, run.id);
-  const plannerSummary =
-    plan.plannerSource === "fallback"
-      ? `WorkUnit ${plan.workUnits.length}개 생성 (AI 보조 모드)`
-      : `WorkUnit ${plan.workUnits.length}개 생성`;
+  const { plannerSummary, plannerError } = formatPlannerRunSummary(plan, "생성");
 
   run =
     updateRun(input.projectId, run.id, {
@@ -300,6 +326,7 @@ export async function orchestrateNewPrototypeRun(input: {
       totalWorkUnits: plan.workUnits.length,
       currentWorkUnitOrder: plan.workUnits.length ? 1 : null,
       plannerSummary,
+      plannerError,
       workUnitsExecutionConfirmed: false,
     }) ?? run;
 
@@ -328,10 +355,7 @@ async function maybeRunPlanner(projectId: string, runId: string, projectName: st
 
   const inferred = inferPlannerInputFromRun(run, projectName);
   const plan = await planPrototypeWorkUnitsResolved(inferred, run.id);
-  const plannerSummary =
-    plan.plannerSource === "fallback"
-      ? `WorkUnit ${plan.workUnits.length}개 생성 (AI 보조 모드)`
-      : `WorkUnit ${plan.workUnits.length}개 생성`;
+  const { plannerSummary, plannerError } = formatPlannerRunSummary(plan, "생성");
 
   return (
     updateRun(projectId, runId, {
@@ -342,6 +366,7 @@ async function maybeRunPlanner(projectId: string, runId: string, projectName: st
       totalWorkUnits: plan.workUnits.length,
       currentWorkUnitOrder: plan.workUnits.length ? 1 : null,
       plannerSummary,
+      plannerError,
       workUnitsExecutionConfirmed: run.runSchemaVersion >= 2 ? false : true,
     }) ?? run
   );
@@ -410,11 +435,41 @@ async function advancePrototypePagesDeployPhase(
   }
 
   if (r.status === "DEPLOY_CONFIGURING") {
-    const setupOk = await ensureGithubPagesDeploySetupOnMain({
+    const configuredBase = String(setup?.baseBranch ?? "").trim();
+    const deployBranch =
+      configuredBase || (await getRepoDefaultBranch(token, parsed.owner, parsed.repo)) || "";
+    if (!deployBranch) {
+      return (
+        updateRun(projectId, runId, {
+          status: "DEPLOY_FAILED",
+          statusReason: "DEPLOY_FAILED",
+          deployFailureDetail:
+            "베이스 브랜치가 비어 있고 GitHub 저장소의 기본 브랜치를 가져올 수 없습니다. 실행 설정의 베이스 브랜치를 지정하세요.",
+        }) ?? r
+      );
+    }
+
+    const pagesCfg = await ensureGithubPagesWorkflowBuildEnabled({
+      token,
+      owner: parsed.owner,
+      repo: parsed.repo,
+    });
+    if (!pagesCfg.ok) {
+      return (
+        updateRun(projectId, runId, {
+          status: "DEPLOY_FAILED",
+          statusReason: "DEPLOY_FAILED",
+          deployFailureDetail: pagesCfg.error,
+        }) ?? r
+      );
+    }
+
+    const setupOk = await ensureGithubPagesDeploySetupOnDeployBranch({
       token,
       owner: parsed.owner,
       repo: parsed.repo,
       basePath,
+      deployBranch,
     });
     if (!setupOk.ok) {
       return (
@@ -894,6 +949,7 @@ export async function regeneratePrototypeWorkPlan(input: {
   readonly projectName: string;
   readonly userFeedback?: string;
   readonly plannerContext?: OrchestratePlannerContext;
+  readonly plannerActorUserId?: string | null;
 }): Promise<PrototypeRun | null> {
   const cur = getRun(input.projectId, input.runId);
   if (!cur) return null;
@@ -901,6 +957,8 @@ export async function regeneratePrototypeWorkPlan(input: {
   const inferred = inferPlannerInputFromRun(cur, input.projectName);
   const ctx = input.plannerContext;
   const planIn: PlanPrototypeWorkUnitsInput = {
+    projectId: input.projectId,
+    plannerActorUserId: input.plannerActorUserId ?? null,
     projectName: input.projectName,
     projectDescription: ctx?.projectDescription ?? inferred.projectDescription,
     ideationSummary: ctx?.ideationSummary ?? inferred.ideationSummary,
@@ -920,14 +978,12 @@ export async function regeneratePrototypeWorkPlan(input: {
     totalWorkUnits: 0,
     currentWorkUnitOrder: null,
     cursorRunId: null,
+    plannerError: null,
     workUnitsExecutionConfirmed: false,
   });
 
   const plan = await planPrototypeWorkUnitsResolved(planIn, input.runId);
-  const plannerSummary =
-    plan.plannerSource === "fallback"
-      ? `WorkUnit ${plan.workUnits.length}개 재생성 (AI 보조 모드)`
-      : `WorkUnit ${plan.workUnits.length}개 재생성`;
+  const { plannerSummary, plannerError } = formatPlannerRunSummary(plan, "재생성");
 
   return (
     updateRun(input.projectId, input.runId, {
@@ -938,6 +994,7 @@ export async function regeneratePrototypeWorkPlan(input: {
       totalWorkUnits: plan.workUnits.length,
       currentWorkUnitOrder: plan.workUnits.length ? 1 : null,
       plannerSummary,
+      plannerError,
       workUnitsExecutionConfirmed: false,
     }) ?? cur
   );

@@ -63,6 +63,7 @@ export async function POST(request: NextRequest, segmentData: { params: Promise<
     projectName: project.name,
     userFeedback: body.userFeedback,
     plannerContext,
+    plannerActorUserId: userId,
   });
 
   return NextResponse.json({

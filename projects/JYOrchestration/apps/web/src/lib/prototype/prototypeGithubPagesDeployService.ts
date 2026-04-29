@@ -98,13 +98,15 @@ function patchViteBase(content: string, basePath: string): string {
   return content;
 }
 
-function deployWorkflowYaml(): string {
+/** GitHub Actions `on.push.branches` 에 사용할 브랜치명으로 워크플로 YAML 생성. */
+export function buildDeployPagesWorkflowYaml(deployBranch: string): string {
+  const branchLit = JSON.stringify(String(deployBranch ?? "").trim());
   return `name: Deploy GitHub Pages
 
 on:
   push:
     branches:
-      - "main"
+      - ${branchLit}
 
 permissions:
   contents: read
@@ -151,6 +153,57 @@ jobs:
 `;
 }
 
+function summarizePagesApiFailure(status: number, text: string): string {
+  if (status === 401 || status === 403) {
+    return "GitHub Pages 활성화 권한이 없습니다.";
+  }
+  const compact = text.replace(/\s+/g, " ").trim().slice(0, 240);
+  return compact ? `GitHub Pages API 오류 (${status}): ${compact}` : `GitHub Pages API 오류 (${status})`;
+}
+
+type GithubPagesSiteResponse = { build_type?: string | null };
+
+/**
+ * 저장소 GitHub Pages 출처를 GitHub Actions(workflow)로 설정합니다.
+ * 토큰에 admin:org 또는 repo 설정 권한이 없으면 실패할 수 있습니다.
+ */
+export async function ensureGithubPagesWorkflowBuildEnabled(input: {
+  token: string;
+  owner: string;
+  repo: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const base = githubRestApiBase();
+  const url = `${base}/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.repo)}/pages`;
+  const get = await githubJson<GithubPagesSiteResponse>(input.token, url);
+  if (get.status === 404) {
+    const post = await githubJson<unknown>(input.token, url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ build_type: "workflow" }),
+    });
+    if (!post.ok) {
+      return { ok: false, error: summarizePagesApiFailure(post.status, post.text) };
+    }
+    return { ok: true };
+  }
+  if (!get.ok) {
+    return { ok: false, error: summarizePagesApiFailure(get.status, get.text) };
+  }
+  const bt = String(get.json?.build_type ?? "").toLowerCase();
+  if (bt === "workflow") {
+    return { ok: true };
+  }
+  const put = await githubJson<unknown>(input.token, url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ build_type: "workflow" }),
+  });
+  if (!put.ok) {
+    return { ok: false, error: summarizePagesApiFailure(put.status, put.text) };
+  }
+  return { ok: true };
+}
+
 async function putUtf8File(
   token: string,
   owner: string,
@@ -183,40 +236,47 @@ async function putUtf8File(
 }
 
 export type PagesDeploySetupResult =
-  | { ok: true; commitSha: string; layout: ViteWebLayoutDetection }
-  | { ok: false; error: string; layout: ViteWebLayoutDetection };
+  | { ok: true; commitSha: string; layout: ViteWebLayoutDetection; deployBranch: string }
+  | { ok: false; error: string; layout: ViteWebLayoutDetection; deployBranch: string };
 
 /**
- * 플랫폼 소유: main에 Pages 워크플로 및 Vite base를 주입(필요 시)합니다.
+ * 지정 브랜치에 Pages 워크플로·Vite base를 주입(필요 시)합니다.
+ * `deployBranch`는 호출부에서 executionSetup.baseBranch 또는 저장소 기본 브랜치로 결정합니다.
  */
-export async function ensureGithubPagesDeploySetupOnMain(input: {
+export async function ensureGithubPagesDeploySetupOnDeployBranch(input: {
   token: string;
   owner: string;
   repo: string;
   /** GitHub Pages base path, e.g. "/myrepo/" */
   basePath: string;
+  /** 워크플로 `on.push.branches` 및 커밋 대상 브랜치 */
+  deployBranch: string;
 }): Promise<PagesDeploySetupResult> {
-  const branch = (await getRepoDefaultBranch(input.token, input.owner, input.repo)) ?? "main";
-  const layout = await detectPrototypeStaticLayout(input.token, input.owner, input.repo, branch);
-  if (layout !== "vite_web") {
-    return { ok: false, error: "VITE_WEB_LAYOUT_NOT_DETECTED", layout };
+  const deployBranch = String(input.deployBranch ?? "").trim();
+  if (!deployBranch) {
+    return { ok: false, error: "DEPLOY_BRANCH_EMPTY", layout: "unknown", deployBranch: "" };
   }
 
-  const wfExisting = await getFileBlobIfExists(input.token, input.owner, input.repo, WORKFLOW_PATH, branch);
-  const wfBody = deployWorkflowYaml();
+  const layout = await detectPrototypeStaticLayout(input.token, input.owner, input.repo, deployBranch);
+  if (layout !== "vite_web") {
+    return { ok: false, error: "VITE_WEB_LAYOUT_NOT_DETECTED", layout, deployBranch };
+  }
+
+  const wfExisting = await getFileBlobIfExists(input.token, input.owner, input.repo, WORKFLOW_PATH, deployBranch);
+  const wfBody = buildDeployPagesWorkflowYaml(deployBranch);
   const wfPut = await putUtf8File(
     input.token,
     input.owner,
     input.repo,
     WORKFLOW_PATH,
-    branch,
+    deployBranch,
     "chore(pages): add GitHub Pages deploy workflow",
     wfBody,
     wfExisting?.sha ?? null,
   );
-  if (!wfPut.ok) return { ok: false, error: wfPut.error, layout };
+  if (!wfPut.ok) return { ok: false, error: wfPut.error, layout, deployBranch };
 
-  const vite = await getFileBlobIfExists(input.token, input.owner, input.repo, VITE_REL, branch);
+  const vite = await getFileBlobIfExists(input.token, input.owner, input.repo, VITE_REL, deployBranch);
   if (vite) {
     const next = patchViteBase(vite.contentUtf8, input.basePath);
     if (next !== vite.contentUtf8) {
@@ -225,17 +285,17 @@ export async function ensureGithubPagesDeploySetupOnMain(input: {
         input.owner,
         input.repo,
         VITE_REL,
-        branch,
+        deployBranch,
         "chore(pages): set Vite base for GitHub Pages",
         next,
         vite.sha,
       );
-      if (!vPut.ok) return { ok: false, error: vPut.error, layout };
-      return { ok: true, commitSha: vPut.commitSha, layout };
+      if (!vPut.ok) return { ok: false, error: vPut.error, layout, deployBranch };
+      return { ok: true, commitSha: vPut.commitSha, layout, deployBranch };
     }
   }
 
-  return { ok: true, commitSha: wfPut.commitSha, layout };
+  return { ok: true, commitSha: wfPut.commitSha, layout, deployBranch };
 }
 
 type WorkflowRun = {
