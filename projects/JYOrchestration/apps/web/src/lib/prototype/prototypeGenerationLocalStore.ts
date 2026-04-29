@@ -27,6 +27,10 @@ const defaultRecord: PrototypeGenerationLocalRecord = {
   lastPromptSnapshot: null,
 };
 
+export function defaultPrototypeGenerationRecord(): PrototypeGenerationLocalRecord {
+  return defaultRecord;
+}
+
 function storageKey(projectId: string): string {
   return `jy_orchestration_prototype_workspace:${projectId.trim()}`;
 }

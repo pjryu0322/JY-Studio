@@ -11,7 +11,8 @@ export type RequestCursorPrototypeInput = Readonly<{
   branchName: string;
   promptSnapshot: string;
   selectedTemplate: string;
-  plannerTasks?: ReadonlyArray<{ order: number; title: string }>;
+  /** 이번 Cursor 실행에서 완료해야 할 단일 WorkUnit(다른 유닛은 요청하지 않음). */
+  workUnit: Readonly<{ order: number; title: string }>;
 }>;
 
 export type RequestCursorPrototypeResult =
@@ -27,21 +28,17 @@ export async function requestCursorPrototypeRun(input: RequestCursorPrototypeInp
     return { supported: false, reason: "CURSOR_NOT_CONNECTED", message: "Cursor API 키가 없습니다." };
   }
 
-  const plannerBlock =
-    input.plannerTasks && input.plannerTasks.length
-      ? `\n\nAI Planner task packages (execute in order, report progress in summary):\n${input.plannerTasks
-          .map((t) => `- Task ${t.order}. ${t.title}`)
-          .join("\n")}\n`
-      : "";
-  const prompt = `${input.promptSnapshot}${plannerBlock}`.trim();
+  const unitBlock = `\n\n=== WorkUnit ${input.workUnit.order} (이번 실행에서 반드시 완료) ===\n${input.workUnit.title}\n\n다른 WorkUnit은 이번 세션에서 다루지 마세요. 이 WorkUnit만 구현하고 커밋/푸시까지 마무리하세요.\n`;
+
+  const prompt = `${input.promptSnapshot}${unitBlock}`.trim();
 
   const launch = await launchCursorAgent({
     projectId: input.projectId,
     workflowId: null,
     executionSetup: input.executionSetup,
     task: {
-      id: `prototype:${input.runId}`,
-      title: "Prototype generation (workspace)",
+      id: `prototype:${input.runId}:wu:${input.workUnit.order}`,
+      title: `Prototype WU${input.workUnit.order}: ${input.workUnit.title}`,
       description: `Template: ${input.selectedTemplate}`,
       acceptanceCriteria: [],
     },

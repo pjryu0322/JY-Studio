@@ -20,6 +20,7 @@ export function PrototypePreviewDraggableShell({
   title,
   children,
   modalWidth = "min(960px, calc(100vw - 32px))",
+  tone = "default",
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
@@ -27,6 +28,8 @@ export function PrototypePreviewDraggableShell({
   readonly children: ReactNode;
   /** CSS width for the dialog panel (e.g. min(1180px, calc(100vw - 20px))) */
   readonly modalWidth?: string;
+  /** showcase: 템플릿 미리보기 등 플랫폼 본 UI와 톤 분리 */
+  readonly tone?: "default" | "showcase";
 }) {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -106,6 +109,8 @@ export function PrototypePreviewDraggableShell({
 
   if (!open) return null;
 
+  const isShowcase = tone === "showcase";
+
   return (
     <div
       role="presentation"
@@ -113,7 +118,9 @@ export function PrototypePreviewDraggableShell({
         position: "fixed",
         inset: 0,
         zIndex: 48,
-        background: "rgba(15,23,42,0.45)",
+        background: isShowcase
+          ? "radial-gradient(ellipse 120% 80% at 50% -20%, rgba(192, 38, 211, 0.35) 0%, rgba(15, 23, 42, 0.82) 55%, rgba(15, 23, 42, 0.92) 100%)"
+          : "rgba(15,23,42,0.45)",
       }}
       onClick={onClose}
     >
@@ -131,10 +138,12 @@ export function PrototypePreviewDraggableShell({
           maxHeight: "min(106vh, 1035px)",
           display: "flex",
           flexDirection: "column",
-          borderRadius: 16,
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
+          borderRadius: isShowcase ? 20 : 16,
+          background: isShowcase ? "linear-gradient(180deg, #fffefb 0%, #ffffff 28%, #faf5ff 100%)" : "#fff",
+          border: isShowcase ? "2px solid rgba(167, 139, 250, 0.65)" : "1px solid #e2e8f0",
+          boxShadow: isShowcase
+            ? "0 0 0 1px rgba(251, 191, 36, 0.35), 0 8px 32px rgba(124, 58, 237, 0.18), 0 28px 100px rgba(91, 33, 182, 0.35)"
+            : "0 24px 60px rgba(15, 23, 42, 0.2)",
           overflow: "hidden",
         }}
       >
@@ -148,32 +157,54 @@ export function PrototypePreviewDraggableShell({
             justifyContent: "space-between",
             gap: 12,
             padding: "12px 16px",
-            borderBottom: "1px solid #e2e8f0",
-            background: "#f8fafc",
+            borderBottom: isShowcase ? "1px solid rgba(255,255,255,0.12)" : "1px solid #e2e8f0",
+            background: isShowcase
+              ? "linear-gradient(105deg, #4c1d95 0%, #6d28d9 38%, #a21caf 72%, #db2777 100%)"
+              : "#f8fafc",
             cursor: "grab",
             userSelect: "none",
             touchAction: "none",
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>{title}</div>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 900,
+              color: isShowcase ? "#fefce8" : "#0f172a",
+              textShadow: isShowcase ? "0 1px 18px rgba(0,0,0,0.25)" : undefined,
+            }}
+          >
+            {title}
+          </div>
           <button
             type="button"
             onClick={onClose}
             style={{
               padding: "8px 12px",
               borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
-              color: "#0f172a",
+              border: isShowcase ? "1px solid rgba(255,255,255,0.35)" : "1px solid #cbd5e1",
+              background: isShowcase ? "rgba(255,255,255,0.12)" : "#fff",
+              color: isShowcase ? "#fff" : "#0f172a",
               fontSize: 12.5,
               fontWeight: 900,
               cursor: "pointer",
+              backdropFilter: isShowcase ? "blur(6px)" : undefined,
             }}
           >
             닫기
           </button>
         </div>
-        <div style={{ padding: 16, overflowY: "auto", flex: 1, minHeight: 0 }}>{children}</div>
+        <div
+          style={{
+            padding: 16,
+            overflowY: "auto",
+            flex: 1,
+            minHeight: 0,
+            background: isShowcase ? "linear-gradient(180deg, rgba(254,252,232,0.35) 0%, rgba(255,255,255,0.4) 45%, rgba(250,245,255,0.5) 100%)" : undefined,
+          }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

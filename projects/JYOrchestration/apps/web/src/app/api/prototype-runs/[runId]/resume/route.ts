@@ -9,8 +9,21 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 
 type Mode = "resume" | "restart";
 
-function isRecoverable(runStatus: string): boolean {
-  return runStatus === "CANCELLED" || runStatus === "CANCEL_REQUESTED" || runStatus === "FAILED" || runStatus === "BLOCKED";
+function isResumeAllowed(runStatus: string): boolean {
+  return (
+    runStatus === "CANCELLED" ||
+    runStatus === "FAILED" ||
+    runStatus === "WORK_UNITS_READY" ||
+    runStatus === "PROMPT_READY" ||
+    runStatus === "CURSOR_REQUESTED" ||
+    runStatus === "CURSOR_RUNNING" ||
+    runStatus === "COMMIT_DETECTED" ||
+    runStatus === "PUSH_CONFIRMED" ||
+    runStatus === "AI_REVIEWING" ||
+    runStatus === "REWORK_REQUIRED" ||
+    runStatus === "PR_OPENED" ||
+    runStatus === "MERGED"
+  );
 }
 
 export async function POST(request: NextRequest, segmentData: { params: Promise<{ runId: string }> }) {
@@ -60,40 +73,28 @@ export async function POST(request: NextRequest, segmentData: { params: Promise<
       startCursorAgent: true,
     });
     logPrototypePipelineEvent("prototype_restarted", { projectId, oldRunId: id, runId: out.run.id });
-    return NextResponse.json({ success: true, data: { run: out.run } });
+    return NextResponse.json({ success: true, data: { run: out.run }, message: "새 실행으로 다시 시작합니다." });
   }
 
   logPrototypePipelineEvent("prototype_resume_requested", { projectId, runId: id });
 
-  // Guard: do not resume rework-required via "resume"
-  if (run.status === "REWORK_REQUIRED") {
-    return NextResponse.json({ success: true, data: { run }, message: "보완이 필요합니다. 보완 후 다시 시도하세요." });
+  if (!isResumeAllowed(run.status)) {
+    return NextResponse.json({ success: false, message: "재개할 수 없는 상태입니다.", data: { run } }, { status: 409 });
   }
 
-  // If not recoverable, just refresh (idempotent)
-  if (!isRecoverable(run.status)) {
-    const refreshed = await refreshPrototypeRunState(projectId, id);
-    return NextResponse.json({ success: true, data: { run: refreshed ?? run } });
-  }
-
-  // Convert CANCEL_REQUESTED -> CANCELLED before resuming.
-  let patched = run;
-  if (patched.status === "CANCEL_REQUESTED") {
-    patched = updateRun(projectId, id, { status: "CANCELLED" }) ?? patched;
-  }
-
-  // Resume from safe checkpoint without creating duplicate cursor runs
-  if (patched.commitSha) {
-    patched = updateRun(projectId, id, { status: "COMMIT_DETECTED" }) ?? patched;
-  } else if (patched.cursorRunId) {
-    patched = updateRun(projectId, id, { status: "CURSOR_RUNNING" }) ?? patched;
-  } else {
-    patched = updateRun(projectId, id, { status: "TASK_PACKAGES_READY" }) ?? patched;
-  }
+  const hasWorkUnits = (run.workUnits?.length ?? 0) > 0;
+  const nextStatus = hasWorkUnits ? "WORK_UNITS_READY" : "PROMPT_READY";
+  let patched =
+    updateRun(projectId, id, {
+      status: nextStatus,
+      statusReason: null,
+      cancelRequestedAt: null,
+      cancelReason: null,
+    }) ?? run;
 
   patched = (await refreshPrototypeRunState(projectId, id)) ?? patched;
   logPrototypePipelineEvent("prototype_resumed", { projectId, runId: id });
 
-  return NextResponse.json({ success: true, data: { run: patched } });
+  return NextResponse.json({ success: true, data: { run: patched }, message: "이전 작업부터 다시 진행합니다." });
 }
 

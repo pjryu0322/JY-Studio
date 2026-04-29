@@ -21,7 +21,18 @@ function computeNextAction(run: PrototypeRun): { nextAction: NextAction; userMes
   switch (run.status) {
     case "PROMPT_READY":
     case "PLANNER_ANALYZING":
-    case "TASK_PACKAGES_READY":
+    case "WORK_UNITS_READY":
+      if (
+        run.runSchemaVersion >= 2 &&
+        run.workUnits.length > 0 &&
+        run.workUnitsExecutionConfirmed !== true
+      ) {
+        return {
+          nextAction: "WAIT_CURSOR",
+          userMessage: "WorkUnit 미리보기 단계입니다. 실행을 확정하면 Cursor가 시작됩니다.",
+        };
+      }
+      return { nextAction: "WAIT_CURSOR", userMessage: "Cursor 실행을 기다리는 중입니다." };
     case "CURSOR_REQUESTED":
     case "CURSOR_RUNNING":
       return { nextAction: "WAIT_CURSOR", userMessage: "Cursor 실행을 기다리는 중입니다." };
@@ -38,9 +49,13 @@ function computeNextAction(run: PrototypeRun): { nextAction: NextAction; userMes
         ? { nextAction: "CONNECT_PREVIEW_URL", userMessage: "결과 URL이 연결되어 있습니다." }
         : { nextAction: "CONNECT_PREVIEW_URL", userMessage: "소스 생성은 완료되었습니다. 결과 URL을 연결하세요." };
     case "MERGED":
-      return run.previewUrl
-        ? { nextAction: "CONNECT_PREVIEW_URL", userMessage: "결과 URL이 연결되어 있습니다." }
-        : { nextAction: "CONNECT_PREVIEW_URL", userMessage: "머지까지 완료되었습니다. 결과 URL을 연결하세요." };
+      return { nextAction: "MERGED", userMessage: "GitHub Pages 배포 설정을 시작합니다." };
+    case "DEPLOY_CONFIGURING":
+      return { nextAction: "MERGED", userMessage: "Pages 배포 워크플로를 저장소에 반영하는 중입니다." };
+    case "DEPLOYING":
+      return { nextAction: "MERGED", userMessage: "GitHub Actions Pages 배포를 기다리는 중입니다." };
+    case "DEPLOY_FAILED":
+      return { nextAction: "FAILED", userMessage: run.deployFailureDetail ?? "배포에 실패했습니다." };
     case "PREVIEW_READY":
       return { nextAction: "CONNECT_PREVIEW_URL", userMessage: "결과 URL이 연결되었습니다." };
     case "FAILED":

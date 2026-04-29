@@ -1,50 +1,182 @@
-import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
+import { randomUUID } from "node:crypto";
+import { buildWorkUnitBranchName } from "@/lib/prototype/prototypeBranchNames";
+import {
+  generatePrototypeWorkUnitsWithOpenAI,
+  type PrototypePlannerLlmDraftUnit,
+  type PrototypePlannerLlmInput,
+} from "@/lib/prototype/prototypePlannerLlm";
+import type { PrototypeRun, PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
 
-export type PrototypePlannerTask = Readonly<{ order: number; title: string }>;
-
-export function planPrototypeTasks(input: {
+export type PlanPrototypeWorkUnitsInput = Readonly<{
+  projectName: string;
+  projectDescription: string;
+  ideationSummary: string;
+  actorFlowSummary: string;
   selectedTemplate: string;
+  featureDraftTitles: readonly string[];
   promptSnapshot: string;
-}): { tasks: PrototypePlannerTask[] } {
-  const tpl = String(input.selectedTemplate ?? "").trim();
-  const snap = String(input.promptSnapshot ?? "");
-  const lower = `${tpl}\n${snap}`.toLowerCase();
+  repositoryStructureHint: string;
+  userFeedback: string;
+  previousWorkUnitsSummary: string;
+}>;
 
-  // MVP: deterministic task lists per template/keywords.
-  const meetingSignals = /meeting-workspace|회의록|녹취|음성파일|화자|화자분리|스크립트|stt|전사/.test(lower);
-  if (tpl === "meeting-workspace" || meetingSignals) {
-    return {
-      tasks: [
-        { order: 1, title: "기본 레이아웃(3컬럼 워크스페이스) 생성" },
-        { order: 2, title: "좌측 회의 파일 목록/참여자·화자/상태 패널" },
-        { order: 3, title: "중앙 업로드 카드 + 타임라인 + 메시지 입력" },
-        { order: 4, title: "우측 요약본 탭(핵심 안건/결정/할 일)" },
-        { order: 5, title: "우측 스크립트 탭(화자별 발언 목록) + 탭 전환" },
-        { order: 6, title: "반응형/레이아웃 정리 및 카드 UI polish" },
-        { order: 7, title: "정적 배포 가이드(예: GitHub Pages) + README" },
-      ],
-    };
-  }
+function clampInt(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, Math.floor(n)));
+}
 
-  // Generic fallback
+function countSignals(input: PlanPrototypeWorkUnitsInput): number {
+  let n = 3;
+  const desc = input.projectDescription.trim().length;
+  if (desc > 120) n += 1;
+  if (desc > 400) n += 1;
+  const flow = input.actorFlowSummary.trim().length;
+  if (flow > 80) n += 1;
+  if (flow > 240) n += 1;
+  if (input.featureDraftTitles.length >= 3) n += 1;
+  if (input.featureDraftTitles.length >= 6) n += 1;
+  const snap = input.promptSnapshot.trim().length;
+  if (snap > 2000) n += 1;
+  return n;
+}
+
+function workUnitFromDraft(
+  d: PrototypePlannerLlmDraftUnit,
+  runId: string,
+  branchBase: string,
+): PrototypeWorkUnit {
   return {
-    tasks: [
-      { order: 1, title: "기본 페이지/라우팅/레이아웃 생성" },
-      { order: 2, title: "핵심 화면 UI 구성(리스트/상세/폼)" },
-      { order: 3, title: "Mock 데이터 및 상호작용(필터/탭/모달 등)" },
-      { order: 4, title: "반응형/접근성/스타일 정리" },
-      { order: 5, title: "README 및 실행/배포 안내" },
-    ],
+    id: randomUUID(),
+    order: d.order,
+    title: d.title,
+    description: d.description,
+    targetArea: d.targetArea,
+    implementationScope: d.implementationScope,
+    dependencies: [...d.dependencies],
+    acceptanceCriteria: [...d.acceptanceCriteria],
+    riskLevel: d.riskLevel,
+    estimatedComplexity: d.estimatedComplexity,
+    status: "PENDING",
+    branchName: buildWorkUnitBranchName(branchBase, runId, d.order),
+    cursorRunId: null,
+    commitSha: null,
+    changedFiles: [],
+    prNumber: null,
+    prUrl: null,
+    mergeSha: null,
+    reviewSummary: null,
+    startedAt: null,
+    finishedAt: null,
   };
 }
 
-export function cursorTaskProgressFromRun(run: PrototypeRun): { current: number; total: number } | null {
-  const total = run.plannerTasks?.length ? run.plannerTasks.length : 0;
-  if (!total) return null;
-  const s = run.status;
-  if (s === "CURSOR_REQUESTED" || s === "CURSOR_RUNNING") return { current: 1, total };
-  if (s === "COMMIT_DETECTED" || s === "PUSH_CONFIRMED" || s === "AI_REVIEWING" || s === "PR_OPENED" || s === "MERGED" || s === "PREVIEW_READY")
-    return { current: total, total };
-  return { current: 0, total };
+/**
+ * 결정적 규칙 기반 WorkUnit (LLM 실패 시 내부적으로 fallback 전용).
+ */
+export function planPrototypeWorkUnitsFallback(input: PlanPrototypeWorkUnitsInput, runId: string): PrototypeWorkUnit[] {
+  const tpl = String(input.selectedTemplate ?? "").trim();
+  const lower = `${tpl}\n${input.projectDescription}\n${input.actorFlowSummary}\n${input.promptSnapshot}`.toLowerCase();
+  const meetingSignals = /meeting-workspace|회의록|녹취|음성파일|화자|화자분리|스크립트|stt|전사/.test(lower);
+
+  const unitCount = clampInt(countSignals(input), 3, 7);
+  const branchBase = input.projectName.trim() || "project";
+
+  const titles: string[] =
+    tpl === "meeting-workspace" || meetingSignals
+      ? [
+          "기본 레이아웃 및 라우팅(3컬럼 워크스페이스)",
+          "좌측 패널(파일·참여자·화자·상태)",
+          "중앙 업로드 카드·타임라인·메시지 입력",
+          "우측 요약 탭(안건·결정·할 일)",
+          "우측 스크립트 탭(화자별 발언) 및 탭 전환",
+          "반응형 레이아웃·카드 UI 정리",
+          "README·GitHub Pages 배포 설정",
+        ].slice(0, unitCount)
+      : [
+          "기본 레이아웃 및 라우팅",
+          "좌측 패널(탐색/필터) 구현",
+          "중앙 작업 영역(목록·상세·폼 흐름)",
+          "우측 결과/미리보기 패널",
+          "Mock 데이터·상호작용(모달·탭)",
+          "반응형 UI·접근성 정리",
+          "README 및 배포/실행 안내",
+        ].slice(0, unitCount);
+
+  return titles.map((title, i) => {
+    const order = i + 1;
+    const draft: PrototypePlannerLlmDraftUnit = {
+      order,
+      title,
+      description: `${title}을(를) 코드로 구현하고 화면에서 확인 가능한 상태로 만듭니다.`,
+      targetArea: order === 1 ? "src/layout, 라우팅" : "src/components, src/pages",
+      implementationScope: "관련 컴포넌트·스타일·목 데이터를 추가/수정합니다.",
+      dependencies: order > 1 ? [String(order - 1)] : [],
+      acceptanceCriteria: [`${title} 범위가 빌드 가능한 상태로 반영됨`],
+      riskLevel: "medium",
+      estimatedComplexity: order <= 2 ? "medium" : "low",
+    };
+    return workUnitFromDraft(draft, runId, branchBase);
+  });
 }
 
+/** @deprecated 이름 호환 — planPrototypeWorkUnitsFallback 사용 */
+export function planPrototypeWorkUnits(input: PlanPrototypeWorkUnitsInput, runId: string): PrototypeWorkUnit[] {
+  return planPrototypeWorkUnitsFallback(input, runId);
+}
+
+function toLlmInput(input: PlanPrototypeWorkUnitsInput): PrototypePlannerLlmInput {
+  return {
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
+    ideationSummary: input.ideationSummary,
+    actorFlowSummary: input.actorFlowSummary,
+    featureDraftTitles: input.featureDraftTitles,
+    selectedTemplate: input.selectedTemplate,
+    promptSnapshot: input.promptSnapshot,
+    repositoryStructureHint: input.repositoryStructureHint,
+    userFeedback: input.userFeedback,
+    previousWorkUnitsSummary: input.previousWorkUnitsSummary,
+  };
+}
+
+/**
+ * LLM 우선, 실패 시 결정적 fallback. plannerSource는 호출부에서 기록.
+ */
+export async function planPrototypeWorkUnitsResolved(
+  input: PlanPrototypeWorkUnitsInput,
+  runId: string,
+): Promise<{ workUnits: PrototypeWorkUnit[]; plannerSource: "llm" | "fallback"; plannerError: string | null }> {
+  const branchBase = input.projectName.trim() || "project";
+  const llm = await generatePrototypeWorkUnitsWithOpenAI(toLlmInput(input));
+  if (llm.ok) {
+    const sorted = [...llm.units].sort((a, b) => a.order - b.order);
+    const normalized = sorted.map((u, idx) => ({ ...u, order: idx + 1 }));
+    return {
+      workUnits: normalized.map((u) => workUnitFromDraft(u, runId, branchBase)),
+      plannerSource: "llm",
+      plannerError: null,
+    };
+  }
+  return {
+    workUnits: planPrototypeWorkUnitsFallback(input, runId),
+    plannerSource: "fallback",
+    plannerError: llm.error,
+  };
+}
+
+/** UI/요약용: (현재 order / 총 개수) 또는 완료 시 총개 표기. */
+export function workUnitProgressFromRun(run: PrototypeRun): { current: number; total: number; allMerged: boolean } | null {
+  const total = run.totalWorkUnits > 0 ? run.totalWorkUnits : run.workUnits.length;
+  if (!total) return null;
+  const merged = run.workUnits.filter((u) => u.status === "MERGED").length;
+  if (merged >= total) return { current: total, total, allMerged: true };
+  const unfinished = run.workUnits.find((u) => u.status !== "MERGED" && u.status !== "FAILED");
+  const order = unfinished?.order ?? run.currentWorkUnitOrder ?? 1;
+  return { current: order, total, allMerged: false };
+}
+
+export function summarizeWorkUnitsForPlanner(run: PrototypeRun): string {
+  if (!run.workUnits.length) return "";
+  return run.workUnits
+    .map((u) => `[${u.order}] ${u.title}\n${u.description.slice(0, 400)}`)
+    .join("\n\n");
+}

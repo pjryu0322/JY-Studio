@@ -5,12 +5,19 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { buildPrototypeBranchName, buildWorkUnitBranchName } from "@/lib/prototype/prototypeBranchNames";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import type {
   PrototypeRun,
   PrototypeRunFileEnvelope,
+  PrototypeWorkUnit,
+  PrototypeWorkUnitStatus,
+  PrototypeDeploymentStatus,
   PrototypeRunStatus,
   PrototypeRunStatusReason,
+  PrototypePlannerSource,
+  PrototypeWorkUnitComplexity,
+  PrototypeWorkUnitRiskLevel,
 } from "@/lib/prototype/prototypeRunTypes";
 
 function dataDir(): string {
@@ -48,7 +55,165 @@ function migrateStatus(raw: string): PrototypeRunStatus {
   if (raw === "PR_READY") return "PR_OPENED";
   if (raw === "MERGE_READY") return "MERGED";
   if (raw === "FLOW_CONFIRMED") return "PROMPT_READY";
+  if (raw === "TASK_PACKAGES_READY") return "WORK_UNITS_READY";
   return raw as PrototypeRunStatus;
+}
+
+function parseRiskLevel(x: unknown): PrototypeWorkUnitRiskLevel {
+  const u = String(x ?? "").trim().toLowerCase();
+  if (u === "low" || u === "high" || u === "medium") return u;
+  return "medium";
+}
+
+function parseComplexityLevel(x: unknown): PrototypeWorkUnitComplexity {
+  const u = String(x ?? "").trim().toLowerCase();
+  if (u === "low" || u === "high" || u === "medium") return u;
+  return "medium";
+}
+
+function normalizeStringList(x: unknown): string[] {
+  if (!Array.isArray(x)) return [];
+  return (x as unknown[]).map((v) => String(v ?? "").trim()).filter(Boolean);
+}
+
+function workUnitDefaultsFromTitle(title: string): Pick<
+  PrototypeWorkUnit,
+  "description" | "targetArea" | "implementationScope" | "dependencies" | "acceptanceCriteria" | "riskLevel" | "estimatedComplexity"
+> {
+  return {
+    description: title,
+    targetArea: "",
+    implementationScope: "",
+    dependencies: [],
+    acceptanceCriteria: [],
+    riskLevel: "medium",
+    estimatedComplexity: "medium",
+  };
+}
+
+function isNewWorkUnitStatus(x: unknown): x is PrototypeWorkUnitStatus {
+  return (
+    x === "PENDING" ||
+    x === "CURSOR_RUNNING" ||
+    x === "CURSOR_DONE" ||
+    x === "GIT_PUSHED" ||
+    x === "REVIEWING" ||
+    x === "REVIEW_PASS" ||
+    x === "REVIEW_REWORK" ||
+    x === "PR_OPENED" ||
+    x === "MERGED" ||
+    x === "FAILED"
+  );
+}
+
+function migrateLegacyWorkUnitStatus(old: Record<string, unknown>): PrototypeWorkUnitStatus {
+  const uStatus = String(old.status ?? "");
+  const mergeDone = old.mergeStatus === "DONE";
+  const prDone = old.prStatus === "DONE";
+  const revDone = old.reviewStatus === "DONE";
+  const gitDone = old.gitStatus === "DONE";
+  const curDone = old.cursorStatus === "DONE";
+  const curRun = old.cursorStatus === "RUNNING";
+  if (mergeDone || uStatus === "DONE") return "MERGED";
+  if (prDone) return "PR_OPENED";
+  if (revDone) return "REVIEW_PASS";
+  if (gitDone) return "GIT_PUSHED";
+  if (curDone) return "CURSOR_DONE";
+  if (curRun || uStatus === "RUNNING") return "CURSOR_RUNNING";
+  return "PENDING";
+}
+
+function normalizeWorkUnitsJson(
+  raw: unknown,
+  runId: string,
+  projectNameForBranch: string,
+  plannerTasksFallback: ReadonlyArray<{ order: number; title: string }>,
+): PrototypeWorkUnit[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    if (plannerTasksFallback.length) {
+      return plannerTasksFallback.map((t) => ({
+        id: randomUUID(),
+        order: t.order,
+        title: t.title,
+        ...workUnitDefaultsFromTitle(t.title),
+        status: "PENDING" as const,
+        branchName: buildWorkUnitBranchName(projectNameForBranch, runId, t.order),
+        cursorRunId: null,
+        commitSha: null,
+        changedFiles: [],
+        prNumber: null,
+        prUrl: null,
+        mergeSha: null,
+        reviewSummary: null,
+        startedAt: null,
+        finishedAt: null,
+      }));
+    }
+    return [];
+  }
+
+  const first = raw[0] as Record<string, unknown>;
+  const isLegacyShape = first && typeof first === "object" && "cursorStatus" in first && !isNewWorkUnitStatus(first.status);
+
+  const out: PrototypeWorkUnit[] = [];
+  for (const it of raw) {
+    const r = it as Record<string, unknown>;
+    const id = String(r?.id ?? "").trim() || randomUUID();
+    const order = Number(r?.order);
+    const title = String(r?.title ?? "").trim();
+    const branchName = String(r?.branchName ?? "").trim();
+    if (!Number.isFinite(order) || order <= 0 || !title) continue;
+
+    const status: PrototypeWorkUnitStatus = isLegacyShape
+      ? migrateLegacyWorkUnitStatus(r)
+      : isNewWorkUnitStatus(r?.status)
+        ? r.status
+        : "PENDING";
+
+    const changedFiles = Array.isArray(r?.changedFiles) ? (r.changedFiles as unknown[]).map(String).filter(Boolean) : [];
+    const descRaw = String(r?.description ?? "").trim();
+    const def = workUnitDefaultsFromTitle(title);
+
+    out.push({
+      id,
+      order,
+      title,
+      description: descRaw || def.description,
+      targetArea: String(r?.targetArea ?? "").trim() || def.targetArea,
+      implementationScope: String(r?.implementationScope ?? "").trim() || def.implementationScope,
+      dependencies: normalizeStringList(r?.dependencies).length ? normalizeStringList(r?.dependencies) : def.dependencies,
+      acceptanceCriteria: normalizeStringList(r?.acceptanceCriteria).length
+        ? normalizeStringList(r?.acceptanceCriteria)
+        : def.acceptanceCriteria,
+      riskLevel: parseRiskLevel(r?.riskLevel),
+      estimatedComplexity: parseComplexityLevel(r?.estimatedComplexity),
+      status,
+      branchName: branchName || buildWorkUnitBranchName(projectNameForBranch, runId, order),
+      cursorRunId: typeof r?.cursorRunId === "string" ? String(r.cursorRunId) : null,
+      commitSha: typeof r?.commitSha === "string" ? String(r.commitSha) : null,
+      changedFiles,
+      prNumber: typeof r?.prNumber === "number" && Number.isFinite(r.prNumber) ? (r.prNumber as number) : null,
+      prUrl: typeof r?.prUrl === "string" ? String(r.prUrl) : null,
+      mergeSha: typeof r?.mergeSha === "string" ? String(r.mergeSha) : null,
+      reviewSummary: typeof r?.reviewSummary === "string" ? String(r.reviewSummary) : null,
+      startedAt: typeof r?.startedAt === "string" ? String(r.startedAt) : null,
+      finishedAt: typeof r?.finishedAt === "string" ? String(r.finishedAt) : null,
+    });
+  }
+  return out.sort((a, b) => a.order - b.order);
+}
+
+function normalizeDeploymentStatus(raw: unknown): PrototypeDeploymentStatus {
+  const s = String(raw ?? "").trim().toUpperCase();
+  if (s === "REQUESTED" || s === "RUNNING" || s === "DONE" || s === "FAILED") return s as PrototypeDeploymentStatus;
+  return "PENDING";
+}
+
+function inferProjectNameForBranch(raw: Record<string, unknown>): string {
+  const snap = String(raw.promptSnapshot ?? "");
+  const m = snap.match(/프로젝트\s*[:：]\s*(.+)/i) ?? snap.match(/project\s*[:]\s*(.+)/i);
+  if (m?.[1]) return m[1].trim().slice(0, 80);
+  return "project";
 }
 
 /** 이전 JSON(mergeCommitSha, PR_READY 등) 호환. */
@@ -69,11 +234,49 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
       return { order, title };
     })
     .filter(Boolean) as Array<{ order: number; title: string }>;
+
+  const runId = String(raw.id ?? "");
+  const branchGuess = inferProjectNameForBranch(raw);
+  let workUnits = normalizeWorkUnitsJson((raw as { workUnits?: unknown }).workUnits, runId, branchGuess, plannerTasks);
+
+  const totalFromRaw = typeof (raw as { totalWorkUnits?: unknown }).totalWorkUnits === "number" ? Number((raw as { totalWorkUnits: number }).totalWorkUnits) : null;
+  let totalWorkUnits =
+    typeof totalFromRaw === "number" && Number.isFinite(totalFromRaw) && totalFromRaw > 0 ? totalFromRaw : workUnits.length;
+
+  if (workUnits.length && totalWorkUnits < workUnits.length) totalWorkUnits = workUnits.length;
+
+  let currentWorkUnitOrder: number | null =
+    typeof (raw as { currentWorkUnitOrder?: unknown }).currentWorkUnitOrder === "number" &&
+    Number.isFinite((raw as { currentWorkUnitOrder: number }).currentWorkUnitOrder)
+      ? Math.floor((raw as { currentWorkUnitOrder: number }).currentWorkUnitOrder)
+      : null;
+
+  if (currentWorkUnitOrder == null && workUnits.length) {
+    const unfinished = workUnits.find((u) => u.status !== "MERGED" && u.status !== "FAILED");
+    currentWorkUnitOrder = unfinished ? unfinished.order : null;
+  }
+
+  const plannerSummary = typeof (raw as { plannerSummary?: unknown }).plannerSummary === "string" ? String((raw as { plannerSummary: string }).plannerSummary) : null;
+
+  const schemaVersion =
+    typeof (raw as { runSchemaVersion?: unknown }).runSchemaVersion === "number" &&
+    Number((raw as { runSchemaVersion: number }).runSchemaVersion) >= 2
+      ? 2
+      : 1;
+  const workUnitsExecutionConfirmed =
+    schemaVersion >= 2 ? Boolean((raw as { workUnitsExecutionConfirmed?: unknown }).workUnitsExecutionConfirmed) : true;
+  const ps = (raw as { plannerSource?: unknown }).plannerSource;
+  const plannerSource: PrototypePlannerSource | null =
+    ps === "llm" || ps === "fallback" ? (ps as PrototypePlannerSource) : null;
+
   return {
-    id: String(raw.id ?? ""),
+    id: runId,
     projectId: String(raw.projectId ?? ""),
     selectedTemplate: String(raw.selectedTemplate ?? ""),
     promptSnapshot: String(raw.promptSnapshot ?? ""),
+    runSchemaVersion: schemaVersion,
+    workUnitsExecutionConfirmed,
+    plannerSource,
     branchName: String(raw.branchName ?? ""),
     cursorRunId: typeof raw.cursorRunId === "string" ? raw.cursorRunId : null,
     status: st,
@@ -81,9 +284,10 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
     cancelRequestedAt: typeof raw.cancelRequestedAt === "string" ? raw.cancelRequestedAt : null,
     cancelReason: typeof raw.cancelReason === "string" ? raw.cancelReason : null,
     plannerStatus: (raw.plannerStatus as PrototypeRun["plannerStatus"]) ?? null,
-    plannerTasks,
-    cursorTaskCurrent: typeof raw.cursorTaskCurrent === "number" && Number.isFinite(raw.cursorTaskCurrent) ? raw.cursorTaskCurrent : null,
-    cursorTaskTotal: typeof raw.cursorTaskTotal === "number" && Number.isFinite(raw.cursorTaskTotal) ? raw.cursorTaskTotal : null,
+    plannerSummary,
+    workUnits,
+    currentWorkUnitOrder,
+    totalWorkUnits,
     commitSha: typeof raw.commitSha === "string" ? raw.commitSha : null,
     changedFiles: files,
     aiReviewDecision: (raw.aiReviewDecision as PrototypeRun["aiReviewDecision"]) ?? null,
@@ -91,8 +295,25 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
     prUrl: typeof raw.prUrl === "string" ? raw.prUrl : null,
     prNumber: typeof raw.prNumber === "number" && Number.isFinite(raw.prNumber) ? raw.prNumber : null,
     mergeSha,
+    deploymentStatus: normalizeDeploymentStatus((raw as { deploymentStatus?: unknown }).deploymentStatus),
+    deploymentRequestedAt: typeof (raw as { deploymentRequestedAt?: unknown }).deploymentRequestedAt === "string" ? String((raw as { deploymentRequestedAt: string }).deploymentRequestedAt) : null,
+    deploymentStartedAt: typeof (raw as { deploymentStartedAt?: unknown }).deploymentStartedAt === "string" ? String((raw as { deploymentStartedAt: string }).deploymentStartedAt) : null,
+    deploymentEndedAt: typeof (raw as { deploymentEndedAt?: unknown }).deploymentEndedAt === "string" ? String((raw as { deploymentEndedAt: string }).deploymentEndedAt) : null,
+    resultUrl: typeof (raw as { resultUrl?: unknown }).resultUrl === "string" ? String((raw as { resultUrl: string }).resultUrl) : null,
     suggestedPreviewUrl: typeof raw.suggestedPreviewUrl === "string" ? raw.suggestedPreviewUrl : null,
     previewUrl: typeof raw.previewUrl === "string" ? raw.previewUrl : null,
+    pagesDeployWorkflowRunUrl:
+      typeof (raw as { pagesDeployWorkflowRunUrl?: unknown }).pagesDeployWorkflowRunUrl === "string"
+        ? String((raw as { pagesDeployWorkflowRunUrl: string }).pagesDeployWorkflowRunUrl)
+        : null,
+    deployFailureDetail:
+      typeof (raw as { deployFailureDetail?: unknown }).deployFailureDetail === "string"
+        ? String((raw as { deployFailureDetail: string }).deployFailureDetail)
+        : null,
+    pagesDeployTriggerCommitSha:
+      typeof (raw as { pagesDeployTriggerCommitSha?: unknown }).pagesDeployTriggerCommitSha === "string"
+        ? String((raw as { pagesDeployTriggerCommitSha: string }).pagesDeployTriggerCommitSha)
+        : null,
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
   };
@@ -100,22 +321,6 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-export function slugifyForBranchSegment(name: string): string {
-  const s = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  return s || "project";
-}
-
-export function buildPrototypeBranchName(projectName: string, runId: string): string {
-  const slug = slugifyForBranchSegment(projectName);
-  const short = runId.replace(/-/g, "").slice(0, 8);
-  return `prototype/${slug}/${short}`;
 }
 
 export function createRun(input: {
@@ -134,6 +339,9 @@ export function createRun(input: {
     projectId: input.projectId.trim(),
     selectedTemplate: input.selectedTemplate,
     promptSnapshot: input.promptSnapshot,
+    runSchemaVersion: 2,
+    workUnitsExecutionConfirmed: false,
+    plannerSource: null,
     branchName,
     cursorRunId: null,
     status: input.initialStatus,
@@ -141,9 +349,10 @@ export function createRun(input: {
     cancelRequestedAt: null,
     cancelReason: null,
     plannerStatus: "PENDING",
-    plannerTasks: [],
-    cursorTaskCurrent: null,
-    cursorTaskTotal: null,
+    plannerSummary: null,
+    workUnits: [],
+    currentWorkUnitOrder: null,
+    totalWorkUnits: 0,
     commitSha: null,
     changedFiles: [],
     aiReviewDecision: null,
@@ -151,8 +360,16 @@ export function createRun(input: {
     prUrl: null,
     prNumber: null,
     mergeSha: null,
+    deploymentStatus: "PENDING",
+    deploymentRequestedAt: null,
+    deploymentStartedAt: null,
+    deploymentEndedAt: null,
+    resultUrl: null,
     suggestedPreviewUrl: null,
     previewUrl: null,
+    pagesDeployWorkflowRunUrl: null,
+    deployFailureDetail: null,
+    pagesDeployTriggerCommitSha: null,
     createdAt: t,
     updatedAt: t,
   };
@@ -182,13 +399,16 @@ export function updateRun(
       PrototypeRun,
       | "status"
       | "statusReason"
+      | "selectedTemplate"
       | "cursorRunId"
       | "cancelRequestedAt"
       | "cancelReason"
       | "plannerStatus"
-      | "plannerTasks"
-      | "cursorTaskCurrent"
-      | "cursorTaskTotal"
+      | "plannerSummary"
+      | "workUnits"
+      | "currentWorkUnitOrder"
+      | "totalWorkUnits"
+      | "branchName"
       | "commitSha"
       | "changedFiles"
       | "aiReviewDecision"
@@ -196,9 +416,20 @@ export function updateRun(
       | "prUrl"
       | "prNumber"
       | "mergeSha"
+      | "deploymentStatus"
+      | "deploymentRequestedAt"
+      | "deploymentStartedAt"
+      | "deploymentEndedAt"
+      | "resultUrl"
       | "suggestedPreviewUrl"
       | "previewUrl"
       | "promptSnapshot"
+      | "runSchemaVersion"
+      | "workUnitsExecutionConfirmed"
+      | "plannerSource"
+      | "pagesDeployWorkflowRunUrl"
+      | "deployFailureDetail"
+      | "pagesDeployTriggerCommitSha"
     >
   >,
 ): PrototypeRun | null {
@@ -260,6 +491,8 @@ export function markBlocked(projectId: string, runId: string, reason: PrototypeR
   if (u) logPrototypePipelineEvent("prototype_failed", { projectId, runId, reason, blocked: true });
   return u;
 }
+
+export { buildPrototypeBranchName, buildWorkUnitBranchName, slugifyForBranchSegment } from "@/lib/prototype/prototypeBranchNames";
 
 /** @deprecated 호환용 — prototypeRunStore.createRun 사용 */
 export const createPrototypeRun = createRun;

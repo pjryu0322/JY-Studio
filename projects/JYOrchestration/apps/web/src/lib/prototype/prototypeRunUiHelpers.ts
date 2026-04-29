@@ -8,7 +8,7 @@ const ORDER: PrototypeRunStatus[] = [
   "DRAFT",
   "PROMPT_READY",
   "PLANNER_ANALYZING",
-  "TASK_PACKAGES_READY",
+  "WORK_UNITS_READY",
   "CURSOR_REQUESTED",
   "CURSOR_RUNNING",
   "COMMIT_DETECTED",
@@ -17,9 +17,14 @@ const ORDER: PrototypeRunStatus[] = [
   "REWORK_REQUIRED",
   "PR_OPENED",
   "MERGED",
+  "DEPLOY_CONFIGURING",
+  "DEPLOYING",
   "PREVIEW_READY",
+  "DEPLOY_FAILED",
   "CANCEL_REQUESTED",
   "CANCELLED",
+  "FAILED",
+  "BLOCKED",
 ];
 
 function idx(s: PrototypeRunStatus): number {
@@ -29,6 +34,7 @@ function idx(s: PrototypeRunStatus): number {
 
 function atLeast(run: PrototypeRun, s: PrototypeRunStatus): boolean {
   if (run.status === "FAILED" || run.status === "BLOCKED") return false;
+  if (run.status === "DEPLOY_FAILED") return idx(s) <= idx("MERGED");
   return idx(run.status) >= idx(s);
 }
 
@@ -43,7 +49,7 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
       { label: "실행 없음 — 생성 시작 가능", status: "pending" },
       { label: prototypeRunStatusLabelKo("PROMPT_READY"), status: "pending" },
       { label: prototypeRunStatusLabelKo("PLANNER_ANALYZING"), status: "pending" },
-      { label: prototypeRunStatusLabelKo("TASK_PACKAGES_READY"), status: "pending" },
+      { label: prototypeRunStatusLabelKo("WORK_UNITS_READY"), status: "pending" },
       { label: prototypeRunStatusLabelKo("CURSOR_REQUESTED"), status: "pending" },
       { label: prototypeRunStatusLabelKo("COMMIT_DETECTED"), status: "pending" },
       { label: prototypeRunStatusLabelKo("AI_REVIEWING"), status: "pending" },
@@ -63,17 +69,17 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
     },
     {
       label: prototypeRunStatusLabelKo("PLANNER_ANALYZING"),
-      status: atLeast(run, "TASK_PACKAGES_READY")
+      status: atLeast(run, "WORK_UNITS_READY")
         ? "success"
         : active(run, "PLANNER_ANALYZING")
           ? "running"
           : "pending",
     },
     {
-      label: prototypeRunStatusLabelKo("TASK_PACKAGES_READY"),
+      label: prototypeRunStatusLabelKo("WORK_UNITS_READY"),
       status: atLeast(run, "CURSOR_REQUESTED")
         ? "success"
-        : active(run, "TASK_PACKAGES_READY")
+        : active(run, "WORK_UNITS_READY")
           ? "running"
           : "pending",
     },
@@ -113,7 +119,15 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
     },
     {
       label: prototypeRunStatusLabelKo("MERGED"),
-      status: atLeast(run, "PREVIEW_READY") ? "success" : active(run, "MERGED") ? "running" : "pending",
+      status: atLeast(run, "DEPLOY_CONFIGURING") ? "success" : active(run, "MERGED") ? "running" : "pending",
+    },
+    {
+      label: prototypeRunStatusLabelKo("DEPLOY_CONFIGURING"),
+      status: atLeast(run, "DEPLOYING") ? "success" : active(run, "DEPLOY_CONFIGURING") ? "running" : "pending",
+    },
+    {
+      label: prototypeRunStatusLabelKo("DEPLOYING"),
+      status: atLeast(run, "PREVIEW_READY") ? "success" : active(run, "DEPLOYING") ? "running" : "pending",
     },
     {
       label: prototypeRunStatusLabelKo("PREVIEW_READY"),
@@ -125,20 +139,23 @@ export function buildTimelineFromPrototypeRun(run: PrototypeRun | null): Prototy
 export function prototypeRunStatusLabelKo(status: PrototypeRunStatus): string {
   const m: Record<PrototypeRunStatus, string> = {
     DRAFT: "초안",
-    PROMPT_READY: "서비스 흐름 확정 완료",
-    PLANNER_ANALYZING: "AI 기획자 작업분해 중",
-    TASK_PACKAGES_READY: "작업단위 생성 완료",
+    PROMPT_READY: "프롬프트 준비",
+    PLANNER_ANALYZING: "AI 기획자 분석",
+    WORK_UNITS_READY: "WorkUnit 생성",
     CURSOR_REQUESTED: "Cursor 요청됨",
     CURSOR_RUNNING: "Cursor 실행 중",
     COMMIT_DETECTED: "커밋 감지됨",
-    PUSH_CONFIRMED: "푸시 확인됨",
+    PUSH_CONFIRMED: "Git 반영(푸시)",
     AI_REVIEWING: "AI 검토중",
     REWORK_REQUIRED: "보완 필요",
-    PR_OPENED: "PR 생성 완료",
-    MERGED: "머지 완료",
-    PREVIEW_READY: "결과물 연결 완료",
+    PR_OPENED: "PR 생성",
+    MERGED: "Merge",
+    DEPLOY_CONFIGURING: "Pages 배포 설정",
+    DEPLOYING: "GitHub Pages 배포",
+    PREVIEW_READY: "결과 URL 연결",
+    DEPLOY_FAILED: "배포 실패",
     CANCEL_REQUESTED: "중단 요청됨",
-    CANCELLED: "사용자가 중단함",
+    CANCELLED: "실행 중단됨",
     FAILED: "실패",
     BLOCKED: "차단",
   };

@@ -3,10 +3,12 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { getRun, updateRun } from "@/lib/prototype/prototypeRunStore";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
+import { cancelCursorAgent } from "@/lib/execution/cursorExecutionAdapter";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { prisma } from "@/lib/prisma";
 
 function isTerminal(status: string): boolean {
-  return status === "CANCELLED" || status === "FAILED" || status === "BLOCKED" || status === "PREVIEW_READY" || status === "MERGED" || status === "PR_OPENED";
+  return status === "CANCELLED" || status === "FAILED" || status === "BLOCKED" || status === "PREVIEW_READY";
 }
 
 export async function POST(request: NextRequest, segmentData: { params: Promise<{ runId: string }> }) {
@@ -44,16 +46,32 @@ export async function POST(request: NextRequest, segmentData: { params: Promise<
     return NextResponse.json({ success: true, data: { run } });
   }
   if (isTerminal(run.status)) {
-    return NextResponse.json({ success: true, data: { run } });
+    return NextResponse.json({ success: false, message: "이미 종료된 실행입니다.", data: { run } }, { status: 409 });
   }
 
+  const nowIso = new Date().toISOString();
   const patched =
     updateRun(projectId, id, {
       status: "CANCEL_REQUESTED",
-      cancelRequestedAt: new Date().toISOString(),
-      cancelReason: reason ? reason.slice(0, 400) : null,
+      cancelRequestedAt: nowIso,
+      cancelReason: (reason || "user requested").slice(0, 400),
     }) ?? run;
   logPrototypePipelineEvent("prototype_cancel_requested", { projectId, runId: id });
+
+  // Best effort: request Cursor agent cancel if possible.
+  try {
+    if (patched.cursorRunId) {
+      const setup = await prisma.executionSetup.findUnique({ where: { projectId }, select: { cursorApiUrl: true, cursorApiToken: true } });
+      const cursorApiUrl = String(setup?.cursorApiUrl ?? "").trim();
+      const cursorApiToken = String(setup?.cursorApiToken ?? "").trim();
+      if (cursorApiUrl && cursorApiToken) {
+        logPrototypePipelineEvent("prototype_cursor_cancel_requested", { projectId, runId: id, cursorRunId: patched.cursorRunId });
+        await cancelCursorAgent({ cursorApiUrl, cursorApiToken, agentId: patched.cursorRunId });
+      }
+    }
+  } catch {
+    // ignore: cancellation request is best-effort only
+  }
 
   return NextResponse.json({ success: true, data: { run: patched } });
 }
