@@ -101,6 +101,14 @@ export type PrototypeWorkUnit = Readonly<{
   reviewSummary: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  /**
+   * Cursor Cloud Agent 폴링에서 얻는 최근 상태 힌트(UI 표시용).
+   * - DB 마이그레이션 없이 파일 저장소에만 저장한다.
+   * - Cursor API 응답 스키마가 바뀌어도 "표시" 목적이라 null 허용.
+   */
+  cursorAgentStatusUpper: string | null;
+  cursorLastPolledAt: string | null;
+  cursorLastSummary: string | null;
 }>;
 
 export type PrototypeDeploymentStatus = "PENDING" | "REQUESTED" | "RUNNING" | "DONE" | "FAILED";

@@ -753,6 +753,21 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
     return getRun(projectId, runId);
   }
 
+  // If automation is not available, mark as BLOCKED instead of looking "stuck".
+  // This prevents long-running "대기" UI when Cursor token/setup is missing.
+  if (
+    !gate.automationAvailable &&
+    (run.status === "WORK_UNITS_READY" || run.status === "CURSOR_REQUESTED" || run.status === "CURSOR_RUNNING") &&
+    !shouldDeferCursorLaunch(run)
+  ) {
+    run =
+      updateRun(projectId, runId, {
+        status: "BLOCKED",
+        statusReason: gate.blockReason ?? "MANUAL_CURSOR_EXECUTION_REQUIRED",
+      }) ?? run;
+    return getRun(projectId, runId) ?? run;
+  }
+
   // --- Cursor launch (대기 WorkUnit) ---
   run = getRun(projectId, runId) ?? run;
   active = activeWorkUnit(run) ?? active;
@@ -850,7 +865,27 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       return markFailed(projectId, runId, "CURSOR_POLL_FAILED", `Agent status ${polled.statusUpper}`);
     }
 
+    // Persist lightweight poll hints for UI diagnostics (status/last checked time).
     active = activeWorkUnit(run) ?? active;
+    if (active) {
+      const nowIso = new Date().toISOString();
+      const summaryRaw =
+        typeof (polled.agentJson as { summary?: unknown }).summary === "string"
+          ? String((polled.agentJson as { summary: string }).summary).trim()
+          : typeof (polled.agentJson as { name?: unknown }).name === "string"
+            ? String((polled.agentJson as { name: string }).name).trim()
+            : "";
+      const summary = summaryRaw.length > 180 ? `${summaryRaw.slice(0, 180)}…` : summaryRaw;
+      updateRun(projectId, runId, {
+        workUnits: replaceWorkUnit(run.workUnits, active.id, {
+          cursorAgentStatusUpper: polled.statusUpper || null,
+          cursorLastPolledAt: nowIso,
+          cursorLastSummary: summary || null,
+        }),
+      });
+      run = getRun(projectId, runId) ?? run;
+      active = activeWorkUnit(run) ?? active;
+    }
     if (polled.hints.commitHash) {
       const nextUnits = replaceWorkUnit(run.workUnits, active.id, {
         status: "CURSOR_DONE",

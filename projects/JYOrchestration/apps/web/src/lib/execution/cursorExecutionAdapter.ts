@@ -389,6 +389,10 @@ export async function pollCursorAgent(input: {
   } finally {
     clearTimeout(pollTimer);
   }
+  if (!pollRes.ok) {
+    const head = (await pollRes.text()).slice(0, 400).trim();
+    return { ok: false, error: `Cursor 상태 조회 실패 HTTP ${pollRes.status}${head ? `: ${head}` : ""}` };
+  }
   const pollText = await pollRes.text();
   let agentJson: AgentJson;
   try {

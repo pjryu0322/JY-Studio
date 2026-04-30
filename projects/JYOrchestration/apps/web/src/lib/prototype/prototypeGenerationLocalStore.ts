@@ -4,6 +4,12 @@
 
 export type PrototypeGenerationRunStatus = "idle" | "prompt_ready" | "awaiting_preview" | "preview_ready" | "failed";
 
+export type PrototypeWorkspaceChatLine = Readonly<{
+  id: string;
+  text: string;
+  at: number;
+}>;
+
 export type PrototypeGenerationLocalRecord = Readonly<{
   selectedTemplate: string | null;
   /** 콤보에서 [확정]까지 눌러 템플릿이 확정된 경우 true (AI 추천만 써도 확정 시 true) */
@@ -16,6 +22,10 @@ export type PrototypeGenerationLocalRecord = Readonly<{
   lastError: string | null;
   proceedWithGaps: boolean;
   lastPromptSnapshot: string | null;
+  /** 채팅(사용자 입력) — 새로고침 후에도 유지 */
+  chatUserLog: readonly PrototypeWorkspaceChatLine[];
+  /** 채팅(시스템/AI 안내) — 새로고침 후에도 유지 */
+  chatAiLog: readonly PrototypeWorkspaceChatLine[];
 }>;
 
 const defaultRecord: PrototypeGenerationLocalRecord = {
@@ -28,6 +38,8 @@ const defaultRecord: PrototypeGenerationLocalRecord = {
   lastError: null,
   proceedWithGaps: false,
   lastPromptSnapshot: null,
+  chatUserLog: [],
+  chatAiLog: [],
 };
 
 export function defaultPrototypeGenerationRecord(): PrototypeGenerationLocalRecord {
@@ -71,6 +83,20 @@ export function loadPrototypeGenerationRecord(projectId: string): PrototypeGener
     const raw = window.sessionStorage.getItem(storageKey(projectId));
     if (!raw) return defaultRecord;
     const o = JSON.parse(raw) as Partial<PrototypeGenerationLocalRecord>;
+    const normalizeChat = (v: unknown): PrototypeWorkspaceChatLine[] => {
+      if (!Array.isArray(v)) return [];
+      const out: PrototypeWorkspaceChatLine[] = [];
+      for (const it of v) {
+        const r = it as Partial<PrototypeWorkspaceChatLine>;
+        const id = typeof r.id === "string" ? r.id : "";
+        const text = typeof r.text === "string" ? r.text : "";
+        const at = typeof r.at === "number" && Number.isFinite(r.at) ? r.at : 0;
+        if (!id || !text || !at) continue;
+        out.push({ id, text: text.slice(0, 8000), at });
+      }
+      out.sort((a, b) => a.at - b.at);
+      return out.slice(-200);
+    };
     return {
       ...defaultRecord,
       ...o,
@@ -83,6 +109,8 @@ export function loadPrototypeGenerationRecord(projectId: string): PrototypeGener
       lastError: typeof o.lastError === "string" ? o.lastError : null,
       proceedWithGaps: Boolean(o.proceedWithGaps),
       lastPromptSnapshot: typeof o.lastPromptSnapshot === "string" ? o.lastPromptSnapshot : null,
+      chatUserLog: normalizeChat((o as any).chatUserLog),
+      chatAiLog: normalizeChat((o as any).chatAiLog),
     };
   } catch {
     return defaultRecord;

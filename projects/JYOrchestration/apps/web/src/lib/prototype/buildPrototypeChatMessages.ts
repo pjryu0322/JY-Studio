@@ -143,6 +143,23 @@ function firstFailedUnit(run: PrototypeRun | null): PrototypeWorkUnit | null {
   return u ?? null;
 }
 
+function formatDurationKo(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  if (h > 0) return `${h}시간 ${mm}분`;
+  if (m > 0) return `${m}분`;
+  return `${s}초`;
+}
+
+function parseIsoMs(iso: string | null | undefined): number | null {
+  const s = String(iso ?? "").trim();
+  if (!s) return null;
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : null;
+}
+
 /** DB에 저장하지 않고 화면용 타임라인 메시지를 조합합니다. */
 export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams): readonly PrototypeChatBuiltMessage[] {
   const out: PrototypeChatBuiltMessage[] = [];
@@ -241,6 +258,25 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
         { id: "a-resume-f", label: "이어 진행", intent: "RESUME_RUN" },
         { id: "a-restart-f", label: "처음부터 다시 생성", intent: "RESTART_RUN" },
         ...(fu ? [{ id: "a-retry-wu", label: "실패 작업 재실행", intent: "RETRY_FAILED_WU" as const, workUnitOrder: fu.order }] : []),
+      ],
+    });
+    return out;
+  }
+
+  if (p.latestRun?.id && p.latestRun.status === "BLOCKED") {
+    const lines: string[] = [];
+    if (p.latestRun.statusReason) lines.push(`사유 코드: ${p.latestRun.statusReason}`);
+    out.push({
+      id: "ai-blocked",
+      role: "ai",
+      orderKey: nextKey(),
+      title: "자동 생성이 중단되었습니다.",
+      body: "Cursor 자동 실행을 시작할 수 없는 상태입니다. 실행 설정을 확인한 뒤 상태를 새로고침해 주세요.",
+      blocks: lines.length ? [{ kind: "bullet_list", items: lines }] : undefined,
+      actions: [
+        { id: "a-env-b", label: "환경설정 열기", intent: "OPEN_ENV_SETTINGS" },
+        { id: "a-refresh-b", label: "상태 새로고침", intent: "REFRESH_STATUS" },
+        { id: "a-restart-b", label: "처음부터 다시 생성", intent: "RESTART_RUN" },
       ],
     });
     return out;
@@ -409,7 +445,34 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
       orderKey: nextKey(),
       title: `현재 WorkUnit ${current} / ${total}을 진행 중입니다.`,
       body: active ? active.title : "진행 중인 작업을 확인하는 중입니다.",
-      blocks: rows.length ? [{ kind: "pipeline_grid", rows: rows.map((r) => ({ label: r.label, stateKo: r.stateKo, tone: r.tone })) }] : undefined,
+      blocks: (() => {
+        const blocks: PrototypeChatBlock[] = [];
+        if (rows.length) {
+          blocks.push({ kind: "pipeline_grid", rows: rows.map((r) => ({ label: r.label, stateKo: r.stateKo, tone: r.tone })) });
+        }
+        if (active) {
+          const lines: string[] = [];
+          if (active.cursorRunId?.trim()) lines.push(`Cursor 에이전트 ID: ${active.cursorRunId.trim()}`);
+          if (active.cursorAgentStatusUpper?.trim()) lines.push(`Cursor 상태: ${active.cursorAgentStatusUpper.trim()}`);
+          const started = active.executionStartedAt ?? active.startedAt;
+          if (started) {
+            const t0 = Date.parse(started);
+            if (Number.isFinite(t0)) lines.push(`실행 경과: ${formatDurationKo(Date.now() - t0)}`);
+          }
+          if (active.cursorLastPolledAt) {
+            const t1 = Date.parse(active.cursorLastPolledAt);
+            if (Number.isFinite(t1)) lines.push(`마지막 상태 확인: ${formatDurationKo(Date.now() - t1)} 전`);
+          }
+          if (active.cursorLastSummary?.trim()) lines.push(`최근 요약: ${active.cursorLastSummary.trim()}`);
+          const tStarted = parseIsoMs(active.executionStartedAt ?? active.startedAt);
+          const longRunning = tStarted ? Date.now() - tStarted > 10 * 60 * 1000 : false;
+          if (longRunning && (active.cursorAgentStatusUpper ?? "").toUpperCase() === "RUNNING") {
+            lines.push("Cursor 실행이 장시간 진행 중입니다. 필요하면 [자동 생성 중단] 후 다시 시도해 주세요.");
+          }
+          if (lines.length) blocks.push({ kind: "bullet_list", items: lines });
+        }
+        return blocks.length ? blocks : undefined;
+      })(),
       actions: act,
     });
     return out;

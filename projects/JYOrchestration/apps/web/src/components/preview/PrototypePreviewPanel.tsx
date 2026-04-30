@@ -55,6 +55,7 @@ import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { PrototypeTemplateMockPreview } from "@/components/preview/PrototypeTemplateMockPreview";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
+import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -127,6 +128,7 @@ export function PrototypePreviewPanel({
   projectId,
   projectName,
   projectDescription,
+  requirementsStateJson,
   ideationAssets,
   flowSteps,
   actors,
@@ -137,6 +139,7 @@ export function PrototypePreviewPanel({
   readonly projectId: string;
   readonly projectName: string;
   readonly projectDescription: string;
+  readonly requirementsStateJson: unknown;
   readonly ideationAssets: ReadonlyArray<PrototypeWorkspaceIdeationAsset>;
   readonly flowSteps: ReadonlyArray<PrototypePreviewFlowStep>;
   readonly actors: ReadonlyArray<PrototypePreviewActor>;
@@ -241,8 +244,61 @@ export function PrototypePreviewPanel({
       setDraftPickerValue(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
     }
     setTemplateConfirmed(r.templateCommittedToPlan === true);
+    /**
+     * 채팅 로그 우선순위:
+     * 1) DB(Project.requirementsStateJson) 영구 저장
+     * 2) 로컬(sessionStorage) — DB 미연동/오프라인 대비
+     */
+    const db = parseRequirementsStateJson(requirementsStateJson);
+    const dbChat = db.prototypeWorkspaceChatV1;
+    const userFromDb = dbChat?.userLog?.length ? dbChat.userLog : null;
+    const aiFromDb = dbChat?.aiLog?.length ? dbChat.aiLog : null;
+    setChatUserLog(userFromDb ? [...userFromDb] : r.chatUserLog ? [...r.chatUserLog] : []);
+    setEphemeralAiReplies(aiFromDb ? [...aiFromDb] : r.chatAiLog ? [...r.chatAiLog] : []);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on project switch
   }, [projectId]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      savePrototypeGenerationRecord(projectId, {
+        chatUserLog: chatUserLog.slice(-200),
+        chatAiLog: ephemeralAiReplies.slice(-200),
+      });
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [projectId, chatUserLog, ephemeralAiReplies]);
+
+  const lastPersistedChatFingerprintRef = useRef<string>("");
+  const persistChatToDb = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const userLog = chatUserLog.slice(-200);
+    const aiLog = ephemeralAiReplies.slice(-200);
+    const fingerprint = JSON.stringify({
+      u: userLog.map((x) => [x.id, x.at]),
+      a: aiLog.map((x) => [x.id, x.at]),
+    });
+    if (fingerprint === lastPersistedChatFingerprintRef.current) return;
+    lastPersistedChatFingerprintRef.current = fingerprint;
+
+    const base = parseRequirementsStateJson(requirementsStateJson);
+    const merged = mergeRequirementsStateJson(base, {
+      prototypeWorkspaceChatV1: { userLog, aiLog },
+      lastSavedAt: new Date().toISOString(),
+    });
+
+    await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requirementsStateJson: merged }),
+    }).catch(() => {});
+  }, [projectId, chatUserLog, ephemeralAiReplies, requirementsStateJson]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => void persistChatToDb(), 1200);
+    return () => window.clearTimeout(t);
+  }, [persistChatToDb]);
 
   const effectiveTemplate = useMemo((): PrototypeTemplateType => {
     if (templateConfirmed) return templateOverride ?? analysis.recommendedTemplate;
@@ -598,6 +654,65 @@ export function PrototypePreviewPanel({
     }
   };
 
+  /**
+   * 자동 상태 폴링:
+   * Prototype 파이프라인은 서버가 background worker로 run을 갱신하는 구조가 아니라,
+   * `/refresh` 호출 시 Cursor agent poll → run store update 를 수행한다.
+   * 따라서 실행 중에는 UI가 주기적으로 refresh를 호출해야 “멈춘 것처럼” 보이지 않는다.
+   */
+  const autoRefreshInFlightRef = useRef(false);
+  useEffect(() => {
+    const rid = latestRun?.id;
+    const s = latestRun?.status;
+    if (!rid || !s) return;
+    if (protoBusy) return;
+    const runningStatuses: readonly string[] = [
+      // WORK_UNITS_READY is the "between units" state; if execution is confirmed,
+      // we must keep polling so the next WorkUnit auto-starts without user clicking refresh.
+      "PLANNER_ANALYZING",
+      "CURSOR_REQUESTED",
+      "CURSOR_RUNNING",
+      "COMMIT_DETECTED",
+      "PUSH_CONFIRMED",
+      "AI_REVIEWING",
+      "REWORK_REQUIRED",
+      "PR_OPENED",
+      "MERGED",
+      "DEPLOY_CONFIGURING",
+      "DEPLOYING",
+    ];
+    const shouldAutoRefreshWorkUnitsReady =
+      s === "WORK_UNITS_READY" &&
+      (latestRun?.workUnits?.length ?? 0) > 0 &&
+      latestRun?.runSchemaVersion >= 2 &&
+      latestRun?.workUnitsExecutionConfirmed === true;
+    if (!runningStatuses.includes(s) && !shouldAutoRefreshWorkUnitsReady) return;
+
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      if (autoRefreshInFlightRef.current) return;
+      autoRefreshInFlightRef.current = true;
+      void postPrototypeRunRefresh(rid, { projectId })
+        .then((res) => {
+          if (res.success && res.data?.run) setLatestRun(res.data.run);
+        })
+        .finally(() => {
+          autoRefreshInFlightRef.current = false;
+        });
+    };
+    tick();
+    const id = window.setInterval(tick, 5000);
+    return () => window.clearInterval(id);
+  }, [
+    latestRun?.id,
+    latestRun?.status,
+    latestRun?.workUnitsExecutionConfirmed,
+    latestRun?.workUnits?.length,
+    latestRun?.runSchemaVersion,
+    projectId,
+    protoBusy,
+  ]);
+
   const loadEnv = useCallback(async () => {
     if (!projectId.trim()) return;
     try {
@@ -671,6 +786,7 @@ export function PrototypePreviewPanel({
   const isRunningState = useMemo(() => {
     const s = latestRun?.status;
     if (!s) return false;
+    if (s === "BLOCKED") return false;
     const prog = latestRun ? workUnitProgressFromRun(latestRun) : null;
     const allWuMerged = latestRun ? workUnitProgressAllMerged(latestRun) : false;
     const mid =

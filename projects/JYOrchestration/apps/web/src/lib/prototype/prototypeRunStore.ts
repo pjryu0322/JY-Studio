@@ -154,6 +154,9 @@ function normalizeWorkUnitsJson(
         executionCompletedAt: null,
         startedAt: null,
         finishedAt: null,
+        cursorAgentStatusUpper: null,
+        cursorLastPolledAt: null,
+        cursorLastSummary: null,
       }));
     }
     return [];
@@ -225,6 +228,18 @@ function normalizeWorkUnitsJson(
       reviewSummary: typeof r?.reviewSummary === "string" ? String(r.reviewSummary) : null,
       startedAt: typeof r?.startedAt === "string" ? String(r.startedAt) : null,
       finishedAt: typeof r?.finishedAt === "string" ? String(r.finishedAt) : null,
+      cursorAgentStatusUpper:
+        typeof (r as { cursorAgentStatusUpper?: unknown }).cursorAgentStatusUpper === "string"
+          ? String((r as { cursorAgentStatusUpper: string }).cursorAgentStatusUpper).trim() || null
+          : null,
+      cursorLastPolledAt:
+        typeof (r as { cursorLastPolledAt?: unknown }).cursorLastPolledAt === "string"
+          ? String((r as { cursorLastPolledAt: string }).cursorLastPolledAt)
+          : null,
+      cursorLastSummary:
+        typeof (r as { cursorLastSummary?: unknown }).cursorLastSummary === "string"
+          ? String((r as { cursorLastSummary: string }).cursorLastSummary).trim() || null
+          : null,
     });
   }
   return out.sort((a, b) => a.order - b.order);
