@@ -70,7 +70,10 @@ export async function POST(request: NextRequest, segmentData: { params: Promise<
       projectName: project.name,
       selectedTemplate: run.selectedTemplate,
       promptSnapshot: run.promptSnapshot,
-      startCursorAgent: true,
+      /** restart는 작업계획(WorkUnit) 재생성이 목적. 실행은 사용자가 별도로 확인 후 진행. */
+      startCursorAgent: false,
+      /** 이미 실행 중이어도 새 run을 강제로 생성 */
+      forceNewRun: true,
       plannerActorUserId: userId,
     });
     logPrototypePipelineEvent("prototype_restarted", { projectId, oldRunId: id, runId: out.run.id });

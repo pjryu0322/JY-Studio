@@ -36,13 +36,23 @@ export async function resolvePrototypePlannerOpenAiCredential(
     return { apiKey: null, source: "missing", model };
   }
 
-  const setup = await prisma.executionSetup.findUnique({
-    where: { projectId: pid },
-    select: {
-      openaiPlannerApiKey: true,
-      project: { select: { ownerUserId: true } },
-    },
-  });
+  let setup: { openaiPlannerApiKey: string | null; project: { ownerUserId: string } | null } | null = null;
+  try {
+    setup = await prisma.executionSetup.findUnique({
+      where: { projectId: pid },
+      select: {
+        openaiPlannerApiKey: true,
+        project: { select: { ownerUserId: true } },
+      },
+    });
+  } catch (e) {
+    /**
+     * 로컬/개발 환경에서 마이그레이션이 덜 된 DB(컬럼 누락 등)에서도
+     * 플래너가 “무한 대기”로 보이지 않도록 안전하게 missing으로 처리한다.
+     */
+    console.error("[prototype-planner] executionSetup lookup failed:", e);
+    setup = null;
+  }
 
   const projectKey = String(setup?.openaiPlannerApiKey ?? "").trim();
   if (projectKey) {
@@ -54,12 +64,21 @@ export async function resolvePrototypePlannerOpenAiCredential(
 
   const tryUser = async (uid: string): Promise<string | null> => {
     if (!uid) return null;
-    const u = await prisma.user.findUnique({
-      where: { id: uid },
-      select: { defaultOpenaiApiKey: true },
-    });
-    const k = String(u?.defaultOpenaiApiKey ?? "").trim();
-    return k || null;
+    try {
+      const u = await prisma.user.findUnique({
+        where: { id: uid },
+        select: { defaultOpenaiApiKey: true },
+      });
+      const k = String(u?.defaultOpenaiApiKey ?? "").trim();
+      return k || null;
+    } catch (e) {
+      /**
+       * DB 스키마 불일치(P2022: column does not exist) 등으로 user 조회가 실패할 수 있다.
+       * 이 경우 user 키 경로만 포기하고 env fallback(허용 시) 또는 missing으로 진행한다.
+       */
+      console.error("[prototype-planner] user defaultOpenaiApiKey lookup failed:", e);
+      return null;
+    }
   };
 
   const ownerKey = await tryUser(ownerId);
