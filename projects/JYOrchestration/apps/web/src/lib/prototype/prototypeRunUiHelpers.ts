@@ -208,6 +208,9 @@ function stepNotWired(step: PrototypeRunStatus, reason: PrototypeRunStatusReason
 
 function failureOrderIndex(reason: PrototypeRunStatusReason | null): number {
   switch (reason) {
+    case "PLANNER_CREDENTIAL_LOOKUP_FAILED":
+    case "PLANNER_INPUT_MISSING":
+      return ORDER.indexOf("PLANNER_ANALYZING");
     case "CURSOR_LAUNCH_FAILED":
     case "CURSOR_POLL_FAILED":
       return ORDER.indexOf("CURSOR_RUNNING");
@@ -303,6 +306,8 @@ export function shouldLockInlineChatTemplateSelection(run: PrototypeRun | null):
   if ((run.workUnits?.length ?? 0) > 0) return true;
   const s = run.status;
   if (s === "DRAFT" || s === "PROMPT_READY") return false;
+  /** 작업계획 생성 중(WorkUnit 0개)에는 템플릿을 바꿀 수 있게 허용 */
+  if (s === "PLANNER_ANALYZING") return false;
   if (s === "FAILED" || s === "CANCELLED" || s === "BLOCKED" || s === "DEPLOY_FAILED" || s === "CANCEL_REQUESTED") {
     return false;
   }

@@ -250,8 +250,6 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
   const showPreRunTemplateRow =
     !shouldLockInlineChatTemplateSelection(p.latestRun) &&
     hasNoWorkUnitsYet(p.latestRun) &&
-    !p.isPlannerRunning &&
-    !p.plannerCreatePending &&
     !p.isCancelled &&
     !p.isFailed &&
     !p.isDeployFailed;
@@ -263,7 +261,9 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
       orderKey: nextKey(),
       title: "템플릿 선택",
       body: p.templateConfirmed
-        ? "템플릿이 확정되었습니다. 다른 유형으로 바꾸면 자동으로 확정이 해제되니, 변경 후 다시 [확정]을 눌러 주세요."
+        ? (p.isPlannerRunning || p.plannerCreatePending
+            ? "지금 템플릿을 바꾸면 작업계획 생성이 처음부터 다시 시작됩니다. 변경 후 다시 [확정]을 눌러 주세요."
+            : "템플릿이 확정되었습니다. 다른 유형으로 바꾸면 자동으로 확정이 해제되니, 변경 후 다시 [확정]을 눌러 주세요.")
         : "콤보에서 프로토타입 유형을 고른 뒤 [확정]을 눌러 주세요. [미리보기]로 화면 형태를 먼저 볼 수 있습니다.",
       inlineTemplatePicker: true,
     });
@@ -284,11 +284,14 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     return out;
   }
 
+  const canShowCreatePlanCard =
+    !p.latestRun?.id || p.latestRun.status === "DRAFT" || p.latestRun.status === "PROMPT_READY";
   const showNeedCreatePlan =
     p.templateConfirmed &&
     hasNoWorkUnitsYet(p.latestRun) &&
     !p.isPlannerRunning &&
     !p.plannerCreatePending &&
+    canShowCreatePlanCard &&
     p.prePlanGate === "need_create_click";
 
   if (showNeedCreatePlan) {
