@@ -63,7 +63,9 @@ export function PrototypeActionChips(p: {
           disabled={Boolean(a.disabled)}
           onClick={() => p.onAction(a)}
           style={
-            a.intent === "CONFIRM_EXECUTION" || a.intent === "CREATE_PLAN"
+            a.intent === "CONFIRM_EXECUTION" ||
+            a.intent === "CREATE_PLAN" ||
+            a.intent === "START_WORK_PLAN_GENERATION"
               ? { ...chipPrimary, opacity: a.disabled ? 0.5 : 1, cursor: a.disabled ? "not-allowed" : "pointer" }
               : { ...chipMuted, opacity: a.disabled ? 0.5 : 1, cursor: a.disabled ? "not-allowed" : "pointer" }
           }
@@ -347,6 +349,29 @@ export function PrototypeChatInput(p: {
         background: "#fff",
       }}
     >
+      <button
+        type="button"
+        aria-label="추가"
+        title="추가(준비 중)"
+        disabled={p.disabled}
+        style={{
+          ...chipMuted,
+          width: 40,
+          height: 40,
+          padding: 0,
+          flexShrink: 0,
+          fontSize: 18,
+          fontWeight: 900,
+          lineHeight: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: p.disabled ? 0.45 : 1,
+          cursor: p.disabled ? "not-allowed" : "default",
+        }}
+      >
+        +
+      </button>
       <textarea
         ref={p.inputRef}
         value={p.value}

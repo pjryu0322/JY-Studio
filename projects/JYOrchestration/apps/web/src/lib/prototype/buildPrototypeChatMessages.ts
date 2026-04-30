@@ -18,6 +18,10 @@ export type PrototypeChatActionIntent =
   | "SELECT_TEMPLATE_RECOMMENDED"
   | "SELECT_TEMPLATE"
   | "CREATE_PLAN"
+  /** 채팅에 플래너 입력 프롬프트(시스템+유저 메시지)를 표시 */
+  | "OPEN_PLANNER_PROMPT_IN_CHAT"
+  /** postCreatePrototypeRun(플래너) 실제 호출 */
+  | "START_WORK_PLAN_GENERATION"
   | "REFRESH_STATUS"
   | "CONFIRM_EXECUTION"
   | "REGENERATE_PLAN"
@@ -31,6 +35,9 @@ export type PrototypeChatActionIntent =
   | "OPEN_PR_URL"
   | "OPEN_PREVIEW"
   | "COPY_PREVIEW_URL";
+
+/** 템플릿 선택 후 작업계획 API 호출 전 단계 */
+export type PrototypePrePlanGate = "idle" | "need_create_click" | "await_work_start";
 
 export type PrototypeChatAction = Readonly<{
   id: string;
@@ -72,6 +79,8 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   templateChipTemplates: readonly { id: string; nameKo: string }[];
   recommendedTemplateId: string;
   chatTemplateSelected: boolean;
+  /** 템플릿은 상단 콤보로만 선택; 타임라인에는 가로 칩을 넣지 않음 */
+  prePlanGate: PrototypePrePlanGate;
   latestRun: PrototypeRun | null;
   awaitingExecutionConfirm: boolean;
   isPlannerRunning: boolean;
@@ -86,6 +95,8 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   previewUrl: string | null;
   pagesSettingsHref: string | null;
   pagesDeployWorkflowRunUrl: string | null;
+  /** 작업계획 요청 직후 등 UI 액션 중복 방지 */
+  protoBusy: boolean;
 }>;
 
 function envLineState(b: PrototypeChatEnvBadge): "완료" | "필요" | "오류" | "대기" {
@@ -194,40 +205,51 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     return out;
   }
 
-  const chipActions: PrototypeChatAction[] = [
-    { id: "tmpl-rec", label: `추천: ${p.recommendedTemplateNameKo}`, intent: "SELECT_TEMPLATE_RECOMMENDED" },
-    ...p.templateChipTemplates
-      .filter((t) => t.id !== p.recommendedTemplateId)
-      .slice(0, 8)
-      .map((t, i) => ({
-        id: `tmpl-${t.id}-${i}`,
-        label: t.nameKo,
-        intent: "SELECT_TEMPLATE" as const,
-        templateId: t.id,
-      })),
-    { id: "tmpl-view", label: "템플릿 보기", intent: "OPEN_TEMPLATE_PREVIEW" },
-  ];
+  if (!p.chatTemplateSelected) {
+    out.push({
+      id: "ai-template-combo-hint",
+      role: "ai",
+      orderKey: nextKey(),
+      title: "템플릿 선택",
+      body: `화면 상단의 템플릿 목록에서 유형을 선택해 주세요. 설계 기준 추천 템플릿은 ${p.recommendedTemplateNameKo} 입니다.`,
+    });
+    return out;
+  }
 
-  out.push({
-    id: "ai-template-pick",
-    role: "ai",
-    orderKey: nextKey(),
-    title: "프로토타입 템플릿을 선택해주세요.",
-    body: `현재 설계 기준 추천 템플릿은 ${p.recommendedTemplateNameKo} 입니다.`,
-    actions: p.chatTemplateSelected ? chipActions.map((a) => ({ ...a, disabled: true })) : chipActions,
-  });
-
-  if (p.isPlannerRunning) {
+  if (p.isPlannerRunning && p.latestRun?.id) {
     out.push({
       id: "ai-planner-running",
       role: "ai",
       orderKey: nextKey(),
+      title: "작업계획 생성",
       body: "아이디어 구체화·액터 및 서비스 흐름 산출물을 바탕으로 작업계획을 생성하는 중입니다…",
     });
     return out;
   }
 
-  if (p.chatTemplateSelected && !p.latestRun?.id && !p.isPlannerRunning) {
+  if (p.prePlanGate === "await_work_start" && !p.latestRun?.id && !p.isPlannerRunning) {
+    out.push({
+      id: "ai-preplan-await-start",
+      role: "ai",
+      orderKey: nextKey(),
+      body: "아이디어 구체화·액터 및 서비스 흐름 산출물을 바탕으로 작업계획을 생성하는 중입니다…",
+      actions: [
+        { id: "a-open-planner-prompt", label: "프롬프트 보기", intent: "OPEN_PLANNER_PROMPT_IN_CHAT", disabled: p.protoBusy },
+        {
+          id: "a-start-work",
+          label: "작업 시작",
+          intent: "START_WORK_PLAN_GENERATION",
+          disabled: p.protoBusy || !p.canRequestGenerationDesignOk,
+        },
+      ],
+    });
+    return out;
+  }
+
+  const showNeedCreatePlan =
+    p.chatTemplateSelected && !p.latestRun?.id && !p.isPlannerRunning && p.prePlanGate !== "await_work_start";
+
+  if (showNeedCreatePlan) {
     out.push({
       id: "ai-preplan",
       role: "ai",
@@ -238,9 +260,9 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
           id: "a-create-plan",
           label: "작업계획 생성",
           intent: "CREATE_PLAN",
-          disabled: !p.canRequestGenerationDesignOk,
+          disabled: p.protoBusy || !p.canRequestGenerationDesignOk,
         },
-        { id: "a-refresh-0", label: "상태 새로고침", intent: "REFRESH_STATUS" },
+        { id: "a-refresh-0", label: "상태 새로고침", intent: "REFRESH_STATUS", disabled: p.protoBusy },
       ],
     });
     return out;
@@ -264,8 +286,8 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
       id: `ai-plan-${run.id}-${units.length}`,
       role: "ai",
       orderKey: nextKey(),
-      title: "작업계획을 생성했습니다.",
-      body: `총 ${units.length}개의 WorkUnit으로 나누었습니다.`,
+      title: "작업계획이 생성되었습니다.",
+      body: `총 ${units.length}개의 작업으로 구성했습니다.`,
       blocks: [{ kind: "ordered_titles", items: titles }],
       actions: planActions.length ? planActions : undefined,
     });
@@ -344,11 +366,8 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
       id: "ai-preplan-run",
       role: "ai",
       orderKey: nextKey(),
-      body: "아이디어 구체화 결과와 액터 및 서비스 흐름 정의 결과를 바탕으로 Cursor가 작업하기 좋은 제작 작업목록을 만들겠습니다.",
-      actions: [
-        { id: "a-create-plan-2", label: "작업계획 생성", intent: "CREATE_PLAN", disabled: !p.canRequestGenerationDesignOk },
-        { id: "a-refresh-1", label: "상태 새로고침", intent: "REFRESH_STATUS" },
-      ],
+      body: "실행은 시작됐지만 아직 작업 목록이 비어 있습니다. 상태를 새로고침하거나 잠시 후 다시 확인해 주세요.",
+      actions: [{ id: "a-refresh-1", label: "상태 새로고침", intent: "REFRESH_STATUS" }],
     });
   }
 
