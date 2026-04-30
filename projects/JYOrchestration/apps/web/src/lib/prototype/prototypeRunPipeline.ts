@@ -271,6 +271,8 @@ export async function orchestrateNewPrototypeRun(input: {
   readonly selectedTemplate: string;
   readonly promptSnapshot: string;
   readonly startCursorAgent: boolean;
+  /** restart 등: 이미 실행 중이어도 새 run을 강제로 생성 */
+  readonly forceNewRun?: boolean;
   readonly plannerContext?: OrchestratePlannerContext;
   /** 세션 사용자 — 사용자 기본 OpenAI 키 조회 시 사용 */
   readonly plannerActorUserId?: string | null;
@@ -283,7 +285,7 @@ export async function orchestrateNewPrototypeRun(input: {
   const gate = await evaluatePrototypeCursorAutomation(input.projectId);
 
   const latest = getLatestRun(input.projectId);
-  if (latest && !isTerminalPrototypeRunStatus(latest.status) && !isPromptOnlyStub(latest)) {
+  if (!input.forceNewRun && latest && !isTerminalPrototypeRunStatus(latest.status) && !isPromptOnlyStub(latest)) {
     /** 이미 같은 실행에서 플래너(OpenAI)가 돌고 있는데 작업계획만 다시 누른 경우 — 중복 호출 없이 동일 run만 반환 */
     const duplicatePlannerInFlight =
       input.startCursorAgent === false &&
