@@ -338,7 +338,7 @@ export function CurrentWorkUnitPanel(p: CurrentWorkUnitPanelProps) {
       ) : (
         <>
           <div style={{ fontSize: 12.5, fontWeight: 800, color: "#475569", marginBottom: 6 }}>
-            WorkUnit {active.order} / {total}
+            현재 작업 {active.order} / {total}
           </div>
           <div style={{ fontSize: 14, fontWeight: 950, color: "#0f172a", marginBottom: 6 }}>{active.title}</div>
           {active.description ? (

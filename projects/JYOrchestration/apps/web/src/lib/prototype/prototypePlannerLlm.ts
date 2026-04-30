@@ -30,7 +30,13 @@ Rules:
 - Korean for title, description, targetArea, implementationScope, acceptanceCriteria strings.
 - dependencies: refer to prior orders like "1" or "2" when needed.
 - Optimize for efficient Cursor agent runs (clear scope per unit).
-- No markdown fences or commentary outside JSON.`;
+- No markdown fences or commentary outside JSON.
+
+BAD examples (business flow — never output these as WorkUnit titles):
+- "사용자 로그인", "회의 참석", "승인 요청", "고객 상담 접수"
+
+GOOD examples (Cursor-friendly implementation batches):
+- "기본 레이아웃·앱 셸 구성", "좌측 리스트 패널", "중앙 메인 화면", "우측 AI 요약 패널", "파일 업로드 UI", "반응형·간격 정리", "GitHub Pages 배포 설정"`;
 
 /** LLM user 메시지 본문 — 서버 요청과 동일 포맷(미리보기·복사용). */
 export function formatPrototypePlannerUserMessage(input: PrototypePlannerLlmInput): string {

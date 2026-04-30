@@ -170,3 +170,20 @@ export type PrototypeRun = Readonly<{
 export type PrototypeRunFileEnvelope = Readonly<{
   runs: PrototypeRun[];
 }>;
+
+/** 런타임 계산용: Cursor/Git/PR/Merge/배포 자원을 순차(또는 향후 병렬)로 묶는 내부 오케스트레이션 슬롯. DB 필드 없음. */
+export type PrototypeExecutionSlotType = "WORKUNIT" | "DEPLOY" | "REVIEW";
+
+export type PrototypeExecutionSlotStatus = "IDLE" | "WAITING" | "RUNNING" | "DONE" | "FAILED";
+
+export type PrototypeExecutionSlot = Readonly<{
+  id: string;
+  runId: string;
+  slotType: PrototypeExecutionSlotType;
+  slotOrder: number;
+  status: PrototypeExecutionSlotStatus;
+  workUnitId?: string;
+  startedAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+}>;
