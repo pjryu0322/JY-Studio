@@ -1,12 +1,15 @@
 "use client";
 
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
-import type {
-  PrototypeChatAction,
-  PrototypeChatBlock,
-  PrototypeChatBuiltMessage,
+import type { PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
+import { PROTOTYPE_TEMPLATES } from "@/lib/templates/prototypeTemplates";
+import {
+  PROTOTYPE_PLANNER_STAGE_LABELS_KO,
+  type PrototypeChatAction,
+  type PrototypeChatBlock,
+  type PrototypeChatBuiltMessage,
 } from "@/lib/prototype/buildPrototypeChatMessages";
 
 const bubbleBase: CSSProperties = {
@@ -61,11 +64,15 @@ export function PrototypeActionChips(p: {
           key={a.id}
           type="button"
           disabled={Boolean(a.disabled)}
-          onClick={() => p.onAction(a)}
+          onClick={() => {
+            if (a.disabled) return;
+            p.onAction(a);
+          }}
           style={
             a.intent === "CONFIRM_EXECUTION" ||
             a.intent === "CREATE_PLAN" ||
-            a.intent === "START_WORK_PLAN_GENERATION"
+            a.intent === "START_WORK_PLAN_GENERATION" ||
+            a.intent === "RETRY_PLANNER_GENERATION"
               ? { ...chipPrimary, opacity: a.disabled ? 0.5 : 1, cursor: a.disabled ? "not-allowed" : "pointer" }
               : { ...chipMuted, opacity: a.disabled ? 0.5 : 1, cursor: a.disabled ? "not-allowed" : "pointer" }
           }
@@ -169,8 +176,299 @@ function renderBlocks(blocks: readonly PrototypeChatBlock[] | undefined): ReactN
             </div>
           );
         }
+        if (b.kind === "planner_stage_progress") {
+          const labels = PROTOTYPE_PLANNER_STAGE_LABELS_KO;
+          const current = Math.min(5, Math.max(1, Math.floor(Number(b.currentStep) || 1)));
+          const pct = [20, 40, 60, 80, 100][current - 1];
+          return (
+            <div key={`planner-st-${i}`} style={{ marginTop: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>진행률 약 {pct}%</div>
+              <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none", color: "#334155", fontWeight: 750, fontSize: 12.5 }}>
+                {labels.map((label, idx) => {
+                  const n = idx + 1;
+                  const done = n < current;
+                  const active = n === current;
+                  const sym = done ? "✓" : active ? "●" : "○";
+                  const suffix = done ? " 완료" : active ? " 진행 중" : " 대기";
+                  return (
+                    <li
+                      key={n}
+                      style={{
+                        marginBottom: 5,
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "flex-start",
+                        color: active ? "#0f766e" : "#334155",
+                        fontWeight: active ? 850 : 650,
+                      }}
+                    >
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          width: 18,
+                          textAlign: "center",
+                          fontWeight: 900,
+                          opacity: active ? 1 : done ? 0.95 : 0.55,
+                        }}
+                        aria-hidden
+                      >
+                        {sym}
+                      </span>
+                      <span>
+                        {label}
+                        {suffix}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        }
         return null;
       })}
+    </div>
+  );
+}
+
+/** 인라인 피커에서 “추천 템플릿 사용”(오버라이드 없음)을 나타내는 값 — 실제 `PrototypeTemplateType`과 겹치지 않게 함 */
+export const PROTOTYPE_INLINE_TEMPLATE_AI_VALUE = "__jyo_inline_ai_template__";
+
+export type PrototypeInlineTemplatePickerProps = Readonly<{
+  /** `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` 또는 구체 템플릿 id */
+  value: string;
+  recommendedTemplateId: PrototypeTemplateType;
+  onChange: (templateId: string) => void;
+  onPreview: () => void;
+  onConfirm: () => void;
+  /** true면 [확정] 비활성(이미 확정 상태에서 변경 없음) */
+  confirmDisabled: boolean;
+  disabled: boolean;
+}>;
+
+function InlineTemplatePickerRow(p: PrototypeInlineTemplatePickerProps) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const recName = PROTOTYPE_TEMPLATES.find((t) => t.id === p.recommendedTemplateId)?.nameKo ?? p.recommendedTemplateId;
+  const currentLabel =
+    p.value === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE
+      ? `AI 추천 템플릿 · ${recName}`
+      : PROTOTYPE_TEMPLATES.find((t) => t.id === p.value)?.nameKo ?? p.value;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: globalThis.MouseEvent) => {
+      const el = wrapRef.current;
+      if (el && !el.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const triggerStyle: CSSProperties = {
+    width: "100%",
+    minHeight: 40,
+    borderRadius: 10,
+    border: "1px solid #cbd5e1",
+    padding: "8px 10px",
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#0f172a",
+    background: "#fff",
+    textAlign: "left",
+    cursor: p.disabled ? "not-allowed" : "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    opacity: p.disabled ? 0.55 : 1,
+  };
+
+  const confirmLocked = p.disabled || p.confirmDisabled;
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        paddingTop: 12,
+        borderTop: "1px solid #f1f5f9",
+        width: "100%",
+        minWidth: 0,
+        position: "relative",
+        zIndex: open ? 5 : undefined,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          minWidth: 0,
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 900, color: "#334155", flexShrink: 0 }}>템플릿</span>
+        <div ref={wrapRef} style={{ position: "relative", flex: "1 1 160px", minWidth: 120, minHeight: 40 }}>
+          <button
+            type="button"
+            disabled={p.disabled}
+            aria-label="템플릿 유형"
+            onClick={() => !p.disabled && setOpen((v) => !v)}
+            style={triggerStyle}
+          >
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentLabel}</span>
+            <span style={{ flexShrink: 0, color: "#64748b", fontSize: 11 }} aria-hidden>
+              ▾
+            </span>
+          </button>
+        {open && !p.disabled ? (
+          <div
+            role="listbox"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: "calc(100% + 4px)",
+              zIndex: 50,
+              maxHeight: 240,
+              overflowY: "auto",
+              borderRadius: 10,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              boxShadow: "0 12px 28px rgba(15,23,42,0.16)",
+            }}
+          >
+            <div
+              role="presentation"
+              style={{
+                padding: "8px 12px 6px",
+                fontSize: 11,
+                fontWeight: 900,
+                color: "#64748b",
+                letterSpacing: "0.02em",
+                borderBottom: "1px solid #f1f5f9",
+              }}
+            >
+              템플릿선택
+            </div>
+            <button
+              type="button"
+              role="option"
+              aria-selected={p.value === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE}
+              onClick={() => {
+                p.onChange(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
+                setOpen(false);
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                fontSize: 13,
+                fontWeight: 800,
+                border: "none",
+                borderBottom: "1px solid #f1f5f9",
+                background: p.value === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE ? "#ecfdf5" : "#fff",
+                cursor: "pointer",
+                color: "#0f172a",
+              }}
+            >
+              AI 추천 템플릿
+              <span style={{ fontWeight: 700, color: "#64748b", fontSize: 12 }}> ({recName})</span>
+            </button>
+            {PROTOTYPE_TEMPLATES.filter((t) => t.id !== p.recommendedTemplateId).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="option"
+                aria-selected={t.id === p.value}
+                onClick={() => {
+                  p.onChange(t.id);
+                  setOpen(false);
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  border: "none",
+                  borderBottom: "1px solid #f1f5f9",
+                  background: t.id === p.value ? "#ecfdf5" : "#fff",
+                  cursor: "pointer",
+                  color: "#0f172a",
+                }}
+              >
+                {t.nameKo}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => p.onPreview()}
+          disabled={p.disabled}
+          title="템플릿 미리보기"
+          aria-label="템플릿 미리보기"
+          style={{
+            ...chipMuted,
+            flexShrink: 0,
+            padding: "8px 10px",
+            minWidth: 40,
+            minHeight: 40,
+            borderRadius: 10,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#0f172a",
+            opacity: p.disabled ? 0.55 : 1,
+            cursor: p.disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          <svg
+            width={18}
+            height={18}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => p.onConfirm()}
+          disabled={confirmLocked}
+          style={{
+            ...chipPrimary,
+            flexShrink: 0,
+            padding: "8px 14px",
+            minHeight: 40,
+            borderRadius: 10,
+            fontSize: 13,
+            fontWeight: 900,
+            opacity: confirmLocked ? 0.5 : 1,
+            cursor: confirmLocked ? "not-allowed" : "pointer",
+          }}
+        >
+          확정
+        </button>
+      </div>
     </div>
   );
 }
@@ -178,10 +476,20 @@ function renderBlocks(blocks: readonly PrototypeChatBlock[] | undefined): ReactN
 export function PrototypeAiMessage(p: {
   readonly message: PrototypeChatBuiltMessage;
   readonly onAction: (a: PrototypeChatAction) => void;
+  readonly templatePicker?: PrototypeInlineTemplatePickerProps | null;
 }) {
   const m = p.message;
+  const showPicker = Boolean(m.inlineTemplatePicker && p.templatePicker);
   return (
-    <div style={{ alignSelf: "flex-start", ...bubbleBase, background: "#fff", border: "1px solid #e2e8f0" }}>
+    <div
+      style={{
+        alignSelf: "flex-start",
+        ...bubbleBase,
+        background: "#fff",
+        border: "1px solid #e2e8f0",
+        overflow: showPicker ? "visible" : undefined,
+      }}
+    >
       <div style={{ fontSize: 11, fontWeight: 950, color: "#64748b", marginBottom: 4 }}>AI기획자</div>
       {m.title ? (
         <div style={{ fontSize: 13, fontWeight: 950, color: "#0f172a", marginBottom: 4 }}>{m.title}</div>
@@ -190,6 +498,7 @@ export function PrototypeAiMessage(p: {
         <div style={{ fontSize: 12.5, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap" }}>{m.body}</div>
       ) : null}
       {renderBlocks(m.blocks)}
+      {showPicker && p.templatePicker ? <InlineTemplatePickerRow {...p.templatePicker} /> : null}
       {m.actions?.length ? <PrototypeActionChips actions={m.actions} onAction={p.onAction} /> : null}
     </div>
   );
@@ -226,12 +535,39 @@ export function PrototypeSystemMessage(p: { readonly text: string }) {
 export type TimelineUserBubble = Readonly<{ id: string; text: string; at: number }>;
 export type TimelineEphemeralAi = Readonly<{ id: string; text: string; at: number }>;
 
+/** RequirementsServiceFlowStage 의 채팅 확대/축소 아이콘과 동일 SVG */
+export function PrototypeChatExpandIcon({ expanded }: { readonly expanded: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+      {expanded ? (
+        <>
+          <path d="M9 3H5a2 2 0 0 0-2 2v4" />
+          <path d="M15 21h4a2 2 0 0 0 2-2v-4" />
+          <path d="M3 9l7-7" />
+          <path d="M21 15l-7 7" />
+        </>
+      ) : (
+        <>
+          <path d="M15 3h4a2 2 0 0 1 2 2v4" />
+          <path d="M9 21H5a2 2 0 0 1-2-2v-4" />
+          <path d="M21 9l-7-7" />
+          <path d="M3 15l7 7" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function PrototypeChatTimeline(p: {
   readonly derived: readonly PrototypeChatBuiltMessage[];
   readonly userBubbles: readonly TimelineUserBubble[];
   readonly ephemeralAi: readonly TimelineEphemeralAi[];
   readonly onAction: (a: PrototypeChatAction) => void;
   readonly cursorPromptResolver: (order: number) => PrototypeWorkUnit | null;
+  /** true면 부모가 스크롤 영역(서비스 흐름 정의 화면과 동일) */
+  readonly timelineInScrollParent?: boolean;
+  /** 템플릿 미선택 시 AI 말풍선 안 콤보에 연결 */
+  readonly templatePicker?: PrototypeInlineTemplatePickerProps | null;
 }) {
   const rows = useMemo(() => {
     type Row =
@@ -258,15 +594,26 @@ export function PrototypeChatTimeline(p: {
     p.onAction(a);
   };
 
+  const listWrapStyle: CSSProperties = p.timelineInScrollParent
+    ? { display: "flex", flexDirection: "column", gap: 10 }
+    : { display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "auto", paddingRight: 2 };
+
   return (
     <>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "auto", paddingRight: 2 }}>
+      <div style={listWrapStyle}>
         {rows.map((row) => {
           if (row.kind === "derived") {
             if (row.m.role === "system") {
               return <PrototypeSystemMessage key={row.m.id} text={row.m.body ?? ""} />;
             }
-            return <PrototypeAiMessage key={row.m.id} message={row.m} onAction={handleAction} />;
+            return (
+              <PrototypeAiMessage
+                key={row.m.id}
+                message={row.m}
+                onAction={handleAction}
+                templatePicker={p.templatePicker ?? null}
+              />
+            );
           }
           if (row.kind === "user") {
             return <PrototypeUserMessage key={row.u.id} text={row.u.text} />;
@@ -335,18 +682,23 @@ export function PrototypeChatInput(p: {
   readonly placeholder: string;
   readonly disabled: boolean;
   readonly inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  /** 서비스 흐름 단계 하단 컴포저(둥근 흰 카드) 안에 넣을 때 */
+  readonly embedInComposer?: boolean;
 }) {
+  const embedded = Boolean(p.embedInComposer);
   return (
     <div
       style={{
-        flexShrink: 0,
+        flex: embedded ? "1 1 auto" : undefined,
+        minWidth: 0,
+        flexShrink: embedded ? undefined : 0,
         display: "flex",
-        gap: 8,
+        gap: embedded ? 10 : 8,
         alignItems: "flex-end",
-        border: "1px solid #e2e8f0",
-        borderRadius: 14,
-        padding: 10,
-        background: "#fff",
+        border: embedded ? "none" : "1px solid #e2e8f0",
+        borderRadius: embedded ? 0 : 14,
+        padding: embedded ? 0 : 10,
+        background: embedded ? "transparent" : "#fff",
       }}
     >
       <button
@@ -355,19 +707,23 @@ export function PrototypeChatInput(p: {
         title="추가(준비 중)"
         disabled={p.disabled}
         style={{
-          ...chipMuted,
-          width: 40,
-          height: 40,
+          ...(embedded ? {} : chipMuted),
+          width: embedded ? 42 : 40,
+          height: embedded ? 42 : 40,
           padding: 0,
           flexShrink: 0,
-          fontSize: 18,
+          fontSize: embedded ? 24 : 18,
           fontWeight: 900,
           lineHeight: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          borderRadius: embedded ? 999 : undefined,
+          border: embedded ? "1px solid #e2e8f0" : undefined,
+          background: embedded ? "#fff" : undefined,
+          color: "#0f172a",
           opacity: p.disabled ? 0.45 : 1,
-          cursor: p.disabled ? "not-allowed" : "default",
+          cursor: p.disabled ? "not-allowed" : "pointer",
         }}
       >
         +
@@ -383,13 +739,13 @@ export function PrototypeChatInput(p: {
         style={{
           flex: 1,
           resize: "none",
-          borderRadius: 10,
+          borderRadius: embedded ? 12 : 10,
           border: "1px solid #cbd5e1",
-          padding: 8,
-          fontSize: 12.5,
+          padding: embedded ? "10px 12px" : 8,
+          fontSize: embedded ? 13 : 12.5,
           lineHeight: 1.45,
           fontWeight: 800,
-          minHeight: 44,
+          minHeight: embedded ? 44 : 44,
         }}
       />
       <button type="button" onClick={() => p.onSend()} disabled={p.disabled || !p.value.trim()} style={chipPrimary}>

@@ -293,3 +293,19 @@ export function buildPrototypeLifecycleRows(
   );
   return rows;
 }
+
+/**
+ * 채팅 타임라인 인라인 템플릿 피커: 플래너/작업단위가 진행된 뒤에는 변경 불가.
+ * DRAFT·PROMPT_READY·실패/취소 등(작업단위 0개)은 선택 허용 — 최신 실행 row만 있다고 잠그지 않음.
+ */
+export function shouldLockInlineChatTemplateSelection(run: PrototypeRun | null): boolean {
+  if (!run?.id) return false;
+  if ((run.workUnits?.length ?? 0) > 0) return true;
+  const s = run.status;
+  if (s === "DRAFT" || s === "PROMPT_READY") return false;
+  if (s === "FAILED" || s === "CANCELLED" || s === "BLOCKED" || s === "DEPLOY_FAILED" || s === "CANCEL_REQUESTED") {
+    return false;
+  }
+  if (s === "WORK_UNITS_READY") return false;
+  return true;
+}

@@ -2,6 +2,7 @@
 
 import type { CSSProperties, KeyboardEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   buildPrototypeChatMessages,
   isPrototypeDeployPhase,
@@ -9,9 +10,11 @@ import {
   type PrototypePrePlanGate,
 } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
+  PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
+  PrototypeChatExpandIcon,
   PrototypeChatInput,
-  PrototypeChatShell,
   PrototypeChatTimeline,
+  type PrototypeInlineTemplatePickerProps,
   type TimelineEphemeralAi,
 } from "@/components/preview/prototypeChatTimeline";
 import {
@@ -19,6 +22,7 @@ import {
   mapWorkUnitPlanStatusKo,
   workUnitProgressAllMerged,
 } from "@/components/preview/prototypePreviewPanelHelpers";
+import { shouldLockInlineChatTemplateSelection } from "@/lib/prototype/prototypeRunUiHelpers";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import type {
   PrototypeWorkspaceActor as PrototypePreviewActor,
@@ -85,6 +89,40 @@ function isLikelyPreviewUrl(url: string): boolean {
   return /^https?:\/\//i.test(u);
 }
 
+/** RequirementsServiceFlowStage 와 동일한 협업실 그리드·배경 패턴 */
+const prototypeStageShell: CSSProperties = {
+  flex: "1 1 auto",
+  minHeight: 0,
+  minWidth: 0,
+  display: "grid",
+  gridTemplateRows: "minmax(0, 1fr)",
+  alignItems: "stretch",
+  overflow: "hidden",
+  background: "#fff",
+};
+
+const prototypeMemberAside: CSSProperties = {
+  boxSizing: "border-box",
+  borderRight: "1px solid #e2e8f0",
+  background: "#f8fafc",
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  minHeight: 0,
+  overflow: "hidden",
+};
+
+const prototypeChatMain: CSSProperties = {
+  minWidth: 0,
+  minHeight: 0,
+  background: "#f8fafc",
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  overflow: "hidden",
+  position: "relative",
+};
+
 export function PrototypePreviewPanel({
   projectId,
   projectName,
@@ -109,7 +147,9 @@ export function PrototypePreviewPanel({
   // Avoid hydration mismatch: do not read sessionStorage in initial render.
   const [record, setRecord] = useState<PrototypeGenerationLocalRecord>(() => defaultPrototypeGenerationRecord());
   const [toast, setToast] = useState<string | null>(null);
+  const toastClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [templatePreviewOpen, setTemplatePreviewOpen] = useState(false);
+  const [plannerPromptModalOpen, setPlannerPromptModalOpen] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [templateOverride, setTemplateOverride] = useState<PrototypeTemplateType | null>(null);
   const [envStatus, setEnvStatus] = useState<EnvStatus>({
@@ -124,6 +164,12 @@ export function PrototypePreviewPanel({
   const [automationAvailable, setAutomationAvailable] = useState(false);
   const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
   const [protoBusy, setProtoBusy] = useState(false);
+  /** postCreate 호출 직후~응답 전: 입력 잠금·진행 UI용 */
+  const [plannerCreatePending, setPlannerCreatePending] = useState(false);
+  const [plannerProgressStep, setPlannerProgressStep] = useState(1);
+  const planProgressStartedAtRef = useRef(0);
+  /** 작업계획 생성 중복 클릭 방지 — state와 달리 동기적으로 잠금 */
+  const planRequestInFlightRef = useRef(false);
   // --- chat-led UX (transient, state-derived) ---
   const [chatInput, setChatInput] = useState("");
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -132,14 +178,11 @@ export function PrototypePreviewPanel({
   /** 작업계획 API 호출 전: 생성 버튼 → 프롬프트/작업 시작 대기 */
   const [prePlanGate, setPrePlanGate] = useState<PrototypePrePlanGate>("idle");
   const prePlannerNotesRef = useRef("");
-  // 채팅에서 템플릿을 “선택 완료”했다고 간주하는 로컬 플래그
-  const [chatTemplateSelected, setChatTemplateSelected] = useState(false);
-  const [wideLayout, setWideLayout] = useState(false);
-
-  // 이전 세션에서 템플릿이 저장돼 있으면 채팅에서도 “선택됨”으로 간주
-  useEffect(() => {
-    if (record.selectedTemplate != null) setChatTemplateSelected(true);
-  }, [record.selectedTemplate]);
+  /** [확정]까지 눌러야 true — 콤보만으로는 true가 되지 않음 */
+  const [templateConfirmed, setTemplateConfirmed] = useState(false);
+  /** 콤보에서의 선택(미확정 포함). AI 추천 행은 `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` */
+  const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
+  const [chatExpanded, setChatExpanded] = useState(false);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -160,16 +203,11 @@ export function PrototypePreviewPanel({
 
   const refreshLatestRun = useCallback(async () => {
     if (!projectId.trim()) return;
-    setProtoBusy(true);
-    try {
-      const r = await fetchLatestPrototypeRun(projectId);
-      if (r.success && r.data) {
-        setLatestRun(r.data.run);
-        setAutomationAvailable(r.data.automationAvailable);
-        setAutomationBlockReason(r.data.automationBlockReason);
-      }
-    } finally {
-      setProtoBusy(false);
+    const r = await fetchLatestPrototypeRun(projectId);
+    if (r.success && r.data) {
+      setLatestRun(r.data.run);
+      setAutomationAvailable(r.data.automationAvailable);
+      setAutomationBlockReason(r.data.automationBlockReason);
     }
   }, [projectId]);
 
@@ -177,14 +215,6 @@ export function PrototypePreviewPanel({
     const t = window.setTimeout(() => void refreshLatestRun(), 0);
     return () => window.clearTimeout(t);
   }, [refreshLatestRun]);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 960px)");
-    const apply = () => setWideLayout(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
 
   const analysis = useMemo(
     () =>
@@ -200,13 +230,25 @@ export function PrototypePreviewPanel({
   );
 
   useEffect(() => {
-    const raw = record.selectedTemplate;
+    const r = loadPrototypeGenerationRecord(projectId);
+    const raw = r.selectedTemplate;
     const normalized = raw && PROTOTYPE_TEMPLATES.some((t) => t.id === raw) ? (raw as PrototypeTemplateType) : null;
-    if (normalized) setTemplateOverride(normalized);
+    if (normalized) {
+      setTemplateOverride(normalized);
+      setDraftPickerValue(normalized);
+    } else {
+      setTemplateOverride(null);
+      setDraftPickerValue(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
+    }
+    setTemplateConfirmed(r.templateCommittedToPlan === true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on project switch
   }, [projectId]);
 
-  const effectiveTemplate = templateOverride ?? analysis.recommendedTemplate;
+  const effectiveTemplate = useMemo((): PrototypeTemplateType => {
+    if (templateConfirmed) return templateOverride ?? analysis.recommendedTemplate;
+    if (draftPickerValue === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE) return analysis.recommendedTemplate;
+    return draftPickerValue as PrototypeTemplateType;
+  }, [templateConfirmed, templateOverride, draftPickerValue, analysis.recommendedTemplate]);
   const effectiveTemplateDef = useMemo(
     () => PROTOTYPE_TEMPLATES.find((t) => t.id === effectiveTemplate) ?? null,
     [effectiveTemplate],
@@ -298,10 +340,27 @@ export function PrototypePreviewPanel({
     return record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? record.previewUrl.trim() : null;
   }, [latestRun?.previewUrl, record.previewUrl]);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string, displayMs = 3200) => {
+    if (toastClearTimerRef.current) clearTimeout(toastClearTimerRef.current);
     setToast(msg);
-    window.setTimeout(() => setToast(null), 3200);
-  };
+    toastClearTimerRef.current = setTimeout(() => {
+      setToast(null);
+      toastClearTimerRef.current = null;
+    }, displayMs);
+  }, []);
+
+  /** 작업계획 경로는 토스트 대신 타임라인에 남는 한 줄(사라지지 않음) */
+  const pushEphemeralPlannerNotice = useCallback((text: string) => {
+    const t = Date.now();
+    setEphemeralAiReplies((prev) => [...prev, { id: `planner-line-${t}`, text, at: t }]);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (toastClearTimerRef.current) clearTimeout(toastClearTimerRef.current);
+    },
+    [],
+  );
 
   async function postPrototypeRunCancel(runId: string, input: { projectId: string; reason?: string }) {
     const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/cancel`, {
@@ -361,6 +420,10 @@ export function PrototypePreviewPanel({
   const runPlannerCreate = useCallback(
     async (prePlanUserNote?: string) => {
       if (!canRequestGeneration.designOk) return;
+      if (!projectId.trim()) {
+        pushEphemeralPlannerNotice("프로젝트 정보가 없어 작업계획 요청을 보낼 수 없습니다.");
+        return;
+      }
       const note = String(prePlanUserNote ?? "").trim();
       const plannerCtx =
         note.length > 0
@@ -379,71 +442,113 @@ export function PrototypePreviewPanel({
           plannerContext: plannerCtx,
         });
         if (res.success && res.data?.run) {
+          /** 응답 직후 진행 말풍선이 잠깐 보일 때 단계를 모두 완료로 스냅 */
+          setPlannerProgressStep(5);
           setLatestRun(res.data.run);
           setAutomationAvailable(res.data.automationAvailable);
           setAutomationBlockReason(res.data.automationBlockReason);
-          showToast(res.data.message ?? "완료");
+          const wuN = res.data.run.workUnits?.length ?? 0;
+          const serverMsg = res.data.message?.trim();
+          /** 서버가 메시지 없이 같은 run만 돌려준 경우(플래너 진행 중 중복 요청 등)는 타임라인 카드만 유지 */
+          if (wuN === 0 && serverMsg) {
+            pushEphemeralPlannerNotice(serverMsg);
+          }
         } else {
-          showToast(res.message ?? "실패");
+          pushEphemeralPlannerNotice(res.message?.trim() || "작업계획 생성에 실패했습니다.");
         }
       } catch {
-        showToast("요청 실패");
+        pushEphemeralPlannerNotice("네트워크 오류로 작업계획 요청에 실패했습니다.");
       } finally {
         setProtoBusy(false);
         void refreshLatestRun();
       }
     },
-    [canRequestGeneration.designOk, projectId, effectiveTemplate, promptPackage, plannerContextPayload, refreshLatestRun],
+    [canRequestGeneration.designOk, projectId, effectiveTemplate, promptPackage, plannerContextPayload, refreshLatestRun, pushEphemeralPlannerNotice],
   );
 
-  const commitTemplateSelection = useCallback(
-    (resolvedId: PrototypeTemplateType) => {
-      const recommendedId = analysis.recommendedTemplate;
-      if (resolvedId === recommendedId) {
-        setTemplateOverride(null);
-        savePrototypeGenerationRecord(projectId, { selectedTemplate: null });
-      } else {
-        setTemplateOverride(resolvedId);
-        savePrototypeGenerationRecord(projectId, { selectedTemplate: resolvedId });
+  /**
+   * 동기 진입점: `async`로 두면 클릭 직후 첫 줄이 한 박자 늦게 실행되어 연타 시 API가 여러 번 나갈 수 있음.
+   * ref·flushSync·pending은 이 함수 본문이 끝나기 전에 모두 반영됨.
+   */
+  const startWorkPlanGenerationFromChat = useCallback(() => {
+    if (planRequestInFlightRef.current) return;
+    if (protoBusy) return;
+    if (!templateConfirmed) return;
+    if (!canRequestGeneration.designOk) return;
+    planRequestInFlightRef.current = true;
+    const extra = prePlannerNotesRef.current.trim();
+    prePlannerNotesRef.current = "";
+    planProgressStartedAtRef.current = Date.now();
+    flushSync(() => {
+      setPlannerProgressStep(1);
+      setPlannerCreatePending(true);
+    });
+    void (async () => {
+      try {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+        await runPlannerCreate(extra || undefined);
+      } finally {
+        planRequestInFlightRef.current = false;
+        setPlannerCreatePending(false);
       }
-      refreshRecord();
-      setChatTemplateSelected(true);
-      const label = PROTOTYPE_TEMPLATES.find((t) => t.id === resolvedId)?.nameKo ?? String(resolvedId);
-      const now = Date.now();
-      setChatUserLog((prev) => [...prev, { id: `user-tmpl-${now}-${Math.random()}`, text: `${label} 템플릿을 선택했습니다.`, at: now }]);
-      setEphemeralAiReplies((prev) => [
-        ...prev,
-        {
-          id: `ai-tmpl-${now}-${Math.random()}`,
-          text: `${label} 템플릿이 선택되었습니다. 아이디어 구체화와 액터 및 서비스 흐름 산출물을 바탕으로 작업계획을 생성할 수 있습니다.`,
-          at: now + 1,
-        },
-      ]);
-      setPrePlanGate("need_create_click");
-    },
-    [analysis.recommendedTemplate, projectId, refreshRecord],
-  );
+    })();
+  }, [protoBusy, templateConfirmed, canRequestGeneration.designOk, runPlannerCreate]);
 
-  const onChatSelectTemplate = useCallback(
+  const confirmTemplate = useCallback(() => {
+    if (shouldLockInlineChatTemplateSelection(latestRun) || protoBusy) return;
+    const resolvedId =
+      draftPickerValue === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE
+        ? analysis.recommendedTemplate
+        : (draftPickerValue as PrototypeTemplateType);
+    const recommendedId = analysis.recommendedTemplate;
+    if (resolvedId === recommendedId) {
+      setTemplateOverride(null);
+      savePrototypeGenerationRecord(projectId, { selectedTemplate: null, templateCommittedToPlan: true });
+    } else {
+      setTemplateOverride(resolvedId);
+      savePrototypeGenerationRecord(projectId, { selectedTemplate: resolvedId, templateCommittedToPlan: true });
+    }
+    refreshRecord();
+    setTemplateConfirmed(true);
+    setPrePlanGate("need_create_click");
+  }, [
+    analysis.recommendedTemplate,
+    draftPickerValue,
+    latestRun,
+    projectId,
+    protoBusy,
+    refreshRecord,
+  ]);
+
+  const applyChatTemplateIntent = useCallback(
     (next: PrototypeTemplateType | null) => {
       const recommendedId = analysis.recommendedTemplate;
       const resolvedId = next ?? recommendedId;
-      commitTemplateSelection(resolvedId);
+      const nextDraft =
+        resolvedId === recommendedId ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : resolvedId;
+      setDraftPickerValue(nextDraft);
+      setTemplateConfirmed((c) => {
+        if (c) savePrototypeGenerationRecord(projectId, { templateCommittedToPlan: false });
+        return false;
+      });
     },
-    [analysis.recommendedTemplate, commitTemplateSelection],
+    [analysis.recommendedTemplate, projectId],
   );
 
   useEffect(() => {
-    if (!chatTemplateSelected) {
+    if (!templateConfirmed) {
       setPrePlanGate("idle");
       return;
     }
-    if (latestRun?.id) {
+    const wu = (latestRun?.workUnits?.length ?? 0) > 0;
+    if (latestRun?.id && wu) {
       setPrePlanGate("idle");
       return;
     }
-    setPrePlanGate((g) => (g === "await_work_start" ? g : "need_create_click"));
-  }, [chatTemplateSelected, latestRun?.id]);
+    setPrePlanGate("need_create_click");
+  }, [templateConfirmed, latestRun?.id, latestRun?.workUnits?.length]);
 
   const onRefreshPrototypeStatus = async () => {
     if (!latestRun?.id) {
@@ -566,14 +671,26 @@ export function PrototypePreviewPanel({
     );
   }, [latestRun, awaitingExecutionConfirm]);
 
-  const isPlannerRunning = useMemo(() => {
-    const r = latestRun;
-    if (!r) return false;
-    return r.status === "PLANNER_ANALYZING" || r.plannerStatus === "RUNNING";
-  }, [latestRun]);
+  /** `plannerStatus`만 RUNNING으로 남는 불일치 시에도 UI가 막히지 않도록 실행 단계(status)만 사용 */
+  const isPlannerRunning = useMemo(() => latestRun?.status === "PLANNER_ANALYZING", [latestRun?.status]);
+
+  useEffect(() => {
+    const active = isPlannerRunning || plannerCreatePending;
+    const hasUnits = (latestRun?.workUnits?.length ?? 0) > 0;
+    if (!active || hasUnits) return;
+    const tick = () => {
+      const elapsed = Date.now() - planProgressStartedAtRef.current;
+      const step = Math.min(5, 1 + Math.floor(elapsed / 2000));
+      setPlannerProgressStep(step);
+    };
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => window.clearInterval(id);
+  }, [isPlannerRunning, plannerCreatePending, latestRun?.workUnits?.length]);
 
   /** 전송·Enter: 플래너/파이프라인 작업 중에는 입력 비활성 (계획 확정 전 수정 요청만 허용) */
   const isMessageInputBlocked = useMemo(() => {
+    if (plannerCreatePending) return true;
     if (protoBusy) return true;
     if (isPlannerRunning) return true;
     const r = latestRun;
@@ -595,7 +712,7 @@ export function PrototypePreviewPanel({
       "DEPLOYING",
     ];
     return blocked.includes(s);
-  }, [protoBusy, isPlannerRunning, latestRun]);
+  }, [plannerCreatePending, protoBusy, isPlannerRunning, latestRun]);
 
   const hasCompletedWorkPlan = useMemo(
     () => (latestRun?.workUnits?.length ?? 0) > 0,
@@ -700,11 +817,6 @@ export function PrototypePreviewPanel({
     [projectId],
   );
 
-  const recommendedTemplateNameKo = useMemo(() => {
-    const id = analysis.recommendedTemplate;
-    return PROTOTYPE_TEMPLATES.find((t) => t.id === id)?.nameKo ?? String(id);
-  }, [analysis.recommendedTemplate]);
-
   const derivedChatMessages = useMemo(
     () =>
       buildPrototypeChatMessages({
@@ -717,10 +829,9 @@ export function PrototypePreviewPanel({
         canRequestGenerationEnvOk: canRequestGeneration.envOk,
         canRequestGenerationDesignOk: canRequestGeneration.designOk,
         envSettingsHref,
-        recommendedTemplateNameKo,
         templateChipTemplates: [],
         recommendedTemplateId: analysis.recommendedTemplate,
-        chatTemplateSelected,
+        templateConfirmed,
         prePlanGate,
         latestRun,
         awaitingExecutionConfirm,
@@ -736,6 +847,8 @@ export function PrototypePreviewPanel({
         pagesSettingsHref,
         pagesDeployWorkflowRunUrl: latestRun?.pagesDeployWorkflowRunUrl ?? null,
         protoBusy,
+        plannerCreatePending,
+        plannerProgressStep,
       }),
     [
       envStatus.git,
@@ -745,13 +858,14 @@ export function PrototypePreviewPanel({
       canRequestGeneration.envOk,
       canRequestGeneration.designOk,
       envSettingsHref,
-      recommendedTemplateNameKo,
       analysis.recommendedTemplate,
-      chatTemplateSelected,
+      templateConfirmed,
       prePlanGate,
       latestRun,
       awaitingExecutionConfirm,
       isPlannerRunning,
+      plannerCreatePending,
+      plannerProgressStep,
       isRunningState,
       isCancelled,
       workPipelineFailed,
@@ -775,17 +889,28 @@ export function PrototypePreviewPanel({
       canRequestGeneration.envOk &&
       canRequestGeneration.designOk &&
       !isRunningState &&
-      /^\s*(작업\s*계획\s*생성|작업계획생성|실행\s*계획\s*수립|실행계획\s*수립|실행계획수립|workunit|work\s*unit)\s*$/i.test(text);
+      /^\s*(작업\s*계획\s*생성|작업계획생성|작업\s*계획\s*수립|작업계획수립|실행\s*계획\s*수립|실행계획\s*수립|실행계획수립|workunit|work\s*unit)\s*$/i.test(
+        text,
+      );
 
     setChatUserLog((prev) => [...prev, { id: `user-${now}-${Math.random()}`, text, at: now }]);
     setChatInput("");
 
     if (wantsExecutionPlan) {
-      if (!chatTemplateSelected) {
-        setEphemeralAiReplies((prev) => [...prev, { id: `ai-${now}-need-tmpl`, text: "먼저 템플릿을 선택해 주세요.", at: now }]);
+      if (!templateConfirmed) {
+        setEphemeralAiReplies((prev) => [
+          ...prev,
+          {
+            id: `ai-${now}-need-tmpl`,
+            text: canRequestGeneration.envOk
+              ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
+              : "먼저 실행 환경 점검을 완료해 주세요.",
+            at: now,
+          },
+        ]);
         return;
       }
-      setPrePlanGate("await_work_start");
+      startWorkPlanGenerationFromChat();
       return;
     }
 
@@ -831,10 +956,16 @@ export function PrototypePreviewPanel({
       return;
     }
 
-    if (!chatTemplateSelected) {
+    if (!templateConfirmed) {
       setEphemeralAiReplies((prev) => [
         ...prev,
-        { id: `ai-${now}-need-tmpl`, text: "먼저 템플릿을 선택해 주세요.", at: now },
+        {
+          id: `ai-${now}-need-tmpl`,
+          text: canRequestGeneration.envOk
+            ? "타임라인의 「템플릿 선택」말풍선에서 유형을 고른 뒤 [확정]을 눌러 주세요."
+            : "먼저 실행 환경 점검을 완료해 주세요.",
+          at: now,
+        },
       ]);
       return;
     }
@@ -856,7 +987,8 @@ export function PrototypePreviewPanel({
     canRequestGeneration.designOk,
     plannerContextPayload,
     refreshLatestRun,
-    chatTemplateSelected,
+    templateConfirmed,
+    startWorkPlanGenerationFromChat,
   ]);
 
   const onChatTextareaKeyDown = useCallback(
@@ -881,41 +1013,26 @@ export function PrototypePreviewPanel({
           setTemplatePreviewOpen(true);
           return;
         case "SELECT_TEMPLATE_RECOMMENDED":
-          onChatSelectTemplate(null);
+          applyChatTemplateIntent(null);
           return;
         case "SELECT_TEMPLATE":
-          if (a.templateId) onChatSelectTemplate(a.templateId as PrototypeTemplateType);
+          if (a.templateId) applyChatTemplateIntent(a.templateId as PrototypeTemplateType);
           return;
         case "CREATE_PLAN":
-          if (protoBusy) return;
-          setPrePlanGate("await_work_start");
+          startWorkPlanGenerationFromChat();
           return;
         case "OPEN_PLANNER_PROMPT_IN_CHAT": {
-          const body = plannerCombinedInputPreview.trim();
-          const t = Date.now();
-          setEphemeralAiReplies((prev) => [
-            ...prev,
-            {
-              id: `ai-planner-prompt-${t}`,
-              text: body.length ? `플래너 입력 프롬프트:\n\n${body}` : "표시할 플래너 프롬프트가 아직 없습니다.",
-              at: t,
-            },
-          ]);
+          if (!templateConfirmed) return;
+          if (plannerCreatePending || isPlannerRunning || protoBusy) return;
+          setPlannerPromptModalOpen(true);
           return;
         }
-        case "START_WORK_PLAN_GENERATION": {
-          if (protoBusy) return;
-          if (!canRequestGeneration.designOk) return;
-          const extra = prePlannerNotesRef.current.trim();
-          prePlannerNotesRef.current = "";
-          const t = Date.now();
-          setEphemeralAiReplies((prev) => [
-            ...prev,
-            { id: `ai-plan-start-${t}`, text: "작업계획 생성을 시작합니다.", at: t },
-          ]);
-          void runPlannerCreate(extra || undefined);
+        case "START_WORK_PLAN_GENERATION":
+          startWorkPlanGenerationFromChat();
           return;
-        }
+        case "RETRY_PLANNER_GENERATION":
+          startWorkPlanGenerationFromChat();
+          return;
         case "REFRESH_STATUS":
           void onRefreshPrototypeStatus();
           return;
@@ -1002,11 +1119,14 @@ export function PrototypePreviewPanel({
     },
     [
       envSettingsHref,
-      onChatSelectTemplate,
-      runPlannerCreate,
-      plannerCombinedInputPreview,
+      applyChatTemplateIntent,
+      startWorkPlanGenerationFromChat,
       canRequestGeneration.designOk,
+      templateConfirmed,
       protoBusy,
+      plannerCreatePending,
+      isPlannerRunning,
+      showToast,
       confirmExecution,
       regeneratePlan,
       latestRun?.id,
@@ -1020,7 +1140,12 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const isWorkPlanPlanningUi = isPlannerRunning || plannerCreatePending;
+
   const chatPlaceholder = useMemo(() => {
+    if (isWorkPlanPlanningUi) {
+      return "AI기획자가 작업계획을 생성 중입니다.";
+    }
     if (isMessageInputBlocked) {
       return "AI기획자가 작업 중입니다. 잠시 기다려주세요.";
     }
@@ -1033,12 +1158,17 @@ export function PrototypePreviewPanel({
     if (latestRun?.id && latestRun.status === "WORK_UNITS_READY" && latestRun.workUnitsExecutionConfirmed !== true) {
       return "수정 요청을 입력한 뒤 전송하면 작업계획을 다시 만듭니다.";
     }
-    if (chatTemplateSelected && (!latestRun?.id || (latestRun.workUnits?.length ?? 0) === 0)) {
+    if (
+      templateConfirmed &&
+      (!latestRun?.id || (latestRun.workUnits?.length ?? 0) === 0) &&
+      !isWorkPlanPlanningUi
+    ) {
       return "작업계획 생성 전 추가 지시가 있으면 입력 후 전송하세요.";
     }
     return "메시지를 입력하세요.";
   }, [
-    chatTemplateSelected,
+    templateConfirmed,
+    isWorkPlanPlanningUi,
     isMessageInputBlocked,
     isRunningState,
     latestRun?.id,
@@ -1047,212 +1177,323 @@ export function PrototypePreviewPanel({
     latestRun?.workUnitsExecutionConfirmed,
   ]);
 
+  const chatInlineTemplatePicker = useMemo((): PrototypeInlineTemplatePickerProps | null => {
+    if (!canRequestGeneration.envOk) return null;
+    if (shouldLockInlineChatTemplateSelection(latestRun)) return null;
+    if (isPlannerRunning || plannerCreatePending) return null;
+    const frozen = shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
+    const snapshot = templateOverride === null ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : templateOverride;
+    const confirmDisabled = templateConfirmed && draftPickerValue === snapshot;
+    return {
+      value: draftPickerValue,
+      recommendedTemplateId: analysis.recommendedTemplate,
+      onChange: (id: string) => {
+        setDraftPickerValue(id);
+        setTemplateConfirmed((c) => {
+          if (c) savePrototypeGenerationRecord(projectId, { templateCommittedToPlan: false });
+          return false;
+        });
+      },
+      onPreview: () => setTemplatePreviewOpen(true),
+      onConfirm: () => void confirmTemplate(),
+      confirmDisabled,
+      disabled: frozen,
+    };
+  }, [
+    canRequestGeneration.envOk,
+    isPlannerRunning,
+    plannerCreatePending,
+    latestRun,
+    protoBusy,
+    templateOverride,
+    templateConfirmed,
+    draftPickerValue,
+    analysis.recommendedTemplate,
+    projectId,
+    confirmTemplate,
+  ]);
+
   return (
-    <div style={{ position: "relative" }}>
+    <div
+      className="jyo-prototype-generation-root"
+      style={{
+        position: "relative",
+        flex: 1,
+        minHeight: 0,
+        minWidth: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <style>{`
+        @keyframes jyo-proto-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media (max-width: 760px) {
+          .jyo-prototype-stage-shell {
+            grid-template-columns: minmax(0, 1fr) !important;
+            overflow-y: auto !important;
+          }
+          .jyo-prototype-stage-members {
+            min-height: 180px !important;
+          }
+        }
+        .jyo-prototype-stage-shell { height: 100%; }
+        .jyo-prototype-generation-root input,
+        .jyo-prototype-generation-root select {
+          box-sizing: border-box;
+          max-width: 100%;
+        }
+      `}</style>
       {toast ? (
         <div style={toastStyle}>
           {toast}
         </div>
       ) : null}
 
-
       <div
+        className="jyo-prototype-stage-shell"
         style={{
-          marginTop: 0,
-          display: "grid",
-          gridTemplateColumns: wideLayout ? "minmax(280px, 340px) minmax(0, 1fr)" : "minmax(0, 1fr)",
-          gap: 14,
-          alignItems: "stretch",
-          minWidth: 0,
+          ...prototypeStageShell,
+          gridTemplateColumns: chatExpanded ? "minmax(0, 1fr)" : "minmax(220px, 280px) minmax(0, 1fr)",
+          height: "100%",
         }}
       >
-        <div
-          style={{
-            border: "1px solid #e2e8f0",
-            borderRadius: 14,
-            background: "#fff",
-            minWidth: 0,
-            display: "flex",
-            flexDirection: "column",
-            minHeight: wideLayout ? "min(70vh, 720px)" : undefined,
-            height: wideLayout ? "min(70vh, 720px)" : "auto",
-          }}
-        >
+        {!chatExpanded ? (
+          <aside className="jyo-prototype-stage-members" style={prototypeMemberAside} aria-label="참여 멤버 및 작업 목록">
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                borderBottom: "1px solid #e2e8f0",
+              }}
+            >
+              <div style={{ position: "relative", padding: "12px 12px 8px", flexShrink: 0 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: "#64748b",
+                    letterSpacing: "0.02em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  참여 멤버
+                </div>
+              </div>
+              <div
+                role="list"
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  padding: "0 10px 10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      background: isRunningState || isPlannerRunning ? "#2563eb" : "#94a3b8",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", flex: "1 1 auto", minWidth: 0 }}>
+                    AI기획자 ·{" "}
+                    {isPlannerRunning
+                      ? "분석중"
+                      : isRunningState
+                        ? "작업중"
+                        : latestRun?.status === "PREVIEW_READY"
+                          ? "완료"
+                          : latestRun?.status === "DEPLOY_FAILED" || latestRun?.status === "FAILED"
+                            ? "오류"
+                            : "대기"}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 999, background: "#16a34a", flexShrink: 0 }} />
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", flex: "1 1 auto", minWidth: 0 }}>
+                    사용자 · OWNER · 온라인
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ padding: "10px 12px 6px", flexShrink: 0 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: "#64748b",
+                    letterSpacing: "0.02em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  작업 목록
+                </div>
+              </div>
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                {sortedWorkUnitsForSidebar.length ? (
+                  sortedWorkUnitsForSidebar.map((u) => (
+                    <div
+                      key={u.id}
+                      style={{
+                        width: "100%",
+                        padding: "8px 10px",
+                        borderRadius: 10,
+                        border: "1px solid #e2e8f0",
+                        background: "#fff",
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.25 }}>
+                        {u.order}. {u.title}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35 }}>
+                        {mapWorkUnitPlanStatusKo(u.status)}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ fontSize: 12, fontWeight: 750, color: "#64748b", lineHeight: 1.45 }}>
+                    작업계획이 생성되면 여기에 표시됩니다.
+                  </div>
+                )}
+              </div>
+            </div>
+          </aside>
+        ) : null}
+
+        <main className="jyo-prototype-chat-shell" style={prototypeChatMain} aria-label="프로토타입 생성 채팅">
           <div
             style={{
-              flex: 1,
-              minHeight: 0,
-              display: "flex",
-              flexDirection: "column",
-              padding: 12,
-              gap: 8,
+              flex: "0 0 auto",
+              padding: "10px 20px 8px",
+              position: "sticky",
+              top: 0,
+              zIndex: 6,
+              background: "rgba(248,250,252,0.96)",
+              backdropFilter: "blur(8px)",
+              borderBottom: "1px solid rgba(226,232,240,0.75)",
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 950, color: "#64748b" }}>참여 멤버</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 999,
-                    background: isRunningState || isPlannerRunning ? "#2563eb" : "#94a3b8",
-                    flexShrink: 0,
-                  }}
-                />
-                <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", flex: "1 1 auto", minWidth: 0 }}>
-                  AI기획자 ·{" "}
-                  {isPlannerRunning
-                    ? "분석중"
-                    : isRunningState
-                      ? "작업중"
-                      : latestRun?.status === "PREVIEW_READY"
-                        ? "완료"
-                        : latestRun?.status === "DEPLOY_FAILED" || latestRun?.status === "FAILED"
-                          ? "오류"
-                          : "대기"}
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: "#16a34a", flexShrink: 0 }} />
-                <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", flex: "1 1 auto", minWidth: 0 }}>
-                  사용자 · OWNER · 온라인
-                </div>
-              </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                minWidth: 0,
+              }}
+            >
+              <div style={{ flex: "1 1 8px", minWidth: 0 }} aria-hidden />
+              <button
+                type="button"
+                onClick={() => setChatExpanded((v) => !v)}
+                aria-label={chatExpanded ? "채팅 축소" : "채팅 확대"}
+                title={chatExpanded ? "채팅 축소" : "채팅 확대"}
+                style={{
+                  border: "1px solid #cbd5e1",
+                  background: chatExpanded ? "#f0fdfa" : "#fff",
+                  borderRadius: 10,
+                  width: 36,
+                  height: 36,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#0f172a",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <PrototypeChatExpandIcon expanded={chatExpanded} />
+              </button>
             </div>
           </div>
 
           <div
             style={{
-              flex: 1,
+              flex: "1 1 auto",
               minHeight: 0,
-              borderTop: "1px solid #f1f5f9",
+              overflowY: "auto",
+              padding: "12px 20px 14px",
               display: "flex",
               flexDirection: "column",
-              padding: 12,
-              gap: 8,
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ fontSize: 11.5, fontWeight: 900, color: "#334155" }}>작업 목록</div>
-            {sortedWorkUnitsForSidebar.length ? (
-              <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                {sortedWorkUnitsForSidebar.map((u) => (
-                  <div
-                    key={u.id}
-                    style={{
-                      border: "1px solid #e8eef4",
-                      borderRadius: 10,
-                      padding: "8px 10px",
-                      background: "#fafbfc",
-                    }}
-                  >
-                    <div style={{ fontSize: 12.5, fontWeight: 950, color: "#0f172a", lineHeight: 1.25 }}>
-                      {u.order}. {u.title}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 4, fontWeight: 750 }}>
-                      {mapWorkUnitPlanStatusKo(u.status)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize: 12, color: "#64748b", fontWeight: 750, lineHeight: 1.45, flex: 1 }}>
-                작업계획이 생성되면 여기에 표시됩니다.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            minWidth: 0,
-            flex: "1 1 auto",
-            minHeight: wideLayout ? "min(70vh, 720px)" : "min(48vh, 480px)",
-          }}
-        >
-          <div
-            style={{
-              flexShrink: 0,
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
               gap: 10,
-              padding: "8px 10px",
-              border: "1px solid #e2e8f0",
-              borderRadius: 12,
-              background: "#fff",
+              alignContent: "start",
             }}
           >
-            <span style={{ fontSize: 13, fontWeight: 900, color: "#334155" }}>템플릿</span>
-            <select
-              value={String(effectiveTemplate)}
-              onChange={(e) => commitTemplateSelection(e.target.value as PrototypeTemplateType)}
-              disabled={Boolean(latestRun?.id) || protoBusy || isPlannerRunning}
+            <PrototypeChatTimeline
+              derived={derivedChatMessages}
+              userBubbles={chatUserLog}
+              ephemeralAi={ephemeralAiReplies}
+              onAction={handleChatIntent}
+              cursorPromptResolver={(order) => sortedWorkUnitsForSidebar.find((x) => x.order === order) ?? null}
+              timelineInScrollParent
+              templatePicker={chatInlineTemplatePicker}
+            />
+            {isNextPublicDevWorkflowToolsEnabled() ? (
+              <details style={{ fontSize: 11, color: "#475569", flexShrink: 0 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>내부 오케스트레이션 (개발)</summary>
+                <pre
+                  style={{
+                    marginTop: 8,
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    background: "#fff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 8,
+                    padding: 8,
+                  }}
+                >
+                  {JSON.stringify(
+                    {
+                      executionSlots,
+                      plannerSource: latestRun?.plannerSource ?? null,
+                      plannerError: latestRun?.plannerError ?? null,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+
+          <div
+            className="jyo-prototype-composer-shell"
+            style={{
+              flex: "0 0 auto",
+              padding: "14px 20px 18px",
+              background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)",
+            }}
+          >
+            <div
               style={{
-                minWidth: 160,
-                flex: "1 1 180px",
-                maxWidth: 360,
-                borderRadius: 10,
-                border: "1px solid #cbd5e1",
-                padding: "8px 10px",
-                fontSize: 13,
-                fontWeight: 800,
-                color: "#0f172a",
+                maxWidth: 660,
+                margin: "0 auto",
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                border: "1px solid #e2e8f0",
+                borderRadius: 20,
                 background: "#fff",
+                padding: 10,
+                boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
               }}
             >
-              {PROTOTYPE_TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.nameKo}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={() => setTemplatePreviewOpen(true)} style={{ ...btn, fontSize: 12.5, fontWeight: 900 }}>
-              템플릿 미리보기
-            </button>
-          </div>
-
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-            <PrototypeChatShell>
-              <PrototypeChatTimeline
-                derived={derivedChatMessages}
-                userBubbles={chatUserLog}
-                ephemeralAi={ephemeralAiReplies}
-                onAction={handleChatIntent}
-                cursorPromptResolver={(order) => sortedWorkUnitsForSidebar.find((x) => x.order === order) ?? null}
-              />
-              {isNextPublicDevWorkflowToolsEnabled() ? (
-                <details style={{ fontSize: 11, color: "#475569", flexShrink: 0 }}>
-                  <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>내부 오케스트레이션 (개발)</summary>
-                  <pre
-                    style={{
-                      marginTop: 8,
-                      fontSize: 10,
-                      lineHeight: 1.35,
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      background: "#fff",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      padding: 8,
-                    }}
-                  >
-                    {JSON.stringify(
-                      {
-                        executionSlots,
-                        plannerSource: latestRun?.plannerSource ?? null,
-                        plannerError: latestRun?.plannerError ?? null,
-                      },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </details>
-              ) : null}
               <PrototypeChatInput
                 value={chatInput}
                 onChange={setChatInput}
@@ -1261,10 +1502,11 @@ export function PrototypePreviewPanel({
                 placeholder={chatPlaceholder}
                 disabled={isMessageInputBlocked}
                 inputRef={chatInputRef}
+                embedInComposer
               />
-            </PrototypeChatShell>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
 
       <PrototypePreviewDraggableShell
@@ -1293,6 +1535,97 @@ export function PrototypePreviewPanel({
           <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>템플릿 정보를 찾을 수 없습니다.</div>
         )}
       </PrototypePreviewDraggableShell>
+
+      {plannerPromptModalOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 14,
+          }}
+          onClick={() => setPlannerPromptModalOpen(false)}
+        >
+          <div
+            style={{
+              width: "min(900px, 100%)",
+              maxHeight: "min(85vh, 900px)",
+              display: "flex",
+              flexDirection: "column",
+              background: "#fff",
+              borderRadius: 14,
+              border: "1px solid #e2e8f0",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                padding: "14px 16px",
+                borderBottom: "1px solid #e2e8f0",
+                fontSize: 15,
+                fontWeight: 1000,
+                color: "#0f172a",
+              }}
+            >
+              플래너 입력 프롬프트
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: 12 }}>
+              <pre
+                style={{
+                  margin: 0,
+                  fontSize: 11.5,
+                  lineHeight: 1.45,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  color: "#334155",
+                }}
+              >
+                {plannerCombinedInputPreview.trim() || "표시할 프롬프트가 아직 없습니다."}
+              </pre>
+            </div>
+            <div
+              style={{
+                padding: "12px 16px",
+                borderTop: "1px solid #e2e8f0",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  const t = plannerCombinedInputPreview.trim();
+                  if (!t) {
+                    showToast("복사할 내용이 없습니다.");
+                    return;
+                  }
+                  const p = navigator.clipboard?.writeText(t);
+                  if (p) {
+                    void p
+                      .then(() => showToast("클립보드에 복사했습니다."))
+                      .catch(() => showToast("복사에 실패했습니다."));
+                  } else {
+                    showToast("이 환경에서는 클립보드 복사를 사용할 수 없습니다.");
+                  }
+                }}
+                style={btnPrimary}
+              >
+                복사하기
+              </button>
+              <button type="button" onClick={() => setPlannerPromptModalOpen(false)} style={btnMuted}>
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {cancelConfirmOpen ? (
         <div
