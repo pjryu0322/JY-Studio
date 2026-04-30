@@ -101,6 +101,7 @@ export function ExecutionPageClient() {
                   projectId={projectId}
                   projectName={projectName || "프로젝트"}
                   projectDescription={projectDescription}
+                  requirementsStateJson={requirementsStateJson}
                   ideationAssets={derived.ideationAssets}
                   actors={derived.actors}
                   flowSteps={derived.flowSteps}

@@ -79,6 +79,9 @@ function workUnitFromDraft(
     executionCompletedAt: null,
     startedAt: null,
     finishedAt: null,
+    cursorAgentStatusUpper: null,
+    cursorLastPolledAt: null,
+    cursorLastSummary: null,
   };
 }
 

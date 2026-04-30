@@ -82,6 +82,11 @@ export type RequirementsStateJson = {
    * 충분하면 산출물 생성(writer)로 이어진다.
    */
   organizePlannerState?: RequirementsOrganizePlannerState | null;
+  /** 프로토타입 생성 워크스페이스 채팅(영구 저장, v1) */
+  prototypeWorkspaceChatV1?: {
+    userLog: Array<{ id: string; text: string; at: number }>;
+    aiLog: Array<{ id: string; text: string; at: number }>;
+  } | null;
 };
 
 /** 서비스 흐름 체크리스트 8슬롯(클라이언트·저장 JSON 공통 키) */
@@ -278,6 +283,35 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
               .slice(-24)
           : undefined;
 
+  const parseProtoChat = (rawChat: unknown): RequirementsStateJson["prototypeWorkspaceChatV1"] | undefined => {
+    if (rawChat === undefined) return undefined;
+    if (rawChat === null) return null;
+    if (!rawChat || typeof rawChat !== "object") return undefined;
+    const c = rawChat as Record<string, unknown>;
+    const normalize = (v: unknown): Array<{ id: string; text: string; at: number }> => {
+      if (!Array.isArray(v)) return [];
+      const out: Array<{ id: string; text: string; at: number }> = [];
+      for (const it of v) {
+        if (!it || typeof it !== "object") continue;
+        const r = it as Record<string, unknown>;
+        const id = typeof r.id === "string" ? r.id.trim() : "";
+        const text = typeof r.text === "string" ? r.text.trim() : "";
+        const at = typeof r.at === "number" && Number.isFinite(r.at) ? r.at : 0;
+        if (!id || !text || !at) continue;
+        out.push({ id, text: text.slice(0, 8000), at });
+      }
+      out.sort((a, b) => a.at - b.at);
+      return out.slice(-400);
+    };
+    return {
+      userLog: normalize(c.userLog),
+      aiLog: normalize(c.aiLog),
+    };
+  };
+
+  const protoChatRaw = "prototypeWorkspaceChatV1" in o ? (o.prototypeWorkspaceChatV1 as unknown) : undefined;
+  const prototypeWorkspaceChatV1 = parseProtoChat(protoChatRaw);
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -326,6 +360,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
       : o.organizePlannerState === null
         ? null
         : parseOrganizePlannerState(o.organizePlannerState) ?? null,
+    ...(prototypeWorkspaceChatV1 !== undefined ? { prototypeWorkspaceChatV1 } : {}),
   };
 }
 
