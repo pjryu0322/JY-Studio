@@ -283,24 +283,22 @@ export async function orchestrateNewPrototypeRun(input: {
   const gate = await evaluatePrototypeCursorAutomation(input.projectId);
 
   const latest = getLatestRun(input.projectId);
-  if (latest && !isTerminalPrototypeRunStatus(latest.status)) {
-    if (!input.startCursorAgent || !isPromptOnlyStub(latest)) {
-      return {
-        run: latest,
-        automationAvailable: gate.automationAvailable,
-        automationBlockReason: gate.blockReason,
-        message: "현재 실행이 진행 중입니다.",
-      };
-    }
+  if (latest && !isTerminalPrototypeRunStatus(latest.status) && !isPromptOnlyStub(latest)) {
+    return {
+      run: latest,
+      automationAvailable: gate.automationAvailable,
+      automationBlockReason: gate.blockReason,
+      message: "현재 실행이 진행 중입니다.",
+    };
   }
 
   let run: PrototypeRun;
-  if (latest && !isTerminalPrototypeRunStatus(latest.status) && input.startCursorAgent && isPromptOnlyStub(latest)) {
+  if (latest && !isTerminalPrototypeRunStatus(latest.status) && isPromptOnlyStub(latest)) {
     run =
       updateRun(input.projectId, latest.id, {
         selectedTemplate: input.selectedTemplate,
         promptSnapshot: input.promptSnapshot,
-        statusReason: null,
+        statusReason: input.startCursorAgent ? null : "MANUAL_CURSOR_EXECUTION_REQUIRED",
         runSchemaVersion: 2,
         workUnitsExecutionConfirmed: false,
         plannerSource: null,
@@ -333,35 +331,28 @@ export async function orchestrateNewPrototypeRun(input: {
     });
   }
 
-  if (!input.startCursorAgent) {
-    return {
-      run,
-      automationAvailable: gate.automationAvailable,
-      automationBlockReason: gate.blockReason,
-      message: "프롬프트를 복사해 Cursor에 붙여넣은 뒤, 완료되면 결과 URL을 연결하세요.",
-    };
-  }
+  if (input.startCursorAgent) {
+    if (!gate.automationAvailable) {
+      run =
+        updateRun(input.projectId, run.id, {
+          status: "PROMPT_READY",
+          statusReason: gate.blockReason ?? "MANUAL_CURSOR_EXECUTION_REQUIRED",
+        }) ?? run;
+      return {
+        run,
+        automationAvailable: false,
+        automationBlockReason: gate.blockReason,
+        message: "Cursor API 자동 실행을 사용할 수 없습니다. 수동으로 프롬프트를 실행하세요.",
+      };
+    }
 
-  if (!gate.automationAvailable) {
-    run =
-      updateRun(input.projectId, run.id, {
-        status: "PROMPT_READY",
-        statusReason: gate.blockReason ?? "MANUAL_CURSOR_EXECUTION_REQUIRED",
-      }) ?? run;
-    return {
-      run,
-      automationAvailable: false,
-      automationBlockReason: gate.blockReason,
-      message: "Cursor API 자동 실행을 사용할 수 없습니다. 수동으로 프롬프트를 실행하세요.",
-    };
-  }
-
-  const setup = await withExecutionSetupSchemaHealRetry(() =>
-    prisma.executionSetup.findUnique({ where: { projectId: input.projectId } }),
-  );
-  if (!setup) {
-    const r = markFailed(input.projectId, run.id, "EXECUTION_SETUP_INVALID", "Execution setup 없음") ?? run;
-    return { run: r, automationAvailable: false, automationBlockReason: "EXECUTION_SETUP_INVALID" };
+    const setup = await withExecutionSetupSchemaHealRetry(() =>
+      prisma.executionSetup.findUnique({ where: { projectId: input.projectId } }),
+    );
+    if (!setup) {
+      const r = markFailed(input.projectId, run.id, "EXECUTION_SETUP_INVALID", "Execution setup 없음") ?? run;
+      return { run: r, automationAvailable: false, automationBlockReason: "EXECUTION_SETUP_INVALID" };
+    }
   }
 
   run =
@@ -414,6 +405,15 @@ export async function orchestrateNewPrototypeRun(input: {
     const stopped = updateRun(input.projectId, run.id, { status: "CANCELLED" }) ?? run;
     logPrototypePipelineEvent("prototype_cancelled", { projectId: input.projectId, runId: run.id });
     return { run: stopped, automationAvailable: gate.automationAvailable, automationBlockReason: gate.blockReason };
+  }
+
+  if (!input.startCursorAgent) {
+    return {
+      run,
+      automationAvailable: gate.automationAvailable,
+      automationBlockReason: gate.blockReason,
+      message: "AI 기획자가 WorkUnit 계획을 생성했습니다.",
+    };
   }
 
   return {

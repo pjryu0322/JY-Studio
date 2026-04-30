@@ -31,9 +31,9 @@ const btn: CSSProperties = {
   cursor: "pointer",
 };
 
-const btnMuted: CSSProperties = { ...btn, borderColor: "#e2e8f0", background: "#f8fafc" };
+const btnMuted: CSSProperties = { ...btn, border: "1px solid #e2e8f0", background: "#f8fafc" };
 
-const btnPrimary: CSSProperties = { ...btn, borderColor: "#0f766e", background: "#0f766e", color: "#fff" };
+const btnPrimary: CSSProperties = { ...btn, border: "1px solid #0f766e", background: "#0f766e", color: "#fff" };
 
 function toneColor(tone: StepTone): string {
   if (tone === "done") return "#16a34a";
@@ -104,6 +104,10 @@ export type WorkUnitPlanCardProps = Readonly<{
   onPlannerFeedbackChange: (v: string) => void;
   onApplyPlannerFeedbackRegenerate: () => void;
   onRetryWorkUnit: (runId: string, order: number, mode: "same_prompt" | "regenerate_prompt") => void;
+  /** 채팅 메시지 안에 넣을 때 헤더(“AI 작업계획”)를 숨깁니다. */
+  hideHeader?: boolean;
+  /** 채팅 입력으로 대체할 때 textarea/버튼을 숨깁니다. */
+  hidePlannerFeedback?: boolean;
 }>;
 
 export function WorkUnitPlanCard(p: WorkUnitPlanCardProps) {
@@ -123,14 +127,8 @@ export function WorkUnitPlanCard(p: WorkUnitPlanCardProps) {
 
   return (
     <div style={subCard}>
-      <div style={{ ...subTitle, marginBottom: 10 }}>AI 작업계획</div>
-      {units.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "#64748b", lineHeight: 1.5 }}>
-          {run.status === "PLANNER_ANALYZING" || run.plannerStatus === "RUNNING"
-            ? "AI가 WorkUnit 계획을 작성 중입니다."
-            : "계획이 생성되면 목록이 표시됩니다."}
-        </div>
-      ) : (
+      {p.hideHeader ? null : <div style={{ ...subTitle, marginBottom: 10 }}>AI 작업계획</div>}
+      {units.length === 0 ? null : (
         <>
           <div style={{ fontSize: 12.5, fontWeight: 800, color: "#334155", marginBottom: 10, lineHeight: 1.45 }}>
             총 {p.stats.total}개 / 완료 {p.stats.summaryMerged} / 진행중 {p.stats.summaryRunning} / 대기 {p.stats.summaryPending} / 실패{" "}
@@ -213,7 +211,7 @@ export function WorkUnitPlanCard(p: WorkUnitPlanCardProps) {
               );
             })}
           </div>
-          {showPlannerFeedback ? (
+          {showPlannerFeedback && !p.hidePlannerFeedback ? (
             <div style={{ marginTop: 14, borderTop: "1px solid #e8eef4", paddingTop: 12 }}>
               <div style={{ fontSize: 11.5, fontWeight: 800, color: "#64748b", marginBottom: 6 }}>작업계획 피드백</div>
               <textarea
@@ -318,6 +316,8 @@ export function WorkUnitPlanCard(p: WorkUnitPlanCardProps) {
 
 export type CurrentWorkUnitPanelProps = Readonly<{
   latestRun: PrototypeRun | null;
+  /** 채팅 안에서 “현재 작업” 헤더를 숨깁니다. */
+  hideHeader?: boolean;
 }>;
 
 export function CurrentWorkUnitPanel(p: CurrentWorkUnitPanelProps) {
@@ -332,7 +332,7 @@ export function CurrentWorkUnitPanel(p: CurrentWorkUnitPanelProps) {
 
   return (
     <div style={subCard}>
-      <div style={{ ...subTitle, marginBottom: 8 }}>현재 작업</div>
+      {p.hideHeader ? null : <div style={{ ...subTitle, marginBottom: 8 }}>현재 작업</div>}
       {!active ? (
         <div style={{ fontSize: 12.5, color: "#64748b" }}>표시할 활성 WorkUnit이 없습니다.</div>
       ) : (
@@ -387,6 +387,8 @@ export type DeploymentStatusPanelProps = Readonly<{
   pagesSettingsHref: string | null;
   onOpenPreview: () => void;
   onCopyPreviewUrl: () => void;
+  /** 채팅 안에서 “배포 상태” 헤더를 숨깁니다. */
+  hideHeader?: boolean;
 }>;
 
 export function DeploymentStatusPanel(p: DeploymentStatusPanelProps) {
@@ -422,11 +424,11 @@ export function DeploymentStatusPanel(p: DeploymentStatusPanelProps) {
     <div
       style={{
         ...subCard,
-        borderColor: isDeployFail ? "#fecaca" : "#e2e8f0",
+        border: isDeployFail ? "1px solid #fecaca" : "1px solid #e2e8f0",
         background: isDeployFail ? "#fef2f2" : "#fff",
       }}
     >
-      <div style={{ ...subTitle, color: isDeployFail ? "#b91c1c" : "#64748b" }}>배포 상태</div>
+      {p.hideHeader ? null : <div style={{ ...subTitle, color: isDeployFail ? "#b91c1c" : "#64748b" }}>배포 상태</div>}
       <div style={{ fontSize: 12.5, color: isDeployFail ? "#7f1d1d" : "#334155", lineHeight: 1.55, marginBottom: 10 }}>{headline}</div>
       {isDeployFail && run.deployFailureDetail ? (
         <div style={{ fontSize: 12, color: "#7f1d1d", marginBottom: 10, whiteSpace: "pre-wrap" }}>{run.deployFailureDetail}</div>
@@ -472,7 +474,7 @@ export type FailureStateCardProps = Readonly<{
 
 export function FailureStateCard(p: FailureStateCardProps) {
   return (
-    <div style={{ ...subCard, borderColor: "#fecaca", background: "#fef2f2" }}>
+    <div style={{ ...subCard, border: "1px solid #fecaca", background: "#fef2f2" }}>
       <div style={{ ...subTitle, color: "#b91c1c" }}>실행 실패</div>
       <div style={{ fontSize: 12.5, color: "#7f1d1d", lineHeight: 1.55, marginBottom: 10 }}>{p.summary}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

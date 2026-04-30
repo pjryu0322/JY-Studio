@@ -69,10 +69,7 @@ export function ExecutionPageClient() {
 
   return (
     <div>
-      <WorkflowPageHeader
-        title="프로토타입 생성"
-        subtitle="AI 기획자 작업분해 → Cursor 실행 → Git 반영 → 결과 확인까지 한 화면에서 진행합니다."
-      />
+      <WorkflowPageHeader title="프로토타입 생성" />
 
       <div style={{ marginTop: 12, marginBottom: 4 }}>
         <ProjectWorkflowNav />

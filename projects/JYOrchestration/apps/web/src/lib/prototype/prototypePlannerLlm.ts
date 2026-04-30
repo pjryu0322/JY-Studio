@@ -18,6 +18,52 @@ export type PrototypePlannerLlmInput = Readonly<{
   previousWorkUnitsSummary: string;
 }>;
 
+/** OpenAI `messages[0]` system 역할 — UI 미리보기용과 동일 문자열 */
+export const PROTOTYPE_PLANNER_SYSTEM_PROMPT = `You are a senior frontend engineer planning Cursor execution batches for a prototype repo.
+Output ONLY valid JSON with shape:
+{"workUnits":[{"order":1,"title":"...","description":"...","targetArea":"path or module","implementationScope":"concrete files/components","dependencies":["optional order refs as strings"],"acceptanceCriteria":["..."],"riskLevel":"low|medium|high","estimatedComplexity":"low|medium|high"}]}
+
+Rules:
+- Produce 3 to 7 workUnits.
+- Titles and descriptions MUST be implementation-oriented (components, routes, modules), NOT vague business milestones.
+- Prefer boundaries: layout/shell, feature slices, data mocks, polish/docs.
+- Korean for title, description, targetArea, implementationScope, acceptanceCriteria strings.
+- dependencies: refer to prior orders like "1" or "2" when needed.
+- Optimize for efficient Cursor agent runs (clear scope per unit).
+- No markdown fences or commentary outside JSON.`;
+
+/** LLM user 메시지 본문 — 서버 요청과 동일 포맷(미리보기·복사용). */
+export function formatPrototypePlannerUserMessage(input: PrototypePlannerLlmInput): string {
+  return [
+    `프로젝트명: ${input.projectName}`,
+    `선택 템플릿: ${input.selectedTemplate}`,
+    "",
+    "=== 아이디어·요약 ===",
+    input.ideationSummary || "(없음)",
+    "",
+    "=== 프로젝트 설명 ===",
+    input.projectDescription.slice(0, 12_000),
+    "",
+    "=== 액터·서비스 흐름 ===",
+    input.actorFlowSummary.slice(0, 12_000),
+    "",
+    "=== 기능 정리(제목) ===",
+    input.featureDraftTitles.join("\n") || "(없음)",
+    "",
+    "=== 저장소/스택 힌트 ===",
+    input.repositoryStructureHint || "(미지정)",
+    "",
+    "=== Cursor 전달용 프롬프트 스냅샷(발췌) ===",
+    input.promptSnapshot.slice(0, 16_000),
+    "",
+    "=== 이전 WorkUnit 요약(재생성 시) ===",
+    input.previousWorkUnitsSummary || "(없음)",
+    "",
+    "=== 사용자 피드백(재생성 시) ===",
+    input.userFeedback || "(없음)",
+  ].join("\n");
+}
+
 export type PrototypePlannerLlmDraftUnit = Readonly<{
   order: number;
   title: string;
@@ -104,34 +150,7 @@ export async function generatePrototypeWorkUnitsWithOpenAI(
 
   const model = auth.model.trim() || "gpt-4o-mini";
 
-  const userBlock = [
-    `프로젝트명: ${input.projectName}`,
-    `선택 템플릿: ${input.selectedTemplate}`,
-    "",
-    "=== 아이디어·요약 ===",
-    input.ideationSummary || "(없음)",
-    "",
-    "=== 프로젝트 설명 ===",
-    input.projectDescription.slice(0, 12_000),
-    "",
-    "=== 액터·서비스 흐름 ===",
-    input.actorFlowSummary.slice(0, 12_000),
-    "",
-    "=== 기능 정리(제목) ===",
-    input.featureDraftTitles.join("\n") || "(없음)",
-    "",
-    "=== 저장소/스택 힌트 ===",
-    input.repositoryStructureHint || "(미지정)",
-    "",
-    "=== Cursor 전달용 프롬프트 스냅샷(발췌) ===",
-    input.promptSnapshot.slice(0, 16_000),
-    "",
-    "=== 이전 WorkUnit 요약(재생성 시) ===",
-    input.previousWorkUnitsSummary || "(없음)",
-    "",
-    "=== 사용자 피드백(재생성 시) ===",
-    input.userFeedback || "(없음)",
-  ].join("\n");
+  const userBlock = formatPrototypePlannerUserMessage(input);
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -145,21 +164,9 @@ export async function generatePrototypeWorkUnitsWithOpenAI(
       response_format: { type: "json_object" },
       messages: [
         {
-          role: "system",
-          content: `You are a senior frontend engineer planning Cursor execution batches for a prototype repo.
-Output ONLY valid JSON with shape:
-{"workUnits":[{"order":1,"title":"...","description":"...","targetArea":"path or module","implementationScope":"concrete files/components","dependencies":["optional order refs as strings"],"acceptanceCriteria":["..."],"riskLevel":"low|medium|high","estimatedComplexity":"low|medium|high"}]}
-
-Rules:
-- Produce 3 to 7 workUnits.
-- Titles and descriptions MUST be implementation-oriented (components, routes, modules), NOT vague business milestones.
-- Prefer boundaries: layout/shell, feature slices, data mocks, polish/docs.
-- Korean for title, description, targetArea, implementationScope, acceptanceCriteria strings.
-- dependencies: refer to prior orders like "1" or "2" when needed.
-- Optimize for efficient Cursor agent runs (clear scope per unit).
-- No markdown fences or commentary outside JSON.`,
+          role: "user",
+          content: `${PROTOTYPE_PLANNER_SYSTEM_PROMPT}\n\n${userBlock}`,
         },
-        { role: "user", content: userBlock },
       ],
     }),
   });

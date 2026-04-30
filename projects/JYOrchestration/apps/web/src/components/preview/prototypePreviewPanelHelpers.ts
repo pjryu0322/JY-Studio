@@ -1,4 +1,5 @@
-import { workUnitProgressFromRun } from "@/lib/prototype/prototypePlannerService";
+import { formatPrototypePlannerUserMessage } from "@/lib/prototype/prototypePlannerLlm";
+import { summarizeWorkUnitsForPlanner, workUnitProgressFromRun } from "@/lib/prototype/prototypePlannerService";
 import type { PrototypeRun, PrototypeWorkUnit, PrototypeWorkUnitStatus } from "@/lib/prototype/prototypeRunTypes";
 
 export const WU_STATUS_ORDER: PrototypeWorkUnitStatus[] = [
@@ -127,6 +128,40 @@ export function workUnitSummaryLabel(
 export function workUnitProgressAllMerged(run: PrototypeRun | null): boolean {
   if (!run?.workUnits.length) return false;
   return run.workUnits.every((u) => u.status === "MERGED" || u.status === "SKIPPED");
+}
+
+/** 서버 `inferPlannerInputFromRun` 의 repositoryStructureHint 와 동일 */
+export const PROTOTYPE_PLAN_REPOSITORY_HINT =
+  "Vite React 웹은 `web/package.json`, `web/vite.config.ts`, `web/index.html`, `web/src/**` 구조를 기본으로 가정합니다.";
+
+export type PlannerUserMessagePreviewParams = Readonly<{
+  projectName: string;
+  plannerContext: {
+    projectDescription: string;
+    actorFlowSummary: string;
+    featureDraftTitles: readonly string[];
+    ideationSummary?: string;
+  };
+  selectedTemplate: string;
+  promptSnapshot: string;
+  userFeedback: string;
+  latestRun: PrototypeRun | null;
+}>;
+
+/** AI 작업계획(OpenAI) user 메시지 — 서버 전송 본문과 동일 포맷 */
+export function buildDisplayedPlannerUserMessage(p: PlannerUserMessagePreviewParams): string {
+  return formatPrototypePlannerUserMessage({
+    projectName: p.projectName,
+    projectDescription: p.plannerContext.projectDescription,
+    ideationSummary: p.plannerContext.ideationSummary ?? "",
+    actorFlowSummary: p.plannerContext.actorFlowSummary,
+    featureDraftTitles: p.plannerContext.featureDraftTitles,
+    selectedTemplate: p.selectedTemplate,
+    promptSnapshot: p.promptSnapshot,
+    repositoryStructureHint: PROTOTYPE_PLAN_REPOSITORY_HINT,
+    userFeedback: p.userFeedback.trim(),
+    previousWorkUnitsSummary: p.latestRun?.workUnits?.length ? summarizeWorkUnitsForPlanner(p.latestRun) : "",
+  });
 }
 
 /** WorkUnit 목록·요약용 상태 라벨(기획 화면). */
