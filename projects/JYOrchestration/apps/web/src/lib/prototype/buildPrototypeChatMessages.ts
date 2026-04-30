@@ -1,5 +1,15 @@
 import { buildFiveStepPipelineRows, resolveActiveWorkUnitForPanel, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
 import type { PrototypeRun, PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
+import { shouldLockInlineChatTemplateSelection } from "@/lib/prototype/prototypeRunUiHelpers";
+
+/** 플래너 진행 단계(1~5) — UI·시뮬레이션과 동일 순서 유지 */
+export const PROTOTYPE_PLANNER_STAGE_LABELS_KO = [
+  "아이디어 구체화 결과 분석",
+  "액터 및 서비스 흐름 분석",
+  "선택 템플릿 구조 반영",
+  "Cursor 작업단위 분해",
+  "최종 작업계획 작성",
+] as const;
 
 export type PrototypeChatEnvBadge = "ok" | "needs" | "error" | "loading";
 
@@ -22,6 +32,8 @@ export type PrototypeChatActionIntent =
   | "OPEN_PLANNER_PROMPT_IN_CHAT"
   /** postCreatePrototypeRun(플래너) 실제 호출 */
   | "START_WORK_PLAN_GENERATION"
+  /** 작업계획(WorkUnit) 생성만 다시 시도 */
+  | "RETRY_PLANNER_GENERATION"
   | "REFRESH_STATUS"
   | "CONFIRM_EXECUTION"
   | "REGENERATE_PLAN"
@@ -36,8 +48,8 @@ export type PrototypeChatActionIntent =
   | "OPEN_PREVIEW"
   | "COPY_PREVIEW_URL";
 
-/** 템플릿 선택 후 작업계획 API 호출 전 단계 */
-export type PrototypePrePlanGate = "idle" | "need_create_click" | "await_work_start";
+/** 템플릿 확정 후 작업계획 생성 버튼 노출 여부 등 */
+export type PrototypePrePlanGate = "idle" | "need_create_click";
 
 export type PrototypeChatAction = Readonly<{
   id: string;
@@ -57,7 +69,9 @@ export type PrototypeChatBlock =
   | { kind: "ordered_titles"; items: readonly { order: number; title: string }[] }
   | { kind: "pipeline_grid"; rows: readonly { label: string; stateKo: string; tone: string }[] }
   | { kind: "bullet_list"; items: readonly string[] }
-  | { kind: "url_line"; url: string };
+  | { kind: "url_line"; url: string }
+  /** currentStep: 1~5 (진행 중인 단계). 이전 단계는 완료, 이후는 대기로 표시 */
+  | { kind: "planner_stage_progress"; currentStep: number };
 
 export type PrototypeChatBuiltMessage = Readonly<{
   id: string;
@@ -68,6 +82,8 @@ export type PrototypeChatBuiltMessage = Readonly<{
   body?: string;
   blocks?: readonly PrototypeChatBlock[];
   actions?: readonly PrototypeChatAction[];
+  /** 채팅 말풍선 안에 템플릿 콤보·미리보기 렌더 */
+  inlineTemplatePicker?: boolean;
 }>;
 
 export type BuildPrototypeChatMessagesParams = Readonly<{
@@ -75,11 +91,9 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   canRequestGenerationEnvOk: boolean;
   canRequestGenerationDesignOk: boolean;
   envSettingsHref: string;
-  recommendedTemplateNameKo: string;
   templateChipTemplates: readonly { id: string; nameKo: string }[];
   recommendedTemplateId: string;
-  chatTemplateSelected: boolean;
-  /** 템플릿은 상단 콤보로만 선택; 타임라인에는 가로 칩을 넣지 않음 */
+  templateConfirmed: boolean;
   prePlanGate: PrototypePrePlanGate;
   latestRun: PrototypeRun | null;
   awaitingExecutionConfirm: boolean;
@@ -97,6 +111,10 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   pagesDeployWorkflowRunUrl: string | null;
   /** 작업계획 요청 직후 등 UI 액션 중복 방지 */
   protoBusy: boolean;
+  /** postCreate 직후·응답 전까지 플래너 UI용 */
+  plannerCreatePending: boolean;
+  /** 1~5 단계 시뮬레이션(또는 완료 직전) — 플래너 진행 말풍선에 전달 */
+  plannerProgressStep: number;
 }>;
 
 function envLineState(b: PrototypeChatEnvBadge): "완료" | "필요" | "오류" | "대기" {
@@ -114,6 +132,10 @@ function envLoading(p: BuildPrototypeChatMessagesParams): boolean {
 function sortedUnits(run: PrototypeRun | null): readonly PrototypeWorkUnit[] {
   if (!run?.workUnits?.length) return [];
   return [...run.workUnits].sort((a, b) => a.order - b.order);
+}
+
+function hasNoWorkUnitsYet(run: PrototypeRun | null): boolean {
+  return sortedUnits(run).length === 0;
 }
 
 function firstFailedUnit(run: PrototypeRun | null): PrototypeWorkUnit | null {
@@ -163,9 +185,28 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
       id: "ai-env-ready",
       role: "ai",
       orderKey: nextKey(),
-      body: "환경이 준비되었습니다. 템플릿을 선택한 뒤 작업계획을 만들 수 있습니다.",
+      body: "환경이 준비되었습니다.",
     });
   } else {
+    return out;
+  }
+
+  const unitsForGate = sortedUnits(p.latestRun);
+  if (p.isFailed && !p.isDeployFailed && p.latestRun?.id && unitsForGate.length === 0) {
+    const lines: string[] = [];
+    if (p.latestRun.plannerError?.trim()) lines.push(String(p.latestRun.plannerError).trim());
+    if (p.latestRun.statusReason) lines.push(`사유 코드: ${p.latestRun.statusReason}`);
+    out.push({
+      id: "ai-planner-failed-preplan",
+      role: "ai",
+      orderKey: nextKey(),
+      title: "작업계획 생성 중 문제가 발생했습니다.",
+      blocks: lines.length ? [{ kind: "bullet_list", items: lines }] : [{ kind: "text", text: "세부 사유를 확인할 수 없습니다." }],
+      actions: [
+        { id: "a-retry-planner", label: "다시 시도", intent: "RETRY_PLANNER_GENERATION", disabled: p.protoBusy },
+        { id: "a-restart-planner-fail", label: "처음부터 다시 생성", intent: "RESTART_RUN", disabled: p.protoBusy },
+      ],
+    });
     return out;
   }
 
@@ -205,64 +246,74 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     return out;
   }
 
-  if (!p.chatTemplateSelected) {
+  /** PROMPT_READY 등 실행 row만 있고 아직 WU가 없을 때도 콤보 노출 — `!latestRun?.id`만 보면 스텁 때문에 말풍선이 사라짐 */
+  const showPreRunTemplateRow =
+    !shouldLockInlineChatTemplateSelection(p.latestRun) &&
+    hasNoWorkUnitsYet(p.latestRun) &&
+    !p.isPlannerRunning &&
+    !p.plannerCreatePending &&
+    !p.isCancelled &&
+    !p.isFailed &&
+    !p.isDeployFailed;
+
+  if (showPreRunTemplateRow) {
     out.push({
       id: "ai-template-combo-hint",
       role: "ai",
       orderKey: nextKey(),
       title: "템플릿 선택",
-      body: `화면 상단의 템플릿 목록에서 유형을 선택해 주세요. 설계 기준 추천 템플릿은 ${p.recommendedTemplateNameKo} 입니다.`,
+      body: p.templateConfirmed
+        ? "템플릿이 확정되었습니다. 다른 유형으로 바꾸면 자동으로 확정이 해제되니, 변경 후 다시 [확정]을 눌러 주세요."
+        : "콤보에서 프로토타입 유형을 고른 뒤 [확정]을 눌러 주세요. [미리보기]로 화면 형태를 먼저 볼 수 있습니다.",
+      inlineTemplatePicker: true,
     });
-    return out;
+    if (!p.templateConfirmed) return out;
   }
 
-  if (p.isPlannerRunning && p.latestRun?.id) {
+  const planningUiActive = (p.isPlannerRunning || p.plannerCreatePending) && hasNoWorkUnitsYet(p.latestRun);
+  if (planningUiActive) {
+    const step = Math.min(5, Math.max(1, Math.floor(Number(p.plannerProgressStep) || 1)));
     out.push({
       id: "ai-planner-running",
       role: "ai",
       orderKey: nextKey(),
-      title: "작업계획 생성",
-      body: "아이디어 구체화·액터 및 서비스 흐름 산출물을 바탕으로 작업계획을 생성하는 중입니다…",
-    });
-    return out;
-  }
-
-  if (p.prePlanGate === "await_work_start" && !p.latestRun?.id && !p.isPlannerRunning) {
-    out.push({
-      id: "ai-preplan-await-start",
-      role: "ai",
-      orderKey: nextKey(),
-      body: "아이디어 구체화·액터 및 서비스 흐름 산출물을 바탕으로 작업계획을 생성하는 중입니다…",
-      actions: [
-        { id: "a-open-planner-prompt", label: "프롬프트 보기", intent: "OPEN_PLANNER_PROMPT_IN_CHAT", disabled: p.protoBusy },
-        {
-          id: "a-start-work",
-          label: "작업 시작",
-          intent: "START_WORK_PLAN_GENERATION",
-          disabled: p.protoBusy || !p.canRequestGenerationDesignOk,
-        },
-      ],
+      title: "작업계획을 생성 중입니다.",
+      body: "① 서버에 실행 생성 요청이 반영되었습니다.\n② OpenAI(Chat Completions)로 WorkUnit 초안을 생성하는 중입니다. (키가 없으면 보조 규칙 모드로 진행됩니다.)\n③ 아래 단계 표가 실시간으로 갱신됩니다.",
+      blocks: [{ kind: "planner_stage_progress", currentStep: step }],
     });
     return out;
   }
 
   const showNeedCreatePlan =
-    p.chatTemplateSelected && !p.latestRun?.id && !p.isPlannerRunning && p.prePlanGate !== "await_work_start";
+    p.templateConfirmed &&
+    hasNoWorkUnitsYet(p.latestRun) &&
+    !p.isPlannerRunning &&
+    !p.plannerCreatePending &&
+    p.prePlanGate === "need_create_click";
 
   if (showNeedCreatePlan) {
     out.push({
       id: "ai-preplan",
       role: "ai",
       orderKey: nextKey(),
-      body: "아이디어 구체화 결과와 액터 및 서비스 흐름 정의 결과를 바탕으로 Cursor가 작업하기 좋은 제작 작업목록을 만들겠습니다.",
+      body: "프로토타입 제작을 위한 작업 목록을 만들겠습니다.",
       actions: [
         {
           id: "a-create-plan",
           label: "작업계획 생성",
           intent: "CREATE_PLAN",
-          disabled: p.protoBusy || !p.canRequestGenerationDesignOk,
+          disabled:
+            p.protoBusy ||
+            p.plannerCreatePending ||
+            p.isPlannerRunning ||
+            !p.canRequestGenerationDesignOk,
         },
-        { id: "a-refresh-0", label: "상태 새로고침", intent: "REFRESH_STATUS", disabled: p.protoBusy },
+        {
+          id: "a-open-planner-prompt-preplan",
+          label: "프롬프트 보기",
+          intent: "OPEN_PLANNER_PROMPT_IN_CHAT",
+          disabled: p.protoBusy || p.plannerCreatePending || p.isPlannerRunning,
+        },
       ],
     });
     return out;
@@ -361,7 +412,7 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     return out;
   }
 
-  if (run?.id && units.length === 0 && !p.isPlannerRunning && p.chatTemplateSelected) {
+  if (run?.id && units.length === 0 && !p.isPlannerRunning && !p.plannerCreatePending && p.templateConfirmed) {
     out.push({
       id: "ai-preplan-run",
       role: "ai",

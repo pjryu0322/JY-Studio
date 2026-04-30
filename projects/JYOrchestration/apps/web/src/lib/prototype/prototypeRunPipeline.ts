@@ -284,6 +284,19 @@ export async function orchestrateNewPrototypeRun(input: {
 
   const latest = getLatestRun(input.projectId);
   if (latest && !isTerminalPrototypeRunStatus(latest.status) && !isPromptOnlyStub(latest)) {
+    /** 이미 같은 실행에서 플래너(OpenAI)가 돌고 있는데 작업계획만 다시 누른 경우 — 중복 호출 없이 동일 run만 반환 */
+    const duplicatePlannerInFlight =
+      input.startCursorAgent === false &&
+      latest.status === "PLANNER_ANALYZING" &&
+      latest.workUnits.length === 0;
+    if (duplicatePlannerInFlight) {
+      return {
+        run: latest,
+        automationAvailable: gate.automationAvailable,
+        automationBlockReason: gate.blockReason,
+        message: undefined,
+      };
+    }
     return {
       run: latest,
       automationAvailable: gate.automationAvailable,

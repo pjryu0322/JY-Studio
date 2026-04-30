@@ -6,6 +6,8 @@ export type PrototypeGenerationRunStatus = "idle" | "prompt_ready" | "awaiting_p
 
 export type PrototypeGenerationLocalRecord = Readonly<{
   selectedTemplate: string | null;
+  /** 콤보에서 [확정]까지 눌러 템플릿이 확정된 경우 true (AI 추천만 써도 확정 시 true) */
+  templateCommittedToPlan?: boolean;
   previewUrl: string | null;
   /** 마지막 "생성 요청" 시점의 설계 지문 */
   fingerprintAtRequest: string | null;
@@ -18,6 +20,7 @@ export type PrototypeGenerationLocalRecord = Readonly<{
 
 const defaultRecord: PrototypeGenerationLocalRecord = {
   selectedTemplate: null,
+  templateCommittedToPlan: false,
   previewUrl: null,
   fingerprintAtRequest: null,
   lastRequestedAt: null,
@@ -72,6 +75,7 @@ export function loadPrototypeGenerationRecord(projectId: string): PrototypeGener
       ...defaultRecord,
       ...o,
       selectedTemplate: typeof o.selectedTemplate === "string" ? o.selectedTemplate : null,
+      templateCommittedToPlan: o.templateCommittedToPlan === true,
       previewUrl: typeof o.previewUrl === "string" ? o.previewUrl : null,
       fingerprintAtRequest: typeof o.fingerprintAtRequest === "string" ? o.fingerprintAtRequest : null,
       lastRequestedAt: typeof o.lastRequestedAt === "string" ? o.lastRequestedAt : null,

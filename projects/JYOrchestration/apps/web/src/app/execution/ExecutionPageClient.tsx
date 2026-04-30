@@ -77,7 +77,17 @@ export function ExecutionPageClient() {
 
       <div style={{ marginTop: 14 }}>
         <StageWorkspaceLayout>
-          <div style={{ padding: 14 }}>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+              padding: 14,
+              boxSizing: "border-box",
+            }}
+          >
             {!projectId ? (
               <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>URL에 `?projectId=`가 필요합니다.</div>
             ) : loading ? (
@@ -85,18 +95,20 @@ export function ExecutionPageClient() {
             ) : error ? (
               <div style={{ fontSize: 13, fontWeight: 800, color: "#b91c1c" }}>{error}</div>
             ) : (
-              <PrototypePreviewPanel
-                key={projectId}
-                projectId={projectId}
-                projectName={projectName || "프로젝트"}
-                projectDescription={projectDescription}
-                ideationAssets={derived.ideationAssets}
-                actors={derived.actors}
-                flowSteps={derived.flowSteps}
-                featureDraftTitles={[]}
-                checklistGapLabels={[]}
-                designFingerprint={`${projectId}:${derived.actors.length}:${derived.flowSteps.length}:${derived.ideationAssets.length}`}
-              />
+              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                <PrototypePreviewPanel
+                  key={projectId}
+                  projectId={projectId}
+                  projectName={projectName || "프로젝트"}
+                  projectDescription={projectDescription}
+                  ideationAssets={derived.ideationAssets}
+                  actors={derived.actors}
+                  flowSteps={derived.flowSteps}
+                  featureDraftTitles={[]}
+                  checklistGapLabels={[]}
+                  designFingerprint={`${projectId}:${derived.actors.length}:${derived.flowSteps.length}:${derived.ideationAssets.length}`}
+                />
+              </div>
             )}
           </div>
         </StageWorkspaceLayout>
