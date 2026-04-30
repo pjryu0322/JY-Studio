@@ -393,7 +393,15 @@ export async function orchestrateNewPrototypeRun(input: {
     previousWorkUnitsSummary: "",
   };
 
-  const plan = await planPrototypeWorkUnitsResolved(planIn, run.id);
+  let plan: PlanPrototypeWorkUnitsResolved;
+  try {
+    plan = await planPrototypeWorkUnitsResolved(planIn, run.id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const failed = markFailed(input.projectId, run.id, "PLANNER_CREDENTIAL_LOOKUP_FAILED", msg) ?? run;
+    updateRun(input.projectId, failed.id, { plannerError: msg, plannerStatus: "FAILED" });
+    return { run: failed, automationAvailable: gate.automationAvailable, automationBlockReason: gate.blockReason };
+  }
   const { plannerSummary, plannerError } = formatPlannerRunSummary(plan, "생성");
 
   run =

@@ -179,7 +179,11 @@ function renderBlocks(blocks: readonly PrototypeChatBlock[] | undefined): ReactN
         if (b.kind === "planner_stage_progress") {
           const labels = PROTOTYPE_PLANNER_STAGE_LABELS_KO;
           const current = Math.min(5, Math.max(1, Math.floor(Number(b.currentStep) || 1)));
-          const pct = [20, 40, 60, 80, 100][current - 1];
+          /**
+           * 5단계는 “진행 중”이 길어질 수 있어 100%로 표기하면 오해가 생김.
+           * 실제 완료는 진행 카드가 사라지고 “작업계획이 생성되었습니다” 카드로 교체됨.
+           */
+          const pct = [20, 40, 60, 80, 90][current - 1];
           return (
             <div key={`planner-st-${i}`} style={{ marginTop: 4 }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>진행률 약 {pct}%</div>

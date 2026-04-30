@@ -621,11 +621,25 @@ export async function PATCH(
       );
 
       if (storedTok && !expectedClear) {
+        const probeGitRepoUrl =
+          String(nextGitRepoUrl ?? "").trim() ||
+          String(row.gitRepoUrl ?? "").trim() ||
+          String(existing?.gitRepoUrl ?? "").trim();
+        if (!probeGitRepoUrl) {
+          githubPatPostSaveCheck = {
+            attempted: false,
+            skippedReason: "missing_git_repo_url",
+            httpStatus: null,
+            xAcceptedGitHubPermissions: null,
+            ok: false,
+          };
+        } else {
         githubPatPostSaveCheck = await probeGithubPatAgainstExecutionRepo({
-          gitRepoUrl: row.gitRepoUrl,
+          gitRepoUrl: probeGitRepoUrl,
           token: storedTok,
           projectId: pid,
         });
+        }
         const reread = await withExecutionSetupSchemaHealRetry(() =>
           prisma.executionSetup.findUnique({
             where: { projectId: pid },

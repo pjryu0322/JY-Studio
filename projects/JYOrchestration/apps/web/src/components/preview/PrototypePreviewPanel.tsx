@@ -449,10 +449,17 @@ export function PrototypePreviewPanel({
           setAutomationBlockReason(res.data.automationBlockReason);
           const wuN = res.data.run.workUnits?.length ?? 0;
           const serverMsg = res.data.message?.trim();
-          /** 서버가 메시지 없이 같은 run만 돌려준 경우(플래너 진행 중 중복 요청 등)는 타임라인 카드만 유지 */
-          if (wuN === 0 && serverMsg) {
-            pushEphemeralPlannerNotice(serverMsg);
+          /**
+           * “현재 실행이 진행 중입니다.”는 사용자가 이미 눌렀다는 의미뿐이라 UX에 도움되지 않음.
+           * 대신 즉시 refresh를 호출해, 타임라인/플래너 진행 카드를 최신 상태로 갱신한다.
+           */
+          if (serverMsg === "현재 실행이 진행 중입니다.") {
+            const rr = await postPrototypeRunRefresh(res.data.run.id, { projectId });
+            if (rr.success && rr.data?.run) setLatestRun(rr.data.run);
+            return;
           }
+          /** 서버가 메시지 없이 같은 run만 돌려준 경우(플래너 진행 중 중복 요청 등)는 타임라인 카드만 유지 */
+          if (wuN === 0 && serverMsg) pushEphemeralPlannerNotice(serverMsg);
         } else {
           pushEphemeralPlannerNotice(res.message?.trim() || "작업계획 생성에 실패했습니다.");
         }
@@ -496,13 +503,27 @@ export function PrototypePreviewPanel({
     })();
   }, [protoBusy, templateConfirmed, canRequestGeneration.designOk, runPlannerCreate]);
 
-  const confirmTemplate = useCallback(() => {
-    if (shouldLockInlineChatTemplateSelection(latestRun) || protoBusy) return;
+  const confirmTemplate = useCallback(async () => {
+    if (protoBusy) return;
+    if (shouldLockInlineChatTemplateSelection(latestRun)) return;
     const resolvedId =
       draftPickerValue === PROTOTYPE_INLINE_TEMPLATE_AI_VALUE
         ? analysis.recommendedTemplate
         : (draftPickerValue as PrototypeTemplateType);
     const recommendedId = analysis.recommendedTemplate;
+
+    /** 플래너 진행 중 템플릿 확정 시: 현재 실행을 재시작해 새 템플릿으로 작업계획을 다시 생성 */
+    const planning = (latestRun?.status === "PLANNER_ANALYZING" || plannerCreatePending) && (latestRun?.workUnits?.length ?? 0) === 0;
+    if (planning && latestRun?.id) {
+      setProtoBusy(true);
+      try {
+        const r = await postPrototypeRunResume(latestRun.id, { projectId, mode: "restart" });
+        if (r.success && r.data?.run) setLatestRun(r.data.run);
+      } finally {
+        setProtoBusy(false);
+      }
+    }
+
     if (resolvedId === recommendedId) {
       setTemplateOverride(null);
       savePrototypeGenerationRecord(projectId, { selectedTemplate: null, templateCommittedToPlan: true });
@@ -517,6 +538,7 @@ export function PrototypePreviewPanel({
     analysis.recommendedTemplate,
     draftPickerValue,
     latestRun,
+    plannerCreatePending,
     projectId,
     protoBusy,
     refreshRecord,
@@ -542,13 +564,18 @@ export function PrototypePreviewPanel({
       setPrePlanGate("idle");
       return;
     }
+    /** 이미 실행이 시작된 상태라면(플래너 포함) “작업계획 생성” 버튼을 노출하지 않음 */
+    if (latestRun?.id && latestRun.status !== "DRAFT" && latestRun.status !== "PROMPT_READY") {
+      setPrePlanGate("idle");
+      return;
+    }
     const wu = (latestRun?.workUnits?.length ?? 0) > 0;
     if (latestRun?.id && wu) {
       setPrePlanGate("idle");
       return;
     }
     setPrePlanGate("need_create_click");
-  }, [templateConfirmed, latestRun?.id, latestRun?.workUnits?.length]);
+  }, [templateConfirmed, latestRun?.id, latestRun?.status, latestRun?.workUnits?.length]);
 
   const onRefreshPrototypeStatus = async () => {
     if (!latestRun?.id) {
@@ -1180,7 +1207,6 @@ export function PrototypePreviewPanel({
   const chatInlineTemplatePicker = useMemo((): PrototypeInlineTemplatePickerProps | null => {
     if (!canRequestGeneration.envOk) return null;
     if (shouldLockInlineChatTemplateSelection(latestRun)) return null;
-    if (isPlannerRunning || plannerCreatePending) return null;
     const frozen = shouldLockInlineChatTemplateSelection(latestRun) || protoBusy;
     const snapshot = templateOverride === null ? PROTOTYPE_INLINE_TEMPLATE_AI_VALUE : templateOverride;
     const confirmDisabled = templateConfirmed && draftPickerValue === snapshot;
@@ -1201,8 +1227,6 @@ export function PrototypePreviewPanel({
     };
   }, [
     canRequestGeneration.envOk,
-    isPlannerRunning,
-    plannerCreatePending,
     latestRun,
     protoBusy,
     templateOverride,
