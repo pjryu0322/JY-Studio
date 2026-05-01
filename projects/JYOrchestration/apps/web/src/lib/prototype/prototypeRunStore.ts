@@ -457,6 +457,12 @@ export function getLatestRun(projectId: string): PrototypeRun | null {
   return sorted[0] ?? null;
 }
 
+/** 최신순 전체 실행(검토 화면에서 이전 실행 선택 등). */
+export function listProjectPrototypeRuns(projectId: string): PrototypeRun[] {
+  const env = loadEnvelope(projectId);
+  return [...env.runs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 /** 생성 순서 기준 버전 번호(1-based). 동일 프로젝트 내 최신 실행 표시용. */
 export function getRunVersionMeta(projectId: string, runId: string): { versionNo: number; totalRuns: number } | null {
   const env = loadEnvelope(projectId);

@@ -1,0 +1,50 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { uiTokens as t } from "@/components/ui/tokens";
+import { MobileBottomNav, type MobileNavTabId } from "@/components/layout/MobileBottomNav";
+import { MobileTopBar } from "@/components/layout/MobileTopBar";
+
+/** Space so scrollable content clears the fixed bottom nav + safe area */
+const CONTENT_PAD_BOTTOM = "max(64px, calc(56px + env(safe-area-inset-bottom, 0px)))";
+
+export type MobileShellProps = Readonly<{
+  children: ReactNode;
+  title: string;
+  currentNav: MobileNavTabId;
+  onNavChange: (id: MobileNavTabId) => void;
+  topLeftAction?: ReactNode;
+  topRightAction?: ReactNode;
+}>;
+
+/**
+ * Mobile layout: sticky top bar, scrollable content, fixed bottom nav.
+ */
+export function MobileShell(p: MobileShellProps) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: t.bgPage,
+        boxSizing: "border-box",
+      }}
+    >
+      <MobileTopBar title={p.title} leftAction={p.topLeftAction} rightAction={p.topRightAction} />
+      <main
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+          paddingBottom: CONTENT_PAD_BOTTOM,
+          boxSizing: "border-box",
+        }}
+      >
+        {p.children}
+      </main>
+      <MobileBottomNav value={p.currentNav} onChange={p.onNavChange} />
+    </div>
+  );
+}

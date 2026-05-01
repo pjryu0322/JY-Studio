@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { StageWorkspaceLayout } from "@/components/workspace/StageWorkspaceLayout";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
@@ -15,6 +15,7 @@ export function WorkflowStageChrome({
   right,
   backHref,
   backLabel,
+  stageLayoutStyle,
   children,
 }: {
   readonly title: string;
@@ -22,6 +23,8 @@ export function WorkflowStageChrome({
   readonly right?: ReactNode;
   readonly backHref?: string;
   readonly backLabel?: string;
+  /** 단계 본문(`StageWorkspaceLayout`)에만 적용. 예: 검토 화면에서 세로 공간 확보. */
+  readonly stageLayoutStyle?: CSSProperties;
   readonly children: ReactNode;
 }) {
   return (
@@ -33,7 +36,7 @@ export function WorkflowStageChrome({
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <StageWorkspaceLayout>{children}</StageWorkspaceLayout>
+        <StageWorkspaceLayout style={stageLayoutStyle}>{children}</StageWorkspaceLayout>
       </div>
     </div>
   );

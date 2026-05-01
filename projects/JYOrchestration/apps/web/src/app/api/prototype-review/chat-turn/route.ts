@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { appendReviewMessage, getReviewThread } from "@/lib/prototype/prototypeReviewStore";
+import { appendReviewMessage, getReviewThread, setImprovementItems } from "@/lib/prototype/prototypeReviewStore";
 import { formatRunContext, formatReviewTranscript, openAiTextCompletion } from "@/lib/prototype/prototypeReviewOpenAi";
 import { getRun } from "@/lib/prototype/prototypeRunStore";
 
@@ -58,10 +58,13 @@ ${formatReviewTranscript(messages)}
   }
 
   const plannerMsg = appendReviewMessage(projectId, runId, "planner", ai.text);
+  /** 대화가 바뀌면 이전 JSON 개선안은 맥락과 어긋나므로 비움 — 「개선안 다시 받기」로 재생성 */
+  setImprovementItems(projectId, runId, []);
   return NextResponse.json({
     success: true,
     data: {
       messages: getReviewThread(projectId, runId),
+      improvementItems: null,
       lastPlannerId: plannerMsg.id,
     },
   });

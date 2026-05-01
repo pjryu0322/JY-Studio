@@ -31,6 +31,7 @@ export function SectionCard({
         position: "relative",
         boxSizing: "border-box",
         width: "100%",
+        maxWidth: "none",
         marginBottom: 20,
         borderRadius: t.radiusLg,
         border: `1px solid ${t.border}`,

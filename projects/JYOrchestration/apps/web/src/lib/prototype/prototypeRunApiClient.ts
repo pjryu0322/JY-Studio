@@ -13,6 +13,28 @@ export type LatestPrototypeRunResponse = Readonly<{
   message?: string;
 }>;
 
+export async function fetchPrototypeRunsList(projectId: string): Promise<{
+  success: boolean;
+  data?: { runs: Array<{ id: string; status: string; updatedAt: string; createdAt: string; previewUrl: string | null }> };
+  message?: string;
+}> {
+  const u = new URL("/api/prototype-runs/list", window.location.origin);
+  u.searchParams.set("projectId", projectId);
+  const res = await fetch(u.toString(), { credentials: "include" });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { runs: Array<{ id: string; status: string; updatedAt: string; createdAt: string; previewUrl: string | null }> };
+    message?: string;
+  };
+}
+
+export async function fetchPrototypeRunById(projectId: string, runId: string): Promise<LatestPrototypeRunResponse> {
+  const u = new URL(`/api/prototype-runs/${encodeURIComponent(runId)}`, window.location.origin);
+  u.searchParams.set("projectId", projectId);
+  const res = await fetch(u.toString(), { credentials: "include" });
+  return (await res.json()) as LatestPrototypeRunResponse;
+}
+
 export async function fetchLatestPrototypeRun(projectId: string): Promise<LatestPrototypeRunResponse> {
   const u = new URL("/api/prototype-runs/latest", window.location.origin);
   u.searchParams.set("projectId", projectId);

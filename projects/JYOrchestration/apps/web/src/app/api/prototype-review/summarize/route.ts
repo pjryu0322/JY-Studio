@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { appendReviewMessage, getReviewThread } from "@/lib/prototype/prototypeReviewStore";
+import { appendReviewMessage, getReviewThread, setImprovementItems } from "@/lib/prototype/prototypeReviewStore";
 import { formatRunContext, formatReviewTranscript, openAiTextCompletion } from "@/lib/prototype/prototypeReviewOpenAi";
 import { getRun } from "@/lib/prototype/prototypeRunStore";
 
@@ -56,5 +56,9 @@ ${formatReviewTranscript(messages)}`;
   }
 
   appendReviewMessage(projectId, runId, "planner", `【정리 요약】\n${ai.text}`);
-  return NextResponse.json({ success: true, data: { messages: getReviewThread(projectId, runId) } });
+  setImprovementItems(projectId, runId, []);
+  return NextResponse.json({
+    success: true,
+    data: { messages: getReviewThread(projectId, runId), improvementItems: null },
+  });
 }
