@@ -2613,77 +2613,6 @@ export function RequirementsWorkspace({
     void handleGenerateServiceFlowDraft({ silent: true });
   }, [activeStage, serviceFlowDraftBusy, resolvedProjectId, serviceFlow, ideationReadyForServiceFlow, fetchNonce, ideationConversationOnly, handleGenerateServiceFlowDraft]);
 
-  const handleApproveAllServiceFlowSteps = useCallback(async () => {
-    if (!serviceFlow) return;
-    const actorIds = new Set(serviceFlow.actors.map((a) => a.id));
-    const serviceFlowText = `${serviceFlow.actors.map((a) => `${a.name} ${a.description ?? ""}`).join(" ")} ${serviceFlow.steps.map((s) => `${s.title} ${s.purpose}`).join(" ")}`;
-    const hasHumanActors = serviceFlow.actors.some((a) => a.kind === "human");
-    const hasSystemActors = serviceFlow.actors.some((a) => a.kind === "system");
-    const hasMainFlow = serviceFlow.steps.length >= 3;
-    const hasActorResponsibility = Boolean(serviceFlow.steps.length) && serviceFlow.steps.every((s) => s.primaryActorId && actorIds.has(s.primaryActorId));
-    const invalid =
-      !hasHumanActors ||
-      !hasSystemActors ||
-      !hasMainFlow ||
-      !hasActorResponsibility;
-    if (invalid) {
-      const missing = [
-        !hasHumanActors ? "사람 액터" : "",
-        !hasSystemActors ? "시스템 액터" : "",
-        !hasMainFlow ? "주요 흐름 3단계 이상" : "",
-        !hasActorResponsibility ? "단계별 주 담당 액터" : "",
-      ].filter(Boolean);
-      const msg = `전체 승인 전 필수 슬롯을 확인해 주세요: ${missing.join(", ")}`;
-      setError(msg);
-      showErrorToast(msg);
-      return;
-    }
-    const recommendedMissing = [
-      /예외|수정|반려|재처리|실패|오류|누락/.test(serviceFlowText) ? "" : "예외 흐름",
-      /권한|열람|수정 가능|공유 범위|접근|관리자/.test(serviceFlowText) ? "" : "권한 범위",
-      /기능|후보|알림|업로드|공유|승인|요청|관리/.test(serviceFlowText) ? "" : "기능 후보",
-    ].filter(Boolean);
-    if (recommendedMissing.length) {
-      showErrorToast(`권장 슬롯이 비어 있지만 승인합니다: ${recommendedMissing.join(", ")}`);
-    }
-    const now = new Date().toISOString();
-    const next: RequirementsServiceFlowV1 = {
-      ...serviceFlow,
-      updatedAt: now,
-      steps: serviceFlow.steps.map((s) => ({ ...s, approved: true, updatedAt: now })),
-    };
-    const featureCandidates = Array.from(
-      new Set(
-        next.steps
-          .map((s) => {
-            const title = s.title.trim();
-            if (!title) return "";
-            if (title.includes("업로드")) return "파일 업로드";
-            if (title.includes("텍스트") || title.includes("변환")) return "음성 텍스트 변환";
-            if (title.includes("화자")) return "화자 구분";
-            if (title.includes("수정")) return "수정 요청 워크플로우";
-            if (title.includes("승인")) return "승인 기능";
-            if (title.includes("알림")) return "알림 기능";
-            if (title.includes("공유") || title.includes("배포")) return "공유/배포";
-            return title;
-          })
-          .filter(Boolean)
-      )
-    );
-    const actorDrivenCandidates = [
-      next.actors.some((a) => a.name.includes("관리자")) ? "권한 관리" : "",
-      "모바일 대응",
-    ].filter(Boolean);
-    const priorityFeatureText = [...featureCandidates, ...actorDrivenCandidates].map((x) => `- ${x}`).join("\n");
-    await persistServiceFlow(next);
-    await persistStateJsonOnly({ serviceFlowCompletedAt: now, serviceFlowV1: next, priorityFeatures: priorityFeatureText });
-    setPriorityFeatures(priorityFeatureText);
-    notifyAppFlowProjectContextChanged();
-    showSuccessToast("전체 단계 승인 완료. 기능 정리 단계로 이동합니다.");
-    const pid = resolvedProjectId.trim();
-    router.push(pid ? `/features?projectId=${encodeURIComponent(pid)}` : "/features");
-  }, [serviceFlow, persistServiceFlow, persistStateJsonOnly, resolvedProjectId, router, showSuccessToast, showErrorToast]);
-
   const inviteEmphasis = humanOthers.length === 0;
 
   const existingHumanUserIds = useMemo(
@@ -2884,8 +2813,6 @@ export function RequirementsWorkspace({
         currentUserId={sessionUser?.id ?? null}
         onInviteMember={() => setInviteOpen(true)}
         onRetryGate={() => setFetchNonce((n) => n + 1)}
-        onGenerateAiDraft={() => void handleGenerateServiceFlowDraft()}
-        onApproveAll={() => void handleApproveAllServiceFlowSteps()}
         onUpdateFlow={(next) => void persistServiceFlow(next)}
       />
     </div>

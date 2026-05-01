@@ -1,164 +1,40 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import {
-  buildFlowFingerprintJson,
-  buildIdeationFingerprint,
-  computeDesignFingerprint,
-} from "@/lib/prototype/prototypeGenerationLocalStore";
+import { useMemo, useState, type CSSProperties } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import {
-  ServiceFlowActionMenu,
-  ServiceFlowChatPanel,
-  ServiceFlowComposer,
-  ServiceFlowHeader,
-  ServiceFlowProgressSummary,
-} from "@/components/service-flow";
+import { ServiceFlowActionMenu } from "@/components/service-flow/ServiceFlowActionMenu";
+import { ServiceFlowChatPanel } from "@/components/service-flow/ServiceFlowChatPanel";
+import { ServiceFlowComposer } from "@/components/service-flow/ServiceFlowComposer";
+import { ServiceFlowHeader } from "@/components/service-flow/ServiceFlowHeader";
+import { ServiceFlowMappingPanel } from "@/components/service-flow/ServiceFlowMappingPanel";
+import { ServiceFlowProgressSummary } from "@/components/service-flow/ServiceFlowProgressSummary";
+import { ServiceFlowRemainingDecisionsDialog } from "@/components/service-flow/ServiceFlowRemainingDecisionsDialog";
+import { ServiceFlowSummaryPanel } from "@/components/service-flow/ServiceFlowSummaryPanel";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
 import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
-import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
-import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
-import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import {
+  applyRecommendedServiceFlowPrimaryActors,
+  computeServiceFlowDecisionResolution,
+  deriveServiceFlowApprovalFromFlow,
+  normalizeServiceFlowStepOrder,
+  SERVICE_FLOW_STAGE_DECISION_SLOTS,
+  serviceFlowProgressHint,
+  unresolvedServiceFlowChecklistEntries,
+  type ServiceFlowStageSlotKey,
+} from "@/components/service-flow/serviceFlowStageDerived";
+import { serviceFlowStageBtnStyle } from "@/components/service-flow/serviceFlowStageUi";
+import {
+  serviceFlowSidebarParticipants,
+  type ServiceFlowProjectMember,
+} from "@/components/service-flow/serviceFlowWorkshopBridge";
+import { useServiceFlowWorkshopChat, type ServiceFlowWorkspaceMode } from "@/components/service-flow/useServiceFlowWorkshopChat";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type {
-  RequirementsServiceFlowActorV1,
   RequirementsServiceFlowStepV1,
   RequirementsServiceFlowV1,
   RequirementsServiceFlowChecklistDeferralKind,
 } from "@/lib/requirements/requirementsStateJson";
-import { REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS } from "@/lib/requirements/requirementsStateJson";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import { newChatMessage, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
-import { SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE } from "@/lib/requirements/serviceFlowConversation";
-
-type WorkspaceMode = "chat" | "mapping" | "summary";
-type ServiceFlowSlotKey = (typeof REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS)[number];
-
-type ProjectMemberForServiceFlow = {
-  memberId: string;
-  displayName: string | null;
-  email: string | null;
-  memberType: string;
-  role: string;
-  isOwner?: boolean;
-  userId?: string | null;
-  aiOrchestrationRole?: string | null;
-  orchestrationStage?: string | null;
-};
-
-type ApprovalState = {
-  actorsReady: boolean;
-  stepsReady: boolean;
-  mapped: boolean;
-  approved: boolean;
-  ready: boolean;
-  slots: Record<ServiceFlowSlotKey, boolean>;
-  filledSlotCount: number;
-  progressPercent: number;
-  recommendedMissing: Partial<Record<ServiceFlowSlotKey, boolean>>;
-};
-
-const SLOT_LABELS: Record<ServiceFlowSlotKey, string> = {
-  humanActors: "사람 액터",
-  systemActors: "시스템 액터",
-  mainFlow: "주요 흐름",
-  actorResponsibility: "단계별 담당",
-  approvalStep: "승인/확정 단계",
-  exceptionFlow: "예외 흐름",
-  accessControl: "권한 범위",
-  handoffToFeatures: "기능 후보",
-};
-
-const REQUIRED_SLOTS: readonly ServiceFlowSlotKey[] = ["humanActors", "systemActors", "mainFlow", "actorResponsibility"];
-const RECOMMENDED_SLOTS: readonly ServiceFlowSlotKey[] = ["approvalStep", "exceptionFlow"];
-const DECISION_SLOTS: readonly ServiceFlowSlotKey[] = [...REQUIRED_SLOTS, ...RECOMMENDED_SLOTS];
-
-function stepTitleContainsAny(steps: readonly RequirementsServiceFlowStepV1[], re: RegExp): boolean {
-  return steps.some((s) => re.test(String(s.title ?? "").trim()));
-}
-
-function computeDecisionResolution(input: {
-  flow: RequirementsServiceFlowV1 | null;
-  derivedSlots: Record<ServiceFlowSlotKey, boolean>;
-  deferrals: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined;
-}): {
-  requiredUnresolved: ServiceFlowSlotKey[];
-  optionalUnresolved: ServiceFlowSlotKey[];
-  headerLabel: string;
-  headerCount: number;
-  helperLine: string | null;
-} {
-  const { flow, derivedSlots, deferrals } = input;
-  const steps = flow?.steps ?? [];
-
-  const approvalResolved =
-    Boolean(deferrals?.approvalStep) ||
-    stepTitleContainsAny(steps, /승인|확정|결재/i) ||
-    Boolean(derivedSlots.approvalStep);
-
-  const exceptionResolved =
-    Boolean(deferrals?.exceptionFlow) ||
-    stepTitleContainsAny(steps, /수정|반려|재처리|예외/i) ||
-    Boolean(derivedSlots.exceptionFlow);
-
-  const resolved: Record<ServiceFlowSlotKey, boolean> = {
-    ...derivedSlots,
-    approvalStep: approvalResolved,
-    exceptionFlow: exceptionResolved,
-  };
-
-  const requiredUnresolved = REQUIRED_SLOTS.filter((k) => !resolved[k] && !deferrals?.[k]);
-  const optionalUnresolved = RECOMMENDED_SLOTS.filter((k) => !resolved[k] && !deferrals?.[k]);
-
-  if (requiredUnresolved.length > 0) {
-    return {
-      requiredUnresolved,
-      optionalUnresolved,
-      headerLabel: "남은 결정사항",
-      headerCount: requiredUnresolved.length,
-      helperLine: null,
-    };
-  }
-  if (optionalUnresolved.length > 0) {
-    return {
-      requiredUnresolved,
-      optionalUnresolved,
-      headerLabel: "권장 검토사항",
-      headerCount: optionalUnresolved.length,
-      helperLine: "남은 결정사항 0개 (권장 항목 미정)",
-    };
-  }
-  return {
-    requiredUnresolved,
-    optionalUnresolved,
-    headerLabel: "남은 결정사항 없음",
-    headerCount: 0,
-    helperLine: null,
-  };
-}
-
-function countEffectiveRemainingSlots(
-  slots: Record<ServiceFlowSlotKey, boolean>,
-  deferrals: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined,
-): number {
-  let n = 0;
-  for (const k of DECISION_SLOTS) {
-    if (!slots[k] && !deferrals?.[k]) n += 1;
-  }
-  return n;
-}
-
-function unresolvedChecklistEntries(
-  slots: Record<ServiceFlowSlotKey, boolean>,
-  deferrals: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> | null | undefined,
-): Array<{ key: ServiceFlowSlotKey; label: string; deferral?: RequirementsServiceFlowChecklistDeferralKind }> {
-  const rows: Array<{ key: ServiceFlowSlotKey; label: string; deferral?: RequirementsServiceFlowChecklistDeferralKind }> = [];
-  for (const k of DECISION_SLOTS) {
-    if (slots[k]) continue;
-    rows.push({ key: k, label: SLOT_LABELS[k], deferral: deferrals?.[k] });
-  }
-  return rows;
-}
 
 const shell: CSSProperties = {
   flex: "1 1 auto",
@@ -182,247 +58,6 @@ const chatWrap: CSSProperties = {
   position: "relative",
 };
 
-const btn: CSSProperties = {
-  border: "1px solid #cbd5e1",
-  background: "#fff",
-  borderRadius: 10,
-  padding: "8px 11px",
-  fontSize: 12,
-  fontWeight: 900,
-  color: "#0f172a",
-  cursor: "pointer",
-};
-
-const primaryBtn: CSSProperties = {
-  ...btn,
-  border: "1px solid #0f766e",
-  background: "#0f766e",
-  color: "#fff",
-};
-
-function uid(prefix: string): string {
-  try {
-    return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2)}`;
-  } catch {
-    return `${prefix}:${Math.random().toString(16).slice(2)}`;
-  }
-}
-
-function workshopMessageFromPersisted(m: RequirementsMessage, aiDisplayName: string): WorkshopMessage {
-  const body = String(m.content ?? "").trim();
-  if (m.role === "user") {
-    return { id: m.id, role: "user", name: "사용자", body };
-  }
-  if (m.role === "human") {
-    return { id: m.id, role: "member", name: (m.speakerName || "멤버").trim() || "멤버", body };
-  }
-  if (m.role === "ai") {
-    const name = showInternalAgents ? (m.speakerName || aiDisplayName).trim() || aiDisplayName : aiDisplayName;
-    return { id: m.id, role: "ai", name, body };
-  }
-  return { id: m.id, role: "expert", name: (m.speakerName || "시스템").trim() || "시스템", body };
-}
-
-function buildServiceFlowUserPersist(body: string, currentUserId: string | null): RequirementsMessage {
-  return newChatMessage({
-    role: "user",
-    body,
-    speakerType: "USER",
-    speakerId: currentUserId?.trim() || "me",
-    messageType: "STATEMENT",
-    meta: { internalType: SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE },
-  });
-}
-
-function buildServiceFlowAiPersist(body: string): RequirementsMessage {
-  const name = displayedAiOrchestrator().name;
-  return newChatMessage({
-    role: "ai",
-    body,
-    speakerType: "AI",
-    speakerId: VIRTUAL_AI_PLANNER_ID,
-    speakerName: name,
-    messageType: "ANSWER",
-    meta: { internalType: SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE },
-  });
-}
-
-function normalizeOrder(steps: RequirementsServiceFlowStepV1[]): RequirementsServiceFlowStepV1[] {
-  return [...steps]
-    .sort((a, b) => a.order - b.order)
-    .map((s, idx) => ({ ...s, order: idx + 1 }));
-}
-
-function missingSlotQuestions(slots: Record<ServiceFlowSlotKey, boolean>, limit = 2): string[] {
-  const questions: Record<ServiceFlowSlotKey, string> = {
-    humanActors: "이 서비스에서 실제 사람 사용자는 누구인가요?",
-    systemActors: "시스템이 자동으로 처리하는 단계는 무엇인가요?",
-    mainFlow: "사용자가 처음부터 끝까지 거치는 주요 순서를 3단계 이상으로 말해 주실 수 있나요?",
-    actorResponsibility: "각 단계의 최종 책임자는 누구인가요?",
-    approvalStep: "승인/확정(결재) 단계가 필요한가요? 필요하다면 누가 승인하나요?",
-    exceptionFlow: "반려, 수정 요청, 재처리 같은 예외 흐름이 필요한가요?",
-    accessControl: "권한 범위는 다음 단계에서 정리합니다.",
-    handoffToFeatures: "기능 후보는 다음 기능 정리 단계에서 정리합니다.",
-  };
-  return DECISION_SLOTS
-    .filter((slot) => !slots[slot])
-    .slice(0, limit)
-    .map((slot) => questions[slot]);
-}
-
-function progressHint(approval: ApprovalState): string | null {
-  const slots = approval.slots;
-  if (!slots.humanActors) return "사람 액터 미확정";
-  if (!slots.systemActors) return "시스템 액터 미확정";
-  if (!slots.mainFlow) return "주요 서비스 흐름 미확정";
-  if (!slots.actorResponsibility) return "담당(매핑) 미확정";
-  if (!slots.approvalStep) return "승인/확정 단계 미확정";
-  if (!slots.exceptionFlow) return "예외/수정 흐름 미확정";
-  return null;
-}
-
-function deriveApprovalFromFlow(flow: RequirementsServiceFlowV1 | null): ApprovalState {
-  const actorIds = new Set((flow?.actors ?? []).map((a) => a.id));
-  const text = `${(flow?.actors ?? []).map((a) => `${a.name} ${a.description ?? ""}`).join(" ")} ${(flow?.steps ?? []).map((s) => `${s.title} ${s.purpose}`).join(" ")}`;
-  const hasHumanActors = (flow?.actors ?? []).some((a) => a.kind === "human");
-  const hasSystemActors = (flow?.actors ?? []).some((a) => a.kind === "system");
-  const stepsReady = (flow?.steps.length ?? 0) >= 3;
-  const mapped = Boolean(flow?.steps.length) && (flow?.steps ?? []).every((s) => s.primaryActorId && actorIds.has(s.primaryActorId));
-  const hasApprovalStep = /승인|확정|결재|결정/.test(text);
-  const slots: Record<ServiceFlowSlotKey, boolean> = {
-    humanActors: hasHumanActors,
-    systemActors: hasSystemActors,
-    mainFlow: stepsReady,
-    actorResponsibility: mapped,
-    approvalStep: hasApprovalStep,
-    exceptionFlow: /예외|수정|반려|재처리|실패|오류|누락/.test(text),
-    // 다음 단계(기능정리)에서 다룰 항목: 이 단계의 remaining decisions에 포함하지 않는다.
-    accessControl: true,
-    handoffToFeatures: true,
-  };
-  const filledSlotCount = DECISION_SLOTS.filter((k) => slots[k]).length;
-  const basePercent = Math.round((filledSlotCount / DECISION_SLOTS.length) * 100);
-  const draftVisible = (flow?.actors?.length ?? 0) >= 1 && (flow?.steps?.length ?? 0) >= 3;
-  const progressPercent = draftVisible ? Math.max(basePercent, 35) : basePercent;
-  const actorsReady = slots.humanActors && slots.systemActors;
-  const approved = Boolean(actorsReady && stepsReady && mapped && flow?.steps.every((s) => s.approved));
-  return {
-    actorsReady,
-    stepsReady,
-    mapped,
-    approved,
-    ready: slots.humanActors && slots.systemActors && slots.mainFlow && slots.actorResponsibility,
-    slots,
-    filledSlotCount,
-    progressPercent,
-    recommendedMissing: {
-      approvalStep: !slots.approvalStep,
-      exceptionFlow: !slots.exceptionFlow,
-    },
-  };
-}
-
-function recommendPrimaryActorIdForStep(
-  step: { title: string; purpose: string; primaryActorId: string },
-  actors: readonly RequirementsServiceFlowActorV1[],
-): string {
-  const humans = actors.filter((a) => a.kind === "human");
-  const systems = actors.filter((a) => a.kind === "system");
-  const humanFirst = humans[0]?.id ?? actors[0]?.id ?? "";
-  const systemFirst = systems[0]?.id ?? actors.find((a) => a.kind === "system")?.id ?? actors[0]?.id ?? "";
-  const text = `${step.title} ${step.purpose}`;
-  if (/(업로드|등록|제출|입력|선택)/.test(text)) return humanFirst || step.primaryActorId;
-  if (/(변환|생성|분리|OCR|AI|자동|처리)/i.test(text)) return systemFirst || step.primaryActorId;
-  if (/(수정|보완|검토|작성)/.test(text)) return humanFirst || step.primaryActorId;
-  if (/(승인|확정|결재)/.test(text)) return humanFirst || step.primaryActorId;
-  if (/(공유|배포|열람|알림|발송)/.test(text)) return (humans[humans.length - 1]?.id ?? humanFirst) || step.primaryActorId;
-  return step.primaryActorId || humanFirst || systemFirst;
-}
-
-function applyRecommendedPrimaryActors(flow: RequirementsServiceFlowV1): RequirementsServiceFlowV1 {
-  const now = new Date().toISOString();
-  const nextSteps = flow.steps.map((s) => ({
-    ...s,
-    primaryActorId: recommendPrimaryActorIdForStep(s, flow.actors),
-    approved: false,
-    updatedAt: now,
-  }));
-  return { ...flow, steps: normalizeOrder(nextSteps), updatedAt: now };
-}
-
-// LLM-first: rule/keyword based helpers intentionally removed.
-
-/** 아이디어 구체화 화면 `RequirementsWorkspace` 의 참여 멤버 사이드바와 동일한 ParticipantOption 구성(단, 이 단계에 노출할 사람만 필터). */
-function serviceFlowSidebarParticipants(
-  members: readonly ProjectMemberForServiceFlow[],
-  currentUserId: string | null,
-  ideationParticipantHumanMemberIds: readonly string[],
-  replying: boolean,
-): ParticipantOption[] {
-  const allowSet = new Set(ideationParticipantHumanMemberIds);
-  const filteredHumans = members.filter((m) => {
-    if (m.memberType !== "HUMAN") return false;
-    if (currentUserId && m.userId && m.userId === currentUserId) return true;
-    return allowSet.has(m.memberId);
-  });
-
-  const aiMembers = members.filter((m) => m.memberType === "AI");
-  const aiStatusLabel = replying ? "반영 중…" : displayedAiStatusForStage("service-flow");
-  const list: ParticipantOption[] = [];
-
-  if (showInternalAgents) {
-    if (aiMembers.length === 0) {
-      list.push({
-        id: VIRTUAL_AI_PLANNER_ID,
-        name: "AI 기획자",
-        kind: "ai",
-        onlineHint: false,
-        aiStatusLabel,
-        roleLabel: "AI",
-      });
-    }
-    for (const m of aiMembers) {
-      list.push({
-        id: m.memberId,
-        name: (m.displayName || m.email || "AI").slice(0, 24),
-        kind: "ai",
-        onlineHint: false,
-        aiStatusLabel,
-        roleLabel: "AI",
-      });
-    }
-  } else {
-    const orch = displayedAiOrchestrator();
-    list.push({
-      id: "visible:ai-orchestrator",
-      name: orch.name,
-      kind: "ai",
-      onlineHint: false,
-      aiStatusLabel,
-      roleLabel: "AI",
-    });
-  }
-
-  for (const m of filteredHumans) {
-    const uid = m.userId ?? null;
-    list.push({
-      id: m.memberId,
-      name: (m.displayName || m.email || "멤버").slice(0, 24),
-      kind: "human",
-      onlineHint: Boolean(currentUserId && uid && currentUserId === uid),
-      roleLabel: m.isOwner ? "소유자" : "전문가",
-      invited: !uid,
-    });
-  }
-
-  const seen = new Set<string>();
-  return list.filter((p) => {
-    if (seen.has(p.id)) return false;
-    seen.add(p.id);
-    return true;
-  });
-}
-
 export function RequirementsServiceFlowStage({
   projectId,
   projectName,
@@ -435,12 +70,9 @@ export function RequirementsServiceFlowStage({
   onChangeFlow,
   generatingDraft,
   draftGenerationCount = 0,
-  approval,
   members,
   currentUserId,
   onInviteMember,
-  onGenerateAiDraft,
-  onApproveAll,
   onRetryGate,
   persistedServiceFlowMessages,
   onAppendPersistedServiceFlowMessages,
@@ -456,226 +88,90 @@ export function RequirementsServiceFlowStage({
   readonly onChangeFlow: (next: RequirementsServiceFlowV1) => void;
   readonly generatingDraft: boolean;
   readonly draftGenerationCount?: number;
-  readonly approval: ApprovalState;
-  readonly members: readonly ProjectMemberForServiceFlow[];
+  readonly members: readonly ServiceFlowProjectMember[];
   readonly currentUserId: string | null;
   readonly onInviteMember: () => void;
-  readonly onGenerateAiDraft: () => void;
-  readonly onApproveAll: () => void;
   readonly onRetryGate: () => void;
   readonly persistedServiceFlowMessages: readonly RequirementsMessage[];
   readonly onAppendPersistedServiceFlowMessages: (
     incoming: readonly RequirementsMessage[],
   ) => Promise<readonly RequirementsMessage[]>;
 }) {
-  void onGenerateAiDraft;
-  void approval;
   const showScreenLabels = useShowScreenLabels();
-  const aiDisplayName = displayedAiOrchestrator().name;
-  const displayMessages = useMemo(
-    () => persistedServiceFlowMessages.map((m) => workshopMessageFromPersisted(m, aiDisplayName)),
-    [persistedServiceFlowMessages, aiDisplayName],
-  );
-  const [input, setInput] = useState("");
-  const [replying, setReplying] = useState(false);
-  const [quickReplies, setQuickReplies] = useState<string[] | null>(null);
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("chat");
+  const [workspaceMode, setWorkspaceMode] = useState<ServiceFlowWorkspaceMode>("chat");
   const [remainingPanelOpen, setRemainingPanelOpen] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
-  const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
-  const [toolsOpen, setToolsOpen] = useState(false);
 
-  const derivedApproval = useMemo(() => deriveApprovalFromFlow(flow), [flow]);
-  const hint = progressHint(derivedApproval);
+  const derivedApproval = useMemo(() => deriveServiceFlowApprovalFromFlow(flow), [flow]);
+  const hint = serviceFlowProgressHint(derivedApproval);
   const structureLocked = Boolean(flow?.structureLockedAt);
   const deferrals = flow?.checklistDeferrals ?? null;
   const decision = useMemo(
-    () => computeDecisionResolution({ flow, derivedSlots: derivedApproval.slots, deferrals }),
+    () => computeServiceFlowDecisionResolution({ flow, derivedSlots: derivedApproval.slots, deferrals }),
     [flow, derivedApproval.slots, deferrals],
   );
-  const remainingChecklistItems = decision.headerCount;
   const chatActive = workspaceMode === "chat";
   const mappingActive = workspaceMode === "mapping";
   const summaryActive = workspaceMode === "summary";
 
-  const slotResolveUserMessages: Record<ServiceFlowSlotKey, string> = {
-    humanActors: "사람 액터를 누가 쓰는지 정리해 주세요. 액터 목록을 사람/시스템으로 나눠 반영해 주세요.",
-    systemActors: "시스템이 처리하는 역할을 액터로 정리해 주세요. 시스템 액터를 추가해 주세요.",
-    mainFlow: "주요 서비스 흐름을 3단계 이상으로 다시 정리해 주세요.",
-    actorResponsibility: "각 단계의 주 담당(primaryActorId)을 흐름에 맞게 반영해 주세요.",
-    approvalStep: "승인/확정 단계가 필요한지와 담당을 흐름에 반영해 주세요.",
-    exceptionFlow: "예외·수정·반려 같은 예외 흐름을 흐름 설명에 반영해 주세요.",
-    accessControl: "권한 범위는 다음 기능정리 단계에서 진행됩니다.",
-    handoffToFeatures: "세부 기능 정의는 다음 기능정리 단계에서 진행됩니다.",
-  };
-
-  const chatScrollRef = useRef<HTMLDivElement | null>(null);
-  const autoScrollPendingRef = useRef(false);
-  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const scrollChatToBottom = () => {
-    autoScrollPendingRef.current = true;
-    window.requestAnimationFrame(() => {
-      const el = chatScrollRef.current;
-      if (!el) return;
-      el.scrollTop = el.scrollHeight;
-      autoScrollPendingRef.current = false;
-    });
-  };
-
-  const resizeComposer = () => {
-    const el = composerTextareaRef.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
-  };
-  useEffect(() => {
-    resizeComposer();
-  }, [input]);
-
-  const messagesRef = useRef<WorkshopMessage[]>(displayMessages);
-  const flowRef = useRef<RequirementsServiceFlowV1 | null>(flow);
-  const latestAiQuestionRef = useRef<string>(latestAiQuestion);
-  useEffect(() => {
-    messagesRef.current = displayMessages;
-  }, [displayMessages]);
-  useEffect(() => {
-    flowRef.current = flow;
-  }, [flow]);
-  useEffect(() => {
-    latestAiQuestionRef.current = latestAiQuestion;
-  }, [latestAiQuestion]);
+  const {
+    displayMessages,
+    input,
+    setInput,
+    replying,
+    quickReplies,
+    toolsOpen,
+    setToolsOpen,
+    chatScrollRef,
+    composerTextareaRef,
+    callAnalyze,
+    sendMessage,
+    jumpToResolveSlot,
+    requestOrganize,
+  } = useServiceFlowWorkshopChat({
+    projectId,
+    projectName,
+    projectDescription,
+    ideationAssets,
+    flow,
+    onChangeFlow,
+    currentUserId,
+    ideationReady,
+    generatingDraft,
+    draftGenerationCount,
+    persistedServiceFlowMessages,
+    onAppendPersistedServiceFlowMessages,
+    workspaceMode,
+    setWorkspaceMode,
+    structureLockedAt: flow?.structureLockedAt,
+    derivedSlotsForDraftBootstrap: derivedApproval.slots,
+  });
 
   const actors = flow?.actors ?? [];
-  const steps = useMemo(() => normalizeOrder(flow?.steps ?? []), [flow?.steps]);
+  const steps = useMemo(() => normalizeServiceFlowStepOrder(flow?.steps ?? []), [flow?.steps]);
   const sidebarParticipants = useMemo(
     () => serviceFlowSidebarParticipants(members, currentUserId, ideationParticipantHumanMemberIds, replying),
     [members, currentUserId, ideationParticipantHumanMemberIds, replying],
   );
 
-  const lockStructureForAssignment = () => {
+  const patchChecklistDeferral = (key: ServiceFlowStageSlotKey, kind: RequirementsServiceFlowChecklistDeferralKind | null) => {
     if (!flow) return;
     const now = new Date().toISOString();
-    const next = applyRecommendedPrimaryActors({ ...flow, updatedAt: now });
-    onChangeFlow({ ...next, structureLockedAt: now, updatedAt: now });
-    setQuickReplies(null);
-    setLatestAiQuestion("");
-    setWorkspaceMode("mapping");
-    autoScrollPendingRef.current = true;
-  };
-
-  const patchChecklistDeferral = (key: ServiceFlowSlotKey, kind: RequirementsServiceFlowChecklistDeferralKind | null) => {
-    if (!flow) return;
-    const now = new Date().toISOString();
-    const next: Partial<Record<ServiceFlowSlotKey, RequirementsServiceFlowChecklistDeferralKind>> = { ...(flow.checklistDeferrals ?? {}) };
+    const next: Partial<Record<ServiceFlowStageSlotKey, RequirementsServiceFlowChecklistDeferralKind>> = {
+      ...(flow.checklistDeferrals ?? {}),
+    };
     if (kind === null) delete next[key];
     else next[key] = kind;
     const checklistDeferrals = Object.keys(next).length ? next : null;
     onChangeFlow({ ...flow, checklistDeferrals, updatedAt: now });
   };
 
-  const optionalDecisionQuickActions = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-      {!decision.requiredUnresolved.length && decision.optionalUnresolved.includes("approvalStep") ? (
-        <button type="button" onClick={() => patchChecklistDeferral("approvalStep", "pending")} style={btn}>
-          승인 단계 없음
-        </button>
-      ) : null}
-      {!decision.requiredUnresolved.length && decision.optionalUnresolved.includes("exceptionFlow") ? (
-        <button type="button" onClick={() => patchChecklistDeferral("exceptionFlow", "pending")} style={btn}>
-          예외 흐름 없음
-        </button>
-      ) : null}
-      {!decision.requiredUnresolved.length && decision.optionalUnresolved.length ? (
-        <button
-          type="button"
-          onClick={() => {
-            for (const k of decision.optionalUnresolved) patchChecklistDeferral(k, "deferred_next");
-          }}
-          style={btn}
-        >
-          다음 단계에서 검토
-        </button>
-      ) : null}
-    </div>
-  );
-
-  const approveAllMappingOwners = () => {
-    if (!flow) return;
-    const now = new Date().toISOString();
-    onChangeFlow({
-      ...flow,
-      steps: normalizeOrder(
-        flow.steps.map((s) => ({
-          ...s,
-          approved: Boolean(s.primaryActorId),
-          updatedAt: now,
-        })),
-      ),
-      updatedAt: now,
-    });
-  };
-
   const reapplyRecommendedOwners = () => {
     if (!flow?.structureLockedAt) return;
     const now = new Date().toISOString();
-    const next = applyRecommendedPrimaryActors({ ...flow, updatedAt: now });
+    const next = applyRecommendedServiceFlowPrimaryActors({ ...flow, updatedAt: now });
     onChangeFlow({ ...next, structureLockedAt: flow.structureLockedAt ?? now, updatedAt: now });
   };
-
-  useEffect(() => {
-    if (flow?.structureLockedAt) return;
-    if (draftGenerationCount <= 0) return;
-    const timer = window.setTimeout(() => {
-      const qs = missingSlotQuestions(derivedApproval.slots, 3);
-      const body =
-        "초안을 준비했습니다. 수정할 부분만 말씀해 주세요.\n" +
-        (qs.length ? `\n(빠르게 확인)\n${qs.map((q) => `- ${q}`).join("\n")}` : "");
-      void onAppendPersistedServiceFlowMessages([buildServiceFlowAiPersist(body)]);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [draftGenerationCount, derivedApproval.slots, flow?.structureLockedAt, onAppendPersistedServiceFlowMessages]);
-
-  const actorName = (id: string) => actors.find((a) => a.id === id)?.name ?? id;
-
-  const prototypePreviewFlowStepsDetailed = useMemo(
-    () =>
-      steps.map((s) => ({
-        id: s.id,
-        title: s.title,
-        purpose: s.purpose,
-        primaryActorId: s.primaryActorId,
-        secondaryActorIds: s.secondaryActorIds,
-      })),
-    [steps],
-  );
-  const prototypePreviewActorsDetailed = useMemo(
-    () =>
-      actors.map((a) => ({
-        id: a.id,
-        name: a.name,
-        kind: a.kind,
-        description: a.description,
-      })),
-    [actors],
-  );
-
-  const prototypeDesignFingerprint = useMemo(
-    () =>
-      computeDesignFingerprint({
-        flowFingerprint: buildFlowFingerprintJson(flow),
-        ideationFingerprint: buildIdeationFingerprint(ideationAssets),
-        featureTitlesFingerprint: "",
-      }),
-    [flow, ideationAssets],
-  );
-
-  const prototypeChecklistGapLabels = useMemo(
-    () =>
-      unresolvedChecklistEntries(derivedApproval.slots, deferrals)
-        .filter((row) => !row.deferral)
-        .map((row) => `${row.label} 미정`),
-    [derivedApproval.slots, deferrals],
-  );
 
   const updateStep = (id: string, patch: Partial<RequirementsServiceFlowStepV1>) => {
     if (!flow) return;
@@ -686,236 +182,18 @@ export function RequirementsServiceFlowStage({
       if (!("approved" in patch)) merged.approved = false;
       return merged;
     });
-    onChangeFlow({ ...flow, steps: normalizeOrder(nextSteps), updatedAt: now });
+    onChangeFlow({ ...flow, steps: normalizeServiceFlowStepOrder(nextSteps), updatedAt: now });
   };
 
-  const callAnalyze = (userMessageText: string, opts?: { silentUserAppend?: boolean }) => {
-    if (workspaceMode !== "chat") return;
-    const body = userMessageText.trim();
-    if (!body) return;
-    setReplying(true);
-    setQuickReplies(null);
-
-    void (async () => {
-      try {
-        if (!opts?.silentUserAppend) {
-          autoScrollPendingRef.current = true;
-          const userPersisted = buildServiceFlowUserPersist(body, currentUserId);
-          const nextSlice = await onAppendPersistedServiceFlowMessages([userPersisted]);
-          messagesRef.current = nextSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-        }
-
-        const transcript = [...(messagesRef.current ?? [])];
-        const recentMessages = transcript
-          .slice(-24)
-          .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
-          .join("\n")
-          .slice(0, 12000);
-
-        const res = await fetch("/api/requirements/service-flow-analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            projectName,
-            projectDescription,
-            ideationAssets,
-            userMessage: body,
-            currentFlow: flowRef.current,
-            recentMessages,
-            latestAiQuestion: latestAiQuestionRef.current,
-          }),
-        });
-        const json = (await res.json()) as {
-          success?: boolean;
-          data?: {
-            assistantMessage?: string;
-            updatedFlow?: RequirementsServiceFlowV1;
-            nextQuestion?: string | null;
-            quickReplies?: string[] | null;
-            readiness?: { score?: number; readyForNext?: boolean } | null;
-          };
-          code?: string;
-          message?: string;
-        };
-        if (!res.ok || !json.success || !json.data?.updatedFlow) {
-          autoScrollPendingRef.current = true;
-          const errSlice = await onAppendPersistedServiceFlowMessages([
-            buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
-          ]);
-          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-          setReplying(false);
-          return;
-        }
-
-        const nextFlow = json.data.updatedFlow;
-        onChangeFlow(nextFlow);
-
-        const nextQ = String(json.data.nextQuestion ?? "").trim();
-        if (nextQ) setLatestAiQuestion(nextQ);
-
-        const replies = Array.isArray(json.data.quickReplies)
-          ? json.data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 3)
-          : [];
-        setQuickReplies(replies.length ? replies : null);
-
-        const aiBody = [String(json.data.assistantMessage ?? "").trim(), nextQ].filter(Boolean).join("\n");
-        const done = !nextQ && Boolean(json.data.readiness?.readyForNext);
-        autoScrollPendingRef.current = true;
-        const combined =
-          (aiBody || "반영했습니다.") +
-          (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : "");
-        const okSlice = await onAppendPersistedServiceFlowMessages([buildServiceFlowAiPersist(combined)]);
-        messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-        setReplying(false);
-      } catch {
-        autoScrollPendingRef.current = true;
-        try {
-          const errSlice = await onAppendPersistedServiceFlowMessages([
-            buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
-          ]);
-          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-        } finally {
-          setReplying(false);
-        }
-      }
-    })();
-  };
-
-  const sendMessage = () => {
-    if (workspaceMode !== "chat") return;
-    const body = input.trim();
-    if (!body) return;
-    setInput("");
-    callAnalyze(body);
-    scrollChatToBottom();
-  };
-
-  const jumpToResolveSlot = (key: ServiceFlowSlotKey) => {
+  const jumpToResolveSlotWrapped = (key: ServiceFlowStageSlotKey) => {
     setRemainingPanelOpen(false);
-    if (key === "actorResponsibility" && flowRef.current?.structureLockedAt) {
-      setWorkspaceMode("mapping");
-      return;
-    }
-    setWorkspaceMode("chat");
-    window.setTimeout(() => {
-      callAnalyze(slotResolveUserMessages[key]);
-    }, 0);
+    jumpToResolveSlot(key);
   };
 
-  const bootOnceRef = useRef(false);
-  useEffect(() => {
-    if (flow?.structureLockedAt) return;
-    if (workspaceMode !== "chat") return;
-    // Boot message should NOT race with auto draft bootstrap (workspace-level).
-    if (bootOnceRef.current) return;
-    if (replying) return;
-    if (persistedServiceFlowMessages.length > 0) return;
-    if (!ideationReady) return;
-    if (generatingDraft) return;
-
-    const hasSteps = Boolean(flow?.steps?.length);
-    const hasAnyFlow = Boolean(flow?.actors?.length || flow?.steps?.length);
-    const hasIdeationAssets = (ideationAssets?.length ?? 0) > 0;
-
-    if (hasSteps) {
-      const list = normalizeOrder(flow?.steps ?? [])
-        .slice(0, 8)
-        .map((s) => `${s.order}. ${s.title}`)
-        .join("\n");
-      bootOnceRef.current = true;
-      void onAppendPersistedServiceFlowMessages([
-        buildServiceFlowAiPersist(
-          `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
-        ),
-      ]);
-      return;
-    }
-
-    // If ideation context exists but flow is still empty, wait for auto-bootstrap draft to populate state.
-    if (hasIdeationAssets && !hasAnyFlow) return;
-
-    bootOnceRef.current = true;
-    callAnalyze("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot boot; including callAnalyze would retrigger unnecessarily
-  }, [
-    replying,
-    persistedServiceFlowMessages.length,
-    ideationReady,
-    generatingDraft,
-    flow?.steps?.length,
-    flow?.actors?.length,
-    ideationAssets?.length,
-    flow?.structureLockedAt,
-    workspaceMode,
-    onAppendPersistedServiceFlowMessages,
-  ]);
-
-  useEffect(() => {
-    if (!autoScrollPendingRef.current) return;
-    scrollChatToBottom();
-  }, [displayMessages.length, replying]);
-
-  const requestOrganize = () => {
-    if (workspaceMode !== "chat") return;
-    setToolsOpen(false);
-    setReplying(true);
-    void (async () => {
-      const excerpt = [...displayMessages, { id: "tmp", role: "user" as const, name: "사용자", body: "(정리 요청)" }]
-        .slice(-24)
-        .map((m) => `${m.role === "user" ? "사용자" : "AI"}: ${m.body}`)
-        .join("\n")
-        .slice(0, 12000);
-      try {
-        const res = await fetch("/api/requirements/service-flow-analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            projectName,
-            projectDescription,
-            ideationAssets,
-            userMessage: "정리 요청: 지금까지의 대화와 기존 초안을 바탕으로 액터/흐름/담당 매핑을 최신 상태로 다시 정리해 주세요.",
-            recentMessages: excerpt,
-            latestAiQuestion,
-            currentFlow: flow,
-          }),
-        });
-        const json = (await res.json()) as {
-          success?: boolean;
-          data?: { updatedFlow?: RequirementsServiceFlowV1; assistantMessage?: string; nextQuestion?: string | null };
-          message?: string;
-        };
-        if (!res.ok || !json.success || !json.data?.updatedFlow) {
-          const errSlice = await onAppendPersistedServiceFlowMessages([
-            buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
-          ]);
-          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-          setReplying(false);
-          return;
-        }
-        onChangeFlow(json.data.updatedFlow);
-        const nextQ = String(json.data?.nextQuestion ?? "").trim();
-        if (nextQ) setLatestAiQuestion(nextQ);
-        setQuickReplies(null);
-        const okSlice = await onAppendPersistedServiceFlowMessages([
-          buildServiceFlowAiPersist([String(json.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n")),
-        ]);
-        messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-        setWorkspaceMode("summary");
-        setReplying(false);
-      } catch {
-        try {
-          const errSlice = await onAppendPersistedServiceFlowMessages([
-            buildServiceFlowAiPersist("자동 정리에 실패했습니다. 다시 시도해주세요."),
-          ]);
-          messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
-        } finally {
-          setReplying(false);
-        }
-      }
-    })();
-  };
+  const remainingEntries = useMemo(
+    () => unresolvedServiceFlowChecklistEntries(derivedApproval.slots, deferrals),
+    [derivedApproval.slots, deferrals],
+  );
 
   return (
     <section
@@ -959,7 +237,7 @@ export function RequirementsServiceFlowStage({
           <ServiceFlowHeader
             progressPercent={derivedApproval.progressPercent}
             filledSlotCount={derivedApproval.filledSlotCount}
-            progressSlotTotal={DECISION_SLOTS.length}
+            progressSlotTotal={SERVICE_FLOW_STAGE_DECISION_SLOTS.length}
             onOpenRemaining={() => setRemainingPanelOpen(true)}
             hint={hint}
             memberControls={{
@@ -973,139 +251,42 @@ export function RequirementsServiceFlowStage({
 
           <div
             ref={chatScrollRef}
-            style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "12px 20px 14px", display: "grid", gap: 10, alignContent: "start" }}
+            style={{
+              flex: "1 1 auto",
+              minHeight: 0,
+              overflowY: "auto",
+              padding: "12px 20px 14px",
+              display: "grid",
+              gap: 10,
+              alignContent: "start",
+            }}
           >
             {!ideationReady ? (
               <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb", maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.5 }}>{ideationReadyNotice}</div>
-                <button type="button" onClick={onRetryGate} style={{ ...btn, marginTop: 8 }}>다시 확인</button>
+                <button type="button" onClick={onRetryGate} style={{ ...serviceFlowStageBtnStyle, marginTop: 8 }}>
+                  다시 확인
+                </button>
               </div>
             ) : null}
             {ideationReady && summaryActive ? (
-              <div style={{ maxWidth: 720, margin: "0 auto", width: "100%", display: "grid", gap: 14 }}>
-                <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>요약</div>
-                <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>[액터]</div>
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "#0f172a", lineHeight: 1.55 }}>
-                    {actors.map((a) => (
-                      <li key={a.id}>
-                        {a.name} ({a.kind === "human" ? "사람" : "시스템"})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>[서비스 흐름 {steps.length}단계]</div>
-                  <ol style={{ margin: 0, paddingLeft: 20, fontSize: 13.5, color: "#0f172a", lineHeight: 1.55 }}>
-                    {steps.map((s) => (
-                      <li key={s.id}>
-                        {s.order}. {s.title}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-                <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>[담당자]</div>
-                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "#0f172a", lineHeight: 1.55 }}>
-                    {steps.map((s) => (
-                      <li key={s.id}>
-                        {s.title} → {s.primaryActorId ? actorName(s.primaryActorId) : "미지정"}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>[준비 상태]</div>
-                  <div style={{ fontSize: 13.5, fontWeight: 800, color: derivedApproval.ready ? "#065f46" : "#b45309" }}>
-                    {derivedApproval.ready ? "필수 체크리스트 충족" : hint ?? "보완이 필요합니다"}
-                  </div>
-                </div>
-                <div style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, color: "#64748b", marginBottom: 8 }}>[결정사항]</div>
-                  {decision.requiredUnresolved.length === 0 && decision.optionalUnresolved.length === 0 ? (
-                    <div style={{ fontSize: 13, color: "#64748b" }}>남은 결정사항 없음</div>
-                  ) : decision.requiredUnresolved.length === 0 ? (
-                    <div style={{ fontSize: 13, color: "#64748b" }}>
-                      {decision.helperLine ?? "남은 결정사항 0개 (권장 항목 미정)"}
-                      <div style={{ marginTop: 10 }}>{optionalDecisionQuickActions}</div>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>남은 결정사항은 다음과 같습니다.</div>
-                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13.5, color: "#0f172a", lineHeight: 1.55 }}>
-                        {decision.requiredUnresolved.map((k) => (
-                          <li key={k}>{SLOT_LABELS[k]}</li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </div>
-              </div>
+              <ServiceFlowSummaryPanel
+                actors={actors}
+                steps={steps}
+                derivedApproval={derivedApproval}
+                decision={decision}
+                hint={hint}
+                onPatchDeferral={patchChecklistDeferral}
+              />
             ) : null}
             {ideationReady && mappingActive ? (
-              <div style={{ maxWidth: 660, margin: "0 auto", width: "100%", display: "grid", gap: 12 }}>
-                {!structureLocked ? (
-                  <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb" }}>
-                    <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e", lineHeight: 1.55 }}>
-                      구조를 확정한 뒤 단계별 담당을 한 화면에서 지정합니다. 먼저 채팅에서 흐름을 다듬은 뒤 상단 탭으로 이동해 주세요.
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ border: "1px solid #bfdbfe", borderRadius: 14, padding: 12, background: "#fff" }}>
-                      <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>구조 편집 · 담당 지정</div>
-                      <div style={{ marginTop: 6, fontSize: 12.5, color: "#475569", lineHeight: 1.55 }}>
-                        단계별 주 담당을 선택하면 초안에 바로 반영됩니다. 하단에서 한 번에 확정할 수 있습니다.
-                      </div>
-                      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button type="button" onClick={reapplyRecommendedOwners} style={{ ...btn }}>
-                          추천 다시 적용
-                        </button>
-                      </div>
-                    </div>
-                    {steps.map((step) => {
-                      const badge =
-                        step.approved
-                          ? { t: "확정됨", bg: "#ecfdf5", fg: "#065f46", bd: "#bbf7d0" }
-                          : !step.primaryActorId
-                            ? { t: "미지정", bg: "#fef9c3", fg: "#854d0e", bd: "#fde047" }
-                            : { t: "검토 필요", bg: "#fff7ed", fg: "#9a3412", bd: "#fed7aa" };
-                      return (
-                        <div key={step.id} style={{ border: "1px solid #e2e8f0", borderRadius: 14, padding: 12, background: "#fff" }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                            <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-                              {step.order}. {step.title}
-                            </div>
-                            <span style={{ fontSize: 11, fontWeight: 900, padding: "4px 8px", borderRadius: 999, background: badge.bg, color: badge.fg, border: `1px solid ${badge.bd}` }}>{badge.t}</span>
-                          </div>
-                          <div style={{ marginTop: 6, fontSize: 12.5, color: "#64748b", lineHeight: 1.45 }}>{step.purpose}</div>
-                          <div style={{ marginTop: 6, fontSize: 12.5, fontWeight: 800, color: "#475569" }}>
-                            현재 담당: {step.primaryActorId ? actorName(step.primaryActorId) : "—"}
-                          </div>
-                          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                            <label htmlFor={`jyo-sf-primary-${step.id}`} style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-                              주 담당 변경
-                            </label>
-                            <select
-                              id={`jyo-sf-primary-${step.id}`}
-                              value={step.primaryActorId}
-                              onChange={(e) => updateStep(step.id, { primaryActorId: e.target.value })}
-                              style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #cbd5e1", fontWeight: 800 }}
-                            >
-                              <option value="">선택</option>
-                              {actors.map((a) => (
-                                <option key={a.id} value={a.id}>
-                                  {a.name} ({a.kind === "human" ? "사람" : "시스템"})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
+              <ServiceFlowMappingPanel
+                structureLocked={structureLocked}
+                steps={steps}
+                actors={actors}
+                onReapplyRecommended={reapplyRecommendedOwners}
+                onUpdateStepPrimary={(stepId, primaryActorId) => updateStep(stepId, { primaryActorId })}
+              />
             ) : null}
             <ServiceFlowChatPanel
               messages={displayMessages}
@@ -1117,180 +298,134 @@ export function RequirementsServiceFlowStage({
             />
           </div>
 
-        <RequirementsChatComposerFooter>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 720, margin: "0 auto", minWidth: 0 }}>
-            {ideationReady && chatActive && quickReplies && quickReplies.length && !replying ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {quickReplies.map((label) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => callAnalyze(label)}
-                    style={{
-                      border: "1px solid #cbd5e1",
-                      background: "#fff",
-                      borderRadius: 999,
-                      padding: "10px 12px",
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: "#0f172a",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {ideationReady && chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {(() => {
-                const design100 = derivedApproval.progressPercent >= 100;
-                const requiredZero = decision.requiredUnresolved.length === 0;
-                const shouldShowApproval = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("approvalStep");
-                const shouldShowException = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("exceptionFlow");
-
-                const base =
-                  steps.length >= 1
-                    ? []
-                    : [
-                        { label: "액터 추가", action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요.") },
-                        { label: "흐름 정리", action: () => callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요.") },
-                      ];
-
-                const extras =
-                  steps.length >= 1
-                    ? [
-                        ...(shouldShowApproval
-                          ? [{ label: "승인 추가", action: () => callAnalyze("승인/확정 단계가 필요합니다. 승인 단계를 흐름에 추가하고 담당도 지정해 주세요.") }]
-                          : []),
-                        ...(shouldShowException
-                          ? [{ label: "예외 흐름", action: () => callAnalyze("수정 요청/반려 같은 예외 흐름이 필요합니다. 예외 단계를 흐름에 반영해 주세요.") }]
-                          : []),
-                      ]
-                    : [];
-
-                const chips = [...base, ...extras];
-
-                void design100;
-                void requiredZero;
-                return chips;
-              })().map((it) => (
-                <button
-                  key={it.label}
-                  type="button"
-                  onClick={it.action}
-                  style={{
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    borderRadius: 999,
-                    padding: "10px 12px",
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: "#0f172a",
-                    cursor: "pointer",
-                  }}
-                >
-                  {it.label}
-                </button>
-              ))}
-              </div>
-            ) : null}
-
-            <ServiceFlowComposer
-              value={input}
-              onChange={setInput}
-              onSubmit={sendMessage}
-              disabled={workspaceMode !== "chat" || replying}
-              placeholder="메시지를 입력하세요"
-              onOpenActions={() => setToolsOpen((v) => !v)}
-              textAreaRef={composerTextareaRef}
-              actionsOpen={toolsOpen}
-              actionMenu={
-                <ServiceFlowActionMenu
-                  open={toolsOpen}
-                  onClose={() => setToolsOpen(false)}
-                  onOrganize={requestOrganize}
-                  onViewResult={() => setWorkspaceMode("summary")}
-                  onViewPrompt={() => setToolsOpen(false)}
-                  onOpenMapping={() => setWorkspaceMode("mapping")}
-                  projectId={projectId}
-                  ideationReady={ideationReady}
-                  ideationReadyNotice={ideationReadyNotice}
-                  hasFlowContent={Boolean(actors.length || steps.length)}
-                />
-              }
-            />
-          </div>
-        </RequirementsChatComposerFooter>
-
-          {remainingPanelOpen ? (
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="남은 결정사항"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 45,
-                background: "rgba(15,23,42,0.45)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 16,
-              }}
-              onClick={() => setRemainingPanelOpen(false)}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  width: "min(520px, 100%)",
-                  maxHeight: "min(80vh, 640px)",
-                  overflowY: "auto",
-                  borderRadius: 16,
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
-                  padding: 16,
-                }}
-              >
-                <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>남은 결정사항</div>
-                <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                  {unresolvedChecklistEntries(derivedApproval.slots, deferrals).map((row) => (
-                    <div key={row.key} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
-                      <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>{row.label}</div>
-                      {row.deferral === "pending" ? (
-                        <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>미정의로 진행됨</div>
-                      ) : row.deferral === "deferred_next" ? (
-                        <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>다음 단계에서 검토</div>
-                      ) : (
-                        <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          <button type="button" onClick={() => jumpToResolveSlot(row.key)} style={{ ...btn }}>
-                            지금 정하기
-                          </button>
-                          <button type="button" onClick={() => patchChecklistDeferral(row.key, "pending")} style={{ ...btn }}>
-                            미정의로 진행
-                          </button>
-                          <button type="button" onClick={() => patchChecklistDeferral(row.key, "deferred_next")} style={{ ...btn }}>
-                            다음 단계에서 검토
-                          </button>
-                        </div>
-                      )}
-                    </div>
+          <RequirementsChatComposerFooter>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 720, margin: "0 auto", minWidth: 0 }}>
+              {ideationReady && chatActive && quickReplies && quickReplies.length && !replying ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {quickReplies.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => callAnalyze(label)}
+                      style={{
+                        border: "1px solid #cbd5e1",
+                        background: "#fff",
+                        borderRadius: 999,
+                        padding: "10px 12px",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: "#0f172a",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {label}
+                    </button>
                   ))}
                 </div>
-                <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                  <button type="button" onClick={() => setRemainingPanelOpen(false)} style={{ ...btn }}>
-                    닫기
-                  </button>
+              ) : null}
+
+              {ideationReady && chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {(() => {
+                    const shouldShowApproval = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("approvalStep");
+                    const shouldShowException = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("exceptionFlow");
+
+                    const base =
+                      steps.length >= 1
+                        ? []
+                        : [
+                            {
+                              label: "액터 추가",
+                              action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요."),
+                            },
+                            {
+                              label: "흐름 정리",
+                              action: () =>
+                                callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요."),
+                            },
+                          ];
+
+                    const extras =
+                      steps.length >= 1
+                        ? [
+                            ...(shouldShowApproval
+                              ? [
+                                  {
+                                    label: "승인 추가",
+                                    action: () =>
+                                      callAnalyze("승인/확정 단계가 필요합니다. 승인 단계를 흐름에 추가하고 담당도 지정해 주세요."),
+                                  },
+                                ]
+                              : []),
+                            ...(shouldShowException
+                              ? [
+                                  {
+                                    label: "예외 흐름",
+                                    action: () =>
+                                      callAnalyze("수정 요청/반려 같은 예외 흐름이 필요합니다. 예외 단계를 흐름에 반영해 주세요."),
+                                  },
+                                ]
+                              : []),
+                          ]
+                        : [];
+
+                    return [...base, ...extras];
+                  })().map((it) => (
+                    <button
+                      key={it.label}
+                      type="button"
+                      onClick={it.action}
+                      style={{
+                        border: "1px solid #cbd5e1",
+                        background: "#fff",
+                        borderRadius: 999,
+                        padding: "10px 12px",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        color: "#0f172a",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {it.label}
+                    </button>
+                  ))}
                 </div>
-              </div>
+              ) : null}
+
+              <ServiceFlowComposer
+                value={input}
+                onChange={setInput}
+                onSubmit={sendMessage}
+                disabled={workspaceMode !== "chat" || replying}
+                placeholder="메시지를 입력하세요"
+                onOpenActions={() => setToolsOpen((v) => !v)}
+                textAreaRef={composerTextareaRef}
+                actionsOpen={toolsOpen}
+                actionMenu={
+                  <ServiceFlowActionMenu
+                    open={toolsOpen}
+                    onClose={() => setToolsOpen(false)}
+                    onOrganize={requestOrganize}
+                    onViewResult={() => setWorkspaceMode("summary")}
+                    onViewPrompt={() => setToolsOpen(false)}
+                    onOpenMapping={() => setWorkspaceMode("mapping")}
+                    projectId={projectId}
+                    ideationReady={ideationReady}
+                    ideationReadyNotice={ideationReadyNotice}
+                    hasFlowContent={Boolean(actors.length || steps.length)}
+                  />
+                }
+              />
             </div>
-          ) : null}
+          </RequirementsChatComposerFooter>
 
-          {/* Prototype generation moved to /execution (workflow step). */}
-
+          <ServiceFlowRemainingDecisionsDialog
+            open={remainingPanelOpen}
+            onClose={() => setRemainingPanelOpen(false)}
+            entries={remainingEntries}
+            onJumpToResolve={jumpToResolveSlotWrapped}
+            onPatchDeferral={patchChecklistDeferral}
+          />
         </main>
       </div>
 
@@ -1305,5 +440,3 @@ export function RequirementsServiceFlowStage({
     </section>
   );
 }
-
-// Legacy overlay canvas removed — 요약 보기 모드에서 동일 정보를 인라인으로 표시합니다.
