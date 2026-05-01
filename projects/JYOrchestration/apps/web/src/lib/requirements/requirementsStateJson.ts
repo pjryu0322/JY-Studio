@@ -87,7 +87,25 @@ export type RequirementsStateJson = {
     userLog: Array<{ id: string; text: string; at: number }>;
     aiLog: Array<{ id: string; text: string; at: number }>;
   } | null;
+  /**
+   * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
+   * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
+   */
+  prototypeWorkspaceTimelineCardsV1?: readonly PrototypeWorkspaceTimelineCardV1[] | null;
 };
+
+export type PrototypeWorkspaceTimelineCardV1 = Readonly<{
+  id: string;
+  at: number;
+  runId: string;
+  kind: "plan_ready" | "workunit_merged";
+  title: string;
+  body?: string | null;
+  /** plan_ready: JSON array `{ order: number; title: string }[]` */
+  workUnitTitlesJson?: string | null;
+  prUrl?: string | null;
+  workUnitOrder?: number | null;
+}>;
 
 /** 서비스 흐름 체크리스트 8슬롯(클라이언트·저장 JSON 공통 키) */
 export const REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS = [
@@ -312,6 +330,51 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const protoChatRaw = "prototypeWorkspaceChatV1" in o ? (o.prototypeWorkspaceChatV1 as unknown) : undefined;
   const prototypeWorkspaceChatV1 = parseProtoChat(protoChatRaw);
 
+  const parseProtoTimelineCards = (rawCards: unknown): readonly PrototypeWorkspaceTimelineCardV1[] | undefined => {
+    if (rawCards === undefined) return undefined;
+    if (rawCards === null) return [];
+    if (!Array.isArray(rawCards)) return undefined;
+    const out: PrototypeWorkspaceTimelineCardV1[] = [];
+    for (const it of rawCards) {
+      if (!it || typeof it !== "object") continue;
+      const r = it as Record<string, unknown>;
+      const id = typeof r.id === "string" ? r.id.trim() : "";
+      const runId = typeof r.runId === "string" ? r.runId.trim() : "";
+      const kind = r.kind === "plan_ready" || r.kind === "workunit_merged" ? r.kind : "";
+      const title = typeof r.title === "string" ? r.title.trim() : "";
+      const at = typeof r.at === "number" && Number.isFinite(r.at) ? r.at : 0;
+      if (!id || !runId || !kind || !title || !at) continue;
+      const body = r.body === null || r.body === undefined ? null : typeof r.body === "string" ? r.body.trim() : String(r.body);
+      const workUnitTitlesJson =
+        r.workUnitTitlesJson === null || r.workUnitTitlesJson === undefined
+          ? null
+          : typeof r.workUnitTitlesJson === "string"
+            ? r.workUnitTitlesJson.slice(0, 32000)
+            : null;
+      const prUrl =
+        r.prUrl === null || r.prUrl === undefined ? null : typeof r.prUrl === "string" ? r.prUrl.trim().slice(0, 2000) : null;
+      const workUnitOrder =
+        typeof r.workUnitOrder === "number" && Number.isFinite(r.workUnitOrder) ? Math.floor(r.workUnitOrder) : null;
+      out.push({
+        id: id.slice(0, 256),
+        at,
+        runId: runId.slice(0, 128),
+        kind,
+        title: title.slice(0, 2000),
+        ...(body ? { body } : {}),
+        ...(workUnitTitlesJson ? { workUnitTitlesJson } : {}),
+        ...(prUrl ? { prUrl } : {}),
+        ...(workUnitOrder !== null ? { workUnitOrder } : {}),
+      });
+    }
+    out.sort((a, b) => a.at - b.at);
+    return out.slice(-300);
+  };
+
+  const protoTimelineRaw =
+    "prototypeWorkspaceTimelineCardsV1" in o ? (o.prototypeWorkspaceTimelineCardsV1 as unknown) : undefined;
+  const prototypeWorkspaceTimelineCardsV1 = parseProtoTimelineCards(protoTimelineRaw);
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -361,6 +424,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? null
         : parseOrganizePlannerState(o.organizePlannerState) ?? null,
     ...(prototypeWorkspaceChatV1 !== undefined ? { prototypeWorkspaceChatV1 } : {}),
+    ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
   };
 }
 
