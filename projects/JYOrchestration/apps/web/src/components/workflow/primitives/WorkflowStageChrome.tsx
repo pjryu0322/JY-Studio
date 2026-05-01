@@ -18,7 +18,7 @@ export function WorkflowStageChrome({
   stageLayoutStyle,
   children,
 }: {
-  readonly title: string;
+  readonly title?: string | null;
   readonly subtitle?: string;
   readonly right?: ReactNode;
   readonly backHref?: string;
@@ -27,11 +27,14 @@ export function WorkflowStageChrome({
   readonly stageLayoutStyle?: CSSProperties;
   readonly children: ReactNode;
 }) {
+  const hasHeader = Boolean(String(title ?? "").trim()) || Boolean(String(subtitle ?? "").trim()) || Boolean(right) || Boolean(backHref);
   return (
     <div>
-      <WorkflowPageHeader title={title} subtitle={subtitle} right={right} backHref={backHref} backLabel={backLabel} />
+      {hasHeader ? (
+        <WorkflowPageHeader title={title} subtitle={subtitle} right={right} backHref={backHref} backLabel={backLabel} />
+      ) : null}
 
-      <div style={{ marginTop: 12, marginBottom: 4 }}>
+      <div style={{ marginTop: hasHeader ? 12 : 0, marginBottom: 4 }}>
         <ProjectWorkflowNav />
       </div>
 

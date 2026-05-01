@@ -5,8 +5,8 @@ import { useMemo, useState } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { BottomSheet } from "@/components/layout/BottomSheet";
-import type { WorkflowStepMeta } from "@/components/layout/workflowStepMeta";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+import type { WorkflowStepMeta } from "@/lib/workflow/workflowStepMeta";
 
 export type MobileStepSelectorItem = WorkflowStepMeta & {
   readonly href: string;
