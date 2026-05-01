@@ -36,12 +36,15 @@ export function RequirementsMemberSidebar({
   inviteDisabled,
   inviteEmphasis,
   onInviteClick,
+  fillRail = false,
 }: {
   readonly participants: readonly ParticipantOption[];
   readonly showInvite: boolean;
   readonly inviteDisabled: boolean;
   readonly inviteEmphasis: boolean;
   readonly onInviteClick: () => void;
+  /** 가로 플렉스 형제가 아닌(예: 그리드 열) 레이아웃에서 레일 높이를 채울 때 true */
+  readonly fillRail?: boolean;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const ordered = useMemo(() => sortForSidebar(participants), [participants]);
@@ -53,7 +56,6 @@ export function RequirementsMemberSidebar({
       aria-label="참여 멤버"
       style={{
         width: 220,
-        flex: "0 0 220px",
         boxSizing: "border-box",
         borderRight: "1px solid #e2e8f0",
         background: "#f8fafc",
@@ -61,6 +63,7 @@ export function RequirementsMemberSidebar({
         flexDirection: "column",
         minHeight: 0,
         overflow: "hidden",
+        ...(fillRail ? { height: "100%" } : { flex: "0 0 220px" }),
       }}
     >
       <div className="relative" style={{ position: "relative", padding: "12px 12px 8px" }}>

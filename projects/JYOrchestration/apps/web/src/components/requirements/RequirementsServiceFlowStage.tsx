@@ -15,6 +15,9 @@ import {
   ServiceFlowHeader,
   ServiceFlowProgressSummary,
 } from "@/components/service-flow";
+import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
+import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
+import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 import type {
@@ -53,14 +56,6 @@ type ApprovalState = {
   filledSlotCount: number;
   progressPercent: number;
   recommendedMissing: Partial<Record<ServiceFlowSlotKey, boolean>>;
-};
-
-type ServiceFlowParticipant = {
-  id: string;
-  name: string;
-  roleLabel: string;
-  connection: string;
-  lastResponse?: string;
 };
 
 const SLOT_LABELS: Record<ServiceFlowSlotKey, string> = {
@@ -174,17 +169,6 @@ const shell: CSSProperties = {
   alignItems: "stretch",
   overflow: "hidden",
   background: "#fff",
-};
-
-const memberSidebar: CSSProperties = {
-  boxSizing: "border-box",
-  borderRight: "1px solid #e2e8f0",
-  background: "#f8fafc",
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  minHeight: 0,
-  overflow: "hidden",
 };
 
 const chatWrap: CSSProperties = {
@@ -368,59 +352,75 @@ function applyRecommendedPrimaryActors(flow: RequirementsServiceFlowV1): Require
 
 // LLM-first: rule/keyword based helpers intentionally removed.
 
-function roleLabelForMember(m: ProjectMemberForServiceFlow): string {
-  if (m.memberType === "AI") return (m.aiOrchestrationRole || "AI").trim();
-  if (m.isOwner) return "OWNER";
-  return (m.role || "멤버").trim();
-}
-
-function serviceFlowParticipants(members: readonly ProjectMemberForServiceFlow[], currentUserId: string | null, replying: boolean): ServiceFlowParticipant[] {
-  const roleOrder = new Map<string, number>([
-    ["planner", 0],
-    ["service-designer", 1],
-    ["domain-expert", 2],
-    ["domainExpert", 2],
-    ["serviceFlowExpert", 2],
-  ]);
-  const rows = [...members]
-    .filter((m) => {
-      // UI policy: show a single AI persona row ("AI 기획자") in this stage.
-      if (m.memberType === "AI") return false;
-      return m.memberType === "HUMAN";
-    })
-    .sort((a, b) => {
-      if (a.memberType !== b.memberType) return a.memberType === "AI" ? -1 : 1;
-      if (a.memberType === "AI") {
-        const ao = roleOrder.get((a.aiOrchestrationRole ?? "").trim()) ?? 99;
-        const bo = roleOrder.get((b.aiOrchestrationRole ?? "").trim()) ?? 99;
-        if (ao !== bo) return ao - bo;
-      }
-      if (a.isOwner !== b.isOwner) return a.isOwner ? -1 : 1;
-      if (currentUserId && a.userId !== b.userId) {
-        if (a.userId === currentUserId) return -1;
-        if (b.userId === currentUserId) return 1;
-      }
-      return String(a.displayName ?? a.email ?? "").localeCompare(String(b.displayName ?? b.email ?? ""), "ko");
-    })
-    .map((m) => {
-      const role = roleLabelForMember(m);
-      const isAi = m.memberType === "AI";
-      return {
-        id: m.memberId,
-        name: (isAi ? displayedAiOrchestrator().name : m.displayName || m.email || "사용자").slice(0, 28),
-        roleLabel: role,
-        connection: isAi ? (replying ? "응답중" : "연결됨") : currentUserId && m.userId === currentUserId ? "온라인" : "대기",
-        lastResponse: isAi ? (replying ? "응답 대기" : "마지막 응답 성공") : undefined,
-      };
-    });
-  rows.unshift({
-    id: "visible:ai-orchestrator",
-    name: displayedAiOrchestrator().name,
-    roleLabel: "AI",
-    connection: replying ? "응답중" : "연결됨",
-    lastResponse: replying ? displayedAiStatusForStage("service-flow") : "마지막 응답 성공",
+/** 아이디어 구체화 화면 `RequirementsWorkspace` 의 참여 멤버 사이드바와 동일한 ParticipantOption 구성(단, 이 단계에 노출할 사람만 필터). */
+function serviceFlowSidebarParticipants(
+  members: readonly ProjectMemberForServiceFlow[],
+  currentUserId: string | null,
+  ideationParticipantHumanMemberIds: readonly string[],
+  replying: boolean,
+): ParticipantOption[] {
+  const allowSet = new Set(ideationParticipantHumanMemberIds);
+  const filteredHumans = members.filter((m) => {
+    if (m.memberType !== "HUMAN") return false;
+    if (currentUserId && m.userId && m.userId === currentUserId) return true;
+    return allowSet.has(m.memberId);
   });
-  return rows;
+
+  const aiMembers = members.filter((m) => m.memberType === "AI");
+  const aiStatusLabel = replying ? "반영 중…" : displayedAiStatusForStage("service-flow");
+  const list: ParticipantOption[] = [];
+
+  if (showInternalAgents) {
+    if (aiMembers.length === 0) {
+      list.push({
+        id: VIRTUAL_AI_PLANNER_ID,
+        name: "AI 기획자",
+        kind: "ai",
+        onlineHint: false,
+        aiStatusLabel,
+        roleLabel: "AI",
+      });
+    }
+    for (const m of aiMembers) {
+      list.push({
+        id: m.memberId,
+        name: (m.displayName || m.email || "AI").slice(0, 24),
+        kind: "ai",
+        onlineHint: false,
+        aiStatusLabel,
+        roleLabel: "AI",
+      });
+    }
+  } else {
+    const orch = displayedAiOrchestrator();
+    list.push({
+      id: "visible:ai-orchestrator",
+      name: orch.name,
+      kind: "ai",
+      onlineHint: false,
+      aiStatusLabel,
+      roleLabel: "AI",
+    });
+  }
+
+  for (const m of filteredHumans) {
+    const uid = m.userId ?? null;
+    list.push({
+      id: m.memberId,
+      name: (m.displayName || m.email || "멤버").slice(0, 24),
+      kind: "human",
+      onlineHint: Boolean(currentUserId && uid && currentUserId === uid),
+      roleLabel: m.isOwner ? "소유자" : "전문가",
+      invited: !uid,
+    });
+  }
+
+  const seen = new Set<string>();
+  return list.filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
 }
 
 export function RequirementsServiceFlowStage({
@@ -481,7 +481,7 @@ export function RequirementsServiceFlowStage({
   const [quickReplies, setQuickReplies] = useState<string[] | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("chat");
   const [remainingPanelOpen, setRemainingPanelOpen] = useState(false);
-  const [chatExpanded, setChatExpanded] = useState(false);
+  const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [latestAiQuestion, setLatestAiQuestion] = useState<string>("");
   const [toolsOpen, setToolsOpen] = useState(false);
 
@@ -526,7 +526,7 @@ export function RequirementsServiceFlowStage({
     const el = composerTextareaRef.current;
     if (!el) return;
     el.style.height = "0px";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   };
   useEffect(() => {
     resizeComposer();
@@ -547,18 +547,10 @@ export function RequirementsServiceFlowStage({
 
   const actors = flow?.actors ?? [];
   const steps = useMemo(() => normalizeOrder(flow?.steps ?? []), [flow?.steps]);
-  const participants = useMemo(() => {
-    const allowSet = new Set(ideationParticipantHumanMemberIds);
-    // default include current user even if they haven't produced "human" message
-    // (they show as USER messages in the chat model)
-    const filtered = members.filter((m) => {
-      if (m.memberType === "AI") return true;
-      // Only include humans who participated in ideation (human messages) OR are current user.
-      if (currentUserId && m.userId && m.userId === currentUserId) return true;
-      return allowSet.has(m.memberId);
-    });
-    return serviceFlowParticipants(filtered, currentUserId, replying);
-  }, [members, currentUserId, replying, ideationParticipantHumanMemberIds]);
+  const sidebarParticipants = useMemo(
+    () => serviceFlowSidebarParticipants(members, currentUserId, ideationParticipantHumanMemberIds, replying),
+    [members, currentUserId, ideationParticipantHumanMemberIds, replying],
+  );
 
   const lockStructureForAssignment = () => {
     if (!flow) return;
@@ -940,11 +932,7 @@ export function RequirementsServiceFlowStage({
       <style>{`
         @media (max-width: 760px) {
           .jyo-service-flow-stage-shell {
-            grid-template-columns: minmax(0, 1fr) !important;
             overflow-y: auto !important;
-          }
-          .jyo-service-flow-stage-members {
-            min-height: 180px !important;
           }
         }
         .jyo-service-flow-stage-shell {
@@ -962,37 +950,22 @@ export function RequirementsServiceFlowStage({
         className="jyo-service-flow-stage-shell"
         style={{
           ...shell,
-          gridTemplateColumns: chatExpanded ? "minmax(0, 1fr)" : "220px minmax(0, 1fr)",
+          gridTemplateColumns: "minmax(0, 1fr)",
           height: "100%",
         }}
       >
-        {!chatExpanded ? (
-        <aside className="jyo-service-flow-stage-members" style={memberSidebar} aria-label="참여 멤버">
-          <div style={{ position: "relative", padding: "12px 12px 8px" }}>
-            <ScreenLabel label="요구사항-서비스흐름-참여멤버" visible={showScreenLabels} />
-            <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.02em", textTransform: "uppercase" }}>참여 멤버</div>
-          </div>
-          <div role="list" style={{ flex: "1 1 auto", overflowY: "auto", padding: "0 10px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
-            {participants.map((p) => <MemberCard key={p.id} member={p} />)}
-          </div>
-          <div style={{ padding: "10px 10px 12px", borderTop: "1px solid #e2e8f0", background: "rgba(255,255,255,0.65)" }}>
-            <button type="button" onClick={onInviteMember} style={{ ...btn, width: "100%" }}>
-              멤버 초대
-            </button>
-          </div>
-        </aside>
-        ) : null}
-
         <main className="jyo-service-flow-chat-shell" style={chatWrap} aria-label="액터 및 서비스 흐름 작업 영역">
+          <ScreenLabel label="요구사항-서비스흐름-참여멤버" visible={showScreenLabels} />
           <ServiceFlowHeader
-            title="액터 및 서비스 흐름 정의"
-            subtitle="아이디어 내용을 기반으로 서비스 흐름을 정리합니다."
             progressPercent={derivedApproval.progressPercent}
-            remainingRequiredCount={decision.requiredUnresolved.length}
+            filledSlotCount={derivedApproval.filledSlotCount}
+            progressSlotTotal={DECISION_SLOTS.length}
             onOpenRemaining={() => setRemainingPanelOpen(true)}
-            chatExpanded={chatExpanded}
-            onToggleExpand={() => setChatExpanded((v) => !v)}
             hint={hint}
+            memberControls={{
+              count: sidebarParticipants.length,
+              onOpen: () => setMembersModalOpen(true),
+            }}
           />
           {ideationReady && chatActive ? (
             <ServiceFlowProgressSummary hint={hint} helperLine={decision.helperLine} />
@@ -1144,35 +1117,34 @@ export function RequirementsServiceFlowStage({
             />
           </div>
 
-        {ideationReady && chatActive && quickReplies && quickReplies.length && !replying ? (
-          <div style={{ flex: "0 0 auto", padding: "0 20px 10px" }}>
-            <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {quickReplies.map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => callAnalyze(label)}
-                  style={{
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    borderRadius: 999,
-                    padding: "10px 12px",
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: "#0f172a",
-                    cursor: "pointer",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
+        <RequirementsChatComposerFooter>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 720, margin: "0 auto", minWidth: 0 }}>
+            {ideationReady && chatActive && quickReplies && quickReplies.length && !replying ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {quickReplies.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => callAnalyze(label)}
+                    style={{
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      borderRadius: 999,
+                      padding: "10px 12px",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: "#0f172a",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-        {ideationReady && chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
-          <div style={{ flex: "0 0 auto", padding: "0 20px 10px" }}>
-            <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {ideationReady && chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {(() => {
                 const design100 = derivedApproval.progressPercent >= 100;
                 const requiredZero = decision.requiredUnresolved.length === 0;
@@ -1181,10 +1153,7 @@ export function RequirementsServiceFlowStage({
 
                 const base =
                   steps.length >= 1
-                    ? [
-                        { label: "단계 수정", action: () => callAnalyze("단계 수정이 필요합니다. 수정할 단계와 변경 내용을 반영해 주세요.") },
-                        { label: "담당 지정", action: () => callAnalyze("각 단계 담당자를 지정하려고 합니다. 단계별 담당을 제안하고 primaryActorId로 반영해 주세요.") },
-                      ]
+                    ? []
                     : [
                         { label: "액터 추가", action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요.") },
                         { label: "흐름 정리", action: () => callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요.") },
@@ -1204,10 +1173,8 @@ export function RequirementsServiceFlowStage({
 
                 const chips = [...base, ...extras];
 
-                if (design100 && requiredZero) {
-                  // completion state: keep at most 2 chips
-                  return chips.filter((c) => c.label === "단계 수정" || c.label === "담당 지정").slice(0, 2);
-                }
+                void design100;
+                void requiredZero;
                 return chips;
               })().map((it) => (
                 <button
@@ -1215,47 +1182,48 @@ export function RequirementsServiceFlowStage({
                   type="button"
                   onClick={it.action}
                   style={{
-                    border: "1px solid #dbeafe",
+                    border: "1px solid #cbd5e1",
                     background: "#fff",
                     borderRadius: 999,
-                    padding: "9px 12px",
-                    fontSize: 12.5,
-                    fontWeight: 900,
-                    color: "#1e40af",
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: "#0f172a",
                     cursor: "pointer",
                   }}
                 >
                   {it.label}
                 </button>
               ))}
-            </div>
-          </div>
-        ) : null}
+              </div>
+            ) : null}
 
-          <ServiceFlowComposer
-            value={input}
-            onChange={setInput}
-            onSubmit={sendMessage}
-            disabled={workspaceMode !== "chat" || replying}
-            placeholder="메시지를 입력하세요"
-            onOpenActions={() => setToolsOpen((v) => !v)}
-            textAreaRef={composerTextareaRef}
-            actionsOpen={toolsOpen}
-            actionMenu={
-              <ServiceFlowActionMenu
-                open={toolsOpen}
-                onClose={() => setToolsOpen(false)}
-                onOrganize={requestOrganize}
-                onViewResult={() => setWorkspaceMode("summary")}
-                onViewPrompt={() => setToolsOpen(false)}
-                onOpenMapping={() => setWorkspaceMode("mapping")}
-                projectId={projectId}
-                ideationReady={ideationReady}
-                ideationReadyNotice={ideationReadyNotice}
-                hasFlowContent={Boolean(actors.length || steps.length)}
-              />
-            }
-          />
+            <ServiceFlowComposer
+              value={input}
+              onChange={setInput}
+              onSubmit={sendMessage}
+              disabled={workspaceMode !== "chat" || replying}
+              placeholder="메시지를 입력하세요"
+              onOpenActions={() => setToolsOpen((v) => !v)}
+              textAreaRef={composerTextareaRef}
+              actionsOpen={toolsOpen}
+              actionMenu={
+                <ServiceFlowActionMenu
+                  open={toolsOpen}
+                  onClose={() => setToolsOpen(false)}
+                  onOrganize={requestOrganize}
+                  onViewResult={() => setWorkspaceMode("summary")}
+                  onViewPrompt={() => setToolsOpen(false)}
+                  onOpenMapping={() => setWorkspaceMode("mapping")}
+                  projectId={projectId}
+                  ideationReady={ideationReady}
+                  ideationReadyNotice={ideationReadyNotice}
+                  hasFlowContent={Boolean(actors.length || steps.length)}
+                />
+              }
+            />
+          </div>
+        </RequirementsChatComposerFooter>
 
           {remainingPanelOpen ? (
             <div
@@ -1325,17 +1293,16 @@ export function RequirementsServiceFlowStage({
 
         </main>
       </div>
-    </section>
-  );
-}
 
-function MemberCard({ member }: { readonly member: ServiceFlowParticipant }) {
-  const parts = [member.roleLabel, member.connection, member.lastResponse].filter(Boolean).join(" · ");
-  return (
-    <div role="listitem" style={{ width: "100%", padding: "8px 10px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff" }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div>
-      <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35, wordBreak: "break-word" }}>{parts}</div>
-    </div>
+      <RequirementsMembersModal
+        open={membersModalOpen}
+        onClose={() => setMembersModalOpen(false)}
+        participants={sidebarParticipants}
+        showInvite={Boolean(projectId.trim())}
+        inviteDisabled={!projectId.trim()}
+        onInviteClick={onInviteMember}
+      />
+    </section>
   );
 }
 

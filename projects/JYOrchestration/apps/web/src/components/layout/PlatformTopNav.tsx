@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { PlatformSettingsMenu } from "@/components/layout/PlatformSettingsMenu";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-
-const PLATFORM_HEADER_TAGLINE =
-  "AI와 전문가의 도움으로 아이디어를 구체화하고 프로토타입 제작을 지원하는 플랫폼";
+import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
+import { fetchProjectById } from "@/components/project-spec/api";
 
 type MeState = {
   name: string;
@@ -17,8 +17,16 @@ type MeState = {
 
 export function PlatformTopNav() {
   const showScreenLabels = useShowScreenLabels();
+  const pathname = usePathname() || "/";
+  const searchParams = useSearchParams();
   const [me, setMe] = useState<MeState | null>(null);
   const [meReady, setMeReady] = useState(false);
+  const [projectName, setProjectName] = useState<string | null>(null);
+
+  const projectId = useMemo(
+    () => resolveWorkflowProjectContextId(pathname, searchParams),
+    [pathname, searchParams]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +57,30 @@ export function PlatformTopNav() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pid = String(projectId ?? "").trim();
+    if (!pid) {
+      setProjectName(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void (async () => {
+      try {
+        const { project } = await fetchProjectById(pid);
+        if (cancelled) return;
+        const name = String(project?.name ?? "").trim();
+        setProjectName(name || null);
+      } catch {
+        if (!cancelled) setProjectName(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   async function handleLogout() {
     try {
@@ -90,7 +122,6 @@ export function PlatformTopNav() {
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-start",
-            gap: 2,
             minWidth: 0,
             flex: "1 1 200px",
             overflow: "hidden",
@@ -110,23 +141,27 @@ export function PlatformTopNav() {
           >
             JY Orchestration
           </Link>
-          <span
-            className="jyo-platform-tagline"
-            title={PLATFORM_HEADER_TAGLINE}
-            style={{
-              fontSize: 12.5,
-              fontWeight: 500,
-              color: "#64748b",
-              lineHeight: 1.35,
-              letterSpacing: "-0.01em",
-              minWidth: 0,
-              overflow: "hidden",
-              whiteSpace: "normal",
-              textOverflow: "clip",
-            }}
-          >
-            {PLATFORM_HEADER_TAGLINE}
-          </span>
+          {projectName ? (
+            <Link
+              href="/"
+              title={projectName}
+              style={{
+                marginTop: 2,
+                fontWeight: 700,
+                fontSize: 12.5,
+                color: "#64748b",
+                textDecoration: "none",
+                letterSpacing: "-0.01em",
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: "100%",
+              }}
+            >
+              {projectName}
+            </Link>
+          ) : null}
         </div>
 
         <div style={{ flex: "1 1 16px", minWidth: 8 }} aria-hidden />

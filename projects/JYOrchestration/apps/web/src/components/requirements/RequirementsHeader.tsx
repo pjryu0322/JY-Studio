@@ -6,15 +6,14 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 export function RequirementsHeader({
-  projectName,
   showProjectWorkflowNav,
 }: {
-  /** 실제 프로젝트명(또는 로딩·오류 시 사람이 읽을 수 있는 짧은 문구). raw projectId 축약 문자열 금지. */
-  readonly projectName: string;
   /** 프로젝트가 열려 있을 때 워크플로·멤버/설정 탭을 헤더 하단에 표시 */
   readonly showProjectWorkflowNav: boolean;
 }) {
   const showScreenLabels = useShowScreenLabels();
+
+  if (!showProjectWorkflowNav) return null;
 
   return (
     <header
@@ -22,46 +21,14 @@ export function RequirementsHeader({
         display: "flex",
         flexDirection: "column",
         gap: 0,
-        padding: "16px 0 18px",
+        padding: "0 0 14px",
         borderBottom: `1px solid ${t.border}`,
       }}
     >
-      <div className="relative" style={{ position: "relative", minWidth: 0 }}>
+      <div className="relative" style={{ position: "relative", width: "100%" }}>
         <ScreenLabel label="요구사항-헤더-프로젝트정보" visible={showScreenLabels} />
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 800,
-            color: t.textMuted,
-            letterSpacing: "0.04em",
-            marginBottom: 6,
-          }}
-        >
-          프로젝트
-        </div>
-        <h1
-          style={{
-            fontSize: 26,
-            fontWeight: 700,
-            color: t.textPrimary,
-            margin: 0,
-            lineHeight: 1.2,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            letterSpacing: "-0.02em",
-            minWidth: 0,
-          }}
-        >
-          {projectName}
-        </h1>
+        <ProjectWorkflowNav />
       </div>
-
-      {showProjectWorkflowNav ? (
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${t.border}`, width: "100%" }}>
-          <ProjectWorkflowNav />
-        </div>
-      ) : null}
     </header>
   );
 }
