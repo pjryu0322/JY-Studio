@@ -457,6 +457,16 @@ export function getLatestRun(projectId: string): PrototypeRun | null {
   return sorted[0] ?? null;
 }
 
+/** 생성 순서 기준 버전 번호(1-based). 동일 프로젝트 내 최신 실행 표시용. */
+export function getRunVersionMeta(projectId: string, runId: string): { versionNo: number; totalRuns: number } | null {
+  const env = loadEnvelope(projectId);
+  if (!env.runs.length) return null;
+  const chronological = [...env.runs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const idx = chronological.findIndex((r) => r.id === runId);
+  if (idx < 0) return null;
+  return { versionNo: idx + 1, totalRuns: chronological.length };
+}
+
 export function updateRun(
   projectId: string,
   runId: string,

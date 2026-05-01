@@ -27,6 +27,7 @@ const WORKFLOW_TOP_NAV: { stepId: AppFlowStepId; label: string; screenLabel: str
   { stepId: "service_flow", label: "액터 및 서비스 흐름 정의", screenLabel: "공통-상단내비-워크플로우-서비스흐름" },
   { stepId: "features", label: "기능 정리", screenLabel: "공통-상단내비-워크플로우-기능" },
   { stepId: "execution", label: "프로토타입 생성", screenLabel: "공통-상단내비-워크플로우-실행" },
+  { stepId: "prototype_review", label: "프로토타입 검토", screenLabel: "공통-상단내비-워크플로우-프로토타입검토" },
 ];
 
 const linkProcess = (active: boolean): CSSProperties => ({

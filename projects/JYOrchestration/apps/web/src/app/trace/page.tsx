@@ -34,14 +34,15 @@ const timelineSteps = [
   { label: "아이디어 구체화", hint: "대화·기획 산출물" },
   { label: "액터 및 서비스 흐름 정의", hint: "승인·흐름 단계" },
   { label: "기능 정리", hint: "범위·우선순위" },
-  { label: "프로토타입 생성", hint: "실행·검토" },
+  { label: "프로토타입 생성", hint: "실행·배포" },
+  { label: "프로토타입 검토", hint: "프리뷰·개선" },
 ] as const;
 
 export default function TracePage() {
   return (
     <WorkflowStageChrome
       title="추적"
-      subtitle="아이디어 구체화 → 액터 및 서비스 흐름 정의 → 기능 정리 → 프로토타입 생성 순으로 이어지는 흐름을 한눈에 봅니다. 데이터가 쌓이면 타임라인이 채워집니다."
+      subtitle="아이디어 구체화 → 액터 및 서비스 흐름 정의 → 기능 정리 → 프로토타입 생성 → 프로토타입 검토 순으로 이어지는 흐름을 한눈에 봅니다. 데이터가 쌓이면 타임라인이 채워집니다."
     >
       <div style={{ padding: 14, display: "grid", gap: 14 }}>
         <WorkflowCard padding={16}>
@@ -86,6 +87,9 @@ export default function TracePage() {
             </Link>
             <Link href="/execution" style={btnSecondary}>
               프로토타입 생성
+            </Link>
+            <Link href="/prototype-review" style={btnSecondary}>
+              프로토타입 검토
             </Link>
           </div>
         </WorkflowCard>

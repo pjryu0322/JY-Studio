@@ -16,6 +16,7 @@ export function gateReasonForStep(stepId: AppFlowStepId, gates: AppFlowGateSnaps
   if (stepId === "tasks") return gates.tasksReason;
   if (stepId === "planning") return gates.planningReason;
   if (stepId === "execution") return gates.executionReason;
+  if (stepId === "prototype_review") return gates.prototypeReviewReason;
   if (stepId === "trace") return gates.traceReason;
   return null;
 }

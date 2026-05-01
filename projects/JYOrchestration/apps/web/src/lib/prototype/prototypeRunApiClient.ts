@@ -5,6 +5,8 @@ export type LatestPrototypeRunResponse = Readonly<{
   success: boolean;
   data?: {
     run: PrototypeRun | null;
+    runVersionNo?: number | null;
+    runTotalCount?: number | null;
     automationAvailable: boolean;
     automationBlockReason: PrototypeRunStatusReason | null;
   };
