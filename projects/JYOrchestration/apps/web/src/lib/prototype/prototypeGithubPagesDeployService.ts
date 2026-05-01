@@ -125,14 +125,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: web/package-lock.json
       - name: Install
         working-directory: web
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - name: Build
         working-directory: web
         run: npm run build
+      - name: Prepare GitHub Pages (SPA + Jekyll)
+        working-directory: web
+        run: |
+          set -e
+          test -f dist/index.html
+          cp dist/index.html dist/404.html
+          touch dist/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

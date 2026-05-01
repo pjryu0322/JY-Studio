@@ -81,6 +81,12 @@ modern B2B SaaS, clear hierarchy, accessible contrast
 Tech:
 React + Tailwind (or existing stack in the repo you open in Cursor)
 
+GitHub Pages (project site under https://<owner>.github.io/<repo>/):
+- The repo uses Vite under the \`web/\` folder. Keep \`web/vite.config.ts\` \`base\` as \`"/<repo>/"\` (the platform may set this automatically).
+- If you use React Router \`BrowserRouter\`, set \`basename={import.meta.env.BASE_URL}\` (must match Vite \`base\`, including trailing slash).
+- Register the main/home UI at path \`"/"\` under that basename so opening \`https://<owner>.github.io/<repo>/\` does not show an in-app 404.
+- Ensure \`web/dist/index.html\` exists after \`npm run build\`; the deploy workflow copies it to \`404.html\` for SPA deep links.
+
 Deliverable:
 clickable multi-page prototype with mocked data, router between pages, and short README on how to run.
 
