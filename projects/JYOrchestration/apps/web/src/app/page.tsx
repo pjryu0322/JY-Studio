@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
-import { Button, Card, EmptyState, InlineAlert, LoadingState, SectionCard } from "@/components/ui";
+import { Button, Card, EmptyState, InlineAlert, LoadingState, SectionCard, uiTokens as t } from "@/components/ui";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
@@ -51,6 +51,45 @@ type SessionUser = {
   id: string;
   email: string;
   name: string;
+};
+
+/** Presentational style bundles only — logic stays in HomePage. */
+const homeOpenProjectLinkStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "8px 12px",
+  borderRadius: t.radiusMd,
+  border: `1px solid ${t.accentTeal}`,
+  background: t.accentTealSurface,
+  color: t.accentTealFg,
+  fontSize: 13,
+  fontWeight: 800,
+  textDecoration: "none",
+};
+
+const homeIncludeDeletedLabelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 14,
+  color: t.textSecondary,
+  cursor: "pointer",
+  userSelect: "none",
+};
+
+const homeCreateToastStyle: CSSProperties = {
+  position: "fixed",
+  top: 72,
+  right: 24,
+  zIndex: 60,
+  padding: "10px 16px",
+  borderRadius: t.radiusLg,
+  background: t.accentTealFg,
+  color: "#fff",
+  fontSize: 14,
+  fontWeight: 700,
+  boxShadow: "0 12px 32px -8px rgba(15, 118, 110, 0.45)",
 };
 
 export default function HomePage() {
@@ -317,19 +356,7 @@ export default function HomePage() {
         <div
           role="status"
           data-testid="home-project-created-toast"
-          style={{
-            position: "fixed",
-            top: 72,
-            right: 24,
-            zIndex: 60,
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: "#0f766e",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 700,
-            boxShadow: "0 12px 32px -8px rgba(15, 118, 110, 0.45)",
-          }}
+          style={homeCreateToastStyle}
         >
           프로젝트가 생성되었습니다
         </div>
@@ -392,23 +419,13 @@ export default function HomePage() {
         data-ui-label="[C] Project List"
         style={{ marginBottom: 24 }}
         actions={
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 14,
-              color: "#334155",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
-          >
+          <label style={homeIncludeDeletedLabelStyle}>
             <input
               type="checkbox"
               data-testid="home-include-deleted-projects"
               checked={includeDeletedProjects}
               onChange={(e) => setIncludeDeletedProjects(e.target.checked)}
-              style={{ width: 16, height: 16, accentColor: "#2563eb" }}
+              style={{ width: 16, height: 16, accentColor: t.primary }}
             />
             삭제된 프로젝트 보기
           </label>
@@ -432,19 +449,6 @@ export default function HomePage() {
                 Boolean(sessionUser) &&
                 project.ownerUserId === sessionUser?.id &&
                 project.status !== PROJECT_LIFECYCLE_DELETED;
-              const openBtnStyle: CSSProperties = {
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #0d9488",
-                background: "#ecfdf5",
-                color: "#0f766e",
-                fontSize: 13,
-                fontWeight: 800,
-                textDecoration: "none",
-              };
               return (
               <Card
                 compact
@@ -453,8 +457,9 @@ export default function HomePage() {
                 data-testid={`project-card-${project.id}`}
                 data-project-highlight={highlightProjectId === project.id ? "1" : undefined}
                 style={{
-                  border: highlightProjectId === project.id ? "2px solid #0d9488" : "1px solid #e5e5e5",
-                  background: highlightProjectId === project.id ? "#f0fdfa" : undefined,
+                  border:
+                    highlightProjectId === project.id ? `2px solid ${t.accentTeal}` : `1px solid ${t.border}`,
+                  background: highlightProjectId === project.id ? t.accentTealSurface : undefined,
                   boxShadow: highlightProjectId === project.id ? "0 0 0 3px rgba(13, 148, 136, 0.2)" : undefined,
                 }}
               >
@@ -491,7 +496,7 @@ export default function HomePage() {
                           project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
                         }
                         onClick={(e) => e.stopPropagation()}
-                        style={openBtnStyle}
+                        style={homeOpenProjectLinkStyle}
                       >
                         열기
                       </Link>
@@ -534,7 +539,7 @@ export default function HomePage() {
                         width: 36,
                         height: 36,
                         padding: 0,
-                        color: "#64748b",
+                        color: t.textMuted,
                       }}
                     >
                       <ProjectCardSettingsIcon />
@@ -550,33 +555,33 @@ export default function HomePage() {
                           zIndex: 50,
                           width: "min(92vw, 280px)",
                           padding: "12px 14px",
-                          borderRadius: 10,
-                          border: "1px solid #e2e8f0",
-                          background: "#fff",
+                          borderRadius: t.radiusLg,
+                          border: `1px solid ${t.border}`,
+                          background: t.bgCard,
                           boxShadow: "0 14px 40px -12px rgba(15, 23, 42, 0.25)",
                         }}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 8 }}>상태 요약</div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 8 }}>상태 요약</div>
                         <dl
                           style={{
                             margin: 0,
                             display: "grid",
                             gap: 6,
                             fontSize: 12,
-                            color: "#334155",
+                            color: t.textSecondary,
                             gridTemplateColumns: "96px 1fr",
                           }}
                         >
-                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>프로젝트</dt>
+                          <dt style={{ fontWeight: 700, color: t.textMuted }}>프로젝트</dt>
                           <dd style={{ margin: 0, fontWeight: 700 }}>
                             {project.status === PROJECT_LIFECYCLE_DELETED ? (
-                              <span style={{ color: "#b91c1c" }}>삭제됨</span>
+                              <span style={{ color: t.danger }}>삭제됨</span>
                             ) : (
                               formatProjectStatusForUi(project.status)
                             )}
                           </dd>
-                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>Git 연결</dt>
+                          <dt style={{ fontWeight: 700, color: t.textMuted }}>Git 연결</dt>
                           <dd style={{ margin: 0 }}>
                             {project.status === PROJECT_LIFECYCLE_DELETED
                               ? "—"
@@ -584,7 +589,7 @@ export default function HomePage() {
                                 ? "불러오는 중…"
                                 : projectCardMenuReadiness?.gitLabel ?? (projectCardMenuError ? "확인 불가" : "—")}
                           </dd>
-                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>GitHub 인증</dt>
+                          <dt style={{ fontWeight: 700, color: t.textMuted }}>GitHub 인증</dt>
                           <dd style={{ margin: 0 }}>
                             {project.status === PROJECT_LIFECYCLE_DELETED
                               ? "—"
@@ -592,7 +597,7 @@ export default function HomePage() {
                                 ? "불러오는 중…"
                                 : projectCardMenuReadiness?.githubLabel ?? (projectCardMenuError ? "확인 불가" : "—")}
                           </dd>
-                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>Cursor 연결</dt>
+                          <dt style={{ fontWeight: 700, color: t.textMuted }}>Cursor 연결</dt>
                           <dd style={{ margin: 0 }}>
                             {project.status === PROJECT_LIFECYCLE_DELETED
                               ? "—"
@@ -600,27 +605,27 @@ export default function HomePage() {
                                 ? "불러오는 중…"
                                 : projectCardMenuReadiness?.cursorLabel ?? (projectCardMenuError ? "확인 불가" : "—")}
                           </dd>
-                          <dt style={{ fontWeight: 700, color: "#94a3b8" }}>실행 가능</dt>
+                          <dt style={{ fontWeight: 700, color: t.textMuted }}>실행 가능</dt>
                           <dd style={{ margin: 0, fontWeight: 800 }}>
                             {project.status === PROJECT_LIFECYCLE_DELETED ? (
                               "—"
                             ) : projectCardMenuLoading ? (
                               "불러오는 중…"
                             ) : projectCardMenuReadiness ? (
-                              <span style={{ color: projectCardMenuReadiness.runnable ? "#15803d" : "#b45309" }}>
+                              <span style={{ color: projectCardMenuReadiness.runnable ? t.success : t.warning }}>
                                 {projectCardMenuReadiness.runnable ? "가능" : "불가"}
                               </span>
                             ) : projectCardMenuError ? (
-                              <span style={{ color: "#b45309" }}>확인 불가</span>
+                              <span style={{ color: t.warning }}>확인 불가</span>
                             ) : (
                               "—"
                             )}
                           </dd>
                         </dl>
                         {projectCardMenuError && project.status !== PROJECT_LIFECYCLE_DELETED ? (
-                          <p style={{ margin: "8px 0 0 0", fontSize: 11, color: "#b91c1c", lineHeight: 1.35 }}>{projectCardMenuError}</p>
+                          <p style={{ margin: "8px 0 0 0", fontSize: 11, color: t.danger, lineHeight: 1.35 }}>{projectCardMenuError}</p>
                         ) : null}
-                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f1f5f9" }}>
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.border}` }}>
                           <Link
                             href={`/projects/${encodeURIComponent(project.id)}`}
                             onClick={() => setProjectCardMenuId(null)}
@@ -630,10 +635,10 @@ export default function HomePage() {
                               justifyContent: "center",
                               width: "100%",
                               padding: "8px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #cbd5e1",
-                              background: "#f8fafc",
-                              color: "#0f172a",
+                              borderRadius: t.radiusMd,
+                              border: `1px solid ${t.borderStrong}`,
+                              background: t.bgPage,
+                              color: t.textPrimary,
                               fontSize: 12,
                               fontWeight: 800,
                               textDecoration: "none",
@@ -652,10 +657,10 @@ export default function HomePage() {
                               width: "100%",
                               marginTop: 8,
                               padding: "8px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #cbd5e1",
-                              background: "#fff",
-                              color: "#0f172a",
+                              borderRadius: t.radiusMd,
+                              border: `1px solid ${t.borderStrong}`,
+                              background: t.bgCard,
+                              color: t.textPrimary,
                               fontSize: 12,
                               fontWeight: 800,
                               cursor: "pointer",
@@ -674,7 +679,7 @@ export default function HomePage() {
                 <div
                   className="relative"
                   style={{
-                    color: "#555",
+                    color: t.textSecondary,
                     marginBottom: 8,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -731,15 +736,15 @@ export default function HomePage() {
           <div
             style={{
               width: "min(92vw, 560px)",
-              borderRadius: 12,
-              background: "#fff",
-              border: "1px solid #e2e8f0",
+              borderRadius: t.radiusLg,
+              background: t.bgCard,
+              border: `1px solid ${t.border}`,
               boxShadow: "0 18px 60px -12px rgba(15, 23, 42, 0.35)",
               padding: 16,
             }}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>프로젝트 설명 수정</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: t.textPrimary }}>프로젝트 설명 수정</div>
             <div style={{ marginTop: 10 }}>
               <textarea
                 value={editDescValue}
@@ -750,15 +755,15 @@ export default function HomePage() {
                   width: "100%",
                   resize: "vertical",
                   padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #cbd5e1",
+                  borderRadius: t.radiusMd,
+                  border: `1px solid ${t.borderStrong}`,
                   fontSize: 13,
                   lineHeight: 1.45,
                   outline: "none",
                 }}
               />
               {editDescError ? (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c", fontWeight: 800 }}>{editDescError}</div>
+                <div style={{ marginTop: 8, fontSize: 12, color: t.danger, fontWeight: 800 }}>{editDescError}</div>
               ) : null}
             </div>
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -772,7 +777,7 @@ export default function HomePage() {
                 loading={editDescBusy}
                 disabled={editDescBusy}
                 onClick={() => void saveEditDescription()}
-                style={{ background: "#0f766e", borderColor: "#0f766e" }}
+                style={{ background: t.accentTealFg, borderColor: t.accentTealFg }}
               >
                 {editDescBusy ? "저장 중..." : "저장"}
               </Button>
