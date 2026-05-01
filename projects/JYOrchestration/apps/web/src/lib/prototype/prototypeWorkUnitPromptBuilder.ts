@@ -52,7 +52,7 @@ export function buildWorkUnitCursorPrompt(params: BuildWorkUnitCursorPromptParam
     `Goal:`,
     goal,
     "",
-    `Template / context key:`,
+    `Template id (must follow the same layout contract as the global prototype prompt / JY preview):`,
     String(params.selectedTemplate ?? "").trim() || "(미지정)",
     "",
     `Ideation (요약):`,

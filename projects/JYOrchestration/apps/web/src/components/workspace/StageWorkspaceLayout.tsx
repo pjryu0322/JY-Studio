@@ -1,6 +1,16 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import { uiTokens as t } from "@/components/ui/tokens";
+
+const baseline: CSSProperties = {
+  minHeight: "min(72vh, 720px)",
+  boxSizing: "border-box",
+  background: t.bgPage,
+  border: `1px solid ${t.border}`,
+  borderRadius: t.radiusLg,
+  overflow: "hidden",
+};
 
 /**
  * Workflow stage workspace baseline.
@@ -22,7 +32,7 @@ export function StageWorkspaceLayout({
   return (
     <section
       className={["jyo-stage-workspace-baseline", className].filter(Boolean).join(" ")}
-      style={style}
+      style={{ ...baseline, ...style }}
       aria-label="단계 워크스페이스"
     >
       {children}

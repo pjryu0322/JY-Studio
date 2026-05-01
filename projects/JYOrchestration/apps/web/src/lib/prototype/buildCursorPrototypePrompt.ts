@@ -1,5 +1,6 @@
 import { PROTOTYPE_TEMPLATES } from "@/lib/templates/prototypeTemplates";
 import type { PrototypeContextAnalysis } from "@/lib/prototype/prototypeContextAnalyzer";
+import { formatPrototypeTemplateLayoutContract } from "@/lib/prototype/prototypeTemplateLayoutContract";
 
 export type PrototypePromptBuildInput = Readonly<{
   analysis: PrototypeContextAnalysis;
@@ -11,7 +12,9 @@ export type PrototypePromptBuildInput = Readonly<{
 }>;
 
 export function buildCursorPrototypePromptPackage(input: PrototypePromptBuildInput): string {
-  const t = PROTOTYPE_TEMPLATES.find((x) => x.id === input.analysis.recommendedTemplate);
+  const templateId = input.analysis.recommendedTemplate;
+  const t = PROTOTYPE_TEMPLATES.find((x) => x.id === templateId);
+  const layoutContract = formatPrototypeTemplateLayoutContract(templateId);
   const flowLine = input.flowSteps.map((s) => s.title.trim()).filter(Boolean).join(" -> ");
   const actorBlock = input.actors.map((a) => `- ${a.name} (${a.kind === "human" ? "Human" : "System"})`).join("\n");
   const pages = input.analysis.recommendedPages.map((p, i) => `${i + 1}. ${p}`).join("\n");
@@ -19,29 +22,6 @@ export function buildCursorPrototypePromptPackage(input: PrototypePromptBuildInp
     input.featureDraftTitles?.length ?
       input.featureDraftTitles.map((x, i) => `${i + 1}. ${x}`).join("\n")
     : "(아직 기능 정리 초안이 없으면 서비스 흐름만으로 1차 프로토타입 생성)";
-
-  const templateSpecific = (() => {
-    if (input.analysis.recommendedTemplate !== "meeting-workspace") return "";
-    return `
-Template-specific requirements (meeting-workspace):
-- Build a clean 3-column SaaS workspace layout (responsive).
-- Left sidebar:
-  - 회의 파일 목록
-  - 참여자/화자 목록
-  - 작업 상태
-- Center:
-  - 대화/작업 타임라인
-  - 업로드 카드 (mock interaction)
-  - AI 변환 상태 (progress-like UI)
-  - 하단 메시지 입력창 (mock)
-- Right panel:
-  - Tabs: 요약본 / 스크립트 (tab switch interaction)
-  - 요약본 탭: 핵심 안건, 결정사항, 할 일
-  - 스크립트 탭: 화자별 발언 목록
-- Use Korean labels and include mock data (sample meetings, speakers, transcript lines, summary items).
-- No backend. Static prototype only.
-`.trim();
-  })();
 
   return `Create a responsive web prototype for the following product context.
 
@@ -55,10 +35,11 @@ Project type (analyzer): ${input.analysis.projectType}
 Primary user type: ${input.analysis.userType}
 Workflow complexity: ${input.analysis.workflowComplexity}
 
-Template seed (starting layout only — customize all labels, navigation, and flows):
-${t?.nameEn ?? "Dashboard"} (${t?.nameKo ?? ""})
+Selected template in JY Orchestration (user chose this — **keep the same information architecture as the in-app template preview**):
+${t?.nameKo ?? String(templateId)} / ${t?.nameEn ?? ""} (id: ${templateId})
 
-${templateSpecific ? `${templateSpecific}\n` : ""}
+=== Template layout contract (match preview structure; adjust wording to the project) ===
+${layoutContract}
 
 Suggested pages (rename/merge as needed):
 ${pages}
@@ -91,6 +72,6 @@ Deliverable:
 clickable multi-page prototype with mocked data, router between pages, and short README on how to run.
 
 ---
-한국어 요약: 위 프로젝트에 맞는 실제 동작 가능한 웹 프로토타입을 Cursor에서 생성해 주세요. 템플릿은 레이아웃 시드일 뿐이며, 액터·흐름·화면 이름은 모두 프로젝트에 맞게 바꿔 주세요.
+한국어 요약: 위 프로젝트에 맞는 클릭 가능한 웹 프로토타입을 Cursor에서 생성해 주세요. **위 "템플릿 레이아웃 계약"의 패널 구조·기본 한글 제목은 유지**하고, 앱 제목·샘플 문구·목 데이터만 프로젝트 맥락에 맞게 다듬어 주세요.
 `;
 }

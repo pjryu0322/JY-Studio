@@ -2,15 +2,13 @@
 
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { TasksWorkspaceContent } from "@/components/workflow/TasksWorkspaceContent";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
-import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
 import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
+import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
 import { getTasksPageSubtitle, getTasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
 import { useCollaborationSessionResultsVersion } from "@/lib/workflow/useCollaborationSessionResultsSync";
-import { StageWorkspaceLayout } from "@/components/workspace/StageWorkspaceLayout";
 
 export function TasksPageClient() {
   const search = useSearchParams();
@@ -24,19 +22,8 @@ export function TasksPageClient() {
   const hasContext = Boolean(view.requirementId || view.sessionId);
 
   return (
-    <div>
-      <WorkflowPageHeader
-        title="작업 정리"
-        subtitle={getTasksPageSubtitle(view, hasContext)}
-      />
-
-      <div style={{ marginTop: 12, marginBottom: 4 }}>
-        <ProjectWorkflowNav />
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <StageWorkspaceLayout>
-          <div style={{ padding: 14, display: "grid", gap: 14 }}>
+    <WorkflowStageChrome title="작업 정리" subtitle={getTasksPageSubtitle(view, hasContext)}>
+      <div style={{ padding: 14, display: "grid", gap: 14 }}>
             {!view.found ? (
               <WorkflowEmptyState title="컨텍스트를 찾을 수 없음" message={view.notFoundReason ?? "URL을 확인하세요."} />
             ) : null}
@@ -59,10 +46,8 @@ export function TasksPageClient() {
                 <TasksWorkspaceContent view={view} />
               </>
             ) : null}
-          </div>
-        </StageWorkspaceLayout>
       </div>
-    </div>
+    </WorkflowStageChrome>
   );
 }
 

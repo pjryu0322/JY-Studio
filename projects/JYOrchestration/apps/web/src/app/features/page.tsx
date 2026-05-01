@@ -2,12 +2,10 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { fetchProjectById } from "@/components/project-spec/api";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
-import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import { StageWorkspaceLayout } from "@/components/workspace/StageWorkspaceLayout";
+import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 function FeaturesPageInner() {
@@ -49,22 +47,14 @@ function FeaturesPageInner() {
   }, [projectId]);
 
   return (
-    <div>
-      <WorkflowPageHeader
-        title="기능 정리"
-        subtitle="아이디어가 정리되고 스펙이 확정되면, 기능 단위로 나뉘어 작업 정리·생성 준비로 이어집니다."
-      />
-
-      <div style={{ marginTop: 12, marginBottom: 4 }}>
-        <ProjectWorkflowNav />
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <StageWorkspaceLayout>
-          <div style={{ padding: 14, display: "grid", gap: 14 }}>
+    <WorkflowStageChrome
+      title="기능 정리"
+      subtitle="아이디어가 정리되고 스펙이 확정되면, 기능 단위로 나뉘어 작업 정리·생성 준비로 이어집니다."
+    >
+      <div style={{ padding: 14, display: "grid", gap: 14 }}>
             {projectId ? (
               <WorkflowCard padding={16}>
-                <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>서비스 흐름(입력)</div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>액터 및 서비스 흐름(입력)</div>
                 {flowSummary ? (
                   <>
                     <div style={{ fontSize: 13.5, color: "#475569", lineHeight: 1.6 }}>
@@ -84,7 +74,7 @@ function FeaturesPageInner() {
                   </>
                 ) : (
                   <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-                    아직 “액터 및 서비스 흐름 정의” 단계 출력이 없습니다. 기능은 흐름에서 파생됩니다.
+                    아직 액터 및 서비스 흐름 정의 단계 출력이 없습니다. 기능은 승인된 흐름에서 파생됩니다.
                   </div>
                 )}
               </WorkflowCard>
@@ -132,9 +122,7 @@ function FeaturesPageInner() {
               </div>
             </details>
           </div>
-        </StageWorkspaceLayout>
-      </div>
-    </div>
+    </WorkflowStageChrome>
   );
 }
 

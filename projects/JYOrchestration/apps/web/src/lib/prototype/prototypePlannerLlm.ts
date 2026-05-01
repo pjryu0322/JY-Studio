@@ -1,4 +1,5 @@
 import type { PrototypeWorkUnitComplexity, PrototypeWorkUnitRiskLevel } from "@/lib/prototype/prototypeRunTypes";
+import { formatPrototypeTemplateLayoutContract } from "@/lib/prototype/prototypeTemplateLayoutContract";
 
 export type PrototypePlannerLlmAuth = Readonly<{
   apiKey: string;
@@ -30,6 +31,7 @@ Rules:
 - Korean for title, description, targetArea, implementationScope, acceptanceCriteria strings.
 - dependencies: refer to prior orders like "1" or "2" when needed.
 - Optimize for efficient Cursor agent runs (clear scope per unit).
+- WorkUnit scopes MUST stay compatible with the template layout contract in the user message (same panel/region boundaries; do not invent a different navigation pattern).
 - No markdown fences or commentary outside JSON.
 
 BAD examples (business flow — never output these as WorkUnit titles):
@@ -43,6 +45,9 @@ export function formatPrototypePlannerUserMessage(input: PrototypePlannerLlmInpu
   return [
     `프로젝트명: ${input.projectName}`,
     `선택 템플릿: ${input.selectedTemplate}`,
+    "",
+    "=== 템플릿 레이아웃 계약(JY Orchestration 미리보기와 동일한 정보 구조) ===",
+    formatPrototypeTemplateLayoutContract(input.selectedTemplate),
     "",
     "=== 아이디어·요약 ===",
     input.ideationSummary || "(없음)",

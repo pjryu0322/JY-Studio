@@ -7,6 +7,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { uiTokens as t } from "@/components/ui/tokens";
 import {
   appFlowStepHref,
   isWorkflowStepNavActive,
@@ -32,24 +33,24 @@ const linkProcess = (active: boolean): CSSProperties => ({
   padding: "7px 14px",
   borderRadius: 999,
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 800,
   textDecoration: "none",
   whiteSpace: "nowrap",
-  border: active ? "1px solid #bfdbfe" : "1px solid transparent",
-  background: active ? "#eff6ff" : "transparent",
-  color: active ? "#1e40af" : "#334155",
+  border: active ? `1px solid ${t.primary}` : `1px solid ${t.border}`,
+  background: active ? `${t.primary}14` : t.bgCard,
+  color: active ? t.primary : t.textSecondary,
 });
 
 const linkMgmt = (active: boolean): CSSProperties => ({
   padding: "5px 11px",
   borderRadius: 999,
   fontSize: 12,
-  fontWeight: active ? 600 : 500,
+  fontWeight: active ? 700 : 600,
   textDecoration: "none",
   whiteSpace: "nowrap",
-  border: active ? "1px solid #e2e8f0" : "1px solid transparent",
-  background: active ? "#f8fafc" : "transparent",
-  color: active ? "#475569" : "#a1a1aa",
+  border: active ? `1px solid ${t.borderStrong}` : "1px solid transparent",
+  background: active ? t.bgPage : "transparent",
+  color: active ? t.textSecondary : t.textMuted,
 });
 
 /**

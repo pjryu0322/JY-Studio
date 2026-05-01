@@ -19,11 +19,7 @@ import {
   type PrototypeInlineTemplatePickerProps,
   type TimelineEphemeralAi,
 } from "@/components/preview/prototypeChatTimeline";
-import {
-  buildDisplayedPlannerUserMessage,
-  mapWorkUnitPlanStatusKo,
-  workUnitProgressAllMerged,
-} from "@/components/preview/prototypePreviewPanelHelpers";
+import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
 import { shouldLockInlineChatTemplateSelection } from "@/lib/prototype/prototypeRunUiHelpers";
 import { PrototypePreviewDraggableShell } from "@/components/preview/PrototypePreviewDraggableShell";
 import type {
@@ -1483,7 +1479,7 @@ export function PrototypePreviewPanel({
         }}
       >
         {!chatExpanded ? (
-          <aside className="jyo-prototype-stage-members" style={prototypeMemberAside} aria-label="참여 멤버 및 작업 목록">
+          <aside className="jyo-prototype-stage-members" style={prototypeMemberAside} aria-label="참여 멤버">
             <div
               style={{
                 flex: 1,
@@ -1491,7 +1487,6 @@ export function PrototypePreviewPanel({
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
-                borderBottom: "1px solid #e2e8f0",
               }}
             >
               <div style={{ position: "relative", padding: "12px 12px 8px", flexShrink: 0 }}>
@@ -1513,7 +1508,7 @@ export function PrototypePreviewPanel({
                   flex: 1,
                   minHeight: 0,
                   overflowY: "auto",
-                  padding: "0 10px 10px",
+                  padding: "0 10px 12px",
                   display: "flex",
                   flexDirection: "column",
                   gap: 6,
@@ -1548,49 +1543,6 @@ export function PrototypePreviewPanel({
                     사용자 · OWNER · 온라인
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div style={{ padding: "10px 12px 6px", flexShrink: 0 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 800,
-                    color: "#64748b",
-                    letterSpacing: "0.02em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  작업 목록
-                </div>
-              </div>
-              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-                {sortedWorkUnitsForSidebar.length ? (
-                  sortedWorkUnitsForSidebar.map((u) => (
-                    <div
-                      key={u.id}
-                      style={{
-                        width: "100%",
-                        padding: "8px 10px",
-                        borderRadius: 10,
-                        border: "1px solid #e2e8f0",
-                        background: "#fff",
-                      }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", lineHeight: 1.25 }}>
-                        {u.order}. {u.title}
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35 }}>
-                        {mapWorkUnitPlanStatusKo(u.status)}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div style={{ fontSize: 12, fontWeight: 750, color: "#64748b", lineHeight: 1.45 }}>
-                    작업계획이 생성되면 여기에 표시됩니다.
-                  </div>
-                )}
               </div>
             </div>
           </aside>
@@ -1648,10 +1600,13 @@ export function PrototypePreviewPanel({
             style={{
               flex: "1 1 auto",
               minHeight: 0,
+              minWidth: 0,
+              width: "100%",
               overflowY: "auto",
               padding: "12px 20px 14px",
               display: "flex",
               flexDirection: "column",
+              alignItems: "stretch",
               gap: 10,
               alignContent: "start",
             }}
