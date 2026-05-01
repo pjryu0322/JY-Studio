@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { appFlowStepHref } from "@/lib/workflow/flow-state";
 import {
   buildFlowFingerprintJson,
   buildIdeationFingerprint,
@@ -9,6 +8,14 @@ import {
 } from "@/lib/prototype/prototypeGenerationLocalStore";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import {
+  ServiceFlowActionMenu,
+  ServiceFlowChatPanel,
+  ServiceFlowComposer,
+  ServiceFlowHeader,
+  ServiceFlowProgressSummary,
+} from "@/components/service-flow";
+import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 import type {
   RequirementsServiceFlowActorV1,
@@ -21,16 +28,8 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import { newChatMessage, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE } from "@/lib/requirements/serviceFlowConversation";
 
-type WorkshopRole = "ai" | "expert" | "member" | "user";
 type WorkspaceMode = "chat" | "mapping" | "summary";
 type ServiceFlowSlotKey = (typeof REQUIREMENTS_SERVICE_FLOW_CHECKLIST_KEYS)[number];
-
-type WorkshopMessage = {
-  id: string;
-  role: WorkshopRole;
-  name: string;
-  body: string;
-};
 
 type ProjectMemberForServiceFlow = {
   memberId: string;
@@ -217,13 +216,6 @@ const primaryBtn: CSSProperties = {
   color: "#fff",
 };
 
-const headerMetricBadgeLabel: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#64748b",
-  letterSpacing: "0.01em",
-};
-
 function uid(prefix: string): string {
   try {
     return `${prefix}:${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2)}`;
@@ -292,13 +284,6 @@ function missingSlotQuestions(slots: Record<ServiceFlowSlotKey, boolean>, limit 
     .filter((slot) => !slots[slot])
     .slice(0, limit)
     .map((slot) => questions[slot]);
-}
-
-function messageTone(role: WorkshopRole): CSSProperties {
-  if (role === "user") return { background: "#f0fdf4", borderColor: "#bbf7d0", justifySelf: "end" };
-  if (role === "expert") return { background: "#fff7ed", borderColor: "#fed7aa", justifySelf: "start" };
-  if (role === "member") return { background: "#f8fafc", borderColor: "#cbd5e1", justifySelf: "start" };
-  return { background: "#fff", borderColor: "#e2e8f0", justifySelf: "start" };
 }
 
 function progressHint(approval: ApprovalState): string | null {
@@ -953,7 +938,6 @@ export function RequirementsServiceFlowStage({
       }}
     >
       <style>{`
-        @keyframes jyo-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @media (max-width: 760px) {
           .jyo-service-flow-stage-shell {
             grid-template-columns: minmax(0, 1fr) !important;
@@ -1000,100 +984,19 @@ export function RequirementsServiceFlowStage({
         ) : null}
 
         <main className="jyo-service-flow-chat-shell" style={chatWrap} aria-label="액터 및 서비스 흐름 작업 영역">
-          <div
-            style={{
-              flex: "0 0 auto",
-              padding: "10px 20px 8px",
-              position: "sticky",
-              top: 0,
-              zIndex: 6,
-              background: "rgba(248,250,252,0.96)",
-              backdropFilter: "blur(8px)",
-              borderBottom: "1px solid rgba(226,232,240,0.75)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "nowrap",
-                alignItems: "center",
-                gap: 10,
-                width: "100%",
-                minWidth: 0,
-                overflowX: "auto",
-                overscrollBehaviorX: "contain",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "nowrap",
-                  alignItems: "center",
-                  gap: 10,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "#0f172a",
-                  lineHeight: 1.35,
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span title={hint ?? undefined}>
-                  <span style={headerMetricBadgeLabel}>설계 완성도</span>{" "}
-                  <span style={{ fontWeight: 900, fontSize: 15 }}>{derivedApproval.progressPercent}%</span>
-                </span>
-                <span style={{ color: "#cbd5e1", fontWeight: 500 }} aria-hidden>
-                  |
-                </span>
-                {decision.requiredUnresolved.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => setRemainingPanelOpen(true)}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      padding: 0,
-                      margin: 0,
-                      cursor: "pointer",
-                      font: "inherit",
-                      color: "inherit",
-                      textAlign: "left",
-                    }}
-                  >
-                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
-                    <span style={{ fontWeight: 900, fontSize: 15, color: "#0369a1" }}>{decision.requiredUnresolved.length}개</span>
-                  </button>
-                ) : (
-                  <span>
-                    <span style={headerMetricBadgeLabel}>남은 결정사항</span>{" "}
-                    <span style={{ fontWeight: 900, fontSize: 15 }}>0개</span>
-                  </span>
-                )}
-              </div>
-              <div style={{ flex: "1 1 8px", minWidth: 0 }} aria-hidden />
-              <button
-                type="button"
-                onClick={() => setChatExpanded((v) => !v)}
-                aria-label={chatExpanded ? "채팅 축소" : "채팅 확대"}
-                title={chatExpanded ? "채팅 축소" : "채팅 확대"}
-                style={{
-                  border: "1px solid #cbd5e1",
-                  background: chatExpanded ? "#f0fdfa" : "#fff",
-                  borderRadius: 10,
-                  width: 36,
-                  height: 36,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#0f172a",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                <ExpandIcon expanded={chatExpanded} />
-              </button>
-            </div>
-          </div>
+          <ServiceFlowHeader
+            title="액터 및 서비스 흐름 정의"
+            subtitle="아이디어 내용을 기반으로 서비스 흐름을 정리합니다."
+            progressPercent={derivedApproval.progressPercent}
+            remainingRequiredCount={decision.requiredUnresolved.length}
+            onOpenRemaining={() => setRemainingPanelOpen(true)}
+            chatExpanded={chatExpanded}
+            onToggleExpand={() => setChatExpanded((v) => !v)}
+            hint={hint}
+          />
+          {ideationReady && chatActive ? (
+            <ServiceFlowProgressSummary hint={hint} helperLine={decision.helperLine} />
+          ) : null}
 
           <div
             ref={chatScrollRef}
@@ -1231,62 +1134,14 @@ export function RequirementsServiceFlowStage({
                 )}
               </div>
             ) : null}
-            {ideationReady && chatActive ? (
-              <>
-                {generatingDraft ? (
-                  <div style={{ border: "1px solid #c7d2fe", borderRadius: 14, padding: 12, background: "#eef2ff", maxWidth: 620 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div
-                        aria-hidden
-                        style={{
-                          width: 14,
-                          height: 14,
-                          borderRadius: 999,
-                          border: "2px solid #94a3b8",
-                          borderTopColor: "#1d4ed8",
-                          animation: "jyo-spin 900ms linear infinite",
-                        }}
-                      />
-                      <div style={{ fontSize: 13, fontWeight: 900, color: "#1e293b" }}>아이디어 내용을 바탕으로 서비스 흐름 초안을 만드는 중...</div>
-                    </div>
-                  </div>
-                ) : null}
-                {displayMessages.map((message) => (
-                  <div key={message.id} style={{ ...messageTone(message.role), border: "1px solid", borderRadius: 14, padding: "10px 12px", maxWidth: message.role === "user" ? "78%" : 620, boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)" }}>
-                    <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: "#64748b" }}>
-                      {message.role === "user"
-                        ? "사용자"
-                        : message.role === "member"
-                          ? `멤버 · ${message.name}`
-                          : message.role === "expert"
-                            ? `업무 전문가 · ${message.name}`
-                            : `AI · ${showInternalAgents ? message.name : displayedAiOrchestrator().name}`}
-                    </div>
-                    <div style={{ fontSize: 14, color: "#0f172a", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{message.body}</div>
-                  </div>
-                ))}
-                {replying ? <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>AI 기획자가 반영 중입니다...</div> : null}
-                {!generatingDraft && !replying && displayMessages.length === 0 ? (
-                  <div
-                    style={{
-                      ...messageTone("ai"),
-                      border: "1px solid",
-                      borderRadius: 14,
-                      padding: "10px 12px",
-                      maxWidth: 620,
-                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-                    }}
-                  >
-                    <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: "#64748b" }}>AI · {displayedAiOrchestrator().name}</div>
-                    <div style={{ fontSize: 14, color: "#0f172a", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
-                      {structureLocked
-                        ? "서비스 흐름 구조가 확정된 상태입니다.\n\n입력창 왼쪽 + 메뉴의 「구조 편집」에서 단계별 담당을 조정할 수 있고, 이 채팅에서는 메시지를 입력해 흐름·액터·문구를 추가로 다듬을 수 있습니다."
-                        : "표시할 메시지가 없습니다.\n\n메시지를 입력하거나 아래 빠른 동작 칩을 눌러 AI 기획자와 흐름을 함께 정리해 보세요."}
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
+            <ServiceFlowChatPanel
+              messages={displayMessages}
+              replying={replying}
+              generatingDraft={generatingDraft}
+              structureLocked={structureLocked}
+              chatActive={chatActive}
+              ideationReady={ideationReady}
+            />
           </div>
 
         {ideationReady && chatActive && quickReplies && quickReplies.length && !replying ? (
@@ -1377,121 +1232,30 @@ export function RequirementsServiceFlowStage({
           </div>
         ) : null}
 
-          <div className="jyo-service-flow-composer-shell" style={{ flex: "0 0 auto", padding: "14px 20px 18px", background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)" }}>
-            <div style={{ maxWidth: 660, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, border: "1px solid #e2e8f0", borderRadius: 20, background: "#fff", padding: 10, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
-              <div style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => setToolsOpen((v) => !v)}
-                  aria-label="도구 열기"
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 999,
-                    border: "1px solid #e2e8f0",
-                    background: "#fff",
-                    color: "#0f172a",
-                    fontSize: 24,
-                    lineHeight: 1,
-                    cursor: "pointer",
-                  }}
-                >
-                  +
-                </button>
-                {toolsOpen ? (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      bottom: 52,
-                      width: 220,
-                      borderRadius: 14,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.22)",
-                      padding: 8,
-                      zIndex: 20,
-                    }}
-                    role="menu"
-                  >
-                    <button type="button" onClick={requestOrganize} style={{ ...btn, width: "100%", textAlign: "left" }}>
-                      정리 요청
-                    </button>
-                    <div style={{ height: 6 }} />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setToolsOpen(false);
-                        setWorkspaceMode("mapping");
-                      }}
-                      style={{ ...btn, width: "100%", textAlign: "left" }}
-                    >
-                      구조 편집
-                    </button>
-                    <div style={{ height: 6 }} />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setToolsOpen(false);
-                        setWorkspaceMode("summary");
-                      }}
-                      disabled={!(actors.length || steps.length)}
-                      style={{ ...btn, width: "100%", textAlign: "left", opacity: actors.length || steps.length ? 1 : 0.55 }}
-                    >
-                      요약 보기
-                    </button>
-                    <div style={{ height: 6 }} />
-                    <a
-                      href={appFlowStepHref("execution", projectId)}
-                      onClick={() => setToolsOpen(false)}
-                      aria-disabled={!ideationReady}
-                      style={{
-                        ...btn,
-                        width: "100%",
-                        textAlign: "left",
-                        textDecoration: "none",
-                        opacity: ideationReady ? 1 : 0.55,
-                        pointerEvents: ideationReady ? "auto" : "none",
-                      }}
-                      title={!ideationReady ? ideationReadyNotice : "프로토타입 생성"}
-                    >
-                      프로토타입 생성
-                    </a>
-                  </div>
-                ) : null}
-              </div>
-              <textarea
-                ref={composerTextareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                placeholder="메시지를 입력하세요"
-                rows={1}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  border: "none",
-                  outline: "none",
-                  borderRadius: 14,
-                  background: "#f1f5f9",
-                  padding: "14px 16px",
-                  fontSize: 14,
-                  resize: "none",
-                  maxHeight: 160,
-                  overflowY: "auto",
-                  lineHeight: 1.35,
-                }}
+          <ServiceFlowComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={sendMessage}
+            disabled={workspaceMode !== "chat" || replying}
+            placeholder="메시지를 입력하세요"
+            onOpenActions={() => setToolsOpen((v) => !v)}
+            textAreaRef={composerTextareaRef}
+            actionsOpen={toolsOpen}
+            actionMenu={
+              <ServiceFlowActionMenu
+                open={toolsOpen}
+                onClose={() => setToolsOpen(false)}
+                onOrganize={requestOrganize}
+                onViewResult={() => setWorkspaceMode("summary")}
+                onViewPrompt={() => setToolsOpen(false)}
+                onOpenMapping={() => setWorkspaceMode("mapping")}
+                projectId={projectId}
+                ideationReady={ideationReady}
+                ideationReadyNotice={ideationReadyNotice}
+                hasFlowContent={Boolean(actors.length || steps.length)}
               />
-              <button type="button" onClick={sendMessage} aria-label="전송" style={{ width: 46, height: 46, borderRadius: 999, border: "1px solid #0f766e", background: "#0f766e", color: "#fff", fontSize: 18, fontWeight: 900, cursor: "pointer" }}>
-                ▶
-              </button>
-            </div>
-          </div>
+            }
+          />
 
           {remainingPanelOpen ? (
             <div
@@ -1572,28 +1336,6 @@ function MemberCard({ member }: { readonly member: ServiceFlowParticipant }) {
       <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.name}</div>
       <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35, wordBreak: "break-word" }}>{parts}</div>
     </div>
-  );
-}
-
-function ExpandIcon({ expanded }: { readonly expanded: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-      {expanded ? (
-        <>
-          <path d="M9 3H5a2 2 0 0 0-2 2v4" />
-          <path d="M15 21h4a2 2 0 0 0 2-2v-4" />
-          <path d="M3 9l7-7" />
-          <path d="M21 15l-7 7" />
-        </>
-      ) : (
-        <>
-          <path d="M15 3h4a2 2 0 0 1 2 2v4" />
-          <path d="M9 21H5a2 2 0 0 1-2-2v-4" />
-          <path d="M21 9l-7-7" />
-          <path d="M3 15l7 7" />
-        </>
-      )}
-    </svg>
   );
 }
 
