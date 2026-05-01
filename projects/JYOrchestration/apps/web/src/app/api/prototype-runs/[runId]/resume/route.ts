@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
-import { orchestrateNewPrototypeRun, refreshPrototypeRunState } from "@/lib/prototype/prototypeRunPipeline";
+import {
+  confirmPrototypeWorkUnitsExecution,
+  evaluatePrototypeCursorAutomation,
+  orchestrateNewPrototypeRun,
+  refreshPrototypeRunState,
+} from "@/lib/prototype/prototypeRunPipeline";
 import { getRun, updateRun } from "@/lib/prototype/prototypeRunStore";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
 import { prisma } from "@/lib/prisma";
@@ -70,14 +75,31 @@ export async function POST(request: NextRequest, segmentData: { params: Promise<
       projectName: project.name,
       selectedTemplate: run.selectedTemplate,
       promptSnapshot: run.promptSnapshot,
-      /** restart는 작업계획(WorkUnit) 재생성이 목적. 실행은 사용자가 별도로 확인 후 진행. */
+      /** restart는 작업계획(WorkUnit) 재생성이 목적. 자동화 가능하면 실행 확인까지 서버에서 이어감. */
       startCursorAgent: false,
       /** 이미 실행 중이어도 새 run을 강제로 생성 */
       forceNewRun: true,
       plannerActorUserId: userId,
     });
     logPrototypePipelineEvent("prototype_restarted", { projectId, oldRunId: id, runId: out.run.id });
-    return NextResponse.json({ success: true, data: { run: out.run }, message: "새 실행으로 다시 시작합니다." });
+
+    let finalRun = out.run;
+    const gate = await evaluatePrototypeCursorAutomation(projectId);
+    if (
+      gate.automationAvailable &&
+      (finalRun.workUnits?.length ?? 0) > 0 &&
+      finalRun.status === "WORK_UNITS_READY"
+    ) {
+      confirmPrototypeWorkUnitsExecution(projectId, finalRun.id);
+      finalRun = (await refreshPrototypeRunState(projectId, finalRun.id)) ?? getRun(projectId, finalRun.id) ?? finalRun;
+    }
+
+    const message =
+      gate.automationAvailable && (out.run.workUnits?.length ?? 0) > 0 && out.run.status === "WORK_UNITS_READY"
+        ? "새 실행으로 다시 시작했습니다. 자동 실행이 가능해 WorkUnit 실행을 시작했습니다."
+        : "새 실행으로 다시 시작합니다.";
+
+    return NextResponse.json({ success: true, data: { run: finalRun }, message });
   }
 
   logPrototypePipelineEvent("prototype_resume_requested", { projectId, runId: id });

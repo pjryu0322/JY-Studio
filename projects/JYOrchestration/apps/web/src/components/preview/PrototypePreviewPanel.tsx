@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   buildPrototypeChatMessages,
+  buildTimelineArchiveMessages,
   isPrototypeDeployPhase,
+  mergeTimelineArchiveIntoLive,
   type PrototypeChatAction,
   type PrototypePrePlanGate,
 } from "@/lib/prototype/buildPrototypeChatMessages";
@@ -55,7 +57,11 @@ import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import { PrototypeTemplateMockPreview } from "@/components/preview/PrototypeTemplateMockPreview";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
-import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  mergeRequirementsStateJson,
+  parseRequirementsStateJson,
+  type PrototypeWorkspaceTimelineCardV1,
+} from "@/lib/requirements/requirementsStateJson";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -178,6 +184,9 @@ export function PrototypePreviewPanel({
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [chatUserLog, setChatUserLog] = useState<Array<{ id: string; text: string; at: number }>>([]);
   const [ephemeralAiReplies, setEphemeralAiReplies] = useState<TimelineEphemeralAi[]>([]);
+  /** DB에 저장하는 타임라인 카드(작업계획·WorkUnit 완료), 재실행 후에도 유지 */
+  const [timelineCards, setTimelineCards] = useState<readonly PrototypeWorkspaceTimelineCardV1[]>([]);
+  const lastTimelineSnapRef = useRef<string>("");
   /** 작업계획 API 호출 전: 생성 버튼 → 프롬프트/작업 시작 대기 */
   const [prePlanGate, setPrePlanGate] = useState<PrototypePrePlanGate>("idle");
   const prePlannerNotesRef = useRef("");
@@ -255,6 +264,9 @@ export function PrototypePreviewPanel({
     const aiFromDb = dbChat?.aiLog?.length ? dbChat.aiLog : null;
     setChatUserLog(userFromDb ? [...userFromDb] : r.chatUserLog ? [...r.chatUserLog] : []);
     setEphemeralAiReplies(aiFromDb ? [...aiFromDb] : r.chatAiLog ? [...r.chatAiLog] : []);
+    const tc = db.prototypeWorkspaceTimelineCardsV1;
+    setTimelineCards(Array.isArray(tc) && tc.length ? [...tc] : []);
+    lastTimelineSnapRef.current = "";
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on project switch
   }, [projectId]);
 
@@ -274,9 +286,11 @@ export function PrototypePreviewPanel({
     if (!pid) return;
     const userLog = chatUserLog.slice(-200);
     const aiLog = ephemeralAiReplies.slice(-200);
+    const tc = [...timelineCards].slice(-300);
     const fingerprint = JSON.stringify({
       u: userLog.map((x) => [x.id, x.at]),
       a: aiLog.map((x) => [x.id, x.at]),
+      t: tc.map((c) => [c.id, c.at]),
     });
     if (fingerprint === lastPersistedChatFingerprintRef.current) return;
     lastPersistedChatFingerprintRef.current = fingerprint;
@@ -284,6 +298,7 @@ export function PrototypePreviewPanel({
     const base = parseRequirementsStateJson(requirementsStateJson);
     const merged = mergeRequirementsStateJson(base, {
       prototypeWorkspaceChatV1: { userLog, aiLog },
+      prototypeWorkspaceTimelineCardsV1: tc,
       lastSavedAt: new Date().toISOString(),
     });
 
@@ -293,7 +308,7 @@ export function PrototypePreviewPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requirementsStateJson: merged }),
     }).catch(() => {});
-  }, [projectId, chatUserLog, ephemeralAiReplies, requirementsStateJson]);
+  }, [projectId, chatUserLog, ephemeralAiReplies, timelineCards, requirementsStateJson]);
 
   useEffect(() => {
     const t = window.setTimeout(() => void persistChatToDb(), 1200);
@@ -1022,6 +1037,75 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const timelineCardsForMerge = useMemo(() => {
+    if (!awaitingExecutionConfirm || !latestRun?.id) return timelineCards;
+    return timelineCards.filter((c) => !(c.kind === "plan_ready" && c.runId === latestRun.id));
+  }, [timelineCards, awaitingExecutionConfirm, latestRun?.id]);
+
+  const mergedChatMessages = useMemo(
+    () => mergeTimelineArchiveIntoLive(derivedChatMessages, buildTimelineArchiveMessages(timelineCardsForMerge)),
+    [derivedChatMessages, timelineCardsForMerge],
+  );
+
+  useEffect(() => {
+    const run = latestRun;
+    if (!run?.id) return;
+    const units = [...(run.workUnits ?? [])].sort((a, b) => a.order - b.order);
+    const snap = JSON.stringify({
+      id: run.id,
+      st: run.status,
+      u: units.map((u) => [u.order, u.status]),
+      pv: String(run.previewUrl ?? "").trim(),
+      planner: run.plannerStatus ?? "",
+    });
+    if (snap === lastTimelineSnapRef.current) return;
+    lastTimelineSnapRef.current = snap;
+
+    setTimelineCards((prev) => {
+      const ids = new Set(prev.map((c) => c.id));
+      const additions: PrototypeWorkspaceTimelineCardV1[] = [];
+      const rid = run.id;
+      const now = Date.now();
+
+      if (units.length > 0) {
+        const planHash = units.map((u) => `${u.order}:${u.title}`).join("|").slice(0, 400);
+        const planId = `plan-${rid}-${planHash}`;
+        if (!ids.has(planId)) {
+          ids.add(planId);
+          additions.push({
+            id: planId,
+            at: now,
+            runId: rid,
+            kind: "plan_ready",
+            title: "작업계획이 생성되었습니다.",
+            body: `총 ${units.length}개의 작업으로 구성했습니다.`,
+            workUnitTitlesJson: JSON.stringify(units.map((u) => ({ order: u.order, title: u.title }))),
+          });
+        }
+      }
+
+      for (const u of units) {
+        if (u.status !== "MERGED") continue;
+        const wid = `wu-${u.order}-${rid}-merged`;
+        if (ids.has(wid)) continue;
+        ids.add(wid);
+        additions.push({
+          id: wid,
+          at: now,
+          runId: rid,
+          kind: "workunit_merged",
+          title: `작업 ${u.order} 완료`,
+          body: u.title,
+          workUnitOrder: u.order,
+          prUrl: u.prUrl?.trim() ? u.prUrl.trim() : null,
+        });
+      }
+
+      if (!additions.length) return prev;
+      return [...prev, ...additions].slice(-300);
+    });
+  }, [latestRun]);
+
   const onSendChatMessage = useCallback(async () => {
     const text = chatInput.trim();
     if (!text) return;
@@ -1573,7 +1657,7 @@ export function PrototypePreviewPanel({
             }}
           >
             <PrototypeChatTimeline
-              derived={derivedChatMessages}
+              derived={mergedChatMessages}
               userBubbles={chatUserLog}
               ephemeralAi={ephemeralAiReplies}
               onAction={handleChatIntent}

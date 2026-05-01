@@ -1,4 +1,5 @@
 import { buildFiveStepPipelineRows, resolveActiveWorkUnitForPanel, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
+import type { PrototypeWorkspaceTimelineCardV1 } from "@/lib/requirements/requirementsStateJson";
 import type { PrototypeRun, PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
 import { shouldLockInlineChatTemplateSelection } from "@/lib/prototype/prototypeRunUiHelpers";
 
@@ -489,6 +490,98 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
   }
 
   return out;
+}
+
+/** DB에 저장된 타임라인 카드를 채팅 말풍선 형태로 변환합니다. */
+export function buildTimelineArchiveMessages(
+  cards: readonly PrototypeWorkspaceTimelineCardV1[],
+): readonly PrototypeChatBuiltMessage[] {
+  const out: PrototypeChatBuiltMessage[] = [];
+  let k = 0;
+  const nextKey = () => ++k * 1000;
+  for (const card of cards) {
+    const baseId = `tl-${card.id}`;
+    if (card.kind === "plan_ready") {
+      let items: readonly { order: number; title: string }[] = [];
+      const raw = card.workUnitTitlesJson?.trim();
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (Array.isArray(parsed)) {
+            items = parsed
+              .map((row) => {
+                if (!row || typeof row !== "object") return null;
+                const o = row as Record<string, unknown>;
+                const order = typeof o.order === "number" && Number.isFinite(o.order) ? o.order : NaN;
+                const title = typeof o.title === "string" ? o.title.trim() : "";
+                if (!Number.isFinite(order) || !title) return null;
+                return { order, title };
+              })
+              .filter((x): x is { order: number; title: string } => Boolean(x))
+              .sort((a, b) => a.order - b.order);
+          }
+        } catch {
+          items = [];
+        }
+      }
+      out.push({
+        id: baseId,
+        role: "ai",
+        orderKey: nextKey(),
+        title: card.title,
+        ...(card.body?.trim() ? { body: card.body.trim() } : {}),
+        blocks: items.length ? [{ kind: "ordered_titles", items }] : undefined,
+      });
+      continue;
+    }
+    if (card.kind === "workunit_merged") {
+      const lines: string[] = [];
+      if (card.body?.trim()) lines.push(card.body.trim());
+      if (card.prUrl?.trim()) lines.push(`PR: ${card.prUrl.trim()}`);
+      out.push({
+        id: baseId,
+        role: "ai",
+        orderKey: nextKey(),
+        title: card.title,
+        blocks: lines.length ? [{ kind: "bullet_list", items: lines }] : undefined,
+      });
+      continue;
+    }
+  }
+  return out;
+}
+
+/**
+ * 현재 단계용 `live` 메시지 앞에, 완료된 WorkUnit·계획 카드가 자연스럽게 끼어들도록 합칩니다.
+ * (정렬 키만으로는 실행 중 카드보다 앞선 완료 카드를 표현하기 어려워 별도 합성합니다.)
+ */
+export function mergeTimelineArchiveIntoLive(
+  live: readonly PrototypeChatBuiltMessage[],
+  arch: readonly PrototypeChatBuiltMessage[],
+): readonly PrototypeChatBuiltMessage[] {
+  if (!arch.length) return live;
+  const wuOrder = (m: PrototypeChatBuiltMessage): number => {
+    const m2 = /^tl-wu-(\d+)-/.exec(m.id);
+    return m2 ? Number(m2[1]) : 0;
+  };
+  const planArch = arch.filter((m) => m.id.startsWith("tl-plan-"));
+  const wuArch = arch
+    .filter((m) => m.id.startsWith("tl-wu-"))
+    .slice()
+    .sort((a, b) => wuOrder(a) - wuOrder(b));
+
+  const iRun = live.findIndex((m) => m.id.startsWith("ai-run-"));
+  const iDeploy = live.findIndex((m) => m.id === "ai-deploy");
+  const iDone = live.findIndex((m) => m.id === "ai-done");
+  const insertBeforeDynamic =
+    iRun >= 0 ? iRun : iDeploy >= 0 ? iDeploy : iDone >= 0 ? iDone : Math.max(0, live.length);
+
+  let merged = [...live];
+  const insertBlock = [...planArch, ...wuArch];
+  if (insertBlock.length) {
+    merged = [...merged.slice(0, insertBeforeDynamic), ...insertBlock, ...merged.slice(insertBeforeDynamic)];
+  }
+  return merged.map((m, i) => ({ ...m, orderKey: (i + 1) * 1000 }));
 }
 
 /** WorkUnit이 모두 끝난 뒤 배포 단계인지 */
