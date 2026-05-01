@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
+import { EmptyState, InlineAlert, LoadingState } from "@/components/ui";
 import { PrototypePreviewPanel } from "@/components/preview/PrototypePreviewPanel";
-import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import { StageWorkspaceLayout } from "@/components/workspace/StageWorkspaceLayout";
+import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
 import { fetchProjectById } from "@/components/project-spec/api";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -68,53 +67,46 @@ export function ExecutionPageClient() {
   }, [requirementsStateJson]);
 
   return (
-    <div>
-      <WorkflowPageHeader title="프로토타입 생성" />
-
-      <div style={{ marginTop: 12, marginBottom: 4 }}>
-        <ProjectWorkflowNav />
-      </div>
-
-      <div style={{ marginTop: 14 }}>
-        <StageWorkspaceLayout>
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
-              padding: 14,
-              boxSizing: "border-box",
-            }}
-          >
-            {!projectId ? (
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>URL에 `?projectId=`가 필요합니다.</div>
-            ) : loading ? (
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#64748b" }}>프로젝트 정보를 불러오는 중…</div>
-            ) : error ? (
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#b91c1c" }}>{error}</div>
-            ) : (
-              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-                <PrototypePreviewPanel
-                  key={projectId}
-                  projectId={projectId}
-                  projectName={projectName || "프로젝트"}
-                  projectDescription={projectDescription}
-                  requirementsStateJson={requirementsStateJson}
-                  ideationAssets={derived.ideationAssets}
-                  actors={derived.actors}
-                  flowSteps={derived.flowSteps}
-                  featureDraftTitles={[]}
-                  checklistGapLabels={[]}
-                  designFingerprint={`${projectId}:${derived.actors.length}:${derived.flowSteps.length}:${derived.ideationAssets.length}`}
-                />
-              </div>
-            )}
+    <WorkflowStageChrome
+      title="프로토타입 생성"
+      subtitle="템플릿·작업계획·Cursor 실행·배포까지 한 흐름으로 프로토타입을 만듭니다. 앞선 단계에서 정리한 스펙·흐름이 입력으로 사용됩니다."
+    >
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          padding: 14,
+          boxSizing: "border-box",
+        }}
+      >
+        {!projectId ? (
+          <EmptyState title="프로젝트가 지정되지 않았습니다." description="URL에 ?projectId= 를 붙여 다시 열어 주세요." />
+        ) : loading ? (
+          <LoadingState />
+        ) : error ? (
+          <InlineAlert variant="danger">{error}</InlineAlert>
+        ) : (
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <PrototypePreviewPanel
+              key={projectId}
+              projectId={projectId}
+              projectName={projectName || "프로젝트"}
+              projectDescription={projectDescription}
+              requirementsStateJson={requirementsStateJson}
+              ideationAssets={derived.ideationAssets}
+              actors={derived.actors}
+              flowSteps={derived.flowSteps}
+              featureDraftTitles={[]}
+              checklistGapLabels={[]}
+              designFingerprint={`${projectId}:${derived.actors.length}:${derived.flowSteps.length}:${derived.ideationAssets.length}`}
+            />
           </div>
-        </StageWorkspaceLayout>
+        )}
       </div>
-    </div>
+    </WorkflowStageChrome>
   );
 }
 

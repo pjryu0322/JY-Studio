@@ -146,8 +146,7 @@ export function PlatformSettingsMenu() {
             zIndex: 50,
           }}
         >
-          <p style={{ margin: "0 0 4px 0", fontSize: 15, fontWeight: 800, color: "#0f172a" }}>설정</p>
-          <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#94a3b8" }}>이 기기에만 저장됩니다.</p>
+          <p style={{ margin: "0 0 10px 0", fontSize: 15, fontWeight: 800, color: "#0f172a" }}>설정</p>
 
           {hasProjectContext ? (
             <>

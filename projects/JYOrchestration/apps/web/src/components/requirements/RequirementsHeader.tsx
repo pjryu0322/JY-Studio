@@ -3,6 +3,7 @@
 import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 export function RequirementsHeader({
   projectName,
@@ -22,16 +23,29 @@ export function RequirementsHeader({
         flexDirection: "column",
         gap: 0,
         padding: "16px 0 18px",
-        borderBottom: "1px solid #e2e8f0",
+        borderBottom: `1px solid ${t.border}`,
       }}
     >
       <div className="relative" style={{ position: "relative", minWidth: 0 }}>
         <ScreenLabel label="요구사항-헤더-프로젝트정보" visible={showScreenLabels} />
         <div
           style={{
-            fontSize: 22,
+            fontSize: 12,
             fontWeight: 800,
-            color: "#0f172a",
+            color: t.textMuted,
+            letterSpacing: "0.04em",
+            marginBottom: 6,
+          }}
+        >
+          프로젝트
+        </div>
+        <h1
+          style={{
+            fontSize: 26,
+            fontWeight: 700,
+            color: t.textPrimary,
+            margin: 0,
+            lineHeight: 1.2,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -40,11 +54,11 @@ export function RequirementsHeader({
           }}
         >
           {projectName}
-        </div>
+        </h1>
       </div>
 
       {showProjectWorkflowNav ? (
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e2e8f0", width: "100%" }}>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${t.border}`, width: "100%" }}>
           <ProjectWorkflowNav />
         </div>
       ) : null}

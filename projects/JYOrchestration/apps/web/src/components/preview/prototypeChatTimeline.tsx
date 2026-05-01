@@ -15,7 +15,9 @@ import {
 const bubbleBase: CSSProperties = {
   borderRadius: 14,
   padding: "10px 12px",
-  maxWidth: "min(92%, 560px)",
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box",
   fontSize: 12.5,
   lineHeight: 1.55,
 };
@@ -487,7 +489,7 @@ export function PrototypeAiMessage(p: {
   return (
     <div
       style={{
-        alignSelf: "flex-start",
+        alignSelf: "stretch",
         ...bubbleBase,
         background: "#fff",
         border: "1px solid #e2e8f0",
@@ -510,7 +512,16 @@ export function PrototypeAiMessage(p: {
 
 export function PrototypeUserMessage(p: { readonly text: string; readonly atLabel?: string }) {
   return (
-    <div style={{ alignSelf: "flex-end", ...bubbleBase, background: "#ecfdf5", border: "1px solid #bbf7d0" }}>
+    <div
+      style={{
+        alignSelf: "flex-end",
+        ...bubbleBase,
+        width: "auto",
+        maxWidth: "min(92%, 560px)",
+        background: "#ecfdf5",
+        border: "1px solid #bbf7d0",
+      }}
+    >
       <div style={{ fontSize: 11, fontWeight: 950, color: "#166534", marginBottom: 4 }}>사용자</div>
       <div style={{ fontSize: 12.5, color: "#0f172a", fontWeight: 800, whiteSpace: "pre-wrap" }}>{p.text}</div>
     </div>
@@ -521,8 +532,8 @@ export function PrototypeSystemMessage(p: { readonly text: string }) {
   return (
     <div
       style={{
-        alignSelf: "center",
-        maxWidth: "min(92%, 520px)",
+        alignSelf: "stretch",
+        maxWidth: "100%",
         fontSize: 12,
         color: "#64748b",
         fontWeight: 750,
@@ -599,8 +610,18 @@ export function PrototypeChatTimeline(p: {
   };
 
   const listWrapStyle: CSSProperties = p.timelineInScrollParent
-    ? { display: "flex", flexDirection: "column", gap: 10 }
-    : { display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "auto", paddingRight: 2 };
+    ? { display: "flex", flexDirection: "column", alignItems: "stretch", gap: 10, width: "100%" }
+    : {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "stretch",
+        gap: 10,
+        flex: 1,
+        minHeight: 0,
+        overflow: "auto",
+        paddingRight: 2,
+        width: "100%",
+      };
 
   return (
     <>
@@ -625,7 +646,7 @@ export function PrototypeChatTimeline(p: {
           return (
             <div
               key={row.e.id}
-              style={{ alignSelf: "flex-start", ...bubbleBase, background: "#fff", border: "1px solid #e2e8f0" }}
+              style={{ alignSelf: "stretch", ...bubbleBase, background: "#fff", border: "1px solid #e2e8f0" }}
             >
               <div style={{ fontSize: 11, fontWeight: 950, color: "#64748b", marginBottom: 4 }}>AI기획자</div>
               <div style={{ fontSize: 12.5, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap" }}>{row.e.text}</div>

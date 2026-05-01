@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 export function WorkflowPageHeader({
   title,
@@ -8,27 +12,40 @@ export function WorkflowPageHeader({
   backHref,
   backLabel = "뒤로",
 }: {
-  title: string;
-  subtitle?: string;
-  right?: ReactNode;
-  backHref?: string;
-  backLabel?: string;
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly right?: ReactNode;
+  readonly backHref?: string;
+  readonly backLabel?: string;
 }) {
+  const actions = (
+    <>
+      {right}
+      {backHref ? (
+        <Link
+          href={backHref}
+          style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: t.primary,
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {backLabel}
+        </Link>
+      ) : null}
+    </>
+  );
+
+  const hasActions = Boolean(right) || Boolean(backHref);
+
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 18, fontWeight: 900 }}>{title}</div>
-        {subtitle ? <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{subtitle}</div> : null}
-      </div>
-      <div style={{ flex: "0 0 auto", display: "flex", gap: 10, alignItems: "center" }}>
-        {right}
-        {backHref ? (
-          <Link href={backHref} style={{ fontSize: 13, textDecoration: "underline" }}>
-            {backLabel}
-          </Link>
-        ) : null}
-      </div>
-    </div>
+    <PageHeader
+      title={title}
+      description={subtitle}
+      actions={hasActions ? actions : undefined}
+      style={{ marginBottom: 0 }}
+    />
   );
 }
-
