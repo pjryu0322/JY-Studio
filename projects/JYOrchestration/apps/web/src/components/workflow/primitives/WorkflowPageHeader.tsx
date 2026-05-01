@@ -12,12 +12,13 @@ export function WorkflowPageHeader({
   backHref,
   backLabel = "뒤로",
 }: {
-  readonly title: string;
+  readonly title?: string | null;
   readonly subtitle?: string;
   readonly right?: ReactNode;
   readonly backHref?: string;
   readonly backLabel?: string;
 }) {
+  const normalizedTitle = String(title ?? "").trim();
   const actions = (
     <>
       {right}
@@ -39,10 +40,12 @@ export function WorkflowPageHeader({
   );
 
   const hasActions = Boolean(right) || Boolean(backHref);
+  const hasHeader = Boolean(normalizedTitle) || Boolean(String(subtitle ?? "").trim()) || hasActions;
+  if (!hasHeader) return null;
 
   return (
     <PageHeader
-      title={title}
+      title={normalizedTitle}
       description={subtitle}
       actions={hasActions ? actions : undefined}
       style={{ marginBottom: 0 }}

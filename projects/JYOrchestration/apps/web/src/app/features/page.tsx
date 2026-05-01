@@ -48,8 +48,8 @@ function FeaturesPageInner() {
 
   return (
     <WorkflowStageChrome
-      title="기능 정리"
-      subtitle="아이디어가 정리되고 스펙이 확정되면, 기능 단위로 나뉘어 작업 정리·생성 준비로 이어집니다."
+      title={null}
+      subtitle={undefined}
     >
       <div style={{ padding: 14, display: "grid", gap: 14 }}>
             {projectId ? (

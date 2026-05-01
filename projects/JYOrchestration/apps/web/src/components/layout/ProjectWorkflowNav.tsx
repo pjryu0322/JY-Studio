@@ -15,7 +15,7 @@ import {
   isWorkflowStepNavActive,
   resolveWorkflowProjectContextId,
 } from "@/lib/workflow/flow-state";
-import { workflowStepMeta } from "@/components/layout/workflowStepMeta";
+import { workflowStepMeta } from "@/lib/workflow/workflowStepMeta";
 
 type NavItem = { label: string; href: string; screenLabel: string };
 

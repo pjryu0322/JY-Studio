@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
-import type { WorkflowStepMeta } from "@/components/layout/workflowStepMeta";
+import type { WorkflowStepMeta } from "@/lib/workflow/workflowStepMeta";
 
 const linkProcess = (active: boolean): CSSProperties => ({
   padding: "7px 14px",
