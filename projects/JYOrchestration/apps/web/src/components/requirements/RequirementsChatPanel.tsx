@@ -27,28 +27,6 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
 import { displayedAiOrchestrator, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 
-function ExpandIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-      {expanded ? (
-        <>
-          <path d="M9 3H5a2 2 0 0 0-2 2v4" />
-          <path d="M15 21h4a2 2 0 0 0 2-2v-4" />
-          <path d="M3 9l7-7" />
-          <path d="M21 15l-7 7" />
-        </>
-      ) : (
-        <>
-          <path d="M15 3h4a2 2 0 0 1 2 2v4" />
-          <path d="M9 21H5a2 2 0 0 1-2-2v-4" />
-          <path d="M21 9l-7-7" />
-          <path d="M3 15l7 7" />
-        </>
-      )}
-    </svg>
-  );
-}
-
 function roleLabel(role: RequirementsMessage["role"]): string {
   if (role === "user") return "나";
   if (role === "ai") return "AI";
@@ -114,7 +92,6 @@ export function RequirementsChatPanel({
   onOpenDeliverableDocuments,
   onRegenerateDeliverables,
   onConfirmDeliverables,
-  expandControls,
   memberControls,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
@@ -142,8 +119,6 @@ export function RequirementsChatPanel({
   readonly onOpenDeliverableDocuments?: (assetIds: readonly string[]) => void;
   readonly onRegenerateDeliverables?: (requestedTypes: readonly string[]) => void;
   readonly onConfirmDeliverables?: (assetIds: readonly string[]) => void;
-  /** 채팅 영역 확대/축소(아이디어 구체화 등) */
-  readonly expandControls?: { expanded: boolean; onToggle: () => void } | null;
   /** 아이디어 구체화 참여 멤버 보기(상단 아이콘) */
   readonly memberControls?: { count: number; onOpen: () => void } | null;
 }) {
@@ -323,7 +298,6 @@ export function RequirementsChatPanel({
     []
   );
 
-  const expanded = Boolean(expandControls?.expanded);
   const interviewUi = ideationInterviewUi ?? null;
   const membersUi = memberControls ?? null;
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -360,14 +334,14 @@ export function RequirementsChatPanel({
         flexDirection: "column",
         flex: "1 1 auto",
         height: "100%",
-        minHeight: expanded ? 640 : 0,
+        minHeight: 0,
         minWidth: 280,
         maxWidth: "100%",
         overflow: "hidden",
       }}
       aria-label="아이디어 구체화 채팅"
     >
-      {expandControls || interviewUi ? (
+      {interviewUi || membersUi ? (
         <div
           ref={headerRef}
           style={{
@@ -613,31 +587,6 @@ export function RequirementsChatPanel({
                 >
                   {Math.max(0, membersUi.count)}
                 </span>
-              </button>
-            ) : null}
-
-            {expandControls ? (
-              <button
-                type="button"
-                data-testid="requirements-chat-expand-toggle"
-                onClick={() => expandControls.onToggle()}
-                aria-label={expanded ? "채팅 축소" : "채팅 확대"}
-                title={expanded ? "채팅 축소" : "채팅 확대"}
-                style={{
-                  border: "1px solid #cbd5e1",
-                  background: expanded ? "#f0fdfa" : "#fff",
-                  borderRadius: 10,
-                  width: 36,
-                  height: 36,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#0f172a",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                <ExpandIcon expanded={expanded} />
               </button>
             ) : null}
           </div>
@@ -1090,7 +1039,7 @@ export function RequirementsChatPanel({
         <div
           style={{
             flexShrink: 0,
-            padding: "10px 18px 0",
+            padding: "12px 18px 16px",
             borderTop: "1px solid #e2e8f0",
             background: "#f8fafc",
           }}

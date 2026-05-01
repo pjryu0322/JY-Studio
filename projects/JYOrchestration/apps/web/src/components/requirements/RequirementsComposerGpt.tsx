@@ -242,19 +242,19 @@ export function RequirementsComposerGpt({
   );
 
   return (
-    <div
-      style={{
-        borderRadius: 18,
-        border: "1px solid #e2e8f0",
-        background: "#fff",
-        boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
-        padding: "12px 14px 14px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 10,
+          borderRadius: 999,
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+          boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
+          padding: "8px 10px",
+        }}
+      >
         {toolsMenu ? (
           <div className="relative" style={{ position: "relative", flexShrink: 0 }}>
             <ScreenLabel label="요구사항-입력창-액션행" visible={showScreenLabels} />
@@ -271,15 +271,14 @@ export function RequirementsComposerGpt({
                 width: 44,
                 height: 44,
                 borderRadius: 999,
-                border: "1px solid #e2e8f0",
-                background: "#fafafa",
+                border: "none",
+                background: "#f1f5f9",
                 color: "#475569",
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
               }}
             >
               <PlusIcon />
@@ -404,12 +403,12 @@ export function RequirementsComposerGpt({
               resize: "none",
               border: "none",
               outline: "none",
-              background: "#f4f4f5",
-              borderRadius: 14,
+              background: "transparent",
+              borderRadius: 0,
               fontSize: 16,
               lineHeight: 1.5,
               fontFamily: "inherit",
-              padding: "12px 14px",
+              padding: "10px 6px",
             }}
           />
         </div>
