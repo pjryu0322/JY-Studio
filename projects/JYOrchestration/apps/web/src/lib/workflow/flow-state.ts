@@ -10,6 +10,7 @@ export type AppFlowStepId =
   | "tasks"
   | "planning"
   | "execution"
+  | "prototype_review"
   | "trace";
 
 export type AppFlowStepDef = Readonly<{
@@ -24,6 +25,7 @@ export const APP_FLOW_STEPS: readonly AppFlowStepDef[] = [
   { id: "tasks", label: "작업 정리" },
   { id: "planning", label: "생성 준비" },
   { id: "execution", label: "프로토타입 생성" },
+  { id: "prototype_review", label: "프로토타입 검토" },
   { id: "trace", label: "추적" },
 ] as const;
 
@@ -46,6 +48,8 @@ export function appFlowStepHref(stepId: AppFlowStepId, projectId: string | null)
       return pid ? `/projects/${encodeURIComponent(pid)}?view=workspace` : "/";
     case "execution":
       return `/execution${q}`;
+    case "prototype_review":
+      return `/prototype-review${q}`;
     case "trace":
       return `/trace${q}`;
     default:
@@ -72,6 +76,7 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   /** 플랫폼 홈·프로젝트 목록: 워크플로 단계로 취급하지 않음(상단 탭·가이드 혼동 방지). */
   if (isPlatformHomeSurface(p)) return null;
   if (p === "/execution" || p.startsWith("/execution/")) return "execution";
+  if (p === "/prototype-review" || p.startsWith("/prototype-review/")) return "prototype_review";
   if (p === "/trace" || p.startsWith("/trace/")) return "trace";
   if (p.startsWith("/planning-execution")) return "execution";
   return null;
@@ -142,6 +147,10 @@ export function isWorkflowStepNavActive(
   }
   if (stepId === "execution") {
     if (!(pathname === "/execution" || pathname.startsWith("/execution/"))) return false;
+    return qp === ctx;
+  }
+  if (stepId === "prototype_review") {
+    if (!(pathname === "/prototype-review" || pathname.startsWith("/prototype-review/"))) return false;
     return qp === ctx;
   }
   if (stepId === "trace") {

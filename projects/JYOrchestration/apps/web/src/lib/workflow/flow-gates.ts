@@ -23,11 +23,13 @@ export function computeFlowGates(input: {
   tasksEnabled: boolean;
   planningEnabled: boolean;
   executionEnabled: boolean;
+  prototypeReviewEnabled: boolean;
   traceEnabled: boolean;
   featuresReason: string | null;
   tasksReason: string | null;
   planningReason: string | null;
   executionReason: string | null;
+  prototypeReviewReason: string | null;
   traceReason: string | null;
 } {
   const hasProject = Boolean(input.projectId);
@@ -39,6 +41,8 @@ export function computeFlowGates(input: {
   const tasksEnabled = hasProject && !requirementsPending && hasBaseline;
   const planningEnabled = hasProject && !requirementsPending;
   const executionEnabled = hasProject && !requirementsPending && readiness.runnable;
+  /** 프리뷰·대화 검토는 프로젝트만 있으면 열 수 있음(실행 환경과 동일한 게이트는 피함). */
+  const prototypeReviewEnabled = hasProject && !requirementsPending;
   const traceEnabled = !hasProject || !requirementsPending;
 
   return {
@@ -46,6 +50,7 @@ export function computeFlowGates(input: {
     tasksEnabled,
     planningEnabled,
     executionEnabled,
+    prototypeReviewEnabled,
     traceEnabled,
     featuresReason: featuresEnabled ? null : REQUIREMENTS_GATE_KR,
     tasksReason: tasksEnabled
@@ -67,6 +72,11 @@ export function computeFlowGates(input: {
         : requirementsPending
           ? REQUIREMENTS_GATE_KR
           : readiness.blockedReasonKr ?? "실행 환경을 설정·검증해야 프로토타입 생성 단계로 갈 수 있습니다.",
+    prototypeReviewReason: prototypeReviewEnabled
+      ? null
+      : !hasProject
+        ? "프로젝트를 선택하면 프로토타입 검토 화면으로 이동할 수 있습니다."
+        : REQUIREMENTS_GATE_KR,
     traceReason: traceEnabled ? null : REQUIREMENTS_GATE_KR,
   };
 }
@@ -78,6 +88,7 @@ export function stepReachableInStrip(stepId: AppFlowStepId, gates: ReturnType<ty
   if (stepId === "tasks") return gates.tasksEnabled;
   if (stepId === "planning") return gates.planningEnabled;
   if (stepId === "execution") return gates.executionEnabled;
+  if (stepId === "prototype_review") return gates.prototypeReviewEnabled;
   if (stepId === "trace") return gates.traceEnabled;
   return true;
 }
