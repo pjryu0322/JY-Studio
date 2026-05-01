@@ -370,7 +370,6 @@ export function RequirementsWorkspace({
   const [aiInvokePending, setAiInvokePending] = useState(false);
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
-  const [chatExpanded, setChatExpanded] = useState(false);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
   const [deliverableGenerateBusy, setDeliverableGenerateBusy] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
@@ -400,6 +399,8 @@ export function RequirementsWorkspace({
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
   const ideationBootstrapFlightRef = useRef<string | null>(null);
+  /** 아이디어 구체화: spec AI 기획자(planner) 보강 요청 중복 방지 */
+  const ideationEnsurePlannerInFlightRef = useRef(false);
   /** 서비스흐름 자동 초안 생성 1회 실행(StrictMode/rerender) 방지 */
   const serviceFlowAutoBootstrapRef = useRef<string | null>(null);
   /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
@@ -430,7 +431,6 @@ export function RequirementsWorkspace({
     setPlannerTypePickerOpen(false);
     setProposalPlanPreview({ open: false, assetId: null });
     setReplyTo(null);
-    setChatExpanded(false);
     setOrganizeState("idle");
     setOrganizeError(null);
     setError(null);
@@ -632,6 +632,48 @@ export function RequirementsWorkspace({
     setMembers(json.data);
   }, [resolvedProjectId]);
 
+  useEffect(() => {
+    ideationEnsurePlannerInFlightRef.current = false;
+  }, [resolvedProjectId]);
+
+  useEffect(() => {
+    if (!inIdeationStage || conversationStatus !== "loaded") return;
+    const pid = resolvedProjectId.trim();
+    if (!pid || !project?.ownerUserId || !sessionUser?.id || sessionUser.id !== project.ownerUserId) return;
+
+    const hasSpecPlanner = members.some(
+      (m) => m.memberType === "AI" && m.aiOrchestrationRole === "planner" && m.orchestrationStage === "spec"
+    );
+    if (hasSpecPlanner) return;
+    if (ideationEnsurePlannerInFlightRef.current) return;
+
+    ideationEnsurePlannerInFlightRef.current = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/project/members/ensure-default-planner", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: pid }),
+        });
+        const json = (await res.json()) as { success?: boolean; message?: string };
+        if (res.ok && json.success) {
+          await reloadMembers();
+        }
+      } finally {
+        ideationEnsurePlannerInFlightRef.current = false;
+      }
+    })();
+  }, [
+    inIdeationStage,
+    conversationStatus,
+    resolvedProjectId,
+    project?.ownerUserId,
+    sessionUser?.id,
+    members,
+    reloadMembers,
+  ]);
+
   const humanOthers = useMemo(() => members.filter((m) => m.memberType === "HUMAN" && !m.isOwner), [members]);
   const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
 
@@ -671,7 +713,7 @@ export function RequirementsWorkspace({
           kind: "ai",
           onlineHint: false,
           aiStatusLabel: aiPlannerStatusLabel,
-          roleLabel: (m.aiOrchestrationRole || m.role || "AI").slice(0, 32),
+          roleLabel: "AI",
         });
       }
     } else {
@@ -685,22 +727,6 @@ export function RequirementsWorkspace({
         aiStatusLabel: displayedAiStatusForStage(stageKey),
         roleLabel: "AI",
       });
-
-      // Optional expert (only if invited/added to project members)
-      const expert = aiMembers.find((m) => {
-        const r = String(m.aiOrchestrationRole ?? "").trim();
-        return r === "domain-expert" || r === "domainExpert";
-      });
-      if (expert) {
-        list.push({
-          id: expert.memberId,
-          name: "업무 전문가",
-          kind: "ai",
-          onlineHint: false,
-          aiStatusLabel: aiPlannerStatusLabel,
-          roleLabel: "전문가",
-        });
-      }
     }
     for (const m of members) {
       if (m.memberType !== "HUMAN") continue;
@@ -711,7 +737,7 @@ export function RequirementsWorkspace({
         name: (m.displayName || m.email || "멤버").slice(0, 24),
         kind: "human",
         onlineHint: Boolean(sessionUser?.id && uid && sessionUser.id === uid),
-        roleLabel: (m.role || "멤버").slice(0, 32),
+        roleLabel: m.isOwner ? "소유자" : "전문가",
         invited,
       });
     }
@@ -2743,7 +2769,6 @@ export function RequirementsWorkspace({
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
         typingIndicator={aiInvokePending}
-        expandControls={{ expanded: chatExpanded, onToggle: () => setChatExpanded((v) => !v) }}
         memberControls={{ count: participants.length, onOpen: () => setMembersModalOpen(true) }}
         ideationInterviewUi={
           inIdeationStage && conversationStatus === "loaded"
@@ -2775,12 +2800,7 @@ export function RequirementsWorkspace({
         }}
         onConfirmDeliverables={(ids) => void handleConfirmDeliverableAssets(ids)}
         composer={
-          <div
-            style={{
-              padding: "12px 18px 16px",
-              background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-            }}
-          >
+          <>
             {replyTo ? (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 800, color: "#475569", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -2821,7 +2841,7 @@ export function RequirementsWorkspace({
                 onOpenDraftView: () => setDraftDrawerOpen(true),
               }}
             />
-          </div>
+          </>
         }
       />
     </div>
@@ -3066,13 +3086,7 @@ export function RequirementsWorkspace({
         </div>
       ) : null}
 
-      <div
-        style={{
-          ...mainRow,
-          ...(chatExpanded && inIdeationStage ? { minHeight: 640 } : null),
-        }}
-        className="jyo-requirements-workspace-main"
-      >
+      <div style={mainRow} className="jyo-requirements-workspace-main">
         <StageRenderer activeStage={activeStage} ideationStage={ideationStage} serviceFlowStage={serviceFlowStage} />
       </div>
 
