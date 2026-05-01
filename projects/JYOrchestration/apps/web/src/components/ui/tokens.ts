@@ -19,6 +19,17 @@ export const uiTokens = {
   warning: "#b45309",
   danger: "#b91c1c",
   info: "#0369a1",
+  /** Modal overlay (dialog scrim). */
+  overlayScrim: "rgba(15, 23, 42, 0.45)",
+  /** Elevated dialog / popover shadow. */
+  shadowModal: "0 24px 60px rgba(15, 23, 42, 0.2)",
+  /** Soft caution surface (inline notices). */
+  surfaceCaution: "#fffbeb",
+  borderCaution: "#fde68a",
+  textCautionStrong: "#92400e",
+  /** Soft info surface (mapping header). */
+  surfaceInfoSoft: "#eff6ff",
+  borderInfoSoft: "#bfdbfe",
 } as const;
 
 export type UiTokens = typeof uiTokens;

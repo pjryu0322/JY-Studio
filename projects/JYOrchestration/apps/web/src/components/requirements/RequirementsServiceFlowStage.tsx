@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { Button } from "@/components/ui/Button";
+import { InlineAlert } from "@/components/ui/InlineAlert";
 import { ServiceFlowActionMenu } from "@/components/service-flow/ServiceFlowActionMenu";
 import { ServiceFlowChatPanel } from "@/components/service-flow/ServiceFlowChatPanel";
 import { ServiceFlowComposer } from "@/components/service-flow/ServiceFlowComposer";
@@ -13,200 +14,37 @@ import { ServiceFlowRemainingDecisionsDialog } from "@/components/service-flow/S
 import { ServiceFlowSummaryPanel } from "@/components/service-flow/ServiceFlowSummaryPanel";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
 import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
+import { SERVICE_FLOW_STAGE_DECISION_SLOTS } from "@/components/service-flow/serviceFlowStageDerived";
 import {
-  applyRecommendedServiceFlowPrimaryActors,
-  computeServiceFlowDecisionResolution,
-  deriveServiceFlowApprovalFromFlow,
-  normalizeServiceFlowStepOrder,
-  SERVICE_FLOW_STAGE_DECISION_SLOTS,
-  serviceFlowProgressHint,
-  unresolvedServiceFlowChecklistEntries,
-  type ServiceFlowStageSlotKey,
-} from "@/components/service-flow/serviceFlowStageDerived";
-import { serviceFlowStageBtnStyle } from "@/components/service-flow/serviceFlowStageUi";
-import {
-  serviceFlowSidebarParticipants,
-  type ServiceFlowProjectMember,
-} from "@/components/service-flow/serviceFlowWorkshopBridge";
-import { useServiceFlowWorkshopChat, type ServiceFlowWorkspaceMode } from "@/components/service-flow/useServiceFlowWorkshopChat";
+  serviceFlowChipRowStyle,
+  serviceFlowStageComposerColumnStyle,
+  serviceFlowStageMainChatStyle,
+  serviceFlowStageRootSectionStyle,
+  serviceFlowStageScrollAreaStyle,
+  serviceFlowStageShellGridStyle,
+} from "@/components/service-flow/serviceFlowStageLayout";
+import { useServiceFlowStageController, type ServiceFlowStageControllerInput } from "@/components/service-flow/useServiceFlowStageController";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type {
-  RequirementsServiceFlowStepV1,
-  RequirementsServiceFlowV1,
-  RequirementsServiceFlowChecklistDeferralKind,
-} from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 
-const shell: CSSProperties = {
-  flex: "1 1 auto",
-  minHeight: 0,
-  minWidth: 0,
-  display: "grid",
-  gridTemplateRows: "minmax(0, 1fr)",
-  alignItems: "stretch",
-  overflow: "hidden",
-  background: "#fff",
-};
-
-const chatWrap: CSSProperties = {
-  minWidth: 0,
-  minHeight: 0,
-  background: "#f8fafc",
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  overflow: "hidden",
-  position: "relative",
+export type RequirementsServiceFlowStageProps = ServiceFlowStageControllerInput & {
+  readonly ideationReadyNotice: string;
+  readonly onInviteMember: () => void;
+  readonly onRetryGate: () => void;
 };
 
 export function RequirementsServiceFlowStage({
-  projectId,
-  projectName,
-  projectDescription,
-  ideationParticipantHumanMemberIds,
-  ideationAssets,
-  ideationReady,
   ideationReadyNotice,
-  flow,
-  onChangeFlow,
-  generatingDraft,
-  draftGenerationCount = 0,
-  members,
-  currentUserId,
   onInviteMember,
   onRetryGate,
-  persistedServiceFlowMessages,
-  onAppendPersistedServiceFlowMessages,
-}: {
-  readonly projectId: string;
-  readonly projectName: string;
-  readonly projectDescription: string;
-  readonly ideationParticipantHumanMemberIds: readonly string[];
-  readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
-  readonly ideationReady: boolean;
-  readonly ideationReadyNotice: string;
-  readonly flow: RequirementsServiceFlowV1 | null;
-  readonly onChangeFlow: (next: RequirementsServiceFlowV1) => void;
-  readonly generatingDraft: boolean;
-  readonly draftGenerationCount?: number;
-  readonly members: readonly ServiceFlowProjectMember[];
-  readonly currentUserId: string | null;
-  readonly onInviteMember: () => void;
-  readonly onRetryGate: () => void;
-  readonly persistedServiceFlowMessages: readonly RequirementsMessage[];
-  readonly onAppendPersistedServiceFlowMessages: (
-    incoming: readonly RequirementsMessage[],
-  ) => Promise<readonly RequirementsMessage[]>;
-}) {
+  ...controllerInput
+}: RequirementsServiceFlowStageProps) {
   const showScreenLabels = useShowScreenLabels();
-  const [workspaceMode, setWorkspaceMode] = useState<ServiceFlowWorkspaceMode>("chat");
-  const [remainingPanelOpen, setRemainingPanelOpen] = useState(false);
-  const [membersModalOpen, setMembersModalOpen] = useState(false);
-
-  const derivedApproval = useMemo(() => deriveServiceFlowApprovalFromFlow(flow), [flow]);
-  const hint = serviceFlowProgressHint(derivedApproval);
-  const structureLocked = Boolean(flow?.structureLockedAt);
-  const deferrals = flow?.checklistDeferrals ?? null;
-  const decision = useMemo(
-    () => computeServiceFlowDecisionResolution({ flow, derivedSlots: derivedApproval.slots, deferrals }),
-    [flow, derivedApproval.slots, deferrals],
-  );
-  const chatActive = workspaceMode === "chat";
-  const mappingActive = workspaceMode === "mapping";
-  const summaryActive = workspaceMode === "summary";
-
-  const {
-    displayMessages,
-    input,
-    setInput,
-    replying,
-    quickReplies,
-    toolsOpen,
-    setToolsOpen,
-    chatScrollRef,
-    composerTextareaRef,
-    callAnalyze,
-    sendMessage,
-    jumpToResolveSlot,
-    requestOrganize,
-  } = useServiceFlowWorkshopChat({
-    projectId,
-    projectName,
-    projectDescription,
-    ideationAssets,
-    flow,
-    onChangeFlow,
-    currentUserId,
-    ideationReady,
-    generatingDraft,
-    draftGenerationCount,
-    persistedServiceFlowMessages,
-    onAppendPersistedServiceFlowMessages,
-    workspaceMode,
-    setWorkspaceMode,
-    structureLockedAt: flow?.structureLockedAt,
-    derivedSlotsForDraftBootstrap: derivedApproval.slots,
-  });
-
-  const actors = flow?.actors ?? [];
-  const steps = useMemo(() => normalizeServiceFlowStepOrder(flow?.steps ?? []), [flow?.steps]);
-  const sidebarParticipants = useMemo(
-    () => serviceFlowSidebarParticipants(members, currentUserId, ideationParticipantHumanMemberIds, replying),
-    [members, currentUserId, ideationParticipantHumanMemberIds, replying],
-  );
-
-  const patchChecklistDeferral = (key: ServiceFlowStageSlotKey, kind: RequirementsServiceFlowChecklistDeferralKind | null) => {
-    if (!flow) return;
-    const now = new Date().toISOString();
-    const next: Partial<Record<ServiceFlowStageSlotKey, RequirementsServiceFlowChecklistDeferralKind>> = {
-      ...(flow.checklistDeferrals ?? {}),
-    };
-    if (kind === null) delete next[key];
-    else next[key] = kind;
-    const checklistDeferrals = Object.keys(next).length ? next : null;
-    onChangeFlow({ ...flow, checklistDeferrals, updatedAt: now });
-  };
-
-  const reapplyRecommendedOwners = () => {
-    if (!flow?.structureLockedAt) return;
-    const now = new Date().toISOString();
-    const next = applyRecommendedServiceFlowPrimaryActors({ ...flow, updatedAt: now });
-    onChangeFlow({ ...next, structureLockedAt: flow.structureLockedAt ?? now, updatedAt: now });
-  };
-
-  const updateStep = (id: string, patch: Partial<RequirementsServiceFlowStepV1>) => {
-    if (!flow) return;
-    const now = new Date().toISOString();
-    const nextSteps = flow.steps.map((s) => {
-      if (s.id !== id) return s;
-      const merged: RequirementsServiceFlowStepV1 = { ...s, ...patch, updatedAt: now };
-      if (!("approved" in patch)) merged.approved = false;
-      return merged;
-    });
-    onChangeFlow({ ...flow, steps: normalizeServiceFlowStepOrder(nextSteps), updatedAt: now });
-  };
-
-  const jumpToResolveSlotWrapped = (key: ServiceFlowStageSlotKey) => {
-    setRemainingPanelOpen(false);
-    jumpToResolveSlot(key);
-  };
-
-  const remainingEntries = useMemo(
-    () => unresolvedServiceFlowChecklistEntries(derivedApproval.slots, deferrals),
-    [derivedApproval.slots, deferrals],
-  );
+  const c = useServiceFlowStageController(controllerInput);
+  const { workshop: w } = c;
 
   return (
-    <section
-      className="jyo-service-flow-stage"
-      style={{
-        flex: "1 1 auto",
-        minHeight: 0,
-        minWidth: 0,
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <section className="jyo-service-flow-stage" style={serviceFlowStageRootSectionStyle}>
       <style>{`
         @media (max-width: 760px) {
           .jyo-service-flow-stage-shell {
@@ -224,195 +62,111 @@ export function RequirementsServiceFlowStage({
       `}</style>
       <ScreenLabel label="요구사항-서비스흐름-아이디어형워크숍" visible={showScreenLabels} />
 
-      <div
-        className="jyo-service-flow-stage-shell"
-        style={{
-          ...shell,
-          gridTemplateColumns: "minmax(0, 1fr)",
-          height: "100%",
-        }}
-      >
-        <main className="jyo-service-flow-chat-shell" style={chatWrap} aria-label="액터 및 서비스 흐름 작업 영역">
+      <div className="jyo-service-flow-stage-shell" style={serviceFlowStageShellGridStyle}>
+        <main className="jyo-service-flow-chat-shell" style={serviceFlowStageMainChatStyle} aria-label="액터 및 서비스 흐름 작업 영역">
           <ScreenLabel label="요구사항-서비스흐름-참여멤버" visible={showScreenLabels} />
           <ServiceFlowHeader
-            progressPercent={derivedApproval.progressPercent}
-            filledSlotCount={derivedApproval.filledSlotCount}
+            progressPercent={c.derivedApproval.progressPercent}
+            filledSlotCount={c.derivedApproval.filledSlotCount}
             progressSlotTotal={SERVICE_FLOW_STAGE_DECISION_SLOTS.length}
-            onOpenRemaining={() => setRemainingPanelOpen(true)}
-            hint={hint}
+            onOpenRemaining={() => c.setRemainingPanelOpen(true)}
+            hint={c.hint}
             memberControls={{
-              count: sidebarParticipants.length,
-              onOpen: () => setMembersModalOpen(true),
+              count: c.sidebarParticipants.length,
+              onOpen: () => c.setMembersModalOpen(true),
             }}
           />
-          {ideationReady && chatActive ? (
-            <ServiceFlowProgressSummary hint={hint} helperLine={decision.helperLine} />
+          {controllerInput.ideationReady && c.chatActive ? (
+            <ServiceFlowProgressSummary hint={c.hint} helperLine={c.decision.helperLine} />
           ) : null}
 
-          <div
-            ref={chatScrollRef}
-            style={{
-              flex: "1 1 auto",
-              minHeight: 0,
-              overflowY: "auto",
-              padding: "12px 20px 14px",
-              display: "grid",
-              gap: 10,
-              alignContent: "start",
-            }}
-          >
-            {!ideationReady ? (
-              <div style={{ border: "1px solid #fde68a", borderRadius: 14, padding: 12, background: "#fffbeb", maxWidth: 620 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#92400e", lineHeight: 1.5 }}>{ideationReadyNotice}</div>
-                <button type="button" onClick={onRetryGate} style={{ ...serviceFlowStageBtnStyle, marginTop: 8 }}>
+          <div ref={w.chatScrollRef} style={serviceFlowStageScrollAreaStyle}>
+            {!controllerInput.ideationReady ? (
+              <InlineAlert variant="warning" style={{ maxWidth: 620 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.5 }}>{ideationReadyNotice}</div>
+                <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={onRetryGate}>
                   다시 확인
-                </button>
-              </div>
+                </Button>
+              </InlineAlert>
             ) : null}
-            {ideationReady && summaryActive ? (
+            {controllerInput.ideationReady && c.summaryActive ? (
               <ServiceFlowSummaryPanel
-                actors={actors}
-                steps={steps}
-                derivedApproval={derivedApproval}
-                decision={decision}
-                hint={hint}
-                onPatchDeferral={patchChecklistDeferral}
+                actors={c.actors}
+                steps={c.steps}
+                derivedApproval={c.derivedApproval}
+                decision={c.decision}
+                hint={c.hint}
+                onPatchDeferral={c.patchChecklistDeferral}
               />
             ) : null}
-            {ideationReady && mappingActive ? (
+            {controllerInput.ideationReady && c.mappingActive ? (
               <ServiceFlowMappingPanel
-                structureLocked={structureLocked}
-                steps={steps}
-                actors={actors}
-                onReapplyRecommended={reapplyRecommendedOwners}
-                onUpdateStepPrimary={(stepId, primaryActorId) => updateStep(stepId, { primaryActorId })}
+                structureLocked={c.structureLocked}
+                steps={c.steps}
+                actors={c.actors}
+                onReapplyRecommended={c.reapplyRecommendedOwners}
+                onUpdateStepPrimary={c.updateStepPrimary}
               />
             ) : null}
             <ServiceFlowChatPanel
-              messages={displayMessages}
-              replying={replying}
-              generatingDraft={generatingDraft}
-              structureLocked={structureLocked}
-              chatActive={chatActive}
-              ideationReady={ideationReady}
+              messages={w.displayMessages}
+              replying={w.replying}
+              generatingDraft={controllerInput.generatingDraft}
+              structureLocked={c.structureLocked}
+              chatActive={c.chatActive}
+              ideationReady={controllerInput.ideationReady}
             />
           </div>
 
           <RequirementsChatComposerFooter>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 720, margin: "0 auto", minWidth: 0 }}>
-              {ideationReady && chatActive && quickReplies && quickReplies.length && !replying ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {quickReplies.map((label) => (
-                    <button
+            <div style={serviceFlowStageComposerColumnStyle}>
+              {controllerInput.ideationReady && c.chatActive && w.quickReplies && w.quickReplies.length && !w.replying ? (
+                <div style={serviceFlowChipRowStyle}>
+                  {w.quickReplies.map((label) => (
+                    <Button
                       key={label}
-                      type="button"
-                      onClick={() => callAnalyze(label)}
-                      style={{
-                        border: "1px solid #cbd5e1",
-                        background: "#fff",
-                        borderRadius: 999,
-                        padding: "10px 12px",
-                        fontSize: 13,
-                        fontWeight: 800,
-                        color: "#0f172a",
-                        cursor: "pointer",
-                      }}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => w.callAnalyze(label)}
+                      style={{ borderRadius: 999 }}
                     >
                       {label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : null}
 
-              {ideationReady && chatActive && !replying && (!quickReplies || !quickReplies.length) ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {(() => {
-                    const shouldShowApproval = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("approvalStep");
-                    const shouldShowException = !decision.requiredUnresolved.length && decision.optionalUnresolved.includes("exceptionFlow");
-
-                    const base =
-                      steps.length >= 1
-                        ? []
-                        : [
-                            {
-                              label: "액터 추가",
-                              action: () => callAnalyze("액터를 추가해 주세요. 사람 액터와 시스템 액터를 분리해 정리해 주세요."),
-                            },
-                            {
-                              label: "흐름 정리",
-                              action: () =>
-                                callAnalyze("주요 서비스 흐름을 3단계 이상으로 정리해 주세요. 각 단계 제목/목적/담당을 포함해 주세요."),
-                            },
-                          ];
-
-                    const extras =
-                      steps.length >= 1
-                        ? [
-                            ...(shouldShowApproval
-                              ? [
-                                  {
-                                    label: "승인 추가",
-                                    action: () =>
-                                      callAnalyze("승인/확정 단계가 필요합니다. 승인 단계를 흐름에 추가하고 담당도 지정해 주세요."),
-                                  },
-                                ]
-                              : []),
-                            ...(shouldShowException
-                              ? [
-                                  {
-                                    label: "예외 흐름",
-                                    action: () =>
-                                      callAnalyze("수정 요청/반려 같은 예외 흐름이 필요합니다. 예외 단계를 흐름에 반영해 주세요."),
-                                  },
-                                ]
-                              : []),
-                          ]
-                        : [];
-
-                    return [...base, ...extras];
-                  })().map((it) => (
-                    <button
-                      key={it.label}
-                      type="button"
-                      onClick={it.action}
-                      style={{
-                        border: "1px solid #cbd5e1",
-                        background: "#fff",
-                        borderRadius: 999,
-                        padding: "10px 12px",
-                        fontSize: 13,
-                        fontWeight: 800,
-                        color: "#0f172a",
-                        cursor: "pointer",
-                      }}
-                    >
+              {controllerInput.ideationReady && c.chatActive && !w.replying && (!w.quickReplies || !w.quickReplies.length) ? (
+                <div style={serviceFlowChipRowStyle}>
+                  {c.composerQuickActions.map((it) => (
+                    <Button key={it.label} size="sm" variant="secondary" onClick={it.action} style={{ borderRadius: 999 }}>
                       {it.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : null}
 
               <ServiceFlowComposer
-                value={input}
-                onChange={setInput}
-                onSubmit={sendMessage}
-                disabled={workspaceMode !== "chat" || replying}
+                value={w.input}
+                onChange={w.setInput}
+                onSubmit={w.sendMessage}
+                disabled={c.workspaceMode !== "chat" || w.replying}
                 placeholder="메시지를 입력하세요"
-                onOpenActions={() => setToolsOpen((v) => !v)}
-                textAreaRef={composerTextareaRef}
-                actionsOpen={toolsOpen}
+                onOpenActions={() => w.setToolsOpen((v) => !v)}
+                textAreaRef={w.composerTextareaRef}
+                actionsOpen={w.toolsOpen}
                 actionMenu={
                   <ServiceFlowActionMenu
-                    open={toolsOpen}
-                    onClose={() => setToolsOpen(false)}
-                    onOrganize={requestOrganize}
-                    onViewResult={() => setWorkspaceMode("summary")}
-                    onViewPrompt={() => setToolsOpen(false)}
-                    onOpenMapping={() => setWorkspaceMode("mapping")}
-                    projectId={projectId}
-                    ideationReady={ideationReady}
+                    open={w.toolsOpen}
+                    onClose={() => w.setToolsOpen(false)}
+                    onOrganize={w.requestOrganize}
+                    onViewResult={() => c.setWorkspaceMode("summary")}
+                    onViewPrompt={() => w.setToolsOpen(false)}
+                    onOpenMapping={() => c.setWorkspaceMode("mapping")}
+                    projectId={controllerInput.projectId}
+                    ideationReady={controllerInput.ideationReady}
                     ideationReadyNotice={ideationReadyNotice}
-                    hasFlowContent={Boolean(actors.length || steps.length)}
+                    hasFlowContent={Boolean(c.actors.length || c.steps.length)}
                   />
                 }
               />
@@ -420,21 +174,21 @@ export function RequirementsServiceFlowStage({
           </RequirementsChatComposerFooter>
 
           <ServiceFlowRemainingDecisionsDialog
-            open={remainingPanelOpen}
-            onClose={() => setRemainingPanelOpen(false)}
-            entries={remainingEntries}
-            onJumpToResolve={jumpToResolveSlotWrapped}
-            onPatchDeferral={patchChecklistDeferral}
+            open={c.remainingPanelOpen}
+            onClose={() => c.setRemainingPanelOpen(false)}
+            entries={c.remainingEntries}
+            onJumpToResolve={c.jumpToResolveSlotWrapped}
+            onPatchDeferral={c.patchChecklistDeferral}
           />
         </main>
       </div>
 
       <RequirementsMembersModal
-        open={membersModalOpen}
-        onClose={() => setMembersModalOpen(false)}
-        participants={sidebarParticipants}
-        showInvite={Boolean(projectId.trim())}
-        inviteDisabled={!projectId.trim()}
+        open={c.membersModalOpen}
+        onClose={() => c.setMembersModalOpen(false)}
+        participants={c.sidebarParticipants}
+        showInvite={Boolean(controllerInput.projectId.trim())}
+        inviteDisabled={!controllerInput.projectId.trim()}
         onInviteClick={onInviteMember}
       />
     </section>
