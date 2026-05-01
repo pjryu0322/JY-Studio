@@ -4,5 +4,8 @@ export { ServiceFlowChatPanel } from "@/components/service-flow/ServiceFlowChatP
 export { ServiceFlowComposer } from "@/components/service-flow/ServiceFlowComposer";
 export { ServiceFlowActionMenu } from "@/components/service-flow/ServiceFlowActionMenu";
 export { ServiceFlowProgressSummary } from "@/components/service-flow/ServiceFlowProgressSummary";
+export { ServiceFlowMappingPanel } from "@/components/service-flow/ServiceFlowMappingPanel";
+export { ServiceFlowSummaryPanel } from "@/components/service-flow/ServiceFlowSummaryPanel";
+export { ServiceFlowRemainingDecisionsDialog } from "@/components/service-flow/ServiceFlowRemainingDecisionsDialog";
 export type { WorkshopMessage, WorkshopRole } from "@/components/service-flow/serviceFlowWorkshopTypes";
 export { messageTone } from "@/components/service-flow/serviceFlowWorkshopTypes";
