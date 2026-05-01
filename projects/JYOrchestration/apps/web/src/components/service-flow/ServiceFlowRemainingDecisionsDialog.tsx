@@ -2,7 +2,9 @@
 
 import type { RequirementsServiceFlowChecklistDeferralKind } from "@/lib/requirements/requirementsStateJson";
 import type { ServiceFlowStageSlotKey } from "@/components/service-flow/serviceFlowStageDerived";
-import { serviceFlowStageBtnStyle } from "@/components/service-flow/serviceFlowStageUi";
+import { serviceFlowPanelCardStyle } from "@/components/service-flow/serviceFlowStageLayout";
+import { Button } from "@/components/ui/Button";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 export function ServiceFlowRemainingDecisionsDialog({
   open,
@@ -32,7 +34,7 @@ export function ServiceFlowRemainingDecisionsDialog({
         position: "fixed",
         inset: 0,
         zIndex: 45,
-        background: "rgba(15,23,42,0.45)",
+        background: t.overlayScrim,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -46,42 +48,49 @@ export function ServiceFlowRemainingDecisionsDialog({
           width: "min(520px, 100%)",
           maxHeight: "min(80vh, 640px)",
           overflowY: "auto",
-          borderRadius: 16,
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          boxShadow: "0 24px 60px rgba(15, 23, 42, 0.2)",
+          borderRadius: t.radiusLg + 4,
+          background: t.bgCard,
+          border: `1px solid ${t.border}`,
+          boxShadow: t.shadowModal,
           padding: 16,
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>남은 결정사항</div>
+        <div style={{ fontSize: 16, fontWeight: 900, color: t.textPrimary }}>남은 결정사항</div>
         <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
           {entries.map((row) => (
-            <div key={row.key} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 12, background: "#f8fafc" }}>
-              <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>{row.label}</div>
+            <div
+              key={row.key}
+              style={{
+                ...serviceFlowPanelCardStyle,
+                borderRadius: t.radiusLg,
+                background: t.bgPage,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 900, color: t.textPrimary }}>{row.label}</div>
               {row.deferral === "pending" ? (
-                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>미정의로 진행됨</div>
+                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: t.textMuted }}>미정의로 진행됨</div>
               ) : row.deferral === "deferred_next" ? (
-                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: "#64748b" }}>다음 단계에서 검토</div>
+                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800, color: t.textMuted }}>다음 단계에서 검토</div>
               ) : (
                 <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  <button type="button" onClick={() => onJumpToResolve(row.key)} style={{ ...serviceFlowStageBtnStyle }}>
+                  <Button size="sm" variant="secondary" onClick={() => onJumpToResolve(row.key)}>
                     지금 정하기
-                  </button>
-                  <button type="button" onClick={() => onPatchDeferral(row.key, "pending")} style={{ ...serviceFlowStageBtnStyle }}>
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => onPatchDeferral(row.key, "pending")}>
                     미정의로 진행
-                  </button>
-                  <button type="button" onClick={() => onPatchDeferral(row.key, "deferred_next")} style={{ ...serviceFlowStageBtnStyle }}>
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => onPatchDeferral(row.key, "deferred_next")}>
                     다음 단계에서 검토
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
           ))}
         </div>
         <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-          <button type="button" onClick={onClose} style={{ ...serviceFlowStageBtnStyle }}>
+          <Button size="sm" variant="secondary" onClick={onClose}>
             닫기
-          </button>
+          </Button>
         </div>
       </div>
     </div>

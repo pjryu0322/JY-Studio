@@ -5,6 +5,7 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { RequirementsServiceFlowStage } from "@/components/requirements/RequirementsServiceFlowStage";
 import type { ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 const wrap: CSSProperties = {
   flex: "1 1 0%",
@@ -13,7 +14,7 @@ const wrap: CSSProperties = {
   minHeight: 0,
   height: "100%",
   overflow: "hidden",
-  background: "#fff",
+  background: t.bgCard,
   display: "flex",
   flexDirection: "column",
 };
