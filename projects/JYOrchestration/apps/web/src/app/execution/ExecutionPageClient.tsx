@@ -68,8 +68,8 @@ export function ExecutionPageClient() {
 
   return (
     <WorkflowStageChrome
-      title="프로토타입 생성"
-      subtitle="템플릿·작업계획·Cursor 실행·배포까지 한 흐름으로 프로토타입을 만듭니다. 앞선 단계에서 정리한 스펙·흐름이 입력으로 사용됩니다."
+      title={null}
+      subtitle={undefined}
     >
       <div
         style={{

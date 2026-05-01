@@ -9,6 +9,7 @@ import { ReviewChatPanel } from "@/components/prototype-review/ReviewChatPanel";
 import { ReviewHeader } from "@/components/prototype-review/ReviewHeader";
 import { EmptyState, InlineAlert, LoadingState } from "@/components/ui";
 import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
+import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import type { PrototypeImprovementItem, PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
 import {
   fetchPrototypeReviewThread,
@@ -35,7 +36,7 @@ export function PrototypeReviewPageClient() {
   const projectId = search?.get("projectId")?.trim() ?? "";
   const runIdFromUrl = search?.get("runId")?.trim() ?? "";
 
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useMediaQuery(MOBILE_MQ);
   const [mobileTab, setMobileTab] = useState<MobileReviewTabId>("preview");
 
   const [run, setRun] = useState<PrototypeRun | null>(null);
@@ -59,14 +60,6 @@ export function PrototypeReviewPageClient() {
 
   const lastAutoAttemptKeyRef = useRef<string | null>(null);
   const previewStackRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const mq = window.matchMedia(MOBILE_MQ);
-    const apply = () => setIsMobile(mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
-  }, []);
 
   const runOptions = useMemo(() => {
     return runList.map((r, i) => {

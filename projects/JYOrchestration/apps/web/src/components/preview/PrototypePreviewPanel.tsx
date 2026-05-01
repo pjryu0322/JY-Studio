@@ -13,7 +13,6 @@ import {
 } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
-  PrototypeChatExpandIcon,
   PrototypeChatInput,
   PrototypeChatTimeline,
   type PrototypeInlineTemplatePickerProps,
@@ -58,6 +57,8 @@ import {
   parseRequirementsStateJson,
   type PrototypeWorkspaceTimelineCardV1,
 } from "@/lib/requirements/requirementsStateJson";
+import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
+import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -1549,52 +1550,13 @@ export function PrototypePreviewPanel({
         ) : null}
 
         <main className="jyo-prototype-chat-shell" style={prototypeChatMain} aria-label="프로토타입 생성 채팅">
-          <div
-            style={{
-              flex: "0 0 auto",
-              padding: "10px 20px 8px",
-              position: "sticky",
-              top: 0,
-              zIndex: 6,
-              background: "rgba(248,250,252,0.96)",
-              backdropFilter: "blur(8px)",
-              borderBottom: "1px solid rgba(226,232,240,0.75)",
+          <RequirementsChatHeaderRow
+            leading={<div style={{ flex: "1 1 auto", minWidth: 0 }} aria-hidden />}
+            memberControls={{
+              count: 2,
+              onOpen: () => setChatExpanded((v) => !v),
             }}
-          >
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                alignItems: "center",
-                gap: 10,
-                width: "100%",
-                minWidth: 0,
-              }}
-            >
-              <div style={{ flex: "1 1 8px", minWidth: 0 }} aria-hidden />
-              <button
-                type="button"
-                onClick={() => setChatExpanded((v) => !v)}
-                aria-label={chatExpanded ? "채팅 축소" : "채팅 확대"}
-                title={chatExpanded ? "채팅 축소" : "채팅 확대"}
-                style={{
-                  border: "1px solid #cbd5e1",
-                  background: chatExpanded ? "#f0fdfa" : "#fff",
-                  borderRadius: 10,
-                  width: 36,
-                  height: 36,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#0f172a",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                <PrototypeChatExpandIcon expanded={chatExpanded} />
-              </button>
-            </div>
-          </div>
+          />
 
           <div
             style={{
@@ -1650,41 +1612,33 @@ export function PrototypePreviewPanel({
             ) : null}
           </div>
 
-          <div
-            className="jyo-prototype-composer-shell"
-            style={{
-              flex: "0 0 auto",
-              padding: "14px 20px 18px",
-              background: "linear-gradient(180deg, rgba(248,250,252,0), #f8fafc 30%)",
-            }}
-          >
-            <div
-              style={{
-                maxWidth: 660,
-                margin: "0 auto",
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                border: "1px solid #e2e8f0",
-                borderRadius: 20,
-                background: "#fff",
-                padding: 10,
-                boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
-              }}
-            >
-              <PrototypeChatInput
-                value={chatInput}
-                onChange={setChatInput}
-                onSend={() => void onSendChatMessage()}
-                onKeyDown={onChatTextareaKeyDown}
-                placeholder={chatPlaceholder}
-                disabled={isMessageInputBlocked}
-                inputRef={chatInputRef}
-                embedInComposer
-              />
+          <RequirementsChatComposerFooter>
+            <div style={{ maxWidth: 720, margin: "0 auto", width: "100%", minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: 10,
+                  borderRadius: 999,
+                  border: "1px solid #e2e8f0",
+                  background: "#fff",
+                  boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
+                  padding: "8px 10px",
+                }}
+              >
+                <PrototypeChatInput
+                  value={chatInput}
+                  onChange={setChatInput}
+                  onSend={() => void onSendChatMessage()}
+                  onKeyDown={onChatTextareaKeyDown}
+                  placeholder={chatPlaceholder}
+                  disabled={isMessageInputBlocked}
+                  inputRef={chatInputRef}
+                  embedInComposer
+                />
+              </div>
             </div>
-          </div>
+          </RequirementsChatComposerFooter>
         </main>
       </div>
 

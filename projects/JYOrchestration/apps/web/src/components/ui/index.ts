@@ -6,6 +6,7 @@ export { CollapsiblePanel, type CollapsiblePanelProps } from "./CollapsiblePanel
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { InlineAlert, type InlineAlertProps, type InlineAlertVariant } from "./InlineAlert";
 export { LoadingState, type LoadingStateProps } from "./LoadingState";
+export { BottomSheet } from "./BottomSheet";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { SectionCard, type SectionCardProps } from "./SectionCard";
 export { StatusBadge, type StatusBadgeProps } from "./StatusBadge";

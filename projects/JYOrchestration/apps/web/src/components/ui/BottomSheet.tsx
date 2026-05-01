@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 export function BottomSheet({
   open,
@@ -46,15 +47,15 @@ export function BottomSheet({
           zIndex,
           borderTopLeftRadius: 16,
           borderTopRightRadius: 16,
-          borderTop: "1px solid #e2e8f0",
-          background: "#fff",
+          borderTop: `1px solid ${t.border}`,
+          background: t.bgCard,
           padding: "10px 12px 18px",
           boxShadow: "0 -8px 32px rgba(15, 23, 42, 0.12)",
           maxHeight: "min(70vh, 420px)",
           overflowY: "auto",
         }}
       >
-        <div style={{ width: 40, height: 4, borderRadius: 999, background: "#e2e8f0", margin: "4px auto 12px" }} aria-hidden />
+        <div style={{ width: 40, height: 4, borderRadius: 999, background: t.border, margin: "4px auto 12px" }} aria-hidden />
         {children}
       </div>
     </>
