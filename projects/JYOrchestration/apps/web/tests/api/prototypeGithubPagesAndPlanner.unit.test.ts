@@ -13,6 +13,18 @@ describe("prototypeGithubPagesDeployService", () => {
     const yml = buildDeployPagesWorkflowYaml(`feature/foo`);
     expect(yml).toContain(`"feature/foo"`);
   });
+
+  it("adds SPA 404.html and disables Jekyll for GitHub Pages", () => {
+    const yml = buildDeployPagesWorkflowYaml("main");
+    expect(yml).toContain("dist/404.html");
+    expect(yml).toContain("dist/.nojekyll");
+  });
+
+  it("falls back to npm install when package-lock.json is missing", () => {
+    const yml = buildDeployPagesWorkflowYaml("main");
+    expect(yml).toContain("npm install");
+    expect(yml).toContain("npm ci");
+  });
 });
 
 describe("prototypePlannerService fallback", () => {
