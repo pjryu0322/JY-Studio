@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { ResponsivePageContainer, ResponsiveShell } from "@/components/layout";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
@@ -341,15 +342,8 @@ export default function HomePage() {
   }, [editDescTarget, editDescBusy, editDescValue]);
 
   return (
-    <main
-      className="relative"
-      style={{
-        padding: "8px 24px 20px",
-        maxWidth: 1200,
-        margin: "0 auto",
-      }}
-      data-ui-label="[A] Home"
-    >
+    <ResponsiveShell title="JYOrchestration" currentNav="home">
+      <ResponsivePageContainer className="relative" style={{ paddingTop: 8, paddingBottom: 20 }} data-ui-label="[A] Home">
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
 
       {createToast ? (
@@ -785,6 +779,7 @@ export default function HomePage() {
           </div>
         </div>
       ) : null}
-    </main>
+      </ResponsivePageContainer>
+    </ResponsiveShell>
   );
 }

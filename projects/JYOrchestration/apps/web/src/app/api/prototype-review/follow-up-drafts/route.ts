@@ -4,7 +4,8 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import { withNodeTypePrefix } from "@/lib/project-spec/taskDraftHierarchy";
-import { appendReviewMessage, getImprovementItems, getReviewThread } from "@/lib/prototype/prototypeReviewStore";
+import { appendReviewMessage, getImprovementItems, getReviewThread, setImprovementItems } from "@/lib/prototype/prototypeReviewStore";
+import { generateImprovementItemsForRun } from "@/lib/prototype/prototypeReviewImprovementsGenerator";
 
 /** 보완작업 생성: 저장된 개선안을 Task 초안으로 추가 */
 export async function POST(request: NextRequest) {
@@ -32,12 +33,15 @@ export async function POST(request: NextRequest) {
     throw error;
   }
 
-  const items = getImprovementItems(projectId, runId);
+  let items = getImprovementItems(projectId, runId);
   if (!items?.length) {
-    return NextResponse.json(
-      { success: false, message: "먼저 「개선안 보기」로 목록을 만든 뒤 다시 시도해 주세요." },
-      { status: 400 },
-    );
+    /** 채팅 후 개선안이 비워진 경우 등 — 대화·실행 맥락으로 목록을 한 번 채운 뒤 초안 생성 */
+    const gen = await generateImprovementItemsForRun(projectId, runId);
+    if (!gen.ok) {
+      return NextResponse.json({ success: false, message: gen.message }, { status: 400 });
+    }
+    setImprovementItems(projectId, runId, gen.items);
+    items = gen.items;
   }
 
   const project = await prisma.project.findUnique({
@@ -91,6 +95,7 @@ export async function POST(request: NextRequest) {
     data: {
       draftIds: createdIds,
       messages: getReviewThread(projectId, runId),
+      improvementItems: getImprovementItems(projectId, runId),
     },
   });
 }

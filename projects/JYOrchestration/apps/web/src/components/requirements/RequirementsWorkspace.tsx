@@ -10,7 +10,7 @@ import { RequirementsComposerGpt } from "@/components/requirements/RequirementsC
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
-import { RequirementsMemberSidebar } from "@/components/requirements/RequirementsMemberSidebar";
+import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
 import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { OrganizeProposalDraggableModal } from "@/components/requirements/OrganizeProposalDraggableModal";
@@ -363,6 +363,7 @@ export function RequirementsWorkspace({
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [fetchNonce, setFetchNonce] = useState(0);
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
@@ -2743,6 +2744,7 @@ export function RequirementsWorkspace({
         messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
         typingIndicator={aiInvokePending}
         expandControls={{ expanded: chatExpanded, onToggle: () => setChatExpanded((v) => !v) }}
+        memberControls={{ count: participants.length, onOpen: () => setMembersModalOpen(true) }}
         ideationInterviewUi={
           inIdeationStage && conversationStatus === "loaded"
             ? {
@@ -2827,15 +2829,6 @@ export function RequirementsWorkspace({
 
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
-      {!chatExpanded ? (
-        <RequirementsMemberSidebar
-          participants={participants}
-          showInvite={Boolean(resolvedProjectId.trim())}
-          inviteDisabled={remoteLocked}
-          inviteEmphasis={inviteEmphasis}
-          onInviteClick={() => setInviteOpen(true)}
-        />
-      ) : null}
       {chatPanel}
     </div>
   );
@@ -3123,6 +3116,15 @@ export function RequirementsWorkspace({
         onClose={() => setInviteOpen(false)}
         onInvited={() => void reloadMembers()}
         existingHumanUserIds={existingHumanUserIds}
+      />
+
+      <RequirementsMembersModal
+        open={membersModalOpen}
+        onClose={() => setMembersModalOpen(false)}
+        participants={participants}
+        showInvite={Boolean(resolvedProjectId.trim())}
+        inviteDisabled={remoteLocked}
+        onInviteClick={() => setInviteOpen(true)}
       />
 
       {inIdeationStage ? (

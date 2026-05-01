@@ -9,6 +9,24 @@ export type ReviewThreadResponse = Readonly<{
   message?: string;
 }>;
 
+export async function postPrototypeReviewBootstrap(projectId: string, runId: string): Promise<{
+  success: boolean;
+  data?: { seeded: boolean; messages: import("@/lib/prototype/prototypeReviewStore").PrototypeReviewMessage[] };
+  message?: string;
+}> {
+  const res = await fetch("/api/prototype-review/bootstrap", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId, runId }),
+  });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { seeded: boolean; messages: import("@/lib/prototype/prototypeReviewStore").PrototypeReviewMessage[] };
+    message?: string;
+  };
+}
+
 export async function fetchPrototypeReviewThread(projectId: string, runId: string): Promise<ReviewThreadResponse> {
   const u = new URL("/api/prototype-review/thread", window.location.origin);
   u.searchParams.set("projectId", projectId);
@@ -19,7 +37,7 @@ export async function fetchPrototypeReviewThread(projectId: string, runId: strin
 
 export async function postPrototypeReviewChatTurn(projectId: string, runId: string, userMessage: string): Promise<{
   success: boolean;
-  data?: { messages: PrototypeReviewMessage[] };
+  data?: { messages: PrototypeReviewMessage[]; improvementItems: PrototypeImprovementItem[] | null };
   message?: string;
   code?: string;
 }> {
@@ -31,7 +49,7 @@ export async function postPrototypeReviewChatTurn(projectId: string, runId: stri
   });
   return (await res.json()) as {
     success: boolean;
-    data?: { messages: PrototypeReviewMessage[] };
+    data?: { messages: PrototypeReviewMessage[]; improvementItems: PrototypeImprovementItem[] | null };
     message?: string;
     code?: string;
   };
@@ -39,7 +57,7 @@ export async function postPrototypeReviewChatTurn(projectId: string, runId: stri
 
 export async function postPrototypeReviewSummarize(projectId: string, runId: string): Promise<{
   success: boolean;
-  data?: { messages: PrototypeReviewMessage[] };
+  data?: { messages: PrototypeReviewMessage[]; improvementItems: PrototypeImprovementItem[] | null };
   message?: string;
   code?: string;
 }> {
@@ -51,13 +69,17 @@ export async function postPrototypeReviewSummarize(projectId: string, runId: str
   });
   return (await res.json()) as {
     success: boolean;
-    data?: { messages: PrototypeReviewMessage[] };
+    data?: { messages: PrototypeReviewMessage[]; improvementItems: PrototypeImprovementItem[] | null };
     message?: string;
     code?: string;
   };
 }
 
-export async function postPrototypeReviewImprovements(projectId: string, runId: string): Promise<{
+export async function postPrototypeReviewImprovements(
+  projectId: string,
+  runId: string,
+  opts?: { silentFollowup?: boolean },
+): Promise<{
   success: boolean;
   data?: { items: PrototypeImprovementItem[]; messages: PrototypeReviewMessage[] };
   message?: string;
@@ -67,7 +89,7 @@ export async function postPrototypeReviewImprovements(projectId: string, runId: 
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectId, runId }),
+    body: JSON.stringify({ projectId, runId, silentFollowup: Boolean(opts?.silentFollowup) }),
   });
   return (await res.json()) as {
     success: boolean;
@@ -79,7 +101,7 @@ export async function postPrototypeReviewImprovements(projectId: string, runId: 
 
 export async function postPrototypeReviewFollowUpDrafts(projectId: string, runId: string): Promise<{
   success: boolean;
-  data?: { draftIds: string[]; messages: PrototypeReviewMessage[] };
+  data?: { draftIds: string[]; messages: PrototypeReviewMessage[]; improvementItems: PrototypeImprovementItem[] | null };
   message?: string;
 }> {
   const res = await fetch("/api/prototype-review/follow-up-drafts", {
@@ -90,7 +112,7 @@ export async function postPrototypeReviewFollowUpDrafts(projectId: string, runId
   });
   return (await res.json()) as {
     success: boolean;
-    data?: { draftIds: string[]; messages: PrototypeReviewMessage[] };
+    data?: { draftIds: string[]; messages: PrototypeReviewMessage[]; improvementItems: PrototypeImprovementItem[] | null };
     message?: string;
   };
 }
