@@ -10,6 +10,7 @@ function PlusIcon() {
   );
 }
 
+/** `RequirementsComposerGpt` 입력 행과 동일한 시각 토큰(둥근 허브 + 텍스트 + 전송). */
 export function ServiceFlowComposer({
   value,
   onChange,
@@ -35,53 +36,45 @@ export function ServiceFlowComposer({
   const controlsId = actionsOpen ? `${id}-actions` : undefined;
 
   return (
-    <div
-      className="jyo-service-flow-composer-shell"
-      style={{
-        flex: "0 0 auto",
-        padding: "12px 18px 16px",
-        borderTop: "1px solid #e2e8f0",
-        background: "#f8fafc",
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 660, margin: "0 auto", width: "100%", minWidth: 0 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            gap: 10,
-            borderRadius: 999,
-            border: "1px solid #e2e8f0",
-            background: "#fff",
-            boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
-            padding: "8px 10px",
-          }}
-        >
-          <div className="relative" style={{ position: "relative", flexShrink: 0 }}>
-            <button
-              type="button"
-              aria-label="작업 메뉴"
-              aria-expanded={actionsOpen}
-              aria-controls={controlsId}
-              onClick={() => onOpenActions()}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 999,
-                border: "none",
-                background: "#f1f5f9",
-                color: "#475569",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <PlusIcon />
-            </button>
-            {actionMenu}
-          </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", minWidth: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 10,
+          borderRadius: 999,
+          border: "1px solid #e2e8f0",
+          background: "#fff",
+          boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
+          padding: "8px 10px",
+        }}
+      >
+        <div className="relative" style={{ position: "relative", flexShrink: 0 }}>
+          <button
+            type="button"
+            aria-label="작업 메뉴"
+            aria-expanded={actionsOpen}
+            aria-controls={controlsId}
+            onClick={() => onOpenActions()}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              border: "none",
+              background: "#f1f5f9",
+              color: "#475569",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <PlusIcon />
+          </button>
+          {actionMenu}
+        </div>
+        <div className="relative" style={{ position: "relative", flex: 1, minWidth: 0 }}>
           <textarea
             ref={textAreaRef as Ref<HTMLTextAreaElement> | undefined}
             value={value}
@@ -101,7 +94,7 @@ export function ServiceFlowComposer({
               boxSizing: "border-box",
               flex: 1,
               minHeight: 44,
-              maxHeight: 160,
+              maxHeight: 220,
               resize: "none",
               border: "none",
               outline: "none",
@@ -113,6 +106,8 @@ export function ServiceFlowComposer({
               padding: "10px 6px",
             }}
           />
+        </div>
+        <div className="relative" style={{ position: "relative", flex: "0 0 auto" }}>
           <button
             type="button"
             onClick={() => onSubmit()}

@@ -2985,7 +2985,6 @@ export function RequirementsWorkspace({
       ) : null}
 
       <RequirementsHeader
-        projectName={headerProjectName}
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
       />
 
