@@ -11,7 +11,7 @@ export type LoadingStateProps = Readonly<{
 
 export function LoadingState({ label = "불러오는 중…", className, style }: LoadingStateProps) {
   return (
-    <p className={className} style={{ margin: 0, fontSize: 14, color: t.textMuted, fontWeight: 650, ...style }}>
+    <p className={className} style={{ margin: 0, fontSize: 14, color: t.textMuted, fontWeight: 600, ...style }}>
       {label}
     </p>
   );

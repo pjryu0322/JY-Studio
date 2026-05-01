@@ -11,6 +11,10 @@ export const uiTokens = {
   bgPage: "#f8fafc",
   bgCard: "#ffffff",
   primary: "#2563eb",
+  /** Teal accent (홈·워크플로 CTA 등). */
+  accentTeal: "#0d9488",
+  accentTealFg: "#0f766e",
+  accentTealSurface: "#ecfdf5",
   success: "#15803d",
   warning: "#b45309",
   danger: "#b91c1c",
