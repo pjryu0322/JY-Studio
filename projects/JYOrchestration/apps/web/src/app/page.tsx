@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { fetchExecutionSetup } from "@/components/project-spec/api";
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
+import { Button, Card, EmptyState, InlineAlert, LoadingState, SectionCard } from "@/components/ui";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
@@ -56,7 +55,6 @@ type SessionUser = {
 
 export default function HomePage() {
   const showScreenLabels = useShowScreenLabels();
-  const router = useRouter();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,18 +335,14 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <section
-        className="relative mx-auto mb-5 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
-        data-ui-label="[B] Create Project Form"
-      >
+      <SectionCard title="새 프로젝트 생성" data-ui-label="[B] Create Project Form" style={{ marginBottom: 20 }}>
         <ScreenLabel label="워크스페이스-프로젝트생성-섹션" visible={showScreenLabels} />
-        <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>
-          새 프로젝트 생성
-        </h2>
 
         <form data-testid="home-create-project-form" className="space-y-3" onSubmit={handleCreateProject}>
           {errorMessage ? (
-            <p style={{ color: "#b00020", margin: 0 }}>{errorMessage}</p>
+            <InlineAlert variant="danger" style={{ marginBottom: 4 }}>
+              {errorMessage}
+            </InlineAlert>
           ) : null}
           <div className="relative">
             <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트명-입력" visible={showScreenLabels} />
@@ -379,35 +373,25 @@ export default function HomePage() {
 
           <div className="relative inline-block w-fit">
             <ScreenLabel label="워크스페이스-프로젝트생성-생성버튼" visible={showScreenLabels} />
-            <button
+            <Button
               type="submit"
-              disabled={submitting}
+              variant="primary"
+              size="md"
+              loading={submitting}
               data-testid="home-create-project"
               data-ui-label="[B-6] Create Project Submit"
-              className="h-10 cursor-pointer rounded-lg border-0 bg-neutral-900 px-4 text-sm font-semibold text-white opacity-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {submitting ? "생성 중..." : "프로젝트 생성"}
-            </button>
+            </Button>
           </div>
         </form>
-      </section>
+      </SectionCard>
 
-      <section
-        className="relative mx-auto mb-6 box-border w-full max-w-2xl rounded-xl border border-neutral-200 bg-white p-6"
+      <SectionCard
+        title="프로젝트 목록"
         data-ui-label="[C] Project List"
-      >
-        <ScreenLabel label="워크스페이스-프로젝트목록-섹션" visible={showScreenLabels} />
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 16,
-          }}
-        >
-          <h2 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>프로젝트 목록</h2>
+        style={{ marginBottom: 24 }}
+        actions={
           <label
             style={{
               display: "flex",
@@ -428,15 +412,17 @@ export default function HomePage() {
             />
             삭제된 프로젝트 보기
           </label>
-        </div>
+        }
+      >
+        <ScreenLabel label="워크스페이스-프로젝트목록-섹션" visible={showScreenLabels} />
 
         <div className="relative" data-ui-label="[C-1] Project List Content">
         {loading ? (
-          <p>불러오는 중...</p>
+          <LoadingState />
         ) : listMessage ? (
-          <p style={{ color: "#b00020" }}>{listMessage}</p>
+          <InlineAlert variant="danger">{listMessage}</InlineAlert>
         ) : projects.length === 0 ? (
-          <p>등록된 프로젝트가 없습니다.</p>
+          <EmptyState title="등록된 프로젝트가 없습니다." />
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
             {projects.map((project) => {
@@ -460,15 +446,14 @@ export default function HomePage() {
                 textDecoration: "none",
               };
               return (
-              <div
+              <Card
+                compact
                 key={project.id}
                 className="relative"
                 data-testid={`project-card-${project.id}`}
                 data-project-highlight={highlightProjectId === project.id ? "1" : undefined}
                 style={{
                   border: highlightProjectId === project.id ? "2px solid #0d9488" : "1px solid #e5e5e5",
-                  borderRadius: 10,
-                  padding: 16,
                   background: highlightProjectId === project.id ? "#f0fdfa" : undefined,
                   boxShadow: highlightProjectId === project.id ? "0 0 0 3px rgba(13, 148, 136, 0.2)" : undefined,
                 }}
@@ -514,35 +499,26 @@ export default function HomePage() {
                     {showOwnerDelete ? (
                       <div className="relative">
                         <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
-                        <button
+                        <Button
                           type="button"
+                          variant="danger"
+                          size="sm"
                           data-testid={`home-delete-project-${project.id}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setDeleteTarget({ id: project.id, name: project.name });
                           }}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            padding: "8px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #fecaca",
-                            background: "#fff",
-                            color: "#b91c1c",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
                         >
                           삭제
-                        </button>
+                        </Button>
                       </div>
                     ) : null}
                     <div data-home-project-card-menu-root={project.id} className="relative">
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-메뉴" visible={showScreenLabels} />
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       data-testid={
                         project.name === "Web Meeting MVP" ? "project-settings-seed" : `project-card-settings-${project.id}`
                       }
@@ -555,20 +531,14 @@ export default function HomePage() {
                         setProjectCardMenuId((cur) => (cur === project.id ? null : project.id));
                       }}
                       style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
                         width: 36,
                         height: 36,
-                        borderRadius: 8,
-                        border: "1px solid #e2e8f0",
-                        background: "#fff",
+                        padding: 0,
                         color: "#64748b",
-                        cursor: "pointer",
                       }}
                     >
                       <ProjectCardSettingsIcon />
-                    </button>
+                    </Button>
                     {menuOpen ? (
                       <div
                         role="dialog"
@@ -723,13 +693,13 @@ export default function HomePage() {
                     return normalized || "설명 없음";
                   })()}
                 </div>
-              </div>
+              </Card>
               );
             })}
           </div>
         )}
         </div>
-      </section>
+      </SectionCard>
       {deleteTarget ? (
         <ProjectDeleteConfirmModal
           open={Boolean(deleteTarget)}
@@ -792,42 +762,20 @@ export default function HomePage() {
               ) : null}
             </div>
             <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button
-                type="button"
-                disabled={editDescBusy}
-                onClick={() => setEditDescTarget(null)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #cbd5e1",
-                  background: "#fff",
-                  color: "#0f172a",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  cursor: editDescBusy ? "not-allowed" : "pointer",
-                  opacity: editDescBusy ? 0.6 : 1,
-                }}
-              >
+              <Button type="button" variant="secondary" size="md" disabled={editDescBusy} onClick={() => setEditDescTarget(null)}>
                 취소
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="primary"
+                size="md"
+                loading={editDescBusy}
                 disabled={editDescBusy}
                 onClick={() => void saveEditDescription()}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #0f766e",
-                  background: "#0f766e",
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 900,
-                  cursor: editDescBusy ? "not-allowed" : "pointer",
-                  opacity: editDescBusy ? 0.7 : 1,
-                }}
+                style={{ background: "#0f766e", borderColor: "#0f766e" }}
               >
-                저장
-              </button>
+                {editDescBusy ? "저장 중..." : "저장"}
+              </Button>
             </div>
           </div>
         </div>
