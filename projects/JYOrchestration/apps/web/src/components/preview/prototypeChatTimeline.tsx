@@ -733,25 +733,24 @@ export function PrototypeChatInput(p: {
         disabled={p.disabled}
         style={{
           ...(embedded ? {} : chipMuted),
-          width: embedded ? 42 : 40,
-          height: embedded ? 42 : 40,
+          width: embedded ? 44 : 40,
+          height: embedded ? 44 : 40,
           padding: 0,
           flexShrink: 0,
-          fontSize: embedded ? 24 : 18,
-          fontWeight: 900,
-          lineHeight: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           borderRadius: embedded ? 999 : undefined,
-          border: embedded ? "1px solid #e2e8f0" : undefined,
-          background: embedded ? "#fff" : undefined,
-          color: "#0f172a",
+          border: embedded ? "none" : undefined,
+          background: embedded ? "#f1f5f9" : undefined,
+          color: embedded ? "#475569" : "#0f172a",
           opacity: p.disabled ? 0.45 : 1,
           cursor: p.disabled ? "not-allowed" : "pointer",
         }}
       >
-        +
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+          <path d="M12 5v14M5 12h14" />
+        </svg>
       </button>
       <textarea
         ref={p.inputRef}
@@ -759,22 +758,60 @@ export function PrototypeChatInput(p: {
         onChange={(e) => p.onChange(e.target.value)}
         onKeyDown={p.onKeyDown}
         placeholder={p.placeholder}
-        rows={2}
+        rows={1}
         disabled={p.disabled}
         style={{
           flex: 1,
           resize: "none",
-          borderRadius: embedded ? 12 : 10,
-          border: "1px solid #cbd5e1",
-          padding: embedded ? "10px 12px" : 8,
-          fontSize: embedded ? 13 : 12.5,
-          lineHeight: 1.45,
-          fontWeight: 800,
+          borderRadius: embedded ? 0 : 10,
+          border: embedded ? "none" : "1px solid #cbd5e1",
+          padding: embedded ? "10px 6px" : 8,
+          fontSize: embedded ? 16 : 12.5,
+          lineHeight: embedded ? 1.5 : 1.45,
+          fontWeight: embedded ? 600 : 800,
           minHeight: embedded ? 44 : 44,
+          maxHeight: embedded ? 220 : undefined,
+          outline: "none",
+          background: embedded ? "transparent" : "#fff",
+          color: "#0f172a",
+          fontFamily: "inherit",
         }}
       />
-      <button type="button" onClick={() => p.onSend()} disabled={p.disabled || !p.value.trim()} style={chipPrimary}>
-        전송
+      <button
+        type="button"
+        onClick={() => p.onSend()}
+        disabled={p.disabled || !p.value.trim()}
+        aria-label="전송"
+        title="전송"
+        style={
+          embedded
+            ? {
+                flex: "0 0 auto",
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                border: "none",
+                background: p.disabled || !p.value.trim() ? "#cbd5e1" : "linear-gradient(180deg, #0f766e 0%, #0d5c56 100%)",
+                color: "#fff",
+                cursor: p.disabled ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 18,
+                lineHeight: 1,
+                boxShadow: p.disabled || !p.value.trim() ? "none" : "0 8px 20px -6px rgba(13, 92, 86, 0.45)",
+              }
+            : chipPrimary
+        }
+      >
+        {embedded ? (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 12h12" />
+            <path d="M13 6l6 6-6 6" />
+          </svg>
+        ) : (
+          "전송"
+        )}
       </button>
     </div>
   );

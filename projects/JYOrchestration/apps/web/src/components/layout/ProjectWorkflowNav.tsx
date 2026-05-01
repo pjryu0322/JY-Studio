@@ -4,12 +4,13 @@ import type { CSSProperties } from "react";
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { DesktopWorkflowTabs } from "@/components/layout/DesktopWorkflowTabs";
 import { MobileStepSelector } from "@/components/layout/MobileStepSelector";
+import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import {
   appFlowStepHref,
   isWorkflowStepNavActive,
@@ -43,8 +44,7 @@ function ProjectWorkflowNavInner() {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
-  const [narrow, setNarrow] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const narrow = useMediaQuery("(max-width: 720px)");
 
   const projectContextId = useMemo(
     () => resolveWorkflowProjectContextId(pathname, searchParams),
@@ -56,18 +56,6 @@ function ProjectWorkflowNavInner() {
   const admin: NavItem[] = useMemo(() => [], []);
 
   if (!hasProjectContext || !projectContextId) return null;
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 720px)");
-    const apply = () => setNarrow(mq.matches);
-    apply();
-    const onChange = () => {
-      apply();
-      setSheetOpen(false);
-    };
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
 
   const workflowItems = useMemo(() => {
     return workflowStepMeta.map((item) => {

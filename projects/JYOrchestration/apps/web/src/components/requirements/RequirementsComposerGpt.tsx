@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import { useMediaQuery } from "@/components/ui/useMediaQuery";
 
 export type RequirementsComposerToolsMenu = {
   readonly onOrganizeRequirements: () => void;
@@ -128,7 +129,6 @@ export function RequirementsComposerGpt({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [narrow, setNarrow] = useState(false);
   const menuId = useId();
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [lastAtAtIndex, setLastAtAtIndex] = useState<number | null>(null);
@@ -179,17 +179,10 @@ export function RequirementsComposerGpt({
     setTargetPickerOpen(true);
   }, [value, hasTargetPicker]);
 
+  const narrow = useMediaQuery("(max-width: 640px)");
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 640px)");
-    const apply = () => setNarrow(mq.matches);
-    apply();
-    const onChange = () => {
-      apply();
-      setMenuOpen(false);
-    };
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
+    setMenuOpen(false);
+  }, [narrow]);
 
   useEffect(() => {
     if (!menuOpen) return;
