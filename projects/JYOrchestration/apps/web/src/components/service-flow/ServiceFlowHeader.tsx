@@ -1,6 +1,7 @@
 "use client";
 
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 export function ServiceFlowHeader(p: {
   readonly progressPercent: number;
@@ -22,13 +23,13 @@ export function ServiceFlowHeader(p: {
           onClick={() => p.onOpenRemaining()}
           title={p.hint?.trim() ? p.hint ?? undefined : "남은 결정사항 보기"}
           style={{
-            border: "1px solid #cbd5e1",
-            background: "#fff",
+            border: `1px solid ${t.borderStrong}`,
+            background: t.bgCard,
             borderRadius: 999,
             padding: "6px 10px",
             fontSize: 12,
             fontWeight: 900,
-            color: "#0f172a",
+            color: t.textPrimary,
             cursor: "pointer",
             display: "inline-flex",
             alignItems: "center",
@@ -37,8 +38,8 @@ export function ServiceFlowHeader(p: {
           }}
         >
           <span style={{ whiteSpace: "nowrap" }}>흐름 설계도 {p.progressPercent}%</span>
-          <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
-          <span style={{ whiteSpace: "nowrap", color: "#334155" }}>
+          <span style={{ color: t.textMuted, fontWeight: 900 }}>·</span>
+          <span style={{ whiteSpace: "nowrap", color: t.textSecondary }}>
             {p.filledSlotCount}/{p.progressSlotTotal}
           </span>
         </button>

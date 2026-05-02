@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ResponsivePageContainer, ResponsiveShell } from "@/components/layout";
-import { fetchExecutionSetup } from "@/components/project-spec/api";
+import { fetchExecutionSetup, patchSpecWorkspace } from "@/components/project-spec/api";
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { Button, Card, EmptyState, InlineAlert, LoadingState, SectionCard, uiTokens as t } from "@/components/ui";
@@ -322,13 +322,9 @@ export default function HomePage() {
     try {
       const p = projectsRef.current.find((x) => x.id === editDescTarget.id);
       if (!p) throw new Error("프로젝트를 찾을 수 없습니다.");
-      const res = await fetch(`/api/projects/${encodeURIComponent(editDescTarget.id)}/spec-workspace`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: editDescValue.trim() || null }),
+      const { res, json } = await patchSpecWorkspace(editDescTarget.id, {
+        description: editDescValue.trim() || null,
       });
-      const json = (await res.json()) as { success?: boolean; message?: string };
       if (!res.ok || !json.success) throw new Error(json.message || "저장에 실패했습니다.");
       setProjects((cur) =>
         cur.map((row) => (row.id === editDescTarget.id ? { ...row, description: editDescValue.trim() || null } : row))

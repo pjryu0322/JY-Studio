@@ -4,6 +4,7 @@ export {
   APP_FLOW_STEPS,
   appFlowStepHref,
   nextStepAfter,
+  notifyAppFlowProjectContextRefresh,
   projectIdFromPathname,
   resolveAppFlowStepFromLocation,
   type AppFlowStepDef,

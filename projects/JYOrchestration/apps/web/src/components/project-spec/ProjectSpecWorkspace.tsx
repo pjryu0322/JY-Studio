@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AiDraftCandidate,
-  fetchSpecWorkspace,
   patchSpecWorkspace,
   patchProjectSpecContext,
   postProjectPlanGenerate,
@@ -11,18 +10,16 @@ import {
   postSpecWorkspaceAction,
   type SpecWorkspaceSnapshot,
 } from "@/components/project-spec/api";
+import { useProjectSpecWorkspaceData } from "@/components/project-spec/useProjectSpecWorkspaceData";
+import { hydrateProjectSpecWorkspaceFromSnapshot } from "@/components/project-spec/workspaceHydrateFromSnapshot";
+import { type FormState, emptyForm, projectToForm } from "@/components/project-spec/workspaceFormState";
 import { ProjectSpecAiDraftPlanSection } from "@/components/project-spec/ProjectSpecAiDraftPlanSection";
 import { TaskDraftPanel, type TaskDraftWorkflowExecutionProps } from "@/components/project-spec/TaskDraftPanel";
 import type { Project, ProjectSpecResponseRecord, TaskDraftSyncResultDto } from "@/components/project-spec/types";
 import { formatTestedAt } from "@/components/project-spec/format";
-import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WorkspaceSectionHeader } from "@/components/project-spec/WorkspaceSectionHeader";
-import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 import { parseMarkdownToSections } from "@/lib/project-spec/parseMarkdownSections";
-import {
-  buildFallbackProjectPlanMarkdown,
-  parseProjectPlanMarkdownToForm,
-} from "@/lib/project-spec/parseProjectPlanMarkdown";
+import { parseProjectPlanMarkdownToForm } from "@/lib/project-spec/parseProjectPlanMarkdown";
 import {
   DEFAULT_SPEC_WORKSPACE_AI_MODEL,
   SPEC_WORKSPACE_AI_MODELS,
@@ -37,6 +34,9 @@ import {
   type SpecPromptPresetId,
 } from "@/lib/project-spec/specPromptPresets";
 import { summarizeMarkdownSectionDiff } from "@/lib/project-spec/specCompareSummary";
+import { useTimedSuccessErrorToasts } from "@/components/workspace/useTimedSuccessErrorToasts";
+import { WorkspaceFetchStatus } from "@/components/workspace/WorkspaceFetchStatus";
+import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
 
 /** 자동 초안 API 중복 호출 방지 (동시에 하나만) */
 const specAutoDraftInFlightByProject = new Map<string, boolean>();
@@ -53,52 +53,12 @@ type ProjectSpecWorkspaceProps = {
   onAfterTaskDraftsGenerate?: () => void | Promise<void>;
 };
 
-type FormState = {
-  name: string;
-  description: string;
-  projectType: string;
-  specCoreGoals: string;
-  specScopeIn: string;
-  specScopeOut: string;
-  specTargetUsers: string;
-  specSuccessCriteria: string;
-};
-
-function emptyForm(): FormState {
-  return {
-    name: "",
-    description: "",
-    projectType: "web-service",
-    specCoreGoals: "",
-    specScopeIn: "",
-    specScopeOut: "",
-    specTargetUsers: "",
-    specSuccessCriteria: "",
-  };
-}
-
 function readTaskDraftSyncFromPayload(data: unknown): TaskDraftSyncResultDto | null {
   if (!data || typeof data !== "object") {
     return null;
   }
   const d = data as { taskDraftSync?: TaskDraftSyncResultDto };
   return d.taskDraftSync ?? null;
-}
-
-function projectToForm(p: Project | null): FormState {
-  if (!p) {
-    return emptyForm();
-  }
-  return {
-    name: p.name ?? "",
-    description: p.description ?? "",
-    projectType: p.projectType || "web-service",
-    specCoreGoals: p.specCoreGoals ?? "",
-    specScopeIn: p.specScopeIn ?? "",
-    specScopeOut: p.specScopeOut ?? "",
-    specTargetUsers: p.specTargetUsers ?? "",
-    specSuccessCriteria: p.specSuccessCriteria ?? "",
-  };
 }
 
 export function ProjectSpecWorkspace({
@@ -111,12 +71,9 @@ export function ProjectSpecWorkspace({
 }: ProjectSpecWorkspaceProps) {
   const [projectInfoOpen, setProjectInfoOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
-  const [workspace, setWorkspace] = useState<SpecWorkspaceSnapshot | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadingWs, setLoadingWs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [statusLine, setStatusLine] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
   const [planRevisionModel, setPlanRevisionModel] = useState<SpecWorkspaceAiModelId>(DEFAULT_SPEC_WORKSPACE_AI_MODEL);
@@ -163,6 +120,34 @@ export function ProjectSpecWorkspace({
   const formRefForAutoGuard = useRef(form);
   formRefForAutoGuard.current = form;
 
+  const hydrateFromWorkspaceSnapshot = useCallback((snapshot: SpecWorkspaceSnapshot) => {
+    hydrateProjectSpecWorkspaceFromSnapshot(snapshot, {
+      setForm,
+      setWorkingDocument,
+      setLastSavedWorkingDocument,
+      setSelectedPlanCandidateId,
+      planWorkspaceHydratedRef,
+    });
+  }, []);
+
+  const { workspace, setWorkspace, loadError, loadingWs, loadWorkspace } = useProjectSpecWorkspaceData(
+    projectId,
+    hydrateFromWorkspaceSnapshot
+  );
+
+  const {
+    successToast,
+    errorToast,
+    showSuccessToast,
+    showErrorToast,
+    clearToasts,
+  } = useTimedSuccessErrorToasts({ successDismissMs: 2500, errorDismissMs: 5000 });
+
+  const clearWorkspaceFeedback = useCallback(() => {
+    setStatusLine(null);
+    clearToasts();
+  }, [clearToasts]);
+
   useEffect(() => {
     const prev = prevProjectIdRef.current;
     if (prev && prev !== projectId) {
@@ -181,75 +166,6 @@ export function ProjectSpecWorkspace({
     }
   }, [project, workspace]);
 
-  const loadWorkspace = useCallback(async () => {
-    if (!projectId) {
-      return;
-    }
-    setLoadingWs(true);
-    setLoadError(null);
-    try {
-      const { res, json } = await fetchSpecWorkspace(projectId);
-      if (!res.ok || !json.success || !json.data) {
-        setLoadError(json.message || "워크스페이스를 불러오지 못했습니다.");
-        setWorkspace(null);
-        return;
-      }
-      setWorkspace({
-        ...json.data,
-        specVersions: json.data.specVersions ?? [],
-        responses: json.data.responses ?? [],
-        specPromptConfig: json.data.specPromptConfig ?? null,
-      });
-      const p = json.data.project;
-      setForm({
-        name: p.name,
-        description: p.description ?? "",
-        projectType: p.projectType,
-        specCoreGoals: p.specCoreGoals ?? "",
-        specScopeIn: p.specScopeIn ?? "",
-        specScopeOut: p.specScopeOut ?? "",
-        specTargetUsers: p.specTargetUsers ?? "",
-        specSuccessCriteria: p.specSuccessCriteria ?? "",
-      });
-      if (p.executionPlanMarkdown?.trim()) {
-        setWorkingDocument(p.executionPlanMarkdown);
-        setLastSavedWorkingDocument(p.executionPlanMarkdown);
-      } else {
-        const slice = {
-          specCoreGoals: p.specCoreGoals ?? "",
-          specScopeIn: p.specScopeIn ?? "",
-          specScopeOut: p.specScopeOut ?? "",
-          specTargetUsers: p.specTargetUsers ?? "",
-          specSuccessCriteria: p.specSuccessCriteria ?? "",
-        };
-        const hasAny =
-          slice.specCoreGoals.trim() ||
-          slice.specScopeIn.trim() ||
-          slice.specScopeOut.trim() ||
-          slice.specTargetUsers.trim() ||
-          slice.specSuccessCriteria.trim();
-        if (hasAny) {
-          const md = buildFallbackProjectPlanMarkdown(slice);
-          setWorkingDocument(md);
-          setLastSavedWorkingDocument(md);
-        }
-      }
-      if (p.selectedPlanCandidateId) {
-        setSelectedPlanCandidateId(p.selectedPlanCandidateId);
-      }
-      planWorkspaceHydratedRef.current = true;
-    } catch (e) {
-      console.error(e);
-      setLoadError("워크스페이스 조회 중 오류가 발생했습니다.");
-    } finally {
-      setLoadingWs(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    void loadWorkspace();
-  }, [loadWorkspace]);
-
   useEffect(() => {
     setChosenSpecResponseId(null);
   }, [projectId]);
@@ -267,7 +183,7 @@ export function ProjectSpecWorkspace({
         preset: SPEC_PROMPT_PRESET_IDS.includes(p) ? p : "default",
       });
     }
-  }, [workspace?.specPromptConfig?.id, workspace?.specPromptConfig?.lastEditedAt]);
+  }, [workspace?.specPromptConfig]);
 
   useEffect(() => {
     if (!lastTaskDraftSync) {
@@ -276,22 +192,6 @@ export function ProjectSpecWorkspace({
     const t = setTimeout(() => setLastTaskDraftSync(null), 10_000);
     return () => clearTimeout(t);
   }, [lastTaskDraftSync]);
-
-  const specWorkflowConfirmed = useMemo(
-    () =>
-      Boolean(
-        workspace?.project?.currentSpecVersionId ||
-          project?.currentSpecVersionId ||
-          workspace?.project?.confirmedSpecAt ||
-          project?.confirmedSpecAt
-      ),
-    [
-      workspace?.project?.currentSpecVersionId,
-      project?.currentSpecVersionId,
-      workspace?.project?.confirmedSpecAt,
-      project?.confirmedSpecAt,
-    ]
-  );
 
   const effectiveSpecSlice = useMemo(() => {
     if (workingDocument.trim()) {
@@ -490,15 +390,15 @@ export function ProjectSpecWorkspace({
     }
     const md = specDraftMarkdown.trim();
     if (!md) {
-      setMessage("저장할 마크다운이 비어 있습니다.");
+      showErrorToast("저장할 마크다운이 비어 있습니다.");
       return;
     }
     setActionBusy("append-manual");
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, { action: "appendManualSpec", markdown: md });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "저장에 실패했습니다.");
+        showErrorToast(json.message || "저장에 실패했습니다.");
         return;
       }
       const data = json.data as { project?: SpecWorkspaceSnapshot["project"] } | undefined;
@@ -514,12 +414,12 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("수정 내용을 새 버전으로 저장했습니다.");
+      showSuccessToast("수정 내용을 새 버전으로 저장했습니다.");
       setSpecEditOpen(false);
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("저장 중 오류가 발생했습니다.");
+      showErrorToast("저장 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -530,11 +430,11 @@ export function ProjectSpecWorkspace({
       return;
     }
     setActionBusy("refine-spec");
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, { action: "refineSpec", model: selectedModel });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "AI 개선에 실패했습니다.");
+        showErrorToast(json.message || "AI 개선에 실패했습니다.");
         return;
       }
       const data = json.data as { project?: SpecWorkspaceSnapshot["project"] } | undefined;
@@ -550,11 +450,11 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("현재 확정된 실행 계획을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.");
+      showSuccessToast("현재 확정된 실행 계획을 바탕으로 AI 개선본을 새 버전으로 저장했습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("AI 개선 중 오류가 발생했습니다.");
+      showErrorToast("AI 개선 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -565,11 +465,11 @@ export function ProjectSpecWorkspace({
       return;
     }
     setActionBusy(`rollback-${versionId}`);
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, { action: "rollbackSpec", versionId });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "롤백에 실패했습니다.");
+        showErrorToast(json.message || "롤백에 실패했습니다.");
         return;
       }
       const data = json.data as { project?: SpecWorkspaceSnapshot["project"] } | undefined;
@@ -585,11 +485,11 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("선택한 버전을 현재 활성 실행 계획으로 되돌렸습니다.");
+      showSuccessToast("선택한 버전을 현재 활성 실행 계획으로 되돌렸습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("롤백 중 오류가 발생했습니다.");
+      showErrorToast("롤백 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -600,7 +500,7 @@ export function ProjectSpecWorkspace({
       return;
     }
     setSaving(true);
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await patchProjectSpecContext({
         projectId,
@@ -615,7 +515,7 @@ export function ProjectSpecWorkspace({
         selectedPlanCandidateId: selectedPlanCandidateId,
       });
       if (!res.ok || !json.success || !json.data) {
-        setMessage(json.message || "저장에 실패했습니다.");
+        showErrorToast(json.message || "저장에 실패했습니다.");
         return;
       }
       const ctx = json.data;
@@ -629,12 +529,12 @@ export function ProjectSpecWorkspace({
       }));
       setLastSavedWorkingDocument(workingDocument);
       setPlanDocumentDirty(false);
-      setMessage("실행 계획이 저장되었습니다. 다음 단계 「AI 실행 계획 문서 생성」에 반영됩니다.");
+      showSuccessToast("실행 계획이 저장되었습니다. 다음 단계 「AI 실행 계획 문서 생성」에 반영됩니다.");
       mergeContextIntoProject(ctx);
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("저장 중 오류가 발생했습니다.");
+      showErrorToast("저장 중 오류가 발생했습니다.");
     } finally {
       setSaving(false);
     }
@@ -671,7 +571,7 @@ export function ProjectSpecWorkspace({
       }
       isGeneratingRef.current = true;
       setGeneratingContext(true);
-      setMessage(null);
+      clearWorkspaceFeedback();
       try {
         const models = input.models?.length ? input.models : (["gpt-4o-mini"] as SpecWorkspaceAiModelId[]);
         const { res, json } = await postProjectPlanGenerate({
@@ -682,7 +582,7 @@ export function ProjectSpecWorkspace({
           models,
         });
         if (!res.ok || !json.success || !json.data?.candidates?.length) {
-          setMessage(json.message || "AI 실행 계획 초안 생성에 실패했습니다.");
+          showErrorToast(json.message || "AI 실행 계획 초안 생성에 실패했습니다.");
           return false;
         }
         const candidates = json.data.candidates;
@@ -700,7 +600,7 @@ export function ProjectSpecWorkspace({
           ...prev,
           ...parsed,
         }));
-        setMessage(
+        showSuccessToast(
           failures.length > 0
             ? `${input.successMessage} (일부 모델 실패 — 상단 메시지 참고)`
             : input.successMessage
@@ -708,14 +608,14 @@ export function ProjectSpecWorkspace({
         return true;
       } catch (e) {
         console.error(e);
-        setMessage("AI 실행 계획 초안 생성 중 오류가 발생했습니다.");
+        showErrorToast("AI 실행 계획 초안 생성 중 오류가 발생했습니다.");
         return false;
       } finally {
         isGeneratingRef.current = false;
         setGeneratingContext(false);
       }
     },
-    [projectId, canEdit]
+    [projectId, canEdit, showSuccessToast, showErrorToast, clearWorkspaceFeedback]
   );
 
   useEffect(() => {
@@ -790,11 +690,11 @@ export function ProjectSpecWorkspace({
       return;
     }
     if (!form.name.trim() || !form.description.trim() || !form.projectType.trim()) {
-      setMessage("프로젝트명·설명·유형을 입력하세요.");
+      showErrorToast("프로젝트명·설명·유형을 입력하세요.");
       return;
     }
     if (selectedModelsForPlan.length === 0) {
-      setMessage("모델을 하나 이상 선택하세요.");
+      showErrorToast("모델을 하나 이상 선택하세요.");
       return;
     }
     if (mode === "regenerate") {
@@ -847,7 +747,7 @@ export function ProjectSpecWorkspace({
       return;
     }
     setActionBusy("plan-revise");
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await postProjectPlanRevise({
         projectId,
@@ -856,7 +756,7 @@ export function ProjectSpecWorkspace({
         model: planRevisionModel,
       });
       if (!res.ok || !json.success || !json.data?.content) {
-        setMessage(json.message || "AI 개선 제안에 실패했습니다.");
+        showErrorToast(json.message || "AI 개선 제안에 실패했습니다.");
         return;
       }
       setPlanRevisionSuggestion({
@@ -864,10 +764,10 @@ export function ProjectSpecWorkspace({
         content: json.data.content,
         createdAt: new Date().toISOString(),
       });
-      setMessage("AI 개선 제안을 받았습니다. 적용 또는 무시를 선택하세요.");
+      showSuccessToast("AI 개선 제안을 받았습니다. 적용 또는 무시를 선택하세요.");
     } catch (e) {
       console.error(e);
-      setMessage("AI 개선 제안 중 오류가 발생했습니다.");
+      showErrorToast("AI 개선 제안 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -894,7 +794,7 @@ export function ProjectSpecWorkspace({
       return;
     }
     if (!canRunAiProjectSpec) {
-      setMessage(
+      showErrorToast(
         planDocumentDirty
           ? "실행 계획이 저장되지 않은 변경이 있습니다. 먼저 「실행계획 저장」을 실행하세요."
           : !baseInputsOk
@@ -911,7 +811,7 @@ export function ProjectSpecWorkspace({
     }
     const fingerprintNow = `${specPromptDraft.preset}|${specPromptDraft.template.trim()}|${selectedModel}`;
     setActionBusy("ai-spec");
-    setMessage("저장된 실행 계획만을 반영해 AI에 실행 계획 문서 생성을 요청하는 중…");
+    setStatusLine("저장된 실행 계획만을 반영해 AI에 실행 계획 문서 생성을 요청하는 중…");
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "aiRequest",
@@ -920,7 +820,7 @@ export function ProjectSpecWorkspace({
         templatePrompt: specPromptDraft.template,
       });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "AI 실행 계획 문서 생성에 실패했습니다.");
+        showErrorToast(json.message || "AI 실행 계획 문서 생성에 실패했습니다.");
         return;
       }
       const data = json.data as {
@@ -930,12 +830,13 @@ export function ProjectSpecWorkspace({
         mergeWorkspaceProjectSlice(data.project);
       }
       setSpecGenFingerprintAtLastRun(fingerprintNow);
-      setMessage("AI 실행 계획 문서 초안이 응답 목록에 추가되었습니다.");
+      showSuccessToast("AI 실행 계획 문서 초안이 응답 목록에 추가되었습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("AI 실행 계획 문서 생성 중 오류가 발생했습니다.");
+      showErrorToast("AI 실행 계획 문서 생성 중 오류가 발생했습니다.");
     } finally {
+      setStatusLine(null);
       setActionBusy(null);
     }
   }
@@ -945,14 +846,14 @@ export function ProjectSpecWorkspace({
       return;
     }
     setActionBusy(`confirm-${response.id}`);
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "confirm",
         responseId: response.id,
       });
       if (!res.ok || !json.success || !json.data || typeof json.data !== "object") {
-        setMessage(json.message || "확정에 실패했습니다.");
+        showErrorToast(json.message || "확정에 실패했습니다.");
         return;
       }
       const data = json.data as { project?: SpecWorkspaceSnapshot["project"] };
@@ -968,12 +869,12 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("이 응답을 공식 실행 계획으로 확정했습니다.");
+      showSuccessToast("이 응답을 공식 실행 계획으로 확정했습니다.");
       setChosenSpecResponseId(null);
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("확정 처리 중 오류가 발생했습니다.");
+      showErrorToast("확정 처리 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -984,7 +885,7 @@ export function ProjectSpecWorkspace({
       return;
     }
     setActionBusy("confirm-merged");
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await postSpecWorkspaceAction(projectId, {
         action: "confirmMerged",
@@ -994,7 +895,7 @@ export function ProjectSpecWorkspace({
         selectedSections,
       });
       if (!res.ok || !json.success) {
-        setMessage((json as { message?: string }).message || "병합 확정에 실패했습니다.");
+        showErrorToast((json as { message?: string }).message || "병합 확정에 실패했습니다.");
         return;
       }
 
@@ -1011,12 +912,12 @@ export function ProjectSpecWorkspace({
         setLastTaskDraftSync(sync);
         setDraftRefreshKey((k) => k + 1);
       }
-      setMessage("병합 결과를 공식 실행 계획으로 확정했습니다.");
+      showSuccessToast("병합 결과를 공식 실행 계획으로 확정했습니다.");
       setChosenSpecResponseId(null);
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("병합 확정 처리 중 오류가 발생했습니다.");
+      showErrorToast("병합 확정 처리 중 오류가 발생했습니다.");
     } finally {
       setActionBusy(null);
     }
@@ -1079,14 +980,14 @@ export function ProjectSpecWorkspace({
       return;
     }
     setSpecPromptUiBusy(true);
-    setMessage(null);
+    clearWorkspaceFeedback();
     try {
       const { res, json } = await patchSpecWorkspace(projectId, {
         specPromptTemplate: specPromptDraft.template,
         specPromptPreset: specPromptDraft.preset,
       });
       if (!res.ok || !json.success) {
-        setMessage(json.message || "프롬프트 설정 저장에 실패했습니다.");
+        showErrorToast(json.message || "프롬프트 설정 저장에 실패했습니다.");
         return;
       }
       if (json.data?.specPromptConfig) {
@@ -1099,11 +1000,11 @@ export function ProjectSpecWorkspace({
             : ws
         );
       }
-      setMessage("실행 계획 문서 생성용 프롬프트 설정을 저장했습니다.");
+      showSuccessToast("실행 계획 문서 생성용 프롬프트 설정을 저장했습니다.");
       await loadWorkspace();
     } catch (e) {
       console.error(e);
-      setMessage("프롬프트 설정 저장 중 오류가 발생했습니다.");
+      showErrorToast("프롬프트 설정 저장 중 오류가 발생했습니다.");
     } finally {
       setSpecPromptUiBusy(false);
     }
@@ -1112,9 +1013,6 @@ export function ProjectSpecWorkspace({
   if (!projectId) {
     return null;
   }
-
-  const projectName = (workspace?.project.name ?? project?.name ?? "").trim();
-  const projectDescription = (workspace?.project.description ?? project?.description ?? "").trim();
 
   const compareLeft = compareIds[0] ? workspace?.responses.find((r) => r.id === compareIds[0]) : undefined;
   const compareRight = compareIds[1] ? workspace?.responses.find((r) => r.id === compareIds[1]) : undefined;
@@ -1192,12 +1090,7 @@ export function ProjectSpecWorkspace({
         ) : null}
       </div>
 
-      {loadError ? (
-        <p style={{ color: "#b91c1c", marginBottom: 12 }}>{loadError}</p>
-      ) : null}
-      {loadingWs && !workspace ? (
-        <p style={{ color: "#64748b" }}>불러오는 중…</p>
-      ) : null}
+      <WorkspaceFetchStatus loadError={loadError} loadingWithoutData={loadingWs && !workspace} />
 
       {/* [A] 실행 계획 입력 */}
       <div
@@ -2802,9 +2695,10 @@ export function ProjectSpecWorkspace({
 
       {/* 실행 환경·Git 저장소: 프로젝트 관리 → 설정 [F-1-3-6] */}
 
-      {message ? (
+      <WorkspaceSuccessErrorSaveToastHost success={successToast} error={errorToast} />
+      {statusLine ? (
         <p style={{ marginTop: 14, marginBottom: 0, fontSize: 13, color: "#334155" }} role="status">
-          {message}
+          {statusLine}
         </p>
       ) : null}
     </section>
