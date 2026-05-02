@@ -67,10 +67,7 @@ export function ExecutionPageClient() {
   }, [requirementsStateJson]);
 
   return (
-    <WorkflowStageChrome
-      title={null}
-      subtitle={undefined}
-    >
+    <WorkflowStageChrome title={null} subtitle={undefined}>
       <div
         style={{
           flex: 1,

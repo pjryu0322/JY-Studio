@@ -10,7 +10,8 @@ const CONTENT_PAD_BOTTOM = "max(64px, calc(56px + env(safe-area-inset-bottom, 0p
 
 export type MobileShellProps = Readonly<{
   children: ReactNode;
-  title: string;
+  /** 비어 있으면 `PlatformTopNav`만 사용하고 보조 탑바는 렌더하지 않습니다. */
+  title?: string;
   currentNav: MobileNavTabId;
   onNavChange: (id: MobileNavTabId) => void;
   topLeftAction?: ReactNode;
@@ -21,6 +22,7 @@ export type MobileShellProps = Readonly<{
  * Mobile layout: sticky top bar, scrollable content, fixed bottom nav.
  */
 export function MobileShell(p: MobileShellProps) {
+  const barTitle = (p.title ?? "").trim();
   return (
     <div
       style={{
@@ -31,7 +33,7 @@ export function MobileShell(p: MobileShellProps) {
         boxSizing: "border-box",
       }}
     >
-      <MobileTopBar title={p.title} leftAction={p.topLeftAction} rightAction={p.topRightAction} />
+      {barTitle ? <MobileTopBar title={barTitle} leftAction={p.topLeftAction} rightAction={p.topRightAction} /> : null}
       <main
         style={{
           flex: 1,

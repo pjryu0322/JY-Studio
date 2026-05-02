@@ -1,6 +1,9 @@
 "use client";
 
-import { useId, type MutableRefObject, type ReactNode, type Ref } from "react";
+import { useId, useRef, type MutableRefObject, type ReactNode } from "react";
+import { ComposerAtAtTargetPicker } from "@/components/composer/ComposerAtAtTargetPicker";
+import { useComposerAtAtPicker } from "@/hooks/useComposerAtAtPicker";
+import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 
 function PlusIcon() {
   return (
@@ -21,6 +24,7 @@ export function ServiceFlowComposer({
   textAreaRef,
   actionMenu,
   actionsOpen,
+  targetPickerItems,
 }: {
   readonly value: string;
   readonly onChange: (v: string) => void;
@@ -31,18 +35,27 @@ export function ServiceFlowComposer({
   readonly textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   readonly actionMenu: ReactNode;
   readonly actionsOpen: boolean;
+  /** `@@` 멘션 후보(요구사항 컴포저와 동일 규칙) */
+  readonly targetPickerItems?: readonly ComposerAtAtPickerItem[];
 }) {
   const id = useId();
   const controlsId = actionsOpen ? `${id}-actions` : undefined;
+  const innerTaRef = useRef<HTMLTextAreaElement | null>(null);
+  const { targetPickerOpen, normalizedTargetPickerItems, closeTargetPicker, pickTargetItem } = useComposerAtAtPicker({
+    value,
+    onChange,
+    items: targetPickerItems,
+    textareaRef: innerTaRef,
+  });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", minWidth: 0, position: "relative" }}>
       <div
         style={{
           display: "flex",
           alignItems: "flex-end",
           gap: 10,
-          borderRadius: 999,
+          borderRadius: 22,
           border: "1px solid #e2e8f0",
           background: "#fff",
           boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
@@ -74,9 +87,21 @@ export function ServiceFlowComposer({
           </button>
           {actionMenu}
         </div>
-        <div className="relative" style={{ position: "relative", flex: 1, minWidth: 0 }}>
+        <div
+          className="relative"
+          style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}
+        >
+          <ComposerAtAtTargetPicker
+            open={targetPickerOpen}
+            items={normalizedTargetPickerItems}
+            onPick={pickTargetItem}
+            onClose={closeTargetPicker}
+          />
           <textarea
-            ref={textAreaRef as Ref<HTMLTextAreaElement> | undefined}
+            ref={(el) => {
+              innerTaRef.current = el;
+              if (textAreaRef) textAreaRef.current = el;
+            }}
             value={value}
             disabled={disabled}
             rows={1}
@@ -92,7 +117,7 @@ export function ServiceFlowComposer({
             style={{
               width: "100%",
               boxSizing: "border-box",
-              flex: 1,
+              flex: "1 1 auto",
               minHeight: 44,
               maxHeight: 220,
               resize: "none",
@@ -104,6 +129,8 @@ export function ServiceFlowComposer({
               lineHeight: 1.5,
               fontFamily: "inherit",
               padding: "10px 6px",
+              overflowY: "auto",
+              overflowX: "hidden",
             }}
           />
         </div>

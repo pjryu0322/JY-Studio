@@ -3,15 +3,37 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ResponsivePageContainer, ResponsiveShell } from "@/components/layout";
+import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { fetchExecutionSetup, patchSpecWorkspace } from "@/components/project-spec/api";
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { Button, Card, EmptyState, InlineAlert, LoadingState, SectionCard, uiTokens as t } from "@/components/ui";
+import { WorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
-import { APP_FLOW_LAST_PROJECT_KEY } from "@/lib/workflow/flow-state";
+import { APP_FLOW_LAST_PROJECT_KEY, appFlowStepHref } from "@/lib/workflow/flow-state";
+
+function ProjectCardPreviewIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function ProjectCardDeployIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+      <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+      <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+      <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+    </svg>
+  );
+}
 
 function ProjectCardSettingsIcon() {
   return (
@@ -40,6 +62,10 @@ type Project = {
   status: string;
   createdAt: string;
   updatedAt: string;
+  /** GET /api/projects 부가 필드 */
+  latestPrototypeRunId?: string | null;
+  prototypePreviewActionAvailable?: boolean;
+  prototypeDeployActionAvailable?: boolean;
 };
 
 type ApiResponse<T> = {
@@ -69,14 +95,25 @@ const homeOpenProjectLinkStyle: CSSProperties = {
   textDecoration: "none",
 };
 
-const homeIncludeDeletedLabelStyle: CSSProperties = {
-  display: "flex",
+const homeProjectIconLinkStyle: CSSProperties = {
+  display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  fontSize: 14,
+  justifyContent: "center",
+  width: 36,
+  height: 36,
+  padding: 0,
+  borderRadius: t.radiusMd,
+  border: `1px solid ${t.border}`,
+  background: t.bgPage,
   color: t.textSecondary,
-  cursor: "pointer",
-  userSelect: "none",
+  textDecoration: "none",
+  boxSizing: "border-box",
+};
+
+const homeProjectIconMutedStyle: CSSProperties = {
+  ...homeProjectIconLinkStyle,
+  opacity: 0.42,
+  cursor: "not-allowed",
 };
 
 const homeCreateToastStyle: CSSProperties = {
@@ -94,6 +131,7 @@ const homeCreateToastStyle: CSSProperties = {
 };
 
 export default function HomePage() {
+  const { effectiveLayout } = useWorkspaceMode();
   const showScreenLabels = useShowScreenLabels();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -104,7 +142,6 @@ export default function HomePage() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [includeDeletedProjects, setIncludeDeletedProjects] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [editDescTarget, setEditDescTarget] = useState<{ id: string; name: string } | null>(null);
   const [editDescValue, setEditDescValue] = useState("");
@@ -140,8 +177,7 @@ export default function HomePage() {
     try {
       setLoading(true);
       setListMessage(null);
-      const q = includeDeletedProjects ? "?includeDeleted=1" : "";
-      const res = await fetch(`/api/projects${q}`, { credentials: "include" });
+      const res = await fetch("/api/projects", { credentials: "include" });
       const json = (await res.json()) as ApiResponse<Project[] | null>;
 
       if (res.status === 401) {
@@ -164,7 +200,7 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
-  }, [includeDeletedProjects]);
+  }, []);
 
   async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault();
@@ -338,7 +374,7 @@ export default function HomePage() {
   }, [editDescTarget, editDescBusy, editDescValue]);
 
   return (
-    <ResponsiveShell title="JYOrchestration" currentNav="home">
+    <ResponsiveShell currentNav="home">
       <ResponsivePageContainer className="relative" style={{ paddingTop: 8, paddingBottom: 20 }} data-ui-label="[A] Home">
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
 
@@ -405,21 +441,10 @@ export default function HomePage() {
       </SectionCard>
 
       <SectionCard
+        id="mobile-nav-projects"
         title="프로젝트 목록"
         data-ui-label="[C] Project List"
         style={{ marginBottom: 24 }}
-        actions={
-          <label style={homeIncludeDeletedLabelStyle}>
-            <input
-              type="checkbox"
-              data-testid="home-include-deleted-projects"
-              checked={includeDeletedProjects}
-              onChange={(e) => setIncludeDeletedProjects(e.target.checked)}
-              style={{ width: 16, height: 16, accentColor: t.primary }}
-            />
-            삭제된 프로젝트 보기
-          </label>
-        }
       >
         <ScreenLabel label="워크스페이스-프로젝트목록-섹션" visible={showScreenLabels} />
 
@@ -431,7 +456,14 @@ export default function HomePage() {
         ) : projects.length === 0 ? (
           <EmptyState title="등록된 프로젝트가 없습니다." />
         ) : (
-          <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gap: effectiveLayout === "MOBILE" ? 10 : 14,
+              gridTemplateColumns:
+                effectiveLayout === "MOBILE" ? "minmax(0, 1fr)" : "repeat(auto-fill, minmax(280px, 1fr))",
+            }}
+          >
             {projects.map((project) => {
               const menuOpen = projectCardMenuId === project.id;
               const canOpenProject = project.status !== PROJECT_LIFECYCLE_DELETED;
@@ -439,6 +471,13 @@ export default function HomePage() {
                 Boolean(sessionUser) &&
                 project.ownerUserId === sessionUser?.id &&
                 project.status !== PROJECT_LIFECYCLE_DELETED;
+              const runId = project.latestPrototypeRunId?.trim();
+              const prototypeReviewHref = runId
+                ? `${appFlowStepHref("prototype_review", project.id)}&runId=${encodeURIComponent(runId)}`
+                : appFlowStepHref("prototype_review", project.id);
+              const executionHref = appFlowStepHref("execution", project.id);
+              const previewEnabled = Boolean(project.prototypePreviewActionAvailable);
+              const deployEnabled = Boolean(project.prototypeDeployActionAvailable);
               return (
               <Card
                 compact
@@ -480,16 +519,63 @@ export default function HomePage() {
                     onKeyDown={(e) => e.stopPropagation()}
                   >
                     {canOpenProject ? (
-                      <Link
-                        href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
-                        data-testid={
-                          project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                        style={homeOpenProjectLinkStyle}
-                      >
-                        열기
-                      </Link>
+                      <>
+                        <Link
+                          href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
+                          data-testid={
+                            project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          style={homeOpenProjectLinkStyle}
+                        >
+                          열기
+                        </Link>
+                        {previewEnabled ? (
+                          <Link
+                            href={prototypeReviewHref}
+                            data-testid={`home-prototype-preview-${project.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={homeProjectIconLinkStyle}
+                            aria-label="프로토타입 검토"
+                            title="프로토타입 검토"
+                          >
+                            <ProjectCardPreviewIcon />
+                          </Link>
+                        ) : (
+                          <span
+                            role="img"
+                            style={homeProjectIconMutedStyle}
+                            aria-label="미리보기 URL이 준비된 뒤 프로토타입 검토를 사용할 수 있습니다"
+                            title="미리보기가 준비되면 프로토타입 검토로 이동할 수 있습니다"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ProjectCardPreviewIcon />
+                          </span>
+                        )}
+                        {deployEnabled ? (
+                          <Link
+                            href={executionHref}
+                            data-testid={`home-prototype-deploy-${project.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={homeProjectIconLinkStyle}
+                            aria-label="배포 · 실행"
+                            title="배포(프로토타입 실행)"
+                          >
+                            <ProjectCardDeployIcon />
+                          </Link>
+                        ) : (
+                          <span
+                            role="img"
+                            style={homeProjectIconMutedStyle}
+                            aria-label="배포는 미리보기 준비·머지·배포 단계가 된 뒤 사용할 수 있습니다"
+                            title="미리보기 준비·머지·배포 단계가 되면 실행(배포) 화면으로 이동할 수 있습니다"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ProjectCardDeployIcon />
+                          </span>
+                        )}
+                        <WorkNoteButton projectId={project.id} />
+                      </>
                     ) : null}
                     {showOwnerDelete ? (
                       <div className="relative">

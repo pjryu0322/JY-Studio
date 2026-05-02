@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { getPrototypeDeployStatusSnapshot } from "@/lib/prototype/prototypeDeploySnapshot";
 import { buildDeployPagesWorkflowYaml } from "@/lib/prototype/prototypeGithubPagesDeployService";
 import { planPrototypeWorkUnitsFallback } from "@/lib/prototype/prototypePlannerService";
+import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 
 describe("prototypeGithubPagesDeployService", () => {
   it("embeds deploy branch in workflow YAML (not hardcoded main)", () => {
@@ -24,6 +26,71 @@ describe("prototypeGithubPagesDeployService", () => {
     const yml = buildDeployPagesWorkflowYaml("main");
     expect(yml).toContain("npm install");
     expect(yml).toContain("npm ci");
+  });
+});
+
+describe("getPrototypeDeployStatusSnapshot", () => {
+  const base = (patch: Partial<PrototypeRun>): PrototypeRun =>
+    ({
+      id: "r1",
+      projectId: "p1",
+      selectedTemplate: "landing",
+      promptSnapshot: "",
+      prototypeIdeationSummary: null,
+      prototypeActorFlowSummary: null,
+      prototypeFeatureDraftTitlesJson: null,
+      prototypeProjectDescription: null,
+      runSchemaVersion: 2,
+      workUnits: [],
+      totalWorkUnits: 0,
+      currentWorkUnitOrder: null,
+      workUnitsExecutionConfirmed: true,
+      plannerStatus: "DONE",
+      plannerSource: null,
+      plannerSummary: null,
+      plannerError: null,
+      branchName: null,
+      cursorRunId: null,
+      commitSha: null,
+      changedFiles: [],
+      status: "PREVIEW_READY",
+      statusReason: null,
+      aiReviewDecision: "PASS",
+      aiReviewSummary: null,
+      prUrl: null,
+      prNumber: null,
+      mergeSha: null,
+      deploymentStatus: "PENDING",
+      deploymentRequestedAt: null,
+      deploymentStartedAt: null,
+      deploymentEndedAt: null,
+      resultUrl: null,
+      suggestedPreviewUrl: "https://o.github.io/repo/",
+      previewUrl: "https://o.github.io/repo/",
+      pagesDeployWorkflowRunUrl: null,
+      deployFailureDetail: null,
+      pagesDeployTriggerCommitSha: null,
+      publicUrl: null,
+      createdAt: "",
+      updatedAt: "",
+      ...patch,
+    }) as PrototypeRun;
+
+  it("treats PREVIEW_READY without publicUrl as not deployed", () => {
+    const s = getPrototypeDeployStatusSnapshot(base({ status: "PREVIEW_READY", publicUrl: null }));
+    expect(s.deployStatus).toBe("NOT_DEPLOYED");
+  });
+
+  it("treats DONE + resultUrl as deployed even if publicUrl missing", () => {
+    const s = getPrototypeDeployStatusSnapshot(
+      base({ deploymentStatus: "DONE", resultUrl: "https://o.github.io/repo/", publicUrl: null }),
+    );
+    expect(s.deployStatus).toBe("DEPLOYED");
+  });
+
+  it("maps REQUESTED to deploying", () => {
+    const s = getPrototypeDeployStatusSnapshot(base({ deploymentStatus: "REQUESTED" }));
+    expect(s.deployStatus).toBe("DEPLOYING");
   });
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FloatingReviewChatDock } from "@/components/prototype-review/FloatingReviewChatDock";
 import { MobileReviewTabs, type MobileReviewTabId } from "@/components/prototype-review/MobileReviewTabs";
@@ -9,7 +9,7 @@ import { ReviewChatPanel } from "@/components/prototype-review/ReviewChatPanel";
 import { ReviewHeader } from "@/components/prototype-review/ReviewHeader";
 import { EmptyState, InlineAlert, LoadingState } from "@/components/ui";
 import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
-import { usePrototypeReviewMobileLayout } from "@/components/ui/breakpoints";
+import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import type { PrototypeImprovementItem, PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
 import {
   fetchPrototypeReviewThread,
@@ -19,14 +19,24 @@ import {
   postPrototypeReviewImprovements,
   postPrototypeReviewSummarize,
 } from "@/lib/prototype/prototypeReviewClient";
-import { fetchLatestPrototypeRun, fetchPrototypeRunById, fetchPrototypeRunsList, postPrototypeRunRefresh } from "@/lib/prototype/prototypeRunApiClient";
+import {
+  fetchLatestPrototypeRun,
+  fetchPrototypeRunById,
+  fetchPrototypeRunsList,
+  getPrototypeDeployStatusApi,
+  postPrototypeRequestDeploy,
+  postPrototypeRunRefresh,
+} from "@/lib/prototype/prototypeRunApiClient";
+import { getPrototypeDeployStatusSnapshot } from "@/lib/prototype/prototypeDeploySnapshot";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 
 type Busy = "send" | "summarize" | "improvements" | "drafts" | null;
 
 function previewUrlKey(run: PrototypeRun | null): string {
   if (!run) return "";
-  return String(run.previewUrl || run.suggestedPreviewUrl || run.resultUrl || "");
+  const pub = String(run.publicUrl ?? "").trim();
+  if (run.deploymentStatus === "DONE" && pub) return pub;
+  return String(run.previewUrl || run.suggestedPreviewUrl || "");
 }
 
 export function PrototypeReviewPageClient() {
@@ -34,7 +44,8 @@ export function PrototypeReviewPageClient() {
   const projectId = search?.get("projectId")?.trim() ?? "";
   const runIdFromUrl = search?.get("runId")?.trim() ?? "";
 
-  const isMobile = usePrototypeReviewMobileLayout();
+  const { effectiveLayout } = useWorkspaceMode();
+  const isMobile = effectiveLayout === "MOBILE";
   const [mobileTab, setMobileTab] = useState<MobileReviewTabId>("preview");
 
   const [run, setRun] = useState<PrototypeRun | null>(null);
@@ -55,6 +66,7 @@ export function PrototypeReviewPageClient() {
   const [busy, setBusy] = useState<Busy>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [frameLoading, setFrameLoading] = useState(false);
+  const [deployRequestBusy, setDeployRequestBusy] = useState(false);
 
   const lastAutoAttemptKeyRef = useRef<string | null>(null);
   const previewStackRef = useRef<HTMLDivElement | null>(null);
@@ -131,6 +143,14 @@ export function PrototypeReviewPageClient() {
     lastAutoAttemptKeyRef.current = null;
   }, [projectId, selectedRunId]);
 
+  useLayoutEffect(() => {
+    if (!isMobile || mobileTab !== "changes") return;
+    const id = window.requestAnimationFrame(() => {
+      document.getElementById("jyo-prototype-review-change-requests")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [isMobile, mobileTab]);
+
   const hydrateThread = useCallback(async (pid: string, rid: string) => {
     setThreadLoading(true);
     try {
@@ -187,6 +207,24 @@ export function PrototypeReviewPageClient() {
     };
   }, [threadLoading, projectId, selectedRunId, run?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- improvementItems (see JSDoc above)
 
+  const deploySnap = useMemo(() => getPrototypeDeployStatusSnapshot(run), [run]);
+
+  useEffect(() => {
+    if (!projectId || !selectedRunId) return;
+    if (deploySnap.deployStatus !== "DEPLOYING") return;
+    const tick = () => {
+      void (async () => {
+        const res = await getPrototypeDeployStatusApi(projectId, selectedRunId, true);
+        if (res.success && res.data?.run) {
+          setRun(res.data.run);
+        }
+      })();
+    };
+    tick();
+    const id = window.setInterval(tick, 5000);
+    return () => window.clearInterval(id);
+  }, [projectId, selectedRunId, deploySnap.deployStatus]);
+
   const urlKey = previewUrlKey(run);
   useEffect(() => {
     if (!urlKey || !(urlKey.startsWith("http://") || urlKey.startsWith("https://"))) {
@@ -209,6 +247,23 @@ export function PrototypeReviewPageClient() {
       await loadRunById(projectId, selectedRunId);
     } finally {
       setRefreshing(false);
+    }
+  }, [projectId, selectedRunId, loadRunById]);
+
+  const onRequestDeploy = useCallback(async () => {
+    if (!projectId || !selectedRunId) return;
+    setDeployRequestBusy(true);
+    setError(null);
+    try {
+      const res = await postPrototypeRequestDeploy(selectedRunId, { projectId });
+      if (!res.success) {
+        setError(res.message ?? "배포 요청에 실패했습니다.");
+        return;
+      }
+      if (res.data?.run) setRun(res.data.run);
+      else await loadRunById(projectId, selectedRunId);
+    } finally {
+      setDeployRequestBusy(false);
     }
   }, [projectId, selectedRunId, loadRunById]);
 
@@ -332,7 +387,9 @@ export function PrototypeReviewPageClient() {
       ) : null}
 
       <ReviewHeader
+        projectId={projectId}
         run={run}
+        deploy={deploySnap}
         versionNo={versionNo}
         runOptions={runOptions}
         selectedRunId={selectedRunId}
@@ -343,6 +400,8 @@ export function PrototypeReviewPageClient() {
         refreshing={refreshing}
         onRefresh={onRefreshPreview}
         onFullscreen={onFullscreen}
+        onRequestDeploy={onRequestDeploy}
+        deployRequestBusy={deployRequestBusy}
       />
 
       {initializing && !run ? (
@@ -353,7 +412,7 @@ export function PrototypeReviewPageClient() {
             {mobileTab === "preview" ? (
               <PreviewViewport run={run} frameLoading={frameLoading} onFrameLoad={() => setFrameLoading(false)} />
             ) : null}
-            {mobileTab === "chat" ? <ReviewChatPanel compact {...chatPanelProps} /> : null}
+            {mobileTab === "ai" || mobileTab === "changes" ? <ReviewChatPanel compact {...chatPanelProps} /> : null}
           </div>
           <MobileReviewTabs value={mobileTab} onChange={setMobileTab} />
         </>

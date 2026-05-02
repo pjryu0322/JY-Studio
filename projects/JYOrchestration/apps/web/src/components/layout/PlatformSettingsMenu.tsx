@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useUiLabel } from "@/lib/ui-label/useUiLabel";
 import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
+import { WorkspaceModeSwitcher } from "@/components/layout/WorkspaceModeSwitcher";
 
 function GearIcon() {
   return (
@@ -53,9 +55,13 @@ function row(label: string, control: ReactNode) {
   );
 }
 
+type MenuCoords = { readonly top: number; readonly left: number; readonly width: number };
+
 export function PlatformSettingsMenu() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
+  const [menuCoords, setMenuCoords] = useState<MenuCoords | null>(null);
   const { enabled, setEnabled, ready } = useUiLabel();
   const prefs = useGlobalPreferences();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
@@ -69,21 +75,60 @@ export function PlatformSettingsMenu() {
     ? `${projectExecutionSettingsHref(projectId!, { envNote: "prototype" })}#execution-setup-panel`
     : "/project-admin/settings";
 
+  const updateMenuPosition = useCallback(() => {
+    const anchor = rootRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const margin = 8;
+    const width = Math.min(300, vw - margin * 2);
+    const left = Math.min(Math.max(margin, r.right - width), vw - width - margin);
+    setMenuCoords({ top: r.bottom + margin, left, width });
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    setMenuCoords(null);
+    setOpen(false);
+  }, []);
+
+  const toggleMenu = useCallback(() => {
+    if (open) {
+      closeMenu();
+      return;
+    }
+    const anchor = rootRef.current;
+    if (anchor) {
+      const r = anchor.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const margin = 8;
+      const width = Math.min(300, vw - margin * 2);
+      const left = Math.min(Math.max(margin, r.right - width), vw - width - margin);
+      setMenuCoords({ top: r.bottom + margin, left, width });
+    }
+    setOpen(true);
+  }, [closeMenu, open]);
+
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || menuPanelRef.current?.contains(t)) return;
+      closeMenu();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeMenu();
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [open]);
+  }, [closeMenu, open, updateMenuPosition]);
 
   useEffect(() => {
     if (!open) return;
@@ -106,7 +151,7 @@ export function PlatformSettingsMenu() {
     <div ref={rootRef} style={{ position: "relative", flexShrink: 0 }}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleMenu}
         aria-label="설정"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -126,117 +171,125 @@ export function PlatformSettingsMenu() {
       >
         <GearIcon />
       </button>
-      {open ? (
-        <div
-          role="dialog"
-          aria-label="설정"
-          style={{
-            position: "absolute",
-            top: "100%",
-            right: 0,
-            marginTop: 8,
-            width: "min(92vw, 300px)",
-            maxHeight: "min(70vh, 520px)",
-            overflowY: "auto",
-            padding: "12px 14px 14px",
-            borderRadius: 12,
-            border: "1px solid #e2e8f0",
-            background: "#fff",
-            boxShadow: "0 10px 40px rgba(15, 23, 42, 0.12)",
-            zIndex: 50,
-          }}
-        >
-          <p style={{ margin: "0 0 10px 0", fontSize: 15, fontWeight: 800, color: "#0f172a" }}>설정</p>
+      {open && menuCoords && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={menuPanelRef}
+              role="dialog"
+              aria-label="설정"
+              style={{
+                position: "fixed",
+                top: menuCoords.top,
+                left: menuCoords.left,
+                width: menuCoords.width,
+                maxHeight: "min(70vh, 520px)",
+                overflowY: "auto",
+                padding: "12px 14px 14px",
+                borderRadius: 12,
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                boxShadow: "0 10px 40px rgba(15, 23, 42, 0.12)",
+                zIndex: 9999,
+              }}
+            >
+              <p style={{ margin: "0 0 10px 0", fontSize: 15, fontWeight: 800, color: "#0f172a" }}>설정</p>
 
-          {hasProjectContext ? (
-            <>
-              {sectionTitle("프로젝트", { first: true })}
-              {row(
-                "프로젝트 정보",
-                <Link
-                  href={`/requirements?projectId=${encodedProjectId}`}
-                  onClick={() => setOpen(false)}
-                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-                >
-                  열기
-                </Link>
+              {sectionTitle("작업모드", { first: true })}
+              <div style={{ marginBottom: 4 }}>
+                <WorkspaceModeSwitcher variant="menu" />
+              </div>
+
+              {hasProjectContext ? (
+                <>
+                  {sectionTitle("프로젝트", { first: true })}
+                  {row(
+                    "프로젝트 정보",
+                    <Link
+                      href={`/requirements?projectId=${encodedProjectId}`}
+                      onClick={() => closeMenu()}
+                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                    >
+                      열기
+                    </Link>
+                  )}
+
+                  {sectionTitle("연동")}
+                  {row(
+                    "GitHub",
+                    <Link
+                      href={projectSettingsHref}
+                      onClick={() => closeMenu()}
+                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                    >
+                      열기
+                    </Link>
+                  )}
+                  {row(
+                    "Cursor",
+                    <Link
+                      href={projectSettingsHref}
+                      onClick={() => closeMenu()}
+                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                    >
+                      열기
+                    </Link>
+                  )}
+                  {row(
+                    "실행 환경",
+                    <Link
+                      href={projectSettingsHref}
+                      onClick={() => closeMenu()}
+                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                    >
+                      열기
+                    </Link>
+                  )}
+                </>
+              ) : (
+                <>
+                  {sectionTitle("화면")}
+                </>
               )}
 
-              {sectionTitle("연동")}
               {row(
-                "GitHub",
-                <Link
-                  href={projectSettingsHref}
-                  onClick={() => setOpen(false)}
-                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-                >
-                  열기
-                </Link>
-              )}
-              {row(
-                "Cursor",
-                <Link
-                  href={projectSettingsHref}
-                  onClick={() => setOpen(false)}
-                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-                >
-                  열기
-                </Link>
-              )}
-              {row(
-                "실행 환경",
-                <Link
-                  href={projectSettingsHref}
-                  onClick={() => setOpen(false)}
-                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-                >
-                  열기
-                </Link>
-              )}
-            </>
-          ) : (
-            <>
-              {sectionTitle("화면", { first: true })}
-            </>
-          )}
-
-          {row(
-            "화면 라벨 표시",
-            <input
-              type="checkbox"
-              checked={ready ? enabled : false}
-              onChange={(e) => setEnabled(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />
-          )}
-
-          {sectionTitle("AI")}
-          {row(
-            "AI 기획자 자동 참여",
-            <input
-              type="checkbox"
-              checked={prefs.aiFacilitatorAutoJoin}
-              onChange={(e) => prefs.setAiFacilitatorAutoJoin(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />
-          )}
-
-          {isPlatformAdmin ? (
-            <>
-              {sectionTitle("고급")}
-              {row(
-                "개발 패널 표시",
+                "화면 라벨 표시",
                 <input
                   type="checkbox"
-                  checked={prefs.devPanelVisible}
-                  onChange={(e) => prefs.setDevPanelVisible(e.target.checked)}
+                  checked={ready ? enabled : false}
+                  onChange={(e) => setEnabled(e.target.checked)}
                   style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
                 />
               )}
-            </>
-          ) : null}
-        </div>
-      ) : null}
+
+              {sectionTitle("AI")}
+              {row(
+                "AI 기획자 자동 참여",
+                <input
+                  type="checkbox"
+                  checked={prefs.aiFacilitatorAutoJoin}
+                  onChange={(e) => prefs.setAiFacilitatorAutoJoin(e.target.checked)}
+                  style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
+                />
+              )}
+
+              {isPlatformAdmin ? (
+                <>
+                  {sectionTitle("고급")}
+                  {row(
+                    "개발 패널 표시",
+                    <input
+                      type="checkbox"
+                      checked={prefs.devPanelVisible}
+                      onChange={(e) => prefs.setDevPanelVisible(e.target.checked)}
+                      style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
+                    />
+                  )}
+                </>
+              ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

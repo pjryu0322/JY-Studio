@@ -1,9 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
-import { fetchProjectWithRetry, postProjectWorkflowAckRequirements } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
@@ -24,6 +23,7 @@ import { RequirementsDeliverableViewerModal } from "@/components/requirements/Re
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
+import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
@@ -33,7 +33,6 @@ import {
   showInternalAgents,
   visibleStageFromRequirementsStage,
 } from "@/lib/ai-member/visibleAiOrchestrator";
-import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
 import {
   appendIdeationDeliverableAssets,
   extractPreviewLinesFromMarkdown,
@@ -42,11 +41,10 @@ import {
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
   markDeliverableAssetsConfirmed,
   isIdeationDeliverableType,
-  type IdeationDeliverableAsset,
   type IdeationDeliverableChatPayload,
   type IdeationDeliverableType,
 } from "@/lib/requirements/ideationDeliverables";
-import { ideationChecklistComplete, ideationChecklistItems } from "@/lib/requirements/ideationChecklist";
+import { ideationChecklistComplete } from "@/lib/requirements/ideationChecklist";
 import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from "@/lib/requirements/serviceFlowConversation";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
@@ -69,7 +67,6 @@ import {
   planNextInterviewTurn,
   problemInterviewStateToAnalyzerWire,
   problemInterviewStrictFilledCount,
-  proposalInterviewCoachingHintLine,
   proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
   slotStrictlyFilled,
@@ -78,7 +75,7 @@ import {
   type ProblemInterviewSlot,
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
-import { bumpDraftVersion, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
+import { bumpDraftVersion } from "@/lib/requirements/draftStore";
 import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import {
   mergeRequirementsStateJson,
@@ -86,17 +83,8 @@ import {
   type RequirementsStateJson,
   type RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
-import { getPlannerSlotSchema } from "@/lib/requirements/plannerSlots";
-import {
-  bootstrapOrganizeMemoryFacts,
-  buildRollingSummaryFromIdeationFields,
-  DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT,
-  formatOrganizeRecentMessages,
-  mergeOrganizeContextAfterDraft,
-  mergeOrganizeMemoryFactsPreserveMandatory,
-} from "@/lib/requirements/requirementsOrganizeContext";
 import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
-import { joinSuccessCriteriaAndNfr, splitSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
+import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
@@ -111,127 +99,22 @@ import {
   inferRecentAiQuestionReplyParentId,
 } from "@/lib/requirements/requirementsAnswerContext";
 import { type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import { dedupeMemberRefs, computedTargetsFromInput, getMessageTargets } from "@/lib/requirements/requirementsTargets";
+import { dedupeMemberRefs, computedTargetsFromInput } from "@/lib/requirements/requirementsTargets";
 import { APP_FLOW_LAST_PROJECT_KEY, notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
-
-type RequirementsWorkspaceStage = "ideation" | "service-flow";
-
-function resolveRequirementsWorkspaceStage(rawStage: string): RequirementsWorkspaceStage {
-  return rawStage === "service-flow" ? "service-flow" : "ideation";
-}
-
-function StageRenderer({
-  activeStage,
-  ideationStage,
-  serviceFlowStage,
-}: {
-  readonly activeStage: RequirementsWorkspaceStage;
-  readonly ideationStage: ReactNode;
-  readonly serviceFlowStage: ReactNode;
-}) {
-  return <>{activeStage === "service-flow" ? serviceFlowStage : ideationStage}</>;
-}
-
-const IDEATION_SEND_DEV = process.env.NODE_ENV !== "production";
-
-/** `[ideation-send:…]` — 개발에서만 (요청된 이벤트 이름과 일치) */
-function ideationSendDevLog(event: string, detail?: string) {
-  if (!IDEATION_SEND_DEV) return;
-  console.log(`[ideation-send:${event}]${detail ? ` ${detail}` : ""}`);
-}
-
-/** 연속 전송·이중 핸들러에 대한 안전망(본래는 단일 경로로만 append 되어야 함). */
-function shouldSkipIdeationDuplicateAppend(params: {
-  messages: readonly RequirementsMessage[];
-  role: "user" | "ai";
-  body: string;
-  speakerId?: string;
-  /** true면 가상 AI 기획자 턴만 동일 본문으로 간주 */
-  matchVirtualPlannerAi?: boolean;
-}): boolean {
-  const { messages, role, body, speakerId, matchVirtualPlannerAi } = params;
-  const norm = String(body ?? "").trim();
-  if (!norm) return false;
-  const windowMs = 10_000;
-  const now = Date.now();
-  const tail = messages.slice(-5);
-  for (let i = tail.length - 1; i >= 0; i--) {
-    const m = tail[i]!;
-    if (m.role !== role) continue;
-    const t = String(m.content ?? "").trim();
-    if (t !== norm) continue;
-    const created = Date.parse(String(m.createdAt ?? ""));
-    if (!Number.isFinite(created) || now - created > windowMs) continue;
-    if (role === "user" && speakerId && String(m.speakerId) !== String(speakerId)) continue;
-    if (role === "ai" && matchVirtualPlannerAi && m.speakerId !== VIRTUAL_AI_PLANNER_ID) continue;
-    return true;
-  }
-  return false;
-}
-
-function formatDialogueExcerpt(messages: RequirementsRoomStateV3["requirementsConversation"]["messages"], maxChars = 12000): string {
-  const lines = messages.slice(-48).map((m) => {
-    const who =
-      m.role === "user"
-        ? "사용자"
-        : m.role === "ai"
-          ? `AI${m.speakerName ? `(${m.speakerName})` : ""}`
-          : m.role === "human"
-            ? `멤버${m.speakerName ? `(${m.speakerName})` : ""}`
-            : "시스템";
-    const tg = getMessageTargets(m);
-    const arrow = tg.length ? ` → ${tg.map((t) => t.name).join(", ")}` : "";
-    return `${who}${arrow}: ${m.content}`;
-  });
-  return lines.join("\n").slice(-maxChars);
-}
-
-type MemberRow = {
-  memberId: string;
-  displayName: string | null;
-  email: string | null;
-  memberType: string;
-  role: string;
-  isOwner?: boolean;
-  userId?: string | null;
-  aiOrchestrationRole?: string | null;
-  orchestrationStage?: string | null;
-};
-
-type SessionUser = { id: string; email: string; name: string };
-
-const IDEATION_DRAFT_MIN_FILLED_SLOTS = 5;
-const IDEATION_DRAFT_REQUIRED_SLOTS: readonly ProblemInterviewSlot[] = [
-  "serviceIdea",
-  "targetUser",
-  "coreProblem",
-  "expectedOutcome",
-] as const;
-
-function ideationDraftGateStatus(state: ProblemInterviewState | null | undefined) {
-  const strictFilled = problemInterviewStrictFilledCount(state);
-  const requiredCovered = Boolean(state && IDEATION_DRAFT_REQUIRED_SLOTS.every((slot) => slotStrictlyFilled(state, slot)));
-  return {
-    strictFilled,
-    requiredCovered,
-    ready: strictFilled >= IDEATION_DRAFT_MIN_FILLED_SLOTS && requiredCovered,
-  };
-}
-
-function ideationInterviewMilestoneLine(
-  prev: ProblemInterviewState | null | undefined,
-  next: ProblemInterviewState | null | undefined
-): string {
-  const prevStrict = problemInterviewStrictFilledCount(prev);
-  const nextStrict = problemInterviewStrictFilledCount(next);
-  const prevReady = ideationDraftGateStatus(prev).ready;
-  const nextReady = ideationDraftGateStatus(next).ready;
-  if (!prevReady && nextReady) return "정리 요청 가능 상태입니다.";
-  if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL) return "필요한 핵심 정보가 모두 모였습니다.";
-  if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL - 1 && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL - 1) return "마지막 정보 1개만 더 확인하겠습니다.";
-  if (prevStrict < PROBLEM_INTERVIEW_SLOT_TOTAL / 2 && nextStrict >= PROBLEM_INTERVIEW_SLOT_TOTAL / 2) return "아이디어 정리도가 절반을 넘었습니다.";
-  return "";
-}
+import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import {
+  formatDialogueExcerpt,
+  ideationDraftGateStatus,
+  ideationInterviewMilestoneLine,
+  ideationSendDevLog,
+  shouldSkipIdeationDuplicateAppend,
+  IDEATION_DRAFT_MIN_FILLED_SLOTS,
+  IDEATION_DRAFT_REQUIRED_SLOTS,
+  resolveRequirementsWorkspaceStage,
+  type MemberRow,
+  type SessionUser,
+} from "@/lib/requirements/requirementsWorkspaceHelpers";
+import { RequirementsWorkspaceStageRenderer } from "@/components/requirements/RequirementsWorkspaceStageRenderer";
 
 export function RequirementsWorkspace({
   initialProjectId,
@@ -286,7 +169,7 @@ export function RequirementsWorkspace({
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
-  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [plannerTypePickerOpen, setPlannerTypePickerOpen] = useState(false);
   const [proposalPlanPreview, setProposalPlanPreview] = useState<{ open: boolean; assetId: string | null }>({
@@ -306,8 +189,6 @@ export function RequirementsWorkspace({
   const ideationEnsurePlannerInFlightRef = useRef(false);
   /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
   const requirementsSendFlightRef = useRef(false);
-  /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
-  const organizeRawFallbackRef = useRef(false);
   const sendDraftRestoreRef = useRef<string | null>(null);
 
   const stage = useMemo(() => {
@@ -371,7 +252,7 @@ export function RequirementsWorkspace({
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const res = await credentialsIncludeFetch("/api/auth/me");
         const json = (await res.json()) as { success?: boolean; data?: SessionUser | null };
         if (res.ok && json.success && json.data) setSessionUser(json.data);
         else setSessionUser(null);
@@ -387,7 +268,7 @@ export function RequirementsWorkspace({
       setAiConnPhase("checking");
       setAiConnDetail(undefined);
       try {
-        const res = await fetch("/api/requirements/ai-connection", { credentials: "include" });
+        const res = await credentialsIncludeFetch("/api/requirements/ai-connection");
         const json = (await res.json()) as {
           success?: boolean;
           message?: string;
@@ -430,7 +311,7 @@ export function RequirementsWorkspace({
   const reloadMembers = useCallback(async () => {
     const pid = resolvedProjectId.trim();
     if (!pid) return;
-    const res = await fetch(`/api/project/members?projectId=${encodeURIComponent(pid)}`, { credentials: "include" });
+    const res = await credentialsIncludeFetch(`/api/project/members?projectId=${encodeURIComponent(pid)}`);
     const json = (await res.json()) as { success?: boolean; data?: MemberRow[] };
     if (!res.ok || !json.success || !Array.isArray(json.data)) {
       setMembers([]);
@@ -457,9 +338,8 @@ export function RequirementsWorkspace({
     ideationEnsurePlannerInFlightRef.current = true;
     void (async () => {
       try {
-        const res = await fetch("/api/project/members/ensure-default-planner", {
+        const res = await credentialsIncludeFetch("/api/project/members/ensure-default-planner", {
           method: "POST",
-          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ projectId: pid }),
         });
@@ -481,7 +361,6 @@ export function RequirementsWorkspace({
     reloadMembers,
   ]);
 
-  const humanOthers = useMemo(() => members.filter((m) => m.memberType === "HUMAN" && !m.isOwner), [members]);
   const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
 
   const aiPlannerStatusLabel = useMemo(() => {
@@ -570,8 +449,6 @@ export function RequirementsWorkspace({
     () => conversationMessages.filter(isServiceFlowWorkshopMessage),
     [conversationMessages],
   );
-  // 로딩 중에는 null로 전달해 "기록 없음"으로 오판하지 않게 합니다.
-  const messages = conversationStatus === "loaded" ? conversationMessages : null;
   const draftDoc = room.requirementsDraft ?? null;
 
   useEffect(() => {
@@ -581,13 +458,10 @@ export function RequirementsWorkspace({
   const onboardingKey = useMemo(() => (resolvedProjectId.trim() ? `pid:${resolvedProjectId.trim()}` : "no-pid"), [resolvedProjectId]);
   const [onboardingAppliedKey, setOnboardingAppliedKey] = useState<string | null>(null);
 
-  const requirementsPending = project ? isRequirementsPendingWorkflow(project.workflowStatus) : true;
-
   const ideationSlice = useMemo(
     () => ({ goals, targetUsers, success, nfr }),
     [goals, targetUsers, success, nfr]
   );
-  const ideationItems = useMemo(() => ideationChecklistItems(ideationSlice), [ideationSlice]);
   const ideationComplete = useMemo(() => ideationChecklistComplete(ideationSlice), [ideationSlice]);
 
   const problemInterviewState = useMemo(
@@ -605,10 +479,6 @@ export function RequirementsWorkspace({
   const problemInterviewCovered = useMemo(
     () => problemInterviewStrictFilled,
     [problemInterviewStrictFilled]
-  );
-  const interviewCoachingHint = useMemo(
-    () => proposalInterviewCoachingHintLine(problemInterviewState, problemInterviewState?.askedSlots),
-    [problemInterviewState]
   );
   const nextNeededSlot = useMemo(() => {
     const base = problemInterviewState ?? emptyProblemInterviewState("");
@@ -858,9 +728,8 @@ export function RequirementsWorkspace({
       };
 
       try {
-        const res = await fetch("/api/requirements/ai-facilitator", {
+        const res = await credentialsIncludeFetch("/api/requirements/ai-facilitator", {
           method: "POST",
-          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
         projectId: pid,
@@ -901,335 +770,6 @@ export function RequirementsWorkspace({
     return;
   }, []);
 
-  const runPlannerOrganize = useCallback(async () => {
-    const requestedType: IdeationDeliverableType = "full_plan";
-    const pid = resolvedProjectId.trim();
-    if (!pid) {
-      setError("프로젝트에 연결된 뒤 정리 요청을 사용할 수 있습니다.");
-      return;
-    }
-    if (conversationStatus !== "loaded") {
-      setError("대화 이력을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
-      return;
-    }
-    const hasConversationContent = ideationConversationOnly.some((m) => m.role === "user" && m.content.trim());
-    if (!hasConversationContent) {
-      setError("정리할 대화가 아직 없습니다. 먼저 AI 기획자와 아이디어를 대화로 다듬어 주세요.");
-      return;
-    }
-    if (busy || organizeState === "running") return;
-    if (draftDebounceTimerRef.current) {
-      clearTimeout(draftDebounceTimerRef.current);
-      draftDebounceTimerRef.current = null;
-    }
-    const gate = ideationDraftGateStatus(problemInterviewState);
-    if (!gate.ready) {
-      const missingRequired = IDEATION_DRAFT_REQUIRED_SLOTS.filter((slot) => !slotStrictlyFilled(problemInterviewState ?? emptyProblemInterviewState(""), slot));
-      const msg = missingRequired.length
-        ? "아이디어 초안 생성 전 필수 정보(서비스 아이디어, 주 사용자, 핵심 문제, 기대 효과)를 먼저 확인해 주세요."
-        : `아이디어 초안은 최소 ${IDEATION_DRAFT_MIN_FILLED_SLOTS}개 슬롯 확정 후 생성할 수 있습니다.`;
-      setError(msg);
-      showErrorToast(msg);
-      return;
-    }
-    setServiceFlowDraftBusy(true);
-    setError(null);
-    setOrganizeState("running");
-    setOrganizeError(null);
-    try {
-      const schema = getPlannerSlotSchema(requestedType);
-      const promptMetaIso = new Date().toISOString();
-      const organizePromptView = buildPromptPresenterView({
-        projectName: project?.name ?? "",
-        projectDescription: project?.description ?? "",
-        targetName: "AI 기획자",
-        messages: ideationConversationOnly,
-        latestUserMessage: `정리요청(통합 기획안): ${schema.labelKr}`,
-      });
-      await persistStateJsonOnly({
-        lastPromptView: organizePromptView,
-        lastPromptText: organizePromptView.copyText,
-        lastPromptGeneratedAt: promptMetaIso,
-        lastUserDraftText: input,
-        organizePlannerState: {
-          requestedType,
-          requestedLabel: schema.labelKr,
-          pendingQuestions: [],
-          requiredSlots: [...schema.requiredSlots],
-          slotStatus: null,
-          lastAnalyzerResult: null,
-        },
-      });
-      const prevCtx = stateJsonRef.current.organizeContext ?? null;
-      const recentCount = prevCtx?.recentMessageCount ?? DEFAULT_ORGANIZE_RECENT_MESSAGE_COUNT;
-      const recentBlock = formatOrganizeRecentMessages(ideationConversationOnly, recentCount, 12_000);
-      const bootFacts = bootstrapOrganizeMemoryFacts({
-        goals,
-        targetUsers,
-        scopeIn,
-        scopeOut,
-        success,
-        nfr,
-        openIssues,
-        priorityFeatures,
-      });
-      const memoryFactsForApi = mergeOrganizeMemoryFactsPreserveMandatory(prevCtx?.memoryFacts ?? undefined, bootFacts);
-      const rolling =
-        (typeof prevCtx?.rollingSummary === "string" && prevCtx.rollingSummary.trim()) ||
-        buildRollingSummaryFromIdeationFields({
-          goals,
-          openIssues,
-          priorityFeatures,
-        });
-      const useRaw = organizeRawFallbackRef.current;
-      organizeRawFallbackRef.current = false;
-      const excerpt = formatDialogueExcerpt(ideationConversationOnly);
-      const res = await fetch("/api/requirements/organize-analyze", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: pid,
-          projectName: project?.name ?? "",
-          projectDescription: project?.description ?? "",
-          memoryFacts: memoryFactsForApi,
-          rollingSummary: rolling,
-          recentMessages: useRaw ? excerpt : recentBlock,
-          requestedType,
-          requiredSlots: schema.requiredSlots,
-        }),
-      });
-      const json = (await res.json()) as {
-        success?: boolean;
-        code?: string;
-        message?: string;
-        data?: {
-          ready?: boolean;
-          message?: string;
-          questions?: string[];
-          slotStatus?: Record<string, "filled" | "missing">;
-        };
-      };
-      if (!res.ok || !json.success || !json.data || typeof json.data.ready !== "boolean") {
-        const code = String(json.code ?? "");
-        if (code === "NO_KEY") {
-          throw new Error("AI 정리를 사용하려면 서버에 OPENAI_API_KEY 설정이 필요합니다.");
-        }
-        throw new Error(json.message || "정리 요청 처리에 실패했습니다.");
-      }
-
-      const analyzerMessage = String(json.data.message ?? "").trim() || "확인 중입니다.";
-      const questions = Array.isArray(json.data.questions)
-        ? json.data.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 1)
-        : [];
-
-      if (!json.data.ready) {
-        const body = questions.length ? `${analyzerMessage}\n\n질문: ${questions[0]}` : analyzerMessage;
-        const notice = newChatMessage({
-          role: "ai",
-          body,
-          speakerType: "AI",
-          speakerId: VIRTUAL_AI_PLANNER_ID,
-          speakerName: "AI 기획자",
-          messageType: "ANSWER",
-        });
-        const nextRoom: RequirementsRoomStateV3 = {
-          ...room,
-          requirementsConversation: {
-            ...room.requirementsConversation,
-        projectId: pid,
-            messages: [...conversationMessages, notice],
-          },
-        };
-        await persistRemote(nextRoom, {}, {
-          organizePlannerState: {
-            requestedType,
-            requestedLabel: schema.labelKr,
-            pendingQuestions: questions,
-            requiredSlots: [...schema.requiredSlots],
-            slotStatus: json.data.slotStatus ?? null,
-            lastAnalyzerResult: {
-              ready: false,
-              message: analyzerMessage,
-              questions,
-              analyzedAt: new Date().toISOString(),
-            },
-          },
-        });
-        setOrganizeState("done");
-        return;
-      }
-
-      const readyNotice = newChatMessage({
-        role: "ai",
-        body:
-          analyzerMessage ||
-          `현재 정보로 ${schema.labelKr} 생성을 시작합니다.`,
-        speakerType: "AI",
-        speakerId: VIRTUAL_AI_PLANNER_ID,
-        speakerName: "AI 기획자",
-        messageType: "ANSWER",
-      });
-
-      {
-        // writer: 통합 기획안(full_plan) 단일 문서 생성 + 저장 + 채팅 NOTICE
-        const planBaseName = (project?.name ?? "").trim() || "프로젝트";
-        const excerptForDeliverable = formatDialogueExcerpt(ideationConversationOnly);
-        const chatSummary = [
-          goals.trim() && `저장 요약 — 목표/핵심:\n${goals.trim()}`,
-          targetUsers.trim() && `저장 요약 — 대상 사용자:\n${targetUsers.trim()}`,
-          scopeIn.trim() && `저장 요약 — 범위(포함):\n${scopeIn.trim()}`,
-          scopeOut.trim() && `저장 요약 — 범위(제외):\n${scopeOut.trim()}`,
-          success.trim() && `저장 요약 — 성공 기준:\n${success.trim()}`,
-          nfr.trim() && `저장 요약 — NFR 등:\n${nfr.trim()}`,
-          openIssues.trim() && `저장 요약 — 열린 이슈:\n${openIssues.trim()}`,
-          priorityFeatures.trim() && `저장 요약 — 우선 기능:\n${priorityFeatures.trim()}`,
-        ]
-          .filter(Boolean)
-          .join("\n\n");
-
-        const genRes = await fetch("/api/requirements/deliverables-generate", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: pid,
-            projectName: project?.name ?? "",
-            projectDescription: project?.description ?? "",
-            chatSummary,
-            dialogueExcerpt: excerptForDeliverable,
-            outputTypes: [...IDEATION_UNIFIED_PROPOSAL_OUTPUT],
-          }),
-        });
-        let genJson: {
-          success?: boolean;
-          code?: string;
-          message?: string;
-          data?: { outputs?: Partial<Record<IdeationDeliverableType, string>> };
-        };
-        try {
-          genJson = (await genRes.json()) as typeof genJson;
-        } catch {
-          throw new Error(
-            genRes.status === 502 || genRes.status === 503
-              ? "산출물 생성 API가 비정상 응답을 반환했습니다. 서버 로그와 OpenAI(OPENAI_API_KEY·쿼터)를 확인해 주세요."
-              : "산출물 생성 응답을 해석하지 못했습니다."
-          );
-        }
-        if (!genRes.ok || !genJson.success || !genJson.data?.outputs) {
-          const code = String(genJson.code ?? "");
-          if (code === "NO_KEY") {
-            throw new Error("AI 산출물 생성을 사용하려면 서버에 OPENAI_API_KEY 설정이 필요합니다.");
-          }
-          throw new Error(genJson.message || "산출물 생성에 실패했습니다.");
-        }
-
-        const existing =
-          parseRequirementsStateJson(project?.requirementsStateJson).deliverableAssets ??
-          stateJsonRef.current.deliverableAssets ??
-          [];
-        const { merged, created } = appendIdeationDeliverableAssets({
-          projectId: pid,
-          existing,
-          outputs: genJson.data.outputs,
-          typesRequested: [...IDEATION_UNIFIED_PROPOSAL_OUTPUT],
-          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 아이디어 초안 v${v}` : undefined),
-        });
-        if (!created.length) {
-          throw new Error("생성된 본문이 비어 있습니다.");
-        }
-
-        const notices = created.map((c) => {
-          const payload: IdeationDeliverableChatPayload = {
-            kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
-            mode: "single",
-            headline:
-              c.type === "full_plan" ? `${planBaseName} 아이디어 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
-            requestedTypes: [c.type],
-            items: [
-              {
-                assetId: c.id,
-                type: c.type,
-                title: c.title,
-                version: c.version,
-                previewLines: extractPreviewLinesFromMarkdown(c.content),
-              },
-            ],
-          };
-          return newChatMessage({
-            role: "ai",
-            body: JSON.stringify(payload),
-            speakerType: "AI",
-            speakerId: VIRTUAL_AI_PLANNER_ID,
-            speakerName: "AI 기획자",
-            messageType: "NOTICE",
-            meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
-          });
-        });
-        const fp = created.find((c) => c.type === "full_plan");
-        if (fp) setProposalPlanPreview({ open: true, assetId: fp.id });
-        const afterWrite: RequirementsRoomStateV3 = {
-        ...room,
-        requirementsConversation: {
-          ...room.requirementsConversation,
-          projectId: pid,
-            messages: [...conversationMessages, readyNotice, ...notices],
-          },
-        };
-        await persistRemote(afterWrite, {}, {
-          deliverableAssets: merged,
-          organizePlannerState: {
-            requestedType,
-            requestedLabel: schema.labelKr,
-            pendingQuestions: [],
-            requiredSlots: [...schema.requiredSlots],
-            slotStatus: json.data.slotStatus ?? null,
-            lastAnalyzerResult: {
-              ready: true,
-              message: analyzerMessage,
-              questions: [],
-              analyzedAt: new Date().toISOString(),
-            },
-          },
-        });
-      }
-      await persistStateJsonOnly({ organizePlannerState: null, lastOrganizedAt: new Date().toISOString() });
-      showSuccessToast(`${(project?.name ?? "").trim() || "프로젝트"} 아이디어 초안 생성 완료`);
-      setOrganizeState("done");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "오류";
-      setOrganizeState("error");
-      setOrganizeError(msg);
-      setError(msg);
-    } finally {
-      setBusy(false);
-    }
-  }, [
-    resolvedProjectId,
-    busy,
-    conversationStatus,
-    conversationMessages,
-    ideationConversationOnly,
-    organizeState,
-    problemInterviewState,
-    project?.name,
-    project?.description,
-    draftDoc,
-    room,
-    persistRemote,
-    persistStateJsonOnly,
-    input,
-    goals,
-    targetUsers,
-    scopeIn,
-    scopeOut,
-    success,
-    nfr,
-    openIssues,
-    priorityFeatures,
-    setProposalPlanPreview,
-    showErrorToast,
-  ]);
 
   const handleGenerateDeliverables = useCallback(
     async (types: readonly IdeationDeliverableType[], opts?: { readonly revisionRequest?: string }) => {
@@ -1260,9 +800,8 @@ export function RequirementsWorkspace({
 
         const excerpt = formatDialogueExcerpt(ideationConversationOnly);
         const planBaseName = (project?.name ?? "").trim() || "프로젝트";
-        const res = await fetch("/api/requirements/deliverables-generate", {
+        const res = await credentialsIncludeFetch("/api/requirements/deliverables-generate", {
           method: "POST",
-          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             projectId: pid,
@@ -1379,6 +918,7 @@ export function RequirementsWorkspace({
       openIssues,
       priorityFeatures,
       conversationMessages,
+      ideationConversationOnly,
       project?.name,
       project?.description,
       project?.requirementsStateJson,
@@ -1744,9 +1284,8 @@ export function RequirementsWorkspace({
           if (pid) {
             try {
               ideationSendDevLog("analyzer-request", `id=${sendTraceId}`);
-              const ar = await fetch("/api/requirements/interview-analyze", {
+              const ar = await credentialsIncludeFetch("/api/requirements/interview-analyze", {
                 method: "POST",
-                credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   projectId: pid,
@@ -1805,9 +1344,8 @@ export function RequirementsWorkspace({
         const runFacilitatorOrDraftPipeline = async (): Promise<IdeationPlannerTail> => {
           let facilitatorFinalRoom: RequirementsRoomStateV3;
           try {
-          const res = await fetch(endpoint, {
+          const res = await credentialsIncludeFetch(endpoint, {
             method: "POST",
-            credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               ...(pid ? { projectId: pid } : {}),
@@ -1967,7 +1505,6 @@ export function RequirementsWorkspace({
     draftDoc,
     replyTo,
     showErrorToast,
-    showSuccessToast,
   ]);
 
   const onPanelBlurSave = useCallback(async () => {
@@ -1994,20 +1531,6 @@ export function RequirementsWorkspace({
     }
   }, [busy, room, openIssues, priorityFeatures, goals, scopeIn, scopeOut, targetUsers, success, nfr, persistRemote]);
 
-  const ackDev = useCallback(async () => {
-    const pid = resolvedProjectId.trim();
-    if (!pid) return;
-    setBusy(true);
-    try {
-      const { res, json } = await postProjectWorkflowAckRequirements(pid);
-      if (!res.ok || !json.success) return;
-      notifyAppFlowProjectContextRefresh();
-      router.push(`/projects/${encodeURIComponent(pid)}?view=workspace`);
-    } finally {
-      setBusy(false);
-    }
-  }, [resolvedProjectId, router]);
-
   const insertComposerPrompt = useCallback((text: string) => {
     setInput(text);
     window.requestAnimationFrame(() => {
@@ -2022,6 +1545,13 @@ export function RequirementsWorkspace({
       }
     });
   }, []);
+
+  const { register: registerWorkNoteComposerInsert } = useWorkNoteComposerInsertControls();
+  useEffect(() => {
+    if (!inIdeationStage) return;
+    registerWorkNoteComposerInsert((text) => insertComposerPrompt(text));
+    return () => registerWorkNoteComposerInsert(null);
+  }, [inIdeationStage, registerWorkNoteComposerInsert, insertComposerPrompt]);
 
   const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
     setDeliverableViewerIds([...ids]);
@@ -2089,8 +1619,6 @@ export function RequirementsWorkspace({
     },
     [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly, router, showErrorToast, showSuccessToast]
   );
-
-  const inviteEmphasis = humanOthers.length === 0;
 
   const existingHumanUserIds = useMemo(
     () => new Set(members.filter((m) => m.memberType === "HUMAN" && m.userId).map((m) => m.userId as string)),
@@ -2429,7 +1957,11 @@ export function RequirementsWorkspace({
       ) : null}
 
       <div style={mainRow} className="jyo-requirements-workspace-main">
-        <StageRenderer activeStage={activeStage} ideationStage={ideationStage} serviceFlowStage={serviceFlowStage} />
+        <RequirementsWorkspaceStageRenderer
+          activeStage={activeStage}
+          ideationStage={ideationStage}
+          serviceFlowStage={serviceFlowStage}
+        />
       </div>
 
       {error ? (

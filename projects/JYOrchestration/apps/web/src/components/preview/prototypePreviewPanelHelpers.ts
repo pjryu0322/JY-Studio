@@ -210,6 +210,7 @@ export type StepTone = "done" | "running" | "pending" | "failed" | "warn";
 
 export function buildFiveStepPipelineRows(
   u: PrototypeWorkUnit,
+  run?: PrototypeRun | null,
 ): ReadonlyArray<{ key: string; label: string; stateKo: string; tone: StepTone }> {
   const mk = (key: string, label: string, stateKo: string, tone: StepTone) => ({ key, label, stateKo, tone });
   const s = u.status;
@@ -265,6 +266,19 @@ export function buildFiveStepPipelineRows(
     ];
   }
   if (s === "REVIEW_PASS") {
+    const draftOnly =
+      run?.status === "PREVIEW_READY" &&
+      !String(run.publicUrl ?? "").trim() &&
+      run.deploymentStatus !== "DONE";
+    if (draftOnly) {
+      return [
+        mk("cursor", "Cursor", "완료", "done"),
+        mk("git", "Git Push", "완료", "done"),
+        mk("ai", "AI 검토", "완료", "done"),
+        mk("pr", "Preview", "준비됨", "done"),
+        mk("merge", "정식 배포", "검토 단계", "pending"),
+      ];
+    }
     return [
       mk("cursor", "Cursor", "완료", "done"),
       mk("git", "Git", "완료", "done"),

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { PlatformSettingsMenu } from "@/components/layout/PlatformSettingsMenu";
+import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
@@ -16,6 +17,8 @@ type MeState = {
 };
 
 export function PlatformTopNav() {
+  const { effectiveLayout } = useWorkspaceMode();
+  const compactHeader = effectiveLayout === "MOBILE";
   const showScreenLabels = useShowScreenLabels();
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
@@ -208,7 +211,17 @@ export function PlatformTopNav() {
               <span style={{ fontSize: 13, color: "#94a3b8" }}>…</span>
             )}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8, flexShrink: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: compactHeader ? 6 : 8,
+              flexShrink: 0,
+              maxWidth: compactHeader ? "100%" : undefined,
+            }}
+          >
             {me ? (
               <button
                 type="button"

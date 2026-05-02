@@ -1,23 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
+import { ComposerAtAtTargetPicker } from "@/components/composer/ComposerAtAtTargetPicker";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { useComposerNarrowBreakpoint } from "@/components/ui/breakpoints";
+import { useComposerAtAtPicker } from "@/hooks/useComposerAtAtPicker";
+import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 
 export type RequirementsComposerToolsMenu = {
   readonly onOrganizeRequirements: () => void;
   readonly organizeDisabled: boolean;
   readonly draftViewAvailable: boolean;
   readonly onOpenDraftView: () => void;
+  /** + 메뉴 첫 항목 라벨(기본: 정리 요청) */
+  readonly organizeMenuTitle?: string;
+  /** + 메뉴 둘째 항목 라벨(기본: 정리본 보기). `draftViewAvailable`이 true일 때만 표시 */
+  readonly draftMenuTitle?: string;
 };
 
-const MENU_Z = 72;
-export type RequirementsComposerTargetPickerItem = {
-  readonly id: string;
-  readonly label: string;
-  readonly targets: readonly { id: string; name: string }[];
-};
+/** 멘션·도구 메뉴가 채팅 타임라인 위에 올라오도록 */
+const MENU_Z = 200;
+export type { ComposerAtAtPickerItem as RequirementsComposerTargetPickerItem } from "@/lib/composer/composerAtAtPicker";
 
 function PlusIcon() {
   return (
@@ -79,7 +83,7 @@ function ComposerHubMenuItems({
         }}
         style={menuItemStyle(tools.organizeDisabled)}
       >
-        <MenuItemText title="정리 요청" />
+        <MenuItemText title={tools.organizeMenuTitle?.trim() || "정리 요청"} />
       </button>
       {tools.draftViewAvailable ? <MenuDivider /> : null}
       {tools.draftViewAvailable ? (
@@ -92,7 +96,7 @@ function ComposerHubMenuItems({
           }}
           style={menuItemStyle(false)}
         >
-          <MenuItemText title="정리본 보기" />
+          <MenuItemText title={tools.draftMenuTitle?.trim() || "정리본 보기"} />
         </button>
       ) : null}
     </>
@@ -121,7 +125,7 @@ export function RequirementsComposerGpt({
   /** 부모에서 포커스·커서 제어용(선택) */
   readonly textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   /** `@@` 입력 시 노출할 멘션 후보(멤버별 1행) */
-  readonly targetPickerItems?: readonly RequirementsComposerTargetPickerItem[];
+  readonly targetPickerItems?: readonly ComposerAtAtPickerItem[];
 }) {
   const showScreenLabels = useShowScreenLabels();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -130,23 +134,19 @@ export function RequirementsComposerGpt({
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuId = useId();
-  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
-  const [lastAtAtIndex, setLastAtAtIndex] = useState<number | null>(null);
-
-  const hasTargetPicker = Boolean(targetPickerItems && targetPickerItems.length);
-  const normalizedTargetPickerItems = useMemo(() => {
-    const items = targetPickerItems ?? [];
-    const seen = new Set<string>();
-    return items.filter((it) => {
-      if (!it.targets || it.targets.length === 0) return false;
-      if (seen.has(it.id)) return false;
-      seen.add(it.id);
-      return true;
-    });
-  }, [targetPickerItems]);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const closeTargetPicker = useCallback(() => setTargetPickerOpen(false), []);
+  const {
+    targetPickerOpen,
+    normalizedTargetPickerItems,
+    closeTargetPicker,
+    pickTargetItem,
+  } = useComposerAtAtPicker({
+    value,
+    onChange,
+    items: targetPickerItems,
+    textareaRef: taRef,
+  });
 
   const autoGrow = useCallback(() => {
     const el = taRef.current;
@@ -160,31 +160,10 @@ export function RequirementsComposerGpt({
     autoGrow();
   }, [value, autoGrow]);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- mention-picker / menu visibility derived from `value` and layout */
-  useEffect(() => {
-    if (!hasTargetPicker) return;
-    const idx = value.lastIndexOf("@@");
-    if (idx < 0) {
-      setTargetPickerOpen(false);
-      setLastAtAtIndex(null);
-      return;
-    }
-    const before = idx === 0 ? "" : value[idx - 1] ?? "";
-    const okBefore = !before || /\s/.test(before);
-    if (!okBefore) {
-      setTargetPickerOpen(false);
-      setLastAtAtIndex(null);
-      return;
-    }
-    setLastAtAtIndex(idx);
-    setTargetPickerOpen(true);
-  }, [value, hasTargetPicker]);
-
   const narrow = useComposerNarrowBreakpoint();
   useEffect(() => {
     setMenuOpen(false);
   }, [narrow]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -219,31 +198,14 @@ export function RequirementsComposerGpt({
     return () => window.clearTimeout(t);
   }, [menuOpen, narrow]);
 
-  const pickTargetItem = useCallback(
-    (targets: readonly { id: string; name: string }[]) => {
-      if (!targets.length) return;
-      const fragment = targets.map((t) => `@@${t.name}`).join(" ");
-      if (lastAtAtIndex !== null && lastAtAtIndex >= 0) {
-        const before = value.slice(0, lastAtAtIndex);
-        const afterRaw = value.slice(lastAtAtIndex + 2);
-        const tail = afterRaw.replace(/^[^\s\n]*/, "");
-        const merged = `${before}${fragment}${tail.length ? tail : " "}`.replace(/\s{2,}/g, " ");
-        onChange(merged);
-      }
-      setTargetPickerOpen(false);
-      window.setTimeout(() => taRef.current?.focus(), 0);
-    },
-    [lastAtAtIndex, value, onChange]
-  );
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
       <div
         style={{
           display: "flex",
           alignItems: "flex-end",
           gap: 10,
-          borderRadius: 999,
+          borderRadius: 22,
           border: "1px solid #e2e8f0",
           background: "#fff",
           boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
@@ -305,70 +267,15 @@ export function RequirementsComposerGpt({
             ) : null}
           </div>
         ) : null}
-        <div className="relative" style={{ position: "relative", flex: 1, minWidth: 0 }}>
+        <div className="relative" style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <ScreenLabel label="요구사항-채팅영역-입력창" visible={showScreenLabels} />
-          {targetPickerOpen && hasTargetPicker ? (
-            <div
-              role="dialog"
-              aria-label="질문 대상 선택"
-              style={{
-                position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: "calc(100% + 8px)",
-                padding: 8,
-                borderRadius: 14,
-                border: "1px solid #e2e8f0",
-                background: "#fff",
-                boxShadow: "0 18px 50px -18px rgba(15, 23, 42, 0.25)",
-                zIndex: MENU_Z,
-              }}
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {normalizedTargetPickerItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => pickTargetItem(item.targets)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid #e2e8f0",
-                      background: "#f8fafc",
-                      cursor: "pointer",
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: "#0f172a",
-                    }}
-                  >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-                <button
-                  type="button"
-                  onClick={closeTargetPicker}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: "#475569",
-                    padding: "6px 8px",
-                  }}
-                >
-                  닫기
-                </button>
-              </div>
-            </div>
-          ) : null}
+          <ComposerAtAtTargetPicker
+            open={targetPickerOpen}
+            items={normalizedTargetPickerItems}
+            onPick={pickTargetItem}
+            onClose={closeTargetPicker}
+            zIndex={MENU_Z}
+          />
           <textarea
             ref={(el) => {
               taRef.current = el;
@@ -392,7 +299,7 @@ export function RequirementsComposerGpt({
             style={{
               width: "100%",
               boxSizing: "border-box",
-              flex: 1,
+              flex: "1 1 auto",
               minHeight: 44,
               maxHeight: 220,
               resize: "none",
@@ -404,6 +311,8 @@ export function RequirementsComposerGpt({
               lineHeight: 1.5,
               fontFamily: "inherit",
               padding: "10px 6px",
+              overflowY: "auto",
+              overflowX: "hidden",
             }}
           />
         </div>

@@ -28,6 +28,8 @@ import type {
 } from "@/components/preview/prototypeWorkspaceTypes";
 import { fetchEnvironmentTestLast, postExecutionSetupValidate } from "@/components/project-spec/api";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
+import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
+import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
@@ -60,6 +62,12 @@ import {
 } from "@/lib/requirements/requirementsStateJson";
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
+import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
+import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import {
+  serviceFlowStageComposerColumnStyle,
+  serviceFlowStageMainChatStyle,
+} from "@/components/service-flow/serviceFlowStageLayout";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -94,38 +102,16 @@ function isLikelyPreviewUrl(url: string): boolean {
   return /^https?:\/\//i.test(u);
 }
 
-/** RequirementsServiceFlowStage 와 동일한 협업실 그리드·배경 패턴 */
+/** 요구사항 협업실과 동일: 단일 열 채팅 셸 */
 const prototypeStageShell: CSSProperties = {
   flex: "1 1 auto",
   minHeight: 0,
   minWidth: 0,
-  display: "grid",
-  gridTemplateRows: "minmax(0, 1fr)",
-  alignItems: "stretch",
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
   overflow: "hidden",
   background: "#fff",
-};
-
-const prototypeMemberAside: CSSProperties = {
-  boxSizing: "border-box",
-  borderRight: "1px solid #e2e8f0",
-  background: "#f8fafc",
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  minHeight: 0,
-  overflow: "hidden",
-};
-
-const prototypeChatMain: CSSProperties = {
-  minWidth: 0,
-  minHeight: 0,
-  background: "#f8fafc",
-  display: "flex",
-  flexDirection: "column",
-  height: "100%",
-  overflow: "hidden",
-  position: "relative",
 };
 
 export function PrototypePreviewPanel({
@@ -192,7 +178,13 @@ export function PrototypePreviewPanel({
   const [templateConfirmed, setTemplateConfirmed] = useState(false);
   /** 콤보에서의 선택(미확정 포함). AI 추천 행은 `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` */
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
-  const [chatExpanded, setChatExpanded] = useState(false);
+  const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
+  const prototypeComposerAtAtItems = useMemo((): readonly ComposerAtAtPickerItem[] => {
+    return [
+      { id: "prototype:picker:ai", label: "AI기획자", targets: [{ id: VIRTUAL_AI_PLANNER_ID, name: "AI기획자" }] },
+      { id: "prototype:picker:user", label: "사용자", targets: [{ id: "prototype:mention:user", name: "사용자" }] },
+    ];
+  }, []);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -878,7 +870,12 @@ export function PrototypePreviewPanel({
   const isCancelled = latestRun?.status === "CANCELLED";
   const workPipelineFailed = latestRun?.status === "FAILED";
   const deployFailedOnly = latestRun?.status === "DEPLOY_FAILED";
-  const isCompleted = latestRun?.status === "PREVIEW_READY";
+  /** 초안 생성 완료(정식 배포 URL 확정 전). 배포 완료 후에는 타임라인 완료 카드 대신 일반 상태로 둠 */
+  const isDraftGenerationComplete = useMemo(
+    () => latestRun?.status === "PREVIEW_READY" && !String(latestRun?.publicUrl ?? "").trim(),
+    [latestRun?.status, latestRun?.publicUrl],
+  );
+  const isCompleted = isDraftGenerationComplete;
   const deployPhase = useMemo(() => isPrototypeDeployPhase(latestRun), [latestRun]);
 
   const plannerUserMessagePreview = useMemo(
@@ -1000,6 +997,7 @@ export function PrototypePreviewPanel({
         protoBusy,
         plannerCreatePending,
         plannerProgressStep,
+        projectId,
       }),
     [
       envStatus.git,
@@ -1027,6 +1025,7 @@ export function PrototypePreviewPanel({
       previewUrl,
       pagesSettingsHref,
       protoBusy,
+      projectId,
     ],
   );
 
@@ -1134,7 +1133,7 @@ export function PrototypePreviewPanel({
       return;
     }
 
-    if (latestRun?.status === "PREVIEW_READY") {
+    if (isDraftGenerationComplete) {
       setEphemeralAiReplies((prev) => [
         ...prev,
         {
@@ -1209,6 +1208,7 @@ export function PrototypePreviewPanel({
     refreshLatestRun,
     templateConfirmed,
     startWorkPlanGenerationFromChat,
+    isDraftGenerationComplete,
   ]);
 
   const onChatTextareaKeyDown = useCallback(
@@ -1322,15 +1322,23 @@ export function PrototypePreviewPanel({
           return;
         }
         case "OPEN_PREVIEW": {
-          const u = previewUrl ?? latestRun?.previewUrl ?? "";
+          const u = previewUrl ?? latestRun?.previewUrl ?? latestRun?.suggestedPreviewUrl ?? "";
           if (u) window.open(u, "_blank", "noopener,noreferrer");
           return;
         }
         case "COPY_PREVIEW_URL": {
-          const u = previewUrl ?? latestRun?.previewUrl ?? "";
+          const u = previewUrl ?? latestRun?.previewUrl ?? latestRun?.suggestedPreviewUrl ?? "";
           if (!u) return;
           void navigator.clipboard?.writeText(u).catch(() => {});
           showToast("URL을 복사했습니다.");
+          return;
+        }
+        case "OPEN_PROTOTYPE_REVIEW": {
+          const rid = latestRun?.id;
+          if (!projectId.trim() || !rid) return;
+          window.location.assign(
+            `/prototype-review?${new URLSearchParams({ projectId: projectId.trim(), runId: rid }).toString()}`,
+          );
           return;
         }
         default:
@@ -1369,7 +1377,7 @@ export function PrototypePreviewPanel({
     if (isMessageInputBlocked) {
       return "AI기획자가 작업 중입니다. 잠시 기다려주세요.";
     }
-    if (latestRun?.status === "PREVIEW_READY") {
+    if (isDraftGenerationComplete) {
       return "완료된 실행입니다. 새로 시작하려면 타임라인의 「처음부터 다시 생성」을 이용해 주세요.";
     }
     if (isRunningState) {
@@ -1395,6 +1403,7 @@ export function PrototypePreviewPanel({
     latestRun?.status,
     latestRun?.workUnits?.length,
     latestRun?.workUnitsExecutionConfirmed,
+    isDraftGenerationComplete,
   ]);
 
   const chatInlineTemplatePicker = useMemo((): PrototypeInlineTemplatePickerProps | null => {
@@ -1430,6 +1439,55 @@ export function PrototypePreviewPanel({
     confirmTemplate,
   ]);
 
+  const prototypeModalParticipants = useMemo((): readonly ParticipantOption[] => {
+    const aiStatus = isPlannerRunning
+      ? "작업계획 생성 중"
+      : isRunningState
+        ? "자동화 진행 중"
+        : isDraftGenerationComplete || (latestRun?.status === "PREVIEW_READY" && String(latestRun?.publicUrl ?? "").trim())
+          ? "초안 완료"
+          : latestRun?.status === "DEPLOY_FAILED" || latestRun?.status === "FAILED"
+            ? "오류"
+            : "대기";
+    return [
+      {
+        id: "prototype-ai-planner",
+        name: "AI 기획자",
+        kind: "ai",
+        onlineHint: true,
+        aiStatusLabel: aiStatus,
+      },
+      {
+        id: "prototype-user-self",
+        name: "사용자",
+        kind: "human",
+        onlineHint: true,
+        roleLabel: "OWNER",
+      },
+    ];
+  }, [
+    isPlannerRunning,
+    isRunningState,
+    isDraftGenerationComplete,
+    latestRun?.status,
+    latestRun?.publicUrl,
+  ]);
+
+  const prototypeHeaderPill = useMemo(() => {
+    const run = latestRun;
+    if (!run) {
+      return { left: "프로토타입 생성", right: null as string | null };
+    }
+    const total = run.totalWorkUnits > 0 ? run.totalWorkUnits : run.workUnits.length;
+    if (!total) {
+      if (run.status === "PLANNER_ANALYZING") return { left: "작업계획", right: "생성 중" };
+      return { left: "프로토타입 생성", right: "준비" };
+    }
+    const done = run.workUnits.filter((u) => u.status === "MERGED" || u.status === "SKIPPED").length;
+    const pct = Math.min(100, Math.round((done / total) * 100));
+    return { left: `프로토타입 작업 ${pct}%`, right: `${done}/${total}` };
+  }, [latestRun]);
+
   return (
     <div
       className="jyo-prototype-generation-root"
@@ -1445,15 +1503,6 @@ export function PrototypePreviewPanel({
     >
       <style>{`
         @keyframes jyo-proto-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @media (max-width: 760px) {
-          .jyo-prototype-stage-shell {
-            grid-template-columns: minmax(0, 1fr) !important;
-            overflow-y: auto !important;
-          }
-          .jyo-prototype-stage-members {
-            min-height: 180px !important;
-          }
-        }
         .jyo-prototype-stage-shell { height: 100%; }
         .jyo-prototype-generation-root input,
         .jyo-prototype-generation-root select {
@@ -1467,176 +1516,166 @@ export function PrototypePreviewPanel({
         </div>
       ) : null}
 
-      <div
-        className="jyo-prototype-stage-shell"
-        style={{
-          ...prototypeStageShell,
-          gridTemplateColumns: chatExpanded ? "minmax(0, 1fr)" : "minmax(220px, 280px) minmax(0, 1fr)",
-          height: "100%",
-        }}
-      >
-        {!chatExpanded ? (
-          <aside className="jyo-prototype-stage-members" style={prototypeMemberAside} aria-label="참여 멤버">
-            <div
-              style={{
-                flex: 1,
-                minHeight: 0,
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-              }}
-            >
-              <div style={{ position: "relative", padding: "12px 12px 8px", flexShrink: 0 }}>
+      <div className="jyo-prototype-stage-shell" style={{ ...prototypeStageShell, height: "100%" }}>
+        <section
+          data-testid="prototype-generation-chat-panel"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            flex: "1 1 auto",
+            height: "100%",
+            minHeight: 0,
+            minWidth: 280,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+          aria-label="프로토타입 생성 채팅"
+        >
+          <RequirementsChatHeaderRow
+            memberControls={{
+              count: prototypeModalParticipants.length,
+              onOpen: () => setProtoMembersModalOpen(true),
+            }}
+            leading={
+              <div style={{ position: "relative", minWidth: 0 }}>
                 <div
+                  role="status"
+                  aria-live="polite"
+                  title="현재 진행 상태"
                   style={{
-                    fontSize: 11,
-                    fontWeight: 800,
-                    color: "#64748b",
-                    letterSpacing: "0.02em",
-                    textTransform: "uppercase",
+                    border: "1px solid #cbd5e1",
+                    background: "#fff",
+                    borderRadius: 999,
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    color: "#0f172a",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    maxWidth: "min(100%, 420px)",
                   }}
                 >
-                  참여 멤버
+                  <span style={{ whiteSpace: "nowrap" }}>{prototypeHeaderPill.left}</span>
+                  {prototypeHeaderPill.right ? (
+                    <>
+                      <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
+                      <span style={{ whiteSpace: "nowrap", color: "#334155" }}>{prototypeHeaderPill.right}</span>
+                    </>
+                  ) : null}
                 </div>
               </div>
-              <div
-                role="list"
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflowY: "auto",
-                  padding: "0 10px 12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 999,
-                      background: isRunningState || isPlannerRunning ? "#2563eb" : "#94a3b8",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", flex: "1 1 auto", minWidth: 0 }}>
-                    AI기획자 ·{" "}
-                    {isPlannerRunning
-                      ? "분석중"
-                      : isRunningState
-                        ? "작업중"
-                        : latestRun?.status === "PREVIEW_READY"
-                          ? "완료"
-                          : latestRun?.status === "DEPLOY_FAILED" || latestRun?.status === "FAILED"
-                            ? "오류"
-                            : "대기"}
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 999, background: "#16a34a", flexShrink: 0 }} />
-                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", flex: "1 1 auto", minWidth: 0 }}>
-                    사용자 · OWNER · 온라인
-                  </div>
-                </div>
-              </div>
-            </div>
-          </aside>
-        ) : null}
-
-        <main className="jyo-prototype-chat-shell" style={prototypeChatMain} aria-label="프로토타입 생성 채팅">
-          <RequirementsChatHeaderRow
-            leading={<div style={{ flex: "1 1 auto", minWidth: 0 }} aria-hidden />}
-            memberControls={{
-              count: 2,
-              onOpen: () => setChatExpanded((v) => !v),
-            }}
+            }
           />
 
           <div
             style={{
-              flex: "1 1 auto",
+              ...serviceFlowStageMainChatStyle,
+              flex: 1,
               minHeight: 0,
-              minWidth: 0,
-              width: "100%",
-              overflowY: "auto",
-              padding: "12px 20px 14px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "stretch",
-              gap: 10,
-              alignContent: "start",
             }}
           >
-            <PrototypeChatTimeline
-              derived={mergedChatMessages}
-              userBubbles={chatUserLog}
-              ephemeralAi={ephemeralAiReplies}
-              onAction={handleChatIntent}
-              cursorPromptResolver={(order) => sortedWorkUnitsForSidebar.find((x) => x.order === order) ?? null}
-              timelineInScrollParent
-              templatePicker={chatInlineTemplatePicker}
-            />
-            {isNextPublicDevWorkflowToolsEnabled() ? (
-              <details style={{ fontSize: 11, color: "#475569", flexShrink: 0 }}>
-                <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>내부 오케스트레이션 (개발)</summary>
-                <pre
-                  style={{
-                    marginTop: 8,
-                    fontSize: 10,
-                    lineHeight: 1.35,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    background: "#fff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 8,
-                    padding: 8,
-                  }}
-                >
-                  {JSON.stringify(
-                    {
-                      executionSlots,
-                      plannerSource: latestRun?.plannerSource ?? null,
-                      plannerError: latestRun?.plannerError ?? null,
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-              </details>
-            ) : null}
-          </div>
-
-          <RequirementsChatComposerFooter>
-            <div style={{ maxWidth: 720, margin: "0 auto", width: "100%", minWidth: 0 }}>
+            <div
+              style={{
+                position: "relative",
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "flex-end",
-                  gap: 10,
-                  borderRadius: 999,
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
-                  boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
-                  padding: "8px 10px",
+                  position: "relative",
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  padding: "18px 18px 12px",
+                  background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
                 }}
               >
-                <PrototypeChatInput
-                  value={chatInput}
-                  onChange={setChatInput}
-                  onSend={() => void onSendChatMessage()}
-                  onKeyDown={onChatTextareaKeyDown}
-                  placeholder={chatPlaceholder}
-                  disabled={isMessageInputBlocked}
-                  inputRef={chatInputRef}
-                  embedInComposer
-                />
+                <div style={{ maxWidth: 720, margin: "0 auto", width: "100%", minWidth: 0 }}>
+                  <PrototypeChatTimeline
+                    derived={mergedChatMessages}
+                    userBubbles={chatUserLog}
+                    ephemeralAi={ephemeralAiReplies}
+                    onAction={handleChatIntent}
+                    cursorPromptResolver={(order) => sortedWorkUnitsForSidebar.find((x) => x.order === order) ?? null}
+                    timelineInScrollParent
+                    templatePicker={chatInlineTemplatePicker}
+                  />
+                  {isNextPublicDevWorkflowToolsEnabled() ? (
+                    <details style={{ fontSize: 11, color: "#475569", flexShrink: 0, marginTop: 12 }}>
+                      <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>내부 오케스트레이션 (개발)</summary>
+                      <pre
+                        style={{
+                          marginTop: 8,
+                          fontSize: 10,
+                          lineHeight: 1.35,
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          background: "#fff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 8,
+                          padding: 8,
+                        }}
+                      >
+                        {JSON.stringify(
+                          {
+                            executionSlots,
+                            plannerSource: latestRun?.plannerSource ?? null,
+                            plannerError: latestRun?.plannerError ?? null,
+                          },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </details>
+                  ) : null}
+                </div>
               </div>
+
+              <RequirementsChatComposerFooter>
+                <div style={serviceFlowStageComposerColumnStyle}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-end",
+                      gap: 10,
+                      borderRadius: 22,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
+                      padding: "8px 10px",
+                    }}
+                  >
+                    <PrototypeChatInput
+                      value={chatInput}
+                      onChange={setChatInput}
+                      onSend={() => void onSendChatMessage()}
+                      onKeyDown={onChatTextareaKeyDown}
+                      placeholder={chatPlaceholder}
+                      disabled={isMessageInputBlocked}
+                      inputRef={chatInputRef}
+                      embedInComposer
+                      targetPickerItems={prototypeComposerAtAtItems}
+                    />
+                  </div>
+                </div>
+              </RequirementsChatComposerFooter>
             </div>
-          </RequirementsChatComposerFooter>
-        </main>
+          </div>
+        </section>
       </div>
+
+      <RequirementsMembersModal
+        open={protoMembersModalOpen}
+        onClose={() => setProtoMembersModalOpen(false)}
+        participants={prototypeModalParticipants}
+        showInvite={false}
+        inviteDisabled
+        onInviteClick={() => {}}
+      />
 
       <PrototypePreviewDraggableShell
         open={templatePreviewOpen}

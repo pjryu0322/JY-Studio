@@ -10,7 +10,9 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { DesktopWorkflowTabs } from "@/components/layout/DesktopWorkflowTabs";
 import { MobileStepSelector } from "@/components/layout/MobileStepSelector";
-import { useWorkflowNavNarrowBreakpoint } from "@/components/ui/breakpoints";
+import { useWorkNoteComposerInsertHandler } from "@/components/worknote/WorkNoteComposerInsertContext";
+import { WorkNoteButton } from "@/components/worknote/WorkNoteButton";
+import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import {
   appFlowStepHref,
   isWorkflowStepNavActive,
@@ -44,7 +46,9 @@ function ProjectWorkflowNavInner() {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
-  const narrow = useWorkflowNavNarrowBreakpoint();
+  const { effectiveLayout } = useWorkspaceMode();
+  const compactWorkflowNav = effectiveLayout === "MOBILE";
+  const insertMemoIntoComposer = useWorkNoteComposerInsertHandler();
 
   const projectContextId = useMemo(
     () => resolveWorkflowProjectContextId(pathname, searchParams),
@@ -69,8 +73,10 @@ function ProjectWorkflowNavInner() {
 
   if (!hasProjectContext || !projectContextId) return null;
 
-  if (narrow) {
-    return <MobileStepSelector items={workflowItems} />;
+  const workNote = <WorkNoteButton projectId={projectContextId} onShareToComposer={insertMemoIntoComposer} />;
+
+  if (compactWorkflowNav) {
+    return <MobileStepSelector items={workflowItems} trailingSlot={workNote} />;
   }
 
   return (
@@ -84,7 +90,10 @@ function ProjectWorkflowNavInner() {
         rowGap: 12,
       }}
     >
-      <DesktopWorkflowTabs items={workflowItems} />
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+        <DesktopWorkflowTabs items={workflowItems} />
+        {workNote}
+      </div>
       {admin.length ? (
         <>
           <span

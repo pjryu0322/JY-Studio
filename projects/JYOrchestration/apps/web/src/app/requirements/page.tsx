@@ -1,4 +1,4 @@
-import { RequirementsWorkspace } from "@/components/requirements/RequirementsWorkspace";
+import { RequirementsWorkspaceWithComposerBridge } from "@/components/requirements/RequirementsWorkspaceWithComposerBridge";
 
 function pickFirst(v: string | string[] | undefined): string {
   if (v == null) return "";
@@ -17,7 +17,7 @@ export default async function RequirementsPage({
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 8px" }}>
-      <RequirementsWorkspace initialProjectId={projectId} initialWorkflowNotice={workflowNotice} initialStage={stage} />
+      <RequirementsWorkspaceWithComposerBridge initialProjectId={projectId} initialWorkflowNotice={workflowNotice} initialStage={stage} />
     </div>
   );
 }

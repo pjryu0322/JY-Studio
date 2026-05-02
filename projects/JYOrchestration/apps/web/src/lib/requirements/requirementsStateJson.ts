@@ -92,6 +92,7 @@ export type RequirementsStateJson = {
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
    */
   prototypeWorkspaceTimelineCardsV1?: readonly PrototypeWorkspaceTimelineCardV1[] | null;
+  featureWorkspaceV1?: FeatureWorkspaceV1 | null;
 };
 
 export type PrototypeWorkspaceTimelineCardV1 = Readonly<{
@@ -105,6 +106,39 @@ export type PrototypeWorkspaceTimelineCardV1 = Readonly<{
   workUnitTitlesJson?: string | null;
   prUrl?: string | null;
   workUnitOrder?: number | null;
+}>;
+
+/** 기능 정리 — 슬롯형 워크스페이스(v1, `Project.requirementsStateJson` 하위) */
+export type FeatureWorkspaceChatRoleV1 = "user" | "ai";
+
+export type FeatureWorkspaceChatMessageV1 = Readonly<{
+  id: string;
+  role: FeatureWorkspaceChatRoleV1;
+  text: string;
+  at: string;
+}>;
+
+export type FeatureWorkspaceItemV1 = Readonly<{
+  id: string;
+  title: string;
+  detail?: string | null;
+  priority: number;
+  order: number;
+}>;
+
+export type FeatureWorkspaceStageV1 = Readonly<{
+  stageKey: string;
+  title: string;
+  features: readonly FeatureWorkspaceItemV1[];
+}>;
+
+export type FeatureWorkspaceV1 = Readonly<{
+  version: 1;
+  updatedAt: string;
+  plannerHint?: string | null;
+  chat: readonly FeatureWorkspaceChatMessageV1[];
+  stages: readonly FeatureWorkspaceStageV1[];
+  selectedStageKey?: string | null;
 }>;
 
 /** 서비스 흐름 체크리스트 8슬롯(클라이언트·저장 JSON 공통 키) */
@@ -179,6 +213,73 @@ export function isRequirementsPromptPresenterView(v: unknown): v is Requirements
 function isIdeationDeliverableType(v: unknown): v is IdeationDeliverableType {
   // keep permissive for forward-compat (server/client may add new types)
   return typeof v === "string" && v.trim().length > 0;
+}
+
+function parseFeatureWorkspaceV1(raw: unknown): FeatureWorkspaceV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const version = o.version === 1 ? 1 : null;
+  if (!version) return null;
+  const updatedAt = typeof o.updatedAt === "string" ? o.updatedAt.trim() : "";
+  if (!updatedAt) return null;
+  const plannerHint =
+    typeof o.plannerHint === "string" ? o.plannerHint.trim().slice(0, 2000) : o.plannerHint === null ? null : undefined;
+  const chatRaw = Array.isArray(o.chat) ? (o.chat as unknown[]) : [];
+  const chat: FeatureWorkspaceChatMessageV1[] = [];
+  for (const row of chatRaw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const id = typeof r.id === "string" ? r.id.trim().slice(0, 128) : "";
+    const role = r.role === "user" || r.role === "ai" ? r.role : null;
+    const text = typeof r.text === "string" ? r.text.trim().slice(0, 12000) : "";
+    const at = typeof r.at === "string" ? r.at.trim() : "";
+    if (!id || !role || !text || !at) continue;
+    chat.push({ id, role, text, at });
+  }
+  chat.sort((a, b) => a.at.localeCompare(b.at));
+  const stagesRaw = Array.isArray(o.stages) ? (o.stages as unknown[]) : [];
+  const stages: FeatureWorkspaceStageV1[] = [];
+  for (const srow of stagesRaw) {
+    if (!srow || typeof srow !== "object") continue;
+    const s = srow as Record<string, unknown>;
+    const stageKey = typeof s.stageKey === "string" ? s.stageKey.trim().slice(0, 128) : "";
+    const title = typeof s.title === "string" ? s.title.trim().slice(0, 500) : "";
+    if (!stageKey || !title) continue;
+    const featsRaw = Array.isArray(s.features) ? (s.features as unknown[]) : [];
+    const features: FeatureWorkspaceItemV1[] = [];
+    for (const frow of featsRaw) {
+      if (!frow || typeof frow !== "object") continue;
+      const f = frow as Record<string, unknown>;
+      const id = typeof f.id === "string" ? f.id.trim().slice(0, 128) : "";
+      const ft = typeof f.title === "string" ? f.title.trim().slice(0, 500) : "";
+      const priority = typeof f.priority === "number" && Number.isFinite(f.priority) ? Math.floor(f.priority) : 2;
+      const order = typeof f.order === "number" && Number.isFinite(f.order) ? Math.floor(f.order) : 0;
+      const detail =
+        f.detail === null || f.detail === undefined
+          ? undefined
+          : typeof f.detail === "string"
+            ? f.detail.trim().slice(0, 8000)
+            : undefined;
+      if (!id || !ft) continue;
+      features.push({ id, title: ft, priority, order, ...(detail ? { detail } : {}) });
+    }
+    features.sort((a, b) => a.order - b.order);
+    stages.push({ stageKey, title, features });
+  }
+  const selectedStageKey =
+    typeof o.selectedStageKey === "string"
+      ? o.selectedStageKey.trim().slice(0, 128)
+      : o.selectedStageKey === null
+        ? null
+        : undefined;
+  return {
+    version: 1,
+    updatedAt,
+    chat,
+    stages,
+    ...(plannerHint !== undefined ? { plannerHint } : {}),
+    ...(selectedStageKey !== undefined ? { selectedStageKey } : {}),
+  };
 }
 
 function parseOrganizePlannerState(raw: unknown): RequirementsOrganizePlannerState | undefined {
@@ -375,6 +476,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     "prototypeWorkspaceTimelineCardsV1" in o ? (o.prototypeWorkspaceTimelineCardsV1 as unknown) : undefined;
   const prototypeWorkspaceTimelineCardsV1 = parseProtoTimelineCards(protoTimelineRaw);
 
+  const featureWorkspaceRaw = "featureWorkspaceV1" in o ? (o.featureWorkspaceV1 as unknown) : undefined;
+  const featureWorkspaceV1 =
+    featureWorkspaceRaw === undefined
+      ? undefined
+      : featureWorkspaceRaw === null
+        ? null
+        : parseFeatureWorkspaceV1(featureWorkspaceRaw);
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -425,6 +534,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         : parseOrganizePlannerState(o.organizePlannerState) ?? null,
     ...(prototypeWorkspaceChatV1 !== undefined ? { prototypeWorkspaceChatV1 } : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
+    ...(featureWorkspaceV1 !== undefined ? { featureWorkspaceV1 } : {}),
   };
 }
 
