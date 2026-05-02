@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
@@ -13,7 +13,13 @@ export type MobileStepSelectorItem = WorkflowStepMeta & {
   readonly active: boolean;
 };
 
-export function MobileStepSelector({ items }: { readonly items: readonly MobileStepSelectorItem[] }) {
+export function MobileStepSelector({
+  items,
+  trailingSlot,
+}: {
+  readonly items: readonly MobileStepSelectorItem[];
+  readonly trailingSlot?: ReactNode;
+}) {
   const showScreenLabels = useShowScreenLabels();
   const [open, setOpen] = useState(false);
 
@@ -28,6 +34,7 @@ export function MobileStepSelector({ items }: { readonly items: readonly MobileS
         </div>
       </div>
       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {trailingSlot}
         <button
           type="button"
           onClick={() => setOpen(true)}

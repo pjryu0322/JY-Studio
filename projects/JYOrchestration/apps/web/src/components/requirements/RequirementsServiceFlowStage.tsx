@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useMemo, useRef } from "react";
+import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { Button } from "@/components/ui/Button";
@@ -23,6 +25,7 @@ import {
   serviceFlowStageScrollAreaStyle,
   serviceFlowStageShellGridStyle,
 } from "@/components/service-flow/serviceFlowStageLayout";
+import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { useServiceFlowStageController, type ServiceFlowStageControllerInput } from "@/components/service-flow/useServiceFlowStageController";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
@@ -42,6 +45,36 @@ export function RequirementsServiceFlowStage({
   const showScreenLabels = useShowScreenLabels();
   const c = useServiceFlowStageController(controllerInput);
   const { workshop: w } = c;
+  const { register: registerWorkNoteComposerInsert } = useWorkNoteComposerInsertControls();
+  const setInputRef = useRef(w.setInput);
+  setInputRef.current = w.setInput;
+  const composerTaRef = w.composerTextareaRef;
+
+  useEffect(() => {
+    registerWorkNoteComposerInsert((text) => {
+      setInputRef.current(text);
+      window.requestAnimationFrame(() => {
+        const el = composerTaRef.current;
+        if (!el) return;
+        el.focus();
+        const len = text.length;
+        try {
+          el.setSelectionRange(len, len);
+        } catch {
+          /* ignore */
+        }
+      });
+    });
+    return () => registerWorkNoteComposerInsert(null);
+  }, [registerWorkNoteComposerInsert, composerTaRef]);
+
+  const serviceFlowComposerAtAtItems = useMemo((): readonly ComposerAtAtPickerItem[] => {
+    return c.sidebarParticipants.map((p) => ({
+      id: `picker:sf:${p.id}`,
+      label: p.invited ? `${p.name} (초대됨)` : p.name,
+      targets: [{ id: p.id, name: p.name }],
+    }));
+  }, [c.sidebarParticipants]);
 
   return (
     <section className="jyo-service-flow-stage" style={serviceFlowStageRootSectionStyle}>
@@ -154,6 +187,7 @@ export function RequirementsServiceFlowStage({
                 placeholder="메시지를 입력하세요"
                 onOpenActions={() => w.setToolsOpen((v) => !v)}
                 textAreaRef={w.composerTextareaRef}
+                targetPickerItems={serviceFlowComposerAtAtItems}
                 actionsOpen={w.toolsOpen}
                 actionMenu={
                   <ServiceFlowActionMenu

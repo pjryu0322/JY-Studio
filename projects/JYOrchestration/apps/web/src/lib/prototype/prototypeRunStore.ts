@@ -375,6 +375,7 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
       typeof (raw as { pagesDeployTriggerCommitSha?: unknown }).pagesDeployTriggerCommitSha === "string"
         ? String((raw as { pagesDeployTriggerCommitSha: string }).pagesDeployTriggerCommitSha)
         : null,
+    publicUrl: typeof (raw as { publicUrl?: unknown }).publicUrl === "string" ? String((raw as { publicUrl: string }).publicUrl) : null,
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
   };
@@ -436,6 +437,7 @@ export function createRun(input: {
     pagesDeployWorkflowRunUrl: null,
     deployFailureDetail: null,
     pagesDeployTriggerCommitSha: null,
+    publicUrl: null,
     createdAt: t,
     updatedAt: t,
   };
@@ -517,6 +519,7 @@ export function updateRun(
       | "pagesDeployWorkflowRunUrl"
       | "deployFailureDetail"
       | "pagesDeployTriggerCommitSha"
+      | "publicUrl"
     >
   >,
 ): PrototypeRun | null {

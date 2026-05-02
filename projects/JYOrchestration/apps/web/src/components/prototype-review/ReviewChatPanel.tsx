@@ -2,6 +2,9 @@
 
 import type { CSSProperties, FormEvent, KeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import { ComposerAtAtTargetPicker } from "@/components/composer/ComposerAtAtTargetPicker";
+import { useComposerAtAtPicker } from "@/hooks/useComposerAtAtPicker";
+import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 import type { PrototypeImprovementItem, PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -59,6 +62,12 @@ function roleLabel(role: PrototypeReviewMessage["role"]): string {
   if (role === "expert") return "전문가";
   return "사용자";
 }
+
+const DEFAULT_REVIEW_COMPOSER_AT_AT: readonly ComposerAtAtPickerItem[] = [
+  { id: "review:planner", label: "AI기획자", targets: [{ id: "planner", name: "AI기획자" }] },
+  { id: "review:expert", label: "전문가", targets: [{ id: "expert", name: "전문가" }] },
+  { id: "review:user", label: "사용자", targets: [{ id: "user", name: "사용자" }] },
+];
 
 function bubbleStyle(role: PrototypeReviewMessage["role"], glass: ReturnType<typeof dockGlass> | null): CSSProperties {
   const isPlanner = role === "planner";
@@ -118,10 +127,20 @@ export function ReviewChatPanel(p: {
   readonly onSummarize: () => void;
   readonly onImprovements: () => void;
   readonly onFollowUpDrafts: () => void;
+  /** 비우면 AI기획자·전문가·사용자 기본 멘션 */
+  readonly composerAtAtItems?: readonly ComposerAtAtPickerItem[];
 }) {
   const [text, setText] = useState("");
   const [modalItem, setModalItem] = useState<PrototypeImprovementItem | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const composerTaRef = useRef<HTMLTextAreaElement | null>(null);
+  const atAtItems = p.composerAtAtItems ?? DEFAULT_REVIEW_COMPOSER_AT_AT;
+  const { targetPickerOpen, normalizedTargetPickerItems, closeTargetPicker, pickTargetItem } = useComposerAtAtPicker({
+    value: text,
+    onChange: setText,
+    items: atAtItems,
+    textareaRef: composerTaRef,
+  });
   const compact = Boolean(p.compact);
   const fillParent = Boolean(p.fillParent);
   const floating = Boolean(p.floating);
@@ -211,59 +230,61 @@ export function ReviewChatPanel(p: {
           </div>
         ))}
 
-        {p.improvementsLoading ? (
-          <div
-            style={{
-              alignSelf: "stretch",
-              padding: 14,
-              borderRadius: 12,
-              border: `1px dashed ${t.borderStrong}`,
-              background: glass ? glass.card : t.bgCard,
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 8 }}>AI기획자 · AI개선안</div>
-            <LoadingState label="개선안을 준비하는 중…" />
-          </div>
-        ) : null}
-
-        {!p.improvementsLoading && p.improvementItems && p.improvementItems.length > 0 ? (
-          <div
-            style={{
-              alignSelf: "stretch",
-              padding: 12,
-              borderRadius: 12,
-              border: `1px solid ${t.border}`,
-              background: glass ? glass.card : t.bgCard,
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 900, color: t.primary, marginBottom: 10 }}>AI기획자 · AI개선안</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {p.improvementItems.map((it, idx) => (
-                <button
-                  key={`${it.title}-${idx}`}
-                  type="button"
-                  onClick={() => setModalItem(it)}
-                  style={{
-                    textAlign: "left",
-                    padding: "10px 12px",
-                    borderRadius: t.radiusMd,
-                    border: `1px solid ${t.border}`,
-                    background: glass ? glass.page : t.bgPage,
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: t.textPrimary,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  <span style={{ color: t.textMuted, fontWeight: 800, marginRight: 8 }}>{idx + 1}.</span>
-                  {it.title}
-                  <span style={{ display: "block", marginTop: 4, fontSize: 12, fontWeight: 600, color: t.textMuted }}>탭하여 상세 보기</span>
-                </button>
-              ))}
+        <div id="jyo-prototype-review-change-requests" style={{ alignSelf: "stretch", scrollMarginTop: 12 }}>
+          {p.improvementsLoading ? (
+            <div
+              style={{
+                alignSelf: "stretch",
+                padding: 14,
+                borderRadius: 12,
+                border: `1px dashed ${t.borderStrong}`,
+                background: glass ? glass.card : t.bgCard,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 8 }}>AI기획자 · AI개선안</div>
+              <LoadingState label="개선안을 준비하는 중…" />
             </div>
-          </div>
-        ) : null}
+          ) : null}
+
+          {!p.improvementsLoading && p.improvementItems && p.improvementItems.length > 0 ? (
+            <div
+              style={{
+                alignSelf: "stretch",
+                padding: 12,
+                borderRadius: 12,
+                border: `1px solid ${t.border}`,
+                background: glass ? glass.card : t.bgCard,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900, color: t.primary, marginBottom: 10 }}>AI기획자 · AI개선안</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {p.improvementItems.map((it, idx) => (
+                  <button
+                    key={`${it.title}-${idx}`}
+                    type="button"
+                    onClick={() => setModalItem(it)}
+                    style={{
+                      textAlign: "left",
+                      padding: "10px 12px",
+                      borderRadius: t.radiusMd,
+                      border: `1px solid ${t.border}`,
+                      background: glass ? glass.page : t.bgPage,
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: t.textPrimary,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <span style={{ color: t.textMuted, fontWeight: 800, marginRight: 8 }}>{idx + 1}.</span>
+                    {it.title}
+                    <span style={{ display: "block", marginTop: 4, fontSize: 12, fontWeight: 600, color: t.textMuted }}>탭하여 상세 보기</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         {p.improvementsError ? (
           <div style={{ fontSize: 12, color: t.warning, padding: "0 4px", lineHeight: 1.5 }}>{p.improvementsError}</div>
@@ -307,32 +328,51 @@ export function ReviewChatPanel(p: {
 
       <form
         onSubmit={onSubmit}
-        style={{ borderTop: `1px solid ${t.border}`, padding: 12, display: "flex", flexDirection: "column", gap: 8, background: footerBg }}
+        style={{
+          borderTop: `1px solid ${t.border}`,
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          background: footerBg,
+          overflow: "visible",
+          position: "relative",
+          zIndex: 6,
+        }}
       >
         <label htmlFor="jyo-review-chat-input" style={{ fontSize: 12, fontWeight: 800, color: t.textMuted }}>
           메시지
         </label>
-        <textarea
-          id="jyo-review-chat-input"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onTextareaKeyDown}
-          disabled={p.disabled || p.busy}
-          placeholder="프로토타입을 보며 개선 요청을 입력하세요."
-          rows={compact ? 2 : 2}
-          style={{
-            width: "100%",
-            resize: "vertical",
-            padding: 10,
-            borderRadius: t.radiusMd,
-            border: `1px solid ${t.borderStrong}`,
-            fontSize: 13,
-            lineHeight: 1.45,
-            boxSizing: "border-box",
-            minHeight: 72,
-            background: glass ? glass.input : t.bgCard,
-          }}
-        />
+        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 0 }}>
+          <ComposerAtAtTargetPicker
+            open={targetPickerOpen}
+            items={normalizedTargetPickerItems}
+            onPick={pickTargetItem}
+            onClose={closeTargetPicker}
+          />
+          <textarea
+            id="jyo-review-chat-input"
+            ref={composerTaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onTextareaKeyDown}
+            disabled={p.disabled || p.busy}
+            placeholder="프로토타입을 보며 개선 요청을 입력하세요."
+            rows={compact ? 2 : 2}
+            style={{
+              width: "100%",
+              resize: "vertical",
+              padding: 10,
+              borderRadius: t.radiusMd,
+              border: `1px solid ${t.borderStrong}`,
+              fontSize: 13,
+              lineHeight: 1.45,
+              boxSizing: "border-box",
+              minHeight: 72,
+              background: glass ? glass.input : t.bgCard,
+            }}
+          />
+        </div>
         <Button type="submit" variant="primary" size="md" disabled={p.disabled || p.busy || !text.trim()} loading={p.busyAction === "send"}>
           보내기
         </Button>

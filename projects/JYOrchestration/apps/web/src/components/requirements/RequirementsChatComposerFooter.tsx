@@ -11,6 +11,9 @@ export function RequirementsChatComposerFooter({ children }: { readonly children
         padding: "12px 18px 16px",
         borderTop: "1px solid #e2e8f0",
         background: "#f8fafc",
+        overflow: "visible",
+        position: "relative",
+        zIndex: 4,
       }}
     >
       {children}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
@@ -38,7 +39,7 @@ const timelineSteps = [
   { label: "프로토타입 검토", hint: "프리뷰·개선" },
 ] as const;
 
-export default function TracePage() {
+function TracePageInner() {
   return (
     <WorkflowStageChrome
       title="추적"
@@ -123,5 +124,13 @@ export default function TracePage() {
         </details>
       </div>
     </WorkflowStageChrome>
+  );
+}
+
+export default function TracePage() {
+  return (
+    <Suspense fallback={null}>
+      <TracePageInner />
+    </Suspense>
   );
 }

@@ -1,4 +1,4 @@
-import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
+import type { PrototypeDeployStatusSnapshot, PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
 
 export type LatestPrototypeRunResponse = Readonly<{
@@ -85,6 +85,56 @@ export async function postPrototypePreviewUrl(
     body: JSON.stringify(body),
   });
   return (await res.json()) as { success: boolean; data?: { run: PrototypeRun }; message?: string };
+}
+
+export async function postPrototypePreparePreview(
+  runId: string,
+  body: { projectId: string },
+): Promise<{ success: boolean; data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot }; message?: string }> {
+  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/prepare-preview`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot };
+    message?: string;
+  };
+}
+
+export async function postPrototypeRequestDeploy(
+  runId: string,
+  body: { projectId: string },
+): Promise<{ success: boolean; data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot }; message?: string }> {
+  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/request-deploy`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot };
+    message?: string;
+  };
+}
+
+export async function getPrototypeDeployStatusApi(
+  projectId: string,
+  runId: string,
+  refresh: boolean,
+): Promise<{ success: boolean; data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot }; message?: string }> {
+  const u = new URL(`/api/prototype-runs/${encodeURIComponent(runId)}/deploy-status`, window.location.origin);
+  u.searchParams.set("projectId", projectId);
+  if (refresh) u.searchParams.set("refresh", "1");
+  const res = await fetch(u.toString(), { credentials: "include" });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot };
+    message?: string;
+  };
 }
 
 export async function postPrototypeRunRefresh(

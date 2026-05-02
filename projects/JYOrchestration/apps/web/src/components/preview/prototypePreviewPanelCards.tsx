@@ -328,7 +328,7 @@ export function CurrentWorkUnitPanel(p: CurrentWorkUnitPanelProps) {
 
   if (!run?.id || !total) return null;
 
-  const rows = active ? buildFiveStepPipelineRows(active) : [];
+  const rows = active ? buildFiveStepPipelineRows(active, run) : [];
 
   return (
     <div style={subCard}>

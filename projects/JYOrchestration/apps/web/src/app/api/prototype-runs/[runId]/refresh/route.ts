@@ -41,7 +41,7 @@ function computeNextAction(run: PrototypeRun): { nextAction: NextAction; userMes
     case "PUSH_CONFIRMED":
       return { nextAction: "REVIEWING", userMessage: "AI 검토를 진행합니다." };
     case "AI_REVIEWING":
-      return { nextAction: "OPEN_PR", userMessage: "PR 생성 단계를 진행합니다." };
+      return { nextAction: "REVIEWING", userMessage: "AI 검토를 진행합니다." };
     case "REWORK_REQUIRED":
       return { nextAction: "REWORK_REQUIRED", userMessage: run.aiReviewSummary ?? "보완이 필요합니다." };
     case "PR_OPENED":
@@ -57,7 +57,12 @@ function computeNextAction(run: PrototypeRun): { nextAction: NextAction; userMes
     case "DEPLOY_FAILED":
       return { nextAction: "FAILED", userMessage: run.deployFailureDetail ?? "배포에 실패했습니다." };
     case "PREVIEW_READY":
-      return { nextAction: "CONNECT_PREVIEW_URL", userMessage: "결과 URL이 연결되었습니다." };
+      return {
+        nextAction: "CONNECT_PREVIEW_URL",
+        userMessage: run.publicUrl
+          ? "정식 배포 URL이 준비되었습니다."
+          : "프로토타입 초안이 생성되었습니다. 검토 화면에서 Preview를 확인하세요.",
+      };
     case "FAILED":
       return { nextAction: "FAILED", userMessage: run.aiReviewSummary ?? "실행이 실패했습니다." };
     case "BLOCKED":

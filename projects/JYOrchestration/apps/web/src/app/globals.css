@@ -55,6 +55,17 @@ body {
 
 .jyo-platform-main {
   padding: 20px 24px 32px;
+  max-width: 1600px;
+}
+
+/** 플랫폼 작업모드(프로토타입 생성 설정과 무관) */
+.jyo-platform-main.jyo-workspace-desktop {
+  max-width: min(100%, 1920px);
+}
+
+.jyo-platform-main.jyo-workspace-mobile {
+  max-width: 100%;
+  padding: 12px 12px 24px;
 }
 
 /* 아이디어 구체화: 멤버 패널 + 채팅 가로 배치(좁은 화면에서는 세로 스택) */

@@ -47,7 +47,8 @@ export type PrototypeChatActionIntent =
   | "OPEN_CURSOR_PROMPT"
   | "OPEN_PR_URL"
   | "OPEN_PREVIEW"
-  | "COPY_PREVIEW_URL";
+  | "COPY_PREVIEW_URL"
+  | "OPEN_PROTOTYPE_REVIEW";
 
 /** 템플릿 확정 후 작업계획 생성 버튼 노출 여부 등 */
 export type PrototypePrePlanGate = "idle" | "need_create_click";
@@ -116,6 +117,8 @@ export type BuildPrototypeChatMessagesParams = Readonly<{
   plannerCreatePending: boolean;
   /** 1~5 단계 시뮬레이션(또는 완료 직전) — 플래너 진행 말풍선에 전달 */
   plannerProgressStep: number;
+  /** 검토 화면 이동 링크용 */
+  projectId: string;
 }>;
 
 function envLineState(b: PrototypeChatEnvBadge): "완료" | "필요" | "오류" | "대기" {
@@ -386,16 +389,26 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
   }
 
   if (p.isCompleted && run?.id) {
-    const url = (p.previewUrl ?? run.previewUrl ?? "").trim();
+    const url = (p.previewUrl ?? run.previewUrl ?? run.suggestedPreviewUrl ?? "").trim();
+    const note =
+      "프로토타입 초안이 생성되었습니다. 검토 화면에서 Preview를 확인하세요." +
+      (url ? " (GitHub Pages 기준 후보 URL이며, 정식 공개는 검토 단계의 배포 요청 후에 이루어집니다.)" : "");
     out.push({
       id: "ai-done",
       role: "ai",
       orderKey: nextKey(),
-      title: "프로토타입 생성이 완료되었습니다.",
+      title: "초안 생성 완료",
+      body: note,
       blocks: url ? [{ kind: "url_line", url }] : undefined,
       actions: [
         { id: "a-open", label: "결과 보기", intent: "OPEN_PREVIEW", disabled: !url },
         { id: "a-copy", label: "URL 복사", intent: "COPY_PREVIEW_URL", disabled: !url },
+        {
+          id: "a-review",
+          label: "프로토타입 검토로 이동",
+          intent: "OPEN_PROTOTYPE_REVIEW",
+          disabled: !p.projectId.trim(),
+        },
         { id: "a-restart-done", label: "처음부터 다시 생성", intent: "RESTART_RUN" },
       ],
     });
@@ -429,7 +442,7 @@ export function buildPrototypeChatMessages(p: BuildPrototypeChatMessagesParams):
     const active = resolveActiveWorkUnitForPanel(run);
     const total = units.length;
     const current = active?.order ?? run.currentWorkUnitOrder ?? 1;
-    const rows = active ? buildFiveStepPipelineRows(active) : [];
+    const rows = active ? buildFiveStepPipelineRows(active, run) : [];
     const act: PrototypeChatAction[] = [
       { id: "a-ref-r", label: "상태 새로고침", intent: "REFRESH_STATUS" },
       { id: "a-can", label: "자동 생성 중단", intent: "CANCEL_RUN" },

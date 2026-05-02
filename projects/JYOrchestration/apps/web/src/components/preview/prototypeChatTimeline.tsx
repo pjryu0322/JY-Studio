@@ -1,7 +1,10 @@
 "use client";
 
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ComposerAtAtTargetPicker } from "@/components/composer/ComposerAtAtTargetPicker";
+import { useComposerAtAtPicker } from "@/hooks/useComposerAtAtPicker";
+import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 import type { PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
 import type { PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 import { PROTOTYPE_TEMPLATES } from "@/lib/templates/prototypeTemplates";
@@ -12,14 +15,34 @@ import {
   type PrototypeChatBuiltMessage,
 } from "@/lib/prototype/buildPrototypeChatMessages";
 
-const bubbleBase: CSSProperties = {
-  borderRadius: 14,
-  padding: "10px 12px",
+/** 요구사항 `RequirementsChatPanel` AI 카드와 동일한 톤 */
+const aiCardOuter: CSSProperties = {
+  maxWidth: "min(100%, 640px)",
+  marginLeft: 0,
+  marginRight: "auto",
   width: "100%",
-  maxWidth: "100%",
   boxSizing: "border-box",
-  fontSize: 12.5,
+  borderRadius: 14,
+  border: "1px solid #e2e8f0",
+  background: "#fff",
+  boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
+  overflow: "hidden",
+};
+
+const userBubbleStandard: CSSProperties = {
+  maxWidth: "min(100%, 520px)",
+  marginLeft: "auto",
+  marginRight: 0,
+  padding: "14px 16px",
+  borderRadius: "18px 18px 6px 18px",
+  background: "linear-gradient(180deg, #0f766e 0%, #0d5c56 100%)",
+  color: "#fff",
+  border: "none",
+  fontSize: 15,
   lineHeight: 1.55,
+  boxShadow: "0 10px 28px -14px rgba(13, 92, 86, 0.45)",
+  whiteSpace: "pre-wrap",
+  boxSizing: "border-box",
 };
 
 const chipBtn: CSSProperties = {
@@ -93,7 +116,7 @@ function renderBlocks(blocks: readonly PrototypeChatBlock[] | undefined): ReactN
       {blocks.map((b, i) => {
         if (b.kind === "text") {
           return (
-            <div key={`t-${i}`} style={{ color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap" }}>
+            <div key={`t-${i}`} style={{ color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.55 }}>
               {b.text}
             </div>
           );
@@ -490,59 +513,77 @@ export function PrototypeAiMessage(p: {
     <div
       style={{
         alignSelf: "stretch",
-        ...bubbleBase,
-        background: "#fff",
-        border: "1px solid #e2e8f0",
-        overflow: showPicker ? "visible" : undefined,
+        ...aiCardOuter,
+        overflow: showPicker ? "visible" : "hidden",
       }}
     >
-      <div style={{ fontSize: 11, fontWeight: 950, color: "#64748b", marginBottom: 4 }}>AI기획자</div>
-      {m.title ? (
-        <div style={{ fontSize: 13, fontWeight: 950, color: "#0f172a", marginBottom: 4 }}>{m.title}</div>
-      ) : null}
-      {m.body ? (
-        <div style={{ fontSize: 12.5, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap" }}>{m.body}</div>
-      ) : null}
-      {renderBlocks(m.blocks)}
-      {showPicker && p.templatePicker ? <InlineTemplatePickerRow {...p.templatePicker} /> : null}
-      {m.actions?.length ? <PrototypeActionChips actions={m.actions} onAction={p.onAction} /> : null}
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
+          background: "#f1f5f9",
+          fontSize: 12,
+          fontWeight: 800,
+          color: "#475569",
+        }}
+      >
+        AI · AI 기획자
+      </div>
+      <div style={{ padding: "12px 14px 14px" }}>
+        {m.title ? (
+          <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>{m.title}</div>
+        ) : null}
+        {m.body ? (
+          <div style={{ fontSize: 15, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{m.body}</div>
+        ) : null}
+        {renderBlocks(m.blocks)}
+        {showPicker && p.templatePicker ? <InlineTemplatePickerRow {...p.templatePicker} /> : null}
+        {m.actions?.length ? <PrototypeActionChips actions={m.actions} onAction={p.onAction} /> : null}
+      </div>
     </div>
   );
 }
 
 export function PrototypeUserMessage(p: { readonly text: string; readonly atLabel?: string }) {
   return (
-    <div
-      style={{
-        alignSelf: "flex-end",
-        ...bubbleBase,
-        width: "auto",
-        maxWidth: "min(92%, 560px)",
-        background: "#ecfdf5",
-        border: "1px solid #bbf7d0",
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 950, color: "#166534", marginBottom: 4 }}>사용자</div>
-      <div style={{ fontSize: 12.5, color: "#0f172a", fontWeight: 800, whiteSpace: "pre-wrap" }}>{p.text}</div>
+    <div style={{ alignSelf: "flex-end", display: "flex", flexDirection: "column", gap: 6, maxWidth: "100%" }}>
+      <div style={{ fontSize: 11, color: "#71717a", paddingRight: 4, textAlign: "right", fontWeight: 800 }}>사용자</div>
+      <div style={userBubbleStandard}>
+        <div style={{ fontSize: 15, fontWeight: 650, whiteSpace: "pre-wrap" }}>{p.text}</div>
+      </div>
     </div>
   );
 }
 
 export function PrototypeSystemMessage(p: { readonly text: string }) {
   return (
-    <div
-      style={{
-        alignSelf: "stretch",
-        maxWidth: "100%",
-        fontSize: 12,
-        color: "#64748b",
-        fontWeight: 750,
-        padding: "6px 10px",
-        borderRadius: 8,
-        background: "#f1f5f9",
-      }}
-    >
-      {p.text}
+    <div style={{ alignSelf: "stretch", maxWidth: "min(100%, 640px)", marginLeft: 0, marginRight: "auto" }}>
+      <div
+        style={{
+          fontSize: 11,
+          color: "#71717a",
+          paddingLeft: 4,
+          marginBottom: 6,
+          fontWeight: 800,
+        }}
+      >
+        시스템
+      </div>
+      <div
+        style={{
+          borderRadius: 14,
+          border: "1px solid #bae6fd",
+          background: "#f0f9ff",
+          padding: "12px 14px",
+          fontSize: 15,
+          color: "#334155",
+          fontWeight: 650,
+          lineHeight: 1.55,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {p.text}
+      </div>
     </div>
   );
 }
@@ -610,12 +651,12 @@ export function PrototypeChatTimeline(p: {
   };
 
   const listWrapStyle: CSSProperties = p.timelineInScrollParent
-    ? { display: "flex", flexDirection: "column", alignItems: "stretch", gap: 10, width: "100%" }
+    ? { display: "flex", flexDirection: "column", alignItems: "stretch", gap: 16, width: "100%" }
     : {
         display: "flex",
         flexDirection: "column",
         alignItems: "stretch",
-        gap: 10,
+        gap: 16,
         flex: 1,
         minHeight: 0,
         overflow: "auto",
@@ -644,12 +685,22 @@ export function PrototypeChatTimeline(p: {
             return <PrototypeUserMessage key={row.u.id} text={row.u.text} />;
           }
           return (
-            <div
-              key={row.e.id}
-              style={{ alignSelf: "stretch", ...bubbleBase, background: "#fff", border: "1px solid #e2e8f0" }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 950, color: "#64748b", marginBottom: 4 }}>AI기획자</div>
-              <div style={{ fontSize: 12.5, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap" }}>{row.e.text}</div>
+            <div key={row.e.id} style={{ alignSelf: "stretch", ...aiCardOuter }}>
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
+                  background: "#f1f5f9",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: "#475569",
+                }}
+              >
+                AI · AI 기획자
+              </div>
+              <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+                {row.e.text}
+              </div>
             </div>
           );
         })}
@@ -709,8 +760,31 @@ export function PrototypeChatInput(p: {
   readonly inputRef: React.RefObject<HTMLTextAreaElement | null>;
   /** 서비스 흐름 단계 하단 컴포저(둥근 흰 카드) 안에 넣을 때 */
   readonly embedInComposer?: boolean;
+  /** `@@` 멘션 후보 */
+  readonly targetPickerItems?: readonly ComposerAtAtPickerItem[];
 }) {
   const embedded = Boolean(p.embedInComposer);
+  const innerTaRef = useRef<HTMLTextAreaElement | null>(null);
+  const { targetPickerOpen, normalizedTargetPickerItems, closeTargetPicker, pickTargetItem } = useComposerAtAtPicker({
+    value: p.value,
+    onChange: p.onChange,
+    items: p.targetPickerItems,
+    textareaRef: innerTaRef,
+  });
+
+  const autoGrowEmbedded = useCallback(() => {
+    if (!embedded) return;
+    const el = innerTaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const max = 220;
+    el.style.height = `${Math.min(max, el.scrollHeight)}px`;
+  }, [embedded]);
+
+  useEffect(() => {
+    autoGrowEmbedded();
+  }, [p.value, autoGrowEmbedded]);
+
   return (
     <div
       style={{
@@ -752,31 +826,56 @@ export function PrototypeChatInput(p: {
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
-      <textarea
-        ref={p.inputRef}
-        value={p.value}
-        onChange={(e) => p.onChange(e.target.value)}
-        onKeyDown={p.onKeyDown}
-        placeholder={p.placeholder}
-        rows={1}
-        disabled={p.disabled}
+      <div
         style={{
+          position: "relative",
           flex: 1,
-          resize: "none",
-          borderRadius: embedded ? 0 : 10,
-          border: embedded ? "none" : "1px solid #cbd5e1",
-          padding: embedded ? "10px 6px" : 8,
-          fontSize: embedded ? 16 : 12.5,
-          lineHeight: embedded ? 1.5 : 1.45,
-          fontWeight: embedded ? 600 : 800,
-          minHeight: embedded ? 44 : 44,
-          maxHeight: embedded ? 220 : undefined,
-          outline: "none",
-          background: embedded ? "transparent" : "#fff",
-          color: "#0f172a",
-          fontFamily: "inherit",
+          minWidth: 0,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
         }}
-      />
+      >
+        <ComposerAtAtTargetPicker
+          open={targetPickerOpen}
+          items={normalizedTargetPickerItems}
+          onPick={pickTargetItem}
+          onClose={closeTargetPicker}
+        />
+        <textarea
+          ref={(el) => {
+            innerTaRef.current = el;
+            if (p.inputRef && "current" in p.inputRef) (p.inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = el;
+          }}
+          value={p.value}
+          onChange={(e) => p.onChange(e.target.value)}
+          onInput={embedded ? autoGrowEmbedded : undefined}
+          onKeyDown={p.onKeyDown}
+          placeholder={p.placeholder}
+          rows={1}
+          disabled={p.disabled}
+          style={{
+            flex: "1 1 auto",
+            resize: "none",
+            borderRadius: embedded ? 0 : 10,
+            border: embedded ? "none" : "1px solid #cbd5e1",
+            padding: embedded ? "10px 6px" : 8,
+            fontSize: embedded ? 16 : 12.5,
+            lineHeight: embedded ? 1.5 : 1.45,
+            fontWeight: embedded ? 600 : 800,
+            minHeight: embedded ? 44 : 44,
+            maxHeight: embedded ? 220 : undefined,
+            outline: "none",
+            background: embedded ? "transparent" : "#fff",
+            color: "#0f172a",
+            fontFamily: "inherit",
+            overflowY: embedded ? "auto" : undefined,
+            overflowX: "hidden",
+            boxSizing: "border-box",
+            width: "100%",
+          }}
+        />
+      </div>
       <button
         type="button"
         onClick={() => p.onSend()}
@@ -805,10 +904,9 @@ export function PrototypeChatInput(p: {
         }
       >
         {embedded ? (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M5 12h12" />
-            <path d="M13 6l6 6-6 6" />
-          </svg>
+          <span aria-hidden style={{ fontSize: 17, lineHeight: 1, transform: "translateX(1px)", display: "inline-block" }}>
+            ➤
+          </span>
         ) : (
           "전송"
         )}

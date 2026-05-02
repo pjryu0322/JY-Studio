@@ -172,8 +172,24 @@ export type PrototypeRun = Readonly<{
   deployFailureDetail: string | null;
   /** Pages 워크플로를 트리거한 설정 커밋 SHA(폴링용). */
   pagesDeployTriggerCommitSha: string | null;
+  /** GitHub Pages 정식 배포 완료 후 공개 URL(검토용 previewUrl과 구분). 배포 전에는 null */
+  publicUrl: string | null;
   createdAt: string;
   updatedAt: string;
+}>;
+
+/** 검토·배포 UI용 스냅샷(클라이언트·API 공통). */
+export type PrototypeDeployUiStatus = "NOT_DEPLOYED" | "DEPLOYING" | "DEPLOYED" | "FAILED";
+
+export type PrototypeDeployStatusSnapshot = Readonly<{
+  deployStatus: PrototypeDeployUiStatus;
+  deploymentStatus: string;
+  previewUrl: string | null;
+  publicUrl: string | null;
+  suggestedPreviewUrl: string | null;
+  resultUrl: string | null;
+  runStatus: string;
+  pagesDeployWorkflowRunUrl: string | null;
 }>;
 
 export type PrototypeRunFileEnvelope = Readonly<{

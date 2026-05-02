@@ -1,5 +1,16 @@
 export const APP_FLOW_LAST_PROJECT_KEY = "jyo:flow:lastProjectId";
 
+/** 세션에 저장된 마지막 워크플로 프로젝트 ID(모바일 하단 메뉴·딥링크 등). 없으면 null. */
+export function readLastFlowProjectId(): string | null {
+  try {
+    if (typeof sessionStorage === "undefined") return null;
+    const v = sessionStorage.getItem(APP_FLOW_LAST_PROJECT_KEY)?.trim();
+    return v || null;
+  } catch {
+    return null;
+  }
+}
+
 /** 프로젝트 워크플로 상태가 바뀐 뒤 상단 단계 링크를 즉시 다시 불러오기 위해 디스패치합니다. */
 export const APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT = "jyo:app-flow-project-context-refresh";
 

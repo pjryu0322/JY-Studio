@@ -135,6 +135,15 @@ function parseFeatureDraftTitlesJson(json: string | null | undefined): readonly 
   }
 }
 
+/** Cursor/Git/AI 검토 진행 중인 유닛(REVIEW_PASS는 생성 완료로 간주해 제외). */
+function activeGenerationWorkUnit(run: PrototypeRun): PrototypeWorkUnit | null {
+  const sorted = [...run.workUnits].sort((a, b) => a.order - b.order);
+  const failed = sorted.find((u) => u.status === "FAILED");
+  if (failed) return failed;
+  return sorted.find((u) => u.status !== "MERGED" && u.status !== "SKIPPED" && u.status !== "REVIEW_PASS") ?? null;
+}
+
+/** PR/머지 진행 시 다음 대상(아직 머지 안 됨 — REVIEW_PASS 포함). */
 function activeWorkUnit(run: PrototypeRun): PrototypeWorkUnit | null {
   const sorted = [...run.workUnits].sort((a, b) => a.order - b.order);
   const failed = sorted.find((u) => u.status === "FAILED");
@@ -488,7 +497,7 @@ async function advancePrototypePagesDeployPhase(
   if (!allWorkUnitsMerged(run)) return null;
   let r = getRun(projectId, runId) ?? run;
 
-  if (r.status === "PREVIEW_READY" && r.previewUrl) return r;
+  if (r.status === "PREVIEW_READY" && r.publicUrl) return r;
   if (r.status === "DEPLOY_FAILED") return r;
 
   const repoUrl = setup?.gitRepoUrl?.trim();
@@ -592,6 +601,7 @@ async function advancePrototypePagesDeployPhase(
         status: "DEPLOYING",
         pagesDeployTriggerCommitSha: setupOk.commitSha,
         deploymentStartedAt: new Date().toISOString(),
+        deploymentStatus: "RUNNING",
         suggestedPreviewUrl: composedUrl,
       }) ?? r
     );
@@ -666,15 +676,59 @@ async function advancePrototypePagesDeployPhase(
         status: "PREVIEW_READY",
         previewUrl: composedUrl,
         suggestedPreviewUrl: composedUrl,
+        publicUrl: composedUrl,
+        resultUrl: composedUrl,
         statusReason: null,
         deployFailureDetail: null,
         pagesDeployWorkflowRunUrl: runUrl,
         pagesDeployTriggerCommitSha: headSha,
+        deploymentStatus: "DONE",
+        deploymentEndedAt: new Date().toISOString(),
       }) ?? r
     );
   }
 
   return getRun(projectId, runId);
+}
+
+/** AI 검토 통과 직후: 다음 WorkUnit으로 넘기거나 생성 완료(PREVIEW_READY, 정식 배포 전). */
+function transitionAfterGenerationReviewPass(
+  projectId: string,
+  runId: string,
+  run: PrototypeRun,
+  setup: Awaited<ReturnType<typeof prisma.executionSetup.findUnique>>,
+): PrototypeRun | null {
+  const next = activeGenerationWorkUnit(run);
+  if (next) {
+    return (
+      updateRun(projectId, runId, {
+        status: "WORK_UNITS_READY",
+        cursorRunId: null,
+        commitSha: null,
+        changedFiles: [],
+        prUrl: null,
+        prNumber: null,
+        mergeSha: null,
+        aiReviewDecision: null,
+        aiReviewSummary: null,
+        branchName: next.branchName,
+        currentWorkUnitOrder: next.order,
+      }) ?? run
+    );
+  }
+  const repoUrl = String(setup?.gitRepoUrl ?? "").trim();
+  const parsed = repoUrl ? composeGithubPagesPreviewUrlFromRepoUrl(repoUrl) : null;
+  const draftUrl = parsed?.url ?? null;
+  return (
+    updateRun(projectId, runId, {
+      status: "PREVIEW_READY",
+      statusReason: null,
+      suggestedPreviewUrl: draftUrl,
+      previewUrl: draftUrl,
+      publicUrl: null,
+      currentWorkUnitOrder: null,
+    }) ?? run
+  );
 }
 
 async function advanceAfterUnitMerged(
@@ -741,7 +795,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       })
     : "manual_review";
 
-  let active = activeWorkUnit(run);
+  let active = activeGenerationWorkUnit(run);
   if (!active) {
     if (
       run.workUnits.length &&
@@ -770,7 +824,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
 
   // --- Cursor launch (대기 WorkUnit) ---
   run = getRun(projectId, runId) ?? run;
-  active = activeWorkUnit(run) ?? active;
+  active = activeGenerationWorkUnit(run) ?? active;
   if (
     gate.automationAvailable &&
     setup &&
@@ -795,7 +849,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       );
     }
     run = getRun(projectId, runId) ?? run;
-    active = activeWorkUnit(run) ?? active;
+    active = activeGenerationWorkUnit(run) ?? active;
     const cursor = await requestCursorPrototypeRun({
       projectId,
       executionSetup: relay,
@@ -835,7 +889,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       run = updateRun(projectId, runId, { statusReason: "CURSOR_NOT_CONNECTED" }) ?? run;
     }
     run = getRun(projectId, runId) ?? run;
-    active = activeWorkUnit(run) ?? active;
+    active = activeGenerationWorkUnit(run) ?? active;
   }
 
   // --- Cursor poll ---
@@ -851,14 +905,14 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       fallbackBranchName: run.branchName,
     });
     if (!polled.ok) {
-      const au = activeWorkUnit(run);
+      const au = activeGenerationWorkUnit(run);
       if (au) {
         updateRun(projectId, runId, { workUnits: replaceWorkUnit(run.workUnits, au.id, { status: "FAILED" }) });
       }
       return markFailed(projectId, runId, "CURSOR_POLL_FAILED", polled.error);
     }
     if (isTerminalAgentFailure(polled.statusUpper)) {
-      const au = activeWorkUnit(run);
+      const au = activeGenerationWorkUnit(run);
       if (au) {
         updateRun(projectId, runId, { workUnits: replaceWorkUnit(run.workUnits, au.id, { status: "FAILED" }) });
       }
@@ -866,7 +920,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
     }
 
     // Persist lightweight poll hints for UI diagnostics (status/last checked time).
-    active = activeWorkUnit(run) ?? active;
+    active = activeGenerationWorkUnit(run) ?? active;
     if (active) {
       const nowIso = new Date().toISOString();
       const summaryRaw =
@@ -884,7 +938,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
         }),
       });
       run = getRun(projectId, runId) ?? run;
-      active = activeWorkUnit(run) ?? active;
+      active = activeGenerationWorkUnit(run) ?? active;
     }
     if (polled.hints.commitHash) {
       const nextUnits = replaceWorkUnit(run.workUnits, active.id, {
@@ -916,12 +970,12 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
       run = updateRun(projectId, runId, { status: "CURSOR_RUNNING" }) ?? run;
     }
     run = getRun(projectId, runId) ?? run;
-    active = activeWorkUnit(run) ?? active;
+    active = activeGenerationWorkUnit(run) ?? active;
   }
 
   // --- Git (활성 유닛 브랜치) ---
   run = getRun(projectId, runId) ?? run;
-  active = activeWorkUnit(run) ?? active;
+  active = activeGenerationWorkUnit(run) ?? active;
   if (setup?.gitRepoUrl && setup.githubAccessToken !== undefined && active && active.status === "CURSOR_DONE") {
     const latest = getRun(projectId, runId);
     if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
@@ -958,12 +1012,12 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
         }) ?? run;
     }
     run = getRun(projectId, runId) ?? run;
-    active = activeWorkUnit(run) ?? active;
+    active = activeGenerationWorkUnit(run) ?? active;
   }
 
   // --- Review ---
   run = getRun(projectId, runId) ?? run;
-  active = activeWorkUnit(run) ?? active;
+  active = activeGenerationWorkUnit(run) ?? active;
   if (active?.status === "GIT_PUSHED" && run.status === "PUSH_CONFIRMED") {
     const latest = getRun(projectId, runId);
     if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
@@ -1002,81 +1056,101 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
         workUnits: nextUnits,
       }) ?? run;
     logPrototypePipelineEvent("prototype_review_passed", { projectId, runId, workUnitOrder: active.order });
+    run = transitionAfterGenerationReviewPass(projectId, runId, getRun(projectId, runId) ?? run, setup ?? null) ?? run;
   }
 
-  // --- PR / Merge (정책) ---
+  // --- PR / Merge / Pages: 사용자가 배포 요청(deploymentStatus=REQUESTED)한 경우에만 수행 ---
   run = getRun(projectId, runId) ?? run;
-  active = activeWorkUnit(run) ?? active;
-  if (
-    (policy === "auto_pr" || policy === "auto_merge") &&
-    active?.status === "REVIEW_PASS" &&
-    run.aiReviewDecision === "PASS"
-  ) {
-    const latest = getRun(projectId, runId);
-    if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
-    if (!setup?.gitRepoUrl || !setup.baseBranch) {
-      return markFailed(projectId, runId, "EXECUTION_SETUP_INVALID", "repo/baseBranch 없음");
-    }
-    const pr = await openPrototypePr({
-      run,
-      projectName,
-      repoUrl: setup.gitRepoUrl,
-      baseBranch: setup.baseBranch,
-      githubAccessToken: setup.githubAccessToken ?? null,
-      projectId,
-      headBranch: active.branchName,
-      prTitleSuffix: `WU${active.order}`,
-    });
-    if (!pr.ok) {
-      const nextUnits = replaceWorkUnit(run.workUnits, active.id, { status: "FAILED" });
-      updateRun(projectId, runId, { workUnits: nextUnits });
-      return markFailed(projectId, runId, "PR_CREATE_FAILED", pr.message);
-    }
-    const nextUnits = replaceWorkUnit(run.workUnits, active.id, {
-      status: "PR_OPENED",
-      prUrl: pr.prUrl,
-      prNumber: pr.prNumber,
-    });
-    run =
-      updateRun(projectId, runId, {
-        status: "PR_OPENED",
-        prUrl: pr.prUrl,
-        prNumber: pr.prNumber,
-        workUnits: nextUnits,
-        statusReason: null,
-      }) ?? run;
+  if (run.deploymentStatus === "REQUESTED" && setup?.gitRepoUrl && setup.baseBranch) {
+    const sortedWu = [...run.workUnits].sort((a, b) => a.order - b.order);
+    const target = sortedWu.find((u) => u.status === "REVIEW_PASS");
+    const prOpenedUnit = sortedWu.find((u) => u.status === "PR_OPENED" && String(u.prUrl ?? "").trim());
 
-    // WorkUnit 순환을 위해 PR 이후 머지까지 자동 진행(auto_pr 포함). 수동 승인은 PUSH 단계에서 차단.
-    if (policy === "auto_merge" || policy === "auto_pr") {
+    const mergeAfterPr = async (headUnitId: string, prUrl: string): Promise<PrototypeRun | null> => {
       const latest2 = getRun(projectId, runId);
-      if (latest2?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
-      const merged = await mergePrototypePr({ run, githubAccessToken: setup.githubAccessToken ?? null, projectId, prUrl: pr.prUrl });
+      if (latest2?.status === "CANCEL_REQUESTED") return await refreshPrototypeRunState(projectId, runId);
+      const runForMerge = getRun(projectId, runId);
+      if (!runForMerge) return null;
+      const merged = await mergePrototypePr({
+        run: runForMerge,
+        githubAccessToken: setup.githubAccessToken ?? null,
+        projectId,
+        prUrl,
+      });
       if (!merged.ok) {
-        const nu = replaceWorkUnit(run.workUnits, active.id, { status: "FAILED" });
-        updateRun(projectId, runId, { workUnits: nu });
+        const base = getRun(projectId, runId) ?? runForMerge;
+        const nu = replaceWorkUnit(base.workUnits, headUnitId, { status: "FAILED" });
+        updateRun(projectId, runId, { workUnits: nu, deploymentStatus: "FAILED" });
         return markFailed(projectId, runId, "PR_MERGE_FAILED", merged.message);
       }
       const fin = new Date().toISOString();
-      const mergedUnits = replaceWorkUnit(run.workUnits, active.id, {
+      const curRun = getRun(projectId, runId) ?? runForMerge;
+      const mergedUnits = replaceWorkUnit(curRun.workUnits, headUnitId, {
         status: "MERGED",
         mergeSha: merged.mergeSha,
         finishedAt: fin,
         executionCompletedAt: fin,
       });
-      run =
+      let r2 =
         updateRun(projectId, runId, {
           status: "MERGED",
           mergeSha: merged.mergeSha,
           workUnits: mergedUnits,
           statusReason: null,
+        }) ?? curRun;
+      logPrototypePipelineEvent("prototype_merged", {
+        projectId,
+        runId,
+        workUnitOrder: sortedWu.find((u) => u.id === headUnitId)?.order ?? 0,
+      });
+      r2 = (await advanceAfterUnitMerged(projectId, runId, r2, setup!, policy)) ?? r2;
+      return r2;
+    };
+
+    if (target && run.aiReviewDecision === "PASS") {
+      const latest = getRun(projectId, runId);
+      if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
+
+      const pr = await openPrototypePr({
+        run,
+        projectName,
+        repoUrl: setup.gitRepoUrl,
+        baseBranch: setup.baseBranch,
+        githubAccessToken: setup.githubAccessToken ?? null,
+        projectId,
+        headBranch: target.branchName,
+        prTitleSuffix: `WU${target.order}`,
+      });
+      if (!pr.ok) {
+        const nextUnits = replaceWorkUnit(run.workUnits, target.id, { status: "FAILED" });
+        updateRun(projectId, runId, { workUnits: nextUnits, deploymentStatus: "FAILED" });
+        return markFailed(projectId, runId, "PR_CREATE_FAILED", pr.message);
+      }
+      const nextUnits = replaceWorkUnit(run.workUnits, target.id, {
+        status: "PR_OPENED",
+        prUrl: pr.prUrl,
+        prNumber: pr.prNumber,
+      });
+      run =
+        updateRun(projectId, runId, {
+          status: "PR_OPENED",
+          prUrl: pr.prUrl,
+          prNumber: pr.prNumber,
+          workUnits: nextUnits,
+          statusReason: null,
         }) ?? run;
-      logPrototypePipelineEvent("prototype_merged", { projectId, runId, workUnitOrder: active.order });
+
+      run = (await mergeAfterPr(target.id, pr.prUrl)) ?? run;
+    } else if (prOpenedUnit && run.aiReviewDecision === "PASS") {
+      const prUrl = String(run.prUrl ?? prOpenedUnit.prUrl ?? "").trim();
+      if (prUrl) {
+        const latest = getRun(projectId, runId);
+        if (latest?.status === "CANCEL_REQUESTED") return refreshPrototypeRunState(projectId, runId);
+        run = (await mergeAfterPr(prOpenedUnit.id, prUrl)) ?? run;
+      }
+    } else if (!sortedWu.some((u) => u.status === "REVIEW_PASS") && allWorkUnitsMerged(run)) {
       run = (await advanceAfterUnitMerged(projectId, runId, run, setup ?? null, policy)) ?? run;
     }
-  }
-
-  if (run.status === "PUSH_CONFIRMED" && policy === "manual_review") {
-    return markBlocked(projectId, runId, "MANUAL_REVIEW_REQUIRED") ?? run;
   }
 
   // 진행률 표시용 currentWorkUnitOrder 유지
@@ -1095,6 +1169,33 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
   }
 
   return getRun(projectId, runId);
+}
+
+/** 검토 단계에서 GitHub Pages 정식 배포를 요청(다음 refresh에서 PR→머지→Pages 진행). */
+export function requestPrototypeGithubPagesDeploy(projectId: string, runId: string): PrototypeRun | null {
+  const run = getRun(projectId, runId);
+  if (!run) return null;
+  if (run.publicUrl && run.deploymentStatus === "DONE") return run;
+  if (run.deploymentStatus === "REQUESTED" || run.deploymentStatus === "RUNNING") return run;
+  const okStatus =
+    run.status === "PREVIEW_READY" ||
+    run.status === "DEPLOY_FAILED" ||
+    run.status === "PR_OPENED" ||
+    (run.status === "DEPLOYING" && run.deploymentStatus !== "DONE") ||
+    (run.status === "DEPLOY_CONFIGURING" && run.deploymentStatus !== "DONE") ||
+    (run.status === "MERGED" && run.deploymentStatus !== "DONE");
+  if (!okStatus) return null;
+  return (
+    updateRun(projectId, runId, {
+      deploymentStatus: "REQUESTED",
+      deploymentRequestedAt: new Date().toISOString(),
+    }) ?? run
+  );
+}
+
+/** 생성 직후 Preview URL·상태를 최신 Git과 동기화(주로 refresh와 동일). */
+export async function preparePrototypeRunPreview(projectId: string, runId: string): Promise<PrototypeRun | null> {
+  return refreshPrototypeRunState(projectId, runId);
 }
 
 export function confirmPrototypeWorkUnitsExecution(projectId: string, runId: string): PrototypeRun | null {

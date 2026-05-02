@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserIdFromRequest } from "@/lib/auth/requestUser";
+import { projectPrototypeCardMeta } from "@/lib/project/projectPrototypeCardMeta";
 import {
   createProject,
   listProjectsOrderedByCreatedDesc,
@@ -43,8 +44,12 @@ export async function GET(request: NextRequest) {
     const includeDeleted =
       sp.get("includeDeleted") === "1" || sp.get("includeDeleted")?.toLowerCase() === "true";
     const projects = await listProjectsOrderedByCreatedDesc(userId, { includeDeleted });
+    const enriched = projects.map((p) => ({
+      ...p,
+      ...projectPrototypeCardMeta(p.id),
+    }));
 
-    return ok("프로젝트 목록 조회에 성공했습니다.", projects);
+    return ok("프로젝트 목록 조회에 성공했습니다.", enriched);
   } catch (error) {
     console.error("GET /api/projects error:", error);
     return fail("프로젝트 목록 조회 중 오류가 발생했습니다.", 500, []);

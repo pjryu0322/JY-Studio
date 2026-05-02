@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 
-export type MobileReviewTabId = "preview" | "chat";
+export type MobileReviewTabId = "preview" | "ai" | "changes";
 
 const bar: CSSProperties = {
   position: "sticky",
@@ -16,7 +16,7 @@ const bar: CSSProperties = {
   paddingTop: 8,
   paddingLeft: 8,
   paddingRight: 8,
-  gap: 8,
+  gap: 6,
   boxSizing: "border-box",
 };
 
@@ -24,14 +24,15 @@ function seg(active: boolean): CSSProperties {
   return {
     flex: 1,
     textAlign: "center",
-    padding: "10px 8px",
+    padding: "10px 6px",
     borderRadius: 999,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 800,
     border: active ? `1px solid ${t.primary}` : `1px solid ${t.border}`,
     background: active ? `${t.primary}18` : t.bgPage,
     color: active ? t.primary : t.textSecondary,
     cursor: "pointer",
+    minWidth: 0,
   };
 }
 
@@ -44,8 +45,11 @@ export function MobileReviewTabs(p: {
       <button type="button" style={seg(p.value === "preview")} onClick={() => p.onChange("preview")}>
         미리보기
       </button>
-      <button type="button" style={seg(p.value === "chat")} onClick={() => p.onChange("chat")}>
-        검토대화
+      <button type="button" style={seg(p.value === "ai")} onClick={() => p.onChange("ai")}>
+        AI검토
+      </button>
+      <button type="button" style={seg(p.value === "changes")} onClick={() => p.onChange("changes")}>
+        수정요청
       </button>
     </nav>
   );

@@ -1,0 +1,839 @@
+"use client";
+
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { WorkNoteListItem, WorkNoteSaveState } from "@/hooks/useWorkNotesPanel";
+import { useMediaQuery } from "@/components/ui/useMediaQuery";
+import { uiTokens as t } from "@/components/ui/tokens";
+import { imageFileToJpegDataUrl, noteRawToEditorHtml } from "@/lib/worknote/workNoteEditorHtml";
+
+const GEOM_KEY = "jyo-work-note-panel-geom-v1";
+const OPACITY_KEY = "jyo-work-note-panel-opacity-v1";
+
+type PanelGeom = { x: number; y: number; w: number; h: number };
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function defaultGeom(isNarrow: boolean): PanelGeom {
+  if (typeof window === "undefined") return { x: 24, y: 80, w: 360, h: 440 };
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (isNarrow) {
+    const w = vw - 16;
+    const h = Math.min(Math.round(vh * 0.52), 420);
+    return { x: 8, y: vh - h - 12, w, h };
+  }
+  const w = Math.max(400, Math.min(520, vw - 24));
+  const h = clamp(Math.round(vh * 0.58), 320, 560);
+  return { x: vw - w - 16, y: 72, w, h };
+}
+
+function readStoredGeom(): PanelGeom | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(GEOM_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<PanelGeom>;
+    if (typeof o.x !== "number" || typeof o.y !== "number" || typeof o.w !== "number" || typeof o.h !== "number") return null;
+    return { x: o.x, y: o.y, w: o.w, h: o.h };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredGeom(g: PanelGeom) {
+  try {
+    sessionStorage.setItem(GEOM_KEY, JSON.stringify(g));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readStoredOpacity(): number {
+  if (typeof window === "undefined") return 1;
+  try {
+    const raw = sessionStorage.getItem(OPACITY_KEY);
+    if (raw == null || raw === "") return 1;
+    const n = Number(raw);
+    if (Number.isNaN(n)) return 1;
+    return clamp(n, 0.35, 1);
+  } catch {
+    return 1;
+  }
+}
+
+function writeStoredOpacity(alpha: number) {
+  try {
+    sessionStorage.setItem(OPACITY_KEY, String(clamp(alpha, 0.35, 1)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function insertImageAtCaret(root: HTMLDivElement, dataUrl: string): void {
+  const img = document.createElement("img");
+  img.src = dataUrl;
+  img.alt = "";
+  img.style.maxWidth = "100%";
+  img.style.height = "auto";
+  img.style.display = "block";
+  img.style.margin = "8px 0";
+  img.style.borderRadius = "8px";
+
+  root.focus();
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) {
+    const wrap = document.createElement("div");
+    wrap.appendChild(img);
+    root.appendChild(wrap);
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) {
+    const wrap = document.createElement("div");
+    wrap.appendChild(img);
+    root.appendChild(wrap);
+    return;
+  }
+  range.deleteContents();
+  range.insertNode(img);
+  range.setStartAfter(img);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function memoDisplayTitle(title: string): string {
+  return title.trim() ? title.trim() : "제목 없음";
+}
+
+/** 접힌 목록: 선택된 메모만 id 기반 색, 나머지는 무채색 */
+function memoSwatchColors(noteId: string, active: boolean): { background: string; borderColor: string } {
+  if (!active) {
+    return {
+      background: "#e2e8f0",
+      borderColor: "#94a3b8",
+    };
+  }
+  let h = 0;
+  for (let i = 0; i < noteId.length; i++) h = (h * 31 + noteId.charCodeAt(i)) | 0;
+  const hue = Math.abs(h) % 360;
+  return {
+    background: `hsl(${hue} 62% 90%)`,
+    borderColor: `hsl(${hue} 58% 48%)`,
+  };
+}
+
+function plainTextFromSelectionWithinEditor(root: HTMLElement | null): string {
+  if (!root) return "";
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return "";
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) return "";
+  const frag = range.cloneContents();
+  const wrap = document.createElement("div");
+  wrap.appendChild(frag);
+  return wrap.innerText.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function saveStateLabel(state: WorkNoteSaveState, saveError: string | null): string {
+  if (state === "saving") return "저장 중…";
+  if (state === "error") return saveError ? `저장 실패 · ${saveError}` : "저장 실패";
+  if (state === "saved") return "자동 저장됨";
+  return "";
+}
+
+export function WorkNoteDrawer(p: {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly listLoading: boolean;
+  readonly listError: string | null;
+  readonly notes: readonly WorkNoteListItem[];
+  readonly activeId: string | null;
+  readonly selectNote: (id: string) => void;
+  readonly createNote: () => void;
+  readonly deleteNote: (id: string) => void;
+  readonly title: string;
+  readonly setTitle: (next: string) => void;
+  readonly text: string;
+  readonly onChangeText: (next: string) => void;
+  readonly editorHydrated: boolean;
+  readonly saveState: WorkNoteSaveState;
+  readonly saveError: string | null;
+  readonly onShareToComposer?: (text: string) => void;
+}) {
+  const isNarrow = useMediaQuery("(max-width: 720px)");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const lastEditorActiveIdRef = useRef<string | null>(null);
+  const dragRef = useRef<{ kind: "move" | "resize"; sx: number; sy: number; g: PanelGeom } | null>(null);
+  const [selectionBubble, setSelectionBubble] = useState<{ left: number; top: number; text: string } | null>(null);
+  const [railHoverId, setRailHoverId] = useState<string | null>(null);
+
+  const [geom, setGeom] = useState<PanelGeom | null>(null);
+  const [panelOpacity, setPanelOpacity] = useState(1);
+  const geomRef = useRef<PanelGeom | null>(null);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- 패널 위치·크기·투명도 sessionStorage 동기화 */
+  useLayoutEffect(() => {
+    if (!p.open) {
+      lastEditorActiveIdRef.current = null;
+      return;
+    }
+    setGeom((prev) => prev ?? readStoredGeom() ?? defaultGeom(isNarrow));
+    setPanelOpacity(readStoredOpacity());
+  }, [p.open, isNarrow]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (geom) geomRef.current = geom;
+  }, [geom]);
+
+  const handleSelectNote = useCallback(
+    async (id: string) => {
+      await p.selectNote(id);
+    },
+    [p]
+  );
+
+  const handleCreateNote = useCallback(async () => {
+    await p.createNote();
+  }, [p]);
+
+  useLayoutEffect(() => {
+    if (!p.open || !p.editorHydrated || !editorRef.current) return;
+    if (!p.activeId) {
+      editorRef.current.innerHTML = "";
+      lastEditorActiveIdRef.current = null;
+      return;
+    }
+    if (lastEditorActiveIdRef.current !== p.activeId) {
+      lastEditorActiveIdRef.current = p.activeId;
+      editorRef.current.innerHTML = noteRawToEditorHtml(p.text);
+    }
+  }, [p.open, p.editorHydrated, p.activeId, p.text]);
+
+  const onChangeText = p.onChangeText;
+  const syncFromEditor = useCallback(() => {
+    const el = editorRef.current;
+    onChangeText(el?.innerHTML ?? "");
+  }, [onChangeText]);
+
+  const onCloseRef = useRef(p.onClose);
+  useLayoutEffect(() => {
+    onCloseRef.current = p.onClose;
+  }, [p.onClose]);
+
+  useEffect(() => {
+    if (!p.open) return;
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (panelRef.current?.contains(t)) return;
+      if ((e.target as HTMLElement).closest?.("[data-testid='work-note-open']")) return;
+      onCloseRef.current();
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [p.open]);
+
+  const startMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!geom) return;
+      e.preventDefault();
+      dragRef.current = { kind: "move", sx: e.clientX, sy: e.clientY, g: { ...geom } };
+      const move = (ev: PointerEvent) => {
+        const d = dragRef.current;
+        if (!d) return;
+        const dx = ev.clientX - d.sx;
+        const dy = ev.clientY - d.sy;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const next: PanelGeom =
+          d.kind === "move"
+            ? {
+                ...d.g,
+                x: clamp(d.g.x + dx, 8, vw - d.g.w - 8),
+                y: clamp(d.g.y + dy, 8, vh - d.g.h - 8),
+              }
+            : {
+                ...d.g,
+                w: clamp(d.g.w + dx, 300, vw - d.g.x - 8),
+                h: clamp(d.g.h + dy, 220, vh - d.g.y - 8),
+              };
+        geomRef.current = next;
+        setGeom(next);
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        dragRef.current = null;
+        if (geomRef.current) writeStoredGeom(geomRef.current);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    },
+    [geom]
+  );
+
+  const startResize = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!geom) return;
+      dragRef.current = { kind: "resize", sx: e.clientX, sy: e.clientY, g: { ...geom } };
+      const move = (ev: PointerEvent) => {
+        const d = dragRef.current;
+        if (!d) return;
+        const dx = ev.clientX - d.sx;
+        const dy = ev.clientY - d.sy;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const next: PanelGeom = {
+          ...d.g,
+          w: clamp(d.g.w + dx, 300, vw - d.g.x - 8),
+          h: clamp(d.g.h + dy, 220, vh - d.g.y - 8),
+        };
+        geomRef.current = next;
+        setGeom(next);
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        dragRef.current = null;
+        if (geomRef.current) writeStoredGeom(geomRef.current);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    },
+    [geom]
+  );
+
+  const updateSelectionBubbleFromEditor = useCallback(() => {
+    const root = editorRef.current;
+    if (!root || !p.activeId || !p.editorHydrated) {
+      setSelectionBubble(null);
+      return;
+    }
+    const text = plainTextFromSelectionWithinEditor(root);
+    if (!text) {
+      setSelectionBubble(null);
+      return;
+    }
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setSelectionBubble(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) {
+      setSelectionBubble(null);
+      return;
+    }
+    const rects = range.getClientRects();
+    if (rects.length === 0) return;
+    const last = rects[rects.length - 1];
+    const centerX = (last.left + last.right) / 2;
+    const top = last.bottom + 8;
+    setSelectionBubble({ left: centerX, top, text });
+  }, [p.activeId, p.editorHydrated]);
+
+  const onEditorSelectEnd = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      updateSelectionBubbleFromEditor();
+    });
+  }, [updateSelectionBubbleFromEditor]);
+
+  useEffect(() => {
+    setSelectionBubble(null);
+  }, [p.activeId, p.open]);
+
+  useEffect(() => {
+    if (!selectionBubble) return;
+    const dismissIfOutsideBubble = (t: Node | null) => {
+      if (!t) return;
+      if (bubbleRef.current?.contains(t)) return;
+      if (editorRef.current?.contains(t)) {
+        setSelectionBubble(null);
+        return;
+      }
+      setSelectionBubble(null);
+    };
+    const onDown = (e: MouseEvent) => dismissIfOutsideBubble(e.target as Node | null);
+    const onTouch = (e: TouchEvent) => dismissIfOutsideBubble(e.target as Node | null);
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("touchstart", onTouch, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("touchstart", onTouch, true);
+    };
+  }, [selectionBubble]);
+
+  useEffect(() => {
+    if (!p.open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (selectionBubble) {
+        setSelectionBubble(null);
+        return;
+      }
+      onCloseRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [p.open, selectionBubble]);
+
+  const onPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLDivElement>) => {
+      const cd = e.clipboardData;
+      if (!cd) return;
+      for (const it of Array.from(cd.items ?? [])) {
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          e.preventDefault();
+          const f = it.getAsFile();
+          if (!f) return;
+          void (async () => {
+            try {
+              const dataUrl = await imageFileToJpegDataUrl(f, 900);
+              if (editorRef.current) insertImageAtCaret(editorRef.current, dataUrl);
+              syncFromEditor();
+            } catch {
+              /* ignore */
+            }
+          })();
+          return;
+        }
+      }
+      if (cd.files?.length) {
+        for (const f of Array.from(cd.files)) {
+          if (f.type.startsWith("image/")) {
+            e.preventDefault();
+            void (async () => {
+              try {
+                const dataUrl = await imageFileToJpegDataUrl(f, 900);
+                if (editorRef.current) insertImageAtCaret(editorRef.current, dataUrl);
+                syncFromEditor();
+              } catch {
+                /* ignore */
+              }
+            })();
+            return;
+          }
+        }
+      }
+    },
+    [syncFromEditor]
+  );
+
+  if (!p.open || geom === null) return null;
+
+  return (
+    <div
+      ref={panelRef}
+      data-work-note-panel
+      role="dialog"
+      aria-modal="false"
+      aria-label="메모"
+      style={{
+        position: "fixed",
+        left: geom.x,
+        top: geom.y,
+        width: geom.w,
+        height: geom.h,
+        zIndex: 89,
+        background: t.bgCard,
+        border: `1px solid ${t.border}`,
+        borderRadius: 14,
+        boxShadow: "0 16px 48px rgba(15, 23, 42, 0.18)",
+        opacity: panelOpacity,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        boxSizing: "border-box",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        onPointerDown={startMove}
+        aria-label="메모 패널 위치 이동"
+        title="드래그해 위치 이동 · Esc로 닫기"
+        style={{
+          flex: "0 0 auto",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "10px 12px",
+          borderBottom: `1px solid ${t.border}`,
+          cursor: "grab",
+          userSelect: "none",
+          touchAction: "none",
+        }}
+      >
+        <span style={{ flex: "1 1 auto", minHeight: 8, minWidth: 0 }} aria-hidden />
+      </div>
+
+      <div
+        style={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: isNarrow ? "column" : "row",
+          overflow: "hidden",
+        }}
+      >
+        <aside
+          aria-label="메모 목록"
+          style={{
+            flex: isNarrow ? "0 0 auto" : "0 0 52px",
+            width: isNarrow ? "100%" : 52,
+            minWidth: isNarrow ? undefined : 52,
+            maxWidth: isNarrow ? undefined : 52,
+            maxHeight: isNarrow ? 56 : "none",
+            minHeight: isNarrow ? 48 : undefined,
+            overflowY: "hidden",
+            overflowX: isNarrow ? "auto" : "hidden",
+            borderBottom: isNarrow ? `1px solid ${t.border}` : "none",
+            borderRight: isNarrow ? "none" : `1px solid ${t.border}`,
+            padding: 6,
+            display: "flex",
+            flexDirection: isNarrow ? "row" : "column",
+            gap: 6,
+            alignItems: isNarrow ? "center" : "stretch",
+            boxSizing: "border-box",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => void handleCreateNote()}
+            disabled={!p.editorHydrated || p.listLoading}
+            style={{
+              flexShrink: 0,
+              width: 40,
+              height: 40,
+              padding: 0,
+              borderRadius: 10,
+              border: `1px dashed ${t.primary}`,
+              background: `${t.primary}14`,
+              color: t.primary,
+              fontSize: 18,
+              fontWeight: 900,
+              cursor: p.listLoading ? "not-allowed" : "pointer",
+              opacity: p.listLoading ? 0.55 : 1,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            title="+ 새 메모"
+            aria-label="새 메모"
+          >
+            +
+          </button>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: isNarrow ? "row" : "column",
+              gap: 6,
+              minHeight: 0,
+              flex: "1 1 auto",
+              overflow: "hidden",
+              alignItems: isNarrow ? "center" : "center",
+              width: "100%",
+            }}
+          >
+            {p.notes.map((n) => {
+              const active = n.id === p.activeId;
+              const label = memoDisplayTitle(n.title);
+              const showDelete = railHoverId === n.id || (isNarrow && active);
+              const sw = memoSwatchColors(n.id, active);
+              return (
+                <div
+                  key={n.id}
+                  style={{
+                    position: "relative",
+                    display: "flex",
+                    justifyContent: "center",
+                    width: isNarrow ? "auto" : "100%",
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={() => setRailHoverId(n.id)}
+                  onMouseLeave={() => setRailHoverId((cur) => (cur === n.id ? null : cur))}
+                >
+                  <button
+                    type="button"
+                    onClick={() => void handleSelectNote(n.id)}
+                    title={label}
+                    aria-label={label}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      borderStyle: "solid",
+                      borderWidth: active ? 3 : 2,
+                      borderColor: sw.borderColor,
+                      background: sw.background,
+                      cursor: "pointer",
+                      flexShrink: 0,
+                      padding: 0,
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  {showDelete ? (
+                    <button
+                      type="button"
+                      aria-label={`${label} 삭제`}
+                      title="삭제"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm("이 메모를 삭제할까요?")) void p.deleteNote(n.id);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: -4,
+                        right: -2,
+                        width: 22,
+                        height: 22,
+                        borderRadius: 6,
+                        border: `1px solid ${t.border}`,
+                        background: "#fff",
+                        color: t.textMuted,
+                        cursor: "pointer",
+                        fontSize: 13,
+                        lineHeight: 1,
+                        padding: 0,
+                        boxShadow: "0 2px 8px rgba(15,23,42,0.12)",
+                      }}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        <div
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            padding: "8px 12px 10px",
+            gap: 8,
+          }}
+        >
+          {p.listLoading ? (
+            <div style={{ fontSize: 12, fontWeight: 700, color: t.textMuted }}>불러오는 중…</div>
+          ) : null}
+          {p.listError ? (
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c" }}>{p.listError}</div>
+          ) : null}
+
+          <input
+            type="text"
+            value={p.title}
+            onChange={(e) => p.setTitle(e.target.value)}
+            placeholder="제목을 입력하세요"
+            disabled={!p.activeId || !p.editorHydrated}
+            maxLength={200}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: `1px solid ${t.borderStrong}`,
+              fontSize: 14,
+              fontWeight: 800,
+              color: t.textPrimary,
+              background: !p.activeId || !p.editorHydrated ? "#f8fafc" : "#fff",
+            }}
+          />
+
+          {!p.activeId && p.editorHydrated && !p.listLoading ? (
+            <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
+              메모 칩을 눌러 전환하거나 「+」로 새 메모를 만드세요.
+            </div>
+          ) : null}
+
+          <div
+            ref={editorRef}
+            role="textbox"
+            aria-multiline="true"
+            contentEditable={Boolean(p.activeId) && p.editorHydrated}
+            suppressContentEditableWarning
+            data-placeholder="아이디어, TODO, 이미지 붙여넣기(Ctrl+V)…"
+            onInput={syncFromEditor}
+            onPaste={onPaste}
+            onMouseUp={onEditorSelectEnd}
+            onTouchEnd={onEditorSelectEnd}
+            onScroll={() => setSelectionBubble(null)}
+            style={{
+              flex: "1 1 auto",
+              minHeight: 100,
+              overflowY: "auto",
+              boxSizing: "border-box",
+              borderRadius: 12,
+              border: `1px solid ${t.borderStrong}`,
+              padding: "10px 12px",
+              fontSize: 14,
+              lineHeight: 1.5,
+              color: t.textPrimary,
+              background: Boolean(p.activeId) && p.editorHydrated ? "#fff" : "#f8fafc",
+              fontFamily: "inherit",
+              outline: "none",
+              opacity: Boolean(p.activeId) && p.editorHydrated ? 1 : 0.85,
+            }}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          flex: "0 0 auto",
+          padding: "8px 12px 12px",
+          borderTop: `1px solid ${t.border}`,
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 10,
+          rowGap: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            color: p.saveState === "error" ? "#b91c1c" : t.textMuted,
+            whiteSpace: "nowrap",
+            flex: "0 0 auto",
+            minWidth: 0,
+          }}
+        >
+          {saveStateLabel(p.saveState, p.saveError)}
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, whiteSpace: "nowrap", flex: "0 0 auto" }}>창 투명도</span>
+        <input
+          type="range"
+          min={35}
+          max={100}
+          value={Math.round(panelOpacity * 100)}
+          aria-label="메모 창 투명도"
+          onChange={(e) => {
+            const pct = clamp(Number(e.target.value), 35, 100);
+            const next = pct / 100;
+            setPanelOpacity(next);
+            writeStoredOpacity(next);
+          }}
+          style={{ flex: "1 1 100px", minWidth: 72, maxWidth: 200, accentColor: t.primary }}
+        />
+        <span style={{ fontSize: 11, fontWeight: 800, color: t.textSecondary, whiteSpace: "nowrap", flex: "0 0 auto" }}>
+          {Math.round(panelOpacity * 100)}%
+        </span>
+      </div>
+
+      {selectionBubble ? (
+        <div
+          ref={bubbleRef}
+          role="tooltip"
+          style={{
+            position: "fixed",
+            left: selectionBubble.left,
+            top: selectionBubble.top,
+            transform: "translateX(-50%)",
+            zIndex: 100,
+            maxWidth: "min(280px, calc(100% - 24px))",
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: `1px solid ${t.borderStrong}`,
+            background: t.bgCard,
+            boxShadow: "0 10px 28px rgba(15, 23, 42, 0.18)",
+            pointerEvents: "auto",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary, lineHeight: 1.45, marginBottom: 10 }}>
+            선택한 내용을 대화 입력창에 넣을까요?
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => {
+                const text = selectionBubble.text;
+                setSelectionBubble(null);
+                if (p.onShareToComposer) p.onShareToComposer(text);
+                else window.alert("이 화면에서는 대화 입력창과 연결되어 있지 않습니다.");
+              }}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 10,
+                border: `1px solid ${t.primary}`,
+                background: t.primary,
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              넣기
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectionBubble(null)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 10,
+                border: `1px solid ${t.border}`,
+                background: "#fff",
+                fontSize: 12,
+                fontWeight: 800,
+                color: t.textSecondary,
+                cursor: "pointer",
+              }}
+            >
+              아니요
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        aria-label="크기 조절"
+        onPointerDown={startResize}
+        style={{
+          position: "absolute",
+          right: 4,
+          bottom: 4,
+          width: 18,
+          height: 18,
+          padding: 0,
+          border: "none",
+          background: "transparent",
+          cursor: "nwse-resize",
+          touchAction: "none",
+          opacity: 0.45,
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M22 22h-4v-2h2v-2h2v4zm-6 0h-4v-2h4v2zm-6 0h-4v-2h4v2zm-6 0H2v-4h2v2h2v2zm16-6h-2v-4h2v4zm0-6h-2V6h2v4zm0-6h-2V2h4v4z" />
+        </svg>
+      </button>
+
+      <style>{`
+        [data-work-note-panel] [contenteditable="true"]:empty:before {
+          content: attr(data-placeholder);
+          color: #94a3b8;
+          pointer-events: none;
+        }
+        [data-work-note-panel] [contenteditable="true"] img {
+          max-width: 100%;
+          height: auto;
+        }
+      `}</style>
+    </div>
+  );
+}

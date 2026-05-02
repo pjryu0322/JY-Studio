@@ -38,7 +38,10 @@ export function PreviewViewport(p: {
   /** 상위 flex 영역을 채우고(오버레이 대화 등), 높이 상한을 두지 않음 */
   readonly fillContainer?: boolean;
 }) {
-  const url = p.run?.previewUrl || p.run?.suggestedPreviewUrl || p.run?.resultUrl || "";
+  const publicU = String(p.run?.publicUrl ?? "").trim();
+  const deployed = p.run?.deploymentStatus === "DONE" && publicU;
+  const draft = String(p.run?.previewUrl ?? p.run?.suggestedPreviewUrl ?? "").trim();
+  const url = deployed ? publicU : draft;
   const safe = url.startsWith("http://") || url.startsWith("https://");
   const wrap = p.fillContainer ? wrapFill : wrapBand;
   const iframeMinH = p.fillContainer ? 0 : "min(62vh, 640px)";
@@ -56,7 +59,9 @@ export function PreviewViewport(p: {
       ) : !safe ? (
         <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: t.bgPage }}>
           <p style={{ margin: 0, textAlign: "center", fontSize: 15, color: t.textSecondary, lineHeight: 1.65 }}>
-            등록된 Preview 화면이 없습니다.
+            {draft
+              ? "Preview URL 형식이 올바르지 않습니다."
+              : "Preview 준비 필요 — 검토용 URL이 아직 없습니다. GitHub Pages 설정·브랜치를 확인하거나 생성 단계를 마쳐 주세요."}
           </p>
         </div>
       ) : (
