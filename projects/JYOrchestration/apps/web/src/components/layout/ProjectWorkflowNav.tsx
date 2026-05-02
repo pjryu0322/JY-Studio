@@ -10,7 +10,7 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { DesktopWorkflowTabs } from "@/components/layout/DesktopWorkflowTabs";
 import { MobileStepSelector } from "@/components/layout/MobileStepSelector";
-import { useMediaQuery } from "@/components/ui/useMediaQuery";
+import { useWorkflowNavNarrowBreakpoint } from "@/components/ui/breakpoints";
 import {
   appFlowStepHref,
   isWorkflowStepNavActive,
@@ -44,7 +44,7 @@ function ProjectWorkflowNavInner() {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
-  const narrow = useMediaQuery("(max-width: 720px)");
+  const narrow = useWorkflowNavNarrowBreakpoint();
 
   const projectContextId = useMemo(
     () => resolveWorkflowProjectContextId(pathname, searchParams),
@@ -55,15 +55,19 @@ function ProjectWorkflowNavInner() {
   // Admin links are available via the gear/settings entry point (not primary workflow).
   const admin: NavItem[] = useMemo(() => [], []);
 
-  if (!hasProjectContext || !projectContextId) return null;
-
   const workflowItems = useMemo(() => {
+    const id = projectContextId?.trim() ?? "";
+    if (!id) {
+      return [];
+    }
     return workflowStepMeta.map((item) => {
-      const href = appFlowStepHref(item.stepId, projectContextId);
-      const active = isWorkflowStepNavActive(item.stepId, pathname, searchParams, projectContextId);
+      const href = appFlowStepHref(item.stepId, id);
+      const active = isWorkflowStepNavActive(item.stepId, pathname, searchParams, id);
       return { ...item, href, active };
     });
   }, [pathname, projectContextId, searchParams]);
+
+  if (!hasProjectContext || !projectContextId) return null;
 
   if (narrow) {
     return <MobileStepSelector items={workflowItems} />;

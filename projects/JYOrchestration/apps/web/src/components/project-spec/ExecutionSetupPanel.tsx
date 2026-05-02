@@ -190,13 +190,7 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
   const prototypeMvp = Boolean(stagedPrototype && prototypeMvpLayout);
   const savedAutomationFromEs = useMemo(
     () => deriveAutomationLevel(executionSetup ?? null),
-    [
-      executionSetup,
-      executionSetup?.requireApprovalBeforeApply,
-      executionSetup?.autoPush,
-      executionSetup?.autoPr,
-      executionSetup?.stopOnOutOfScopeChange,
-    ]
+    [executionSetup]
   );
   const [mvpAutomationLevel, setMvpAutomationLevel] = useState<PrototypeAutomationLevel>(savedAutomationFromEs);
   useEffect(() => {

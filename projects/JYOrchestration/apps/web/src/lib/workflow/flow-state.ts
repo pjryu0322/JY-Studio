@@ -3,6 +3,12 @@ export const APP_FLOW_LAST_PROJECT_KEY = "jyo:flow:lastProjectId";
 /** 프로젝트 워크플로 상태가 바뀐 뒤 상단 단계 링크를 즉시 다시 불러오기 위해 디스패치합니다. */
 export const APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT = "jyo:app-flow-project-context-refresh";
 
+/** `AppFlowGuidance` 등이 구독하는 컨텍스트 리로드를 트리거합니다. */
+export function notifyAppFlowProjectContextRefresh(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT));
+}
+
 export type AppFlowStepId =
   | "requirements"
   | "service_flow"

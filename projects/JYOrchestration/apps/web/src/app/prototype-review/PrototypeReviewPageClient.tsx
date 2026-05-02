@@ -9,7 +9,7 @@ import { ReviewChatPanel } from "@/components/prototype-review/ReviewChatPanel";
 import { ReviewHeader } from "@/components/prototype-review/ReviewHeader";
 import { EmptyState, InlineAlert, LoadingState } from "@/components/ui";
 import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
-import { useMediaQuery } from "@/components/ui/useMediaQuery";
+import { usePrototypeReviewMobileLayout } from "@/components/ui/breakpoints";
 import type { PrototypeImprovementItem, PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
 import {
   fetchPrototypeReviewThread,
@@ -24,8 +24,6 @@ import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 
 type Busy = "send" | "summarize" | "improvements" | "drafts" | null;
 
-const MOBILE_MQ = "(max-width: 760px)";
-
 function previewUrlKey(run: PrototypeRun | null): string {
   if (!run) return "";
   return String(run.previewUrl || run.suggestedPreviewUrl || run.resultUrl || "");
@@ -36,7 +34,7 @@ export function PrototypeReviewPageClient() {
   const projectId = search?.get("projectId")?.trim() ?? "";
   const runIdFromUrl = search?.get("runId")?.trim() ?? "";
 
-  const isMobile = useMediaQuery(MOBILE_MQ);
+  const isMobile = usePrototypeReviewMobileLayout();
   const [mobileTab, setMobileTab] = useState<MobileReviewTabId>("preview");
 
   const [run, setRun] = useState<PrototypeRun | null>(null);
@@ -45,7 +43,7 @@ export function PrototypeReviewPageClient() {
   );
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [versionNo, setVersionNo] = useState<number | null>(null);
-  const [totalRuns, setTotalRuns] = useState<number | null>(null);
+  const [, setTotalRuns] = useState<number | null>(null);
 
   const [messages, setMessages] = useState<PrototypeReviewMessage[]>([]);
   const [improvementItems, setImprovementItems] = useState<PrototypeImprovementItem[] | null>(null);
@@ -233,13 +231,17 @@ export function PrototypeReviewPageClient() {
     }
   }
 
-  if (!projectId) {
-    return (
-      <WorkflowStageChrome title="프로토타입 검토" subtitle="프로젝트를 연 뒤 프리뷰를 보며 의견을 남깁니다.">
-        <EmptyState title="프로젝트가 선택되지 않았습니다" description="상단에서 프로젝트를 연결하거나, 프로젝트 허브에서 열어 주세요." />
-      </WorkflowStageChrome>
-    );
-  }
+  const stageStyle = useMemo(
+    () => ({
+      display: "flex" as const,
+      flexDirection: "column" as const,
+      minHeight: "min(92vh, 980px)",
+      maxHeight: "calc(100vh - 84px)",
+      overflow: "hidden" as const,
+      padding: 0,
+    }),
+    [],
+  );
 
   const chatHandlers = {
     onSend: (userMessage: string) =>
@@ -291,18 +293,6 @@ export function PrototypeReviewPageClient() {
       }),
   };
 
-  const stageStyle = useMemo(
-    () => ({
-      display: "flex" as const,
-      flexDirection: "column" as const,
-      minHeight: "min(92vh, 980px)",
-      maxHeight: "calc(100vh - 84px)",
-      overflow: "hidden" as const,
-      padding: 0,
-    }),
-    [],
-  );
-
   const chatPanelProps = {
     disabled: !run,
     messages,
@@ -314,6 +304,14 @@ export function PrototypeReviewPageClient() {
     busyAction: busy,
     ...chatHandlers,
   };
+
+  if (!projectId) {
+    return (
+      <WorkflowStageChrome title="프로토타입 검토" subtitle="프로젝트를 연 뒤 프리뷰를 보며 의견을 남깁니다.">
+        <EmptyState title="프로젝트가 선택되지 않았습니다" description="상단에서 프로젝트를 연결하거나, 프로젝트 허브에서 열어 주세요." />
+      </WorkflowStageChrome>
+    );
+  }
 
   const inner = (
     <div

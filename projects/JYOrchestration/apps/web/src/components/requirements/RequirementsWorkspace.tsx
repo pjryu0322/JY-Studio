@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { fetchProjectById } from "@/components/project-spec/api";
+import { fetchProjectWithRetry, postProjectWorkflowAckRequirements } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
@@ -12,6 +12,11 @@ import { RequirementsHeader } from "@/components/requirements/RequirementsHeader
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
 import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
+import { useRequirementsSaveToast } from "@/components/requirements/workspace/useRequirementsSaveToast";
+import { useRequirementsServiceFlowDraft } from "@/components/requirements/workspace/useRequirementsServiceFlowDraft";
+import { useRequirementsProjectLoad } from "@/components/requirements/workspace/useRequirementsProjectLoad";
+import { useRequirementsSpecWorkspacePersist } from "@/components/requirements/workspace/useRequirementsSpecWorkspacePersist";
+import { useRequirementsWorkspaceToasts } from "@/components/requirements/workspace/useRequirementsWorkspaceToasts";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { OrganizeProposalDraggableModal } from "@/components/requirements/OrganizeProposalDraggableModal";
 import { ProposalPlanPreviewModal } from "@/components/requirements/ProposalPlanPreviewModal";
@@ -19,6 +24,7 @@ import { RequirementsDeliverableViewerModal } from "@/components/requirements/Re
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
+import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import {
@@ -28,7 +34,6 @@ import {
   visibleStageFromRequirementsStage,
 } from "@/lib/ai-member/visibleAiOrchestrator";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
-import { isProbablyOriginalProjectDescription } from "@/lib/project/originalProjectDescription";
 import {
   appendIdeationDeliverableAssets,
   extractPreviewLinesFromMarkdown,
@@ -93,6 +98,8 @@ import {
 import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr, splitSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
+import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
+import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import {
   newChatMessage,
   parseRequirementsRoomState,
@@ -103,17 +110,9 @@ import {
   augmentDialogueExcerptForReplyParent,
   inferRecentAiQuestionReplyParentId,
 } from "@/lib/requirements/requirementsAnswerContext";
-import { coerceRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { dedupeMemberRefs, computedTargetsFromInput, getMessageTargets } from "@/lib/requirements/requirementsTargets";
-import { newConversation, type RequirementsConversation } from "@/lib/requirements/conversationStore";
-import { APP_FLOW_LAST_PROJECT_KEY, APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/appFlowModel";
-
-function notifyAppFlowProjectContextChanged() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT));
-}
-
-const LOCAL_SHELL_KEY = "jyo:requirements-workspace-local-v3";
+import { APP_FLOW_LAST_PROJECT_KEY, notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
 
 type RequirementsWorkspaceStage = "ideation" | "service-flow";
 
@@ -131,79 +130,6 @@ function StageRenderer({
   readonly serviceFlowStage: ReactNode;
 }) {
   return <>{activeStage === "service-flow" ? serviceFlowStage : ideationStage}</>;
-}
-
-type LocalShell = {
-  room: RequirementsRoomStateV3;
-  goals: string;
-  scopeIn: string;
-  scopeOut: string;
-  targetUsers: string;
-  success: string;
-  nfr: string;
-  openIssues: string;
-  priorityFeatures: string;
-};
-
-function readLocalShell(): LocalShell | null {
-  if (typeof sessionStorage === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(LOCAL_SHELL_KEY);
-    if (!raw) return null;
-    const o = JSON.parse(raw) as LocalShell;
-    if (!o || typeof o !== "object") return null;
-    return {
-      room: parseRequirementsRoomState(o.room),
-      goals: String(o.goals ?? ""),
-      scopeIn: String(o.scopeIn ?? ""),
-      scopeOut: String(o.scopeOut ?? ""),
-      targetUsers: String(o.targetUsers ?? ""),
-      success: String(o.success ?? ""),
-      nfr: String(o.nfr ?? ""),
-      openIssues: String(o.openIssues ?? ""),
-      priorityFeatures: String(o.priorityFeatures ?? ""),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function unwrapDbJsonField(raw: unknown): unknown {
-  if (typeof raw !== "string") return raw;
-  const s = raw.trim();
-  if (!s) return null;
-  try {
-    return JSON.parse(s) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function parseRequirementsConversationJson(raw: unknown, projectId: string): RequirementsConversation {
-  const root = unwrapDbJsonField(raw);
-  if (!root || typeof root !== "object") return newConversation(projectId);
-  const o = root as Record<string, unknown>;
-  const stage = o.stage === "REQUIREMENTS" ? "REQUIREMENTS" : "REQUIREMENTS";
-  const msgsRaw = Array.isArray(o.messages) ? o.messages : [];
-  const msgs: RequirementsMessage[] = [];
-  for (const m of msgsRaw) {
-    const row = coerceRequirementsMessage(m);
-    if (row) msgs.push(row);
-  }
-  return {
-    projectId: typeof o.projectId === "string" && o.projectId.trim() ? String(o.projectId) : projectId,
-    stage,
-    messages: msgs,
-  };
-}
-
-function writeLocalShell(s: LocalShell) {
-  if (typeof sessionStorage === "undefined") return;
-  try {
-    sessionStorage.setItem(LOCAL_SHELL_KEY, JSON.stringify(s));
-  } catch {
-    /* ignore */
-  }
 }
 
 const IDEATION_SEND_DEV = process.env.NODE_ENV !== "production";
@@ -243,14 +169,6 @@ function shouldSkipIdeationDuplicateAppend(params: {
   return false;
 }
 
-function concatUserContext(messages: RequirementsRoomStateV3["requirementsConversation"]["messages"]): string {
-  return messages
-    .filter((m) => m.role === "user" && !isServiceFlowWorkshopMessage(m))
-    .map((m) => m.content.trim())
-    .filter(Boolean)
-    .join("\n\n");
-}
-
 function formatDialogueExcerpt(messages: RequirementsRoomStateV3["requirementsConversation"]["messages"], maxChars = 12000): string {
   const lines = messages.slice(-48).map((m) => {
     const who =
@@ -281,13 +199,6 @@ type MemberRow = {
 };
 
 type SessionUser = { id: string; email: string; name: string };
-
-async function fetchProjectWithRetry(projectId: string): Promise<{ project: Project | null; errorMessage: string | null }> {
-  const first = await fetchProjectById(projectId);
-  if (first.project) return first;
-  await new Promise((r) => setTimeout(r, 450));
-  return fetchProjectById(projectId);
-}
 
 const IDEATION_DRAFT_MIN_FILLED_SLOTS = 5;
 const IDEATION_DRAFT_REQUIRED_SLOTS: readonly ProblemInterviewSlot[] = [
@@ -382,18 +293,10 @@ export function RequirementsWorkspace({
     open: false,
     assetId: null,
   });
-  const [successToast, setSuccessToast] = useState<string | null>(null);
-  const successToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
-  const errorToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [saveToastVisible, setSaveToastVisible] = useState(false);
-  const saveToastHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevSaveStateRef = useRef<"idle" | "saving" | "saved" | "error">("idle");
   const [organizeState, setOrganizeState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [organizeError, setOrganizeError] = useState<string | null>(null);
   const [organizedAt, setOrganizedAt] = useState<string | null>(null);
   const [serviceFlowDraftBusy, setServiceFlowDraftBusy] = useState(false);
-  const [serviceFlowDraftGenerationCount, setServiceFlowDraftGenerationCount] = useState(0);
 
   const stateJsonRef = useRef<RequirementsStateJson>({});
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -401,8 +304,6 @@ export function RequirementsWorkspace({
   const ideationBootstrapFlightRef = useRef<string | null>(null);
   /** 아이디어 구체화: spec AI 기획자(planner) 보강 요청 중복 방지 */
   const ideationEnsurePlannerInFlightRef = useRef(false);
-  /** 서비스흐름 자동 초안 생성 1회 실행(StrictMode/rerender) 방지 */
-  const serviceFlowAutoBootstrapRef = useRef<string | null>(null);
   /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
   const requirementsSendFlightRef = useRef(false);
   /** 다음 정리 요청 1회만 전체 대화 원문(dialogueExcerpt) 폴백 사용 */
@@ -419,6 +320,9 @@ export function RequirementsWorkspace({
   const inIdeationStage = activeStage === "ideation";
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
+
+  const { successToast, errorToast, showSuccessToast, showErrorToast } = useRequirementsWorkspaceToasts();
+  const { saveToastVisible } = useRequirementsSaveToast(saveState);
 
   useEffect(() => {
     if (inIdeationStage) return;
@@ -522,103 +426,6 @@ export function RequirementsWorkspace({
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!resolvedProjectId) {
-      stateJsonRef.current = {};
-      const local = readLocalShell();
-      if (local) {
-        setRoom(local.room);
-        setGoals(local.goals);
-        setScopeIn(local.scopeIn);
-        setScopeOut(local.scopeOut);
-        setTargetUsers(local.targetUsers);
-        setSuccess(local.success);
-        setNfr(local.nfr);
-        setOpenIssues(local.openIssues);
-        setPriorityFeatures(local.priorityFeatures);
-      }
-      setConversationStatus("loaded");
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      setConversationStatus("loading");
-      setLoadedConversationProjectId("");
-      setLoadError(null);
-      const { project: p, errorMessage } = await fetchProjectWithRetry(resolvedProjectId);
-      if (cancelled) return;
-      if (!p) {
-        setProject(null);
-        setLoadError(errorMessage || "프로젝트 정보를 잠시 불러오지 못했습니다.");
-        setMembers([]);
-        setConversationStatus("error");
-        return;
-      }
-      setProject(p);
-      setLoadError(null);
-      const pid = resolvedProjectId.trim();
-      const conv = parseRequirementsConversationJson(p.requirementsConversationJson, pid);
-      const draft = (p.requirementsDraftJson as RequirementsDraftDoc | null | undefined) ?? null;
-      const state = parseRequirementsStateJson(p.requirementsStateJson);
-      stateJsonRef.current = mergeRequirementsStateJson(state, {});
-      const legacy = parseRequirementsRoomState(p.requirementsRoomState);
-      const legacyConv = legacy.requirementsConversation;
-      const convUserCount = conv.messages.filter((m) => m.role === "user").length;
-      const legacyUserCount = legacyConv.messages.filter((m) => m.role === "user").length;
-      let chosenConversation: RequirementsConversation;
-      if (conv.messages.length === 0 && legacyConv.messages.length > 0) {
-        chosenConversation = legacyConv;
-      } else if (legacyUserCount > convUserCount && legacyConv.messages.length > conv.messages.length) {
-        // split JSON이 비어 있거나(onboarding만 등) 예전 방보다 메시지가 적을 때 레거시 복원
-        chosenConversation = legacyConv;
-      } else {
-        chosenConversation = conv.messages.length > 0 ? conv : legacyConv;
-      }
-      const r: RequirementsRoomStateV3 = {
-        v: 3,
-        requirementsConversation: chosenConversation,
-        requirementsDraft: draft ?? legacy.requirementsDraft ?? null,
-        aiQuestionIndex: legacy.aiQuestionIndex ?? 0,
-      };
-      setRoom(r);
-      setLoadedConversationProjectId(resolvedProjectId);
-      setGoals(String(p.specCoreGoals ?? "").trim());
-      setScopeIn(String(p.specScopeIn ?? "").trim());
-      setScopeOut(String(p.specScopeOut ?? "").trim());
-      setTargetUsers(String(p.specTargetUsers ?? "").trim());
-      const sc = splitSuccessCriteriaAndNfr(p.specSuccessCriteria);
-      setSuccess(sc.success);
-      setNfr(sc.nfr);
-      setOpenIssues(state.openIssues ?? legacy.openIssues ?? "");
-      setPriorityFeatures(state.priorityFeatures ?? legacy.priorityFeatures ?? "");
-      setLastSavedAt(state.lastSavedAt ?? null);
-      setOrganizedAt(state.lastOrganizedAt ?? null);
-      setServiceFlow(state.serviceFlowV1 ?? null);
-      if (typeof state.originalProjectDescription !== "string") {
-        const cur = (p.description ?? "").trim();
-        if (isProbablyOriginalProjectDescription(cur)) void persistStateJsonOnly({ originalProjectDescription: cur });
-      }
-      if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
-        setInput(state.lastUserDraftText);
-      }
-      setConversationStatus("loaded");
-
-      const res = await fetch(`/api/project/members?projectId=${encodeURIComponent(resolvedProjectId)}`, {
-        credentials: "include",
-      });
-      const json = (await res.json()) as { success?: boolean; data?: MemberRow[] };
-      if (cancelled) return;
-      if (!res.ok || !json.success || !Array.isArray(json.data)) {
-        setMembers([]);
-        return;
-      }
-      setMembers(json.data);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [resolvedProjectId, fetchNonce]);
 
   const reloadMembers = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -751,6 +558,10 @@ export function RequirementsWorkspace({
 
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
+  const roomRef = useRef(room);
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
   const ideationConversationOnly = useMemo(
     () => filterIdeationConversationMessages(conversationMessages),
     [conversationMessages],
@@ -861,53 +672,51 @@ export function RequirementsWorkspace({
     return null;
   }, [initialWorkflowNotice, project]);
 
-  const persistStateJsonOnly = useCallback(
-    async (patch: Partial<RequirementsStateJson>) => {
-      const pid = resolvedProjectId.trim();
-      if (!pid) return;
-      const ts = new Date().toISOString();
-      const merged = mergeRequirementsStateJson(stateJsonRef.current, { ...patch, lastSavedAt: patch.lastSavedAt ?? ts });
-      stateJsonRef.current = merged;
-      setSaveState("saving");
-      try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requirementsStateJson: merged }),
-        });
-        const json = (await res.json()) as {
-          success?: boolean;
-          message?: string;
-          data?: { project?: Project; patchApplied?: boolean; message?: string };
-        };
-        if (!res.ok || !json.success || !json.data?.project) {
-          setSaveState("error");
-          return;
-        }
-        if (json.data.patchApplied === false) {
-          setSaveState("error");
-          return;
-        }
-        setProject(json.data.project);
-        stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
-        notifyAppFlowProjectContextChanged();
-        setSaveState("saved");
-        setLastSavedAt(merged.lastSavedAt ?? ts);
-      } catch {
-        setSaveState("error");
-      }
-    },
-    [resolvedProjectId]
-  );
+  const { persistStateJsonOnly, persistServiceFlow, persistRemote } = useRequirementsSpecWorkspacePersist({
+    resolvedProjectId,
+    stateJsonRef,
+    setSaveState,
+    setLastSavedAt,
+    setProject,
+    setServiceFlow,
+    setRoom,
+    goals,
+    scopeIn,
+    scopeOut,
+    targetUsers,
+    success,
+    nfr,
+    openIssues,
+    priorityFeatures,
+    organizedAt,
+    onboardingAppliedKey,
+    onboardingKey,
+  });
 
-  const persistServiceFlow = useCallback(
-    async (next: RequirementsServiceFlowV1 | null) => {
-      setServiceFlow(next);
-      await persistStateJsonOnly({ serviceFlowV1: next });
-    },
-    [persistStateJsonOnly]
-  );
+  useRequirementsProjectLoad({
+    resolvedProjectId,
+    fetchNonce,
+    stateJsonRef,
+    persistStateJsonOnly,
+    setConversationStatus,
+    setLoadedConversationProjectId,
+    setLoadError,
+    setProject,
+    setRoom,
+    setGoals,
+    setScopeIn,
+    setScopeOut,
+    setTargetUsers,
+    setSuccess,
+    setNfr,
+    setOpenIssues,
+    setPriorityFeatures,
+    setLastSavedAt,
+    setOrganizedAt,
+    setServiceFlow,
+    setInput,
+    setMembers,
+  });
 
   const composerPlaceholder = "메시지를 입력하세요";
 
@@ -933,127 +742,6 @@ export function RequirementsWorkspace({
     return assets.some((a) => ok.has(String(a.type)));
   }, [ideationAssets, goals, targetUsers, success, fetchNonce]);
   const ideationReadyNotice = "현재 단계로 이동하려면\n아이디어 구체화 단계에서\n기획 산출물 정리가 필요합니다.";
-
-  const persistRemote = useCallback(
-    async (nextRoom: RequirementsRoomStateV3, spec: Partial<Project>, meta?: Partial<RequirementsStateJson>) => {
-      const pid = resolvedProjectId.trim();
-      setRoom(nextRoom);
-      if (!pid) {
-        if (meta) {
-          stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, meta);
-        }
-        const g = spec.specCoreGoals !== undefined ? String(spec.specCoreGoals ?? "") : goals;
-        const si = spec.specScopeIn !== undefined ? String(spec.specScopeIn ?? "") : scopeIn;
-        const so = spec.specScopeOut !== undefined ? String(spec.specScopeOut ?? "") : scopeOut;
-        const tu = spec.specTargetUsers !== undefined ? String(spec.specTargetUsers ?? "") : targetUsers;
-        const sc = spec.specSuccessCriteria !== undefined ? String(spec.specSuccessCriteria ?? "") : joinSuccessCriteriaAndNfr(success, nfr);
-        const scParts = splitSuccessCriteriaAndNfr(sc);
-        writeLocalShell({
-          room: nextRoom,
-          goals: g,
-          scopeIn: si,
-          scopeOut: so,
-          targetUsers: tu,
-          success: scParts.success,
-          nfr: scParts.nfr,
-          openIssues: nextRoom.openIssues ?? openIssues,
-          priorityFeatures: nextRoom.priorityFeatures ?? priorityFeatures,
-        });
-        return null;
-      }
-      setSaveState("saving");
-      const userBlob = concatUserContext(nextRoom.requirementsConversation.messages).trim();
-      const nextSavedAt = new Date().toISOString();
-      const baseState = mergeRequirementsStateJson(stateJsonRef.current, {
-        lastSavedAt: nextSavedAt,
-        lastOrganizedAt: organizedAt ?? stateJsonRef.current.lastOrganizedAt,
-        selectedTargetId: null,
-        selectedMembers: null,
-        // Project card description should remain bound to the original creation description.
-        originalProjectDescription: stateJsonRef.current.originalProjectDescription ?? "",
-        onboardingShown: meta?.onboardingShown ?? onboardingAppliedKey === onboardingKey,
-        openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
-        priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
-      });
-      const mergedState = meta ? mergeRequirementsStateJson(baseState, meta) : baseState;
-      stateJsonRef.current = mergedState;
-      const deliverableAssetsSnapshot =
-        meta && Array.isArray(meta.deliverableAssets) && meta.deliverableAssets.length ? meta.deliverableAssets : null;
-      const body: Record<string, unknown> = {
-        requirementsConversationJson: nextRoom.requirementsConversation,
-        requirementsDraftJson: nextRoom.requirementsDraft ?? null,
-        requirementsStateJson: mergedState,
-        requirementsRoomState: {
-          ...nextRoom,
-          openIssues: openIssues.trim() || undefined,
-          priorityFeatures: priorityFeatures.trim() || undefined,
-        },
-      };
-      if (spec.specCoreGoals !== undefined) body.specCoreGoals = spec.specCoreGoals;
-      if (spec.specScopeIn !== undefined) body.specScopeIn = spec.specScopeIn;
-      if (spec.specScopeOut !== undefined) body.specScopeOut = spec.specScopeOut;
-      if (spec.specTargetUsers !== undefined) body.specTargetUsers = spec.specTargetUsers;
-      if (spec.specSuccessCriteria !== undefined) body.specSuccessCriteria = spec.specSuccessCriteria;
-      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = (await res.json()) as {
-        success?: boolean;
-        message?: string;
-        code?: string;
-        data?: { project?: Project; patchApplied?: boolean; message?: string };
-      };
-      if (!res.ok || !json.success || !json.data?.project) {
-        setSaveState("error");
-        throw new Error(json.message || "저장에 실패했습니다.");
-      }
-      if (json.data.patchApplied === false) {
-        setSaveState("error");
-        throw new Error(
-          json.data.message ||
-            json.message ||
-            "저장이 DB에 반영되지 않았습니다. 마이그레이션 적용 여부를 확인하거나 잠시 후 다시 시도해 주세요."
-        );
-      }
-      setProject(json.data.project);
-      stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
-      // 서버가 대형 JSONB 저장을 degrade(스킵)한 경우에도, 카드가 가리키는 산출물은 "문서 열기"에서 즉시 열려야 한다.
-      if (deliverableAssetsSnapshot) {
-        const after = stateJsonRef.current.deliverableAssets as IdeationDeliverableAsset[] | null | undefined;
-        if (!Array.isArray(after) || after.length === 0) {
-          stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
-            deliverableAssets: deliverableAssetsSnapshot,
-          });
-        }
-      }
-      notifyAppFlowProjectContextChanged();
-      setSaveState("saved");
-      setLastSavedAt(mergedState.lastSavedAt ?? nextSavedAt);
-      return json.data.project;
-    },
-    [
-      resolvedProjectId,
-      openIssues,
-      priorityFeatures,
-      organizedAt,
-      onboardingAppliedKey,
-      onboardingKey,
-      goals,
-      scopeIn,
-      scopeOut,
-      targetUsers,
-      success,
-      nfr,
-    ]
-  );
-
-  const roomRef = useRef(room);
-  useEffect(() => {
-    roomRef.current = room;
-  }, [room]);
 
   const appendServiceFlowWorkshopMessages = useCallback(
     async (incoming: readonly RequirementsMessage[]): Promise<RequirementsMessage[]> => {
@@ -1098,64 +786,24 @@ export function RequirementsWorkspace({
     };
   }, [input, resolvedProjectId, conversationStatus, persistStateJsonOnly]);
 
-  useEffect(() => {
-    const prev = prevSaveStateRef.current;
-    prevSaveStateRef.current = saveState;
-    if (prev === "saving" && saveState === "saved") {
-      if (saveToastHideTimerRef.current) clearTimeout(saveToastHideTimerRef.current);
-      setSaveToastVisible(true);
-      saveToastHideTimerRef.current = setTimeout(() => {
-        setSaveToastVisible(false);
-        saveToastHideTimerRef.current = null;
-      }, 2000);
-    }
-  }, [saveState]);
-
-  useEffect(() => {
-    return () => {
-      if (saveToastHideTimerRef.current) {
-        clearTimeout(saveToastHideTimerRef.current);
-        saveToastHideTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const showSuccessToast = useCallback((message: string) => {
-    if (successToastHideTimerRef.current) {
-      clearTimeout(successToastHideTimerRef.current);
-      successToastHideTimerRef.current = null;
-    }
-    setSuccessToast(message);
-    successToastHideTimerRef.current = setTimeout(() => {
-      setSuccessToast(null);
-      successToastHideTimerRef.current = null;
-    }, 2000);
-  }, []);
-
-  const showErrorToast = useCallback((message: string) => {
-    if (errorToastHideTimerRef.current) {
-      clearTimeout(errorToastHideTimerRef.current);
-      errorToastHideTimerRef.current = null;
-    }
-    setErrorToast(message);
-    errorToastHideTimerRef.current = setTimeout(() => {
-      setErrorToast(null);
-      errorToastHideTimerRef.current = null;
-    }, 4500);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (successToastHideTimerRef.current) {
-        clearTimeout(successToastHideTimerRef.current);
-        successToastHideTimerRef.current = null;
-      }
-      if (errorToastHideTimerRef.current) {
-        clearTimeout(errorToastHideTimerRef.current);
-        errorToastHideTimerRef.current = null;
-      }
-    };
-  }, []);
+  const serviceFlowDraft = useRequirementsServiceFlowDraft({
+    resolvedProjectId,
+    persistServiceFlow,
+    serviceFlow,
+    project,
+    ideationReadyForServiceFlow,
+    ideationReadyNotice,
+    setError,
+    showSuccessToast,
+    showErrorToast,
+    roomRef,
+    stateJsonRef,
+    aiBackgroundBusy: serviceFlowDraftBusy,
+    setAiBackgroundBusy: setServiceFlowDraftBusy,
+    activeStage,
+    fetchNonce,
+    ideationConversationOnly,
+  });
 
   useEffect(() => {
     if (conversationStatus !== "loaded") return;
@@ -2351,13 +1999,9 @@ export function RequirementsWorkspace({
     if (!pid) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/workflow/ack-requirements`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const json = (await res.json()) as { success?: boolean };
+      const { res, json } = await postProjectWorkflowAckRequirements(pid);
       if (!res.ok || !json.success) return;
-      notifyAppFlowProjectContextChanged();
+      notifyAppFlowProjectContextRefresh();
       router.push(`/projects/${encodeURIComponent(pid)}?view=workspace`);
     } finally {
       setBusy(false);
@@ -2422,21 +2066,12 @@ export function RequirementsWorkspace({
         lastSavedAt: now,
       });
       stateJsonRef.current = completedState;
-      const res = await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requirementsStateJson: completedState,
-          confirmedSpecMarkdown: confirmedFullPlan.content,
-          workflowStatus: null,
-        }),
+      const { res, json: raw } = await patchSpecWorkspaceRequest(pid, {
+        requirementsStateJson: completedState,
+        confirmedSpecMarkdown: confirmedFullPlan.content,
+        workflowStatus: null,
       });
-      const json = (await res.json()) as {
-        success?: boolean;
-        message?: string;
-        data?: { project?: Project; patchApplied?: boolean; message?: string };
-      };
+      const json = raw as SpecWorkspaceProjectPatchResponseBody;
       if (!res.ok || !json.success || !json.data?.project || json.data.patchApplied === false) {
         const msg = json.data?.message || json.message || "아이디어 초안 확정 저장에 실패했습니다.";
         setError(msg);
@@ -2448,170 +2083,12 @@ export function RequirementsWorkspace({
       setProposalPlanPreview({ open: false, assetId: null });
       setDeliverableViewerOpen(false);
       setAiInvokePending(false);
-      notifyAppFlowProjectContextChanged();
+      notifyAppFlowProjectContextRefresh();
       showSuccessToast("아이디어 초안이 확정되었습니다. 다음 단계로 이동합니다.");
       router.push(`/requirements?projectId=${encodeURIComponent(pid)}&stage=service-flow`);
     },
     [resolvedProjectId, project?.requirementsStateJson, persistStateJsonOnly, router, showErrorToast, showSuccessToast]
   );
-
-  const handleGenerateServiceFlowDraft = useCallback(async (opts?: { silent?: boolean }) => {
-    const pid = resolvedProjectId.trim();
-    if (!pid) {
-      setError("프로젝트에 연결된 뒤 사용할 수 있습니다.");
-      return;
-    }
-    if (!ideationReadyForServiceFlow) {
-      setError(ideationReadyNotice);
-      return;
-    }
-    setServiceFlowDraftBusy(true);
-    setError(null);
-    try {
-      const assets = (stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
-        type: a.type,
-        title: a.title,
-        content: a.content,
-      }));
-      const extraAssets: Array<{ type?: string; title?: string; content?: string }> = [];
-      const lastPrompt = String(stateJsonRef.current.lastPromptText ?? "").trim();
-      if (lastPrompt) extraAssets.push({ type: "ideation_summary", title: "아이디어 요약", content: lastPrompt });
-      const draftText = String(stateJsonRef.current.lastUserDraftText ?? "").trim();
-      if (draftText) extraAssets.push({ type: "requirements_draft", title: "사용자 초안", content: draftText });
-      const convo = concatUserContext(room.requirementsConversation.messages).trim();
-      if (convo) extraAssets.push({ type: "requirements_conversation", title: "최근 대화", content: convo.slice(0, 8000) });
-      const res = await fetch("/api/requirements/service-flow-draft", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: pid,
-          projectName: project?.name ?? "",
-          projectDescription: project?.description ?? "",
-          ideationAssets: [...assets, ...extraAssets],
-        }),
-      });
-      const json = (await res.json()) as {
-        success?: boolean;
-        code?: string;
-        message?: string;
-        data?: {
-          steps?: Array<{ title?: string; purpose?: string; primary?: string; secondary?: string[] }>;
-          actors?: Array<{ name?: string; kind?: string; description?: string }>;
-          reviewPoints?: string[];
-        };
-      };
-      if (!res.ok || !json.success || !json.data) {
-        throw new Error(json.message || "AI 초안 생성에 실패했습니다.");
-      }
-      const now = new Date().toISOString();
-      const actorsRaw = Array.isArray(json.data.actors) ? json.data.actors : [];
-      const stepsRaw = Array.isArray(json.data.steps) ? json.data.steps : [];
-
-      const actorIdByName = new Map<string, string>();
-      const actors = actorsRaw
-        .map((a) => {
-          const name = String(a?.name ?? "").trim();
-          const kind = String(a?.kind ?? "").trim().toLowerCase();
-          if (!name) return null;
-          const id = `actor:${name}`;
-          actorIdByName.set(name, id);
-          return {
-            id,
-            name,
-            kind: kind === "system" ? ("system" as const) : ("human" as const),
-            description: typeof a?.description === "string" ? a.description.trim() : null,
-          };
-        })
-        .filter((x): x is NonNullable<typeof x> => Boolean(x));
-      if (!actors.length) {
-        actors.push({ id: "actor:사용자", name: "사용자", kind: "human" as const, description: null });
-      }
-
-      const steps = stepsRaw
-        .map((s, idx) => {
-          const title = String(s?.title ?? "").trim();
-          const purpose = String(s?.purpose ?? "").trim();
-          const primaryName = String(s?.primary ?? "").trim();
-          let primaryActorId = actorIdByName.get(primaryName) ?? "";
-          if (!primaryActorId && primaryName) {
-            primaryActorId = `actor:${primaryName}`;
-            actorIdByName.set(primaryName, primaryActorId);
-            actors.push({ id: primaryActorId, name: primaryName, kind: "human" as const, description: null });
-          }
-          if (!primaryActorId) primaryActorId = actors[0]!.id;
-          const secondary = Array.isArray(s?.secondary) ? s.secondary.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
-          const secondaryActorIds = secondary
-            .map((nm) => {
-              const known = actorIdByName.get(nm);
-              if (known) return known;
-              const id = `actor:${nm}`;
-              actorIdByName.set(nm, id);
-              actors.push({ id, name: nm, kind: "system" as const, description: null });
-              return id;
-            })
-            .filter((id) => id !== primaryActorId);
-          if (!title || !purpose) return null;
-          return {
-            id: `step:${idx + 1}:${title}`,
-            order: idx + 1,
-            title,
-            purpose,
-            primaryActorId,
-            secondaryActorIds,
-            approved: false,
-            updatedAt: now,
-          };
-        })
-        .filter((x): x is NonNullable<typeof x> => Boolean(x));
-
-      const next: RequirementsServiceFlowV1 = {
-        createdAt: serviceFlow?.createdAt ?? now,
-        updatedAt: now,
-        steps,
-        actors,
-      };
-      await persistServiceFlow(next);
-      setServiceFlowDraftGenerationCount((n) => n + 1);
-      if (!opts?.silent) showSuccessToast("서비스 흐름 초안 생성 완료");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "오류";
-      setError(msg);
-      if (!opts?.silent) showErrorToast(msg);
-    } finally {
-      setServiceFlowDraftBusy(false);
-    }
-  }, [
-    resolvedProjectId,
-    ideationReadyForServiceFlow,
-    ideationReadyNotice,
-    project?.name,
-    project?.description,
-    persistServiceFlow,
-    serviceFlow?.createdAt,
-    showSuccessToast,
-    showErrorToast,
-    room,
-    ideationConversationOnly,
-  ]);
-
-  useEffect(() => {
-    if (activeStage !== "service-flow") return;
-    if (serviceFlowDraftBusy) return;
-    const pid = resolvedProjectId.trim();
-    if (!pid) return;
-    const flowEmpty = !serviceFlow || !(serviceFlow.actors?.length || serviceFlow.steps?.length);
-    if (!flowEmpty) return;
-    const assets = stateJsonRef.current.deliverableAssets ?? [];
-    const hasIdeationAssets = assets.length > 0;
-    const hasConversation = ideationConversationOnly.some((m) => m.role === "human" && String(m.content ?? "").trim());
-    if (!(hasIdeationAssets || hasConversation)) return;
-    if (!ideationReadyForServiceFlow) return;
-    const flightKey = `${pid}:${fetchNonce}:${assets.length}`;
-    if (serviceFlowAutoBootstrapRef.current === flightKey) return;
-    serviceFlowAutoBootstrapRef.current = flightKey;
-    void handleGenerateServiceFlowDraft({ silent: true });
-  }, [activeStage, serviceFlowDraftBusy, resolvedProjectId, serviceFlow, ideationReadyForServiceFlow, fetchNonce, ideationConversationOnly, handleGenerateServiceFlowDraft]);
 
   const inviteEmphasis = humanOthers.length === 0;
 
@@ -2808,7 +2285,7 @@ export function RequirementsWorkspace({
         flow={serviceFlow}
         ideationReady={ideationReadyForServiceFlow}
         generatingDraft={serviceFlowDraftBusy}
-        draftGenerationCount={serviceFlowDraftGenerationCount}
+        draftGenerationCount={serviceFlowDraft.serviceFlowDraftGenerationCount}
         members={members}
         currentUserId={sessionUser?.id ?? null}
         onInviteMember={() => setInviteOpen(true)}
@@ -2844,72 +2321,11 @@ export function RequirementsWorkspace({
         </OrganizeProposalDraggableModal>
       ) : null}
 
-      {saveToastVisible ? (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            top: 72,
-            right: 24,
-            zIndex: 60,
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: "#0f172a",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 700,
-            boxShadow: "0 12px 32px -8px rgba(15, 23, 42, 0.45)",
-          }}
-        >
-          저장되었습니다 ✓
-        </div>
-      ) : null}
-
-      {successToast ? (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            top: 120,
-            right: 24,
-            zIndex: 60,
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: "#0f766e",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 800,
-            boxShadow: "0 12px 32px -8px rgba(15, 118, 110, 0.45)",
-          }}
-        >
-          {successToast}
-        </div>
-      ) : null}
-
-      {errorToast ? (
-        <div
-          role="alert"
-          aria-live="assertive"
-          style={{
-            position: "fixed",
-            top: 176,
-            right: 24,
-            zIndex: 61,
-            padding: "10px 16px",
-            borderRadius: 10,
-            background: "#b91c1c",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 800,
-            boxShadow: "0 12px 32px -8px rgba(185, 28, 28, 0.45)",
-            maxWidth: 360,
-          }}
-        >
-          {errorToast}
-        </div>
-      ) : null}
+      <WorkspaceSuccessErrorSaveToastHost
+        savePulse={saveToastVisible}
+        success={successToast}
+        error={errorToast}
+      />
 
       <RequirementsHeader
         showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}

@@ -27,6 +27,7 @@ import type {
   PrototypeWorkspaceIdeationAsset,
 } from "@/components/preview/prototypeWorkspaceTypes";
 import { fetchEnvironmentTestLast, postExecutionSetupValidate } from "@/components/project-spec/api";
+import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import { EXECUTION_WORKFLOW } from "@/lib/executionLoop/workflowConstants";
 import { buildCursorPrototypePromptPackage } from "@/lib/prototype/buildCursorPrototypePrompt";
 import { analyzePrototypeContext } from "@/lib/prototype/prototypeContextAnalyzer";
@@ -299,12 +300,7 @@ export function PrototypePreviewPanel({
       lastSavedAt: new Date().toISOString(),
     });
 
-    await fetch(`/api/projects/${encodeURIComponent(pid)}/spec-workspace`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requirementsStateJson: merged }),
-    }).catch(() => {});
+    void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
   }, [projectId, chatUserLog, ephemeralAiReplies, timelineCards, requirementsStateJson]);
 
   useEffect(() => {

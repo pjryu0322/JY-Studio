@@ -23,6 +23,8 @@ export const uiTokens = {
   overlayScrim: "rgba(15, 23, 42, 0.45)",
   /** Elevated dialog / popover shadow. */
   shadowModal: "0 24px 60px rgba(15, 23, 42, 0.2)",
+  /** Subtle card lift (inline panels). */
+  shadowSoft: "0 4px 14px -8px rgba(15, 23, 42, 0.12)",
   /** Soft caution surface (inline notices). */
   surfaceCaution: "#fffbeb",
   borderCaution: "#fde68a",

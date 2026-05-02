@@ -15,6 +15,7 @@ import {
 import { displayedAiOrchestrator } from "@/lib/ai-member/visibleAiOrchestrator";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeClient";
 
 export type ServiceFlowWorkspaceMode = "chat" | "mapping" | "summary";
 
@@ -82,6 +83,15 @@ export function useServiceFlowWorkshopChat({
   const autoScrollPendingRef = useRef(false);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const onAppendRef = useRef(onAppendPersistedServiceFlowMessages);
+  const onChangeFlowRef = useRef(onChangeFlow);
+  useEffect(() => {
+    onAppendRef.current = onAppendPersistedServiceFlowMessages;
+  }, [onAppendPersistedServiceFlowMessages]);
+  useEffect(() => {
+    onChangeFlowRef.current = onChangeFlow;
+  }, [onChangeFlow]);
+
   const scrollChatToBottom = useCallback(() => {
     autoScrollPendingRef.current = true;
     window.requestAnimationFrame(() => {
@@ -129,7 +139,7 @@ export function useServiceFlowWorkshopChat({
           if (!opts?.silentUserAppend) {
             autoScrollPendingRef.current = true;
             const userPersisted = buildServiceFlowUserPersist(body, currentUserId);
-            const nextSlice = await onAppendPersistedServiceFlowMessages([userPersisted]);
+            const nextSlice = await onAppendRef.current([userPersisted]);
             messagesRef.current = nextSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           }
 
@@ -140,35 +150,20 @@ export function useServiceFlowWorkshopChat({
             .join("\n")
             .slice(0, 12000);
 
-          const res = await fetch("/api/requirements/service-flow-analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId,
-              projectName,
-              projectDescription,
-              ideationAssets,
-              userMessage: body,
-              currentFlow: flowRef.current,
-              recentMessages,
-              latestAiQuestion: latestAiQuestionRef.current,
-            }),
+          const result = await postServiceFlowAnalyze({
+            projectId,
+            projectName,
+            projectDescription,
+            ideationAssets,
+            userMessage: body,
+            currentFlow: flowRef.current,
+            recentMessages,
+            latestAiQuestion: latestAiQuestionRef.current,
           });
-          const json = (await res.json()) as {
-            success?: boolean;
-            data?: {
-              assistantMessage?: string;
-              updatedFlow?: RequirementsServiceFlowV1;
-              nextQuestion?: string | null;
-              quickReplies?: string[] | null;
-              readiness?: { score?: number; readyForNext?: boolean } | null;
-            };
-            code?: string;
-            message?: string;
-          };
-          if (!res.ok || !json.success || !json.data?.updatedFlow) {
+
+          if (!result.ok || !result.data.updatedFlow) {
             autoScrollPendingRef.current = true;
-            const errSlice = await onAppendPersistedServiceFlowMessages([
+            const errSlice = await onAppendRef.current([
               buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
             ]);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
@@ -176,30 +171,40 @@ export function useServiceFlowWorkshopChat({
             return;
           }
 
-          const nextFlow = json.data.updatedFlow;
-          onChangeFlow(nextFlow);
+          const data = result.data;
+          const nextFlow = data.updatedFlow;
+          if (!nextFlow) {
+            autoScrollPendingRef.current = true;
+            const errSlice = await onAppendRef.current([
+              buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
+            ]);
+            messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
+            setReplying(false);
+            return;
+          }
+          onChangeFlowRef.current(nextFlow);
 
-          const nextQ = String(json.data.nextQuestion ?? "").trim();
+          const nextQ = String(data.nextQuestion ?? "").trim();
           if (nextQ) setLatestAiQuestion(nextQ);
 
-          const replies = Array.isArray(json.data.quickReplies)
-            ? json.data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 3)
+          const replies = Array.isArray(data.quickReplies)
+            ? data.quickReplies.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 3)
             : [];
           setQuickReplies(replies.length ? replies : null);
 
-          const aiBody = [String(json.data.assistantMessage ?? "").trim(), nextQ].filter(Boolean).join("\n");
-          const done = !nextQ && Boolean(json.data.readiness?.readyForNext);
+          const aiBody = [String(data.assistantMessage ?? "").trim(), nextQ].filter(Boolean).join("\n");
+          const done = !nextQ && Boolean(data.readiness?.readyForNext);
           autoScrollPendingRef.current = true;
           const combined =
             (aiBody || "반영했습니다.") +
             (done ? "\n\n기본 운영 흐름이 정리되었습니다.\n추가 수정사항이 있으면 말씀해 주세요." : "");
-          const okSlice = await onAppendPersistedServiceFlowMessages([buildServiceFlowAiPersist(combined)]);
+          const okSlice = await onAppendRef.current([buildServiceFlowAiPersist(combined)]);
           messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           setReplying(false);
         } catch {
           autoScrollPendingRef.current = true;
           try {
-            const errSlice = await onAppendPersistedServiceFlowMessages([
+            const errSlice = await onAppendRef.current([
               buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
             ]);
             messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
@@ -209,18 +214,13 @@ export function useServiceFlowWorkshopChat({
         }
       })();
     },
-    [
-      workspaceMode,
-      currentUserId,
-      onAppendPersistedServiceFlowMessages,
-      aiDisplayName,
-      projectId,
-      projectName,
-      projectDescription,
-      ideationAssets,
-      onChangeFlow,
-    ],
+    [workspaceMode, currentUserId, aiDisplayName, projectId, projectName, projectDescription, ideationAssets],
   );
+
+  const callAnalyzeRef = useRef(callAnalyze);
+  useEffect(() => {
+    callAnalyzeRef.current = callAnalyze;
+  }, [callAnalyze]);
 
   const sendMessage = useCallback(() => {
     if (workspaceMode !== "chat") return;
@@ -239,10 +239,10 @@ export function useServiceFlowWorkshopChat({
       }
       setWorkspaceMode("chat");
       window.setTimeout(() => {
-        callAnalyze(SLOT_RESOLVE_USER_MESSAGES[key]);
+        callAnalyzeRef.current(SLOT_RESOLVE_USER_MESSAGES[key]);
       }, 0);
     },
-    [callAnalyze, setWorkspaceMode],
+    [setWorkspaceMode],
   );
 
   const requestOrganize = useCallback(() => {
@@ -256,48 +256,41 @@ export function useServiceFlowWorkshopChat({
         .join("\n")
         .slice(0, 12000);
       try {
-        const res = await fetch("/api/requirements/service-flow-analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            projectName,
-            projectDescription,
-            ideationAssets,
-            userMessage: "정리 요청: 지금까지의 대화와 기존 초안을 바탕으로 액터/흐름/담당 매핑을 최신 상태로 다시 정리해 주세요.",
-            recentMessages: excerpt,
-            latestAiQuestion,
-            currentFlow: flow,
-          }),
+        const result = await postServiceFlowAnalyze({
+          projectId,
+          projectName,
+          projectDescription,
+          ideationAssets,
+          userMessage:
+            "정리 요청: 지금까지의 대화와 기존 초안을 바탕으로 액터/흐름/담당 매핑을 최신 상태로 다시 정리해 주세요.",
+          recentMessages: excerpt,
+          latestAiQuestion,
+          currentFlow: flow,
         });
-        const json = (await res.json()) as {
-          success?: boolean;
-          data?: { updatedFlow?: RequirementsServiceFlowV1; assistantMessage?: string; nextQuestion?: string | null };
-          message?: string;
-        };
-        if (!res.ok || !json.success || !json.data?.updatedFlow) {
-          const errSlice = await onAppendPersistedServiceFlowMessages([
+        if (!result.ok || !result.data.updatedFlow) {
+          const errSlice = await onAppendRef.current([
             buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
           ]);
           messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
           setReplying(false);
           return;
         }
-        onChangeFlow(json.data.updatedFlow);
-        const nextQ = String(json.data?.nextQuestion ?? "").trim();
+        const organizedFlow = result.data.updatedFlow;
+        onChangeFlowRef.current(organizedFlow);
+        const nextQ = String(result.data?.nextQuestion ?? "").trim();
         if (nextQ) setLatestAiQuestion(nextQ);
         setQuickReplies(null);
-        const okSlice = await onAppendPersistedServiceFlowMessages([
-          buildServiceFlowAiPersist([String(json.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n")),
+        const okSlice = await onAppendRef.current([
+          buildServiceFlowAiPersist(
+            [String(result.data?.assistantMessage ?? "").trim() || "정리했습니다.", nextQ].filter(Boolean).join("\n"),
+          ),
         ]);
         messagesRef.current = okSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         setWorkspaceMode("summary");
         setReplying(false);
       } catch {
         try {
-          const errSlice = await onAppendPersistedServiceFlowMessages([
-            buildServiceFlowAiPersist("자동 정리에 실패했습니다. 다시 시도해주세요."),
-          ]);
+          const errSlice = await onAppendRef.current([buildServiceFlowAiPersist("자동 정리에 실패했습니다. 다시 시도해주세요.")]);
           messagesRef.current = errSlice.map((m) => workshopMessageFromPersisted(m, aiDisplayName));
         } finally {
           setReplying(false);
@@ -313,9 +306,7 @@ export function useServiceFlowWorkshopChat({
     ideationAssets,
     latestAiQuestion,
     flow,
-    onAppendPersistedServiceFlowMessages,
     aiDisplayName,
-    onChangeFlow,
     setWorkspaceMode,
   ]);
 
@@ -327,10 +318,10 @@ export function useServiceFlowWorkshopChat({
       const body =
         "초안을 준비했습니다. 수정할 부분만 말씀해 주세요.\n" +
         (qs.length ? `\n(빠르게 확인)\n${qs.map((q) => `- ${q}`).join("\n")}` : "");
-      void onAppendPersistedServiceFlowMessages([buildServiceFlowAiPersist(body)]);
+      void onAppendRef.current([buildServiceFlowAiPersist(body)]);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [draftGenerationCount, derivedSlotsForDraftBootstrap, structureLockedAt, onAppendPersistedServiceFlowMessages]);
+  }, [draftGenerationCount, derivedSlotsForDraftBootstrap, structureLockedAt]);
 
   const bootOnceRef = useRef(false);
   useEffect(() => {
@@ -352,7 +343,7 @@ export function useServiceFlowWorkshopChat({
         .map((s) => `${s.order}. ${s.title}`)
         .join("\n");
       bootOnceRef.current = true;
-      void onAppendPersistedServiceFlowMessages([
+      void onAppendRef.current([
         buildServiceFlowAiPersist(
           `아이디어 구체화 단계에서 다음 흐름이 정리되었습니다.\n\n${list}\n\n이 흐름에서 누락되었거나 수정할 단계가 있습니까?`,
         ),
@@ -363,8 +354,7 @@ export function useServiceFlowWorkshopChat({
     if (hasIdeationAssets && !hasAnyFlow) return;
 
     bootOnceRef.current = true;
-    callAnalyze("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot boot
+    callAnalyzeRef.current("서비스 흐름 인터뷰 시작", { silentUserAppend: true });
   }, [
     replying,
     persistedServiceFlowMessages.length,
@@ -375,7 +365,7 @@ export function useServiceFlowWorkshopChat({
     ideationAssets?.length,
     structureLockedAt,
     workspaceMode,
-    onAppendPersistedServiceFlowMessages,
+    flow,
   ]);
 
   useEffect(() => {

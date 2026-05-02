@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { appFlowStepHref } from "@/lib/workflow/flow-state";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 const MENU_Z = 72;
 
@@ -15,11 +16,11 @@ function menuItemStyle(disabled: boolean): CSSProperties {
     textAlign: "left",
     padding: "11px 14px",
     border: "none",
-    borderRadius: 8,
+    borderRadius: t.radiusMd,
     background: "transparent",
     fontSize: 14,
     fontWeight: 600,
-    color: disabled ? "#94a3b8" : "#0f172a",
+    color: disabled ? t.textMuted : t.textPrimary,
     cursor: disabled ? "not-allowed" : "pointer",
     boxSizing: "border-box",
   };
@@ -51,10 +52,10 @@ export function ServiceFlowActionMenu(p: {
         bottom: "calc(100% + 8px)",
         minWidth: 216,
         padding: 6,
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
-        background: "#fff",
-        boxShadow: "0 12px 40px -12px rgba(15, 23, 42, 0.2)",
+        borderRadius: t.radiusLg,
+        border: `1px solid ${t.border}`,
+        background: t.bgCard,
+        boxShadow: t.shadowModal,
         zIndex: MENU_Z,
         display: "flex",
         flexDirection: "column",

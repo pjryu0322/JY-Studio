@@ -1,0 +1,42 @@
+import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+
+export type ServiceFlowAnalyzeRequestBody = {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly ideationAssets: ReadonlyArray<{ type?: string; title?: string; content?: string }>;
+  readonly userMessage: string;
+  readonly currentFlow: RequirementsServiceFlowV1 | null;
+  readonly recentMessages: string;
+  readonly latestAiQuestion: string;
+};
+
+export type ServiceFlowAnalyzeSuccessData = {
+  assistantMessage?: string;
+  updatedFlow?: RequirementsServiceFlowV1;
+  nextQuestion?: string | null;
+  quickReplies?: string[] | null;
+  readiness?: { score?: number; readyForNext?: boolean } | null;
+};
+
+export type ServiceFlowAnalyzeResponse =
+  | { readonly ok: true; readonly status: number; readonly data: ServiceFlowAnalyzeSuccessData }
+  | { readonly ok: false; readonly status: number; readonly json: unknown };
+
+export async function postServiceFlowAnalyze(body: ServiceFlowAnalyzeRequestBody): Promise<ServiceFlowAnalyzeResponse> {
+  const res = await fetch("/api/requirements/service-flow-analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as {
+    success?: boolean;
+    data?: ServiceFlowAnalyzeSuccessData;
+    code?: string;
+    message?: string;
+  };
+  if (!res.ok || !json.success) {
+    return { ok: false, status: res.status, json };
+  }
+  return { ok: true, status: res.status, data: json.data ?? {} };
+}

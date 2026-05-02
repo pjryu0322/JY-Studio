@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import { useMediaQuery } from "@/components/ui/useMediaQuery";
+import { useComposerNarrowBreakpoint } from "@/components/ui/breakpoints";
 
 export type RequirementsComposerToolsMenu = {
   readonly onOrganizeRequirements: () => void;
@@ -160,6 +160,7 @@ export function RequirementsComposerGpt({
     autoGrow();
   }, [value, autoGrow]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- mention-picker / menu visibility derived from `value` and layout */
   useEffect(() => {
     if (!hasTargetPicker) return;
     const idx = value.lastIndexOf("@@");
@@ -179,10 +180,11 @@ export function RequirementsComposerGpt({
     setTargetPickerOpen(true);
   }, [value, hasTargetPicker]);
 
-  const narrow = useMediaQuery("(max-width: 640px)");
+  const narrow = useComposerNarrowBreakpoint();
   useEffect(() => {
     setMenuOpen(false);
   }, [narrow]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!menuOpen) return;
