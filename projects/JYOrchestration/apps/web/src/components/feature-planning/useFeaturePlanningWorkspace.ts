@@ -12,12 +12,7 @@ import {
   orderedSlotsForFeaturePlanningUi,
 } from "@/lib/featurePlanning/featurePlanningLegacyRoleSlots";
 import type { FeaturePlanningWorkspaceChatMessageV1, FeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
-import {
-  buildSingleSlotDigestForChat,
-  composePlannerCategoryIntroduction,
-  newFeaturePlanningMessageId,
-} from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
-import { buildFallbackCategoryFirstMessage } from "@/lib/featurePlanning/featurePlanningFirstMessageFallback";
+import { buildSingleSlotDigestForChat, newFeaturePlanningMessageId } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 
@@ -65,7 +60,7 @@ export const FEATURE_PLANNING_RESET_CHAT_WARNING =
 const SAVE_DEBOUNCE_MS = 650;
 
 type ApiInitData = {
-  generated: boolean;
+  generated?: boolean;
   artifact?: FeaturePlanningSlotsArtifactV1;
   slots?: unknown;
   messages: WorkspaceChatMessage[];
@@ -94,6 +89,8 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   const [slotsSaving, setSlotsSaving] = useState(false);
   const [composer, setComposer] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [initErrorCode, setInitErrorCode] = useState<string | null>(null);
 
   const initStartedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,6 +194,8 @@ export function useFeaturePlanningWorkspace(projectId: string) {
       const pid = projectId.trim();
       if (!pid) return;
       setInitLoading(true);
+      setInitError(null);
+      setInitErrorCode(null);
       try {
         const res = await fetch("/api/feature-planning/initialize", {
           method: "POST",
@@ -206,7 +205,10 @@ export function useFeaturePlanningWorkspace(projectId: string) {
         });
         const json = (await res.json()) as ApiInitResponse;
         if (!json.success || !json.data) {
-          pushNotice(json.message ?? "기능정리 초기화에 실패했습니다.");
+          const msg = json.message ?? "기능정리 초안 생성에 실패했습니다. 다시 시도해 주세요.";
+          setInitError(msg);
+          setInitErrorCode(json.code ?? null);
+          pushNotice(msg);
           return;
         }
         const d = json.data;
@@ -222,7 +224,10 @@ export function useFeaturePlanningWorkspace(projectId: string) {
           pushNotice(forceRegenerate ? "기능 정리 초안을 다시 만들었습니다." : "기능 정리 초안을 준비했습니다.");
         }
       } catch {
-        pushNotice("기능정리 초기화 요청 중 오류가 발생했습니다.");
+        const msg = "기능정리 초기화 요청 중 오류가 발생했습니다.";
+        setInitError(msg);
+        setInitErrorCode("NETWORK");
+        pushNotice(msg);
       } finally {
         setInitLoading(false);
       }
@@ -237,6 +242,10 @@ export function useFeaturePlanningWorkspace(projectId: string) {
     },
     [hydrateFromProject, projectId, pushNotice]
   );
+
+  const retryInitialize = useCallback(() => {
+    void runInitialize(false);
+  }, [runInitialize]);
 
   useEffect(() => {
     if (!projectId.trim() || !project || loadError) return;
@@ -310,43 +319,42 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   const resetChat = useCallback(async () => {
     const pid = projectId.trim();
     const art = artifactRef.current;
-    const proj = projectRef.current;
-    if (!pid || !proj || !art?.slots?.length || chatLoading || initLoading || resetChatLoading || slotDigestLoading) return;
+    if (!pid || !art?.slots?.length || chatLoading || initLoading || resetChatLoading || slotDigestLoading) return;
     const ok = window.confirm(`${FEATURE_PLANNING_RESET_CHAT_WARNING}\n계속하시겠습니까?`);
     if (!ok) return;
     setResetChatLoading(true);
     try {
-      const fb = buildFallbackCategoryFirstMessage(art);
-      const raw = composePlannerCategoryIntroduction(fb.firstMessage, fb.recommendedCategories);
-      const text = sanitizeFeaturePlanningUserVisibleKorean(raw).slice(0, 32000);
-      const aiMsg: FeaturePlanningWorkspaceChatMessageV1 = {
-        id: newId("fp_reset"),
-        role: "ai",
-        text,
-        at: isoNow(),
-        plannerSurface: "category_selection",
-      };
-      const base = parseRequirementsStateJson(proj.requirementsStateJson);
-      const merged = mergeRequirementsStateJson(base, {
-        featurePlanningWorkspaceChatV1: { messages: [aiMsg] },
+      const res = await fetch("/api/feature-planning/reseed-first-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ projectId: pid }),
       });
-      const { res, json } = await patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged });
-      const rawRes = json as { success?: boolean; message?: string };
-      if (!res.ok || rawRes?.success === false) {
-        pushNotice(rawRes?.message ?? "대화 초기화 저장에 실패했습니다.");
+      const json = (await res.json()) as ApiInitResponse;
+      if (!json.success || !json.data) {
+        pushNotice(json.message ?? "대화 초기화에 실패했습니다.");
         return;
       }
-      setProject((p) => (p ? { ...p, requirementsStateJson: merged } : p));
-      const nextState = parseRequirementsStateJson(merged);
-      setMessages(workspaceMessagesFromState(nextState.featurePlanningWorkspaceChatV1));
+      const d = json.data;
+      if (d.artifact) {
+        setArtifact(d.artifact);
+        const ordered = orderedSlotsForFeaturePlanningUi(d.artifact);
+        setActiveSlotId(ordered[0]?.slotId ?? "");
+      }
+      if (Array.isArray(d.messages)) {
+        setMessages(d.messages);
+      }
       setComposer("");
-      pushNotice("대화를 초기화했습니다.");
+      pushNotice("대화를 초기화하고 AI 기획자의 첫 메시지를 다시 받았습니다.");
+      const { project: p } = await fetchProjectWithRetry(pid);
+      setProject(p ?? null);
+      if (p) hydrateFromProject(p);
     } catch {
       pushNotice("대화 초기화 중 오류가 발생했습니다.");
     } finally {
       setResetChatLoading(false);
     }
-  }, [chatLoading, initLoading, projectId, pushNotice, resetChatLoading, slotDigestLoading]);
+  }, [chatLoading, hydrateFromProject, initLoading, projectId, pushNotice, resetChatLoading, slotDigestLoading]);
 
   const sendMessage = useCallback(
     async (rawText: string) => {
@@ -395,9 +403,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   }, [sendMessage]);
 
   const planningAreaCount = artifact ? buildOrderedSlotsVisible(artifact).length : 0;
-  const initLoadingHint = artifact?.slots?.length
-    ? "기능정리 워크스페이스를 불러오는 중입니다."
-    : "기능 정리 초안을 준비하고 있습니다.";
+  const initLoadingHint = "AI 기획자가 기능정리 초안을 생성하고 있습니다.";
 
   const showStructuralRegenerateHint = Boolean(
     artifact?.slots?.length && !artifact.userEdited && detectLikelyProcessStepPlanningArtifact(artifact)
@@ -406,6 +412,9 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   return {
     project,
     loadError,
+    initError,
+    initErrorCode,
+    retryInitialize,
     artifact,
     activeSlotId,
     setActiveSlotId,

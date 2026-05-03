@@ -196,11 +196,40 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
                           {channelLabel(e.channel)}
                         </span>
                         <span style={{ fontSize: 12, fontWeight: 800, color: t.textSecondary }}>{e.label}</span>
+                        {e.purpose ? (
+                          <span style={{ fontSize: 10, fontWeight: 800, color: t.textMuted, letterSpacing: "0.02em" }}>{e.purpose}</span>
+                        ) : null}
+                        {e.status ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              padding: "2px 6px",
+                              borderRadius: 6,
+                              background: e.status === "SUCCESS" ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+                              color: e.status === "SUCCESS" ? "#166534" : "#991b1b",
+                            }}
+                          >
+                            {e.status}
+                          </span>
+                        ) : null}
                         {e.model ? (
                           <span style={{ fontSize: 11, color: t.textMuted }}>{e.model}</span>
                         ) : null}
                         <span style={{ fontSize: 11, color: t.textMuted, marginLeft: "auto" }}>{e.at}</span>
                       </div>
+                      {e.promptMetrics ? (
+                        <div style={{ fontSize: 10, color: t.textMuted, marginBottom: 6, lineHeight: 1.4 }}>
+                          추정 토큰 in≈{e.promptMetrics.tokenEstimateIn ?? "—"} out≈{e.promptMetrics.tokenEstimateOut ?? "—"} · 압축 맥락{" "}
+                          {e.promptMetrics.compressedContextSize ?? "—"}자 · topic {e.promptMetrics.topic ?? "—"}
+                          {e.promptMetrics.memoryStateSnapshot ? (
+                            <>
+                              <br />
+                              memory {e.promptMetrics.memoryStateSnapshot}
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>플랫폼 → {channelLabel(e.channel)}</div>
                       <pre
                         style={{

@@ -16,7 +16,7 @@ export type FeaturePlanningWorkspaceChatMessageV1 = {
   /** AI 턴 요약 카드(채팅 본문과 분리) */
   resultSummary?: { title: string; lines: readonly string[] };
   /** 첫 진입 등 — UI·분석용(선택) */
-  plannerSurface?: "category_selection";
+  plannerSurface?: "category_selection" | "initial_entry";
   /** 「이어지는 영역」— 대화창에서 영역 초안 펼치기 버튼(선택) */
   slotNavChips?: readonly FeaturePlanningSlotNavChipV1[];
 };
@@ -29,9 +29,9 @@ export function composePlannerCategoryIntroduction(
   return ensureFeaturePlanningQuestionSuffix(firstMessage.trim());
 }
 
-/** 초안 정보가 없을 때만 쓰는 짧은 안내(대부분은 `buildFeaturePlanningSlotCentricBootstrapMessage` 사용) */
+/** 슬롯 데이터가 없을 때 복구용 안내( AI 말풍선으로 쓰이지 않도록 짧은 시스템 안내 문구) */
 export const FEATURE_PLANNING_CHAT_EMPTY_BOOTSTRAP_AI_MESSAGE =
-  "기능 정리 초안이 준비되었습니다. 맨 앞 영역부터 확인하거나, 먼저 다루고 싶은 영역 이름을 한 줄로 보내 주세요. 빠진 점이 있으면 말씀해 주세요.";
+  "기능 정리 슬롯이 아직 없습니다. 기능정리 초기화가 완료될 때까지 기다리거나, 페이지를 새로고침해 주세요.";
 
 const MAX_ITEM_DESC_CHARS = 200;
 const MAX_ITEMS_FIRST_SLOT = 24;
@@ -228,7 +228,12 @@ export function parseFeaturePlanningWorkspaceChatV1(raw: unknown): FeaturePlanni
       }
     }
     if (!text && !resultSummary) continue;
-    const ps = r.plannerSurface === "category_selection" ? "category_selection" : undefined;
+    const ps =
+      r.plannerSurface === "category_selection"
+        ? "category_selection"
+        : r.plannerSurface === "initial_entry"
+          ? "initial_entry"
+          : undefined;
     const chipsRaw = r.slotNavChips;
     let slotNavChips: FeaturePlanningSlotNavChipV1[] | undefined;
     if (Array.isArray(chipsRaw)) {

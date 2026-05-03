@@ -34,7 +34,7 @@ export async function runFeaturePlanningFirstMessageLlm(input: {
 }): Promise<FeaturePlanningFirstMessageLlmOk | FeaturePlanningFirstMessageLlmErr> {
   const system = buildFeaturePlanningFirstMessageSystemPrompt();
   const user = buildFeaturePlanningFirstMessageUserPrompt(input.ctx, input.artifact);
-  const res = await openAiChatJsonText(input.apiKey, input.model, system, user, { label: "기능 정리 첫 메시지" });
+  const res = await openAiChatJsonText(input.apiKey, input.model, system, user, { label: "기능 정리 첫 메시지", skipTimeline: true });
   if (!res.ok) return res;
 
   const root = safeJsonParse(res.text);

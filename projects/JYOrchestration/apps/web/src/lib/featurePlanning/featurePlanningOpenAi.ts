@@ -1,13 +1,19 @@
-import { recordOpenAiJsonChatRoundFromContext } from "@/lib/debug/promptTimelineStore";
 import { stripJsonMarkdownFences } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+
+export type OpenAiJsonChatTrace = {
+  readonly label: string;
+  /** true면 타임라인에 자동 기록하지 않음 — 호출 측에서 recordFeaturePlanningOpenAi 등으로 기록 */
+  readonly skipTimeline?: boolean;
+};
 
 export async function openAiChatJsonText(
   apiKey: string,
   model: string,
   system: string,
   user: string,
-  trace?: { readonly label: string }
+  _trace?: OpenAiJsonChatTrace
 ): Promise<{ ok: true; text: string } | { ok: false; code: string; message: string }> {
+  void _trace;
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -27,41 +33,15 @@ export async function openAiChatJsonText(
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    const err = { ok: false as const, code: `HTTP_${res.status}`, message: errText.slice(0, 500) || `HTTP ${res.status}` };
-    recordOpenAiJsonChatRoundFromContext({
-      label: trace?.label ?? "OpenAI (JSON)",
-      model,
-      system,
-      user,
-      ok: false,
-      errorMessage: `${err.code}: ${err.message}`,
-    });
-    return err;
+    return { ok: false, code: `HTTP_${res.status}`, message: errText.slice(0, 500) || `HTTP ${res.status}` };
   }
 
   const json = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
   let text = json.choices?.[0]?.message?.content?.trim();
   if (!text) {
-    const err = { ok: false as const, code: "EMPTY", message: "AI 응답 본문이 비어 있습니다." };
-    recordOpenAiJsonChatRoundFromContext({
-      label: trace?.label ?? "OpenAI (JSON)",
-      model,
-      system,
-      user,
-      ok: false,
-      errorMessage: err.message,
-    });
-    return err;
+    return { ok: false, code: "EMPTY", message: "AI 응답 본문이 비어 있습니다." };
   }
   text = stripJsonMarkdownFences(text);
-  recordOpenAiJsonChatRoundFromContext({
-    label: trace?.label ?? "OpenAI (JSON)",
-    model,
-    system,
-    user,
-    ok: true,
-    assistantText: text,
-  });
   return { ok: true, text };
 }
 

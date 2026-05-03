@@ -127,5 +127,6 @@ export function mergePlannerArtifactPreservingLegacySlots(
     recommendedOrder: ro,
     ...(prior.length ? { priorStepActorRoles: prior } : {}),
     planningTopic: (plannerOut.planningTopic ?? previous.planningTopic ?? "FEATURES") as FeaturePlanningTopicV1,
+    planningMemoryV1: plannerOut.planningMemoryV1 ?? previous.planningMemoryV1,
   };
 }
