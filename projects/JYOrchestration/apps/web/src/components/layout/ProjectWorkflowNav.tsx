@@ -11,14 +11,16 @@ import { uiTokens as t } from "@/components/ui/tokens";
 import { DesktopWorkflowTabs } from "@/components/layout/DesktopWorkflowTabs";
 import { MobileStepSelector } from "@/components/layout/MobileStepSelector";
 import { useWorkNoteComposerInsertHandler } from "@/components/worknote/WorkNoteComposerInsertContext";
+import { PromptTimelineDebugButton } from "@/components/debug/PromptTimelineDebugButton";
 import { WorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
+import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
 import {
   appFlowStepHref,
   isWorkflowStepNavActive,
   resolveWorkflowProjectContextId,
 } from "@/lib/workflow/flow-state";
-import { workflowStepMeta } from "@/lib/workflow/workflowStepMeta";
+import { WORKFLOW_NAV_STRIP_SCREEN_LABEL, workflowStepMeta } from "@/lib/workflow/workflowStepMeta";
 
 type NavItem = { label: string; href: string; screenLabel: string };
 
@@ -74,9 +76,21 @@ function ProjectWorkflowNavInner() {
   if (!hasProjectContext || !projectContextId) return null;
 
   const workNote = <WorkNoteButton projectId={projectContextId} onShareToComposer={insertMemoIntoComposer} />;
+  const promptTimeline = isPromptTimelineDebugClient() ? <PromptTimelineDebugButton projectId={projectContextId} /> : null;
+  const workflowTrailing = (
+    <>
+      {workNote}
+      {promptTimeline}
+    </>
+  );
 
   if (compactWorkflowNav) {
-    return <MobileStepSelector items={workflowItems} trailingSlot={workNote} />;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6, width: "100%" }}>
+        <ScreenLabel label={WORKFLOW_NAV_STRIP_SCREEN_LABEL} visible={showScreenLabels} />
+        <MobileStepSelector items={workflowItems} trailingSlot={workflowTrailing} />
+      </div>
+    );
   }
 
   return (
@@ -90,9 +104,12 @@ function ProjectWorkflowNavInner() {
         rowGap: 12,
       }}
     >
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
-        <DesktopWorkflowTabs items={workflowItems} />
-        {workNote}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, minWidth: 0, flex: "1 1 200px" }}>
+        <ScreenLabel label={WORKFLOW_NAV_STRIP_SCREEN_LABEL} visible={showScreenLabels} />
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+          <DesktopWorkflowTabs items={workflowItems} />
+          {workflowTrailing}
+        </div>
       </div>
       {admin.length ? (
         <>

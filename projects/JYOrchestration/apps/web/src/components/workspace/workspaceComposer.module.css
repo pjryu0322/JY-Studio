@@ -1,0 +1,124 @@
+/* 허브형 워크스페이스 하단 채팅 입력 — WorkspaceHubChatInputColumn·WorkspaceComposer* 와 함께 사용(요구사항·서비스흐름·기능정리). */
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+}
+
+.hubRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  border-radius: 28px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 10px 40px -18px rgba(15, 23, 42, 0.18);
+  padding: 8px 10px;
+}
+
+.leading {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.inputCol {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.inputWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.trailing {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.plusBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: none;
+  background: #f1f5f9;
+  color: #475569;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sendBtn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sendStack {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: min(160px, 42vw);
+}
+
+.sendBtnInside {
+  flex-shrink: 0;
+}
+
+.sendBtnActive {
+  background: linear-gradient(180deg, #0f766e 0%, #0d5c56 100%);
+  box-shadow: 0 8px 20px -6px rgba(13, 92, 86, 0.45);
+}
+
+.sendBtnDisabled {
+  background: #cbd5e1;
+  cursor: wait;
+  box-shadow: none;
+}
+
+.textarea {
+  width: 100%;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 44px;
+  max-height: 220px;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  border-radius: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  font-family: inherit;
+  padding: 10px 52px 10px 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: #0f172a;
+}
+
+.textarea::placeholder {
+  color: #94a3b8;
+}

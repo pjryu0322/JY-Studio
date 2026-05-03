@@ -31,7 +31,7 @@ export function BottomSheet({
           border: 0,
           padding: 0,
           margin: 0,
-          background: "rgba(15, 23, 42, 0.35)",
+          background: t.overlayScrim,
           cursor: "pointer",
         }}
       />

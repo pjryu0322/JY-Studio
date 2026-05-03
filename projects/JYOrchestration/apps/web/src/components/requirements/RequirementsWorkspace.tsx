@@ -9,14 +9,14 @@ import { RequirementsComposerGpt } from "@/components/requirements/RequirementsC
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
-import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
+import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
-import { useRequirementsSaveToast } from "@/components/requirements/workspace/useRequirementsSaveToast";
+import { useWorkspaceSaveToast } from "@/components/workspace/useWorkspaceSaveToast";
+import { useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
 import { useRequirementsServiceFlowDraft } from "@/components/requirements/workspace/useRequirementsServiceFlowDraft";
 import { useRequirementsProjectLoad } from "@/components/requirements/workspace/useRequirementsProjectLoad";
 import { useRequirementsSpecWorkspacePersist } from "@/components/requirements/workspace/useRequirementsSpecWorkspacePersist";
 import { useRequirementsWorkspaceToasts } from "@/components/requirements/workspace/useRequirementsWorkspaceToasts";
-import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { OrganizeProposalDraggableModal } from "@/components/requirements/OrganizeProposalDraggableModal";
 import { ProposalPlanPreviewModal } from "@/components/requirements/ProposalPlanPreviewModal";
 import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
@@ -27,12 +27,6 @@ import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNot
 import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import {
-  displayedAiOrchestrator,
-  displayedAiStatusForStage,
-  showInternalAgents,
-  visibleStageFromRequirementsStage,
-} from "@/lib/ai-member/visibleAiOrchestrator";
 import {
   appendIdeationDeliverableAssets,
   extractPreviewLinesFromMarkdown,
@@ -203,7 +197,7 @@ export function RequirementsWorkspace({
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
 
   const { successToast, errorToast, showSuccessToast, showErrorToast } = useRequirementsWorkspaceToasts();
-  const { saveToastVisible } = useRequirementsSaveToast(saveState);
+  const { saveToastVisible } = useWorkspaceSaveToast(saveState);
 
   useEffect(() => {
     if (inIdeationStage) return;
@@ -361,8 +355,6 @@ export function RequirementsWorkspace({
     reloadMembers,
   ]);
 
-  const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
-
   const aiPlannerStatusLabel = useMemo(() => {
     if (aiInvokePending) return "응답 대기 중(OpenAI 호출 중)";
     if (aiConnPhase === "checking") return "연결 확인 중…";
@@ -379,61 +371,12 @@ export function RequirementsWorkspace({
     return "대기";
   }, [aiConnPhase, aiConnDetail, aiInvokePending, aiLastInvoke]);
 
-  const participants = useMemo((): ParticipantOption[] => {
-    const list: ParticipantOption[] = [];
-    if (showInternalAgents) {
-      if (aiMembers.length === 0) {
-        list.push({
-          id: VIRTUAL_AI_PLANNER_ID,
-          name: "AI 기획자",
-          kind: "ai",
-          onlineHint: false,
-          aiStatusLabel: aiPlannerStatusLabel,
-          roleLabel: "AI",
-        });
-      }
-      for (const m of aiMembers) {
-        list.push({
-          id: m.memberId,
-          name: (m.displayName || m.email || "AI").slice(0, 24),
-          kind: "ai",
-          onlineHint: false,
-          aiStatusLabel: aiPlannerStatusLabel,
-          roleLabel: "AI",
-        });
-      }
-    } else {
-      const stageKey = visibleStageFromRequirementsStage(activeStage);
-      const orch = displayedAiOrchestrator();
-      list.push({
-        id: "visible:ai-orchestrator",
-        name: orch.name,
-        kind: "ai",
-        onlineHint: false,
-        aiStatusLabel: displayedAiStatusForStage(stageKey),
-        roleLabel: "AI",
-      });
-    }
-    for (const m of members) {
-      if (m.memberType !== "HUMAN") continue;
-      const uid = m.userId ?? null;
-      const invited = !uid;
-      list.push({
-        id: m.memberId,
-        name: (m.displayName || m.email || "멤버").slice(0, 24),
-        kind: "human",
-        onlineHint: Boolean(sessionUser?.id && uid && sessionUser.id === uid),
-        roleLabel: m.isOwner ? "소유자" : "전문가",
-        invited,
-      });
-    }
-    const seen = new Set<string>();
-    return list.filter((p) => {
-      if (seen.has(p.id)) return false;
-      seen.add(p.id);
-      return true;
-    });
-  }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel, activeStage]);
+  const { participants, participantBadgeCount } = useWorkspaceParticipants({
+    members,
+    sessionUser,
+    activeStage,
+    aiPlannerStatusLabel,
+  });
 
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
@@ -1703,7 +1646,7 @@ export function RequirementsWorkspace({
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
         typingIndicator={aiInvokePending}
-        memberControls={{ count: participants.length, onOpen: () => setMembersModalOpen(true) }}
+        memberControls={{ count: participantBadgeCount, onOpen: () => setMembersModalOpen(true) }}
         ideationInterviewUi={
           inIdeationStage && conversationStatus === "loaded"
             ? {
@@ -2006,7 +1949,7 @@ export function RequirementsWorkspace({
         existingHumanUserIds={existingHumanUserIds}
       />
 
-      <RequirementsMembersModal
+      <WorkspaceParticipantsModal
         open={membersModalOpen}
         onClose={() => setMembersModalOpen(false)}
         participants={participants}

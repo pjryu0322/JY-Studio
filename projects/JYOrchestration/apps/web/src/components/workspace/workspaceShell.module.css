@@ -1,0 +1,39 @@
+/**
+ * 채팅형 단일 작업공간 — 아이디어 구체화 등.
+ * 색상은 uiTokens.bgPage 등과 맞춤.
+ */
+.shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  min-width: 280px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.top {
+  flex-shrink: 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.bodyMain {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.footer {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 4;
+}

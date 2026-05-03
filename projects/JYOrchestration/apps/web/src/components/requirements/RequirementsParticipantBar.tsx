@@ -2,21 +2,10 @@
 
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
+import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 
-export type ParticipantOption = {
-  id: string;
-  name: string;
-  kind: "ai" | "human";
-  /** 현재 앱에 로그인한 사용자 본인 여부(간이 온라인 표시) */
-  onlineHint: boolean;
-  /** AI 멤버: OpenAI 연결·호출 상태 한 줄(있으면 이 값을 우선 표시) */
-  aiStatusLabel?: string;
-  /** 프로젝트 멤버 역할(표시용) */
-  roleLabel?: string;
-  /** userId 없이 초대만 된 사람 멤버 */
-  invited?: boolean;
-};
+export type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 
 export function RequirementsParticipantBar({
   participants,

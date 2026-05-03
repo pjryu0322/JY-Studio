@@ -91,11 +91,12 @@ function bubbleStyle(role: PrototypeReviewMessage["role"], glass: ReturnType<typ
     borderColor = isPlanner ? t.border : isExpert ? `${t.accentTeal}40` : `${t.primary}35`;
   }
 
+  const onLeft = isPlanner || isExpert;
   return {
-    alignSelf: isPlanner ? "flex-start" : "flex-end",
+    alignSelf: role === "user" ? "flex-end" : "flex-start",
     maxWidth: "min(94%, 520px)",
     padding: "10px 14px",
-    borderRadius: isPlanner ? "4px 14px 14px 14px" : "14px 4px 14px 14px",
+    borderRadius: onLeft ? "4px 14px 14px 14px" : "14px 4px 14px 14px",
     background,
     border: `1px solid ${borderColor}`,
     fontSize: 13,

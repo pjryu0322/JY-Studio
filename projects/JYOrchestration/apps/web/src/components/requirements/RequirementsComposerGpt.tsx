@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
-import { ComposerAtAtTargetPicker } from "@/components/composer/ComposerAtAtTargetPicker";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import { useComposerNarrowBreakpoint } from "@/components/ui/breakpoints";
-import { useComposerAtAtPicker } from "@/hooks/useComposerAtAtPicker";
+import type { MutableRefObject } from "react";
+import {
+  WorkspaceComposerColumn,
+  WorkspaceComposerHubRow,
+  WorkspaceComposerLeadingSlot,
+} from "@/components/workspace/WorkspaceComposer";
+import { WorkspaceComposerToolsMenuFrame } from "@/components/workspace/WorkspaceComposerToolsMenuFrame";
+import { WorkspaceHubChatInputColumn } from "@/components/workspace/WorkspaceHubChatInputColumn";
+import { WORKSPACE_HUB_CHAT_MENU_Z } from "@/components/workspace/workspaceComposerHubMenuLayout";
+import { WorkspacePlusMenuItems } from "@/components/workspace/WorkspacePlusMenu";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 
 export type RequirementsComposerToolsMenu = {
@@ -19,89 +23,7 @@ export type RequirementsComposerToolsMenu = {
   readonly draftMenuTitle?: string;
 };
 
-/** 멘션·도구 메뉴가 채팅 타임라인 위에 올라오도록 */
-const MENU_Z = 200;
 export type { ComposerAtAtPickerItem as RequirementsComposerTargetPickerItem } from "@/lib/composer/composerAtAtPicker";
-
-function PlusIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function menuItemStyle(disabled: boolean): CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-    width: "100%",
-    textAlign: "left",
-    padding: "11px 14px",
-    border: "none",
-    borderRadius: 8,
-    background: "transparent",
-    fontSize: 14,
-    fontWeight: 600,
-    color: disabled ? "#94a3b8" : "#0f172a",
-    cursor: disabled ? "not-allowed" : "pointer",
-  };
-}
-
-function MenuDivider() {
-  return <div style={{ height: 1, background: "#f1f5f9", margin: "4px 8px" }} aria-hidden />;
-}
-
-function MenuItemText({ title, sub }: { readonly title: string; readonly sub?: string }) {
-  return (
-    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-      <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.2, color: "inherit" }}>{title}</span>
-      {sub ? <span style={{ fontSize: 12, fontWeight: 600, color: "#64748b", lineHeight: 1.25 }}>{sub}</span> : null}
-    </span>
-  );
-}
-
-function ComposerHubMenuItems({
-  tools,
-  onPick,
-}: {
-  readonly tools: RequirementsComposerToolsMenu;
-  readonly onPick: () => void;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={tools.organizeDisabled}
-        onClick={() => {
-          if (tools.organizeDisabled) return;
-          tools.onOrganizeRequirements();
-          onPick();
-        }}
-        style={menuItemStyle(tools.organizeDisabled)}
-      >
-        <MenuItemText title={tools.organizeMenuTitle?.trim() || "정리 요청"} />
-      </button>
-      {tools.draftViewAvailable ? <MenuDivider /> : null}
-      {tools.draftViewAvailable ? (
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            tools.onOpenDraftView();
-            onPick();
-          }}
-          style={menuItemStyle(false)}
-        >
-          <MenuItemText title={tools.draftMenuTitle?.trim() || "정리본 보기"} />
-        </button>
-      ) : null}
-    </>
-  );
-}
 
 export function RequirementsComposerGpt({
   value,
@@ -127,282 +49,32 @@ export function RequirementsComposerGpt({
   /** `@@` 입력 시 노출할 멘션 후보(멤버별 1행) */
   readonly targetPickerItems?: readonly ComposerAtAtPickerItem[];
 }) {
-  const showScreenLabels = useShowScreenLabels();
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const plusRef = useRef<HTMLButtonElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const sheetRef = useRef<HTMLDivElement | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuId = useId();
-
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const {
-    targetPickerOpen,
-    normalizedTargetPickerItems,
-    closeTargetPicker,
-    pickTargetItem,
-  } = useComposerAtAtPicker({
-    value,
-    onChange,
-    items: targetPickerItems,
-    textareaRef: taRef,
-  });
-
-  const autoGrow = useCallback(() => {
-    const el = taRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const max = 220;
-    el.style.height = `${Math.min(max, el.scrollHeight)}px`;
-  }, []);
-
-  useEffect(() => {
-    autoGrow();
-  }, [value, autoGrow]);
-
-  const narrow = useComposerNarrowBreakpoint();
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [narrow]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      setMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!menuOpen || narrow) return;
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (popoverRef.current?.contains(t)) return;
-      if (plusRef.current?.contains(t)) return;
-      setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen, narrow]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const t = window.setTimeout(() => {
-      const root = narrow ? sheetRef.current : popoverRef.current;
-      const first = root?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])');
-      first?.focus();
-    }, 0);
-    return () => window.clearTimeout(t);
-  }, [menuOpen, narrow]);
+  const menuZ = WORKSPACE_HUB_CHAT_MENU_Z;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 10,
-          borderRadius: 22,
-          border: "1px solid #e2e8f0",
-          background: "#fff",
-          boxShadow: "0 10px 40px -18px rgba(15, 23, 42, 0.18)",
-          padding: "8px 10px",
-        }}
-      >
+    <WorkspaceComposerColumn>
+      <WorkspaceComposerHubRow>
         {toolsMenu ? (
-          <div className="relative" style={{ position: "relative", flexShrink: 0 }}>
-            <ScreenLabel label="요구사항-입력창-액션행" visible={showScreenLabels} />
-            <button
-              ref={plusRef}
-              type="button"
-              data-testid="requirements-composer-tools-trigger"
-              aria-label="도구 메뉴 열기"
-              aria-haspopup="true"
-              aria-expanded={menuOpen}
-              aria-controls={menuOpen ? menuId : undefined}
-              onClick={() => setMenuOpen((o) => !o)}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 999,
-                border: "none",
-                background: "#f1f5f9",
-                color: "#475569",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <PlusIcon />
-            </button>
-            {menuOpen && !narrow ? (
-              <div
-                ref={popoverRef}
-                id={menuId}
-                role="menu"
-                aria-label="입력 도구"
-                style={{
-                  position: "absolute",
-                  bottom: "calc(100% + 8px)",
-                  left: 0,
-                  minWidth: 216,
-                  padding: 6,
-                  borderRadius: 12,
-                  border: "1px solid #e2e8f0",
-                  background: "#fff",
-                  boxShadow: "0 12px 40px -12px rgba(15, 23, 42, 0.2)",
-                  zIndex: MENU_Z,
-                }}
-              >
-                <ComposerHubMenuItems
-                  tools={toolsMenu}
-                  onPick={closeMenu}
-                />
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="relative" style={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <ScreenLabel label="요구사항-채팅영역-입력창" visible={showScreenLabels} />
-          <ComposerAtAtTargetPicker
-            open={targetPickerOpen}
-            items={normalizedTargetPickerItems}
-            onPick={pickTargetItem}
-            onClose={closeTargetPicker}
-            zIndex={MENU_Z}
-          />
-          <textarea
-            ref={(el) => {
-              taRef.current = el;
-              if (textAreaRef) textAreaRef.current = el;
-            }}
-            data-testid="requirements-chat-input"
-            value={value}
-            disabled={disabled}
-            rows={1}
-            onChange={(e) => onChange(e.target.value)}
-            onInput={autoGrow}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (busy || disabled) return;
-                // 입력 비움은 부모(RequirementsWorkspace)에서 flushSync로 즉시 처리
-                onSend();
-              }
-            }}
-            placeholder={placeholder ?? "메시지를 입력하세요"}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              flex: "1 1 auto",
-              minHeight: 44,
-              maxHeight: 220,
-              resize: "none",
-              border: "none",
-              outline: "none",
-              background: "transparent",
-              borderRadius: 0,
-              fontSize: 16,
-              lineHeight: 1.5,
-              fontFamily: "inherit",
-              padding: "10px 6px",
-              overflowY: "auto",
-              overflowX: "hidden",
-            }}
-          />
-        </div>
-        <div className="relative" style={{ position: "relative", flex: "0 0 auto" }}>
-          <ScreenLabel label="요구사항-채팅영역-전송버튼" visible={showScreenLabels} />
-          <button
-            type="button"
-            disabled={busy || disabled}
-            title="전송"
-            aria-label="전송"
-            onClick={onSend}
-            style={{
-              flex: "0 0 auto",
-              width: 44,
-              height: 44,
-              borderRadius: 999,
-              border: "none",
-              background: busy || disabled ? "#cbd5e1" : "linear-gradient(180deg, #0f766e 0%, #0d5c56 100%)",
-              color: "#fff",
-              cursor: busy || disabled ? "wait" : "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 18,
-              lineHeight: 1,
-              boxShadow: busy || disabled ? "none" : "0 8px 20px -6px rgba(13, 92, 86, 0.45)",
-            }}
-          >
-            ➤
-          </button>
-        </div>
-      </div>
-
-      {menuOpen && narrow && toolsMenu ? (
-        <>
-          <button
-            type="button"
-            aria-label="메뉴 닫기"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: MENU_Z,
-              border: 0,
-              padding: 0,
-              margin: 0,
-              background: "rgba(15, 23, 42, 0.35)",
-              cursor: "pointer",
-            }}
-            onClick={closeMenu}
-          />
-          <div
-            ref={sheetRef}
-            id={menuId}
-            role="dialog"
-            aria-modal="true"
-            aria-label="입력 도구"
-            style={{
-              position: "fixed",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: MENU_Z + 1,
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-              borderTop: "1px solid #e2e8f0",
-              background: "#fff",
-              padding: "10px 12px 20px",
-              boxShadow: "0 -8px 32px rgba(15, 23, 42, 0.12)",
-              maxHeight: "min(70vh, 420px)",
-              overflowY: "auto",
-            }}
-          >
-            <div
-              style={{
-                width: 40,
-                height: 4,
-                borderRadius: 999,
-                background: "#e2e8f0",
-                margin: "4px auto 12px",
-              }}
-              aria-hidden
+          <WorkspaceComposerLeadingSlot>
+            <WorkspaceComposerToolsMenuFrame
+              renderMenu={({ close }) => <WorkspacePlusMenuItems tools={toolsMenu} onPick={close} />}
+              menuZ={menuZ}
             />
-            <div role="menu" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <ComposerHubMenuItems tools={toolsMenu} onPick={closeMenu} />
-            </div>
-          </div>
-        </>
-      ) : null}
-
-      {/* MVP: + 메뉴는 "정리 요청" / "정리본 보기"만 노출 */}
-    </div>
+          </WorkspaceComposerLeadingSlot>
+        ) : null}
+        <WorkspaceHubChatInputColumn
+          value={value}
+          onChange={onChange}
+          onSend={onSend}
+          disabled={disabled}
+          busy={busy}
+          placeholder={placeholder}
+          textAreaRef={textAreaRef}
+          targetPickerItems={targetPickerItems}
+          inputTestId="requirements-chat-input"
+          menuZ={menuZ}
+        />
+      </WorkspaceComposerHubRow>
+    </WorkspaceComposerColumn>
   );
 }

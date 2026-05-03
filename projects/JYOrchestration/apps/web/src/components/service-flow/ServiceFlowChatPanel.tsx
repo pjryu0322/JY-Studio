@@ -4,6 +4,11 @@ import { displayedAiOrchestrator, showInternalAgents } from "@/lib/ai-member/vis
 import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { messageTone } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { uiTokens as t } from "@/components/ui/tokens";
+import {
+  WORKSPACE_STANDARD_CHAT_BODY_STYLE,
+  WORKSPACE_STANDARD_CHAT_HEADER_STYLE,
+  workspaceStandardChatBubbleShell,
+} from "@/components/workspace/workspaceStandardChatMessage";
 
 export function ServiceFlowChatPanel(p: {
   readonly messages: readonly WorkshopMessage[];
@@ -23,11 +28,14 @@ export function ServiceFlowChatPanel(p: {
       {p.generatingDraft ? (
         <div
           style={{
+            justifySelf: "start",
+            maxWidth: "min(100%, 620px)",
+            width: "100%",
+            minWidth: 0,
             border: `1px solid ${t.borderInfoSoft}`,
             borderRadius: 14,
             padding: 12,
             background: t.surfaceInfoSoft,
-            maxWidth: 620,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -53,14 +61,10 @@ export function ServiceFlowChatPanel(p: {
           key={message.id}
           style={{
             ...messageTone(message.role),
-            border: "1px solid",
-            borderRadius: 14,
-            padding: "10px 12px",
-            maxWidth: message.role === "user" ? "78%" : 620,
-            boxShadow: t.shadowSoft,
+            ...workspaceStandardChatBubbleShell(message.role),
           }}
         >
-          <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: t.textMuted }}>
+          <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
             {message.role === "user"
               ? "사용자"
               : message.role === "member"
@@ -69,25 +73,21 @@ export function ServiceFlowChatPanel(p: {
                   ? `업무 전문가 · ${message.name}`
                   : `AI · ${showInternalAgents ? message.name : displayedAiOrchestrator().name}`}
           </div>
-          <div style={{ fontSize: 14, color: t.textPrimary, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{message.body}</div>
+          <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{message.body}</div>
         </div>
       ))}
-      {p.replying ? <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted }}>AI 기획자가 반영 중입니다...</div> : null}
+      {p.replying ? (
+        <div style={{ justifySelf: "start", fontSize: 12, fontWeight: 800, color: t.textMuted }}>AI 기획자가 반영 중입니다...</div>
+      ) : null}
       {!p.generatingDraft && !p.replying && p.messages.length === 0 ? (
         <div
           style={{
             ...messageTone("ai"),
-            border: "1px solid",
-            borderRadius: 14,
-            padding: "10px 12px",
-            maxWidth: 620,
-            boxShadow: t.shadowSoft,
+            ...workspaceStandardChatBubbleShell("ai"),
           }}
         >
-          <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 900, color: t.textMuted }}>
-            AI · {displayedAiOrchestrator().name}
-          </div>
-          <div style={{ fontSize: 14, color: t.textPrimary, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
+          <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>AI · {displayedAiOrchestrator().name}</div>
+          <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
             {p.structureLocked
               ? "서비스 흐름 구조가 확정된 상태입니다.\n\n입력창 왼쪽 + 메뉴의 「구조 편집」에서 단계별 담당을 조정할 수 있고, 이 채팅에서는 메시지를 입력해 흐름·액터·문구를 추가로 다듬을 수 있습니다."
               : "표시할 메시지가 없습니다.\n\n메시지를 입력하거나 아래 빠른 동작 칩을 눌러 AI 기획자와 흐름을 함께 정리해 보세요."}

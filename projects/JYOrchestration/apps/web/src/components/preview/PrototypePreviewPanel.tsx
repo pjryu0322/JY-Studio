@@ -62,8 +62,8 @@ import {
 } from "@/lib/requirements/requirementsStateJson";
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
-import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
-import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
+import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import {
   serviceFlowStageComposerColumnStyle,
   serviceFlowStageMainChatStyle,
@@ -1668,7 +1668,7 @@ export function PrototypePreviewPanel({
         </section>
       </div>
 
-      <RequirementsMembersModal
+      <WorkspaceParticipantsModal
         open={protoMembersModalOpen}
         onClose={() => setProtoMembersModalOpen(false)}
         participants={prototypeModalParticipants}
