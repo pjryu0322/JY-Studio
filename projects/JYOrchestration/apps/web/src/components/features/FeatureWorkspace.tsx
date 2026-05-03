@@ -2,24 +2,34 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { InlineAlert } from "@/components/ui/InlineAlert";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import {
+  addDraftFeatureToStage,
   appendAiChatMessage,
   appendUserChatMessage,
+  applyFeatureAnalyzeResultToWorkspace,
+  cycleFeatureItemPriority,
+  cycleFeatureItemStatus,
   lastAiMessageText,
   mergeFeatureWorkspaceStagesWithFlow,
   newFeatureWorkspaceItemId,
   parseFeatureTitlesFromDraft,
   pickBalancedStageKey,
-  plannerQuestionForStage,
+  popStagePlannerQuestion,
+  removeFeatureItemFromWorkspace,
+  patchFeatureItemInWorkspace,
   suggestPlannerHintFromGaps,
 } from "@/lib/features/featureWorkspaceDefaults";
+import type { FeatureAnalyzeStageWire } from "@/lib/features/featureWorkspaceOpenAI";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import {
@@ -39,8 +49,11 @@ import {
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import type { MemberRow, SessionUser } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
+import { appFlowStepHref } from "@/lib/workflow/flow-state";
 import { notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
 import { FeaturePlannerPanel, type FeaturePlannerProgressSummary } from "./FeaturePlannerPanel";
+import { FeatureServiceContextColumn } from "./FeatureServiceContextColumn";
+import { FeatureSlotBoard } from "./FeatureSlotBoard";
 
 type FeatureWorkspaceSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -48,29 +61,54 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-function actorLineFromFlow(flow: RequirementsServiceFlowV1 | null): string {
-  if (!flow?.actors?.length) return "";
-  return flow.actors
-    .slice(0, 4)
-    .map((a) => a.name)
-    .filter(Boolean)
-    .join(", ");
-}
-
-function heuristicAiReply(userLine: string, stageTitle: string): string {
-  const clip = userLine.trim().slice(0, 600);
-  return `「${stageTitle}」에 대한 답변으로 이해했습니다.\n\n${clip}\n\n기능으로 옮기려면 입력란에 줄 단위로 적은 뒤 + 메뉴의 「기능 반영」을 누르거나, AI가 제안한 목록이 있으면 그대로 반영할 수 있습니다.`;
-}
-
-function cycleSelectedStage(w: FeatureWorkspaceV1): FeatureWorkspaceV1 {
-  if (w.stages.length <= 1) return w;
-  const rawIdx = w.stages.findIndex((s) => s.stageKey === w.selectedStageKey);
-  const idx = rawIdx < 0 ? 0 : rawIdx;
-  const next = w.stages[(idx + 1) % w.stages.length]!;
-  return { ...w, selectedStageKey: next.stageKey, updatedAt: isoNow() };
+function coerceAnalyzeStages(raw: unknown): FeatureAnalyzeStageWire[] {
+  if (!raw || typeof raw !== "object") return [];
+  const o = raw as Record<string, unknown>;
+  const arr = Array.isArray(o.stages) ? o.stages : [];
+  const out: FeatureAnalyzeStageWire[] = [];
+  for (const row of arr) {
+    if (!row || typeof row !== "object") continue;
+    const s = row as Record<string, unknown>;
+    const stageKey = typeof s.stageKey === "string" ? s.stageKey.trim().slice(0, 128) : "";
+    const title = typeof s.title === "string" ? s.title.trim().slice(0, 500) : "";
+    if (!stageKey || !title) continue;
+    const actorMappings = Array.isArray(s.actorMappings)
+      ? s.actorMappings.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 48)
+      : [];
+    const questions = Array.isArray(s.questions)
+      ? s.questions.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 24)
+      : [];
+    const sfRaw = Array.isArray(s.suggestedFeatures) ? s.suggestedFeatures : [];
+    const suggestedFeatures: Array<{ title: string; detail?: string; priority?: string; reason?: string }> = [];
+    for (const fr of sfRaw) {
+      if (!fr || typeof fr !== "object") continue;
+      const f = fr as Record<string, unknown>;
+      const t = typeof f.title === "string" ? f.title.trim().slice(0, 500) : "";
+      if (!t) continue;
+      suggestedFeatures.push({
+        title: t,
+        detail: typeof f.detail === "string" ? f.detail.trim().slice(0, 8000) : undefined,
+        priority: typeof f.priority === "string" ? f.priority.trim().slice(0, 32) : undefined,
+        reason: typeof f.reason === "string" ? f.reason.trim().slice(0, 2000) : undefined,
+      });
+      if (suggestedFeatures.length >= 12) break;
+    }
+    out.push({
+      stageKey,
+      title,
+      ...(actorMappings.length ? { actorMappings } : {}),
+      ...(questions.length ? { questions } : {}),
+      ...(suggestedFeatures.length ? { suggestedFeatures } : {}),
+    });
+  }
+  return out;
 }
 
 export function FeatureWorkspace({ projectId }: { readonly projectId: string }) {
+  const router = useRouter();
+  const isDesktop = useMediaQuery("(min-width: 1100px)");
+  const [mobileTab, setMobileTab] = useState<"evidence" | "slots" | "chat">("slots");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flow, setFlow] = useState<RequirementsServiceFlowV1 | null>(null);
@@ -78,12 +116,16 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
   const [composer, setComposer] = useState("");
   const [saveState, setSaveState] = useState<FeatureWorkspaceSaveState>("idle");
   const [analyzing, setAnalyzing] = useState(false);
+  const [llmBusy, setLlmBusy] = useState(false);
+  const [projectTitle, setProjectTitle] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
 
   const stateJsonRef = useRef<RequirementsStateJson>({});
+  const requirementsRawRef = useRef<unknown>(null);
   const skipNextAutosave = useRef(true);
   const workspaceRef = useRef<FeatureWorkspaceV1 | null>(null);
   workspaceRef.current = workspace;
@@ -113,7 +155,6 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
         }
         stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
         const fw = stateJsonRef.current.featureWorkspaceV1 ?? null;
-        // 서버에서 되돌린 state로 `setWorkspace` 하면 아래 autosave effect가 다시 PATCH를 예약해 무한 루프가 된다.
         skipNextAutosave.current = true;
         setWorkspace(fw && fw.version === 1 ? fw : null);
         notifyAppFlowProjectContextRefresh();
@@ -236,6 +277,9 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
           setError(errorMessage ?? "프로젝트를 불러오지 못했습니다.");
           return;
         }
+        setProjectTitle(project.name?.trim() ?? "");
+        setProjectDescription(project.description?.trim() ?? "");
+        requirementsRawRef.current = project.requirementsStateJson ?? null;
         const parsed = parseRequirementsStateJson(project.requirementsStateJson);
         stateJsonRef.current = parsed;
         setFlow(parsed.serviceFlowV1 ?? null);
@@ -251,7 +295,6 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
     };
   }, [projectId]);
 
-  /** 저장소에 워크스페이스가 없으면 승인 흐름으로 슬롯·초기 대화를 한 번 구성합니다(화면에는 슬롯 미표시). */
   useEffect(() => {
     if (loading) return;
     if (!projectId.trim()) return;
@@ -260,15 +303,10 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
     bootstrapRanRef.current = true;
     setAnalyzing(true);
     window.setTimeout(() => {
-      let merged = mergeFeatureWorkspaceStagesWithFlow(null, flow);
-      const stage = merged.stages.find((s) => s.stageKey === merged.selectedStageKey) ?? merged.stages[0];
-      if (stage && merged.stages.length) {
-        const line = actorLineFromFlow(flow);
-        merged = appendAiChatMessage(merged, plannerQuestionForStage(stage.title, line));
-      }
+      const merged = mergeFeatureWorkspaceStagesWithFlow(null, flow, { appendIntroChat: false });
       setWorkspace(merged);
       setAnalyzing(false);
-    }, 320);
+    }, 240);
   }, [loading, workspace, flow, projectId]);
 
   useEffect(() => {
@@ -284,17 +322,137 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
     return () => window.clearTimeout(t);
   }, [workspace, projectId, persistFeatureWorkspace]);
 
-  const onSendChat = useCallback(() => {
+  const runAutoAnalyze = useCallback(async () => {
+    if (!workspace) return;
+    const pid = projectId.trim();
+    if (!pid) return;
+    setLlmBusy(true);
+    try {
+      let actorWorkspaceV1: unknown = undefined;
+      const raw = requirementsRawRef.current;
+      if (raw && typeof raw === "object" && "actorWorkspaceV1" in raw) {
+        actorWorkspaceV1 = (raw as Record<string, unknown>).actorWorkspaceV1;
+      }
+      const res = await credentialsIncludeFetch("/api/features/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: pid,
+          projectTitle: projectTitle,
+          projectDescription: projectDescription,
+          actorWorkspaceV1,
+          serviceFlowV1: flow,
+          featureWorkspaceV1: workspace,
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; data?: unknown; message?: string };
+      if (!res.ok || !json.success) {
+        const msg = json.message ?? "자동 분석에 실패했습니다.";
+        setWorkspace((w) => (w ? appendAiChatMessage(w, msg) : w));
+        return;
+      }
+      const stages = coerceAnalyzeStages(json.data);
+      if (!stages.length) {
+        setWorkspace((w) =>
+          w
+            ? appendAiChatMessage(
+                w,
+                "분석 결과가 비어 있습니다. 승인된 서비스 흐름 단계가 있는지 확인한 뒤 다시 시도해 주세요.",
+              )
+            : w,
+        );
+        return;
+      }
+      let next = applyFeatureAnalyzeResultToWorkspace(workspace, flow, stages);
+      next = appendAiChatMessage(next, "자동 분석을 반영해 기능 후보와 확인 질문을 갱신했습니다.");
+      setWorkspace(next);
+    } finally {
+      setLlmBusy(false);
+    }
+  }, [workspace, projectId, projectTitle, projectDescription, flow]);
+
+  const onAiQuestion = useCallback(async () => {
+    if (!workspace) return;
+    const sk =
+      workspace.selectedStageKey && workspace.stages.some((s) => s.stageKey === workspace.selectedStageKey)
+        ? workspace.selectedStageKey
+        : workspace.stages[0]?.stageKey ?? null;
+    if (!sk) return;
+
+    const popped = popStagePlannerQuestion(workspace, sk);
+    if (popped.question) {
+      setWorkspace(appendAiChatMessage(popped.next, popped.question));
+      return;
+    }
+
+    const pid = projectId.trim();
+    if (!pid) return;
+    setLlmBusy(true);
+    try {
+      const res = await credentialsIncludeFetch("/api/features/planner-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: pid,
+          projectTitle,
+          projectDescription,
+          serviceFlowV1: flow,
+          selectedStageKey: sk,
+          workspace,
+          userMessage: "현재 단계에서 기능 합의를 위해 가장 중요한 확인 질문 하나만 제시해 주세요.",
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; data?: { text?: string }; message?: string };
+      if (!res.ok || !json.success || !json.data?.text) {
+        const msg = json.message ?? "AI 질문을 가져오지 못했습니다.";
+        setWorkspace((w) => (w ? appendAiChatMessage(w, msg) : w));
+        return;
+      }
+      setWorkspace((w) => (w ? appendAiChatMessage(w, json.data!.text!) : w));
+    } finally {
+      setLlmBusy(false);
+    }
+  }, [workspace, projectId, projectTitle, projectDescription, flow]);
+
+  const onSendChat = useCallback(async () => {
     const text = composer.trim();
     if (!text || !workspace) return;
-    const stage =
-      workspace.stages.find((s) => s.stageKey === workspace.selectedStageKey) ?? workspace.stages[0] ?? null;
-    const stageTitle = stage?.title ?? "서비스 단계";
     const { next: afterUser } = appendUserChatMessage(workspace, text);
-    const afterAi = appendAiChatMessage(afterUser, heuristicAiReply(text, stageTitle));
     setComposer("");
-    setWorkspace(cycleSelectedStage(afterAi));
-  }, [composer, workspace]);
+    setWorkspace(afterUser);
+
+    const pid = projectId.trim();
+    if (!pid) return;
+    setLlmBusy(true);
+    try {
+      const sk =
+        afterUser.selectedStageKey && afterUser.stages.some((s) => s.stageKey === afterUser.selectedStageKey)
+          ? afterUser.selectedStageKey
+          : afterUser.stages[0]?.stageKey ?? null;
+      const res = await credentialsIncludeFetch("/api/features/planner-turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: pid,
+          projectTitle,
+          projectDescription,
+          serviceFlowV1: flow,
+          selectedStageKey: sk,
+          workspace: afterUser,
+          userMessage: text,
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; data?: { text?: string }; message?: string };
+      if (!res.ok || !json.success || !json.data?.text) {
+        const msg = json.message ?? "AI 응답을 가져오지 못했습니다. 네트워크·API 키를 확인해 주세요.";
+        setWorkspace((w) => (w ? appendAiChatMessage(w, msg) : w));
+        return;
+      }
+      setWorkspace((w) => (w ? appendAiChatMessage(w, json.data!.text!) : w));
+    } finally {
+      setLlmBusy(false);
+    }
+  }, [composer, workspace, projectId, projectTitle, projectDescription, flow]);
 
   const onApplyReflect = useCallback(() => {
     if (!workspace) return;
@@ -314,6 +472,7 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
         title: title.slice(0, 500),
         priority: 2,
         order: nextOrder,
+        status: "DRAFT",
       };
       w = {
         ...w,
@@ -321,7 +480,7 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
         stages: w.stages.map((s) => (s.stageKey === key ? { ...s, features: [...s.features, item] } : s)),
       };
     }
-    setWorkspace(appendAiChatMessage(w, `${useTitles.length}개의 기능을 서비스 흐름 단계(내부 슬롯)에 반영했습니다.`));
+    setWorkspace(appendAiChatMessage(w, `${useTitles.length}개의 기능 초안을 반영했습니다.`));
     setComposer("");
   }, [workspace, composer]);
 
@@ -331,6 +490,40 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
     const w = appendAiChatMessage({ ...workspace, plannerHint: hint, updatedAt: isoNow() }, hint);
     setWorkspace(w);
   }, [workspace]);
+
+  const onSaveDraftNow = useCallback(async () => {
+    if (!workspace) return;
+    await persistFeatureWorkspace(workspace);
+  }, [workspace, persistFeatureWorkspace]);
+
+  const onNextStep = useCallback(() => {
+    const pid = projectId.trim();
+    router.push(appFlowStepHref("tasks", pid || null));
+  }, [router, projectId]);
+
+  const onSelectStage = useCallback((key: string) => {
+    setWorkspace((w) => (w ? { ...w, selectedStageKey: key, updatedAt: isoNow() } : w));
+  }, []);
+
+  const onPatchItem = useCallback((stageKey: string, itemId: string, title: string, detail: string) => {
+    setWorkspace((w) => (w ? patchFeatureItemInWorkspace(w, stageKey, itemId, { title, detail }) : w));
+  }, []);
+
+  const onRemoveItem = useCallback((stageKey: string, itemId: string) => {
+    setWorkspace((w) => (w ? removeFeatureItemFromWorkspace(w, stageKey, itemId) : w));
+  }, []);
+
+  const onAddItem = useCallback((stageKey: string) => {
+    setWorkspace((w) => (w ? addDraftFeatureToStage(w, stageKey, "새 기능") : w));
+  }, []);
+
+  const onCycleStatus = useCallback((stageKey: string, itemId: string) => {
+    setWorkspace((w) => (w ? cycleFeatureItemStatus(w, stageKey, itemId) : w));
+  }, []);
+
+  const onCyclePriority = useCallback((stageKey: string, itemId: string) => {
+    setWorkspace((w) => (w ? cycleFeatureItemPriority(w, stageKey, itemId) : w));
+  }, []);
 
   const shell: CSSProperties = {
     display: "flex",
@@ -353,6 +546,68 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
     return { pct, filledStages, totalStages, featureCount, gapStageCount };
   }, [workspace]);
 
+  const toolbar = (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+        alignItems: "center",
+        padding: "0 0 10px",
+        flexShrink: 0,
+      }}
+    >
+      <Button size="sm" variant="primary" type="button" loading={llmBusy} onClick={() => void runAutoAnalyze()}>
+        자동 분석
+      </Button>
+      <Button size="sm" variant="secondary" type="button" loading={llmBusy} onClick={() => void onAiQuestion()}>
+        AI 질문 받기
+      </Button>
+      <Button size="sm" variant="secondary" type="button" loading={saveState === "saving"} onClick={() => void onSaveDraftNow()}>
+        초안 저장
+      </Button>
+      <Button size="sm" variant="secondary" type="button" onClick={onNextStep}>
+        다음 단계
+      </Button>
+      {saveState === "saved" ? (
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#15803d" }}>저장됨</span>
+      ) : saveState === "error" ? (
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#b91c1c" }}>저장 오류</span>
+      ) : null}
+    </div>
+  );
+
+  const chatPanel = workspace ? (
+    <FeaturePlannerPanel
+      progressSummary={progressSummary}
+      messages={workspace.chat}
+      composerValue={composer}
+      onComposerChange={setComposer}
+      onSend={() => void onSendChat()}
+      onApplyReflect={onApplyReflect}
+      onGapCheck={onGapCheck}
+      memberCount={participants.length}
+      onOpenMembers={() => setMembersModalOpen(true)}
+      busy={analyzing || saveState === "saving" || llmBusy}
+      typingIndicator={llmBusy}
+      saveError={saveState === "error"}
+      embedded={isDesktop}
+    />
+  ) : null;
+
+  const slotBoard = workspace ? (
+    <FeatureSlotBoard
+      stages={workspace.stages}
+      selectedStageKey={workspace.selectedStageKey ?? workspace.stages[0]?.stageKey ?? null}
+      onSelectStage={onSelectStage}
+      onPatchItem={onPatchItem}
+      onRemoveItem={onRemoveItem}
+      onAddItem={onAddItem}
+      onCycleStatus={onCycleStatus}
+      onCyclePriority={onCyclePriority}
+    />
+  ) : null;
+
   if (!projectId.trim()) {
     return <EmptyState title="프로젝트가 없습니다" description="URL에 ?projectId= 를 지정해 주세요." />;
   }
@@ -367,23 +622,68 @@ export function FeatureWorkspace({ projectId }: { readonly projectId: string }) 
 
   return (
     <div style={{ ...shell, padding: "0 14px 14px", boxSizing: "border-box" }}>
-      {workspace ? (
-        <FeaturePlannerPanel
-          progressSummary={progressSummary}
-          messages={workspace.chat}
-          composerValue={composer}
-          onComposerChange={setComposer}
-          onSend={onSendChat}
-          onApplyReflect={onApplyReflect}
-          onGapCheck={onGapCheck}
-          memberCount={participants.length}
-          onOpenMembers={() => setMembersModalOpen(true)}
-          busy={analyzing || saveState === "saving"}
-          typingIndicator={analyzing}
-          saveError={saveState === "error"}
-        />
+      {toolbar}
+
+      {isDesktop ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(200px, 0.9fr) minmax(280px, 1.4fr) minmax(300px, 1.2fr)",
+            gap: 12,
+            flex: 1,
+            minHeight: 0,
+            alignItems: "stretch",
+          }}
+        >
+          <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <FeatureServiceContextColumn flow={flow} />
+          </div>
+          <div style={{ minHeight: 0, display: "flex", flexDirection: "column" }}>{slotBoard}</div>
+          <div style={{ minHeight: 0, display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+            {chatPanel}
+          </div>
+        </div>
       ) : (
-        <LoadingState label="워크스페이스 준비 중…" />
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            {(
+              [
+                { id: "evidence" as const, label: "근거" },
+                { id: "slots" as const, label: "기능슬롯" },
+                { id: "chat" as const, label: "협의" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setMobileTab(t.id)}
+                style={{
+                  flex: 1,
+                  borderRadius: 10,
+                  border: mobileTab === t.id ? "1px solid #0f766e" : "1px solid #e2e8f0",
+                  background: mobileTab === t.id ? "#ecfdf5" : "#fff",
+                  fontWeight: 900,
+                  fontSize: 12,
+                  padding: "8px 6px",
+                  cursor: "pointer",
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {mobileTab === "evidence" ? (
+              <FeatureServiceContextColumn flow={flow} />
+            ) : mobileTab === "slots" ? (
+              slotBoard
+            ) : (
+              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+                {chatPanel}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <RequirementsMemberInviteModal

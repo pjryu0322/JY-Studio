@@ -118,18 +118,28 @@ export type FeatureWorkspaceChatMessageV1 = Readonly<{
   at: string;
 }>;
 
+export type FeatureWorkspaceItemStatusV1 = "DRAFT" | "REVIEWING" | "APPROVED";
+
 export type FeatureWorkspaceItemV1 = Readonly<{
   id: string;
   title: string;
   detail?: string | null;
   priority: number;
   order: number;
+  actorIds?: readonly string[] | null;
+  sourceStepId?: string | null;
+  reason?: string | null;
+  status?: FeatureWorkspaceItemStatusV1 | null;
 }>;
 
 export type FeatureWorkspaceStageV1 = Readonly<{
   stageKey: string;
   title: string;
   features: readonly FeatureWorkspaceItemV1[];
+  /** AI·LLM이 남긴 단계별 확인 질문(소모형 큐) */
+  plannerQuestions?: readonly string[] | null;
+  /** 단계별 관련 액터(표시명) */
+  actorMappings?: readonly string[] | null;
 }>;
 
 export type FeatureWorkspaceV1 = Readonly<{
@@ -245,6 +255,16 @@ function parseFeatureWorkspaceV1(raw: unknown): FeatureWorkspaceV1 | null {
     const stageKey = typeof s.stageKey === "string" ? s.stageKey.trim().slice(0, 128) : "";
     const title = typeof s.title === "string" ? s.title.trim().slice(0, 500) : "";
     if (!stageKey || !title) continue;
+    const plannerQuestionsRaw = Array.isArray(s.plannerQuestions) ? (s.plannerQuestions as unknown[]) : null;
+    const plannerQuestions =
+      plannerQuestionsRaw?.length && plannerQuestionsRaw.every((x) => typeof x === "string")
+        ? plannerQuestionsRaw.map((x) => String(x).trim()).filter(Boolean).slice(0, 24)
+        : undefined;
+    const actorMappingsRaw = Array.isArray(s.actorMappings) ? (s.actorMappings as unknown[]) : null;
+    const actorMappings =
+      actorMappingsRaw?.length && actorMappingsRaw.every((x) => typeof x === "string")
+        ? actorMappingsRaw.map((x) => String(x).trim()).filter(Boolean).slice(0, 48)
+        : undefined;
     const featsRaw = Array.isArray(s.features) ? (s.features as unknown[]) : [];
     const features: FeatureWorkspaceItemV1[] = [];
     for (const frow of featsRaw) {
@@ -260,11 +280,51 @@ function parseFeatureWorkspaceV1(raw: unknown): FeatureWorkspaceV1 | null {
           : typeof f.detail === "string"
             ? f.detail.trim().slice(0, 8000)
             : undefined;
+      const reason =
+        f.reason === null || f.reason === undefined
+          ? undefined
+          : typeof f.reason === "string"
+            ? f.reason.trim().slice(0, 2000)
+            : undefined;
+      const sourceStepId =
+        f.sourceStepId === null || f.sourceStepId === undefined
+          ? undefined
+          : typeof f.sourceStepId === "string"
+            ? f.sourceStepId.trim().slice(0, 128)
+            : undefined;
+      const statusRaw = f.status;
+      const status: FeatureWorkspaceItemStatusV1 | null | undefined =
+        statusRaw === "DRAFT" || statusRaw === "REVIEWING" || statusRaw === "APPROVED"
+          ? statusRaw
+          : statusRaw === null
+            ? null
+            : undefined;
+      const actorIdsRaw = Array.isArray(f.actorIds) ? (f.actorIds as unknown[]) : null;
+      const actorIds =
+        actorIdsRaw?.length && actorIdsRaw.every((x) => typeof x === "string")
+          ? actorIdsRaw.map((x) => String(x).trim()).filter(Boolean).slice(0, 32)
+          : undefined;
       if (!id || !ft) continue;
-      features.push({ id, title: ft, priority, order, ...(detail ? { detail } : {}) });
+      features.push({
+        id,
+        title: ft,
+        priority,
+        order,
+        ...(detail ? { detail } : {}),
+        ...(reason ? { reason } : {}),
+        ...(sourceStepId ? { sourceStepId } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(actorIds?.length ? { actorIds } : {}),
+      });
     }
     features.sort((a, b) => a.order - b.order);
-    stages.push({ stageKey, title, features });
+    stages.push({
+      stageKey,
+      title,
+      features,
+      ...(plannerQuestions?.length ? { plannerQuestions } : {}),
+      ...(actorMappings?.length ? { actorMappings } : {}),
+    });
   }
   const selectedStageKey =
     typeof o.selectedStageKey === "string"

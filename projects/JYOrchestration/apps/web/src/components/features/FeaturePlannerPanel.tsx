@@ -65,6 +65,7 @@ export function FeaturePlannerPanel({
   busy,
   typingIndicator,
   saveError,
+  embedded,
 }: {
   readonly progressSummary: FeaturePlannerProgressSummary | null;
   readonly messages: readonly FeatureWorkspaceChatMessageV1[];
@@ -78,6 +79,8 @@ export function FeaturePlannerPanel({
   readonly busy: boolean;
   readonly typingIndicator?: boolean;
   readonly saveError?: boolean;
+  /** 다열 레이아웃 안쪽 패널: 외곽 테두리 생략 */
+  readonly embedded?: boolean;
 }) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const composerTaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -208,8 +211,8 @@ export function FeaturePlannerPanel({
         minWidth: 0,
         maxWidth: "100%",
         overflow: "hidden",
-        border: "1px solid #e2e8f0",
-        borderRadius: 14,
+        border: embedded ? "none" : "1px solid #e2e8f0",
+        borderRadius: embedded ? 0 : 14,
         background: "#fff",
       }}
     >
@@ -259,9 +262,7 @@ export function FeaturePlannerPanel({
         >
           <div style={{ maxWidth: 720, margin: "0 auto", width: "100%", minWidth: 0 }}>
             {messages.length === 0 ? (
-              <div style={{ fontSize: 13, color: "#71717a", marginBottom: 12 }}>
-                메시지가 여기에 쌓입니다. 아래에서 입력해 AI기획자와 협의를 시작하세요.
-              </div>
+              <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>협의 메시지가 여기에 표시됩니다.</div>
             ) : null}
 
             {messages.map((m) => {
