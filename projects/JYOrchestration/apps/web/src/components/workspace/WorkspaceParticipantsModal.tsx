@@ -47,11 +47,11 @@ export function WorkspaceParticipantsModal(p: {
       aria-modal="true"
       aria-label="참여 멤버"
       className={styles.scrim}
-      onMouseDown={(e) => {
+      onPointerDown={(e) => {
         if (e.target === e.currentTarget) p.onClose();
       }}
     >
-      <div className={styles.panel} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={styles.panel} onPointerDown={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <div className={styles.titleBlock}>
             <div className={styles.title}>참여 멤버</div>

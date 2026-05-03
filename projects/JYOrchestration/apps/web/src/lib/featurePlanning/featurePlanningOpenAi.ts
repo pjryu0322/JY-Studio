@@ -4,6 +4,8 @@ export type OpenAiJsonChatTrace = {
   readonly label: string;
   /** true면 타임라인에 자동 기록하지 않음 — 호출 측에서 recordFeaturePlanningOpenAi 등으로 기록 */
   readonly skipTimeline?: boolean;
+  /** 0~2 권장. 미지정 시 0.2 */
+  readonly temperature?: number;
 };
 
 export async function openAiChatJsonText(
@@ -14,6 +16,10 @@ export async function openAiChatJsonText(
   _trace?: OpenAiJsonChatTrace
 ): Promise<{ ok: true; text: string } | { ok: false; code: string; message: string }> {
   void _trace;
+  const temp =
+    typeof _trace?.temperature === "number" && Number.isFinite(_trace.temperature)
+      ? Math.min(1.2, Math.max(0, _trace.temperature))
+      : 0.2;
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -22,7 +28,7 @@ export async function openAiChatJsonText(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature: temp,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },

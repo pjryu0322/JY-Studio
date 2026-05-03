@@ -37,7 +37,8 @@ export function workspaceStandardChatBubbleShell(role: WorkshopRole): CSSPropert
     boxShadow: t.shadowSoft,
     boxSizing: "border-box",
     maxWidth: role === "user" ? ("78%" as const) : ("min(100%, 620px)" as const),
-    width: "100%",
+    /** 그리드 타임라인에서 justifySelf와 함께 쓰이면 행 전체를 채우지 않고 좌/우 정렬된다 */
+    width: "fit-content",
     minWidth: 0,
   };
 }

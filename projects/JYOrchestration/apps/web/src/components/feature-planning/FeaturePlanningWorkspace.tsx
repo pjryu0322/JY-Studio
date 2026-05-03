@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
@@ -40,6 +41,11 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
   const displayMessages = useMemo(
     () => enrichFeaturePlanningDisplayMessages(shell.messages, shell.artifact),
     [shell.messages, shell.artifact]
+  );
+
+  const serviceFlowHref = useMemo(
+    () => `/requirements?projectId=${encodeURIComponent(projectId.trim())}&stage=service-flow`,
+    [projectId]
   );
 
   const existingHumanUserIds = useMemo(
@@ -95,9 +101,11 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
                     whiteSpace: "pre-wrap",
                   }}
                 >
-                  {shell.artifact?.slots?.length
-                    ? "대화를 불러오는 중 문제가 있었습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해 주세요."
-                    : "기능 정리 초안을 준비한 뒤 AI 기획자가 이곳에서 질문을 드립니다.\n\n초안 준비가 끝나지 않았다면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요."}
+                  {!shell.serviceFlowReady
+                    ? "액터 및 서비스 흐름 정의를 완료하면 이곳에서 기능 정리를 이어갈 수 있습니다."
+                    : shell.artifact?.slots?.length
+                      ? "대화를 불러오는 중 문제가 있었습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해 주세요."
+                      : "서비스 흐름 분석이 끝나면 AI 기획자가 이곳에서 질문을 드립니다.\n\n응답이 없으면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요."}
                 </div>
               ) : null
         }
@@ -144,6 +152,13 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
     <div className={styles.root}>
       <ScreenLabel label={WORKSPACE_SECTION_META.featurePlanningRoot.fullLabel} visible={showScreenLabels} />
       {shell.loadError ? <div role="alert" className={styles.notice}>{shell.loadError}</div> : null}
+      {!shell.loadError && !shell.serviceFlowReady ? (
+        <div role="region" className={styles.notice} aria-label="서비스 흐름 단계 안내">
+          <Link href={serviceFlowHref} className={styles.structHintBtn} style={{ display: "inline-block", textDecoration: "none" }}>
+            액터 및 서비스 흐름 정의로 이동
+          </Link>
+        </div>
+      ) : null}
       {shell.initError ? (
         <div
           role="alert"
@@ -157,7 +172,7 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
             gap: 10,
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 800, color: "#9f1239" }}>기능정리 초안 생성에 실패했습니다.</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#9f1239" }}>기능 정리 분석에 실패했습니다.</div>
           <div style={{ fontSize: 14, color: t.textSecondary, lineHeight: 1.55 }}>{shell.initError}</div>
           <button
             type="button"
@@ -170,7 +185,7 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
         </div>
       ) : null}
       {shell.notice ? <div role="status" className={styles.notice}>{shell.notice}</div> : null}
-      {shell.showStructuralRegenerateHint ? (
+      {shell.serviceFlowReady && shell.showStructuralRegenerateHint ? (
         <div role="region" aria-label="기능 정리 구조 안내" className={styles.structHint}>
           <p className={styles.structHintText}>
             저장된 정리가 <strong>업무 처리 절차</strong> 위주로 잡혀 있으면, 프로토타입 설계에는 맞지 않을 수 있습니다.{" "}
@@ -194,12 +209,18 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
                 void shell.send();
               }}
               busy={shell.initLoading || shell.loading || shell.resetChatLoading || shell.slotDigestLoading}
+              disabled={!shell.serviceFlowReady}
+              placeholder={
+                shell.serviceFlowReady
+                  ? shell.plannerInputHint ?? undefined
+                  : "액터 및 서비스 흐름을 먼저 확정한 뒤 대화를 시작할 수 있습니다."
+              }
               onOpenResultsView={() => setCanvas("overview")}
               onRequestPlannerOrganize={() => {
                 void shell.requestPlannerOrganize();
               }}
               onResetChat={
-                shell.artifact?.slots?.length
+                shell.serviceFlowReady && shell.artifact?.slots?.length
                   ? () => {
                       void shell.resetChat();
                     }

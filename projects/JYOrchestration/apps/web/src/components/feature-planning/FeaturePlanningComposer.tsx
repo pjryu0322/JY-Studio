@@ -58,9 +58,9 @@ export function FeaturePlanningComposer({
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={busy}
+                  disabled={busy || Boolean(disabled)}
                   onClick={() => {
-                    if (busy) return;
+                    if (busy || disabled) return;
                     onRequestPlannerOrganize();
                     close();
                   }}
@@ -72,9 +72,9 @@ export function FeaturePlanningComposer({
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={busy}
+                  disabled={busy || Boolean(disabled)}
                   onClick={() => {
-                    if (busy) return;
+                    if (busy || disabled) return;
                     onOpenResultsView();
                     close();
                   }}
@@ -88,9 +88,9 @@ export function FeaturePlanningComposer({
                     <button
                       type="button"
                       role="menuitem"
-                      disabled={busy}
+                      disabled={busy || Boolean(disabled)}
                       onClick={() => {
-                        if (busy) return;
+                        if (busy || disabled) return;
                         onResetChat();
                         close();
                       }}

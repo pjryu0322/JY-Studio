@@ -125,3 +125,90 @@
   font-size: 13px;
   font-weight: 700;
 }
+
+/* 좁은 화면: 하단 시트 + safe-area + 터치 스크롤 */
+@media (max-width: 720px) {
+  .scrim {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+  }
+
+  .panel {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: min(88dvh, calc(100vh - env(safe-area-inset-top, 0px) - 10px));
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.2);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px 14px;
+    flex-shrink: 0;
+  }
+
+  .title {
+    font-size: 16px;
+  }
+
+  .actions {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  /* 초대 비표시 시 닫기만 오른쪽 정렬 */
+  .actions > button:only-of-type {
+    margin-left: auto;
+  }
+
+  .inviteBtn {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .closeBtn {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .listWrap {
+    max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 10px 12px 12px;
+    overscroll-behavior: contain;
+  }
+
+  .row {
+    padding: 12px 14px;
+    min-height: 48px;
+  }
+
+  .name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+  }
+
+  .meta {
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+  }
+}

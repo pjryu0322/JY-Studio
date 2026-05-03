@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { PromptTimelineChannel, PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
 
@@ -12,6 +13,7 @@ function channelLabel(ch: PromptTimelineChannel): string {
 }
 
 export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
+  const isNarrow = useMediaQuery("(max-width: 720px)");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,21 +100,44 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
             role="dialog"
             aria-modal="true"
             aria-label="프롬프트 타임라인"
-            style={{
-              position: "fixed",
-              right: 12,
-              top: 56,
-              zIndex: 75,
-              width: "min(520px, calc(100vw - 24px))",
-              maxHeight: "min(72vh, 560px)",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              borderRadius: 12,
-              border: `1px solid ${t.border}`,
-              background: t.bgCard,
-              boxShadow: "0 12px 40px rgba(15, 23, 42, 0.14)",
-            }}
+            style={
+              isNarrow
+                ? {
+                    position: "fixed",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    top: "auto",
+                    zIndex: 75,
+                    width: "100%",
+                    maxWidth: "100%",
+                    maxHeight: "min(88dvh, calc(100vh - env(safe-area-inset-top, 0px) - 48px))",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                    borderRadius: "16px 16px 0 0",
+                    border: `1px solid ${t.border}`,
+                    borderBottom: "none",
+                    background: t.bgCard,
+                    boxShadow: "0 -8px 40px rgba(15, 23, 42, 0.12)",
+                    paddingBottom: "env(safe-area-inset-bottom, 0px)",
+                  }
+                : {
+                    position: "fixed",
+                    right: 12,
+                    top: 56,
+                    zIndex: 75,
+                    width: "min(520px, calc(100vw - 24px))",
+                    maxHeight: "min(72vh, 560px)",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                    borderRadius: 12,
+                    border: `1px solid ${t.border}`,
+                    background: t.bgCard,
+                    boxShadow: "0 12px 40px rgba(15, 23, 42, 0.14)",
+                  }
+            }
           >
             <div
               style={{
@@ -161,7 +186,15 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
                 </button>
               </div>
             </div>
-            <div style={{ padding: 12, overflowY: "auto", flex: "1 1 auto" }}>
+            <div
+              style={{
+                padding: isNarrow ? "10px 12px 12px" : 12,
+                overflowY: "auto",
+                flex: "1 1 auto",
+                WebkitOverflowScrolling: "touch",
+                minHeight: 0,
+              }}
+            >
               {loading && entries.length === 0 ? (
                 <div style={{ fontSize: 13, color: t.textMuted }}>불러오는 중…</div>
               ) : error ? (
@@ -182,7 +215,17 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
                         background: t.bgPage,
                       }}
                     >
-                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          alignItems: "baseline",
+                          gap: 8,
+                          rowGap: 6,
+                          marginBottom: 6,
+                          columnGap: 8,
+                        }}
+                      >
                         <span
                           style={{
                             fontSize: 11,
@@ -216,7 +259,17 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
                         {e.model ? (
                           <span style={{ fontSize: 11, color: t.textMuted }}>{e.model}</span>
                         ) : null}
-                        <span style={{ fontSize: 11, color: t.textMuted, marginLeft: "auto" }}>{e.at}</span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: t.textMuted,
+                            marginLeft: isNarrow ? 0 : "auto",
+                            width: isNarrow ? "100%" : undefined,
+                            flexBasis: isNarrow ? "100%" : undefined,
+                          }}
+                        >
+                          {e.at}
+                        </span>
                       </div>
                       {e.promptMetrics ? (
                         <div style={{ fontSize: 10, color: t.textMuted, marginBottom: 6, lineHeight: 1.4 }}>
@@ -236,11 +289,12 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
                           margin: "0 0 10px",
                           whiteSpace: "pre-wrap",
                           wordBreak: "break-word",
-                          fontSize: 11,
+                          fontSize: isNarrow ? 10.5 : 11,
                           lineHeight: 1.45,
                           color: t.textSecondary,
-                          maxHeight: 200,
+                          maxHeight: isNarrow ? 160 : 200,
                           overflow: "auto",
+                          WebkitOverflowScrolling: "touch",
                           background: "#fff",
                           borderRadius: 8,
                           padding: 8,
@@ -255,11 +309,12 @@ export function PromptTimelineDebugButton(p: { readonly projectId: string }) {
                           margin: 0,
                           whiteSpace: "pre-wrap",
                           wordBreak: "break-word",
-                          fontSize: 11,
+                          fontSize: isNarrow ? 10.5 : 11,
                           lineHeight: 1.45,
                           color: t.textSecondary,
-                          maxHeight: 200,
+                          maxHeight: isNarrow ? 160 : 200,
                           overflow: "auto",
+                          WebkitOverflowScrolling: "touch",
                           background: "#fff",
                           borderRadius: 8,
                           padding: 8,

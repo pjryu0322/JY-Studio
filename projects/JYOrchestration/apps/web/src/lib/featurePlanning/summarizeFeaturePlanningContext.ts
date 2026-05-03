@@ -10,6 +10,7 @@ import type { FeaturePlanningWorkspaceChatMessageV1 } from "@/lib/featurePlannin
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import { parseRequirementsOrganizeContextV1 } from "@/lib/requirements/requirementsOrganizeContext";
 import { parseRequirementsStateJson, type RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import { buildPlannerFocusUserBlock } from "@/lib/featurePlanning/featurePlanningPlannerPromptContext";
 
 export type FeaturePlanningCompactBlocksV2 = {
   readonly projectSummary: string;
@@ -186,8 +187,19 @@ export function buildFeaturePlanningCompactBlocks(input: {
   });
   const actorSummary = buildActorSummaryFromState(input.requirementsStateJson);
   const flowSummary = buildFlowSummaryFromState(input.requirementsStateJson);
-  const slotSummary =
+  const slotSummaryBase =
     input.artifact?.slots?.length ? summarizeSlots(input.artifact, LIM.slot) : "(슬롯 없음 — 초기 생성)";
+  const plannerFocus =
+    input.artifact?.slots?.length
+      ? buildPlannerFocusUserBlock({
+          projectTitle: input.projectName,
+          projectDescription: input.projectDescription,
+          requirementsStateJson: input.requirementsStateJson,
+          artifact: input.artifact,
+          workspaceMessages: input.workspaceMessages,
+        })
+      : "";
+  const slotSummary = plannerFocus ? clamp(`${slotSummaryBase}\n\n${plannerFocus}`, 980) : slotSummaryBase;
   const lastAi = (input.lastAssistantSnippet ?? "").trim();
   const recentCore = buildRecentFpConversationBlock(input.workspaceMessages, {
     excludeLastUser: true,

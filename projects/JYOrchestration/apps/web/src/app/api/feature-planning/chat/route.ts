@@ -34,7 +34,13 @@ export async function POST(request: NextRequest) {
 
     if (!result.ok) {
       const status =
-        result.code === "NOT_FOUND" ? 404 : result.code === "NO_SLOTS" || result.code === "BAD_INPUT" ? 400 : 200;
+        result.code === "NOT_FOUND"
+          ? 404
+          : result.code === "SERVICE_FLOW_INCOMPLETE"
+            ? 403
+            : result.code === "NO_SLOTS" || result.code === "BAD_INPUT"
+              ? 400
+              : 200;
       return NextResponse.json(
         {
           success: false,

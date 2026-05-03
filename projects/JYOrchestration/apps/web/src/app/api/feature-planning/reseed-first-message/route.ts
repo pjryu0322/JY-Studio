@@ -10,6 +10,11 @@ import { withFeaturePlanningProjectLock } from "@/lib/featurePlanning/featurePla
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  firstFlowStepTitleForFeaturePlanningEntry,
+  FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE,
+  isServiceFlowApprovedForFeaturePlanning,
+} from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 
 type Body = { projectId?: string };
 
@@ -60,6 +65,17 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      if (!isServiceFlowApprovedForFeaturePlanning(row.requirementsStateJson)) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "SERVICE_FLOW_INCOMPLETE",
+            message: FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim(),
+          },
+          { status: 403 },
+        );
+      }
+
       const apiKey = process.env.OPENAI_API_KEY?.trim();
       if (!apiKey) {
         return NextResponse.json(
@@ -77,6 +93,7 @@ export async function POST(request: NextRequest) {
         forceRegenerate: false,
       });
 
+      const firstStepTitle = firstFlowStepTitleForFeaturePlanningEntry(state.serviceFlowV1 ?? null);
       const gen = await runFeaturePlanningInitialScreenLlm({
         projectId,
         ctx,
@@ -86,6 +103,9 @@ export async function POST(request: NextRequest) {
         mode: "chat_reseed",
         existingArtifact: art,
         forceRegenerate: false,
+        promptPurpose: "FEATURE_PLANNING_ANALYZE",
+        entryMessageFormat: "flow_entry",
+        firstStepTitle,
       });
       if (!gen.ok) {
         return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });

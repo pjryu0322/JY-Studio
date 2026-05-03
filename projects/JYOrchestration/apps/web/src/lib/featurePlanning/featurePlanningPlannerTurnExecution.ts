@@ -8,6 +8,10 @@ import { sanitizeFeaturePlanningUserVisibleKorean } from "@/lib/featurePlanning/
 import { patchProjectRequirementsStateJson } from "@/lib/featurePlanning/saveFeaturePlanningWorkspace";
 import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE,
+  isServiceFlowApprovedForFeaturePlanning,
+} from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import type { FeaturePlanningPlannerTurnMetaV1 } from "@/lib/featurePlanning/featurePlanningChatLlm";
 
@@ -72,6 +76,14 @@ export async function executeFeaturePlanningPlannerTurn(input: {
       }
 
       const state = parseRequirementsStateJson(row.requirementsStateJson);
+      if (!isServiceFlowApprovedForFeaturePlanning(row.requirementsStateJson)) {
+        return {
+          ok: false,
+          code: "SERVICE_FLOW_INCOMPLETE",
+          message: FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim(),
+        };
+      }
+
       const artifact = state.featurePlanningSlotsV1 ?? null;
       if (!artifact?.slots?.length) {
         return { ok: false, code: "NO_SLOTS", message: "기능 정리 초안이 아직 없습니다. 잠시 후 다시 시도하거나 페이지를 새로고침해 주세요." };

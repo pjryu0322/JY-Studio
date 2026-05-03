@@ -15,6 +15,10 @@ import type { FeaturePlanningWorkspaceChatMessageV1, FeaturePlanningWorkspaceCha
 import { buildSingleSlotDigestForChat, newFeaturePlanningMessageId } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
+import {
+  FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE,
+  isServiceFlowApprovedForFeaturePlanning,
+} from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -59,6 +63,8 @@ export const FEATURE_PLANNING_RESET_CHAT_WARNING =
 
 const SAVE_DEBOUNCE_MS = 650;
 
+const SERVICE_FLOW_GATE_MSG_ID = "fp_service_flow_incomplete_notice";
+
 type ApiInitData = {
   generated?: boolean;
   artifact?: FeaturePlanningSlotsArtifactV1;
@@ -72,6 +78,7 @@ type ApiChatData = {
   artifact?: FeaturePlanningSlotsArtifactV1;
   slots?: unknown;
   messages: WorkspaceChatMessage[];
+  plannerMeta?: { nextQuestions?: readonly string[] };
 };
 
 type ApiChatResponse = { success: boolean; message?: string; code?: string; data?: ApiChatData };
@@ -88,11 +95,14 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   const [slotDigestLoading, setSlotDigestLoading] = useState(false);
   const [slotsSaving, setSlotsSaving] = useState(false);
   const [composer, setComposer] = useState("");
+  const [plannerInputHint, setPlannerInputHint] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
   const [initErrorCode, setInitErrorCode] = useState<string | null>(null);
+  const [approvalEpoch, setApprovalEpoch] = useState(0);
 
   const initStartedRef = useRef(false);
+  const wasServiceFlowBlockedRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const artifactRef = useRef<FeaturePlanningSlotsArtifactV1 | null>(null);
   const projectRef = useRef<Project | null>(null);
@@ -105,6 +115,21 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   }, []);
 
   const hydrateFromProject = useCallback((p: Project) => {
+    if (!isServiceFlowApprovedForFeaturePlanning(p.requirementsStateJson)) {
+      setInitError(null);
+      setInitErrorCode(null);
+      setArtifact(null);
+      setMessages([
+        {
+          id: SERVICE_FLOW_GATE_MSG_ID,
+          role: "ai",
+          text: FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim(),
+          at: isoNow(),
+        },
+      ]);
+      setActiveSlotId("");
+      return;
+    }
     const st = parseRequirementsStateJson(p.requirementsStateJson);
     const fp = st.featurePlanningSlotsV1 ?? null;
     setArtifact(fp);
@@ -168,7 +193,19 @@ export function useFeaturePlanningWorkspace(projectId: string) {
 
   useEffect(() => {
     initStartedRef.current = false;
+    wasServiceFlowBlockedRef.current = false;
+    setPlannerInputHint(null);
   }, [projectId]);
+
+  useEffect(() => {
+    if (!project) return;
+    const ok = isServiceFlowApprovedForFeaturePlanning(project.requirementsStateJson);
+    if (wasServiceFlowBlockedRef.current && ok) {
+      initStartedRef.current = false;
+      setApprovalEpoch((e) => e + 1);
+    }
+    wasServiceFlowBlockedRef.current = !ok;
+  }, [project]);
 
   useEffect(() => {
     let cancelled = false;
@@ -189,15 +226,19 @@ export function useFeaturePlanningWorkspace(projectId: string) {
     };
   }, [projectId, hydrateFromProject]);
 
-  const runInitialize = useCallback(
+  const runFeatureEntryAnalyze = useCallback(
     async (forceRegenerate: boolean) => {
       const pid = projectId.trim();
       if (!pid) return;
+      const proj = projectRef.current;
+      if (!proj || !isServiceFlowApprovedForFeaturePlanning(proj.requirementsStateJson)) {
+        return;
+      }
       setInitLoading(true);
       setInitError(null);
       setInitErrorCode(null);
       try {
-        const res = await fetch("/api/feature-planning/initialize", {
+        const res = await fetch("/api/features/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -205,7 +246,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
         });
         const json = (await res.json()) as ApiInitResponse;
         if (!json.success || !json.data) {
-          const msg = json.message ?? "기능정리 초안 생성에 실패했습니다. 다시 시도해 주세요.";
+          const msg = json.message ?? "기능 정리 분석에 실패했습니다. 다시 시도해 주세요.";
           setInitError(msg);
           setInitErrorCode(json.code ?? null);
           pushNotice(msg);
@@ -221,10 +262,10 @@ export function useFeaturePlanningWorkspace(projectId: string) {
           setMessages(d.messages);
         }
         if (d.generated) {
-          pushNotice(forceRegenerate ? "기능 정리 초안을 다시 만들었습니다." : "기능 정리 초안을 준비했습니다.");
+          pushNotice(forceRegenerate ? "기능 정리 분석을 다시 적용했습니다." : "기능 정리 분석을 적용했습니다.");
         }
       } catch {
-        const msg = "기능정리 초기화 요청 중 오류가 발생했습니다.";
+        const msg = "기능 정리 분석 요청 중 오류가 발생했습니다.";
         setInitError(msg);
         setInitErrorCode("NETWORK");
         pushNotice(msg);
@@ -244,15 +285,19 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   );
 
   const retryInitialize = useCallback(() => {
-    void runInitialize(false);
-  }, [runInitialize]);
+    void runFeatureEntryAnalyze(false);
+  }, [runFeatureEntryAnalyze]);
 
   useEffect(() => {
     if (!projectId.trim() || !project || loadError) return;
+    if (!isServiceFlowApprovedForFeaturePlanning(project.requirementsStateJson)) {
+      initStartedRef.current = true;
+      return;
+    }
     if (initStartedRef.current) return;
     initStartedRef.current = true;
-    void runInitialize(false);
-  }, [loadError, project, projectId, runInitialize]);
+    void runFeatureEntryAnalyze(false);
+  }, [approvalEpoch, loadError, project, projectId, runFeatureEntryAnalyze]);
 
   useEffect(() => {
     if (!artifact?.slots.length) return;
@@ -263,17 +308,26 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   }, [artifact, activeSlotId]);
 
   const onRegenerateSlots = useCallback(() => {
+    const proj = projectRef.current;
+    if (!proj || !isServiceFlowApprovedForFeaturePlanning(proj.requirementsStateJson)) {
+      pushNotice(FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim());
+      return;
+    }
     const ok = window.confirm(`${FEATURE_PLANNING_REGENERATE_WARNING}\n계속하시겠습니까?`);
     if (!ok) return;
-    void runInitialize(true);
-  }, [runInitialize]);
+    void runFeatureEntryAnalyze(true);
+  }, [pushNotice, runFeatureEntryAnalyze]);
 
   const expandSlotPreviewInChat = useCallback(
     async (slotId: string) => {
       const pid = projectId.trim();
       const art = artifactRef.current;
       const proj = projectRef.current;
-      if (!pid || !proj || !art?.slots?.length || chatLoading || initLoading || resetChatLoading || slotDigestLoading) return;
+      if (!pid || !proj || !isServiceFlowApprovedForFeaturePlanning(proj.requirementsStateJson)) {
+        pushNotice(FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim());
+        return;
+      }
+      if (!art?.slots?.length || chatLoading || initLoading || resetChatLoading || slotDigestLoading) return;
       const slot =
         orderedSlotsForFeaturePlanningUi(art).find((s) => s.slotId === slotId) ?? art.slots.find((s) => s.slotId === slotId);
       if (!slot) return;
@@ -319,7 +373,12 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   const resetChat = useCallback(async () => {
     const pid = projectId.trim();
     const art = artifactRef.current;
-    if (!pid || !art?.slots?.length || chatLoading || initLoading || resetChatLoading || slotDigestLoading) return;
+    const proj = projectRef.current;
+    if (!pid || !proj || !isServiceFlowApprovedForFeaturePlanning(proj.requirementsStateJson)) {
+      pushNotice(FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim());
+      return;
+    }
+    if (!art?.slots?.length || chatLoading || initLoading || resetChatLoading || slotDigestLoading) return;
     const ok = window.confirm(`${FEATURE_PLANNING_RESET_CHAT_WARNING}\n계속하시겠습니까?`);
     if (!ok) return;
     setResetChatLoading(true);
@@ -360,11 +419,17 @@ export function useFeaturePlanningWorkspace(projectId: string) {
     async (rawText: string) => {
       const t = rawText.trim();
       const pid = projectId.trim();
+      const proj = projectRef.current;
+      if (!proj || !isServiceFlowApprovedForFeaturePlanning(proj.requirementsStateJson)) {
+        pushNotice(FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim());
+        return;
+      }
       if (!t || !pid || chatLoading || initLoading || resetChatLoading || slotDigestLoading) return;
       const tempId = newId("u_temp");
       const userBubble: WorkspaceChatMessage = { id: tempId, role: "user", text: t, at: isoNow() };
       setComposer("");
       setMessages((prev) => [...prev, userBubble]);
+      setPlannerInputHint(null);
       setChatLoading(true);
       try {
         const res = await fetch("/api/features/planner-turn", {
@@ -379,6 +444,8 @@ export function useFeaturePlanningWorkspace(projectId: string) {
           pushNotice(json.message ?? "AI 응답에 실패했습니다.");
           return;
         }
+        const hint = json.data.plannerMeta?.nextQuestions?.map((q) => String(q ?? "").trim()).find(Boolean);
+        setPlannerInputHint(hint && hint.length > 2 ? hint.slice(0, 200) : null);
         const { project: p } = await fetchProjectWithRetry(pid);
         setProject(p ?? null);
         if (p) hydrateFromProject(p);
@@ -398,12 +465,13 @@ export function useFeaturePlanningWorkspace(projectId: string) {
 
   const requestPlannerOrganize = useCallback(async () => {
     await sendMessage(
-      "아직 다루지 않은 정리 영역이 있으면 짧은 질문으로만 이어가 주세요. 우선순위는 핵심 기능·화면·메뉴 → 역할·흐름·데이터 → 권한·운영·예외 순으로 부탁합니다."
+      "지금 [4]에 적힌 currentServiceStep만 기준으로, 빠진 사용자 기능이 있으면 후보 3~6개와 추천 0~2개를 제시하고 질문은 한 문장만 해 주세요. 다른 단계 기능은 제외해 주세요."
     );
   }, [sendMessage]);
 
   const planningAreaCount = artifact ? buildOrderedSlotsVisible(artifact).length : 0;
-  const initLoadingHint = "AI 기획자가 기능정리 초안을 생성하고 있습니다.";
+  const initLoadingHint = "AI 기획자가 서비스 흐름을 바탕으로 기능 정리 분석을 실행하고 있습니다.";
+  const serviceFlowReady = project ? isServiceFlowApprovedForFeaturePlanning(project.requirementsStateJson) : false;
 
   const showStructuralRegenerateHint = Boolean(
     artifact?.slots?.length && !artifact.userEdited && detectLikelyProcessStepPlanningArtifact(artifact)
@@ -412,6 +480,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   return {
     project,
     loadError,
+    serviceFlowReady,
     initError,
     initErrorCode,
     retryInitialize,
@@ -436,6 +505,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
     showStructuralRegenerateHint,
     composer,
     setComposer,
+    plannerInputHint,
     loading: chatLoading,
     messages,
     notice,

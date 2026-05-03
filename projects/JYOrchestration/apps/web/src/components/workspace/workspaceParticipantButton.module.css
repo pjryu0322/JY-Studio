@@ -17,6 +17,14 @@
   outline-offset: 2px;
 }
 
+@media (max-width: 720px) {
+  .wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+}
+
 .badge {
   position: absolute;
   top: -6px;
