@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { buildFeaturePlanningSlotsLlmContext } from "@/lib/featurePlanning/buildFeaturePlanningSlotsContext";
-import { sanitizeFeaturePlanningUserVisibleKorean } from "@/lib/featurePlanning/featurePlanningUserVisibleSanitize";
 import { patchProjectRequirementsStateJson } from "@/lib/featurePlanning/saveFeaturePlanningWorkspace";
-import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import { runFeaturePlanningInitialScreenLlm } from "@/lib/featurePlanning/runFeaturePlanningInitialScreenLlm";
 import type { FeaturePlanningWorkspaceChatMessageV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
@@ -13,10 +11,7 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
-type Body = {
-  projectId?: string;
-  forceRegenerate?: boolean;
-};
+type Body = { projectId?: string };
 
 function toWorkspaceMessages(rows: FeaturePlanningWorkspaceChatMessageV1[]) {
   return rows.map((m) => ({
@@ -29,6 +24,7 @@ function toWorkspaceMessages(rows: FeaturePlanningWorkspaceChatMessageV1[]) {
   }));
 }
 
+/** 저장된 슬롯을 유지한 채 첫 AI 메시지만 OpenAI로 다시 생성합니다. */
 export async function POST(request: NextRequest) {
   try {
     const userId = await requireSessionUserId(request);
@@ -36,14 +32,12 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json()) as Body;
     const projectId = String(body.projectId ?? "").trim();
-    const forceRegenerate = body.forceRegenerate === true;
-
     if (!projectId) {
       return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     }
 
     try {
-      await requireProjectPermission(projectId, userId, "canEditProject", "POST /api/feature-planning/initialize");
+      await requireProjectPermission(projectId, userId, "canEditProject", "POST /api/feature-planning/reseed-first-message");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) return denied;
@@ -58,22 +52,12 @@ export async function POST(request: NextRequest) {
       }
 
       const state = parseRequirementsStateJson(row.requirementsStateJson);
-      const existingArtifact = state.featurePlanningSlotsV1 ?? null;
-      const existingChat = state.featurePlanningWorkspaceChatV1 ?? { messages: [] };
-      const priorMessages = existingChat.messages ?? [];
-      const hasSlots = Boolean(existingArtifact?.slots?.length);
-
-      if (!forceRegenerate && hasSlots && priorMessages.length > 0) {
-        const art: FeaturePlanningSlotsArtifactV1 = existingArtifact!;
-        return NextResponse.json({
-          success: true,
-          data: {
-            generated: false,
-            artifact: art,
-            slots: art.slots,
-            messages: toWorkspaceMessages(priorMessages),
-          },
-        });
+      const art = state.featurePlanningSlotsV1 ?? null;
+      if (!art?.slots?.length) {
+        return NextResponse.json(
+          { success: false, code: "NO_SLOTS", message: "기능 정리 슬롯이 없습니다. 먼저 초기화를 실행해 주세요." },
+          { status: 400 },
+        );
       }
 
       const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -90,41 +74,8 @@ export async function POST(request: NextRequest) {
         projectDescription: row.description,
         requirementsStateJson: row.requirementsStateJson,
         requirementsConversationJson: row.requirementsConversationJson,
-        forceRegenerate: forceRegenerate === true,
+        forceRegenerate: false,
       });
-
-      if (!forceRegenerate && hasSlots && priorMessages.length === 0) {
-        const gen = await runFeaturePlanningInitialScreenLlm({
-          projectId,
-          ctx,
-          requirementsStateJson: row.requirementsStateJson,
-          apiKey,
-          model,
-          mode: "chat_reseed",
-          existingArtifact: existingArtifact!,
-          forceRegenerate: false,
-        });
-        if (!gen.ok) {
-          return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });
-        }
-        const patch = await patchProjectRequirementsStateJson(projectId, {
-          featurePlanningSlotsV1: gen.artifact,
-          featurePlanningWorkspaceChatV1: { messages: [gen.aiMessage] },
-        });
-        if (!patch.ok) {
-          return NextResponse.json({ success: false, message: "저장에 실패했습니다." }, { status: 500 });
-        }
-        const mergedState = parseRequirementsStateJson(patch.merged);
-        return NextResponse.json({
-          success: true,
-          data: {
-            generated: true,
-            artifact: gen.artifact,
-            slots: gen.artifact.slots,
-            messages: toWorkspaceMessages(mergedState.featurePlanningWorkspaceChatV1?.messages ?? [gen.aiMessage]),
-          },
-        });
-      }
 
       const gen = await runFeaturePlanningInitialScreenLlm({
         projectId,
@@ -132,31 +83,17 @@ export async function POST(request: NextRequest) {
         requirementsStateJson: row.requirementsStateJson,
         apiKey,
         model,
-        mode: "create",
-        existingArtifact: existingArtifact,
-        forceRegenerate: forceRegenerate === true,
+        mode: "chat_reseed",
+        existingArtifact: art,
+        forceRegenerate: false,
       });
       if (!gen.ok) {
         return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });
       }
 
-      let nextMessages: FeaturePlanningWorkspaceChatMessageV1[];
-      if (forceRegenerate && priorMessages.length) {
-        const prefix = `[기능 정리 초안 다시 만들기]\n\n`;
-        nextMessages = [
-          ...priorMessages,
-          {
-            ...gen.aiMessage,
-            text: sanitizeFeaturePlanningUserVisibleKorean(`${prefix}${gen.aiMessage.text}`).slice(0, 32000),
-          },
-        ];
-      } else {
-        nextMessages = [gen.aiMessage];
-      }
-
       const patch = await patchProjectRequirementsStateJson(projectId, {
         featurePlanningSlotsV1: gen.artifact,
-        featurePlanningWorkspaceChatV1: { messages: nextMessages },
+        featurePlanningWorkspaceChatV1: { messages: [gen.aiMessage] },
       });
       if (!patch.ok) {
         return NextResponse.json({ success: false, message: "저장에 실패했습니다." }, { status: 500 });
@@ -166,16 +103,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: {
-          generated: true,
           artifact: gen.artifact,
           slots: gen.artifact.slots,
-          messages: toWorkspaceMessages(mergedState.featurePlanningWorkspaceChatV1?.messages ?? nextMessages),
+          messages: toWorkspaceMessages(mergedState.featurePlanningWorkspaceChatV1?.messages ?? [gen.aiMessage]),
         },
       });
     })
     );
   } catch (error) {
-    console.error("POST /api/feature-planning/initialize error:", error);
-    return NextResponse.json({ success: false, message: "초기화 중 오류가 발생했습니다." }, { status: 500 });
+    console.error("POST /api/feature-planning/reseed-first-message error:", error);
+    return NextResponse.json({ success: false, message: "처리 중 오류가 발생했습니다." }, { status: 500 });
   }
 }

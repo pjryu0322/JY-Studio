@@ -1,12 +1,18 @@
 import {
-  buildFeaturePlanningChatSystemPrompt,
-  buildFeaturePlanningChatUserPrompt,
-  type FeaturePlanningChatPlanningContextV1,
-} from "@/lib/featurePlanning/buildFeaturePlanningChatPrompt";
+  buildFeaturePlanningV2ChatSystemPrompt,
+  buildFeaturePlanningV2UserPromptFromBlocks,
+  estimateTokensRough,
+} from "@/lib/featurePlanning/buildFeaturePlanningPrompt";
+import {
+  mergeFeaturePlanningMemory,
+  parsePlanningMemoryPatch,
+} from "@/lib/featurePlanning/featurePlanningMemory";
+import { recordFeaturePlanningOpenAi } from "@/lib/debug/promptTimelineStore";
+import type { FeaturePlanningPromptMetricsV1 } from "@/lib/debug/promptTimelineTypes";
 import { ensureFeaturePlanningQuestionSuffix } from "@/lib/featurePlanning/featurePlanningInteractiveBubble";
 import { openAiChatJsonText, safeJsonParse } from "@/lib/featurePlanning/featurePlanningOpenAi";
 import type { FeaturePlanningTopicV1 } from "@/lib/featurePlanning/featurePlanningTopic";
-import { parsePlanningTopic } from "@/lib/featurePlanning/featurePlanningTopic";
+import { normalizePlanningTopicTransition, parsePlanningTopic } from "@/lib/featurePlanning/featurePlanningTopic";
 import {
   mergePlannerArtifactPreservingLegacySlots,
   stripLegacyRoleSlotsFromNewInitializeArtifact,
@@ -16,6 +22,11 @@ import {
   parseFeaturePlanningSlotsArtifactV1,
   type FeaturePlanningSlotsArtifactV1,
 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import {
+  buildFeaturePlanningCompactBlocks,
+  memorySnapshotForLog,
+} from "@/lib/featurePlanning/summarizeFeaturePlanningContext";
+import type { FeaturePlanningWorkspaceChatMessageV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 
 export type FeaturePlanningPlannerTurnMetaV1 = {
   readonly newFeatureCandidates: readonly string[];
@@ -57,28 +68,95 @@ function parseNextQuestions(o: Record<string, unknown>): string[] {
   return legacy ? [legacy] : [];
 }
 
+function logChatTurn(
+  projectId: string,
+  input: {
+    readonly model: string;
+    readonly system: string;
+    readonly user: string;
+    readonly status: "SUCCESS" | "FAILED";
+    readonly responseText?: string;
+    readonly parsedJson?: string;
+    readonly errorMessage?: string;
+    readonly promptMetrics?: FeaturePlanningPromptMetricsV1 | null;
+  }
+): void {
+  const pid = projectId.trim();
+  if (!pid) return;
+  recordFeaturePlanningOpenAi({
+    projectId: pid,
+    purpose: "FEATURE_PLANNING_CHAT",
+    model: input.model,
+    systemPrompt: input.system,
+    userPrompt: input.user,
+    status: input.status,
+    responseText: input.responseText,
+    parsedJson: input.parsedJson,
+    errorMessage: input.errorMessage,
+    promptMetrics: input.promptMetrics ?? null,
+  });
+}
+
 export async function runFeaturePlanningChatLlm(input: {
+  readonly projectId: string;
   readonly artifact: FeaturePlanningSlotsArtifactV1;
-  readonly chatTranscript: string;
   readonly userMessage: string;
-  readonly planningContext: FeaturePlanningChatPlanningContextV1;
+  readonly lastAssistantMessage?: string;
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly requirementsStateJson: unknown;
+  readonly workspaceMessages: readonly FeaturePlanningWorkspaceChatMessageV1[];
   readonly apiKey: string;
   readonly model: string;
 }): Promise<FeaturePlanningChatLlmOk | FeaturePlanningChatLlmErr> {
+  const pid = input.projectId.trim();
   const currentTopic: FeaturePlanningTopicV1 = input.artifact.planningTopic ?? "FEATURES";
-  const system = buildFeaturePlanningChatSystemPrompt();
-  const user = buildFeaturePlanningChatUserPrompt({
+  const system = buildFeaturePlanningV2ChatSystemPrompt();
+  const compact = buildFeaturePlanningCompactBlocks({
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
+    requirementsStateJson: input.requirementsStateJson,
     artifact: input.artifact,
-    chatTranscript: input.chatTranscript,
+    workspaceMessages: input.workspaceMessages,
     userMessage: input.userMessage,
     currentTopic,
-    planningContext: input.planningContext,
+    memory: input.artifact.planningMemoryV1,
+    lastAssistantSnippet: input.lastAssistantMessage,
   });
-  const res = await openAiChatJsonText(input.apiKey, input.model, system, user, { label: "기능 정리 플래너" });
-  if (!res.ok) return res;
+  const user = buildFeaturePlanningV2UserPromptFromBlocks(compact);
+
+  const res = await openAiChatJsonText(input.apiKey, input.model, system, user, { label: "기능 정리 플래너", skipTimeline: true });
+  const metricsBase: FeaturePlanningPromptMetricsV1 = {
+    tokenEstimateIn: estimateTokensRough(system.length + user.length),
+    compressedContextSize: compact.compressedContextChars + compact.recentConversationChars,
+    topic: currentTopic,
+    memoryStateSnapshot: memorySnapshotForLog(input.artifact.planningMemoryV1),
+  };
+
+  if (!res.ok) {
+    logChatTurn(pid, {
+      model: input.model,
+      system,
+      user,
+      status: "FAILED",
+      responseText: undefined,
+      errorMessage: `${res.code}: ${res.message}`,
+      promptMetrics: metricsBase,
+    });
+    return res;
+  }
 
   const root = safeJsonParse(res.text);
   if (!root || typeof root !== "object") {
+    logChatTurn(pid, {
+      model: input.model,
+      system,
+      user,
+      status: "FAILED",
+      responseText: res.text,
+      errorMessage: "AI JSON 파싱에 실패했습니다.",
+      promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(res.text.length) },
+    });
     return { ok: false, code: "PARSE", message: "AI JSON 파싱에 실패했습니다." };
   }
   const o = root as Record<string, unknown>;
@@ -97,12 +175,22 @@ export async function runFeaturePlanningChatLlm(input: {
     generatedAt: input.artifact.generatedAt,
   });
   if (!artifactBase) {
+    logChatTurn(pid, {
+      model: input.model,
+      system,
+      user,
+      status: "FAILED",
+      responseText: res.text,
+      errorMessage: "updatedSlots 스키마 오류",
+      promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(res.text.length) },
+    });
     return { ok: false, code: "SCHEMA", message: "기능 정리 AI 응답 형식이 올바르지 않습니다." };
   }
 
   let artifact: FeaturePlanningSlotsArtifactV1 = {
     ...artifactBase,
-    planningTopic: parsePlanningTopic(o.planningTopic) ?? input.artifact.planningTopic ?? "FEATURES",
+    planningTopic: currentTopic,
+    planningMemoryV1: input.artifact.planningMemoryV1,
   };
 
   const aiMessage = typeof o.aiMessage === "string" ? o.aiMessage.trim() : "";
@@ -118,6 +206,15 @@ export async function runFeaturePlanningChatLlm(input: {
     : [];
 
   if (!aiMessage) {
+    logChatTurn(pid, {
+      model: input.model,
+      system,
+      user,
+      status: "FAILED",
+      responseText: res.text,
+      errorMessage: "aiMessage 비어 있음",
+      promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(res.text.length) },
+    });
     return { ok: false, code: "NO_MESSAGE", message: "aiMessage가 비어 있습니다." };
   }
 
@@ -140,13 +237,47 @@ export async function runFeaturePlanningChatLlm(input: {
   ]);
   artifact = mergePlannerArtifactPreservingLegacySlots(input.artifact, artifact);
 
+  const proposedTopic = parsePlanningTopic(o.planningTopic);
+  const nextTopic = normalizePlanningTopicTransition(currentTopic, proposedTopic);
+
+  const memPatch = parsePlanningMemoryPatch(o.planningMemory);
+  let mem = mergeFeaturePlanningMemory(input.artifact.planningMemoryV1, memPatch);
+  if (nextTopic !== currentTopic && currentTopic !== "DONE") {
+    mem = mergeFeaturePlanningMemory(mem, {
+      confirmedTopics: [currentTopic],
+      pendingTopic: nextTopic,
+    });
+  }
+
   artifact = {
     ...artifact,
-    planningTopic: parsePlanningTopic(o.planningTopic) ?? artifact.planningTopic ?? "FEATURES",
+    planningTopic: nextTopic,
+    planningMemoryV1: mem,
   };
 
   const resultSummary = buildResultSummary(changeSummary);
   const composed = ensureFeaturePlanningQuestionSuffix(composeTurnText(aiMessage, nextQuestions));
+
+  let parsedForLog: string;
+  try {
+    parsedForLog = JSON.stringify(o).slice(0, 12_000);
+  } catch {
+    parsedForLog = "";
+  }
+  logChatTurn(pid, {
+    model: input.model,
+    system,
+    user,
+    status: "SUCCESS",
+    responseText: res.text,
+    parsedJson: parsedForLog || undefined,
+    promptMetrics: {
+      ...metricsBase,
+      tokenEstimateOut: estimateTokensRough(res.text.length),
+      topic: nextTopic,
+      memoryStateSnapshot: memorySnapshotForLog(artifact.planningMemoryV1),
+    },
+  });
 
   return {
     ok: true,

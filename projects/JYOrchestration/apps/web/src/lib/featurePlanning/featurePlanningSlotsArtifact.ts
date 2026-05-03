@@ -3,6 +3,8 @@
  * `Project.requirementsStateJson.featurePlanningSlotsV1`에 저장.
  */
 
+import type { FeaturePlanningMemoryV1 } from "@/lib/featurePlanning/featurePlanningMemory";
+import { parseStoredPlanningMemoryV1 } from "@/lib/featurePlanning/featurePlanningMemory";
 import type { FeaturePlanningTopicV1 } from "@/lib/featurePlanning/featurePlanningTopic";
 import { parsePlanningTopic } from "@/lib/featurePlanning/featurePlanningTopic";
 
@@ -72,6 +74,8 @@ export type FeaturePlanningSlotsArtifactV1 = {
   priorStepActorRoles?: readonly string[];
   /** 대화 진행 주제(단계별 집중) */
   planningTopic?: FeaturePlanningTopicV1;
+  /** 대화 맥락 요약(압축 메모리) */
+  planningMemoryV1?: FeaturePlanningMemoryV1;
 };
 
 export function normalizeFeaturePlanningSlotType(raw: unknown): FeaturePlanningSlotType {
@@ -91,8 +95,9 @@ function parseSourceRef(raw: unknown): FeaturePlanningSourceRef | null {
   if (!sourceType) return null;
   const sourceId = typeof o.sourceId === "string" ? o.sourceId.trim() : "";
   const summaryRaw = typeof o.summary === "string" ? o.summary.trim() : "";
-  const summary = summaryRaw || (sourceType === "USER_MESSAGE" ? "(사용자 발화)" : "");
-  if (!summary) return null;
+  const summary =
+    summaryRaw ||
+    (sourceType === "USER_MESSAGE" ? "(사용자 발화)" : "(요약 없음)");
   return { sourceType, sourceId: sourceId || "—", summary: summary.slice(0, 2000) };
 }
 
@@ -181,7 +186,11 @@ function parsePrototypeReadiness(raw: unknown): FeaturePlanningPrototypeReadines
 export function parseFeaturePlanningSlotsArtifactV1(raw: unknown): FeaturePlanningSlotsArtifactV1 | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const slotsRaw = Array.isArray(o.slots) ? o.slots : null;
+  const slotsRaw = Array.isArray(o.slots)
+    ? o.slots
+    : Array.isArray((o as { updatedSlots?: unknown }).updatedSlots)
+      ? ((o as { updatedSlots: unknown[] }).updatedSlots)
+      : null;
   if (!slotsRaw) return null;
   const slots = slotsRaw.map(parseSlot).filter((x): x is FeaturePlanningSlotV1 => Boolean(x));
   if (slots.length === 0) return null;
@@ -218,6 +227,8 @@ export function parseFeaturePlanningSlotsArtifactV1(raw: unknown): FeaturePlanni
     ? priorRaw.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 48)
     : [];
   const planningTopic = parsePlanningTopic(o.planningTopic);
+  const memRaw = (o as { planningMemoryV1?: unknown }).planningMemoryV1 ?? (o as { planningMemory?: unknown }).planningMemory;
+  const planningMemoryV1 = parseStoredPlanningMemoryV1(memRaw);
   return {
     version,
     slots,
@@ -228,6 +239,7 @@ export function parseFeaturePlanningSlotsArtifactV1(raw: unknown): FeaturePlanni
     ...(userEdited ? { userEdited: true } : {}),
     ...(priorStepActorRoles.length ? { priorStepActorRoles } : {}),
     ...(planningTopic ? { planningTopic } : {}),
+    ...(planningMemoryV1 ? { planningMemoryV1 } : {}),
   };
 }
 

@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { getPromptTimelineProjectId, isPromptTimelineDebugServer } from "@/lib/debug/promptTimelineDebug";
-import type { PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
+import type {
+  FeaturePlanningPromptLogStatus,
+  FeaturePlanningPromptPurpose,
+} from "@/lib/debug/featurePlanningPromptPurpose";
+import type { FeaturePlanningPromptMetricsV1, PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
 
 const MAX_BODY = 12_000;
 const MAX_PER_PROJECT = 80;
@@ -16,7 +19,6 @@ function trunc(s: string, max = MAX_BODY): string {
 const byProject = new Map<string, PromptTimelineEntry[]>();
 
 function push(projectId: string, entry: PromptTimelineEntry): void {
-  if (!isPromptTimelineDebugServer()) return;
   const id = projectId.trim();
   if (!id) return;
   const list = byProject.get(id) ?? [];
@@ -31,53 +33,46 @@ export function getPromptTimelineEntries(projectId: string): readonly PromptTime
   return [...(byProject.get(id) ?? [])].reverse();
 }
 
-export function recordOpenAiJsonChatRound(input: {
+/** 기능정리 OpenAI 호출 — projectId 고정, purpose·상태·JSON 미리보기 포함 */
+export function recordFeaturePlanningOpenAi(input: {
   readonly projectId: string;
-  readonly label: string;
+  readonly purpose: FeaturePlanningPromptPurpose;
   readonly model: string;
-  readonly system: string;
-  readonly user: string;
-  readonly ok: boolean;
-  readonly assistantText?: string;
+  readonly systemPrompt: string;
+  readonly userPrompt: string;
+  readonly status: FeaturePlanningPromptLogStatus;
+  readonly responseText?: string;
+  readonly parsedJson?: string;
   readonly errorMessage?: string;
+  readonly promptMetrics?: FeaturePlanningPromptMetricsV1 | null;
 }): void {
-  if (!isPromptTimelineDebugServer()) return;
-  const outbound = [`[system]\n${trunc(input.system)}`, `[user]\n${trunc(input.user)}`].join("\n\n---\n\n");
-  const inbound = input.ok
-    ? `[assistant]\n${trunc(input.assistantText ?? "")}`
-    : `[error]\n${trunc(input.errorMessage ?? "unknown")}`;
-  push(input.projectId, {
-    id: `oa_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+  const pid = input.projectId.trim();
+  if (!pid) return;
+  const metricsLine =
+    input.promptMetrics && Object.keys(input.promptMetrics).length ?
+      `\n\n---\n\n[promptMetrics]\n${trunc(JSON.stringify(input.promptMetrics), 2000)}`
+    : "";
+  const outbound = [`purpose=${input.purpose}`, `[system]\n${trunc(input.systemPrompt)}`, `[user]\n${trunc(input.userPrompt)}${metricsLine}`].join(
+    "\n\n---\n\n"
+  );
+  const preview = input.parsedJson ? trunc(input.parsedJson, 6000) : null;
+  const inbound =
+    input.status === "SUCCESS"
+      ? [`[response]\n${trunc(input.responseText ?? "")}`, preview ? `[parsedJson]\n${preview}` : ""].filter(Boolean).join("\n\n")
+      : `[FAILED]\n${trunc(input.errorMessage ?? "unknown")}`;
+  push(pid, {
+    id: `fp_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
     at: new Date().toISOString(),
     channel: "openai",
-    label: input.label,
+    label: `기능정리 · ${input.purpose}`,
     model: input.model,
     outbound,
     inbound,
-  });
-}
-
-/** AsyncLocalStorage에 projectId가 있을 때만 기록 (요청 범위 한정). */
-export function recordOpenAiJsonChatRoundFromContext(input: {
-  readonly label: string;
-  readonly model: string;
-  readonly system: string;
-  readonly user: string;
-  readonly ok: boolean;
-  readonly assistantText?: string;
-  readonly errorMessage?: string;
-}): void {
-  const projectId = getPromptTimelineProjectId();
-  if (!projectId) return;
-  recordOpenAiJsonChatRound({
-    projectId,
-    label: input.label,
-    model: input.model,
-    system: input.system,
-    user: input.user,
-    ok: input.ok,
-    assistantText: input.assistantText,
-    errorMessage: input.errorMessage,
+    purpose: input.purpose,
+    status: input.status,
+    errorMessage: input.status === "FAILED" ? (input.errorMessage ?? null) : null,
+    parsedJsonPreview: preview,
+    promptMetrics: input.promptMetrics ?? null,
   });
 }
 
@@ -92,7 +87,6 @@ export function recordCursorAgentLaunch(input: {
   readonly error?: string;
   readonly responseSnippet?: string;
 }): void {
-  if (!isPromptTimelineDebugServer()) return;
   const outbound = [`POST ${input.launchUrl}`, `[prompt]\n${trunc(input.promptText)}`].join("\n\n");
   const inbound = input.ok
     ? `[응답 OK] agentId=${input.agentId ?? "(없음)"}\n${trunc(input.responseSnippet ?? "")}`

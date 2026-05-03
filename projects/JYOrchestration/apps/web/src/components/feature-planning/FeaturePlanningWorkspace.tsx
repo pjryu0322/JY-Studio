@@ -76,28 +76,30 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
         slotDigestLoading={shell.slotDigestLoading}
         screenLabel={WORKSPACE_SECTION_META.featurePlanningChat.fullLabel}
         emptyHint={
-          !shell.initLoading && !shell.loading && !shell.slotDigestLoading && displayMessages.length === 0 ? (
-            <div
-              style={{
-                justifySelf: "start",
-                maxWidth: "min(100%, 620px)",
-                width: "100%",
-                minWidth: 0,
-                padding: "12px 14px",
-                borderRadius: 14,
-                border: `1px solid ${t.border}`,
-                background: t.bgCard,
-                fontSize: 14,
-                color: t.textSecondary,
-                lineHeight: 1.65,
-                whiteSpace: "pre-wrap",
-              }}
-            >
-              {shell.artifact?.slots?.length
-                ? "대화를 불러오는 중 문제가 있었습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해 주세요."
-                : "기능 정리 초안을 준비한 뒤 AI 기획자가 이곳에서 질문을 드립니다.\n\n초안 준비가 끝나지 않았다면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요."}
-            </div>
-          ) : null
+          shell.initError
+            ? null
+            : !shell.initLoading && !shell.loading && !shell.slotDigestLoading && displayMessages.length === 0 ? (
+                <div
+                  style={{
+                    justifySelf: "start",
+                    maxWidth: "min(100%, 620px)",
+                    width: "100%",
+                    minWidth: 0,
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    border: `1px solid ${t.border}`,
+                    background: t.bgCard,
+                    fontSize: 14,
+                    color: t.textSecondary,
+                    lineHeight: 1.65,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {shell.artifact?.slots?.length
+                    ? "대화를 불러오는 중 문제가 있었습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해 주세요."
+                    : "기능 정리 초안을 준비한 뒤 AI 기획자가 이곳에서 질문을 드립니다.\n\n초안 준비가 끝나지 않았다면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요."}
+                </div>
+              ) : null
         }
       />
     </WorkspaceMainPanel>
@@ -142,6 +144,31 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
     <div className={styles.root}>
       <ScreenLabel label={WORKSPACE_SECTION_META.featurePlanningRoot.fullLabel} visible={showScreenLabels} />
       {shell.loadError ? <div role="alert" className={styles.notice}>{shell.loadError}</div> : null}
+      {shell.initError ? (
+        <div
+          role="alert"
+          className={styles.notice}
+          style={{
+            borderColor: "#fecaca",
+            background: "#fff1f2",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#9f1239" }}>기능정리 초안 생성에 실패했습니다.</div>
+          <div style={{ fontSize: 14, color: t.textSecondary, lineHeight: 1.55 }}>{shell.initError}</div>
+          <button
+            type="button"
+            className={styles.structHintBtn}
+            onClick={() => shell.retryInitialize()}
+            style={{ alignSelf: "flex-start" }}
+          >
+            다시 생성
+          </button>
+        </div>
+      ) : null}
       {shell.notice ? <div role="status" className={styles.notice}>{shell.notice}</div> : null}
       {shell.showStructuralRegenerateHint ? (
         <div role="region" aria-label="기능 정리 구조 안내" className={styles.structHint}>

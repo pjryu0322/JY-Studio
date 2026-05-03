@@ -27,7 +27,7 @@ export async function runFeaturePlanningInitializeLlm(
 ): Promise<FeaturePlanningInitializeLlmOk | FeaturePlanningInitializeLlmErr> {
   const system = buildFeaturePlanningInitializeSystemPrompt();
   const user = buildFeaturePlanningInitializeUserPrompt(ctx);
-  const res = await openAiChatJsonText(apiKey, model, system, user, { label: "기능 정리 슬롯 초기화" });
+  const res = await openAiChatJsonText(apiKey, model, system, user, { label: "기능 정리 슬롯 초기화", skipTimeline: true });
   if (!res.ok) return res;
 
   const root = safeJsonParse(res.text);
