@@ -1,0 +1,209 @@
+.root {
+  position: relative;
+  min-width: 0;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.trigger {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #0f172a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(100%, 360px);
+}
+
+button.trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  margin: 0;
+  text-align: inherit;
+}
+
+.sep {
+  color: #94a3b8;
+  font-weight: 900;
+}
+
+.count {
+  white-space: nowrap;
+  color: #334155;
+}
+
+.popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 6;
+  width: min(92vw, 520px);
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 24px 64px -28px rgba(15, 23, 42, 0.35);
+  overflow: hidden;
+}
+
+.popoverHeader {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #f8fafc;
+}
+
+.popoverTitle {
+  font-size: 12.5px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.barTrack {
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+  background: #0f766e;
+  transition: width 0.25s ease-out;
+}
+
+.popoverBody {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.muted {
+  font-size: 12px;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.strong {
+  font-size: 12px;
+  font-weight: 900;
+  color: #334155;
+}
+
+.teal {
+  font-size: 12px;
+  font-weight: 900;
+  color: #0f766e;
+}
+
+.btnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btnGhost {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #334155;
+  cursor: pointer;
+}
+
+.btnPrimary {
+  border: 1px solid #0f766e;
+  background: #ecfdf5;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #065f46;
+  cursor: pointer;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.legendLabel {
+  font-size: 12px;
+  font-weight: 900;
+  color: #64748b;
+}
+
+.legendItem {
+  font-size: 12px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slotCell {
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.slotLabel {
+  font-size: 12.5px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.slotIcon {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.recentRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.recentLabel {
+  font-size: 12px;
+  font-weight: 900;
+  color: #64748b;
+}
+
+.chip {
+  font-size: 11px;
+  font-weight: 900;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 3px 8px;
+}

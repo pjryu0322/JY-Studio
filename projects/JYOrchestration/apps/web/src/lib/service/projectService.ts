@@ -113,7 +113,7 @@ export async function createProject(input: CreateProjectInput) {
         status: PROJECT_LIFECYCLE_ACTIVE,
         workflowStatus: PROJECT_WORKFLOW_REQUIREMENTS_PENDING,
         // Preserve original creation description for project cards.
-        requirementsStateJson: mergeRequirementsStateJson({}, { originalProjectDescription: input.description ?? "" }),
+        requirementsStateJson: mergeRequirementsStateJson({}, { originalProjectDescription: input.description ?? "" }) as Prisma.InputJsonValue,
       },
     });
     await tx.projectMember.create({

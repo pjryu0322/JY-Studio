@@ -2,9 +2,12 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { APP_FLOW_STEPS, appFlowStepHref, type AppFlowStepId } from "@/lib/workflow/flow-state";
 import type { AppFlowGateSnapshot } from "@/lib/workflow/flow-gates";
 import { gateReasonForStep, stripStepReachableForUi } from "@/components/workflow/flowStripHelpers";
+import { WORKFLOW_NAV_STRIP_SCREEN_LABEL, workflowStepScreenLabel } from "@/lib/workflow/workflowStepMeta";
 
 export function FlowProgressStrip({
   current,
@@ -17,6 +20,7 @@ export function FlowProgressStrip({
   readonly loading: boolean;
   readonly projectId: string | null;
 }) {
+  const showScreenLabels = useShowScreenLabels();
   const stripStyle: CSSProperties = {
     display: "flex",
     flexWrap: "wrap",
@@ -31,33 +35,43 @@ export function FlowProgressStrip({
   };
 
   return (
-    <nav aria-label="전체 워크플로 단계" style={stripStyle}>
-      {APP_FLOW_STEPS.map((s, i) => {
-        const active = current === s.id;
-        const reachable = stripStepReachableForUi(s.id, current, gates);
-        const reason = gateReasonForStep(s.id, gates);
-        const labelStyle: CSSProperties = {
-          fontWeight: active ? 800 : 600,
-          color: active ? "#1d4ed8" : reachable ? "#334155" : "#94a3b8",
-          whiteSpace: "nowrap",
-        };
-        const sep = i > 0 ? <span style={{ color: "#cbd5e1" }}>→</span> : null;
-        return (
-          <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            {sep}
-            {reachable ? (
-              <Link href={appFlowStepHref(s.id, projectId?.trim() || null)} style={{ ...labelStyle, textDecoration: "none" }}>
-                {s.label}
-              </Link>
-            ) : (
-              <span title={reason ?? undefined} style={{ ...labelStyle, cursor: "not-allowed" }}>
-                {s.label}
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+      <ScreenLabel label={WORKFLOW_NAV_STRIP_SCREEN_LABEL} visible={showScreenLabels} />
+      <nav aria-label="전체 워크플로 단계" style={stripStyle}>
+        {APP_FLOW_STEPS.map((s, i) => {
+          const active = current === s.id;
+          const reachable = stripStepReachableForUi(s.id, current, gates);
+          const reason = gateReasonForStep(s.id, gates);
+          const labelStyle: CSSProperties = {
+            fontWeight: active ? 800 : 600,
+            color: active ? "#1d4ed8" : reachable ? "#334155" : "#94a3b8",
+            whiteSpace: "nowrap",
+          };
+          const sep = i > 0 ? <span style={{ color: "#cbd5e1" }}>→</span> : null;
+          const stepScreen = workflowStepScreenLabel(s.id);
+          return (
+            <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {sep}
+              <span
+                className="relative"
+                style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}
+              >
+                {stepScreen ? <ScreenLabel label={stepScreen} visible={showScreenLabels} /> : null}
+                {reachable ? (
+                  <Link href={appFlowStepHref(s.id, projectId?.trim() || null)} style={{ ...labelStyle, textDecoration: "none" }}>
+                    {s.label}
+                  </Link>
+                ) : (
+                  <span title={reason ?? undefined} style={{ ...labelStyle, cursor: "not-allowed" }}>
+                    {s.label}
+                  </span>
+                )}
               </span>
-            )}
-          </span>
-        );
-      })}
-      {loading ? <span style={{ marginLeft: 8, fontSize: 11, color: "#64748b" }}>상태 불러오는 중…</span> : null}
-    </nav>
+            </span>
+          );
+        })}
+        {loading ? <span style={{ marginLeft: 8, fontSize: 11, color: "#64748b" }}>상태 불러오는 중…</span> : null}
+      </nav>
+    </div>
   );
 }

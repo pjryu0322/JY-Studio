@@ -1,32 +1,14 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import { appFlowStepHref } from "@/lib/workflow/flow-state";
-import { uiTokens as t } from "@/components/ui/tokens";
-
-const MENU_Z = 72;
-
-function menuItemStyle(disabled: boolean): CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-    width: "100%",
-    textAlign: "left",
-    padding: "11px 14px",
-    border: "none",
-    borderRadius: t.radiusMd,
-    background: "transparent",
-    fontSize: 14,
-    fontWeight: 600,
-    color: disabled ? t.textMuted : t.textPrimary,
-    cursor: disabled ? "not-allowed" : "pointer",
-    boxSizing: "border-box",
-  };
-}
+import { WORKSPACE_HUB_CHAT_MENU_Z, workspaceComposerWideToolsPopoverStyle } from "@/components/workspace/workspaceComposerHubMenuLayout";
+import plusMenuStyles from "@/components/workspace/workspacePlusMenu.module.css";
 
 export function ServiceFlowActionMenu(p: {
+  /** `WorkspaceComposerPlusTrigger`의 `aria-controls`와 연결 */
+  readonly menuId?: string;
+  /** true면 외부(`WorkspaceComposerToolsMenuFrame`)가 role=menu·팝오버 셸을 제공 */
+  readonly omitMenuContainer?: boolean;
   readonly open: boolean;
   readonly onClose: () => void;
   readonly onOrganize: () => void;
@@ -42,34 +24,9 @@ export function ServiceFlowActionMenu(p: {
 
   const resultDisabled = !p.hasFlowContent;
 
-  return (
-    <div
-      role="menu"
-      aria-label="입력 도구"
-      style={{
-        position: "absolute",
-        left: 0,
-        bottom: "calc(100% + 8px)",
-        minWidth: 216,
-        padding: 6,
-        borderRadius: t.radiusLg,
-        border: `1px solid ${t.border}`,
-        background: t.bgCard,
-        boxShadow: t.shadowModal,
-        zIndex: MENU_Z,
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-      }}
-    >
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => {
-          p.onOrganize();
-        }}
-        style={menuItemStyle(false)}
-      >
+  const body = (
+    <>
+      <button type="button" role="menuitem" onClick={() => p.onOrganize()} className={plusMenuStyles.item}>
         흐름 정리요청
       </button>
       <button
@@ -79,7 +36,7 @@ export function ServiceFlowActionMenu(p: {
           p.onClose();
           p.onOpenMapping();
         }}
-        style={menuItemStyle(false)}
+        className={plusMenuStyles.item}
       >
         구조 편집
       </button>
@@ -91,7 +48,7 @@ export function ServiceFlowActionMenu(p: {
           p.onViewResult();
         }}
         disabled={resultDisabled}
-        style={menuItemStyle(resultDisabled)}
+        className={plusMenuStyles.item}
       >
         결과물 보기
       </button>
@@ -102,7 +59,7 @@ export function ServiceFlowActionMenu(p: {
           p.onClose();
           p.onViewPrompt();
         }}
-        style={menuItemStyle(false)}
+        className={plusMenuStyles.item}
       >
         프롬프트 보기
       </button>
@@ -111,17 +68,20 @@ export function ServiceFlowActionMenu(p: {
         role="menuitem"
         onClick={() => p.onClose()}
         aria-disabled={!p.ideationReady}
-        style={{
-          ...menuItemStyle(!p.ideationReady),
-          textDecoration: "none",
-          display: "block",
-          opacity: p.ideationReady ? 1 : 0.55,
-          pointerEvents: p.ideationReady ? "auto" : "none",
-        }}
+        className={plusMenuStyles.item}
         title={!p.ideationReady ? p.ideationReadyNotice : "프로토타입 생성"}
       >
         프로토타입 생성
       </a>
+    </>
+  );
+
+  if (p.omitMenuContainer) return body;
+
+  return (
+    <div id={p.menuId} role="menu" aria-label="입력 도구" style={workspaceComposerWideToolsPopoverStyle(WORKSPACE_HUB_CHAT_MENU_Z)}>
+      {body}
     </div>
   );
 }
+

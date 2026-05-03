@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 
 function sortForSidebar(participants: readonly ParticipantOption[]): ParticipantOption[] {
   const ais = participants.filter((p) => p.kind === "ai");

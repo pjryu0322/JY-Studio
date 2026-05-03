@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { recordCursorAgentLaunch } from "@/lib/debug/promptTimelineStore";
 import { validateCursorAgentLaunchPayload } from "@/lib/execution/cursorAgentLaunchValidation";
 import { enhanceCursorErrorIfBaseBranchRelated, repoDisplayForGitError } from "@/lib/execution/gitBranchCursorError";
 import {
@@ -341,16 +342,54 @@ export async function launchCursorAgent(params: ExecuteCursorRelayParams): Promi
 
     if (!res.ok) {
       const raw = launchJson?.error ? String(launchJson.error) : `Cloud Agent 시작 실패 HTTP ${res.status}`;
+      recordCursorAgentLaunch({
+        projectId: params.projectId,
+        label: "Cursor Cloud Agent 시작",
+        promptText: executionPromptText,
+        launchUrl,
+        httpStatus: res.status,
+        ok: false,
+        error: enhanceCursorErrorIfBaseBranchRelated(raw, branchCtx),
+        responseSnippet: launchText.slice(0, 8000),
+      });
       return { ok: false, error: enhanceCursorErrorIfBaseBranchRelated(raw, branchCtx), logs };
     }
 
     const agentId = launchJson?.id?.trim();
     if (!agentId || !launchJson) {
+      recordCursorAgentLaunch({
+        projectId: params.projectId,
+        label: "Cursor Cloud Agent 시작",
+        promptText: executionPromptText,
+        launchUrl,
+        httpStatus: res.status,
+        ok: false,
+        error: "Cloud Agent 응답에 id가 없습니다.",
+        responseSnippet: launchText.slice(0, 8000),
+      });
       return { ok: false, error: "Cloud Agent 응답에 id가 없습니다.", logs };
     }
+    recordCursorAgentLaunch({
+      projectId: params.projectId,
+      label: "Cursor Cloud Agent 시작",
+      promptText: executionPromptText,
+      launchUrl,
+      httpStatus: res.status,
+      ok: true,
+      agentId,
+      responseSnippet: JSON.stringify(launchJson).slice(0, 8000),
+    });
     return { ok: true, agentId, launchJson, launchUrl, logs };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    recordCursorAgentLaunch({
+      projectId: params.projectId,
+      label: "Cursor Cloud Agent 시작",
+      promptText: executionPromptText,
+      launchUrl,
+      ok: false,
+      error: enhanceCursorErrorIfBaseBranchRelated(`Cursor 에이전트 시작 실패: ${msg}`, branchCtx),
+    });
     return { ok: false, error: enhanceCursorErrorIfBaseBranchRelated(`Cursor 에이전트 시작 실패: ${msg}`, branchCtx), logs };
   }
 }

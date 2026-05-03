@@ -2,6 +2,7 @@ export { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorks
 export { ServiceFlowHeader } from "@/components/service-flow/ServiceFlowHeader";
 export { ServiceFlowChatPanel } from "@/components/service-flow/ServiceFlowChatPanel";
 export { ServiceFlowComposer } from "@/components/service-flow/ServiceFlowComposer";
+export type { ServiceFlowActionMenuRenderContext } from "@/components/service-flow/ServiceFlowComposer";
 export { ServiceFlowActionMenu } from "@/components/service-flow/ServiceFlowActionMenu";
 export { ServiceFlowProgressSummary } from "@/components/service-flow/ServiceFlowProgressSummary";
 export { ServiceFlowMappingPanel } from "@/components/service-flow/ServiceFlowMappingPanel";

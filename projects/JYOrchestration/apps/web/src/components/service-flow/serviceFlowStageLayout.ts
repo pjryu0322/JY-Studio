@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { workspaceStandardChatScrollAreaStyle } from "@/components/workspace/workspaceStandardChatScroll";
 
 export const serviceFlowStageRootSectionStyle: CSSProperties = {
   flex: "1 1 auto",
@@ -34,15 +35,7 @@ export const serviceFlowStageMainChatStyle: CSSProperties = {
   position: "relative",
 };
 
-export const serviceFlowStageScrollAreaStyle: CSSProperties = {
-  flex: "1 1 auto",
-  minHeight: 0,
-  overflowY: "auto",
-  padding: "12px 20px 14px",
-  display: "grid",
-  gap: 10,
-  alignContent: "start",
-};
+export const serviceFlowStageScrollAreaStyle: CSSProperties = workspaceStandardChatScrollAreaStyle;
 
 export const serviceFlowStageComposerColumnStyle: CSSProperties = {
   display: "flex",

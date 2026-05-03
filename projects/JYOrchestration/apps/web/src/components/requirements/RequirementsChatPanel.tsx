@@ -21,65 +21,29 @@ import {
   type ProblemInterviewSlot,
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
-import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
-import { RequirementsDeliverableChatCard } from "@/components/requirements/RequirementsDeliverableChatCard";
+import { WorkspaceComposerFooter } from "@/components/workspace/WorkspaceComposerFooter";
+import { WorkspaceMessageList } from "@/components/workspace/WorkspaceMessageList";
+import { WorkspaceProgressPill } from "@/components/workspace/WorkspaceProgressPill";
+import { WorkspaceResultCard } from "@/components/workspace/WorkspaceResultCard";
+import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
+import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScroll";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
 import { displayedAiOrchestrator, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { uiTokens as t } from "@/components/ui/tokens";
+import {
+  WORKSPACE_STANDARD_CHAT_BODY_STYLE,
+  WORKSPACE_STANDARD_CHAT_HEADER_STYLE,
+  workspaceStandardChatBubbleShell,
+} from "@/components/workspace/workspaceStandardChatMessage";
 
-function roleLabel(role: RequirementsMessage["role"]): string {
-  if (role === "user") return "나";
-  if (role === "ai") return "AI";
-  if (role === "human") return "멤버";
-  return "시스템";
-}
-
-const userBubble = {
-  maxWidth: "min(100%, 520px)",
-  marginLeft: "auto" as const,
-  marginRight: 0,
-  padding: "14px 16px",
-  borderRadius: "18px 18px 6px 18px",
-  background: "linear-gradient(180deg, #0f766e 0%, #0d5c56 100%)",
-  color: "#fff",
-  border: "none",
-  fontSize: 15,
-  lineHeight: 1.55,
-  boxShadow: "0 10px 28px -14px rgba(13, 92, 86, 0.45)",
-  whiteSpace: "pre-wrap" as const,
-};
-
-const humanBubble = {
-  maxWidth: "min(100%, 560px)",
-  marginLeft: 0,
-  marginRight: "auto" as const,
-  padding: "14px 16px",
-  borderRadius: "18px 18px 18px 6px",
-  background: "#fff",
-  color: "#0f172a",
-  border: "1px solid #e2e8f0",
-  fontSize: 15,
-  lineHeight: 1.55,
-  boxShadow: "0 8px 24px -16px rgba(15, 23, 42, 0.12)",
-  whiteSpace: "pre-wrap" as const,
-};
-
-function aiCardShell(tone: "default" | "notice" | "error") {
-  const border =
-    tone === "error" ? "1px solid #fecaca" : tone === "notice" ? "1px solid #bae6fd" : "1px solid #e2e8f0";
-  const bg = tone === "error" ? "#fef2f2" : tone === "notice" ? "#f0f9ff" : "#ffffff";
-  return {
-    maxWidth: "min(100%, 640px)",
-    marginLeft: 0,
-    marginRight: "auto" as const,
-    borderRadius: 14,
-    border,
-    background: bg,
-    boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
-    overflow: "hidden" as const,
-  };
+function aiCardShell(tone: "default" | "notice" | "error"): CSSProperties {
+  const base = workspaceStandardChatBubbleShell("ai");
+  if (tone === "error") return { ...base, background: "#fef2f2", border: `1px solid #fecaca` };
+  if (tone === "notice") return { ...base, background: "#f0f9ff", border: `1px solid #bae6fd` };
+  return base;
 }
 
 export function RequirementsChatPanel({
@@ -125,7 +89,7 @@ export function RequirementsChatPanel({
   readonly memberControls?: { count: number; onOpen: () => void } | null;
 }) {
   const showScreenLabels = useShowScreenLabels();
-  const endRef = useRef<HTMLDivElement | null>(null);
+  const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -139,13 +103,6 @@ export function RequirementsChatPanel({
       messages[0].speakerId === VIRTUAL_AI_PLANNER_ID &&
       messages[0].meta?.internalType === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE
   );
-
-  useEffect(() => {
-    const t = window.requestAnimationFrame(() => {
-      endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    });
-    return () => window.cancelAnimationFrame(t);
-  }, [messages, typingIndicator]);
 
   const canQuote = Boolean(onInsertComposerPrompt);
   const canReply = Boolean(onSetReplyTo);
@@ -240,46 +197,6 @@ export function RequirementsChatPanel({
     }
   }, []);
 
-  const threadWrapStyle = useCallback(
-    (mine: boolean): CSSProperties => ({
-      position: "relative",
-      marginLeft: mine ? 0 : 18,
-      marginRight: mine ? 18 : 0,
-      paddingLeft: mine ? 0 : 12,
-      paddingRight: mine ? 12 : 0,
-    }),
-    []
-  );
-
-  const threadLineStyle = useCallback(
-    (mine: boolean): CSSProperties => ({
-      position: "absolute",
-      top: 2,
-      bottom: 2,
-      left: mine ? undefined : 2,
-      right: mine ? 2 : undefined,
-      width: 2,
-      borderRadius: 999,
-      background: "linear-gradient(180deg, rgba(148,163,184,0.05) 0%, rgba(148,163,184,0.45) 40%, rgba(148,163,184,0.05) 100%)",
-    }),
-    []
-  );
-
-  const threadLabelStyle = useMemo(
-    () =>
-      ({
-        fontSize: 11,
-        fontWeight: 900,
-        color: "#64748b",
-        letterSpacing: "0.02em",
-        marginBottom: 6,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-      }) satisfies CSSProperties,
-    []
-  );
-
   const hoverActionBtn = useMemo(
     () =>
       ({
@@ -302,257 +219,18 @@ export function RequirementsChatPanel({
 
   const interviewUi = ideationInterviewUi ?? null;
   const membersUi = memberControls ?? null;
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [slotDetailsOpen, setSlotDetailsOpen] = useState(false);
 
-  useEffect(() => {
-    if (!popoverOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      setPopoverOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [popoverOpen]);
+  const topChrome =
+    interviewUi || membersUi ? (
+      <RequirementsChatHeaderRow
+        ref={headerRef}
+        memberControls={membersUi}
+        leading={interviewUi ? <WorkspaceProgressPill interviewUi={interviewUi} headerRef={headerRef} /> : null}
+      />
+    ) : null;
 
-  useEffect(() => {
-    if (!popoverOpen) return;
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node | null;
-      if (!t) return;
-      if (headerRef.current?.contains(t)) return;
-      setPopoverOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [popoverOpen]);
-
-  return (
-    <section
-      data-testid="requirements-chat-panel"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        flex: "1 1 auto",
-        height: "100%",
-        minHeight: 0,
-        minWidth: 280,
-        maxWidth: "100%",
-        overflow: "hidden",
-      }}
-      aria-label="아이디어 구체화 채팅"
-    >
-      {interviewUi || membersUi ? (
-        <RequirementsChatHeaderRow
-          ref={headerRef}
-          memberControls={membersUi}
-          leading={
-            interviewUi ? (
-              <div style={{ position: "relative", minWidth: 0 }}>
-                <button
-                  type="button"
-                  onClick={() => setPopoverOpen((v) => !v)}
-                  style={{
-                    border: "1px solid #cbd5e1",
-                    background: "#fff",
-                    borderRadius: 999,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    fontWeight: 900,
-                    color: "#0f172a",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    maxWidth: "min(100%, 360px)",
-                  }}
-                  title="아이디어 정리도 상세 보기"
-                >
-                  <span style={{ whiteSpace: "nowrap" }}>아이디어 정리도 {interviewUi.readinessPercent}%</span>
-                  <span style={{ color: "#94a3b8", fontWeight: 900 }}>·</span>
-                  <span style={{ whiteSpace: "nowrap", color: "#334155" }}>
-                    {interviewUi.covered}/{interviewUi.total}
-                  </span>
-                </button>
-
-                {popoverOpen ? (
-                  <div
-                    role="dialog"
-                    aria-label="아이디어 정리도 상세"
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: "calc(100% + 8px)",
-                      zIndex: 6,
-                      width: "min(92vw, 520px)",
-                      borderRadius: 14,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      boxShadow: "0 24px 64px -28px rgba(15, 23, 42, 0.35)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div style={{ padding: "10px 12px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>
-                        아이디어 정리도 {interviewUi.readinessPercent}% · {interviewUi.covered}/{interviewUi.total}
-                      </div>
-                      <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
-                        <div
-                          style={{
-                            width: `${Math.min(100, Math.max(0, interviewUi.readinessPercent))}%`,
-                            height: "100%",
-                            borderRadius: 999,
-                            background: "#0f766e",
-                            transition: "width 0.25s ease-out",
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-                        <div style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
-                          확보 슬롯: {interviewUi.covered}/{interviewUi.total}
-                        </div>
-                        {interviewUi.nextSlot ? (
-                          <div style={{ fontSize: 12, fontWeight: 900, color: "#0f766e" }}>
-                            다음 필요 정보: {problemInterviewSlotLabelKr(interviewUi.nextSlot)}
-                          </div>
-                        ) : null}
-                        <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
-                          예상 남은 질문: {Math.max(0, interviewUi.remainingQuestionsEstimate)}개
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        <button
-                          type="button"
-                          onClick={() => setSlotDetailsOpen((v) => !v)}
-                          style={{
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
-                            borderRadius: 10,
-                            padding: "8px 10px",
-                            fontSize: 12,
-                            fontWeight: 900,
-                            color: "#334155",
-                            cursor: "pointer",
-                          }}
-                        >
-                          슬롯 상세 {slotDetailsOpen ? "접기" : "보기"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => interviewUi.onForceGeneratePlanNow()}
-                          style={{
-                            border: "1px solid #0f766e",
-                            background: "#ecfdf5",
-                            borderRadius: 10,
-                            padding: "8px 10px",
-                            fontSize: 12,
-                            fontWeight: 900,
-                            color: "#065f46",
-                            cursor: "pointer",
-                          }}
-                        >
-                          지금까지 내용으로 기획안 만들기
-                        </button>
-                      </div>
-
-                      {slotDetailsOpen ? (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                            <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>표시:</span>
-                            <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>✔ 완료</span>
-                            <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>△ 부분</span>
-                            <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>□ 미확보</span>
-                          </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                            {PROBLEM_INTERVIEW_SLOTS.map((slot) => {
-                              const level = interviewUi.slotState ? interviewSlotLevelFromState(interviewUi.slotState, slot) : "empty";
-                              const icon = level === "filled" ? "✔" : level === "partial" ? "△" : "□";
-                              const color =
-                                level === "filled" ? "#065f46" : level === "partial" ? "#92400e" : "#475569";
-                              const bg =
-                                level === "filled" ? "#ecfdf5" : level === "partial" ? "#fffbeb" : "#f8fafc";
-                              const border =
-                                level === "filled" ? "1px solid #a7f3d0" : level === "partial" ? "1px solid #fde68a" : "1px solid #e2e8f0";
-                              return (
-                                <div
-                                  key={slot}
-                                  style={{
-                                    border,
-                                    background: bg,
-                                    borderRadius: 12,
-                                    padding: "8px 10px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    gap: 10,
-                                  }}
-                                >
-                                  <span style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a" }}>{problemInterviewSlotLabelKr(slot)}</span>
-                                  <span style={{ fontSize: 12, fontWeight: 900, color }}>{icon}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {interviewUi.recentAskedSlots.length ? (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                              <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>최근 질문:</span>
-                              {interviewUi.recentAskedSlots.slice(-6).map((s, idx) => (
-                                <span
-                                  key={`${s}-${idx}`}
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: 900,
-                                    color: "#334155",
-                                    background: "#fff",
-                                    border: "1px solid #e2e8f0",
-                                    borderRadius: 999,
-                                    padding: "3px 8px",
-                                  }}
-                                >
-                                  {problemInterviewSlotLabelKr(s)}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null
-          }
-        />
-      ) : null}
-      <div
-        className="relative"
-        style={{
-          position: "relative",
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            position: "relative",
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            padding: "18px 18px 12px",
-            background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
-          }}
-        >
-        <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
-        {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
-
-        <div style={{ maxWidth: 720, margin: "0 auto", width: "100%" }}>
+  const messageBody = (
+    <>
           {messages === null ? (
             <div style={{ fontSize: 13, color: "#71717a", marginBottom: 12 }}>
               <ScreenLabel label="요구사항-채팅영역-로딩상태" visible={showScreenLabels} />
@@ -577,45 +255,35 @@ export function RequirementsChatPanel({
             const replied = replyToId ? messageById.get(replyToId) ?? null : null;
             const replyPreview = replied ? quoteTextFor(replied.content) : "";
             const replies = repliesByParentId.get(m.id) ?? [];
-            const meta = (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#71717a",
-                  paddingLeft: mine ? 0 : 4,
-                  paddingRight: mine ? 4 : 0,
-                  textAlign: mine ? "right" : "left",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: mine ? "flex-end" : "flex-start",
-                  gap: 8,
-                }}
-              >
-                <span>
-                  {roleLabel(m.role)}
-                  {m.speakerName || m.role === "ai"
-                    ? ` · ${
-                        m.role === "ai" && !showInternalAgents ? displayedAiOrchestrator().name : String(m.speakerName ?? "").trim()
-                      }`
-                    : ""}{" "}
-                  ·{" "}
-                  {new Date(m.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-                  {showToMeta ? (
-                    <span style={{ fontWeight: 600, color: "#94a3b8" }}> · To: {targetLine}</span>
-                  ) : null}
-                </span>
-                {replies.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => scrollToNextReply(m.id)}
-                    style={repliesBadgeStyle}
-                    title="답글로 이동(클릭마다 다음 답글 순환)"
-                  >
-                    답글 {replies.length}
-                  </button>
-                ) : null}
-              </div>
-            );
+            const timeStr = new Date(m.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+
+            const replyContextLine =
+              replyToId ? (
+                <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 8 }} title={replyToId}>
+                  <span>↪ 답글</span>
+                  {replied ? (
+                    <span style={{ fontWeight: 700, color: t.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {" "}
+                      · {replied.speakerName ? `${replied.speakerName} · ` : ""}
+                      {replyPreview || replyToId}
+                    </span>
+                  ) : (
+                    <span style={{ fontWeight: 700, color: t.textMuted }}> · {replyToId}</span>
+                  )}
+                </div>
+              ) : null;
+
+            const repliesNavBtn =
+              replies.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => scrollToNextReply(m.id)}
+                  style={repliesBadgeStyle}
+                  title="답글로 이동(클릭마다 다음 답글 순환)"
+                >
+                  답글 {replies.length}
+                </button>
+              ) : null;
 
             if (mine) {
               const text = normalizeRequirementsMessageText(m.content);
@@ -629,39 +297,27 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}
+                  style={{ justifySelf: "end", maxWidth: "78%", width: "100%", minWidth: 0 }}
                 >
-                  {replyToId ? (
-                    <div style={threadWrapStyle(true)}>
-                      <div aria-hidden style={threadLineStyle(true)} />
-                      <div style={threadLabelStyle} title={replyToId}>
-                        <span>↪ 답글</span>
-                        {replied ? (
-                          <span style={{ fontWeight: 700, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {replied.speakerName ? `${replied.speakerName} · ` : ""}
-                            {replyPreview || replyToId}
-                          </span>
-                        ) : (
-                          <span style={{ fontWeight: 700, color: "#94a3b8" }}>{replyToId}</span>
-                        )}
-                      </div>
+                  <div style={workspaceStandardChatBubbleShell("user")}>
+                    {replyContextLine}
+                    <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                      <span style={{ flex: "1 1 auto", minWidth: 0 }}>
+                        사용자
+                        {showToMeta ? <span style={{ fontWeight: 600, color: t.textMuted }}> · To: {targetLine}</span> : null}
+                        <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
+                      </span>
+                      {repliesNavBtn}
                     </div>
-                  ) : null}
-                  {replyToId ? (
-                    <div style={threadWrapStyle(true)}>
-                      <div aria-hidden style={threadLineStyle(true)} />
-                      <div style={userBubble}>{text}</div>
-                    </div>
-                  ) : (
-                    <div style={userBubble}>{text}</div>
-                  )}
-                  {meta}
+                    <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
+                  </div>
                 </div>
               );
             }
 
             if (m.role === "human") {
               const text = normalizeRequirementsMessageText(m.content);
+              const memberName = String(m.speakerName ?? "").trim() || "멤버";
               return (
                 <div
                   key={m.id}
@@ -672,28 +328,19 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}
+                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}
                 >
-                  {meta}
-                  {replyToId ? (
-                    <div style={threadWrapStyle(false)}>
-                      <div aria-hidden style={threadLineStyle(false)} />
-                      <div style={threadLabelStyle} title={replyToId}>
-                        <span>↪ 답글</span>
-                        {replied ? (
-                          <span style={{ fontWeight: 700, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {replied.speakerName ? `${replied.speakerName} · ` : ""}
-                            {replyPreview || replyToId}
-                          </span>
-                        ) : (
-                          <span style={{ fontWeight: 700, color: "#94a3b8" }}>{replyToId}</span>
-                        )}
-                      </div>
-                      <div style={humanBubble}>{text}</div>
+                  <div style={workspaceStandardChatBubbleShell("member")}>
+                    {replyContextLine}
+                    <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                      <span style={{ flex: "1 1 auto", minWidth: 0 }}>
+                        멤버 · {memberName}
+                        <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
+                      </span>
+                      {repliesNavBtn}
                     </div>
-                  ) : (
-                    <div style={humanBubble}>{text}</div>
-                  )}
+                    <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
+                  </div>
                 </div>
               );
             }
@@ -724,7 +371,7 @@ export function RequirementsChatPanel({
                 !deliverPayload && !isErr && (isInterviewTurn || isInterviewCompleteNotice) && interviewUi ? (
                   <div
                     style={{
-                      margin: "10px 14px 0",
+                      margin: "6px 0 0",
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 8,
@@ -748,7 +395,7 @@ export function RequirementsChatPanel({
                   </div>
                 ) : null;
               const aiBody = deliverPayload ? (
-                <RequirementsDeliverableChatCard
+                <WorkspaceResultCard
                   payload={deliverPayload}
                   onOpenDocument={(id) => onOpenDeliverableDocument?.(id)}
                   onOpenList={(focusId) => onOpenDeliverableList?.(focusId)}
@@ -760,6 +407,10 @@ export function RequirementsChatPanel({
                 <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
               );
 
+              const aiSpeakerLine = !showInternalAgents
+                ? displayedAiOrchestrator().name
+                : String(m.speakerName ?? "").trim() || displayedAiOrchestrator().name;
+
               return (
                 <div
                   key={m.id}
@@ -770,98 +421,33 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}
+                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}
                 >
-                  {meta}
-                  {replyToId ? (
-                    <div style={threadWrapStyle(false)}>
-                      <div aria-hidden style={threadLineStyle(false)} />
-                      <div style={threadLabelStyle} title={replyToId}>
-                        <span>↪ 답글</span>
-                        {replied ? (
-                          <span style={{ fontWeight: 700, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {replied.speakerName ? `${replied.speakerName} · ` : ""}
-                            {replyPreview || replyToId}
-                          </span>
-                        ) : (
-                          <span style={{ fontWeight: 700, color: "#94a3b8" }}>{replyToId}</span>
-                        )}
-                      </div>
-                      <div
-                        style={{ ...aiCardShell(tone), position: "relative" }}
-                        onMouseEnter={() => setHoveredId(m.id)}
-                        onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
-                      >
-                        {interviewPurposeBadge}
-                        <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>{aiBody}</div>
-                        {showHoverActions && hoveredId === m.id ? (
-                          <div
-                            style={{
-                              position: "absolute",
-                              right: 10,
-                              top: 10,
-                              display: "flex",
-                              gap: 8,
-                              alignItems: "center",
-                            }}
-                            aria-label="메시지 액션"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!canQuote) return;
-                                const q = quoteTextFor(m.content);
-                                if (!q) return;
-                                onInsertComposerPrompt?.(`[인용: ${q}]\n`);
-                              }}
-                              style={hoverActionBtn}
-                              disabled={!canQuote}
-                              title="질문하기(인용 삽입)"
-                            >
-                              ↩ 질문하기
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!canReply) return;
-                                const q = quoteTextFor(m.content);
-                                onSetReplyTo?.(m.id, q);
-                              }}
-                              style={hoverActionBtn}
-                              disabled={!canReply}
-                              title="답글달기(스레드)"
-                            >
-                              💬 답글달기
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void copyToClipboard(text)}
-                              style={hoverActionBtn}
-                              title="복사"
-                            >
-                              📋 복사
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
+                  <div
+                    style={{ ...aiCardShell(tone), position: "relative" }}
+                    onMouseEnter={() => setHoveredId(m.id)}
+                    onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
+                  >
+                    {replyContextLine}
+                    <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                      <span style={{ flex: "1 1 auto", minWidth: 0 }}>
+                        AI · {aiSpeakerLine}
+                        <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
+                      </span>
+                      {repliesNavBtn}
                     </div>
-                  ) : (
-                    <div
-                      style={{ ...aiCardShell(tone), position: "relative" }}
-                      onMouseEnter={() => setHoveredId(m.id)}
-                      onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
-                    >
-                      {interviewPurposeBadge}
-                      <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#0f172a" }}>{aiBody}</div>
+                    {interviewPurposeBadge}
+                    <div style={{ ...WORKSPACE_STANDARD_CHAT_BODY_STYLE, marginTop: interviewPurposeBadge ? 6 : 0 }}>{aiBody}</div>
                     {showHoverActions && hoveredId === m.id ? (
                       <div
                         style={{
                           position: "absolute",
-                          right: 10,
-                          top: 10,
+                          right: 8,
+                          top: 8,
                           display: "flex",
                           gap: 8,
                           alignItems: "center",
+                          zIndex: 2,
                         }}
                         aria-label="메시지 액션"
                       >
@@ -903,7 +489,6 @@ export function RequirementsChatPanel({
                       </div>
                     ) : null}
                   </div>
-                  )}
                 </div>
               );
             }
@@ -921,23 +506,17 @@ export function RequirementsChatPanel({
                   }
                   messageRefs.current.set(m.id, el);
                 }}
-                style={{ marginBottom: 16, display: "flex", flexDirection: "column", gap: 6 }}
+                style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}
               >
-                {meta}
                 <div style={aiCardShell(isErr ? "error" : "notice")}>
-                  <div
-                    style={{
-                      padding: "10px 14px",
-                      borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
-                      background: isErr ? "#fee2e2" : "#f1f5f9",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: isErr ? "#991b1b" : "#475569",
-                    }}
-                  >
-                    시스템
+                  {replyContextLine}
+                  <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                    <span>
+                      시스템<span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
+                    </span>
+                    {repliesNavBtn}
                   </div>
-                  <div style={{ padding: "12px 14px 14px", fontSize: 15 }}>
+                  <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
                     <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
                   </div>
                 </div>
@@ -946,12 +525,16 @@ export function RequirementsChatPanel({
           })}
 
           {typingIndicator ? (
-            <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ fontSize: 11, color: "#71717a", paddingLeft: 4, textAlign: "left" }}>
-                AI · AI 기획자 · {new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-              </div>
+            <div style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}>
               <div style={aiCardShell("notice")}>
-                <div style={{ padding: "14px 16px", fontSize: 15, color: "#0f172a" }}>
+                <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                  AI · {displayedAiOrchestrator().name}
+                  <span style={{ fontWeight: 700, color: t.textMuted }}>
+                    {" "}
+                    · {new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
                   <span style={{ fontWeight: 800, marginRight: 6 }}>생각 중입니다</span>
                   <span className="jyo-typing" aria-label="typing indicator">
                     <span className="jyo-dot" />
@@ -969,12 +552,26 @@ export function RequirementsChatPanel({
               </div>
             </div>
           ) : null}
-          <div ref={endRef} />
-        </div>
-        </div>
+    </>
+  );
 
-        <RequirementsChatComposerFooter>{composer}</RequirementsChatComposerFooter>
-      </div>
-    </section>
+  return (
+    <WorkspaceShell
+      data-testid="requirements-chat-panel"
+      top={topChrome}
+      footer={<WorkspaceComposerFooter>{composer}</WorkspaceComposerFooter>}
+    >
+      <WorkspaceMessageList
+        endRef={endRef}
+        beforeMessages={
+          <>
+            <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
+            {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
+          </>
+        }
+      >
+        {messageBody}
+      </WorkspaceMessageList>
+    </WorkspaceShell>
   );
 }

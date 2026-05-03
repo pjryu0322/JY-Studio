@@ -15,7 +15,7 @@ import { ServiceFlowProgressSummary } from "@/components/service-flow/ServiceFlo
 import { ServiceFlowRemainingDecisionsDialog } from "@/components/service-flow/ServiceFlowRemainingDecisionsDialog";
 import { ServiceFlowSummaryPanel } from "@/components/service-flow/ServiceFlowSummaryPanel";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
-import { RequirementsMembersModal } from "@/components/requirements/RequirementsMembersModal";
+import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import { SERVICE_FLOW_STAGE_DECISION_SLOTS } from "@/components/service-flow/serviceFlowStageDerived";
 import {
   serviceFlowChipRowStyle,
@@ -186,13 +186,16 @@ export function RequirementsServiceFlowStage({
                 disabled={c.workspaceMode !== "chat" || w.replying}
                 placeholder="메시지를 입력하세요"
                 onOpenActions={() => w.setToolsOpen((v) => !v)}
+                onToolsOpenChange={w.setToolsOpen}
                 textAreaRef={w.composerTextareaRef}
                 targetPickerItems={serviceFlowComposerAtAtItems}
                 actionsOpen={w.toolsOpen}
-                actionMenu={
+                renderActionMenu={({ menuId, close }) => (
                   <ServiceFlowActionMenu
+                    omitMenuContainer
+                    menuId={menuId}
                     open={w.toolsOpen}
-                    onClose={() => w.setToolsOpen(false)}
+                    onClose={close}
                     onOrganize={w.requestOrganize}
                     onViewResult={() => c.setWorkspaceMode("summary")}
                     onViewPrompt={() => w.setToolsOpen(false)}
@@ -202,7 +205,7 @@ export function RequirementsServiceFlowStage({
                     ideationReadyNotice={ideationReadyNotice}
                     hasFlowContent={Boolean(c.actors.length || c.steps.length)}
                   />
-                }
+                )}
               />
             </div>
           </RequirementsChatComposerFooter>
@@ -217,7 +220,7 @@ export function RequirementsServiceFlowStage({
         </main>
       </div>
 
-      <RequirementsMembersModal
+      <WorkspaceParticipantsModal
         open={c.membersModalOpen}
         onClose={() => c.setMembersModalOpen(false)}
         participants={c.sidebarParticipants}

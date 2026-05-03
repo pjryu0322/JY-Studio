@@ -1,4 +1,4 @@
-import type { ParticipantOption } from "@/components/requirements/RequirementsParticipantBar";
+import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";

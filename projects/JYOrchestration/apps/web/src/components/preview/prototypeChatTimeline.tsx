@@ -15,20 +15,6 @@ import {
   type PrototypeChatBuiltMessage,
 } from "@/lib/prototype/buildPrototypeChatMessages";
 
-/** 요구사항 `RequirementsChatPanel` AI 카드와 동일한 톤 */
-const aiCardOuter: CSSProperties = {
-  maxWidth: "min(100%, 640px)",
-  marginLeft: 0,
-  marginRight: "auto",
-  width: "100%",
-  boxSizing: "border-box",
-  borderRadius: 14,
-  border: "1px solid #e2e8f0",
-  background: "#fff",
-  boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
-  overflow: "hidden",
-};
-
 const userBubbleStandard: CSSProperties = {
   maxWidth: "min(100%, 520px)",
   marginLeft: "auto",
@@ -512,8 +498,14 @@ export function PrototypeAiMessage(p: {
   return (
     <div
       style={{
-        alignSelf: "stretch",
-        ...aiCardOuter,
+        alignSelf: "flex-start",
+        width: "min(100%, 640px)",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        borderRadius: 14,
+        border: "1px solid #e2e8f0",
+        background: "#fff",
+        boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
         overflow: showPicker ? "visible" : "hidden",
       }}
     >
@@ -557,7 +549,7 @@ export function PrototypeUserMessage(p: { readonly text: string; readonly atLabe
 
 export function PrototypeSystemMessage(p: { readonly text: string }) {
   return (
-    <div style={{ alignSelf: "stretch", maxWidth: "min(100%, 640px)", marginLeft: 0, marginRight: "auto" }}>
+    <div style={{ alignSelf: "flex-start", maxWidth: "min(100%, 640px)", width: "100%" }}>
       <div
         style={{
           fontSize: 11,
@@ -685,7 +677,20 @@ export function PrototypeChatTimeline(p: {
             return <PrototypeUserMessage key={row.u.id} text={row.u.text} />;
           }
           return (
-            <div key={row.e.id} style={{ alignSelf: "stretch", ...aiCardOuter }}>
+            <div
+              key={row.e.id}
+              style={{
+                alignSelf: "flex-start",
+                width: "min(100%, 640px)",
+                maxWidth: "100%",
+                boxSizing: "border-box",
+                borderRadius: 14,
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                boxShadow: "0 8px 28px -18px rgba(15, 23, 42, 0.14)",
+                overflow: "hidden",
+              }}
+            >
               <div
                 style={{
                   padding: "10px 14px",
