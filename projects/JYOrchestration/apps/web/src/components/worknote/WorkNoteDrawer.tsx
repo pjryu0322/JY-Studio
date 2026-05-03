@@ -20,9 +20,10 @@ function defaultGeom(isNarrow: boolean): PanelGeom {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   if (isNarrow) {
-    const w = vw - 16;
-    const h = Math.min(Math.round(vh * 0.52), 420);
-    return { x: 8, y: vh - h - 12, w, h };
+    const w = vw;
+    const h = Math.min(Math.round(vh * 0.92), Math.max(280, vh - 56));
+    const y = vh - h;
+    return { x: 0, y, w, h };
   }
   const w = Math.max(400, Math.min(520, vw - 24));
   const h = clamp(Math.round(vh * 0.58), 320, 560);
@@ -182,7 +183,11 @@ export function WorkNoteDrawer(p: {
       lastEditorActiveIdRef.current = null;
       return;
     }
-    setGeom((prev) => prev ?? readStoredGeom() ?? defaultGeom(isNarrow));
+    if (isNarrow) {
+      setGeom(defaultGeom(true));
+    } else {
+      setGeom((prev) => prev ?? readStoredGeom() ?? defaultGeom(false));
+    }
     setPanelOpacity(readStoredOpacity());
   }, [p.open, isNarrow]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -241,6 +246,7 @@ export function WorkNoteDrawer(p: {
 
   const startMove = useCallback(
     (e: React.PointerEvent) => {
+      if (isNarrow) return;
       if (!geom) return;
       e.preventDefault();
       dragRef.current = { kind: "move", sx: e.clientX, sy: e.clientY, g: { ...geom } };
@@ -275,11 +281,12 @@ export function WorkNoteDrawer(p: {
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
     },
-    [geom]
+    [geom, isNarrow]
   );
 
   const startResize = useCallback(
     (e: React.PointerEvent) => {
+      if (isNarrow) return;
       e.preventDefault();
       e.stopPropagation();
       if (!geom) return;
@@ -308,7 +315,7 @@ export function WorkNoteDrawer(p: {
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
     },
-    [geom]
+    [geom, isNarrow]
   );
 
   const updateSelectionBubbleFromEditor = useCallback(() => {
@@ -429,50 +436,112 @@ export function WorkNoteDrawer(p: {
 
   if (!p.open || geom === null) return null;
 
+  const bubbleLeftClamped =
+    typeof window !== "undefined" && selectionBubble
+      ? Math.max(16, Math.min(selectionBubble.left, window.innerWidth - 16))
+      : selectionBubble?.left ?? 0;
+
   return (
-    <div
-      ref={panelRef}
-      data-work-note-panel
-      role="dialog"
-      aria-modal="false"
-      aria-label="메모"
-      style={{
-        position: "fixed",
-        left: geom.x,
-        top: geom.y,
-        width: geom.w,
-        height: geom.h,
-        zIndex: 89,
-        background: t.bgCard,
-        border: `1px solid ${t.border}`,
-        borderRadius: 14,
-        boxShadow: "0 16px 48px rgba(15, 23, 42, 0.18)",
-        opacity: panelOpacity,
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
-    >
+    <>
+      {isNarrow ? (
+        <button
+          type="button"
+          aria-label="메모 닫기"
+          onClick={() => p.onClose()}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 88,
+            border: 0,
+            padding: 0,
+            margin: 0,
+            background: t.overlayScrim,
+            cursor: "pointer",
+          }}
+        />
+      ) : null}
       <div
-        onPointerDown={startMove}
-        aria-label="메모 패널 위치 이동"
-        title="드래그해 위치 이동 · Esc로 닫기"
+        ref={panelRef}
+        data-work-note-panel
+        role="dialog"
+        aria-modal={isNarrow}
+        aria-label="메모"
         style={{
-          flex: "0 0 auto",
+          position: "fixed",
+          left: geom.x,
+          top: geom.y,
+          width: geom.w,
+          height: geom.h,
+          maxWidth: isNarrow ? "100%" : undefined,
+          zIndex: 89,
+          background: t.bgCard,
+          border: `1px solid ${t.border}`,
+          borderRadius: isNarrow ? "16px 16px 0 0" : 14,
+          boxShadow: "0 16px 48px rgba(15, 23, 42, 0.18)",
+          opacity: panelOpacity,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "10px 12px",
-          borderBottom: `1px solid ${t.border}`,
-          cursor: "grab",
-          userSelect: "none",
-          touchAction: "none",
+          flexDirection: "column",
+          minHeight: 0,
+          boxSizing: "border-box",
+          overflow: "hidden",
+          paddingBottom: isNarrow ? "calc(4px + env(safe-area-inset-bottom, 0px))" : undefined,
         }}
       >
-        <span style={{ flex: "1 1 auto", minHeight: 8, minWidth: 0 }} aria-hidden />
-      </div>
+        {isNarrow ? (
+          <div
+            style={{
+              flex: "0 0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              padding: "10px 12px",
+              borderBottom: `1px solid ${t.border}`,
+              userSelect: "none",
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 900, color: t.textPrimary }}>작업메모</span>
+            <button
+              type="button"
+              onClick={() => p.onClose()}
+              aria-label="닫기"
+              style={{
+                border: `1px solid ${t.border}`,
+                background: "#fff",
+                borderRadius: 10,
+                width: 36,
+                height: 36,
+                fontSize: 18,
+                lineHeight: 1,
+                fontWeight: 800,
+                color: t.textSecondary,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <div
+            onPointerDown={startMove}
+            aria-label="메모 패널 위치 이동"
+            title="드래그해 위치 이동 · Esc로 닫기"
+            style={{
+              flex: "0 0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "10px 12px",
+              borderBottom: `1px solid ${t.border}`,
+              cursor: "grab",
+              userSelect: "none",
+              touchAction: "none",
+            }}
+          >
+            <span style={{ flex: "1 1 auto", minHeight: 8, minWidth: 0 }} aria-hidden />
+          </div>
+        )}
 
       <div
         style={{
@@ -672,8 +741,10 @@ export function WorkNoteDrawer(p: {
             onScroll={() => setSelectionBubble(null)}
             style={{
               flex: "1 1 auto",
-              minHeight: 100,
+              minHeight: isNarrow ? 120 : 100,
               overflowY: "auto",
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-y",
               boxSizing: "border-box",
               borderRadius: 12,
               border: `1px solid ${t.borderStrong}`,
@@ -741,7 +812,7 @@ export function WorkNoteDrawer(p: {
           role="tooltip"
           style={{
             position: "fixed",
-            left: selectionBubble.left,
+            left: bubbleLeftClamped,
             top: selectionBubble.top,
             transform: "translateX(-50%)",
             zIndex: 100,
@@ -800,28 +871,30 @@ export function WorkNoteDrawer(p: {
         </div>
       ) : null}
 
-      <button
-        type="button"
-        aria-label="크기 조절"
-        onPointerDown={startResize}
-        style={{
-          position: "absolute",
-          right: 4,
-          bottom: 4,
-          width: 18,
-          height: 18,
-          padding: 0,
-          border: "none",
-          background: "transparent",
-          cursor: "nwse-resize",
-          touchAction: "none",
-          opacity: 0.45,
-        }}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-          <path d="M22 22h-4v-2h2v-2h2v4zm-6 0h-4v-2h4v2zm-6 0h-4v-2h4v2zm-6 0H2v-4h2v2h2v2zm16-6h-2v-4h2v4zm0-6h-2V6h2v4zm0-6h-2V2h4v4z" />
-        </svg>
-      </button>
+      {!isNarrow ? (
+        <button
+          type="button"
+          aria-label="크기 조절"
+          onPointerDown={startResize}
+          style={{
+            position: "absolute",
+            right: 4,
+            bottom: 4,
+            width: 18,
+            height: 18,
+            padding: 0,
+            border: "none",
+            background: "transparent",
+            cursor: "nwse-resize",
+            touchAction: "none",
+            opacity: 0.45,
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M22 22h-4v-2h2v-2h2v4zm-6 0h-4v-2h4v2zm-6 0h-4v-2h4v2zm-6 0H2v-4h2v2h2v2zm16-6h-2v-4h2v4zm0-6h-2V6h2v4zm0-6h-2V2h4v4z" />
+          </svg>
+        </button>
+      ) : null}
 
       <style>{`
         [data-work-note-panel] [contenteditable="true"]:empty:before {
@@ -835,5 +908,6 @@ export function WorkNoteDrawer(p: {
         }
       `}</style>
     </div>
+    </>
   );
 }

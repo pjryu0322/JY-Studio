@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { FeaturePlanningSlotsLlmContext } from "@/lib/featurePlanning/buildFeaturePlanningSlotsContext";
 import {
+  buildFeaturePlanningFlowEntryAnalyzeSystemPrompt,
   buildFeaturePlanningV2InitSystemPrompt,
   buildFeaturePlanningV2UserPromptFromBlocks,
   estimateTokensRough,
 } from "@/lib/featurePlanning/buildFeaturePlanningPrompt";
+import type { FeaturePlanningPromptPurpose } from "@/lib/debug/featurePlanningPromptPurpose";
 import {
   defaultFeaturePlanningMemory,
   mergeFeaturePlanningMemory,
@@ -46,6 +48,7 @@ function readSlotsFromInitResponse(o: Record<string, unknown>): unknown[] | null
 
 function logInit(
   projectId: string,
+  purpose: FeaturePlanningPromptPurpose,
   model: string,
   system: string,
   user: string,
@@ -59,7 +62,7 @@ function logInit(
 ): void {
   recordFeaturePlanningOpenAi({
     projectId,
-    purpose: "FEATURE_PLANNING_INIT",
+    purpose,
     model,
     systemPrompt: system,
     userPrompt: user,
@@ -81,8 +84,17 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
   readonly mode: FeaturePlanningInitialScreenMode;
   readonly existingArtifact?: FeaturePlanningSlotsArtifactV1 | null;
   readonly forceRegenerate?: boolean;
+  /** 타임라인 구분(기본 INIT) */
+  readonly promptPurpose?: FeaturePlanningPromptPurpose;
+  /** 서비스 흐름 확정 후 첫 진입용 message 형식 */
+  readonly entryMessageFormat?: "default" | "flow_entry";
+  /** flow_entry 시 message 2번째 줄에 넣을 단계명 */
+  readonly firstStepTitle?: string;
 }): Promise<FeaturePlanningInitialScreenOk | FeaturePlanningInitialScreenErr> {
   const projectId = input.projectId.trim();
+  const purpose = input.promptPurpose ?? "FEATURE_PLANNING_INIT";
+  const entryFmt = input.entryMessageFormat ?? "flow_entry";
+  const stepTitle = (input.firstStepTitle ?? "서비스").trim().slice(0, 120);
   const stateLine =
     input.mode === "chat_reseed"
       ? "[필수] 최상위 키 slots 배열로 반환(updatedSlots 금지). 저장된 슬롯을 그대로 복사한 뒤 message·nextQuestion만 새로 쓰세요. 대화만 비어 있는 재시드입니다."
@@ -95,14 +107,17 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
     : input.forceRegenerate && input.existingArtifact ? input.existingArtifact
     : null;
 
-  const system = buildFeaturePlanningV2InitSystemPrompt();
+  const system =
+    entryFmt === "flow_entry" ? buildFeaturePlanningFlowEntryAnalyzeSystemPrompt() : buildFeaturePlanningV2InitSystemPrompt();
+  const stateLineForUser =
+    entryFmt === "flow_entry" ? `${stateLine}\n\n[정리 우선 단계]\n${stepTitle}` : stateLine;
   const compact = buildFeaturePlanningCompactBlocks({
     projectName: input.ctx.projectName,
     projectDescription: input.ctx.projectDescription,
     requirementsStateJson: input.requirementsStateJson,
     artifact: artifactForPrompt,
     workspaceMessages: [],
-    userMessage: stateLine.slice(0, 400),
+    userMessage: stateLineForUser.slice(0, 400),
     currentTopic: "FEATURES",
     memory: artifactForPrompt?.planningMemoryV1 ?? defaultFeaturePlanningMemory(),
   });
@@ -117,9 +132,10 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
   const res = await openAiChatJsonText(input.apiKey, input.model, system, user, {
     label: "기능정리 초기 화면",
     skipTimeline: true,
+    temperature: 0.28,
   });
   if (!res.ok) {
-    logInit(projectId, input.model, system, user, "FAILED", {
+    logInit(projectId, purpose, input.model, system, user, "FAILED", {
       errorMessage: `${res.code}: ${res.message}`,
       promptMetrics: metricsBase,
     });
@@ -128,7 +144,7 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
 
   const root = safeJsonParse(res.text);
   if (!root || typeof root !== "object") {
-    logInit(projectId, input.model, system, user, "FAILED", {
+    logInit(projectId, purpose, input.model, system, user, "FAILED", {
       responseText: res.text,
       errorMessage: "JSON 파싱 실패",
       promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(res.text.length) },
@@ -139,7 +155,7 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
   const messageRaw = typeof o.message === "string" ? o.message.trim() : "";
   const nextQuestion = typeof o.nextQuestion === "string" ? o.nextQuestion.trim() : "";
   if (!messageRaw) {
-    logInit(projectId, input.model, system, user, "FAILED", {
+    logInit(projectId, purpose, input.model, system, user, "FAILED", {
       responseText: res.text,
       errorMessage: "message 비어 있음",
       promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(res.text.length) },
@@ -162,7 +178,7 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
   }
 
   if (!Array.isArray(slotsRaw) || slotsRaw.length === 0) {
-    logInit(projectId, input.model, system, user, "FAILED", {
+    logInit(projectId, purpose, input.model, system, user, "FAILED", {
       responseText: res.text,
       errorMessage: "slots 비어 있음",
       promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(res.text.length) },
@@ -216,7 +232,7 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
       at: now,
       plannerSurface: "initial_entry",
     };
-    logInit(projectId, input.model, system, user, "SUCCESS", {
+    logInit(projectId, purpose, input.model, system, user, "SUCCESS", {
       responseText: res.text,
       parsedJson: JSON.stringify({
         message: messageRaw,
@@ -235,7 +251,7 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
   }
 
   if (!parsedArtifact) {
-    logInit(projectId, input.model, system, user, "FAILED", {
+    logInit(projectId, purpose, input.model, system, user, "FAILED", {
       responseText: res.text,
       errorMessage: "슬롯 스키마 파싱 실패",
       promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(res.text.length) },
@@ -266,7 +282,7 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
     plannerSurface: "initial_entry",
   };
 
-  logInit(projectId, input.model, system, user, "SUCCESS", {
+  logInit(projectId, purpose, input.model, system, user, "SUCCESS", {
     responseText: res.text,
     parsedJson: JSON.stringify({ message: messageRaw, nextQuestion, planningTopic: topic, slotCount: artifact.slots.length }).slice(0, 12_000),
     promptMetrics: {

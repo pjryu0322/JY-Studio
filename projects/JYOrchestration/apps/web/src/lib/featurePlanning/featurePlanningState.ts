@@ -6,7 +6,7 @@ import type { FeaturePlanningTopicV1 } from "@/lib/featurePlanning/featurePlanni
 export function currentTaskInstructionForTopic(topic: FeaturePlanningTopicV1): string {
   switch (topic) {
     case "FEATURES":
-      return "핵심 기능 수정 초안을 번호 목록으로 보여주고, 구체적인 질문 1개만 하세요.";
+      return "[4]의 currentServiceStep·primarySlot만 다룹니다. 사용자 기능 중심, 구현 용어 금지. 구체적 질문 1개만.";
     case "MENU":
       return "메뉴 초안을 제안하고, 사용자가 고를 수 있게 번호를 붙인 뒤 질문 1개만 하세요.";
     case "SCREENS":

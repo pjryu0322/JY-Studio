@@ -297,7 +297,7 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ justifySelf: "end", maxWidth: "78%", width: "100%", minWidth: 0 }}
+                  style={{ justifySelf: "end", maxWidth: "78%", width: "fit-content", minWidth: 0 }}
                 >
                   <div style={workspaceStandardChatBubbleShell("user")}>
                     {replyContextLine}
@@ -328,7 +328,7 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}
+                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0 }}
                 >
                   <div style={workspaceStandardChatBubbleShell("member")}>
                     {replyContextLine}
@@ -506,7 +506,7 @@ export function RequirementsChatPanel({
                   }
                   messageRefs.current.set(m.id, el);
                 }}
-                style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}
+                style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0 }}
               >
                 <div style={aiCardShell(isErr ? "error" : "notice")}>
                   {replyContextLine}
@@ -525,7 +525,7 @@ export function RequirementsChatPanel({
           })}
 
           {typingIndicator ? (
-            <div style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}>
+            <div style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0 }}>
               <div style={aiCardShell("notice")}>
                 <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
                   AI · {displayedAiOrchestrator().name}

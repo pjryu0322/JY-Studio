@@ -16,7 +16,8 @@ export function buildFallbackCategoryFirstMessage(artifact: FeaturePlanningSlots
     names.length > 0
       ? names.map((n, i) => `${i + 1}. ${n}`).join("\n")
       : "1. 주요 기능 A\n2. 주요 기능 B\n3. 주요 기능 C";
-  const firstMessage = `[초안]\n${draftLines}\n\n[질문]\n이 기능 목록이 맞습니까? 빠지거나 더할 기능이 있으면 한 줄로 알려 주세요.`;
+  const stepLabel = (core?.slotName ?? ordered[0]?.slotName ?? "선택한 정리 영역").trim();
+  const firstMessage = `[초안]\n${draftLines}\n\n[질문]\n「${stepLabel}」에서 첫 버전(MVP)에 반드시 포함할 기능만 골라 주세요. 이번 릴리스에서 빼거나 나중으로 미룰 항목이 있으면 각각 한 줄로 적어 주세요.`;
   const fromSlots = ordered.map((s) => ({
     name: s.slotName.trim(),
     reason: (s.slotDescription ?? s.reason ?? "").trim().replace(/\s+/g, " ").slice(0, 200) || "초안에 포함된 정리 영역입니다.",

@@ -58,7 +58,7 @@ export function WorkspaceChatPanel({
       {messages.map((m) => {
         if (m.role === "user") {
           return (
-            <div key={m.id} style={{ justifySelf: "end", maxWidth: "78%", width: "100%", minWidth: 0 }}>
+            <div key={m.id} style={{ justifySelf: "end", maxWidth: "78%", width: "fit-content", minWidth: 0 }}>
               <div style={workspaceStandardChatBubbleShell("user")}>
                 <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>사용자</div>
                 <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{m.text}</div>
@@ -67,7 +67,7 @@ export function WorkspaceChatPanel({
           );
         }
         return (
-          <div key={m.id} style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}>
+          <div key={m.id} style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
               <div style={workspaceStandardChatBubbleShell("ai")}>
                 <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>AI · {displayedAiOrchestrator().name}</div>

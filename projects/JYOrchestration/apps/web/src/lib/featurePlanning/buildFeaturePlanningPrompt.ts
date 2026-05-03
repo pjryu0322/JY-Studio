@@ -30,22 +30,26 @@ const CHAT_TOPIC_ENUM = FEATURE_PLANNING_TOPICS.join("|");
  * 기능정리 채팅 턴용 시스템 프롬프트 — 토큰 절감형, 길이 상한 적용.
  */
 export function buildFeaturePlanningV2ChatSystemPrompt(): string {
-  const core = `당신은 JYOrchestration의 AI 기획자입니다. 기능정리 단계에서 사용자와 협업합니다.
+  const core = `역할: AI 서비스 기획자. 사용자와 대화하며 기능을 서비스 흐름 단계별로 정리한다.
 
-규칙:
-1. 장황한 설명 금지.
-2. 현재 planningTopic만 다룹니다.
-3. 출력 형식: [반영 결과]…[수정 초안] 번호 목록…[질문] 한 개만.
-4. 숫자만 답(1번,2,2번)은 직전 [수정 초안] 번호 선택으로 해석합니다.
-5. 슬롯 구조는 유지하고 요청된 부분만 수정합니다(전체 갈아엎기 금지).
-6. 한국어, 실무 기획자 말투.
+필수: 사용자 프롬프트 [4. CURRENT SLOT SUMMARY] 안의 PLANNER_INPUT 블록에 있는 currentServiceStep·primarySlot만 다룬다. 다른 서비스 단계 기능(예: 업로드 단계인데 변환·화자분리 등)은 features·recommended·question 어디에도 넣지 않는다.
 
-FSM: FEATURES→MENU→SCREENS→SCREEN_DETAILS→DATA→TASKS→DONE. 한 턴에 한 단계만 앞으로.
+기능 후보(features): 실제 사용자가 앱에서 하는 일(업로드·확인·알림 등)만. DB·API·컴포넌트·스키마·공통 모듈·기술 설계 용어 금지.
 
-JSON 한 개만:
-{"updatedSlots":[...],"recommendedOrder":["…"],"prototypeReadiness":{},"aiMessage":"…","planningTopic":"${CHAT_TOPIC_ENUM}","planningMemory":{"priorityFeature":"","addedFeatures":[],"removedFeatures":[],"confirmedTopics":[],"pendingTopic":"","lastUserIntent":"","notes":[]},"changeSummary":[],"nextQuestions":[],"newFeatureCandidates":[],"filledSlotsSummary":[]}
+AI 주도: 먼저 features·recommended로 제안한 뒤, question으로 한 가지만 확인한다.
 
-planningMemory는 이번 턴 추출한 요약만 채웁니다. confirmedTopics는 마친 단계만 문자열 배열로.`;
+질문(question): 정확히 1문장. 예·선택지를 넣어 답하기 쉽게. 포괄 질문 금지.
+
+절대 금지 문구: "추가 기능", "필요한 것이 있", "자유롭게 말씀", "데이터 구조를 정의", "공통 컴포넌트".
+
+내부 planningTopic(${CHAT_TOPIC_ENUM})는 참고만. 답변 내용은 currentServiceStep에만 맞춘다.
+
+JSON 한 개만(아래 키만):
+{"message":"…","features":[{"title":"…","detail":"…","priority":"HIGH"}],"recommended":["…"],"question":"…","progress":{"done":1,"total":6},"nextStepSuggested":false}
+
+규칙: features는 3~6개 배열. title 짧게, detail은 사용자 관점 한 줄. recommended는 0~3개(강하게 추천하는 것만). progress.done/total은 승인된 서비스 흐름 단계 기준 추정(정수). nextStepSuggested는 현재 단계가 거의 확정되어 다음 단계로 넘어가도 될 때만 true.
+
+레거시 호환(비권장): 동일 응답에 updatedSlots+aiMessage를 섞지 말 것.`;
   return assertLen("chatSystem", core, SYS_MAX);
 }
 
@@ -60,6 +64,32 @@ export function buildFeaturePlanningV2InitSystemPrompt(): string {
 
 slots: 5~8개 영역, 항목은 슬롯당 1~3개. 각 sourceRefs 항목은 sourceType(IDEATION|ACTOR_FLOW|PROJECT_CONTEXT|USER_MESSAGE), sourceId, summary(짧게) 필수. 역할 전용 최상위 슬롯 금지.`;
   return assertLen("initSystem", core, SYS_MAX);
+}
+
+/** 서비스 흐름 확정 후 첫 기능정리 분석 — message 본문 형식 고정 */
+export function buildFeaturePlanningFlowEntryAnalyzeSystemPrompt(): string {
+  const core = `당신은 JYOrchestration의 AI 서비스 기획자다. 액터·서비스 흐름이 확정된 뒤 기능정리 첫 분석을 한다.
+
+단계 집중: 사용자 프롬프트의 [정리 우선 단계]에 해당하는 서비스 단계만 다룬다. 그 외 단계(예: 업로드 단계인데 변환·화자분리·회의록 생성 등) 기능은 slots 항목·nextQuestion에 절대 넣지 않는다.
+
+기능은 사용자 눈에 보이는 행위만. DB·API·컴포넌트·데이터 모델·공통 모듈 용어 금지.
+
+JSON만 출력. 최상위 키는 slots(updatedSlots 금지). message·nextQuestion 필수.
+
+message 본문(한국어, 아래 순서·줄바꿈 유지):
+1) "액터 및 서비스 흐름 정의 결과를 확인했습니다."
+2) "먼저 [정리 우선 단계] 단계의 기능부터 정리하겠습니다." — 단계명은 프롬프트 값 그대로(대괄호 없이).
+3) 빈 줄 후 "현재 후보 기능:" 다음 줄마다 "- 항목명" 3~6개(해당 단계만).
+4) 빈 줄 후 "추천 기능:" 다음 줄마다 "- …" 0~2개(선택, 단계와 직접 연결된 것만).
+5) 빈 줄 후 "질문:" 다음 한 문장만 — 구체적이고 답하기 쉬운 질문.
+
+금지: "추가 기능이 있습니까?", "필요한 것이 있습니까?", "자유롭게", "맞습니까?"만 있는 질문, 기술 설계 위주 설명.
+
+출력 JSON:
+{"message":"…","slots":[…],"recommendedOrder":[],"prototypeReadiness":{},"priorStepActorRoles":[],"planningTopic":"FEATURES","nextQuestion":"질문 한 문장","planningMemory":{…}}
+
+slots·sourceRefs 규칙은 초기 생성과 동일.`;
+  return assertLen("flowEntrySystem", core, SYS_MAX);
 }
 
 function section(title: string, body: string): string {

@@ -12,6 +12,11 @@ import { withFeaturePlanningProjectLock } from "@/lib/featurePlanning/featurePla
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  firstFlowStepTitleForFeaturePlanningEntry,
+  FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE,
+  isServiceFlowApprovedForFeaturePlanning,
+} from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 
 type Body = {
   projectId?: string;
@@ -62,6 +67,18 @@ export async function POST(request: NextRequest) {
       const existingChat = state.featurePlanningWorkspaceChatV1 ?? { messages: [] };
       const priorMessages = existingChat.messages ?? [];
       const hasSlots = Boolean(existingArtifact?.slots?.length);
+      const needsFlowForLlm =
+        forceRegenerate || !hasSlots || (hasSlots && priorMessages.length === 0);
+      if (needsFlowForLlm && !isServiceFlowApprovedForFeaturePlanning(row.requirementsStateJson)) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "SERVICE_FLOW_INCOMPLETE",
+            message: FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE.trim(),
+          },
+          { status: 403 },
+        );
+      }
 
       if (!forceRegenerate && hasSlots && priorMessages.length > 0) {
         const art: FeaturePlanningSlotsArtifactV1 = existingArtifact!;
@@ -92,6 +109,7 @@ export async function POST(request: NextRequest) {
         requirementsConversationJson: row.requirementsConversationJson,
         forceRegenerate: forceRegenerate === true,
       });
+      const firstStepTitle = firstFlowStepTitleForFeaturePlanningEntry(state.serviceFlowV1 ?? null);
 
       if (!forceRegenerate && hasSlots && priorMessages.length === 0) {
         const gen = await runFeaturePlanningInitialScreenLlm({
@@ -103,6 +121,9 @@ export async function POST(request: NextRequest) {
           mode: "chat_reseed",
           existingArtifact: existingArtifact!,
           forceRegenerate: false,
+          promptPurpose: "FEATURE_PLANNING_INIT",
+          entryMessageFormat: "flow_entry",
+          firstStepTitle,
         });
         if (!gen.ok) {
           return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });
@@ -135,6 +156,9 @@ export async function POST(request: NextRequest) {
         mode: "create",
         existingArtifact: existingArtifact,
         forceRegenerate: forceRegenerate === true,
+        promptPurpose: "FEATURE_PLANNING_INIT",
+        entryMessageFormat: "flow_entry",
+        firstStepTitle,
       });
       if (!gen.ok) {
         return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });
