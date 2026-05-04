@@ -1,3 +1,4 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
@@ -89,27 +90,22 @@ ${context || "(없음)"}
 - slotStatus는 위 필수 슬롯 키를 모두 포함하라.
 - 한국어로 작성.`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      temperature: 0.15,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.15,
+    responseFormatJsonObject: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return { ok: false, code: `HTTP_${res.status}`, message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}` };
+    return { ok: false, code: res.code, message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}` };
   }
 
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
 
   let parsed: unknown;

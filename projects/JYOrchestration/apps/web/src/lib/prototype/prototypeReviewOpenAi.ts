@@ -1,3 +1,5 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiFromEnv } from "@/lib/ai/openAiEnv";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
@@ -5,70 +7,48 @@ import type { PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStor
 const REVIEW_AI_TRANSCRIPT_LABEL = getWorkspaceAiMember("prototype_review")?.title ?? "AI 검수자";
 
 export async function openAiJsonCompletion<T>(system: string, user: string): Promise<{ ok: true; data: T } | { ok: false; message: string }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    return { ok: false, message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  const cred = resolveOpenAiFromEnv();
+  if (!cred.ok) {
+    return { ok: false, message: cred.message };
   }
-  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey: cred.apiKey,
+    model: cred.model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.3,
+    responseFormatJsonObject: true,
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return { ok: false, message: errText.slice(0, 500) || "OpenAI 요청에 실패했습니다." };
+    return { ok: false, message: res.message.slice(0, 500) || "OpenAI 요청에 실패했습니다." };
   }
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = json.choices?.[0]?.message?.content?.trim() ?? "";
-  if (!text) return { ok: false, message: "모델 응답이 비어 있습니다." };
   try {
-    return { ok: true, data: JSON.parse(text) as T };
+    return { ok: true, data: JSON.parse(res.text) as T };
   } catch {
     return { ok: false, message: "모델 JSON 파싱에 실패했습니다." };
   }
 }
 
 export async function openAiTextCompletion(system: string, user: string): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    return { ok: false, message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  const cred = resolveOpenAiFromEnv();
+  if (!cred.ok) {
+    return { ok: false, message: cred.message };
   }
-  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.35,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey: cred.apiKey,
+    model: cred.model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.35,
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return { ok: false, message: errText.slice(0, 500) || "OpenAI 요청에 실패했습니다." };
+    return { ok: false, message: res.message.slice(0, 500) || "OpenAI 요청에 실패했습니다." };
   }
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const text = json.choices?.[0]?.message?.content?.trim() ?? "";
-  if (!text) return { ok: false, message: "모델 응답이 비어 있습니다." };
-  return { ok: true, text };
+  return { ok: true, text: res.text };
 }
 
 export function formatReviewTranscript(messages: readonly PrototypeReviewMessage[]): string {

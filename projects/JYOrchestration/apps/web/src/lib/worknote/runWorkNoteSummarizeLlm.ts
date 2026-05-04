@@ -1,3 +1,4 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 
 function stripJsonMarkdownFences(text: string): string {
@@ -46,30 +47,22 @@ export async function runWorkNoteSummarizeLlm(input: {
 
   const user = `다음 메모를 요약해 주세요.\n\n---\n${plain}\n---`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: input.model,
-      temperature: 0.25,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey: input.apiKey,
+    model: input.model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.25,
+    responseFormatJsonObject: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return { ok: false, code: `HTTP_${res.status}`, message: errText.slice(0, 500) || `HTTP ${res.status}` };
+    return { ok: false, code: res.code, message: res.message };
   }
 
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-  let text = json.choices?.[0]?.message?.content?.trim();
+  let text = res.text;
   if (!text) {
     return { ok: false, code: "EMPTY", message: "AI 응답이 비어 있습니다." };
   }

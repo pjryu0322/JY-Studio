@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 
 type Body = {
@@ -52,7 +54,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+    const model = resolveOpenAiModelFromEnv();
     const system = `You are a Korean AI product planner for "prototype generation".
 Goal: produce a small set of interview slots to guide the user to a concrete prototype scope.
 Rules:
@@ -82,33 +84,25 @@ Constraints:
 - keys must be short snake_case and unique
 - questions must be in Korean`;
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
+    const res = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: 0.2,
+      responseFormatJsonObject: true,
     });
 
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
       return NextResponse.json(
-        { success: false, code: `HTTP_${res.status}`, message: errText.slice(0, 500) || `HTTP ${res.status}` },
+        { success: false, code: res.code, message: res.message.slice(0, 500) || res.code },
         { status: 200 },
       );
     }
 
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-    const text = json.choices?.[0]?.message?.content?.trim();
+    const text = res.text;
     if (!text) {
       return NextResponse.json({ success: false, code: "EMPTY", message: "AI 응답 본문이 비어 있습니다." }, { status: 200 });
     }

@@ -1,6 +1,5 @@
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { getOpenAiApiKeyForProject } from "@/lib/integrations/providerAdapters/openaiAdapter";
-
-const DEFAULT_MODEL = "gpt-4o-mini";
 
 export type PrototypePlannerCredentialSource = "project" | "user" | "env-dev" | "missing" | "integrations";
 
@@ -9,11 +8,6 @@ export type ResolvedPrototypePlannerOpenAiCredential = Readonly<{
   source: PrototypePlannerCredentialSource;
   model: string;
 }>;
-
-function resolveModel(): string {
-  const m = String(process.env.OPENAI_MODEL ?? "").trim();
-  return m || DEFAULT_MODEL;
-}
 
 /**
  * 프로토타입 생성(작업계획)용 OpenAI 키 해석.
@@ -24,7 +18,7 @@ export async function resolvePrototypePlannerOpenAiCredential(
   options?: { actorUserId?: string | null },
 ): Promise<ResolvedPrototypePlannerOpenAiCredential> {
   const pid = String(projectId ?? "").trim();
-  const model = resolveModel();
+  const model = resolveOpenAiModelFromEnv();
   if (!pid) {
     return { apiKey: null, source: "missing", model };
   }

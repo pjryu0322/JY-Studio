@@ -2,10 +2,10 @@
  * Cursor 실행 결과 보고만으로 OpenAI JSON 평가.
  */
 
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import type { CursorRunResult } from "@/lib/execution/cursorExecutionAdapter";
 import type { EvalVerdict } from "@/lib/executionLoop/workflowConstants";
-
-const DEFAULT_MODEL = "gpt-4o-mini";
 
 export type TaskEvaluationResult = {
   decision: EvalVerdict;
@@ -106,7 +106,7 @@ export async function runOpenAiRelayEvaluation(params: {
       usage: null,
     };
   }
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
 
   const criteria = params.task.acceptanceCriteria.length
     ? params.task.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")
@@ -159,42 +159,32 @@ ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하�
   "suspiciousChanges": ["..."] optional
 }`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.15,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: "You are a strict reviewer. Output only valid JSON.",
-        },
-        { role: "user", content: userMessage },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content: "You are a strict reviewer. Output only valid JSON.",
+      },
+      { role: "user", content: userMessage },
+    ],
+    temperature: 0.15,
+    responseFormatJsonObject: true,
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const t = await res.text().catch(() => "");
     return {
       result: {
         decision: "retry",
-        reason: `OpenAI HTTP ${res.status}: ${t.slice(0, 200)}`,
+        reason: `OpenAI ${res.code}: ${res.message.slice(0, 200)}`,
       },
       usage: null,
     };
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-  };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) {
     return { result: { decision: "retry", reason: "빈 OpenAI 응답" }, usage: null };
   }
@@ -218,15 +208,16 @@ ${params.stopOnTestFailure ? "- 테스트/빌드 실패가 요약에 분명하�
     reason = text.slice(0, 2000);
   }
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
       ? {
-          promptTokens: u.prompt_tokens,
-          completionTokens: u.completion_tokens,
-          totalTokens: u.total_tokens,
+          promptTokens: u.promptTokens,
+          completionTokens: u.completionTokens,
+          totalTokens: u.totalTokens,
         }
       : null;
 
@@ -254,45 +245,38 @@ export async function runOpenAiChatJsonEvaluation(params: {
     };
   }
 
-  const model = params.model.trim() || DEFAULT_MODEL;
+  const model = params.model.trim() || resolveOpenAiModelFromEnv();
   const temperature = typeof params.temperature === "number" && Number.isFinite(params.temperature) ? params.temperature : 0.15;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: params.systemContent },
-        { role: "user", content: params.userMessage },
-      ],
-      ...(typeof params.maxCompletionTokens === "number" && Number.isFinite(params.maxCompletionTokens)
-        ? { max_tokens: Math.max(16, Math.min(256, Math.floor(params.maxCompletionTokens))) }
-        : {}),
-    }),
+  const maxTok =
+    typeof params.maxCompletionTokens === "number" && Number.isFinite(params.maxCompletionTokens)
+      ? Math.max(16, Math.min(256, Math.floor(params.maxCompletionTokens)))
+      : undefined;
+
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: params.systemContent },
+      { role: "user", content: params.userMessage },
+    ],
+    temperature,
+    responseFormatJsonObject: true,
+    ...(typeof maxTok === "number" ? { maxTokens: maxTok } : {}),
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const t = await res.text().catch(() => "");
     return {
       result: {
         decision: "retry",
-        reason: `OpenAI HTTP ${res.status}: ${t.slice(0, 200)}`,
+        reason: `OpenAI ${res.code}: ${res.message.slice(0, 200)}`,
       },
       usage: null,
     };
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-  };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) {
     return { result: { decision: "retry", reason: "빈 OpenAI 응답" }, usage: null };
   }
@@ -316,15 +300,16 @@ export async function runOpenAiChatJsonEvaluation(params: {
     reason = text.slice(0, 2000);
   }
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
       ? {
-          promptTokens: u.prompt_tokens,
-          completionTokens: u.completion_tokens,
-          totalTokens: u.total_tokens,
+          promptTokens: u.promptTokens,
+          completionTokens: u.completionTokens,
+          totalTokens: u.totalTokens,
         }
       : null;
 
