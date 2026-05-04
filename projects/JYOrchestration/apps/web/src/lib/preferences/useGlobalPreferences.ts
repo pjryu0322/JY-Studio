@@ -17,6 +17,31 @@ import type {
   PrototypePreviewWorkMode,
 } from "@/lib/preferences/prototypePreviewViewport";
 
+/** useSyncExternalStore는 값이 같을 때 동일 객체 참조를 돌려야 무한 렌더를 막을 수 있음 */
+let clientSnapCache: GlobalPreferencesSnapshot | null = null;
+let clientSnapKey = "";
+
+function getClientPreferencesSnapshot(): GlobalPreferencesSnapshot {
+  const next = readGlobalPreferencesSnapshot();
+  const key = JSON.stringify(next);
+  if (clientSnapCache && key === clientSnapKey) return clientSnapCache;
+  clientSnapKey = key;
+  clientSnapCache = next;
+  return next;
+}
+
+let serverSnapCache: GlobalPreferencesSnapshot | null = null;
+let serverSnapKey = "";
+
+function getServerPreferencesSnapshot(): GlobalPreferencesSnapshot {
+  const next = readGlobalPreferencesSnapshot();
+  const key = JSON.stringify(next);
+  if (serverSnapCache && key === serverSnapKey) return serverSnapCache;
+  serverSnapKey = key;
+  serverSnapCache = next;
+  return next;
+}
+
 export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
   setAiFacilitatorAutoJoin: (v: boolean) => void;
   setDevPanelVisible: (v: boolean) => void;
@@ -26,8 +51,8 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
 } {
   const snap = useSyncExternalStore(
     subscribeGlobalPreferences,
-    readGlobalPreferencesSnapshot,
-    readGlobalPreferencesSnapshot,
+    getClientPreferencesSnapshot,
+    getServerPreferencesSnapshot,
   );
 
   const setAiFacilitatorAutoJoin = useCallback((v: boolean) => {

@@ -1,11 +1,16 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
-import { PrototypePreviewViewportShell } from "@/components/preview/PrototypePreviewViewportShell";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
+import type {
+  PrototypePreviewMobileDevice,
+  PrototypePreviewWorkMode,
+} from "@/lib/preferences/prototypePreviewViewport";
+import { PROTOTYPE_PREVIEW_PRESETS } from "@/lib/preferences/prototypePreviewViewport";
 
 const wrapBand: CSSProperties = {
   position: "relative",
@@ -37,6 +42,21 @@ const wrapFill: CSSProperties = {
   flexDirection: "column",
 };
 
+function logicalViewportPx(
+  workMode: PrototypePreviewWorkMode,
+  mobileDevice: PrototypePreviewMobileDevice,
+  rotationLandscape: boolean,
+): { width: number; height: number } | null {
+  if (workMode === "auto") return null;
+  if (workMode === "desktop") {
+    const { width: w, height: h } = PROTOTYPE_PREVIEW_PRESETS.desktop;
+    return rotationLandscape ? { width: h, height: w } : { width: w, height: h };
+  }
+  const preset = mobileDevice === "android" ? PROTOTYPE_PREVIEW_PRESETS.android : PROTOTYPE_PREVIEW_PRESETS.iphone;
+  const { width: w, height: h } = preset;
+  return rotationLandscape ? { width: h, height: w } : { width: w, height: h };
+}
+
 export function PreviewViewport(p: {
   readonly run: PrototypeRun | null;
   readonly frameLoading: boolean;
@@ -49,12 +69,164 @@ export function PreviewViewport(p: {
   const { prototypePreviewWorkMode, prototypePreviewMobileDevice } = useGlobalPreferences();
   const rotation = Boolean(p.rotationLandscape);
 
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+
+  const measure = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setBox({ w: Math.max(0, r.width), h: Math.max(0, r.height) });
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure, prototypePreviewWorkMode, prototypePreviewMobileDevice, rotation]);
+
+  const logical = useMemo(
+    () => logicalViewportPx(prototypePreviewWorkMode, prototypePreviewMobileDevice, rotation),
+    [prototypePreviewWorkMode, prototypePreviewMobileDevice, rotation],
+  );
+
+  const scale = useMemo(() => {
+    if (!logical || box.w <= 0 || box.h <= 0) return 1;
+    return Math.min(1, box.w / logical.width, box.h / logical.height);
+  }, [logical, box.w, box.h]);
+
+  const isAuto = prototypePreviewWorkMode === "auto";
+  const isMobileFrame = prototypePreviewWorkMode === "mobile";
+
+  const previewWrapperStyle: CSSProperties = {
+    position: "relative",
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    width: "100%",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    boxSizing: "border-box",
+  };
+
   const publicU = String(p.run?.publicUrl ?? "").trim();
   const deployed = p.run?.deploymentStatus === "DONE" && publicU;
   const draft = String(p.run?.previewUrl ?? p.run?.suggestedPreviewUrl ?? "").trim();
   const url = deployed ? publicU : draft;
   const safe = url.startsWith("http://") || url.startsWith("https://");
   const wrap = p.fillContainer ? wrapFill : wrapBand;
+
+  const iframeEl = (
+    <iframe
+      key={url}
+      title="프로토타입 프리뷰"
+      src={url}
+      onLoad={p.onFrameLoad}
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      style={{
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: "100%",
+        height: "100%",
+        border: "none",
+        display: "block",
+        background: "#fff",
+      }}
+    />
+  );
+
+  const lw = logical?.width ?? 0;
+  const lh = logical?.height ?? 0;
+  const s = scale;
+  const clipW = lw * s;
+  const clipH = lh * s;
+  const mobileFrameRadius = 28;
+
+  const previewInner = isAuto ? (
+    <div ref={wrapRef} className="jyo-preview-wrapper" style={previewWrapperStyle}>
+      {box.w > 0 ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            left: 8,
+            zIndex: 3,
+            padding: "4px 8px",
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 800,
+            color: "#e2e8f0",
+            background: "rgba(15,23,42,0.72)",
+            pointerEvents: "none",
+          }}
+          aria-live="polite"
+        >
+          {Math.round(box.w)}px
+        </div>
+      ) : null}
+      <div
+        className="jyo-preview-viewport"
+        style={{
+          position: "relative",
+          width: "100%",
+          height: "100%",
+          minWidth: 0,
+          minHeight: 0,
+          borderRadius: t.radiusLg,
+          overflow: "hidden",
+          background: "#fff",
+        }}
+      >
+        {iframeEl}
+      </div>
+    </div>
+  ) : (
+    <div ref={wrapRef} className="jyo-preview-wrapper" style={previewWrapperStyle}>
+      <div
+        className="jyo-preview-scaler"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%",
+          height: "100%",
+        }}
+      >
+        <div
+          className="jyo-preview-viewport-clip"
+          style={{
+            width: clipW,
+            height: clipH,
+            overflow: "hidden",
+            borderRadius: isMobileFrame ? mobileFrameRadius : t.radiusLg,
+            flexShrink: 0,
+            background: "#fff",
+            boxShadow: isMobileFrame ? "0 12px 40px rgba(0,0,0,0.28)" : "0 8px 28px rgba(0,0,0,0.18)",
+          }}
+        >
+          <div
+            className="jyo-preview-viewport"
+            style={{
+              width: lw,
+              height: lh,
+              transform: `scale(${s})`,
+              transformOrigin: "top left",
+              position: "relative",
+            }}
+          >
+            {iframeEl}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div id="jyo-prototype-review-preview" style={wrap} aria-label="프로토타입 미리보기 영역">
@@ -93,29 +265,7 @@ export function PreviewViewport(p: {
               </div>
             </div>
           ) : null}
-          <PrototypePreviewViewportShell
-            workMode={prototypePreviewWorkMode}
-            mobileDevice={prototypePreviewMobileDevice}
-            rotationLandscape={rotation}
-          >
-            <iframe
-              key={url}
-              title="프로토타입 프리뷰"
-              src={url}
-              onLoad={p.onFrameLoad}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                width: "100%",
-                height: "100%",
-                border: "none",
-                display: "block",
-                background: "#fff",
-              }}
-            />
-          </PrototypePreviewViewportShell>
+          {previewInner}
         </>
       )}
     </div>
