@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import {
   readGlobalPreferencesSnapshot,
   subscribeGlobalPreferences,
@@ -24,32 +24,26 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
   setPrototypePreviewWorkMode: (v: PrototypePreviewWorkMode) => void;
   setPrototypePreviewMobileDevice: (v: PrototypePreviewMobileDevice) => void;
 } {
-  const [snap, setSnap] = useState<GlobalPreferencesSnapshot>(() => readGlobalPreferencesSnapshot());
-
-  useEffect(() => {
-    setSnap(readGlobalPreferencesSnapshot());
-    return subscribeGlobalPreferences(() => setSnap(readGlobalPreferencesSnapshot()));
-  }, []);
+  const snap = useSyncExternalStore(
+    subscribeGlobalPreferences,
+    readGlobalPreferencesSnapshot,
+    readGlobalPreferencesSnapshot,
+  );
 
   const setAiFacilitatorAutoJoin = useCallback((v: boolean) => {
     writeAiFacilitatorAutoJoin(v);
-    setSnap(readGlobalPreferencesSnapshot());
   }, []);
   const setDevPanelVisible = useCallback((v: boolean) => {
     writeDevPanelVisible(v);
-    setSnap(readGlobalPreferencesSnapshot());
   }, []);
   const setSettingsMenuPersona = useCallback((v: SettingsMenuPersona) => {
     writeSettingsMenuPersona(v);
-    setSnap(readGlobalPreferencesSnapshot());
   }, []);
   const setPrototypePreviewWorkMode = useCallback((v: PrototypePreviewWorkMode) => {
     writePrototypePreviewWorkMode(v);
-    setSnap(readGlobalPreferencesSnapshot());
   }, []);
   const setPrototypePreviewMobileDevice = useCallback((v: PrototypePreviewMobileDevice) => {
     writePrototypePreviewMobileDevice(v);
-    setSnap(readGlobalPreferencesSnapshot());
   }, []);
 
   return useMemo(
