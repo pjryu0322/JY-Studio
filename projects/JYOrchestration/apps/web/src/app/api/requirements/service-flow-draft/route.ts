@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 
 type Body = {
@@ -8,11 +10,6 @@ type Body = {
   projectName?: string;
   projectDescription?: string;
   ideationAssets?: Array<{ type?: string; title?: string; content?: string }>;
-};
-
-type OpenAiChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: string } }>;
-  error?: { message?: string };
 };
 
 export async function POST(request: NextRequest) {
@@ -41,7 +38,7 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ success: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." });
     }
-    const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+    const model = resolveOpenAiModelFromEnv();
 
     const assetBlock = assets
       .map((a) => {
@@ -88,24 +85,20 @@ ${assetBlock || "(산출물 없음)"}
 서비스 흐름은 5~8단계로 생성하고, actor name은 단계에서 쓰는 이름과 정확히 일치시켜라.
 회의록/녹취/문서 자동화 성격이면 "녹취파일 업로드", "텍스트 변환", "화자 분리", "회의록 초안 생성", "수정 요청", "최종 승인", "공유/배포" 흐름을 우선 고려하라.`;
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        messages: [
-          { role: "system", content: sys },
-          { role: "user", content: user },
-        ],
-      }),
+    const res = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: user },
+      ],
+      temperature: 0.3,
     });
 
-    const json = (await res.json()) as OpenAiChatCompletionResponse;
     if (!res.ok) {
-      return NextResponse.json({ success: false, message: json?.error?.message ?? `HTTP ${res.status}` }, { status: 500 });
+      return NextResponse.json({ success: false, message: res.message }, { status: 500 });
     }
-    const text = String(json?.choices?.[0]?.message?.content ?? "").trim();
+    const text = res.text.trim();
     if (!text) {
       return NextResponse.json({ success: false, message: "AI 응답이 비어 있습니다." }, { status: 500 });
     }

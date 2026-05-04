@@ -18,6 +18,7 @@ import {
   FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE,
   isServiceFlowApprovedForFeaturePlanning,
 } from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 
 type Body = { projectId?: string };
 
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+      const model = resolveOpenAiModelFromEnv();
       const ctx = buildFeaturePlanningSlotsLlmContext({
         projectName: row.name,
         projectDescription: row.description,

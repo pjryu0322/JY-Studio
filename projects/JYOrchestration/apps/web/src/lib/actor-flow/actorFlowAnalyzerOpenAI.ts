@@ -1,6 +1,6 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
-
-const DEFAULT_MODEL = "gpt-4o-mini";
 
 export type ActorFlowCompletion = {
   actorsReady: boolean;
@@ -112,7 +112,7 @@ export async function runActorFlowAnalyzeOpenAI(input: {
     return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
   const nowIso = new Date().toISOString();
   const flowJson = JSON.stringify(input.currentFlow ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
 
@@ -163,27 +163,22 @@ ${flowJson}
 [사용자 최신 발화]
 ${input.userMessage.trim()}`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      temperature: 0.15,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.15,
+    responseFormatJsonObject: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return { ok: false, code: `HTTP_${res.status}`, message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}` };
+    return { ok: false, code: res.code, message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}` };
   }
 
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
 
   let parsed: unknown;

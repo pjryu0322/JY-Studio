@@ -1,3 +1,5 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import type { InterviewAnalyzerPayload, ProblemInterviewState } from "@/lib/requirements/problemInterview";
@@ -11,8 +13,6 @@ import {
 } from "@/lib/requirements/ideationDeliverables";
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
-
-const DEFAULT_MODEL = "gpt-4o-mini";
 
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
 
@@ -78,7 +78,7 @@ export async function runRequirementsFacilitatorOpenAI(input: {
     return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
   const excerpt = input.dialogueExcerpt.trim().slice(0, 24_000);
   const projectName = input.projectName.trim();
   const projectDescription = input.projectDescription.trim();
@@ -92,29 +92,23 @@ export async function runRequirementsFacilitatorOpenAI(input: {
     ? `\n\n[이전 화면에서 넘어온 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 4000)}`
     : "";
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.35,
-      messages: [
-        {
-          role: "system",
-          content: `${workspaceAiMemberSystemPrefix("ideation")}역할: 범위·모호함·누락·역할·기능/비기능 요구를 짧게 질문하고, 확인 가능한 요구사항으로 수렴시키세요.
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content: `${workspaceAiMemberSystemPrefix("ideation")}역할: 범위·모호함·누락·역할·기능/비기능 요구를 짧게 질문하고, 확인 가능한 요구사항으로 수렴시키세요.
 규칙:
 - 한국어로 답합니다.
 - 1회 응답은 8문장 이내, 불필요한 서론·마크다운 제목 없이 대화체로 작성합니다.
 - (아이디어 구체화) 이번 응답에는 확인 질문을 정확히 1개만 넣습니다. 둘째 이후 질문·번호 목록·여러 물음표 나열은 금지입니다.
 - 가능하면 1~2문장으로 핵심 이해를 짧게 쓴 뒤, 질문 1개만 제시합니다. 짧은 이유는 최대 한 문장까지 선택입니다.
 - 사용자가 특정 참가자에게 질문한 맥락이 있으면 그에 맞춰 답합니다.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
-        },
-        {
-          role: "user",
-          content: `다음 정보를 알고 있다고 가정하고 답하세요. "어떤 프로젝트인가요?"처럼 프로젝트를 모르는 질문은 금지합니다.
+      },
+      {
+        role: "user",
+        content: `다음 정보를 알고 있다고 가정하고 답하세요. "어떤 프로젝트인가요?"처럼 프로젝트를 모르는 질문은 금지합니다.
 
 [프로젝트]
 - 이름: ${projectName || "(이름 없음)"}
@@ -128,24 +122,20 @@ ${excerpt || "(이전 메시지 없음)"}
 
 [이번 사용자 메시지]
 ${input.userMessage.trim()}${mentionBlock}${senderBlock}`,
-        },
-      ],
-    }),
+      },
+    ],
+    temperature: 0.35,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
     return {
       ok: false,
-      code: `HTTP_${res.status}`,
-      message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
+      code: res.code,
+      message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}`,
     };
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) {
     return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
   }
@@ -166,7 +156,7 @@ export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
     return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
   const pn = input.projectName.trim() || "(이름 없음)";
   const pd = input.projectDescription.trim() || "(설명 없음)";
 
@@ -211,36 +201,26 @@ The entire response must contain exactly one question mark (?).
 - 인사·설명·부연·마크다운·목록·머리글·번호 매기기(1. 2. 등) 금지.
 - 문장 끝은 반드시 물음표(?)로 끝낸다.`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      max_tokens: 72,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: "한국어로 질문 한 문장만 출력하라. 물음표는 하나만." },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: "한국어로 질문 한 문장만 출력하라. 물음표는 하나만." },
+    ],
+    temperature: 0.2,
+    maxTokens: 72,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
     return {
       ok: false,
-      code: `HTTP_${res.status}`,
-      message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
+      code: res.code,
+      message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}`,
     };
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) {
     return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
   }
@@ -279,7 +259,7 @@ export async function runRequirementsDraftOpenAI(input: {
   if (!apiKey) {
     return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
   }
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
   const excerpt = String(input.dialogueExcerpt ?? "").trim().slice(0, 24_000);
   const existingDraftText = input.existingDraft ? JSON.stringify(input.existingDraft).slice(0, 12_000) : "";
 
@@ -308,24 +288,17 @@ export async function runRequirementsDraftOpenAI(input: {
         .join("\n\n")
     : `[memory_facts]\n(없음)\n\n[rolling_summary]\n(없음)\n\n[recent_messages]\n(없음)\n\n프로젝트 이름·설명·사용자 요청만으로 초안을 구성하고, 불확실한 항목은 openIssues에 '확인 필요'로 남겨라.`;
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.25,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: `${workspaceAiMemberSystemPrefix("ideation")}You are a senior product manager. Output only a valid JSON object. No markdown fences. Keep strings concise and actionable.`,
-        },
-        {
-          role: "user",
-          content: `다음 프로젝트 요구사항 협의 대화를 바탕으로 구조화된 요구사항 초안 JSON을 생성해라.
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content: `${workspaceAiMemberSystemPrefix("ideation")}You are a senior product manager. Output only a valid JSON object. No markdown fences. Keep strings concise and actionable.`,
+      },
+      {
+        role: "user",
+        content: `다음 프로젝트 요구사항 협의 대화를 바탕으로 구조화된 요구사항 초안 JSON을 생성해라.
 
 [프로젝트]
 - 이름: ${input.projectName.trim() || "(이름 없음)"}
@@ -358,22 +331,21 @@ ${input.userMessage.trim()}
 - overview/users/features/successCriteria는 비어있지 않게(최소 1개 이상) 추론해 채워라.
 - 근거가 약하면 openIssues에 '확인 필요'로 남겨라.
 - 한국어로 작성.${draftResponseStyleAddendum(input.responseStyle)}`,
-        },
-      ],
-    }),
+      },
+    ],
+    temperature: 0.25,
+    responseFormatJsonObject: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
     return {
       ok: false,
-      code: `HTTP_${res.status}`,
-      message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
+      code: res.code,
+      message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}`,
     };
   }
 
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) {
     return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
   }
@@ -429,7 +401,7 @@ export async function runIdeationDeliverablesOpenAI(input: {
     return { ok: false, code: "NO_TYPES", message: "선택된 산출물이 없습니다." };
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
   const excerpt = input.dialogueExcerpt.trim().slice(0, 24_000);
   const base = buildIdeationDeliverableBasePrompt({
     projectName: input.projectName.trim() || "(이름 없음)",
@@ -444,40 +416,29 @@ export async function runIdeationDeliverablesOpenAI(input: {
     : "";
 
   const callModel = async (userContent: string) => {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: `${workspaceAiMemberSystemPrefix("ideation")}You are a Korean product planning assistant. Output only one valid JSON object. No markdown fences.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
-          },
-          {
-            role: "user",
-            content: userContent,
-          },
-        ],
-      }),
+    const res = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        {
+          role: "system",
+          content: `${workspaceAiMemberSystemPrefix("ideation")}You are a Korean product planning assistant. Output only one valid JSON object. No markdown fences.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
+        },
+        { role: "user", content: userContent },
+      ],
+      temperature: 0.3,
+      responseFormatJsonObject: true,
     });
 
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
       return {
         ok: false as const,
-        code: `HTTP_${res.status}`,
-        message: `OpenAI API 오류(HTTP ${res.status}): ${errText.slice(0, 400)}`,
+        code: res.code,
+        message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}`,
       };
     }
 
-    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-    const text = body.choices?.[0]?.message?.content?.trim();
+    const text = res.text;
     if (!text) {
       return { ok: false as const, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
     }
@@ -636,7 +597,7 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   if (!apiKey) {
     return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
   }
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
   const nowIso = new Date().toISOString();
   const flowJson = JSON.stringify(input.currentFlow ?? { createdAt: nowIso, updatedAt: nowIso, actors: [], steps: [] }).slice(0, 22_000);
   const recent = safeText(input.recentMessages, 18_000);
@@ -740,30 +701,25 @@ ${input.userMessage.trim()}
 }`;
 
   const callOnce = async (repair: boolean) => {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        temperature: 0.18,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          {
-            role: "user",
-            content: repair
-              ? `${user}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.`
-              : user,
-          },
-        ],
-      }),
+    const res = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: repair
+            ? `${user}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.`
+            : user,
+        },
+      ],
+      temperature: 0.18,
+      responseFormatJsonObject: true,
     });
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      return { ok: false as const, code: `HTTP_${res.status}`, message: errText.slice(0, 400) };
+      return { ok: false as const, code: res.code, message: res.message.slice(0, 400) };
     }
-    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-    const text = body.choices?.[0]?.message?.content?.trim();
+    const text = res.text;
     if (!text) return { ok: false as const, code: "EMPTY", message: "응답 본문이 비어 있습니다." };
     let parsed: unknown;
     try {
@@ -836,7 +792,7 @@ export async function runInterviewAnalyzeOpenAI(input: {
   if (!apiKey) {
     return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
   }
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveOpenAiModelFromEnv();
   const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
 
   const system = `${workspaceAiMemberSystemPrefix("ideation")}당신은 아이디어 구체화 단계(고수준 디스커버리) 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
@@ -922,31 +878,23 @@ ${stateJson}
 ${input.userMessage.trim()}`;
 
   const callOnce = async (repair: string) => {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.12,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          {
-            role: "user",
-            content: repair ? `${userBlock}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.` : userBlock,
-          },
-        ],
-      }),
+    const res = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: repair ? `${userBlock}\n\n[재시도] 직전 출력이 스키마에 맞지 않았습니다. 위 스키마의 JSON만 다시 출력하세요.` : userBlock,
+        },
+      ],
+      temperature: 0.12,
+      responseFormatJsonObject: true,
     });
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      return { ok: false as const, code: `HTTP_${res.status}`, message: errText.slice(0, 400) };
+      return { ok: false as const, code: res.code, message: res.message.slice(0, 400) };
     }
-    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-    const text = body.choices?.[0]?.message?.content?.trim();
+    const text = res.text;
     if (!text) return { ok: false as const, code: "EMPTY", message: "응답 본문이 비어 있습니다." };
     const payload = parseInterviewAnalyzerPayloadFromModelText(text);
     if (!payload) return { ok: false as const, code: "PARSE", message: "JSON 파싱 실패" };

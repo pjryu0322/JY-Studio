@@ -1,3 +1,5 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { DEFAULT_OPENAI_MODEL } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeWorkUnitComplexity, PrototypeWorkUnitRiskLevel } from "@/lib/prototype/prototypeRunTypes";
 import { formatPrototypeTemplateLayoutContract } from "@/lib/prototype/prototypeTemplateLayoutContract";
@@ -164,36 +166,28 @@ export async function generatePrototypeWorkUnitsWithOpenAI(
   const apiKey = auth.apiKey.trim();
   if (!apiKey) return { ok: false, error: "OPENAI_API_KEY_MISSING" };
 
-  const model = auth.model.trim() || "gpt-4o-mini";
+  const model = auth.model.trim() || DEFAULT_OPENAI_MODEL;
 
   const userBlock = formatPrototypePlannerUserMessage(input);
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${String(apiKey)}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.25,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "user",
-          content: `${buildPrototypePlannerInstructionBlock()}\n\n${userBlock}`,
-        },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey: String(apiKey),
+    model,
+    messages: [
+      {
+        role: "user",
+        content: `${buildPrototypePlannerInstructionBlock()}\n\n${userBlock}`,
+      },
+    ],
+    temperature: 0.25,
+    responseFormatJsonObject: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return { ok: false, error: `OPENAI_HTTP_${res.status}:${errText.slice(0, 240)}` };
+    return { ok: false, error: `${res.code}:${res.message.slice(0, 240)}` };
   }
 
-  const body = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) return { ok: false, error: "OPENAI_EMPTY_RESPONSE" };
 
   try {

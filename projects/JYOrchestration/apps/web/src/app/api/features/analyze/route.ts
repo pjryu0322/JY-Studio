@@ -18,6 +18,7 @@ import {
 } from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { findProjectScalarsByIdSafe } from "@/lib/service/projectFindForApi";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 type Body = {
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+        const model = resolveOpenAiModelFromEnv();
         const ctx = buildFeaturePlanningSlotsLlmContext({
           projectName: row.name,
           projectDescription: row.description,

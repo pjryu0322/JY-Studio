@@ -1,3 +1,6 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
+
 export type TaskDraftWorkflowSuggestion = {
   id: string;
   dependsOnIds: string[];
@@ -10,8 +13,6 @@ export type TaskDraftWorkflowAiMeta = {
   parallelGroups: string[][];
   cycleCandidateEdges: Array<{ source: string; target: string }>;
 };
-
-const DEFAULT_MODEL = "gpt-4o-mini";
 
 function toStringArray(x: unknown): string[] {
   if (!Array.isArray(x)) return [];
@@ -154,55 +155,46 @@ export async function reorderTaskDraftWorkflowWithOpenAI(input: {
   }
 
   const trimmed = input.modelFromRequest?.trim();
-  const model = trimmed && trimmed.length > 0 ? trimmed : process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = trimmed && trimmed.length > 0 ? trimmed : resolveOpenAiModelFromEnv();
   const userMessage = buildUserMessage({
     projectName: input.projectName,
     specVersionNumber: input.specVersionNumber,
     tasks: input.tasks,
   });
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior engineering lead. Output only valid JSON matching the user's schema. No markdown fences or commentary.",
-        },
-        { role: "user", content: userMessage },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a senior engineering lead. Output only valid JSON matching the user's schema. No markdown fences or commentary.",
+      },
+      { role: "user", content: userMessage },
+    ],
+    temperature: 0.2,
+    responseFormatJsonObject: true,
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
 
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-  };
-  const raw = body.choices?.[0]?.message?.content?.trim();
+  const raw = res.text;
   if (!raw) {
     throw new Error("OPENAI_EMPTY_RESPONSE");
   }
 
   const parsed = parseWorkflowSuggestionJson(raw);
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
-      ? { promptTokens: u.prompt_tokens, completionTokens: u.completion_tokens, totalTokens: u.total_tokens }
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
+      ? { promptTokens: u.promptTokens, completionTokens: u.completionTokens, totalTokens: u.totalTokens }
       : null;
 
   return { model, usage, suggestion: parsed.tasks, meta: parsed.meta };

@@ -1,3 +1,5 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import {
   DEFAULT_TASK_GENERATION_PROMPT_TEMPLATE,
   applyTaskGenerationPromptTemplate,
@@ -5,7 +7,6 @@ import {
 import { EXECUTION_TASK_KINDS } from "@/lib/project-spec/generatedExecutionTask";
 import type { TaskDraftOpenAiUsage } from "@/lib/project-spec/generateTaskDraftsWithOpenAI";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
 const MAX_SPEC_CHARS = 48_000;
 const MAX_TASKS = 40;
 
@@ -65,44 +66,35 @@ async function openAiSinglePassJson(params: {
   model: string;
   userMessage: string;
 }): Promise<{ text: string; usage: TaskDraftOpenAiUsage | null }> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: params.model,
-      temperature: 0.35,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a senior software engineer. Output only valid JSON: a single object with a tasks array as specified by the user. No markdown fences or commentary.",
-        },
-        { role: "user", content: params.userMessage },
-      ],
-    }),
+  const res = await postOpenAiChatCompletion({
+    apiKey: params.apiKey,
+    model: params.model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a senior software engineer. Output only valid JSON: a single object with a tasks array as specified by the user. No markdown fences or commentary.",
+      },
+      { role: "user", content: params.userMessage },
+    ],
+    temperature: 0.35,
+    responseFormatJsonObject: true,
+    returnUsage: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`OPENAI_HTTP_${res.status}:${errText.slice(0, 200)}`);
+    throw new Error(`OPENAI_HTTP_${res.code}:${res.message.slice(0, 200)}`);
   }
-  const body = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-  };
-  const text = body.choices?.[0]?.message?.content?.trim();
+  const text = res.text;
   if (!text) throw new Error("OPENAI_EMPTY_RESPONSE");
 
-  const u = body.usage;
+  const u = res.usage;
   const usage =
-    typeof u?.prompt_tokens === "number" &&
-    typeof u?.completion_tokens === "number" &&
-    typeof u?.total_tokens === "number"
-      ? { promptTokens: u.prompt_tokens, completionTokens: u.completion_tokens, totalTokens: u.total_tokens }
+    u &&
+    typeof u.promptTokens === "number" &&
+    typeof u.completionTokens === "number" &&
+    typeof u.totalTokens === "number"
+      ? { promptTokens: u.promptTokens, completionTokens: u.completionTokens, totalTokens: u.totalTokens }
       : null;
   return { text, usage };
 }
@@ -159,7 +151,7 @@ export async function singlePassGenerateTaskDraftsWithOpenAI(input: {
 
   const trimmed = input.modelFromRequest?.trim();
   const model =
-    trimmed && trimmed.length > 0 ? trimmed : process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
+    trimmed && trimmed.length > 0 ? trimmed : resolveOpenAiModelFromEnv();
 
   const template =
     String(input.taskGenerationPromptTemplate ?? "").trim() || DEFAULT_TASK_GENERATION_PROMPT_TEMPLATE;

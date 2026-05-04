@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workNoteHtmlToPlainForSummary } from "@/lib/worknote/workNoteHtmlPlain";
 import { runWorkNoteSummarizeLlm } from "@/lib/worknote/runWorkNoteSummarizeLlm";
 
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+    const model = resolveOpenAiModelFromEnv();
     const gen = await runWorkNoteSummarizeLlm({ apiKey, model, plainText: plain });
     if (!gen.ok) {
       return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });

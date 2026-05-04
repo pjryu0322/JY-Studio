@@ -14,6 +14,7 @@ import {
 } from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import type { FeaturePlanningPlannerTurnMetaV1 } from "@/lib/featurePlanning/featurePlanningChatLlm";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 
 export type FeaturePlannerTurnWorkspaceMessage = {
   readonly id: string;
@@ -108,7 +109,7 @@ export async function executeFeaturePlanningPlannerTurn(input: {
         return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
       }
 
-      const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+      const model = resolveOpenAiModelFromEnv();
       const lastAssistantMessage = lastAssistantTextBefore(prior);
       const gen = await runFeaturePlanningChatLlm({
         projectId,

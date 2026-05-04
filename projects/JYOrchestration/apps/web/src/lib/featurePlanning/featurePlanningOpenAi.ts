@@ -1,3 +1,5 @@
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { stripJsonMarkdownFences } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 
 export type OpenAiJsonChatTrace = {
@@ -20,33 +22,21 @@ export async function openAiChatJsonText(
     typeof _trace?.temperature === "number" && Number.isFinite(_trace.temperature)
       ? Math.min(1.2, Math.max(0, _trace.temperature))
       : 0.2;
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: temp,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const modelFinal = String(model ?? "").trim() || resolveOpenAiModelFromEnv();
+  const raw = await postOpenAiChatCompletion({
+    apiKey,
+    model: modelFinal,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: temp,
+    responseFormatJsonObject: true,
   });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    return { ok: false, code: `HTTP_${res.status}`, message: errText.slice(0, 500) || `HTTP ${res.status}` };
+  if (!raw.ok) {
+    return { ok: false, code: raw.code, message: raw.message };
   }
-
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
-  let text = json.choices?.[0]?.message?.content?.trim();
-  if (!text) {
-    return { ok: false, code: "EMPTY", message: "AI 응답 본문이 비어 있습니다." };
-  }
+  let text = raw.text;
   text = stripJsonMarkdownFences(text);
   return { ok: true, text };
 }
