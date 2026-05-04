@@ -680,7 +680,6 @@ export async function runFeaturePlanningChatLlm(input: {
     aiMemberId: "feature_planning",
     baseSystem: system,
     projectId: pid,
-    featurePlanningTopic: currentTopic,
   });
   const compact = buildFeaturePlanningCompactBlocks({
     projectName: input.projectName,

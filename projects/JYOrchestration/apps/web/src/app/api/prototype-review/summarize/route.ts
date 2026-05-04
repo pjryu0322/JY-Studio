@@ -6,6 +6,7 @@ import { appendReviewMessage, getReviewThread, setImprovementItems } from "@/lib
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import { formatRunContext, formatReviewTranscript, openAiTextCompletion } from "@/lib/prototype/prototypeReviewOpenAi";
 import { getRun } from "@/lib/prototype/prototypeRunStore";
+import { appendAiContextToSystemPrompt } from "@/lib/ai/knowledge/aiMemberContextInjection";
 
 /** 정리요청: 검토 대화를 전담 AI가 한 덩어리로 요약 */
 export async function POST(request: NextRequest) {
@@ -42,8 +43,13 @@ export async function POST(request: NextRequest) {
   const messages = getReviewThread(projectId, runId);
   const run = getRun(projectId, runId);
 
-  const system = `${workspaceAiMemberSystemPrefix("prototype_review")}프로토타입 검토 대화를 사용자가 보기 좋게 요약한다.
+  let system = `${workspaceAiMemberSystemPrefix("prototype_review")}프로토타입 검토 대화를 사용자가 보기 좋게 요약한다.
 출력: 한국어, 불릿 3~7개(각 1문장 이내), 마지막에 다음 액션 1문장. 마크다운 과용 금지.`;
+  system = await appendAiContextToSystemPrompt({
+    aiMemberId: "designer",
+    baseSystem: system,
+    projectId,
+  });
 
   const userPayload = `[실행 맥락]
 ${formatRunContext(run)}
