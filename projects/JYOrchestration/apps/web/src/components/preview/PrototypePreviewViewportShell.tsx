@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type {
   PrototypePreviewMobileDevice,
   PrototypePreviewWorkMode,
@@ -31,7 +31,6 @@ export function PrototypePreviewViewportShell(p: {
 }): ReactNode {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
-  const [scale, setScale] = useState(1);
 
   const measure = useCallback(() => {
     const el = wrapRef.current;
@@ -49,16 +48,14 @@ export function PrototypePreviewViewportShell(p: {
     return () => ro.disconnect();
   }, [measure, p.workMode, p.mobileDevice, p.rotationLandscape]);
 
-  const logical = logicalViewportPx(p.workMode, p.mobileDevice, p.rotationLandscape);
+  const logical = useMemo(
+    () => logicalViewportPx(p.workMode, p.mobileDevice, p.rotationLandscape),
+    [p.workMode, p.mobileDevice, p.rotationLandscape],
+  );
 
-  useLayoutEffect(() => {
-    if (!logical || box.w <= 0 || box.h <= 0) {
-      setScale(1);
-      return;
-    }
-    const sx = box.w / logical.width;
-    const sy = box.h / logical.height;
-    setScale(Math.min(1, sx, sy));
+  const scale = useMemo(() => {
+    if (!logical || box.w <= 0 || box.h <= 0) return 1;
+    return Math.min(1, box.w / logical.width, box.h / logical.height);
   }, [logical, box.w, box.h]);
 
   const isAuto = p.workMode === "auto";
