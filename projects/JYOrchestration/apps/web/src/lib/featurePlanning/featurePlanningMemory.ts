@@ -15,6 +15,10 @@ export type FeaturePlanningMemoryV1 = {
   /** 짧은 의도 라벨(선택) */
   readonly lastUserIntent?: string;
   readonly notes?: readonly string[];
+  /** planner 질문 큐가 적용된 서비스 단계 키(normalizePlannerQueueStepKey) */
+  readonly plannerQueueStepKey?: string;
+  /** 질문 큐에서 이미 다룬 세부 항목 id */
+  readonly answeredPlannerFieldIds?: readonly string[];
 };
 
 export function defaultFeaturePlanningMemory(): FeaturePlanningMemoryV1 {
@@ -23,6 +27,7 @@ export function defaultFeaturePlanningMemory(): FeaturePlanningMemoryV1 {
     removedFeatures: [],
     confirmedTopics: [],
     pendingTopic: "FEATURES",
+    answeredPlannerFieldIds: [],
   };
 }
 
@@ -79,6 +84,14 @@ export function parsePlanningMemoryPatch(raw: unknown): Partial<FeaturePlanningM
         12
       )
     : undefined;
+  const plannerQueueStepKey =
+    typeof o.plannerQueueStepKey === "string" ? o.plannerQueueStepKey.trim().slice(0, 120) : undefined;
+  const answeredPlannerFieldIds = Array.isArray(o.answeredPlannerFieldIds)
+    ? dedupeStrings(
+        o.answeredPlannerFieldIds.map((x) => String(x ?? "")),
+        40
+      )
+    : undefined;
   if (
     !priorityFeature &&
     !lastUserIntent &&
@@ -86,7 +99,9 @@ export function parsePlanningMemoryPatch(raw: unknown): Partial<FeaturePlanningM
     !removedFeatures?.length &&
     !confirmedTopics.length &&
     !pendingTopic &&
-    !notes?.length
+    !notes?.length &&
+    !plannerQueueStepKey &&
+    !answeredPlannerFieldIds?.length
   ) {
     return undefined;
   }
@@ -98,6 +113,8 @@ export function parsePlanningMemoryPatch(raw: unknown): Partial<FeaturePlanningM
     ...(pendingTopic ? { pendingTopic } : {}),
     ...(lastUserIntent ? { lastUserIntent } : {}),
     ...(notes?.length ? { notes } : {}),
+    ...(plannerQueueStepKey ? { plannerQueueStepKey } : {}),
+    ...(answeredPlannerFieldIds?.length ? { answeredPlannerFieldIds } : {}),
   };
 }
 
@@ -115,6 +132,11 @@ export function mergeFeaturePlanningMemory(
     pendingTopic: patch.pendingTopic ?? base.pendingTopic,
     lastUserIntent: patch.lastUserIntent?.trim() || base.lastUserIntent,
     notes: dedupeStrings([...(base.notes ?? []), ...(patch.notes ?? [])], 16),
+    plannerQueueStepKey: patch.plannerQueueStepKey?.trim() || base.plannerQueueStepKey,
+    answeredPlannerFieldIds: dedupeStrings(
+      [...(base.answeredPlannerFieldIds ?? []), ...(patch.answeredPlannerFieldIds ?? [])],
+      48
+    ),
   };
 }
 
@@ -136,6 +158,8 @@ export function compactMemorySnapshot(mem: FeaturePlanningMemoryV1 | undefined, 
       confirmed: mem.confirmedTopics.slice(0, 8),
       pending: mem.pendingTopic ?? null,
       intent: mem.lastUserIntent ?? null,
+      pq: mem.plannerQueueStepKey ?? null,
+      pqAns: (mem.answeredPlannerFieldIds ?? []).slice(0, 12),
     };
     const s = JSON.stringify(o);
     return s.length <= maxChars ? s : `${s.slice(0, Math.max(0, maxChars - 1))}…`;

@@ -21,6 +21,7 @@ export const WORKSPACE_STANDARD_CHAT_BODY_STYLE: CSSProperties = {
   color: t.textPrimary,
   lineHeight: 1.65,
   whiteSpace: "pre-wrap",
+  userSelect: "text",
 };
 
 /**

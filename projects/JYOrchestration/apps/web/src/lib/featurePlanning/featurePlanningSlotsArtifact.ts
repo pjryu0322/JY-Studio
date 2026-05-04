@@ -5,6 +5,8 @@
 
 import type { FeaturePlanningMemoryV1 } from "@/lib/featurePlanning/featurePlanningMemory";
 import { parseStoredPlanningMemoryV1 } from "@/lib/featurePlanning/featurePlanningMemory";
+import type { FeaturePlanningPlanningChecklistV1 } from "@/lib/featurePlanning/featurePlanningPlanningChecklistTypes";
+import { parsePlanningChecklistStored } from "@/lib/featurePlanning/featurePlanningPlanningChecklistParse";
 import type { FeaturePlanningTopicV1 } from "@/lib/featurePlanning/featurePlanningTopic";
 import { parsePlanningTopic } from "@/lib/featurePlanning/featurePlanningTopic";
 
@@ -76,6 +78,8 @@ export type FeaturePlanningSlotsArtifactV1 = {
   planningTopic?: FeaturePlanningTopicV1;
   /** 대화 맥락 요약(압축 메모리) */
   planningMemoryV1?: FeaturePlanningMemoryV1;
+  /** LLM analyze가 생성한 동적 체크리스트(영역·슬롯·질문) */
+  planningChecklistV1?: FeaturePlanningPlanningChecklistV1;
 };
 
 export function normalizeFeaturePlanningSlotType(raw: unknown): FeaturePlanningSlotType {
@@ -229,6 +233,7 @@ export function parseFeaturePlanningSlotsArtifactV1(raw: unknown): FeaturePlanni
   const planningTopic = parsePlanningTopic(o.planningTopic);
   const memRaw = (o as { planningMemoryV1?: unknown }).planningMemoryV1 ?? (o as { planningMemory?: unknown }).planningMemory;
   const planningMemoryV1 = parseStoredPlanningMemoryV1(memRaw);
+  const planningChecklistV1 = parsePlanningChecklistStored((o as { planningChecklistV1?: unknown }).planningChecklistV1);
   return {
     version,
     slots,
@@ -240,6 +245,7 @@ export function parseFeaturePlanningSlotsArtifactV1(raw: unknown): FeaturePlanni
     ...(priorStepActorRoles.length ? { priorStepActorRoles } : {}),
     ...(planningTopic ? { planningTopic } : {}),
     ...(planningMemoryV1 ? { planningMemoryV1 } : {}),
+    ...(planningChecklistV1 ? { planningChecklistV1 } : {}),
   };
 }
 

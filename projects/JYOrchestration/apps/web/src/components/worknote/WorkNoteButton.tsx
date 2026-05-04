@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkNotesPanel } from "@/hooks/useWorkNotesPanel";
 import { WorkNoteDrawer } from "@/components/worknote/WorkNoteDrawer";
+import { useWorkNoteChatSelectionBridge } from "@/components/worknote/WorkNoteChatSelectionBridge";
 
 export function WorkNoteButton(p: {
   readonly projectId: string;
@@ -10,6 +11,30 @@ export function WorkNoteButton(p: {
 }) {
   const [open, setOpen] = useState(false);
   const w = useWorkNotesPanel(p.projectId, open);
+  const bridge = useWorkNoteChatSelectionBridge();
+  const pendingChatSnippetRef = useRef<string | null>(null);
+  const pid = p.projectId.trim();
+
+  const flushPendingChatSnippet = useCallback(() => {
+    const chunk = pendingChatSnippetRef.current;
+    if (!chunk || !open || !w.editorHydrated) return;
+    pendingChatSnippetRef.current = null;
+    void w.appendSnippetFromChat(chunk);
+  }, [open, w.appendSnippetFromChat, w.editorHydrated]);
+
+  useEffect(() => {
+    flushPendingChatSnippet();
+  }, [flushPendingChatSnippet, w.activeId]);
+
+  useEffect(() => {
+    if (!bridge || bridge.projectId !== pid) return;
+    bridge.registerWorkNoteAppendFromChat((text) => {
+      pendingChatSnippetRef.current = text;
+      setOpen(true);
+    });
+    return () => bridge.registerWorkNoteAppendFromChat(null);
+  }, [bridge, pid]);
+
   if (!p.projectId.trim()) return null;
 
   return (
