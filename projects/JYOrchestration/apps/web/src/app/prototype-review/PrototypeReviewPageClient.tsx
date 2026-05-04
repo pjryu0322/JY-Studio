@@ -75,6 +75,7 @@ export function PrototypeReviewPageClient() {
   const [busy, setBusy] = useState<Busy>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [frameLoading, setFrameLoading] = useState(false);
+  const [previewRotationLandscape, setPreviewRotationLandscape] = useState(false);
   const [deployRequestBusy, setDeployRequestBusy] = useState(false);
   const [deployProceedBusy, setDeployProceedBusy] = useState(false);
   const [securityRecheckBusy, setSecurityRecheckBusy] = useState(false);
@@ -520,6 +521,8 @@ export function PrototypeReviewPageClient() {
         deployProceedBusy={deployProceedBusy}
         securityRecheckBusy={securityRecheckBusy}
         securityFixBusy={securityFixBusy}
+        previewRotationLandscape={previewRotationLandscape}
+        onTogglePreviewRotation={() => setPreviewRotationLandscape((v) => !v)}
       />
 
       {initializing && !run ? (
@@ -528,7 +531,12 @@ export function PrototypeReviewPageClient() {
         <>
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             {mobileTab === "preview" ? (
-              <PreviewViewport run={run} frameLoading={frameLoading} onFrameLoad={() => setFrameLoading(false)} />
+              <PreviewViewport
+                run={run}
+                frameLoading={frameLoading}
+                onFrameLoad={() => setFrameLoading(false)}
+                rotationLandscape={previewRotationLandscape}
+              />
             ) : null}
             {mobileTab === "ai" || mobileTab === "changes" ? <ReviewChatPanel compact {...chatPanelProps} /> : null}
           </div>
@@ -550,6 +558,7 @@ export function PrototypeReviewPageClient() {
             run={run}
             frameLoading={frameLoading}
             onFrameLoad={() => setFrameLoading(false)}
+            rotationLandscape={previewRotationLandscape}
           />
           <FloatingReviewChatDock containerRef={previewStackRef}>
             {(surfaceAlpha) => (

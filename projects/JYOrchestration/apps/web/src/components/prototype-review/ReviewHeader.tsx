@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import type { PrototypeDeployStatusSnapshot, PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import { Button } from "@/components/ui/Button";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
 
 const bar: CSSProperties = {
   display: "flex",
@@ -53,7 +54,10 @@ export function ReviewHeader(p: {
   readonly deployProceedBusy: boolean;
   readonly securityRecheckBusy: boolean;
   readonly securityFixBusy: boolean;
+  readonly previewRotationLandscape: boolean;
+  readonly onTogglePreviewRotation: () => void;
 }) {
+  const prefs = useGlobalPreferences();
   const versionLabel = p.versionNo != null ? `V${p.versionNo}` : p.run ? "V—" : "—";
   const publicUrl = String(p.deploy.publicUrl ?? "").trim();
   const phase = p.run?.deploySecurityGatePhase ?? "NONE";
@@ -160,6 +164,54 @@ export function ReviewHeader(p: {
               ))}
             </select>
           </label>
+        ) : null}
+        {prefs.prototypePreviewWorkMode !== "auto" ? (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+            {prefs.prototypePreviewWorkMode === "mobile" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, whiteSpace: "nowrap" }}>Preview 기기</span>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => prefs.setPrototypePreviewMobileDevice("iphone")}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 8,
+                      border:
+                        prefs.prototypePreviewMobileDevice === "iphone" ? `2px solid ${t.primary}` : `1px solid ${t.borderStrong}`,
+                      background: prefs.prototypePreviewMobileDevice === "iphone" ? "#eff6ff" : t.bgCard,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      color: t.textPrimary,
+                    }}
+                  >
+                    iPhone
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => prefs.setPrototypePreviewMobileDevice("android")}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 8,
+                      border:
+                        prefs.prototypePreviewMobileDevice === "android" ? `2px solid ${t.primary}` : `1px solid ${t.borderStrong}`,
+                      background: prefs.prototypePreviewMobileDevice === "android" ? "#eff6ff" : t.bgCard,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      color: t.textPrimary,
+                    }}
+                  >
+                    Android
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <Button type="button" variant="secondary" size="sm" onClick={p.onTogglePreviewRotation} title="Preview 뷰포트 가로·세로 전환">
+              {p.previewRotationLandscape ? "세로 보기" : "가로 보기"}
+            </Button>
+          </div>
         ) : null}
       </div>
 

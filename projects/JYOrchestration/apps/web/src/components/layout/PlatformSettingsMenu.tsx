@@ -216,16 +216,6 @@ export function PlatformSettingsMenu() {
                 <>
                   {sectionTitle("내 계정", { first: true })}
                   {row(
-                    "계정 센터",
-                    <Link
-                      href="/account"
-                      onClick={() => closeMenu()}
-                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-                    >
-                      열기
-                    </Link>,
-                  )}
-                  {row(
                     "Settings · Integrations",
                     <Link
                       href="/integrations"
@@ -324,6 +314,77 @@ export function PlatformSettingsMenu() {
               {sectionTitle("작업모드", { first: !sessionPresent })}
               <div style={{ marginBottom: 4 }}>
                 <WorkspaceModeSwitcher variant="menu" />
+              </div>
+
+              {sectionTitle("프로토타입 Preview")}
+              <div style={{ marginBottom: 6 }}>
+                <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 600, color: "#475569" }}>작업모드 (뷰포트)</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {(
+                    [
+                      { id: "desktop" as const, label: "Desktop" },
+                      { id: "mobile" as const, label: "Mobile" },
+                      { id: "auto" as const, label: "Auto" },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => prefs.setPrototypePreviewWorkMode(opt.id)}
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 8,
+                        border: prefs.prototypePreviewWorkMode === opt.id ? "2px solid #0d9488" : "1px solid #e2e8f0",
+                        background: prefs.prototypePreviewWorkMode === opt.id ? "#ecfdf5" : "#fff",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        color: "#0f172a",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {prefs.prototypePreviewWorkMode === "mobile" ? (
+                  <div style={{ marginTop: 10 }}>
+                    <p style={{ margin: "0 0 8px 0", fontSize: 12, fontWeight: 600, color: "#475569" }}>모바일 프리셋</p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => prefs.setPrototypePreviewMobileDevice("iphone")}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 8,
+                          border: prefs.prototypePreviewMobileDevice === "iphone" ? "2px solid #0d9488" : "1px solid #e2e8f0",
+                          background: prefs.prototypePreviewMobileDevice === "iphone" ? "#ecfdf5" : "#fff",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          color: "#0f172a",
+                        }}
+                      >
+                        iPhone (390×844)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => prefs.setPrototypePreviewMobileDevice("android")}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 8,
+                          border: prefs.prototypePreviewMobileDevice === "android" ? "2px solid #0d9488" : "1px solid #e2e8f0",
+                          background: prefs.prototypePreviewMobileDevice === "android" ? "#ecfdf5" : "#fff",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          color: "#0f172a",
+                        }}
+                      >
+                        Android (360×800)
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {hasProjectContext ? (
