@@ -4,28 +4,11 @@ import { useMemo } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
-
-function sortForSidebar(participants: readonly ParticipantOption[]): ParticipantOption[] {
-  const ais = participants.filter((p) => p.kind === "ai");
-  const self = participants.filter((p) => p.kind === "human" && p.onlineHint);
-  const others = participants.filter((p) => p.kind === "human" && !p.onlineHint);
-  return [...ais, ...self, ...others];
-}
-
-function statusSubtitle(p: ParticipantOption): string {
-  const parts: string[] = [];
-  if (p.kind === "ai") {
-    const s = p.aiStatusLabel?.trim();
-    if (s) parts.push(s.length > 36 ? `${s.slice(0, 36)}…` : s);
-    else parts.push("AI");
-  } else {
-    const role = p.roleLabel?.trim();
-    if (role) parts.push(role);
-    if (p.invited) parts.push("초대됨");
-    parts.push(p.onlineHint ? "온라인" : "오프라인");
-  }
-  return parts.join(" · ");
-}
+import {
+  formatParticipantStatusSubtitle,
+  sortParticipantsForPresenceList,
+} from "@/components/workspace/participantOptionPresentation";
+import { WorkspaceAiParticipantAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 
 /**
  * 아이디어 구체화 협업 영역 좌측: 참여 멤버 표시(프레즌스) + 멤버 초대(프로젝트 연결 시).
@@ -47,7 +30,7 @@ export function RequirementsMemberSidebar({
   readonly fillRail?: boolean;
 }) {
   const showScreenLabels = useShowScreenLabels();
-  const ordered = useMemo(() => sortForSidebar(participants), [participants]);
+  const ordered = useMemo(() => sortParticipantsForPresenceList(participants), [participants]);
 
   return (
     <aside
@@ -86,22 +69,29 @@ export function RequirementsMemberSidebar({
               border: "1px solid #e2e8f0",
               background: "#fff",
               boxShadow: "none",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              minWidth: 0,
             }}
           >
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 800,
-                color: "#0f172a",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {p.name}
-            </div>
-            <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35, wordBreak: "break-word" }}>
-              {statusSubtitle(p)}
+            {p.kind === "ai" ? <WorkspaceAiParticipantAvatar participant={p} size={30} /> : null}
+            <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: "#0f172a",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {p.name}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginTop: 3, lineHeight: 1.35, wordBreak: "break-word" }}>
+                {formatParticipantStatusSubtitle(p, "sidebar")}
+              </div>
             </div>
           </div>
         ))}

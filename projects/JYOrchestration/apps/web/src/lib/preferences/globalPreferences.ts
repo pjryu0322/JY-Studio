@@ -4,7 +4,10 @@ export const GLOBAL_PREFERENCES_CHANGED_EVENT = "jyo:global-preferences-changed"
 const KEYS = {
   aiFacilitatorAutoJoin: "jyo:pref:ai-facilitator-auto-join",
   devPanelVisible: "jyo:pref:dev-panel-visible",
+  settingsMenuPersona: "jyo:pref:settings-menu-persona",
 } as const;
+
+export type SettingsMenuPersona = "user" | "admin";
 
 function dispatchChanged(): void {
   if (typeof window === "undefined") return;
@@ -49,15 +52,46 @@ export function writeDevPanelVisible(value: boolean): void {
   writeBool(KEYS.devPanelVisible, value);
 }
 
+function readString(key: string, defaultValue: string): string {
+  if (typeof window === "undefined") return defaultValue;
+  try {
+    const v = window.localStorage.getItem(key);
+    if (v === "admin" || v === "user") return v;
+    return defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+function writeString(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value);
+    dispatchChanged();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readSettingsMenuPersona(): SettingsMenuPersona {
+  return readString(KEYS.settingsMenuPersona, "user") as SettingsMenuPersona;
+}
+
+export function writeSettingsMenuPersona(value: SettingsMenuPersona): void {
+  writeString(KEYS.settingsMenuPersona, value);
+}
+
 export type GlobalPreferencesSnapshot = {
   aiFacilitatorAutoJoin: boolean;
   devPanelVisible: boolean;
+  settingsMenuPersona: SettingsMenuPersona;
 };
 
 export function readGlobalPreferencesSnapshot(): GlobalPreferencesSnapshot {
   return {
     aiFacilitatorAutoJoin: readAiFacilitatorAutoJoin(),
     devPanelVisible: readDevPanelVisible(),
+    settingsMenuPersona: readSettingsMenuPersona(),
   };
 }
 

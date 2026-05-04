@@ -68,6 +68,7 @@ export function WorkNoteButton(p: {
         </svg>
       </button>
       <WorkNoteDrawer
+        projectId={pid}
         open={open}
         onClose={() => setOpen(false)}
         listLoading={w.listLoading}

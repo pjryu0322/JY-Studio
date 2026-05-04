@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
+import { appendAiContextToSystemPrompt } from "@/lib/ai/knowledge/aiMemberContextInjection";
 import {
   buildFeaturePlanningV2ChatSystemPrompt,
   buildFeaturePlanningV2ChatSystemPromptForChecklist,
@@ -671,7 +673,15 @@ export async function runFeaturePlanningChatLlm(input: {
   const pid = input.projectId.trim();
   const currentTopic: FeaturePlanningTopicV1 = input.artifact.planningTopic ?? "FEATURES";
   const useChecklist = Boolean(input.artifact.planningChecklistV1);
-  const system = useChecklist ? buildFeaturePlanningV2ChatSystemPromptForChecklist() : buildFeaturePlanningV2ChatSystemPrompt();
+  let system = `${workspaceAiMemberSystemPrefix("feature_planning")}${
+    useChecklist ? buildFeaturePlanningV2ChatSystemPromptForChecklist() : buildFeaturePlanningV2ChatSystemPrompt()
+  }`;
+  system = await appendAiContextToSystemPrompt({
+    aiMemberId: "feature_planning",
+    baseSystem: system,
+    projectId: pid,
+    featurePlanningTopic: currentTopic,
+  });
   const compact = buildFeaturePlanningCompactBlocks({
     projectName: input.projectName,
     projectDescription: input.projectDescription,

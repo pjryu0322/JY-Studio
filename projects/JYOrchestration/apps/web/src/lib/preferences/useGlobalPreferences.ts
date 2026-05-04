@@ -6,12 +6,15 @@ import {
   subscribeGlobalPreferences,
   writeAiFacilitatorAutoJoin,
   writeDevPanelVisible,
+  writeSettingsMenuPersona,
   type GlobalPreferencesSnapshot,
+  type SettingsMenuPersona,
 } from "@/lib/preferences/globalPreferences";
 
 export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
   setAiFacilitatorAutoJoin: (v: boolean) => void;
   setDevPanelVisible: (v: boolean) => void;
+  setSettingsMenuPersona: (v: SettingsMenuPersona) => void;
 } {
   const [snap, setSnap] = useState<GlobalPreferencesSnapshot>(() => readGlobalPreferencesSnapshot());
 
@@ -28,17 +31,23 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
     writeDevPanelVisible(v);
     setSnap(readGlobalPreferencesSnapshot());
   }, []);
+  const setSettingsMenuPersona = useCallback((v: SettingsMenuPersona) => {
+    writeSettingsMenuPersona(v);
+    setSnap(readGlobalPreferencesSnapshot());
+  }, []);
 
   return useMemo(
     () => ({
       ...snap,
       setAiFacilitatorAutoJoin,
       setDevPanelVisible,
+      setSettingsMenuPersona,
     }),
     [
       snap,
       setAiFacilitatorAutoJoin,
       setDevPanelVisible,
+      setSettingsMenuPersona,
     ]
   );
 }

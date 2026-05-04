@@ -2,6 +2,8 @@
  * 아이디어 협의실: 산출물(문서) 유형·프롬프트·채팅 카드 페이로드.
  */
 
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
+
 export const IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE = "ideation-deliverable-result" as const;
 
 /** API·저장용 키 */
@@ -137,7 +139,7 @@ export function buildIdeationDeliverableBasePrompt(input: {
   chatSummary: string;
   recentMessages: string;
 }): string {
-  return `당신은 프로젝트 회의에 참여 중인 AI기획자입니다.
+  return `${workspaceAiMemberSystemPrefix("ideation")}프로젝트 회의 산출물 작성 담당이다.
 
 프로젝트명: ${input.projectName}
 프로젝트 설명: ${input.projectDescription}

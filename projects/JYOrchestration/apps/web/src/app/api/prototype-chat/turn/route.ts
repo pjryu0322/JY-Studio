@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 
 type Body = {
   projectId?: string;
@@ -56,8 +57,8 @@ export async function POST(request: NextRequest) {
     }
 
     const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
-    const system = `당신은 "프로토타입 생성" 화면의 AI기획자다.
-목표: 사용자의 입력을 해석해, 프로토타입 생성 범위 안에서만 가이드를 제공하고, 슬롯 기반 인터뷰를 1턴씩 진행한다.
+    const system = `${workspaceAiMemberSystemPrefix("prototype_build")}화면: 프로토타입 생성.
+목표: 사용자 입력을 해석해 이 화면 범위 안에서만 가이드를 제공하고, 슬롯 기반 인터뷰를 1턴씩 진행한다.
 규칙:
 - 한국어로 답한다.
 - 이번 턴 응답은 JSON 1개만 출력한다(마크다운/코드펜스/설명 금지).
@@ -90,7 +91,7 @@ ${userMessage}
 
 출력 JSON 스키마:
 {
-  "assistantMessage": "AI기획자 답변",
+  "assistantMessage": "전담 AI 답변",
   "outOfScope": true|false,
   "slotKeyToFill": "slot_key" | null,
   "slotValue": "해당 슬롯에 저장할 요약 텍스트" | null,

@@ -1,6 +1,8 @@
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
-import { displayedAiOrchestrator, displayedAiStatusForStage, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { displayedWorkspaceAiStatusForContext, displayedWorkspaceAiTitle, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { newChatMessage, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { SERVICE_FLOW_WORKSHOP_INTERNAL_TYPE } from "@/lib/requirements/serviceFlowConversation";
@@ -44,7 +46,7 @@ export function buildServiceFlowUserPersist(body: string, currentUserId: string 
 }
 
 export function buildServiceFlowAiPersist(body: string): RequirementsMessage {
-  const name = displayedAiOrchestrator().name;
+  const name = displayedWorkspaceAiTitle("actor_flow");
   return newChatMessage({
     role: "ai",
     body,
@@ -62,6 +64,8 @@ export function serviceFlowSidebarParticipants(
   currentUserId: string | null,
   ideationParticipantHumanMemberIds: readonly string[],
   replying: boolean,
+  /** 이 화면(서비스 흐름)에 참여하는 플랫폼 AI — 없으면 AI 분석가만 */
+  platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[],
 ): ParticipantOption[] {
   const allowSet = new Set(ideationParticipantHumanMemberIds);
   const filteredHumans = members.filter((m) => {
@@ -71,24 +75,22 @@ export function serviceFlowSidebarParticipants(
   });
 
   const aiMembers = members.filter((m) => m.memberType === "AI");
-  const aiStatusLabel = replying ? "반영 중…" : displayedAiStatusForStage("service-flow");
+  const aiStatusLabel = replying ? "반영 중…" : displayedWorkspaceAiStatusForContext("actor_flow");
   const list: ParticipantOption[] = [];
+  const platformRows = buildWorkspaceAiParticipantOptions({
+    currentMemberIds: platformScreenAiMemberIds?.length ? [...platformScreenAiMemberIds] : ["actor_flow"],
+    statusLabelForCurrent: aiStatusLabel,
+  });
 
   if (showInternalAgents) {
-    if (aiMembers.length === 0) {
-      list.push({
-        id: VIRTUAL_AI_PLANNER_ID,
-        name: "AI 기획자",
-        kind: "ai",
-        onlineHint: false,
-        aiStatusLabel,
-        roleLabel: "AI",
-      });
-    }
+    list.push(...platformRows);
+    const platformNames = new Set(platformRows.map((p) => p.name));
     for (const m of aiMembers) {
+      const name = (m.displayName || m.email || "AI").slice(0, 24);
+      if (platformNames.has(name)) continue;
       list.push({
         id: m.memberId,
-        name: (m.displayName || m.email || "AI").slice(0, 24),
+        name,
         kind: "ai",
         onlineHint: false,
         aiStatusLabel,
@@ -96,15 +98,7 @@ export function serviceFlowSidebarParticipants(
       });
     }
   } else {
-    const orch = displayedAiOrchestrator();
-    list.push({
-      id: "visible:ai-orchestrator",
-      name: orch.name,
-      kind: "ai",
-      onlineHint: false,
-      aiStatusLabel,
-      roleLabel: "AI",
-    });
+    list.push(...platformRows);
   }
 
   for (const m of filteredHumans) {

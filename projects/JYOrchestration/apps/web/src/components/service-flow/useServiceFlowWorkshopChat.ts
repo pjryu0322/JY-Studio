@@ -12,10 +12,11 @@ import {
   serviceFlowMissingSlotQuestions,
   type ServiceFlowStageSlotKey,
 } from "@/components/service-flow/serviceFlowStageDerived";
-import { displayedAiOrchestrator } from "@/lib/ai-member/visibleAiOrchestrator";
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeClient";
+import { consumeWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 
 export type ServiceFlowWorkspaceMode = "chat" | "mapping" | "summary";
 
@@ -67,7 +68,7 @@ export function useServiceFlowWorkshopChat({
   readonly structureLockedAt: string | null | undefined;
   readonly derivedSlotsForDraftBootstrap: Record<ServiceFlowStageSlotKey, boolean>;
 }) {
-  const aiDisplayName = displayedAiOrchestrator().name;
+  const aiDisplayName = displayedWorkspaceAiTitle("actor_flow");
   const displayMessages = useMemo(
     () => persistedServiceFlowMessages.map((m) => workshopMessageFromPersisted(m, aiDisplayName)),
     [persistedServiceFlowMessages, aiDisplayName],
@@ -126,6 +127,11 @@ export function useServiceFlowWorkshopChat({
     latestAiQuestionRef.current = latestAiQuestion;
   }, [latestAiQuestion]);
 
+  const takeActorFlowHandoff = useCallback(
+    () => (projectId.trim() ? consumeWorkspaceAiScreenHandoff(projectId.trim(), "actor_flow") : ""),
+    [projectId],
+  );
+
   const callAnalyze = useCallback(
     (userMessageText: string, opts?: { silentUserAppend?: boolean }) => {
       if (workspaceMode !== "chat") return;
@@ -150,6 +156,8 @@ export function useServiceFlowWorkshopChat({
             .join("\n")
             .slice(0, 12000);
 
+          const priorScreenHandoff = takeActorFlowHandoff();
+
           const result = await postServiceFlowAnalyze({
             projectId,
             projectName,
@@ -159,6 +167,7 @@ export function useServiceFlowWorkshopChat({
             currentFlow: flowRef.current,
             recentMessages,
             latestAiQuestion: latestAiQuestionRef.current,
+            ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
           });
 
           if (!result.ok || !result.data.updatedFlow) {
@@ -214,7 +223,16 @@ export function useServiceFlowWorkshopChat({
         }
       })();
     },
-    [workspaceMode, currentUserId, aiDisplayName, projectId, projectName, projectDescription, ideationAssets],
+    [
+      workspaceMode,
+      currentUserId,
+      aiDisplayName,
+      projectId,
+      projectName,
+      projectDescription,
+      ideationAssets,
+      takeActorFlowHandoff,
+    ],
   );
 
   const callAnalyzeRef = useRef(callAnalyze);
@@ -256,6 +274,7 @@ export function useServiceFlowWorkshopChat({
         .join("\n")
         .slice(0, 12000);
       try {
+        const priorScreenHandoff = takeActorFlowHandoff();
         const result = await postServiceFlowAnalyze({
           projectId,
           projectName,
@@ -266,6 +285,7 @@ export function useServiceFlowWorkshopChat({
           recentMessages: excerpt,
           latestAiQuestion,
           currentFlow: flow,
+          ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
         });
         if (!result.ok || !result.data.updatedFlow) {
           const errSlice = await onAppendRef.current([
@@ -308,6 +328,7 @@ export function useServiceFlowWorkshopChat({
     flow,
     aiDisplayName,
     setWorkspaceMode,
+    takeActorFlowHandoff,
   ]);
 
   useEffect(() => {

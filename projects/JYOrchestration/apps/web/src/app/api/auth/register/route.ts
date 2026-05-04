@@ -7,6 +7,7 @@ import {
   sessionCookieBaseOptions,
   signSessionToken,
 } from "@/lib/auth/session";
+import { platformUserDisplayName } from "@/lib/user/platformProfile";
 
 function fail(message: string, status: number) {
   return NextResponse.json({ success: false, message }, { status });
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
     data: { email, name, passwordHash },
-    select: { id: true, email: true, name: true, globalRole: true, createdAt: true },
+    select: { id: true, email: true, name: true, nickname: true, avatarUrl: true, globalRole: true, createdAt: true },
   });
 
   const token = await signSessionToken(user.id);
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
         id: user.id,
         email: user.email,
         name: user.name,
+        nickname: user.nickname,
+        displayName: platformUserDisplayName(user.nickname, user.name),
+        avatarUrl: user.avatarUrl,
         globalRole: user.globalRole,
         createdAt: user.createdAt.toISOString(),
       },

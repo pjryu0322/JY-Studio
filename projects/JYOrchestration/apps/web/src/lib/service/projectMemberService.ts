@@ -3,6 +3,8 @@ import type { ProjectRole } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
+import { platformUserDisplayName } from "@/lib/user/platformProfile";
 
 export type ProjectMemberListItem = {
   memberId: string;
@@ -31,12 +33,13 @@ function buildMemberDisplayName(row: {
   memberType: "HUMAN" | "AI";
   displayName: string | null;
   aiAgentKey: string | null;
-  user: { name: string; email: string } | null;
+  user: { name: string; email: string; nickname: string | null } | null;
 }) {
   if (row.memberType === "AI") {
     return row.displayName?.trim() || row.aiAgentKey?.trim() || "AI Member";
   }
-  return row.user?.name?.trim() || row.displayName?.trim() || row.user?.email || "Unknown User";
+  const fromUser = row.user ? platformUserDisplayName(row.user.nickname, row.user.name) : "";
+  return fromUser || row.displayName?.trim() || row.user?.email || "Unknown User";
 }
 
 export async function listProjectMembers(projectId: string): Promise<ProjectMemberListItem[]> {
@@ -69,8 +72,8 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
       invitedByUserId: true,
       createdAt: true,
       updatedAt: true,
-      user: { select: { name: true, email: true } },
-      invitedBy: { select: { name: true } },
+      user: { select: { name: true, nickname: true, email: true } },
+      invitedBy: { select: { name: true, nickname: true } },
     },
   });
 
@@ -91,7 +94,9 @@ export async function listProjectMembers(projectId: string): Promise<ProjectMemb
     aiActionApprovalModeOverride: row.aiActionApprovalModeOverride,
     aiActionApplyModeOverride: row.aiActionApplyModeOverride,
     invitedByUserId: row.invitedByUserId,
-    invitedByName: row.invitedBy?.name ?? null,
+    invitedByName: row.invitedBy
+      ? platformUserDisplayName(row.invitedBy.nickname, row.invitedBy.name)
+      : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     isOwner: row.userId === project.ownerUserId || row.role === "OWNER",
@@ -122,7 +127,7 @@ export async function inviteHumanProjectMember(input: {
 }) {
   const user = await prisma.user.findUnique({
     where: { email: input.email.trim().toLowerCase() },
-    select: { id: true, name: true, email: true },
+    select: { id: true, name: true, nickname: true, email: true },
   });
   if (!user) {
     throw new ProjectAccessDeniedError("해당 이메일의 사용자를 찾을 수 없습니다.");
@@ -134,19 +139,19 @@ export async function inviteHumanProjectMember(input: {
       userId: user.id,
       memberType: "HUMAN",
       role: input.role,
-      displayName: user.name,
+      displayName: platformUserDisplayName(user.nickname, user.name),
       invitedByUserId: input.invitedByUserId,
     },
     update: {
       role: input.role,
-      displayName: user.name,
+      displayName: platformUserDisplayName(user.nickname, user.name),
       invitedByUserId: input.invitedByUserId,
     },
   });
 }
 
 /**
- * 프로젝트 생성 시 spec 단계 기본 AI 기획자(planner).
+ * 프로젝트 생성 시 spec 단계 기본 AI(planner) 멤버.
  * `aiOrchestrationRole` + `orchestrationStage` 조합으로 동일 프로젝트 내 중복 생성을 막습니다.
  */
 export async function ensureDefaultAiPlannerProjectMember(
@@ -170,7 +175,7 @@ export async function ensureDefaultAiPlannerProjectMember(
       projectId: input.projectId,
       memberType: "AI",
       role: "EDITOR",
-      displayName: "AI 기획자",
+      displayName: getWorkspaceAiMember("ideation")?.title ?? "AI 기획자",
       aiProvider: "openai",
       aiOrchestrationRole: "planner",
       orchestrationStage: "spec",

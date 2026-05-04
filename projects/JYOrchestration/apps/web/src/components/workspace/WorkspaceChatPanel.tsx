@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import { displayedAiOrchestrator } from "@/lib/ai-member/visibleAiOrchestrator";
+import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { WorkspaceMessageList } from "@/components/workspace/WorkspaceMessageList";
 import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScroll";
@@ -68,6 +70,7 @@ export function WorkspaceChatPanel({
   onSlotNavChipClick,
   slotDigestLoading,
   onChatSelectionToWorkNote,
+  workspaceAiMemberId = "feature_planning",
 }: {
   readonly messages: readonly WorkspaceChatMessage[];
   readonly loading?: boolean;
@@ -78,6 +81,8 @@ export function WorkspaceChatPanel({
   readonly slotDigestLoading?: boolean;
   /** 지정 시 채팅 영역에서 드래그 선택 후 작업메모로 보낼 수 있음 */
   readonly onChatSelectionToWorkNote?: (text: string) => void;
+  /** 기능 정리 등 — 채팅 헤더에 표시할 전담 AI */
+  readonly workspaceAiMemberId?: WorkspaceAiMemberId;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const endRef = useWorkspaceScrollToEnd(`${messages.length}-${loading ? 1 : 0}`);
@@ -190,7 +195,11 @@ export function WorkspaceChatPanel({
           <div key={m.id} style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
               <div style={workspaceStandardChatBubbleShell("ai")}>
-                <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>AI · {displayedAiOrchestrator().name}</div>
+                <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+                  <WorkspaceAiHeaderWithAvatar memberId={workspaceAiMemberId}>
+                    AI · {displayedWorkspaceAiTitle(workspaceAiMemberId)}
+                  </WorkspaceAiHeaderWithAvatar>
+                </div>
                 <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{m.text}</div>
                 {m.resultSummary?.lines?.length ? (
                   <div

@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { ReviewImprovementDetailModal } from "@/components/prototype-review/ReviewImprovementDetailModal";
+import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 
 /** 플로팅 독: 자식 레이어가 불투명하면 shell 투명도가 전혀 보이지 않으므로 큰 면은 모두 알파 배경 사용 */
 function dockGlass(sa: number) {
@@ -58,13 +60,17 @@ function shellStyle(
 }
 
 function roleLabel(role: PrototypeReviewMessage["role"]): string {
-  if (role === "planner") return "AI기획자";
+  if (role === "planner") return displayedWorkspaceAiTitle("prototype_review");
   if (role === "expert") return "전문가";
   return "사용자";
 }
 
 const DEFAULT_REVIEW_COMPOSER_AT_AT: readonly ComposerAtAtPickerItem[] = [
-  { id: "review:planner", label: "AI기획자", targets: [{ id: "planner", name: "AI기획자" }] },
+  {
+    id: "review:planner",
+    label: displayedWorkspaceAiTitle("prototype_review"),
+    targets: [{ id: "planner", name: displayedWorkspaceAiTitle("prototype_review") }],
+  },
   { id: "review:expert", label: "전문가", targets: [{ id: "expert", name: "전문가" }] },
   { id: "review:user", label: "사용자", targets: [{ id: "user", name: "사용자" }] },
 ];
@@ -128,7 +134,7 @@ export function ReviewChatPanel(p: {
   readonly onSummarize: () => void;
   readonly onImprovements: () => void;
   readonly onFollowUpDrafts: () => void;
-  /** 비우면 AI기획자·전문가·사용자 기본 멘션 */
+  /** 비우면 전담 AI·전문가·사용자 기본 멘션 */
   readonly composerAtAtItems?: readonly ComposerAtAtPickerItem[];
 }) {
   const [text, setText] = useState("");
@@ -193,7 +199,9 @@ export function ReviewChatPanel(p: {
           }}
         >
           <div style={{ fontSize: 14, fontWeight: 800, color: t.textPrimary }}>검토 대화</div>
-          <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>사용자 · 전문가 · AI기획자와 나눈 내용이 여기에 쌓입니다.</div>
+          <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>
+            사용자 · 전문가 · {displayedWorkspaceAiTitle("prototype_review")}와 나눈 내용이 여기에 쌓입니다.
+          </div>
         </div>
       ) : null}
 
@@ -223,8 +231,12 @@ export function ReviewChatPanel(p: {
                 alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                 paddingLeft: m.role === "user" ? 0 : 4,
                 paddingRight: m.role === "user" ? 4 : 0,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
               }}
             >
+              {m.role === "planner" ? <WorkspaceAiMemberAvatar memberId="prototype_review" size={22} /> : null}
               {roleLabel(m.role)}
             </span>
             <div style={bubbleStyle(m.role, glass)}>{m.content}</div>
@@ -242,7 +254,9 @@ export function ReviewChatPanel(p: {
                 background: glass ? glass.card : t.bgCard,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 8 }}>AI기획자 · AI개선안</div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 8 }}>
+                {displayedWorkspaceAiTitle("prototype_review")} · AI개선안
+              </div>
               <LoadingState label="개선안을 준비하는 중…" />
             </div>
           ) : null}
@@ -257,7 +271,9 @@ export function ReviewChatPanel(p: {
                 background: glass ? glass.card : t.bgCard,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 900, color: t.primary, marginBottom: 10 }}>AI기획자 · AI개선안</div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: t.primary, marginBottom: 10 }}>
+                {displayedWorkspaceAiTitle("prototype_review")} · AI개선안
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {p.improvementItems.map((it, idx) => (
                   <button

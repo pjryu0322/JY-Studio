@@ -3,6 +3,7 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { appendReviewMessage, getReviewThread, setImprovementItems } from "@/lib/prototype/prototypeReviewStore";
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import { formatRunContext, formatReviewTranscript, openAiTextCompletion } from "@/lib/prototype/prototypeReviewOpenAi";
 import { getRun } from "@/lib/prototype/prototypeRunStore";
 
@@ -36,13 +37,12 @@ export async function POST(request: NextRequest) {
   const messages = getReviewThread(projectId, runId);
   const run = getRun(projectId, runId);
 
-  const system = `당신은 JYOrchestration의 "AI기획자" 역할이다.
-화면: 프로토타입 검토. 사용자·전문가가 프리뷰 결과를 보며 개선점을 논의한다.
+  const system = `${workspaceAiMemberSystemPrefix("prototype_review")}화면: 프로토타입 검토. 사용자·전문가가 프리뷰 결과를 보며 개선점을 논의한다.
 규칙:
 - 한국어, 존댓말, 2~6문장으로 간결히.
 - 실행 파이프라인·Cursor·GitHub·배포 자동화 지시는 하지 않는다(이 화면 범위 밖).
 - 개선 방향·확인 질문·우선순위 제안에 집중한다.
-- "AI 에이전트", "리뷰어" 같은 영어식 호칭 대신 반드시 "AI기획자" 또는 "저는"으로 표현한다.`;
+- "AI 에이전트", "리뷰어" 같은 영어식 호칭 대신 공식 표시 이름(위 정체성) 또는 "저는"으로 표현한다.`;
 
   const userPayload = `[프로토타입 실행 맥락]
 ${formatRunContext(run)}

@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useUiLabel } from "@/lib/ui-label/useUiLabel";
 import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
+import { projectMembersAdminHref } from "@/lib/project/projectMembersAdminHref";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 import { WorkspaceModeSwitcher } from "@/components/layout/WorkspaceModeSwitcher";
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 
 function GearIcon() {
   return (
@@ -65,8 +67,13 @@ export function PlatformSettingsMenu() {
   const { enabled, setEnabled, ready } = useUiLabel();
   const prefs = useGlobalPreferences();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [sessionPresent, setSessionPresent] = useState(false);
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
+  const ideationAiAutoJoinLabel = useMemo(
+    () => `${getWorkspaceAiMember("ideation")?.title ?? "AI 기획자"} 자동 참여`,
+    [],
+  );
 
   const projectId = resolveWorkflowProjectContextId(pathname, searchParams);
   const encodedProjectId = projectId ? encodeURIComponent(projectId) : "";
@@ -135,11 +142,22 @@ export function PlatformSettingsMenu() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
-        const json = (await res.json()) as { success?: boolean; data?: { isPlatformAdmin?: boolean } | null };
-        if (!cancelled) setIsPlatformAdmin(Boolean(json.success && json.data?.isPlatformAdmin));
+        const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: { id?: string | null; isPlatformAdmin?: boolean; email?: string | null } | null;
+        };
+        if (!cancelled) {
+          const data = json.data;
+          const sid = String(data?.id ?? "").trim();
+          setSessionPresent(Boolean(res.ok && json.success && data && sid));
+          setIsPlatformAdmin(Boolean(res.ok && json.success && data && data.isPlatformAdmin));
+        }
       } catch {
-        if (!cancelled) setIsPlatformAdmin(false);
+        if (!cancelled) {
+          setSessionPresent(false);
+          setIsPlatformAdmin(false);
+        }
       }
     })();
     return () => {
@@ -194,7 +212,116 @@ export function PlatformSettingsMenu() {
             >
               <p style={{ margin: "0 0 10px 0", fontSize: 15, fontWeight: 800, color: "#0f172a" }}>설정</p>
 
-              {sectionTitle("작업모드", { first: true })}
+              {sessionPresent ? (
+                <>
+                  {sectionTitle("내 계정", { first: true })}
+                  {row(
+                    "계정 센터",
+                    <Link
+                      href="/account"
+                      onClick={() => closeMenu()}
+                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                    >
+                      열기
+                    </Link>,
+                  )}
+                  {row(
+                    "Settings · Integrations",
+                    <Link
+                      href="/integrations"
+                      onClick={() => closeMenu()}
+                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                    >
+                      열기
+                    </Link>,
+                  )}
+                  {row(
+                    "설정 메뉴 모드",
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
+                        gap: 8,
+                        maxWidth: 200,
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          onClick={() => prefs.setSettingsMenuPersona("user")}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 8,
+                            border: prefs.settingsMenuPersona === "user" ? "2px solid #0d9488" : "1px solid #e2e8f0",
+                            background: prefs.settingsMenuPersona === "user" ? "#ecfdf5" : "#fff",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            color: "#0f172a",
+                          }}
+                        >
+                          일반
+                        </button>
+                        <button
+                          type="button"
+                          title="플랫폼 관리 메뉴를 켭니다. 실제 콘솔은 플랫폼 관리자만 이용할 수 있습니다."
+                          onClick={() => prefs.setSettingsMenuPersona("admin")}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 8,
+                            border: prefs.settingsMenuPersona === "admin" ? "2px solid #0d9488" : "1px solid #e2e8f0",
+                            background: prefs.settingsMenuPersona === "admin" ? "#ecfdf5" : "#fff",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: "pointer",
+                            color: "#0f172a",
+                          }}
+                        >
+                          관리자
+                        </button>
+                      </div>
+                      {prefs.settingsMenuPersona === "admin" && !isPlatformAdmin ? (
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            lineHeight: 1.45,
+                            color: "#64748b",
+                            textAlign: "right",
+                          }}
+                        >
+                          플랫폼 관리자가 아니면「플랫폼 사용자」등 관리 콘솔이 보이지 않습니다. 로컬에서는 서버 환경변수{" "}
+                          <code style={{ fontSize: 10, background: "#f1f5f9", padding: "1px 4px", borderRadius: 4 }}>
+                            JYO_PLATFORM_ADMIN_EMAILS
+                          </code>{" "}
+                          에 본인 이메일을 넣거나, DB의 <code style={{ fontSize: 10, background: "#f1f5f9", padding: "1px 4px", borderRadius: 4 }}>globalRole</code>을{" "}
+                          <code style={{ fontSize: 10, background: "#f1f5f9", padding: "1px 4px", borderRadius: 4 }}>ADMIN</code>
+                          으로 올려 주세요.
+                        </p>
+                      ) : null}
+                    </div>,
+                  )}
+                  {isPlatformAdmin && prefs.settingsMenuPersona === "admin" ? (
+                    <>
+                      {sectionTitle("관리자 콘솔")}
+                      {row(
+                        "플랫폼 사용자",
+                        <Link
+                          href="/admin/platform-users"
+                          onClick={() => closeMenu()}
+                          style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                        >
+                          열기
+                        </Link>,
+                      )}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+
+              {sectionTitle("작업모드", { first: !sessionPresent })}
               <div style={{ marginBottom: 4 }}>
                 <WorkspaceModeSwitcher variant="menu" />
               </div>
@@ -206,6 +333,16 @@ export function PlatformSettingsMenu() {
                     "프로젝트 정보",
                     <Link
                       href={`/requirements?projectId=${encodedProjectId}`}
+                      onClick={() => closeMenu()}
+                      style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+                    >
+                      열기
+                    </Link>
+                  )}
+                  {row(
+                    "멤버 관리",
+                    <Link
+                      href={projectMembersAdminHref(projectId!)}
                       onClick={() => closeMenu()}
                       style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
                     >
@@ -263,7 +400,7 @@ export function PlatformSettingsMenu() {
 
               {sectionTitle("AI")}
               {row(
-                "AI 기획자 자동 참여",
+                ideationAiAutoJoinLabel,
                 <input
                   type="checkbox"
                   checked={prefs.aiFacilitatorAutoJoin}

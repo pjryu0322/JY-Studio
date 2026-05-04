@@ -14,6 +14,7 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { APP_FLOW_LAST_PROJECT_KEY, appFlowStepHref } from "@/lib/workflow/flow-state";
+import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 
 function ProjectCardPreviewIcon() {
   return (
@@ -77,7 +78,9 @@ type ApiResponse<T> = {
 type SessionUser = {
   id: string;
   email: string;
+  /** 플랫폼 표시명(닉네임 우선) */
   name: string;
+  avatarUrl?: string | null;
 };
 
 /** Presentational style bundles only — logic stays in HomePage. */
@@ -162,9 +165,9 @@ export default function HomePage() {
   async function loadSession() {
     try {
       const res = await fetch("/api/auth/me", { credentials: "include" });
-      const json = (await res.json()) as ApiResponse<SessionUser | null>;
-      if (res.ok && json.success && json.data) {
-        setSessionUser(json.data);
+      const json = (await res.json()) as ApiResponse<AuthMeDataWire | null>;
+      if (res.ok && json.success && json.data && String(json.data.id ?? "").trim()) {
+        setSessionUser(sessionUserFromAuthMe(json.data));
       } else {
         setSessionUser(null);
       }

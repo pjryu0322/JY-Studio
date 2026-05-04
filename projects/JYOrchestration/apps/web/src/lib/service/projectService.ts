@@ -95,7 +95,7 @@ export type CreateProjectInput = {
   repoUrl: string | null;
   defaultBranch: string;
   ownerUserId: string;
-  /** 기본 true. false면 기본 AI 기획자 멤버를 넣지 않습니다. */
+  /** 기본 true. false면 spec 단계 기본 AI(planner) 멤버를 넣지 않습니다. */
   includeDefaultAiPlanner?: boolean;
 };
 

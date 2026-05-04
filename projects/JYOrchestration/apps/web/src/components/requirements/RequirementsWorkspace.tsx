@@ -12,7 +12,8 @@ import { RequirementsMemberInviteModal } from "@/components/requirements/Require
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
 import { useWorkspaceSaveToast } from "@/components/workspace/useWorkspaceSaveToast";
-import { useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
+import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
+import { resolveParticipantContextKey, useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
 import { useRequirementsServiceFlowDraft } from "@/components/requirements/workspace/useRequirementsServiceFlowDraft";
 import { useRequirementsProjectLoad } from "@/components/requirements/workspace/useRequirementsProjectLoad";
 import { useRequirementsSpecWorkspacePersist } from "@/components/requirements/workspace/useRequirementsSpecWorkspacePersist";
@@ -96,6 +97,7 @@ import { type RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import { dedupeMemberRefs, computedTargetsFromInput } from "@/lib/requirements/requirementsTargets";
 import { APP_FLOW_LAST_PROJECT_KEY, notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import {
   formatDialogueExcerpt,
   ideationDraftGateStatus,
@@ -106,9 +108,29 @@ import {
   IDEATION_DRAFT_REQUIRED_SLOTS,
   resolveRequirementsWorkspaceStage,
   type MemberRow,
+  type RequirementsWorkspaceStage,
   type SessionUser,
 } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { RequirementsWorkspaceStageRenderer } from "@/components/requirements/RequirementsWorkspaceStageRenderer";
+import { buildPlatformMemberActivityFromRequirementsMessages } from "@/lib/ai-member/buildPlatformMemberActivityFromRequirementsMessages";
+import { extractHandoffSnippetFromRequirementsMessages } from "@/lib/ai-member/extractHandoffSnippetFromRequirementsMessages";
+import { publishWorkspaceAiScreenHandoff, consumeWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
+import { getWorkspaceAiMember, type WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { requirementsWorkspaceStageToScreenKey } from "@/lib/requirements/requirementsWorkspaceScreenBridge";
+import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
+import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
+
+function pickWorkspaceAiHandoffPublishMember(
+  stage: RequirementsWorkspaceStage,
+  ids: readonly WorkspaceAiMemberId[],
+): WorkspaceAiMemberId {
+  if (!ids.length) return resolveParticipantContextKey(stage);
+  if (stage === "service-flow" && ids.includes("actor_flow")) return "actor_flow";
+  if (stage === "ideation" && ids.includes("ideation")) return "ideation";
+  return ids[0]!;
+}
+
+const IDEATION_AI_DISPLAY_NAME = getWorkspaceAiMember("ideation")?.title ?? "AI 기획자";
 
 export function RequirementsWorkspace({
   initialProjectId,
@@ -153,6 +175,7 @@ export function RequirementsWorkspace({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [fetchNonce, setFetchNonce] = useState(0);
+  const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
   const [aiInvokePending, setAiInvokePending] = useState(false);
@@ -179,11 +202,13 @@ export function RequirementsWorkspace({
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
   const ideationBootstrapFlightRef = useRef<string | null>(null);
-  /** 아이디어 구체화: spec AI 기획자(planner) 보강 요청 중복 방지 */
+  /** 아이디어 구체화: spec 단계 기본 AI(planner) 보강 요청 중복 방지 */
   const ideationEnsurePlannerInFlightRef = useRef(false);
   /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
   const requirementsSendFlightRef = useRef(false);
   const sendDraftRestoreRef = useRef<string | null>(null);
+
+  const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
 
   const stage = useMemo(() => {
     const urlStage = String(searchParams?.get("stage") ?? "").trim().toLowerCase();
@@ -193,8 +218,16 @@ export function RequirementsWorkspace({
   }, [searchParams, initialStage]);
   const activeStage = useMemo(() => resolveRequirementsWorkspaceStage(stage), [stage]);
   const inIdeationStage = activeStage === "ideation";
-
-  const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
+  const participantAiMemberId = useMemo(() => resolveParticipantContextKey(activeStage), [activeStage]);
+  const ideationScreenCatalogIds = useMemo(() => {
+    if (!workspaceAiGraph) return undefined;
+    return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "requirements_ideation");
+  }, [workspaceAiGraph]);
+  const serviceFlowScreenCatalogIds = useMemo(() => {
+    if (!workspaceAiGraph) return undefined;
+    return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "requirements_service_flow");
+  }, [workspaceAiGraph]);
+  const requirementsWorkspacePrevStageRef = useRef<RequirementsWorkspaceStage>(activeStage);
 
   const { successToast, errorToast, showSuccessToast, showErrorToast } = useRequirementsWorkspaceToasts();
   const { saveToastVisible } = useWorkspaceSaveToast(saveState);
@@ -247,9 +280,10 @@ export function RequirementsWorkspace({
     void (async () => {
       try {
         const res = await credentialsIncludeFetch("/api/auth/me");
-        const json = (await res.json()) as { success?: boolean; data?: SessionUser | null };
-        if (res.ok && json.success && json.data) setSessionUser(json.data);
-        else setSessionUser(null);
+        const json = (await res.json()) as { success?: boolean; data?: AuthMeDataWire | null };
+        if (res.ok && json.success && json.data && String(json.data.id ?? "").trim()) {
+          setSessionUser(sessionUserFromAuthMe(json.data));
+        } else setSessionUser(null);
       } catch {
         setSessionUser(null);
       }
@@ -262,7 +296,11 @@ export function RequirementsWorkspace({
       setAiConnPhase("checking");
       setAiConnDetail(undefined);
       try {
-        const res = await credentialsIncludeFetch("/api/requirements/ai-connection");
+        const pid = resolvedProjectId.trim();
+        const url = pid
+          ? `/api/requirements/ai-connection?projectId=${encodeURIComponent(pid)}`
+          : "/api/requirements/ai-connection";
+        const res = await credentialsIncludeFetch(url);
         const json = (await res.json()) as {
           success?: boolean;
           message?: string;
@@ -300,7 +338,7 @@ export function RequirementsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [resolvedProjectId]);
 
   const reloadMembers = useCallback(async () => {
     const pid = resolvedProjectId.trim();
@@ -313,6 +351,32 @@ export function RequirementsWorkspace({
     }
     setMembers(json.data);
   }, [resolvedProjectId]);
+
+  useEffect(() => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) {
+      setWorkspaceAiGraph(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await credentialsIncludeFetch(`/api/project/workspace-ai?projectId=${encodeURIComponent(pid)}`);
+        const json = (await res.json()) as { success?: boolean; data?: { members?: WorkspaceAiGraphMemberWire[] } };
+        if (cancelled) return;
+        if (!res.ok || !json.success || !json.data?.members) {
+          setWorkspaceAiGraph(null);
+          return;
+        }
+        setWorkspaceAiGraph(json.data.members);
+      } catch {
+        if (!cancelled) setWorkspaceAiGraph(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedProjectId, fetchNonce]);
 
   useEffect(() => {
     ideationEnsurePlannerInFlightRef.current = false;
@@ -371,13 +435,6 @@ export function RequirementsWorkspace({
     return "대기";
   }, [aiConnPhase, aiConnDetail, aiInvokePending, aiLastInvoke]);
 
-  const { participants, participantBadgeCount } = useWorkspaceParticipants({
-    members,
-    sessionUser,
-    activeStage,
-    aiPlannerStatusLabel,
-  });
-
   const conversation = room.requirementsConversation;
   const conversationMessages = conversation.messages;
   const roomRef = useRef(room);
@@ -392,6 +449,56 @@ export function RequirementsWorkspace({
     () => conversationMessages.filter(isServiceFlowWorkshopMessage),
     [conversationMessages],
   );
+
+  const platformMemberActivity = useMemo(
+    () => buildPlatformMemberActivityFromRequirementsMessages(ideationConversationOnly, serviceFlowWorkshopPersisted),
+    [ideationConversationOnly, serviceFlowWorkshopPersisted],
+  );
+
+  useWorkspaceAiEntryNotice({
+    projectId: resolvedProjectId,
+    memberIds: inIdeationStage ? ideationScreenCatalogIds : serviceFlowScreenCatalogIds,
+    memberId: participantAiMemberId,
+    enabled: Boolean(resolvedProjectId.trim()),
+    onMessage: showSuccessToast,
+  });
+
+  const { participants, participantBadgeCount } = useWorkspaceParticipants({
+    members,
+    sessionUser,
+    activeStage,
+    aiPlannerStatusLabel,
+    participantContextKeys: inIdeationStage ? ideationScreenCatalogIds : serviceFlowScreenCatalogIds,
+    participantContextKey: participantAiMemberId,
+    platformMemberActivity,
+  });
+
+  useEffect(() => {
+    const pid = resolvedProjectId.trim();
+    const prev = requirementsWorkspacePrevStageRef.current;
+    if (prev !== activeStage && pid) {
+      const graphRows = workspaceAiGraph ?? [];
+      const fromIds = resolveEnabledCatalogKeysForScreen(graphRows, requirementsWorkspaceStageToScreenKey(prev));
+      const toIds = resolveEnabledCatalogKeysForScreen(graphRows, requirementsWorkspaceStageToScreenKey(activeStage));
+      const fromKey = pickWorkspaceAiHandoffPublishMember(prev, fromIds);
+      const toKey = pickWorkspaceAiHandoffPublishMember(activeStage, toIds);
+      if (fromKey !== toKey) {
+        const snippet = extractHandoffSnippetFromRequirementsMessages(
+          prev,
+          roomRef.current.requirementsConversation.messages
+        );
+        if (snippet.trim()) {
+          publishWorkspaceAiScreenHandoff(pid, {
+            targetMemberId: toKey,
+            fromMemberId: fromKey,
+            snippet: snippet.trim(),
+          });
+        }
+      }
+    }
+    requirementsWorkspacePrevStageRef.current = activeStage;
+  }, [activeStage, resolvedProjectId, workspaceAiGraph]);
+
   const draftDoc = room.requirementsDraft ?? null;
 
   useEffect(() => {
@@ -650,7 +757,7 @@ export function RequirementsWorkspace({
                 body: bodyText,
             speakerType: "AI",
             speakerId: VIRTUAL_AI_PLANNER_ID,
-            speakerName: "AI 기획자",
+            speakerName: IDEATION_AI_DISPLAY_NAME,
                 messageType: "ANSWER",
                 meta: { internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE },
           }),
@@ -817,7 +924,7 @@ export function RequirementsWorkspace({
             body: JSON.stringify(payload),
             speakerType: "AI",
             speakerId: VIRTUAL_AI_PLANNER_ID,
-            speakerName: "AI 기획자",
+            speakerName: IDEATION_AI_DISPLAY_NAME,
             messageType: "NOTICE",
             meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
           });
@@ -921,7 +1028,7 @@ export function RequirementsWorkspace({
       const mentionRefs = participants.map((p) => ({ id: p.id, name: p.name }));
       const fromMentions = computedTargetsFromInput(text, mentionRefs);
       const targets = dedupeMemberRefs(
-        fromMentions.length ? fromMentions : [{ id: VIRTUAL_AI_PLANNER_ID, name: "AI 기획자" }]
+        fromMentions.length ? fromMentions : [{ id: VIRTUAL_AI_PLANNER_ID, name: IDEATION_AI_DISPLAY_NAME }]
       );
       const anyAi = targets.some((t) => isAiTarget(t.id));
       const primaryAi = targets.find((t) => isAiTarget(t.id));
@@ -943,7 +1050,7 @@ export function RequirementsWorkspace({
 
       if (anyAi) {
         const primaryId = primaryAi?.id ?? targets[0].id;
-        const aiName = primaryId === VIRTUAL_AI_PLANNER_ID ? "AI 기획자" : primaryAi?.name ?? targets[0].name;
+        const aiName = primaryId === VIRTUAL_AI_PLANNER_ID ? IDEATION_AI_DISPLAY_NAME : primaryAi?.name ?? targets[0].name;
         const promptMetaIso = new Date().toISOString();
         const pv = buildPromptPresenterView({
           projectName: project?.name ?? "",
@@ -1287,6 +1394,7 @@ export function RequirementsWorkspace({
         const runFacilitatorOrDraftPipeline = async (): Promise<IdeationPlannerTail> => {
           let facilitatorFinalRoom: RequirementsRoomStateV3;
           try {
+          const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
           const res = await credentialsIncludeFetch(endpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1300,6 +1408,7 @@ export function RequirementsWorkspace({
               targets: targets.map((t) => ({ id: t.id, name: t.name })),
               sender: { id: sessionUser?.id ?? "", name: sessionUser?.name ?? "나" },
               replyTo: effectiveReplyTo ?? null,
+              ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
             }),
           });
           const json = (await res.json()) as {
@@ -1374,7 +1483,7 @@ export function RequirementsWorkspace({
           } else {
             const errMsg = json.message || "응답 생성 실패";
             setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-              showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
+              showErrorToast(`${IDEATION_AI_DISPLAY_NAME} 응답에 실패했습니다. 다시 시도해 주세요.`);
               facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
               ideationSendDevLog("return", `facilitator-http id=${sendTraceId}`);
             }
@@ -1382,7 +1491,7 @@ export function RequirementsWorkspace({
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);
           setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-            showErrorToast("AI 기획자 응답에 실패했습니다. 다시 시도해 주세요.");
+            showErrorToast(`${IDEATION_AI_DISPLAY_NAME} 응답에 실패했습니다. 다시 시도해 주세요.`);
             ideationSendDevLog("return", `facilitator-throw id=${sendTraceId}`);
             return { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } };
           }
@@ -1645,6 +1754,7 @@ export function RequirementsWorkspace({
       <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
+        screenAiMemberId={participantAiMemberId}
         typingIndicator={aiInvokePending}
         memberControls={{ count: participantBadgeCount, onOpen: () => setMembersModalOpen(true) }}
         ideationInterviewUi={
@@ -1762,6 +1872,7 @@ export function RequirementsWorkspace({
         onInviteMember={() => setInviteOpen(true)}
         onRetryGate={() => setFetchNonce((n) => n + 1)}
         onUpdateFlow={(next) => void persistServiceFlow(next)}
+        platformScreenAiMemberIds={serviceFlowScreenCatalogIds}
       />
     </div>
   );

@@ -113,6 +113,31 @@ export type PrototypeWorkUnit = Readonly<{
 
 export type PrototypeDeploymentStatus = "PENDING" | "REQUESTED" | "RUNNING" | "DONE" | "FAILED";
 
+/** GitHub Pages 정식 배포 전 AI 보안관 게이트(ENV_TEST·Stage1과 무관). */
+export const PROTOTYPE_DEPLOY_SECURITY_GATE_PHASES = [
+  "NONE",
+  "SECURITY_CHECKING",
+  "SECURITY_FIX_REQUIRED",
+  "FIX_IN_PROGRESS",
+  "PENDING_RECHECK",
+  "SECURITY_PASSED",
+] as const;
+
+export type PrototypeDeploySecurityGatePhase = (typeof PROTOTYPE_DEPLOY_SECURITY_GATE_PHASES)[number];
+
+export type PrototypeSecurityFindingSeverity = "HIGH" | "MEDIUM" | "LOW";
+
+export type PrototypeSecurityFindingFixStatus = "OPEN" | "ADDRESSED";
+
+export type PrototypeSecurityFinding = Readonly<{
+  id: string;
+  severity: PrototypeSecurityFindingSeverity;
+  location: string;
+  description: string;
+  recommendedAction: string;
+  fixStatus: PrototypeSecurityFindingFixStatus;
+}>;
+
 export type PrototypePlannerSource = "llm" | "fallback";
 
 export type PrototypeRun = Readonly<{
@@ -174,12 +199,38 @@ export type PrototypeRun = Readonly<{
   pagesDeployTriggerCommitSha: string | null;
   /** GitHub Pages 정식 배포 완료 후 공개 URL(검토용 previewUrl과 구분). 배포 전에는 null */
   publicUrl: string | null;
+
+  /** Pages 정식 배포 요청 시 보안 게이트 단계. */
+  deploySecurityGatePhase: PrototypeDeploySecurityGatePhase;
+  /** 보안 점검 중이면 true(첫 점검·재점검 UI 구분). */
+  deploySecurityCheckIsRecheck: boolean;
+  deploySecurityFindings: readonly PrototypeSecurityFinding[];
+  deploySecurityCheckStartedAt: string | null;
+  deploySecurityCheckFinishedAt: string | null;
+  /** 점검 통과 시점의 mergeSha — 이후 커밋이 바뀌면 재점검 필요. */
+  deploySecurityPassedCommitSha: string | null;
+  deploySecurityPassedAt: string | null;
+  /** 보안 조치용으로 추가한 WorkUnit order(머지 후 PENDING_RECHECK으로 복귀). */
+  deploySecurityFixWorkUnitOrder: number | null;
+
   createdAt: string;
   updatedAt: string;
 }>;
 
 /** 검토·배포 UI용 스냅샷(클라이언트·API 공통). */
 export type PrototypeDeployUiStatus = "NOT_DEPLOYED" | "DEPLOYING" | "DEPLOYED" | "FAILED";
+
+/** 검토 화면 배포·보안 게이트 표시용(한 줄). */
+export type PrototypeDeployGateUiLabel =
+  | "BEFORE_DEPLOY"
+  | "SECURITY_CHECKING"
+  | "SECURITY_FIX_REQUIRED"
+  | "FIX_IN_PROGRESS"
+  | "PENDING_RECHECK"
+  | "SECURITY_PASSED"
+  | "DEPLOYING"
+  | "DEPLOYED"
+  | "FAILED";
 
 export type PrototypeDeployStatusSnapshot = Readonly<{
   deployStatus: PrototypeDeployUiStatus;
@@ -190,6 +241,10 @@ export type PrototypeDeployStatusSnapshot = Readonly<{
   resultUrl: string | null;
   runStatus: string;
   pagesDeployWorkflowRunUrl: string | null;
+  deploySecurityGatePhase: PrototypeDeploySecurityGatePhase;
+  deploySecurityFindings: readonly PrototypeSecurityFinding[];
+  deployGateUiLabel: PrototypeDeployGateUiLabel;
+  deployGateUiLabelKo: string;
 }>;
 
 export type PrototypeRunFileEnvelope = Readonly<{

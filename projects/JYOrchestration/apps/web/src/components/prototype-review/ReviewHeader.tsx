@@ -28,6 +28,12 @@ function previewStatusShort(run: PrototypeRun | null, deploy: PrototypeDeploySta
   return "Preview 준비 필요";
 }
 
+const sevColor: Record<string, string> = {
+  HIGH: "#b91c1c",
+  MEDIUM: "#b45309",
+  LOW: t.textSecondary,
+};
+
 export function ReviewHeader(p: {
   readonly projectId: string;
   readonly run: PrototypeRun | null;
@@ -40,15 +46,39 @@ export function ReviewHeader(p: {
   readonly onRefresh: () => void;
   readonly onFullscreen: () => void;
   readonly onRequestDeploy: () => void;
+  readonly onDeployProceed: () => void;
+  readonly onSecurityRecheck: () => void;
+  readonly onSecurityFixRequest: () => void;
   readonly deployRequestBusy: boolean;
+  readonly deployProceedBusy: boolean;
+  readonly securityRecheckBusy: boolean;
+  readonly securityFixBusy: boolean;
 }) {
   const versionLabel = p.versionNo != null ? `V${p.versionNo}` : p.run ? "V—" : "—";
   const publicUrl = String(p.deploy.publicUrl ?? "").trim();
-  const canRequest =
+  const phase = p.run?.deploySecurityGatePhase ?? "NONE";
+
+  const canRequestSecurityCheck =
     Boolean(p.run?.id) &&
     (p.run?.status === "PREVIEW_READY" || p.run?.status === "PR_OPENED" || p.run?.status === "DEPLOY_FAILED") &&
     p.deploy.deployStatus !== "DEPLOYING" &&
-    p.deploy.deployStatus !== "DEPLOYED";
+    p.deploy.deployStatus !== "DEPLOYED" &&
+    (phase === "NONE" ||
+      (phase === "SECURITY_PASSED" && (p.deploy.deployStatus === "FAILED" || p.run?.status === "DEPLOY_FAILED")));
+
+  const canDeployProceed =
+    Boolean(p.run?.id) &&
+    phase === "SECURITY_PASSED" &&
+    p.deploy.deployStatus !== "DEPLOYED" &&
+    p.deploy.deployStatus !== "DEPLOYING";
+
+  const canSecurityRecheck = Boolean(p.run?.id) && (phase === "PENDING_RECHECK" || phase === "SECURITY_FIX_REQUIRED");
+
+  const canFixRequest =
+    Boolean(p.run?.id) &&
+    phase === "SECURITY_FIX_REQUIRED" &&
+    (p.run?.deploySecurityFindings?.length ?? 0) > 0 &&
+    p.run?.deploySecurityFixWorkUnitOrder == null;
 
   const deployBanner = (() => {
     if (p.deploy.deployStatus === "DEPLOYED" && publicUrl) {
@@ -73,16 +103,29 @@ export function ReviewHeader(p: {
     if (p.deploy.deployStatus === "FAILED") {
       return (
         <div style={{ fontSize: 13, color: "#b91c1c", lineHeight: 1.55, flex: "1 1 220px", minWidth: 0 }}>
-          배포에 실패했습니다. 새로고침으로 상태를 확인하거나 다시 배포를 요청해 주세요.
+          배포에 실패했습니다. 새로고침으로 상태를 확인하거나, 보안 점검·배포 절차를 처음부터 다시 진행해 주세요.
         </div>
       );
     }
     return (
       <div style={{ fontSize: 13, color: t.textSecondary, lineHeight: 1.55, flex: "1 1 220px", minWidth: 0 }}>
-        아직 정식 배포되지 않았습니다. Preview를 확인한 뒤 [배포 요청]으로 GitHub Pages 공개를 진행합니다.
+        <span style={{ color: t.textPrimary, fontWeight: 700 }}>{p.deploy.deployGateUiLabelKo}</span>
+        {phase === "SECURITY_PASSED" ? (
+          <>
+            <br />
+            보안 점검을 통과했습니다. 「배포 진행」으로 GitHub Pages 공개를 시작합니다.
+          </>
+        ) : phase === "NONE" ? (
+          <>
+            <br />
+            Preview를 확인한 뒤 「배포 요청」으로 AI 보안 점검을 시작합니다. 점검 통과 후에만 배포할 수 있습니다.
+          </>
+        ) : null}
       </div>
     );
   })();
+
+  const findings = p.deploy.deploySecurityFindings ?? [];
 
   return (
     <header style={{ ...bar, flexDirection: "column", alignItems: "stretch" }} aria-label="프로토타입 검토 도구">
@@ -138,10 +181,40 @@ export function ReviewHeader(p: {
             variant="primary"
             size="sm"
             loading={p.deployRequestBusy}
-            disabled={!canRequest || p.deployRequestBusy || !p.projectId.trim()}
+            disabled={!canRequestSecurityCheck || p.deployRequestBusy || !p.projectId.trim()}
             onClick={p.onRequestDeploy}
           >
             배포 요청
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={p.securityFixBusy}
+            disabled={!canFixRequest || p.securityFixBusy}
+            onClick={p.onSecurityFixRequest}
+          >
+            AI 개발자에게 조치 요청
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            loading={p.securityRecheckBusy}
+            disabled={!canSecurityRecheck || p.securityRecheckBusy}
+            onClick={p.onSecurityRecheck}
+          >
+            보안 재점검
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            loading={p.deployProceedBusy}
+            disabled={!canDeployProceed || p.deployProceedBusy}
+            onClick={p.onDeployProceed}
+          >
+            배포 진행
           </Button>
           {p.deploy.deployStatus === "DEPLOYED" && publicUrl ? (
             <>
@@ -166,6 +239,36 @@ export function ReviewHeader(p: {
           </Button>
         </div>
       </div>
+
+      {findings.length > 0 && phase !== "NONE" && phase !== "SECURITY_CHECKING" && phase !== "SECURITY_PASSED" ? (
+        <div style={{ marginTop: 10, overflowX: "auto" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: t.textPrimary, marginBottom: 6 }}>취약점 목록</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: t.textMuted }}>
+                <th style={{ padding: "6px 8px", borderBottom: `1px solid ${t.border}` }}>심각도</th>
+                <th style={{ padding: "6px 8px", borderBottom: `1px solid ${t.border}` }}>위치</th>
+                <th style={{ padding: "6px 8px", borderBottom: `1px solid ${t.border}` }}>설명</th>
+                <th style={{ padding: "6px 8px", borderBottom: `1px solid ${t.border}` }}>권장 조치</th>
+                <th style={{ padding: "6px 8px", borderBottom: `1px solid ${t.border}` }}>조치 상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {findings.map((f) => (
+                <tr key={f.id}>
+                  <td style={{ padding: "8px", borderBottom: `1px solid ${t.border}`, color: sevColor[f.severity] ?? t.textPrimary, fontWeight: 700 }}>
+                    {f.severity}
+                  </td>
+                  <td style={{ padding: "8px", borderBottom: `1px solid ${t.border}`, color: t.textPrimary, whiteSpace: "nowrap" }}>{f.location}</td>
+                  <td style={{ padding: "8px", borderBottom: `1px solid ${t.border}`, color: t.textSecondary }}>{f.description}</td>
+                  <td style={{ padding: "8px", borderBottom: `1px solid ${t.border}`, color: t.textSecondary }}>{f.recommendedAction}</td>
+                  <td style={{ padding: "8px", borderBottom: `1px solid ${t.border}`, color: t.textSecondary }}>{f.fixStatus === "ADDRESSED" ? "조치됨" : "미조치"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </header>
   );
 }

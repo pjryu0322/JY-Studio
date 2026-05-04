@@ -5,29 +5,12 @@
  */
 import { useMemo } from "react";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
+import {
+  formatParticipantStatusSubtitle,
+  sortParticipantsForPresenceList,
+} from "@/components/workspace/participantOptionPresentation";
+import { WorkspaceAiParticipantAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import styles from "@/components/workspace/workspaceParticipantsModal.module.css";
-
-function sortForModal(participants: readonly ParticipantOption[]): ParticipantOption[] {
-  const ais = participants.filter((p) => p.kind === "ai");
-  const self = participants.filter((p) => p.kind === "human" && p.onlineHint);
-  const others = participants.filter((p) => p.kind === "human" && !p.onlineHint);
-  return [...ais, ...self, ...others];
-}
-
-function statusSubtitle(p: ParticipantOption): string {
-  const parts: string[] = [];
-  if (p.kind === "ai") {
-    const s = p.aiStatusLabel?.trim();
-    if (s) parts.push(s.length > 36 ? `${s.slice(0, 36)}…` : s);
-    else parts.push("AI");
-  } else {
-    const role = p.roleLabel?.trim();
-    if (role) parts.push(role);
-    if (p.invited) parts.push("초대됨");
-    parts.push(p.onlineHint ? "온라인" : "오프라인");
-  }
-  return parts.join(" · ");
-}
 
 export function WorkspaceParticipantsModal(p: {
   readonly open: boolean;
@@ -37,7 +20,7 @@ export function WorkspaceParticipantsModal(p: {
   readonly inviteDisabled: boolean;
   readonly onInviteClick: () => void;
 }) {
-  const ordered = useMemo(() => sortForModal(p.participants), [p.participants]);
+  const ordered = useMemo(() => sortParticipantsForPresenceList(p.participants), [p.participants]);
 
   if (!p.open) return null;
 
@@ -72,9 +55,18 @@ export function WorkspaceParticipantsModal(p: {
         <div className={styles.listWrap}>
           <div role="list" className={styles.list}>
             {ordered.map((m) => (
-              <div key={m.id} role="listitem" className={styles.row}>
-                <div className={styles.name}>{m.name}</div>
-                <div className={styles.meta}>{statusSubtitle(m)}</div>
+              <div
+                key={m.id}
+                role="listitem"
+                className={`${styles.row}${m.kind === "ai" && m.isCurrentScreenAi ? ` ${styles.rowCurrent}` : ""}`}
+              >
+                <div className={styles.rowMain}>
+                  {m.kind === "ai" ? <WorkspaceAiParticipantAvatar participant={m} size={36} className={styles.rowAvatar} /> : null}
+                  <div className={styles.rowText}>
+                    <div className={styles.name}>{m.name}</div>
+                    <div className={styles.meta}>{formatParticipantStatusSubtitle(m, "modal")}</div>
+                  </div>
+                </div>
               </div>
             ))}
             {!ordered.length ? <div className={styles.empty}>표시할 멤버가 없습니다.</div> : null}

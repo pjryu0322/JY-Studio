@@ -14,6 +14,7 @@ type Body = {
   currentFlow?: RequirementsServiceFlowV1 | null;
   recentMessages?: string;
   latestAiQuestion?: string;
+  priorScreenHandoff?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
     const userMessage = String(body.userMessage ?? "").trim();
     const recentMessages = String(body.recentMessages ?? "").trim();
     const latestAiQuestion = String(body.latestAiQuestion ?? "").trim();
+    const priorScreenHandoff = String(body.priorScreenHandoff ?? "").trim();
     const currentFlow = (body.currentFlow ?? null) as RequirementsServiceFlowV1 | null;
 
     if (!projectId) return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
       currentFlow,
       recentMessages,
       latestAiQuestion,
+      priorScreenHandoff: priorScreenHandoff || undefined,
     });
 
     if (!result.ok) {

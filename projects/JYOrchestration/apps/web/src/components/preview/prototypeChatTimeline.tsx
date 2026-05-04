@@ -14,6 +14,8 @@ import {
   type PrototypeChatBlock,
   type PrototypeChatBuiltMessage,
 } from "@/lib/prototype/buildPrototypeChatMessages";
+import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 
 const userBubbleStandard: CSSProperties = {
   maxWidth: "min(100%, 520px)",
@@ -488,6 +490,27 @@ function InlineTemplatePickerRow(p: PrototypeInlineTemplatePickerProps) {
   );
 }
 
+const PROTOTYPE_BUILD_AI_CARD_HEADER_STYLE: CSSProperties = {
+  padding: "10px 14px",
+  borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
+  background: "#f1f5f9",
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#475569",
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+function PrototypeBuildAiCardHeaderBar() {
+  return (
+    <div style={PROTOTYPE_BUILD_AI_CARD_HEADER_STYLE}>
+      <WorkspaceAiMemberAvatar memberId="prototype_build" size={26} />
+      <span style={{ minWidth: 0 }}>AI · {displayedWorkspaceAiTitle("prototype_build")}</span>
+    </div>
+  );
+}
+
 export function PrototypeAiMessage(p: {
   readonly message: PrototypeChatBuiltMessage;
   readonly onAction: (a: PrototypeChatAction) => void;
@@ -509,18 +532,7 @@ export function PrototypeAiMessage(p: {
         overflow: showPicker ? "visible" : "hidden",
       }}
     >
-      <div
-        style={{
-          padding: "10px 14px",
-          borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
-          background: "#f1f5f9",
-          fontSize: 12,
-          fontWeight: 800,
-          color: "#475569",
-        }}
-      >
-        AI · AI 기획자
-      </div>
+      <PrototypeBuildAiCardHeaderBar />
       <div style={{ padding: "12px 14px 14px" }}>
         {m.title ? (
           <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>{m.title}</div>
@@ -691,18 +703,7 @@ export function PrototypeChatTimeline(p: {
                 overflow: "hidden",
               }}
             >
-              <div
-                style={{
-                  padding: "10px 14px",
-                  borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
-                  background: "#f1f5f9",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: "#475569",
-                }}
-              >
-                AI · AI 기획자
-              </div>
+              <PrototypeBuildAiCardHeaderBar />
               <div style={{ padding: "12px 14px 14px", fontSize: 15, color: "#334155", fontWeight: 650, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
                 {row.e.text}
               </div>

@@ -1,3 +1,4 @@
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import type { InterviewAnalyzerPayload, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import { parseInterviewAnalyzerPayloadFromModelText, problemInterviewStateToAnalyzerWire } from "@/lib/requirements/problemInterview";
@@ -69,6 +70,8 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   senderSummary?: string;
   /** 클라이언트 전역 설정과 동기 */
   responseStyle?: RequirementsAiResponseStyle;
+  /** 직전 화면 전환 시 넘겨받은 맥락(세션에서 1회 소비) */
+  priorScreenHandoff?: string;
 }): Promise<RequirementsFacilitatorOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -85,6 +88,9 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   const senderBlock = (input.senderSummary ?? "").trim()
     ? `\n\n[발신]\n${(input.senderSummary ?? "").trim()}`
     : "";
+  const handoffBlock = (input.priorScreenHandoff ?? "").trim()
+    ? `\n\n[이전 화면에서 넘어온 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 4000)}`
+    : "";
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -98,8 +104,7 @@ export async function runRequirementsFacilitatorOpenAI(input: {
       messages: [
         {
           role: "system",
-          content: `당신은 소프트웨어 프로젝트의 요구사항 정리를 돕는 AI 기획자입니다.
-역할: 범위·모호함·누락·역할·기능/비기능 요구를 짧게 질문하고, 확인 가능한 요구사항으로 수렴시키세요.
+          content: `${workspaceAiMemberSystemPrefix("ideation")}역할: 범위·모호함·누락·역할·기능/비기능 요구를 짧게 질문하고, 확인 가능한 요구사항으로 수렴시키세요.
 규칙:
 - 한국어로 답합니다.
 - 1회 응답은 8문장 이내, 불필요한 서론·마크다운 제목 없이 대화체로 작성합니다.
@@ -116,7 +121,7 @@ export async function runRequirementsFacilitatorOpenAI(input: {
 - 설명: ${projectDescription || "(설명 없음)"}
 
 [현재 단계]
-- Requirements(요구사항)
+- Requirements(요구사항)${handoffBlock}
 
 [최근 대화 발췌]
 ${excerpt || "(이전 메시지 없음)"}
@@ -149,8 +154,8 @@ ${input.userMessage.trim()}${mentionBlock}${senderBlock}`,
 }
 
 /**
- * 아이디어 구체화: 대화가 비어 있을 때 AI 기획자가 인터뷰 첫 질문만 던지도록 부트스트랩.
- * 일반 요구사항 AI 기획자 프롬프트와 분리해, 질문 1개·설명 금지 규칙을 강하게 둡니다.
+ * 아이디어 구체화: 대화가 비어 있을 때 전담 AI(기획)가 인터뷰 첫 질문만 던지도록 부트스트랩.
+ * 일반 요구사항 대화용 프롬프트와 분리해, 질문 1개·설명 금지 규칙을 강하게 둡니다.
  */
 export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
   projectName: string;
@@ -165,7 +170,7 @@ export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
   const pn = input.projectName.trim() || "(이름 없음)";
   const pd = input.projectDescription.trim() || "(설명 없음)";
 
-  const system = `당신은 숙련된 서비스 기획자입니다.
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}당신은 숙련된 서비스 기획자입니다.
 
 목표:
 사용자의 프로젝트 아이디어를 구체화하기 위해
@@ -316,8 +321,7 @@ export async function runRequirementsDraftOpenAI(input: {
       messages: [
         {
           role: "system",
-          content:
-            "You are a senior product manager. Output only a valid JSON object. No markdown fences. Keep strings concise and actionable.",
+          content: `${workspaceAiMemberSystemPrefix("ideation")}You are a senior product manager. Output only a valid JSON object. No markdown fences. Keep strings concise and actionable.`,
         },
         {
           role: "user",
@@ -453,7 +457,7 @@ export async function runIdeationDeliverablesOpenAI(input: {
         messages: [
           {
             role: "system",
-            content: `You are a Korean product planning assistant. Output only one valid JSON object. No markdown fences.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
+            content: `${workspaceAiMemberSystemPrefix("ideation")}You are a Korean product planning assistant. Output only one valid JSON object. No markdown fences.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
           },
           {
             role: "user",
@@ -626,6 +630,7 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   currentFlow: RequirementsServiceFlowV1 | null;
   recentMessages: string;
   latestAiQuestion: string;
+  priorScreenHandoff?: string;
 }): Promise<ServiceFlowAnalyzeOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -645,9 +650,11 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
     })
     .filter(Boolean)
     .join("\n\n");
+  const serviceFlowHandoffBlock = (input.priorScreenHandoff ?? "").trim()
+    ? `\n\n[이전 화면에서 넘어온 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 4000)}`
+    : "";
 
-  const system = `당신은 "액터 및 서비스 흐름 정의" 단계 전용 AI 기획자입니다.
-이 단계의 실제 목적은 "아이디어 구체화 결과 기반의 서비스 흐름 검증/보정/담당 확정"이다.
+  const system = `${workspaceAiMemberSystemPrefix("actor_flow")}이 단계의 실제 목적은 "아이디어 구체화 결과 기반의 서비스 흐름 검증/보정/담당 확정"이다.
 중요: 이 단계에서 "이제 흐름을 정의해볼까요?"처럼 백지 디스커버리를 다시 시작하면 실패다.
 
 목표:
@@ -705,7 +712,7 @@ Readiness:
 
   const user = `[프로젝트]
 이름: ${input.projectName.trim() || "(이름 없음)"}
-설명: ${input.projectDescription.trim() || "(설명 없음)"}
+설명: ${input.projectDescription.trim() || "(설명 없음)"}${serviceFlowHandoffBlock}
 
 [직전 AI 질문(맥락)]
 ${input.latestAiQuestion.trim() || "(없음)"}
@@ -832,7 +839,7 @@ export async function runInterviewAnalyzeOpenAI(input: {
   const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
   const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
 
-  const system = `당신은 아이디어 구체화 단계(고수준 디스커버리) 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}당신은 아이디어 구체화 단계(고수준 디스커버리) 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
 역할:
 1) 사용자의 최신 답변을 읽고, 아래 8개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
 2) 사용자의 답변 intent를 분류합니다(질문에 직접 답하지 않아도 "AI에게 판단을 위임"이면 delegate_to_ai).
@@ -955,10 +962,10 @@ ${input.userMessage.trim()}`;
 }
 
 /** API 키 유효성·네트워크를 가볍게 확인합니다. */
-export async function pingOpenAiModelsList(): Promise<OpenAiModelsPingResult> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+export async function pingOpenAiModelsList(apiKeyOverride?: string | null): Promise<OpenAiModelsPingResult> {
+  const apiKey = String(apiKeyOverride ?? "").trim() || process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 설정되어 있지 않습니다." };
+    return { ok: false, code: "NO_KEY", message: "OpenAI API 키가 없습니다. Integrations 또는 OPENAI_API_KEY를 설정하세요." };
   }
   try {
     const res = await fetch("https://api.openai.com/v1/models?limit=1", {

@@ -1,4 +1,7 @@
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeRun, PrototypeRunStatus, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
+
+const PLANNER_ANALYZING_LABEL_KO = `${getWorkspaceAiMember("prototype_build")?.title ?? "AI 개발자"} 분석`;
 
 export type PrototypeTimelineStepStatus = "pending" | "running" | "success" | "failed" | "blocked";
 
@@ -140,7 +143,7 @@ export function prototypeRunStatusLabelKo(status: PrototypeRunStatus): string {
   const m: Record<PrototypeRunStatus, string> = {
     DRAFT: "초안",
     PROMPT_READY: "프롬프트 준비",
-    PLANNER_ANALYZING: "AI 기획자 분석",
+    PLANNER_ANALYZING: PLANNER_ANALYZING_LABEL_KO,
     WORK_UNITS_READY: "WorkUnit 생성",
     CURSOR_REQUESTED: "Cursor 요청됨",
     CURSOR_RUNNING: "Cursor 실행 중",

@@ -31,7 +31,9 @@ import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScro
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
-import { displayedAiOrchestrator, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { displayedWorkspaceAiTitle, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 import { uiTokens as t } from "@/components/ui/tokens";
 import {
   WORKSPACE_STANDARD_CHAT_BODY_STYLE,
@@ -59,6 +61,7 @@ export function RequirementsChatPanel({
   onRegenerateDeliverables,
   onConfirmDeliverables,
   memberControls,
+  screenAiMemberId = "ideation",
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
   readonly composer: ReactNode;
@@ -87,6 +90,8 @@ export function RequirementsChatPanel({
   readonly onConfirmDeliverables?: (assetIds: readonly string[]) => void;
   /** 아이디어 구체화 참여 멤버 보기(상단 아이콘) */
   readonly memberControls?: { count: number; onOpen: () => void } | null;
+  /** 이 채팅 패널이 속한 화면의 전담 AI(표시명·내부 에이전트 병행 시 폴백) */
+  readonly screenAiMemberId?: WorkspaceAiMemberId;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
@@ -407,9 +412,10 @@ export function RequirementsChatPanel({
                 <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
               );
 
+              const defaultAiTitle = displayedWorkspaceAiTitle(screenAiMemberId);
               const aiSpeakerLine = !showInternalAgents
-                ? displayedAiOrchestrator().name
-                : String(m.speakerName ?? "").trim() || displayedAiOrchestrator().name;
+                ? defaultAiTitle
+                : String(m.speakerName ?? "").trim() || defaultAiTitle;
 
               return (
                 <div
@@ -430,11 +436,10 @@ export function RequirementsChatPanel({
                   >
                     {replyContextLine}
                     <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
-                      <span style={{ flex: "1 1 auto", minWidth: 0 }}>
+                      <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId} trailing={repliesNavBtn}>
                         AI · {aiSpeakerLine}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
-                      </span>
-                      {repliesNavBtn}
+                      </WorkspaceAiHeaderWithAvatar>
                     </div>
                     {interviewPurposeBadge}
                     <div style={{ ...WORKSPACE_STANDARD_CHAT_BODY_STYLE, marginTop: interviewPurposeBadge ? 6 : 0 }}>{aiBody}</div>
@@ -528,11 +533,13 @@ export function RequirementsChatPanel({
             <div style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0 }}>
               <div style={aiCardShell("notice")}>
                 <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
-                  AI · {displayedAiOrchestrator().name}
-                  <span style={{ fontWeight: 700, color: t.textMuted }}>
-                    {" "}
-                    · {new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
+                  <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId}>
+                    AI · {displayedWorkspaceAiTitle(screenAiMemberId)}
+                    <span style={{ fontWeight: 700, color: t.textMuted }}>
+                      {" "}
+                      · {new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </WorkspaceAiHeaderWithAvatar>
                 </div>
                 <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
                   <span style={{ fontWeight: 800, marginRight: 6 }}>생각 중입니다</span>

@@ -1,5 +1,6 @@
 import type { ProjectRole } from "@/lib/auth/roles";
 import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 
 /** UI 전용 — DB 스키마와 무관 */
 export type UnifiedMemberType = "USER" | "AI";
@@ -22,8 +23,8 @@ const ORCH_TITLE: Record<string, string> = {
   "quality-reviewer": "품질 리뷰어",
   "spec-reviewer": "Spec 리뷰어",
   "task-reviewer": "Task 리뷰어",
-  planner: "AI 기획자",
-  "service-designer": "AI 기획자",
+  planner: getWorkspaceAiMember("ideation")?.title ?? "AI 기획자",
+  "service-designer": getWorkspaceAiMember("actor_flow")?.title ?? "AI 분석가",
   "domain-expert": "업무 전문가",
   "scm-manager": "SCM Manager",
 };

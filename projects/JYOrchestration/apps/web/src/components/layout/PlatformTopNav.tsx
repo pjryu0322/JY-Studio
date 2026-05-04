@@ -11,9 +11,10 @@ import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 import { fetchProjectById } from "@/components/project-spec/api";
 
 type MeState = {
-  name: string;
+  displayName: string;
   email: string;
   isPlatformAdmin: boolean;
+  avatarUrl: string | null;
 };
 
 export function PlatformTopNav() {
@@ -35,17 +36,36 @@ export function PlatformTopNav() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/auth/me", { credentials: "include" });
+        const res = await fetch("/api/auth/me", {
+          credentials: "include",
+          cache: "no-store",
+        });
         const json = (await res.json()) as {
           success?: boolean;
-          data?: { name?: string | null; email?: string | null; isPlatformAdmin?: boolean } | null;
+          data?: {
+            id?: string | null;
+            name?: string | null;
+            displayName?: string | null;
+            nickname?: string | null;
+            email?: string | null;
+            avatarUrl?: string | null;
+            isPlatformAdmin?: boolean;
+          } | null;
         };
         if (cancelled) return;
-        if (json.success && json.data?.email) {
+        // 홈 `loadSession`과 동일: 세션 사용자는 `data` 객체만 있으면 인정(이메일 비어 있음·지연 응답 대비).
+        if (res.ok && json.success && json.data && String(json.data.id ?? "").trim()) {
+          const email = String(json.data.email ?? "").trim();
+          const d = String(json.data.displayName ?? "").trim();
+          const nick = String(json.data.nickname ?? "").trim();
+          const legal = String(json.data.name ?? "").trim();
+          const displayName = d || nick || legal || "사용자";
+          const av = String(json.data.avatarUrl ?? "").trim();
           setMe({
-            name: String(json.data.name ?? "").trim() || "사용자",
-            email: String(json.data.email ?? "").trim(),
+            displayName,
+            email,
             isPlatformAdmin: Boolean(json.data.isPlatformAdmin),
+            avatarUrl: av || null,
           });
         } else {
           setMe(null);
@@ -59,7 +79,7 @@ export function PlatformTopNav() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,16 +214,33 @@ export function PlatformTopNav() {
             {meReady && me ? (
               <span
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
                   fontSize: 13,
                   fontWeight: 600,
                   color: "#334155",
-                  maxWidth: "min(100%, 320px)",
+                  maxWidth: "min(100%, 360px)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                 }}
               >
-                {me.name} <span style={{ fontWeight: 500, color: "#64748b" }}>({me.email})</span>
+                {me.avatarUrl ? (
+                  <img
+                    src={me.avatarUrl}
+                    alt=""
+                    width={28}
+                    height={28}
+                    style={{ borderRadius: 9999, objectFit: "cover", flexShrink: 0, border: "1px solid #e2e8f0" }}
+                  />
+                ) : null}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+                  {me.displayName}
+                  {me.email ? (
+                    <span style={{ fontWeight: 500, color: "#64748b" }}> ({me.email})</span>
+                  ) : null}
+                </span>
               </span>
             ) : meReady ? (
               <span style={{ fontSize: 13, color: "#94a3b8" }}>로그인 필요</span>
@@ -240,22 +277,6 @@ export function PlatformTopNav() {
               >
                 로그아웃
               </button>
-            ) : null}
-            {me?.isPlatformAdmin ? (
-              <Link
-                href="/admin/platform-users"
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "#475569",
-                  textDecoration: "none",
-                  padding: "7px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                플랫폼 사용자
-              </Link>
             ) : null}
             <PlatformSettingsMenu />
           </div>

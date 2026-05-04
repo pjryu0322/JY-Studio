@@ -5,6 +5,7 @@ import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { projectRoleLabelKr } from "@/lib/project/unifiedMemberPresentation";
 import type { ProjectRole } from "@/lib/auth/roles";
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 
 const ROLE_ORDER: ProjectRole[] = ["OWNER", "EDITOR", "REVIEWER", "VIEWER"];
 
@@ -46,6 +47,8 @@ export function ProjectMembersSummaryPanel({
     });
   }, [members]);
 
+  const defaultIdeationAiName = useMemo(() => getWorkspaceAiMember("ideation")?.title ?? "AI 기획자", []);
+
   return (
     <section
       data-testid="project-members-summary-panel"
@@ -80,7 +83,7 @@ export function ProjectMembersSummaryPanel({
         ) : null}
       </div>
       <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
-        AI 기획자는 프로젝트 생성 시 자동으로 포함됩니다. 사람 멤버는 아래에서 초대하고, 역할은 멤버 목록에서 확인할 수 있습니다.
+        프로젝트 생성 시 {defaultIdeationAiName} 멤버가 자동으로 포함됩니다. 사람 멤버는 아래에서 초대하고, 역할은 멤버 목록에서 확인할 수 있습니다.
       </p>
       <div
         style={{

@@ -13,6 +13,7 @@ import {
 import { serviceFlowSidebarParticipants, type ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
 import { useServiceFlowWorkshopChat, type ServiceFlowWorkspaceMode } from "@/components/service-flow/useServiceFlowWorkshopChat";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type {
   RequirementsServiceFlowStepV1,
   RequirementsServiceFlowV1,
@@ -36,6 +37,8 @@ export type ServiceFlowStageControllerInput = {
   readonly onAppendPersistedServiceFlowMessages: (
     incoming: readonly RequirementsMessage[],
   ) => Promise<readonly RequirementsMessage[]>;
+  /** 서비스 흐름 화면에 참여하는 플랫폼 AI(복수) */
+  readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
 };
 
 export function useServiceFlowStageController(p: ServiceFlowStageControllerInput) {
@@ -86,8 +89,9 @@ export function useServiceFlowStageController(p: ServiceFlowStageControllerInput
         p.currentUserId,
         p.ideationParticipantHumanMemberIds,
         workshop.replying,
+        p.platformScreenAiMemberIds,
       ),
-    [p.members, p.currentUserId, p.ideationParticipantHumanMemberIds, workshop.replying],
+    [p.members, p.currentUserId, p.ideationParticipantHumanMemberIds, workshop.replying, p.platformScreenAiMemberIds],
   );
 
   const patchChecklistDeferral = useCallback(

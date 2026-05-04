@@ -4,7 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { WorkNoteListItem, WorkNoteSaveState } from "@/hooks/useWorkNotesPanel";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { imageFileToJpegDataUrl, noteRawToEditorHtml } from "@/lib/worknote/workNoteEditorHtml";
+import { escapeHtmlText, imageFileToJpegDataUrl, noteRawToEditorHtml } from "@/lib/worknote/workNoteEditorHtml";
+import { workNoteHtmlToPlainForSummary } from "@/lib/worknote/workNoteHtmlPlain";
 
 const GEOM_KEY = "jyo-work-note-panel-geom-v1";
 const OPACITY_KEY = "jyo-work-note-panel-opacity-v1";
@@ -145,7 +146,15 @@ function saveStateLabel(state: WorkNoteSaveState, saveError: string | null): str
   return "";
 }
 
+type WorkNoteAiInsight = {
+  readonly summary: string;
+  readonly requestType: string;
+  readonly priority: string;
+  readonly priorityReason?: string;
+};
+
 export function WorkNoteDrawer(p: {
+  readonly projectId: string;
   readonly open: boolean;
   readonly onClose: () => void;
   readonly listLoading: boolean;
@@ -172,6 +181,9 @@ export function WorkNoteDrawer(p: {
   const dragRef = useRef<{ kind: "move" | "resize"; sx: number; sy: number; g: PanelGeom } | null>(null);
   const [selectionBubble, setSelectionBubble] = useState<{ left: number; top: number; text: string } | null>(null);
   const [railHoverId, setRailHoverId] = useState<string | null>(null);
+  const [aiInsight, setAiInsight] = useState<WorkNoteAiInsight | null>(null);
+  const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
+  const [aiSummarizing, setAiSummarizing] = useState(false);
 
   const [geom, setGeom] = useState<PanelGeom | null>(null);
   const [panelOpacity, setPanelOpacity] = useState(1);
@@ -195,6 +207,12 @@ export function WorkNoteDrawer(p: {
   useEffect(() => {
     if (geom) geomRef.current = geom;
   }, [geom]);
+
+  useEffect(() => {
+    setAiInsight(null);
+    setAiSummaryError(null);
+    setAiSummarizing(false);
+  }, [p.activeId]);
 
   const handleSelectNote = useCallback(
     async (id: string) => {
@@ -225,6 +243,79 @@ export function WorkNoteDrawer(p: {
     const el = editorRef.current;
     onChangeText(el?.innerHTML ?? "");
   }, [onChangeText]);
+
+  const requestAiSummary = useCallback(async () => {
+    const pid = p.projectId.trim();
+    if (!pid || !p.activeId || !p.editorHydrated) return;
+    const html = editorRef.current?.innerHTML ?? p.text;
+    const plain = workNoteHtmlToPlainForSummary(html, 120_000);
+    if (!plain.trim()) {
+      setAiSummaryError("요약할 내용이 없습니다.");
+      setAiInsight(null);
+      return;
+    }
+    setAiSummarizing(true);
+    setAiSummaryError(null);
+    setAiInsight(null);
+    try {
+      const res = await fetch("/api/work-notes/summarize", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: pid, contentHtml: html }),
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { summary?: string; requestType?: string; priority?: string; priorityReason?: string };
+      };
+      if (!res.ok || !json.success) {
+        setAiSummaryError(typeof json.message === "string" ? json.message : "요약에 실패했습니다.");
+        return;
+      }
+      const s = typeof json.data?.summary === "string" ? json.data.summary.trim() : "";
+      if (!s) {
+        setAiSummaryError("요약 결과가 비어 있습니다.");
+        return;
+      }
+      const requestType = typeof json.data?.requestType === "string" ? json.data.requestType.trim() : "기타";
+      const priority = typeof json.data?.priority === "string" ? json.data.priority.trim().toUpperCase() : "P2";
+      const pr = typeof json.data?.priorityReason === "string" ? json.data.priorityReason.trim() : "";
+      setAiInsight({
+        summary: s,
+        requestType: requestType || "기타",
+        priority: priority || "P2",
+        ...(pr ? { priorityReason: pr } : {}),
+      });
+    } catch {
+      setAiSummaryError("요약 요청 중 오류가 발생했습니다.");
+    } finally {
+      setAiSummarizing(false);
+    }
+  }, [p.activeId, p.editorHydrated, p.projectId, p.text]);
+
+  const applyAiSummaryToEditor = useCallback(() => {
+    const insight = aiInsight;
+    if (!insight) return;
+    const s = insight.summary.trim();
+    const el = editorRef.current;
+    if (!s || !el || !p.activeId) return;
+    const escaped = escapeHtmlText(s).replace(/\n/g, "<br/>");
+    const metaLines = [
+      `요청 분류: ${escapeHtmlText(insight.requestType)}`,
+      `우선순위 추천: ${escapeHtmlText(insight.priority)}`,
+      ...(insight.priorityReason ? [`근거: ${escapeHtmlText(insight.priorityReason)}`] : []),
+    ]
+      .map((line) => line.replace(/\n/g, "<br/>"))
+      .join("<br/>");
+    const block = `<div style="margin:14px 0 0;padding:12px 14px;border-radius:12px;border:1px solid #99f6e4;background:#f0fdfa;font-size:14px;line-height:1.6;color:#0f172a"><div style="font-weight:900;color:#0f766e;margin-bottom:8px">AI 요약</div><div>${escaped}</div><div style="margin-top:10px;font-size:13px;color:#334155">${metaLines}</div></div>`;
+    const cur = el.innerHTML.trim();
+    const empty = !cur || cur === "<br>" || cur === "<div><br></div>";
+    el.innerHTML = empty ? block : `${cur}<br/>${block}`;
+    syncFromEditor();
+    setAiInsight(null);
+    setAiSummaryError(null);
+  }, [aiInsight, p.activeId, syncFromEditor]);
 
   const onCloseRef = useRef(p.onClose);
   useLayoutEffect(() => {
@@ -727,6 +818,85 @@ export function WorkNoteDrawer(p: {
             </div>
           ) : null}
 
+          {p.activeId && p.editorHydrated ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={() => void requestAiSummary()}
+                disabled={aiSummarizing || p.listLoading}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${t.primary}`,
+                  background: `${t.primary}12`,
+                  color: t.primary,
+                  fontSize: 12,
+                  fontWeight: 900,
+                  cursor: aiSummarizing || p.listLoading ? "not-allowed" : "pointer",
+                  opacity: aiSummarizing || p.listLoading ? 0.65 : 1,
+                }}
+              >
+                {aiSummarizing ? "요약 중…" : "AI 요약"}
+              </button>
+              {aiInsight ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void applyAiSummaryToEditor()}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${t.borderStrong}`,
+                      background: t.primary,
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    요약본 반영
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiInsight(null);
+                      setAiSummaryError(null);
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${t.border}`,
+                      background: "#fff",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: t.textSecondary,
+                      cursor: "pointer",
+                    }}
+                  >
+                    요약 닫기
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {aiSummaryError ? (
+            <div
+              role="alert"
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#b91c1c",
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid #fecaca",
+                background: "#fff1f2",
+              }}
+            >
+              {aiSummaryError}
+            </div>
+          ) : null}
+
           <div
             ref={editorRef}
             role="textbox"
@@ -758,6 +928,40 @@ export function WorkNoteDrawer(p: {
               opacity: Boolean(p.activeId) && p.editorHydrated ? 1 : 0.85,
             }}
           />
+
+          {aiInsight ? (
+            <div
+              role="region"
+              aria-label="AI 요약 결과"
+              style={{
+                flex: "0 0 auto",
+                maxHeight: isNarrow ? 200 : 220,
+                overflow: "auto",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${t.borderStrong}`,
+                background: "#f8fafc",
+                fontSize: 13,
+                lineHeight: 1.55,
+                color: t.textPrimary,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 900, color: t.textMuted, marginBottom: 6 }}>요약 결과</div>
+              {aiInsight.summary}
+              <div style={{ marginTop: 10, fontSize: 12, color: t.textSecondary }}>
+                <div>
+                  <span style={{ fontWeight: 800, color: t.textMuted }}>요청 분류</span> {aiInsight.requestType}
+                </div>
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ fontWeight: 800, color: t.textMuted }}>우선순위 추천</span> {aiInsight.priority}
+                  {aiInsight.priorityReason ? (
+                    <span style={{ display: "block", marginTop: 4 }}>{aiInsight.priorityReason}</span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
