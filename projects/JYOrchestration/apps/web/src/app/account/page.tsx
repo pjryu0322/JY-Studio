@@ -63,6 +63,10 @@ export default function AccountPage() {
   const [profileBusy, setProfileBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [pwdCurrent, setPwdCurrent] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdConfirm, setPwdConfirm] = useState("");
+  const [pwdBusy, setPwdBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,6 +143,46 @@ export default function AccountPage() {
     },
     [load]
   );
+
+  const changePassword = useCallback(async () => {
+    setPwdBusy(true);
+    setBanner(null);
+    if (pwdNew !== pwdConfirm) {
+      setPwdBusy(false);
+      setBannerTone("err");
+      setBanner("새 비밀번호 확인이 일치하지 않습니다.");
+      return;
+    }
+    if (pwdNew.length < 8) {
+      setPwdBusy(false);
+      setBannerTone("err");
+      setBanner("새 비밀번호는 8자 이상이어야 합니다.");
+      return;
+    }
+    try {
+      const res = await credentialsIncludeFetch("/api/me/password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: pwdCurrent, newPassword: pwdNew }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!res.ok || !json.success) {
+        setBannerTone("err");
+        setBanner(json.message || "비밀번호를 변경하지 못했습니다.");
+        return;
+      }
+      setBannerTone("ok");
+      setBanner(json.message || "비밀번호를 변경했습니다.");
+      setPwdCurrent("");
+      setPwdNew("");
+      setPwdConfirm("");
+    } catch {
+      setBannerTone("err");
+      setBanner("요청 중 오류가 발생했습니다.");
+    } finally {
+      setPwdBusy(false);
+    }
+  }, [pwdCurrent, pwdNew, pwdConfirm]);
 
   const removeAvatar = useCallback(async () => {
     setAvatarBusy(true);
@@ -348,11 +392,83 @@ export default function AccountPage() {
       {sectionCard("로그인 정보", (
         <>
           {kv("이메일", me.email)}
-          {kv("비밀번호", (
-            <span style={{ color: "#64748b" }}>
-              변경 기능은 준비 중입니다. 필요 시 관리자에게 요청하세요.
-            </span>
-          ))}
+          {kv(
+            "비밀번호",
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 400 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>현재 비밀번호</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={pwdCurrent}
+                  onChange={(e) => setPwdCurrent(e.target.value)}
+                  style={{
+                    padding: "9px 11px",
+                    borderRadius: 10,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 14,
+                    boxSizing: "border-box",
+                    width: "100%",
+                  }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>새 비밀번호 (8자 이상)</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={pwdNew}
+                  onChange={(e) => setPwdNew(e.target.value)}
+                  style={{
+                    padding: "9px 11px",
+                    borderRadius: 10,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 14,
+                    boxSizing: "border-box",
+                    width: "100%",
+                  }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>새 비밀번호 확인</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={pwdConfirm}
+                  onChange={(e) => setPwdConfirm(e.target.value)}
+                  style={{
+                    padding: "9px 11px",
+                    borderRadius: 10,
+                    border: "1px solid #e2e8f0",
+                    fontSize: 14,
+                    boxSizing: "border-box",
+                    width: "100%",
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={pwdBusy}
+                onClick={() => void changePassword()}
+                style={{
+                  alignSelf: "flex-start",
+                  padding: "9px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#0f172a",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: pwdBusy ? "wait" : "pointer",
+                }}
+              >
+                비밀번호 변경
+              </button>
+              <p style={{ margin: 0, fontSize: 12, color: "#64748b", lineHeight: 1.45 }}>
+                로그인한 본인만 변경할 수 있으며, 현재 비밀번호 확인 후에만 저장됩니다.
+              </p>
+            </div>,
+          )}
         </>
       ))}
 

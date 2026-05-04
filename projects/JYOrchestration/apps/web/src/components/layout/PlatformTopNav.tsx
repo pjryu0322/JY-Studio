@@ -11,6 +11,7 @@ import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 import { fetchProjectById } from "@/components/project-spec/api";
 
 type MeState = {
+  id: string;
   displayName: string;
   email: string;
   isPlatformAdmin: boolean;
@@ -26,6 +27,7 @@ export function PlatformTopNav() {
   const [me, setMe] = useState<MeState | null>(null);
   const [meReady, setMeReady] = useState(false);
   const [projectName, setProjectName] = useState<string | null>(null);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
 
   const projectId = useMemo(
     () => resolveWorkflowProjectContextId(pathname, searchParams),
@@ -62,6 +64,7 @@ export function PlatformTopNav() {
           const displayName = d || nick || legal || "사용자";
           const av = String(json.data.avatarUrl ?? "").trim();
           setMe({
+            id: String(json.data.id ?? "").trim(),
             displayName,
             email,
             isPlatformAdmin: Boolean(json.data.isPlatformAdmin),
@@ -80,6 +83,10 @@ export function PlatformTopNav() {
       cancelled = true;
     };
   }, [pathname]);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [me?.avatarUrl, me?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,15 +233,52 @@ export function PlatformTopNav() {
                   whiteSpace: "nowrap",
                 }}
               >
-                {me.avatarUrl ? (
-                  <img
-                    src={me.avatarUrl}
-                    alt=""
-                    width={28}
-                    height={28}
-                    style={{ borderRadius: 9999, objectFit: "cover", flexShrink: 0, border: "1px solid #e2e8f0" }}
-                  />
-                ) : null}
+                <Link
+                  href="/account"
+                  prefetch={false}
+                  aria-label="내 계정"
+                  title="내 계정"
+                  style={{
+                    display: "inline-flex",
+                    flexShrink: 0,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textDecoration: "none",
+                    borderRadius: 9999,
+                    outlineOffset: 2,
+                  }}
+                >
+                  {me.avatarUrl && !avatarLoadFailed ? (
+                    <img
+                      src={me.avatarUrl}
+                      alt=""
+                      width={30}
+                      height={30}
+                      onError={() => setAvatarLoadFailed(true)}
+                      style={{ borderRadius: 9999, objectFit: "cover", border: "1px solid #e2e8f0", display: "block" }}
+                    />
+                  ) : (
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 9999,
+                        border: "1px solid #e2e8f0",
+                        background: "#e2e8f0",
+                        color: "#475569",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        lineHeight: 1,
+                      }}
+                    >
+                      {(me.displayName.trim().charAt(0) || "?").toUpperCase()}
+                    </span>
+                  )}
+                </Link>
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
                   {me.displayName}
                   {me.email ? (

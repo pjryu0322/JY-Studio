@@ -2,8 +2,10 @@
 
 import type { CSSProperties } from "react";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
+import { PrototypePreviewViewportShell } from "@/components/preview/PrototypePreviewViewportShell";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
 
 const wrapBand: CSSProperties = {
   position: "relative",
@@ -15,6 +17,8 @@ const wrapBand: CSSProperties = {
   background: "#0f172a",
   overflow: "hidden",
   boxSizing: "border-box",
+  display: "flex",
+  flexDirection: "column",
 };
 
 const wrapFill: CSSProperties = {
@@ -29,6 +33,8 @@ const wrapFill: CSSProperties = {
   background: "#0f172a",
   overflow: "hidden",
   boxSizing: "border-box",
+  display: "flex",
+  flexDirection: "column",
 };
 
 export function PreviewViewport(p: {
@@ -37,14 +43,18 @@ export function PreviewViewport(p: {
   readonly onFrameLoad: () => void;
   /** 상위 flex 영역을 채우고(오버레이 대화 등), 높이 상한을 두지 않음 */
   readonly fillContainer?: boolean;
+  /** Desktop·Mobile 고정 뷰포트에서 가로·세로 전환 */
+  readonly rotationLandscape?: boolean;
 }) {
+  const { prototypePreviewWorkMode, prototypePreviewMobileDevice } = useGlobalPreferences();
+  const rotation = Boolean(p.rotationLandscape);
+
   const publicU = String(p.run?.publicUrl ?? "").trim();
   const deployed = p.run?.deploymentStatus === "DONE" && publicU;
   const draft = String(p.run?.previewUrl ?? p.run?.suggestedPreviewUrl ?? "").trim();
   const url = deployed ? publicU : draft;
   const safe = url.startsWith("http://") || url.startsWith("https://");
   const wrap = p.fillContainer ? wrapFill : wrapBand;
-  const iframeMinH = p.fillContainer ? 0 : "min(62vh, 640px)";
 
   return (
     <div id="jyo-prototype-review-preview" style={wrap} aria-label="프로토타입 미리보기 영역">
@@ -83,21 +93,29 @@ export function PreviewViewport(p: {
               </div>
             </div>
           ) : null}
-          <iframe
-            key={url}
-            title="프로토타입 프리뷰"
-            src={url}
-            onLoad={p.onFrameLoad}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            style={{
-              width: "100%",
-              height: "100%",
-              minHeight: iframeMinH,
-              border: "none",
-              display: "block",
-              background: "#fff",
-            }}
-          />
+          <PrototypePreviewViewportShell
+            workMode={prototypePreviewWorkMode}
+            mobileDevice={prototypePreviewMobileDevice}
+            rotationLandscape={rotation}
+          >
+            <iframe
+              key={url}
+              title="프로토타입 프리뷰"
+              src={url}
+              onLoad={p.onFrameLoad}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width: "100%",
+                height: "100%",
+                border: "none",
+                display: "block",
+                background: "#fff",
+              }}
+            />
+          </PrototypePreviewViewportShell>
         </>
       )}
     </div>
