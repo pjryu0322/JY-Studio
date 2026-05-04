@@ -62,8 +62,8 @@ export function RequirementsMemberInviteModal({
         }
         setOptimisticJoined((prev) => new Set(prev).add(u.id));
         onInvited();
-        const displayName = (u.name || "").trim() || u.email;
-        setToast({ kind: "ok", text: `${displayName}님이 추가되었습니다.` });
+        const label = ((u.displayName ?? "").trim() || (u.name || "").trim() || u.email).trim();
+        setToast({ kind: "ok", text: `${label}님이 추가되었습니다.` });
       } finally {
         setBusy(false);
       }

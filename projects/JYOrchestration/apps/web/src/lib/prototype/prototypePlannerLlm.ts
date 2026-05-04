@@ -1,3 +1,4 @@
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeWorkUnitComplexity, PrototypeWorkUnitRiskLevel } from "@/lib/prototype/prototypeRunTypes";
 import { formatPrototypeTemplateLayoutContract } from "@/lib/prototype/prototypeTemplateLayoutContract";
 
@@ -19,7 +20,7 @@ export type PrototypePlannerLlmInput = Readonly<{
   previousWorkUnitsSummary: string;
 }>;
 
-/** OpenAI `messages[0]` system 역할 — UI 미리보기용과 동일 문자열 */
+/** OpenAI 호출·UI 미리보기 공통 — 화면별 정체성은 `workspaceAiMemberSystemPrefix("prototype_build")`가 앞에 붙습니다. */
 export const PROTOTYPE_PLANNER_SYSTEM_PROMPT = `You are a senior frontend engineer planning Cursor execution batches for a prototype repo.
 Output ONLY valid JSON with shape:
 {"workUnits":[{"order":1,"title":"...","description":"...","targetArea":"path or module","implementationScope":"concrete files/components","dependencies":["optional order refs as strings"],"acceptanceCriteria":["..."],"riskLevel":"low|medium|high","estimatedComplexity":"low|medium|high"}]}
@@ -39,6 +40,10 @@ BAD examples (business flow — never output these as WorkUnit titles):
 
 GOOD examples (Cursor-friendly implementation batches):
 - "기본 레이아웃·앱 셸 구성", "좌측 리스트 패널", "중앙 메인 화면", "우측 AI 요약 패널", "파일 업로드 UI", "반응형·간격 정리", "GitHub Pages 배포 설정"`;
+
+export function buildPrototypePlannerInstructionBlock(): string {
+  return `${workspaceAiMemberSystemPrefix("prototype_build")}${PROTOTYPE_PLANNER_SYSTEM_PROMPT}`;
+}
 
 /** LLM user 메시지 본문 — 서버 요청과 동일 포맷(미리보기·복사용). */
 export function formatPrototypePlannerUserMessage(input: PrototypePlannerLlmInput): string {
@@ -176,7 +181,7 @@ export async function generatePrototypeWorkUnitsWithOpenAI(
       messages: [
         {
           role: "user",
-          content: `${PROTOTYPE_PLANNER_SYSTEM_PROMPT}\n\n${userBlock}`,
+          content: `${buildPrototypePlannerInstructionBlock()}\n\n${userBlock}`,
         },
       ],
     }),

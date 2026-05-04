@@ -1,6 +1,7 @@
 "use client";
 
-import { displayedAiOrchestrator, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
+import { displayedWorkspaceAiTitle, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
 import type { WorkshopMessage } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { messageTone } from "@/components/service-flow/serviceFlowWorkshopTypes";
 import { uiTokens as t } from "@/components/ui/tokens";
@@ -65,20 +66,22 @@ export function ServiceFlowChatPanel(p: {
           }}
         >
           <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
-            {message.role === "user"
-              ? "사용자"
-              : message.role === "member"
-                ? `멤버 · ${message.name}`
-                : message.role === "expert"
-                  ? `업무 전문가 · ${message.name}`
-                  : `AI · ${showInternalAgents ? message.name : displayedAiOrchestrator().name}`}
+            <WorkspaceAiHeaderWithAvatar memberId={message.role === "ai" ? "actor_flow" : null}>
+              {message.role === "user"
+                ? "사용자"
+                : message.role === "member"
+                  ? `멤버 · ${message.name}`
+                  : message.role === "expert"
+                    ? `업무 전문가 · ${message.name}`
+                    : `AI · ${showInternalAgents ? message.name : displayedWorkspaceAiTitle("actor_flow")}`}
+            </WorkspaceAiHeaderWithAvatar>
           </div>
           <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{message.body}</div>
         </div>
       ))}
       {p.replying ? (
         <div style={{ justifySelf: "start", width: "fit-content", fontSize: 12, fontWeight: 800, color: t.textMuted }}>
-          AI 기획자가 반영 중입니다...
+          {displayedWorkspaceAiTitle("actor_flow")}가 반영 중입니다...
         </div>
       ) : null}
       {!p.generatingDraft && !p.replying && p.messages.length === 0 ? (
@@ -89,11 +92,13 @@ export function ServiceFlowChatPanel(p: {
               ...workspaceStandardChatBubbleShell("ai"),
             }}
           >
-          <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>AI · {displayedAiOrchestrator().name}</div>
+          <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
+            <WorkspaceAiHeaderWithAvatar memberId="actor_flow">AI · {displayedWorkspaceAiTitle("actor_flow")}</WorkspaceAiHeaderWithAvatar>
+          </div>
           <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
             {p.structureLocked
               ? "서비스 흐름 구조가 확정된 상태입니다.\n\n입력창 왼쪽 + 메뉴의 「구조 편집」에서 단계별 담당을 조정할 수 있고, 이 채팅에서는 메시지를 입력해 흐름·액터·문구를 추가로 다듬을 수 있습니다."
-              : "표시할 메시지가 없습니다.\n\n메시지를 입력하거나 아래 빠른 동작 칩을 눌러 AI 기획자와 흐름을 함께 정리해 보세요."}
+              : `표시할 메시지가 없습니다.\n\n메시지를 입력하거나 아래 빠른 동작 칩을 눌러 ${displayedWorkspaceAiTitle("actor_flow")}와 흐름을 함께 정리해 보세요.`}
           </div>
         </div>
         </div>

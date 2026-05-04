@@ -1,5 +1,8 @@
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import type { PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
+
+const REVIEW_AI_TRANSCRIPT_LABEL = getWorkspaceAiMember("prototype_review")?.title ?? "AI 검수자";
 
 export async function openAiJsonCompletion<T>(system: string, user: string): Promise<{ ok: true; data: T } | { ok: false; message: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -71,7 +74,7 @@ export async function openAiTextCompletion(system: string, user: string): Promis
 export function formatReviewTranscript(messages: readonly PrototypeReviewMessage[]): string {
   return messages
     .map((m) => {
-      const who = m.role === "planner" ? "AI기획자" : m.role === "expert" ? "전문가" : "사용자";
+      const who = m.role === "planner" ? REVIEW_AI_TRANSCRIPT_LABEL : m.role === "expert" ? "전문가" : "사용자";
       return `[${who}] ${m.content}`;
     })
     .join("\n");

@@ -5,10 +5,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 export type PlatformUserRow = {
   id: string;
   email: string;
+  /** 실명(계정) */
   name: string;
+  /** 플랫폼 표시명(닉네임 우선) — API `displayName` */
+  displayName?: string;
   createdAt?: string;
   updatedAt?: string;
 };
+
+function rowPrimaryLabel(u: PlatformUserRow): string {
+  const d = (u.displayName ?? "").trim();
+  if (d) return d;
+  const n = (u.name ?? "").trim();
+  if (n) return n;
+  return u.email;
+}
 
 function parseIsoMs(iso: string | undefined): number {
   if (!iso) return 0;
@@ -69,7 +80,16 @@ export function PlatformUserSearchCombobox({
         setRecentError(true);
         return;
       }
-      setRecentRows(json.data as PlatformUserRow[]);
+      setRecentRows(
+        (json.data as Record<string, unknown>[]).map((r) => ({
+          id: String(r.id ?? ""),
+          email: String(r.email ?? ""),
+          name: String(r.name ?? ""),
+          displayName: typeof r.displayName === "string" ? r.displayName : undefined,
+          createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
+          updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : undefined,
+        }))
+      );
     } catch {
       setRecentRows([]);
       setRecentError(true);
@@ -102,6 +122,7 @@ export function PlatformUserSearchCombobox({
           id: r.id,
           email: r.email,
           name: r.name,
+          displayName: typeof (r as { displayName?: string }).displayName === "string" ? (r as { displayName: string }).displayName : undefined,
           createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
           updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : undefined,
         }))
@@ -156,7 +177,7 @@ export function PlatformUserSearchCombobox({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{u.name || "(이름 없음)"}</div>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{rowPrimaryLabel(u)}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               {joined ? (
                 <span

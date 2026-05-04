@@ -124,7 +124,7 @@ export async function runActorFlowAnalyzeOpenAI(input: {
 
 중요:
 - 키워드 매칭이 아니라 의미 기반으로 판단한다.
-- 내부적으로 다양한 페르소나(planner/service_designer 등)를 사용해도, UI 상 답변자는 항상 "AI 기획자"로 보인다.
+- 내부적으로 다양한 페르소나(planner/service_designer 등)를 사용해도, UI 상 답변자는 이 단계 전담 AI(「AI 분석가」)로 보인다.
 - 출력은 반드시 JSON 1개(설명/마크다운/코드펜스 금지).
 
 편집 원칙:

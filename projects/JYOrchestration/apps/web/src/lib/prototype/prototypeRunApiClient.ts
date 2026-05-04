@@ -121,6 +121,57 @@ export async function postPrototypeRequestDeploy(
   };
 }
 
+export async function postPrototypeDeployProceed(
+  runId: string,
+  body: { projectId: string },
+): Promise<{ success: boolean; data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot }; message?: string }> {
+  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/deploy-proceed`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot };
+    message?: string;
+  };
+}
+
+export async function postPrototypeDeploySecurityRecheck(
+  runId: string,
+  body: { projectId: string },
+): Promise<{ success: boolean; data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot }; message?: string }> {
+  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/deploy-security-recheck`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot };
+    message?: string;
+  };
+}
+
+export async function postPrototypeDeploySecurityFixRequest(
+  runId: string,
+  body: { projectId: string },
+): Promise<{ success: boolean; data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot }; message?: string }> {
+  const res = await fetch(`/api/prototype-runs/${encodeURIComponent(runId)}/deploy-security-fix-request`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as {
+    success: boolean;
+    data?: { run: PrototypeRun; deploy: PrototypeDeployStatusSnapshot };
+    message?: string;
+  };
+}
+
 export async function getPrototypeDeployStatusApi(
   projectId: string,
   runId: string,

@@ -2,43 +2,62 @@
 
 import { useMemo } from "react";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
-import {
-  displayedAiOrchestrator,
-  displayedAiStatusForStage,
-  showInternalAgents,
-  visibleStageFromRequirementsStage,
-} from "@/lib/ai-member/visibleAiOrchestrator";
-import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
-import type { MemberRow, SessionUser } from "@/lib/requirements/requirementsWorkspaceHelpers";
-import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
+import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
+import { displayedWorkspaceAiStatusForContext, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import type { MemberRow, RequirementsWorkspaceStage, SessionUser } from "@/lib/requirements/requirementsWorkspaceHelpers";
+
+export function resolveParticipantContextKey(
+  activeStage: RequirementsWorkspaceStage,
+  override?: WorkspaceAiMemberId
+): WorkspaceAiMemberId {
+  if (override) return override;
+  return activeStage === "service-flow" ? "actor_flow" : "ideation";
+}
 
 export function useWorkspaceParticipants(params: {
   readonly members: readonly MemberRow[];
   readonly sessionUser: SessionUser | null;
   readonly activeStage: RequirementsWorkspaceStage;
   readonly aiPlannerStatusLabel: string;
+  /** 기능정리·프로토타입 등 — 이 화면에 참여하는 플랫폼 AI(복수). 없으면 스테이지 기본 1명. */
+  readonly participantContextKeys?: readonly WorkspaceAiMemberId[];
+  /** @deprecated participantContextKeys 사용 */
+  readonly participantContextKey?: WorkspaceAiMemberId;
+  /** 플랫폼 AI별 최근 작업 스니펫(참여 멤버 패널) */
+  readonly platformMemberActivity?: Partial<
+    Record<WorkspaceAiMemberId, { readonly recentSnippet?: string; readonly statusHint?: string }>
+  >;
 }): { readonly participants: readonly ParticipantOption[]; readonly participantBadgeCount: number } {
-  const { members, sessionUser, activeStage, aiPlannerStatusLabel } = params;
+  const { members, sessionUser, activeStage, aiPlannerStatusLabel, participantContextKey, participantContextKeys, platformMemberActivity } =
+    params;
 
   const aiMembers = useMemo(() => members.filter((m) => m.memberType === "AI"), [members]);
 
+  const currentKeys = useMemo((): readonly WorkspaceAiMemberId[] => {
+    if (participantContextKeys !== undefined) return participantContextKeys;
+    return [resolveParticipantContextKey(activeStage, participantContextKey)];
+  }, [activeStage, participantContextKey, participantContextKeys]);
+
+  const defaultStatus = useMemo(() => displayedWorkspaceAiStatusForContext(currentKeys[0] ?? "ideation"), [currentKeys]);
+
   const participants = useMemo((): ParticipantOption[] => {
     const list: ParticipantOption[] = [];
+    const platformRows = buildWorkspaceAiParticipantOptions({
+      currentMemberIds: currentKeys,
+      statusLabelForCurrent: aiPlannerStatusLabel || defaultStatus,
+      activityByMember: platformMemberActivity,
+    });
+
     if (showInternalAgents) {
-      if (aiMembers.length === 0) {
-        list.push({
-          id: VIRTUAL_AI_PLANNER_ID,
-          name: "AI 기획자",
-          kind: "ai",
-          onlineHint: false,
-          aiStatusLabel: aiPlannerStatusLabel,
-          roleLabel: "AI",
-        });
-      }
+      list.push(...platformRows);
+      const platformNames = new Set(platformRows.map((p) => p.name));
       for (const m of aiMembers) {
+        const name = (m.displayName || m.email || "AI").slice(0, 24);
+        if (platformNames.has(name)) continue;
         list.push({
           id: m.memberId,
-          name: (m.displayName || m.email || "AI").slice(0, 24),
+          name,
           kind: "ai",
           onlineHint: false,
           aiStatusLabel: aiPlannerStatusLabel,
@@ -46,17 +65,9 @@ export function useWorkspaceParticipants(params: {
         });
       }
     } else {
-      const stageKey = visibleStageFromRequirementsStage(activeStage);
-      const orch = displayedAiOrchestrator();
-      list.push({
-        id: "visible:ai-orchestrator",
-        name: orch.name,
-        kind: "ai",
-        onlineHint: false,
-        aiStatusLabel: displayedAiStatusForStage(stageKey),
-        roleLabel: "AI",
-      });
+      list.push(...platformRows);
     }
+
     for (const m of members) {
       if (m.memberType !== "HUMAN") continue;
       const uid = m.userId ?? null;
@@ -76,7 +87,7 @@ export function useWorkspaceParticipants(params: {
       seen.add(p.id);
       return true;
     });
-  }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel, activeStage]);
+  }, [members, aiMembers, sessionUser?.id, aiPlannerStatusLabel, currentKeys, defaultStatus, platformMemberActivity]);
 
   return { participants, participantBadgeCount: participants.length };
 }

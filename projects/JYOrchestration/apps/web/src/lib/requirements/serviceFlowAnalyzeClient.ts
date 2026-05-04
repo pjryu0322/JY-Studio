@@ -9,6 +9,8 @@ export type ServiceFlowAnalyzeRequestBody = {
   readonly currentFlow: RequirementsServiceFlowV1 | null;
   readonly recentMessages: string;
   readonly latestAiQuestion: string;
+  /** 직전 화면(아이디어 구체화 등)에서 넘어온 맥락 — 클라이언트가 1회 소비 */
+  readonly priorScreenHandoff?: string;
 };
 
 export type ServiceFlowAnalyzeSuccessData = {

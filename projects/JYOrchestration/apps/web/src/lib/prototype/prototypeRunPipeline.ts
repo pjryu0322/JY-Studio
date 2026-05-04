@@ -3,11 +3,15 @@
  * WorkUnit 순차 실행: Cursor → Git → 검토 → PR → Merge 반복.
  */
 
+import { randomUUID } from "node:crypto";
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { pollCursorAgent, type ExecutionSetupRelaySlice } from "@/lib/execution/cursorExecutionAdapter";
 import { requestCursorPrototypeRun } from "@/lib/prototype/prototypeCursorAdapter";
 import { refreshPrototypeGitStateForBranch } from "@/lib/prototype/prototypeGitMonitor";
 import { reviewPrototypeWorkUnit } from "@/lib/prototype/prototypeAiReview";
 import { openPrototypePr, mergePrototypePr } from "@/lib/prototype/prototypePrPipeline";
+import { buildWorkUnitBranchName } from "@/lib/prototype/prototypeBranchNames";
+import { runPrototypeDeploySecurityAudit } from "@/lib/prototype/prototypeDeploySecurityAudit";
 import { composeGithubPagesPreviewUrlFromRepoUrl } from "@/lib/prototype/githubPagesPreviewUrl";
 import {
   ensureGithubPagesDeploySetupOnDeployBranch,
@@ -33,7 +37,7 @@ import {
   markBlocked,
   updateRun,
 } from "@/lib/prototype/prototypeRunStore";
-import type { PrototypeRun, PrototypeRunStatusReason, PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
+import type { PrototypeRun, PrototypeRunStatusReason, PrototypeSecurityFinding, PrototypeWorkUnit } from "@/lib/prototype/prototypeRunTypes";
 import { withExecutionSetupSchemaHealRetry } from "@/lib/prisma/executionSetupSplitColumnsHeal";
 import { prisma } from "@/lib/prisma";
 
@@ -161,8 +165,9 @@ const PLANNER_SUMMARY_FALLBACK_LLM = "AI Planner를 사용할 수 없어 규칙 
 
 function formatPlannerRunSummary(plan: PlanPrototypeWorkUnitsResolved, verb: "생성" | "재생성"): { plannerSummary: string; plannerError: string | null } {
   const n = plan.workUnits.length;
+  const protoAi = getWorkspaceAiMember("prototype_build")?.title ?? "AI 개발자";
   if (plan.plannerSource === "llm") {
-    return { plannerSummary: `[AI 기획자] WorkUnit ${n}개 ${verb}`, plannerError: null };
+    return { plannerSummary: `[${protoAi}] WorkUnit ${n}개 ${verb}`, plannerError: null };
   }
   if (plan.plannerCredentialSource === "missing") {
     return {
@@ -440,19 +445,21 @@ export async function orchestrateNewPrototypeRun(input: {
   }
 
   if (!input.startCursorAgent) {
+    const protoAi = getWorkspaceAiMember("prototype_build")?.title ?? "AI 개발자";
     return {
       run,
       automationAvailable: gate.automationAvailable,
       automationBlockReason: gate.blockReason,
-      message: "AI 기획자가 WorkUnit 계획을 생성했습니다.",
+      message: `${protoAi}가 WorkUnit 계획을 생성했습니다.`,
     };
   }
 
+  const protoAi = getWorkspaceAiMember("prototype_build")?.title ?? "AI 개발자";
   return {
     run,
     automationAvailable: true,
     automationBlockReason: null,
-    message: "AI 기획자가 WorkUnit 계획을 생성했습니다. 미리보기에서 확인한 뒤 WorkUnit 실행을 시작하세요.",
+    message: `${protoAi}가 WorkUnit 계획을 생성했습니다. 미리보기에서 확인한 뒤 WorkUnit 실행을 시작하세요.`,
   };
 }
 
@@ -731,6 +738,92 @@ function transitionAfterGenerationReviewPass(
   );
 }
 
+async function reconcileDeploySecurityPassShaIfStale(projectId: string, runId: string, run: PrototypeRun): Promise<PrototypeRun> {
+  const passed = String(run.deploySecurityPassedCommitSha ?? "").trim();
+  const msha = String(run.mergeSha ?? "").trim();
+  if (run.deploySecurityGatePhase === "SECURITY_PASSED" && passed && msha && passed !== msha) {
+    return (
+      updateRun(projectId, runId, {
+        deploySecurityGatePhase: "PENDING_RECHECK",
+        deploySecurityPassedCommitSha: null,
+        deploySecurityPassedAt: null,
+        deploySecurityFindings: [],
+      }) ?? run
+    );
+  }
+  return run;
+}
+
+async function maybeFinalizeDeploySecurityGate(
+  projectId: string,
+  runId: string,
+  run: PrototypeRun,
+  setup: Awaited<ReturnType<typeof prisma.executionSetup.findUnique>>,
+): Promise<PrototypeRun | null> {
+  if (run.deploySecurityGatePhase !== "SECURITY_CHECKING") return run;
+  const repoUrl = String(setup?.gitRepoUrl ?? "").trim();
+  const token = String(setup?.githubAccessToken ?? "").trim();
+  const ref = String(run.mergeSha ?? setup?.baseBranch ?? "").trim();
+  const now = new Date().toISOString();
+
+  const failFinding = (f: PrototypeSecurityFinding): PrototypeRun | null =>
+    updateRun(projectId, runId, {
+      deploySecurityGatePhase: "SECURITY_FIX_REQUIRED",
+      deploySecurityFindings: [f],
+      deploySecurityCheckFinishedAt: now,
+      deploySecurityCheckIsRecheck: false,
+    });
+
+  if (!repoUrl || !token || !ref) {
+    return (
+      failFinding({
+        id: randomUUID(),
+        severity: "MEDIUM",
+        location: "(실행 설정)",
+        description: "GitHub 저장소 URL·토큰 또는 merge SHA(ref)가 없어 자동 보안 점검을 실행할 수 없습니다.",
+        recommendedAction: "실행 설정의 저장소 URL·토큰과 베이스 브랜치를 확인한 뒤 다시 시도하세요.",
+        fixStatus: "OPEN",
+      }) ?? run
+    );
+  }
+
+  const audit = await runPrototypeDeploySecurityAudit({ run, repoUrl, githubToken: token, ref });
+  if (!audit.ok) {
+    return (
+      failFinding({
+        id: randomUUID(),
+        severity: "MEDIUM",
+        location: "(점검 실행)",
+        description: audit.message,
+        recommendedAction: "서버 OpenAI API 설정과 네트워크를 확인한 뒤 다시 시도하세요.",
+        fixStatus: "OPEN",
+      }) ?? run
+    );
+  }
+
+  const msha = String(run.mergeSha ?? "").trim();
+  if (audit.passed) {
+    return (
+      updateRun(projectId, runId, {
+        deploySecurityGatePhase: "SECURITY_PASSED",
+        deploySecurityFindings: [...audit.findings],
+        deploySecurityPassedCommitSha: msha || null,
+        deploySecurityPassedAt: now,
+        deploySecurityCheckFinishedAt: now,
+        deploySecurityCheckIsRecheck: false,
+      }) ?? run
+    );
+  }
+  return (
+    updateRun(projectId, runId, {
+      deploySecurityGatePhase: "SECURITY_FIX_REQUIRED",
+      deploySecurityFindings: [...audit.findings],
+      deploySecurityCheckFinishedAt: now,
+      deploySecurityCheckIsRecheck: false,
+    }) ?? run
+  );
+}
+
 async function advanceAfterUnitMerged(
   projectId: string,
   runId: string,
@@ -755,6 +848,29 @@ async function advanceAfterUnitMerged(
         currentWorkUnitOrder: next?.order ?? null,
       }) ?? run
     );
+  }
+
+  const fixOrder = run.deploySecurityFixWorkUnitOrder;
+  if (fixOrder != null) {
+    const u = run.workUnits.find((x) => x.order === fixOrder);
+    if (u && u.status === "MERGED") {
+      const preview = run.previewUrl ?? run.suggestedPreviewUrl ?? null;
+      return (
+        updateRun(projectId, runId, {
+          status: "PREVIEW_READY",
+          statusReason: null,
+          deploySecurityGatePhase: "PENDING_RECHECK",
+          deploySecurityFixWorkUnitOrder: null,
+          deploySecurityPassedCommitSha: null,
+          deploySecurityPassedAt: null,
+          deploySecurityFindings: [],
+          previewUrl: preview,
+          suggestedPreviewUrl: preview ?? run.suggestedPreviewUrl,
+          publicUrl: null,
+          currentWorkUnitOrder: null,
+        }) ?? run
+      );
+    }
   }
 
   const r0 = getRun(projectId, runId) ?? run;
@@ -785,6 +901,9 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
   const setup = await withExecutionSetupSchemaHealRetry(() =>
     prisma.executionSetup.findUnique({ where: { projectId } }),
   );
+
+  run = await reconcileDeploySecurityPassShaIfStale(projectId, runId, run);
+  run = (await maybeFinalizeDeploySecurityGate(projectId, runId, run, setup)) ?? run;
 
   const policy = setup
     ? derivePrototypePolicyFromExecutionSetup({
@@ -1061,7 +1180,7 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
 
   // --- PR / Merge / Pages: 사용자가 배포 요청(deploymentStatus=REQUESTED)한 경우에만 수행 ---
   run = getRun(projectId, runId) ?? run;
-  if (run.deploymentStatus === "REQUESTED" && setup?.gitRepoUrl && setup.baseBranch) {
+  if (run.deploymentStatus === "REQUESTED" && run.deploySecurityGatePhase === "SECURITY_PASSED" && setup?.gitRepoUrl && setup.baseBranch) {
     const sortedWu = [...run.workUnits].sort((a, b) => a.order - b.order);
     const target = sortedWu.find((u) => u.status === "REVIEW_PASS");
     const prOpenedUnit = sortedWu.find((u) => u.status === "PR_OPENED" && String(u.prUrl ?? "").trim());
@@ -1171,12 +1290,153 @@ export async function refreshPrototypeRunState(projectId: string, runId: string)
   return getRun(projectId, runId);
 }
 
+/** 검토 화면 [배포 요청] / [보안 재점검] — 보안 점검(SECURITY_CHECKING)으로 진입. GitHub Pages는 호출하지 않는다. */
+export function startPrototypeDeploySecurityCheck(
+  projectId: string,
+  runId: string,
+  input?: { readonly isRecheck?: boolean },
+): PrototypeRun | null {
+  const run0 = getRun(projectId, runId);
+  if (!run0) return null;
+  const isRecheck = Boolean(input?.isRecheck);
+
+  const okStatus =
+    run0.status === "PREVIEW_READY" ||
+    run0.status === "DEPLOY_FAILED" ||
+    run0.status === "PR_OPENED" ||
+    (run0.status === "DEPLOYING" && run0.deploymentStatus !== "DONE") ||
+    (run0.status === "DEPLOY_CONFIGURING" && run0.deploymentStatus !== "DONE") ||
+    (run0.status === "MERGED" && run0.deploymentStatus !== "DONE");
+
+  if (!okStatus) return null;
+  if (run0.deploySecurityGatePhase === "SECURITY_CHECKING") return run0;
+
+  if (isRecheck) {
+    const allow = run0.deploySecurityGatePhase === "PENDING_RECHECK" || run0.deploySecurityGatePhase === "SECURITY_FIX_REQUIRED";
+    if (!allow) return null;
+  } else {
+    if (run0.deploySecurityGatePhase === "FIX_IN_PROGRESS") return null;
+    if (run0.deploySecurityGatePhase === "PENDING_RECHECK" || run0.deploySecurityGatePhase === "SECURITY_FIX_REQUIRED") {
+      return null;
+    }
+    if (run0.deploySecurityGatePhase === "SECURITY_PASSED") {
+      const deployFailed = run0.deploymentStatus === "FAILED" || run0.status === "DEPLOY_FAILED";
+      if (!deployFailed && run0.deploymentStatus !== "DONE" && !String(run0.publicUrl ?? "").trim()) return null;
+      if (!deployFailed && (run0.deploymentStatus === "DONE" || String(run0.publicUrl ?? "").trim())) return null;
+    }
+  }
+
+  const now = new Date().toISOString();
+  return (
+    updateRun(projectId, runId, {
+      deploySecurityGatePhase: "SECURITY_CHECKING",
+      deploySecurityCheckIsRecheck: isRecheck,
+      deploySecurityFindings: [],
+      deploySecurityCheckStartedAt: now,
+      deploySecurityCheckFinishedAt: null,
+      deploySecurityPassedCommitSha: null,
+      deploySecurityPassedAt: null,
+    }) ?? run0
+  );
+}
+
+/** [AI 개발자에게 조치 요청] — 보안 조치 전용 WorkUnit을 추가하고 Cursor 실행 단계로 진입. */
+export function appendPrototypeDeploySecurityFixWorkUnit(projectId: string, runId: string, projectName: string): PrototypeRun | null {
+  const run0 = getRun(projectId, runId);
+  if (!run0) return null;
+  if (run0.deploySecurityGatePhase !== "SECURITY_FIX_REQUIRED") return null;
+  if (!run0.deploySecurityFindings.length) return null;
+  if (run0.deploySecurityFixWorkUnitOrder != null) return null;
+
+  const maxOrder = run0.workUnits.length ? Math.max(...run0.workUnits.map((u) => u.order)) : 0;
+  const order = maxOrder + 1;
+  const branchName = buildWorkUnitBranchName(projectName.trim() || "project", runId, order);
+  const findingsText = run0.deploySecurityFindings
+    .map(
+      (f, i) =>
+        `${i + 1}. [${f.severity}] ${f.location}\n   문제: ${f.description}\n   권장 조치: ${f.recommendedAction}`,
+    )
+    .join("\n\n");
+  const protoDev = getWorkspaceAiMember("prototype_build")?.title ?? "AI 개발자";
+  const cursorPrompt = [
+    `[${protoDev} — 배포 전 보안 조치]`,
+    "GitHub Pages에 공개되어도 안전하도록 아래 취약점을 코드에서 제거·완화하세요.",
+    "API 키·비밀·개인정보는 소스에 남기지 말고 환경 변수 또는 비공개 저장소로 처리하세요.",
+    "완료 후 커밋하고 원격 브랜치에 푸시하세요.",
+    "",
+    "점검 항목:",
+    findingsText,
+  ].join("\n");
+
+  const nowIso = new Date().toISOString();
+  const uid = randomUUID();
+  const nu: PrototypeWorkUnit = {
+    id: uid,
+    order,
+    title: "[보안] 배포 전 취약점 조치",
+    description: "보안 점검에서 보고된 항목을 반영해 공개 배포에 안전한 상태로 만듭니다.",
+    targetArea: "보안",
+    implementationScope: "취약점 제거·완화, 푸시",
+    dependencies: [],
+    acceptanceCriteria: ["보고된 HIGH/MEDIUM 항목이 코드에서 제거 또는 완화됨", "변경사항이 원격에 푸시됨"],
+    riskLevel: "high",
+    estimatedComplexity: "medium",
+    status: "PENDING",
+    branchName,
+    cursorPrompt,
+    cursorPromptGeneratedAt: nowIso,
+    cursorPromptVersion: 1,
+    cursorPromptSource: "regenerated",
+    executionStartedAt: null,
+    executionCompletedAt: null,
+    cursorRunId: null,
+    commitSha: null,
+    changedFiles: [],
+    prNumber: null,
+    prUrl: null,
+    mergeSha: null,
+    reviewSummary: null,
+    startedAt: null,
+    finishedAt: null,
+    cursorAgentStatusUpper: null,
+    cursorLastPolledAt: null,
+    cursorLastSummary: null,
+  };
+
+  logPrototypePipelineEvent("prototype_deploy_security_fix_unit_appended", { projectId, runId, workUnitOrder: order });
+  return (
+    updateRun(projectId, runId, {
+      workUnits: [...run0.workUnits, nu],
+      totalWorkUnits: run0.workUnits.length + 1,
+      currentWorkUnitOrder: order,
+      branchName,
+      deploySecurityFixWorkUnitOrder: order,
+      deploySecurityGatePhase: "FIX_IN_PROGRESS",
+      status: "WORK_UNITS_READY",
+      workUnitsExecutionConfirmed: true,
+      cursorRunId: null,
+      commitSha: null,
+      changedFiles: [],
+      prUrl: null,
+      prNumber: null,
+      mergeSha: null,
+      aiReviewDecision: null,
+      aiReviewSummary: null,
+    }) ?? run0
+  );
+}
+
 /** 검토 단계에서 GitHub Pages 정식 배포를 요청(다음 refresh에서 PR→머지→Pages 진행). */
 export function requestPrototypeGithubPagesDeploy(projectId: string, runId: string): PrototypeRun | null {
   const run = getRun(projectId, runId);
   if (!run) return null;
   if (run.publicUrl && run.deploymentStatus === "DONE") return run;
   if (run.deploymentStatus === "REQUESTED" || run.deploymentStatus === "RUNNING") return run;
+  const passedSha = String(run.deploySecurityPassedCommitSha ?? "").trim();
+  const msha = String(run.mergeSha ?? "").trim();
+  if (run.deploySecurityGatePhase !== "SECURITY_PASSED" || !passedSha || !msha || passedSha !== msha) {
+    return null;
+  }
   const okStatus =
     run.status === "PREVIEW_READY" ||
     run.status === "DEPLOY_FAILED" ||

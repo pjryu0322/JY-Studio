@@ -49,7 +49,7 @@ import {
 } from "@/lib/prototype/prototypeRunApiClient";
 import { workUnitProgressFromRun } from "@/lib/prototype/prototypePlannerService";
 import type { PrototypeRun, PrototypeRunStatusReason } from "@/lib/prototype/prototypeRunTypes";
-import { PROTOTYPE_PLANNER_SYSTEM_PROMPT } from "@/lib/prototype/prototypePlannerLlm";
+import { buildPrototypePlannerInstructionBlock } from "@/lib/prototype/prototypePlannerLlm";
 import { computePrototypeExecutionSlots } from "@/lib/prototype/prototypeExecutionSlots";
 import { PROTOTYPE_TEMPLATES, type PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
@@ -62,8 +62,15 @@ import {
 } from "@/lib/requirements/requirementsStateJson";
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
+import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
+import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
+import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
+import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
+import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import {
   serviceFlowStageComposerColumnStyle,
   serviceFlowStageMainChatStyle,
@@ -179,12 +186,14 @@ export function PrototypePreviewPanel({
   /** 콤보에서의 선택(미확정 포함). AI 추천 행은 `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` */
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [protoMembersModalOpen, setProtoMembersModalOpen] = useState(false);
+  const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
+  const prototypeAiTitle = displayedWorkspaceAiTitle("prototype_build");
   const prototypeComposerAtAtItems = useMemo((): readonly ComposerAtAtPickerItem[] => {
     return [
-      { id: "prototype:picker:ai", label: "AI기획자", targets: [{ id: VIRTUAL_AI_PLANNER_ID, name: "AI기획자" }] },
+      { id: "prototype:picker:ai", label: prototypeAiTitle, targets: [{ id: VIRTUAL_AI_PLANNER_ID, name: prototypeAiTitle }] },
       { id: "prototype:picker:user", label: "사용자", targets: [{ id: "prototype:mention:user", name: "사용자" }] },
     ];
-  }, []);
+  }, [prototypeAiTitle]);
 
   const refreshRecord = useCallback(() => {
     setRecord(loadPrototypeGenerationRecord(projectId));
@@ -194,6 +203,32 @@ export function PrototypePreviewPanel({
     // Load browser sessionStorage after mount (prevents SSR/client divergence).
     refreshRecord();
   }, [refreshRecord]);
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) {
+      setWorkspaceAiGraph(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await credentialsIncludeFetch(`/api/project/workspace-ai?projectId=${encodeURIComponent(pid)}`);
+        const json = (await res.json()) as { success?: boolean; data?: { members?: WorkspaceAiGraphMemberWire[] } };
+        if (cancelled) return;
+        if (!res.ok || !json.success || !json.data?.members) {
+          setWorkspaceAiGraph(null);
+          return;
+        }
+        setWorkspaceAiGraph(json.data.members);
+      } catch {
+        if (!cancelled) setWorkspaceAiGraph(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   useEffect(() => {
     const onVis = () => {
@@ -404,6 +439,19 @@ export function PrototypePreviewPanel({
       toastClearTimerRef.current = null;
     }, displayMs);
   }, []);
+
+  const prototypeScreenCatalogIds = useMemo(() => {
+    if (!workspaceAiGraph) return undefined;
+    return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "prototype_build");
+  }, [workspaceAiGraph]);
+
+  useWorkspaceAiEntryNotice({
+    projectId,
+    memberIds: prototypeScreenCatalogIds,
+    memberId: "prototype_build",
+    enabled: Boolean(projectId.trim()),
+    onMessage: showToast,
+  });
 
   /** 작업계획 경로는 토스트 대신 타임라인에 남는 한 줄(사라지지 않음) */
   const pushEphemeralPlannerNotice = useCallback((text: string) => {
@@ -892,7 +940,7 @@ export function PrototypePreviewPanel({
   );
 
   const plannerCombinedInputPreview = useMemo(
-    () => `${PROTOTYPE_PLANNER_SYSTEM_PROMPT}\n\n${plannerUserMessagePreview}`,
+    () => `${buildPrototypePlannerInstructionBlock()}\n\n${plannerUserMessagePreview}`,
     [plannerUserMessagePreview],
   );
 
@@ -1372,10 +1420,10 @@ export function PrototypePreviewPanel({
 
   const chatPlaceholder = useMemo(() => {
     if (isWorkPlanPlanningUi) {
-      return "AI기획자가 작업계획을 생성 중입니다.";
+      return `${prototypeAiTitle}가 작업계획을 생성 중입니다.`;
     }
     if (isMessageInputBlocked) {
-      return "AI기획자가 작업 중입니다. 잠시 기다려주세요.";
+      return `${prototypeAiTitle}가 작업 중입니다. 잠시 기다려주세요.`;
     }
     if (isDraftGenerationComplete) {
       return "완료된 실행입니다. 새로 시작하려면 타임라인의 「처음부터 다시 생성」을 이용해 주세요.";
@@ -1395,6 +1443,7 @@ export function PrototypePreviewPanel({
     }
     return "메시지를 입력하세요.";
   }, [
+    prototypeAiTitle,
     templateConfirmed,
     isWorkPlanPlanningUi,
     isMessageInputBlocked,
@@ -1449,14 +1498,12 @@ export function PrototypePreviewPanel({
           : latestRun?.status === "DEPLOY_FAILED" || latestRun?.status === "FAILED"
             ? "오류"
             : "대기";
+    const platformAi = buildWorkspaceAiParticipantOptions({
+      currentMemberIds: prototypeScreenCatalogIds?.length ? [...prototypeScreenCatalogIds] : ["prototype_build"],
+      statusLabelForCurrent: aiStatus,
+    });
     return [
-      {
-        id: "prototype-ai-planner",
-        name: "AI 기획자",
-        kind: "ai",
-        onlineHint: true,
-        aiStatusLabel: aiStatus,
-      },
+      ...platformAi,
       {
         id: "prototype-user-self",
         name: "사용자",
@@ -1471,6 +1518,7 @@ export function PrototypePreviewPanel({
     isDraftGenerationComplete,
     latestRun?.status,
     latestRun?.publicUrl,
+    prototypeScreenCatalogIds,
   ]);
 
   const prototypeHeaderPill = useMemo(() => {
@@ -1556,6 +1604,7 @@ export function PrototypePreviewPanel({
                     maxWidth: "min(100%, 420px)",
                   }}
                 >
+                  <WorkspaceAiMemberAvatar memberId="prototype_build" size={22} />
                   <span style={{ whiteSpace: "nowrap" }}>{prototypeHeaderPill.left}</span>
                   {prototypeHeaderPill.right ? (
                     <>

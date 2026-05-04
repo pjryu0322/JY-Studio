@@ -29,7 +29,7 @@ export function shouldSkipIdeationDuplicateAppend(params: {
   role: "user" | "ai";
   body: string;
   speakerId?: string;
-  /** true면 가상 AI 기획자 턴만 동일 본문으로 간주 */
+  /** true면 가상 AI(planner) 턴만 동일 본문으로 간주 */
   matchVirtualPlannerAi?: boolean;
 }): boolean {
   const { messages, role, body, speakerId, matchVirtualPlannerAi } = params;
@@ -84,7 +84,7 @@ export type MemberRow = {
   orchestrationStage?: string | null;
 };
 
-export type SessionUser = { id: string; email: string; name: string };
+export type SessionUser = { id: string; email: string; name: string; avatarUrl?: string | null };
 
 export const IDEATION_DRAFT_MIN_FILLED_SLOTS = 5;
 export const IDEATION_DRAFT_REQUIRED_SLOTS: readonly ProblemInterviewSlot[] = [

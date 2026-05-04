@@ -3,7 +3,11 @@
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
+import { WorkspaceAiParticipantAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
+
+const IDEATION_AI_DISPLAY_NAME = getWorkspaceAiMember("ideation")?.title ?? "AI 기획자";
 
 export type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 
@@ -55,17 +59,24 @@ export function RequirementsParticipantBar({
                 fontSize: 12,
                 cursor: "pointer",
                 color: "#0f172a",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                maxWidth: "100%",
               }}
             >
-              {p.name}
-              <span style={{ fontWeight: 500, color: "#64748b", marginLeft: 6 }}>({status})</span>
+              {p.kind === "ai" ? <WorkspaceAiParticipantAvatar participant={p} size={22} /> : null}
+              <span style={{ minWidth: 0, textAlign: "left" }}>
+                {p.name}
+                <span style={{ fontWeight: 500, color: "#64748b", marginLeft: 6 }}>({status})</span>
+              </span>
             </button>
           );
         })}
       </div>
       {dense ? null : selectedId === VIRTUAL_AI_PLANNER_ID ? (
         <div style={{ marginTop: 8, color: "#64748b" }}>
-          대상: <strong style={{ color: "#0f172a" }}>AI 기획자</strong> — OpenAI로 요청하며, 진행·성공·실패는 대화에 시스템 메시지로 남습니다.
+          대상: <strong style={{ color: "#0f172a" }}>{IDEATION_AI_DISPLAY_NAME}</strong> — OpenAI로 요청하며, 진행·성공·실패는 대화에 시스템 메시지로 남습니다.
         </div>
       ) : (
         <div style={{ marginTop: 8, color: "#64748b" }}>

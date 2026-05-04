@@ -5,7 +5,7 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { appendReviewMessage, getReviewThread } from "@/lib/prototype/prototypeReviewStore";
 import { PROTOTYPE_REVIEW_WELCOME_MESSAGE } from "@/lib/prototype/prototypeReviewWelcome";
 
-/** 빈 스레드에 AI기획자 환영 메시지 1회 주입(실행 runId 기준). */
+/** 빈 스레드에 프로토타입 검토 전담 AI 환영 메시지 1회 주입(실행 runId 기준). */
 export async function POST(request: NextRequest) {
   const userId = await requireSessionUserId(request);
   if (userId instanceof NextResponse) return userId;

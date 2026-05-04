@@ -110,6 +110,38 @@ enum ProjectAiActionApplyMode {
   MANUAL_APPLY
 }
 
+/// 플랫폼 계정(로그인) 상태 — 프로젝트 멤버십과 별개
+enum PlatformAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// 외부 연동이 충족하는 플랫폼 역할(LLM·코드 에이전트·SCM·배포)
+enum IntegrationCapability {
+  LLM
+  CODE_AGENT
+  SCM
+  DEPLOY
+}
+
+enum IntegrationProvider {
+  OPENAI
+  ANTHROPIC
+  GOOGLE_AI
+  GEMINI
+  AZURE_OPENAI
+  LOCAL_LLM
+  CURSOR
+  GITHUB
+  VERCEL
+}
+
+enum UserIntegrationStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+}
+
 model User {
   /// 사용자 ID
   id           String   @id @default(cuid())
@@ -119,8 +151,18 @@ model User {
   passwordHash String
   /// 사용자 이름
   name         String
-  /// 전역 권한
+  /// 플랫폼 UI 표시용 닉네임(비우면 이름 사용)
+  nickname     String?
+  /// 프로필 사진 URL(앱 `public` 기준 경로, 예: /user-avatars/…)
+  avatarUrl    String?
+  /// 전역 권한(USER | ADMIN | SUPER_ADMIN)
   globalRole   String   @default("USER")
+  /// 플랫폼 계정 상태(정지 시 로그인 차단)
+  accountStatus PlatformAccountStatus @default(ACTIVE)
+  /// 요금제/플랜 식별자(표시·쿼터용 스텁)
+  planTier     String   @default("free")
+  /// 마지막 성공 로그인 시각
+  lastLoginAt  DateTime?
   /// 생성일시
   createdAt    DateTime @default(now())
   /// 수정일시
@@ -151,7 +193,101 @@ model User {
   defaultOpenaiApiKey       String? @db.Text
   defaultOpenaiApiKeyMasked String?
 
+  userIntegrations UserIntegration[]
+
   @@map("users")
+}
+
+/// 암호화된 자격 증명 원문(IV·알고리즘 포함 메타)
+model IntegrationCredential {
+  id            String   @id @default(cuid())
+  ciphertext    String   @db.Text
+  iv            String
+  algorithm     String   @default("aes-256-gcm")
+  maskedPreview String?
+  createdAt     DateTime @default(now())
+
+  userIntegrations UserIntegration[]
+
+  @@map("integration_credentials")
+}
+
+/// 사용자 단위 등록된 연동(제공자·역할·암호화 자격 참조)
+model UserIntegration {
+  id            String                  @id @default(cuid())
+  userId        String
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider      IntegrationProvider
+  capability    IntegrationCapability
+  credentialRef String
+  credential    IntegrationCredential   @relation(fields: [credentialRef], references: [id], onDelete: Restrict)
+  /// UI 표시용 이름(비우면 provider·capability 조합 표시)
+  displayName   String?
+  /// 동일 capability에서 기본으로 쓸 연동(사용자당 capability별 하나 권장 — 앱에서 검증)
+  isDefault     Boolean                 @default(false)
+  meta          Json?
+  status        UserIntegrationStatus   @default(ACTIVE)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  projectIntegrationOverrides  ProjectIntegration[]
+  workspaceIntegrationBindings WorkspaceIntegration[]
+  aiMemberProviderPins           AiMemberProvider[]
+
+  @@unique([userId, provider, capability])
+  @@index([userId])
+  @@index([userId, capability, isDefault])
+  @@map("user_integrations")
+}
+
+/// 워크스페이스(현 제품에선 Project와 1:1) 단위 capability → 사용자 연동 선택
+model WorkspaceIntegration {
+  id                String                  @id @default(cuid())
+  projectId         String
+  project           Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  capability        IntegrationCapability
+  userIntegrationId String?
+  userIntegration    UserIntegration?       @relation(fields: [userIntegrationId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([projectId, capability])
+  @@index([projectId])
+  @@map("workspace_integrations")
+}
+
+/// 프로젝트 단위 capability override(우선 `project_integrations` 조회)
+model ProjectIntegration {
+  id                 String                  @id @default(cuid())
+  projectId          String
+  project            Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  capability         IntegrationCapability
+  userIntegrationId  String?
+  userIntegration     UserIntegration?       @relation(fields: [userIntegrationId], references: [id], onDelete: SetNull)
+  /// 프로젝트 전용 메타(자격은 userIntegrationId로만 참조)
+  metaOverride       Json?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@unique([projectId, capability])
+  @@index([projectId])
+  @@map("project_integrations")
+}
+
+/// 플랫폼 AI 멤버(카탈로그 행) ↔ capability 및 선택적 연동 핀
+model AiMemberProvider {
+  id                  String            @id @default(cuid())
+  workspaceAiMemberId String
+  workspaceAiMember   WorkspaceAiMember @relation(fields: [workspaceAiMemberId], references: [id], onDelete: Cascade)
+  capability          IntegrationCapability
+  userIntegrationId   String?
+  userIntegration     UserIntegration?  @relation(fields: [userIntegrationId], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([workspaceAiMemberId, capability])
+  @@index([workspaceAiMemberId])
+  @@map("ai_member_providers")
 }
 
 model Project {
@@ -266,9 +402,45 @@ model Project {
   requirementsStateJson Json?
   /// 멤버별·단계별 개인 작업 메모
   workNotes WorkNote[]
+  /// 플랫폼 AI(카탈로그 키) — 화면 참여 M:N 상위 행
+  workspaceAiMembers WorkspaceAiMember[]
+  workspaceIntegrations WorkspaceIntegration[]
+  projectIntegrations   ProjectIntegration[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// 프로젝트별 플랫폼 AI(카탈로그 키). `workspace_screen_ai_mapping`으로 화면과 M:N.
+model WorkspaceAiMember {
+  id         String   @id @default(cuid())
+  projectId  String
+  /// ideation | actor_flow | feature_planning | prototype_build | prototype_review | memo
+  catalogKey String
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  screenMappings WorkspaceScreenAiMapping[]
+  aiMemberProviders AiMemberProvider[]
+
+  @@unique([projectId, catalogKey])
+  @@index([projectId])
+  @@map("workspace_ai_member")
+}
+
+/// 화면 ↔ 플랫폼 AI 참여(M:N)
+model WorkspaceScreenAiMapping {
+  id                  String            @id @default(cuid())
+  workspaceAiMemberId String
+  /// requirements_ideation | requirements_service_flow | feature_planning | prototype_build | prototype_review | work_note
+  screenKey           String
+  createdAt           DateTime          @default(now())
+  workspaceAiMember   WorkspaceAiMember @relation(fields: [workspaceAiMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceAiMemberId, screenKey])
+  @@index([screenKey])
+  @@map("workspace_screen_ai_mapping")
 }
 
 /// 작업 메모 공개 범위(기본 비공개)
@@ -334,7 +506,7 @@ model ExecutionSetup {
   /// GitHub PAT 단계별 권한 프로브 결과(JSON): repo/prRead/prCreate/prMerge/operable, HTTP, X-Accepted-GitHub-Permissions
   githubCapabilityValidation Json?
 
-  /// OpenAI API 키(프로토타입 AI 기획자 전용). 일반 API 응답에는 미포함·마스킹만.
+  /// OpenAI API 키(프로토타입 작업계획·LLM 전용). 일반 API 응답에는 미포함·마스킹만.
   openaiPlannerApiKey String? @db.Text
   openaiPlannerApiKeyMasked String?
 

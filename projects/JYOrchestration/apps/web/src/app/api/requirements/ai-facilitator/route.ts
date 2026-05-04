@@ -24,6 +24,8 @@ type Body = {
   replyTo?: string | null;
   /** 대화 비어 있을 때 인터뷰 첫 질문만 생성(별도 시스템 프롬프트) */
   bootstrapInterview?: boolean;
+  /** 직전 화면 전환 시 클라이언트가 1회 전달하는 맥락 */
+  priorScreenHandoff?: string;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
@@ -33,7 +35,7 @@ function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undef
 }
 
 /**
- * 요구사항 협의실: AI 기획자 응답(OpenAI). projectId가 있으면 프로젝트 조회 권한 필요.
+ * 요구사항 협의실: 아이디어 구체화 전담 AI 응답(OpenAI). projectId가 있으면 프로젝트 조회 권한 필요.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
+    const priorScreenHandoff = String(body.priorScreenHandoff ?? "").trim();
     const responseStyle = parseAiResponseStyle(body.aiResponseStyle);
     const targetsRaw = Array.isArray(body.targets) ? body.targets : [];
     const mentionTargetsSummary = targetsRaw
@@ -105,6 +108,7 @@ export async function POST(request: NextRequest) {
           responseStyle,
           mentionTargetsSummary: mentionTargetsSummary || undefined,
           senderSummary: senderSummary || undefined,
+          priorScreenHandoff: priorScreenHandoff || undefined,
         });
     if (!result.ok) {
       return NextResponse.json({

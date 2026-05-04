@@ -12,7 +12,10 @@ import { WorkspaceComposerFooter } from "@/components/workspace/WorkspaceCompose
 import { WorkspaceMainPanel } from "@/components/workspace/WorkspaceMainPanel";
 import pillStyles from "@/components/workspace/workspaceProgressPill.module.css";
 import { useProjectWorkspaceParticipants } from "@/components/workspace/useProjectWorkspaceParticipants";
+import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
+import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
+import { useTimedSuccessErrorToasts } from "@/components/workspace/useTimedSuccessErrorToasts";
 import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { FeaturePlanningComposer } from "./FeaturePlanningComposer";
@@ -20,6 +23,7 @@ import { FeaturePlanningSidebarContent } from "./FeaturePlanningSidebarContent";
 import { FeaturePlanningSlotsPanel } from "./FeaturePlanningSlotsPanel";
 import { FeaturePlanningWorkspaceCanvas } from "./FeaturePlanningWorkspaceCanvas";
 import { enrichFeaturePlanningDisplayMessages } from "@/lib/featurePlanning/featurePlanningChatDisplay";
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { useWorkNoteChatSelectionRequester } from "@/components/worknote/WorkNoteChatSelectionBridge";
 import { useFeaturePlanningWorkspace } from "./useFeaturePlanningWorkspace";
 import styles from "./featurePlanningWorkspace.module.css";
@@ -32,11 +36,22 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [canvas, setCanvas] = useState<FeatureCanvasMode | null>(null);
-  const { participants, participantBadgeCount, members, reloadMembers } = useProjectWorkspaceParticipants({
+  const { successToast, errorToast, showSuccessToast } = useTimedSuccessErrorToasts({ successDismissMs: 2800 });
+  const { participants, participantBadgeCount, members, reloadMembers, workspaceScreenAiMemberIds } =
+    useProjectWorkspaceParticipants({
+      projectId,
+      activeStage: "ideation",
+      workspaceParticipantScreenKey: "feature_planning",
+      aiLastInvoke: null,
+      aiInvokePending: false,
+    });
+
+  useWorkspaceAiEntryNotice({
     projectId,
-    activeStage: "ideation",
-    aiLastInvoke: null,
-    aiInvokePending: false,
+    memberIds: workspaceScreenAiMemberIds,
+    memberId: "feature_planning",
+    enabled: Boolean(projectId.trim()) && Boolean(shell.serviceFlowReady),
+    onMessage: showSuccessToast,
   });
 
   const displayMessages = useMemo(
@@ -109,7 +124,7 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
                     ? "액터 및 서비스 흐름 정의를 완료하면 이곳에서 기능 정리를 이어갈 수 있습니다."
                     : shell.artifact?.slots?.length
                       ? "대화를 불러오는 중 문제가 있었습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해 주세요."
-                      : "서비스 흐름 분석이 끝나면 AI 기획자가 이곳에서 질문을 드립니다.\n\n응답이 없으면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요."}
+                      : `서비스 흐름 분석이 끝나면 ${displayedWorkspaceAiTitle("feature_planning")}가 이곳에서 질문을 드립니다.\n\n응답이 없으면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요.`}
                 </div>
               ) : null
         }
@@ -174,6 +189,7 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
 
   return (
     <div className={styles.root}>
+      <WorkspaceSuccessErrorSaveToastHost success={successToast} error={errorToast} />
       <ScreenLabel label={WORKSPACE_SECTION_META.featurePlanningRoot.fullLabel} visible={showScreenLabels} />
       {shell.loadError ? <div role="alert" className={styles.notice}>{shell.loadError}</div> : null}
       {!shell.loadError && !shell.serviceFlowReady ? (

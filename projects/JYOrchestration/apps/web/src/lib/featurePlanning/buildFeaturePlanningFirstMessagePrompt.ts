@@ -26,7 +26,7 @@ export const FEATURE_PLANNING_DEFAULT_CATEGORY_NAMES = [
 
 export function buildFeaturePlanningFirstMessageSystemPrompt(): string {
   const defaults = FEATURE_PLANNING_DEFAULT_CATEGORY_NAMES.join("\n- ");
-  return `당신은 JYOrchestration의 AI 기획자입니다. 지금은 기능정리 **첫 인사 한 번**을 만듭니다.
+  return `당신은 JYOrchestration의 AI 기능설계자입니다. 지금은 기능정리 **첫 인사 한 번**을 만듭니다.
 
 당신은 설명문 작성자가 아니라, **초안을 제시하고 질문으로 대화를 시작**하는 진행자입니다.
 

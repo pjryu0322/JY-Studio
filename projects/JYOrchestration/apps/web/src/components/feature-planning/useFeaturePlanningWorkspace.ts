@@ -405,7 +405,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
         setMessages(d.messages);
       }
       setComposer("");
-      pushNotice("대화를 초기화하고 AI 기획자의 첫 메시지를 다시 받았습니다.");
+      pushNotice("대화를 초기화하고 전담 AI의 첫 메시지를 다시 받았습니다.");
       const { project: p } = await fetchProjectWithRetry(pid);
       setProject(p ?? null);
       if (p) hydrateFromProject(p);
@@ -475,7 +475,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
     if (!artifact?.planningChecklistV1) return null;
     return computeChecklistProgress(artifact.planningChecklistV1);
   }, [artifact]);
-  const initLoadingHint = "AI 기획자가 서비스 흐름을 바탕으로 기능 정리 분석을 실행하고 있습니다.";
+  const initLoadingHint = "AI 기능설계자가 서비스 흐름을 바탕으로 기능 정리 분석을 실행하고 있습니다.";
   const serviceFlowReady = project ? isServiceFlowApprovedForFeaturePlanning(project.requirementsStateJson) : false;
 
   const showStructuralRegenerateHint = Boolean(

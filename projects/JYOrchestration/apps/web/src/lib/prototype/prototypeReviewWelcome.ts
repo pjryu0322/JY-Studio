@@ -1,5 +1,9 @@
-/** 검토 스레드가 비어 있을 때 한 번만 주입하는 AI기획자 환영 메시지(고정 문구). */
-export const PROTOTYPE_REVIEW_WELCOME_MESSAGE = `안녕하세요. AI기획자입니다.
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
+
+const reviewAiTitle = () => getWorkspaceAiMember("prototype_review")?.title ?? "AI 검수자";
+
+/** 검토 스레드가 비어 있을 때 한 번만 주입하는 환영 메시지(고정 문구). */
+export const PROTOTYPE_REVIEW_WELCOME_MESSAGE = `안녕하세요. ${reviewAiTitle()}입니다.
 
 현재 화면은 생성된 프로토타입 Preview입니다.
 직접 보시면서 불편한 점, 수정하고 싶은 점, 추가하고 싶은 기능을 자유롭게 말씀해주세요.

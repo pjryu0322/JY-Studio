@@ -7,17 +7,20 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildPrototypeBranchName, buildWorkUnitBranchName } from "@/lib/prototype/prototypeBranchNames";
 import { logPrototypePipelineEvent } from "@/lib/prototype/prototypeRunLog";
-import type {
-  PrototypeRun,
-  PrototypeRunFileEnvelope,
-  PrototypeWorkUnit,
-  PrototypeWorkUnitStatus,
-  PrototypeDeploymentStatus,
-  PrototypeRunStatus,
-  PrototypeRunStatusReason,
-  PrototypePlannerSource,
-  PrototypeWorkUnitComplexity,
-  PrototypeWorkUnitRiskLevel,
+import {
+  PROTOTYPE_DEPLOY_SECURITY_GATE_PHASES,
+  type PrototypeRun,
+  type PrototypeRunFileEnvelope,
+  type PrototypeWorkUnit,
+  type PrototypeWorkUnitStatus,
+  type PrototypeDeploymentStatus,
+  type PrototypeRunStatus,
+  type PrototypeRunStatusReason,
+  type PrototypePlannerSource,
+  type PrototypeWorkUnitComplexity,
+  type PrototypeWorkUnitRiskLevel,
+  type PrototypeDeploySecurityGatePhase,
+  type PrototypeSecurityFinding,
 } from "@/lib/prototype/prototypeRunTypes";
 
 function dataDir(): string {
@@ -251,6 +254,40 @@ function normalizeDeploymentStatus(raw: unknown): PrototypeDeploymentStatus {
   return "PENDING";
 }
 
+function normalizeDeploySecurityGatePhase(x: unknown): PrototypeDeploySecurityGatePhase {
+  const s = String(x ?? "").trim();
+  return (PROTOTYPE_DEPLOY_SECURITY_GATE_PHASES as readonly string[]).includes(s)
+    ? (s as PrototypeDeploySecurityGatePhase)
+    : "NONE";
+}
+
+function normalizeSecurityFindings(x: unknown): readonly PrototypeSecurityFinding[] {
+  if (!Array.isArray(x)) return [];
+  const out: PrototypeSecurityFinding[] = [];
+  for (const it of x) {
+    const o = it as Record<string, unknown>;
+    const id = String(o?.id ?? "").trim() || randomUUID();
+    const sev = String(o?.severity ?? "").toUpperCase();
+    const severity: PrototypeSecurityFinding["severity"] =
+      sev === "HIGH" || sev === "LOW" ? (sev as "HIGH" | "LOW") : "MEDIUM";
+    const fs = String(o?.fixStatus ?? "").toUpperCase();
+    const fixStatus: PrototypeSecurityFinding["fixStatus"] = fs === "ADDRESSED" ? "ADDRESSED" : "OPEN";
+    out.push({
+      id,
+      severity,
+      location: String(o?.location ?? "").trim() || "(위치 미상)",
+      description: String(o?.description ?? "").trim() || "(설명 없음)",
+      recommendedAction: String(
+        o?.recommendedAction ?? (o as { recommended_action?: unknown }).recommended_action ?? "",
+      )
+        .trim()
+        .replace(/\s+/g, " ") || "(권장 조치 없음)",
+      fixStatus,
+    });
+  }
+  return out;
+}
+
 function inferProjectNameForBranch(raw: Record<string, unknown>): string {
   const snap = String(raw.promptSnapshot ?? "");
   const m = snap.match(/프로젝트\s*[:：]\s*(.+)/i) ?? snap.match(/project\s*[:]\s*(.+)/i);
@@ -376,6 +413,30 @@ export function normalizeStoredRun(raw: Record<string, unknown>): PrototypeRun {
         ? String((raw as { pagesDeployTriggerCommitSha: string }).pagesDeployTriggerCommitSha)
         : null,
     publicUrl: typeof (raw as { publicUrl?: unknown }).publicUrl === "string" ? String((raw as { publicUrl: string }).publicUrl) : null,
+    deploySecurityGatePhase: normalizeDeploySecurityGatePhase((raw as { deploySecurityGatePhase?: unknown }).deploySecurityGatePhase),
+    deploySecurityCheckIsRecheck: Boolean((raw as { deploySecurityCheckIsRecheck?: unknown }).deploySecurityCheckIsRecheck),
+    deploySecurityFindings: normalizeSecurityFindings((raw as { deploySecurityFindings?: unknown }).deploySecurityFindings),
+    deploySecurityCheckStartedAt:
+      typeof (raw as { deploySecurityCheckStartedAt?: unknown }).deploySecurityCheckStartedAt === "string"
+        ? String((raw as { deploySecurityCheckStartedAt: string }).deploySecurityCheckStartedAt)
+        : null,
+    deploySecurityCheckFinishedAt:
+      typeof (raw as { deploySecurityCheckFinishedAt?: unknown }).deploySecurityCheckFinishedAt === "string"
+        ? String((raw as { deploySecurityCheckFinishedAt: string }).deploySecurityCheckFinishedAt)
+        : null,
+    deploySecurityPassedCommitSha:
+      typeof (raw as { deploySecurityPassedCommitSha?: unknown }).deploySecurityPassedCommitSha === "string"
+        ? String((raw as { deploySecurityPassedCommitSha: string }).deploySecurityPassedCommitSha)
+        : null,
+    deploySecurityPassedAt:
+      typeof (raw as { deploySecurityPassedAt?: unknown }).deploySecurityPassedAt === "string"
+        ? String((raw as { deploySecurityPassedAt: string }).deploySecurityPassedAt)
+        : null,
+    deploySecurityFixWorkUnitOrder:
+      typeof (raw as { deploySecurityFixWorkUnitOrder?: unknown }).deploySecurityFixWorkUnitOrder === "number" &&
+      Number.isFinite((raw as { deploySecurityFixWorkUnitOrder: number }).deploySecurityFixWorkUnitOrder)
+        ? Math.floor((raw as { deploySecurityFixWorkUnitOrder: number }).deploySecurityFixWorkUnitOrder)
+        : null,
     createdAt: String(raw.createdAt ?? new Date().toISOString()),
     updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
   };
@@ -438,6 +499,14 @@ export function createRun(input: {
     deployFailureDetail: null,
     pagesDeployTriggerCommitSha: null,
     publicUrl: null,
+    deploySecurityGatePhase: "NONE",
+    deploySecurityCheckIsRecheck: false,
+    deploySecurityFindings: [],
+    deploySecurityCheckStartedAt: null,
+    deploySecurityCheckFinishedAt: null,
+    deploySecurityPassedCommitSha: null,
+    deploySecurityPassedAt: null,
+    deploySecurityFixWorkUnitOrder: null,
     createdAt: t,
     updatedAt: t,
   };
@@ -520,6 +589,14 @@ export function updateRun(
       | "deployFailureDetail"
       | "pagesDeployTriggerCommitSha"
       | "publicUrl"
+      | "deploySecurityGatePhase"
+      | "deploySecurityCheckIsRecheck"
+      | "deploySecurityFindings"
+      | "deploySecurityCheckStartedAt"
+      | "deploySecurityCheckFinishedAt"
+      | "deploySecurityPassedCommitSha"
+      | "deploySecurityPassedAt"
+      | "deploySecurityFixWorkUnitOrder"
     >
   >,
 ): PrototypeRun | null {
@@ -530,6 +607,7 @@ export function updateRun(
     ...prev,
     ...patch,
     changedFiles: patch.changedFiles ?? prev.changedFiles,
+    deploySecurityFindings: patch.deploySecurityFindings ?? prev.deploySecurityFindings,
     updatedAt: nowIso(),
   };
   const nextRuns = env.runs.map((r) => (r.id === runId ? next : r));

@@ -4,7 +4,7 @@ import { maskOpenAiKeyForUi } from "@/lib/executionSetup/openAiKeyMask";
 import { prisma } from "@/lib/prisma";
 
 /**
- * 사용자 기본 OpenAI 키(프로토타입 AI 기획자용). 본인만 PATCH.
+ * 사용자 기본 OpenAI 키(프로토타입 작업계획·LLM용). 본인만 PATCH.
  */
 export async function PATCH(request: NextRequest) {
   const userId = await requireSessionUserId(request);

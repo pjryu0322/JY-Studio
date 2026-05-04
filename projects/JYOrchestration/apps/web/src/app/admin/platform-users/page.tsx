@@ -8,15 +8,24 @@ type PlatformUserDto = {
   email: string;
   name: string;
   globalRole: string;
+  platformRole: string;
+  accountStatus: string;
+  planTier: string;
+  lastLoginAt: string | null;
+  humanProjectCount: number;
   createdAt: string;
   updatedAt: string;
 };
 
-function statusLabel(u: PlatformUserDto): string {
-  const now = Date.now();
-  const up = new Date(u.updatedAt).getTime();
-  if (Number.isFinite(up) && now - up < 24 * 60 * 60 * 1000) return "활성 · 최근 활동";
-  return "활성";
+function accountStatusLabel(s: string): string {
+  return s === "SUSPENDED" ? "정지" : "활성";
+}
+
+function planLabel(tier: string): string {
+  const t = String(tier ?? "").trim().toLowerCase();
+  if (t === "free") return "무료";
+  if (t === "pro" || t === "team") return "유료";
+  return tier || "—";
 }
 
 export default function AdminPlatformUsersPage() {
@@ -64,14 +73,17 @@ export default function AdminPlatformUsersPage() {
   if (allowed === false && !loading) {
     return (
       <main style={{ padding: 24, maxWidth: 880, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>플랫폼 사용자</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>관리자 콘솔 · 플랫폼 사용자</h1>
         <p style={{ color: "#b91c1c", marginTop: 12 }}>이 페이지는 플랫폼 관리자만 볼 수 있습니다.</p>
-        <p style={{ color: "#64748b", fontSize: 14, marginTop: 8 }}>
-          프로젝트에 사람을 초대하려면{" "}
+        <p style={{ color: "#64748b", fontSize: 14, marginTop: 8, lineHeight: 1.55 }}>
+          프로젝트에 사람을 초대하려면 각 프로젝트의{" "}
           <Link href="/requirements" style={{ color: "#2563eb", fontWeight: 700 }}>
-            아이디어 구체화
+            멤버 관리
           </Link>
-          화면의 멤버 초대를 사용하세요. (프로젝트별 멤버 ≠ 플랫폼 사용자)
+          를 사용하세요. (프로젝트 멤버 ≠ 플랫폼 사용자)
+        </p>
+        <p style={{ color: "#64748b", fontSize: 13, marginTop: 8 }}>
+          상단 설정(톱니바퀴)에서 메뉴 모드를 <strong>관리자</strong>로 바꾼 뒤 다시 시도해 보세요.
         </p>
         <Link href="/" style={{ display: "inline-block", marginTop: 16, fontWeight: 700, color: "#2563eb" }}>
           홈으로
@@ -81,16 +93,18 @@ export default function AdminPlatformUsersPage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
+    <main style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
       <div style={{ marginBottom: 16 }}>
         <Link href="/" style={{ fontSize: 14, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}>
           ← 홈
         </Link>
       </div>
       <header style={{ marginBottom: 20 }}>
-        <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>플랫폼 사용자</h1>
+        <h1 style={{ margin: "0 0 6px 0", fontSize: 22, fontWeight: 800, color: "#0f172a" }}>관리자 콘솔 · 플랫폼 사용자</h1>
         <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.55 }}>
-          로그인 가능한 <strong>전역 계정</strong> 목록입니다(읽기 전용). 프로젝트별 멤버 관리는 각 프로젝트 화면의 멤버 초대에서 진행하세요.
+          로그인 가능한 <strong>전역 계정</strong> 목록입니다(읽기). 역할은 <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: 6 }}>USER</code> /{" "}
+          <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: 6 }}>ADMIN</code> /{" "}
+          <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: 6 }}>SUPER_ADMIN</code> 입니다.
         </p>
       </header>
 
@@ -124,18 +138,20 @@ export default function AdminPlatformUsersPage() {
           style={{
             border: "1px solid #e2e8f0",
             borderRadius: 12,
-            overflow: "hidden",
+            overflow: "auto",
             boxShadow: "0 4px 18px rgba(15, 23, 42, 0.06)",
           }}
         >
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 860 }}>
             <thead>
               <tr style={{ background: "#f8fafc", textAlign: "left" }}>
                 <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569" }}>이름</th>
                 <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569" }}>이메일</th>
-                <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569" }}>가입일</th>
                 <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569" }}>상태</th>
-                <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569" }}>전역 역할</th>
+                <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569" }}>플랜</th>
+                <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569", whiteSpace: "nowrap" }}>프로젝트 수</th>
+                <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569", whiteSpace: "nowrap" }}>최근 접속</th>
+                <th style={{ padding: "12px 14px", fontWeight: 800, color: "#475569" }}>역할</th>
               </tr>
             </thead>
             <tbody>
@@ -143,11 +159,17 @@ export default function AdminPlatformUsersPage() {
                 <tr key={u.id} style={{ borderTop: "1px solid #f1f5f9" }}>
                   <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0f172a" }}>{u.name}</td>
                   <td style={{ padding: "12px 14px", color: "#334155" }}>{u.email}</td>
-                  <td style={{ padding: "12px 14px", color: "#64748b", whiteSpace: "nowrap" }}>
-                    {new Date(u.createdAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })}
+                  <td style={{ padding: "12px 14px", color: u.accountStatus === "SUSPENDED" ? "#b91c1c" : "#0f766e", fontWeight: 700 }}>
+                    {accountStatusLabel(u.accountStatus)}
                   </td>
-                  <td style={{ padding: "12px 14px", color: "#334155" }}>{statusLabel(u)}</td>
-                  <td style={{ padding: "12px 14px", color: "#64748b" }}>{u.globalRole}</td>
+                  <td style={{ padding: "12px 14px", color: "#334155" }}>{planLabel(u.planTier)}</td>
+                  <td style={{ padding: "12px 14px", color: "#334155", textAlign: "right" }}>{u.humanProjectCount}</td>
+                  <td style={{ padding: "12px 14px", color: "#64748b", whiteSpace: "nowrap" }}>
+                    {u.lastLoginAt
+                      ? new Date(u.lastLoginAt).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })
+                      : "—"}
+                  </td>
+                  <td style={{ padding: "12px 14px", color: "#64748b" }}>{u.platformRole}</td>
                 </tr>
               ))}
             </tbody>

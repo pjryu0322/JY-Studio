@@ -1,5 +1,8 @@
+import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { getMessageTargets } from "@/lib/requirements/requirementsTargets";
+
+const IDEATION_AI_READABLE = getWorkspaceAiMember("ideation")?.title ?? "AI 기획자";
 
 export type RequirementsPromptView = {
   systemPrompt: string;
@@ -16,7 +19,7 @@ export type RequirementsPromptView = {
   finalComposedPrompt: string;
 };
 
-export const REQUIREMENTS_SYSTEM_PROMPT_READABLE = `당신은 소프트웨어 프로젝트의 요구사항 정리를 돕는 AI 기획자입니다.
+export const REQUIREMENTS_SYSTEM_PROMPT_READABLE = `당신은 소프트웨어 프로젝트의 요구사항 정리를 돕는 ${IDEATION_AI_READABLE}입니다.
 역할: 범위·모호함·누락·역할·기능/비기능 요구를 짧게 질문하고, 확인 가능한 요구사항으로 수렴시키세요.
 규칙:
 - 한국어로 답합니다.

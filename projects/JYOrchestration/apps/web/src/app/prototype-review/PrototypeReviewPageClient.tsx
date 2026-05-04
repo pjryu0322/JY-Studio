@@ -10,6 +10,12 @@ import { ReviewHeader } from "@/components/prototype-review/ReviewHeader";
 import { EmptyState, InlineAlert, LoadingState } from "@/components/ui";
 import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
+import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
+import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
+import { useTimedSuccessErrorToasts } from "@/components/workspace/useTimedSuccessErrorToasts";
+import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
+import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import type { PrototypeImprovementItem, PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
 import {
   fetchPrototypeReviewThread,
@@ -24,6 +30,9 @@ import {
   fetchPrototypeRunById,
   fetchPrototypeRunsList,
   getPrototypeDeployStatusApi,
+  postPrototypeDeployProceed,
+  postPrototypeDeploySecurityFixRequest,
+  postPrototypeDeploySecurityRecheck,
   postPrototypeRequestDeploy,
   postPrototypeRunRefresh,
 } from "@/lib/prototype/prototypeRunApiClient";
@@ -67,6 +76,53 @@ export function PrototypeReviewPageClient() {
   const [refreshing, setRefreshing] = useState(false);
   const [frameLoading, setFrameLoading] = useState(false);
   const [deployRequestBusy, setDeployRequestBusy] = useState(false);
+  const [deployProceedBusy, setDeployProceedBusy] = useState(false);
+  const [securityRecheckBusy, setSecurityRecheckBusy] = useState(false);
+  const [securityFixBusy, setSecurityFixBusy] = useState(false);
+  const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
+
+  const { successToast, errorToast, showSuccessToast } = useTimedSuccessErrorToasts({ successDismissMs: 2800 });
+
+  const prototypeReviewScreenCatalogIds = useMemo(() => {
+    if (!workspaceAiGraph) return undefined;
+    const a = resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "prototype_review");
+    const b = resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "deploy_gate");
+    return [...new Set([...a, ...b])];
+  }, [workspaceAiGraph]);
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) {
+      setWorkspaceAiGraph(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await credentialsIncludeFetch(`/api/project/workspace-ai?projectId=${encodeURIComponent(pid)}`);
+        const json = (await res.json()) as { success?: boolean; data?: { members?: WorkspaceAiGraphMemberWire[] } };
+        if (cancelled) return;
+        if (!res.ok || !json.success || !json.data?.members) {
+          setWorkspaceAiGraph(null);
+          return;
+        }
+        setWorkspaceAiGraph(json.data.members);
+      } catch {
+        if (!cancelled) setWorkspaceAiGraph(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  useWorkspaceAiEntryNotice({
+    projectId,
+    memberIds: prototypeReviewScreenCatalogIds,
+    memberId: "prototype_review",
+    enabled: Boolean(projectId.trim()),
+    onMessage: showSuccessToast,
+  });
 
   const lastAutoAttemptKeyRef = useRef<string | null>(null);
   const previewStackRef = useRef<HTMLDivElement | null>(null);
@@ -209,9 +265,12 @@ export function PrototypeReviewPageClient() {
 
   const deploySnap = useMemo(() => getPrototypeDeployStatusSnapshot(run), [run]);
 
+  const deployPollActive =
+    deploySnap.deployStatus === "DEPLOYING" || (run?.deploySecurityGatePhase ?? "") === "SECURITY_CHECKING";
+
   useEffect(() => {
     if (!projectId || !selectedRunId) return;
-    if (deploySnap.deployStatus !== "DEPLOYING") return;
+    if (!deployPollActive) return;
     const tick = () => {
       void (async () => {
         const res = await getPrototypeDeployStatusApi(projectId, selectedRunId, true);
@@ -223,7 +282,7 @@ export function PrototypeReviewPageClient() {
     tick();
     const id = window.setInterval(tick, 5000);
     return () => window.clearInterval(id);
-  }, [projectId, selectedRunId, deploySnap.deployStatus]);
+  }, [projectId, selectedRunId, deployPollActive]);
 
   const urlKey = previewUrlKey(run);
   useEffect(() => {
@@ -257,7 +316,7 @@ export function PrototypeReviewPageClient() {
     try {
       const res = await postPrototypeRequestDeploy(selectedRunId, { projectId });
       if (!res.success) {
-        setError(res.message ?? "배포 요청에 실패했습니다.");
+        setError(res.message ?? "배포 보안 점검을 시작하지 못했습니다.");
         return;
       }
       if (res.data?.run) setRun(res.data.run);
@@ -266,6 +325,58 @@ export function PrototypeReviewPageClient() {
       setDeployRequestBusy(false);
     }
   }, [projectId, selectedRunId, loadRunById]);
+
+  const onDeployProceed = useCallback(async () => {
+    if (!projectId || !selectedRunId) return;
+    setDeployProceedBusy(true);
+    setError(null);
+    try {
+      const res = await postPrototypeDeployProceed(selectedRunId, { projectId });
+      if (!res.success) {
+        setError(res.message ?? "배포를 진행할 수 없습니다.");
+        return;
+      }
+      if (res.data?.run) setRun(res.data.run);
+      else await loadRunById(projectId, selectedRunId);
+    } finally {
+      setDeployProceedBusy(false);
+    }
+  }, [projectId, selectedRunId, loadRunById]);
+
+  const onSecurityRecheck = useCallback(async () => {
+    if (!projectId || !selectedRunId) return;
+    setSecurityRecheckBusy(true);
+    setError(null);
+    try {
+      const res = await postPrototypeDeploySecurityRecheck(selectedRunId, { projectId });
+      if (!res.success) {
+        setError(res.message ?? "보안 재점검을 시작하지 못했습니다.");
+        return;
+      }
+      if (res.data?.run) setRun(res.data.run);
+      else await loadRunById(projectId, selectedRunId);
+    } finally {
+      setSecurityRecheckBusy(false);
+    }
+  }, [projectId, selectedRunId, loadRunById]);
+
+  const onSecurityFixRequest = useCallback(async () => {
+    if (!projectId || !selectedRunId) return;
+    setSecurityFixBusy(true);
+    setError(null);
+    try {
+      const res = await postPrototypeDeploySecurityFixRequest(selectedRunId, { projectId });
+      if (!res.success) {
+        setError(res.message ?? "조치 요청을 생성하지 못했습니다.");
+        return;
+      }
+      if (res.data?.run) setRun(res.data.run);
+      else await loadRunById(projectId, selectedRunId);
+      showSuccessToast("보안 조치용 Cursor 작업이 추가되었습니다. 프로토타입 생성 화면에서 실행 상태를 확인하세요.");
+    } finally {
+      setSecurityFixBusy(false);
+    }
+  }, [projectId, selectedRunId, loadRunById, showSuccessToast]);
 
   const onFullscreen = useCallback(() => {
     const el = document.getElementById("jyo-prototype-review-preview");
@@ -380,6 +491,7 @@ export function PrototypeReviewPageClient() {
         boxSizing: "border-box",
       }}
     >
+      <WorkspaceSuccessErrorSaveToastHost success={successToast} error={errorToast} />
       {error ? (
         <InlineAlert variant="danger" style={{ flexShrink: 0 }}>
           {error}
@@ -401,7 +513,13 @@ export function PrototypeReviewPageClient() {
         onRefresh={onRefreshPreview}
         onFullscreen={onFullscreen}
         onRequestDeploy={onRequestDeploy}
+        onDeployProceed={onDeployProceed}
+        onSecurityRecheck={onSecurityRecheck}
+        onSecurityFixRequest={onSecurityFixRequest}
         deployRequestBusy={deployRequestBusy}
+        deployProceedBusy={deployProceedBusy}
+        securityRecheckBusy={securityRecheckBusy}
+        securityFixBusy={securityFixBusy}
       />
 
       {initializing && !run ? (

@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { RequirementsServiceFlowStage } from "@/components/requirements/RequirementsServiceFlowStage";
 import type { ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
 import { uiTokens as t } from "@/components/ui/tokens";
@@ -36,6 +37,7 @@ export function ServiceFlowWorkspace({
   onUpdateFlow,
   persistedServiceFlowMessages,
   onAppendPersistedServiceFlowMessages,
+  platformScreenAiMemberIds,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -55,6 +57,7 @@ export function ServiceFlowWorkspace({
   readonly onAppendPersistedServiceFlowMessages: (
     incoming: readonly RequirementsMessage[],
   ) => Promise<readonly RequirementsMessage[]>;
+  readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
 }) {
   return (
     <section style={wrap} aria-label="액터 및 서비스 흐름 정의">
@@ -77,6 +80,7 @@ export function ServiceFlowWorkspace({
           onRetryGate={onRetryGate}
           persistedServiceFlowMessages={persistedServiceFlowMessages}
           onAppendPersistedServiceFlowMessages={onAppendPersistedServiceFlowMessages}
+          platformScreenAiMemberIds={platformScreenAiMemberIds}
         />
       </div>
     </section>

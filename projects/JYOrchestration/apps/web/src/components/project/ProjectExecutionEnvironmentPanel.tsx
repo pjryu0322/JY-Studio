@@ -19,6 +19,7 @@ import {
   ExecutionSetupPanel,
   type ExecutionSetupPanelHandle,
 } from "@/components/project-spec/ExecutionSetupPanel";
+import { ProjectIntegrationOverridesPanel } from "@/components/project/ProjectIntegrationOverridesPanel";
 import {
   githubCredentialLooksStored,
   cursorCredentialLooksStored,
@@ -2265,6 +2266,8 @@ export function ProjectExecutionEnvironmentPanel({
       )}
 
       {mvpGithubRepoSection}
+
+      <ProjectIntegrationOverridesPanel projectId={projectId} canEdit={canEdit} />
 
       <ExecutionSetupPanel
         ref={executionSetupPanelRef}

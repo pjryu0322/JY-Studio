@@ -1,3 +1,5 @@
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
+import { appendAiContextToSystemPrompt } from "@/lib/ai/knowledge/aiMemberContextInjection";
 import type { FeaturePlanningSlotsLlmContext } from "@/lib/featurePlanning/buildFeaturePlanningSlotsContext";
 import {
   buildFeaturePlanningFirstMessageSystemPrompt,
@@ -31,8 +33,17 @@ export async function runFeaturePlanningFirstMessageLlm(input: {
   readonly artifact: FeaturePlanningSlotsArtifactV1;
   readonly apiKey: string;
   readonly model: string;
+  /** 있으면 프로젝트 컨텍스트까지 system에 주입 */
+  readonly projectId?: string;
 }): Promise<FeaturePlanningFirstMessageLlmOk | FeaturePlanningFirstMessageLlmErr> {
-  const system = buildFeaturePlanningFirstMessageSystemPrompt();
+  const topic = input.artifact.planningTopic ?? "FEATURES";
+  let system = `${workspaceAiMemberSystemPrefix("feature_planning")}${buildFeaturePlanningFirstMessageSystemPrompt()}`;
+  system = await appendAiContextToSystemPrompt({
+    aiMemberId: "feature_planning",
+    baseSystem: system,
+    projectId: String(input.projectId ?? "").trim(),
+    featurePlanningTopic: topic,
+  });
   const user = buildFeaturePlanningFirstMessageUserPrompt(input.ctx, input.artifact);
   const res = await openAiChatJsonText(input.apiKey, input.model, system, user, { label: "기능 정리 첫 메시지", skipTimeline: true });
   if (!res.ok) return res;

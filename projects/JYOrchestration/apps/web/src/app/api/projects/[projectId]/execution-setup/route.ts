@@ -102,7 +102,7 @@ type PatchBody = Partial<{
   cursorApiUrl: string;
   cursorApiToken: string | null;
   githubAccessToken: string | null;
-  /** 프로토타입 AI 기획자용 OpenAI 키(프로젝트 단위) */
+  /** 프로토타입 생성(작업계획)용 OpenAI 키(프로젝트 단위) */
   openaiPlannerApiKey: string | null;
 }>;
 
