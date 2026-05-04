@@ -197,6 +197,7 @@ export function buildFeaturePlanningCompactBlocks(input: {
           requirementsStateJson: input.requirementsStateJson,
           artifact: input.artifact,
           workspaceMessages: input.workspaceMessages,
+          userLatestTurn: input.userMessage.trim(),
         })
       : "";
   const slotSummary = plannerFocus ? clamp(`${slotSummaryBase}\n\n${plannerFocus}`, 980) : slotSummaryBase;

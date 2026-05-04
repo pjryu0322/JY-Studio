@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { editorHtmlToNoteRaw, sanitizeWorkNoteHtml } from "@/lib/worknote/workNoteEditorHtml";
+import { editorHtmlToNoteRaw, escapeHtmlText, sanitizeWorkNoteHtml } from "@/lib/worknote/workNoteEditorHtml";
 
 export type WorkNoteSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -223,6 +223,27 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
     }
   }, [flushActive, projectId]);
 
+  const appendSnippetFromChat = useCallback(
+    async (plain: string) => {
+      const t = plain.trim();
+      if (!t) return;
+      let id = activeIdRef.current;
+      if (!id) {
+        await createNote();
+        id = activeIdRef.current;
+      }
+      if (!id) return;
+      const escaped = escapeHtmlText(t);
+      const block = `<p style="margin:12px 0 0;padding:10px 12px;border-left:3px solid #0d9488;background:#f0fdf4;font-size:14px;line-height:1.55;color:#0f172a"><strong style="color:#0f766e">대화에서 붙여넣음</strong><br/>${escaped.replace(/\n/g, "<br>")}</p>`;
+      setText((prev) => {
+        const p = String(prev ?? "").trim();
+        if (!p || p === "<br>" || p === "<div><br></div>") return block;
+        return `${p}<br/>${block}`;
+      });
+    },
+    [createNote]
+  );
+
   const deleteNote = useCallback(
     async (id: string) => {
       const pid = projectId.trim();
@@ -300,5 +321,6 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
     saveState,
     saveError,
     flushPending: flushActive,
+    appendSnippetFromChat,
   };
 }

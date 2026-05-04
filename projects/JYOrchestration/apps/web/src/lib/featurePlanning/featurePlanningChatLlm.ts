@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
   buildFeaturePlanningV2ChatSystemPrompt,
+  buildFeaturePlanningV2ChatSystemPromptForChecklist,
   buildFeaturePlanningV2UserPromptFromBlocks,
   estimateTokensRough,
 } from "@/lib/featurePlanning/buildFeaturePlanningPrompt";
 import {
+  defaultFeaturePlanningMemory,
   mergeFeaturePlanningMemory,
   parsePlanningMemoryPatch,
 } from "@/lib/featurePlanning/featurePlanningMemory";
@@ -28,7 +30,21 @@ import {
   memorySnapshotForLog,
 } from "@/lib/featurePlanning/summarizeFeaturePlanningContext";
 import type { FeaturePlanningWorkspaceChatMessageV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
-import { buildPlannerStepFocus } from "@/lib/featurePlanning/featurePlanningPlannerPromptContext";
+import {
+  buildPlannerStepFocus,
+} from "@/lib/featurePlanning/featurePlanningPlannerPromptContext";
+import {
+  inferAnsweredPlannerFieldsFromUserMessage,
+  nextUnansweredPlannerField,
+  normalizePlannerQueueStepKey,
+  resolvePlannerQuestionQueue,
+} from "@/lib/featurePlanning/featurePlanningPlannerQuestionQueue";
+import {
+  advancePlanningChecklistActiveArea,
+  checklistToFeatureSlots,
+  mergeChecklistSlotCompletions,
+  nextIncompleteChecklistSlot,
+} from "@/lib/featurePlanning/featurePlanningDynamicChecklist";
 
 export type FeaturePlanningPlannerTurnMetaV1 = {
   readonly newFeatureCandidates: readonly string[];
@@ -186,29 +202,71 @@ function mergePlannerV2FeaturesIntoArtifact(
   return { ...base, slots, updatedAt: now, version: nextVersion, userEdited: false };
 }
 
-function buildPlannerV2DisplayMessage(input: {
+/** 모델이 남긴 메타 라벨 제거 — 본문은 자연 문단만 남김 */
+function stripPlannerV2DisplayLabels(text: string): string {
+  return text
+    .replace(/\n*\[질문\]\s*\n*/gi, "\n\n")
+    .replace(/\n*질문\s*:\s*\n*/gi, "\n\n")
+    .replace(/\n*현재 후보 기능\s*:\s*\n*/gi, "\n\n")
+    .replace(/\n*추천 기능\s*:\s*\n*/gi, "\n\n")
+    .trim();
+}
+
+/**
+ * planner-turn v2: 사용자에게는 message(+필요 시 question 보강) 한 덩어리만.
+ * features/recommended는 슬롯 병합용이며 여기서 불릿을 덧붙이지 않는다.
+ */
+function composePlannerV2UserFacingMessage(input: {
   readonly message: string;
-  readonly features: ParsedPlannerFeatureV2[];
-  readonly recommended: string[];
   readonly question: string;
   readonly currentStepTitle: string;
+  readonly features: ParsedPlannerFeatureV2[];
 }): string {
-  let m = input.message.trim();
-  if (!m) {
-    m = `먼저 [${input.currentStepTitle}] 단계의 기능을 정리하겠습니다.`;
-  }
-  if (input.features.length && !/후보 기능|현재 후보/i.test(m)) {
-    const bullets = input.features.map((f) => `- ${f.title.trim()}`).join("\n");
-    m += `\n\n현재 후보 기능:\n${bullets}`;
-  }
-  if (input.recommended.length && !/추천 기능/i.test(m)) {
-    m += `\n\n추천 기능:\n${input.recommended.map((r) => `- ${r}`).join("\n")}`;
-  }
+  let body = stripPlannerV2DisplayLabels(input.message).trim();
   const q = input.question.trim();
-  if (q && !m.includes(q)) {
-    m += `\n\n질문:\n${q}`;
+  if (!body) {
+    const bullets = input.features.map((f) => `- ${f.title.trim()}`).join("\n");
+    body = bullets
+      ? `${input.currentStepTitle} 단계에 아래를 반영합니다.\n\n${bullets}${q ? `\n\n${q}` : ""}`
+      : `${input.currentStepTitle} 단계를 이어 정리하겠습니다.${q ? `\n\n${q}` : ""}`;
+  } else if (q) {
+    const bn = body.replace(/\s+/g, " ").trim();
+    const qn = q.replace(/\s+/g, " ").trim();
+    if (qn.length >= 4 && !bn.includes(qn)) {
+      body = `${body}\n\n${q}`;
+    }
   }
-  return ensureFeaturePlanningQuestionSuffix(m);
+  return ensureFeaturePlanningQuestionSuffix(body);
+}
+
+function parseAnsweredFieldIdsFromPlannerJson(o: Record<string, unknown>): string[] {
+  if (!Array.isArray(o.answeredFieldIds)) return [];
+  const out: string[] = [];
+  for (const x of o.answeredFieldIds) {
+    const t = String(x ?? "").trim();
+    if (t) out.push(t.slice(0, 64));
+  }
+  return [...new Set(out)].slice(0, 40);
+}
+
+function dedupeAnsweredFieldIds(ids: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of ids) {
+    const t = x.trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= 48) break;
+  }
+  return out;
+}
+
+function lastUserWorkspaceText(messages: readonly FeaturePlanningWorkspaceChatMessageV1[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") return String(messages[i]?.text ?? "").trim();
+  }
+  return "";
 }
 
 function parseProgress(o: Record<string, unknown>): { done: number; total: number } | null {
@@ -219,6 +277,205 @@ function parseProgress(o: Record<string, unknown>): { done: number; total: numbe
   const total = typeof r.total === "number" && Number.isFinite(r.total) ? Math.max(0, Math.floor(r.total)) : NaN;
   if (!Number.isFinite(done) || !Number.isFinite(total)) return null;
   return { done, total: Math.max(1, total) };
+}
+
+function parseCompletedSlotKeysRaw(o: Record<string, unknown>): string[] {
+  if (!Array.isArray(o.completedSlotKeys)) return [];
+  return [...new Set(o.completedSlotKeys.map((x) => String(x ?? "").trim()).filter(Boolean))].slice(0, 24);
+}
+
+function parseSlotCapturesRaw(o: Record<string, unknown>): Record<string, string> {
+  const raw = o.slotCaptures;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = k.trim().slice(0, 80);
+    if (!key) continue;
+    out[key] = String(v ?? "").trim().slice(0, 800);
+  }
+  return out;
+}
+
+function handlePlannerChecklistTurn(input: {
+  readonly pid: string;
+  readonly o: Record<string, unknown>;
+  readonly resText: string;
+  readonly inputCtx: {
+    readonly artifact: FeaturePlanningSlotsArtifactV1;
+    readonly requirementsStateJson: unknown;
+    readonly workspaceMessages: readonly FeaturePlanningWorkspaceChatMessageV1[];
+    readonly projectName: string;
+    readonly projectDescription: string;
+  };
+  readonly metricsBase: FeaturePlanningPromptMetricsV1;
+  readonly system: string;
+  readonly user: string;
+  readonly model: string;
+  readonly currentTopic: FeaturePlanningTopicV1;
+}): FeaturePlanningChatLlmOk | FeaturePlanningChatLlmErr {
+  const { pid, o, resText, inputCtx, metricsBase, system, user, model, currentTopic } = input;
+  const checklist0 = inputCtx.artifact.planningChecklistV1;
+  if (!checklist0) {
+    return { ok: false, code: "INTERNAL", message: "체크리스트 상태가 없습니다." };
+  }
+
+  const prevAi = Math.min(Math.max(0, checklist0.activeAreaIndex), Math.max(0, checklist0.areas.length - 1));
+  const prevAreaKey = checklist0.areas[prevAi]?.areaKey ?? "";
+  const prevSlotId =
+    inputCtx.artifact.slots.find((s) => s.slotKey === prevAreaKey)?.slotId ?? inputCtx.artifact.slots[0]?.slotId ?? "";
+
+  let completedKeys = parseCompletedSlotKeysRaw(o);
+  let captures = parseSlotCapturesRaw(o);
+  const lastUser = lastUserWorkspaceText(inputCtx.workspaceMessages);
+  const pendingBefore = nextIncompleteChecklistSlot(checklist0);
+  if (!completedKeys.length && lastUser.length >= 1 && pendingBefore) {
+    completedKeys = [pendingBefore.slot.slotKey];
+    captures = { ...captures, [pendingBefore.slot.slotKey]: captures[pendingBefore.slot.slotKey] ?? lastUser.slice(0, 800) };
+  }
+
+  let cl = mergeChecklistSlotCompletions(checklist0, completedKeys, captures);
+  cl = advancePlanningChecklistActiveArea(cl);
+  const now = new Date().toISOString();
+  const nextVersion = Math.max(1, (inputCtx.artifact.version ?? 1) + 1);
+  const newSlots = checklistToFeatureSlots(cl);
+  let artifact: FeaturePlanningSlotsArtifactV1 = {
+    ...inputCtx.artifact,
+    planningChecklistV1: cl,
+    slots: newSlots,
+    recommendedOrder: newSlots.map((s) => s.slotId),
+    version: nextVersion,
+    updatedAt: now,
+    userEdited: false,
+  };
+
+  const features = parsePlannerV2Features(o.features);
+  const recommended = parseRecommendedStrings(o.recommended);
+  if (features.length > 8) {
+    logChatTurn(pid, {
+      model,
+      system,
+      user,
+      status: "FAILED",
+      responseText: resText,
+      errorMessage: "features 개수 초과(체크리스트 턴)",
+      promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(resText.length) },
+    });
+    return { ok: false, code: "SCHEMA", message: "기능 후보는 8개 이하로 정리해 주세요." };
+  }
+  if (features.length > 0) {
+    if (!prevSlotId) {
+      logChatTurn(pid, {
+        model,
+        system,
+        user,
+        status: "FAILED",
+        responseText: resText,
+        errorMessage: "체크리스트 features 병합용 슬롯 없음",
+        promptMetrics: { ...metricsBase, tokenEstimateOut: estimateTokensRough(resText.length) },
+      });
+      return { ok: false, code: "SCHEMA", message: "정리 영역(슬롯)이 없어 응답을 반영할 수 없습니다." };
+    }
+    artifact = mergePlannerV2FeaturesIntoArtifact(artifact, prevSlotId, features, recommended);
+  }
+
+  artifact = stripLegacyRoleSlotsFromNewInitializeArtifact(artifact, [
+    ...(inputCtx.artifact.priorStepActorRoles ?? []),
+    ...(artifact.priorStepActorRoles ?? []),
+  ]);
+  artifact = mergePlannerArtifactPreservingLegacySlots(inputCtx.artifact, artifact);
+
+  const nextStepSuggested = o.nextStepSuggested === true;
+  const idx = FEATURE_PLANNING_TOPICS.indexOf(currentTopic);
+  const proposedNext =
+    nextStepSuggested && idx >= 0 && idx < FEATURE_PLANNING_TOPICS.length - 1 ? FEATURE_PLANNING_TOPICS[idx + 1] : undefined;
+  let nextTopic = normalizePlanningTopicTransition(currentTopic, proposedNext);
+
+  const memPatchRaw = parsePlanningMemoryPatch(o.planningMemory);
+  const prevArtifactMem = inputCtx.artifact.planningMemoryV1 ?? defaultFeaturePlanningMemory();
+  let mem = mergeFeaturePlanningMemory(prevArtifactMem, {});
+  if (memPatchRaw) {
+    const { answeredPlannerFieldIds: _a, plannerQueueStepKey: _q, ...memPatchRest } = memPatchRaw;
+    if (Object.keys(memPatchRest).length) {
+      mem = mergeFeaturePlanningMemory(mem, memPatchRest);
+    }
+  }
+  if (nextTopic !== currentTopic && currentTopic !== "DONE") {
+    mem = mergeFeaturePlanningMemory(mem, {
+      confirmedTopics: [currentTopic],
+      pendingTopic: nextTopic,
+    });
+  }
+
+  const focus = buildPlannerStepFocus({
+    requirementsStateJson: inputCtx.requirementsStateJson,
+    artifact,
+    workspaceMessages: inputCtx.workspaceMessages,
+  });
+
+  let messageRaw = typeof o.message === "string" ? o.message.trim() : "";
+  let question = typeof o.question === "string" ? o.question.trim() : "";
+  if (!question) {
+    const nx = nextIncompleteChecklistSlot(cl);
+    question = nx?.slot.question ?? "";
+  }
+  if (!messageRaw) {
+    messageRaw = question ? `알겠습니다.\n\n${question}` : "확인 내용을 반영했습니다.";
+  }
+
+  const composed = composePlannerV2UserFacingMessage({
+    message: messageRaw,
+    question: question || messageRaw,
+    currentStepTitle: focus.currentStepTitle,
+    features,
+  });
+
+  const normalizedSlots = artifact.slots.map((s) => ({
+    ...s,
+    slotType: normalizeFeaturePlanningSlotType(s.slotType),
+  }));
+  artifact = {
+    ...artifact,
+    slots: normalizedSlots,
+    planningTopic: nextTopic,
+    planningMemoryV1: mem,
+    generatedAt: inputCtx.artifact.generatedAt ?? inputCtx.artifact.updatedAt,
+  };
+
+  const plannerMeta: FeaturePlanningPlannerTurnMetaV1 = {
+    newFeatureCandidates: recommended.length ? recommended : features.map((f) => f.title),
+    filledSlotsSummary: completedKeys.length ? completedKeys : features.map((f) => f.title),
+    nextQuestions: [question].filter(Boolean),
+  };
+
+  let parsedForLog: string;
+  try {
+    parsedForLog = JSON.stringify(o).slice(0, 12_000);
+  } catch {
+    parsedForLog = "";
+  }
+  logChatTurn(pid, {
+    model,
+    system,
+    user,
+    status: "SUCCESS",
+    responseText: resText,
+    parsedJson: parsedForLog || undefined,
+    promptMetrics: {
+      ...metricsBase,
+      tokenEstimateOut: estimateTokensRough(resText.length),
+      topic: nextTopic,
+      memoryStateSnapshot: memorySnapshotForLog(artifact.planningMemoryV1),
+    },
+  });
+
+  return {
+    ok: true,
+    artifact,
+    aiMessage: composed,
+    resultSummary: null,
+    plannerMeta,
+    model,
+  };
 }
 
 function handlePlannerV2Response(input: {
@@ -301,8 +558,37 @@ function handlePlannerV2Response(input: {
     nextStepSuggested && idx >= 0 && idx < FEATURE_PLANNING_TOPICS.length - 1 ? FEATURE_PLANNING_TOPICS[idx + 1] : undefined;
   let nextTopic = normalizePlanningTopicTransition(currentTopic, proposedNext);
 
-  const memPatch = parsePlanningMemoryPatch(o.planningMemory);
-  let mem = mergeFeaturePlanningMemory(inputCtx.artifact.planningMemoryV1, memPatch);
+  const memPatchRaw = parsePlanningMemoryPatch(o.planningMemory);
+
+  const stepKey = normalizePlannerQueueStepKey(focus.currentStepTitle);
+  const queue = resolvePlannerQuestionQueue(focus.currentStepTitle);
+  const prevArtifactMem = inputCtx.artifact.planningMemoryV1 ?? defaultFeaturePlanningMemory();
+  const prevKey = (prevArtifactMem.plannerQueueStepKey ?? "").trim();
+  const baseAns = prevKey === stepKey ? [...(prevArtifactMem.answeredPlannerFieldIds ?? [])] : [];
+
+  const lastUser = lastUserWorkspaceText(inputCtx.workspaceMessages);
+  const nextBeforeInfer = nextUnansweredPlannerField(queue, baseAns);
+  const inferred = lastUser
+    ? inferAnsweredPlannerFieldsFromUserMessage(lastUser, nextBeforeInfer, queue, baseAns)
+    : [];
+  const modelAns = parseAnsweredFieldIdsFromPlannerJson(o);
+  const nestedAns = memPatchRaw?.answeredPlannerFieldIds ?? [];
+  const finalAnswered = dedupeAnsweredFieldIds([...baseAns, ...inferred, ...modelAns, ...nestedAns]);
+
+  let mem0: ReturnType<typeof mergeFeaturePlanningMemory> =
+    prevKey !== stepKey
+      ? mergeFeaturePlanningMemory(prevArtifactMem, { answeredPlannerFieldIds: [], plannerQueueStepKey: stepKey })
+      : prevArtifactMem;
+  if (memPatchRaw) {
+    const { answeredPlannerFieldIds: _a, plannerQueueStepKey: _q, ...memPatchRest } = memPatchRaw;
+    if (Object.keys(memPatchRest).length) {
+      mem0 = mergeFeaturePlanningMemory(mem0, memPatchRest);
+    }
+  }
+  let mem = mergeFeaturePlanningMemory(mem0, {
+    plannerQueueStepKey: stepKey,
+    answeredPlannerFieldIds: finalAnswered,
+  });
   const prog = parseProgress(o);
   if (prog) {
     mem = mergeFeaturePlanningMemory(mem, {
@@ -323,19 +609,15 @@ function handlePlannerV2Response(input: {
   }));
   artifact = { ...artifact, slots: normalizedSlots };
 
-  const composed = buildPlannerV2DisplayMessage({
+  const composed = composePlannerV2UserFacingMessage({
     message: messageRaw,
-    features,
-    recommended,
     question,
     currentStepTitle: focus.currentStepTitle,
+    features,
   });
 
-  const changeSummary = [
-    ...features.map((f) => `${f.title}${f.detail ? ` — ${f.detail.slice(0, 120)}` : ""}`),
-    ...recommended.map((r) => `추천: ${r}`),
-  ];
-  const resultSummary = buildResultSummary(changeSummary);
+  /** 슬롯 반영은 결과물·내부 상태만 — 채팅에 내부 용어 배지 노출 안 함 */
+  const resultSummary = null;
 
   const plannerMeta: FeaturePlanningPlannerTurnMetaV1 = {
     newFeatureCandidates: recommended.length ? recommended : features.map((f) => f.title),
@@ -388,7 +670,8 @@ export async function runFeaturePlanningChatLlm(input: {
 }): Promise<FeaturePlanningChatLlmOk | FeaturePlanningChatLlmErr> {
   const pid = input.projectId.trim();
   const currentTopic: FeaturePlanningTopicV1 = input.artifact.planningTopic ?? "FEATURES";
-  const system = buildFeaturePlanningV2ChatSystemPrompt();
+  const useChecklist = Boolean(input.artifact.planningChecklistV1);
+  const system = useChecklist ? buildFeaturePlanningV2ChatSystemPromptForChecklist() : buildFeaturePlanningV2ChatSystemPrompt();
   const compact = buildFeaturePlanningCompactBlocks({
     projectName: input.projectName,
     projectDescription: input.projectDescription,
@@ -441,6 +724,27 @@ export async function runFeaturePlanningChatLlm(input: {
     return { ok: false, code: "PARSE", message: "AI JSON 파싱에 실패했습니다." };
   }
   const o = root as Record<string, unknown>;
+  const legacySlotsFirst = readChatTurnSlotsFromResponse(o);
+
+  if (useChecklist && input.artifact.planningChecklistV1 && !legacySlotsFirst) {
+    return handlePlannerChecklistTurn({
+      pid,
+      o,
+      resText: res.text,
+      inputCtx: {
+        artifact: input.artifact,
+        requirementsStateJson: input.requirementsStateJson,
+        workspaceMessages: input.workspaceMessages,
+        projectName: input.projectName,
+        projectDescription: input.projectDescription,
+      },
+      metricsBase,
+      system,
+      user,
+      model: input.model,
+      currentTopic,
+    });
+  }
 
   if (isPlannerV2Shape(o)) {
     return handlePlannerV2Response({

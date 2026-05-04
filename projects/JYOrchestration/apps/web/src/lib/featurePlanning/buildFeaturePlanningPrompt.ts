@@ -2,6 +2,8 @@ import type { FeaturePlanningCompactBlocksV2 } from "@/lib/featurePlanning/summa
 import { FEATURE_PLANNING_TOPICS } from "@/lib/featurePlanning/featurePlanningTopic";
 
 const SYS_MAX = 1200;
+/** 채팅 planner-turn 시스템 프롬프트만 여유 있게(질문 큐·반복 금지 규칙 포함) */
+const CHAT_PLANNER_SYS_MAX = 3000;
 const DYNAMIC_BODY_MAX = 2200;
 const RECENT_MAX = 800;
 const USER_TOTAL_MAX = 3300;
@@ -32,25 +34,33 @@ const CHAT_TOPIC_ENUM = FEATURE_PLANNING_TOPICS.join("|");
 export function buildFeaturePlanningV2ChatSystemPrompt(): string {
   const core = `역할: AI 서비스 기획자. 사용자와 대화하며 기능을 서비스 흐름 단계별로 정리한다.
 
-필수: 사용자 프롬프트 [4. CURRENT SLOT SUMMARY] 안의 PLANNER_INPUT 블록에 있는 currentServiceStep·primarySlot만 다룬다. 다른 서비스 단계 기능(예: 업로드 단계인데 변환·화자분리 등)은 features·recommended·question 어디에도 넣지 않는다.
+필수: [4]의 PLANNER_INPUT + QUESTION_QUEUE를 따른다. currentServiceStep·primarySlot만 다룬다. QUESTION_QUEUE에서 [답함]인 항목은 질문·message에서 **다시 묻지 말 것**. 다음 질문은 반드시 [이번에 질문할 항목](nextQuestionMustTargetFieldId)에 맞춘다(없으면 단계 마무리만 짧게).
 
-기능 후보(features): 실제 사용자가 앱에서 하는 일(업로드·확인·알림 등)만. DB·API·컴포넌트·스키마·공통 모듈·기술 설계 용어 금지.
+기능 후보(features): 사용자가 앱에서 하는 일만. DB·API·컴포넌트·스키마·공통 모듈·기술 설계 용어 금지. features·recommended는 슬롯 병합용이며 message와 모순 없게.
 
-AI 주도: 먼저 features·recommended로 제안한 뒤, question으로 한 가지만 확인한다.
+message (사용자에게 보이는 전부): 한국어 한 통. 고정 라벨("질문:", "[질문]", "현재 후보 기능:") 반복 금지. 반드시 아래 흐름:
+1) 직전 사용자 답 인정(매 턴 같은 첫문장 금지).
+2) 반영 요약(한두 문장).
+3) **다음 세부 확인 항목**으로 넘어간다는 한 문장(next 필드 주제와 일치) + 그 항목이 왜 필요한지 한 문장.
+4) 일반적으로 쓰이는 선택지 **2~4개**를 번호(1. 2. 3.)로 제시(각 한 줄, 사용자 경험 수준만).
+5) **AI 추천**: 추천 번호와 이유 한 문장.
+6) 사용자에게 번호로 답·추천 그대로·한 줄 수정 중 무엇이든 쉽게 답할 수 있게 마무리(물음표). 개방형 "어떻게 할까요?" 단독 금지.
 
-질문(question): 정확히 1문장. 예·선택지를 넣어 답하기 쉽게. 포괄 질문 금지.
+question: message에서 사용자가 실제로 답하면 되는 **마지막 마무리 문장**(번호 선택·추천 동의·수정 요청까지 포함). message 본문과 **완전히 모순 없이** 맞출 것.
 
-절대 금지 문구: "추가 기능", "필요한 것이 있", "자유롭게 말씀", "데이터 구조를 정의", "공통 컴포넌트".
+answeredFieldIds: 이번 사용자 답으로 **확정 처리한** QUESTION_QUEUE 항목 id만 배열(예: 형식을 정했으면 "file_format"). 추정이 어려우면 비우되, 질문은 다음 미답 항목으로만.
 
-내부 planningTopic(${CHAT_TOPIC_ENUM})는 참고만. 답변 내용은 currentServiceStep에만 맞춘다.
+절대 금지: 이미 답한 세부 항목 재질문, "추가 요구사항이 있습니까" 같은 되묻기, 직전 턴과 동일한 첫 문장, "원하시는 대로 말씀해 주세요" 등 판단 전가, 옵션·추천 없는 질문만 던지기.
 
-JSON 한 개만(아래 키만):
-{"message":"…","features":[{"title":"…","detail":"…","priority":"HIGH"}],"recommended":["…"],"question":"…","progress":{"done":1,"total":6},"nextStepSuggested":false}
+내부 planningTopic(${CHAT_TOPIC_ENUM})는 참고만.
 
-규칙: features는 3~6개 배열. title 짧게, detail은 사용자 관점 한 줄. recommended는 0~3개(강하게 추천하는 것만). progress.done/total은 승인된 서비스 흐름 단계 기준 추정(정수). nextStepSuggested는 현재 단계가 거의 확정되어 다음 단계로 넘어가도 될 때만 true.
+JSON 한 개만:
+{"message":"…","features":[{"title":"…","detail":"…","priority":"HIGH"}],"recommended":["…"],"question":"…","answeredFieldIds":["file_format"],"progress":{"done":1,"total":6},"nextStepSuggested":false,"planningMemory":{}}
 
-레거시 호환(비권장): 동일 응답에 updatedSlots+aiMessage를 섞지 말 것.`;
-  return assertLen("chatSystem", core, SYS_MAX);
+규칙: features 3~6개. recommended 0~3개. planningMemory는 선택(answeredFieldIds는 최상위 키를 우선).
+
+레거시 호환: updatedSlots+aiMessage 혼합 금지.`;
+  return assertLen("chatSystem", core, CHAT_PLANNER_SYS_MAX);
 }
 
 /** 초기 슬롯 생성용 시스템 — JSON 스키마만 다름 */
@@ -90,6 +100,88 @@ message 본문(한국어, 아래 순서·줄바꿈 유지):
 
 slots·sourceRefs 규칙은 초기 생성과 동일.`;
   return assertLen("flowEntrySystem", core, SYS_MAX);
+}
+
+const ANALYZE_CHECKLIST_SYS_MAX = 3600;
+const CHAT_CHECKLIST_SYS_MAX = 3600;
+
+/**
+ * POST /api/features/analyze — 액터·서비스 흐름만 보고 기능정리용 체크리스트(영역·슬롯) 생성.
+ * JSON 최상위: areas[] (+ 선택 openingMessage). slots/message/nextQuestion 필드 금지.
+ */
+export function buildFeaturePlanningAnalyzeChecklistSystemPrompt(): string {
+  const core = `당신은 JYOrchestration의 AI 서비스 기획자다. 입력의 액터·서비스 흐름(및 프로젝트 맥락)만 근거로, **기능정리용 체크리스트**를 설계한다.
+
+절대 금지:
+- 고정 템플릿·샘플 JSON을 그대로 복사하거나, "업로드면 무조건 file_format/file_size" 같은 일반 패턴을 기계적으로 채우기
+- DB·API·컴포넌트·스키마·캐시·배포·기술 구현 용어
+- "추가 기능이 있습니까?", "다른 필요가 있습니까?" 같은 무의미한 일반 질문
+- 랜덤 질문
+
+필수:
+- 서비스·단계·액터 역할을 반영해 **실제 사용자 기능** 중심으로 영역(areas)과 슬롯(slots)을 만든다.
+- 각 슬롯: slotKey(영문 스네이크), label, required(true/false), priority(HIGH|MEDIUM|LOW), question(한국어), examples(선택, 문자열 배열 2~4개 권장)
+- slots[].question: 사용자에게 그대로 보여도 되는 **한 블록** 수준(3~10문장 이내). 반드시 (1)항목 맥락 한 문장 (2)일반적 선택지 2~4개 번호 나열 (3)**추천** 한 가지와 이유 (4)번호·추천·한 줄 수정 중 선택 요청. 판단만 넘기는 개방형 단문 금지.
+- examples: 선택지 라벨을 짧게 나열해도 됨(question에 이미 넣었으면 중복 최소화).
+- 각 영역: areaKey, title, purpose(한 문장), requiredScore(0~100, 기본 80), slots
+- 영역당 슬롯 **4~8개 권장**(최소 2, 최대 10). 영역 개수 1~16.
+- 질문은 **기능·화면·정책** 수준이며, 항상 선택지+추천이 있어야 함(사용자가 기획자 역할을 떠안게 하지 말 것).
+
+선택 키 openingMessage: 있으면 한국어 2~5문단. 없으면 생략(클라이언트가 첫 질문 조합).
+
+출력은 **JSON 한 개만**(마크다운·코드펜스 금지):
+{"areas":[…],"openingMessage":"…(선택)"}
+
+areas[].slots[] 스키마 예시(구조만 참고, 내용은 입력에 맞게 새로 작성):
+{"areaKey":"…","title":"…","purpose":"…","requiredScore":80,"slots":[{"slotKey":"…","label":"…","required":true,"priority":"HIGH","question":"…","examples":["…"]}]}`;
+  return assertLen("analyzeChecklistSystem", core, ANALYZE_CHECKLIST_SYS_MAX);
+}
+
+/** 체크리스트 모드 planner-turn — QUESTION_QUEUE 없음 */
+export function buildFeaturePlanningV2ChatSystemPromptForChecklist(): string {
+  const core = `역할: AI 서비스 기획자. [4]의 CHECKLIST_PLANNER_INPUT **미완료 슬롯**만 다룬다. 사용자에게 판단을 떠넘기지 말고, 항상 **선택지+추천**을 제시한다.
+
+message (사용자에게 보이는 본문, 한국어 한 통, 고정 라벨·'질문:' 반복 금지) **아래 순서를 자연스럽게:**
+1) 직전 답 인정 + 이번 턴 반영·확정 요약(1~2문장, 매 턴 같은 첫문장 금지).
+2) 지금 확인 중인 항목이 왜 필요한지 한 문장.
+3) 일반 서비스에서 흔한 선택지 **2~4개**를 번호(1. 2. 3.) 목록으로(각 한 줄, 사용자가 앱에서 겪는 수준만).
+4) **추천**: 위 중 몇 번인지 + 이유 한 문장.
+5) 사용자에게 번호로 답하거나 추천을 그대로 쓰거나 한 줄로 바꿔 달라고 요청(물음표). 답하기 쉽게.
+
+question: message 안에서 사용자가 실제로 답하면 되는 **마지막 마무리 문장**(번호·추천·수정 요청 포함). message와 **모순 없이** 일치.
+
+금지: "어떻게 할까요?"·"어떤 방식으로 지원할까요?"처럼 **옵션·추천 없이** 던지는 개방형 질문만, "원하시는 대로 말씀해 주세요", 추상적 개방형만 연속, DB·API·컴포넌트·기술설계 용어.
+
+다음 슬롯으로 넘어갈 때도 위 구조를 유지. 이미 completed인 슬롯은 재질문 금지.
+
+JSON 한 개만:
+{"message":"…","question":"…","completedSlotKeys":[],"slotCaptures":{},"features":[],"recommended":[],"nextStepSuggested":false,"planningMemory":{}}
+
+completedSlotKeys: 이번 사용자 발화로 확정한 slotKey만(없으면 []). slotCaptures는 키별 한두 문장 요약.
+features: 선택 0~6. 슬롯에 넣을 사용자 기능 후보만. 없으면 [].`;
+  return assertLen("chatChecklistSystem", core, CHAT_CHECKLIST_SYS_MAX);
+}
+
+export function buildFeaturePlanningAnalyzeChecklistUserPrompt(input: {
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly actorAndServiceFlowJson: string;
+  readonly ideationSnippet: string;
+  readonly stateNote: string;
+}): string {
+  const name = clamp(input.projectName || "(이름 없음)", 200);
+  const desc = clamp(input.projectDescription.replace(/\s+/g, " "), 4000);
+  const flow = clamp(input.actorAndServiceFlowJson, 14000);
+  const idea = clamp(input.ideationSnippet.replace(/\s+/g, " "), 6000);
+  const note = clamp(input.stateNote, 800);
+  const body = [
+    section("[PROJECT]", `name: ${name}\n\ndescription:\n${desc}`),
+    section("[IDEATION_SNIPPET]", idea || "(없음)"),
+    section("[ACTOR_AND_SERVICE_FLOW_JSON]", flow),
+    section("[STATE]", note),
+    "\n위만 사용해 areas[] JSON을 출력하세요.",
+  ].join("\n\n");
+  return assertLen("analyzeChecklistUser", body, 24000);
 }
 
 function section(title: string, body: string): string {

@@ -2,6 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
+import { WorkNoteChatSelectionBridgeProvider } from "@/components/worknote/WorkNoteChatSelectionBridge";
 import { StageWorkspaceLayout } from "@/components/workspace/StageWorkspaceLayout";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
 
@@ -16,6 +17,7 @@ export function WorkflowStageChrome({
   backHref,
   backLabel,
   stageLayoutStyle,
+  workNoteProjectId,
   children,
 }: {
   readonly title?: string | null;
@@ -25,10 +27,12 @@ export function WorkflowStageChrome({
   readonly backLabel?: string;
   /** 단계 본문(`StageWorkspaceLayout`)에만 적용. 예: 검토 화면에서 세로 공간 확보. */
   readonly stageLayoutStyle?: CSSProperties;
+  /** 지정 시 대화 선택 → 작업메모 브리지(내비의 작업메모 버튼과 동일 projectId) */
+  readonly workNoteProjectId?: string;
   readonly children: ReactNode;
 }) {
   const hasHeader = Boolean(String(title ?? "").trim()) || Boolean(String(subtitle ?? "").trim()) || Boolean(right) || Boolean(backHref);
-  return (
+  const body = (
     <div>
       {hasHeader ? (
         <WorkflowPageHeader title={title} subtitle={subtitle} right={right} backHref={backHref} backLabel={backLabel} />
@@ -43,4 +47,9 @@ export function WorkflowStageChrome({
       </div>
     </div>
   );
+  const wid = String(workNoteProjectId ?? "").trim();
+  if (wid) {
+    return <WorkNoteChatSelectionBridgeProvider projectId={wid}>{body}</WorkNoteChatSelectionBridgeProvider>;
+  }
+  return body;
 }

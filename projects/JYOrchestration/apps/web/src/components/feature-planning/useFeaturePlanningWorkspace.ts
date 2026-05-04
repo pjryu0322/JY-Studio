@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Project } from "@/components/project-spec/types";
 import type { WorkspaceChatMessage } from "@/components/workspace/WorkspaceChatPanel";
 import { fetchProjectWithRetry } from "@/components/project-spec/api";
@@ -19,6 +19,7 @@ import {
   FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE,
   isServiceFlowApprovedForFeaturePlanning,
 } from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
+import { computeChecklistProgress } from "@/lib/featurePlanning/featurePlanningDynamicChecklist";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -470,6 +471,10 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   }, [sendMessage]);
 
   const planningAreaCount = artifact ? buildOrderedSlotsVisible(artifact).length : 0;
+  const checklistProgress = useMemo(() => {
+    if (!artifact?.planningChecklistV1) return null;
+    return computeChecklistProgress(artifact.planningChecklistV1);
+  }, [artifact]);
   const initLoadingHint = "AI 기획자가 서비스 흐름을 바탕으로 기능 정리 분석을 실행하고 있습니다.";
   const serviceFlowReady = project ? isServiceFlowApprovedForFeaturePlanning(project.requirementsStateJson) : false;
 
@@ -501,6 +506,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
     onRegenerateSlots,
     resetChat,
     planningAreaCount,
+    checklistProgress,
     requestPlannerOrganize,
     showStructuralRegenerateHint,
     composer,

@@ -5,7 +5,9 @@ import { buildFeaturePlanningSlotsLlmContext } from "@/lib/featurePlanning/build
 import { sanitizeFeaturePlanningUserVisibleKorean } from "@/lib/featurePlanning/featurePlanningUserVisibleSanitize";
 import { patchProjectRequirementsStateJson } from "@/lib/featurePlanning/saveFeaturePlanningWorkspace";
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
-import { runFeaturePlanningInitialScreenLlm } from "@/lib/featurePlanning/runFeaturePlanningInitialScreenLlm";
+import { randomUUID } from "node:crypto";
+import { runFeaturePlanningAnalyzeChecklistLlm } from "@/lib/featurePlanning/runFeaturePlanningAnalyzeChecklistLlm";
+import { resumeOpeningFromChecklist } from "@/lib/featurePlanning/featurePlanningDynamicChecklist";
 import type { FeaturePlanningWorkspaceChatMessageV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
 import { withFeaturePlanningProjectLock } from "@/lib/featurePlanning/featurePlanningProjectLock";
@@ -116,18 +118,47 @@ export async function POST(request: NextRequest) {
         const firstStepTitle = firstFlowStepTitleForFeaturePlanningEntry(state.serviceFlowV1 ?? null);
 
         if (!forceRegenerate && hasSlots && priorMessages.length === 0) {
-          const gen = await runFeaturePlanningInitialScreenLlm({
+          const art = existingArtifact!;
+          if (art.planningChecklistV1) {
+            const now = new Date().toISOString();
+            const text = sanitizeFeaturePlanningUserVisibleKorean(resumeOpeningFromChecklist(art.planningChecklistV1)).slice(
+              0,
+              32000
+            );
+            const aiMessage: FeaturePlanningWorkspaceChatMessageV1 = {
+              id: `fp_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
+              role: "ai",
+              text,
+              at: now,
+              plannerSurface: "initial_entry",
+            };
+            const patch = await patchProjectRequirementsStateJson(projectId, {
+              featurePlanningWorkspaceChatV1: { messages: [aiMessage] },
+            });
+            if (!patch.ok) {
+              return NextResponse.json({ success: false, message: "저장에 실패했습니다." }, { status: 500 });
+            }
+            const mergedState = parseRequirementsStateJson(patch.merged);
+            return NextResponse.json({
+              success: true,
+              data: {
+                generated: true,
+                artifact: art,
+                slots: art.slots,
+                messages: toWorkspaceMessages(mergedState.featurePlanningWorkspaceChatV1?.messages ?? [aiMessage]),
+              },
+            });
+          }
+          const gen = await runFeaturePlanningAnalyzeChecklistLlm({
             projectId,
             ctx,
             requirementsStateJson: row.requirementsStateJson,
             apiKey,
             model,
-            mode: "chat_reseed",
-            existingArtifact: existingArtifact!,
-            forceRegenerate: false,
-            promptPurpose: "FEATURE_PLANNING_ANALYZE",
-            entryMessageFormat: "flow_entry",
             firstStepTitle,
+            forceRegenerate: false,
+            existingArtifact: art,
+            promptPurpose: "FEATURE_PLANNING_ANALYZE",
           });
           if (!gen.ok) {
             return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });
@@ -151,18 +182,16 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        const gen = await runFeaturePlanningInitialScreenLlm({
+        const gen = await runFeaturePlanningAnalyzeChecklistLlm({
           projectId,
           ctx,
           requirementsStateJson: row.requirementsStateJson,
           apiKey,
           model,
-          mode: "create",
-          existingArtifact: existingArtifact,
-          forceRegenerate: forceRegenerate === true,
-          promptPurpose: "FEATURE_PLANNING_ANALYZE",
-          entryMessageFormat: "flow_entry",
           firstStepTitle,
+          forceRegenerate: forceRegenerate === true,
+          existingArtifact: existingArtifact,
+          promptPurpose: "FEATURE_PLANNING_ANALYZE",
         });
         if (!gen.ok) {
           return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });

@@ -19,5 +19,6 @@ export function firstFlowStepTitleForFeaturePlanningEntry(flow: RequirementsServ
   return t || "서비스";
 }
 
-export const FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE = `기능 정리를 시작하려면 먼저 액터 및 서비스 흐름 정의를 완료해야 합니다.
+export const FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE = `먼저 액터 및 서비스 흐름 정의를 완료해 주세요.
+
 상단의 [액터 및 서비스 흐름 정의] 단계에서 역할과 서비스 흐름을 확정해 주세요.`;

@@ -20,6 +20,7 @@ import { FeaturePlanningSidebarContent } from "./FeaturePlanningSidebarContent";
 import { FeaturePlanningSlotsPanel } from "./FeaturePlanningSlotsPanel";
 import { FeaturePlanningWorkspaceCanvas } from "./FeaturePlanningWorkspaceCanvas";
 import { enrichFeaturePlanningDisplayMessages } from "@/lib/featurePlanning/featurePlanningChatDisplay";
+import { useWorkNoteChatSelectionRequester } from "@/components/worknote/WorkNoteChatSelectionBridge";
 import { useFeaturePlanningWorkspace } from "./useFeaturePlanningWorkspace";
 import styles from "./featurePlanningWorkspace.module.css";
 
@@ -42,6 +43,8 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
     () => enrichFeaturePlanningDisplayMessages(shell.messages, shell.artifact),
     [shell.messages, shell.artifact]
   );
+
+  const appendChatSelectionToWorkNote = useWorkNoteChatSelectionRequester(projectId);
 
   const serviceFlowHref = useMemo(
     () => `/requirements?projectId=${encodeURIComponent(projectId.trim())}&stage=service-flow`,
@@ -66,6 +69,7 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
     <WorkspaceMainPanel style={{ position: "relative", minWidth: 0 }}>
       <WorkspaceChatPanel
         messages={displayMessages}
+        onChatSelectionToWorkNote={appendChatSelectionToWorkNote}
         loading={shell.initLoading || shell.loading || shell.resetChatLoading || shell.slotDigestLoading}
         loadingHint={
           shell.resetChatLoading
@@ -124,13 +128,33 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
             <ScreenLabel label={WORKSPACE_SECTION_META.featurePlanningHeaderProgress.fullLabel} visible={showScreenLabels} />
             <div
               className={pillStyles.trigger}
-              style={{ maxWidth: "min(100%, 360px)", cursor: "default" }}
-              aria-label={`정리 영역 ${shell.planningAreaCount}개`}
+              style={{ maxWidth: "min(100%, 520px)", cursor: "default" }}
+              aria-label={
+                shell.checklistProgress
+                  ? `기능정리 진행률 ${Math.round((100 * shell.checklistProgress.completed) / shell.checklistProgress.total)}퍼센트`
+                  : `정리 영역 ${shell.planningAreaCount}개`
+              }
               data-testid="workspace-header-progress-pill"
             >
-              <span className={pillStyles.nowrap}>정리 영역</span>
-              <span className={pillStyles.sep}>·</span>
-              <span className={pillStyles.count}>{shell.planningAreaCount}개</span>
+              {shell.checklistProgress ? (
+                <>
+                  <span className={pillStyles.nowrap}>
+                    기능정리 진행률{" "}
+                    {Math.round((100 * shell.checklistProgress.completed) / shell.checklistProgress.total)}%
+                  </span>
+                  <span className={pillStyles.sep}>·</span>
+                  <span className={pillStyles.count}>
+                    현재 영역 · {shell.checklistProgress.currentAreaTitle || "—"} (
+                    {shell.checklistProgress.areaCompleted}/{shell.checklistProgress.areaTotal})
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className={pillStyles.nowrap}>정리 영역</span>
+                  <span className={pillStyles.sep}>·</span>
+                  <span className={pillStyles.count}>{shell.planningAreaCount}개</span>
+                </>
+              )}
             </div>
           </div>
         </div>

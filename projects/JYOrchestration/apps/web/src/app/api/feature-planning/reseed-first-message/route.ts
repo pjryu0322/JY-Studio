@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { buildFeaturePlanningSlotsLlmContext } from "@/lib/featurePlanning/buildFeaturePlanningSlotsContext";
+import { randomUUID } from "node:crypto";
 import { patchProjectRequirementsStateJson } from "@/lib/featurePlanning/saveFeaturePlanningWorkspace";
-import { runFeaturePlanningInitialScreenLlm } from "@/lib/featurePlanning/runFeaturePlanningInitialScreenLlm";
+import { runFeaturePlanningAnalyzeChecklistLlm } from "@/lib/featurePlanning/runFeaturePlanningAnalyzeChecklistLlm";
+import { resumeOpeningFromChecklist } from "@/lib/featurePlanning/featurePlanningDynamicChecklist";
+import { sanitizeFeaturePlanningUserVisibleKorean } from "@/lib/featurePlanning/featurePlanningUserVisibleSanitize";
 import type { FeaturePlanningWorkspaceChatMessageV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
 import { withFeaturePlanningProjectLock } from "@/lib/featurePlanning/featurePlanningProjectLock";
@@ -94,18 +97,46 @@ export async function POST(request: NextRequest) {
       });
 
       const firstStepTitle = firstFlowStepTitleForFeaturePlanningEntry(state.serviceFlowV1 ?? null);
-      const gen = await runFeaturePlanningInitialScreenLlm({
+      if (art.planningChecklistV1) {
+        const now = new Date().toISOString();
+        const text = sanitizeFeaturePlanningUserVisibleKorean(resumeOpeningFromChecklist(art.planningChecklistV1)).slice(
+          0,
+          32000
+        );
+        const aiMessage: FeaturePlanningWorkspaceChatMessageV1 = {
+          id: `fp_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
+          role: "ai",
+          text,
+          at: now,
+          plannerSurface: "initial_entry",
+        };
+        const patch = await patchProjectRequirementsStateJson(projectId, {
+          featurePlanningWorkspaceChatV1: { messages: [aiMessage] },
+        });
+        if (!patch.ok) {
+          return NextResponse.json({ success: false, message: "저장에 실패했습니다." }, { status: 500 });
+        }
+        const mergedState = parseRequirementsStateJson(patch.merged);
+        return NextResponse.json({
+          success: true,
+          data: {
+            artifact: art,
+            slots: art.slots,
+            messages: toWorkspaceMessages(mergedState.featurePlanningWorkspaceChatV1?.messages ?? [aiMessage]),
+          },
+        });
+      }
+
+      const gen = await runFeaturePlanningAnalyzeChecklistLlm({
         projectId,
         ctx,
         requirementsStateJson: row.requirementsStateJson,
         apiKey,
         model,
-        mode: "chat_reseed",
-        existingArtifact: art,
-        forceRegenerate: false,
-        promptPurpose: "FEATURE_PLANNING_ANALYZE",
-        entryMessageFormat: "flow_entry",
         firstStepTitle,
+        forceRegenerate: false,
+        existingArtifact: art,
+        promptPurpose: "FEATURE_PLANNING_ANALYZE",
       });
       if (!gen.ok) {
         return NextResponse.json({ success: false, code: gen.code, message: gen.message }, { status: 200 });

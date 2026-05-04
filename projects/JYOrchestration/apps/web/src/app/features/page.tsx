@@ -14,6 +14,7 @@ function FeaturesPageInner() {
     <WorkflowStageChrome
       title={null}
       subtitle={undefined}
+      workNoteProjectId={projectId}
       stageLayoutStyle={{
         display: "flex",
         flexDirection: "column",
