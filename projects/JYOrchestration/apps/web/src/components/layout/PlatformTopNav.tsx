@@ -20,7 +20,12 @@ type MeState = {
 
 export function PlatformTopNav() {
   const { effectiveLayout } = useWorkspaceMode();
-  const compactHeader = effectiveLayout === "MOBILE";
+  /** 하이드레이션 직후까지 false로 두어 서버 HTML과 첫 클라이언트 페인트가 같게 유지 */
+  const [layoutHydrated, setLayoutHydrated] = useState(false);
+  useEffect(() => {
+    setLayoutHydrated(true);
+  }, []);
+  const compactHeader = layoutHydrated && effectiveLayout === "MOBILE";
   const showScreenLabels = useShowScreenLabels();
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
@@ -300,7 +305,7 @@ export function PlatformTopNav() {
               justifyContent: "flex-end",
               gap: compactHeader ? 6 : 8,
               flexShrink: 0,
-              maxWidth: compactHeader ? "100%" : undefined,
+              ...(compactHeader ? { maxWidth: "100%" as const } : {}),
             }}
           >
             {me ? (
