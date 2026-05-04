@@ -1,4 +1,5 @@
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
+import { appendAiContextToSystemPrompt } from "@/lib/ai/knowledge/aiMemberContextInjection";
 import type { PrototypeImprovementItem } from "@/lib/prototype/prototypeReviewStore";
 import { getReviewThread } from "@/lib/prototype/prototypeReviewStore";
 import { formatRunContext, formatReviewTranscript, openAiJsonCompletion } from "@/lib/prototype/prototypeReviewOpenAi";
@@ -16,10 +17,15 @@ export async function generateImprovementItemsForRun(
   const messages = getReviewThread(projectId, runId);
   const run = getRun(projectId, runId);
 
-  const system = `${workspaceAiMemberSystemPrefix("prototype_review")}프로토타입 검토 대화를 바탕으로 실행 가능한 개선안 목록을 만든다.
+  let system = `${workspaceAiMemberSystemPrefix("prototype_review")}프로토타입 검토 대화를 바탕으로 실행 가능한 개선안 목록을 만든다.
 반드시 JSON 한 개만 출력한다.
 스키마: { "items": [ { "title": "짧은 제목", "detail": "무엇을 왜 바꿀지 1~2문장" } ] }
 항목 3~8개, 한국어, 사용자에게 보여질 문구만.`;
+  system = await appendAiContextToSystemPrompt({
+    aiMemberId: "designer",
+    baseSystem: system,
+    projectId,
+  });
 
   const userPayload = `[실행 맥락]
 ${formatRunContext(run)}

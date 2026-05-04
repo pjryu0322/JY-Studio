@@ -109,7 +109,6 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
     : input.forceRegenerate && input.existingArtifact ? input.existingArtifact
     : null;
 
-  const planningTopicForContext = artifactForPrompt?.planningTopic ?? "FEATURES";
   let system = `${workspaceAiMemberSystemPrefix("feature_planning")}${
     entryFmt === "flow_entry" ? buildFeaturePlanningFlowEntryAnalyzeSystemPrompt() : buildFeaturePlanningV2InitSystemPrompt()
   }`;
@@ -117,7 +116,6 @@ export async function runFeaturePlanningInitialScreenLlm(input: {
     aiMemberId: "feature_planning",
     baseSystem: system,
     projectId,
-    featurePlanningTopic: planningTopicForContext,
   });
   const stateLineForUser =
     entryFmt === "flow_entry" ? `${stateLine}\n\n[정리 우선 단계]\n${stepTitle}` : stateLine;

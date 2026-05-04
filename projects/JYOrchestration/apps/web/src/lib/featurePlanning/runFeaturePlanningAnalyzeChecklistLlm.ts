@@ -29,6 +29,7 @@ import {
 } from "@/lib/featurePlanning/featurePlanningPlanningChecklistParse";
 import type { FeaturePlanningPlanningChecklistV1 } from "@/lib/featurePlanning/featurePlanningPlanningChecklistTypes";
 import { memorySnapshotForLog } from "@/lib/featurePlanning/summarizeFeaturePlanningContext";
+import { appendAiContextToSystemPrompt } from "@/lib/ai/knowledge/aiMemberContextInjection";
 
 export type FeaturePlanningAnalyzeChecklistOk = {
   readonly ok: true;
@@ -88,7 +89,12 @@ export async function runFeaturePlanningAnalyzeChecklistLlm(input: {
       ? "기능 정리 초안 다시 만들기 — 체크리스트를 서비스 흐름에 맞게 새로 구성합니다."
       : "서비스 흐름 확정 후 첫 기능정리 분석";
 
-  const system = buildFeaturePlanningAnalyzeChecklistSystemPrompt();
+  let system = buildFeaturePlanningAnalyzeChecklistSystemPrompt();
+  system = await appendAiContextToSystemPrompt({
+    aiMemberId: "feature_planning",
+    baseSystem: system,
+    projectId,
+  });
   const user = buildFeaturePlanningAnalyzeChecklistUserPrompt({
     projectName: input.ctx.projectName,
     projectDescription: input.ctx.projectDescription,
