@@ -24,16 +24,16 @@ export function WorkspaceShell({
   return (
     <div
       data-testid={dataTestId}
-      className={["chat-page", className].filter(Boolean).join(" ")}
+      className={["chat-viewport", className].filter(Boolean).join(" ")}
       role="region"
       aria-label="워크스페이스"
     >
-      <div className="chat-header-fixed">
+      <div className="chat-header">
         <ChatWindowScreenLabelTop />
         {top ? <div className={styles.top}>{top}</div> : null}
       </div>
-      <div className="chat-body">{children}</div>
-      <div className="chat-input-fixed">
+      {children}
+      <div className="chat-input">
         <ChatWindowScreenLabelBottom />
         <div className={styles.footer}>{footer}</div>
       </div>

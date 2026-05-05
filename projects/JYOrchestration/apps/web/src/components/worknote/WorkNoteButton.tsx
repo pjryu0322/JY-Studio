@@ -1,136 +1,80 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useWorkNotesPanel } from "@/hooks/useWorkNotesPanel";
-import { WorkNoteDrawer } from "@/components/worknote/WorkNoteDrawer";
-import { useWorkNoteChatSelectionBridge } from "@/components/worknote/WorkNoteChatSelectionBridge";
+import Link from "next/link";
 
 export type WorkNoteButtonProps = Readonly<{
-  /** URL 기준 프로젝트 컨텍스트 — 없으면 USER 메모만 */
+  /** 프로젝트 컨텍스트 */
   notesProjectId: string | null;
-  readonly projectDisplayName?: string | null;
-  readonly onShareToComposer?: (text: string) => void;
 }>;
 
-export function WorkNoteButton(p: WorkNoteButtonProps) {
-  const [open, setOpen] = useState(false);
-  const ctxPid = p.notesProjectId?.trim() ?? "";
-  const inProject = Boolean(ctxPid);
-  const [memoTab, setMemoTab] = useState<"USER" | "PROJECT">("PROJECT");
+function iconButtonStyle(): React.CSSProperties {
+  return {
+    position: "relative",
+    border: "1px solid #cbd5e1",
+    background: "#fff",
+    borderRadius: 10,
+    width: 36,
+    height: 36,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#0f172a",
+    cursor: "pointer",
+    flexShrink: 0,
+    boxSizing: "border-box",
+    textDecoration: "none",
+  };
+}
 
-  const userPanel = useWorkNotesPanel({
-    memoScope: "USER",
-    projectId: null,
-    enabled: open && (!inProject || memoTab === "USER"),
-  });
-  const projectPanel = useWorkNotesPanel({
-    memoScope: "PROJECT",
-    projectId: ctxPid || null,
-    enabled: open && inProject && memoTab === "PROJECT",
-  });
+function iconButtonStyleDisabled(): React.CSSProperties {
+  return {
+    ...iconButtonStyle(),
+    background: "#f8fafc",
+    color: "#94a3b8",
+    cursor: "not-allowed",
+    opacity: 0.85,
+    pointerEvents: "none",
+  };
+}
 
-  const active = !inProject || memoTab === "USER" ? userPanel : projectPanel;
-
-  const switchMemoTab = useCallback(
-    async (next: "USER" | "PROJECT") => {
-      if (!inProject || next === memoTab) return;
-      if (memoTab === "USER") await userPanel.flushPending();
-      else await projectPanel.flushPending();
-      setMemoTab(next);
-    },
-    [inProject, memoTab, userPanel, projectPanel]
-  );
-
-  useEffect(() => {
-    if (!open || !inProject) setMemoTab("PROJECT");
-  }, [open, inProject, ctxPid]);
-
-  const bridge = useWorkNoteChatSelectionBridge();
-  const pendingChatSnippetRef = useRef<string | null>(null);
-
-  const flushPendingChatSnippet = useCallback(() => {
-    const chunk = pendingChatSnippetRef.current;
-    if (!chunk || !open || !active.editorHydrated) return;
-    pendingChatSnippetRef.current = null;
-    void active.appendSnippetFromChat(chunk);
-  }, [open, active.editorHydrated, active.appendSnippetFromChat]);
-
-  useEffect(() => {
-    flushPendingChatSnippet();
-  }, [flushPendingChatSnippet, active.activeId]);
-
-  useEffect(() => {
-    if (!bridge || !ctxPid || bridge.projectId !== ctxPid) return;
-    bridge.registerWorkNoteAppendFromChat((text) => {
-      pendingChatSnippetRef.current = text;
-      setMemoTab("PROJECT");
-      setOpen(true);
-    });
-    return () => bridge.registerWorkNoteAppendFromChat(null);
-  }, [bridge, ctxPid]);
-
-  const activeMemoScope = !inProject ? "USER" : memoTab;
-  const activeProjectId = inProject && memoTab === "PROJECT" ? ctxPid : null;
-
-  const memoBadgeKind = activeMemoScope;
-  const memoBadgeSubtitle = activeMemoScope === "USER" ? "내 작업메모" : (p.projectDisplayName?.trim() || "이 프로젝트");
-
+/** 내 작업메모(사용자 레벨) — `/work-notes` */
+export function UserWorkNoteButton() {
   return (
-    <>
-      <button
-        type="button"
-        data-testid="work-note-open"
-        aria-label="작업메모"
-        title="작업메모"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-        style={{
-          position: "relative",
-          border: "1px solid #cbd5e1",
-          background: "#fff",
-          borderRadius: 10,
-          width: 36,
-          height: 36,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#0f172a",
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-          <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+    <Link href="/work-notes" prefetch={false} data-testid="work-note-open-user" aria-label="내 작업메모" title="내 작업메모" style={iconButtonStyle()}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+        <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+      </svg>
+    </Link>
+  );
+}
+
+/** 프로젝트 작업메모(프로젝트 레벨) — `/work-notes?projectId=...` */
+export function ProjectWorkNoteButton(p: WorkNoteButtonProps) {
+  const ctxPid = p.notesProjectId?.trim() ?? "";
+  if (!ctxPid) {
+    return (
+      <span aria-label="프로젝트 작업메모 (프로젝트 선택 필요)" title="프로젝트를 선택한 뒤 프로젝트 메모를 이용하세요" style={iconButtonStyleDisabled()}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" aria-hidden>
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          <path d="M8 13h8M8 17h8" />
         </svg>
-      </button>
-      <WorkNoteDrawer
-        activeMemoScope={activeMemoScope}
-        activeProjectId={activeProjectId}
-        memoBadgeKind={memoBadgeKind}
-        memoBadgeSubtitle={memoBadgeSubtitle}
-        showMemoTabs={inProject}
-        memoTab={inProject ? memoTab : undefined}
-        onMemoTabChange={inProject ? switchMemoTab : undefined}
-        open={open}
-        onClose={() => setOpen(false)}
-        listLoading={active.listLoading}
-        listError={active.listError}
-        notes={active.notes}
-        activeId={active.activeId}
-        selectNote={active.selectNote}
-        createNote={active.createNote}
-        deleteNote={active.deleteNote}
-        title={active.title}
-        setTitle={active.setTitle}
-        text={active.text}
-        onChangeText={active.setText}
-        editorHydrated={active.editorHydrated}
-        saveState={active.saveState}
-        saveError={active.saveError}
-        onShareToComposer={p.onShareToComposer}
-      />
-    </>
+      </span>
+    );
+  }
+  const href = `/work-notes?projectId=${encodeURIComponent(ctxPid)}`;
+  return (
+    <Link
+      href={href}
+      prefetch={false}
+      data-testid="work-note-open-project"
+      aria-label="프로젝트 작업메모"
+      title="프로젝트 작업메모"
+      style={iconButtonStyle()}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" aria-hidden>
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+        <path d="M8 13h8M8 17h8" />
+      </svg>
+    </Link>
   );
 }

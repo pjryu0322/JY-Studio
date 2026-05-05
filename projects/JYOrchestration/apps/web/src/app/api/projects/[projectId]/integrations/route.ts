@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { IntegrationCapability, IntegrationProvider } from "@prisma/client";
+import type { IntegrationCapability } from "@prisma/client";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";

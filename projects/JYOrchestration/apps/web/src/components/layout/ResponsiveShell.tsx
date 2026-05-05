@@ -21,6 +21,7 @@ export function ResponsiveShell(p: ResponsiveShellProps) {
   /** 뷰포트 분기는 마운트 후에만 적용 — SSR·첫 페인트는 데스크톱 셸과 맞춰 하이드레이션 불일치를 막습니다. */
   const [layoutCommitted, setLayoutCommitted] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayoutCommitted(true);
   }, []);
 

@@ -24,6 +24,7 @@ export function ResponsivePageContainer(p: ResponsivePageContainerProps) {
   /** 뷰포트 분기는 마운트 후에만 반영 — SSR·하이드레이션 첫 페인트는 데스크톱 컬럼 규칙과 동일하게 유지 */
   const [layoutCommitted, setLayoutCommitted] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayoutCommitted(true);
   }, []);
   const useMobileInset = layoutCommitted && isMobile;

@@ -18,7 +18,7 @@ export function WorkspaceMessageList({
   readonly beforeMessages?: ReactNode;
 }) {
   return (
-    <div ref={scrollRootRef} className={`chat-messages-scroll ${styles.scroll}`}>
+    <div ref={scrollRootRef} className={`chat-messages ${styles.scroll}`}>
       {beforeMessages}
       <div className={styles.inner}>
         {children}

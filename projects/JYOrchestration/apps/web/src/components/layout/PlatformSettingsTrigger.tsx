@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef } from "react";
-import { toggleSettingsPanel } from "@/lib/settings/settingsPanelStore";
-import { useSettingsPanelStore } from "@/lib/settings/useSettingsPanelStore";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useLayoutMobileBreakpoint } from "@/components/ui/breakpoints";
 
 function GearIcon() {
   return (
@@ -13,35 +13,35 @@ function GearIcon() {
   );
 }
 
-/** 상단 헤더 전용: 전역 `SettingsPanel`을 연다(패널 본문은 `TopRightToolbar`에서 단일 마운트). */
+/** 상단 헤더: `/settings` 본문 라우트로 이동합니다(알림·작업메모와 동일 패턴). */
 export function PlatformSettingsTrigger() {
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const { open } = useSettingsPanelStore();
+  const pathname = usePathname() || "/";
+  const narrow = useLayoutMobileBreakpoint();
+  const inSettings = pathname === "/settings" || pathname.startsWith("/settings/");
 
   return (
-    <button
-      ref={btnRef}
-      type="button"
-      data-jyo-settings-trigger
-      onClick={() => toggleSettingsPanel({ anchorEl: btnRef.current })}
+    <Link
+      href="/settings"
+      prefetch={false}
       aria-label="설정"
-      aria-haspopup="dialog"
-      aria-expanded={open}
+      title="설정"
       style={{
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        width: 38,
-        height: 38,
+        width: narrow ? 44 : 40,
+        height: narrow ? 40 : 36,
         padding: 0,
         borderRadius: 10,
-        border: "1px solid #e2e8f0",
-        background: open ? "#f1f5f9" : "#fff",
+        border: "1px solid #cbd5e1",
+        background: inSettings ? "#f1f5f9" : "#fff",
         color: "#475569",
         cursor: "pointer",
+        boxSizing: "border-box",
+        textDecoration: "none",
       }}
     >
       <GearIcon />
-    </button>
+    </Link>
   );
 }

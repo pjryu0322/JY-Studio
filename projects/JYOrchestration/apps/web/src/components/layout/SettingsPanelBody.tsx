@@ -1,18 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { createPortal } from "react-dom";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { closeSettingsPanel } from "@/lib/settings/settingsPanelStore";
-import { useSettingsPanelStore } from "@/lib/settings/useSettingsPanelStore";
 import { useUiLabel } from "@/lib/ui-label/useUiLabel";
 import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { projectMembersAdminHref } from "@/lib/project/projectMembersAdminHref";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 import { WorkspaceModeSwitcher } from "@/components/layout/WorkspaceModeSwitcher";
-import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 
 function sectionTitle(text: string, opts?: { first?: boolean }) {
   return (
@@ -50,32 +46,16 @@ function row(label: string, control: ReactNode) {
   );
 }
 
-type MenuCoords = { readonly top: number; readonly left: number; readonly width: number };
+const linkStyle: CSSProperties = { fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" };
 
-function isSettingsTriggerTarget(node: Node | null): boolean {
-  if (!node || typeof (node as HTMLElement).closest !== "function") return false;
-  return Boolean((node as HTMLElement).closest("[data-jyo-settings-trigger]"));
-}
-
-/**
- * 플랫폼 공통 설정 패널(단일 인스턴스). `TopRightToolbar`에서 마운트합니다.
- * 일반/관리자 구분·관리자 전용 링크는 이 컴포넌트 내부에서만 처리합니다.
- */
-export function SettingsPanel() {
-  const menuPanelRef = useRef<HTMLDivElement>(null);
-  const { open, anchorEl, placement } = useSettingsPanelStore();
-  /** 스크롤·리사이즈 시 좌표 재계산용(렌더에서 coords 계산) */
-  const [layoutTick, setLayoutTick] = useState(0);
+/** 플랫폼 설정 본문(`/settings` 페이지 및 기타에서 재사용). */
+export function SettingsPanelBody() {
   const { enabled, setEnabled, ready } = useUiLabel();
   const prefs = useGlobalPreferences();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [sessionPresent, setSessionPresent] = useState(false);
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
-  const ideationAiAutoJoinLabel = useMemo(
-    () => `${getWorkspaceAiMember("ideation")?.title ?? "AI 기획자"} 자동 참여`,
-    [],
-  );
 
   const projectId = resolveWorkflowProjectContextId(pathname, searchParams);
   const pid = projectId?.trim() ?? "";
@@ -87,59 +67,7 @@ export function SettingsPanel() {
   const projectInfoHref = hasProjectContext ? `/requirements?projectId=${encodedProjectId}` : "/";
   const projectMembersHref = hasProjectContext ? projectMembersAdminHref(pid) : "/project-members";
 
-  const computeCoords = useCallback((): MenuCoords | null => {
-    if (!open) return null;
-    if (typeof window === "undefined") return null;
-    const vw = window.innerWidth;
-    const margin = 8;
-    const width = Math.min(300, vw - margin * 2);
-    if (placement === "anchor" && anchorEl && typeof document !== "undefined" && document.contains(anchorEl)) {
-      const r = anchorEl.getBoundingClientRect();
-      const left = Math.min(Math.max(margin, r.right - width), vw - width - margin);
-      return { top: r.bottom + margin, left, width };
-    }
-    const left = Math.max(margin, (vw - width) / 2);
-    const top = Math.min(margin + 64, window.innerHeight * 0.1);
-    return { top, left, width };
-  }, [open, anchorEl, placement]);
-
-  const menuCoords = useMemo(() => {
-    void layoutTick;
-    return computeCoords();
-  }, [layoutTick, computeCoords]);
-
   useEffect(() => {
-    if (!open) return;
-    const bump = () => setLayoutTick((n) => n + 1);
-    bump();
-    window.addEventListener("resize", bump);
-    window.addEventListener("scroll", bump, true);
-    return () => {
-      window.removeEventListener("resize", bump);
-      window.removeEventListener("scroll", bump, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (isSettingsTriggerTarget(t) || menuPanelRef.current?.contains(t)) return;
-      closeSettingsPanel();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeSettingsPanel();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -164,44 +92,16 @@ export function SettingsPanel() {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, []);
 
-  if (!open || !menuCoords || typeof document === "undefined") {
-    return null;
-  }
-
-  return createPortal(
-    <div
-      ref={menuPanelRef}
-      role="dialog"
-      aria-label="설정"
-      style={{
-        position: "fixed",
-        top: menuCoords.top,
-        left: menuCoords.left,
-        width: menuCoords.width,
-        maxHeight: "min(70vh, 520px)",
-        overflowY: "auto",
-        padding: "12px 14px 14px",
-        borderRadius: 12,
-        border: "1px solid #e2e8f0",
-        background: "#fff",
-        boxShadow: "0 10px 40px rgba(15, 23, 42, 0.12)",
-        zIndex: 9999,
-      }}
-    >
-      <p style={{ margin: "0 0 10px 0", fontSize: 15, fontWeight: 800, color: "#0f172a" }}>설정</p>
-
+  return (
+    <div style={{ padding: "4px 2px 8px" }}>
       {sessionPresent ? (
         <>
           {sectionTitle("내 계정", { first: true })}
           {row(
             "Settings · Integrations",
-            <Link
-              href="/integrations"
-              onClick={() => closeSettingsPanel()}
-              style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-            >
+            <Link href="/integrations" prefetch={false} style={linkStyle}>
               열기
             </Link>,
           )}
@@ -278,21 +178,13 @@ export function SettingsPanel() {
               {sectionTitle("관리자 콘솔")}
               {row(
                 "AI 멤버 관리",
-                <Link
-                  href="/settings/ai-members"
-                  onClick={() => closeSettingsPanel()}
-                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-                >
+                <Link href="/settings/ai-members" prefetch={false} style={linkStyle}>
                   열기
                 </Link>,
               )}
               {row(
                 "플랫폼 사용자",
-                <Link
-                  href="/admin/platform-users"
-                  onClick={() => closeSettingsPanel()}
-                  style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-                >
+                <Link href="/admin/platform-users" prefetch={false} style={linkStyle}>
                   열기
                 </Link>,
               )}
@@ -312,55 +204,43 @@ export function SettingsPanel() {
           "프로젝트 정보",
           <Link
             href={projectInfoHref}
-            onClick={() => closeSettingsPanel()}
+            prefetch={false}
             title={hasProjectContext ? undefined : "홈에서 프로젝트를 선택한 뒤 이용하세요"}
-            style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+            style={linkStyle}
           >
             열기
-          </Link>
+          </Link>,
         )}
         {row(
           "멤버 관리",
           <Link
             href={projectMembersHref}
-            onClick={() => closeSettingsPanel()}
+            prefetch={false}
             title={hasProjectContext ? undefined : "프로젝트를 선택한 뒤 멤버를 관리하세요"}
-            style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+            style={linkStyle}
           >
             열기
-          </Link>
+          </Link>,
         )}
 
         {sectionTitle("연동")}
         {row(
           "GitHub",
-          <Link
-            href={projectSettingsHref}
-            onClick={() => closeSettingsPanel()}
-            style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-          >
+          <Link href={projectSettingsHref} prefetch={false} style={linkStyle}>
             열기
-          </Link>
+          </Link>,
         )}
         {row(
           "Cursor",
-          <Link
-            href={projectSettingsHref}
-            onClick={() => closeSettingsPanel()}
-            style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-          >
+          <Link href={projectSettingsHref} prefetch={false} style={linkStyle}>
             열기
-          </Link>
+          </Link>,
         )}
         {row(
           "실행 환경",
-          <Link
-            href={projectSettingsHref}
-            onClick={() => closeSettingsPanel()}
-            style={{ fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
-          >
+          <Link href={projectSettingsHref} prefetch={false} style={linkStyle}>
             열기
-          </Link>
+          </Link>,
         )}
       </>
 
@@ -373,18 +253,7 @@ export function SettingsPanel() {
           checked={ready ? enabled : false}
           onChange={(e) => setEnabled(e.target.checked)}
           style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-        />
-      )}
-
-      {sectionTitle("AI")}
-      {row(
-        ideationAiAutoJoinLabel,
-        <input
-          type="checkbox"
-          checked={prefs.aiFacilitatorAutoJoin}
-          onChange={(e) => prefs.setAiFacilitatorAutoJoin(e.target.checked)}
-          style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-        />
+        />,
       )}
 
       {isPlatformAdmin ? (
@@ -397,11 +266,10 @@ export function SettingsPanel() {
               checked={prefs.devPanelVisible}
               onChange={(e) => prefs.setDevPanelVisible(e.target.checked)}
               style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-            />
+            />,
           )}
         </>
       ) : null}
-    </div>,
-    document.body,
+    </div>
   );
 }

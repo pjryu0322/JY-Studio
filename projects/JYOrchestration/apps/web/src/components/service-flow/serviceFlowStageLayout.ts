@@ -40,7 +40,7 @@ export const serviceFlowStageMainChatStyle: CSSProperties = {
 
 export const serviceFlowStageScrollAreaStyle: CSSProperties = workspaceStandardChatScrollAreaStyle;
 
-/** `.chat-messages-scroll` + 서비스 흐름 본문(패딩·그리드) */
+/** `.chat-messages` + 서비스 흐름 본문(패딩·그리드) */
 export const serviceFlowChatMessagesScrollStyle: CSSProperties = workspaceStandardChatMessagesInnerStyle;
 
 /** 아이디어 구체화와 같이 풋 영역을 가로로 넓게 쓴다(720px 중앙 제한 제거) */

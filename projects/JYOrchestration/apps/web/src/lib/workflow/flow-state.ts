@@ -58,15 +58,15 @@ export function appFlowStepHref(stepId: AppFlowStepId, projectId: string | null)
         ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=service-flow`
         : "/requirements?stage=service-flow";
     case "features":
-      return `/features${q}`;
+      return pid ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=features` : "/requirements?stage=features";
     case "tasks":
       return `/tasks${q}`;
     case "planning":
       return pid ? `/projects/${encodeURIComponent(pid)}?view=workspace` : "/";
     case "execution":
-      return `/execution${q}`;
+      return pid ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=execution` : "/requirements?stage=execution";
     case "prototype_review":
-      return `/prototype-review${q}`;
+      return pid ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=prototype-review` : "/requirements?stage=prototype-review";
     case "trace":
       return `/trace${q}`;
     default:
@@ -82,6 +82,9 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   if (p === "/requirements" || p.startsWith("/requirements/")) {
     const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
     if (stage === "service-flow") return "service_flow";
+    if (stage === "features") return "features";
+    if (stage === "execution") return "execution";
+    if (stage === "prototype-review") return "prototype_review";
     return "requirements";
   }
   if (p === "/collaboration" || p.startsWith("/collaboration/")) return null;
@@ -155,6 +158,10 @@ export function isWorkflowStepNavActive(
     return qp === ctx && stage === "service-flow";
   }
   if (stepId === "features") {
+    if (pathname === "/requirements" || pathname.startsWith("/requirements/")) {
+      const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
+      return qp === ctx && stage === "features";
+    }
     if (!(pathname === "/features" || pathname.startsWith("/features/"))) return false;
     return qp === ctx;
   }
@@ -163,10 +170,18 @@ export function isWorkflowStepNavActive(
     return qp === ctx;
   }
   if (stepId === "execution") {
+    if (pathname === "/requirements" || pathname.startsWith("/requirements/")) {
+      const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
+      return qp === ctx && stage === "execution";
+    }
     if (!(pathname === "/execution" || pathname.startsWith("/execution/"))) return false;
     return qp === ctx;
   }
   if (stepId === "prototype_review") {
+    if (pathname === "/requirements" || pathname.startsWith("/requirements/")) {
+      const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
+      return qp === ctx && stage === "prototype-review";
+    }
     if (!(pathname === "/prototype-review" || pathname.startsWith("/prototype-review/"))) return false;
     return qp === ctx;
   }

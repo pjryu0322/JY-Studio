@@ -8,7 +8,8 @@ export const uiTokens = {
   textPrimary: "#0f172a",
   textSecondary: "#475569",
   textMuted: "#64748b",
-  bgPage: "#f8fafc",
+  // Page background: keep neutral white (remove gray wash)
+  bgPage: "#ffffff",
   bgCard: "#ffffff",
   primary: "#2563eb",
   /** Teal accent (홈·워크플로 CTA 등). */

@@ -16,9 +16,13 @@ export function DesktopShell(p: DesktopShellProps) {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        flex: "1 1 auto",
+        minHeight: 0,
+        height: "100%",
+        width: "100%",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
         background: t.bgPage,
         boxSizing: "border-box",
       }}
@@ -45,7 +49,7 @@ export function DesktopShell(p: DesktopShellProps) {
           {p.actions ? <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{p.actions}</div> : null}
         </header>
       )}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>{p.children}</div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>{p.children}</div>
     </div>
   );
 }

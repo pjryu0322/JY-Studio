@@ -14,7 +14,7 @@ export const workspaceStandardChatScrollAreaStyle: CSSProperties = {
   alignContent: "start",
 };
 
-/** `.chat-messages-scroll`가 스크롤 담당 — 본문은 패딩·그리드만 */
+/** `.chat-messages`가 스크롤 담당 — 본문은 패딩·그리드만 */
 export const workspaceStandardChatMessagesInnerStyle: CSSProperties = {
   padding: "12px 20px 14px",
   display: "grid",

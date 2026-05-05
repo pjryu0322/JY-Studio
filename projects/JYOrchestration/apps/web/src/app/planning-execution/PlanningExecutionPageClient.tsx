@@ -58,7 +58,7 @@ export function PlanningExecutionPageClient() {
   const [useDemo, setUseDemo] = useState(false);
   const [showDevControls, setShowDevControls] = useState(false);
   const [demoStatus, setDemoStatus] = useState<PlanningOriginatedExecutionStatus>("READY_FOR_EXECUTION");
-  const [projectId, setProjectId] = useState("");
+  const [projectId] = useState("");
   const [inputText, setInputText] = useState("");
   const [lastAction, setLastAction] = useState<PlanningExecutionStructuralAction | null>(null);
   const [reqState, setReqState] = useState<UiRequestState>({ kind: "idle" });

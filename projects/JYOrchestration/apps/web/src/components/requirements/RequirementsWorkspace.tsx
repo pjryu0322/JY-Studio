@@ -18,7 +18,6 @@ import { useRequirementsProjectLoad } from "@/components/requirements/workspace/
 import { useRequirementsSpecWorkspacePersist } from "@/components/requirements/workspace/useRequirementsSpecWorkspacePersist";
 import { useRequirementsWorkspaceToasts } from "@/components/requirements/workspace/useRequirementsWorkspaceToasts";
 import { OrganizeProposalDraggableModal } from "@/components/requirements/OrganizeProposalDraggableModal";
-import { ProposalPlanPreviewModal } from "@/components/requirements/ProposalPlanPreviewModal";
 import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
 import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
@@ -80,6 +79,7 @@ import {
 import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
+import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailParticipants";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import {
@@ -144,6 +144,17 @@ export function RequirementsWorkspace({
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
 
+  // 프로젝트 레일을 `/requirements?projectId=...&stage=...`로 통일한 뒤,
+  // 실제 화면은 stage에 맞는 전용 라우트로 이동시킵니다.
+  useEffect(() => {
+    const pid = String(searchParams?.get("projectId") ?? initialProjectId ?? "").trim();
+    if (!pid) return;
+    const stage = String(searchParams?.get("stage") ?? initialStage ?? "").trim().toLowerCase();
+    if (stage === "features") router.replace(`/features?projectId=${encodeURIComponent(pid)}`);
+    if (stage === "execution") router.replace(`/execution?projectId=${encodeURIComponent(pid)}`);
+    if (stage === "prototype-review") router.replace(`/prototype-review?projectId=${encodeURIComponent(pid)}`);
+  }, [router, searchParams, initialProjectId, initialStage]);
+
   const autoOpenPrototypePreview = useMemo(() => {
     const v = String(searchParams?.get("preview") ?? "").trim();
     return v === "1";
@@ -188,10 +199,6 @@ export function RequirementsWorkspace({
   const [, setLastSavedAt] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [plannerTypePickerOpen, setPlannerTypePickerOpen] = useState(false);
-  const [proposalPlanPreview, setProposalPlanPreview] = useState<{ open: boolean; assetId: string | null }>({
-    open: false,
-    assetId: null,
-  });
   const [organizeState, setOrganizeState] = useState<"idle" | "running" | "done" | "error">("idle");
   const [organizeError, setOrganizeError] = useState<string | null>(null);
   const [organizedAt, setOrganizedAt] = useState<string | null>(null);
@@ -240,7 +247,6 @@ export function RequirementsWorkspace({
     setDeliverableViewerIds([]);
     setDeliverableViewerFocusId(null);
     setPlannerTypePickerOpen(false);
-    setProposalPlanPreview({ open: false, assetId: null });
     setReplyTo(null);
     setOrganizeState("idle");
     setOrganizeError(null);
@@ -464,6 +470,14 @@ export function RequirementsWorkspace({
     platformMemberActivity,
   });
 
+  // 현재 단계의 참여 멤버 수를 프로젝트 레일 배지로 올립니다.
+  useEffect(() => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    const key = inIdeationStage ? "requirements" : "service_flow";
+    publishProjectRailParticipantCount(pid, key, participantBadgeCount);
+  }, [inIdeationStage, participantBadgeCount, resolvedProjectId]);
+
   useEffect(() => {
     const pid = resolvedProjectId.trim();
     const prev = requirementsWorkspacePrevStageRef.current;
@@ -559,20 +573,25 @@ export function RequirementsWorkspace({
     [deliverableAssetsFromProject, deliverableViewerIds]
   );
 
+  const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
+    setDeliverableViewerIds([...ids]);
+    setDeliverableViewerFocusId(focusId ?? null);
+    setDeliverableViewerOpen(true);
+  }, []);
+
+  const openDeliverableList = useCallback(
+    (focusId: string | null) => {
+      const allIds = deliverableAssetsFromProject.map((a) => a.id);
+      openDeliverableViewer(allIds, focusId ?? allIds[0] ?? null);
+    },
+    [deliverableAssetsFromProject, openDeliverableViewer]
+  );
+
   const latestUnifiedProposal = useMemo(() => {
     const list = deliverableAssetsFromProject.filter((a) => a.type === "full_plan");
     if (!list.length) return null;
     return [...list].sort((a, b) => b.version - a.version)[0] ?? null;
   }, [deliverableAssetsFromProject]);
-
-  const proposalPreviewAsset = useMemo(() => {
-    const id = proposalPlanPreview.assetId;
-    if (!id) return null;
-    return deliverableAssetsFromProject.find((a) => a.id === id) ?? null;
-  }, [proposalPlanPreview.assetId, deliverableAssetsFromProject]);
-
-  const proposalPreviewMarkdown = useMemo(() => proposalPreviewAsset?.content ?? "", [proposalPreviewAsset]);
-  const proposalPreviewVersion = useMemo(() => proposalPreviewAsset?.version ?? 1, [proposalPreviewAsset]);
 
   const workflowGuidanceBanner = useMemo(() => {
     const fromUrl = initialWorkflowNotice.trim();
@@ -931,7 +950,7 @@ export function RequirementsWorkspace({
         await persistRemote(nextRoom, {}, { deliverableAssets: merged });
         if (types.length === 1 && types[0] === "full_plan") {
           const fp = created.find((c) => c.type === "full_plan");
-          if (fp) setProposalPlanPreview({ open: true, assetId: fp.id });
+          if (fp) openDeliverableViewer([fp.id], fp.id);
           showSuccessToast(`${planBaseName} 아이디어 초안 생성 완료`);
         } else {
           showSuccessToast(`${created.length}개 산출물 생성 완료`);
@@ -967,7 +986,7 @@ export function RequirementsWorkspace({
       persistRemote,
       showSuccessToast,
       showErrorToast,
-      setProposalPlanPreview,
+      openDeliverableViewer,
     ]
   );
 
@@ -1596,20 +1615,6 @@ export function RequirementsWorkspace({
     return () => registerWorkNoteComposerInsert(null);
   }, [inIdeationStage, registerWorkNoteComposerInsert, insertComposerPrompt]);
 
-  const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
-    setDeliverableViewerIds([...ids]);
-    setDeliverableViewerFocusId(focusId ?? null);
-    setDeliverableViewerOpen(true);
-  }, []);
-
-  const openDeliverableList = useCallback(
-    (focusId: string | null) => {
-      const allIds = deliverableAssetsFromProject.map((a) => a.id);
-      openDeliverableViewer(allIds, focusId ?? allIds[0] ?? null);
-    },
-    [deliverableAssetsFromProject, openDeliverableViewer]
-  );
-
   const handleConfirmDeliverableAssets = useCallback(
     async (ids: readonly string[]) => {
       const pid = resolvedProjectId.trim();
@@ -1653,7 +1658,6 @@ export function RequirementsWorkspace({
       }
       setProject(json.data.project);
       stateJsonRef.current = parseRequirementsStateJson(json.data.project.requirementsStateJson);
-      setProposalPlanPreview({ open: false, assetId: null });
       setDeliverableViewerOpen(false);
       setAiInvokePending(false);
       notifyAppFlowProjectContextRefresh();
@@ -1736,9 +1740,11 @@ export function RequirementsWorkspace({
     flex: "1 1 auto",
     minHeight: 0,
     width: "100%",
+    overflow: "hidden",
   };
   const mainRow: CSSProperties = {
     flex: "1 1 auto",
+    minHeight: 0,
     gap: 0,
     border: "1px solid #e2e8f0",
     borderRadius: 16,
@@ -1748,13 +1754,16 @@ export function RequirementsWorkspace({
   };
 
   const chatPanel = (
-    <div className="jyo-requirements-chat-panel-shell" style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <div
+      className="jyo-requirements-chat-panel-shell"
+      style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%", overflow: "hidden" }}
+    >
       <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
       <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
         screenAiMemberId={participantAiMemberId}
         typingIndicator={aiInvokePending}
-        memberControls={{ count: participantBadgeCount, onOpen: () => setMembersModalOpen(true) }}
+        memberControls={inIdeationStage ? null : { count: participantBadgeCount, onOpen: () => setMembersModalOpen(true) }}
         ideationInterviewUi={
           inIdeationStage && conversationStatus === "loaded"
             ? {
@@ -1907,113 +1916,117 @@ export function RequirementsWorkspace({
         error={errorToast}
       />
 
-      <RequirementsHeader
-        showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
-      />
+      <div className="jyo-requirements-workspace-top-chrome">
+        <RequirementsHeader
+          showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
+        />
 
-      {resolvedProjectId.trim() &&
-      inIdeationStage &&
-      conversationStatus === "loaded" &&
-      ideationComplete &&
-      !(problemInterviewState && problemInterviewState.active !== false && problemInterviewStrictFilled < PROBLEM_INTERVIEW_SLOT_TOTAL) ? (
-        <div
-          style={{
-            marginTop: 8,
-            marginBottom: 6,
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: "#ecfdf5",
-            border: "1px solid #a7f3d0",
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 12,
-            justifyContent: "space-between",
-          }}
-        >
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#065f46", lineHeight: 1.45 }}>
-            정리 요청으로 아이디어 초안을 만들 수 있습니다.
-          </span>
-          <button
-            type="button"
-            data-testid="requirements-organize-cta"
-            disabled={busy || remoteLocked}
-            onClick={() => void onOrganizeRequirements()}
+        {resolvedProjectId.trim() &&
+        inIdeationStage &&
+        conversationStatus === "loaded" &&
+        ideationComplete &&
+        !(problemInterviewState && problemInterviewState.active !== false && problemInterviewStrictFilled < PROBLEM_INTERVIEW_SLOT_TOTAL) ? (
+          <div
             style={{
-              flexShrink: 0,
-              padding: "8px 14px",
-              borderRadius: 8,
-              border: "1px solid #0f766e",
-              background: "#0f766e",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 800,
-              cursor: busy || remoteLocked ? "not-allowed" : "pointer",
-              opacity: busy || remoteLocked ? 0.55 : 1,
+              marginTop: 8,
+              marginBottom: 6,
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "#ecfdf5",
+              border: "1px solid #a7f3d0",
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 12,
+              justifyContent: "space-between",
             }}
           >
-            정리 요청
-          </button>
-        </div>
-      ) : (
-      <div style={{ marginBottom: 6 }} />
-      )}
-
-      {workflowGuidanceBanner ? (
-        <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 8 }}>{workflowGuidanceBanner}</div>
-      ) : null}
-
-      {loadError ? (
-        <div className="relative" style={{ position: "relative" }}>
-          <ScreenLabel label="요구사항-상단-오류배너" visible={showScreenLabels} />
-          <div style={{ fontSize: 12, color: "#64748b", padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }} role="status">
-            {loadError}{" "}
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#065f46", lineHeight: 1.45 }}>
+              정리 요청으로 아이디어 초안을 만들 수 있습니다.
+            </span>
             <button
               type="button"
-              onClick={() => {
-                setLoadError(null);
-                setFetchNonce((n) => n + 1);
+              data-testid="requirements-organize-cta"
+              disabled={busy || remoteLocked}
+              onClick={() => void onOrganizeRequirements()}
+              style={{
+                flexShrink: 0,
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1px solid #0f766e",
+                background: "#0f766e",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: busy || remoteLocked ? "not-allowed" : "pointer",
+                opacity: busy || remoteLocked ? 0.55 : 1,
               }}
-              style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}
             >
-              다시 시도
+              정리 요청
             </button>
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <div style={{ marginBottom: 6 }} />
+        )}
 
-      {remoteLocked ? (
-        <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>
-          프로젝트가 연결되지 않았습니다.{" "}
-          <button type="button" onClick={() => router.push("/")} style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
-            홈에서 프로젝트 만들기
-          </button>
-        </div>
-      ) : null}
+        {workflowGuidanceBanner ? (
+          <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 8 }}>{workflowGuidanceBanner}</div>
+        ) : null}
 
-      {inIdeationStage && resolvedProjectId.trim() && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
-        <div
-          style={{
-            marginTop: 6,
-            marginBottom: 10,
-            padding: "8px 2px",
-            borderRadius: 10,
-            color: "#64748b",
-            fontSize: 12.5,
-            fontWeight: 700,
-            lineHeight: 1.45,
-          }}
-        >
-          아이디어 구체화 단계입니다. 핵심만 짧게 확인하고, 상세 액터·흐름·기능·Task는 다음 탭에서 이어서 정리합니다.
-        </div>
-      ) : null}
+        {loadError ? (
+          <div className="relative" style={{ position: "relative" }}>
+            <ScreenLabel label="요구사항-상단-오류배너" visible={showScreenLabels} />
+            <div style={{ fontSize: 12, color: "#64748b", padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }} role="status">
+              {loadError}{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setLoadError(null);
+                  setFetchNonce((n) => n + 1);
+                }}
+                style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}
+              >
+                다시 시도
+              </button>
+            </div>
+          </div>
+        ) : null}
 
-      <div style={mainRow} className="jyo-requirements-workspace-main">
-        <RequirementsWorkspaceStageRenderer
-          activeStage={activeStage}
-          ideationStage={ideationStage}
-          serviceFlowStage={serviceFlowStage}
-        />
+        {remoteLocked ? (
+          <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>
+            프로젝트가 연결되지 않았습니다.{" "}
+            <button type="button" onClick={() => router.push("/")} style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
+              홈에서 프로젝트 만들기
+            </button>
+          </div>
+        ) : null}
+
+        {inIdeationStage && resolvedProjectId.trim() && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
+          <div
+            style={{
+              marginTop: 6,
+              marginBottom: 10,
+              padding: "8px 2px",
+              borderRadius: 10,
+              color: "#64748b",
+              fontSize: 12.5,
+              fontWeight: 700,
+              lineHeight: 1.45,
+            }}
+          >
+            아이디어 구체화 단계입니다. 핵심만 짧게 확인하고, 상세 액터·흐름·기능·Task는 다음 탭에서 이어서 정리합니다.
+          </div>
+        ) : null}
+      </div>
+
+      <div className="jyo-requirements-workspace-body">
+        <div style={mainRow} className="jyo-requirements-workspace-main">
+          <RequirementsWorkspaceStageRenderer
+            activeStage={activeStage}
+            ideationStage={ideationStage}
+            serviceFlowStage={serviceFlowStage}
+          />
+        </div>
       </div>
 
       {error ? (
@@ -2113,22 +2126,7 @@ export function RequirementsWorkspace({
             initialAssetId={deliverableViewerFocusId}
           />
 
-          <ProposalPlanPreviewModal
-            open={proposalPlanPreview.open}
-            title={`${(project?.name ?? "").trim() || "프로젝트"} 아이디어 초안 미리보기`}
-            markdown={proposalPreviewMarkdown}
-            projectName={(project?.name ?? "").trim() || "프로젝트"}
-            version={proposalPreviewVersion}
-            busy={busy || deliverableGenerateBusy}
-            onClose={() => setProposalPlanPreview({ open: false, assetId: null })}
-            onRegenerate={() => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT])}
-            onRequestRevision={(text) => void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT], { revisionRequest: text })}
-            onConfirm={() => {
-              const id = proposalPlanPreview.assetId;
-              if (!id) return;
-              void handleConfirmDeliverableAssets([id]);
-            }}
-          />
+          {/* 아이디어 구체화 상단 문서 아이콘(미리보기)은 제거되었습니다. */}
         </>
       ) : null}
     </div>

@@ -31,8 +31,11 @@ test.describe("E2E project", () => {
     await expect(page.getByTestId("home-project-created-toast")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId(`project-card-${projectId}`)).toBeVisible({ timeout: 15_000 });
 
+    const ideaPagePromise = page.context().waitForEvent("page");
     await page.getByTestId(`project-open-${projectId}`).click();
-    await expect(page).toHaveURL(
+    const ideaPage = await ideaPagePromise;
+    await ideaPage.waitForLoadState("domcontentloaded");
+    await expect(ideaPage).toHaveURL(
       (url) => {
         try {
           const u = new URL(url);
@@ -43,22 +46,25 @@ test.describe("E2E project", () => {
       },
       { timeout: 20_000 }
     );
-    await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
+    await expect(ideaPage.getByText(name).first()).toBeVisible({ timeout: 15_000 });
 
-    await page.getByTestId("requirements-chat-input").fill(`E2E 아이디어: ${name}`);
-    await page.getByRole("button", { name: "전송" }).click();
-    await expect(page.getByText(`E2E 아이디어: ${name}`)).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId("requirements-scope-in").fill("회의록 업로드·요약·액션 항목 추출");
-    await page.getByTestId("requirements-scope-out").fill("결제·모바일 네이티브 앱");
-    await page.getByTestId("requirements-target-users").fill("팀 리더·PM");
-    await page.getByTestId("requirements-success-criteria").fill("회의록 1건을 1분 내 요약 초안 생성");
-    await page.getByTestId("requirements-confirm-button").click();
-    await expect(page.getByRole("link", { name: "기능 정리" })).toBeVisible({ timeout: 20_000 });
-    await page.getByRole("link", { name: "기능 정리" }).click();
-    await expect(page).toHaveURL(/\/features/, { timeout: 20_000 });
+    await ideaPage.getByTestId("requirements-chat-input").fill(`E2E 아이디어: ${name}`);
+    await ideaPage.getByRole("button", { name: "전송" }).click();
+    await expect(ideaPage.getByText(`E2E 아이디어: ${name}`)).toBeVisible({ timeout: 15_000 });
+    await ideaPage.getByTestId("requirements-scope-in").fill("회의록 업로드·요약·액션 항목 추출");
+    await ideaPage.getByTestId("requirements-scope-out").fill("결제·모바일 네이티브 앱");
+    await ideaPage.getByTestId("requirements-target-users").fill("팀 리더·PM");
+    await ideaPage.getByTestId("requirements-success-criteria").fill("회의록 1건을 1분 내 요약 초안 생성");
+    await ideaPage.getByTestId("requirements-confirm-button").click();
+    await expect(ideaPage.getByRole("link", { name: "기능 정리" })).toBeVisible({ timeout: 20_000 });
+    await ideaPage.getByRole("link", { name: "기능 정리" }).click();
+    await expect(ideaPage).toHaveURL(/\/features/, { timeout: 20_000 });
     await page.goto("/");
+    const ideaPage2Promise = page.context().waitForEvent("page");
     await page.getByTestId(`project-open-${projectId}`).click();
-    await expect(page).toHaveURL(
+    const ideaPage2 = await ideaPage2Promise;
+    await ideaPage2.waitForLoadState("domcontentloaded");
+    await expect(ideaPage2).toHaveURL(
       (url) => {
         try {
           const u = new URL(url);
@@ -69,7 +75,7 @@ test.describe("E2E project", () => {
       },
       { timeout: 20_000 }
     );
-    await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
+    await expect(ideaPage2.getByText(name).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("[E2E-PRJ-003] 상세 — 실행 환경은 프로젝트 관리 설정으로 이동(요약만 상세에 유지)", async ({ page }) => {
@@ -100,9 +106,12 @@ test.describe("E2E project", () => {
   });
 
   test("[E2E-PRJ-002] 시드 프로젝트 진입", async ({ page }) => {
+    const seedPromise = page.context().waitForEvent("page");
     await page.getByTestId("project-open-seed").click();
-    await expect(page).toHaveURL(/\/requirements\?.*projectId=/, { timeout: 20_000 });
-    await expect(page.getByText("Web Meeting MVP").first()).toBeVisible({ timeout: 15_000 });
+    const seedPage = await seedPromise;
+    await seedPage.waitForLoadState("domcontentloaded");
+    await expect(seedPage).toHaveURL(/\/requirements\?.*projectId=/, { timeout: 20_000 });
+    await expect(seedPage.getByText("Web Meeting MVP").first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("[E2E-PRJ-AI-001] Overview: 워크스페이스·저장 계획 기반 Spec 생성 UI (프롬프트 노출 없음)", async ({ page }) => {

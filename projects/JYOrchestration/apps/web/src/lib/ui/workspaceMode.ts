@@ -140,3 +140,59 @@ export function openWorkspaceModePreviewWindow(mode: WorkspaceMode): void {
     /* popup 차단 등 */
   }
 }
+
+/**
+ * 상대 경로+쿼리에 `__jyo_layout_preview`를 붙인 문자열 (href·복사용).
+ * 호스트 없이 `pathname + search + hash`만 반환합니다.
+ */
+export function buildPathWithLayoutPreview(
+  pathnameAndSearch: string,
+  preview: "mobile" | "desktop" | "auto"
+): string {
+  const u = new URL(pathnameAndSearch, "http://localhost");
+  u.searchParams.set(JYO_LAYOUT_PREVIEW_PARAM, preview);
+  return `${u.pathname}${u.search}${u.hash}`;
+}
+
+/** 현재 저장된 작업모드와 동일한 미리보기 쿼리를 붙입니다. */
+export function buildPathWithWorkspaceModePreview(pathnameAndSearch: string, mode: WorkspaceMode): string {
+  return buildPathWithLayoutPreview(
+    pathnameAndSearch,
+    mode.toLowerCase() as "mobile" | "desktop" | "auto"
+  );
+}
+
+/**
+ * 지정 URL을 현재 작업모드에 맞는 레이아웃·창 크기로 연다 (`PREVIEW_WIN`과 URL 쿼리 동기화).
+ * 모바일 브라우저에서는 보통 전체 탭으로 열리며, 쿼리로 레이아웃이 고정된다.
+ */
+export function openUrlInWorkspaceModePreviewWindow(
+  pathnameAndSearch: string,
+  windowName: string,
+  mode: WorkspaceMode
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const u = new URL(pathnameAndSearch, window.location.origin);
+    u.searchParams.set(JYO_LAYOUT_PREVIEW_PARAM, mode.toLowerCase());
+    const { w, h } = PREVIEW_WIN[mode];
+    const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2));
+    const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2));
+    const feats = [
+      `width=${w}`,
+      `height=${h}`,
+      `left=${left}`,
+      `top=${top}`,
+      "scrollbars=yes",
+      "resizable=yes",
+      "menubar=no",
+      "toolbar=no",
+    ].join(",");
+    let opened = window.open(u.toString(), windowName, `noopener,noreferrer,${feats}`);
+    if (!opened) {
+      opened = window.open(u.toString(), "_blank", "noopener,noreferrer");
+    }
+  } catch {
+    /* popup 차단 등 */
+  }
+}
