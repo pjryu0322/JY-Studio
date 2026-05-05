@@ -55,15 +55,29 @@ export function RequirementsMemberInviteModal({
             role: DEFAULT_INVITE_ROLE,
           }),
         });
-        const json = (await res.json()) as { success?: boolean; message?: string };
+        const json = (await res.json()) as {
+          success?: boolean;
+          message?: string;
+          outcome?: "USER_NOT_FOUND" | "ALREADY_MEMBER" | "INVITE_SENT";
+        };
         if (!res.ok || !json.success) {
           setToast({ kind: "err", text: json.message || "초대에 실패했습니다." });
           return;
         }
-        setOptimisticJoined((prev) => new Set(prev).add(u.id));
+        if (json.outcome === "ALREADY_MEMBER") {
+          setToast({ kind: "err", text: json.message || "이미 이 프로젝트의 멤버입니다." });
+          return;
+        }
+        if (json.outcome === "USER_NOT_FOUND") {
+          setToast({ kind: "err", text: json.message || "사용자를 찾을 수 없습니다." });
+          return;
+        }
         onInvited();
         const label = ((u.displayName ?? "").trim() || (u.name || "").trim() || u.email).trim();
-        setToast({ kind: "ok", text: `${label}님이 추가되었습니다.` });
+        setToast({
+          kind: "ok",
+          text: json.outcome === "INVITE_SENT" ? (json.message ?? "프로젝트 초대가 전송되었습니다.") : `${label}님에게 알림을 보냈습니다.`,
+        });
       } finally {
         setBusy(false);
       }

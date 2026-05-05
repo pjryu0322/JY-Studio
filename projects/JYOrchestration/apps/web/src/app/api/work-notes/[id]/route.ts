@@ -29,12 +29,15 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     return NextResponse.json({ success: false, message: "메모를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  try {
-    await requireProjectPermission(existing.projectId, userId, "canViewProject", "PATCH /api/work-notes/[id]");
-  } catch (error) {
-    const denied = rbacErrorResponse(error);
-    if (denied) return denied;
-    throw error;
+  const proj = existing.projectId?.trim() ?? "";
+  if (proj) {
+    try {
+      await requireProjectPermission(proj, userId, "canViewProject", "PATCH /api/work-notes/[id]");
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) return denied;
+      throw error;
+    }
   }
 
   const note = await patchWorkNoteForOwner({ id: noteId, userId, title: body.title, content: body.content });
@@ -59,12 +62,15 @@ export async function DELETE(request: NextRequest, ctx: { params: Promise<{ id: 
     return NextResponse.json({ success: false, message: "메모를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  try {
-    await requireProjectPermission(existing.projectId, userId, "canViewProject", "DELETE /api/work-notes/[id]");
-  } catch (error) {
-    const denied = rbacErrorResponse(error);
-    if (denied) return denied;
-    throw error;
+  const proj = existing.projectId?.trim() ?? "";
+  if (proj) {
+    try {
+      await requireProjectPermission(proj, userId, "canViewProject", "DELETE /api/work-notes/[id]");
+    } catch (error) {
+      const denied = rbacErrorResponse(error);
+      if (denied) return denied;
+      throw error;
+    }
   }
 
   const ok = await deleteWorkNoteForOwner({ id: noteId, userId });

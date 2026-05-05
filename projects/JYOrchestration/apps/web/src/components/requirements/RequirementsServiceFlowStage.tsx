@@ -14,6 +14,7 @@ import { ServiceFlowMappingPanel } from "@/components/service-flow/ServiceFlowMa
 import { ServiceFlowProgressSummary } from "@/components/service-flow/ServiceFlowProgressSummary";
 import { ServiceFlowRemainingDecisionsDialog } from "@/components/service-flow/ServiceFlowRemainingDecisionsDialog";
 import { ServiceFlowSummaryPanel } from "@/components/service-flow/ServiceFlowSummaryPanel";
+import { ChatWindowScreenLabelBottom, ChatWindowScreenLabelTop } from "@/components/workspace/ChatWindowScreenLabelBoundaries";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import { SERVICE_FLOW_STAGE_DECISION_SLOTS } from "@/components/service-flow/serviceFlowStageDerived";
@@ -22,7 +23,7 @@ import {
   serviceFlowStageComposerColumnStyle,
   serviceFlowStageMainChatStyle,
   serviceFlowStageRootSectionStyle,
-  serviceFlowStageScrollAreaStyle,
+  serviceFlowChatMessagesScrollStyle,
   serviceFlowStageShellGridStyle,
 } from "@/components/service-flow/serviceFlowStageLayout";
 import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
@@ -79,11 +80,6 @@ export function RequirementsServiceFlowStage({
   return (
     <section className="jyo-service-flow-stage" style={serviceFlowStageRootSectionStyle}>
       <style>{`
-        @media (max-width: 760px) {
-          .jyo-service-flow-stage-shell {
-            overflow-y: auto !important;
-          }
-        }
         .jyo-service-flow-stage-shell {
           height: 100%;
         }
@@ -97,23 +93,28 @@ export function RequirementsServiceFlowStage({
 
       <div className="jyo-service-flow-stage-shell" style={serviceFlowStageShellGridStyle}>
         <main className="jyo-service-flow-chat-shell" style={serviceFlowStageMainChatStyle} aria-label="액터 및 서비스 흐름 작업 영역">
-          <ScreenLabel label="요구사항-서비스흐름-참여멤버" visible={showScreenLabels} />
-          <ServiceFlowHeader
-            progressPercent={c.derivedApproval.progressPercent}
-            filledSlotCount={c.derivedApproval.filledSlotCount}
-            progressSlotTotal={SERVICE_FLOW_STAGE_DECISION_SLOTS.length}
-            onOpenRemaining={() => c.setRemainingPanelOpen(true)}
-            hint={c.hint}
-            memberControls={{
-              count: c.sidebarParticipants.length,
-              onOpen: () => c.setMembersModalOpen(true),
-            }}
-          />
-          {controllerInput.ideationReady && c.chatActive ? (
-            <ServiceFlowProgressSummary hint={c.hint} helperLine={c.decision.helperLine} />
-          ) : null}
+          <div className="chat-page" style={{ flex: "1 1 auto", minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+            <div className="chat-header-fixed">
+              <ChatWindowScreenLabelTop />
+              <ScreenLabel label="요구사항-서비스흐름-참여멤버" visible={showScreenLabels} />
+              <ServiceFlowHeader
+                progressPercent={c.derivedApproval.progressPercent}
+                filledSlotCount={c.derivedApproval.filledSlotCount}
+                progressSlotTotal={SERVICE_FLOW_STAGE_DECISION_SLOTS.length}
+                onOpenRemaining={() => c.setRemainingPanelOpen(true)}
+                hint={c.hint}
+                memberControls={{
+                  count: c.sidebarParticipants.length,
+                  onOpen: () => c.setMembersModalOpen(true),
+                }}
+              />
+              {controllerInput.ideationReady && c.chatActive ? (
+                <ServiceFlowProgressSummary hint={c.hint} helperLine={c.decision.helperLine} />
+              ) : null}
+            </div>
 
-          <div ref={w.chatScrollRef} style={serviceFlowStageScrollAreaStyle}>
+            <div className="chat-body">
+              <div ref={w.chatScrollRef} className="chat-messages-scroll" style={serviceFlowChatMessagesScrollStyle}>
             {!controllerInput.ideationReady ? (
               <InlineAlert variant="warning" style={{ maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.5 }}>{ideationReadyNotice}</div>
@@ -149,9 +150,12 @@ export function RequirementsServiceFlowStage({
               chatActive={c.chatActive}
               ideationReady={controllerInput.ideationReady}
             />
-          </div>
+              </div>
+            </div>
 
-          <RequirementsChatComposerFooter>
+            <div className="chat-input-fixed">
+              <ChatWindowScreenLabelBottom />
+              <RequirementsChatComposerFooter>
             <div style={serviceFlowStageComposerColumnStyle}>
               {controllerInput.ideationReady && c.chatActive && w.quickReplies && w.quickReplies.length && !w.replying ? (
                 <div style={serviceFlowChipRowStyle}>
@@ -208,7 +212,9 @@ export function RequirementsServiceFlowStage({
                 )}
               />
             </div>
-          </RequirementsChatComposerFooter>
+              </RequirementsChatComposerFooter>
+            </div>
+          </div>
 
           <ServiceFlowRemainingDecisionsDialog
             open={c.remainingPanelOpen}

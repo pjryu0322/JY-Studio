@@ -3,11 +3,8 @@ import type { ProjectRole } from "@/lib/auth/roles";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import {
-  inviteAiProjectMember,
-  inviteHumanProjectMember,
-  requireProjectOwnerMemberAdmin,
-} from "@/lib/service/projectMemberService";
+import { inviteAiProjectMember, requireProjectOwnerMemberAdmin } from "@/lib/service/projectMemberService";
+import { createHumanProjectMemberInvite } from "@/lib/service/projectMemberInviteService";
 import { parseAiMemberRole, parseOrchestrationStage } from "@/lib/ai-member/aiMemberOrchestration";
 import { prisma } from "@/lib/prisma";
 
@@ -131,16 +128,31 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const member = await inviteHumanProjectMember({
+    const inviteResult = await createHumanProjectMemberInvite({
       projectId,
       email,
       role,
       invitedByUserId: userId,
     });
+    if (inviteResult.outcome === "USER_NOT_FOUND") {
+      return NextResponse.json({
+        success: true,
+        outcome: "USER_NOT_FOUND",
+        message: "가입하지 않은 사용자입니다. 초대 링크를 전달해 주세요.",
+      });
+    }
+    if (inviteResult.outcome === "ALREADY_MEMBER") {
+      return NextResponse.json({
+        success: true,
+        outcome: "ALREADY_MEMBER",
+        message: "이미 이 프로젝트의 멤버입니다.",
+      });
+    }
     return NextResponse.json({
       success: true,
-      data: member,
-      message: "멤버가 초대(등록)되었습니다.",
+      outcome: "INVITE_SENT",
+      message: "프로젝트 초대가 전송되었습니다.",
+      data: { inviteId: inviteResult.inviteId, notificationId: inviteResult.notificationId },
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);

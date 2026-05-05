@@ -6,16 +6,10 @@ import {
   subscribeGlobalPreferences,
   writeAiFacilitatorAutoJoin,
   writeDevPanelVisible,
-  writePrototypePreviewMobileDevice,
-  writePrototypePreviewWorkMode,
   writeSettingsMenuPersona,
   type GlobalPreferencesSnapshot,
   type SettingsMenuPersona,
 } from "@/lib/preferences/globalPreferences";
-import type {
-  PrototypePreviewMobileDevice,
-  PrototypePreviewWorkMode,
-} from "@/lib/preferences/prototypePreviewViewport";
 
 /** useSyncExternalStore는 값이 같을 때 동일 객체 참조를 돌려야 무한 렌더를 막을 수 있음 */
 let clientSnapCache: GlobalPreferencesSnapshot | null = null;
@@ -46,8 +40,6 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
   setAiFacilitatorAutoJoin: (v: boolean) => void;
   setDevPanelVisible: (v: boolean) => void;
   setSettingsMenuPersona: (v: SettingsMenuPersona) => void;
-  setPrototypePreviewWorkMode: (v: PrototypePreviewWorkMode) => void;
-  setPrototypePreviewMobileDevice: (v: PrototypePreviewMobileDevice) => void;
 } {
   const snap = useSyncExternalStore(
     subscribeGlobalPreferences,
@@ -64,12 +56,6 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
   const setSettingsMenuPersona = useCallback((v: SettingsMenuPersona) => {
     writeSettingsMenuPersona(v);
   }, []);
-  const setPrototypePreviewWorkMode = useCallback((v: PrototypePreviewWorkMode) => {
-    writePrototypePreviewWorkMode(v);
-  }, []);
-  const setPrototypePreviewMobileDevice = useCallback((v: PrototypePreviewMobileDevice) => {
-    writePrototypePreviewMobileDevice(v);
-  }, []);
 
   return useMemo(
     () => ({
@@ -77,16 +63,7 @@ export function useGlobalPreferences(): GlobalPreferencesSnapshot & {
       setAiFacilitatorAutoJoin,
       setDevPanelVisible,
       setSettingsMenuPersona,
-      setPrototypePreviewWorkMode,
-      setPrototypePreviewMobileDevice,
     }),
-    [
-      snap,
-      setAiFacilitatorAutoJoin,
-      setDevPanelVisible,
-      setSettingsMenuPersona,
-      setPrototypePreviewWorkMode,
-      setPrototypePreviewMobileDevice,
-    ]
+    [snap, setAiFacilitatorAutoJoin, setDevPanelVisible, setSettingsMenuPersona],
   );
 }

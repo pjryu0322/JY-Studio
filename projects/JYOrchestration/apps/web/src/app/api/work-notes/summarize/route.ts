@@ -5,11 +5,12 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workNoteHtmlToPlainForSummary } from "@/lib/worknote/workNoteHtmlPlain";
 import { runWorkNoteSummarizeLlm } from "@/lib/worknote/runWorkNoteSummarizeLlm";
+import { isUserMemoScopeParam } from "@/lib/worknote/workNoteMemoScope";
 
 const MAX_HTML = 400_000;
 const MAX_PLAIN = 120_000;
 
-type Body = { projectId?: string; contentHtml?: string };
+type Body = { projectId?: string; scope?: string; contentHtml?: string };
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,21 +24,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "JSON 본문이 필요합니다." }, { status: 400 });
     }
 
+    const scope = String(body.scope ?? "").trim().toLowerCase();
     const projectId = String(body.projectId ?? "").trim();
     const contentHtml = typeof body.contentHtml === "string" ? body.contentHtml : "";
-    if (!projectId) {
-      return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
+    const isPersonal = isUserMemoScopeParam(scope);
+
+    if (!isPersonal && !projectId) {
+      return NextResponse.json(
+        { success: false, message: "projectId가 필요하거나 scope=user 를 보내세요." },
+        { status: 400 }
+      );
+    }
+    if (isPersonal && projectId) {
+      return NextResponse.json({ success: false, message: "USER 메모 요약에는 projectId를 넣지 마세요." }, { status: 400 });
     }
     if (contentHtml.length > MAX_HTML) {
       return NextResponse.json({ success: false, message: "메모 본문이 너무 깁니다." }, { status: 400 });
     }
 
-    try {
-      await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/work-notes/summarize");
-    } catch (error) {
-      const denied = rbacErrorResponse(error);
-      if (denied) return denied;
-      throw error;
+    if (!isPersonal) {
+      try {
+        await requireProjectPermission(projectId, userId, "canViewProject", "POST /api/work-notes/summarize");
+      } catch (error) {
+        const denied = rbacErrorResponse(error);
+        if (denied) return denied;
+        throw error;
+      }
     }
 
     const plain = workNoteHtmlToPlainForSummary(contentHtml, MAX_PLAIN);

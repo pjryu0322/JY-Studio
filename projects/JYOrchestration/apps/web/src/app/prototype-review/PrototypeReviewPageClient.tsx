@@ -10,12 +10,8 @@ import { ReviewHeader } from "@/components/prototype-review/ReviewHeader";
 import { EmptyState, InlineAlert, LoadingState } from "@/components/ui";
 import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
-import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
 import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
 import { useTimedSuccessErrorToasts } from "@/components/workspace/useTimedSuccessErrorToasts";
-import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
-import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
-import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import type { PrototypeImprovementItem, PrototypeReviewMessage } from "@/lib/prototype/prototypeReviewStore";
 import {
   fetchPrototypeReviewThread,
@@ -54,7 +50,11 @@ export function PrototypeReviewPageClient() {
   const runIdFromUrl = search?.get("runId")?.trim() ?? "";
 
   const { effectiveLayout } = useWorkspaceMode();
-  const isMobile = effectiveLayout === "MOBILE";
+  const [layoutHydrated, setLayoutHydrated] = useState(false);
+  useEffect(() => {
+    setLayoutHydrated(true);
+  }, []);
+  const isMobile = layoutHydrated && effectiveLayout === "MOBILE";
   const [mobileTab, setMobileTab] = useState<MobileReviewTabId>("preview");
 
   const [run, setRun] = useState<PrototypeRun | null>(null);
@@ -80,50 +80,7 @@ export function PrototypeReviewPageClient() {
   const [deployProceedBusy, setDeployProceedBusy] = useState(false);
   const [securityRecheckBusy, setSecurityRecheckBusy] = useState(false);
   const [securityFixBusy, setSecurityFixBusy] = useState(false);
-  const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
-
   const { successToast, errorToast, showSuccessToast } = useTimedSuccessErrorToasts({ successDismissMs: 2800 });
-
-  const prototypeReviewScreenCatalogIds = useMemo(() => {
-    if (!workspaceAiGraph) return undefined;
-    const a = resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "prototype_review");
-    const b = resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "deploy_gate");
-    return [...new Set([...a, ...b])];
-  }, [workspaceAiGraph]);
-
-  useEffect(() => {
-    const pid = projectId.trim();
-    if (!pid) {
-      setWorkspaceAiGraph(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await credentialsIncludeFetch(`/api/project/workspace-ai?projectId=${encodeURIComponent(pid)}`);
-        const json = (await res.json()) as { success?: boolean; data?: { members?: WorkspaceAiGraphMemberWire[] } };
-        if (cancelled) return;
-        if (!res.ok || !json.success || !json.data?.members) {
-          setWorkspaceAiGraph(null);
-          return;
-        }
-        setWorkspaceAiGraph(json.data.members);
-      } catch {
-        if (!cancelled) setWorkspaceAiGraph(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
-
-  useWorkspaceAiEntryNotice({
-    projectId,
-    memberIds: prototypeReviewScreenCatalogIds,
-    memberId: "prototype_review",
-    enabled: Boolean(projectId.trim()),
-    onMessage: showSuccessToast,
-  });
 
   const lastAutoAttemptKeyRef = useRef<string | null>(null);
   const previewStackRef = useRef<HTMLDivElement | null>(null);
@@ -402,8 +359,10 @@ export function PrototypeReviewPageClient() {
     () => ({
       display: "flex" as const,
       flexDirection: "column" as const,
-      minHeight: "min(92vh, 980px)",
-      maxHeight: "calc(100vh - 84px)",
+      flex: "1 1 auto" as const,
+      minHeight: 0,
+      maxHeight:
+        "calc(100dvh - 84px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
       overflow: "hidden" as const,
       padding: 0,
     }),
@@ -532,6 +491,7 @@ export function PrototypeReviewPageClient() {
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             {mobileTab === "preview" ? (
               <PreviewViewport
+                projectId={projectId}
                 run={run}
                 frameLoading={frameLoading}
                 onFrameLoad={() => setFrameLoading(false)}
@@ -554,6 +514,7 @@ export function PrototypeReviewPageClient() {
           }}
         >
           <PreviewViewport
+            projectId={projectId}
             fillContainer
             run={run}
             frameLoading={frameLoading}

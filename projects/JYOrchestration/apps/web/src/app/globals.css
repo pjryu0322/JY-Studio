@@ -25,6 +25,17 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+@keyframes jyo-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.jyo-button-spin {
+  animation: jyo-button-spin 0.75s linear infinite;
+  transform-origin: center;
+}
+
 .ui-screen-label {
   position: absolute;
   top: 6px;
@@ -53,6 +64,50 @@ body {
   white-space: nowrap;
 }
 
+/**
+ * 채팅 화면 3분할 (고정 상단 · 메시지 스크롤 · 고정 입력).
+ * DOM: .chat-page > .chat-header-fixed + .chat-body > .chat-messages-scroll + .chat-input-fixed
+ */
+.chat-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  min-width: 280px;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.chat-header-fixed {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.chat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-messages-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chat-input-fixed {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
 .jyo-platform-main {
   padding: 20px 24px 32px;
   max-width: 1600px;
@@ -65,7 +120,20 @@ body {
 
 .jyo-platform-main.jyo-workspace-mobile {
   max-width: 100%;
-  padding: 12px 12px 24px;
+  padding: 12px 12px max(24px, env(safe-area-inset-bottom, 0px));
+}
+
+/** 요구사항(아이디어·서비스 흐름) 페이지 루트 — 본문이 남은 뷰포트를 채워 채팅 3분할 높이를 확보 */
+.jyo-requirements-page-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-inline: 8px;
+  box-sizing: border-box;
 }
 
 /* 아이디어 구체화: 멤버 패널 + 채팅 가로 배치(좁은 화면에서는 세로 스택) */
@@ -94,8 +162,10 @@ body {
 @media (max-width: 720px) {
   .jyo-requirements-workspace-main {
     flex-direction: column;
+    flex: 1 1 auto;
     min-height: 0;
-    height: auto;
+    height: 100%;
+    max-height: 100%;
   }
 
   .jyo-requirements-member-sidebar {

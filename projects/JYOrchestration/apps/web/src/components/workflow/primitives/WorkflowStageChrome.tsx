@@ -33,16 +33,16 @@ export function WorkflowStageChrome({
 }) {
   const hasHeader = Boolean(String(title ?? "").trim()) || Boolean(String(subtitle ?? "").trim()) || Boolean(right) || Boolean(backHref);
   const body = (
-    <div>
+    <div style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 0, width: "100%" }}>
       {hasHeader ? (
         <WorkflowPageHeader title={title} subtitle={subtitle} right={right} backHref={backHref} backLabel={backLabel} />
       ) : null}
 
-      <div style={{ marginTop: hasHeader ? 12 : 0, marginBottom: 4 }}>
+      <div style={{ marginTop: hasHeader ? 12 : 0, marginBottom: 4, flexShrink: 0 }}>
         <ProjectWorkflowNav />
       </div>
 
-      <div style={{ marginTop: 14 }}>
+      <div style={{ marginTop: 14, flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <StageWorkspaceLayout style={stageLayoutStyle}>{children}</StageWorkspaceLayout>
       </div>
     </div>

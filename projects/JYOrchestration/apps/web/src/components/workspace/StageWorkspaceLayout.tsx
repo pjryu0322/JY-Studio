@@ -32,7 +32,7 @@ export function StageWorkspaceLayout({
   return (
     <section
       className={["jyo-stage-workspace-baseline", className].filter(Boolean).join(" ")}
-      style={{ ...baseline, ...style }}
+      style={{ ...baseline, flex: "1 1 auto", minWidth: 0, ...style }}
       aria-label="단계 워크스페이스"
     >
       {children}

@@ -1,4 +1,4 @@
-import type { IntegrationCapability, IntegrationProvider, Prisma } from "@prisma/client";
+import { Prisma, type IntegrationCapability, type IntegrationProvider } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { decryptIntegrationSecret } from "@/lib/integrations/credentialCrypto";
 
@@ -21,6 +21,25 @@ export type ResolveIntegrationErr = {
 };
 
 export type ResolveIntegrationResult = ResolveIntegrationOk | ResolveIntegrationErr;
+
+async function findProjectIntegrationOverrideRow(
+  projectId: string,
+  capability: IntegrationCapability
+): Promise<{ userIntegrationId: string | null; metaOverride: Prisma.JsonValue | null } | null> {
+  try {
+    return await prisma.projectIntegration.findUnique({
+      where: { projectId_capability: { projectId, capability } },
+      select: { userIntegrationId: true, metaOverride: true },
+    });
+  } catch (e) {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2022") throw e;
+  }
+  const legacy = await prisma.projectIntegration.findUnique({
+    where: { projectId_capability: { projectId, capability } },
+    select: { userIntegrationId: true },
+  });
+  return legacy ? { ...legacy, metaOverride: null as Prisma.JsonValue | null } : null;
+}
 
 function mergeMeta(
   base: Prisma.JsonValue | null,
@@ -112,10 +131,7 @@ export async function resolveIntegration(input: {
   }
 
   const [projRow, wsRow] = await Promise.all([
-    prisma.projectIntegration.findUnique({
-      where: { projectId_capability: { projectId, capability } },
-      select: { userIntegrationId: true, metaOverride: true },
-    }),
+    findProjectIntegrationOverrideRow(projectId, capability),
     prisma.workspaceIntegration.findUnique({
       where: { projectId_capability: { projectId, capability } },
       select: { userIntegrationId: true },
@@ -123,7 +139,7 @@ export async function resolveIntegration(input: {
   ]);
 
   const overrideId = projRow?.userIntegrationId ?? wsRow?.userIntegrationId ?? null;
-  const metaOverride = projRow?.metaOverride ?? null;
+  const metaOverride = projRow && "metaOverride" in projRow ? projRow.metaOverride : null;
 
   if (overrideId) {
     const hit = await tryDecryptOwnedUserIntegration(overrideId, capability, ownerUserId);
@@ -146,16 +162,26 @@ export async function resolveIntegration(input: {
     };
   }
 
-  const def = await prisma.userIntegration.findFirst({
-    where: {
-      userId: ownerUserId,
-      capability,
-      isDefault: true,
-      status: "ACTIVE",
-    },
-    orderBy: { updatedAt: "desc" },
-    select: { id: true },
-  });
+  let def: { id: string } | null = null;
+  try {
+    def = await prisma.userIntegration.findFirst({
+      where: {
+        userId: ownerUserId,
+        capability,
+        isDefault: true,
+        status: "ACTIVE",
+      },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true },
+    });
+  } catch (e) {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== "P2022") throw e;
+    def = await prisma.userIntegration.findFirst({
+      where: { userId: ownerUserId, capability, status: "ACTIVE" },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true },
+    });
+  }
   if (def) {
     const hit = await tryDecryptOwnedUserIntegration(def.id, capability, ownerUserId);
     if (hit.ok) {

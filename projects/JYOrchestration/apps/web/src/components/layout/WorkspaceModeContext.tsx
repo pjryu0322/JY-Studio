@@ -4,8 +4,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useLayoutMobileBreakpoint } from "@/components/ui/breakpoints";
 import {
   inferDefaultWorkspaceModeFromWidth,
+  parseLayoutPreviewParam,
+  readLayoutPreviewSessionMode,
   readStoredWorkspaceMode,
   resolveEffectiveLayout,
+  stripLayoutPreviewParamFromAddressBar,
+  syncLayoutPreviewSessionIfOpen,
+  writeLayoutPreviewSessionMode,
   writeStoredWorkspaceMode,
   type WorkspaceEffectiveLayout,
   type WorkspaceMode,
@@ -26,6 +31,18 @@ export function WorkspaceModeProvider({ children }: { readonly children: ReactNo
   /* 최초 마운트: localStorage 또는 뷰포트 기반 기본(DESKTOP/모바일)으로 동기화 */
   /* eslint-disable react-hooks/set-state-in-effect -- 단일 bootstrap */
   useEffect(() => {
+    const fromSession = readLayoutPreviewSessionMode();
+    if (fromSession) {
+      setModeState(fromSession);
+      return;
+    }
+    const fromUrl = parseLayoutPreviewParam(window.location.search);
+    if (fromUrl) {
+      setModeState(fromUrl);
+      writeLayoutPreviewSessionMode(fromUrl);
+      stripLayoutPreviewParamFromAddressBar();
+      return;
+    }
     const stored = readStoredWorkspaceMode();
     if (stored) {
       setModeState(stored);
@@ -40,6 +57,7 @@ export function WorkspaceModeProvider({ children }: { readonly children: ReactNo
   const setMode = useCallback((next: WorkspaceMode) => {
     setModeState(next);
     writeStoredWorkspaceMode(next);
+    syncLayoutPreviewSessionIfOpen(next);
   }, []);
 
   const effectiveLayout = useMemo(

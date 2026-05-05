@@ -12,7 +12,6 @@ import { WorkspaceComposerFooter } from "@/components/workspace/WorkspaceCompose
 import { WorkspaceMainPanel } from "@/components/workspace/WorkspaceMainPanel";
 import pillStyles from "@/components/workspace/workspaceProgressPill.module.css";
 import { useProjectWorkspaceParticipants } from "@/components/workspace/useProjectWorkspaceParticipants";
-import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
 import { useTimedSuccessErrorToasts } from "@/components/workspace/useTimedSuccessErrorToasts";
@@ -45,14 +44,6 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
       aiLastInvoke: null,
       aiInvokePending: false,
     });
-
-  useWorkspaceAiEntryNotice({
-    projectId,
-    memberIds: workspaceScreenAiMemberIds,
-    memberId: "feature_planning",
-    enabled: Boolean(projectId.trim()) && Boolean(shell.serviceFlowReady),
-    onMessage: showSuccessToast,
-  });
 
   const displayMessages = useMemo(
     () => enrichFeaturePlanningDisplayMessages(shell.messages, shell.artifact),
@@ -182,7 +173,7 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
   );
 
   const mainBody = (
-    <div className={styles.body}>
+    <div className={`chat-messages-scroll ${styles.body}`}>
       <div className={styles.mainStack}>{mainEl}</div>
     </div>
   );

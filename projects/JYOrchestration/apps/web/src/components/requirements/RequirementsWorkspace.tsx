@@ -12,7 +12,6 @@ import { RequirementsMemberInviteModal } from "@/components/requirements/Require
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
 import { useWorkspaceSaveToast } from "@/components/workspace/useWorkspaceSaveToast";
-import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
 import { resolveParticipantContextKey, useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
 import { useRequirementsServiceFlowDraft } from "@/components/requirements/workspace/useRequirementsServiceFlowDraft";
 import { useRequirementsProjectLoad } from "@/components/requirements/workspace/useRequirementsProjectLoad";
@@ -454,14 +453,6 @@ export function RequirementsWorkspace({
     () => buildPlatformMemberActivityFromRequirementsMessages(ideationConversationOnly, serviceFlowWorkshopPersisted),
     [ideationConversationOnly, serviceFlowWorkshopPersisted],
   );
-
-  useWorkspaceAiEntryNotice({
-    projectId: resolvedProjectId,
-    memberIds: inIdeationStage ? ideationScreenCatalogIds : serviceFlowScreenCatalogIds,
-    memberId: participantAiMemberId,
-    enabled: Boolean(resolvedProjectId.trim()),
-    onMessage: showSuccessToast,
-  });
 
   const { participants, participantBadgeCount } = useWorkspaceParticipants({
     members,
@@ -1738,7 +1729,14 @@ export function RequirementsWorkspace({
         : !project
           ? "불러오는 중…"
           : "이름 미설정";
-  const shellStyle = { display: "flex", flexDirection: "column" as const, gap: 0, minHeight: 0 };
+  const shellStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    flex: "1 1 auto",
+    minHeight: 0,
+    width: "100%",
+  };
   const mainRow: CSSProperties = {
     flex: "1 1 auto",
     gap: 0,

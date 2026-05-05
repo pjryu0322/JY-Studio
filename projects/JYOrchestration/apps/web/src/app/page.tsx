@@ -8,7 +8,6 @@ import { fetchExecutionSetup, patchSpecWorkspace } from "@/components/project-sp
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { Button, Card, EmptyState, InlineAlert, LoadingState, SectionCard, uiTokens as t } from "@/components/ui";
-import { WorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
@@ -41,6 +40,45 @@ function ProjectCardSettingsIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function HomeProjectCreateIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
+    </svg>
+  );
+}
+
+function HomeProjectCreateSpinner() {
+  return (
+    <svg
+      className="jyo-button-spin"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" strokeOpacity="0.22" />
+      <path d="M21 12a9 9 0 0 0-9-9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ProjectCardDeleteIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
     </svg>
   );
 }
@@ -84,38 +122,37 @@ type SessionUser = {
 };
 
 /** Presentational style bundles only — logic stays in HomePage. */
-const homeOpenProjectLinkStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "8px 12px",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.accentTeal}`,
-  background: t.accentTealSurface,
-  color: t.accentTealFg,
-  fontSize: 13,
+const homeProjectTitleLinkStyle: CSSProperties = {
+  display: "block",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: 15,
   fontWeight: 800,
+  color: t.textPrimary,
   textDecoration: "none",
+  minWidth: 0,
 };
 
-const homeProjectIconLinkStyle: CSSProperties = {
+const homeProjectMenuActionLink: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
-  width: 36,
-  height: 36,
-  padding: 0,
+  gap: 10,
+  width: "100%",
+  padding: "8px 10px",
   borderRadius: t.radiusMd,
-  border: `1px solid ${t.border}`,
+  border: `1px solid ${t.borderStrong}`,
   background: t.bgPage,
-  color: t.textSecondary,
+  color: t.textPrimary,
+  fontSize: 12,
+  fontWeight: 800,
   textDecoration: "none",
   boxSizing: "border-box",
 };
 
-const homeProjectIconMutedStyle: CSSProperties = {
-  ...homeProjectIconLinkStyle,
-  opacity: 0.42,
+const homeProjectMenuActionMuted: CSSProperties = {
+  ...homeProjectMenuActionLink,
+  opacity: 0.48,
   cursor: "not-allowed",
 };
 
@@ -376,9 +413,25 @@ export default function HomePage() {
     }
   }, [editDescTarget, editDescBusy, editDescValue]);
 
+  /** 상단 내비·페이지 패딩·`AppFlowGuidance` 하단 여백을 뺀 높이 — 목록만 내부 스크롤(목록 영역 약 20px 축소 반영) */
+  const homeMainHeight = "calc(100dvh - 128px - env(safe-area-inset-bottom, 0px))";
+
   return (
-    <ResponsiveShell currentNav="home">
-      <ResponsivePageContainer className="relative" style={{ paddingTop: 8, paddingBottom: 20 }} data-ui-label="[A] Home">
+    <ResponsiveShell>
+      <ResponsivePageContainer
+        className="relative"
+        data-ui-label="[A] Home"
+        style={{
+          paddingTop: 8,
+          paddingBottom: 20,
+          height: homeMainHeight,
+          maxHeight: homeMainHeight,
+          display: "flex",
+          flexDirection: "column",
+          boxSizing: "border-box",
+          overflow: "hidden",
+        }}
+      >
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
 
       {createToast ? (
@@ -391,7 +444,16 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <SectionCard title="새 프로젝트 생성" data-ui-label="[B] Create Project Form" style={{ marginBottom: 20 }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
+      <SectionCard data-ui-label="[B] Create Project Form" style={{ flexShrink: 0, marginBottom: 0 }}>
         <ScreenLabel label="워크스페이스-프로젝트생성-섹션" visible={showScreenLabels} />
 
         <form data-testid="home-create-project-form" className="space-y-3" onSubmit={handleCreateProject}>
@@ -400,18 +462,42 @@ export default function HomePage() {
               {errorMessage}
             </InlineAlert>
           ) : null}
-          <div className="relative">
-            <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트명-입력" visible={showScreenLabels} />
-            <input
-              type="text"
-              placeholder="프로젝트명"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={submitting}
-              data-testid="home-project-name"
-              data-ui-label="[B-1] Project Name"
-              className="h-11 w-full rounded-lg border border-neutral-300 px-3 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
-            />
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="relative min-w-0 flex-1">
+              <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트명-입력" visible={showScreenLabels} />
+              <input
+                type="text"
+                placeholder="프로젝트명"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={submitting}
+                data-testid="home-project-name"
+                data-ui-label="[B-1] Project Name"
+                className="h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
+              />
+            </div>
+            <div className="relative flex shrink-0 self-center">
+              <ScreenLabel label="워크스페이스-프로젝트생성-생성버튼" visible={showScreenLabels} />
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                disabled={submitting}
+                data-testid="home-create-project"
+                data-ui-label="[B-6] Create Project Submit"
+                aria-label={submitting ? "프로젝트 생성 중" : "프로젝트 생성"}
+                title={submitting ? "생성 중…" : "프로젝트 생성"}
+                style={{
+                  width: 34,
+                  height: 34,
+                  minWidth: 34,
+                  padding: 0,
+                  borderRadius: 10,
+                }}
+              >
+                {submitting ? <HomeProjectCreateSpinner /> : <HomeProjectCreateIcon />}
+              </Button>
+            </div>
           </div>
 
           <div className="relative">
@@ -426,32 +512,41 @@ export default function HomePage() {
               className="min-h-[120px] w-full resize-y rounded-lg border border-neutral-300 px-3 py-2 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
             />
           </div>
-
-          <div className="relative inline-block w-fit">
-            <ScreenLabel label="워크스페이스-프로젝트생성-생성버튼" visible={showScreenLabels} />
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              loading={submitting}
-              data-testid="home-create-project"
-              data-ui-label="[B-6] Create Project Submit"
-            >
-              {submitting ? "생성 중..." : "프로젝트 생성"}
-            </Button>
-          </div>
         </form>
       </SectionCard>
 
       <SectionCard
         id="mobile-nav-projects"
-        title="프로젝트 목록"
         data-ui-label="[C] Project List"
-        style={{ marginBottom: 24 }}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          marginBottom: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+        contentStyle={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
         <ScreenLabel label="워크스페이스-프로젝트목록-섹션" visible={showScreenLabels} />
 
-        <div className="relative" data-ui-label="[C-1] Project List Content">
+        <div
+          className="relative"
+          data-ui-label="[C-1] Project List Content"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+            paddingRight: 4,
+          }}
+        >
         {loading ? (
           <LoadingState />
         ) : listMessage ? (
@@ -500,14 +595,35 @@ export default function HomePage() {
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    alignItems: "flex-start",
+                    alignItems: "center",
                     gap: 12,
                     marginBottom: 8,
                   }}
                 >
                   <div className="relative" style={{ minWidth: 0, flex: 1 }}>
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-프로젝트명" visible={showScreenLabels} />
-                    <strong>{project.name}</strong>
+                    {canOpenProject ? (
+                      <Link
+                        href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
+                        data-testid={
+                          project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                        title={`${project.name} — 아이디어 구체화로 이동`}
+                        style={homeProjectTitleLinkStyle}
+                      >
+                        {project.name}
+                      </Link>
+                    ) : (
+                      <strong
+                        style={{
+                          ...homeProjectTitleLinkStyle,
+                          color: project.status === PROJECT_LIFECYCLE_DELETED ? t.textMuted : t.textPrimary,
+                        }}
+                      >
+                        {project.name}
+                      </strong>
+                    )}
                   </div>
                   <div
                     style={{
@@ -515,88 +631,11 @@ export default function HomePage() {
                       alignItems: "center",
                       gap: 8,
                       flexShrink: 0,
-                      flexWrap: "wrap",
                       justifyContent: "flex-end",
                     }}
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
-                    {canOpenProject ? (
-                      <>
-                        <Link
-                          href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
-                          data-testid={
-                            project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          style={homeOpenProjectLinkStyle}
-                        >
-                          열기
-                        </Link>
-                        {previewEnabled ? (
-                          <Link
-                            href={prototypeReviewHref}
-                            data-testid={`home-prototype-preview-${project.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            style={homeProjectIconLinkStyle}
-                            aria-label="프로토타입 검토"
-                            title="프로토타입 검토"
-                          >
-                            <ProjectCardPreviewIcon />
-                          </Link>
-                        ) : (
-                          <span
-                            role="img"
-                            style={homeProjectIconMutedStyle}
-                            aria-label="미리보기 URL이 준비된 뒤 프로토타입 검토를 사용할 수 있습니다"
-                            title="미리보기가 준비되면 프로토타입 검토로 이동할 수 있습니다"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <ProjectCardPreviewIcon />
-                          </span>
-                        )}
-                        {deployEnabled ? (
-                          <Link
-                            href={executionHref}
-                            data-testid={`home-prototype-deploy-${project.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            style={homeProjectIconLinkStyle}
-                            aria-label="배포 · 실행"
-                            title="배포(프로토타입 실행)"
-                          >
-                            <ProjectCardDeployIcon />
-                          </Link>
-                        ) : (
-                          <span
-                            role="img"
-                            style={homeProjectIconMutedStyle}
-                            aria-label="배포는 미리보기 준비·머지·배포 단계가 된 뒤 사용할 수 있습니다"
-                            title="미리보기 준비·머지·배포 단계가 되면 실행(배포) 화면으로 이동할 수 있습니다"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <ProjectCardDeployIcon />
-                          </span>
-                        )}
-                        <WorkNoteButton projectId={project.id} />
-                      </>
-                    ) : null}
-                    {showOwnerDelete ? (
-                      <div className="relative">
-                        <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
-                        <Button
-                          type="button"
-                          variant="danger"
-                          size="sm"
-                          data-testid={`home-delete-project-${project.id}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget({ id: project.id, name: project.name });
-                          }}
-                        >
-                          삭제
-                        </Button>
-                      </div>
-                    ) : null}
                     <div data-home-project-card-menu-root={project.id} className="relative">
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-메뉴" visible={showScreenLabels} />
                     <Button
@@ -608,8 +647,8 @@ export default function HomePage() {
                       }
                       aria-expanded={menuOpen}
                       aria-haspopup="dialog"
-                      aria-label="프로젝트 메뉴"
-                      title="프로젝트 메뉴"
+                      aria-label="프로젝트 미리보기·배포·삭제 및 설정"
+                      title="미리보기·배포·삭제·설정"
                       onClick={(e) => {
                         e.stopPropagation();
                         setProjectCardMenuId((cur) => (cur === project.id ? null : project.id));
@@ -626,7 +665,7 @@ export default function HomePage() {
                     {menuOpen ? (
                       <div
                         role="dialog"
-                        aria-label="프로젝트 상태"
+                        aria-label="프로젝트 작업 및 상태"
                         style={{
                           position: "absolute",
                           top: "calc(100% + 6px)",
@@ -641,7 +680,103 @@ export default function HomePage() {
                         }}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div style={{ fontSize: 12, fontWeight: 800, color: t.textMuted, marginBottom: 8 }}>상태 요약</div>
+                        {canOpenProject ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                            {previewEnabled ? (
+                              <Link
+                                href={prototypeReviewHref}
+                                data-testid={`home-prototype-preview-${project.id}`}
+                                onClick={() => setProjectCardMenuId(null)}
+                                style={homeProjectMenuActionLink}
+                                aria-label="미리보기 · 프로토타입 검토"
+                                title="프로토타입 검토"
+                              >
+                                <ProjectCardPreviewIcon />
+                                <span>미리보기</span>
+                              </Link>
+                            ) : (
+                              <div
+                                style={{
+                                  ...homeProjectMenuActionMuted,
+                                  border: `1px solid ${t.border}`,
+                                  background: t.bgCard,
+                                  color: t.textSecondary,
+                                }}
+                                aria-label="미리보기 URL이 준비된 뒤 프로토타입 검토를 사용할 수 있습니다"
+                                title="미리보기가 준비되면 프로토타입 검토로 이동할 수 있습니다"
+                              >
+                                <ProjectCardPreviewIcon />
+                                <span>미리보기</span>
+                              </div>
+                            )}
+                            {deployEnabled ? (
+                              <Link
+                                href={executionHref}
+                                data-testid={`home-prototype-deploy-${project.id}`}
+                                onClick={() => setProjectCardMenuId(null)}
+                                style={homeProjectMenuActionLink}
+                                aria-label="배포 · 실행"
+                                title="배포(프로토타입 실행)"
+                              >
+                                <ProjectCardDeployIcon />
+                                <span>배포</span>
+                              </Link>
+                            ) : (
+                              <div
+                                style={{
+                                  ...homeProjectMenuActionMuted,
+                                  border: `1px solid ${t.border}`,
+                                  background: t.bgCard,
+                                  color: t.textSecondary,
+                                }}
+                                aria-label="배포는 미리보기 준비·머지·배포 단계가 된 뒤 사용할 수 있습니다"
+                                title="미리보기 준비·머지·배포 단계가 되면 실행(배포) 화면으로 이동할 수 있습니다"
+                              >
+                                <ProjectCardDeployIcon />
+                                <span>배포</span>
+                              </div>
+                            )}
+                            {showOwnerDelete ? (
+                              <>
+                                <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
+                                <button
+                                  type="button"
+                                  data-testid={`home-delete-project-${project.id}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setProjectCardMenuId(null);
+                                    setDeleteTarget({ id: project.id, name: project.name });
+                                  }}
+                                  style={{
+                                    ...homeProjectMenuActionLink,
+                                    border: `1px solid ${t.danger}`,
+                                    background: "#fff",
+                                    color: t.danger,
+                                    cursor: "pointer",
+                                    fontFamily: "inherit",
+                                  }}
+                                  aria-label="프로젝트 삭제"
+                                  title="프로젝트 삭제"
+                                >
+                                  <ProjectCardDeleteIcon />
+                                  <span>삭제</span>
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: t.textMuted,
+                            marginBottom: 8,
+                            paddingTop: canOpenProject ? 4 : 0,
+                            borderTop: canOpenProject ? `1px solid ${t.border}` : "none",
+                          }}
+                        >
+                          상태 요약
+                        </div>
                         <dl
                           style={{
                             margin: 0,
@@ -784,6 +919,7 @@ export default function HomePage() {
         )}
         </div>
       </SectionCard>
+      </div>
       {deleteTarget ? (
         <ProjectDeleteConfirmModal
           open={Boolean(deleteTarget)}

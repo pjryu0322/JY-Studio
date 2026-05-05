@@ -4,18 +4,22 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { requireProjectOwnerMemberAdmin } from "@/lib/service/projectMemberService";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
-import { allCatalogMemberIds } from "@/lib/workspace-ai/workspaceScreenKeys";
+import { prisma } from "@/lib/prisma";
 import {
   getWorkspaceAiGraphForProject,
+  getWorkspaceAiOwnerIntegrationPicklists,
   replaceWorkspaceAiGraph,
   type WorkspaceAiGraphSaveMemberInput,
 } from "@/lib/service/workspaceAiMemberGraphService";
-import { parseWorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
+import { allCatalogMemberIds, parseWorkspaceScreenKey, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
 
 type PutMember = {
   catalogKey?: string;
   enabled?: boolean;
   screenKeys?: string[];
+  screens?: readonly { screenKey?: string; autoRun?: boolean }[];
+  enginePreference?: string | null;
+  pinnedUserIntegrationId?: string | null;
 };
 
 function parseCatalogKey(raw: string): WorkspaceAiMemberId | null {
@@ -42,8 +46,13 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const members = await getWorkspaceAiGraphForProject(projectId);
-    return NextResponse.json({ success: true, data: { members } });
+    const [members, proj] = await Promise.all([
+      getWorkspaceAiGraphForProject(projectId),
+      prisma.project.findUnique({ where: { id: projectId }, select: { ownerUserId: true } }),
+    ]);
+    const ownerUserId = String(proj?.ownerUserId ?? "").trim();
+    const integrationPicklists = ownerUserId ? await getWorkspaceAiOwnerIntegrationPicklists(ownerUserId) : { LLM: [], CODE_AGENT: [] };
+    return NextResponse.json({ success: true, data: { members, integrationPicklists } });
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;
@@ -79,9 +88,38 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ success: false, message: "유효하지 않은 catalogKey가 있습니다." }, { status: 400 });
       }
       const enabled = Boolean(row.enabled);
+      const screensRaw = Array.isArray(row.screens) ? row.screens : [];
+      const screens =
+        screensRaw.length > 0
+          ? (screensRaw
+              .map((s) => {
+                const sk = parseWorkspaceScreenKey(s?.screenKey);
+                if (!sk) return null;
+                return { screenKey: sk, autoRun: Boolean(s?.autoRun) };
+              })
+              .filter(Boolean) as { screenKey: WorkspaceScreenKey; autoRun: boolean }[])
+          : undefined;
       const skRaw = Array.isArray(row.screenKeys) ? row.screenKeys : [];
-      const screenKeys = skRaw.map((s) => parseWorkspaceScreenKey(s)).filter(Boolean) as WorkspaceAiGraphSaveMemberInput["screenKeys"];
-      members.push({ catalogKey, enabled, screenKeys });
+      const screenKeys = skRaw.map((s) => parseWorkspaceScreenKey(s)).filter(Boolean) as WorkspaceScreenKey[];
+      const hasPinKey = Object.prototype.hasOwnProperty.call(row, "pinnedUserIntegrationId");
+      const pinnedUserIntegrationId = !hasPinKey
+        ? undefined
+        : row.pinnedUserIntegrationId === null || row.pinnedUserIntegrationId === ""
+          ? null
+          : String(row.pinnedUserIntegrationId).trim() || null;
+      const hasEngine = Object.prototype.hasOwnProperty.call(row, "enginePreference");
+      const enginePreference = !hasEngine
+        ? undefined
+        : row.enginePreference === null || row.enginePreference === ""
+          ? "USER_DEFAULT"
+          : String(row.enginePreference).trim().toUpperCase();
+      members.push({
+        catalogKey,
+        enabled,
+        ...(screens?.length ? { screens } : { screenKeys }),
+        ...(hasEngine ? { enginePreference } : {}),
+        pinnedUserIntegrationId,
+      });
     }
 
     const expected = allCatalogMemberIds().length;

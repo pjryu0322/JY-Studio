@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { ChatWindowScreenLabelBottom, ChatWindowScreenLabelTop } from "@/components/workspace/ChatWindowScreenLabelBoundaries";
 import styles from "@/components/workspace/workspaceShell.module.css";
 
 /**
@@ -21,16 +22,21 @@ export function WorkspaceShell({
   readonly "data-testid"?: string;
 }) {
   return (
-    <section
+    <div
       data-testid={dataTestId}
-      className={[styles.shell, className].filter(Boolean).join(" ")}
+      className={["chat-page", className].filter(Boolean).join(" ")}
+      role="region"
       aria-label="워크스페이스"
     >
-      {top ? <div className={styles.top}>{top}</div> : null}
-      <div className={styles.body}>
-        <div className={styles.bodyMain}>{children}</div>
+      <div className="chat-header-fixed">
+        <ChatWindowScreenLabelTop />
+        {top ? <div className={styles.top}>{top}</div> : null}
       </div>
-      <div className={styles.footer}>{footer}</div>
-    </section>
+      <div className="chat-body">{children}</div>
+      <div className="chat-input-fixed">
+        <ChatWindowScreenLabelBottom />
+        <div className={styles.footer}>{footer}</div>
+      </div>
+    </div>
   );
 }

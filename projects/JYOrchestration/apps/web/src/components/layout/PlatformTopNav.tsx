@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { PlatformSettingsMenu } from "@/components/layout/PlatformSettingsMenu";
+import { TopRightToolbar } from "@/components/layout/TopRightToolbar";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
@@ -145,20 +145,20 @@ export function PlatformTopNav() {
           margin: "0 auto",
           padding: "10px 20px",
           display: "flex",
-          flexWrap: "wrap",
-          alignItems: "flex-start",
+          flexWrap: "nowrap",
+          alignItems: "center",
           gap: 12,
-          rowGap: 12,
           minHeight: 44,
         }}
       >
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
             minWidth: 0,
-            flex: "1 1 200px",
+            flex: "1 1 auto",
             overflow: "hidden",
           }}
         >
@@ -177,158 +177,44 @@ export function PlatformTopNav() {
             JY Orchestration
           </Link>
           {projectName ? (
-            <Link
-              href="/"
-              title={projectName}
-              style={{
-                marginTop: 2,
-                fontWeight: 700,
-                fontSize: 12.5,
-                color: "#64748b",
-                textDecoration: "none",
-                letterSpacing: "-0.01em",
-                minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                maxWidth: "100%",
-              }}
-            >
-              {projectName}
-            </Link>
-          ) : null}
-        </div>
-
-        <div style={{ flex: "1 1 16px", minWidth: 8 }} aria-hidden />
-
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            gap: 10,
-            rowGap: 10,
-            flex: "1 1 260px",
-            minWidth: 0,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: 6,
-              minWidth: 0,
-              flex: "1 1 160px",
-            }}
-          >
-            {meReady && me ? (
-              <span
+            <>
+              <span aria-hidden style={{ color: "#cbd5e1", flexShrink: 0, fontWeight: 300, userSelect: "none" }}>
+                |
+              </span>
+              <Link
+                href="/"
+                title={projectName}
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#334155",
-                  maxWidth: "min(100%, 360px)",
+                  fontWeight: 700,
+                  fontSize: 12.5,
+                  color: "#64748b",
+                  textDecoration: "none",
+                  letterSpacing: "-0.01em",
+                  minWidth: 0,
+                  flex: "1 1 auto",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                 }}
               >
-                <Link
-                  href="/account"
-                  prefetch={false}
-                  aria-label="내 계정"
-                  title="내 계정"
-                  style={{
-                    display: "inline-flex",
-                    flexShrink: 0,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textDecoration: "none",
-                    borderRadius: 9999,
-                    outlineOffset: 2,
-                  }}
-                >
-                  {me.avatarUrl && !avatarLoadFailed ? (
-                    <img
-                      src={me.avatarUrl}
-                      alt=""
-                      width={30}
-                      height={30}
-                      onError={() => setAvatarLoadFailed(true)}
-                      style={{ borderRadius: 9999, objectFit: "cover", border: "1px solid #e2e8f0", display: "block" }}
-                    />
-                  ) : (
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: 9999,
-                        border: "1px solid #e2e8f0",
-                        background: "#e2e8f0",
-                        color: "#475569",
-                        fontSize: 12,
-                        fontWeight: 800,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {(me.displayName.trim().charAt(0) || "?").toUpperCase()}
-                    </span>
-                  )}
-                </Link>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
-                  {me.displayName}
-                  {me.email ? (
-                    <span style={{ fontWeight: 500, color: "#64748b" }}> ({me.email})</span>
-                  ) : null}
-                </span>
-              </span>
-            ) : meReady ? (
-              <span style={{ fontSize: 13, color: "#94a3b8" }}>로그인 필요</span>
-            ) : (
-              <span style={{ fontSize: 13, color: "#94a3b8" }}>…</span>
-            )}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              gap: compactHeader ? 6 : 8,
-              flexShrink: 0,
-              ...(compactHeader ? { maxWidth: "100%" as const } : {}),
-            }}
-          >
-            {me ? (
-              <button
-                type="button"
-                data-testid="platform-top-logout"
-                onClick={() => void handleLogout()}
-                style={{
-                  padding: "7px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #cbd5e1",
-                  background: "#fff",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "#334155",
-                }}
-              >
-                로그아웃
-              </button>
-            ) : null}
-            <PlatformSettingsMenu />
-          </div>
+                {projectName}
+              </Link>
+            </>
+          ) : null}
+        </div>
+
+        <div style={{ flexShrink: 0, marginLeft: "auto", display: "flex", alignItems: "center", minWidth: 0 }}>
+          <TopRightToolbar
+            meReady={meReady}
+            me={me}
+            avatarLoadFailed={avatarLoadFailed}
+            onAvatarError={() => setAvatarLoadFailed(true)}
+            hasSession={Boolean(me)}
+            compact={compactHeader}
+            workNotesProjectId={projectId?.trim() ? projectId.trim() : null}
+            workNotesProjectName={projectName}
+            onLogout={handleLogout}
+          />
         </div>
       </div>
     </header>

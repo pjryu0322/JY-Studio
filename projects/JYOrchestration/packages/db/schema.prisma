@@ -27,6 +27,13 @@ enum ProjectMemberType {
   AI
 }
 
+/// 사람 멤버 초대(수락 전)
+enum ProjectMemberInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 /// AI(또는 멤버) 액션 유형
 enum AiMemberActionType {
   /// 코드/변경 리뷰 요청
@@ -174,6 +181,12 @@ model User {
   memberships   ProjectMember[]
   /// 초대한 프로젝트 멤버 목록
   invitedProjectMembers ProjectMember[] @relation("ProjectMemberInvitedBy")
+  /// 받은 프로젝트 멤버 초대
+  receivedProjectMemberInvites ProjectMemberInvite[] @relation("ProjectMemberInvitee")
+  /// 보낸 프로젝트 멤버 초대
+  sentProjectMemberInvites ProjectMemberInvite[] @relation("ProjectMemberInviteInvitedBy")
+  /// 플랫폼 알림(인앱)
+  platformNotifications PlatformNotification[]
   /// 요청한 AI 멤버 액션 목록
   requestedMemberActions ProjectMemberAction[] @relation("ProjectMemberActionRequestedBy")
   /// 검토 완료로 표시한 AI 멤버 액션
@@ -274,7 +287,7 @@ model ProjectIntegration {
   @@map("project_integrations")
 }
 
-/// 플랫폼 AI 멤버(카탈로그 행) ↔ capability 및 선택적 연동 핀
+/// 플랫폼 AI 멤버(카탈로그 행) ↔ capability 및 선택적 연동 핀 (논리명: project_ai_member_bindings)
 model AiMemberProvider {
   id                  String            @id @default(cuid())
   workspaceAiMemberId String
@@ -406,6 +419,8 @@ model Project {
   workspaceAiMembers WorkspaceAiMember[]
   workspaceIntegrations WorkspaceIntegration[]
   projectIntegrations   ProjectIntegration[]
+  /// 대기 중인 사람 멤버 초대
+  memberInvites ProjectMemberInvite[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -418,6 +433,8 @@ model WorkspaceAiMember {
   /// ideation | actor_flow | feature_planning | prototype_build | prototype_review | memo
   catalogKey String
   enabled    Boolean  @default(true)
+  /// USER_DEFAULT | OPENAI | ANTHROPIC | GEMINI | CURSOR — null/비움은 사용자 기본 연동 사용
+  enginePreference String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -435,6 +452,8 @@ model WorkspaceScreenAiMapping {
   workspaceAiMemberId String
   /// requirements_ideation | requirements_service_flow | feature_planning | prototype_build | prototype_review | work_note
   screenKey           String
+  /// 해당 단계에서 오케스트레이션 자동 실행 허용(참여와 별개로 저장)
+  autoRun             Boolean           @default(false)
   createdAt           DateTime          @default(now())
   workspaceAiMember   WorkspaceAiMember @relation(fields: [workspaceAiMemberId], references: [id], onDelete: Cascade)
 
@@ -448,11 +467,11 @@ enum WorkNoteVisibility {
   PRIVATE
 }
 
-/// 프로젝트·사용자별 개인 작업 메모(여러 개·제목 지정 가능, 채팅과 별도 저장)
+/// 개인 작업 메모 — `projectId`가 있으면 프로젝트 범위, 없으면 계정 전용(프로젝트 생성 전)
 model WorkNote {
   id         String             @id @default(cuid())
-  projectId  String
-  project    Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   userId     String
   user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   title      String             @default("") @db.Text
@@ -462,6 +481,7 @@ model WorkNote {
   updatedAt  DateTime           @updatedAt
 
   @@index([projectId, userId])
+  @@index([userId, updatedAt])
   @@map("work_notes")
 }
 
@@ -897,6 +917,46 @@ model ProjectMember {
   @@index([projectId, memberType])
   @@index([projectId, role])
   @@map("project_members")
+}
+
+/// 사람 멤버 초대(수락 시 project_members 행 생성)
+model ProjectMemberInvite {
+  id              String                  @id @default(cuid())
+  projectId       String
+  inviteeUserId   String
+  invitedByUserId String
+  role            ProjectMemberRole
+  status          ProjectMemberInviteStatus @default(PENDING)
+  createdAt       DateTime                @default(now())
+  respondedAt     DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitee   User    @relation("ProjectMemberInvitee", fields: [inviteeUserId], references: [id], onDelete: Cascade)
+  invitedBy User  @relation("ProjectMemberInviteInvitedBy", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, inviteeUserId])
+  @@index([inviteeUserId, status])
+  @@map("project_member_invites")
+}
+
+/// 플랫폼 인앱 알림
+model PlatformNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  /// 확장 데이터(초대 ID 등). inviteId가 있으면 조회·일괄 읽음에 사용
+  data      Json?
+  inviteId  String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, inviteId])
+  @@map("platform_notifications")
 }
 
 /// 프로젝트 멤버(주로 AI)에 대한 협업 액션 요청

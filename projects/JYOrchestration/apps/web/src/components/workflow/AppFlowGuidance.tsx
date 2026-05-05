@@ -84,12 +84,16 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
     current === "planning" && Boolean(guidanceProjectId) && !gates.executionEnabled && Boolean(gates.executionReason);
 
   return (
-    <div data-testid="app-flow-guidance">
+    <div
+      data-testid="app-flow-guidance"
+      style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minHeight: 0, width: "100%" }}
+    >
       {showPlanningInlineWarning ? (
         <div
           role="status"
           style={{
             marginBottom: 12,
+            flexShrink: 0,
             padding: "8px 10px",
             border: "1px solid #fde68a",
             borderRadius: 10,
@@ -102,7 +106,9 @@ export function AppFlowGuidance({ children }: { readonly children: React.ReactNo
           생성 준비 확인: {gates.executionReason}
         </div>
       ) : null}
-      <div style={{ marginBottom: 20 }}>{children}</div>
+      <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", width: "100%", paddingBottom: 20 }}>
+        {children}
+      </div>
     </div>
   );
 }
