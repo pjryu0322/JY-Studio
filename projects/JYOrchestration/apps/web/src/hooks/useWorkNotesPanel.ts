@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { editorHtmlToNoteRaw, escapeHtmlText, sanitizeWorkNoteHtml } from "@/lib/worknote/workNoteEditorHtml";
+import type { WorkNotesMemoScope } from "@/lib/worknote/workNoteMemoScope";
 
 export type WorkNoteSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -11,6 +12,14 @@ export type WorkNoteListItem = {
   content: string;
   updatedAt: string;
 };
+
+export type UseWorkNotesPanelArgs = Readonly<{
+  readonly memoScope: WorkNotesMemoScope;
+  /** PROJECT일 때만 사용 */
+  readonly projectId: string | null;
+  /** 드로어 열림 + 해당 탭 활성일 때만 목록 로드·저장 */
+  readonly enabled: boolean;
+}>;
 
 function normalizePersistContent(html: string): string {
   return sanitizeWorkNoteHtml(editorHtmlToNoteRaw(html));
@@ -29,7 +38,9 @@ function parseNoteDto(n: unknown): WorkNoteListItem | null {
   };
 }
 
-export function useWorkNotesPanel(projectId: string, open: boolean) {
+export function useWorkNotesPanel(args: UseWorkNotesPanelArgs) {
+  const { memoScope, projectId, enabled } = args;
+
   const [notes, setNotes] = useState<WorkNoteListItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -45,7 +56,7 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
   const titleRef = useRef("");
   const textRef = useRef("");
   const notesRef = useRef<WorkNoteListItem[]>([]);
-  const prevOpenRef = useRef(open);
+  const prevEnabledRef = useRef(enabled);
 
   useEffect(() => {
     notesRef.current = notes;
@@ -62,8 +73,7 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
   }, [text]);
 
   const persist = useCallback(async (id: string, titleRaw: string, htmlRaw: string) => {
-    const pid = projectId.trim();
-    if (!pid || !id) return;
+    if (!id) return;
     const body = normalizePersistContent(htmlRaw);
     setSaveState("saving");
     setSaveError(null);
@@ -91,7 +101,7 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
       setSaveState("error");
       setSaveError(e instanceof Error ? e.message : "저장에 실패했습니다.");
     }
-  }, [projectId]);
+  }, []);
 
   const flushActive = useCallback(async () => {
     const id = activeIdRef.current;
@@ -99,30 +109,37 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
     await persist(id, titleRef.current, textRef.current);
   }, [persist]);
 
-  const loadNotes = useCallback(async (signal?: AbortSignal): Promise<WorkNoteListItem[]> => {
-    const pid = projectId.trim();
-    if (!pid) return [];
-    const res = await fetch(`/api/work-notes?projectId=${encodeURIComponent(pid)}`, {
-      credentials: "include",
-      cache: "no-store",
-      signal,
-    });
-    const rawText = await res.text();
-    let json: { success?: boolean; message?: string; data?: { notes?: unknown } } = {};
-    try {
-      json = rawText ? (JSON.parse(rawText) as typeof json) : {};
-    } catch {
-      throw new Error("서버 응답을 해석할 수 없습니다.");
-    }
-    if (!res.ok || !json.success) {
-      throw new Error(typeof json.message === "string" ? json.message : "불러오지 못했습니다.");
-    }
-    const rawList = json.data?.notes;
-    return Array.isArray(rawList) ? (rawList.map(parseNoteDto).filter(Boolean) as WorkNoteListItem[]) : [];
-  }, [projectId]);
+  const loadNotes = useCallback(
+    async (signal?: AbortSignal): Promise<WorkNoteListItem[]> => {
+      const qs =
+        memoScope === "USER"
+          ? "scope=user"
+          : `projectId=${encodeURIComponent(String(projectId ?? "").trim())}`;
+      const res = await fetch(`/api/work-notes?${qs}`, {
+        credentials: "include",
+        cache: "no-store",
+        signal,
+      });
+      const rawText = await res.text();
+      let json: { success?: boolean; message?: string; data?: { notes?: unknown } } = {};
+      try {
+        json = rawText ? (JSON.parse(rawText) as typeof json) : {};
+      } catch {
+        throw new Error("서버 응답을 해석할 수 없습니다.");
+      }
+      if (!res.ok || !json.success) {
+        throw new Error(typeof json.message === "string" ? json.message : "불러오지 못했습니다.");
+      }
+      const rawList = json.data?.notes;
+      return Array.isArray(rawList) ? (rawList.map(parseNoteDto).filter(Boolean) as WorkNoteListItem[]) : [];
+    },
+    [memoScope, projectId]
+  );
 
   useEffect(() => {
-    if (!open || !projectId.trim()) return;
+    if (!enabled) return;
+    if (memoScope === "PROJECT" && !String(projectId ?? "").trim()) return;
+
     const ac = new AbortController();
     setListError(null);
     setListLoading(true);
@@ -163,14 +180,14 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
     })();
 
     return () => ac.abort();
-  }, [open, projectId, loadNotes]);
+  }, [enabled, memoScope, projectId, loadNotes]);
 
   useEffect(() => {
-    if (prevOpenRef.current && !open) {
+    if (prevEnabledRef.current && !enabled) {
       void flushActive();
     }
-    prevOpenRef.current = open;
-  }, [open, flushActive]);
+    prevEnabledRef.current = enabled;
+  }, [enabled, flushActive]);
 
   const selectNote = useCallback(
     async (id: string) => {
@@ -188,18 +205,20 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
   );
 
   const createNote = useCallback(async () => {
-    const pid = projectId.trim();
-    if (!pid) return;
     await flushActive();
     const nextTitle = `새 메모 ${notesRef.current.length + 1}`;
     setSaveState("saving");
     setSaveError(null);
     try {
+      const body =
+        memoScope === "USER"
+          ? { scope: "user", title: nextTitle, content: "" }
+          : { projectId: String(projectId ?? "").trim(), title: nextTitle, content: "" };
       const res = await fetch(`/api/work-notes`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: pid, title: nextTitle, content: "" }),
+        body: JSON.stringify(body),
       });
       const raw = await res.text();
       let json: { success?: boolean; message?: string; data?: { note?: unknown } } = {};
@@ -221,7 +240,7 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
       setSaveState("error");
       setSaveError(e instanceof Error ? e.message : "메모를 만들지 못했습니다.");
     }
-  }, [flushActive, projectId]);
+  }, [flushActive, memoScope, projectId]);
 
   const appendSnippetFromChat = useCallback(
     async (plain: string) => {
@@ -236,9 +255,9 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
       const escaped = escapeHtmlText(t);
       const block = `<p style="margin:12px 0 0;padding:10px 12px;border-left:3px solid #0d9488;background:#f0fdf4;font-size:14px;line-height:1.55;color:#0f172a"><strong style="color:#0f766e">대화에서 붙여넣음</strong><br/>${escaped.replace(/\n/g, "<br>")}</p>`;
       setText((prev) => {
-        const p = String(prev ?? "").trim();
-        if (!p || p === "<br>" || p === "<div><br></div>") return block;
-        return `${p}<br/>${block}`;
+        const pv = String(prev ?? "").trim();
+        if (!pv || pv === "<br>" || pv === "<div><br></div>") return block;
+        return `${pv}<br/>${block}`;
       });
     },
     [createNote]
@@ -246,8 +265,6 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
 
   const deleteNote = useCallback(
     async (id: string) => {
-      const pid = projectId.trim();
-      if (!pid) return;
       await flushActive();
       try {
         const res = await fetch(`/api/work-notes/${encodeURIComponent(id)}`, {
@@ -290,11 +307,11 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
         setListError(e instanceof Error ? e.message : "목록을 다시 불러오지 못했습니다.");
       }
     },
-    [flushActive, loadNotes, projectId]
+    [flushActive, loadNotes]
   );
 
   useEffect(() => {
-    if (!open || !editorHydrated || !activeId) return;
+    if (!enabled || !editorHydrated || !activeId) return;
     if (skipNextAutosave.current) {
       skipNextAutosave.current = false;
       return;
@@ -303,7 +320,7 @@ export function useWorkNotesPanel(projectId: string, open: boolean) {
       void persist(activeId, title, text);
     }, 1200);
     return () => window.clearTimeout(t);
-  }, [text, title, open, editorHydrated, activeId, persist]);
+  }, [text, title, enabled, editorHydrated, activeId, persist]);
 
   return {
     listLoading,

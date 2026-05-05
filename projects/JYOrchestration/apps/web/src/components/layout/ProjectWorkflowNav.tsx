@@ -4,15 +4,13 @@ import type { CSSProperties } from "react";
 import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { DesktopWorkflowTabs } from "@/components/layout/DesktopWorkflowTabs";
 import { MobileStepSelector } from "@/components/layout/MobileStepSelector";
-import { useWorkNoteComposerInsertHandler } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { PromptTimelineDebugButton } from "@/components/debug/PromptTimelineDebugButton";
-import { WorkNoteButton } from "@/components/worknote/WorkNoteButton";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
 import {
@@ -49,9 +47,12 @@ function ProjectWorkflowNavInner() {
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
   const { effectiveLayout } = useWorkspaceMode();
-  const compactWorkflowNav = effectiveLayout === "MOBILE";
-  const insertMemoIntoComposer = useWorkNoteComposerInsertHandler();
-
+  /** `PlatformTopNav`와 동일 — 하이드레이션 완료 전에는 항상 데스크톱 내비 트리를 맞춰 SSR·클라이언트 HTML 불일치를 방지 */
+  const [layoutHydrated, setLayoutHydrated] = useState(false);
+  useEffect(() => {
+    setLayoutHydrated(true);
+  }, []);
+  const compactWorkflowNav = layoutHydrated && effectiveLayout === "MOBILE";
   const projectContextId = useMemo(
     () => resolveWorkflowProjectContextId(pathname, searchParams),
     [pathname, searchParams]
@@ -75,14 +76,8 @@ function ProjectWorkflowNavInner() {
 
   if (!hasProjectContext || !projectContextId) return null;
 
-  const workNote = <WorkNoteButton projectId={projectContextId} onShareToComposer={insertMemoIntoComposer} />;
   const promptTimeline = isPromptTimelineDebugClient() ? <PromptTimelineDebugButton projectId={projectContextId} /> : null;
-  const workflowTrailing = (
-    <>
-      {workNote}
-      {promptTimeline}
-    </>
-  );
+  const workflowTrailing = <>{promptTimeline}</>;
 
   if (compactWorkflowNav) {
     return (

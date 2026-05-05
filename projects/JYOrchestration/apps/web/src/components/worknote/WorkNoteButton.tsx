@@ -5,37 +5,75 @@ import { useWorkNotesPanel } from "@/hooks/useWorkNotesPanel";
 import { WorkNoteDrawer } from "@/components/worknote/WorkNoteDrawer";
 import { useWorkNoteChatSelectionBridge } from "@/components/worknote/WorkNoteChatSelectionBridge";
 
-export function WorkNoteButton(p: {
-  readonly projectId: string;
+export type WorkNoteButtonProps = Readonly<{
+  /** URL 기준 프로젝트 컨텍스트 — 없으면 USER 메모만 */
+  notesProjectId: string | null;
+  readonly projectDisplayName?: string | null;
   readonly onShareToComposer?: (text: string) => void;
-}) {
+}>;
+
+export function WorkNoteButton(p: WorkNoteButtonProps) {
   const [open, setOpen] = useState(false);
-  const w = useWorkNotesPanel(p.projectId, open);
+  const ctxPid = p.notesProjectId?.trim() ?? "";
+  const inProject = Boolean(ctxPid);
+  const [memoTab, setMemoTab] = useState<"USER" | "PROJECT">("PROJECT");
+
+  const userPanel = useWorkNotesPanel({
+    memoScope: "USER",
+    projectId: null,
+    enabled: open && (!inProject || memoTab === "USER"),
+  });
+  const projectPanel = useWorkNotesPanel({
+    memoScope: "PROJECT",
+    projectId: ctxPid || null,
+    enabled: open && inProject && memoTab === "PROJECT",
+  });
+
+  const active = !inProject || memoTab === "USER" ? userPanel : projectPanel;
+
+  const switchMemoTab = useCallback(
+    async (next: "USER" | "PROJECT") => {
+      if (!inProject || next === memoTab) return;
+      if (memoTab === "USER") await userPanel.flushPending();
+      else await projectPanel.flushPending();
+      setMemoTab(next);
+    },
+    [inProject, memoTab, userPanel, projectPanel]
+  );
+
+  useEffect(() => {
+    if (!open || !inProject) setMemoTab("PROJECT");
+  }, [open, inProject, ctxPid]);
+
   const bridge = useWorkNoteChatSelectionBridge();
   const pendingChatSnippetRef = useRef<string | null>(null);
-  const pid = p.projectId.trim();
 
   const flushPendingChatSnippet = useCallback(() => {
     const chunk = pendingChatSnippetRef.current;
-    if (!chunk || !open || !w.editorHydrated) return;
+    if (!chunk || !open || !active.editorHydrated) return;
     pendingChatSnippetRef.current = null;
-    void w.appendSnippetFromChat(chunk);
-  }, [open, w.appendSnippetFromChat, w.editorHydrated]);
+    void active.appendSnippetFromChat(chunk);
+  }, [open, active.editorHydrated, active.appendSnippetFromChat]);
 
   useEffect(() => {
     flushPendingChatSnippet();
-  }, [flushPendingChatSnippet, w.activeId]);
+  }, [flushPendingChatSnippet, active.activeId]);
 
   useEffect(() => {
-    if (!bridge || bridge.projectId !== pid) return;
+    if (!bridge || !ctxPid || bridge.projectId !== ctxPid) return;
     bridge.registerWorkNoteAppendFromChat((text) => {
       pendingChatSnippetRef.current = text;
+      setMemoTab("PROJECT");
       setOpen(true);
     });
     return () => bridge.registerWorkNoteAppendFromChat(null);
-  }, [bridge, pid]);
+  }, [bridge, ctxPid]);
 
-  if (!p.projectId.trim()) return null;
+  const activeMemoScope = !inProject ? "USER" : memoTab;
+  const activeProjectId = inProject && memoTab === "PROJECT" ? ctxPid : null;
+
+  const memoBadgeKind = activeMemoScope;
+  const memoBadgeSubtitle = activeMemoScope === "USER" ? "내 작업메모" : (p.projectDisplayName?.trim() || "이 프로젝트");
 
   return (
     <>
@@ -68,23 +106,29 @@ export function WorkNoteButton(p: {
         </svg>
       </button>
       <WorkNoteDrawer
-        projectId={pid}
+        activeMemoScope={activeMemoScope}
+        activeProjectId={activeProjectId}
+        memoBadgeKind={memoBadgeKind}
+        memoBadgeSubtitle={memoBadgeSubtitle}
+        showMemoTabs={inProject}
+        memoTab={inProject ? memoTab : undefined}
+        onMemoTabChange={inProject ? switchMemoTab : undefined}
         open={open}
         onClose={() => setOpen(false)}
-        listLoading={w.listLoading}
-        listError={w.listError}
-        notes={w.notes}
-        activeId={w.activeId}
-        selectNote={w.selectNote}
-        createNote={w.createNote}
-        deleteNote={w.deleteNote}
-        title={w.title}
-        setTitle={w.setTitle}
-        text={w.text}
-        onChangeText={w.setText}
-        editorHydrated={w.editorHydrated}
-        saveState={w.saveState}
-        saveError={w.saveError}
+        listLoading={active.listLoading}
+        listError={active.listError}
+        notes={active.notes}
+        activeId={active.activeId}
+        selectNote={active.selectNote}
+        createNote={active.createNote}
+        deleteNote={active.deleteNote}
+        title={active.title}
+        setTitle={active.setTitle}
+        text={active.text}
+        onChangeText={active.setText}
+        editorHydrated={active.editorHydrated}
+        saveState={active.saveState}
+        saveError={active.saveError}
         onShareToComposer={p.onShareToComposer}
       />
     </>

@@ -1,19 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { ProjectRole } from "@/lib/auth/roles";
 import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import {
-  getWorkspaceAiExecutionProviderLabel,
   isWorkspaceAiMemberEnabled,
   listPlatformAiMemberCatalog,
+  primaryIntegrationCapabilityForCatalogMember,
   type WorkspaceAiMemberId,
 } from "@/lib/ai-member/platformAiMembers";
+import {
+  engineChoicesForCapability,
+  enginePreferenceLabel,
+  type WorkspaceAiEnginePreferenceKey,
+} from "@/lib/workspace-ai/workspaceAiEnginePreference";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { allCatalogMemberIds, WORKSPACE_SCREEN_KEYS, WORKSPACE_SCREEN_LABEL, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import { WorkspaceAiMemberDetailModal, WorkspaceAiPersonaPromptModal } from "@/components/project-members/WorkspaceAiMemberPersonaDialogs";
+import { MEDIA_QUERY } from "@/components/ui/breakpoints";
+import { useMediaQuery } from "@/components/ui/useMediaQuery";
+
+type AiDraftMemberRow = {
+  catalogKey: WorkspaceAiMemberId;
+  enabled: boolean;
+  screenKeys: WorkspaceScreenKey[];
+  screenAutoRun: Partial<Record<WorkspaceScreenKey, boolean>>;
+  enginePreference: string;
+};
 
 type ApiProjectMember = {
   memberId: string;
@@ -25,48 +41,49 @@ type ApiProjectMember = {
   isOwner: boolean;
 };
 
-const HUMAN_ROLE_OPTIONS: readonly { readonly value: ProjectRole; readonly label: string }[] = [
-  { value: "OWNER", label: "소유자" },
-  { value: "EDITOR", label: "멤버(편집)" },
-  { value: "REVIEWER", label: "전문가(검토)" },
-  { value: "VIEWER", label: "보기 전용" },
-];
+export type BannerTone = "success" | "info" | "neutral";
 
-function normalizeProjectRole(raw: string): ProjectRole | null {
-  const r = String(raw ?? "").trim().toUpperCase();
-  if (r === "OWNER" || r === "EDITOR" || r === "REVIEWER" || r === "VIEWER") return r;
-  return null;
+function adminBannerBoxStyle(tone: BannerTone): { background: string; border: string; color: string } {
+  if (tone === "success") {
+    return { background: "#f0fdf4", border: "1px solid #86efac", color: "#14532d" };
+  }
+  if (tone === "info") {
+    return { background: "#eff6ff", border: "1px solid #93c5fd", color: "#1e3a8a" };
+  }
+  return { background: "#f8fafc", border: "1px solid #e2e8f0", color: "#334155" };
 }
 
+/** 이메일 초대 시 UI에서 역할을 고르지 않음 — 수락 시 부여되는 기본 역할 */
+const DEFAULT_EMAIL_INVITE_ROLE: ProjectRole = "EDITOR";
+
 export function ProjectMembersAdminClient({ initialProjectId }: { readonly initialProjectId: string }) {
+  const router = useRouter();
+  /** 테이블 대신 카드·세로 스택 (워크플로 내비와 동일 ~720px) */
+  const isNarrow = useMediaQuery(MEDIA_QUERY.workflowNavNarrow);
   const projectId = initialProjectId.trim();
   const [tab, setTab] = useState<"people" | "ai">("people");
   const [members, setMembers] = useState<ApiProjectMember[]>([]);
   const [loadState, setLoadState] = useState<"idle" | "loading" | "error">("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [banner, setBanner] = useState<{ text: string; tone: BannerTone } | null>(null);
 
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<ProjectRole>("EDITOR");
   const [inviteBusy, setInviteBusy] = useState(false);
 
-  const [pendingRoleByMember, setPendingRoleByMember] = useState<Record<string, ProjectRole>>({});
-  const [roleSaveBusyId, setRoleSaveBusyId] = useState<string | null>(null);
   const [removeBusyId, setRemoveBusyId] = useState<string | null>(null);
 
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const [aiDraft, setAiDraft] = useState<
-    { readonly catalogKey: WorkspaceAiMemberId; readonly enabled: boolean; readonly screenKeys: WorkspaceScreenKey[] }[] | null
-  >(null);
+  const [aiDraft, setAiDraft] = useState<AiDraftMemberRow[] | null>(null);
   const [aiGraphLoadState, setAiGraphLoadState] = useState<"idle" | "loading" | "error">("idle");
   const [aiGraphError, setAiGraphError] = useState<string | null>(null);
   const [aiSaveBusy, setAiSaveBusy] = useState(false);
   const [aiDetailMemberId, setAiDetailMemberId] = useState<WorkspaceAiMemberId | null>(null);
   const [aiPromptMemberId, setAiPromptMemberId] = useState<WorkspaceAiMemberId | null>(null);
 
-  const joinLink = useMemo(() => {
-    if (!projectId || typeof window === "undefined") return "";
-    return `${window.location.origin}/requirements?projectId=${encodeURIComponent(projectId)}`;
+  /** SSR/CSR 동일 문자열 — 전체 URL은 복사 시에만 붙여 하이드레이션 불일치를 막습니다. */
+  const joinPath = useMemo(() => {
+    if (!projectId) return "";
+    return `/requirements?projectId=${encodeURIComponent(projectId)}`;
   }, [projectId]);
 
   const reloadMembers = useCallback(async () => {
@@ -87,14 +104,6 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
         return;
       }
       setMembers(json.data);
-      setPendingRoleByMember((prev) => {
-        const next = { ...prev };
-        for (const m of json.data!) {
-          const r = normalizeProjectRole(m.role);
-          if (r) next[m.memberId] = r;
-        }
-        return next;
-      });
       setLoadState("idle");
     } catch {
       setLoadState("error");
@@ -135,7 +144,13 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
     setAiGraphError(null);
     try {
       const res = await credentialsIncludeFetch(`/api/project/workspace-ai?projectId=${encodeURIComponent(projectId)}`);
-      const json = (await res.json()) as { success?: boolean; data?: { members?: WorkspaceAiGraphMemberWire[] }; message?: string };
+      const json = (await res.json()) as {
+        success?: boolean;
+        data?: {
+          members?: WorkspaceAiGraphMemberWire[];
+        };
+        message?: string;
+      };
       if (!res.ok || !json.success || !json.data?.members) {
         setAiGraphLoadState("error");
         setAiGraphError(json.message || "AI 설정을 불러오지 못했습니다.");
@@ -143,11 +158,19 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
         return;
       }
       setAiDraft(
-        json.data.members.map((m) => ({
-          catalogKey: m.catalogKey,
-          enabled: m.enabled,
-          screenKeys: [...m.screenKeys],
-        }))
+        json.data.members.map((m) => {
+          const screenAutoRun: Partial<Record<WorkspaceScreenKey, boolean>> = {};
+          for (const s of m.screens ?? []) {
+            screenAutoRun[s.screenKey] = s.autoRun;
+          }
+          return {
+            catalogKey: m.catalogKey,
+            enabled: m.enabled,
+            screenKeys: [...m.screenKeys],
+            screenAutoRun,
+            enginePreference: m.enginePreference ?? "USER_DEFAULT",
+          };
+        })
       );
       setAiGraphLoadState("idle");
     } catch {
@@ -168,6 +191,10 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
     );
   }, []);
 
+  const setEnginePreference = useCallback((catalogKey: WorkspaceAiMemberId, enginePreference: string) => {
+    setAiDraft((prev) => (prev ? prev.map((r) => (r.catalogKey === catalogKey ? { ...r, enginePreference } : r)) : prev));
+  }, []);
+
   const toggleCatalogOnScreen = useCallback((catalogKey: WorkspaceAiMemberId, screenKey: WorkspaceScreenKey, checked: boolean) => {
     setAiDraft((prev) =>
       prev
@@ -180,9 +207,31 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                       ? r.screenKeys
                       : [...r.screenKeys, screenKey]
                     : r.screenKeys.filter((s) => s !== screenKey),
+                  screenAutoRun: checked
+                    ? r.screenAutoRun
+                    : Object.fromEntries(
+                        Object.entries(r.screenAutoRun).filter(([k]) => k !== screenKey)
+                      ) as Partial<Record<WorkspaceScreenKey, boolean>>,
                 }
               : r
           )
+        : prev
+    );
+  }, []);
+
+  const toggleScreenAutoRun = useCallback((catalogKey: WorkspaceAiMemberId, screenKey: WorkspaceScreenKey, autoRun: boolean) => {
+    setAiDraft((prev) =>
+      prev
+        ? prev.map((r) => {
+            if (r.catalogKey !== catalogKey) return r;
+            const screenKeys =
+              autoRun && !r.screenKeys.includes(screenKey) ? [...r.screenKeys, screenKey] : r.screenKeys;
+            return {
+              ...r,
+              screenKeys,
+              screenAutoRun: { ...r.screenAutoRun, [screenKey]: autoRun },
+            };
+          })
         : prev
     );
   }, []);
@@ -194,10 +243,16 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
     try {
       const members = allCatalogMemberIds().map((catalogKey) => {
         const row = aiDraft.find((r) => r.catalogKey === catalogKey);
+        const screenKeys = row?.screenKeys ?? [];
+        const screens = screenKeys.map((sk) => ({
+          screenKey: sk,
+          autoRun: Boolean(row?.screenAutoRun[sk]),
+        }));
         return {
           catalogKey,
           enabled: row?.enabled ?? true,
-          screenKeys: row?.screenKeys ?? [],
+          screens,
+          enginePreference: row?.enginePreference ?? "USER_DEFAULT",
         };
       });
       const res = await credentialsIncludeFetch("/api/project/workspace-ai", {
@@ -207,33 +262,35 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
       });
       const json = (await res.json()) as { success?: boolean; message?: string };
       if (!res.ok || !json.success) {
-        setBanner(json.message || "AI 설정 저장에 실패했습니다.");
+        setBanner({ text: json.message || "AI 설정 저장에 실패했습니다.", tone: "neutral" });
         return;
       }
-      setBanner("AI 멤버·화면 참여 설정을 저장했습니다.");
+      setBanner({ text: "AI 멤버·화면 참여 설정을 저장했습니다.", tone: "success" });
       await loadWorkspaceAiGraph();
     } catch {
-      setBanner("AI 설정 저장 중 오류가 발생했습니다.");
+      setBanner({ text: "AI 설정 저장 중 오류가 발생했습니다.", tone: "neutral" });
     } finally {
       setAiSaveBusy(false);
     }
   }, [projectId, aiDraft, canAdminWorkspaceAi, loadWorkspaceAiGraph]);
 
   const copyJoinLink = useCallback(async () => {
-    if (!joinLink) return;
+    if (!joinPath) return;
     try {
-      await navigator.clipboard.writeText(joinLink);
-      setBanner("프로젝트 입장 링크를 클립보드에 복사했습니다.");
+      const absolute =
+        typeof window !== "undefined" ? `${window.location.origin}${joinPath}` : joinPath;
+      await navigator.clipboard.writeText(absolute);
+      setBanner({ text: "프로젝트 입장 링크를 클립보드에 복사했습니다.", tone: "success" });
     } catch {
-      setBanner("클립보드 복사에 실패했습니다. 링크를 직접 선택해 복사해 주세요.");
+      setBanner({ text: "클립보드 복사에 실패했습니다. 링크를 직접 선택해 복사해 주세요.", tone: "neutral" });
     }
-  }, [joinLink]);
+  }, [joinPath]);
 
   const onInvite = useCallback(async () => {
     if (!projectId) return;
     const email = inviteEmail.trim().toLowerCase();
     if (!email) {
-      setBanner("초대할 이메일을 입력해 주세요.");
+      setBanner({ text: "초대할 이메일을 입력해 주세요.", tone: "neutral" });
       return;
     }
     setInviteBusy(true);
@@ -246,51 +303,42 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           projectId,
           memberType: "HUMAN",
           email,
-          role: inviteRole,
+          role: DEFAULT_EMAIL_INVITE_ROLE,
         }),
       });
-      const json = (await res.json()) as { success?: boolean; message?: string };
+      const json = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        outcome?: "USER_NOT_FOUND" | "ALREADY_MEMBER" | "INVITE_SENT";
+      };
       if (!res.ok || !json.success) {
-        setBanner(json.message || "초대에 실패했습니다.");
+        setBanner({ text: json.message || "초대에 실패했습니다.", tone: "neutral" });
+        return;
+      }
+      if (json.outcome === "USER_NOT_FOUND") {
+        setBanner({
+          text: json.message ?? "가입하지 않은 사용자입니다. 초대 링크를 전달해 주세요.",
+          tone: "info",
+        });
+        return;
+      }
+      if (json.outcome === "ALREADY_MEMBER") {
+        setBanner({ text: json.message ?? "이미 이 프로젝트의 멤버입니다.", tone: "info" });
+        return;
+      }
+      if (json.outcome === "INVITE_SENT") {
+        setInviteEmail("");
+        setBanner({ text: json.message ?? "프로젝트 초대가 전송되었습니다.", tone: "success" });
         return;
       }
       setInviteEmail("");
-      setBanner("멤버를 초대했습니다.");
-      await reloadMembers();
+      setBanner({ text: json.message || "처리되었습니다.", tone: "success" });
     } catch {
-      setBanner("초대 요청 중 오류가 발생했습니다.");
+      setBanner({ text: "초대 요청 중 오류가 발생했습니다.", tone: "neutral" });
     } finally {
       setInviteBusy(false);
     }
-  }, [projectId, inviteEmail, inviteRole, reloadMembers]);
-
-  const saveRole = useCallback(
-    async (memberId: string) => {
-      const role = pendingRoleByMember[memberId];
-      if (!role) return;
-      setRoleSaveBusyId(memberId);
-      setBanner(null);
-      try {
-        const res = await credentialsIncludeFetch(`/api/project/members/${encodeURIComponent(memberId)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role }),
-        });
-        const json = (await res.json()) as { success?: boolean; message?: string };
-        if (!res.ok || !json.success) {
-          setBanner(json.message || "역할 변경에 실패했습니다.");
-          return;
-        }
-        setBanner("역할을 저장했습니다.");
-        await reloadMembers();
-      } catch {
-        setBanner("역할 저장 중 오류가 발생했습니다.");
-      } finally {
-        setRoleSaveBusyId(null);
-      }
-    },
-    [pendingRoleByMember, reloadMembers]
-  );
+  }, [projectId, inviteEmail]);
 
   const removeMember = useCallback(
     async (memberId: string, label: string) => {
@@ -303,13 +351,13 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
         });
         const json = (await res.json()) as { success?: boolean; message?: string };
         if (!res.ok || !json.success) {
-          setBanner(json.message || "제거에 실패했습니다.");
+          setBanner({ text: json.message || "제거에 실패했습니다.", tone: "neutral" });
           return;
         }
-        setBanner("멤버를 제거했습니다.");
+        setBanner({ text: "멤버를 제거했습니다.", tone: "success" });
         await reloadMembers();
       } catch {
-        setBanner("제거 중 오류가 발생했습니다.");
+        setBanner({ text: "제거 중 오류가 발생했습니다.", tone: "neutral" });
       } finally {
         setRemoveBusyId(null);
       }
@@ -340,17 +388,57 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
     );
   }
 
+  const tap = { minHeight: 44 } as const;
+
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px 48px" }}>
-      <div style={{ marginBottom: 20, display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#0f172a" }}>프로젝트 멤버 관리</h1>
-        <span style={{ fontSize: 13, color: "#64748b" }}>프로젝트 ID · {projectId}</span>
-        <Link
-          href={`/requirements?projectId=${encodeURIComponent(projectId)}`}
-          style={{ marginLeft: "auto", fontSize: 13, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}
+    <div
+      style={{
+        maxWidth: 960,
+        margin: "0 auto",
+        padding: isNarrow ? "12px 12px max(32px, env(safe-area-inset-bottom))" : "20px 16px 48px",
+      }}
+    >
+      <div
+        style={{
+          marginBottom: isNarrow ? 16 : 20,
+          display: "flex",
+          flexDirection: isNarrow ? "column" : "row",
+          flexWrap: "wrap",
+          alignItems: isNarrow ? "stretch" : "center",
+          gap: isNarrow ? 10 : 12,
+        }}
+      >
+        <h1
+          style={{
+            margin: 0,
+            fontSize: isNarrow ? 18 : 22,
+            fontWeight: 900,
+            color: "#0f172a",
+            lineHeight: 1.25,
+          }}
         >
-          요구사항으로 돌아가기
-        </Link>
+          프로젝트 멤버 관리
+        </h1>
+        <button
+          type="button"
+          onClick={() => router.back()}
+          style={{
+            marginLeft: isNarrow ? 0 : "auto",
+            alignSelf: isNarrow ? "stretch" : undefined,
+            fontSize: 14,
+            fontWeight: 800,
+            color: "#2563eb",
+            background: isNarrow ? "#eff6ff" : "none",
+            border: isNarrow ? "1px solid #bfdbfe" : "none",
+            borderRadius: isNarrow ? 10 : 0,
+            cursor: "pointer",
+            padding: isNarrow ? "12px 14px" : "4px 0",
+            textDecoration: isNarrow ? "none" : "underline",
+            ...tap,
+          }}
+        >
+          ← 이전 화면
+        </button>
       </div>
 
       {banner ? (
@@ -358,16 +446,15 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           role="status"
           style={{
             marginBottom: 16,
-            padding: "10px 12px",
+            padding: isNarrow ? "12px 14px" : "10px 12px",
             borderRadius: 10,
-            background: "#f0fdf4",
-            border: "1px solid #86efac",
-            color: "#14532d",
-            fontSize: 13,
+            fontSize: isNarrow ? 14 : 13,
             fontWeight: 700,
+            lineHeight: 1.45,
+            ...adminBannerBoxStyle(banner.tone),
           }}
         >
-          {banner}
+          {banner.text}
         </div>
       ) : null}
 
@@ -376,14 +463,16 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           type="button"
           onClick={() => setTab("people")}
           style={{
-            padding: "8px 14px",
+            flex: isNarrow ? 1 : undefined,
+            padding: isNarrow ? "12px 10px" : "8px 14px",
             borderRadius: 10,
             border: tab === "people" ? "2px solid #0d9488" : "1px solid #e2e8f0",
             background: tab === "people" ? "#ecfdf5" : "#fff",
             fontWeight: 800,
-            fontSize: 13,
+            fontSize: isNarrow ? 14 : 13,
             cursor: "pointer",
             color: "#0f172a",
+            ...tap,
           }}
         >
           사람 멤버
@@ -392,14 +481,16 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           type="button"
           onClick={() => setTab("ai")}
           style={{
-            padding: "8px 14px",
+            flex: isNarrow ? 1 : undefined,
+            padding: isNarrow ? "12px 10px" : "8px 14px",
             borderRadius: 10,
             border: tab === "ai" ? "2px solid #0d9488" : "1px solid #e2e8f0",
             background: tab === "ai" ? "#ecfdf5" : "#fff",
             fontWeight: 800,
-            fontSize: 13,
+            fontSize: isNarrow ? 14 : 13,
             cursor: "pointer",
             color: "#0f172a",
+            ...tap,
           }}
         >
           AI 멤버
@@ -408,11 +499,80 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
 
       {tab === "people" ? (
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", margin: "0 0 12px" }}>현재 멤버</h2>
+          <h2
+            style={{
+              fontSize: isNarrow ? 15 : 16,
+              fontWeight: 900,
+              color: "#0f172a",
+              margin: "0 0 12px",
+            }}
+          >
+            현재 멤버
+          </h2>
           {loadState === "loading" ? (
             <p style={{ color: "#64748b", fontSize: 14 }}>불러오는 중…</p>
           ) : loadError ? (
             <p style={{ color: "#b91c1c", fontSize: 14 }}>{loadError}</p>
+          ) : isNarrow ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {humanMembers.map((m) => {
+                const name = (m.displayName || m.email || "멤버").trim();
+                const ownerRow = Boolean(m.isOwner);
+                return (
+                  <div
+                    key={m.memberId}
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 12,
+                      background: "#fff",
+                      padding: "14px 14px",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15, marginBottom: 6 }}>
+                      {name}
+                      {!m.userId ? (
+                        <span style={{ marginLeft: 8, fontSize: 11, color: "#ea580c", fontWeight: 800 }}>초대됨</span>
+                      ) : null}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: "#475569",
+                        wordBreak: "break-word",
+                        lineHeight: 1.4,
+                        marginBottom: ownerRow ? 0 : 12,
+                      }}
+                    >
+                      {m.email ?? "—"}
+                    </div>
+                    {!ownerRow ? (
+                      <button
+                        type="button"
+                        disabled={removeBusyId === m.memberId}
+                        onClick={() => void removeMember(m.memberId, name)}
+                        style={{
+                          width: "100%",
+                          padding: "12px 14px",
+                          borderRadius: 10,
+                          border: "1px solid #fecaca",
+                          background: "#fef2f2",
+                          color: "#b91c1c",
+                          fontWeight: 800,
+                          fontSize: 14,
+                          cursor: removeBusyId === m.memberId ? "wait" : "pointer",
+                          ...tap,
+                        }}
+                      >
+                        제거
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {!humanMembers.length ? (
+                <div style={{ padding: 16, color: "#64748b", fontSize: 14 }}>등록된 사람 멤버가 없습니다.</div>
+              ) : null}
+            </div>
           ) : (
             <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -420,15 +580,12 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                   <tr style={{ background: "#f8fafc", textAlign: "left" }}>
                     <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이름</th>
                     <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이메일</th>
-                    <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>역할</th>
                     <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>작업</th>
                   </tr>
                 </thead>
                 <tbody>
                   {humanMembers.map((m) => {
                     const name = (m.displayName || m.email || "멤버").trim();
-                    const current = normalizeProjectRole(m.role) ?? "VIEWER";
-                    const pending = pendingRoleByMember[m.memberId] ?? current;
                     const ownerRow = Boolean(m.isOwner);
                     return (
                       <tr key={m.memberId} style={{ borderTop: "1px solid #f1f5f9" }}>
@@ -439,67 +596,26 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                           ) : null}
                         </td>
                         <td style={{ padding: "10px 12px", color: "#475569" }}>{m.email ?? "—"}</td>
-                        <td style={{ padding: "10px 12px" }}>
-                          <select
-                            value={pending}
-                            disabled={ownerRow}
-                            onChange={(e) =>
-                              setPendingRoleByMember((prev) => ({
-                                ...prev,
-                                [m.memberId]: e.target.value as ProjectRole,
-                              }))
-                            }
-                            style={{
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid #cbd5e1",
-                              fontWeight: 600,
-                              maxWidth: 180,
-                            }}
-                          >
-                            {HUMAN_ROLE_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
                         <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
-                          <button
-                            type="button"
-                            disabled={ownerRow || pending === current || roleSaveBusyId === m.memberId}
-                            onClick={() => void saveRole(m.memberId)}
-                            style={{
-                              padding: "6px 10px",
-                              marginRight: 8,
-                              borderRadius: 8,
-                              border: "1px solid #0d9488",
-                              background: ownerRow || pending === current ? "#f1f5f9" : "#0d9488",
-                              color: ownerRow || pending === current ? "#94a3b8" : "#fff",
-                              fontWeight: 800,
-                              fontSize: 12,
-                              cursor: ownerRow || pending === current ? "not-allowed" : "pointer",
-                            }}
-                          >
-                            역할 저장
-                          </button>
-                          <button
-                            type="button"
-                            disabled={ownerRow || removeBusyId === m.memberId}
-                            onClick={() => void removeMember(m.memberId, name)}
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #fecaca",
-                              background: ownerRow ? "#f8fafc" : "#fef2f2",
-                              color: ownerRow ? "#94a3b8" : "#b91c1c",
-                              fontWeight: 800,
-                              fontSize: 12,
-                              cursor: ownerRow ? "not-allowed" : "pointer",
-                            }}
-                          >
-                            제거
-                          </button>
+                          {ownerRow ? null : (
+                            <button
+                              type="button"
+                              disabled={removeBusyId === m.memberId}
+                              onClick={() => void removeMember(m.memberId, name)}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #fecaca",
+                                background: "#fef2f2",
+                                color: "#b91c1c",
+                                fontWeight: 800,
+                                fontSize: 12,
+                                cursor: removeBusyId === m.memberId ? "wait" : "pointer",
+                              }}
+                            >
+                              제거
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -512,49 +628,69 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
             </div>
           )}
 
-          <h2 style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", margin: "28px 0 12px" }}>초대</h2>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 12px", lineHeight: 1.5 }}>
-            이메일로 멤버를 등록합니다. 초대받은 사용자는 계정으로 로그인한 뒤 아래 링크로 프로젝트에 진입할 수 있습니다.
+          <h2
+            style={{
+              fontSize: isNarrow ? 15 : 16,
+              fontWeight: 900,
+              color: "#0f172a",
+              margin: "28px 0 12px",
+            }}
+          >
+            초대
+          </h2>
+          <p
+            style={{
+              fontSize: isNarrow ? 14 : 13,
+              color: "#64748b",
+              margin: "0 0 12px",
+              lineHeight: 1.55,
+            }}
+          >
+            플랫폼에 가입된 사용자에게는 로그인 후 알림으로 초대가 전달됩니다. 아직 가입하지 않은 사람에게는 아래 초대 링크를 복사해 전달해 주세요.
           </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: isNarrow ? "column" : "row",
+              flexWrap: isNarrow ? "nowrap" : "wrap",
+              gap: isNarrow ? 10 : 10,
+              alignItems: isNarrow ? "stretch" : "center",
+              marginBottom: 12,
+            }}
+          >
             <input
               type="email"
               placeholder="이메일"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
+              autoComplete="email"
+              inputMode="email"
               style={{
-                flex: "1 1 200px",
-                minWidth: 180,
-                padding: "8px 10px",
+                flex: isNarrow ? undefined : "1 1 200px",
+                width: isNarrow ? "100%" : undefined,
+                minWidth: isNarrow ? 0 : 180,
+                padding: isNarrow ? "12px 14px" : "8px 10px",
                 borderRadius: 10,
                 border: "1px solid #cbd5e1",
-                fontSize: 14,
+                fontSize: 16,
+                ...tap,
               }}
             />
-            <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as ProjectRole)}
-              style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid #cbd5e1", fontWeight: 700 }}
-            >
-              {HUMAN_ROLE_OPTIONS.filter((o) => o.value !== "OWNER").map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
             <button
               type="button"
               disabled={inviteBusy}
               onClick={() => void onInvite()}
               style={{
-                padding: "8px 14px",
+                padding: isNarrow ? "12px 16px" : "8px 14px",
                 borderRadius: 10,
                 border: "none",
                 background: "#0d9488",
                 color: "#fff",
                 fontWeight: 900,
-                fontSize: 13,
+                fontSize: isNarrow ? 15 : 13,
                 cursor: inviteBusy ? "wait" : "pointer",
+                width: isNarrow ? "100%" : undefined,
+                ...tap,
               }}
             >
               초대 보내기
@@ -563,59 +699,69 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
               type="button"
               onClick={() => void copyJoinLink()}
               style={{
-                padding: "8px 14px",
+                padding: isNarrow ? "12px 16px" : "8px 14px",
                 borderRadius: 10,
                 border: "1px solid #cbd5e1",
                 background: "#fff",
                 fontWeight: 800,
-                fontSize: 13,
+                fontSize: isNarrow ? 15 : 13,
                 cursor: "pointer",
+                width: isNarrow ? "100%" : undefined,
+                ...tap,
               }}
             >
               초대 링크 복사
             </button>
           </div>
-          {joinLink ? (
+          {joinPath ? (
             <code
               style={{
                 display: "block",
-                fontSize: 12,
-                padding: "8px 10px",
+                fontSize: isNarrow ? 11 : 12,
+                padding: isNarrow ? "10px 12px" : "8px 10px",
                 background: "#f8fafc",
                 borderRadius: 8,
                 wordBreak: "break-all",
+                overflowWrap: "anywhere",
                 color: "#334155",
+                lineHeight: 1.45,
               }}
             >
-              {joinLink}
+              {joinPath}
             </code>
           ) : null}
         </div>
       ) : (
         <div>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 12px", lineHeight: 1.6 }}>
-            프로젝트별로 각 AI가 참여할 화면을 여러 개 지정할 수 있습니다. 빌드 시{" "}
-            <code style={{ background: "#f1f5f9", padding: "2px 6px", borderRadius: 6 }}>NEXT_PUBLIC_AI_MEMBER_*</code> 로 꺼진
-            페르소나는 워크스페이스에 표시되지 않습니다.
-          </p>
           {!canAdminWorkspaceAi ? (
-            <p style={{ fontSize: 13, color: "#92400e", margin: "0 0 12px", fontWeight: 700 }}>
+            <p style={{ fontSize: isNarrow ? 14 : 13, color: "#92400e", margin: "0 0 12px", fontWeight: 700, lineHeight: 1.5 }}>
               AI 설정 저장은 프로젝트 소유자만 할 수 있습니다. 조회는 멤버 누구나 가능합니다.
             </p>
           ) : null}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: isNarrow ? "column" : "row",
+              flexWrap: isNarrow ? "nowrap" : "wrap",
+              gap: 10,
+              alignItems: isNarrow ? "stretch" : "center",
+              marginBottom: 14,
+            }}
+          >
             <button
               type="button"
               disabled={aiGraphLoadState === "loading" || aiSaveBusy}
               onClick={() => void loadWorkspaceAiGraph()}
               style={{
-                padding: "8px 14px",
+                padding: isNarrow ? "12px 16px" : "8px 14px",
                 borderRadius: 10,
                 border: "1px solid #cbd5e1",
                 background: "#fff",
                 fontWeight: 800,
-                fontSize: 13,
+                fontSize: isNarrow ? 15 : 13,
                 cursor: aiGraphLoadState === "loading" ? "wait" : "pointer",
+                width: isNarrow ? "100%" : undefined,
+                ...tap,
               }}
             >
               새로고침
@@ -625,14 +771,16 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
               disabled={!canAdminWorkspaceAi || !aiDraft || aiSaveBusy || aiGraphLoadState === "loading"}
               onClick={() => void saveWorkspaceAiGraph()}
               style={{
-                padding: "8px 14px",
+                padding: isNarrow ? "12px 16px" : "8px 14px",
                 borderRadius: 10,
                 border: "none",
                 background: !canAdminWorkspaceAi || !aiDraft ? "#e2e8f0" : "#0d9488",
                 color: !canAdminWorkspaceAi || !aiDraft ? "#94a3b8" : "#fff",
                 fontWeight: 900,
-                fontSize: 13,
+                fontSize: isNarrow ? 15 : 13,
                 cursor: !canAdminWorkspaceAi || !aiDraft ? "not-allowed" : "pointer",
+                width: isNarrow ? "100%" : undefined,
+                ...tap,
               }}
             >
               {aiSaveBusy ? "저장 중…" : "설정 저장"}
@@ -646,91 +794,227 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
             <p style={{ color: "#64748b", fontSize: 14 }}>AI 설정이 없습니다.</p>
           ) : (
             <>
-              <h2 style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>AI 멤버</h2>
-              <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", marginBottom: 22 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 520 }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                      <th style={{ padding: "10px 8px", fontWeight: 800, color: "#64748b", width: 56, fontSize: 11 }}>아바타</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이름</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>참여 화면</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>엔진</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>프로젝트 활성</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>빌드</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", whiteSpace: "nowrap" }}>작업</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {listPlatformAiMemberCatalog().map((row) => {
-                      const draftRow = aiDraft.find((r) => r.catalogKey === row.id);
-                      const screens = (draftRow?.screenKeys ?? []).map((k) => WORKSPACE_SCREEN_LABEL[k]).filter(Boolean);
-                      const buildOn = isWorkspaceAiMemberEnabled(row.id);
-                      const projOn = Boolean(draftRow?.enabled);
-                      return (
-                        <tr key={row.id} style={{ borderTop: "1px solid #f1f5f9" }}>
-                          <td style={{ padding: "10px 8px", verticalAlign: "middle" }}>
-                            <WorkspaceAiMemberAvatar memberId={row.id} size={36} />
-                          </td>
-                          <td style={{ padding: "10px 12px", fontWeight: 800 }}>{row.title}</td>
-                          <td style={{ padding: "10px 12px", color: "#475569", lineHeight: 1.45 }}>
-                            {screens.length ? screens.join(" · ") : "—"}
-                          </td>
-                          <td style={{ padding: "10px 12px", color: "#475569" }}>{getWorkspaceAiExecutionProviderLabel(row.id)}</td>
-                          <td style={{ padding: "10px 12px" }}>
-                            <label
+              <h2 style={{ fontSize: isNarrow ? 15 : 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>AI 멤버</h2>
+              {isNarrow ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
+                  {listPlatformAiMemberCatalog().map((row) => {
+                    const draftRow = aiDraft.find((r) => r.catalogKey === row.id);
+                    const cap = primaryIntegrationCapabilityForCatalogMember(row.id);
+                    const engineOpts = engineChoicesForCapability(cap);
+                    const engineKey = (draftRow?.enginePreference ?? "USER_DEFAULT") as WorkspaceAiEnginePreferenceKey;
+                    const buildOn = isWorkspaceAiMemberEnabled(row.id);
+                    const projOn = Boolean(draftRow?.enabled);
+                    return (
+                      <div
+                        key={row.id}
+                        style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 12,
+                          background: "#fff",
+                          padding: "14px 14px",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                          <WorkspaceAiMemberAvatar memberId={row.id} size={44} />
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>{row.title}</div>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>엔진</div>
+                          {canAdminWorkspaceAi ? (
+                            <select
+                              value={engineKey}
+                              onChange={(e) => setEnginePreference(row.id, e.target.value)}
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 8,
-                                cursor: canAdminWorkspaceAi ? "pointer" : "not-allowed",
-                                opacity: canAdminWorkspaceAi ? 1 : 0.75,
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={projOn}
-                                disabled={!canAdminWorkspaceAi}
-                                onChange={(e) => setCatalogEnabled(row.id, e.target.checked)}
-                                style={{ width: 18, height: 18, accentColor: "#0d9488" }}
-                              />
-                              <span style={{ fontWeight: 700, color: projOn ? "#0f766e" : "#94a3b8" }}>{projOn ? "켜짐" : "꺼짐"}</span>
-                            </label>
-                          </td>
-                          <td style={{ padding: "10px 12px" }}>
-                            <span style={{ fontWeight: 700, color: buildOn ? "#0f766e" : "#94a3b8" }}>{buildOn ? "표시" : "숨김"}</span>
-                          </td>
-                          <td style={{ padding: "10px 12px" }}>
-                            <button
-                              type="button"
-                              onClick={() => setAiDetailMemberId(row.id)}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                border: "1px solid #0d9488",
+                                width: "100%",
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                border: "1px solid #cbd5e1",
+                                fontSize: 15,
+                                fontWeight: 600,
                                 background: "#fff",
-                                color: "#0f766e",
-                                fontWeight: 800,
-                                fontSize: 12,
-                                cursor: "pointer",
-                                whiteSpace: "nowrap",
+                                ...tap,
                               }}
                             >
-                              상세보기
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                              {engineOpts.map((ek) => (
+                                <option key={ek} value={ek}>
+                                  {enginePreferenceLabel(ek)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.45 }}>{enginePreferenceLabel(engineKey)}</div>
+                          )}
+                        </div>
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            cursor: canAdminWorkspaceAi ? "pointer" : "not-allowed",
+                            opacity: canAdminWorkspaceAi ? 1 : 0.75,
+                            marginBottom: 8,
+                            minHeight: 44,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={projOn}
+                            disabled={!canAdminWorkspaceAi}
+                            onChange={(e) => setCatalogEnabled(row.id, e.target.checked)}
+                            style={{ width: 22, height: 22, accentColor: "#0d9488", flexShrink: 0 }}
+                          />
+                          <span style={{ fontWeight: 700, fontSize: 14, color: projOn ? "#0f766e" : "#94a3b8" }}>
+                            프로젝트 활성: {projOn ? "켜짐" : "꺼짐"}
+                          </span>
+                        </label>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: buildOn ? "#0f766e" : "#94a3b8", marginBottom: 12 }}>
+                          빌드: {buildOn ? "표시" : "숨김"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAiDetailMemberId(row.id)}
+                          style={{
+                            width: "100%",
+                            padding: "12px 14px",
+                            borderRadius: 10,
+                            border: "1px solid #0d9488",
+                            background: "#fff",
+                            color: "#0f766e",
+                            fontWeight: 800,
+                            fontSize: 14,
+                            cursor: "pointer",
+                            ...tap,
+                          }}
+                        >
+                          상세보기
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", marginBottom: 22 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                        <th style={{ padding: "10px 8px", fontWeight: 800, color: "#64748b", width: 56, fontSize: 11 }}>아바타</th>
+                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이름</th>
+                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>엔진</th>
+                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>프로젝트 활성</th>
+                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>빌드</th>
+                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", whiteSpace: "nowrap" }}>작업</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listPlatformAiMemberCatalog().map((row) => {
+                        const draftRow = aiDraft.find((r) => r.catalogKey === row.id);
+                        const cap = primaryIntegrationCapabilityForCatalogMember(row.id);
+                        const engineOpts = engineChoicesForCapability(cap);
+                        const engineKey = (draftRow?.enginePreference ?? "USER_DEFAULT") as WorkspaceAiEnginePreferenceKey;
+                        const buildOn = isWorkspaceAiMemberEnabled(row.id);
+                        const projOn = Boolean(draftRow?.enabled);
+                        return (
+                          <tr key={row.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                            <td style={{ padding: "10px 8px", verticalAlign: "middle" }}>
+                              <WorkspaceAiMemberAvatar memberId={row.id} size={36} />
+                            </td>
+                            <td style={{ padding: "10px 12px", fontWeight: 800 }}>{row.title}</td>
+                            <td style={{ padding: "10px 12px", color: "#475569", minWidth: 200, verticalAlign: "middle" }}>
+                              {canAdminWorkspaceAi ? (
+                                <select
+                                  value={engineKey}
+                                  onChange={(e) => setEnginePreference(row.id, e.target.value)}
+                                  style={{
+                                    maxWidth: 300,
+                                    width: "100%",
+                                    padding: "6px 8px",
+                                    borderRadius: 8,
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    background: "#fff",
+                                  }}
+                                >
+                                  {engineOpts.map((ek) => (
+                                    <option key={ek} value={ek}>
+                                      {enginePreferenceLabel(ek)}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span style={{ fontWeight: 600 }}>{enginePreferenceLabel(engineKey)}</span>
+                              )}
+                            </td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <label
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  cursor: canAdminWorkspaceAi ? "pointer" : "not-allowed",
+                                  opacity: canAdminWorkspaceAi ? 1 : 0.75,
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={projOn}
+                                  disabled={!canAdminWorkspaceAi}
+                                  onChange={(e) => setCatalogEnabled(row.id, e.target.checked)}
+                                  style={{ width: 18, height: 18, accentColor: "#0d9488" }}
+                                />
+                                <span style={{ fontWeight: 700, color: projOn ? "#0f766e" : "#94a3b8" }}>{projOn ? "켜짐" : "꺼짐"}</span>
+                              </label>
+                            </td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <span style={{ fontWeight: 700, color: buildOn ? "#0f766e" : "#94a3b8" }}>{buildOn ? "표시" : "숨김"}</span>
+                            </td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <button
+                                type="button"
+                                onClick={() => setAiDetailMemberId(row.id)}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 8,
+                                  border: "1px solid #0d9488",
+                                  background: "#fff",
+                                  color: "#0f766e",
+                                  fontWeight: 800,
+                                  fontSize: 12,
+                                  cursor: "pointer",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                상세보기
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-              <h2 style={{ fontSize: 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>화면별 참여 AI</h2>
-              <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px", lineHeight: 1.5 }}>
-                행은 화면, 열은 AI입니다. 체크하면 해당 화면 작업에 그 AI가 참여합니다.
-              </p>
-              <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }}>
-                <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
+              <h2 style={{ fontSize: isNarrow ? 15 : 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>화면별 참여 AI</h2>
+              {isNarrow ? (
+                <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 10px", lineHeight: 1.5 }}>
+                  <span style={{ color: "#0f766e", fontWeight: 700 }}>표가 넓으면 좌우로 스크롤</span>해 주세요.
+                </p>
+              ) : null}
+              <div
+                style={{
+                  overflowX: "auto",
+                  WebkitOverflowScrolling: "touch",
+                  touchAction: "pan-x",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  background: "#fff",
+                  marginBottom: isNarrow ? 8 : 0,
+                }}
+              >
+                <table style={{ borderCollapse: "collapse", fontSize: isNarrow ? 13 : 12, minWidth: 720 }}>
                   <thead>
                     <tr style={{ background: "#f8fafc" }}>
                       <th style={{ padding: "8px 10px", fontWeight: 800, color: "#64748b", textAlign: "left", position: "sticky", left: 0, background: "#f8fafc", zIndex: 1 }}>
@@ -774,16 +1058,61 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                         {listPlatformAiMemberCatalog().map((row) => {
                           const draftRow = aiDraft.find((r) => r.catalogKey === row.id);
                           const checked = Boolean(draftRow?.screenKeys.includes(screenKey));
+                          const autoOn = Boolean(draftRow?.screenAutoRun[screenKey]);
                           const disabled = !canAdminWorkspaceAi || !isWorkspaceAiMemberEnabled(row.id);
+                          const cb = isNarrow ? 20 : 16;
+                          const labelStyle: CSSProperties = {
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            cursor: disabled ? "not-allowed" : "pointer",
+                            fontSize: isNarrow ? 12 : 11,
+                            fontWeight: 600,
+                            color: "#334155",
+                            userSelect: "none",
+                          };
                           return (
-                            <td key={row.id} style={{ padding: "6px", textAlign: "center" }}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={disabled}
-                                onChange={(e) => toggleCatalogOnScreen(row.id, screenKey, e.target.checked)}
-                                style={{ width: 17, height: 17, accentColor: "#0d9488", cursor: disabled ? "not-allowed" : "pointer" }}
-                              />
+                            <td key={row.id} style={{ padding: isNarrow ? "6px 4px" : "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                                <label title="이 AI가 해당 단계에서 자동으로 참여합니다." style={labelStyle}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={disabled}
+                                    onChange={(e) => toggleCatalogOnScreen(row.id, screenKey, e.target.checked)}
+                                    style={{
+                                      width: cb,
+                                      height: cb,
+                                      accentColor: "#0d9488",
+                                      cursor: disabled ? "not-allowed" : "pointer",
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                  <span>참여</span>
+                                </label>
+                                <label
+                                  title="참여한 단계에서 오케스트레이션 자동 실행을 허용합니다."
+                                  style={{
+                                    ...labelStyle,
+                                    opacity: disabled || !checked ? 0.45 : 1,
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={autoOn}
+                                    disabled={disabled || !checked}
+                                    onChange={(e) => toggleScreenAutoRun(row.id, screenKey, e.target.checked)}
+                                    style={{
+                                      width: cb,
+                                      height: cb,
+                                      accentColor: "#0d9488",
+                                      cursor: disabled || !checked ? "not-allowed" : "pointer",
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                  <span>자동 실행</span>
+                                </label>
+                              </div>
                             </td>
                           );
                         })}
@@ -819,7 +1148,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           memberTitle={aiPromptCatalog.title}
           readOnly
           onClose={() => setAiPromptMemberId(null)}
-          onCopied={(msg) => setBanner(msg)}
+          onCopied={(msg) => setBanner({ text: msg, tone: "success" })}
         />
       ) : null}
     </div>

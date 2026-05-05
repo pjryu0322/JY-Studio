@@ -20,7 +20,7 @@ export const WORKSPACE_SCREEN_LABEL: Record<WorkspaceScreenKey, string> = {
   feature_planning: "기능 정리",
   prototype_build: "프로토타입 생성",
   prototype_review: "프로토타입 검토",
-  deploy_gate: "배포 보안 게이트",
+  deploy_gate: "배포 전 보안 검증",
   work_note: "작업 메모",
 };
 
@@ -66,6 +66,8 @@ export type WorkspaceAiGraphMemberLike = {
   readonly enabled: boolean;
   readonly catalogKey: WorkspaceAiMemberId;
   readonly screenKeys: readonly WorkspaceScreenKey[];
+  /** 있으면 `screenKeys`와 함께 자동 실행 여부를 해석할 때 사용 */
+  readonly screens?: readonly { readonly screenKey: WorkspaceScreenKey; readonly autoRun: boolean }[];
 };
 
 /**

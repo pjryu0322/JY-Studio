@@ -2,7 +2,7 @@
 
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
-import type { WorkspaceMode } from "@/lib/ui/workspaceMode";
+import { openWorkspaceModePreviewWindow, type WorkspaceMode } from "@/lib/ui/workspaceMode";
 
 const BTNS: readonly { id: WorkspaceMode; label: string }[] = [
   { id: "DESKTOP", label: "데스크톱" },
@@ -47,7 +47,11 @@ export function WorkspaceModeSwitcher({ variant = "toolbar" }: { readonly varian
             <button
               key={b.id}
               type="button"
-              onClick={() => setMode(b.id)}
+              onClick={() => {
+                const prev = mode;
+                setMode(b.id);
+                if (prev !== b.id) openWorkspaceModePreviewWindow(b.id);
+              }}
               aria-pressed={active}
               data-testid={`workspace-mode-${b.id.toLowerCase()}`}
               style={{

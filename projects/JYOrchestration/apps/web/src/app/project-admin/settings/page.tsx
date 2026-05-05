@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { fetchProjectById } from "@/components/project-spec/api";
 import type { Project } from "@/components/project-spec/types";
 import { ProjectExecutionEnvironmentPanel } from "@/components/project/ProjectExecutionEnvironmentPanel";
+import { ProjectPrototypePreviewSettingsPanel } from "@/components/project/ProjectPrototypePreviewSettingsPanel";
 import { canEditSpec } from "@/lib/rbac/projectPermissions";
 import type { ProjectRole } from "@/lib/rbac/projectPermissions";
 function ProjectAdminSettingsInner() {
@@ -141,6 +142,7 @@ function ProjectAdminSettingsInner() {
 
       {projectId && project && !errorMessage ? (
         <>
+          <ProjectPrototypePreviewSettingsPanel projectId={projectId} />
           <div id="execution-setup-panel">
             <ProjectExecutionEnvironmentPanel
               projectId={projectId}

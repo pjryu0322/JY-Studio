@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import type { PrototypeDeployStatusSnapshot, PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import { Button } from "@/components/ui/Button";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
+import { useProjectPrototypePreview } from "@/lib/project/useProjectPrototypePreview";
 
 const bar: CSSProperties = {
   display: "flex",
@@ -57,7 +57,7 @@ export function ReviewHeader(p: {
   readonly previewRotationLandscape: boolean;
   readonly onTogglePreviewRotation: () => void;
 }) {
-  const prefs = useGlobalPreferences();
+  const pp = useProjectPrototypePreview(p.projectId);
   const versionLabel = p.versionNo != null ? `V${p.versionNo}` : p.run ? "V—" : "—";
   const publicUrl = String(p.deploy.publicUrl ?? "").trim();
   const phase = p.run?.deploySecurityGatePhase ?? "NONE";
@@ -165,21 +165,21 @@ export function ReviewHeader(p: {
             </select>
           </label>
         ) : null}
-        {prefs.prototypePreviewWorkMode !== "auto" ? (
+        {pp.prototypePreviewWorkMode !== "auto" ? (
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginLeft: "auto" }}>
-            {prefs.prototypePreviewWorkMode === "mobile" ? (
+            {pp.prototypePreviewWorkMode === "mobile" ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, whiteSpace: "nowrap" }}>Preview 기기</span>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button
                     type="button"
-                    onClick={() => prefs.setPrototypePreviewMobileDevice("iphone")}
+                    onClick={() => pp.setPrototypePreviewMobileDevice("iphone")}
                     style={{
                       padding: "5px 10px",
                       borderRadius: 8,
                       border:
-                        prefs.prototypePreviewMobileDevice === "iphone" ? `2px solid ${t.primary}` : `1px solid ${t.borderStrong}`,
-                      background: prefs.prototypePreviewMobileDevice === "iphone" ? "#eff6ff" : t.bgCard,
+                        pp.prototypePreviewMobileDevice === "iphone" ? `2px solid ${t.primary}` : `1px solid ${t.borderStrong}`,
+                      background: pp.prototypePreviewMobileDevice === "iphone" ? "#eff6ff" : t.bgCard,
                       fontSize: 11,
                       fontWeight: 800,
                       cursor: "pointer",
@@ -190,13 +190,13 @@ export function ReviewHeader(p: {
                   </button>
                   <button
                     type="button"
-                    onClick={() => prefs.setPrototypePreviewMobileDevice("android")}
+                    onClick={() => pp.setPrototypePreviewMobileDevice("android")}
                     style={{
                       padding: "5px 10px",
                       borderRadius: 8,
                       border:
-                        prefs.prototypePreviewMobileDevice === "android" ? `2px solid ${t.primary}` : `1px solid ${t.borderStrong}`,
-                      background: prefs.prototypePreviewMobileDevice === "android" ? "#eff6ff" : t.bgCard,
+                        pp.prototypePreviewMobileDevice === "android" ? `2px solid ${t.primary}` : `1px solid ${t.borderStrong}`,
+                      background: pp.prototypePreviewMobileDevice === "android" ? "#eff6ff" : t.bgCard,
                       fontSize: 11,
                       fontWeight: 800,
                       cursor: "pointer",

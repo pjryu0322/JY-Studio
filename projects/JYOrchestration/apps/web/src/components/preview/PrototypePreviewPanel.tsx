@@ -65,16 +65,13 @@ import { RequirementsChatComposerFooter } from "@/components/requirements/Requir
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
-import { useWorkspaceAiEntryNotice } from "@/components/workspace/useWorkspaceAiEntryNotice";
+import { ChatWindowScreenLabelBottom, ChatWindowScreenLabelTop } from "@/components/workspace/ChatWindowScreenLabelBoundaries";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import { buildWorkspaceAiParticipantOptions } from "@/lib/ai-member/platformAiMembers";
 import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
-import {
-  serviceFlowStageComposerColumnStyle,
-  serviceFlowStageMainChatStyle,
-} from "@/components/service-flow/serviceFlowStageLayout";
+import { serviceFlowStageComposerColumnStyle } from "@/components/service-flow/serviceFlowStageLayout";
 
 type EnvBadge = "ok" | "needs" | "error" | "loading";
 type EnvStatus = Readonly<{
@@ -444,14 +441,6 @@ export function PrototypePreviewPanel({
     if (!workspaceAiGraph) return undefined;
     return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "prototype_build");
   }, [workspaceAiGraph]);
-
-  useWorkspaceAiEntryNotice({
-    projectId,
-    memberIds: prototypeScreenCatalogIds,
-    memberId: "prototype_build",
-    enabled: Boolean(projectId.trim()),
-    onMessage: showToast,
-  });
 
   /** 작업계획 경로는 토스트 대신 타임라인에 남는 한 줄(사라지지 않음) */
   const pushEphemeralPlannerNotice = useCallback((text: string) => {
@@ -1565,8 +1554,9 @@ export function PrototypePreviewPanel({
       ) : null}
 
       <div className="jyo-prototype-stage-shell" style={{ ...prototypeStageShell, height: "100%" }}>
-        <section
+        <div
           data-testid="prototype-generation-chat-panel"
+          className="chat-page"
           style={{
             display: "flex",
             flexDirection: "column",
@@ -1577,8 +1567,11 @@ export function PrototypePreviewPanel({
             maxWidth: "100%",
             overflow: "hidden",
           }}
+          role="region"
           aria-label="프로토타입 생성 채팅"
         >
+          <div className="chat-header-fixed">
+            <ChatWindowScreenLabelTop />
           <RequirementsChatHeaderRow
             memberControls={{
               count: prototypeModalParticipants.length,
@@ -1616,29 +1609,13 @@ export function PrototypePreviewPanel({
               </div>
             }
           />
+          </div>
 
-          <div
-            style={{
-              ...serviceFlowStageMainChatStyle,
-              flex: 1,
-              minHeight: 0,
-            }}
-          >
-            <div
-              style={{
-                position: "relative",
-                flex: 1,
-                minHeight: 0,
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
+          <div className="chat-body">
               <div
+                className="chat-messages-scroll"
                 style={{
                   position: "relative",
-                  flex: 1,
-                  minHeight: 0,
-                  overflowY: "auto",
                   padding: "18px 18px 12px",
                   background: "linear-gradient(180deg, #f1f5f9 0%, #eef2f7 50%, #f8fafc 100%)",
                 }}
@@ -1683,7 +1660,10 @@ export function PrototypePreviewPanel({
                   ) : null}
                 </div>
               </div>
+          </div>
 
+              <div className="chat-input-fixed">
+                <ChatWindowScreenLabelBottom />
               <RequirementsChatComposerFooter>
                 <div style={serviceFlowStageComposerColumnStyle}>
                   <div
@@ -1712,9 +1692,8 @@ export function PrototypePreviewPanel({
                   </div>
                 </div>
               </RequirementsChatComposerFooter>
-            </div>
-          </div>
-        </section>
+              </div>
+        </div>
       </div>
 
       <WorkspaceParticipantsModal

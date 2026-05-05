@@ -5,7 +5,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
+import { useProjectPrototypePreview } from "@/lib/project/useProjectPrototypePreview";
 import type {
   PrototypePreviewMobileDevice,
   PrototypePreviewWorkMode,
@@ -58,6 +58,8 @@ function logicalViewportPx(
 }
 
 export function PreviewViewport(p: {
+  /** 프로토타입 Preview 뷰포트 설정(프로젝트별 localStorage) */
+  readonly projectId: string;
   readonly run: PrototypeRun | null;
   readonly frameLoading: boolean;
   readonly onFrameLoad: () => void;
@@ -66,7 +68,7 @@ export function PreviewViewport(p: {
   /** Desktop·Mobile 고정 뷰포트에서 가로·세로 전환 */
   readonly rotationLandscape?: boolean;
 }) {
-  const { prototypePreviewWorkMode, prototypePreviewMobileDevice } = useGlobalPreferences();
+  const { prototypePreviewWorkMode, prototypePreviewMobileDevice } = useProjectPrototypePreview(p.projectId);
   const rotation = Boolean(p.rotationLandscape);
 
   const wrapRef = useRef<HTMLDivElement>(null);

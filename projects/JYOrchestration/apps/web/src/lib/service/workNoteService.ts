@@ -6,7 +6,7 @@ const TITLE_MAX = 200;
 
 export type WorkNoteDto = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   userId: string;
   title: string;
   content: string;
@@ -17,7 +17,7 @@ export type WorkNoteDto = {
 
 type WorkNoteRow = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   userId: string;
   title: string;
   content: string;
@@ -48,20 +48,31 @@ function toDto(row: WorkNoteRow): WorkNoteDto {
 /**
  * Prisma `generate`가 아직 반영되지 않은 환경에서도 `work_notes`에 접근하도록 `$queryRaw`만 사용합니다.
  */
-export async function listWorkNotesForUser(params: { projectId: string; userId: string }): Promise<WorkNoteDto[]> {
-  const rows = await prisma.$queryRaw<WorkNoteRow[]>(
-    Prisma.sql`
+export async function listWorkNotesForUser(params: { userId: string; projectId: string | null }): Promise<WorkNoteDto[]> {
+  const uid = params.userId;
+  const rows =
+    params.projectId === null || !String(params.projectId).trim()
+      ? await prisma.$queryRaw<WorkNoteRow[]>(
+          Prisma.sql`
       SELECT * FROM "work_notes"
-      WHERE "projectId" = ${params.projectId}
-        AND "userId" = ${params.userId}
+      WHERE "userId" = ${uid}
+        AND "projectId" IS NULL
       ORDER BY "updatedAt" DESC
     `
-  );
+        )
+      : await prisma.$queryRaw<WorkNoteRow[]>(
+          Prisma.sql`
+      SELECT * FROM "work_notes"
+      WHERE "projectId" = ${String(params.projectId).trim()}
+        AND "userId" = ${uid}
+      ORDER BY "updatedAt" DESC
+    `
+        );
   return rows.map(toDto);
 }
 
 export async function createWorkNoteForUser(params: {
-  projectId: string;
+  projectId: string | null;
   userId: string;
   title: string;
   content: string;
@@ -69,13 +80,22 @@ export async function createWorkNoteForUser(params: {
   const id = randomUUID();
   const title = normalizeTitleDb(params.title);
   const content = params.content ?? "";
-  const rows = await prisma.$queryRaw<WorkNoteRow[]>(
-    Prisma.sql`
+  const pid = params.projectId === null || !String(params.projectId).trim() ? null : String(params.projectId).trim();
+  const rows = pid
+    ? await prisma.$queryRaw<WorkNoteRow[]>(
+        Prisma.sql`
       INSERT INTO "work_notes" ("id", "projectId", "userId", "title", "content", "visibility", "createdAt", "updatedAt")
-      VALUES (${id}, ${params.projectId}, ${params.userId}, ${title}, ${content}, CAST('PRIVATE' AS "WorkNoteVisibility"), NOW(), NOW())
+      VALUES (${id}, ${pid}, ${params.userId}, ${title}, ${content}, CAST('PRIVATE' AS "WorkNoteVisibility"), NOW(), NOW())
       RETURNING *
     `
-  );
+      )
+    : await prisma.$queryRaw<WorkNoteRow[]>(
+        Prisma.sql`
+      INSERT INTO "work_notes" ("id", "projectId", "userId", "title", "content", "visibility", "createdAt", "updatedAt")
+      VALUES (${id}, NULL, ${params.userId}, ${title}, ${content}, CAST('PRIVATE' AS "WorkNoteVisibility"), NOW(), NOW())
+      RETURNING *
+    `
+      );
   const row = rows[0];
   if (!row) throw new Error("메모를 만들지 못했습니다.");
   return toDto(row);
@@ -116,8 +136,12 @@ export async function deleteWorkNoteForOwner(params: { id: string; userId: strin
   return rows.length > 0;
 }
 
-export async function getWorkNoteProjectIdForUser(noteId: string, userId: string): Promise<{ projectId: string } | null> {
-  const rows = await prisma.$queryRaw<Array<{ projectId: string }>>(
+/** 메모 소유 확인 — `projectId`가 null이면 개인(비프로젝트) 메모 */
+export async function getWorkNoteProjectIdForUser(
+  noteId: string,
+  userId: string
+): Promise<{ projectId: string | null } | null> {
+  const rows = await prisma.$queryRaw<Array<{ projectId: string | null }>>(
     Prisma.sql`SELECT "projectId" FROM "work_notes" WHERE "id" = ${noteId} AND "userId" = ${userId} LIMIT 1`
   );
   return rows[0] ?? null;

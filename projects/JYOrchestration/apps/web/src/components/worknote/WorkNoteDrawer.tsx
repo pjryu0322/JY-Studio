@@ -154,7 +154,14 @@ type WorkNoteAiInsight = {
 };
 
 export function WorkNoteDrawer(p: {
-  readonly projectId: string;
+  readonly activeMemoScope: "USER" | "PROJECT";
+  /** PROJECT 요약 시에만 사용 */
+  readonly activeProjectId: string | null;
+  readonly memoBadgeKind: "USER" | "PROJECT";
+  readonly memoBadgeSubtitle: string;
+  readonly showMemoTabs?: boolean;
+  readonly memoTab?: "USER" | "PROJECT";
+  readonly onMemoTabChange?: (tab: "USER" | "PROJECT") => void;
   readonly open: boolean;
   readonly onClose: () => void;
   readonly listLoading: boolean;
@@ -212,7 +219,7 @@ export function WorkNoteDrawer(p: {
     setAiInsight(null);
     setAiSummaryError(null);
     setAiSummarizing(false);
-  }, [p.activeId]);
+  }, [p.activeId, p.memoBadgeKind]);
 
   const handleSelectNote = useCallback(
     async (id: string) => {
@@ -245,8 +252,7 @@ export function WorkNoteDrawer(p: {
   }, [onChangeText]);
 
   const requestAiSummary = useCallback(async () => {
-    const pid = p.projectId.trim();
-    if (!pid || !p.activeId || !p.editorHydrated) return;
+    if (!p.activeId || !p.editorHydrated) return;
     const html = editorRef.current?.innerHTML ?? p.text;
     const plain = workNoteHtmlToPlainForSummary(html, 120_000);
     if (!plain.trim()) {
@@ -254,6 +260,10 @@ export function WorkNoteDrawer(p: {
       setAiInsight(null);
       return;
     }
+    const summarizeBody =
+      p.activeMemoScope === "USER"
+        ? { scope: "user", contentHtml: html }
+        : { projectId: String(p.activeProjectId ?? "").trim(), contentHtml: html };
     setAiSummarizing(true);
     setAiSummaryError(null);
     setAiInsight(null);
@@ -262,7 +272,7 @@ export function WorkNoteDrawer(p: {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: pid, contentHtml: html }),
+        body: JSON.stringify(summarizeBody),
       });
       const json = (await res.json()) as {
         success?: boolean;
@@ -292,7 +302,7 @@ export function WorkNoteDrawer(p: {
     } finally {
       setAiSummarizing(false);
     }
-  }, [p.activeId, p.editorHydrated, p.projectId, p.text]);
+  }, [p.activeId, p.activeMemoScope, p.activeProjectId, p.editorHydrated, p.text]);
 
   const applyAiSummaryToEditor = useCallback(() => {
     const insight = aiInsight;
@@ -584,14 +594,13 @@ export function WorkNoteDrawer(p: {
               flex: "0 0 auto",
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
+              justifyContent: "flex-end",
               gap: 10,
               padding: "10px 12px",
               borderBottom: `1px solid ${t.border}`,
               userSelect: "none",
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 900, color: t.textPrimary }}>작업메모</span>
             <button
               type="button"
               onClick={() => p.onClose()}
@@ -792,6 +801,117 @@ export function WorkNoteDrawer(p: {
             <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c" }}>{p.listError}</div>
           ) : null}
 
+          {p.showMemoTabs && p.memoTab && p.onMemoTabChange ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="tablist" aria-label="메모 범위">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={p.memoTab === "USER"}
+                onClick={() => p.onMemoTabChange?.("USER")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  border: `2px solid ${p.memoTab === "USER" ? t.primary : t.border}`,
+                  background: p.memoTab === "USER" ? `${t.primary}14` : "#fff",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: p.memoTab === "USER" ? t.primary : t.textSecondary,
+                  cursor: "pointer",
+                }}
+              >
+                내 작업메모
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={p.memoTab === "PROJECT"}
+                onClick={() => p.onMemoTabChange?.("PROJECT")}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  border: `2px solid ${p.memoTab === "PROJECT" ? t.primary : t.border}`,
+                  background: p.memoTab === "PROJECT" ? `${t.primary}14` : "#fff",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: p.memoTab === "PROJECT" ? t.primary : t.textSecondary,
+                  cursor: "pointer",
+                }}
+              >
+                프로젝트 작업메모
+              </button>
+            </div>
+          ) : null}
+
+          <div
+            role="status"
+            aria-label={`${p.memoBadgeKind === "USER" ? "개인 메모" : "프로젝트 메모"} · ${p.memoBadgeSubtitle}`}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 10,
+              border: `1px solid ${t.border}`,
+              background: "#f8fafc",
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span
+              title={p.memoBadgeKind === "USER" ? "개인 메모" : "프로젝트 메모"}
+              aria-hidden
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                background: p.memoBadgeKind === "USER" ? "#e0f2fe" : "#ecfdf5",
+                color: p.memoBadgeKind === "USER" ? "#0369a1" : "#047857",
+                border: `1px solid ${p.memoBadgeKind === "USER" ? "#7dd3fc" : "#6ee7b7"}`,
+              }}
+            >
+              {p.memoBadgeKind === "USER" ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+              )}
+            </span>
+            <span
+              title={p.memoBadgeSubtitle}
+              aria-label={p.memoBadgeSubtitle}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                background: "#fff",
+                color: t.textSecondary,
+                border: `1px solid ${t.borderStrong}`,
+              }}
+            >
+              {p.memoBadgeKind === "USER" ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+              )}
+            </span>
+          </div>
+
           <input
             type="text"
             value={p.title}
@@ -811,74 +931,6 @@ export function WorkNoteDrawer(p: {
               background: !p.activeId || !p.editorHydrated ? "#f8fafc" : "#fff",
             }}
           />
-
-          {!p.activeId && p.editorHydrated && !p.listLoading ? (
-            <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
-              메모 칩을 눌러 전환하거나 「+」로 새 메모를 만드세요.
-            </div>
-          ) : null}
-
-          {p.activeId && p.editorHydrated ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <button
-                type="button"
-                onClick={() => void requestAiSummary()}
-                disabled={aiSummarizing || p.listLoading}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${t.primary}`,
-                  background: `${t.primary}12`,
-                  color: t.primary,
-                  fontSize: 12,
-                  fontWeight: 900,
-                  cursor: aiSummarizing || p.listLoading ? "not-allowed" : "pointer",
-                  opacity: aiSummarizing || p.listLoading ? 0.65 : 1,
-                }}
-              >
-                {aiSummarizing ? "요약 중…" : "AI 요약"}
-              </button>
-              {aiInsight ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void applyAiSummaryToEditor()}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${t.borderStrong}`,
-                      background: t.primary,
-                      color: "#fff",
-                      fontSize: 12,
-                      fontWeight: 900,
-                      cursor: "pointer",
-                    }}
-                  >
-                    요약본 반영
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAiInsight(null);
-                      setAiSummaryError(null);
-                    }}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 10,
-                      border: `1px solid ${t.border}`,
-                      background: "#fff",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: t.textSecondary,
-                      cursor: "pointer",
-                    }}
-                  >
-                    요약 닫기
-                  </button>
-                </>
-              ) : null}
-            </div>
-          ) : null}
 
           {aiSummaryError ? (
             <div
@@ -974,8 +1026,7 @@ export function WorkNoteDrawer(p: {
           flexDirection: "row",
           flexWrap: "wrap",
           alignItems: "center",
-          gap: 10,
-          rowGap: 8,
+          gap: "8px 10px",
         }}
       >
         <span
@@ -990,24 +1041,109 @@ export function WorkNoteDrawer(p: {
         >
           {saveStateLabel(p.saveState, p.saveError)}
         </span>
-        <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, whiteSpace: "nowrap", flex: "0 0 auto" }}>창 투명도</span>
-        <input
-          type="range"
-          min={35}
-          max={100}
-          value={Math.round(panelOpacity * 100)}
-          aria-label="메모 창 투명도"
-          onChange={(e) => {
-            const pct = clamp(Number(e.target.value), 35, 100);
-            const next = pct / 100;
-            setPanelOpacity(next);
-            writeStoredOpacity(next);
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "8px 10px",
+            flex: "1 1 auto",
+            minWidth: 0,
+            justifyContent: "flex-end",
           }}
-          style={{ flex: "1 1 100px", minWidth: 72, maxWidth: 200, accentColor: t.primary }}
-        />
-        <span style={{ fontSize: 11, fontWeight: 800, color: t.textSecondary, whiteSpace: "nowrap", flex: "0 0 auto" }}>
-          {Math.round(panelOpacity * 100)}%
-        </span>
+        >
+          <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, whiteSpace: "nowrap", flex: "0 0 auto" }}>창 투명도</span>
+          <input
+            type="range"
+            min={35}
+            max={100}
+            value={Math.round(panelOpacity * 100)}
+            aria-label="메모 창 투명도"
+            onChange={(e) => {
+              const pct = clamp(Number(e.target.value), 35, 100);
+              const next = pct / 100;
+              setPanelOpacity(next);
+              writeStoredOpacity(next);
+            }}
+            style={{ flex: "1 1 100px", minWidth: 72, maxWidth: 200, accentColor: t.primary }}
+          />
+          <span style={{ fontSize: 11, fontWeight: 800, color: t.textSecondary, whiteSpace: "nowrap", flex: "0 0 auto" }}>
+            {Math.round(panelOpacity * 100)}%
+          </span>
+          {p.activeId && p.editorHydrated ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void requestAiSummary()}
+                disabled={aiSummarizing || p.listLoading}
+                title="메모 내용을 AI로 요약합니다"
+                aria-label={aiSummarizing ? "요약 중" : "AI 요약"}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${t.primary}`,
+                  background: `${t.primary}12`,
+                  color: t.primary,
+                  fontSize: 12,
+                  fontWeight: 900,
+                  cursor: aiSummarizing || p.listLoading ? "not-allowed" : "pointer",
+                  opacity: aiSummarizing || p.listLoading ? 0.65 : 1,
+                  flex: "0 0 auto",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {aiSummarizing ? "요약 중…" : "AI 요약"}
+              </button>
+              {aiInsight ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void applyAiSummaryToEditor()}
+                    title="요약을 본문에 반영"
+                    aria-label="요약본 반영"
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${t.borderStrong}`,
+                      background: t.primary,
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      flex: "0 0 auto",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    요약본 반영
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAiInsight(null);
+                      setAiSummaryError(null);
+                    }}
+                    title="요약 패널 닫기"
+                    aria-label="요약 닫기"
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${t.border}`,
+                      background: "#fff",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: t.textSecondary,
+                      cursor: "pointer",
+                      flex: "0 0 auto",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    요약 닫기
+                  </button>
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
 
       {selectionBubble ? (

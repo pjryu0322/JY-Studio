@@ -9,6 +9,7 @@ import type { PrototypeImprovementItem, PrototypeReviewMessage } from "@/lib/pro
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { ChatWindowScreenLabelBottom, ChatWindowScreenLabelTop } from "@/components/workspace/ChatWindowScreenLabelBoundaries";
 import { ReviewImprovementDetailModal } from "@/components/prototype-review/ReviewImprovementDetailModal";
 import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
@@ -182,17 +183,22 @@ export function ReviewChatPanel(p: {
   }
 
   return (
-    <section
+    <div
+      role="region"
       aria-label="프로토타입 검토 대화"
+      className="chat-page"
       style={{
         ...shellStyle(compact, fillParent, floating, sa, omitChrome),
-        paddingBottom: omitChrome ? 14 : undefined,
+        paddingBottom: omitChrome ? "max(14px, env(safe-area-inset-bottom, 0px))" : undefined,
         boxSizing: "border-box",
       }}
     >
+      <div className="chat-header-fixed">
+        <ChatWindowScreenLabelTop />
       {!omitChrome ? (
         <div
           style={{
+            flexShrink: 0,
             padding: "10px 14px 8px",
             borderBottom: `1px solid ${t.border}`,
             background: t.bgCard,
@@ -204,16 +210,16 @@ export function ReviewChatPanel(p: {
           </div>
         </div>
       ) : null}
+      </div>
 
+      <div className="chat-body">
       <div
+        className="chat-messages-scroll"
         style={{
-          flex: 1,
-          overflowY: "auto",
           padding: "12px 12px 10px",
           display: "flex",
           flexDirection: "column",
           gap: 12,
-          minHeight: 0,
           background: scrollBg,
         }}
       >
@@ -309,8 +315,22 @@ export function ReviewChatPanel(p: {
 
         <div ref={endRef} />
       </div>
+      </div>
 
-      <div style={{ borderTop: `1px solid ${t.border}`, padding: 10, display: "flex", flexWrap: "wrap", gap: 8, background: footerBg }}>
+      <div className="chat-input-fixed">
+        <ChatWindowScreenLabelBottom />
+      <div
+        style={{
+          flexShrink: 0,
+          borderTop: `1px solid ${t.border}`,
+          padding: 10,
+          paddingBottom: "max(10px, env(safe-area-inset-bottom, 0px))",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          background: footerBg,
+        }}
+      >
         <Button
           type="button"
           variant="secondary"
@@ -394,8 +414,9 @@ export function ReviewChatPanel(p: {
           보내기
         </Button>
       </form>
+      </div>
 
       <ReviewImprovementDetailModal item={modalItem} onClose={() => setModalItem(null)} />
-    </section>
+    </div>
   );
 }

@@ -1,19 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { DesktopShell } from "@/components/layout/DesktopShell";
 import { MobileShell } from "@/components/layout/MobileShell";
-import type { MobileNavTabId } from "@/components/layout/MobileBottomNav";
 import { useViewport } from "@/components/layout/useViewport";
-import { appFlowStepHref, isPlatformHomeSurface, readLastFlowProjectId } from "@/lib/workflow/flow-state";
 
 export type ResponsiveShellProps = Readonly<{
   children: ReactNode;
   title?: string;
-  currentNav?: MobileNavTabId;
-  onNavChange?: (id: MobileNavTabId) => void;
   actions?: ReactNode;
 }>;
 
@@ -23,51 +18,15 @@ export type ResponsiveShellProps = Readonly<{
  */
 export function ResponsiveShell(p: ResponsiveShellProps) {
   const { isMobile } = useViewport();
-  const router = useRouter();
-  const pathname = usePathname() || "/";
+  /** 뷰포트 분기는 마운트 후에만 적용 — SSR·첫 페인트는 데스크톱 셸과 맞춰 하이드레이션 불일치를 막습니다. */
+  const [layoutCommitted, setLayoutCommitted] = useState(false);
+  useEffect(() => {
+    setLayoutCommitted(true);
+  }, []);
 
-  const defaultMobileNav = useCallback(
-    (id: MobileNavTabId) => {
-      const last = readLastFlowProjectId();
-      switch (id) {
-        case "home":
-          router.push("/");
-          break;
-        case "projects":
-          if (isPlatformHomeSurface(pathname)) {
-            const el = typeof document !== "undefined" ? document.getElementById("mobile-nav-projects") : null;
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-            else router.push("/");
-          } else {
-            router.push("/");
-          }
-          break;
-        case "chat":
-          router.push(appFlowStepHref("requirements", last));
-          break;
-        case "runs":
-          router.push(appFlowStepHref("execution", last));
-          break;
-        case "settings":
-          router.push(
-            last ? `/project-admin/settings?projectId=${encodeURIComponent(last)}` : "/project-admin/settings"
-          );
-          break;
-        default:
-          break;
-      }
-    },
-    [pathname, router]
-  );
-
-  if (isMobile) {
+  if (layoutCommitted && isMobile) {
     return (
-      <MobileShell
-        title={p.title?.trim() ? p.title : undefined}
-        currentNav={p.currentNav ?? "home"}
-        onNavChange={p.onNavChange ?? defaultMobileNav}
-        topRightAction={p.actions}
-      >
+      <MobileShell title={p.title?.trim() ? p.title : undefined} topRightAction={p.actions}>
         {p.children}
       </MobileShell>
     );

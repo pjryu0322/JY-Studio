@@ -16,7 +16,7 @@ export default async function RequirementsPage({
   const stage = pickFirst(sp.stage);
 
   return (
-    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 8px" }}>
+    <div className="jyo-requirements-page-shell">
       <RequirementsWorkspaceWithComposerBridge initialProjectId={projectId} initialWorkflowNotice={workflowNotice} initialStage={stage} />
     </div>
   );

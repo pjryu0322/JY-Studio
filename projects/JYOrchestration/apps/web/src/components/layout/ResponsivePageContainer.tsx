@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useViewport } from "@/components/layout/useViewport";
 
 export type ResponsivePageContainerProps = Readonly<
@@ -20,6 +21,12 @@ export type ResponsivePageContainerProps = Readonly<
 export function ResponsivePageContainer(p: ResponsivePageContainerProps) {
   const { narrow, wide, children, style, className, ...rest } = p;
   const { isMobile } = useViewport();
+  /** 뷰포트 분기는 마운트 후에만 반영 — SSR·하이드레이션 첫 페인트는 데스크톱 컬럼 규칙과 동일하게 유지 */
+  const [layoutCommitted, setLayoutCommitted] = useState(false);
+  useEffect(() => {
+    setLayoutCommitted(true);
+  }, []);
+  const useMobileInset = layoutCommitted && isMobile;
 
   const maxDesktop = wide ? 1440 : narrow ? 960 : 1280;
 
@@ -30,11 +37,11 @@ export function ResponsivePageContainer(p: ResponsivePageContainerProps) {
       style={{
         boxSizing: "border-box",
         width: "100%",
-        maxWidth: isMobile ? "none" : maxDesktop,
-        marginLeft: isMobile ? 0 : "auto",
-        marginRight: isMobile ? 0 : "auto",
-        paddingLeft: isMobile ? 16 : 24,
-        paddingRight: isMobile ? 16 : 24,
+        maxWidth: useMobileInset ? "none" : maxDesktop,
+        marginLeft: useMobileInset ? 0 : "auto",
+        marginRight: useMobileInset ? 0 : "auto",
+        paddingLeft: useMobileInset ? 16 : 24,
+        paddingRight: useMobileInset ? 16 : 24,
         ...style,
       }}
     >

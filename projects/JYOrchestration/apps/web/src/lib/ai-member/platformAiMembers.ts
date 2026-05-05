@@ -35,6 +35,9 @@ export type WorkspaceAiAvatarGlyphKey = (typeof WORKSPACE_AI_AVATAR_GLYPH_KEYS)[
 /** 실행 백엔드(연동·감사 표시용). `prototype_build`는 Cursor 기반 작업 흐름을 가정한다. */
 export type WorkspaceAiExecutionProviderId = "openai" | "cursor";
 
+/** 플랫폼 AI 멤버가 연 Integrations capability — 카탈로그 실행 주체(openai→LLM, cursor→CODE_AGENT)와 정렬 */
+export type WorkspaceAiIntegrationCapability = "LLM" | "CODE_AGENT";
+
 export type PlatformAiMemberDef = {
   readonly id: WorkspaceAiMemberId;
   /** 참여 멤버·토스트 등 UI 표시명 */
@@ -191,6 +194,12 @@ const MEMBERS: readonly PlatformAiMemberDef[] = [
 
 const byId = Object.fromEntries(MEMBERS.map((m) => [m.id, m])) as Record<WorkspaceAiMemberId, PlatformAiMemberDef>;
 
+export function primaryIntegrationCapabilityForCatalogMember(memberId: WorkspaceAiMemberId): WorkspaceAiIntegrationCapability {
+  const m = byId[memberId];
+  if (!m) return "LLM";
+  return m.executionProvider === "cursor" ? "CODE_AGENT" : "LLM";
+}
+
 const EXECUTION_PROVIDER_LABEL: Record<WorkspaceAiExecutionProviderId, string> = {
   openai: "OpenAI",
   cursor: "Cursor",
@@ -244,7 +253,7 @@ function truncateParticipantHint(s: string, max: number): string {
 }
 
 export function buildWorkspaceAiParticipantOptions(input: {
-  /** 이 화면에서 활성(강조)할 플랫폼 AI — 복수 가능 */
+  /** 이 화면에서 활성(강조)할 플랫폼 AI — 복수 가능(목록은 이 집합에만 한정) */
   readonly currentMemberIds: readonly WorkspaceAiMemberId[];
   readonly statusLabelForCurrent: string;
   readonly activityByMember?: Partial<
@@ -252,7 +261,8 @@ export function buildWorkspaceAiParticipantOptions(input: {
   >;
 }): ParticipantOption[] {
   const currentSet = new Set(input.currentMemberIds);
-  return listEnabledWorkspaceAiMembers().map((m) => {
+  const enabledSubset = listEnabledWorkspaceAiMembers().filter((m) => currentSet.has(m.id));
+  return enabledSubset.map((m) => {
     const isCurrent = currentSet.has(m.id);
     const act = input.activityByMember?.[m.id];
     const recentRaw = (act?.recentSnippet ?? "").trim();
