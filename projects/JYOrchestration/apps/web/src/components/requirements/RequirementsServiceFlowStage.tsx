@@ -28,8 +28,6 @@ import {
 } from "@/components/service-flow/serviceFlowStageLayout";
 import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { useServiceFlowStageController, type ServiceFlowStageControllerInput } from "@/components/service-flow/useServiceFlowStageController";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 
 export type RequirementsServiceFlowStageProps = ServiceFlowStageControllerInput & {
   readonly ideationReadyNotice: string;
@@ -93,8 +91,8 @@ export function RequirementsServiceFlowStage({
 
       <div className="jyo-service-flow-stage-shell" style={serviceFlowStageShellGridStyle}>
         <main className="jyo-service-flow-chat-shell" style={serviceFlowStageMainChatStyle} aria-label="액터 및 서비스 흐름 작업 영역">
-          <div className="chat-page" style={{ flex: "1 1 auto", minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
-            <div className="chat-header-fixed">
+          <div className="chat-viewport" style={{ flex: "1 1 auto", minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+            <div className="chat-header">
               <ChatWindowScreenLabelTop />
               <ScreenLabel label="요구사항-서비스흐름-참여멤버" visible={showScreenLabels} />
               <ServiceFlowHeader
@@ -113,8 +111,7 @@ export function RequirementsServiceFlowStage({
               ) : null}
             </div>
 
-            <div className="chat-body">
-              <div ref={w.chatScrollRef} className="chat-messages-scroll" style={serviceFlowChatMessagesScrollStyle}>
+              <div ref={w.chatScrollRef} className="chat-messages" style={serviceFlowChatMessagesScrollStyle}>
             {!controllerInput.ideationReady ? (
               <InlineAlert variant="warning" style={{ maxWidth: 620 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.5 }}>{ideationReadyNotice}</div>
@@ -151,9 +148,8 @@ export function RequirementsServiceFlowStage({
               ideationReady={controllerInput.ideationReady}
             />
               </div>
-            </div>
 
-            <div className="chat-input-fixed">
+            <div className="chat-input">
               <ChatWindowScreenLabelBottom />
               <RequirementsChatComposerFooter>
             <div style={serviceFlowStageComposerColumnStyle}>

@@ -1556,7 +1556,7 @@ export function PrototypePreviewPanel({
       <div className="jyo-prototype-stage-shell" style={{ ...prototypeStageShell, height: "100%" }}>
         <div
           data-testid="prototype-generation-chat-panel"
-          className="chat-page"
+          className="chat-viewport"
           style={{
             display: "flex",
             flexDirection: "column",
@@ -1570,7 +1570,7 @@ export function PrototypePreviewPanel({
           role="region"
           aria-label="프로토타입 생성 채팅"
         >
-          <div className="chat-header-fixed">
+          <div className="chat-header">
             <ChatWindowScreenLabelTop />
           <RequirementsChatHeaderRow
             memberControls={{
@@ -1611,9 +1611,8 @@ export function PrototypePreviewPanel({
           />
           </div>
 
-          <div className="chat-body">
               <div
-                className="chat-messages-scroll"
+                className="chat-messages"
                 style={{
                   position: "relative",
                   padding: "18px 18px 12px",
@@ -1660,9 +1659,8 @@ export function PrototypePreviewPanel({
                   ) : null}
                 </div>
               </div>
-          </div>
 
-              <div className="chat-input-fixed">
+              <div className="chat-input">
                 <ChatWindowScreenLabelBottom />
               <RequirementsChatComposerFooter>
                 <div style={serviceFlowStageComposerColumnStyle}>

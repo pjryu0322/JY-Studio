@@ -49,7 +49,9 @@ export function RequirementsNavBreadcrumb({
         </>
       ) : null}
       {sep}
-      <span style={{ color: "#0f172a", fontWeight: 800 }}>아이디어 구체화</span>
+      <span style={{ color: "#0f172a", fontWeight: 800 }}>
+        AI 기획자가 사용자와의 대화를 통해 아이디어를 분석하고, 목표 고객·문제 정의·MVP 범위를 정리하여 실행 가능한 기획 초안으로 구체화합니다.
+      </span>
     </nav>
   );
 }

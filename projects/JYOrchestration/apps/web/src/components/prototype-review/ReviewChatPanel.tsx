@@ -186,14 +186,14 @@ export function ReviewChatPanel(p: {
     <div
       role="region"
       aria-label="프로토타입 검토 대화"
-      className="chat-page"
+      className="chat-viewport"
       style={{
         ...shellStyle(compact, fillParent, floating, sa, omitChrome),
         paddingBottom: omitChrome ? "max(14px, env(safe-area-inset-bottom, 0px))" : undefined,
         boxSizing: "border-box",
       }}
     >
-      <div className="chat-header-fixed">
+      <div className="chat-header">
         <ChatWindowScreenLabelTop />
       {!omitChrome ? (
         <div
@@ -212,9 +212,8 @@ export function ReviewChatPanel(p: {
       ) : null}
       </div>
 
-      <div className="chat-body">
       <div
-        className="chat-messages-scroll"
+        className="chat-messages"
         style={{
           padding: "12px 12px 10px",
           display: "flex",
@@ -315,9 +314,8 @@ export function ReviewChatPanel(p: {
 
         <div ref={endRef} />
       </div>
-      </div>
 
-      <div className="chat-input-fixed">
+      <div className="chat-input">
         <ChatWindowScreenLabelBottom />
       <div
         style={{

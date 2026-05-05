@@ -25,6 +25,12 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Dev-only: hide Next.js dev build indicator (bottom-left "N"). */
+#__next-build-watcher,
+#__next-prerender-indicator {
+  display: none !important;
+}
+
 @keyframes jyo-button-spin {
   to {
     transform: rotate(360deg);
@@ -65,14 +71,15 @@ body {
 }
 
 /**
- * 채팅 화면 3분할 (고정 상단 · 메시지 스크롤 · 고정 입력).
- * DOM: .chat-page > .chat-header-fixed + .chat-body > .chat-messages-scroll + .chat-input-fixed
+ * 채팅 3단: 고정 헤더 · 메시지 스크롤 · 고정 입력 (flex, min-h-0 체인).
+ * DOM: .chat-viewport > .chat-header + .chat-messages + .chat-input
  */
-.chat-page {
+.chat-viewport {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   height: 100%;
+  max-height: 100%;
   min-height: 0;
   min-width: 280px;
   max-width: 100%;
@@ -80,32 +87,53 @@ body {
   box-sizing: border-box;
 }
 
-.chat-header-fixed {
+.chat-header {
+  flex: none;
   flex-shrink: 0;
   min-width: 0;
+  z-index: 2;
 }
 
-.chat-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.chat-messages-scroll {
+.chat-messages {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: 10px;
 }
 
-.chat-input-fixed {
+.chat-input {
+  flex: none;
   flex-shrink: 0;
   min-width: 0;
+  z-index: 3;
+}
+
+/**
+ * `/requirements` 라우트: 문서(html/body) 세로 스크롤 차단 — 채팅·패널 내부만 스크롤.
+ * (:has 는 모던 브라우저; 요구사항 전용)
+ */
+html:has(.jyo-requirements-route-root) {
+  height: 100%;
+  overflow: hidden;
+}
+
+html:has(.jyo-requirements-route-root) body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/** `/requirements` 레이아웃 — 상위(PlatformShell) 안에서만 높이 소비 */
+.jyo-requirements-route-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 100%;
 }
 
 .jyo-platform-main {
@@ -120,7 +148,7 @@ body {
 
 .jyo-platform-main.jyo-workspace-mobile {
   max-width: 100%;
-  padding: 12px 12px max(24px, env(safe-area-inset-bottom, 0px));
+  padding: 8px 10px max(16px, env(safe-area-inset-bottom, 0px));
 }
 
 /** 요구사항(아이디어·서비스 흐름) 페이지 루트 — 본문이 남은 뷰포트를 채워 채팅 3분할 높이를 확보 */
@@ -134,15 +162,36 @@ body {
   margin-inline: auto;
   padding-inline: 8px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
-/* 아이디어 구체화: 멤버 패널 + 채팅 가로 배치(좁은 화면에서는 세로 스택) */
+/**
+ * RequirementsWorkspace: 상단(워크플로·배너)은 고정, 본문(채팅)만 flex로 남은 높이를 쓴다.
+ */
+.jyo-requirements-workspace-top-chrome {
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.jyo-requirements-workspace-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* 아이디어 구체화: 멤버 패널 + 채팅 가로 배치(뷰포트 내 남은 높이만 사용 — 고정 vh로 페이지 스크롤 유발하지 않음) */
 .jyo-requirements-workspace-main {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  min-height: max(520px, 70vh);
-  height: max(520px, 70vh);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
 }
 
 /* 공통: 상위 워크플로 탭 워크스페이스 최소 높이(아이디어 구체화 기준) */

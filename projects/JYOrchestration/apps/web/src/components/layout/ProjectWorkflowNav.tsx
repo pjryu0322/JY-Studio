@@ -50,6 +50,7 @@ function ProjectWorkflowNavInner() {
   /** `PlatformTopNav`와 동일 — 하이드레이션 완료 전에는 항상 데스크톱 내비 트리를 맞춰 SSR·클라이언트 HTML 불일치를 방지 */
   const [layoutHydrated, setLayoutHydrated] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLayoutHydrated(true);
   }, []);
   const compactWorkflowNav = layoutHydrated && effectiveLayout === "MOBILE";

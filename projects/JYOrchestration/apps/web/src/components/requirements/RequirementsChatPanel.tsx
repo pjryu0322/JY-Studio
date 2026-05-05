@@ -16,7 +16,6 @@ import {
 } from "@/lib/requirements/ideationDeliverables";
 import {
   PROBLEM_INTERVIEW_SLOTS,
-  interviewSlotLevelFromState,
   problemInterviewSlotLabelKr,
   type ProblemInterviewSlot,
   type ProblemInterviewState,

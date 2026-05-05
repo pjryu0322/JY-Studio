@@ -31,6 +31,17 @@ type AiDraftMemberRow = {
   enginePreference: string;
 };
 
+function engineLabelForUi(key: WorkspaceAiEnginePreferenceKey): string {
+  if (key === "USER_DEFAULT") return "User Default";
+  return enginePreferenceLabel(key);
+}
+
+function agentTitleForUi(rawTitle: string): string {
+  const base = String(rawTitle || "").replace(/^AI\s*/i, "").trim();
+  if (base === "기능설계자") return "설계자";
+  return base;
+}
+
 type ApiProjectMember = {
   memberId: string;
   userId: string | null;
@@ -79,6 +90,8 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
   const [aiSaveBusy, setAiSaveBusy] = useState(false);
   const [aiDetailMemberId, setAiDetailMemberId] = useState<WorkspaceAiMemberId | null>(null);
   const [aiPromptMemberId, setAiPromptMemberId] = useState<WorkspaceAiMemberId | null>(null);
+  const [aiDirty, setAiDirty] = useState(false);
+  const [aiAutoSaveTick, setAiAutoSaveTick] = useState(0);
 
   /** SSR/CSR 동일 문자열 — 전체 URL은 복사 시에만 붙여 하이드레이션 불일치를 막습니다. */
   const joinPath = useMemo(() => {
@@ -117,6 +130,40 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
   }, [reloadMembers]);
 
   const humanMembers = useMemo(() => members.filter((m) => m.memberType === "HUMAN"), [members]);
+  type MemberSortKey = "displayName" | "email" | "status";
+  const [memberSortKey, setMemberSortKey] = useState<MemberSortKey>("displayName");
+  const [memberSortDir, setMemberSortDir] = useState<"asc" | "desc">("asc");
+
+  const sortedHumanMembers = useMemo(() => {
+    const dir = memberSortDir === "asc" ? 1 : -1;
+    const getName = (m: ApiProjectMember) => String(m.displayName || m.email || "멤버").trim().toLowerCase();
+    const getEmail = (m: ApiProjectMember) => String(m.email || "").trim().toLowerCase();
+    const getStatus = (m: ApiProjectMember) => (m.userId ? "가입됨" : "초대됨");
+    const list = [...humanMembers];
+    list.sort((a, b) => {
+      if (memberSortKey === "displayName") return getName(a).localeCompare(getName(b)) * dir;
+      if (memberSortKey === "email") return getEmail(a).localeCompare(getEmail(b)) * dir;
+      return getStatus(a).localeCompare(getStatus(b)) * dir;
+    });
+    return list;
+  }, [humanMembers, memberSortKey, memberSortDir]);
+
+  const paddedHumanMembers = useMemo(() => {
+    const minRows = 10;
+    const base = sortedHumanMembers;
+    if (base.length >= minRows) return base;
+    const blanks = Array.from({ length: minRows - base.length }, () => null as ApiProjectMember | null);
+    return [...base, ...blanks];
+  }, [sortedHumanMembers]);
+
+  const toggleMemberSort = useCallback((key: MemberSortKey) => {
+    if (memberSortKey === key) {
+      setMemberSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setMemberSortKey(key);
+    setMemberSortDir("asc");
+  }, [memberSortKey]);
 
   const canAdminWorkspaceAi = useMemo(() => {
     return humanMembers.some((m) => m.isOwner && m.userId && m.userId === sessionUserId);
@@ -186,16 +233,19 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
   }, [tab, loadWorkspaceAiGraph]);
 
   const setCatalogEnabled = useCallback((catalogKey: WorkspaceAiMemberId, enabled: boolean) => {
+    setAiDirty(true);
     setAiDraft((prev) =>
       prev ? prev.map((r) => (r.catalogKey === catalogKey ? { ...r, enabled } : r)) : prev
     );
   }, []);
 
   const setEnginePreference = useCallback((catalogKey: WorkspaceAiMemberId, enginePreference: string) => {
+    setAiDirty(true);
     setAiDraft((prev) => (prev ? prev.map((r) => (r.catalogKey === catalogKey ? { ...r, enginePreference } : r)) : prev));
   }, []);
 
   const toggleCatalogOnScreen = useCallback((catalogKey: WorkspaceAiMemberId, screenKey: WorkspaceScreenKey, checked: boolean) => {
+    setAiDirty(true);
     setAiDraft((prev) =>
       prev
         ? prev.map((r) =>
@@ -207,11 +257,12 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                       ? r.screenKeys
                       : [...r.screenKeys, screenKey]
                     : r.screenKeys.filter((s) => s !== screenKey),
+                  // "참여"는 자동실행을 전제로 합니다.
                   screenAutoRun: checked
-                    ? r.screenAutoRun
-                    : Object.fromEntries(
+                    ? { ...r.screenAutoRun, [screenKey]: true }
+                    : (Object.fromEntries(
                         Object.entries(r.screenAutoRun).filter(([k]) => k !== screenKey)
-                      ) as Partial<Record<WorkspaceScreenKey, boolean>>,
+                      ) as Partial<Record<WorkspaceScreenKey, boolean>>),
                 }
               : r
           )
@@ -220,6 +271,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
   }, []);
 
   const toggleScreenAutoRun = useCallback((catalogKey: WorkspaceAiMemberId, screenKey: WorkspaceScreenKey, autoRun: boolean) => {
+    setAiDirty(true);
     setAiDraft((prev) =>
       prev
         ? prev.map((r) => {
@@ -246,11 +298,12 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
         const screenKeys = row?.screenKeys ?? [];
         const screens = screenKeys.map((sk) => ({
           screenKey: sk,
-          autoRun: Boolean(row?.screenAutoRun[sk]),
+          autoRun: true,
         }));
+        const forcedEnabled = catalogKey === "memo" ? true : (row?.enabled ?? true);
         return {
           catalogKey,
-          enabled: row?.enabled ?? true,
+          enabled: forcedEnabled,
           screens,
           enginePreference: row?.enginePreference ?? "USER_DEFAULT",
         };
@@ -265,7 +318,8 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
         setBanner({ text: json.message || "AI 설정 저장에 실패했습니다.", tone: "neutral" });
         return;
       }
-      setBanner({ text: "AI 멤버·화면 참여 설정을 저장했습니다.", tone: "success" });
+      setAiDirty(false);
+      setAiAutoSaveTick((t) => t + 1);
       await loadWorkspaceAiGraph();
     } catch {
       setBanner({ text: "AI 설정 저장 중 오류가 발생했습니다.", tone: "neutral" });
@@ -273,6 +327,31 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
       setAiSaveBusy(false);
     }
   }, [projectId, aiDraft, canAdminWorkspaceAi, loadWorkspaceAiGraph]);
+
+  const uiAiCatalog = useMemo(() => {
+    // 화면별 참여 AI(화면 목록)에서 작업메모(memo)는 숨김 처리
+    const hidden = new Set<WorkspaceAiMemberId>(["memo"]);
+    return listPlatformAiMemberCatalog()
+      .filter((m) => !hidden.has(m.id))
+      .map((m) => ({
+        uiId: m.id,
+        memberIds: [m.id],
+        title: agentTitleForUi(m.title),
+        catalog: m,
+      }));
+  }, []);
+
+  // 변경 즉시 자동 저장 (디바운스)
+  useEffect(() => {
+    if (tab !== "ai") return;
+    if (!canAdminWorkspaceAi) return;
+    if (!aiDraft) return;
+    if (!aiDirty) return;
+    const t = window.setTimeout(() => {
+      void saveWorkspaceAiGraph();
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [tab, canAdminWorkspaceAi, aiDraft, aiDirty, saveWorkspaceAiGraph, aiAutoSaveTick]);
 
   const copyJoinLink = useCallback(async () => {
     if (!joinPath) return;
@@ -408,37 +487,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           gap: isNarrow ? 10 : 12,
         }}
       >
-        <h1
-          style={{
-            margin: 0,
-            fontSize: isNarrow ? 18 : 22,
-            fontWeight: 900,
-            color: "#0f172a",
-            lineHeight: 1.25,
-          }}
-        >
-          프로젝트 멤버 관리
-        </h1>
-        <button
-          type="button"
-          onClick={() => router.back()}
-          style={{
-            marginLeft: isNarrow ? 0 : "auto",
-            alignSelf: isNarrow ? "stretch" : undefined,
-            fontSize: 14,
-            fontWeight: 800,
-            color: "#2563eb",
-            background: isNarrow ? "#eff6ff" : "none",
-            border: isNarrow ? "1px solid #bfdbfe" : "none",
-            borderRadius: isNarrow ? 10 : 0,
-            cursor: "pointer",
-            padding: isNarrow ? "12px 14px" : "4px 0",
-            textDecoration: isNarrow ? "none" : "underline",
-            ...tap,
-          }}
-        >
-          ← 이전 화면
-        </button>
+        <span aria-hidden />
       </div>
 
       {banner ? (
@@ -475,7 +524,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
             ...tap,
           }}
         >
-          사람 멤버
+          이해관계자
         </button>
         <button
           type="button"
@@ -493,156 +542,97 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
             ...tap,
           }}
         >
-          AI 멤버
+          AI Agent
         </button>
       </div>
 
       {tab === "people" ? (
         <div>
-          <h2
-            style={{
-              fontSize: isNarrow ? 15 : 16,
-              fontWeight: 900,
-              color: "#0f172a",
-              margin: "0 0 12px",
-            }}
-          >
-            현재 멤버
-          </h2>
           {loadState === "loading" ? (
             <p style={{ color: "#64748b", fontSize: 14 }}>불러오는 중…</p>
           ) : loadError ? (
             <p style={{ color: "#b91c1c", fontSize: 14 }}>{loadError}</p>
-          ) : isNarrow ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {humanMembers.map((m) => {
-                const name = (m.displayName || m.email || "멤버").trim();
-                const ownerRow = Boolean(m.isOwner);
-                return (
-                  <div
-                    key={m.memberId}
-                    style={{
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 12,
-                      background: "#fff",
-                      padding: "14px 14px",
-                    }}
-                  >
-                    <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15, marginBottom: 6 }}>
-                      {name}
-                      {!m.userId ? (
-                        <span style={{ marginLeft: 8, fontSize: 11, color: "#ea580c", fontWeight: 800 }}>초대됨</span>
-                      ) : null}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: "#475569",
-                        wordBreak: "break-word",
-                        lineHeight: 1.4,
-                        marginBottom: ownerRow ? 0 : 12,
-                      }}
-                    >
-                      {m.email ?? "—"}
-                    </div>
-                    {!ownerRow ? (
-                      <button
-                        type="button"
-                        disabled={removeBusyId === m.memberId}
-                        onClick={() => void removeMember(m.memberId, name)}
-                        style={{
-                          width: "100%",
-                          padding: "12px 14px",
-                          borderRadius: 10,
-                          border: "1px solid #fecaca",
-                          background: "#fef2f2",
-                          color: "#b91c1c",
-                          fontWeight: 800,
-                          fontSize: 14,
-                          cursor: removeBusyId === m.memberId ? "wait" : "pointer",
-                          ...tap,
-                        }}
-                      >
-                        제거
-                      </button>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {!humanMembers.length ? (
-                <div style={{ padding: 16, color: "#64748b", fontSize: 14 }}>등록된 사람 멤버가 없습니다.</div>
-              ) : null}
-            </div>
           ) : (
             <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "34%" }} />
+                  <col style={{ width: "46%" }} />
+                  <col style={{ width: "20%" }} />
+                </colgroup>
                 <thead>
                   <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                    <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이름</th>
-                    <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이메일</th>
-                    <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>작업</th>
+                    <th style={{ padding: "10px 12px" }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleMemberSort("displayName")}
+                        style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", fontWeight: 900, color: "#64748b", whiteSpace: "nowrap" }}
+                        aria-label="닉네임 정렬"
+                        title="정렬"
+                      >
+                        닉네임 {memberSortKey === "displayName" ? (memberSortDir === "asc" ? "▲" : "▼") : ""}
+                      </button>
+                    </th>
+                    <th style={{ padding: "10px 12px" }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleMemberSort("email")}
+                        style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", fontWeight: 900, color: "#64748b", whiteSpace: "nowrap" }}
+                        aria-label="이메일 정렬"
+                        title="정렬"
+                      >
+                        이메일 {memberSortKey === "email" ? (memberSortDir === "asc" ? "▲" : "▼") : ""}
+                      </button>
+                    </th>
+                    <th style={{ padding: "10px 12px" }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleMemberSort("status")}
+                        style={{ border: 0, background: "transparent", padding: 0, cursor: "pointer", fontWeight: 900, color: "#64748b", whiteSpace: "nowrap" }}
+                        aria-label="로그인 상태 정렬"
+                        title="정렬"
+                      >
+                        로그인 상태 {memberSortKey === "status" ? (memberSortDir === "asc" ? "▲" : "▼") : ""}
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {humanMembers.map((m) => {
+                  {paddedHumanMembers.map((m, idx) => {
+                    if (!m) {
+                      return (
+                        <tr key={`blank-${idx}`} style={{ borderTop: "1px solid #f1f5f9", height: 44 }}>
+                          <td style={{ padding: "10px 12px", color: "transparent" }}>—</td>
+                          <td style={{ padding: "10px 12px", color: "transparent" }}>—</td>
+                          <td style={{ padding: "10px 12px", color: "transparent" }}>—</td>
+                        </tr>
+                      );
+                    }
                     const name = (m.displayName || m.email || "멤버").trim();
-                    const ownerRow = Boolean(m.isOwner);
+                    const status = m.userId ? "가입됨" : "초대됨";
                     return (
                       <tr key={m.memberId} style={{ borderTop: "1px solid #f1f5f9" }}>
-                        <td style={{ padding: "10px 12px", fontWeight: 700 }}>
-                          {name}
-                          {!m.userId ? (
-                            <span style={{ marginLeft: 8, fontSize: 11, color: "#ea580c", fontWeight: 800 }}>초대됨</span>
-                          ) : null}
-                        </td>
-                        <td style={{ padding: "10px 12px", color: "#475569" }}>{m.email ?? "—"}</td>
-                        <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
-                          {ownerRow ? null : (
-                            <button
-                              type="button"
-                              disabled={removeBusyId === m.memberId}
-                              onClick={() => void removeMember(m.memberId, name)}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                border: "1px solid #fecaca",
-                                background: "#fef2f2",
-                                color: "#b91c1c",
-                                fontWeight: 800,
-                                fontSize: 12,
-                                cursor: removeBusyId === m.memberId ? "wait" : "pointer",
-                              }}
-                            >
-                              제거
-                            </button>
-                          )}
+                        <td style={{ padding: "10px 12px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</td>
+                        <td style={{ padding: "10px 12px", color: "#475569", wordBreak: "break-word", overflowWrap: "anywhere" }}>{m.email ?? "—"}</td>
+                        <td style={{ padding: "10px 12px", whiteSpace: "nowrap", fontWeight: 800, color: status === "가입됨" ? "#166534" : "#9a3412" }}>
+                          {status}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-              {!humanMembers.length ? (
-                <div style={{ padding: 16, color: "#64748b", fontSize: 14 }}>등록된 사람 멤버가 없습니다.</div>
+              {!sortedHumanMembers.length ? (
+                <div style={{ padding: 16, color: "#64748b", fontSize: 14 }}>등록된 이해관계자가 없습니다.</div>
               ) : null}
             </div>
           )}
 
-          <h2
-            style={{
-              fontSize: isNarrow ? 15 : 16,
-              fontWeight: 900,
-              color: "#0f172a",
-              margin: "28px 0 12px",
-            }}
-          >
-            초대
-          </h2>
           <p
             style={{
               fontSize: isNarrow ? 14 : 13,
               color: "#64748b",
-              margin: "0 0 12px",
+              margin: "18px 0 12px",
               lineHeight: 1.55,
             }}
           >
@@ -713,23 +703,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
               초대 링크 복사
             </button>
           </div>
-          {joinPath ? (
-            <code
-              style={{
-                display: "block",
-                fontSize: isNarrow ? 11 : 12,
-                padding: isNarrow ? "10px 12px" : "8px 10px",
-                background: "#f8fafc",
-                borderRadius: 8,
-                wordBreak: "break-all",
-                overflowWrap: "anywhere",
-                color: "#334155",
-                lineHeight: 1.45,
-              }}
-            >
-              {joinPath}
-            </code>
-          ) : null}
+          {/* joinPath는 복사용으로만 사용하고 화면에는 노출하지 않습니다. */}
         </div>
       ) : (
         <div>
@@ -738,54 +712,6 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
               AI 설정 저장은 프로젝트 소유자만 할 수 있습니다. 조회는 멤버 누구나 가능합니다.
             </p>
           ) : null}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: isNarrow ? "column" : "row",
-              flexWrap: isNarrow ? "nowrap" : "wrap",
-              gap: 10,
-              alignItems: isNarrow ? "stretch" : "center",
-              marginBottom: 14,
-            }}
-          >
-            <button
-              type="button"
-              disabled={aiGraphLoadState === "loading" || aiSaveBusy}
-              onClick={() => void loadWorkspaceAiGraph()}
-              style={{
-                padding: isNarrow ? "12px 16px" : "8px 14px",
-                borderRadius: 10,
-                border: "1px solid #cbd5e1",
-                background: "#fff",
-                fontWeight: 800,
-                fontSize: isNarrow ? 15 : 13,
-                cursor: aiGraphLoadState === "loading" ? "wait" : "pointer",
-                width: isNarrow ? "100%" : undefined,
-                ...tap,
-              }}
-            >
-              새로고침
-            </button>
-            <button
-              type="button"
-              disabled={!canAdminWorkspaceAi || !aiDraft || aiSaveBusy || aiGraphLoadState === "loading"}
-              onClick={() => void saveWorkspaceAiGraph()}
-              style={{
-                padding: isNarrow ? "12px 16px" : "8px 14px",
-                borderRadius: 10,
-                border: "none",
-                background: !canAdminWorkspaceAi || !aiDraft ? "#e2e8f0" : "#0d9488",
-                color: !canAdminWorkspaceAi || !aiDraft ? "#94a3b8" : "#fff",
-                fontWeight: 900,
-                fontSize: isNarrow ? 15 : 13,
-                cursor: !canAdminWorkspaceAi || !aiDraft ? "not-allowed" : "pointer",
-                width: isNarrow ? "100%" : undefined,
-                ...tap,
-              }}
-            >
-              {aiSaveBusy ? "저장 중…" : "설정 저장"}
-            </button>
-          </div>
           {aiGraphLoadState === "loading" ? (
             <p style={{ color: "#64748b", fontSize: 14 }}>AI 설정을 불러오는 중…</p>
           ) : aiGraphError ? (
@@ -794,215 +720,85 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
             <p style={{ color: "#64748b", fontSize: 14 }}>AI 설정이 없습니다.</p>
           ) : (
             <>
-              <h2 style={{ fontSize: isNarrow ? 15 : 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>AI 멤버</h2>
-              {isNarrow ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
-                  {listPlatformAiMemberCatalog().map((row) => {
-                    const draftRow = aiDraft.find((r) => r.catalogKey === row.id);
-                    const cap = primaryIntegrationCapabilityForCatalogMember(row.id);
-                    const engineOpts = engineChoicesForCapability(cap);
-                    const engineKey = (draftRow?.enginePreference ?? "USER_DEFAULT") as WorkspaceAiEnginePreferenceKey;
-                    const buildOn = isWorkspaceAiMemberEnabled(row.id);
-                    const projOn = Boolean(draftRow?.enabled);
-                    return (
-                      <div
-                        key={row.id}
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 12,
-                          background: "#fff",
-                          padding: "14px 14px",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                          <WorkspaceAiMemberAvatar memberId={row.id} size={44} />
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>{row.title}</div>
-                          </div>
-                        </div>
-                        <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>엔진</div>
-                          {canAdminWorkspaceAi ? (
-                            <select
-                              value={engineKey}
-                              onChange={(e) => setEnginePreference(row.id, e.target.value)}
-                              style={{
-                                width: "100%",
-                                padding: "10px 12px",
-                                borderRadius: 10,
-                                border: "1px solid #cbd5e1",
-                                fontSize: 15,
-                                fontWeight: 600,
-                                background: "#fff",
-                                ...tap,
-                              }}
-                            >
-                              {engineOpts.map((ek) => (
-                                <option key={ek} value={ek}>
-                                  {enginePreferenceLabel(ek)}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.45 }}>{enginePreferenceLabel(engineKey)}</div>
-                          )}
-                        </div>
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                            cursor: canAdminWorkspaceAi ? "pointer" : "not-allowed",
-                            opacity: canAdminWorkspaceAi ? 1 : 0.75,
-                            marginBottom: 8,
-                            minHeight: 44,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={projOn}
-                            disabled={!canAdminWorkspaceAi}
-                            onChange={(e) => setCatalogEnabled(row.id, e.target.checked)}
-                            style={{ width: 22, height: 22, accentColor: "#0d9488", flexShrink: 0 }}
-                          />
-                          <span style={{ fontWeight: 700, fontSize: 14, color: projOn ? "#0f766e" : "#94a3b8" }}>
-                            프로젝트 활성: {projOn ? "켜짐" : "꺼짐"}
-                          </span>
-                        </label>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: buildOn ? "#0f766e" : "#94a3b8", marginBottom: 12 }}>
-                          빌드: {buildOn ? "표시" : "숨김"}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setAiDetailMemberId(row.id)}
-                          style={{
-                            width: "100%",
-                            padding: "12px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #0d9488",
-                            background: "#fff",
-                            color: "#0f766e",
-                            fontWeight: 800,
-                            fontSize: 14,
-                            cursor: "pointer",
-                            ...tap,
-                          }}
-                        >
-                          상세보기
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", marginBottom: 22 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
+              <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", marginBottom: 22 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
                     <thead>
                       <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                        <th style={{ padding: "10px 8px", fontWeight: 800, color: "#64748b", width: 56, fontSize: 11 }}>아바타</th>
-                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이름</th>
+                        <th style={{ padding: "10px 8px", fontWeight: 800, color: "#64748b", width: 150, fontSize: 11 }}>Agent</th>
                         <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>엔진</th>
-                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>프로젝트 활성</th>
-                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>빌드</th>
-                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", whiteSpace: "nowrap" }}>작업</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {listPlatformAiMemberCatalog().map((row) => {
-                        const draftRow = aiDraft.find((r) => r.catalogKey === row.id);
-                        const cap = primaryIntegrationCapabilityForCatalogMember(row.id);
+                      {uiAiCatalog.map((uiRow) => {
+                        const primaryId = uiRow.uiId;
+                        const memberIds = uiRow.memberIds;
+                        const draftRows = memberIds.map((id) => aiDraft.find((r) => r.catalogKey === id)).filter(Boolean) as AiDraftMemberRow[];
+                        const cap = primaryIntegrationCapabilityForCatalogMember(primaryId);
                         const engineOpts = engineChoicesForCapability(cap);
-                        const engineKey = (draftRow?.enginePreference ?? "USER_DEFAULT") as WorkspaceAiEnginePreferenceKey;
-                        const buildOn = isWorkspaceAiMemberEnabled(row.id);
-                        const projOn = Boolean(draftRow?.enabled);
+                        const engineKey = ((draftRows[0]?.enginePreference ?? "USER_DEFAULT") as WorkspaceAiEnginePreferenceKey) ?? "USER_DEFAULT";
+                        const agentTitle = uiRow.title;
                         return (
-                          <tr key={row.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                          <tr key={primaryId} style={{ borderTop: "1px solid #f1f5f9" }}>
                             <td style={{ padding: "10px 8px", verticalAlign: "middle" }}>
-                              <WorkspaceAiMemberAvatar memberId={row.id} size={36} />
+                              <button
+                                type="button"
+                                onClick={() => setAiDetailMemberId(primaryId)}
+                                title={agentTitle}
+                                aria-label={`${agentTitle} 상세보기`}
+                                style={{
+                                  border: 0,
+                                  background: "transparent",
+                                  padding: 0,
+                                  margin: 0,
+                                  fontWeight: 900,
+                                  color: "#0f172a",
+                                  whiteSpace: "nowrap",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{agentTitle}</span>
+                                <WorkspaceAiMemberAvatar memberId={primaryId} size={22} />
+                              </button>
                             </td>
-                            <td style={{ padding: "10px 12px", fontWeight: 800 }}>{row.title}</td>
-                            <td style={{ padding: "10px 12px", color: "#475569", minWidth: 200, verticalAlign: "middle" }}>
+                            <td style={{ padding: "10px 10px", color: "#475569", minWidth: 112, verticalAlign: "middle" }}>
                               {canAdminWorkspaceAi ? (
                                 <select
                                   value={engineKey}
-                                  onChange={(e) => setEnginePreference(row.id, e.target.value)}
+                                  onChange={(e) => {
+                                    setEnginePreference(primaryId, e.target.value);
+                                  }}
                                   style={{
-                                    maxWidth: 300,
-                                    width: "100%",
-                                    padding: "6px 8px",
+                                    width: "auto",
+                                    maxWidth: 132,
+                                    padding: "2px 6px",
                                     borderRadius: 8,
                                     border: "1px solid #cbd5e1",
-                                    fontSize: 13,
+                                    fontSize: 11,
                                     fontWeight: 600,
                                     background: "#fff",
                                   }}
                                 >
                                   {engineOpts.map((ek) => (
                                     <option key={ek} value={ek}>
-                                      {enginePreferenceLabel(ek)}
+                                      {engineLabelForUi(ek as WorkspaceAiEnginePreferenceKey)}
                                     </option>
                                   ))}
                                 </select>
                               ) : (
-                                <span style={{ fontWeight: 600 }}>{enginePreferenceLabel(engineKey)}</span>
+                                <span style={{ fontWeight: 600, fontSize: 11 }}>{engineLabelForUi(engineKey)}</span>
                               )}
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <label
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 8,
-                                  cursor: canAdminWorkspaceAi ? "pointer" : "not-allowed",
-                                  opacity: canAdminWorkspaceAi ? 1 : 0.75,
-                                }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={projOn}
-                                  disabled={!canAdminWorkspaceAi}
-                                  onChange={(e) => setCatalogEnabled(row.id, e.target.checked)}
-                                  style={{ width: 18, height: 18, accentColor: "#0d9488" }}
-                                />
-                                <span style={{ fontWeight: 700, color: projOn ? "#0f766e" : "#94a3b8" }}>{projOn ? "켜짐" : "꺼짐"}</span>
-                              </label>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <span style={{ fontWeight: 700, color: buildOn ? "#0f766e" : "#94a3b8" }}>{buildOn ? "표시" : "숨김"}</span>
-                            </td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <button
-                                type="button"
-                                onClick={() => setAiDetailMemberId(row.id)}
-                                style={{
-                                  padding: "6px 10px",
-                                  borderRadius: 8,
-                                  border: "1px solid #0d9488",
-                                  background: "#fff",
-                                  color: "#0f766e",
-                                  fontWeight: 800,
-                                  fontSize: 12,
-                                  cursor: "pointer",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                상세보기
-                              </button>
                             </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                </div>
-              )}
+              </div>
 
-              <h2 style={{ fontSize: isNarrow ? 15 : 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>화면별 참여 AI</h2>
-              {isNarrow ? (
-                <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 10px", lineHeight: 1.5 }}>
-                  <span style={{ color: "#0f766e", fontWeight: 700 }}>표가 넓으면 좌우로 스크롤</span>해 주세요.
-                </p>
-              ) : null}
+              <h2 style={{ fontSize: isNarrow ? 15 : 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>절차 별 참여 AI</h2>
               <div
                 style={{
                   overflowX: "auto",
@@ -1018,11 +814,11 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                   <thead>
                     <tr style={{ background: "#f8fafc" }}>
                       <th style={{ padding: "8px 10px", fontWeight: 800, color: "#64748b", textAlign: "left", position: "sticky", left: 0, background: "#f8fafc", zIndex: 1 }}>
-                        화면
+                        절차
                       </th>
-                      {listPlatformAiMemberCatalog().map((row) => (
+                      {uiAiCatalog.map((uiRow) => (
                         <th
-                          key={row.id}
+                          key={uiRow.uiId}
                           style={{
                             padding: "8px 6px",
                             fontWeight: 800,
@@ -1033,14 +829,17 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                             lineHeight: 1.25,
                           }}
                         >
-                          {row.title.replace(/^AI\s*/, "")}
+                          {uiRow.title}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {WORKSPACE_SCREEN_KEYS.map((screenKey) => (
-                      <tr key={screenKey} style={{ borderTop: "1px solid #f1f5f9" }}>
+                    {WORKSPACE_SCREEN_KEYS.map((screenKey) => {
+                      const screenLabel = WORKSPACE_SCREEN_LABEL[screenKey];
+                      if (screenLabel === "작업 메모") return null;
+                      return (
+                        <tr key={screenKey} style={{ borderTop: "1px solid #f1f5f9" }}>
                         <td
                           style={{
                             padding: "8px 10px",
@@ -1053,13 +852,12 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                             zIndex: 1,
                           }}
                         >
-                          {WORKSPACE_SCREEN_LABEL[screenKey]}
+                          {screenLabel}
                         </td>
-                        {listPlatformAiMemberCatalog().map((row) => {
-                          const draftRow = aiDraft.find((r) => r.catalogKey === row.id);
-                          const checked = Boolean(draftRow?.screenKeys.includes(screenKey));
-                          const autoOn = Boolean(draftRow?.screenAutoRun[screenKey]);
-                          const disabled = !canAdminWorkspaceAi || !isWorkspaceAiMemberEnabled(row.id);
+                        {uiAiCatalog.map((uiRow) => {
+                          const memberIds = uiRow.memberIds;
+                          const checked = memberIds.some((id) => aiDraft.find((r) => r.catalogKey === id)?.screenKeys.includes(screenKey));
+                          const disabled = !canAdminWorkspaceAi || !isWorkspaceAiMemberEnabled(uiRow.uiId);
                           const cb = isNarrow ? 20 : 16;
                           const labelStyle: CSSProperties = {
                             display: "inline-flex",
@@ -1072,14 +870,16 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                             userSelect: "none",
                           };
                           return (
-                            <td key={row.id} style={{ padding: isNarrow ? "6px 4px" : "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                                <label title="이 AI가 해당 단계에서 자동으로 참여합니다." style={labelStyle}>
+                            <td key={uiRow.uiId} style={{ padding: isNarrow ? "6px 4px" : "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                                <label title="참여 시 자동실행을 포함합니다." style={labelStyle}>
                                   <input
                                     type="checkbox"
                                     checked={checked}
                                     disabled={disabled}
-                                    onChange={(e) => toggleCatalogOnScreen(row.id, screenKey, e.target.checked)}
+                                    onChange={(e) => {
+                                      toggleCatalogOnScreen(uiRow.uiId, screenKey, e.target.checked);
+                                    }}
                                     style={{
                                       width: cb,
                                       height: cb,
@@ -1088,36 +888,14 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                                       flexShrink: 0,
                                     }}
                                   />
-                                  <span>참여</span>
-                                </label>
-                                <label
-                                  title="참여한 단계에서 오케스트레이션 자동 실행을 허용합니다."
-                                  style={{
-                                    ...labelStyle,
-                                    opacity: disabled || !checked ? 0.45 : 1,
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={autoOn}
-                                    disabled={disabled || !checked}
-                                    onChange={(e) => toggleScreenAutoRun(row.id, screenKey, e.target.checked)}
-                                    style={{
-                                      width: cb,
-                                      height: cb,
-                                      accentColor: "#0d9488",
-                                      cursor: disabled || !checked ? "not-allowed" : "pointer",
-                                      flexShrink: 0,
-                                    }}
-                                  />
-                                  <span>자동 실행</span>
                                 </label>
                               </div>
                             </td>
                           );
                         })}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

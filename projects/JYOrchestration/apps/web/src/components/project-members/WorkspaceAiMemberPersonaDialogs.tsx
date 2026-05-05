@@ -39,13 +39,17 @@ const promptPanelStyle: CSSProperties = {
   width: "min(720px, 100%)",
 };
 
-function fieldBlock(label: string, value: string) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", marginBottom: 4, letterSpacing: 0.02 }}>{label}</div>
-      <div style={{ fontSize: 14, color: "#0f172a", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{value || "—"}</div>
-    </div>
-  );
+function useNarrowOverlay(): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 720px)");
+    const apply = () => setNarrow(Boolean(mq.matches));
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, []);
+  return narrow;
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -102,8 +106,9 @@ export function WorkspaceAiMemberDetailModal(props: {
   readonly projectEnabled: boolean;
   readonly onOpenPrompt: () => void;
 }): ReactElement | null {
-  const { open, onClose, catalog, screenKeys, buildVisible, projectEnabled, onOpenPrompt } = props;
+  const { open, onClose, catalog, screenKeys, buildVisible, projectEnabled } = props;
   const titleId = useId();
+  const narrow = useNarrowOverlay();
 
   useEffect(() => {
     if (!open) return;
@@ -118,16 +123,40 @@ export function WorkspaceAiMemberDetailModal(props: {
 
   const screens =
     screenKeys.length > 0 ? screenKeys.map((k) => WORKSPACE_SCREEN_LABEL[k]).filter(Boolean).join(" · ") : "—";
+  const promptParts = getWorkspaceAiPersonaPromptParts(catalog.id);
 
   return (
     <div
       role="presentation"
-      style={overlayStyle}
+      style={
+        narrow
+          ? { ...overlayStyle, alignItems: "stretch", justifyContent: "stretch", padding: 0 }
+          : overlayStyle
+      }
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} style={panelStyle}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        style={
+          narrow
+            ? {
+                ...panelStyle,
+                width: "100%",
+                height: "100%",
+                maxHeight: "100%",
+                borderRadius: 0,
+                borderLeft: "none",
+                borderRight: "none",
+                borderTop: "none",
+                borderBottom: "none",
+              }
+            : panelStyle
+        }
+      >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div id={titleId} style={{ fontSize: 17, fontWeight: 900, color: "#0f172a" }}>
@@ -155,28 +184,85 @@ export function WorkspaceAiMemberDetailModal(props: {
         </div>
         <div style={{ padding: "16px 18px 20px" }}>
           <AiMemberProfileImageSection catalog={catalog} />
-          {fieldBlock("이름", catalog.title)}
-          {fieldBlock("역할", catalog.briefRole)}
-          {fieldBlock("참여 화면", screens)}
-          {fieldBlock("엔진", getWorkspaceAiExecutionProviderLabel(catalog.id))}
-          {fieldBlock("성향 설명", getWorkspaceAiPersonaDispositionSummary(catalog.id))}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-            <button
-              type="button"
-              onClick={onOpenPrompt}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "none",
-                background: "#0d9488",
-                color: "#fff",
-                fontWeight: 900,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              시스템 프롬프트 보기
-            </button>
+          <div style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+              <tbody>
+                {[
+                  ["이름", catalog.title || "—"],
+                  ["역할", catalog.briefRole || "—"],
+                  ["참여 화면", screens || "—"],
+                  ["엔진", getWorkspaceAiExecutionProviderLabel(catalog.id) || "—"],
+                  ["성향 설명", getWorkspaceAiPersonaDispositionSummary(catalog.id) || "—"],
+                ].map(([label, value], idx) => (
+                  <tr key={label} style={{ borderTop: idx === 0 ? "none" : "1px solid #f1f5f9" }}>
+                    <td
+                      style={{
+                        width: 104,
+                        padding: "10px 12px",
+                        background: "#f8fafc",
+                        color: "#64748b",
+                        fontWeight: 900,
+                        fontSize: 11,
+                        letterSpacing: 0.02,
+                        verticalAlign: "top",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {label}
+                    </td>
+                    <td style={{ padding: "10px 12px", color: "#0f172a", fontWeight: 700, lineHeight: 1.55, wordBreak: "break-word" }}>
+                      {value}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 14, borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
+            {promptReadonlyField(
+              "system_prompt",
+              promptParts.system_prompt,
+              "workspace-ai-prompt-inline-system",
+              () => void copyText(promptParts.system_prompt),
+              "이 섹션 복사"
+            )}
+            {promptReadonlyField(
+              "persona_prompt",
+              promptParts.persona_prompt,
+              "workspace-ai-prompt-inline-persona",
+              () => void copyText(promptParts.persona_prompt),
+              "이 섹션 복사"
+            )}
+            {promptReadonlyField(
+              "workspace_override_prompt",
+              promptParts.workspace_override_prompt.trim() || "",
+              "workspace-ai-prompt-inline-workspace-override",
+              () => void copyText(promptParts.workspace_override_prompt),
+              "이 섹션 복사"
+            )}
+            {!promptParts.workspace_override_prompt.trim() ? (
+              <p style={{ fontSize: 12, color: "#64748b", marginTop: -8, marginBottom: 16, lineHeight: 1.45 }}>
+                현재 비어 있습니다. 추후 프로젝트·화면별 오버라이드를 저장하면 이 필드에 표시됩니다.
+              </p>
+            ) : null}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => void copyText(formatWorkspaceAiPersonaPromptForExport(promptParts))}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #0d9488",
+                  background: "#ecfdf5",
+                  color: "#0f766e",
+                  fontWeight: 900,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                전체 복사 (헤더 포함)
+              </button>
+            </div>
           </div>
           <div style={{ marginTop: 14, fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>
             빌드 표시: <strong style={{ color: buildVisible ? "#0f766e" : "#94a3b8" }}>{buildVisible ? "표시" : "숨김"}</strong>
@@ -214,7 +300,7 @@ function promptReadonlyField(label: string, value: string, testId: string, onCop
       <textarea
         readOnly
         value={value}
-        rows={8}
+        rows={6}
         spellCheck={false}
         data-testid={testId}
         style={{
@@ -223,13 +309,13 @@ function promptReadonlyField(label: string, value: string, testId: string, onCop
           fontSize: 12.5,
           lineHeight: 1.5,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-          padding: "10px 12px",
+          padding: "8px 10px",
           borderRadius: 10,
           border: "1px solid #e2e8f0",
           background: "#f8fafc",
           color: "#0f172a",
           resize: "vertical",
-          minHeight: 96,
+          minHeight: 68,
         }}
       />
     </div>
@@ -247,9 +333,11 @@ export function WorkspaceAiPersonaPromptModal(props: {
 }): ReactElement | null {
   const { open, onClose, memberTitle, memberId, readOnly = true, onCopied } = props;
   const titleId = useId();
+  const narrow = useNarrowOverlay();
   const [parts, setParts] = useState<WorkspaceAiPersonaPromptParts>(() => getWorkspaceAiPersonaPromptParts(memberId));
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) setParts(getWorkspaceAiPersonaPromptParts(memberId));
   }, [open, memberId]);
 
@@ -287,12 +375,35 @@ export function WorkspaceAiPersonaPromptModal(props: {
   return (
     <div
       role="presentation"
-      style={{ ...overlayStyle, zIndex: 70 }}
+      style={
+        narrow
+          ? { ...overlayStyle, zIndex: 70, alignItems: "stretch", justifyContent: "stretch", padding: 0 }
+          : { ...overlayStyle, zIndex: 70 }
+      }
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} style={promptPanelStyle}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        style={
+          narrow
+            ? {
+                ...promptPanelStyle,
+                width: "100%",
+                height: "100%",
+                maxHeight: "100%",
+                borderRadius: 0,
+                borderLeft: "none",
+                borderRight: "none",
+                borderTop: "none",
+                borderBottom: "none",
+              }
+            : promptPanelStyle
+        }
+      >
         <div style={{ padding: "16px 18px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div id={titleId} style={{ fontSize: 17, fontWeight: 900, color: "#0f172a" }}>

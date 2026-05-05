@@ -12,6 +12,11 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
+import type { WorkspaceMode } from "@/lib/ui/workspaceMode";
+import {
+  buildPathWithWorkspaceModePreview,
+  openUrlInWorkspaceModePreviewWindow,
+} from "@/lib/ui/workspaceMode";
 import { APP_FLOW_LAST_PROJECT_KEY, appFlowStepHref } from "@/lib/workflow/flow-state";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 
@@ -107,6 +112,44 @@ type Project = {
   prototypeDeployActionAvailable?: boolean;
 };
 
+const PROJECTS_CACHE_KEY = "jyo:projects-cache:v1";
+const PROJECTS_CACHE_TTL_MS = 1000 * 60 * 5; // 5 minutes (stale-while-revalidate)
+
+type ProjectsCachePayload = { readonly ts: number; readonly projects: Project[] };
+
+let memProjectsCache: ProjectsCachePayload | null = null;
+
+function readProjectsCache(): ProjectsCachePayload | null {
+  if (memProjectsCache) return memProjectsCache;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PROJECTS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ProjectsCachePayload>;
+    if (typeof parsed.ts !== "number" || !Array.isArray(parsed.projects)) return null;
+    memProjectsCache = { ts: parsed.ts, projects: parsed.projects as Project[] };
+    return memProjectsCache;
+  } catch {
+    return null;
+  }
+}
+
+function writeProjectsCache(projects: Project[]) {
+  const payload: ProjectsCachePayload = { ts: Date.now(), projects };
+  memProjectsCache = payload;
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(PROJECTS_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    /* ignore */
+  }
+}
+
+function cacheFreshEnough(payload: ProjectsCachePayload | null): boolean {
+  if (!payload) return false;
+  return Date.now() - payload.ts < PROJECTS_CACHE_TTL_MS;
+}
+
 type ApiResponse<T> = {
   success: boolean;
   message?: string;
@@ -142,7 +185,7 @@ const homeProjectMenuActionLink: CSSProperties = {
   padding: "8px 10px",
   borderRadius: t.radiusMd,
   border: `1px solid ${t.borderStrong}`,
-  background: t.bgPage,
+  background: t.bgCard,
   color: t.textPrimary,
   fontSize: 12,
   fontWeight: 800,
@@ -170,12 +213,20 @@ const homeCreateToastStyle: CSSProperties = {
   boxShadow: "0 12px 32px -8px rgba(15, 118, 110, 0.45)",
 };
 
+const WORKSPACE_MODE_HINT: Record<WorkspaceMode, string> = {
+  DESKTOP: "데스크톱",
+  MOBILE: "모바일",
+  AUTO: "자동",
+};
+
 export default function HomePage() {
-  const { effectiveLayout } = useWorkspaceMode();
+  const { mode: workspaceMode, effectiveLayout } = useWorkspaceMode();
   const showScreenLabels = useShowScreenLabels();
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedAtBoot = useRef<ProjectsCachePayload | null>(null);
+  if (cachedAtBoot.current == null) cachedAtBoot.current = readProjectsCache();
+  const [projects, setProjects] = useState<Project[]>(() => cachedAtBoot.current?.projects ?? []);
+  const [loading, setLoading] = useState(() => !cachedAtBoot.current);
   const [submitting, setSubmitting] = useState(false);
   const [listMessage, setListMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -213,10 +264,11 @@ export default function HomePage() {
     }
   }
 
-  const loadProjects = useCallback(async () => {
+  const loadProjects = useCallback(async (opts?: { readonly background?: boolean }) => {
+    const background = Boolean(opts?.background);
     try {
-      setLoading(true);
-      setListMessage(null);
+      if (!background) setLoading(true);
+      if (!background) setListMessage(null);
       const res = await fetch("/api/projects", { credentials: "include" });
       const json = (await res.json()) as ApiResponse<Project[] | null>;
 
@@ -233,12 +285,16 @@ export default function HomePage() {
       }
 
       setProjects(json.data);
+      writeProjectsCache(json.data);
     } catch (error) {
       console.error("Failed to load projects:", error);
-      setProjects([]);
-      setListMessage("프로젝트 목록을 불러오지 못했습니다.");
+      // 캐시가 있으면 유지하고, 최초 로딩에서만 메시지를 보여준다.
+      if (!background && projectsRef.current.length === 0) {
+        setProjects([]);
+        setListMessage("프로젝트 목록을 불러오지 못했습니다.");
+      }
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, []);
 
@@ -278,11 +334,27 @@ export default function HomePage() {
         return;
       }
 
-      const newId = json.data.id;
+      const created = json.data;
+      const newId = created.id;
 
       setName("");
       setDescription("");
-      await loadProjects();
+      // 전체 목록 재조회 대신, 즉시 리스트에 반영(체감 속도 향상) + 캐시 갱신
+      setProjects((cur) => {
+        const next: Project[] = [
+          {
+            ...created,
+            latestPrototypeRunId: created.latestPrototypeRunId ?? null,
+            prototypePreviewActionAvailable: Boolean(created.prototypePreviewActionAvailable),
+            prototypeDeployActionAvailable: Boolean(created.prototypeDeployActionAvailable),
+          },
+          ...cur.filter((p) => p.id !== created.id),
+        ];
+        writeProjectsCache(next);
+        return next;
+      });
+      // 백그라운드로 최신 목록 동기화(서버 정렬/부가필드 반영)
+      void loadProjects({ background: true });
       setHighlightProjectId(newId);
       setCreateToast(true);
       /** 최근 프로젝트 키 갱신(자동 열기 시 아이디어 구체화로 이동). 생성 직후에는 홈에 유지. */
@@ -304,6 +376,12 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    const cached = cachedAtBoot.current;
+    if (cacheFreshEnough(cached)) {
+      // 캐시 즉시 표시 후 백그라운드 갱신
+      void loadProjects({ background: true });
+      return;
+    }
     void loadProjects();
   }, [loadProjects]);
 
@@ -413,23 +491,23 @@ export default function HomePage() {
     }
   }, [editDescTarget, editDescBusy, editDescValue]);
 
-  /** 상단 내비·페이지 패딩·`AppFlowGuidance` 하단 여백을 뺀 높이 — 목록만 내부 스크롤(목록 영역 약 20px 축소 반영) */
-  const homeMainHeight = "calc(100dvh - 128px - env(safe-area-inset-bottom, 0px))";
-
   return (
     <ResponsiveShell>
       <ResponsivePageContainer
+        wide
         className="relative"
         data-ui-label="[A] Home"
         style={{
+          maxWidth: "none",
+          flex: 1,
+          minHeight: 0,
           paddingTop: 8,
           paddingBottom: 20,
-          height: homeMainHeight,
-          maxHeight: homeMainHeight,
           display: "flex",
           flexDirection: "column",
           boxSizing: "border-box",
           overflow: "hidden",
+          height: "100%",
         }}
       >
       <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
@@ -525,6 +603,10 @@ export default function HomePage() {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          // 목록 카드들이 이미 개별 테두리/배경을 가지므로, 바깥 래퍼(SectionCard) 레이어는 제거
+          padding: 0,
+          border: "none",
+          background: "transparent",
         }}
         contentStyle={{
           flex: 1,
@@ -603,17 +685,28 @@ export default function HomePage() {
                   <div className="relative" style={{ minWidth: 0, flex: 1 }}>
                     <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-프로젝트명" visible={showScreenLabels} />
                     {canOpenProject ? (
-                      <Link
-                        href={`/requirements?projectId=${encodeURIComponent(project.id)}`}
+                      <a
+                        href={buildPathWithWorkspaceModePreview(
+                          appFlowStepHref("requirements", project.id),
+                          workspaceMode
+                        )}
                         data-testid={
                           project.name === "Web Meeting MVP" ? "project-open-seed" : `project-open-${project.id}`
                         }
-                        onClick={(e) => e.stopPropagation()}
-                        title={`${project.name} — 아이디어 구체화로 이동`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          openUrlInWorkspaceModePreviewWindow(
+                            appFlowStepHref("requirements", project.id),
+                            `jyo-idea-${project.id}`,
+                            workspaceMode
+                          );
+                        }}
+                        title={`${project.name} — 아이디어 구체화(작업모드 ${WORKSPACE_MODE_HINT[workspaceMode]})`}
                         style={homeProjectTitleLinkStyle}
                       >
                         {project.name}
-                      </Link>
+                      </a>
                     ) : (
                       <strong
                         style={{
@@ -851,7 +944,7 @@ export default function HomePage() {
                               padding: "8px 10px",
                               borderRadius: t.radiusMd,
                               border: `1px solid ${t.borderStrong}`,
-                              background: t.bgPage,
+                              background: t.bgCard,
                               color: t.textPrimary,
                               fontSize: 12,
                               fontWeight: 800,

@@ -57,7 +57,6 @@ export function saveBusinessExecutionCoreEntities(input: {
   try {
     window.localStorage.setItem(keyForSession(input.sessionId), JSON.stringify(record));
     // Minimal debugging log (no heavy logging).
-    // eslint-disable-next-line no-console
     console.info("[bizexec] persisted core entities", {
       sessionId: input.sessionId,
       savedAtIso: record.savedAtIso,
@@ -68,7 +67,6 @@ export function saveBusinessExecutionCoreEntities(input: {
       hasRun: Boolean(record.latestBusinessExecutionRun),
     });
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.info("[bizexec] persistence save skipped (storage error)", e);
   }
 }
@@ -80,14 +78,12 @@ export function loadBusinessExecutionCoreEntities(sessionId: string): PersistedB
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedBusinessExecutionCore;
     if (!parsed || parsed.schemaVersion !== 1 || parsed.sessionId !== sessionId) return null;
-    // eslint-disable-next-line no-console
     console.info("[bizexec] loaded persisted core entities", {
       sessionId,
       savedAtIso: parsed.savedAtIso,
     });
     return parsed;
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.info("[bizexec] persistence load skipped (parse/storage error)", e);
     return null;
   }

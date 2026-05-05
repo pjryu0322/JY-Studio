@@ -22,6 +22,7 @@ import { FeaturePlanningSidebarContent } from "./FeaturePlanningSidebarContent";
 import { FeaturePlanningSlotsPanel } from "./FeaturePlanningSlotsPanel";
 import { FeaturePlanningWorkspaceCanvas } from "./FeaturePlanningWorkspaceCanvas";
 import { enrichFeaturePlanningDisplayMessages } from "@/lib/featurePlanning/featurePlanningChatDisplay";
+import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailParticipants";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { useWorkNoteChatSelectionRequester } from "@/components/worknote/WorkNoteChatSelectionBridge";
 import { useFeaturePlanningWorkspace } from "./useFeaturePlanningWorkspace";
@@ -35,9 +36,8 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [canvas, setCanvas] = useState<FeatureCanvasMode | null>(null);
-  const { successToast, errorToast, showSuccessToast } = useTimedSuccessErrorToasts({ successDismissMs: 2800 });
-  const { participants, participantBadgeCount, members, reloadMembers, workspaceScreenAiMemberIds } =
-    useProjectWorkspaceParticipants({
+  const { successToast, errorToast } = useTimedSuccessErrorToasts({ successDismissMs: 2800 });
+  const { participants, participantBadgeCount, members, reloadMembers } = useProjectWorkspaceParticipants({
       projectId,
       activeStage: "ideation",
       workspaceParticipantScreenKey: "feature_planning",
@@ -61,6 +61,12 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
     () => new Set(members.filter((m) => m.memberType === "HUMAN" && m.userId).map((m) => m.userId as string)),
     [members]
   );
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    publishProjectRailParticipantCount(pid, "features", participantBadgeCount);
+  }, [projectId, participantBadgeCount]);
 
   useEffect(() => {
     if (!canvas) return;
@@ -173,7 +179,7 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
   );
 
   const mainBody = (
-    <div className={`chat-messages-scroll ${styles.body}`}>
+    <div className={`chat-messages ${styles.body}`}>
       <div className={styles.mainStack}>{mainEl}</div>
     </div>
   );

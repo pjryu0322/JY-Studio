@@ -10,6 +10,11 @@ export type MobileTopBarProps = Readonly<{
 }>;
 
 export function MobileTopBar(p: MobileTopBarProps) {
+  const titleText = p.title.trim();
+  const ideationTooltip =
+    "AI 기획자가 사용자와의 대화를 통해 아이디어를 분석하고, 목표 고객·문제 정의·MVP 범위를 정리하여 실행 가능한 기획 초안으로 구체화합니다.";
+  const titleTooltip = titleText === "아이디어 구체화" ? ideationTooltip : undefined;
+  const hideRightAction = titleText === "아이디어 구체화";
   return (
     <header
       style={{
@@ -29,6 +34,7 @@ export function MobileTopBar(p: MobileTopBarProps) {
     >
       <div style={{ flexShrink: 0, display: "flex", alignItems: "center", minWidth: 44, minHeight: 44 }}>{p.leftAction}</div>
       <h1
+        title={titleTooltip}
         style={{
           flex: 1,
           margin: 0,
@@ -40,12 +46,13 @@ export function MobileTopBar(p: MobileTopBarProps) {
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           textAlign: "center",
+          cursor: titleTooltip ? "help" : undefined,
         }}
       >
         {p.title}
       </h1>
       <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 44, minHeight: 44 }}>
-        {p.rightAction}
+        {hideRightAction ? null : p.rightAction}
       </div>
     </header>
   );

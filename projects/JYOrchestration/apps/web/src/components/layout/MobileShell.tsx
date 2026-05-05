@@ -20,9 +20,13 @@ export function MobileShell(p: MobileShellProps) {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        flex: "1 1 auto",
+        minHeight: 0,
+        height: "100%",
+        width: "100%",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
         background: t.bgPage,
         boxSizing: "border-box",
       }}
@@ -32,7 +36,9 @@ export function MobileShell(p: MobileShellProps) {
         style={{
           flex: 1,
           minHeight: 0,
-          overflowY: "auto",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
           WebkitOverflowScrolling: "touch",
           paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
           boxSizing: "border-box",
