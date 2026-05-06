@@ -14,6 +14,10 @@ export type RequirementsMessageMeta = {
   promptVersion?: string;
   /** 내부 처리용(사용자 노출 금지) */
   internalType?: string;
+  /** AI bootstrap/응답 출처(디버그/감사용) */
+  source?: "llm" | "fallback";
+  /** bootstrap이 fallback인 경우 이유(디버그/감사용) */
+  fallbackReason?: string;
   /** 문제정의 인터뷰에서 직전에 물은 슬롯(반복 질문 방지·복원용) */
   problemInterviewLastSlot?: string;
   /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */

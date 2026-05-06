@@ -17,7 +17,7 @@ import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/li
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
 
 export type RequirementsFacilitatorOpenAiResult =
-  | { ok: true; text: string; model: string }
+  | { ok: true; text: string; model: string; promptText?: string; provider?: string; calledAt?: string }
   | { ok: false; code: string; message: string };
 
 function facilitatorResponseStyleAddendum(style: RequirementsAiResponseStyle | undefined): string {
@@ -200,13 +200,16 @@ The entire response must contain exactly one question mark (?).
 - 이번 응답은 질문 한 문장만 출력한다.
 - 인사·설명·부연·마크다운·목록·머리글·번호 매기기(1. 2. 등) 금지.
 - 문장 끝은 반드시 물음표(?)로 끝낸다.`;
+  const user = "한국어로 질문 한 문장만 출력하라. 물음표는 하나만.";
+  const calledAt = new Date().toISOString();
+  const promptText = `[system]\n${system}\n\n---\n\n[user]\n${user}`;
 
   const res = await postOpenAiChatCompletion({
     apiKey,
     model,
     messages: [
       { role: "system", content: system },
-      { role: "user", content: "한국어로 질문 한 문장만 출력하라. 물음표는 하나만." },
+      { role: "user", content: user },
     ],
     temperature: 0.2,
     maxTokens: 72,
@@ -225,7 +228,7 @@ The entire response must contain exactly one question mark (?).
     return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
   }
 
-  return { ok: true, text, model };
+  return { ok: true, text, model, promptText, provider: "openai", calledAt };
 }
 
 export type IdeationInterviewSeedWire = Readonly<{

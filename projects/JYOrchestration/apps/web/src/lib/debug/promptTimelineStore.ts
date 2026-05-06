@@ -101,3 +101,33 @@ export function recordCursorAgentLaunch(input: {
     inbound,
   });
 }
+
+export function recordIdeationBootstrapOpenAi(input: {
+  readonly projectId: string;
+  readonly model: string | null;
+  readonly promptText?: string;
+  readonly ok: boolean;
+  readonly replyText?: string;
+  readonly error?: string;
+  readonly fallbackText?: string;
+  readonly at?: string;
+}): void {
+  const pid = input.projectId.trim();
+  if (!pid) return;
+  const at = input.at ?? new Date().toISOString();
+  const outbound = input.promptText ? `[prompt]\n${trunc(input.promptText)}` : "[prompt]\n(없음)";
+  const inbound = input.ok
+    ? `[response]\n${trunc(input.replyText ?? "")}`
+    : [`[FAILED]\n${trunc(input.error ?? "unknown")}`, input.fallbackText ? `\n\n[fallback]\n${trunc(input.fallbackText)}` : ""]
+        .filter(Boolean)
+        .join("");
+  push(pid, {
+    id: `id_boot_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+    at,
+    channel: "openai",
+    label: "아이디어 구체화 · bootstrapInterview",
+    model: input.model,
+    outbound,
+    inbound,
+  });
+}

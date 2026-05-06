@@ -757,22 +757,42 @@ export function RequirementsWorkspace({
     const flightKey = onboardingKey;
 
     void (async () => {
-      const persistFirstQuestion = async (bodyText: string, seedWire?: unknown | null): Promise<boolean> => {
+      const persistFirstQuestion = async (params: {
+        readonly bodyText: string;
+        readonly seedWire?: unknown | null;
+        readonly source: "llm" | "fallback";
+        readonly fallbackReason?: string;
+        readonly promptText?: string;
+        readonly promptAtIso?: string;
+      }): Promise<boolean> => {
         const nowIso = new Date().toISOString();
         const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
           newChatMessage({
             role: "ai",
-            body: bodyText,
+            body: params.bodyText,
             speakerType: "AI",
             speakerId: VIRTUAL_AI_PLANNER_ID,
             speakerName: IDEATION_AI_DISPLAY_NAME,
             messageType: "ANSWER",
-            meta: { internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE },
+            meta: {
+              internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
+              source: params.source,
+              ...(params.source === "fallback" && params.fallbackReason
+                ? { fallbackReason: params.fallbackReason }
+                : {}),
+            },
           }),
         ]);
-        const seeded = seedWire ? problemInterviewStateFromAnalyzerWireInput(seedWire, nowIso) : emptyProblemInterviewState(nowIso);
+        const seeded = params.seedWire
+          ? problemInterviewStateFromAnalyzerWireInput(params.seedWire, nowIso)
+          : emptyProblemInterviewState(nowIso);
         try {
-          await persistRemote(nextRoom, {}, { onboardingShown: true, problemInterview: seeded });
+          await persistRemote(nextRoom, {}, {
+            onboardingShown: true,
+            problemInterview: seeded,
+            ...(params.promptText ? { lastPromptText: params.promptText } : {}),
+            ...(params.promptAtIso ? { lastPromptGeneratedAt: params.promptAtIso } : {}),
+          });
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
           return true;
         } catch (pe) {
@@ -798,23 +818,56 @@ export function RequirementsWorkspace({
         });
         const json = (await res.json()) as {
           success?: boolean;
-          data?: { reply?: string; seedInterviewState?: unknown | null };
+          code?: string;
+          data?: {
+            reply?: string;
+            seedInterviewState?: unknown | null;
+            promptText?: string;
+            model?: string;
+            provider?: string;
+            calledAt?: string;
+          };
           message?: string;
         };
-        const raw = res.ok && json.success && json.data?.reply ? String(json.data.reply) : "";
+        const okReply = res.ok && json.success && String(json.data?.reply ?? "").trim();
+        const raw = okReply ? String(json.data?.reply) : "";
         const bodyText = sanitizeIdeationInterviewFirstQuestion(raw);
         if (cancelled) return;
         const seedWire = res.ok && json.success ? (json.data?.seedInterviewState ?? null) : null;
-        const ok = await persistFirstQuestion(bodyText, seedWire);
+        const fallbackReason =
+          okReply
+            ? undefined
+            : [String(json.code ?? "").trim(), String(json.message ?? "").trim(), `HTTP ${res.status}`].filter(Boolean).join(" · ");
+        const ok = await persistFirstQuestion({
+          bodyText,
+          seedWire,
+          source: okReply ? "llm" : "fallback",
+          ...(okReply
+            ? {
+                promptText: String(json.data?.promptText ?? "").trim() || undefined,
+                promptAtIso: String(json.data?.calledAt ?? "").trim() || undefined,
+              }
+            : { fallbackReason }),
+        });
         if (!ok && !cancelled) {
           ideationBootstrapFlightRef.current = null;
-          await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""), null);
+          await persistFirstQuestion({
+            bodyText: sanitizeIdeationInterviewFirstQuestion(""),
+            seedWire: null,
+            source: "fallback",
+            fallbackReason: "persist_failed",
+          });
         }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "인터뷰 시작에 실패했습니다.");
         ideationBootstrapFlightRef.current = null;
-        await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""), null);
+        await persistFirstQuestion({
+          bodyText: sanitizeIdeationInterviewFirstQuestion(""),
+          seedWire: null,
+          source: "fallback",
+          fallbackReason: e instanceof Error ? e.message : "bootstrap_failed",
+        });
       }
     })();
 

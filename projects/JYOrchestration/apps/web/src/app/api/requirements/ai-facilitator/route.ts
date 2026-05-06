@@ -8,6 +8,8 @@ import {
   runRequirementsIdeationInterviewSeedFromProjectOpenAI,
   type RequirementsAiResponseStyle,
 } from "@/lib/project/requirementsAiFacilitatorOpenAI";
+import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
+import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 
 type Body = {
   projectId?: string;
@@ -99,10 +101,12 @@ export async function POST(request: NextRequest) {
 
     const stage = stageRaw === "requirements" ? "requirements" : "requirements";
     const result = bootstrapInterview
-      ? await runRequirementsIdeationInterviewBootstrapOpenAI({
-          projectName,
-          projectDescription,
-        })
+      ? await runWithPromptTimelineProject(projectId, async () =>
+          runRequirementsIdeationInterviewBootstrapOpenAI({
+            projectName,
+            projectDescription,
+          })
+        )
       : await runRequirementsFacilitatorOpenAI({
           projectName,
           projectDescription,
@@ -115,11 +119,40 @@ export async function POST(request: NextRequest) {
           priorScreenHandoff: priorScreenHandoff || undefined,
         });
     if (!result.ok) {
+      if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
+        recordIdeationBootstrapOpenAi({
+          projectId,
+          model: null,
+          ok: false,
+          error: `${result.code}: ${result.message}`,
+          fallbackText: "무엇을 만들고 싶은가?",
+        });
+      }
+      if (bootstrapInterview && result.code === "NO_KEY") {
+        return NextResponse.json(
+          { success: false, code: "NO_AI_PROVIDER", message: "AI 기획자 호출에 필요한 OpenAI 설정이 없습니다." },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({
         success: false,
         code: result.code,
         message: result.message,
       });
+    }
+    const replyTrim = String(result.text ?? "").trim();
+    if (bootstrapInterview && !replyTrim) {
+      if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
+        recordIdeationBootstrapOpenAi({
+          projectId,
+          model: result.model ?? null,
+          promptText: result.promptText,
+          ok: false,
+          error: "EMPTY_REPLY",
+          fallbackText: "무엇을 만들고 싶은가?",
+        });
+      }
+      return NextResponse.json({ success: false, code: "EMPTY_REPLY", message: "bootstrapInterview 응답이 비어 있습니다." }, { status: 502 });
     }
 
     const seed = bootstrapInterview
@@ -129,10 +162,29 @@ export async function POST(request: NextRequest) {
         })
       : null;
 
+    if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
+      recordIdeationBootstrapOpenAi({
+        projectId,
+        model: result.model ?? null,
+        promptText: result.promptText,
+        ok: true,
+        replyText: replyTrim,
+        at: result.calledAt,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        reply: result.text,
+        reply: replyTrim,
+        ...(bootstrapInterview
+          ? {
+              promptText: result.promptText ?? "",
+              model: result.model,
+              provider: result.provider ?? "openai",
+              calledAt: result.calledAt ?? new Date().toISOString(),
+            }
+          : {}),
         seedInterviewState: seed && seed.ok ? seed.wire : null,
       },
     });
