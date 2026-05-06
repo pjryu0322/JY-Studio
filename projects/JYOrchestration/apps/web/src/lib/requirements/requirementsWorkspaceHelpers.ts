@@ -10,10 +10,17 @@ import {
 } from "@/lib/requirements/problemInterview";
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
-export type RequirementsWorkspaceStage = "ideation" | "service-flow";
+export type RequirementsWorkspaceStage = "ideation" | "service-flow" | "feature-planning";
 
 export function resolveRequirementsWorkspaceStage(rawStage: string): RequirementsWorkspaceStage {
-  return rawStage === "service-flow" ? "service-flow" : "ideation";
+  const s = String(rawStage ?? "").trim().toLowerCase();
+
+  if (s === "service-flow" || s === "service_flow") return "service-flow";
+  if (s === "feature-planning" || s === "feature_planning" || s === "features") {
+    return "feature-planning";
+  }
+
+  return "ideation";
 }
 
 const IDEATION_SEND_DEV = process.env.NODE_ENV !== "production";

@@ -1,9 +1,11 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import { PROBLEM_INTERVIEW_SLOT_TOTAL } from "@/lib/requirements/problemInterview";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import { uiTokens as t } from "@/components/ui/tokens";
 
 export type RequirementsWorkspaceTopChromeProps = Readonly<{
   showScreenLabels: boolean;
@@ -21,6 +23,7 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   loadError: string | null;
   onClearLoadErrorAndRetry: () => void;
   onGoHome: () => void;
+  serviceDesignStageNav?: ReactNode;
 }>;
 
 export function RequirementsWorkspaceTopChrome({
@@ -39,6 +42,7 @@ export function RequirementsWorkspaceTopChrome({
   loadError,
   onClearLoadErrorAndRetry,
   onGoHome,
+  serviceDesignStageNav,
 }: RequirementsWorkspaceTopChromeProps) {
   const showOrganizeCta =
     Boolean(resolvedProjectIdTrimmed) &&
@@ -54,6 +58,19 @@ export function RequirementsWorkspaceTopChrome({
   return (
     <div className="jyo-requirements-workspace-top-chrome">
       <RequirementsHeader showProjectWorkflowNav={showProjectWorkflowNav} />
+
+      {showProjectWorkflowNav ? (
+        <div style={{ marginTop: 6, marginBottom: 4 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: t.textPrimary, letterSpacing: "-0.02em" }}>
+            서비스 설계 워크스페이스
+          </div>
+          <div style={{ fontSize: 12.5, color: t.textMuted, marginTop: 6, lineHeight: 1.55, fontWeight: 600 }}>
+            아이디어 구체화, 액터/흐름 정의, 기능정리를 하나의 대화 흐름으로 정리합니다.
+          </div>
+        </div>
+      ) : null}
+
+      {serviceDesignStageNav}
 
       {showOrganizeCta ? (
         <div
@@ -152,22 +169,6 @@ export function RequirementsWorkspaceTopChrome({
         </div>
       ) : null}
 
-      {inIdeationStage && resolvedProjectIdTrimmed && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
-        <div
-          style={{
-            marginTop: 6,
-            marginBottom: 10,
-            padding: "8px 2px",
-            borderRadius: 10,
-            color: "#64748b",
-            fontSize: 12.5,
-            fontWeight: 700,
-            lineHeight: 1.45,
-          }}
-        >
-          아이디어 구체화 단계입니다. 핵심만 짧게 확인하고, 상세 액터·흐름·기능·Task는 다음 탭에서 이어서 정리합니다.
-        </div>
-      ) : null}
     </div>
   );
 }

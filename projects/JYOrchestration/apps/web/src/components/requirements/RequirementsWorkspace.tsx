@@ -8,7 +8,9 @@ import type { RequirementsComposerTargetPickerItem } from "@/components/requirem
 import { RequirementsIdeationChatPanel } from "@/components/requirements/RequirementsIdeationChatPanel";
 import { RequirementsIdeationDocumentDrawers } from "@/components/requirements/RequirementsIdeationDocumentDrawers";
 import { RequirementsOrganizeProposalWorkspaceOverlay } from "@/components/requirements/RequirementsOrganizeProposalWorkspaceOverlay";
+import { RequirementsFeaturePlanningStagePanel } from "@/components/requirements/RequirementsFeaturePlanningStagePanel";
 import { RequirementsServiceFlowStagePanel } from "@/components/requirements/RequirementsServiceFlowStagePanel";
+import { RequirementsServiceDesignStageNav } from "@/components/requirements/RequirementsServiceDesignStageNav";
 import { RequirementsWorkspaceErrorBand } from "@/components/requirements/RequirementsWorkspaceErrorBand";
 import { RequirementsWorkspaceTopChrome } from "@/components/requirements/RequirementsWorkspaceTopChrome";
 import {
@@ -66,6 +68,7 @@ import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStat
 import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailParticipants";
 import { REQUIREMENTS_IDEATION_HTTP, requirementsAiConnectionUrl } from "@/lib/requirements/requirementsIdeationHttp";
 import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
+import { isServiceFlowApprovedForFeaturePlanning } from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 import { pickWorkspaceAiHandoffMember } from "@/components/requirements/workspace/pickWorkspaceAiHandoffMember";
 import { useRequirementsStageRouteRedirect } from "@/components/requirements/workspace/useRequirementsStageRouteRedirect";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
@@ -183,7 +186,12 @@ export function RequirementsWorkspace({
     const propStage = String(initialStage ?? "").trim().toLowerCase();
     return propStage;
   }, [searchParams, initialStage]);
-  const activeStage = useMemo(() => resolveRequirementsWorkspaceStage(stage), [stage]);
+  const activeStage = useMemo((): RequirementsWorkspaceStage => {
+    if (stage === "features") {
+      return "ideation";
+    }
+    return resolveRequirementsWorkspaceStage(stage);
+  }, [stage]);
   const inIdeationStage = activeStage === "ideation";
   const participantAiMemberId = useMemo(() => resolveParticipantContextKey(activeStage), [activeStage]);
   const ideationScreenCatalogIds = useMemo(() => {
@@ -193,6 +201,10 @@ export function RequirementsWorkspace({
   const serviceFlowScreenCatalogIds = useMemo(() => {
     if (!workspaceAiGraph) return undefined;
     return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "requirements_service_flow");
+  }, [workspaceAiGraph]);
+  const featurePlanningScreenCatalogIds = useMemo(() => {
+    if (!workspaceAiGraph) return undefined;
+    return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "feature_planning");
   }, [workspaceAiGraph]);
   const requirementsWorkspacePrevStageRef = useRef<RequirementsWorkspaceStage>(activeStage);
 
@@ -432,7 +444,11 @@ export function RequirementsWorkspace({
     sessionUser,
     activeStage,
     aiPlannerStatusLabel,
-    participantContextKeys: inIdeationStage ? ideationScreenCatalogIds : serviceFlowScreenCatalogIds,
+    participantContextKeys: inIdeationStage
+      ? ideationScreenCatalogIds
+      : activeStage === "feature-planning"
+        ? featurePlanningScreenCatalogIds
+        : serviceFlowScreenCatalogIds,
     participantContextKey: participantAiMemberId,
     platformMemberActivity,
   });
@@ -441,9 +457,10 @@ export function RequirementsWorkspace({
   useEffect(() => {
     const pid = resolvedProjectId.trim();
     if (!pid) return;
-    const key = inIdeationStage ? "requirements" : "service_flow";
+    const key =
+      inIdeationStage ? "requirements" : activeStage === "feature-planning" ? "features" : "service_flow";
     publishProjectRailParticipantCount(pid, key, participantBadgeCount);
-  }, [inIdeationStage, participantBadgeCount, resolvedProjectId]);
+  }, [inIdeationStage, activeStage, participantBadgeCount, resolvedProjectId]);
 
   useEffect(() => {
     const pid = resolvedProjectId.trim();
@@ -638,6 +655,10 @@ export function RequirementsWorkspace({
     const ok = new Set(["meeting_summary", "problem_statement", "kpi", "full_plan", "mvp_scope", "feature_list"]);
     return assets.some((a) => ok.has(String(a.type)));
   }, [ideationAssets, goals, targetUsers, success, fetchNonce]);
+  const serviceFlowReadyForFeaturePlanning = useMemo(
+    () => (project ? isServiceFlowApprovedForFeaturePlanning(project.requirementsStateJson) : false),
+    [project?.requirementsStateJson]
+  );
   const ideationReadyNotice = "현재 단계로 이동하려면\n아이디어 구체화 단계에서\n기획 산출물 정리가 필요합니다.";
 
   const appendServiceFlowWorkshopMessages = useCallback(
@@ -1158,6 +1179,12 @@ export function RequirementsWorkspace({
     </div>
   );
 
+  const featurePlanningStage = resolvedProjectId.trim() ? (
+    <RequirementsFeaturePlanningStagePanel projectId={resolvedProjectId.trim()} />
+  ) : (
+    <div style={{ padding: 16, fontSize: 13, color: "#64748b" }}>프로젝트를 연결하면 기능 정리 단계를 사용할 수 있습니다.</div>
+  );
+
   const serviceFlowStage = (
     <RequirementsServiceFlowStagePanel
       projectId={resolvedProjectId.trim()}
@@ -1231,6 +1258,16 @@ export function RequirementsWorkspace({
           setFetchNonce((n) => n + 1);
         }}
         onGoHome={() => router.push("/")}
+        serviceDesignStageNav={
+          resolvedProjectId.trim() ? (
+            <RequirementsServiceDesignStageNav
+              projectId={resolvedProjectId.trim()}
+              activeStage={activeStage}
+              ideationReadyForServiceFlow={ideationReadyForServiceFlow}
+              serviceFlowReadyForFeaturePlanning={serviceFlowReadyForFeaturePlanning}
+            />
+          ) : null
+        }
       />
 
       <div className="jyo-requirements-workspace-body">
@@ -1239,6 +1276,7 @@ export function RequirementsWorkspace({
             activeStage={activeStage}
             ideationStage={ideationStage}
             serviceFlowStage={serviceFlowStage}
+            featurePlanningStage={featurePlanningStage}
           />
         </div>
       </div>

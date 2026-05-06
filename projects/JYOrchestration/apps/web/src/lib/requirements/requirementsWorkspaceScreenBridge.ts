@@ -2,5 +2,7 @@ import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirements
 import type { WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
 
 export function requirementsWorkspaceStageToScreenKey(stage: RequirementsWorkspaceStage): WorkspaceScreenKey {
-  return stage === "service-flow" ? "requirements_service_flow" : "requirements_ideation";
+  if (stage === "service-flow") return "requirements_service_flow";
+  if (stage === "feature-planning") return "feature_planning";
+  return "requirements_ideation";
 }
