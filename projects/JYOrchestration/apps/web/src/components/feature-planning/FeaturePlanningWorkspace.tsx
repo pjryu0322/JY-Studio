@@ -27,10 +27,21 @@ import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator
 import { useWorkNoteChatSelectionRequester } from "@/components/worknote/WorkNoteChatSelectionBridge";
 import { useFeaturePlanningWorkspace } from "./useFeaturePlanningWorkspace";
 import styles from "./featurePlanningWorkspace.module.css";
+import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 
 type FeatureCanvasMode = "overview" | "deliverables";
 
-export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: string }) {
+export function FeaturePlanningWorkspace({
+  projectId,
+  singleChatMode = false,
+  singleChatSendRef,
+}: {
+  readonly projectId: string;
+  /** Service Design SingleChat: chat/composer lives in parent (`/requirements`). */
+  readonly singleChatMode?: boolean;
+  /** Service Design SingleChat: expose existing send logic to parent without refactor. */
+  readonly singleChatSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
+}) {
   const showScreenLabels = useShowScreenLabels();
   const shell = useFeaturePlanningWorkspace(projectId);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
@@ -77,55 +88,83 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
     };
   }, [canvas]);
 
+  useEffect(() => {
+    if (!singleChatSendRef) return;
+    singleChatSendRef.current = async (payload, text) => {
+      if (payload.serviceDesignStage !== "feature-planning") return;
+      // IMPORTANT: reuse existing feature-planning send logic; no contract refactor in this phase.
+      // TODO(service-design-harness): pass payload.serviceDesignStage and payload.mentionedAI into this stage API when backend contract is extended.
+      await shell.sendMessage(text);
+    };
+    return () => {
+      if (singleChatSendRef.current) singleChatSendRef.current = null;
+    };
+  }, [singleChatSendRef, shell]);
+
   const mainEl = (
     <WorkspaceMainPanel style={{ position: "relative", minWidth: 0 }}>
-      <WorkspaceChatPanel
-        messages={displayMessages}
-        onChatSelectionToWorkNote={appendChatSelectionToWorkNote}
-        loading={shell.initLoading || shell.loading || shell.resetChatLoading || shell.slotDigestLoading}
-        loadingHint={
-          shell.resetChatLoading
-            ? shell.resetChatLoadingHint
-            : shell.slotDigestLoading
-              ? shell.slotDigestLoadingHint
-              : shell.loading
-                ? shell.chatLoadingHint
-                : shell.initLoadingHint
-        }
-        onSlotNavChipClick={(slotId) => {
-          void shell.expandSlotPreviewInChat(slotId);
-        }}
-        slotDigestLoading={shell.slotDigestLoading}
-        screenLabel={WORKSPACE_SECTION_META.featurePlanningChat.fullLabel}
-        emptyHint={
-          shell.initError
-            ? null
-            : !shell.initLoading && !shell.loading && !shell.slotDigestLoading && displayMessages.length === 0 ? (
-                <div
-                  style={{
-                    justifySelf: "start",
-                    maxWidth: "min(100%, 620px)",
-                    width: "100%",
-                    minWidth: 0,
-                    padding: "12px 14px",
-                    borderRadius: 14,
-                    border: `1px solid ${t.border}`,
-                    background: t.bgCard,
-                    fontSize: 14,
-                    color: t.textSecondary,
-                    lineHeight: 1.65,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {!shell.serviceFlowReady
-                    ? "액터 및 서비스 흐름 정의를 완료하면 이곳에서 기능 정리를 이어갈 수 있습니다."
-                    : shell.artifact?.slots?.length
-                      ? "대화를 불러오는 중 문제가 있었습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해 주세요."
-                      : `서비스 흐름 분석이 끝나면 ${displayedWorkspaceAiTitle("feature_planning")}가 이곳에서 질문을 드립니다.\n\n응답이 없으면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요.`}
-                </div>
-              ) : null
-        }
-      />
+      {singleChatMode ? (
+        <>
+          {/* TODO(service-design-singlechat): chat timeline unified in RequirementsWorkspace */}
+          <FeaturePlanningSlotsPanel
+            artifact={shell.artifact}
+            activeSlotId={shell.activeSlotId}
+            onActiveSlotChange={shell.setActiveSlotId}
+            onChangeItem={shell.updateArtifactItem}
+            generating={shell.initLoading}
+            saving={shell.slotsSaving}
+            onRegenerateClick={shell.onRegenerateSlots}
+          />
+        </>
+      ) : (
+        <WorkspaceChatPanel
+          messages={displayMessages}
+          onChatSelectionToWorkNote={appendChatSelectionToWorkNote}
+          loading={shell.initLoading || shell.loading || shell.resetChatLoading || shell.slotDigestLoading}
+          loadingHint={
+            shell.resetChatLoading
+              ? shell.resetChatLoadingHint
+              : shell.slotDigestLoading
+                ? shell.slotDigestLoadingHint
+                : shell.loading
+                  ? shell.chatLoadingHint
+                  : shell.initLoadingHint
+          }
+          onSlotNavChipClick={(slotId) => {
+            void shell.expandSlotPreviewInChat(slotId);
+          }}
+          slotDigestLoading={shell.slotDigestLoading}
+          screenLabel={WORKSPACE_SECTION_META.featurePlanningChat.fullLabel}
+          emptyHint={
+            shell.initError
+              ? null
+              : !shell.initLoading && !shell.loading && !shell.slotDigestLoading && displayMessages.length === 0 ? (
+                  <div
+                    style={{
+                      justifySelf: "start",
+                      maxWidth: "min(100%, 620px)",
+                      width: "100%",
+                      minWidth: 0,
+                      padding: "12px 14px",
+                      borderRadius: 14,
+                      border: `1px solid ${t.border}`,
+                      background: t.bgCard,
+                      fontSize: 14,
+                      color: t.textSecondary,
+                      lineHeight: 1.65,
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {!shell.serviceFlowReady
+                      ? "액터 및 서비스 흐름 정의를 완료하면 이곳에서 기능 정리를 이어갈 수 있습니다."
+                      : shell.artifact?.slots?.length
+                        ? "대화를 불러오는 중 문제가 있었습니다. 페이지를 새로고침하거나 잠시 후 다시 시도해 주세요."
+                        : `서비스 흐름 분석이 끝나면 ${displayedWorkspaceAiTitle("feature_planning")}가 이곳에서 질문을 드립니다.\n\n응답이 없으면 서버에 OPENAI_API_KEY가 설정되어 있는지 확인해 주세요.`}
+                  </div>
+                ) : null
+          }
+        />
+      )}
     </WorkspaceMainPanel>
   );
 
@@ -238,33 +277,40 @@ export function FeaturePlanningWorkspace({ projectId }: { readonly projectId: st
         className={styles.shellCard}
         top={topBar}
         footer={
-          <WorkspaceComposerFooter>
-            <FeaturePlanningComposer
-              value={shell.composer}
-              onChange={shell.setComposer}
-              onSend={() => {
-                void shell.send();
-              }}
-              busy={shell.initLoading || shell.loading || shell.resetChatLoading || shell.slotDigestLoading}
-              disabled={!shell.serviceFlowReady}
-              placeholder={
-                shell.serviceFlowReady
-                  ? shell.plannerInputHint ?? undefined
-                  : "액터 및 서비스 흐름을 먼저 확정한 뒤 대화를 시작할 수 있습니다."
-              }
-              onOpenResultsView={() => setCanvas("overview")}
-              onRequestPlannerOrganize={() => {
-                void shell.requestPlannerOrganize();
-              }}
-              onResetChat={
-                shell.serviceFlowReady && shell.artifact?.slots?.length
-                  ? () => {
-                      void shell.resetChat();
-                    }
-                  : undefined
-              }
-            />
-          </WorkspaceComposerFooter>
+          singleChatMode ? (
+            <>
+              {/* DISABLED FOR SINGLECHAT */}
+              {/* TODO(service-design-singlechat): composer moved to parent */}
+            </>
+          ) : (
+            <WorkspaceComposerFooter>
+              <FeaturePlanningComposer
+                value={shell.composer}
+                onChange={shell.setComposer}
+                onSend={() => {
+                  void shell.send();
+                }}
+                busy={shell.initLoading || shell.loading || shell.resetChatLoading || shell.slotDigestLoading}
+                disabled={!shell.serviceFlowReady}
+                placeholder={
+                  shell.serviceFlowReady
+                    ? shell.plannerInputHint ?? undefined
+                    : "액터 및 서비스 흐름을 먼저 확정한 뒤 대화를 시작할 수 있습니다."
+                }
+                onOpenResultsView={() => setCanvas("overview")}
+                onRequestPlannerOrganize={() => {
+                  void shell.requestPlannerOrganize();
+                }}
+                onResetChat={
+                  shell.serviceFlowReady && shell.artifact?.slots?.length
+                    ? () => {
+                        void shell.resetChat();
+                      }
+                    : undefined
+                }
+              />
+            </WorkspaceComposerFooter>
+          )
         }
       >
         {mainBody}

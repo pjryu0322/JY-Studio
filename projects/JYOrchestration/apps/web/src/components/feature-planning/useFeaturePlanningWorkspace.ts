@@ -517,6 +517,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
     messages,
     notice,
     pushNotice,
+    sendMessage,
     send,
   };
 }
