@@ -138,7 +138,10 @@ export function useServiceFlowWorkshopChat({
   );
 
   const callAnalyze = useCallback(
-    (userMessageText: string, opts?: { silentUserAppend?: boolean; harness?: ServiceDesignHarnessPayload }) => {
+    (
+      userMessageText: string,
+      opts?: { silentUserAppend?: boolean; harness?: ServiceDesignHarnessPayload; responsePolicy?: unknown }
+    ) => {
       if (workspaceMode !== "chat") return;
       const body = userMessageText.trim();
       if (!body) return;
@@ -163,12 +166,7 @@ export function useServiceFlowWorkshopChat({
 
           const priorScreenHandoff = takeActorFlowHandoff();
           const payload = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
-          const harness = await runServiceDesignHarnessTurn({
-            input: body,
-            stage: "service-flow",
-            mentionedAI: payload.mentionedAI ?? null,
-          });
-          console.debug("[HARNESS CHECK]", { stage: "service-flow", payloadReceived: true, runHarnessExecuted: true });
+          const responsePolicy = opts?.responsePolicy;
 
           const result = await postServiceFlowAnalyze({
             projectId,
@@ -182,7 +180,7 @@ export function useServiceFlowWorkshopChat({
             ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
             serviceDesignStage: payload.serviceDesignStage,
             mentionedAI: payload.mentionedAI,
-            responsePolicy: harness.responsePolicy,
+            ...(responsePolicy ? { responsePolicy } : {}),
           });
 
           if (!result.ok || !result.data.updatedFlow) {
@@ -260,9 +258,21 @@ export function useServiceFlowWorkshopChat({
       if (workspaceMode !== "chat") return;
       const body = (overrideText ?? input).trim();
       if (!body) return;
-      const harness = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
+      const payload = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
       setInput("");
-      callAnalyze(body, { harness });
+      void (async () => {
+        const harness = await runServiceDesignHarnessTurn({
+          input: body,
+          stage: "service-flow",
+          mentionedAI: harnessFromComposer?.mentionedAI ?? null,
+        });
+        console.debug("[HARNESS CHECK]", {
+          stage: "service-flow",
+          payloadReceived: Boolean(harnessFromComposer),
+          runHarnessExecuted: true,
+        });
+        callAnalyze(body, { harness: payload, responsePolicy: harness.responsePolicy });
+      })();
       scrollChatToBottom();
     },
     [workspaceMode, input, callAnalyze, scrollChatToBottom]
