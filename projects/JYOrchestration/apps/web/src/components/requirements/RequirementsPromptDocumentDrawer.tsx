@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -137,6 +138,7 @@ export function RequirementsPromptDocumentDrawer({
   view,
   lastPromptText,
   lastPromptGeneratedAt,
+  promptTimeline,
   conversationMessages,
   exportBaseName,
 }: {
@@ -145,6 +147,7 @@ export function RequirementsPromptDocumentDrawer({
   readonly view: RequirementsPromptPresenterView | null | undefined;
   readonly lastPromptText?: string | null;
   readonly lastPromptGeneratedAt?: string | null;
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly conversationMessages: readonly RequirementsMessage[] | null;
   /** 다운로드 파일명 접두사(예: 프로젝트명). 비어 있으면 `project` 사용 */
   readonly exportBaseName?: string | null;
@@ -200,6 +203,13 @@ export function RequirementsPromptDocumentDrawer({
   }, [lastPromptGeneratedAt]);
 
   const fullText = (lastPromptText && lastPromptText.trim()) || view?.copyText || "";
+  const ideationBootstrapTimeline = useMemo(() => {
+    const list = Array.isArray(promptTimeline) ? promptTimeline : [];
+    return list
+      .filter((x) => x && x.stage === "ideation" && x.action === "bootstrapInterview")
+      .slice(-10)
+      .reverse();
+  }, [promptTimeline]);
 
   const exportStem = useMemo(() => buildExportBasename(exportBaseName), [exportBaseName]);
 
@@ -413,6 +423,39 @@ export function RequirementsPromptDocumentDrawer({
                 </p>
               ) : (
                 <>
+                  {ideationBootstrapTimeline.length ? (
+                    <div style={docBlock}>
+                      <div style={labelSm}>BOOTSTRAP TIMELINE</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        {ideationBootstrapTimeline.map((row) => (
+                          <div key={`${row.createdAt}:${row.source}`} style={{ padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff" }}>
+                            <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>
+                              {row.aiMember ?? "AI"} · {row.source} · {new Date(row.createdAt).toLocaleString("ko-KR")}
+                            </div>
+                            {row.model || row.provider ? (
+                              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                                {row.provider ?? "provider"} {row.model ?? ""}
+                              </div>
+                            ) : null}
+                            {row.error ? (
+                              <div style={{ fontSize: 12.5, color: "#b91c1c", marginTop: 6, whiteSpace: "pre-wrap" }}>{row.error}</div>
+                            ) : null}
+                            {row.promptText ? (
+                              <pre style={{ margin: "10px 0 0", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12.5, lineHeight: 1.5, color: "#0f172a", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                {row.promptText}
+                              </pre>
+                            ) : null}
+                            {row.responseText ? (
+                              <div style={{ fontSize: 13, color: "#0f172a", marginTop: 8, whiteSpace: "pre-wrap" }}>{row.responseText}</div>
+                            ) : null}
+                            {row.fallbackText ? (
+                              <div style={{ fontSize: 13, color: "#0f172a", marginTop: 8, whiteSpace: "pre-wrap" }}>{row.fallbackText}</div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {view ? (
                     <>
                       <div style={docBlock}>

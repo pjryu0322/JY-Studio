@@ -130,7 +130,22 @@ export async function POST(request: NextRequest) {
       }
       if (bootstrapInterview && result.code === "NO_KEY") {
         return NextResponse.json(
-          { success: false, code: "NO_AI_PROVIDER", message: "AI 기획자 호출에 필요한 OpenAI 설정이 없습니다." },
+          {
+            success: false,
+            code: "NO_AI_PROVIDER",
+            message: "AI 기획자 호출에 필요한 OpenAI 설정이 없습니다.",
+            data: {
+              promptTrace: {
+                stage: "ideation",
+                action: "bootstrapInterview",
+                aiMember: "AI 기획자",
+                source: "fallback",
+                error: "NO_AI_PROVIDER",
+                fallbackText: "무엇을 만들고 싶은가?",
+                createdAt: new Date().toISOString(),
+              },
+            },
+          },
           { status: 503 }
         );
       }
@@ -138,6 +153,21 @@ export async function POST(request: NextRequest) {
         success: false,
         code: result.code,
         message: result.message,
+        ...(bootstrapInterview
+          ? {
+              data: {
+                promptTrace: {
+                  stage: "ideation",
+                  action: "bootstrapInterview",
+                  aiMember: "AI 기획자",
+                  source: "fallback",
+                  error: `${result.code}: ${result.message}`,
+                  fallbackText: "무엇을 만들고 싶은가?",
+                  createdAt: new Date().toISOString(),
+                },
+              },
+            }
+          : {}),
       });
     }
     const replyTrim = String(result.text ?? "").trim();
@@ -152,7 +182,25 @@ export async function POST(request: NextRequest) {
           fallbackText: "무엇을 만들고 싶은가?",
         });
       }
-      return NextResponse.json({ success: false, code: "EMPTY_REPLY", message: "bootstrapInterview 응답이 비어 있습니다." }, { status: 502 });
+      return NextResponse.json(
+        {
+          success: false,
+          code: "EMPTY_REPLY",
+          message: "bootstrapInterview 응답이 비어 있습니다.",
+          data: {
+            promptTrace: {
+              stage: "ideation",
+              action: "bootstrapInterview",
+              aiMember: "AI 기획자",
+              source: "fallback",
+              error: "EMPTY_REPLY",
+              fallbackText: "무엇을 만들고 싶은가?",
+              createdAt: new Date().toISOString(),
+            },
+          },
+        },
+        { status: 502 }
+      );
     }
 
     const seed = bootstrapInterview
@@ -183,6 +231,17 @@ export async function POST(request: NextRequest) {
               model: result.model,
               provider: result.provider ?? "openai",
               calledAt: result.calledAt ?? new Date().toISOString(),
+              promptTrace: {
+                stage: "ideation",
+                action: "bootstrapInterview",
+                aiMember: "AI 기획자",
+                source: "llm",
+                promptText: String(result.promptText ?? "").trim() || undefined,
+                responseText: replyTrim,
+                model: result.model,
+                provider: result.provider ?? "openai",
+                createdAt: result.calledAt ?? new Date().toISOString(),
+              },
             }
           : {}),
         seedInterviewState: seed && seed.ok ? seed.wire : null,
