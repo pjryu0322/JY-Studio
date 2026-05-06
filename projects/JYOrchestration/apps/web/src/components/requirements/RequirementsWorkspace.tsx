@@ -986,9 +986,13 @@ export function RequirementsWorkspace({
       // IMPORTANT: reuse the existing stage-local send logic (do not rewrite service-flow pipeline here).
       const fn = serviceFlowSendRef.current;
       if (!fn) return;
+      const text = input.trim();
+      if (!text) return;
+      // NOTE: stage-local pipeline reads its own input today; we keep it intact and clear parent input after dispatch.
       await fn(payload);
+      setInput("");
     },
-    []
+    [input]
   );
 
   const runFeaturePlanningSend = useCallback(
@@ -1315,6 +1319,7 @@ export function RequirementsWorkspace({
       platformScreenAiMemberIds={serviceFlowScreenCatalogIds}
       onSendServiceFlow={runServiceFlowSend}
       serviceFlowSendRef={serviceFlowSendRef}
+      singleChatMode
     />
   );
 

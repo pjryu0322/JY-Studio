@@ -248,9 +248,9 @@ export function useServiceFlowWorkshopChat({
   }, [callAnalyze]);
 
   const sendMessage = useCallback(
-    (harnessFromComposer?: ServiceDesignHarnessPayload) => {
+    (harnessFromComposer?: ServiceDesignHarnessPayload, overrideText?: string) => {
       if (workspaceMode !== "chat") return;
-      const body = input.trim();
+      const body = (overrideText ?? input).trim();
       if (!body) return;
       const harness = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
       setInput("");

@@ -38,6 +38,8 @@ export type RequirementsServiceFlowStageProps = ServiceFlowStageControllerInput 
   readonly onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
   /** SingleChat: stage 내부 send 로직을 `/requirements`로 노출 */
   readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload) => void) | null };
+  /** SingleChat: 입력 UI는 parent(ServiceDesignComposer)만 사용 */
+  readonly singleChatMode?: boolean;
 };
 
 export function RequirementsServiceFlowStage({
@@ -55,6 +57,7 @@ export function RequirementsServiceFlowStage({
   useEffect(() => {
     if (!serviceFlowSendRef) return;
     serviceFlowSendRef.current = (payload) => {
+      // NOTE: in SingleChat we use parent value, but keep fallback to current input.
       w.sendMessage(payload);
     };
     return () => {
@@ -196,42 +199,49 @@ export function RequirementsServiceFlowStage({
                 </div>
               ) : null}
 
-              <ServiceDesignComposer
-                stage="service-flow"
-                value={w.input}
-                onChange={w.setInput}
-                busy={false}
-                disabled={c.workspaceMode !== "chat" || w.replying}
-                placeholder="메시지를 입력하세요"
-                targetPickerItems={serviceFlowComposerAtAtItems}
-                onSendIdeation={async () => {}}
-                onSendServiceFlow={async (payload) => {
-                  await controllerInput.onSendServiceFlow?.(payload);
-                }}
-                onSendFeaturePlanning={async () => {}}
-                serviceFlowChrome={{
-                  textAreaRef: w.composerTextareaRef,
-                  actionsOpen: w.toolsOpen,
-                  onOpenActions: () => w.setToolsOpen((v) => !v),
-                  onToolsOpenChange: w.setToolsOpen,
-                  renderActionMenu: ({ menuId, close }) => (
-                    <ServiceFlowActionMenu
-                      omitMenuContainer
-                      menuId={menuId}
-                      open={w.toolsOpen}
-                      onClose={close}
-                      onOrganize={w.requestOrganize}
-                      onViewResult={() => c.setWorkspaceMode("summary")}
-                      onViewPrompt={() => w.setToolsOpen(false)}
-                      onOpenMapping={() => c.setWorkspaceMode("mapping")}
-                      projectId={controllerInput.projectId}
-                      ideationReady={controllerInput.ideationReady}
-                      ideationReadyNotice={ideationReadyNotice}
-                      hasFlowContent={Boolean(c.actors.length || c.steps.length)}
-                    />
-                  ),
-                }}
-              />
+              {controllerInput.singleChatMode ? (
+                <>
+                  {/* DISABLED FOR SINGLECHAT */}
+                  {/* TODO(service-design-singlechat): composer moved to RequirementsWorkspace */}
+                </>
+              ) : (
+                <ServiceDesignComposer
+                  stage="service-flow"
+                  value={w.input}
+                  onChange={w.setInput}
+                  busy={false}
+                  disabled={c.workspaceMode !== "chat" || w.replying}
+                  placeholder="메시지를 입력하세요"
+                  targetPickerItems={serviceFlowComposerAtAtItems}
+                  onSendIdeation={async () => {}}
+                  onSendServiceFlow={async (payload) => {
+                    await controllerInput.onSendServiceFlow?.(payload);
+                  }}
+                  onSendFeaturePlanning={async () => {}}
+                  serviceFlowChrome={{
+                    textAreaRef: w.composerTextareaRef,
+                    actionsOpen: w.toolsOpen,
+                    onOpenActions: () => w.setToolsOpen((v) => !v),
+                    onToolsOpenChange: w.setToolsOpen,
+                    renderActionMenu: ({ menuId, close }) => (
+                      <ServiceFlowActionMenu
+                        omitMenuContainer
+                        menuId={menuId}
+                        open={w.toolsOpen}
+                        onClose={close}
+                        onOrganize={w.requestOrganize}
+                        onViewResult={() => c.setWorkspaceMode("summary")}
+                        onViewPrompt={() => w.setToolsOpen(false)}
+                        onOpenMapping={() => c.setWorkspaceMode("mapping")}
+                        projectId={controllerInput.projectId}
+                        ideationReady={controllerInput.ideationReady}
+                        ideationReadyNotice={ideationReadyNotice}
+                        hasFlowContent={Boolean(c.actors.length || c.steps.length)}
+                      />
+                    ),
+                  }}
+                />
+              )}
             </div>
               </RequirementsChatComposerFooter>
             </div>
