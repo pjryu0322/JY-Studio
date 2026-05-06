@@ -64,6 +64,20 @@ export function readProjectRailParticipantCounts(projectId: string): Partial<Rec
   return next;
 }
 
+/** `useSyncExternalStore`용 — 해당 프로젝트의 레일 참여 수 이벤트만 `onStoreChange`로 전달합니다. */
+export function subscribeProjectRailParticipantCounts(projectId: string, onStoreChange: () => void): () => void {
+  const pid = projectId.trim();
+  if (!pid || typeof window === "undefined") return () => {};
+  function handler(e: Event) {
+    const ce = e as CustomEvent<ProjectRailParticipantsEventDetail>;
+    const d = ce.detail;
+    if (!d || String(d.projectId ?? "").trim() !== pid) return;
+    onStoreChange();
+  }
+  window.addEventListener(PROJECT_RAIL_PARTICIPANTS_EVENT, handler as EventListener);
+  return () => window.removeEventListener(PROJECT_RAIL_PARTICIPANTS_EVENT, handler as EventListener);
+}
+
 export function appFlowStepIdToRailParticipantKey(stepId: AppFlowStepId): ProjectRailParticipantStepKey | null {
   switch (stepId) {
     case "requirements":

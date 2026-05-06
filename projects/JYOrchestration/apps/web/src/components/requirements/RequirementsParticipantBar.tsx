@@ -4,10 +4,8 @@ import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import { WorkspaceAiParticipantAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
-import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
-
-const IDEATION_AI_DISPLAY_NAME = getWorkspaceAiMember("ideation")?.title ?? "AI 기획자";
+import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
 
 export type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 

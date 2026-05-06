@@ -4,147 +4,26 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { WorkNoteListItem, WorkNoteSaveState } from "@/hooks/useWorkNotesPanel";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { insertWorkNoteImageAtCaret } from "@/components/worknote/workNoteDrawerInsertImage";
+import {
+  readWorkNotePanelStoredGeom,
+  readWorkNotePanelStoredOpacity,
+  type WorkNotePanelGeom,
+  workNotePanelClamp,
+  workNotePanelDefaultGeom,
+  writeWorkNotePanelStoredGeom,
+  writeWorkNotePanelStoredOpacity,
+} from "@/components/worknote/workNoteDrawerPanelStorage";
+import {
+  workNoteMemoDisplayTitle,
+  workNoteMemoSwatchColors,
+  workNotePlainTextFromSelectionWithinEditor,
+  workNoteSaveStateLabel,
+} from "@/components/worknote/workNoteDrawerUiHelpers";
 import { escapeHtmlText, imageFileToJpegDataUrl, noteRawToEditorHtml } from "@/lib/worknote/workNoteEditorHtml";
 import { workNoteHtmlToPlainForSummary } from "@/lib/worknote/workNoteHtmlPlain";
 
-const GEOM_KEY = "jyo-work-note-panel-geom-v1";
-const OPACITY_KEY = "jyo-work-note-panel-opacity-v1";
-
-type PanelGeom = { x: number; y: number; w: number; h: number };
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, n));
-}
-
-function defaultGeom(isNarrow: boolean): PanelGeom {
-  if (typeof window === "undefined") return { x: 24, y: 80, w: 360, h: 440 };
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  if (isNarrow) {
-    const w = vw;
-    const h = Math.min(Math.round(vh * 0.92), Math.max(280, vh - 56));
-    const y = vh - h;
-    return { x: 0, y, w, h };
-  }
-  const w = Math.max(400, Math.min(520, vw - 24));
-  const h = clamp(Math.round(vh * 0.58), 320, 560);
-  return { x: vw - w - 16, y: 72, w, h };
-}
-
-function readStoredGeom(): PanelGeom | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(GEOM_KEY);
-    if (!raw) return null;
-    const o = JSON.parse(raw) as Partial<PanelGeom>;
-    if (typeof o.x !== "number" || typeof o.y !== "number" || typeof o.w !== "number" || typeof o.h !== "number") return null;
-    return { x: o.x, y: o.y, w: o.w, h: o.h };
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredGeom(g: PanelGeom) {
-  try {
-    sessionStorage.setItem(GEOM_KEY, JSON.stringify(g));
-  } catch {
-    /* ignore */
-  }
-}
-
-function readStoredOpacity(): number {
-  if (typeof window === "undefined") return 1;
-  try {
-    const raw = sessionStorage.getItem(OPACITY_KEY);
-    if (raw == null || raw === "") return 1;
-    const n = Number(raw);
-    if (Number.isNaN(n)) return 1;
-    return clamp(n, 0.35, 1);
-  } catch {
-    return 1;
-  }
-}
-
-function writeStoredOpacity(alpha: number) {
-  try {
-    sessionStorage.setItem(OPACITY_KEY, String(clamp(alpha, 0.35, 1)));
-  } catch {
-    /* ignore */
-  }
-}
-
-function insertImageAtCaret(root: HTMLDivElement, dataUrl: string): void {
-  const img = document.createElement("img");
-  img.src = dataUrl;
-  img.alt = "";
-  img.style.maxWidth = "100%";
-  img.style.height = "auto";
-  img.style.display = "block";
-  img.style.margin = "8px 0";
-  img.style.borderRadius = "8px";
-
-  root.focus();
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0 || !root.contains(sel.anchorNode)) {
-    const wrap = document.createElement("div");
-    wrap.appendChild(img);
-    root.appendChild(wrap);
-    return;
-  }
-  const range = sel.getRangeAt(0);
-  if (!root.contains(range.commonAncestorContainer)) {
-    const wrap = document.createElement("div");
-    wrap.appendChild(img);
-    root.appendChild(wrap);
-    return;
-  }
-  range.deleteContents();
-  range.insertNode(img);
-  range.setStartAfter(img);
-  range.collapse(true);
-  sel.removeAllRanges();
-  sel.addRange(range);
-}
-
-function memoDisplayTitle(title: string): string {
-  return title.trim() ? title.trim() : "제목 없음";
-}
-
-/** 접힌 목록: 선택된 메모만 id 기반 색, 나머지는 무채색 */
-function memoSwatchColors(noteId: string, active: boolean): { background: string; borderColor: string } {
-  if (!active) {
-    return {
-      background: "#e2e8f0",
-      borderColor: "#94a3b8",
-    };
-  }
-  let h = 0;
-  for (let i = 0; i < noteId.length; i++) h = (h * 31 + noteId.charCodeAt(i)) | 0;
-  const hue = Math.abs(h) % 360;
-  return {
-    background: `hsl(${hue} 62% 90%)`,
-    borderColor: `hsl(${hue} 58% 48%)`,
-  };
-}
-
-function plainTextFromSelectionWithinEditor(root: HTMLElement | null): string {
-  if (!root) return "";
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return "";
-  const range = sel.getRangeAt(0);
-  if (!root.contains(range.commonAncestorContainer)) return "";
-  const frag = range.cloneContents();
-  const wrap = document.createElement("div");
-  wrap.appendChild(frag);
-  return wrap.innerText.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function saveStateLabel(state: WorkNoteSaveState, saveError: string | null): string {
-  if (state === "saving") return "저장 중…";
-  if (state === "error") return saveError ? `저장 실패 · ${saveError}` : "저장 실패";
-  if (state === "saved") return "자동 저장됨";
-  return "";
-}
+type PanelGeom = WorkNotePanelGeom;
 
 type WorkNoteAiInsight = {
   readonly summary: string;
@@ -206,11 +85,11 @@ export function WorkNoteDrawer(p: {
       return;
     }
     if (isNarrow) {
-      setGeom(defaultGeom(true));
+      setGeom(workNotePanelDefaultGeom(true));
     } else {
-      setGeom((prev) => prev ?? readStoredGeom() ?? defaultGeom(false));
+      setGeom((prev) => prev ?? readWorkNotePanelStoredGeom() ?? workNotePanelDefaultGeom(false));
     }
-    setPanelOpacity(readStoredOpacity());
+    setPanelOpacity(readWorkNotePanelStoredOpacity());
   }, [isPage, p.open, isNarrow]);
 
   useEffect(() => {
@@ -364,13 +243,13 @@ export function WorkNoteDrawer(p: {
           d.kind === "move"
             ? {
                 ...d.g,
-                x: clamp(d.g.x + dx, 8, vw - d.g.w - 8),
-                y: clamp(d.g.y + dy, 8, vh - d.g.h - 8),
+                x: workNotePanelClamp(d.g.x + dx, 8, vw - d.g.w - 8),
+                y: workNotePanelClamp(d.g.y + dy, 8, vh - d.g.h - 8),
               }
             : {
                 ...d.g,
-                w: clamp(d.g.w + dx, 300, vw - d.g.x - 8),
-                h: clamp(d.g.h + dy, 220, vh - d.g.y - 8),
+                w: workNotePanelClamp(d.g.w + dx, 300, vw - d.g.x - 8),
+                h: workNotePanelClamp(d.g.h + dy, 220, vh - d.g.y - 8),
               };
         geomRef.current = next;
         setGeom(next);
@@ -379,7 +258,7 @@ export function WorkNoteDrawer(p: {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         dragRef.current = null;
-        if (geomRef.current) writeStoredGeom(geomRef.current);
+        if (geomRef.current) writeWorkNotePanelStoredGeom(geomRef.current);
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -403,8 +282,8 @@ export function WorkNoteDrawer(p: {
         const vh = window.innerHeight;
         const next: PanelGeom = {
           ...d.g,
-          w: clamp(d.g.w + dx, 300, vw - d.g.x - 8),
-          h: clamp(d.g.h + dy, 220, vh - d.g.y - 8),
+          w: workNotePanelClamp(d.g.w + dx, 300, vw - d.g.x - 8),
+          h: workNotePanelClamp(d.g.h + dy, 220, vh - d.g.y - 8),
         };
         geomRef.current = next;
         setGeom(next);
@@ -413,7 +292,7 @@ export function WorkNoteDrawer(p: {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         dragRef.current = null;
-        if (geomRef.current) writeStoredGeom(geomRef.current);
+        if (geomRef.current) writeWorkNotePanelStoredGeom(geomRef.current);
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -427,7 +306,7 @@ export function WorkNoteDrawer(p: {
       setSelectionBubble(null);
       return;
     }
-    const text = plainTextFromSelectionWithinEditor(root);
+    const text = workNotePlainTextFromSelectionWithinEditor(root);
     if (!text) {
       setSelectionBubble(null);
       return;
@@ -507,7 +386,7 @@ export function WorkNoteDrawer(p: {
           void (async () => {
             try {
               const dataUrl = await imageFileToJpegDataUrl(f, 900);
-              if (editorRef.current) insertImageAtCaret(editorRef.current, dataUrl);
+              if (editorRef.current) insertWorkNoteImageAtCaret(editorRef.current, dataUrl);
               syncFromEditor();
             } catch {
               /* ignore */
@@ -523,7 +402,7 @@ export function WorkNoteDrawer(p: {
             void (async () => {
               try {
                 const dataUrl = await imageFileToJpegDataUrl(f, 900);
-                if (editorRef.current) insertImageAtCaret(editorRef.current, dataUrl);
+                if (editorRef.current) insertWorkNoteImageAtCaret(editorRef.current, dataUrl);
                 syncFromEditor();
               } catch {
                 /* ignore */
@@ -740,9 +619,9 @@ export function WorkNoteDrawer(p: {
           >
             {p.notes.map((n) => {
               const active = n.id === p.activeId;
-              const label = memoDisplayTitle(n.title);
+              const label = workNoteMemoDisplayTitle(n.title);
               const showDelete = railHoverId === n.id || (isNarrow && active);
-              const sw = memoSwatchColors(n.id, active);
+              const sw = workNoteMemoSwatchColors(n.id, active);
               return (
                 <div
                   key={n.id}
@@ -996,7 +875,7 @@ export function WorkNoteDrawer(p: {
             minWidth: 0,
           }}
         >
-          {saveStateLabel(p.saveState, p.saveError)}
+          {workNoteSaveStateLabel(p.saveState, p.saveError)}
         </span>
         <div
           style={{
@@ -1021,10 +900,10 @@ export function WorkNoteDrawer(p: {
                 value={Math.round(panelOpacity * 100)}
                 aria-label="메모 창 투명도"
                 onChange={(e) => {
-                  const pct = clamp(Number(e.target.value), 35, 100);
+                  const pct = workNotePanelClamp(Number(e.target.value), 35, 100);
                   const next = pct / 100;
                   setPanelOpacity(next);
-                  writeStoredOpacity(next);
+                  writeWorkNotePanelStoredOpacity(next);
                 }}
                 style={{ flex: "1 1 100px", minWidth: 72, maxWidth: 200, accentColor: t.primary }}
               />

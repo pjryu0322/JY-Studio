@@ -1,75 +1,59 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { Project } from "@/components/project-spec/types";
-import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
-import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
-import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
+import { RequirementsIdeationChatPanel } from "@/components/requirements/RequirementsIdeationChatPanel";
+import { RequirementsIdeationDocumentDrawers } from "@/components/requirements/RequirementsIdeationDocumentDrawers";
+import { RequirementsOrganizeProposalWorkspaceOverlay } from "@/components/requirements/RequirementsOrganizeProposalWorkspaceOverlay";
+import { RequirementsServiceFlowStagePanel } from "@/components/requirements/RequirementsServiceFlowStagePanel";
+import { RequirementsWorkspaceErrorBand } from "@/components/requirements/RequirementsWorkspaceErrorBand";
+import { RequirementsWorkspaceTopChrome } from "@/components/requirements/RequirementsWorkspaceTopChrome";
+import {
+  requirementsWorkspaceMainRowStyle,
+  requirementsWorkspaceShellStyle,
+} from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
-import { ServiceFlowWorkspace } from "@/components/service-flow/ServiceFlowWorkspace";
 import { useWorkspaceSaveToast } from "@/components/workspace/useWorkspaceSaveToast";
 import { resolveParticipantContextKey, useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
 import { useRequirementsServiceFlowDraft } from "@/components/requirements/workspace/useRequirementsServiceFlowDraft";
 import { useRequirementsProjectLoad } from "@/components/requirements/workspace/useRequirementsProjectLoad";
+import { useRequirementsHandleGenerateDeliverables } from "@/components/requirements/workspace/useRequirementsHandleGenerateDeliverables";
+import { persistRequirementsIdeationUserTurnBeforeAi } from "@/components/requirements/workspace/persistRequirementsIdeationUserTurnBeforeAi";
+import {
+  runRequirementsIdeationAiAfterUserPersist,
+  type IdeationPlannerTail,
+} from "@/components/requirements/workspace/runRequirementsIdeationAiAfterUserPersist";
+import {
+  composeIdeationSendUserTurn,
+  newIdeationSendTraceId,
+} from "@/components/requirements/workspace/requirementsIdeationSendHelpers";
 import { useRequirementsSpecWorkspacePersist } from "@/components/requirements/workspace/useRequirementsSpecWorkspacePersist";
 import { useRequirementsWorkspaceToasts } from "@/components/requirements/workspace/useRequirementsWorkspaceToasts";
-import { OrganizeProposalDraggableModal } from "@/components/requirements/OrganizeProposalDraggableModal";
-import { RequirementsDeliverableViewerModal } from "@/components/requirements/RequirementsDeliverableViewerModal";
-import { RequirementsDraftDocumentDrawer } from "@/components/requirements/RequirementsDraftDocumentDrawer";
-import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
-import { RequirementsSummaryModal } from "@/components/requirements/RequirementsSummaryModal";
 import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { WorkspaceSuccessErrorSaveToastHost } from "@/components/workspace/WorkspaceSuccessErrorSaveToastHost";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import {
-  appendIdeationDeliverableAssets,
-  extractPreviewLinesFromMarkdown,
-  IDEATION_DELIVERABLE_LABELS,
   IDEATION_UNIFIED_PROPOSAL_OUTPUT,
-  IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
   markDeliverableAssetsConfirmed,
-  isIdeationDeliverableType,
-  type IdeationDeliverableChatPayload,
   type IdeationDeliverableType,
 } from "@/lib/requirements/ideationDeliverables";
 import { ideationChecklistComplete } from "@/lib/requirements/ideationChecklist";
 import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from "@/lib/requirements/serviceFlowConversation";
+import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE, sanitizeIdeationInterviewFirstQuestion } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
-  IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
-  IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
-  sanitizeIdeationInterviewFirstQuestion,
-} from "@/lib/requirements/ideationInterviewBootstrap";
-import {
-  composeInterviewPlannerReply,
-  coerceInterviewAnalyzerPayload,
-  emergencyFallbackProblemInterviewFromUserMessageRegex,
   emptyProblemInterviewState,
-  applyGlobalDelegationDefaults,
-  interviewSlotLevelFromState,
-  INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
-  mergeAnalyzerIntoProblemInterview,
-  getControlledQuestionForSlot,
-  mergeImplicitAskedFromLastBootstrapQuestion,
-  PROBLEM_INTERVIEW_SLOTS,
   pickNextAskableInterviewSlot,
-  planNextInterviewTurn,
-  problemInterviewStateToAnalyzerWire,
   problemInterviewStrictFilledCount,
   proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
   slotStrictlyFilled,
-  withAskedSlot,
-  type InterviewAnalyzerPayload,
-  type ProblemInterviewSlot,
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
-import { bumpDraftVersion } from "@/lib/requirements/draftStore";
-import { buildPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
@@ -80,27 +64,25 @@ import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/proj
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
 import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailParticipants";
+import { REQUIREMENTS_IDEATION_HTTP, requirementsAiConnectionUrl } from "@/lib/requirements/requirementsIdeationHttp";
+import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
+import { pickWorkspaceAiHandoffMember } from "@/components/requirements/workspace/pickWorkspaceAiHandoffMember";
+import { useRequirementsStageRouteRedirect } from "@/components/requirements/workspace/useRequirementsStageRouteRedirect";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import {
   newChatMessage,
   parseRequirementsRoomState,
+  patchRequirementsRoomConversationMessages,
   VIRTUAL_AI_PLANNER_ID,
   type RequirementsRoomStateV3,
 } from "@/lib/project/requirementsRoomState";
-import {
-  augmentDialogueExcerptForReplyParent,
-  inferRecentAiQuestionReplyParentId,
-} from "@/lib/requirements/requirementsAnswerContext";
 import { type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import { dedupeMemberRefs, computedTargetsFromInput } from "@/lib/requirements/requirementsTargets";
 import { APP_FLOW_LAST_PROJECT_KEY, notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import {
-  formatDialogueExcerpt,
   ideationDraftGateStatus,
-  ideationInterviewMilestoneLine,
   ideationSendDevLog,
   shouldSkipIdeationDuplicateAppend,
   IDEATION_DRAFT_MIN_FILLED_SLOTS,
@@ -113,23 +95,10 @@ import {
 import { RequirementsWorkspaceStageRenderer } from "@/components/requirements/RequirementsWorkspaceStageRenderer";
 import { buildPlatformMemberActivityFromRequirementsMessages } from "@/lib/ai-member/buildPlatformMemberActivityFromRequirementsMessages";
 import { extractHandoffSnippetFromRequirementsMessages } from "@/lib/ai-member/extractHandoffSnippetFromRequirementsMessages";
-import { publishWorkspaceAiScreenHandoff, consumeWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
-import { getWorkspaceAiMember, type WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { publishWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 import { requirementsWorkspaceStageToScreenKey } from "@/lib/requirements/requirementsWorkspaceScreenBridge";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
-
-function pickWorkspaceAiHandoffPublishMember(
-  stage: RequirementsWorkspaceStage,
-  ids: readonly WorkspaceAiMemberId[],
-): WorkspaceAiMemberId {
-  if (!ids.length) return resolveParticipantContextKey(stage);
-  if (stage === "service-flow" && ids.includes("actor_flow")) return "actor_flow";
-  if (stage === "ideation" && ids.includes("ideation")) return "ideation";
-  return ids[0]!;
-}
-
-const IDEATION_AI_DISPLAY_NAME = getWorkspaceAiMember("ideation")?.title ?? "AI 기획자";
 
 export function RequirementsWorkspace({
   initialProjectId,
@@ -143,17 +112,7 @@ export function RequirementsWorkspace({
   const router = useRouter();
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
-
-  // 프로젝트 레일을 `/requirements?projectId=...&stage=...`로 통일한 뒤,
-  // 실제 화면은 stage에 맞는 전용 라우트로 이동시킵니다.
-  useEffect(() => {
-    const pid = String(searchParams?.get("projectId") ?? initialProjectId ?? "").trim();
-    if (!pid) return;
-    const stage = String(searchParams?.get("stage") ?? initialStage ?? "").trim().toLowerCase();
-    if (stage === "features") router.replace(`/features?projectId=${encodeURIComponent(pid)}`);
-    if (stage === "execution") router.replace(`/execution?projectId=${encodeURIComponent(pid)}`);
-    if (stage === "prototype-review") router.replace(`/prototype-review?projectId=${encodeURIComponent(pid)}`);
-  }, [router, searchParams, initialProjectId, initialStage]);
+  useRequirementsStageRouteRedirect(initialProjectId, initialStage);
 
   const autoOpenPrototypePreview = useMemo(() => {
     const v = String(searchParams?.get("preview") ?? "").trim();
@@ -164,6 +123,8 @@ export function RequirementsWorkspace({
   const [project, setProject] = useState<Project | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const membersRef = useRef(members);
+  membersRef.current = members;
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [room, setRoom] = useState<RequirementsRoomStateV3>(() => parseRequirementsRoomState(null));
   const [conversationStatus, setConversationStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
@@ -301,11 +262,7 @@ export function RequirementsWorkspace({
       setAiConnPhase("checking");
       setAiConnDetail(undefined);
       try {
-        const pid = resolvedProjectId.trim();
-        const url = pid
-          ? `/api/requirements/ai-connection?projectId=${encodeURIComponent(pid)}`
-          : "/api/requirements/ai-connection";
-        const res = await credentialsIncludeFetch(url);
+        const res = await credentialsIncludeFetch(requirementsAiConnectionUrl(resolvedProjectId));
         const json = (await res.json()) as {
           success?: boolean;
           message?: string;
@@ -455,6 +412,16 @@ export function RequirementsWorkspace({
     [conversationMessages],
   );
 
+  const ideationParticipantHumanMemberIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of ideationConversationOnly) {
+      if (m.role !== "human") continue;
+      const id = String(m.speakerId ?? "").trim();
+      if (id) ids.add(id);
+    }
+    return [...ids];
+  }, [ideationConversationOnly]);
+
   const platformMemberActivity = useMemo(
     () => buildPlatformMemberActivityFromRequirementsMessages(ideationConversationOnly, serviceFlowWorkshopPersisted),
     [ideationConversationOnly, serviceFlowWorkshopPersisted],
@@ -485,8 +452,8 @@ export function RequirementsWorkspace({
       const graphRows = workspaceAiGraph ?? [];
       const fromIds = resolveEnabledCatalogKeysForScreen(graphRows, requirementsWorkspaceStageToScreenKey(prev));
       const toIds = resolveEnabledCatalogKeysForScreen(graphRows, requirementsWorkspaceStageToScreenKey(activeStage));
-      const fromKey = pickWorkspaceAiHandoffPublishMember(prev, fromIds);
-      const toKey = pickWorkspaceAiHandoffPublishMember(activeStage, toIds);
+      const fromKey = pickWorkspaceAiHandoffMember(prev, fromIds);
+      const toKey = pickWorkspaceAiHandoffMember(activeStage, toIds);
       if (fromKey !== toKey) {
         const snippet = extractHandoffSnippetFromRequirementsMessages(
           prev,
@@ -756,24 +723,17 @@ export function RequirementsWorkspace({
     void (async () => {
       const persistFirstQuestion = async (bodyText: string): Promise<boolean> => {
         const nowIso = new Date().toISOString();
-    const nextRoom: RequirementsRoomStateV3 = {
-      ...room,
-      requirementsConversation: {
-        ...room.requirementsConversation,
-        projectId: pid,
-        messages: [
+        const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
           newChatMessage({
             role: "ai",
-                body: bodyText,
+            body: bodyText,
             speakerType: "AI",
             speakerId: VIRTUAL_AI_PLANNER_ID,
             speakerName: IDEATION_AI_DISPLAY_NAME,
-                messageType: "ANSWER",
-                meta: { internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE },
+            messageType: "ANSWER",
+            meta: { internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE },
           }),
-        ],
-      },
-    };
+        ]);
         try {
           await persistRemote(nextRoom, {}, { onboardingShown: true, problemInterview: emptyProblemInterviewState(nowIso) });
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
@@ -788,11 +748,11 @@ export function RequirementsWorkspace({
       };
 
       try {
-        const res = await credentialsIncludeFetch("/api/requirements/ai-facilitator", {
+        const res = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.AI_FACILITATOR, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-        projectId: pid,
+            projectId: pid,
             projectName: project.name ?? "",
             projectDescription: project.description ?? "",
             stage: "requirements",
@@ -831,173 +791,35 @@ export function RequirementsWorkspace({
   }, []);
 
 
-  const handleGenerateDeliverables = useCallback(
-    async (types: readonly IdeationDeliverableType[], opts?: { readonly revisionRequest?: string }) => {
-      const pid = resolvedProjectId.trim();
-      if (!pid) {
-        setError("프로젝트에 연결된 뒤 산출물 생성을 사용할 수 있습니다.");
-        throw new Error("GUARD");
-      }
-      if (conversationStatus !== "loaded") {
-        setError("대화 이력을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
-        throw new Error("GUARD");
-      }
-      setDeliverableGenerateBusy(true);
-      setError(null);
-      try {
-        const chatSummary = [
-          goals.trim() && `저장 요약 — 목표/핵심:\n${goals.trim()}`,
-          targetUsers.trim() && `저장 요약 — 대상 사용자:\n${targetUsers.trim()}`,
-          scopeIn.trim() && `저장 요약 — 범위(포함):\n${scopeIn.trim()}`,
-          scopeOut.trim() && `저장 요약 — 범위(제외):\n${scopeOut.trim()}`,
-          success.trim() && `저장 요약 — 성공 기준:\n${success.trim()}`,
-          nfr.trim() && `저장 요약 — NFR 등:\n${nfr.trim()}`,
-          openIssues.trim() && `저장 요약 — 열린 이슈:\n${openIssues.trim()}`,
-          priorityFeatures.trim() && `저장 요약 — 우선 기능:\n${priorityFeatures.trim()}`,
-        ]
-          .filter(Boolean)
-          .join("\n\n");
+  const handleGenerateDeliverables = useRequirementsHandleGenerateDeliverables({
+    resolvedProjectId,
+    conversationStatus,
+    goals,
+    targetUsers,
+    scopeIn,
+    scopeOut,
+    success,
+    nfr,
+    openIssues,
+    priorityFeatures,
+    conversationMessages,
+    ideationConversationOnly,
+    project,
+    room,
+    persistRemote,
+    showSuccessToast,
+    showErrorToast,
+    openDeliverableViewer,
+    setDeliverableGenerateBusy,
+    setError,
+    stateJsonRef,
+  });
 
-        const excerpt = formatDialogueExcerpt(ideationConversationOnly);
-        const planBaseName = (project?.name ?? "").trim() || "프로젝트";
-        const res = await credentialsIncludeFetch("/api/requirements/deliverables-generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: pid,
-            projectName: project?.name ?? "",
-            projectDescription: project?.description ?? "",
-            chatSummary,
-            dialogueExcerpt: excerpt,
-            revisionRequest: opts?.revisionRequest ?? "",
-            outputTypes: types,
-          }),
-        });
-        let json: {
-          success?: boolean;
-          code?: string;
-          message?: string;
-          data?: { outputs?: Partial<Record<IdeationDeliverableType, string>> };
-        };
-        try {
-          json = (await res.json()) as typeof json;
-        } catch {
-          throw new Error(
-            res.status === 502 || res.status === 503
-              ? "산출물 생성 API가 비정상 응답을 반환했습니다. 서버 로그와 OpenAI(OPENAI_API_KEY·쿼터)를 확인해 주세요."
-              : "산출물 생성 응답을 해석하지 못했습니다."
-          );
-        }
-        if (!res.ok || !json.success || !json.data?.outputs) {
-          const code = String(json.code ?? "");
-          if (code === "NO_KEY") {
-            throw new Error("AI 산출물 생성을 사용하려면 서버에 OPENAI_API_KEY 설정이 필요합니다.");
-          }
-          throw new Error(json.message || "산출물 생성에 실패했습니다.");
-        }
-
-        const existing =
-          parseRequirementsStateJson(project?.requirementsStateJson).deliverableAssets ??
-          stateJsonRef.current.deliverableAssets ??
-          [];
-
-        const { merged, created } = appendIdeationDeliverableAssets({
-          projectId: pid,
-          existing,
-          outputs: json.data.outputs,
-          typesRequested: types,
-          getAssetTitle: (t, v) => (t === "full_plan" ? `${planBaseName} 아이디어 초안 v${v}` : undefined),
-        });
-        if (!created.length) {
-          throw new Error("생성된 본문이 비어 있습니다.");
-        }
-
-        const notices = created.map((c) => {
-          const payload: IdeationDeliverableChatPayload = {
-            kind: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
-            mode: "single",
-            headline:
-              c.type === "full_plan" ? `${planBaseName} 아이디어 초안이 생성되었습니다.` : `${IDEATION_DELIVERABLE_LABELS[c.type]} 초안이 생성되었습니다.`,
-            requestedTypes: [c.type],
-            items: [
-              {
-                assetId: c.id,
-                type: c.type,
-                title: c.title,
-                version: c.version,
-                previewLines: extractPreviewLinesFromMarkdown(c.content),
-              },
-            ],
-          };
-          return newChatMessage({
-            role: "ai",
-            body: JSON.stringify(payload),
-            speakerType: "AI",
-            speakerId: VIRTUAL_AI_PLANNER_ID,
-            speakerName: IDEATION_AI_DISPLAY_NAME,
-            messageType: "NOTICE",
-            meta: { internalType: IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE },
-          });
-        });
-        const nextRoom: RequirementsRoomStateV3 = {
-          ...room,
-          requirementsConversation: {
-            ...room.requirementsConversation,
-            projectId: pid,
-            messages: [...conversationMessages, ...notices],
-          },
-        };
-        await persistRemote(nextRoom, {}, { deliverableAssets: merged });
-        if (types.length === 1 && types[0] === "full_plan") {
-          const fp = created.find((c) => c.type === "full_plan");
-          if (fp) openDeliverableViewer([fp.id], fp.id);
-          showSuccessToast(`${planBaseName} 아이디어 초안 생성 완료`);
-        } else {
-          showSuccessToast(`${created.length}개 산출물 생성 완료`);
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "오류";
-        if (msg !== "GUARD") {
-          setError(msg);
-          showErrorToast(msg);
-        }
-        throw e;
-      } finally {
-        setDeliverableGenerateBusy(false);
-      }
-    },
-    [
-      resolvedProjectId,
-      conversationStatus,
-      goals,
-      targetUsers,
-      scopeIn,
-      scopeOut,
-      success,
-      nfr,
-      openIssues,
-      priorityFeatures,
-      conversationMessages,
-      ideationConversationOnly,
-      project?.name,
-      project?.description,
-      project?.requirementsStateJson,
-      room,
-      persistRemote,
-      showSuccessToast,
-      showErrorToast,
-      openDeliverableViewer,
-    ]
-  );
-
-  const isAiTarget = useCallback(
-    (targetId: string) => {
-      if (targetId === VIRTUAL_AI_PLANNER_ID) return true;
-      const row = members.find((m) => m.memberId === targetId);
-      return Boolean(row?.memberType === "AI");
-    },
-    [members]
-  );
+  const isAiTarget = useCallback((targetId: string) => {
+    if (targetId === VIRTUAL_AI_PLANNER_ID) return true;
+    const row = membersRef.current.find((m) => m.memberId === targetId);
+    return Boolean(row?.memberType === "AI");
+  }, []);
 
   const onSend = useCallback(async () => {
     if (requirementsSendFlightRef.current) {
@@ -1006,11 +828,11 @@ export function RequirementsWorkspace({
     }
     requirementsSendFlightRef.current = true;
     try {
-    if (draftDebounceTimerRef.current) {
-      clearTimeout(draftDebounceTimerRef.current);
-      draftDebounceTimerRef.current = null;
-    }
-    const text = input.trim();
+      if (draftDebounceTimerRef.current) {
+        clearTimeout(draftDebounceTimerRef.current);
+        draftDebounceTimerRef.current = null;
+      }
+      const text = input.trim();
       if (!text || busy || aiInvokePending) return;
       if (
         shouldSkipIdeationDuplicateAppend({
@@ -1027,496 +849,65 @@ export function RequirementsWorkspace({
       flushSync(() => {
         setInput("");
       });
-      const sendTraceId =
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `send-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+      const sendTraceId = newIdeationSendTraceId();
       const replyMode = Boolean(replyTo?.id?.trim());
       ideationSendDevLog("start", `mode=${replyMode ? "reply" : "normal"}`);
-    setServiceFlowDraftBusy(true);
-    setError(null);
-      const mentionRefs = participants.map((p) => ({ id: p.id, name: p.name }));
-      const fromMentions = computedTargetsFromInput(text, mentionRefs);
-      const targets = dedupeMemberRefs(
-        fromMentions.length ? fromMentions : [{ id: VIRTUAL_AI_PLANNER_ID, name: IDEATION_AI_DISPLAY_NAME }]
-      );
-      const anyAi = targets.some((t) => isAiTarget(t.id));
-      const primaryAi = targets.find((t) => isAiTarget(t.id));
-      const combinedLabel = targets.map((t) => t.name).join(" · ");
-      const effectiveReplyTo = inferRecentAiQuestionReplyParentId(ideationConversationOnly, replyTo?.id ?? null);
-
-      const userMsg = newChatMessage({
-        role: "user",
-        body: text,
-        targets,
-        ...(effectiveReplyTo ? { replyTo: effectiveReplyTo } : {}),
-        speakerId: sessionUser?.id ?? "me",
-        speakerName: sessionUser?.name ?? "나",
-        speakerType: "USER",
-        messageType: targets.length ? "QUESTION" : "STATEMENT",
+      setServiceFlowDraftBusy(true);
+      setError(null);
+      const { targets, anyAi, effectiveReplyTo, msgs, turn } = composeIdeationSendUserTurn({
+        text,
+        replyToId: replyTo?.id ?? null,
+        conversationMessages,
+        ideationConversationOnly,
+        participants,
+        sessionUserId: sessionUser?.id ?? "me",
+        sessionUserName: sessionUser?.name ?? "나",
+        aiQuestionIndex: room.aiQuestionIndex,
+        isAiTarget,
       });
-      const msgs = [...conversationMessages, userMsg];
-      const turn = room.aiQuestionIndex ?? 0;
 
       if (anyAi) {
-        const primaryId = primaryAi?.id ?? targets[0].id;
-        const aiName = primaryId === VIRTUAL_AI_PLANNER_ID ? IDEATION_AI_DISPLAY_NAME : primaryAi?.name ?? targets[0].name;
-        const promptMetaIso = new Date().toISOString();
-        const pv = buildPromptPresenterView({
+        const { withCalling, primaryId, aiName } = await persistRequirementsIdeationUserTurnBeforeAi({
+          sendTraceId,
+          text,
+          room,
+          resolvedProjectId,
+          msgs,
+          targets,
+          ideationConversationOnly,
           projectName: project?.name ?? "",
           projectDescription: project?.description ?? "",
-          targetName: combinedLabel,
-          messages: ideationConversationOnly,
-          latestUserMessage: text,
+          isAiTarget,
+          stateJsonRef,
+          persistRemote,
         });
-        const withCalling: RequirementsRoomStateV3 = {
-          ...room,
-          requirementsConversation: { ...room.requirementsConversation, projectId: resolvedProjectId.trim(), messages: msgs },
-        };
-        const problemInterviewSnapshot =
-          (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
-        await persistRemote(withCalling, {}, {
-          lastPromptView: pv,
-          lastPromptText: pv.copyText,
-          lastPromptGeneratedAt: promptMetaIso,
-          lastUserDraftText: text,
-          ...(problemInterviewSnapshot ? { problemInterview: problemInterviewSnapshot } : {}),
-        });
-        const piAfterUserPersist = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
-        if (problemInterviewSnapshot && (piAfterUserPersist === undefined || piAfterUserPersist === null)) {
-          stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
-            problemInterview: problemInterviewSnapshot,
-          });
-          ideationSendDevLog("problemInterview-restored", `id=${sendTraceId}`);
-        }
         ideationSendDevLog("user-appended", `id=${sendTraceId}`);
         setAiInvokePending(true);
-        const pid = resolvedProjectId.trim();
-
-        type IdeationPlannerTail = { needsTailPersist: true; finalRoom: RequirementsRoomStateV3 } | { needsTailPersist: false };
-
-        const msgsIdeationOnly = filterIdeationConversationMessages(msgs);
-        const excerpt = augmentDialogueExcerptForReplyParent(
-          formatDialogueExcerpt(msgsIdeationOnly),
-          msgsIdeationOnly,
-          effectiveReplyTo
-        );
-        const endpoint = "/api/requirements/ai-facilitator";
-
-        const isIdeationProblemInterviewPlannerContext = (): boolean => {
-          if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
-          if (stateJsonRef.current.organizePlannerState) return false;
-          const lastAi = [...msgsIdeationOnly].reverse().find((m) => m.role === "ai");
-          const internal =
-            lastAi && typeof (lastAi as { meta?: { internalType?: string } }).meta?.internalType === "string"
-              ? String((lastAi as { meta?: { internalType?: string } }).meta?.internalType)
-              : "";
-          const boot = internal === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE;
-          const interviewTurn = internal === IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE;
-          const looksLikeComposedInterview =
-            lastAi?.speakerId === VIRTUAL_AI_PLANNER_ID &&
-            /\n\n질문:\n/.test(String((lastAi as { content?: string }).content ?? ""));
-          const pi = stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined;
-          const active = Boolean(pi && pi.active !== false);
-          return boot || interviewTurn || looksLikeComposedInterview || active;
-        };
-
-        type InterviewAnalyzerCallOutcome =
-          | { kind: "parsed"; payload: InterviewAnalyzerPayload }
-          | { kind: "http-ok-parse-fail" }
-          | { kind: "remote-fail" };
-
-        const levelRank = (l: "empty" | "partial" | "filled" | null | undefined): number => {
-          if (l === "filled") return 2;
-          if (l === "partial") return 1;
-          return 0;
-        };
-
-        const commitInterviewPlannerReplyOnce = async (
-          merged: ProblemInterviewState,
-          analyzerForPlan: InterviewAnalyzerPayload | null,
-          ctx?: { prevState?: ProblemInterviewState; lastAskedSlot?: ProblemInterviewSlot | null }
-        ): Promise<IdeationPlannerTail> => {
-          const nowIso = new Date().toISOString();
-          // 직전 AI가 물은 슬롯(있다면). 사용자가 다른 얘기를 해도 전체 슬롯 분석/저장은 유지하되,
-          // 직전 슬롯에서 진전이 없으면 같은 슬롯을 즉시 반복 질문하지 않게 한다.
-          const lastAskedSlot = ctx?.lastAskedSlot ?? null;
-          const prev = ctx?.prevState ?? merged;
-          const prevLevel = lastAskedSlot ? interviewSlotLevelFromState(prev, lastAskedSlot) : null;
-          const nextLevel = lastAskedSlot ? interviewSlotLevelFromState(merged, lastAskedSlot) : null;
-          const avoidImmediateRepeat =
-            lastAskedSlot ? levelRank(nextLevel) <= levelRank(prevLevel) : false;
-          const avoidSlotsForNext = avoidImmediateRepeat && lastAskedSlot ? ([lastAskedSlot] as const) : null;
-
-          // LLM analyzer intent 기반 위임 처리: delegate_to_ai면 기본안을 반영하고 같은 슬롯을 다시 묻지 않는다.
-          let mergedForPlan = merged;
-          let autoAppliedDelegationDefault = false;
-          let delegatedSlot: ProblemInterviewSlot | null = null;
-          let delegatedDefaultLine = "";
-          const globalDelegation = Boolean(analyzerForPlan && analyzerForPlan.globalDelegation === true);
-          if (analyzerForPlan && analyzerForPlan.intent === "delegate_to_ai") {
-            delegatedSlot = analyzerForPlan.delegatedSlot ?? lastAskedSlot ?? null;
-            delegatedDefaultLine = (analyzerForPlan.delegatedDefault || "AI 기본 추천안 적용").trim();
-            if (delegatedSlot && !slotStrictlyFilled(merged, delegatedSlot)) {
-              // 위임=기본안 확정으로 처리(재질문 금지 + 진행률 증가)
-              const nextRow = { ...(merged as unknown as Record<string, unknown>) } as Record<string, unknown>;
-              nextRow[delegatedSlot] = true;
-              const partial = { ...(merged.partial ?? {}) } as Record<string, boolean>;
-              if (delegatedSlot in partial) delete partial[delegatedSlot];
-              const notes = { ...(merged.notes ?? {}) } as Record<string, string>;
-              notes[delegatedSlot] = notes[delegatedSlot]
-                ? `${notes[delegatedSlot]}\n${delegatedDefaultLine}`.trim()
-                : delegatedDefaultLine;
-              mergedForPlan = {
-                ...(merged as unknown as Record<string, unknown>),
-                ...nextRow,
-                partial,
-                notes,
-                updatedAt: nowIso,
-              } as unknown as ProblemInterviewState;
-              autoAppliedDelegationDefault = true;
-            }
-          }
-
-          // 글로벌 위임이면 남은 슬롯을 기본 템플릿으로 보완하고, 조기 종료(>=85%)를 허용한다.
-          const mergedWithGlobalDelegation = globalDelegation ? applyGlobalDelegationDefaults(mergedForPlan, nowIso) : mergedForPlan;
-
-          const plan = planNextInterviewTurn(
-            mergedWithGlobalDelegation,
-            analyzerForPlan,
-            mergedWithGlobalDelegation.askedSlots,
-            turn,
-            INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD,
-            text,
-            { avoidNextSlot: [
-              ...(avoidSlotsForNext ?? []),
-              ...(autoAppliedDelegationDefault && (delegatedSlot ?? lastAskedSlot) ? [((delegatedSlot ?? lastAskedSlot) as ProblemInterviewSlot)] : []),
-            ],
-              ...(globalDelegation ? { allowEarlyFinishScore: 8.5 } : {}),
-            }
-          );
-          if (plan) {
-            const milestone = ideationInterviewMilestoneLine(prev, mergedWithGlobalDelegation);
-            const extra = autoAppliedDelegationDefault
-              ? "해당 항목은 AI 기본안으로 반영하겠습니다."
-              : "";
-            const mergedSummary = [milestone, extra].filter(Boolean).join("\n");
-            const aiBody = composeInterviewPlannerReply(mergedSummary, plan.question);
-            const slotForAsked =
-              plan.kind === "slot"
-                ? plan.slot
-                : pickNextAskableInterviewSlot(mergedWithGlobalDelegation, mergedWithGlobalDelegation.askedSlots, null, {
-                    avoidSlots: [
-                      ...(avoidSlotsForNext ?? []),
-                      ...(autoAppliedDelegationDefault && (delegatedSlot ?? lastAskedSlot) ? [((delegatedSlot ?? lastAskedSlot) as ProblemInterviewSlot)] : []),
-                    ],
-                  }) ??
-                  ("painPoint" as ProblemInterviewSlot);
-            const asked = withAskedSlot(mergedWithGlobalDelegation, slotForAsked, nowIso);
-            const baseMsgs = withCalling.requirementsConversation.messages;
-            if (
-              primaryId === VIRTUAL_AI_PLANNER_ID &&
-              shouldSkipIdeationDuplicateAppend({
-                messages: baseMsgs,
-                role: "ai",
-                body: aiBody,
-                matchVirtualPlannerAi: true,
-              })
-            ) {
-              ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId}`);
-              await persistRemote(withCalling, {}, { problemInterview: asked });
-              setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-              ideationSendDevLog("return", `interview-dedupe-no-ai id=${sendTraceId}`);
-              setInput("");
-              setReplyTo(null);
-              return { needsTailPersist: false };
-            }
-            ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=interview-next`);
-            const interviewNextRoom: RequirementsRoomStateV3 = {
-              ...withCalling,
-              aiQuestionIndex: turn + 1,
-              requirementsConversation: {
-                ...withCalling.requirementsConversation,
-                messages: [
-                  ...withCalling.requirementsConversation.messages,
-                  newChatMessage({
-                    role: "ai",
-                    body: aiBody,
-                    speakerType: "AI",
-                    speakerId: primaryId,
-                    speakerName: aiName,
-                    messageType: "ANSWER",
-                    meta: {
-                      internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
-                      problemInterviewLastSlot: slotForAsked,
-                    },
-                  }),
-                ],
-              },
-            };
-            await persistRemote(interviewNextRoom, {}, { problemInterview: asked, ...(globalDelegation ? { globalDelegation: true } : {}) });
-            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return", `interview-next ok=${Boolean(analyzerForPlan)} id=${sendTraceId}`);
-            setInput("");
-            setReplyTo(null);
-            return { needsTailPersist: false };
-          }
-
-          const nextSlot = pickNextAskableInterviewSlot(mergedWithGlobalDelegation, mergedWithGlobalDelegation.askedSlots, null, {
-            avoidSlots: avoidSlotsForNext,
-          });
-          if (nextSlot) {
-            const question = getControlledQuestionForSlot(nextSlot, turn);
-            const milestone = ideationInterviewMilestoneLine(prev, mergedWithGlobalDelegation);
-            const aiBody = composeInterviewPlannerReply(
-              milestone,
-              question
-            );
-            const asked = withAskedSlot(mergedWithGlobalDelegation, nextSlot, nowIso);
-            const interviewNextRoom: RequirementsRoomStateV3 = {
-              ...withCalling,
-              aiQuestionIndex: turn + 1,
-              requirementsConversation: {
-                ...withCalling.requirementsConversation,
-                messages: [
-                  ...withCalling.requirementsConversation.messages,
-                  newChatMessage({
-                    role: "ai",
-                    body: aiBody,
-                    speakerType: "AI",
-                    speakerId: primaryId,
-                    speakerName: aiName,
-                    messageType: "ANSWER",
-                    meta: {
-                      internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
-                      problemInterviewLastSlot: nextSlot,
-                    },
-                  }),
-                ],
-              },
-            };
-            await persistRemote(interviewNextRoom, {}, { problemInterview: asked, ...(globalDelegation ? { globalDelegation: true } : {}) });
-            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            ideationSendDevLog("return", `interview-gated-next id=${sendTraceId}`);
-            setInput("");
-            setReplyTo(null);
-            return { needsTailPersist: false };
-          }
-
-          const blockedBody = "정리는 하단 + 메뉴의 [정리 요청]에서 실행할 수 있습니다.\n먼저 아이디어 구체화에 필요한 정보를 조금 더 확인하겠습니다.";
-          const blockedState = { ...mergedWithGlobalDelegation, active: true, updatedAt: nowIso } as ProblemInterviewState;
-          const blockedRoom: RequirementsRoomStateV3 = {
-            ...withCalling,
-            aiQuestionIndex: turn + 1,
-            requirementsConversation: {
-              ...withCalling.requirementsConversation,
-              messages: [
-                ...withCalling.requirementsConversation.messages,
-                newChatMessage({
-                  role: "ai",
-                  body: blockedBody,
-                  speakerType: "AI",
-                  speakerId: primaryId,
-                  speakerName: aiName,
-                  messageType: "ANSWER",
-                  meta: { internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE },
-                }),
-              ],
-            },
-          };
-          await persistRemote(blockedRoom, {}, { problemInterview: blockedState, ...(globalDelegation ? { globalDelegation: true } : {}) });
-          setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-          ideationSendDevLog("return", `interview-gated-block id=${sendTraceId}`);
-          setInput("");
-          setReplyTo(null);
-          return { needsTailPersist: false };
-        };
-
-        /** 문제정의 인터뷰: 분석기 성공 경로와 실패 경로를 분리하고, 각각 한 번의 AI append 후 즉시 반환한다. */
-        const runIdeationProblemInterviewPipeline = async (): Promise<IdeationPlannerTail> => {
-          const nowIso = new Date().toISOString();
-          const prevPi = (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
-          const seeded = prevPi ?? emptyProblemInterviewState(nowIso);
-          const latestAiTurn = [...msgs].reverse().find((m) => m.role === "ai");
-          const latestAiQuestion = String(latestAiTurn?.content ?? "").trim();
-
-          let outcome: InterviewAnalyzerCallOutcome = { kind: "remote-fail" };
-          if (pid) {
-            try {
-              ideationSendDevLog("analyzer-request", `id=${sendTraceId}`);
-              const ar = await credentialsIncludeFetch("/api/requirements/interview-analyze", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  projectId: pid,
-                  projectName: project?.name ?? "",
-                  projectDescription: project?.description ?? "",
-                  userMessage: text,
-                  latestAiQuestion,
-                  currentInterviewState: problemInterviewStateToAnalyzerWire(seeded),
-                }),
-              });
-              const aj = (await ar.json()) as { success?: boolean; data?: unknown };
-              const remotePayloadOk = ar.ok && Boolean(aj.success) && aj.data != null;
-              if (remotePayloadOk) {
-                const parsed = coerceInterviewAnalyzerPayload(aj.data);
-                if (parsed) {
-                  outcome = { kind: "parsed", payload: parsed };
-                } else {
-                  outcome = { kind: "http-ok-parse-fail" };
-                }
-              } else {
-                outcome = { kind: "remote-fail" };
-              }
-            } catch {
-              outcome = { kind: "remote-fail" };
-            }
-          }
-
-          if (outcome.kind === "parsed") {
-            ideationSendDevLog("analyzer-success", `id=${sendTraceId}`);
-            const merged = mergeImplicitAskedFromLastBootstrapQuestion(
-              msgs,
-              mergeAnalyzerIntoProblemInterview(seeded, outcome.payload, nowIso)
-            );
-            const lastSlotRaw = String(latestAiTurn?.meta?.problemInterviewLastSlot ?? "").trim();
-            const lastSlot: ProblemInterviewSlot | null =
-              lastSlotRaw && (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(lastSlotRaw) ? (lastSlotRaw as ProblemInterviewSlot) : null;
-            return commitInterviewPlannerReplyOnce(merged, outcome.payload, { prevState: seeded, lastAskedSlot: lastSlot });
-          }
-
-          if (outcome.kind === "http-ok-parse-fail") {
-            ideationSendDevLog("analyzer-fallback", `reason=parse-or-coerce id=${sendTraceId}`);
-          } else {
-            ideationSendDevLog("analyzer-fallback", `reason=request-or-empty id=${sendTraceId}`);
-          }
-          const mergedFallback =
-            outcome.kind === "http-ok-parse-fail"
-              ? { ...seeded, updatedAt: nowIso }
-              : emergencyFallbackProblemInterviewFromUserMessageRegex(seeded, text, nowIso);
-          const merged = mergeImplicitAskedFromLastBootstrapQuestion(msgs, mergedFallback);
-          const lastSlotRaw = String(latestAiTurn?.meta?.problemInterviewLastSlot ?? "").trim();
-          const lastSlot: ProblemInterviewSlot | null =
-            lastSlotRaw && (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(lastSlotRaw) ? (lastSlotRaw as ProblemInterviewSlot) : null;
-          return commitInterviewPlannerReplyOnce(merged, null, { prevState: seeded, lastAskedSlot: lastSlot });
-        };
-
-        const runFacilitatorOrDraftPipeline = async (): Promise<IdeationPlannerTail> => {
-          let facilitatorFinalRoom: RequirementsRoomStateV3;
-          try {
-          const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
-          const res = await credentialsIncludeFetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...(pid ? { projectId: pid } : {}),
-              projectName: project?.name ?? "",
-              projectDescription: project?.description ?? "",
-              stage: "requirements",
-              userMessage: text,
-              dialogueExcerpt: excerpt,
-              targets: targets.map((t) => ({ id: t.id, name: t.name })),
-              sender: { id: sessionUser?.id ?? "", name: sessionUser?.name ?? "나" },
-              replyTo: effectiveReplyTo ?? null,
-              ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
-            }),
-          });
-          const json = (await res.json()) as {
-            success?: boolean;
-            message?: string;
-            data?: { reply?: string; draft?: { overview: string; goals: string[]; users: string[]; features: string[]; excluded: string[]; nonFunctional: string[]; successCriteria: string[]; openIssues: string[] } };
-          };
-          if (res.ok && json.success && (json.data?.reply || json.data?.draft)) {
-            setAiLastInvoke({ ok: true, at: new Date().toISOString() });
-            const createdDraft = json.data?.draft ?? null;
-            const aiReply =
-              json.data?.reply ??
-              (createdDraft
-                ? `요구사항 문서 초안을 만들었습니다.\n\n- 개요 ${createdDraft.overview}\n- 사용자 ${createdDraft.users.join(", ")}\n- 기능 ${createdDraft.features.join(", ")}\n- 기준 ${createdDraft.successCriteria.join(", ")}\n${createdDraft.openIssues.length ? `- 남은 확인사항 ${createdDraft.openIssues.join(", ")}` : ""}`.trim()
-                : "");
-
-            const nextDraftDoc =
-              createdDraft && pid
-                ? bumpDraftVersion(
-                    draftDoc,
-                    {
-                      projectId: pid,
-                      overview: createdDraft.overview,
-                      goals: createdDraft.goals,
-                      users: createdDraft.users,
-                      features: createdDraft.features,
-                      excluded: createdDraft.excluded,
-                      nonFunctional: createdDraft.nonFunctional,
-                      successCriteria: createdDraft.successCriteria,
-                      openIssues: createdDraft.openIssues,
-                      createdAt: new Date().toISOString(),
-                      source: { messageCount: msgs.length, lastMessageAt: msgs[msgs.length - 1]?.createdAt },
-                    }
-                  )
-                : null;
-
-              if (
-                primaryId === VIRTUAL_AI_PLANNER_ID &&
-                shouldSkipIdeationDuplicateAppend({
-                  messages: withCalling.requirementsConversation.messages,
-                  role: "ai",
-                  body: aiReply,
-                  matchVirtualPlannerAi: true,
-                })
-              ) {
-                ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId} kind=facilitator`);
-                facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
-                ideationSendDevLog("return", `facilitator-dedupe id=${sendTraceId}`);
-              } else {
-                ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=facilitator`);
-                facilitatorFinalRoom = {
-              ...withCalling,
-              aiQuestionIndex: turn + 1,
-              requirementsConversation: {
-                ...withCalling.requirementsConversation,
-                messages: [
-                  ...withCalling.requirementsConversation.messages,
-                  newChatMessage({
-                    role: "ai",
-                    body: aiReply,
-                    speakerType: "AI",
-                        speakerId: primaryId,
-                    speakerName: aiName,
-                    messageType: "ANSWER",
-                  }),
-                ],
-              },
-              ...(nextDraftDoc ? { requirementsDraft: nextDraftDoc } : {}),
-            };
-                ideationSendDevLog("return", `facilitator-ai id=${sendTraceId}`);
-              }
-          } else {
-            const errMsg = json.message || "응답 생성 실패";
-            setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-              showErrorToast(`${IDEATION_AI_DISPLAY_NAME} 응답에 실패했습니다. 다시 시도해 주세요.`);
-              facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
-              ideationSendDevLog("return", `facilitator-http id=${sendTraceId}`);
-            }
-            return { needsTailPersist: true, finalRoom: facilitatorFinalRoom };
-        } catch (e) {
-          const errMsg = e instanceof Error ? e.message : String(e);
-          setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
-            showErrorToast(`${IDEATION_AI_DISPLAY_NAME} 응답에 실패했습니다. 다시 시도해 주세요.`);
-            ideationSendDevLog("return", `facilitator-throw id=${sendTraceId}`);
-            return { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } };
-          }
-        };
-
-        const runAiPlannerAfterUserPersist = async (): Promise<IdeationPlannerTail> => {
-          if (isIdeationProblemInterviewPlannerContext()) {
-            return runIdeationProblemInterviewPipeline();
-          }
-          return runFacilitatorOrDraftPipeline();
-        };
-
         let plannerTail: IdeationPlannerTail;
         try {
-          plannerTail = await runAiPlannerAfterUserPersist();
+          plannerTail = await runRequirementsIdeationAiAfterUserPersist({
+            sendTraceId,
+            text,
+            withCalling,
+            msgs,
+            turn,
+            pid: resolvedProjectId.trim(),
+            primaryId,
+            aiName,
+            targets,
+            effectiveReplyTo,
+            stateJsonRef,
+            projectName: project?.name ?? "",
+            projectDescription: project?.description ?? "",
+            draftDoc,
+            sessionUserId: sessionUser?.id ?? "",
+            sessionUserName: sessionUser?.name ?? "나",
+            persistRemote,
+            setAiLastInvoke,
+            setInput,
+            setReplyTo,
+            showErrorToast,
+          });
         } finally {
           setAiInvokePending(false);
         }
@@ -1527,14 +918,7 @@ export function RequirementsWorkspace({
         setReplyTo(null);
         ideationSendDevLog("end", `id=${sendTraceId}`);
       } else {
-        const nextRoom: RequirementsRoomStateV3 = {
-          ...room,
-          requirementsConversation: {
-            ...room.requirementsConversation,
-            projectId: resolvedProjectId.trim(),
-            messages: msgs,
-          },
-        };
+        const nextRoom = patchRequirementsRoomConversationMessages(room, resolvedProjectId, msgs);
         sendDraftRestoreRef.current = null;
         setReplyTo(null);
         await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
@@ -1557,7 +941,6 @@ export function RequirementsWorkspace({
     conversationMessages,
     ideationConversationOnly,
     participants,
-    isAiTarget,
     persistRemote,
     resolvedProjectId,
     sessionUser?.id,
@@ -1733,181 +1116,94 @@ export function RequirementsWorkspace({
         : !project
           ? "불러오는 중…"
           : "이름 미설정";
-  const shellStyle: CSSProperties = {
-    display: "flex",
-    flexDirection: "column",
-    gap: 0,
-    flex: "1 1 auto",
-    minHeight: 0,
-    width: "100%",
-    overflow: "hidden",
-  };
-  const mainRow: CSSProperties = {
-    flex: "1 1 auto",
-    minHeight: 0,
-    gap: 0,
-    border: "1px solid #e2e8f0",
-    borderRadius: 16,
-    overflow: "hidden",
-    background: "#fff",
-    boxShadow: "0 18px 50px -24px rgba(15, 23, 42, 0.18)",
-  };
-
-  const chatPanel = (
-    <div
-      className="jyo-requirements-chat-panel-shell"
-      style={{ flex: "1 1 0%", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%", overflow: "hidden" }}
-    >
-      <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
-      <RequirementsChatPanel
-        messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
-        screenAiMemberId={participantAiMemberId}
-        typingIndicator={aiInvokePending}
-        memberControls={inIdeationStage ? null : { count: participantBadgeCount, onOpen: () => setMembersModalOpen(true) }}
-        ideationInterviewUi={
-          inIdeationStage && conversationStatus === "loaded"
-            ? {
-                active: Boolean(problemInterviewState && problemInterviewState.active !== false),
-                readinessPercent: proposalReadinessPercentVal,
-                covered: problemInterviewCovered,
-                strictFilled: problemInterviewStrictFilled,
-                total: PROBLEM_INTERVIEW_SLOT_TOTAL,
-                nextSlot: nextNeededSlot,
-                remainingQuestionsEstimate,
-                slotState: problemInterviewState,
-                recentAskedSlots: ((problemInterviewState?.askedSlots ?? []).slice(-8) as unknown) as ProblemInterviewSlot[],
-                onForceGeneratePlanNow,
-              }
-            : null
-        }
-        onInsertComposerPrompt={insertComposerPrompt}
-        onSetReplyTo={(messageId, preview) => {
-          setReplyTo({ id: messageId, preview });
-          window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);
-        }}
-        onOpenDeliverableDocument={(id) => openDeliverableViewer([id], id)}
-        onOpenDeliverableList={(focusId) => openDeliverableList(focusId)}
-        onOpenDeliverableDocuments={(ids) => openDeliverableViewer(ids, ids[0] ?? null)}
-        onRegenerateDeliverables={(types) => {
-          const next = types.filter(isIdeationDeliverableType);
-          if (next.length) void handleGenerateDeliverables(next);
-        }}
-        onConfirmDeliverables={(ids) => void handleConfirmDeliverableAssets(ids)}
-        composer={
-          <>
-            {replyTo ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#475569", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  답글 대상: <span style={{ fontWeight: 700, color: "#0f172a" }}>{replyTo.preview || replyTo.id}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReplyTo(null)}
-                  style={{
-                    border: "1px solid #e2e8f0",
-                    background: "#fff",
-                    borderRadius: 999,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: "#475569",
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  취소 ×
-                </button>
-              </div>
-            ) : null}
-            <RequirementsComposerGpt
-              textAreaRef={composerTextAreaRef}
-              value={input}
-              onChange={setInput}
-              onSend={() => void onSend()}
-              busy={busy || aiInvokePending}
-              disabled={false}
-              placeholder={composerPlaceholder}
-              targetPickerItems={targetPickerItems}
-              toolsMenu={{
-                onOrganizeRequirements: () => void onOrganizeRequirements(),
-                organizeDisabled: busy || remoteLocked,
-                draftViewAvailable: Boolean(draftDoc),
-                onOpenDraftView: () => setDraftDrawerOpen(true),
-              }}
-            />
-          </>
-        }
-      />
-    </div>
-  );
-
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
-      {chatPanel}
+      <RequirementsIdeationChatPanel
+        showScreenLabels={showScreenLabels}
+        conversationStatus={conversationStatus}
+        ideationConversationOnly={ideationConversationOnly}
+        participantAiMemberId={participantAiMemberId}
+        aiInvokePending={aiInvokePending}
+        inIdeationStage={inIdeationStage}
+        participantBadgeCount={participantBadgeCount}
+        onOpenMembersModal={() => setMembersModalOpen(true)}
+        proposalReadinessPercentVal={proposalReadinessPercentVal}
+        problemInterviewCovered={problemInterviewCovered}
+        problemInterviewStrictFilled={problemInterviewStrictFilled}
+        nextNeededSlot={nextNeededSlot}
+        remainingQuestionsEstimate={remainingQuestionsEstimate}
+        problemInterviewState={problemInterviewState}
+        onForceGeneratePlanNow={onForceGeneratePlanNow}
+        onInsertComposerPrompt={insertComposerPrompt}
+        onSetReplyTo={(messageId, preview) => setReplyTo({ id: messageId, preview })}
+        openDeliverableDocument={(id) => openDeliverableViewer([id], id)}
+        openDeliverableList={(focusId) => openDeliverableList(focusId)}
+        openDeliverableDocuments={(ids) => openDeliverableViewer(ids, ids[0] ?? null)}
+        onRegenerateDeliverables={(types) => void handleGenerateDeliverables(types)}
+        onConfirmDeliverables={(ids) => void handleConfirmDeliverableAssets(ids)}
+        replyTo={replyTo}
+        onClearReplyTo={() => setReplyTo(null)}
+        composerTextAreaRef={composerTextAreaRef}
+        input={input}
+        onInputChange={setInput}
+        onSend={() => void onSend()}
+        busy={busy}
+        composerPlaceholder={composerPlaceholder}
+        targetPickerItems={targetPickerItems}
+        onOrganizeRequirements={() => void onOrganizeRequirements()}
+        organizeDisabled={busy || remoteLocked}
+        draftDocTruthy={Boolean(draftDoc)}
+        onOpenDraftView={() => setDraftDrawerOpen(true)}
+      />
     </div>
   );
 
   const serviceFlowStage = (
-    <div key="service-flow" style={{ display: "contents" }}>
-      <ServiceFlowWorkspace
-        projectId={resolvedProjectId.trim()}
-        projectName={headerProjectName}
-        projectDescription={String(project?.description ?? "")}
-        ideationParticipantHumanMemberIds={(() => {
-          // "아이디어 구체화에 참여했던 멤버" = requirementsConversation에서 role==="human"으로 발화한 멤버(memberId 기준)
-          const ids = new Set<string>();
-          for (const m of ideationConversationOnly) {
-            if (m.role !== "human") continue;
-            const id = String(m.speakerId ?? "").trim();
-            if (id) ids.add(id);
-          }
-          return [...ids];
-        })()}
-        persistedServiceFlowMessages={serviceFlowWorkshopPersisted}
-        onAppendPersistedServiceFlowMessages={appendServiceFlowWorkshopMessages}
-        ideationAssets={(stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
-          type: a.type,
-          title: a.title,
-          content: a.content,
-        }))}
-        flow={serviceFlow}
-        ideationReady={ideationReadyForServiceFlow}
-        generatingDraft={serviceFlowDraftBusy}
-        draftGenerationCount={serviceFlowDraft.serviceFlowDraftGenerationCount}
-        members={members}
-        currentUserId={sessionUser?.id ?? null}
-        onInviteMember={() => setInviteOpen(true)}
-        onRetryGate={() => setFetchNonce((n) => n + 1)}
-        onUpdateFlow={(next) => void persistServiceFlow(next)}
-        platformScreenAiMemberIds={serviceFlowScreenCatalogIds}
-      />
-    </div>
+    <RequirementsServiceFlowStagePanel
+      projectId={resolvedProjectId.trim()}
+      projectName={headerProjectName}
+      projectDescription={String(project?.description ?? "")}
+      ideationParticipantHumanMemberIds={ideationParticipantHumanMemberIds}
+      persistedServiceFlowMessages={serviceFlowWorkshopPersisted}
+      onAppendPersistedServiceFlowMessages={appendServiceFlowWorkshopMessages}
+      ideationAssets={(stateJsonRef.current.deliverableAssets ?? []).map((a) => ({
+        type: a.type,
+        title: a.title,
+        content: a.content,
+      }))}
+      flow={serviceFlow}
+      ideationReady={ideationReadyForServiceFlow}
+      generatingDraft={serviceFlowDraftBusy}
+      draftGenerationCount={serviceFlowDraft.serviceFlowDraftGenerationCount}
+      members={members}
+      currentUserId={sessionUser?.id ?? null}
+      onInviteMember={() => setInviteOpen(true)}
+      onRetryGate={() => setFetchNonce((n) => n + 1)}
+      onUpdateFlow={(next) => void persistServiceFlow(next)}
+      platformScreenAiMemberIds={serviceFlowScreenCatalogIds}
+    />
   );
 
   return (
-    <div style={shellStyle}>
+    <div style={requirementsWorkspaceShellStyle}>
       <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
 
       {inIdeationStage ? (
-        <OrganizeProposalDraggableModal
+        <RequirementsOrganizeProposalWorkspaceOverlay
           open={plannerTypePickerOpen}
           onClose={() => setPlannerTypePickerOpen(false)}
-          busy={busy || deliverableGenerateBusy || organizeState === "running"}
+          busy={busy}
+          deliverableGenerateBusy={deliverableGenerateBusy}
+          organizeRunning={organizeState === "running"}
           showRegenerate={Boolean(latestUnifiedProposal)}
           regenerateDisabled={busy || deliverableGenerateBusy || remoteLocked}
           onRegenerate={() => {
             setPlannerTypePickerOpen(false);
             void handleGenerateDeliverables([...IDEATION_UNIFIED_PROPOSAL_OUTPUT]);
           }}
-          onStart={() => {
-            void organizeStartGenerateFinalProposal();
-          }}
-        >
-          <div>
-            현재 확보된 내용을 바탕으로{" "}
-            <strong style={{ color: "#0f172a" }}>{(project?.name ?? "").trim() || "프로젝트"} 기획안</strong>을 생성합니다.
-          </div>
-        </OrganizeProposalDraggableModal>
+          onStartOrganize={() => void organizeStartGenerateFinalProposal()}
+          planSubjectName={(project?.name ?? "").trim() || "프로젝트"}
+        />
       ) : null}
 
       <WorkspaceSuccessErrorSaveToastHost
@@ -1916,111 +1212,29 @@ export function RequirementsWorkspace({
         error={errorToast}
       />
 
-      <div className="jyo-requirements-workspace-top-chrome">
-        <RequirementsHeader
-          showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
-        />
-
-        {resolvedProjectId.trim() &&
-        inIdeationStage &&
-        conversationStatus === "loaded" &&
-        ideationComplete &&
-        !(problemInterviewState && problemInterviewState.active !== false && problemInterviewStrictFilled < PROBLEM_INTERVIEW_SLOT_TOTAL) ? (
-          <div
-            style={{
-              marginTop: 8,
-              marginBottom: 6,
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: "#ecfdf5",
-              border: "1px solid #a7f3d0",
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 12,
-              justifyContent: "space-between",
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#065f46", lineHeight: 1.45 }}>
-              정리 요청으로 아이디어 초안을 만들 수 있습니다.
-            </span>
-            <button
-              type="button"
-              data-testid="requirements-organize-cta"
-              disabled={busy || remoteLocked}
-              onClick={() => void onOrganizeRequirements()}
-              style={{
-                flexShrink: 0,
-                padding: "8px 14px",
-                borderRadius: 8,
-                border: "1px solid #0f766e",
-                background: "#0f766e",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: busy || remoteLocked ? "not-allowed" : "pointer",
-                opacity: busy || remoteLocked ? 0.55 : 1,
-              }}
-            >
-              정리 요청
-            </button>
-          </div>
-        ) : (
-          <div style={{ marginBottom: 6 }} />
-        )}
-
-        {workflowGuidanceBanner ? (
-          <div style={{ fontSize: 12, color: "#92400e", padding: "8px 10px", background: "#fffbeb", borderRadius: 8 }}>{workflowGuidanceBanner}</div>
-        ) : null}
-
-        {loadError ? (
-          <div className="relative" style={{ position: "relative" }}>
-            <ScreenLabel label="요구사항-상단-오류배너" visible={showScreenLabels} />
-            <div style={{ fontSize: 12, color: "#64748b", padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }} role="status">
-              {loadError}{" "}
-              <button
-                type="button"
-                onClick={() => {
-                  setLoadError(null);
-                  setFetchNonce((n) => n + 1);
-                }}
-                style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}
-              >
-                다시 시도
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {remoteLocked ? (
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 6 }}>
-            프로젝트가 연결되지 않았습니다.{" "}
-            <button type="button" onClick={() => router.push("/")} style={{ border: 0, background: "none", color: "#2563eb", fontWeight: 700, cursor: "pointer", textDecoration: "underline", padding: 0, font: "inherit" }}>
-              홈에서 프로젝트 만들기
-            </button>
-          </div>
-        ) : null}
-
-        {inIdeationStage && resolvedProjectId.trim() && conversationStatus === "loaded" && problemInterviewState && problemInterviewState.active !== false ? (
-          <div
-            style={{
-              marginTop: 6,
-              marginBottom: 10,
-              padding: "8px 2px",
-              borderRadius: 10,
-              color: "#64748b",
-              fontSize: 12.5,
-              fontWeight: 700,
-              lineHeight: 1.45,
-            }}
-          >
-            아이디어 구체화 단계입니다. 핵심만 짧게 확인하고, 상세 액터·흐름·기능·Task는 다음 탭에서 이어서 정리합니다.
-          </div>
-        ) : null}
-      </div>
+      <RequirementsWorkspaceTopChrome
+        showScreenLabels={showScreenLabels}
+        showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
+        resolvedProjectIdTrimmed={resolvedProjectId.trim()}
+        inIdeationStage={inIdeationStage}
+        conversationStatus={conversationStatus}
+        ideationComplete={ideationComplete}
+        problemInterviewState={problemInterviewState}
+        problemInterviewStrictFilled={problemInterviewStrictFilled}
+        busy={busy}
+        remoteLocked={remoteLocked}
+        onOrganizeRequirements={() => void onOrganizeRequirements()}
+        workflowGuidanceBanner={workflowGuidanceBanner}
+        loadError={loadError}
+        onClearLoadErrorAndRetry={() => {
+          setLoadError(null);
+          setFetchNonce((n) => n + 1);
+        }}
+        onGoHome={() => router.push("/")}
+      />
 
       <div className="jyo-requirements-workspace-body">
-        <div style={mainRow} className="jyo-requirements-workspace-main">
+        <div style={requirementsWorkspaceMainRowStyle} className="jyo-requirements-workspace-main">
           <RequirementsWorkspaceStageRenderer
             activeStage={activeStage}
             ideationStage={ideationStage}
@@ -2029,39 +1243,17 @@ export function RequirementsWorkspace({
         </div>
       </div>
 
-      {error ? (
-        <div style={{ marginTop: 4 }}>
-          <p style={{ color: "#b91c1c", fontWeight: 600, fontSize: 13 }} role="alert">
-            {error}
-          </p>
-          {organizeState === "error" && organizeError ? (
-            <div style={{ marginTop: 8 }}>
-          <button
-            type="button"
-                onClick={() => {
-                  setOrganizeState("idle");
-                  setOrganizeError(null);
-                  setError(null);
-                  void organizeStartGenerateFinalProposal();
-                }}
-            style={{
-                  border: "1px solid #e2e8f0",
-                  background: "#f8fafc",
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: "#0f172a",
-              cursor: "pointer",
-            }}
-          >
-                기획안 생성 다시 시도
-          </button>
-              <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", fontWeight: 600 }}>현재 확보된 내용으로 기획안을 다시 생성합니다</div>
-            </div>
-        ) : null}
-      </div>
-      ) : null}
+      <RequirementsWorkspaceErrorBand
+        error={error}
+        organizeState={organizeState}
+        organizeError={organizeError}
+        onRetryOrganizeProposal={() => {
+          setOrganizeState("idle");
+          setOrganizeError(null);
+          setError(null);
+          void organizeStartGenerateFinalProposal();
+        }}
+      />
 
       <RequirementsMemberInviteModal
         open={inviteOpen && Boolean(resolvedProjectId.trim())}
@@ -2081,53 +1273,37 @@ export function RequirementsWorkspace({
       />
 
       {inIdeationStage ? (
-        <>
-          <RequirementsPromptDocumentDrawer
-            open={promptDrawerOpen}
-            onClose={() => setPromptDrawerOpen(false)}
-            view={persistedPromptState.lastPromptView ?? null}
-            lastPromptText={persistedPromptState.lastPromptText}
-            lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
-            conversationMessages={conversationStatus === "loaded" ? ideationConversationOnly : null}
-            exportBaseName={project?.name?.trim() ?? ""}
-          />
-
-          <RequirementsSummaryModal
-            open={summaryModalOpen}
-            onClose={() => setSummaryModalOpen(false)}
-            goals={goals}
-            targetUsers={targetUsers}
-            scopeIn={scopeIn}
-            scopeOut={scopeOut}
-            openIssues={openIssues}
-            success={success}
-            onGoalsChange={setGoals}
-            onTargetUsersChange={setTargetUsers}
-            onScopeInChange={setScopeIn}
-            onScopeOutChange={setScopeOut}
-            onOpenIssuesChange={setOpenIssues}
-            onSuccessChange={setSuccess}
-            onBlurSave={() => void onPanelBlurSave()}
-          />
-
-          {draftDoc ? (
-            <RequirementsDraftDocumentDrawer
-              open={draftDrawerOpen}
-              onClose={() => setDraftDrawerOpen(false)}
-              draft={draftDoc}
-              exportBaseName={project?.name?.trim() ?? ""}
-            />
-          ) : null}
-
-          <RequirementsDeliverableViewerModal
-            open={deliverableViewerOpen}
-            onClose={() => setDeliverableViewerOpen(false)}
-            assets={deliverableViewerAssets}
-            initialAssetId={deliverableViewerFocusId}
-          />
-
-          {/* 아이디어 구체화 상단 문서 아이콘(미리보기)은 제거되었습니다. */}
-        </>
+        <RequirementsIdeationDocumentDrawers
+          promptDrawerOpen={promptDrawerOpen}
+          onClosePromptDrawer={() => setPromptDrawerOpen(false)}
+          lastPromptView={persistedPromptState.lastPromptView ?? null}
+          lastPromptText={persistedPromptState.lastPromptText}
+          lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
+          ideationConversationForPromptExport={conversationStatus === "loaded" ? ideationConversationOnly : null}
+          exportBaseName={project?.name?.trim() ?? ""}
+          summaryModalOpen={summaryModalOpen}
+          onCloseSummaryModal={() => setSummaryModalOpen(false)}
+          goals={goals}
+          targetUsers={targetUsers}
+          scopeIn={scopeIn}
+          scopeOut={scopeOut}
+          openIssues={openIssues}
+          success={success}
+          onGoalsChange={setGoals}
+          onTargetUsersChange={setTargetUsers}
+          onScopeInChange={setScopeIn}
+          onScopeOutChange={setScopeOut}
+          onOpenIssuesChange={setOpenIssues}
+          onSuccessChange={setSuccess}
+          onSummaryBlurSave={() => void onPanelBlurSave()}
+          draftDrawerOpen={draftDrawerOpen}
+          onCloseDraftDrawer={() => setDraftDrawerOpen(false)}
+          draftDoc={draftDoc}
+          deliverableViewerOpen={deliverableViewerOpen}
+          onCloseDeliverableViewer={() => setDeliverableViewerOpen(false)}
+          deliverableViewerAssets={deliverableViewerAssets}
+          deliverableViewerFocusId={deliverableViewerFocusId}
+        />
       ) : null}
     </div>
   );

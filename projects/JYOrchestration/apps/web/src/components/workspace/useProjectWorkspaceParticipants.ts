@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
+import { requirementsAiConnectionUrl } from "@/lib/requirements/requirementsIdeationHttp";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
@@ -65,11 +66,7 @@ export function useProjectWorkspaceParticipants(params: {
       setAiConnPhase("checking");
       setAiConnDetail(undefined);
       try {
-        const pid = projectId.trim();
-        const url = pid
-          ? `/api/requirements/ai-connection?projectId=${encodeURIComponent(pid)}`
-          : "/api/requirements/ai-connection";
-        const res = await credentialsIncludeFetch(url);
+        const res = await credentialsIncludeFetch(requirementsAiConnectionUrl(projectId));
         const json = (await res.json()) as {
           success?: boolean;
           message?: string;

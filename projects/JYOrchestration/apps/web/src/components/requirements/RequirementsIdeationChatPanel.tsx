@@ -1,0 +1,188 @@
+"use client";
+
+import type { RefObject, ReactNode } from "react";
+import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
+import { isIdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
+import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
+import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
+import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
+import { ScreenLabel } from "@/components/ui/ScreenLabel";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
+import { PROBLEM_INTERVIEW_SLOT_TOTAL } from "@/lib/requirements/problemInterview";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
+
+export type RequirementsIdeationChatPanelProps = Readonly<{
+  showScreenLabels: boolean;
+  conversationStatus: "idle" | "loading" | "loaded" | "error";
+  ideationConversationOnly: readonly RequirementsMessage[];
+  participantAiMemberId: WorkspaceAiMemberId;
+  aiInvokePending: boolean;
+  inIdeationStage: boolean;
+  participantBadgeCount: number;
+  onOpenMembersModal: () => void;
+  proposalReadinessPercentVal: number;
+  problemInterviewCovered: number;
+  problemInterviewStrictFilled: number;
+  nextNeededSlot: ProblemInterviewSlot | null;
+  remainingQuestionsEstimate: number;
+  problemInterviewState: ProblemInterviewState | null;
+  onForceGeneratePlanNow: () => void;
+  onInsertComposerPrompt: (text: string) => void;
+  onSetReplyTo: (messageId: string, preview: string) => void;
+  openDeliverableDocument: (id: string) => void;
+  openDeliverableList: (focusId: string | null) => void;
+  openDeliverableDocuments: (ids: readonly string[]) => void;
+  onRegenerateDeliverables: (types: readonly IdeationDeliverableType[]) => void;
+  onConfirmDeliverables: (ids: readonly string[]) => void;
+  replyTo: { id: string; preview: string } | null;
+  onClearReplyTo: () => void;
+  composerTextAreaRef: RefObject<HTMLTextAreaElement | null>;
+  input: string;
+  onInputChange: (value: string) => void;
+  onSend: () => void;
+  busy: boolean;
+  composerPlaceholder: string;
+  targetPickerItems: readonly RequirementsComposerTargetPickerItem[];
+  onOrganizeRequirements: () => void | Promise<void>;
+  organizeDisabled: boolean;
+  draftDocTruthy: boolean;
+  onOpenDraftView: () => void;
+}>;
+
+export function RequirementsIdeationChatPanel({
+  showScreenLabels,
+  conversationStatus,
+  ideationConversationOnly,
+  participantAiMemberId,
+  aiInvokePending,
+  inIdeationStage,
+  participantBadgeCount,
+  onOpenMembersModal,
+  proposalReadinessPercentVal,
+  problemInterviewCovered,
+  problemInterviewStrictFilled,
+  nextNeededSlot,
+  remainingQuestionsEstimate,
+  problemInterviewState,
+  onForceGeneratePlanNow,
+  onInsertComposerPrompt,
+  onSetReplyTo,
+  openDeliverableDocument,
+  openDeliverableList,
+  openDeliverableDocuments,
+  onRegenerateDeliverables,
+  onConfirmDeliverables,
+  replyTo,
+  onClearReplyTo,
+  composerTextAreaRef,
+  input,
+  onInputChange,
+  onSend,
+  busy,
+  composerPlaceholder,
+  targetPickerItems,
+  onOrganizeRequirements,
+  organizeDisabled,
+  draftDocTruthy,
+  onOpenDraftView,
+}: RequirementsIdeationChatPanelProps) {
+  const ideationInterviewUi =
+    inIdeationStage && conversationStatus === "loaded"
+      ? {
+          active: Boolean(problemInterviewState && problemInterviewState.active !== false),
+          readinessPercent: proposalReadinessPercentVal,
+          covered: problemInterviewCovered,
+          strictFilled: problemInterviewStrictFilled,
+          total: PROBLEM_INTERVIEW_SLOT_TOTAL,
+          nextSlot: nextNeededSlot,
+          remainingQuestionsEstimate,
+          slotState: problemInterviewState,
+          recentAskedSlots: ((problemInterviewState?.askedSlots ?? []).slice(-8) as unknown) as ProblemInterviewSlot[],
+          onForceGeneratePlanNow,
+        }
+      : null;
+
+  const composer: ReactNode = (
+    <>
+      {replyTo ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+          <div
+            style={{
+              fontSize: 12.5,
+              fontWeight: 800,
+              color: "#475569",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            답글 대상: <span style={{ fontWeight: 700, color: "#0f172a" }}>{replyTo.preview || replyTo.id}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClearReplyTo}
+            style={{
+              border: "1px solid #e2e8f0",
+              background: "#fff",
+              borderRadius: 999,
+              padding: "6px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#475569",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            취소 ×
+          </button>
+        </div>
+      ) : null}
+      <RequirementsComposerGpt
+        textAreaRef={composerTextAreaRef}
+        value={input}
+        onChange={onInputChange}
+        onSend={onSend}
+        busy={busy || aiInvokePending}
+        disabled={false}
+        placeholder={composerPlaceholder}
+        targetPickerItems={targetPickerItems}
+        toolsMenu={{
+          onOrganizeRequirements: () => void onOrganizeRequirements(),
+          organizeDisabled,
+          draftViewAvailable: draftDocTruthy,
+          onOpenDraftView,
+        }}
+      />
+    </>
+  );
+
+  return (
+    <div className="jyo-requirements-chat-panel-shell" style={requirementsIdeationChatPanelShellStyle}>
+      <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
+      <RequirementsChatPanel
+        messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
+        screenAiMemberId={participantAiMemberId}
+        typingIndicator={aiInvokePending}
+        memberControls={inIdeationStage ? null : { count: participantBadgeCount, onOpen: onOpenMembersModal }}
+        ideationInterviewUi={ideationInterviewUi}
+        onInsertComposerPrompt={onInsertComposerPrompt}
+        onSetReplyTo={(messageId, preview) => {
+          onSetReplyTo(messageId, preview);
+          window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);
+        }}
+        onOpenDeliverableDocument={(id) => openDeliverableDocument(id)}
+        onOpenDeliverableList={(focusId) => openDeliverableList(focusId)}
+        onOpenDeliverableDocuments={(ids) => openDeliverableDocuments(ids)}
+        onRegenerateDeliverables={(types) => {
+          const next = types.filter(isIdeationDeliverableType);
+          if (next.length) onRegenerateDeliverables(next);
+        }}
+        onConfirmDeliverables={(ids) => void onConfirmDeliverables(ids)}
+        composer={composer}
+      />
+    </div>
+  );
+}
