@@ -20,6 +20,8 @@ export type RequirementsMessageMeta = {
   serviceDesignStage?: RequirementsWorkspaceStage;
   /** Service Design SingleChat: mention routing hint */
   mentionedAI?: string | null;
+  /** Service Design SingleChat: mirrored role hint (for adapters/debug) */
+  mirroredRole?: "user" | "ai";
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */

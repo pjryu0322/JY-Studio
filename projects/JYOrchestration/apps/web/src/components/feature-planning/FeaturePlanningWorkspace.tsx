@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
@@ -35,12 +35,14 @@ export function FeaturePlanningWorkspace({
   projectId,
   singleChatMode = false,
   singleChatSendRef,
+  onSingleChatAiMessages,
 }: {
   readonly projectId: string;
   /** Service Design SingleChat: chat/composer lives in parent (`/requirements`). */
   readonly singleChatMode?: boolean;
   /** Service Design SingleChat: expose existing send logic to parent without refactor. */
   readonly singleChatSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
+  readonly onSingleChatAiMessages?: (messages: readonly { content: string; speakerName?: string }[]) => void | Promise<void>;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const shell = useFeaturePlanningWorkspace(projectId);
@@ -88,18 +90,47 @@ export function FeaturePlanningWorkspace({
     };
   }, [canvas]);
 
+  const messagesRef = useRef(shell.messages);
+  useEffect(() => {
+    messagesRef.current = shell.messages;
+  }, [shell.messages]);
+
+  const waitForNewAiMessages = async (beforeIds: Set<string>): Promise<readonly { content: string; speakerName?: string }[]> => {
+    const start = Date.now();
+    while (Date.now() - start < 2500) {
+      const cur = messagesRef.current ?? [];
+      const added = cur.filter((m) => !beforeIds.has(m.id) && m.role === "ai" && String(m.text ?? "").trim());
+      if (added.length) {
+        return added.map((m) => ({ content: String(m.text ?? "").trim() }));
+      }
+      // wait one tick/frame
+      await new Promise<void>((r) => window.requestAnimationFrame(() => r()));
+    }
+    return [];
+  };
+
   useEffect(() => {
     if (!singleChatSendRef) return;
     singleChatSendRef.current = async (payload, text) => {
       if (payload.serviceDesignStage !== "feature-planning") return;
       // IMPORTANT: reuse existing feature-planning send logic; no contract refactor in this phase.
       // TODO(service-design-harness): pass payload.serviceDesignStage and payload.mentionedAI into this stage API when backend contract is extended.
+      const before = messagesRef.current ?? [];
+      const beforeIds = new Set(before.map((m) => m.id));
       await shell.sendMessage(text);
+      try {
+        const newlyAddedAi = await waitForNewAiMessages(beforeIds);
+        if (newlyAddedAi.length) {
+          await onSingleChatAiMessages?.(newlyAddedAi);
+        }
+      } catch {
+        // AI mirror is best-effort; do not break feature-planning send.
+      }
     };
     return () => {
       if (singleChatSendRef.current) singleChatSendRef.current = null;
     };
-  }, [singleChatSendRef, shell]);
+  }, [singleChatSendRef, shell, onSingleChatAiMessages, messagesRef]);
 
   const mainEl = (
     <WorkspaceMainPanel style={{ position: "relative", minWidth: 0 }}>

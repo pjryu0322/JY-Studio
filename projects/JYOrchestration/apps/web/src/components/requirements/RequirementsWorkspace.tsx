@@ -83,7 +83,7 @@ import {
   VIRTUAL_AI_PLANNER_ID,
   type RequirementsRoomStateV3,
 } from "@/lib/project/requirementsRoomState";
-import { type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { APP_FLOW_LAST_PROJECT_KEY, notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
@@ -107,8 +107,11 @@ import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspace
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import {
   buildFeaturePlanningMirroredUserTurn,
+  buildFeaturePlanningMirroredAiTurn,
   shouldSkipFeaturePlanningMirror,
+  shouldSkipFeaturePlanningAiMirror,
 } from "@/lib/service-design/serviceDesignSingleChatFeaturePlanningMirror";
+
 
 export function RequirementsWorkspace({
   initialProjectId,
@@ -1047,6 +1050,46 @@ export function RequirementsWorkspace({
     [resolvedProjectId, input, sessionUser?.id, sessionUser?.name, persistRemote]
   );
 
+  const appendFeaturePlanningAiTurnsToRequirementsConversation = useCallback(
+    async (incoming: readonly { content: string; speakerName?: string }[]) => {
+      const pid = resolvedProjectId.trim();
+      if (!pid) return;
+      const base = roomRef.current.requirementsConversation.messages;
+      const nowIso = new Date().toISOString();
+
+      const out: RequirementsMessage[] = [];
+      for (const row of incoming) {
+        const text = String(row?.content ?? "").trim();
+        if (!text) continue;
+        if (
+          shouldSkipFeaturePlanningAiMirror({
+            messages: [...base, ...out],
+            text,
+            nowIso,
+          })
+        ) {
+          continue;
+        }
+        out.push(
+          buildFeaturePlanningMirroredAiTurn({
+            text,
+            speakerName: row.speakerName,
+            createdAtIso: nowIso,
+          })
+        );
+      }
+      if (!out.length) return;
+      const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [...base, ...out]);
+      setRoom(nextRoom);
+      try {
+        await persistRemote(nextRoom, {}, {});
+      } catch {
+        // best-effort: do not break feature-planning if AI mirror fails
+      }
+    },
+    [resolvedProjectId, persistRemote]
+  );
+
   const handleServiceDesignComposerSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
       if (activeStage === "ideation") {
@@ -1304,7 +1347,11 @@ export function RequirementsWorkspace({
         />
       </div>
       <div style={{ flex: "1 1 520px", minWidth: 0 }}>
-        <RequirementsFeaturePlanningStagePanel projectId={resolvedProjectId.trim()} singleChatSendRef={featurePlanningSendRef} />
+        <RequirementsFeaturePlanningStagePanel
+          projectId={resolvedProjectId.trim()}
+          singleChatSendRef={featurePlanningSendRef}
+          onSingleChatAiMessages={appendFeaturePlanningAiTurnsToRequirementsConversation}
+        />
       </div>
     </div>
   ) : (
