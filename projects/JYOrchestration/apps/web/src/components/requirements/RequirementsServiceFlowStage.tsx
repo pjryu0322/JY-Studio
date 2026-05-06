@@ -28,11 +28,16 @@ import {
 } from "@/components/service-flow/serviceFlowStageLayout";
 import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { useServiceFlowStageController, type ServiceFlowStageControllerInput } from "@/components/service-flow/useServiceFlowStageController";
+import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 
 export type RequirementsServiceFlowStageProps = ServiceFlowStageControllerInput & {
   readonly ideationReadyNotice: string;
   readonly onInviteMember: () => void;
   readonly onRetryGate: () => void;
+  /** SingleChat: `/requirements`에서 stage-aware send 핸들러로 위임 */
+  readonly onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
+  /** SingleChat: stage 내부 send 로직을 `/requirements`로 노출 */
+  readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload) => void) | null };
 };
 
 export function RequirementsServiceFlowStage({
@@ -44,6 +49,18 @@ export function RequirementsServiceFlowStage({
   const showScreenLabels = useShowScreenLabels();
   const c = useServiceFlowStageController(controllerInput);
   const { workshop: w } = c;
+  const serviceFlowSendRef = controllerInput.serviceFlowSendRef;
+
+  // Expose the stage-local send executor to `/requirements` (single composer harness routing).
+  useEffect(() => {
+    if (!serviceFlowSendRef) return;
+    serviceFlowSendRef.current = (payload) => {
+      w.sendMessage(payload);
+    };
+    return () => {
+      if (serviceFlowSendRef.current) serviceFlowSendRef.current = null;
+    };
+  }, [serviceFlowSendRef, w]);
   const { register: registerWorkNoteComposerInsert } = useWorkNoteComposerInsertControls();
   const setInputRef = useRef(w.setInput);
   setInputRef.current = w.setInput;
@@ -189,7 +206,7 @@ export function RequirementsServiceFlowStage({
                 targetPickerItems={serviceFlowComposerAtAtItems}
                 onSendIdeation={async () => {}}
                 onSendServiceFlow={async (payload) => {
-                  w.sendMessage(payload);
+                  await controllerInput.onSendServiceFlow?.(payload);
                 }}
                 onSendFeaturePlanning={async () => {}}
                 serviceFlowChrome={{

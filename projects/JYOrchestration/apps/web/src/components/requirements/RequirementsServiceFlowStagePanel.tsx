@@ -5,6 +5,7 @@ import type { ServiceFlowProjectMember } from "@/components/service-flow/service
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 
 export type RequirementsServiceFlowStagePanelProps = Readonly<{
   projectId: string;
@@ -26,6 +27,10 @@ export type RequirementsServiceFlowStagePanelProps = Readonly<{
     incoming: readonly RequirementsMessage[]
   ) => Promise<readonly RequirementsMessage[]>;
   platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
+  /** SingleChat: `/requirements`에서 stage-aware send 핸들러로 위임 */
+  onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
+  /** SingleChat: stage 내부 send 로직을 `/requirements`로 노출 */
+  serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload) => void) | null };
 }>;
 
 export function RequirementsServiceFlowStagePanel(props: RequirementsServiceFlowStagePanelProps) {

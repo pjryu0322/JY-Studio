@@ -7,6 +7,7 @@ import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { RequirementsServiceFlowStage } from "@/components/requirements/RequirementsServiceFlowStage";
 import type { ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
 import { uiTokens as t } from "@/components/ui/tokens";
+import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 
 const wrap: CSSProperties = {
   flex: "1 1 0%",
@@ -38,6 +39,8 @@ export function ServiceFlowWorkspace({
   persistedServiceFlowMessages,
   onAppendPersistedServiceFlowMessages,
   platformScreenAiMemberIds,
+  onSendServiceFlow,
+  serviceFlowSendRef,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -58,6 +61,8 @@ export function ServiceFlowWorkspace({
     incoming: readonly RequirementsMessage[],
   ) => Promise<readonly RequirementsMessage[]>;
   readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
+  readonly onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
+  readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload) => void) | null };
 }) {
   return (
     <section style={wrap} aria-label="액터 및 서비스 흐름 정의">
@@ -81,6 +86,8 @@ export function ServiceFlowWorkspace({
           persistedServiceFlowMessages={persistedServiceFlowMessages}
           onAppendPersistedServiceFlowMessages={onAppendPersistedServiceFlowMessages}
           platformScreenAiMemberIds={platformScreenAiMemberIds}
+          onSendServiceFlow={onSendServiceFlow}
+          serviceFlowSendRef={serviceFlowSendRef}
         />
       </div>
     </section>
