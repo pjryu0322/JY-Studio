@@ -791,6 +791,7 @@ export function RequirementsWorkspace({
         const existingTimeline = Array.isArray(stateJsonRef.current.promptTimeline) ? stateJsonRef.current.promptTimeline : [];
         const incomingTimeline: RequirementsPromptTimelineEntry[] = params.promptTrace ? [params.promptTrace] : [];
         const nextTimeline = [...existingTimeline, ...incomingTimeline].slice(-50);
+        console.debug("[PROMPT TIMELINE]", nextTimeline);
         try {
           await persistRemote(nextRoom, {}, {
             onboardingShown: true,
@@ -802,6 +803,14 @@ export function RequirementsWorkspace({
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
           return true;
         } catch (pe) {
+          console.error("[PROMPT TIMELINE PERSIST FAIL]", pe);
+          // keep in-memory buffer so prompt drawer can still show it even if DB save fails
+          if (incomingTimeline.length) {
+            stateJsonRef.current = {
+              ...stateJsonRef.current,
+              promptTimeline: nextTimeline,
+            };
+          }
           if (!cancelled) {
             setError(pe instanceof Error ? pe.message : "저장에 실패했습니다.");
             ideationBootstrapFlightRef.current = null;
@@ -845,13 +854,19 @@ export function RequirementsWorkspace({
             ? undefined
             : [String(json.code ?? "").trim(), String(json.message ?? "").trim(), `HTTP ${res.status}`].filter(Boolean).join(" · ");
         const coercePromptTrace = (raw: unknown): RequirementsPromptTimelineEntry | null => {
-          if (!raw || typeof raw !== "object") return null;
+          if (!raw || typeof raw !== "object") {
+            console.warn("[PROMPT TRACE DROPPED]", raw);
+            return null;
+          }
           const r = raw as Record<string, unknown>;
           const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
           const action = typeof r.action === "string" ? r.action : "";
           const stage = typeof r.stage === "string" ? r.stage : "";
           const source = typeof r.source === "string" ? r.source : "";
-          if (!createdAt || !action || !stage || !source) return null;
+          if (!createdAt || !action || !stage || !source) {
+            console.warn("[PROMPT TRACE DROPPED]", raw);
+            return null;
+          }
           return {
             stage,
             action,
@@ -869,6 +884,18 @@ export function RequirementsWorkspace({
         const promptTrace = okReply
           ? coercePromptTrace((json.data as any)?.promptTrace)
           : coercePromptTrace((json as any)?.data?.promptTrace);
+
+        const bodyTextFallback = sanitizeIdeationInterviewFirstQuestion("");
+        const fallbackTrace: RequirementsPromptTimelineEntry = {
+          stage: "ideation",
+          action: "bootstrapInterview",
+          aiMember: "AI 기획자",
+          source: "fallback",
+          error: fallbackReason || "bootstrap_failed",
+          fallbackText: okReply ? "" : bodyText,
+          createdAt: new Date().toISOString(),
+        };
+
         const ok = await persistFirstQuestion({
           bodyText,
           seedWire,
@@ -903,8 +930,9 @@ export function RequirementsWorkspace({
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "인터뷰 시작에 실패했습니다.");
         ideationBootstrapFlightRef.current = null;
+        const bodyText = sanitizeIdeationInterviewFirstQuestion("");
         await persistFirstQuestion({
-          bodyText: sanitizeIdeationInterviewFirstQuestion(""),
+          bodyText,
           seedWire: null,
           source: "fallback",
           fallbackReason: e instanceof Error ? e.message : "bootstrap_failed",
@@ -914,7 +942,7 @@ export function RequirementsWorkspace({
             aiMember: "AI 기획자",
             source: "fallback",
             error: e instanceof Error ? e.message : "bootstrap_failed",
-            fallbackText: sanitizeIdeationInterviewFirstQuestion(""),
+            fallbackText: bodyText,
             createdAt: new Date().toISOString(),
           },
         });
