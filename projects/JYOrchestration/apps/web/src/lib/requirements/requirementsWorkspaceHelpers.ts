@@ -1,4 +1,4 @@
-import { type RequirementsRoomStateV3, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
+import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import {
@@ -8,6 +8,7 @@ import {
   type ProblemInterviewSlot,
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
+import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type RequirementsWorkspaceStage = "ideation" | "service-flow";
 
@@ -21,6 +22,24 @@ const IDEATION_SEND_DEV = process.env.NODE_ENV !== "production";
 export function ideationSendDevLog(event: string, detail?: string) {
   if (!IDEATION_SEND_DEV) return;
   console.log(`[ideation-send:${event}]${detail ? ` ${detail}` : ""}`);
+}
+
+/**
+ * persist 직후 `stateJsonRef`의 problemInterview가 비어 있으면, 저장 전 스냅샷으로 되살립니다.
+ * (원격 응답이 상태 JSON에서 해당 필드를 누락시키는 경우의 클라이언트 보정.)
+ */
+export function restoreProblemInterviewSnapshotIfClearedInRef(
+  stateJsonHolder: { current: RequirementsStateJson },
+  snapshot: ProblemInterviewState | null | undefined,
+  sendTraceId: string
+): void {
+  if (!snapshot) return;
+  const piAfter = stateJsonHolder.current.problemInterview as ProblemInterviewState | null | undefined;
+  if (piAfter !== undefined && piAfter !== null) return;
+  stateJsonHolder.current = mergeRequirementsStateJson(stateJsonHolder.current, {
+    problemInterview: snapshot,
+  });
+  ideationSendDevLog("problemInterview-restored", `id=${sendTraceId}`);
 }
 
 /** 연속 전송·이중 핸들러에 대한 안전망(본래는 단일 경로로만 append 되어야 함). */
@@ -53,7 +72,7 @@ export function shouldSkipIdeationDuplicateAppend(params: {
 }
 
 export function formatDialogueExcerpt(
-  messages: RequirementsRoomStateV3["requirementsConversation"]["messages"],
+  messages: readonly RequirementsMessage[],
   maxChars = 12000
 ): string {
   const lines = messages.slice(-48).map((m) => {

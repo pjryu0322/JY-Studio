@@ -1,55 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
-  PROJECT_RAIL_PARTICIPANTS_EVENT,
-  type ProjectRailParticipantStepKey,
   readProjectRailParticipantCounts,
-  type ProjectRailParticipantsEventDetail,
+  subscribeProjectRailParticipantCounts,
+  type ProjectRailParticipantStepKey,
 } from "@/lib/layout/projectRailParticipants";
+
+function emptyParticipantSnapshot(): string {
+  return "{}";
+}
 
 /**
  * 프로젝트 레일: 단계별 참여 수(세션 캐시 + 이벤트) 및 프로젝트 멤버 수(API).
+ * 참여 수는 `useSyncExternalStore`로 sessionStorage·커스텀 이벤트와 동기화합니다.
  */
 export function useProjectRailBadges(projectId: string | null): {
   readonly participantCounts: Partial<Record<ProjectRailParticipantStepKey, number>>;
   readonly memberCount: number;
 } {
-  const [participantCounts, setParticipantCounts] = useState<Partial<Record<ProjectRailParticipantStepKey, number>>>({});
-  const [memberCount, setMemberCount] = useState(0);
-
   const pid = projectId?.trim() ?? "";
 
-  useEffect(() => {
-    if (!pid) {
-      setParticipantCounts({});
-      return;
+  const participantSnapshot = useSyncExternalStore(
+    useCallback(
+      (onStoreChange) => {
+        if (!pid) return () => {};
+        return subscribeProjectRailParticipantCounts(pid, onStoreChange);
+      },
+      [pid]
+    ),
+    useCallback(() => {
+      if (typeof window === "undefined" || !pid) return emptyParticipantSnapshot();
+      return JSON.stringify(readProjectRailParticipantCounts(pid));
+    }, [pid]),
+    emptyParticipantSnapshot
+  );
+
+  const participantCounts = useMemo((): Partial<Record<ProjectRailParticipantStepKey, number>> => {
+    try {
+      const parsed = JSON.parse(participantSnapshot) as unknown;
+      if (!parsed || typeof parsed !== "object") return {};
+      return parsed as Partial<Record<ProjectRailParticipantStepKey, number>>;
+    } catch {
+      return {};
     }
-    setParticipantCounts(readProjectRailParticipantCounts(pid));
-  }, [pid]);
+  }, [participantSnapshot]);
+
+  const [memberCount, setMemberCount] = useState(0);
 
   useEffect(() => {
     if (!pid) return;
-    function onRailParticipants(e: Event) {
-      const ce = e as CustomEvent<ProjectRailParticipantsEventDetail>;
-      const d = ce.detail;
-      if (!d || String(d.projectId ?? "").trim() !== pid) return;
-      const k = d.key;
-      const n = Number(d.count ?? 0);
-      if (!Number.isFinite(n)) return;
-      setParticipantCounts((prev) => ({ ...prev, [k]: Math.max(0, Math.floor(n)) }));
-    }
-    window.addEventListener(PROJECT_RAIL_PARTICIPANTS_EVENT, onRailParticipants);
-    return () => window.removeEventListener(PROJECT_RAIL_PARTICIPANTS_EVENT, onRailParticipants);
-  }, [pid]);
-
-  useEffect(() => {
-    if (!pid) {
-      setMemberCount(0);
-      return;
-    }
     let cancelled = false;
     void (async () => {
+      setMemberCount(0);
       try {
         const res = await fetch(`/api/project/members?projectId=${encodeURIComponent(pid)}`, {
           credentials: "include",
@@ -68,5 +71,5 @@ export function useProjectRailBadges(projectId: string | null): {
     };
   }, [pid]);
 
-  return { participantCounts, memberCount };
+  return { participantCounts, memberCount: pid ? memberCount : 0 };
 }

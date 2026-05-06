@@ -129,6 +129,23 @@ export function parseRequirementsRoomState(raw: unknown | null | undefined): Req
   };
 }
 
+/** 요구사항 대화 메시지·프로젝트 ID만 교체한 룸 스냅샷(저장·낙관적 UI용). */
+export function patchRequirementsRoomConversationMessages(
+  room: RequirementsRoomStateV3,
+  resolvedProjectId: string,
+  messages: readonly RequirementsMessage[]
+): RequirementsRoomStateV3 {
+  const pid = resolvedProjectId.trim();
+  return {
+    ...room,
+    requirementsConversation: {
+      ...room.requirementsConversation,
+      projectId: pid,
+      messages: [...messages],
+    },
+  };
+}
+
 /** UI 편의: 기존 호출부를 유지하면서 v2 메시지 생성 */
 export function newChatMessage(partial: {
   role: RequirementsChatRole;
