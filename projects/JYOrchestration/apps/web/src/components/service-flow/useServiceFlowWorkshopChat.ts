@@ -17,6 +17,10 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeClient";
 import { consumeWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
+import {
+  buildServiceDesignHarnessPayload,
+  type ServiceDesignHarnessPayload,
+} from "@/lib/service-design/serviceDesignTurnPayload";
 
 export type ServiceFlowWorkspaceMode = "chat" | "mapping" | "summary";
 
@@ -133,7 +137,7 @@ export function useServiceFlowWorkshopChat({
   );
 
   const callAnalyze = useCallback(
-    (userMessageText: string, opts?: { silentUserAppend?: boolean }) => {
+    (userMessageText: string, opts?: { silentUserAppend?: boolean; harness?: ServiceDesignHarnessPayload }) => {
       if (workspaceMode !== "chat") return;
       const body = userMessageText.trim();
       if (!body) return;
@@ -157,6 +161,7 @@ export function useServiceFlowWorkshopChat({
             .slice(0, 12000);
 
           const priorScreenHandoff = takeActorFlowHandoff();
+          const harness = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
 
           const result = await postServiceFlowAnalyze({
             projectId,
@@ -168,6 +173,8 @@ export function useServiceFlowWorkshopChat({
             recentMessages,
             latestAiQuestion: latestAiQuestionRef.current,
             ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
+            serviceDesignStage: harness.serviceDesignStage,
+            mentionedAI: harness.mentionedAI,
           });
 
           if (!result.ok || !result.data.updatedFlow) {
@@ -240,14 +247,18 @@ export function useServiceFlowWorkshopChat({
     callAnalyzeRef.current = callAnalyze;
   }, [callAnalyze]);
 
-  const sendMessage = useCallback(() => {
-    if (workspaceMode !== "chat") return;
-    const body = input.trim();
-    if (!body) return;
-    setInput("");
-    callAnalyze(body);
-    scrollChatToBottom();
-  }, [workspaceMode, input, callAnalyze, scrollChatToBottom]);
+  const sendMessage = useCallback(
+    (harnessFromComposer?: ServiceDesignHarnessPayload) => {
+      if (workspaceMode !== "chat") return;
+      const body = input.trim();
+      if (!body) return;
+      const harness = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
+      setInput("");
+      callAnalyze(body, { harness });
+      scrollChatToBottom();
+    },
+    [workspaceMode, input, callAnalyze, scrollChatToBottom]
+  );
 
   const jumpToResolveSlot = useCallback(
     (key: ServiceFlowStageSlotKey) => {
@@ -275,17 +286,21 @@ export function useServiceFlowWorkshopChat({
         .slice(0, 12000);
       try {
         const priorScreenHandoff = takeActorFlowHandoff();
+        const organizeMsg =
+          "정리 요청: 지금까지의 대화와 기존 초안을 바탕으로 액터/흐름/담당 매핑을 최신 상태로 다시 정리해 주세요.";
+        const organizeHarness = buildServiceDesignHarnessPayload("service-flow", organizeMsg);
         const result = await postServiceFlowAnalyze({
           projectId,
           projectName,
           projectDescription,
           ideationAssets,
-          userMessage:
-            "정리 요청: 지금까지의 대화와 기존 초안을 바탕으로 액터/흐름/담당 매핑을 최신 상태로 다시 정리해 주세요.",
+          userMessage: organizeMsg,
           recentMessages: excerpt,
           latestAiQuestion,
           currentFlow: flow,
           ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
+          serviceDesignStage: organizeHarness.serviceDesignStage,
+          mentionedAI: organizeHarness.mentionedAI,
         });
         if (!result.ok || !result.data.updatedFlow) {
           const errSlice = await onAppendRef.current([

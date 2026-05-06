@@ -26,6 +26,9 @@ type Body = {
   bootstrapInterview?: boolean;
   /** 직전 화면 전환 시 클라이언트가 1회 전달하는 맥락 */
   priorScreenHandoff?: string;
+  /** 클라이언트 Harness 메타(서버 로직 미연동 시 무시) */
+  serviceDesignStage?: string;
+  mentionedAI?: string | null;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {

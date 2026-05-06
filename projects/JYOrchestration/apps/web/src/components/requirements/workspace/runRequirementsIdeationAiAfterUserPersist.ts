@@ -40,6 +40,7 @@ import {
   ideationSendDevLog,
   shouldSkipIdeationDuplicateAppend,
 } from "@/lib/requirements/requirementsWorkspaceHelpers";
+import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import {
   newChatMessage,
@@ -73,6 +74,7 @@ type RunRequirementsIdeationAiAfterUserPersistContext = {
   readonly setInput: (v: string) => void;
   readonly setReplyTo: (v: { id: string; preview: string } | null) => void;
   readonly showErrorToast: (message: string) => void;
+  readonly serviceDesignHarness?: ServiceDesignHarnessPayload | null;
 };
 
 export async function runRequirementsIdeationAiAfterUserPersist(
@@ -100,6 +102,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     setInput,
     setReplyTo,
     showErrorToast,
+    serviceDesignHarness,
   } = ctx;
 
   const msgsIdeationOnly = filterIdeationConversationMessages(msgs);
@@ -363,6 +366,12 @@ export async function runRequirementsIdeationAiAfterUserPersist(
             userMessage: text,
             latestAiQuestion,
             currentInterviewState: problemInterviewStateToAnalyzerWire(seeded),
+            ...(serviceDesignHarness
+              ? {
+                  serviceDesignStage: serviceDesignHarness.serviceDesignStage,
+                  mentionedAI: serviceDesignHarness.mentionedAI,
+                }
+              : {}),
           }),
         });
         const aj = (await ar.json()) as { success?: boolean; data?: unknown };
@@ -418,7 +427,6 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     let facilitatorFinalRoom: RequirementsRoomStateV3;
     try {
       const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
-      // TODO(service-design-harness): merge `buildServiceDesignHarnessPayload("ideation", text)` into this body when the facilitator route accepts harness fields.
       const res = await credentialsIncludeFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -433,6 +441,12 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           sender: { id: sessionUserId, name: sessionUserName },
           replyTo: effectiveReplyTo ?? null,
           ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
+          ...(serviceDesignHarness
+            ? {
+                serviceDesignStage: serviceDesignHarness.serviceDesignStage,
+                mentionedAI: serviceDesignHarness.mentionedAI,
+              }
+            : {}),
         }),
       });
       const json = (await res.json()) as {

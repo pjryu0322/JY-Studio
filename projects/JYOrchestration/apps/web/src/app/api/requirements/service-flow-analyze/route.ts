@@ -15,6 +15,8 @@ type Body = {
   recentMessages?: string;
   latestAiQuestion?: string;
   priorScreenHandoff?: string;
+  serviceDesignStage?: string;
+  mentionedAI?: string | null;
 };
 
 export async function POST(request: NextRequest) {

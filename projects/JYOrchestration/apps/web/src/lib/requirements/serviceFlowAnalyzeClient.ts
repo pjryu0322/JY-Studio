@@ -1,4 +1,5 @@
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 
 export type ServiceFlowAnalyzeRequestBody = {
   readonly projectId: string;
@@ -11,6 +12,9 @@ export type ServiceFlowAnalyzeRequestBody = {
   readonly latestAiQuestion: string;
   /** 직전 화면(아이디어 구체화 등)에서 넘어온 맥락 — 클라이언트가 1회 소비 */
   readonly priorScreenHandoff?: string;
+  /** 서비스 설계 Harness(서버는 미사용 필드 허용) */
+  readonly serviceDesignStage?: RequirementsWorkspaceStage;
+  readonly mentionedAI?: string | null;
 };
 
 export type ServiceFlowAnalyzeSuccessData = {

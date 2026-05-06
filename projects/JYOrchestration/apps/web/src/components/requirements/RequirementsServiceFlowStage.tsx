@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { InlineAlert } from "@/components/ui/InlineAlert";
 import { ServiceFlowActionMenu } from "@/components/service-flow/ServiceFlowActionMenu";
 import { ServiceFlowChatPanel } from "@/components/service-flow/ServiceFlowChatPanel";
-import { ServiceFlowComposer } from "@/components/service-flow/ServiceFlowComposer";
+import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
 import { ServiceFlowHeader } from "@/components/service-flow/ServiceFlowHeader";
 import { ServiceFlowMappingPanel } from "@/components/service-flow/ServiceFlowMappingPanel";
 import { ServiceFlowProgressSummary } from "@/components/service-flow/ServiceFlowProgressSummary";
@@ -179,33 +179,41 @@ export function RequirementsServiceFlowStage({
                 </div>
               ) : null}
 
-              <ServiceFlowComposer
+              <ServiceDesignComposer
+                stage="service-flow"
                 value={w.input}
                 onChange={w.setInput}
-                onSubmit={w.sendMessage}
+                busy={false}
                 disabled={c.workspaceMode !== "chat" || w.replying}
                 placeholder="메시지를 입력하세요"
-                onOpenActions={() => w.setToolsOpen((v) => !v)}
-                onToolsOpenChange={w.setToolsOpen}
-                textAreaRef={w.composerTextareaRef}
                 targetPickerItems={serviceFlowComposerAtAtItems}
-                actionsOpen={w.toolsOpen}
-                renderActionMenu={({ menuId, close }) => (
-                  <ServiceFlowActionMenu
-                    omitMenuContainer
-                    menuId={menuId}
-                    open={w.toolsOpen}
-                    onClose={close}
-                    onOrganize={w.requestOrganize}
-                    onViewResult={() => c.setWorkspaceMode("summary")}
-                    onViewPrompt={() => w.setToolsOpen(false)}
-                    onOpenMapping={() => c.setWorkspaceMode("mapping")}
-                    projectId={controllerInput.projectId}
-                    ideationReady={controllerInput.ideationReady}
-                    ideationReadyNotice={ideationReadyNotice}
-                    hasFlowContent={Boolean(c.actors.length || c.steps.length)}
-                  />
-                )}
+                onSendIdeation={async () => {}}
+                onSendServiceFlow={async (payload) => {
+                  w.sendMessage(payload);
+                }}
+                onSendFeaturePlanning={async () => {}}
+                serviceFlowChrome={{
+                  textAreaRef: w.composerTextareaRef,
+                  actionsOpen: w.toolsOpen,
+                  onOpenActions: () => w.setToolsOpen((v) => !v),
+                  onToolsOpenChange: w.setToolsOpen,
+                  renderActionMenu: ({ menuId, close }) => (
+                    <ServiceFlowActionMenu
+                      omitMenuContainer
+                      menuId={menuId}
+                      open={w.toolsOpen}
+                      onClose={close}
+                      onOrganize={w.requestOrganize}
+                      onViewResult={() => c.setWorkspaceMode("summary")}
+                      onViewPrompt={() => w.setToolsOpen(false)}
+                      onOpenMapping={() => c.setWorkspaceMode("mapping")}
+                      projectId={controllerInput.projectId}
+                      ideationReady={controllerInput.ideationReady}
+                      ideationReadyNotice={ideationReadyNotice}
+                      hasFlowContent={Boolean(c.actors.length || c.steps.length)}
+                    />
+                  ),
+                }}
               />
             </div>
               </RequirementsChatComposerFooter>
