@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { Project } from "@/components/project-spec/types";
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
+import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { RequirementsIdeationChatPanel } from "@/components/requirements/RequirementsIdeationChatPanel";
 import { RequirementsIdeationDocumentDrawers } from "@/components/requirements/RequirementsIdeationDocumentDrawers";
 import { RequirementsOrganizeProposalWorkspaceOverlay } from "@/components/requirements/RequirementsOrganizeProposalWorkspaceOverlay";
@@ -13,6 +14,7 @@ import { RequirementsServiceFlowStagePanel } from "@/components/requirements/Req
 import { RequirementsServiceDesignStageNav } from "@/components/requirements/RequirementsServiceDesignStageNav";
 import { RequirementsWorkspaceErrorBand } from "@/components/requirements/RequirementsWorkspaceErrorBand";
 import { RequirementsWorkspaceTopChrome } from "@/components/requirements/RequirementsWorkspaceTopChrome";
+import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
 import {
   requirementsWorkspaceMainRowStyle,
   requirementsWorkspaceShellStyle,
@@ -181,6 +183,7 @@ export function RequirementsWorkspace({
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
   const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload) => void) | null>(null);
+  const featurePlanningSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
 
   const stage = useMemo(() => {
     const urlStage = String(searchParams?.get("stage") ?? "").trim().toLowerCase();
@@ -988,6 +991,41 @@ export function RequirementsWorkspace({
     []
   );
 
+  const runFeaturePlanningSend = useCallback(
+    async (payload: ServiceDesignHarnessPayload) => {
+      // Safety guard
+      if (payload.serviceDesignStage !== "feature-planning") return;
+      const pid = resolvedProjectId.trim();
+      const text = input.trim();
+      if (!pid || !text) return;
+
+      // 1) Append the user turn to requirementsConversation (single timeline).
+      const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
+        newChatMessage({
+          role: "user",
+          body: text,
+          speakerType: "USER",
+          speakerId: sessionUser?.id ?? "me",
+          speakerName: sessionUser?.name ?? "나",
+          messageType: "STATEMENT",
+          meta: { internalType: "feature-planning:user-turn" },
+        }),
+      ]);
+      setRoom(nextRoom);
+      // Persist immediately to preserve existing conversation persistence behavior.
+      await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
+
+      // 2) Clear composer input.
+      setInput("");
+
+      // 3) Execute existing feature-planning logic (no rewrite).
+      const fn = featurePlanningSendRef.current;
+      if (!fn) return;
+      await fn(payload, text);
+    },
+    [resolvedProjectId, input, room, sessionUser?.id, sessionUser?.name, persistRemote]
+  );
+
   const handleServiceDesignComposerSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
       if (activeStage === "ideation") {
@@ -999,12 +1037,11 @@ export function RequirementsWorkspace({
         return;
       }
       if (activeStage === "feature-planning") {
-        // TODO(service-design-singlechat): replace nested FeaturePlanningWorkspace composer with ServiceDesignComposer in the next phase.
-        // TODO(service-design-harness): pass payload.serviceDesignStage and payload.mentionedAI into this stage API.
+        await runFeaturePlanningSend(payload);
         return;
       }
     },
-    [activeStage, runIdeationSend, runServiceFlowSend]
+    [activeStage, runIdeationSend, runServiceFlowSend, runFeaturePlanningSend]
   );
 
   const onPanelBlurSave = useCallback(async () => {
@@ -1213,9 +1250,42 @@ export function RequirementsWorkspace({
     </div>
   );
 
-  // TODO(service-design-singlechat): replace nested FeaturePlanningWorkspace composer with ServiceDesignComposer in the next phase.
   const featurePlanningStage = resolvedProjectId.trim() ? (
-    <RequirementsFeaturePlanningStagePanel projectId={resolvedProjectId.trim()} />
+    <div style={{ display: "flex", flexDirection: "row", gap: 14, minWidth: 0, width: "100%" }}>
+      <div style={{ flex: "1 1 520px", minWidth: 0 }}>
+        <RequirementsChatPanel
+          messages={conversationStatus === "loaded" ? conversationMessages : null}
+          typingIndicator={false}
+          screenAiMemberId="feature_planning"
+          memberControls={null}
+          ideationInterviewUi={null}
+          onInsertComposerPrompt={() => {}}
+          onSetReplyTo={() => {}}
+          onOpenDeliverableDocument={() => {}}
+          onOpenDeliverableList={() => {}}
+          onOpenDeliverableDocuments={() => {}}
+          onRegenerateDeliverables={() => {}}
+          onConfirmDeliverables={() => {}}
+          composer={
+            <ServiceDesignComposer
+              stage="feature-planning"
+              value={input}
+              onChange={setInput}
+              busy={busy}
+              disabled={busy || remoteLocked}
+              placeholder={composerPlaceholder}
+              targetPickerItems={targetPickerItems}
+              onSendIdeation={async () => {}}
+              onSendServiceFlow={async () => {}}
+              onSendFeaturePlanning={runFeaturePlanningSend}
+            />
+          }
+        />
+      </div>
+      <div style={{ flex: "1 1 520px", minWidth: 0 }}>
+        <RequirementsFeaturePlanningStagePanel projectId={resolvedProjectId.trim()} singleChatSendRef={featurePlanningSendRef} />
+      </div>
+    </div>
   ) : (
     <div style={{ padding: 16, fontSize: 13, color: "#64748b" }}>프로젝트를 연결하면 기능 정리 단계를 사용할 수 있습니다.</div>
   );
