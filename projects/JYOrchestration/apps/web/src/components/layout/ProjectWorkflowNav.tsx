@@ -10,9 +10,7 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { DesktopWorkflowTabs } from "@/components/layout/DesktopWorkflowTabs";
 import { MobileStepSelector } from "@/components/layout/MobileStepSelector";
-import { PromptTimelineDebugButton } from "@/components/debug/PromptTimelineDebugButton";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
-import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
 import {
   appFlowStepHref,
   isWorkflowStepNavActive,
@@ -76,9 +74,7 @@ function ProjectWorkflowNavInner() {
   }, [pathname, projectContextId, searchParams]);
 
   if (!hasProjectContext || !projectContextId) return null;
-
-  const promptTimeline = isPromptTimelineDebugClient() ? <PromptTimelineDebugButton projectId={projectContextId} /> : null;
-  const workflowTrailing = <>{promptTimeline}</>;
+  const workflowTrailing = null;
 
   if (compactWorkflowNav) {
     return (

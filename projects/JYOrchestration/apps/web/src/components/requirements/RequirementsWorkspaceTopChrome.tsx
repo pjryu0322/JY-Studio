@@ -19,6 +19,8 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   busy: boolean;
   remoteLocked: boolean;
   onOrganizeRequirements: () => void | Promise<void>;
+  onResetConversation: () => void | Promise<void>;
+  resetConversationDisabled: boolean;
   workflowGuidanceBanner: string | null;
   loadError: string | null;
   onClearLoadErrorAndRetry: () => void;
@@ -38,6 +40,8 @@ export function RequirementsWorkspaceTopChrome({
   busy,
   remoteLocked,
   onOrganizeRequirements,
+  onResetConversation,
+  resetConversationDisabled,
   workflowGuidanceBanner,
   loadError,
   onClearLoadErrorAndRetry,
@@ -59,18 +63,29 @@ export function RequirementsWorkspaceTopChrome({
     <div className="jyo-requirements-workspace-top-chrome">
       <RequirementsHeader showProjectWorkflowNav={showProjectWorkflowNav} />
 
-      {showProjectWorkflowNav ? (
-        <div style={{ marginTop: 6, marginBottom: 4 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: t.textPrimary, letterSpacing: "-0.02em" }}>
-            서비스 설계 워크스페이스
-          </div>
-          <div style={{ fontSize: 12.5, color: t.textMuted, marginTop: 6, lineHeight: 1.55, fontWeight: 600 }}>
-            아이디어 구체화, 액터/흐름 정의, 기능정리를 하나의 대화 흐름으로 정리합니다.
-          </div>
-        </div>
-      ) : null}
-
       {serviceDesignStageNav}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6, marginBottom: 6 }}>
+        <button
+          type="button"
+          data-testid="requirements-reset-conversation"
+          disabled={resetConversationDisabled}
+          onClick={() => void onResetConversation()}
+          style={{
+            border: 0,
+            background: "transparent",
+            color: resetConversationDisabled ? t.textMuted : "#dc2626",
+            fontWeight: 800,
+            cursor: resetConversationDisabled ? "not-allowed" : "pointer",
+            padding: 0,
+            fontSize: 12.5,
+            textDecoration: "underline",
+            opacity: resetConversationDisabled ? 0.55 : 1,
+          }}
+        >
+          대화 초기화
+        </button>
+      </div>
 
       {showOrganizeCta ? (
         <div

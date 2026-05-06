@@ -228,6 +228,110 @@ The entire response must contain exactly one question mark (?).
   return { ok: true, text, model };
 }
 
+export type IdeationInterviewSeedWire = Readonly<{
+  /** slotId -> "empty" | "partial" | "filled" */
+  serviceIdea?: string;
+  targetUser?: string;
+  coreProblem?: string;
+  expectedOutcome?: string;
+  roughActors?: string;
+  roughFlow?: string;
+  mustHaveFeatures?: string;
+  constraints?: string;
+  notes?: Partial<Record<string, string[]>>;
+  summary?: string;
+  nextBestSlot?: string | null;
+  confidence?: number;
+}>;
+
+/**
+ * 아이디어 구체화: 프로젝트명/설명만으로 8개 슬롯의 초기 상태(채움 정도 + 근거 notes)를 시드한다.
+ * - 대화가 비어 있을 때 UI가 0/8로 시작하지 않게 하며, 첫 질문을 더 정교하게 유도할 수 있다.
+ */
+export async function runRequirementsIdeationInterviewSeedFromProjectOpenAI(input: {
+  projectName: string;
+  projectDescription: string;
+}): Promise<{ ok: true; wire: IdeationInterviewSeedWire; model: string } | { ok: false; code: string; message: string }> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  }
+  const model = resolveOpenAiModelFromEnv();
+  const pn = input.projectName.trim() || "(이름 없음)";
+  const pd = input.projectDescription.trim() || "(설명 없음)";
+
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content: `${workspaceAiMemberSystemPrefix("ideation")}당신은 아이디어 구체화 단계의 '상태 시드 생성기'입니다. 출력은 반드시 JSON 오브젝트 1개만. 마크다운 금지.`,
+      },
+      {
+        role: "user",
+        content: `프로젝트명/설명만 보고, 아래 8개 슬롯의 초기 채움 정도를 추정해라.
+
+[프로젝트]
+- 이름: ${pn}
+- 설명: ${pd}
+
+[슬롯]
+- serviceIdea: 무엇을 만들고 싶은가(서비스 아이디어 한 문장)
+- targetUser: 주 사용자(역할)
+- coreProblem: 현재 가장 큰 불편/문제(1개)
+- expectedOutcome: 어떻게 개선되길 원하는가(기대 효과/목표 상태)
+- roughActors: 사용자 종류(개략)
+- roughFlow: 서비스 흐름(한 줄)
+- mustHaveFeatures: 반드시 필요한 핵심 기능 3개 내외
+- constraints: 예산/기간/정책/보안 등 큰 제약
+
+[출력 JSON 스키마 - 키/형식 엄수]
+{
+  "summary": "프로젝트를 1~2문장으로 해석한 요약",
+  "serviceIdea": "empty|partial|filled",
+  "targetUser": "empty|partial|filled",
+  "coreProblem": "empty|partial|filled",
+  "expectedOutcome": "empty|partial|filled",
+  "roughActors": "empty|partial|filled",
+  "roughFlow": "empty|partial|filled",
+  "mustHaveFeatures": "empty|partial|filled",
+  "constraints": "empty|partial|filled",
+  "notes": {
+    "serviceIdea": [], "targetUser": [], "coreProblem": [], "expectedOutcome": [],
+    "roughActors": [], "roughFlow": [], "mustHaveFeatures": [], "constraints": []
+  },
+  "nextBestSlot": "serviceIdea|targetUser|coreProblem|expectedOutcome|roughActors|roughFlow|mustHaveFeatures|constraints|null",
+  "confidence": 0.0
+}
+
+[규칙]
+- notes는 '프로젝트 설명에서 유추 가능한 근거'를 짧은 불릿(문장)으로 0~2개만 넣어라.
+- 근거가 약하면 해당 슬롯은 empty 또는 partial로 둔다.
+- 절대 상세 설계/화면/DB/API로 들어가지 말 것.
+- 한국어로 작성.`,
+      },
+    ],
+    temperature: 0.2,
+    responseFormatJsonObject: true,
+    maxTokens: 520,
+  });
+
+  if (!res.ok) {
+    return { ok: false, code: res.code, message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}` };
+  }
+  const text = res.text;
+  if (!text) return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
+
+  try {
+    const wire = JSON.parse(text) as IdeationInterviewSeedWire;
+    if (!wire || typeof wire !== "object") throw new Error("invalid-json");
+    return { ok: true, wire, model };
+  } catch (e) {
+    return { ok: false, code: "BAD_JSON", message: "시드 JSON 파싱에 실패했습니다." };
+  }
+}
+
 function safeJsonArray(v: unknown, max = 12): string[] {
   if (!Array.isArray(v)) return [];
   const out: string[] = [];

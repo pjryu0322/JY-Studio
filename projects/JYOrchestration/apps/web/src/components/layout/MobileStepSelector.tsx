@@ -22,7 +22,9 @@ export function MobileStepSelector({
   const showScreenLabels = useShowScreenLabels();
   const [open, setOpen] = useState(false);
 
-  const activeLabel = useMemo(() => items.find((x) => x.active)?.label ?? "단계", [items]);
+  const activeLabel = useMemo(() => {
+    return items.find((x) => x.active)?.label ?? "단계";
+  }, [items]);
 
   return (
     <div aria-label="프로젝트 워크플로 및 관리" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -43,7 +45,22 @@ export function MobileStepSelector({
         }}
       >
         <ScreenLabel label="공통-상단내비-워크플로우-현재단계" visible={showScreenLabels} />
-        <div style={{ fontSize: 12.5, fontWeight: 900, color: "#0f172a", letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div
+          style={{
+            fontSize: 12.5,
+            fontWeight: 900,
+            color: "#0f172a",
+            letterSpacing: "-0.01em",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            whiteSpace: "normal",
+            lineHeight: 1.2,
+            maxHeight: "2.4em",
+          }}
+        >
           {activeLabel}
         </div>
       </button>
