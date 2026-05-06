@@ -8,6 +8,7 @@ import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers
 import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExtract";
 import { runHarness } from "@/lib/service-design/serviceDesignHarnessRuntime";
 import type { ServiceDesignStage } from "@/lib/service-design/serviceDesignAiHarness";
+import { applyHarnessDefaultsToTurnModel } from "@/lib/service-design/serviceDesignResponsePolicy";
 
 type Body = {
   projectId?: string;
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
     }
 
-    const currentStage = parseServiceDesignStage(body.serviceDesignStage);
+    const serviceDesignStage = parseServiceDesignStage(body.serviceDesignStage);
     const mentionedFromBody =
       body.mentionedAI == null || body.mentionedAI === ""
         ? null
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     const harness = await runHarness({
       input: userMessage,
-      stage: currentStage,
+      stage: serviceDesignStage,
       mentionedAI,
     });
 
@@ -90,35 +91,35 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           code: "HARNESS_FORWARD_BLOCK",
-          message: "현재 단계에서는 해당 작업을 수행할 수 없습니다. 이전 단계를 먼저 진행해주세요.",
+          message:
+            "현재 단계에서는 해당 작업을 바로 수행할 수 없습니다. 필요한 선행 정보를 먼저 정리한 뒤 진행할 수 있습니다.",
+          data: {
+            responderLabel: harness.responsePolicy.responderLabel,
+            harness: {
+              intent: harness.intent,
+              validation: harness.validation,
+              responseMode: harness.responsePolicy.responseMode,
+              visibleResponder: harness.routing.visibleResponder,
+              finalAuthority: harness.routing.finalAuthority,
+              advisors: harness.routing.internalAdvisors,
+            },
+          },
         },
         { status: 200 },
       );
     }
 
-    const advisorsJoin = harness.routing.internalAdvisors.length
-      ? harness.routing.internalAdvisors.join(", ")
-      : "none";
-
-    let validationNote = "";
-    if (harness.validation === "BACKWARD_CONFIRM") {
-      validationNote =
-        "\nStage validation: The user may be asking to return to an earlier stage. Confirm explicitly before assisting further.\n";
-    } else if (harness.validation === "DEFER") {
-      validationNote =
-        "\nStage validation: Defer detailed visual design (e.g. color) until the feature-planning stage; guide the user accordingly.\n";
-    }
-
     const harnessSystemPrefix = `
-You are ${harness.routing.visibleResponder}.
+${harness.responsePolicy.responseContract}
 
-You must consider advisory perspectives from:
-${advisorsJoin}.
-
-Final decision authority is:
-${harness.routing.finalAuthority}.
-
-Do not violate current stage constraints.${validationNote}`.trim();
+[하네스 실행 컨텍스트]
+intent=${harness.intent}
+validation=${harness.validation}
+responseMode=${harness.responsePolicy.responseMode}
+visibleResponder=${harness.responsePolicy.responderLabel}
+finalAuthority=${harness.responsePolicy.finalAuthorityLabel}
+advisors=${harness.responsePolicy.advisorLabels.join(", ") || "none"}
+`.trim();
 
     const model = resolveOpenAiModelFromEnv();
     const system = `${harnessSystemPrefix}
@@ -129,6 +130,9 @@ ${workspaceAiMemberSystemPrefix("prototype_build")}화면: 프로토타입 생�
 - 한국어로 답한다.
 - 이번 턴 응답은 JSON 1개만 출력한다(마크다운/코드펜스/설명 금지).
 - assistantMessage는 1~4문장, 장황한 설명 금지.
+- responderLabel은 화면 응답자 표기(한글 라벨)로 채운다.
+- advisorSummary는 내부 자문 관점이 있으면 한 줄로 요약하고, 없으면 "내부 자문 없음"으로 둔다.
+- finalAuthoritySummary는 현재 단계 Primary 기준 판단을 한 줄로 요약한다.
 - nextQuestion은 필요한 경우에만 1문장 질문(물음표 1개)로 제공하고, 없으면 null.
 - outOfScope=true면, 사용자의 요청을 거절하지 말고 "프로토타입 생성 화면에서 지금 할 수 있는 것"으로 재유도한 뒤, 슬롯 질문 1개로 좁힌다.
 
@@ -157,7 +161,10 @@ ${userMessage}
 
 출력 JSON 스키마:
 {
-  "assistantMessage": "전담 AI 답변",
+  "responderLabel": "AI 분석가",
+  "advisorSummary": "보안 관점에서는 ...",
+  "finalAuthoritySummary": "현재 단계 기준으로는 ...",
+  "assistantMessage": "최종 사용자 응답",
   "outOfScope": true|false,
   "slotKeyToFill": "slot_key" | null,
   "slotValue": "해당 슬롯에 저장할 요약 텍스트" | null,
@@ -205,13 +212,29 @@ ${userMessage}
       return NextResponse.json({ success: false, code: "SCHEMA", message: "assistantMessage가 비어 있습니다." }, { status: 200 });
     }
 
+    const { responderLabel, advisorSummary, finalAuthoritySummary, harnessPayload } = applyHarnessDefaultsToTurnModel(
+      root,
+      harness
+    );
+
     return NextResponse.json({
       success: true,
-      data: { assistantMessage, outOfScope, slotKeyToFill, slotValue, nextSlotKey, nextQuestion, model },
+      data: {
+        assistantMessage,
+        responderLabel,
+        advisorSummary,
+        finalAuthoritySummary,
+        harness: harnessPayload,
+        outOfScope,
+        slotKeyToFill,
+        slotValue,
+        nextSlotKey,
+        nextQuestion,
+        model,
+      },
     });
   } catch (error) {
     console.error("POST /api/prototype-chat/turn error:", error);
     return NextResponse.json({ success: false, message: "AI 응답 생성 중 오류가 발생했습니다." }, { status: 500 });
   }
 }
-
