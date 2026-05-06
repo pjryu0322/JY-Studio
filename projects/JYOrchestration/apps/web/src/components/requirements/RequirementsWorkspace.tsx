@@ -180,6 +180,7 @@ export function RequirementsWorkspace({
   const sendDraftRestoreRef = useRef<string | null>(null);
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
+  const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload) => void) | null>(null);
 
   const stage = useMemo(() => {
     const urlStage = String(searchParams?.get("stage") ?? "").trim().toLowerCase();
@@ -975,6 +976,18 @@ export function RequirementsWorkspace({
     showErrorToast,
   ]);
 
+  const runServiceFlowSend = useCallback(
+    async (payload: ServiceDesignHarnessPayload) => {
+      // Safety guard
+      if (payload.serviceDesignStage !== "service-flow") return;
+      // IMPORTANT: reuse the existing stage-local send logic (do not rewrite service-flow pipeline here).
+      const fn = serviceFlowSendRef.current;
+      if (!fn) return;
+      await fn(payload);
+    },
+    []
+  );
+
   const handleServiceDesignComposerSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
       if (activeStage === "ideation") {
@@ -982,6 +995,7 @@ export function RequirementsWorkspace({
         return;
       }
       if (activeStage === "service-flow") {
+        await runServiceFlowSend(payload);
         return;
       }
       if (activeStage === "feature-planning") {
@@ -990,7 +1004,7 @@ export function RequirementsWorkspace({
         return;
       }
     },
-    [activeStage, runIdeationSend]
+    [activeStage, runIdeationSend, runServiceFlowSend]
   );
 
   const onPanelBlurSave = useCallback(async () => {
@@ -1229,6 +1243,8 @@ export function RequirementsWorkspace({
       onRetryGate={() => setFetchNonce((n) => n + 1)}
       onUpdateFlow={(next) => void persistServiceFlow(next)}
       platformScreenAiMemberIds={serviceFlowScreenCatalogIds}
+      onSendServiceFlow={runServiceFlowSend}
+      serviceFlowSendRef={serviceFlowSendRef}
     />
   );
 
