@@ -165,8 +165,24 @@ export function useServiceFlowWorkshopChat({
             .slice(0, 12000);
 
           const priorScreenHandoff = takeActorFlowHandoff();
+          const harness = await runServiceDesignHarnessTurn({
+            input: body,
+            stage: "service-flow",
+            mentionedAI: opts?.harness?.mentionedAI ?? null,
+          });
+          console.debug("[HARNESS CHECK]", {
+            stage: "service-flow",
+            path: "callAnalyze",
+            runHarnessExecuted: true,
+          });
+          console.debug("[HARNESS FLOW]", {
+            stage: "service-flow",
+            input: body,
+            mentionedAI: harness.mentionedAI,
+          });
+
           const payload = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
-          const responsePolicy = opts?.responsePolicy;
+          const responsePolicy = harness.responsePolicy ?? opts?.responsePolicy ?? undefined;
 
           const result = await postServiceFlowAnalyze({
             projectId,
@@ -178,8 +194,8 @@ export function useServiceFlowWorkshopChat({
             recentMessages,
             latestAiQuestion: latestAiQuestionRef.current,
             ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
-            serviceDesignStage: payload.serviceDesignStage,
-            mentionedAI: payload.mentionedAI,
+            serviceDesignStage: harness.stage,
+            mentionedAI: harness.mentionedAI,
             ...(responsePolicy ? { responsePolicy } : {}),
           });
 
@@ -260,19 +276,7 @@ export function useServiceFlowWorkshopChat({
       if (!body) return;
       const payload = harnessFromComposer ?? buildServiceDesignHarnessPayload("service-flow", body);
       setInput("");
-      void (async () => {
-        const harness = await runServiceDesignHarnessTurn({
-          input: body,
-          stage: "service-flow",
-          mentionedAI: harnessFromComposer?.mentionedAI ?? null,
-        });
-        console.debug("[HARNESS CHECK]", {
-          stage: "service-flow",
-          payloadReceived: Boolean(harnessFromComposer),
-          runHarnessExecuted: true,
-        });
-        callAnalyze(body, { harness: payload, responsePolicy: harness.responsePolicy });
-      })();
+      callAnalyze(body, { harness: payload });
       scrollChatToBottom();
     },
     [workspaceMode, input, callAnalyze, scrollChatToBottom]
@@ -307,6 +311,17 @@ export function useServiceFlowWorkshopChat({
         const organizeMsg =
           "정리 요청: 지금까지의 대화와 기존 초안을 바탕으로 액터/흐름/담당 매핑을 최신 상태로 다시 정리해 주세요.";
         const organizeHarness = buildServiceDesignHarnessPayload("service-flow", organizeMsg);
+        const harness = await runServiceDesignHarnessTurn({
+          input: organizeMsg,
+          stage: "service-flow",
+          mentionedAI: null,
+        });
+        console.debug("[HARNESS CHECK]", { stage: "service-flow", path: "requestOrganize", runHarnessExecuted: true });
+        console.debug("[HARNESS FLOW]", {
+          stage: "service-flow",
+          input: organizeMsg,
+          mentionedAI: harness.mentionedAI,
+        });
         const result = await postServiceFlowAnalyze({
           projectId,
           projectName,
@@ -317,8 +332,9 @@ export function useServiceFlowWorkshopChat({
           latestAiQuestion,
           currentFlow: flow,
           ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
-          serviceDesignStage: organizeHarness.serviceDesignStage,
-          mentionedAI: organizeHarness.mentionedAI,
+          serviceDesignStage: harness.stage,
+          mentionedAI: harness.mentionedAI,
+          responsePolicy: harness.responsePolicy,
         });
         if (!result.ok || !result.data.updatedFlow) {
           const errSlice = await onAppendRef.current([

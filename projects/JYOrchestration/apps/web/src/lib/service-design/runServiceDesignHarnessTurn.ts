@@ -11,6 +11,10 @@ export async function runServiceDesignHarnessTurn(params: {
     mentionedAI: params.mentionedAI ?? null,
   });
 
-  return harness;
+  return {
+    ...harness,
+    stage: params.stage,
+    mentionedAI: params.mentionedAI ?? null,
+  } as const;
 }
 
