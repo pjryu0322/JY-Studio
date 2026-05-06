@@ -7,6 +7,8 @@ export type RequirementsSpeakerType = "USER" | "AI" | "HUMAN" | "SYSTEM";
 export type RequirementsVisibility = "PUBLIC";
 export type RequirementsMessageType = "QUESTION" | "STATEMENT" | "ANSWER" | "NOTICE" | "FRIENDLY_ERROR";
 
+import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
+
 export type RequirementsMessageMeta = {
   stage: "REQUIREMENTS";
   promptVersion?: string;
@@ -14,6 +16,10 @@ export type RequirementsMessageMeta = {
   internalType?: string;
   /** 문제정의 인터뷰에서 직전에 물은 슬롯(반복 질문 방지·복원용) */
   problemInterviewLastSlot?: string;
+  /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */
+  serviceDesignStage?: RequirementsWorkspaceStage;
+  /** Service Design SingleChat: mention routing hint */
+  mentionedAI?: string | null;
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */

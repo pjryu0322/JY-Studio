@@ -105,6 +105,10 @@ import { publishWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHand
 import { requirementsWorkspaceStageToScreenKey } from "@/lib/requirements/requirementsWorkspaceScreenBridge";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
+import {
+  buildFeaturePlanningMirroredUserTurn,
+  shouldSkipFeaturePlanningMirror,
+} from "@/lib/service-design/serviceDesignSingleChatFeaturePlanningMirror";
 
 export function RequirementsWorkspace({
   initialProjectId,
@@ -1003,31 +1007,44 @@ export function RequirementsWorkspace({
       const text = input.trim();
       if (!pid || !text) return;
 
-      // 1) Append the user turn to requirementsConversation (single timeline).
-      const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
-        newChatMessage({
-          role: "user",
-          body: text,
-          speakerType: "USER",
-          speakerId: sessionUser?.id ?? "me",
-          speakerName: sessionUser?.name ?? "나",
-          messageType: "STATEMENT",
-          meta: { internalType: "feature-planning:user-turn" },
-        }),
-      ]);
-      setRoom(nextRoom);
-      // Persist immediately to preserve existing conversation persistence behavior.
-      await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
-
-      // 2) Clear composer input.
       setInput("");
 
-      // 3) Execute existing feature-planning logic (no rewrite).
+      const nowIso = new Date().toISOString();
+      const baseMessages = roomRef.current.requirementsConversation.messages;
+
+      // Mirror user turn into requirementsConversation (single timeline).
+      if (
+        !shouldSkipFeaturePlanningMirror({
+          messages: baseMessages,
+          text,
+          mentionedAI: payload.mentionedAI,
+          nowIso,
+        })
+      ) {
+        const userMsg = buildFeaturePlanningMirroredUserTurn({
+          text,
+          payload,
+          speakerId: sessionUser?.id ?? "me",
+          speakerName: sessionUser?.name ?? "나",
+          createdAtIso: nowIso,
+        });
+        const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [...baseMessages, userMsg]);
+        setRoom(nextRoom);
+        await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
+      }
+
+      // Execute existing feature-planning logic (no rewrite).
       const fn = featurePlanningSendRef.current;
       if (!fn) return;
-      await fn(payload, text);
+      try {
+        await fn(payload, text);
+      } catch (e) {
+        // restore input if stage-local send failed
+        setInput(text);
+        throw e;
+      }
     },
-    [resolvedProjectId, input, room, sessionUser?.id, sessionUser?.name, persistRemote]
+    [resolvedProjectId, input, sessionUser?.id, sessionUser?.name, persistRemote]
   );
 
   const handleServiceDesignComposerSend = useCallback(

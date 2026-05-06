@@ -47,6 +47,37 @@ function aiCardShell(tone: "default" | "notice" | "error"): CSSProperties {
   return base;
 }
 
+function serviceDesignStageBadge(meta: unknown): string | null {
+  if (!meta || typeof meta !== "object") return null;
+  const m = meta as { serviceDesignStage?: string };
+  const s = String(m.serviceDesignStage ?? "").trim();
+  if (s === "feature-planning") return "기능정리";
+  if (s === "service-flow") return "액터/흐름";
+  if (s === "ideation") return "아이디어";
+  return null;
+}
+
+function StageBadgePill({ label }: { readonly label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          color: "#0f766e",
+          background: "#ecfdf5",
+          border: "1px solid #a7f3d0",
+          padding: "2px 8px",
+          borderRadius: 999,
+          lineHeight: 1.2,
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
 export function RequirementsChatPanel({
   messages,
   composer,
@@ -249,6 +280,7 @@ export function RequirementsChatPanel({
 
           {(messages ?? []).map((m) => {
             const mine = m.role === "user";
+            const stageBadge = serviceDesignStageBadge(m.meta);
             const tg = getMessageTargets(m);
             const targetLine = formatTargetNamesForUi(m) || (m.targetName ? String(m.targetName) : "");
             const showToMeta =
@@ -304,6 +336,7 @@ export function RequirementsChatPanel({
                   style={{ justifySelf: "end", maxWidth: "78%", width: "fit-content", minWidth: 0 }}
                 >
                   <div style={workspaceStandardChatBubbleShell("user")}>
+                    {stageBadge ? <StageBadgePill label={stageBadge} /> : null}
                     {replyContextLine}
                     <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
                       <span style={{ flex: "1 1 auto", minWidth: 0 }}>
@@ -433,6 +466,7 @@ export function RequirementsChatPanel({
                     onMouseEnter={() => setHoveredId(m.id)}
                     onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
                   >
+                    {stageBadge ? <StageBadgePill label={stageBadge} /> : null}
                     {replyContextLine}
                     <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
                       <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId} trailing={repliesNavBtn}>
