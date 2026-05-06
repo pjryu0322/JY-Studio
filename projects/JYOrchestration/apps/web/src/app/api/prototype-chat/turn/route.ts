@@ -5,6 +5,9 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
+import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExtract";
+import { runHarness } from "@/lib/service-design/serviceDesignHarnessRuntime";
+import type { ServiceDesignStage } from "@/lib/service-design/serviceDesignAiHarness";
 
 type Body = {
   projectId?: string;
@@ -16,7 +19,18 @@ type Body = {
   currentSlotKey?: string | null;
   userMessage?: string;
   envOk?: boolean;
+  /** Service Design 하네스: 단계 (미전달 시 ideation) */
+  serviceDesignStage?: string;
+  /** 명시 멘션 AI; 없으면 userMessage 내 `@@token`에서 추출 */
+  mentionedAI?: string | null;
 };
+
+function parseServiceDesignStage(raw: string | undefined): ServiceDesignStage {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === "service-flow" || s === "service_flow") return "service-flow";
+  if (s === "feature-planning" || s === "feature_planning") return "feature-planning";
+  return "ideation";
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,8 +72,58 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
     }
 
+    const currentStage = parseServiceDesignStage(body.serviceDesignStage);
+    const mentionedFromBody =
+      body.mentionedAI == null || body.mentionedAI === ""
+        ? null
+        : String(body.mentionedAI).trim() || null;
+    const mentionedAI = mentionedFromBody ?? extractMentionedAI(userMessage);
+
+    const harness = await runHarness({
+      input: userMessage,
+      stage: currentStage,
+      mentionedAI,
+    });
+
+    if (harness.validation === "FORWARD_BLOCK") {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "HARNESS_FORWARD_BLOCK",
+          message: "현재 단계에서는 해당 작업을 수행할 수 없습니다. 이전 단계를 먼저 진행해주세요.",
+        },
+        { status: 200 },
+      );
+    }
+
+    const advisorsJoin = harness.routing.internalAdvisors.length
+      ? harness.routing.internalAdvisors.join(", ")
+      : "none";
+
+    let validationNote = "";
+    if (harness.validation === "BACKWARD_CONFIRM") {
+      validationNote =
+        "\nStage validation: The user may be asking to return to an earlier stage. Confirm explicitly before assisting further.\n";
+    } else if (harness.validation === "DEFER") {
+      validationNote =
+        "\nStage validation: Defer detailed visual design (e.g. color) until the feature-planning stage; guide the user accordingly.\n";
+    }
+
+    const harnessSystemPrefix = `
+You are ${harness.routing.visibleResponder}.
+
+You must consider advisory perspectives from:
+${advisorsJoin}.
+
+Final decision authority is:
+${harness.routing.finalAuthority}.
+
+Do not violate current stage constraints.${validationNote}`.trim();
+
     const model = resolveOpenAiModelFromEnv();
-    const system = `${workspaceAiMemberSystemPrefix("prototype_build")}화면: 프로토타입 생성.
+    const system = `${harnessSystemPrefix}
+
+${workspaceAiMemberSystemPrefix("prototype_build")}화면: 프로토타입 생성.
 목표: 사용자 입력을 해석해 이 화면 범위 안에서만 가이드를 제공하고, 슬롯 기반 인터뷰를 1턴씩 진행한다.
 규칙:
 - 한국어로 답한다.
