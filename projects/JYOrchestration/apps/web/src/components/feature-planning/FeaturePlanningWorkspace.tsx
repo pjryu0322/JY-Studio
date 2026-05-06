@@ -28,6 +28,7 @@ import { useWorkNoteChatSelectionRequester } from "@/components/worknote/WorkNot
 import { useFeaturePlanningWorkspace } from "./useFeaturePlanningWorkspace";
 import styles from "./featurePlanningWorkspace.module.css";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
+import { runServiceDesignHarnessTurn } from "@/lib/service-design/runServiceDesignHarnessTurn";
 
 type FeatureCanvasMode = "overview" | "deliverables";
 
@@ -118,6 +119,12 @@ export function FeaturePlanningWorkspace({
       // but its backend AI call does not yet apply `runHarness()` (only metadata exists at the composer level).
       // When the backend contract is extended, pass payload.serviceDesignStage and payload.mentionedAI through,
       // and confirm `runHarness()` is executed in the feature-planning execution path before claiming completion.
+      const harness = await runServiceDesignHarnessTurn({
+        input: text,
+        stage: "feature-planning",
+        mentionedAI: payload.mentionedAI ?? null,
+      });
+      console.debug("[HARNESS:feature-planning]", harness);
       const before = messagesRef.current ?? [];
       const beforeIds = new Set(before.map((m) => m.id));
       await shell.sendMessage(text);

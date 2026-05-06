@@ -15,6 +15,7 @@ export type ServiceFlowAnalyzeRequestBody = {
   /** 서비스 설계 Harness(서버는 미사용 필드 허용) */
   readonly serviceDesignStage?: RequirementsWorkspaceStage;
   readonly mentionedAI?: string | null;
+  readonly responsePolicy?: unknown;
 };
 
 export type ServiceFlowAnalyzeSuccessData = {

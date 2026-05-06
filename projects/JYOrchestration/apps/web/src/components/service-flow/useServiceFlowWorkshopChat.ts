@@ -21,6 +21,7 @@ import {
   buildServiceDesignHarnessPayload,
   type ServiceDesignHarnessPayload,
 } from "@/lib/service-design/serviceDesignTurnPayload";
+import { runServiceDesignHarnessTurn } from "@/lib/service-design/runServiceDesignHarnessTurn";
 
 export type ServiceFlowWorkspaceMode = "chat" | "mapping" | "summary";
 
@@ -161,7 +162,13 @@ export function useServiceFlowWorkshopChat({
             .slice(0, 12000);
 
           const priorScreenHandoff = takeActorFlowHandoff();
-          const harness = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
+          const payload = opts?.harness ?? buildServiceDesignHarnessPayload("service-flow", body);
+          const harness = await runServiceDesignHarnessTurn({
+            input: body,
+            stage: "service-flow",
+            mentionedAI: payload.mentionedAI ?? null,
+          });
+          console.debug("[HARNESS CHECK]", { stage: "service-flow", payloadReceived: true, runHarnessExecuted: true });
 
           const result = await postServiceFlowAnalyze({
             projectId,
@@ -173,8 +180,9 @@ export function useServiceFlowWorkshopChat({
             recentMessages,
             latestAiQuestion: latestAiQuestionRef.current,
             ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
-            serviceDesignStage: harness.serviceDesignStage,
-            mentionedAI: harness.mentionedAI,
+            serviceDesignStage: payload.serviceDesignStage,
+            mentionedAI: payload.mentionedAI,
+            responsePolicy: harness.responsePolicy,
           });
 
           if (!result.ok || !result.data.updatedFlow) {
