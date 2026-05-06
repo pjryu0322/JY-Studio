@@ -9,6 +9,7 @@ import { extractMentionedAI } from "@/lib/service-design/serviceDesignMentionExt
 import { runHarness } from "@/lib/service-design/serviceDesignHarnessRuntime";
 import type { ServiceDesignStage } from "@/lib/service-design/serviceDesignAiHarness";
 import { applyHarnessDefaultsToTurnModel } from "@/lib/service-design/serviceDesignResponsePolicy";
+import { runOptionalAdvisoryCalls } from "@/lib/service-design/serviceDesignAdvisoryCall";
 
 type Body = {
   projectId?: string;
@@ -121,8 +122,31 @@ finalAuthority=${harness.responsePolicy.finalAuthorityLabel}
 advisors=${harness.responsePolicy.advisorLabels.join(", ") || "none"}
 `.trim();
 
+    const advisoryResults =
+      harness.routing.internalAdvisors.length > 0
+        ? await runOptionalAdvisoryCalls({
+            apiKey,
+            userMessage,
+            advisors: harness.routing.internalAdvisors,
+            stage: serviceDesignStage,
+            intent: harness.intent,
+          })
+        : [];
+
+    const advisoryContext =
+      advisoryResults.length > 0
+        ? advisoryResults
+            .map((a) =>
+              a.error ? `[${a.advisorLabel}] 자문 실패: ${a.error}` : `[${a.advisorLabel}] ${a.summary}`
+            )
+            .join("\n")
+        : "내부 자문 없음";
+
     const model = resolveOpenAiModelFromEnv();
     const system = `${harnessSystemPrefix}
+
+[실제 내부 자문 결과]
+${advisoryContext}
 
 ${workspaceAiMemberSystemPrefix("prototype_build")}화면: 프로토타입 생성.
 목표: 사용자 입력을 해석해 이 화면 범위 안에서만 가이드를 제공하고, 슬롯 기반 인터뷰를 1턴씩 진행한다.
@@ -131,7 +155,7 @@ ${workspaceAiMemberSystemPrefix("prototype_build")}화면: 프로토타입 생�
 - 이번 턴 응답은 JSON 1개만 출력한다(마크다운/코드펜스/설명 금지).
 - assistantMessage는 1~4문장, 장황한 설명 금지.
 - responderLabel은 화면 응답자 표기(한글 라벨)로 채운다.
-- advisorSummary는 내부 자문 관점이 있으면 한 줄로 요약하고, 없으면 "내부 자문 없음"으로 둔다.
+- advisorSummary는 [실제 내부 자문 결과]를 한 줄로 요약해 반영하고, 자문이 없거나 전부 실패면 "내부 자문 없음" 또는 실패 맥락만 간단히 적는다.
 - finalAuthoritySummary는 현재 단계 Primary 기준 판단을 한 줄로 요약한다.
 - nextQuestion은 필요한 경우에만 1문장 질문(물음표 1개)로 제공하고, 없으면 null.
 - outOfScope=true면, 사용자의 요청을 거절하지 말고 "프로토타입 생성 화면에서 지금 할 수 있는 것"으로 재유도한 뒤, 슬롯 질문 1개로 좁힌다.
@@ -224,6 +248,7 @@ ${userMessage}
         responderLabel,
         advisorSummary,
         finalAuthoritySummary,
+        advisoryResults,
         harness: harnessPayload,
         outOfScope,
         slotKeyToFill,
