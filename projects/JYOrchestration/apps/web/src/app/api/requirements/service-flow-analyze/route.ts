@@ -17,6 +17,7 @@ type Body = {
   priorScreenHandoff?: string;
   serviceDesignStage?: string;
   mentionedAI?: string | null;
+  responsePolicy?: unknown;
 };
 
 export async function POST(request: NextRequest) {

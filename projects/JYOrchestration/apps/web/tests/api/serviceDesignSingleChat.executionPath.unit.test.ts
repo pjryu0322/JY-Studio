@@ -6,6 +6,8 @@ import {
   FEATURE_PLANNING_MIRROR_INTERNAL_TYPE,
 } from "@/lib/service-design/serviceDesignSingleChatFeaturePlanningMirror";
 import { runOptionalAdvisoryCalls } from "@/lib/service-design/serviceDesignAdvisoryCall";
+import * as harnessModule from "@/lib/service-design/serviceDesignHarnessRuntime";
+import { runServiceDesignHarnessTurn } from "@/lib/service-design/runServiceDesignHarnessTurn";
 
 vi.mock("@/lib/ai/openAiChatCompletions", () => {
   return {
@@ -93,6 +95,12 @@ describe("Service Design SingleChat execution boundaries", () => {
     const out = await p;
     expect(out.length).toBe(2);
     expect(secondStarted).toBe(true);
+  });
+
+  it("runHarness is executed in service-flow path (via common wrapper)", async () => {
+    const spy = vi.spyOn(harnessModule, "runHarness");
+    await runServiceDesignHarnessTurn({ input: "test", stage: "service-flow", mentionedAI: null });
+    expect(spy).toHaveBeenCalled();
   });
 });
 

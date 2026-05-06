@@ -41,6 +41,7 @@ import {
   shouldSkipIdeationDuplicateAppend,
 } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
+import { runServiceDesignHarnessTurn } from "@/lib/service-design/runServiceDesignHarnessTurn";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import {
   newChatMessage,
@@ -112,6 +113,17 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     effectiveReplyTo
   );
   const endpoint = REQUIREMENTS_IDEATION_HTTP.AI_FACILITATOR;
+  const harness =
+    serviceDesignHarness && String(serviceDesignHarness.serviceDesignStage) === "ideation"
+      ? await runServiceDesignHarnessTurn({
+          input: text,
+          stage: "ideation",
+          mentionedAI: serviceDesignHarness.mentionedAI ?? null,
+        })
+      : null;
+  if (harness) {
+    console.debug("[HARNESS CHECK]", { stage: "ideation", payloadReceived: true, runHarnessExecuted: true });
+  }
 
   const isIdeationProblemInterviewPlannerContext = (): boolean => {
     if (primaryId !== VIRTUAL_AI_PLANNER_ID) return false;
@@ -370,6 +382,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
               ? {
                   serviceDesignStage: serviceDesignHarness.serviceDesignStage,
                   mentionedAI: serviceDesignHarness.mentionedAI,
+                  ...(harness ? { responsePolicy: harness.responsePolicy } : {}),
                 }
               : {}),
           }),
@@ -445,6 +458,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
             ? {
                 serviceDesignStage: serviceDesignHarness.serviceDesignStage,
                 mentionedAI: serviceDesignHarness.mentionedAI,
+                ...(harness ? { responsePolicy: harness.responsePolicy } : {}),
               }
             : {}),
         }),
