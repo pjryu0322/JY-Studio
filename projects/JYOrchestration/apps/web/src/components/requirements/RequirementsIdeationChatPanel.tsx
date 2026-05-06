@@ -5,7 +5,8 @@ import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliver
 import { isIdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
-import { RequirementsComposerGpt } from "@/components/requirements/RequirementsComposerGpt";
+import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
+import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
@@ -41,7 +42,7 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   composerTextAreaRef: RefObject<HTMLTextAreaElement | null>;
   input: string;
   onInputChange: (value: string) => void;
-  onSend: () => void;
+  onSendIdeation: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
   busy: boolean;
   composerPlaceholder: string;
   targetPickerItems: readonly RequirementsComposerTargetPickerItem[];
@@ -79,7 +80,7 @@ export function RequirementsIdeationChatPanel({
   composerTextAreaRef,
   input,
   onInputChange,
-  onSend,
+  onSendIdeation,
   busy,
   composerPlaceholder,
   targetPickerItems,
@@ -140,16 +141,19 @@ export function RequirementsIdeationChatPanel({
           </button>
         </div>
       ) : null}
-      <RequirementsComposerGpt
+      <ServiceDesignComposer
+        stage="ideation"
         textAreaRef={composerTextAreaRef}
         value={input}
         onChange={onInputChange}
-        onSend={onSend}
         busy={busy || aiInvokePending}
         disabled={false}
         placeholder={composerPlaceholder}
         targetPickerItems={targetPickerItems}
-        toolsMenu={{
+        onSendIdeation={onSendIdeation}
+        onSendServiceFlow={async () => {}}
+        onSendFeaturePlanning={async () => {}}
+        ideationToolsMenu={{
           onOrganizeRequirements: () => void onOrganizeRequirements(),
           organizeDisabled,
           draftViewAvailable: draftDocTruthy,

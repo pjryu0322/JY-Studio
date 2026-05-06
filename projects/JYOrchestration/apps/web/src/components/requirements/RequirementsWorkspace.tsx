@@ -69,6 +69,7 @@ import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailPart
 import { REQUIREMENTS_IDEATION_HTTP, requirementsAiConnectionUrl } from "@/lib/requirements/requirementsIdeationHttp";
 import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
 import { isServiceFlowApprovedForFeaturePlanning } from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
+import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { pickWorkspaceAiHandoffMember } from "@/components/requirements/workspace/pickWorkspaceAiHandoffMember";
 import { useRequirementsStageRouteRedirect } from "@/components/requirements/workspace/useRequirementsStageRouteRedirect";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
@@ -842,7 +843,7 @@ export function RequirementsWorkspace({
     return Boolean(row?.memberType === "AI");
   }, []);
 
-  const onSend = useCallback(async () => {
+  const runIdeationSend = useCallback(async (harnessPayload: ServiceDesignHarnessPayload) => {
     if (requirementsSendFlightRef.current) {
       ideationSendDevLog("start", "ignored-in-flight");
       return;
@@ -928,6 +929,7 @@ export function RequirementsWorkspace({
             setInput,
             setReplyTo,
             showErrorToast,
+            serviceDesignHarness: harnessPayload,
           });
         } finally {
           setAiInvokePending(false);
@@ -972,6 +974,24 @@ export function RequirementsWorkspace({
     replyTo,
     showErrorToast,
   ]);
+
+  const handleServiceDesignComposerSend = useCallback(
+    async (payload: ServiceDesignHarnessPayload) => {
+      if (activeStage === "ideation") {
+        await runIdeationSend(payload);
+        return;
+      }
+      if (activeStage === "service-flow") {
+        return;
+      }
+      if (activeStage === "feature-planning") {
+        // TODO(service-design-singlechat): replace nested FeaturePlanningWorkspace composer with ServiceDesignComposer in the next phase.
+        // TODO(service-design-harness): pass payload.serviceDesignStage and payload.mentionedAI into this stage API.
+        return;
+      }
+    },
+    [activeStage, runIdeationSend]
+  );
 
   const onPanelBlurSave = useCallback(async () => {
     if (busy) return;
@@ -1167,7 +1187,7 @@ export function RequirementsWorkspace({
         composerTextAreaRef={composerTextAreaRef}
         input={input}
         onInputChange={setInput}
-        onSend={() => void onSend()}
+        onSendIdeation={handleServiceDesignComposerSend}
         busy={busy}
         composerPlaceholder={composerPlaceholder}
         targetPickerItems={targetPickerItems}
@@ -1179,6 +1199,7 @@ export function RequirementsWorkspace({
     </div>
   );
 
+  // TODO(service-design-singlechat): replace nested FeaturePlanningWorkspace composer with ServiceDesignComposer in the next phase.
   const featurePlanningStage = resolvedProjectId.trim() ? (
     <RequirementsFeaturePlanningStagePanel projectId={resolvedProjectId.trim()} />
   ) : (

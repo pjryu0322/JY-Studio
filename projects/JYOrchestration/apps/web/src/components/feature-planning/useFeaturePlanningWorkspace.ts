@@ -433,7 +433,7 @@ export function useFeaturePlanningWorkspace(projectId: string) {
       setPlannerInputHint(null);
       setChatLoading(true);
       try {
-        // TODO(service-design-harness): merge `buildServiceDesignHarnessPayload("feature-planning", t)` into this payload (or unified turn API) when backend contract is extended.
+        // TODO(service-design-harness): pass payload.serviceDesignStage and payload.mentionedAI into this stage API (shared composer phase).
         const res = await fetch("/api/features/planner-turn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

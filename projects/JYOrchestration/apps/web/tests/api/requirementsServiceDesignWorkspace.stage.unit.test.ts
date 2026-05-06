@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { resolveRequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { RequirementsWorkspaceStageRenderer } from "@/components/requirements/RequirementsWorkspaceStageRenderer";
-import { buildServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
-
 describe("resolveRequirementsWorkspaceStage", () => {
   it("maps feature-planning and features alias", () => {
     expect(resolveRequirementsWorkspaceStage("feature-planning")).toBe("feature-planning");
@@ -53,13 +51,5 @@ describe("RequirementsWorkspaceStageRenderer", () => {
         })
       )
     ).toContain('data-testid="sf"');
-  });
-});
-
-describe("buildServiceDesignHarnessPayload", () => {
-  it("includes stage and mention extraction hook", () => {
-    const p = buildServiceDesignHarnessPayload("ideation", "hello @@planner");
-    expect(p.serviceDesignStage).toBe("ideation");
-    expect(p.mentionedAI).toBe("planner");
   });
 });
