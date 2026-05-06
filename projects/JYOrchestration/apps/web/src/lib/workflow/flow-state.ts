@@ -82,6 +82,7 @@ export function resolveAppFlowStepFromLocation(pathname: string, searchParams: U
   if (p === "/requirements" || p.startsWith("/requirements/")) {
     const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
     if (stage === "service-flow") return "service_flow";
+    if (stage === "feature-planning" || stage === "feature_planning") return "features";
     if (stage === "features") return "features";
     if (stage === "execution") return "execution";
     if (stage === "prototype-review") return "prototype_review";
@@ -150,7 +151,13 @@ export function isWorkflowStepNavActive(
   if (stepId === "requirements") {
     if (!(pathname === "/requirements" || pathname.startsWith("/requirements/"))) return false;
     const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
-    return qp === ctx && stage !== "service-flow";
+    return (
+      qp === ctx &&
+      stage !== "service-flow" &&
+      stage !== "feature-planning" &&
+      stage !== "feature_planning" &&
+      stage !== "features"
+    );
   }
   if (stepId === "service_flow") {
     if (!(pathname === "/requirements" || pathname.startsWith("/requirements/"))) return false;
@@ -160,7 +167,7 @@ export function isWorkflowStepNavActive(
   if (stepId === "features") {
     if (pathname === "/requirements" || pathname.startsWith("/requirements/")) {
       const stage = String(sp.get("stage") ?? "").trim().toLowerCase();
-      return qp === ctx && stage === "features";
+      return qp === ctx && (stage === "features" || stage === "feature-planning" || stage === "feature_planning");
     }
     if (!(pathname === "/features" || pathname.startsWith("/features/"))) return false;
     return qp === ctx;

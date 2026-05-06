@@ -7,10 +7,14 @@ export function RequirementsWorkspaceStageRenderer({
   activeStage,
   ideationStage,
   serviceFlowStage,
+  featurePlanningStage,
 }: {
   readonly activeStage: RequirementsWorkspaceStage;
   readonly ideationStage: ReactNode;
   readonly serviceFlowStage: ReactNode;
+  readonly featurePlanningStage: ReactNode;
 }) {
-  return <>{activeStage === "service-flow" ? serviceFlowStage : ideationStage}</>;
+  if (activeStage === "feature-planning") return <>{featurePlanningStage}</>;
+  if (activeStage === "service-flow") return <>{serviceFlowStage}</>;
+  return <>{ideationStage}</>;
 }

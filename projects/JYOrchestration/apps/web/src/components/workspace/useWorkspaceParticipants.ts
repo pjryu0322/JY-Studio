@@ -12,7 +12,9 @@ export function resolveParticipantContextKey(
   override?: WorkspaceAiMemberId
 ): WorkspaceAiMemberId {
   if (override) return override;
-  return activeStage === "service-flow" ? "actor_flow" : "ideation";
+  if (activeStage === "service-flow") return "actor_flow";
+  if (activeStage === "feature-planning") return "feature_planning";
+  return "ideation";
 }
 
 export function useWorkspaceParticipants(params: {

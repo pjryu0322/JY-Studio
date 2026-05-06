@@ -9,5 +9,6 @@ export function pickWorkspaceAiHandoffMember(
   if (!ids.length) return resolveParticipantContextKey(stage);
   if (stage === "service-flow" && ids.includes("actor_flow")) return "actor_flow";
   if (stage === "ideation" && ids.includes("ideation")) return "ideation";
+  if (stage === "feature-planning" && ids.includes("feature_planning")) return "feature_planning";
   return ids[0]!;
 }

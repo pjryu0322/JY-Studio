@@ -418,6 +418,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     let facilitatorFinalRoom: RequirementsRoomStateV3;
     try {
       const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
+      // TODO(service-design-harness): merge `buildServiceDesignHarnessPayload("ideation", text)` into this body when the facilitator route accepts harness fields.
       const res = await credentialsIncludeFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
