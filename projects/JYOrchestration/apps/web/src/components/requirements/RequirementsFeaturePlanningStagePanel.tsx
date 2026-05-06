@@ -10,9 +10,18 @@ import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDe
 export function RequirementsFeaturePlanningStagePanel({
   projectId,
   singleChatSendRef,
+  onSingleChatAiMessages,
 }: {
   readonly projectId: string;
   readonly singleChatSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
+  readonly onSingleChatAiMessages?: (messages: readonly { content: string; speakerName?: string }[]) => void | Promise<void>;
 }) {
-  return <FeaturePlanningWorkspace projectId={projectId} singleChatMode singleChatSendRef={singleChatSendRef} />;
+  return (
+    <FeaturePlanningWorkspace
+      projectId={projectId}
+      singleChatMode
+      singleChatSendRef={singleChatSendRef}
+      onSingleChatAiMessages={onSingleChatAiMessages}
+    />
+  );
 }
