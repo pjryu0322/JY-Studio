@@ -37,7 +37,7 @@ export type RequirementsServiceFlowStageProps = ServiceFlowStageControllerInput 
   /** SingleChat: `/requirements`에서 stage-aware send 핸들러로 위임 */
   readonly onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
   /** SingleChat: stage 내부 send 로직을 `/requirements`로 노출 */
-  readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload) => void) | null };
+  readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
   /** SingleChat: 입력 UI는 parent(ServiceDesignComposer)만 사용 */
   readonly singleChatMode?: boolean;
 };
@@ -56,9 +56,9 @@ export function RequirementsServiceFlowStage({
   // Expose the stage-local send executor to `/requirements` (single composer harness routing).
   useEffect(() => {
     if (!serviceFlowSendRef) return;
-    serviceFlowSendRef.current = (payload) => {
-      // NOTE: in SingleChat we use parent value, but keep fallback to current input.
-      w.sendMessage(payload);
+    serviceFlowSendRef.current = async (payload, text) => {
+      // SingleChat: always use parent text (do not rely on stage-local input state).
+      w.sendMessage(payload, text);
     };
     return () => {
       if (serviceFlowSendRef.current) serviceFlowSendRef.current = null;

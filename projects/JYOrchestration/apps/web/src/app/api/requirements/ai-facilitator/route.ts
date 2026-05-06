@@ -5,6 +5,7 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import {
   runRequirementsFacilitatorOpenAI,
   runRequirementsIdeationInterviewBootstrapOpenAI,
+  runRequirementsIdeationInterviewSeedFromProjectOpenAI,
   type RequirementsAiResponseStyle,
 } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 
@@ -121,10 +122,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const seed = bootstrapInterview
+      ? await runRequirementsIdeationInterviewSeedFromProjectOpenAI({
+          projectName,
+          projectDescription,
+        })
+      : null;
+
     return NextResponse.json({
       success: true,
       data: {
         reply: result.text,
+        seedInterviewState: seed && seed.ok ? seed.wire : null,
       },
     });
   } catch (error) {

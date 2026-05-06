@@ -41,16 +41,13 @@ export function RequirementsServiceDesignStageNav({
 }>) {
   const router = useRouter();
   const pid = projectId.trim();
-  const protoHref = appFlowStepHref("execution", pid || null);
 
   const step1Active = activeStage === "ideation";
   const step2Active = activeStage === "service-flow";
   const step3Active = activeStage === "feature-planning";
-  const step4Active = false;
 
   const step2Reachable = ideationReadyForServiceFlow;
   const step3Reachable = serviceFlowReadyForFeaturePlanning;
-  const step4Reachable = serviceFlowReadyForFeaturePlanning;
 
   const pill = (label: string, active: boolean, reachable: boolean, href: string | null) => {
     const enabled = reachable || active;
@@ -72,7 +69,6 @@ export function RequirementsServiceDesignStageNav({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4, marginBottom: 10 }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginRight: 4 }}>단계</span>
         {pill("아이디어 구체화", step1Active, true, requirementsHref(pid, "ideation"))}
         <span style={{ color: t.textMuted, fontSize: 12 }} aria-hidden>
           →
@@ -91,18 +87,6 @@ export function RequirementsServiceDesignStageNav({
           step3Active,
           step3Reachable,
           step3Reachable || step3Active ? requirementsHref(pid, "feature-planning") : null
-        )}
-        <span style={{ color: t.textMuted, fontSize: 12 }} aria-hidden>
-          →
-        </span>
-        {step4Reachable || step4Active ? (
-          <Link href={protoHref} prefetch={false} style={stepShell(step4Active, true)}>
-            프로토타입 생성
-          </Link>
-        ) : (
-          <span style={stepShell(step4Active, false)} aria-disabled>
-            프로토타입 생성
-          </span>
         )}
       </div>
 
@@ -147,28 +131,6 @@ export function RequirementsServiceDesignStageNav({
         >
           기능정리로 이동
         </button>
-        <Link
-          href={protoHref}
-          prefetch={false}
-          aria-disabled={!serviceFlowReadyForFeaturePlanning}
-          onClick={(e) => {
-            if (!serviceFlowReadyForFeaturePlanning) e.preventDefault();
-          }}
-          style={{
-            padding: "6px 12px",
-            borderRadius: 8,
-            border: `1px solid ${t.borderStrong}`,
-            background: serviceFlowReadyForFeaturePlanning ? t.accentTealSurface : t.border,
-            fontSize: 12,
-            fontWeight: 700,
-            textDecoration: "none",
-            color: serviceFlowReadyForFeaturePlanning ? t.accentTealFg : t.textMuted,
-            pointerEvents: serviceFlowReadyForFeaturePlanning ? "auto" : "none",
-            opacity: serviceFlowReadyForFeaturePlanning ? 1 : 0.55,
-          }}
-        >
-          프로토타입 생성으로 이동
-        </Link>
       </div>
     </div>
   );

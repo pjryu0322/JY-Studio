@@ -62,7 +62,7 @@ export function ServiceFlowWorkspace({
   ) => Promise<readonly RequirementsMessage[]>;
   readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
   readonly onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
-  readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload) => void) | null };
+  readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
 }) {
   return (
     <section style={wrap} aria-label="액터 및 서비스 흐름 정의">

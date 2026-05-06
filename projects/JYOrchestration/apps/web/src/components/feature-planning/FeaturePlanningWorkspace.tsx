@@ -114,7 +114,10 @@ export function FeaturePlanningWorkspace({
     singleChatSendRef.current = async (payload, text) => {
       if (payload.serviceDesignStage !== "feature-planning") return;
       // IMPORTANT: reuse existing feature-planning send logic; no contract refactor in this phase.
-      // TODO(service-design-harness): pass payload.serviceDesignStage and payload.mentionedAI into this stage API when backend contract is extended.
+      // TODO(service-design-harness): feature-planning currently mirrors SingleChat messages,
+      // but its backend AI call does not yet apply `runHarness()` (only metadata exists at the composer level).
+      // When the backend contract is extended, pass payload.serviceDesignStage and payload.mentionedAI through,
+      // and confirm `runHarness()` is executed in the feature-planning execution path before claiming completion.
       const before = messagesRef.current ?? [];
       const beforeIds = new Set(before.map((m) => m.id));
       await shell.sendMessage(text);

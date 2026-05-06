@@ -124,8 +124,8 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
     );
 
   const notificationsBell = p.hasSession ? <PlatformNotificationsBell enabled /> : null;
-  const promptTimelineBtn = p.hasSession && isPromptTimelineDebugClient() ? (
-    p.workNotesProjectId?.trim() ? (
+  const promptTimelineBtn =
+    p.hasSession && isPromptTimelineDebugClient() && p.workNotesProjectId?.trim() ? (
       <Link
         href={`/prompt-timeline?projectId=${encodeURIComponent(p.workNotesProjectId.trim())}`}
         prefetch={false}
@@ -154,8 +154,7 @@ export function TopRightToolbar(p: TopRightToolbarProps) {
           <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
         </svg>
       </Link>
-    ) : null
-  ) : null;
+    ) : null;
   const workNoteBtn = p.hasSession ? <UserWorkNoteButton /> : null;
   const projectWorkNoteBtn = p.hasSession ? (
     <>

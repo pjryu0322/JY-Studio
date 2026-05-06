@@ -52,6 +52,7 @@ import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE, sanitizeIdeationInterviewFi
 import {
   emptyProblemInterviewState,
   pickNextAskableInterviewSlot,
+  problemInterviewStateFromAnalyzerWireInput,
   problemInterviewStrictFilledCount,
   proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
@@ -111,6 +112,7 @@ import {
   shouldSkipFeaturePlanningMirror,
   shouldSkipFeaturePlanningAiMirror,
 } from "@/lib/service-design/serviceDesignSingleChatFeaturePlanningMirror";
+import { dispatchServiceFlowSingleChatSend } from "@/lib/service-design/serviceDesignSingleChatServiceFlowSend";
 
 
 export function RequirementsWorkspace({
@@ -158,6 +160,7 @@ export function RequirementsWorkspace({
   const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
+  const [resetConversationBusy, setResetConversationBusy] = useState(false);
   const [fetchNonce, setFetchNonce] = useState(0);
   const [workspaceAiGraph, setWorkspaceAiGraph] = useState<WorkspaceAiGraphMemberWire[] | null>(null);
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
@@ -189,7 +192,7 @@ export function RequirementsWorkspace({
   const sendDraftRestoreRef = useRef<string | null>(null);
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
-  const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload) => void) | null>(null);
+  const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
   const featurePlanningSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
 
   const stage = useMemo(() => {
@@ -754,7 +757,7 @@ export function RequirementsWorkspace({
     const flightKey = onboardingKey;
 
     void (async () => {
-      const persistFirstQuestion = async (bodyText: string): Promise<boolean> => {
+      const persistFirstQuestion = async (bodyText: string, seedWire?: unknown | null): Promise<boolean> => {
         const nowIso = new Date().toISOString();
         const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
           newChatMessage({
@@ -767,8 +770,9 @@ export function RequirementsWorkspace({
             meta: { internalType: IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE },
           }),
         ]);
+        const seeded = seedWire ? problemInterviewStateFromAnalyzerWireInput(seedWire, nowIso) : emptyProblemInterviewState(nowIso);
         try {
-          await persistRemote(nextRoom, {}, { onboardingShown: true, problemInterview: emptyProblemInterviewState(nowIso) });
+          await persistRemote(nextRoom, {}, { onboardingShown: true, problemInterview: seeded });
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
           return true;
         } catch (pe) {
@@ -792,20 +796,25 @@ export function RequirementsWorkspace({
             bootstrapInterview: true,
           }),
         });
-        const json = (await res.json()) as { success?: boolean; data?: { reply?: string }; message?: string };
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: { reply?: string; seedInterviewState?: unknown | null };
+          message?: string;
+        };
         const raw = res.ok && json.success && json.data?.reply ? String(json.data.reply) : "";
         const bodyText = sanitizeIdeationInterviewFirstQuestion(raw);
         if (cancelled) return;
-        const ok = await persistFirstQuestion(bodyText);
+        const seedWire = res.ok && json.success ? (json.data?.seedInterviewState ?? null) : null;
+        const ok = await persistFirstQuestion(bodyText, seedWire);
         if (!ok && !cancelled) {
           ideationBootstrapFlightRef.current = null;
-          await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""));
+          await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""), null);
         }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "인터뷰 시작에 실패했습니다.");
         ideationBootstrapFlightRef.current = null;
-        await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""));
+        await persistFirstQuestion(sanitizeIdeationInterviewFirstQuestion(""), null);
       }
     })();
 
@@ -822,6 +831,36 @@ export function RequirementsWorkspace({
     setPlannerTypePickerOpen(true);
     return;
   }, []);
+
+  const onResetConversation = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) return;
+    const remoteLockedLocal = !pid;
+    if (remoteLockedLocal) return;
+    if (busy || resetConversationBusy) return;
+    if (typeof window !== "undefined") {
+      const ok = window.confirm("대화 내역을 모두 삭제하고 아이디어 구체화를 다시 시작할까요? 이 작업은 되돌릴 수 없습니다.");
+      if (!ok) return;
+    }
+    setResetConversationBusy(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const base = roomRef.current;
+      const cleared = patchRequirementsRoomConversationMessages(base, pid, []);
+      const nextRoom: RequirementsRoomStateV3 = {
+        ...cleared,
+        requirementsDraft: null,
+      };
+      setRoom(nextRoom);
+      setReplyTo(null);
+      setInput("");
+      setOnboardingAppliedKey(null);
+      ideationBootstrapFlightRef.current = null;
+      await persistRemote(nextRoom, {}, { onboardingShown: false, problemInterview: emptyProblemInterviewState(nowIso), lastUserDraftText: "" });
+    } finally {
+      setResetConversationBusy(false);
+    }
+  }, [resolvedProjectId, busy, resetConversationBusy, persistRemote]);
 
 
   const handleGenerateDeliverables = useRequirementsHandleGenerateDeliverables({
@@ -988,16 +1027,13 @@ export function RequirementsWorkspace({
 
   const runServiceFlowSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
-      // Safety guard
-      if (payload.serviceDesignStage !== "service-flow") return;
-      // IMPORTANT: reuse the existing stage-local send logic (do not rewrite service-flow pipeline here).
-      const fn = serviceFlowSendRef.current;
-      if (!fn) return;
       const text = input.trim();
-      if (!text) return;
-      // NOTE: stage-local pipeline reads its own input today; we keep it intact and clear parent input after dispatch.
-      await fn(payload);
-      setInput("");
+      await dispatchServiceFlowSingleChatSend({
+        payload,
+        text,
+        sendRefCurrent: serviceFlowSendRef.current,
+        onAfterDispatch: () => setInput(""),
+      });
     },
     [input]
   );
@@ -1427,6 +1463,14 @@ export function RequirementsWorkspace({
         busy={busy}
         remoteLocked={remoteLocked}
         onOrganizeRequirements={() => void onOrganizeRequirements()}
+        onResetConversation={() => void onResetConversation()}
+        resetConversationDisabled={
+          remoteLocked ||
+          busy ||
+          resetConversationBusy ||
+          conversationStatus !== "loaded" ||
+          room.requirementsConversation.messages.length === 0
+        }
         workflowGuidanceBanner={workflowGuidanceBanner}
         loadError={loadError}
         onClearLoadErrorAndRetry={() => {

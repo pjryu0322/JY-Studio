@@ -30,7 +30,7 @@ export type RequirementsServiceFlowStagePanelProps = Readonly<{
   /** SingleChat: `/requirements`에서 stage-aware send 핸들러로 위임 */
   onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
   /** SingleChat: stage 내부 send 로직을 `/requirements`로 노출 */
-  serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload) => void) | null };
+  serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
   /** SingleChat: 입력 UI는 parent(ServiceDesignComposer)만 사용 */
   singleChatMode?: boolean;
 }>;
