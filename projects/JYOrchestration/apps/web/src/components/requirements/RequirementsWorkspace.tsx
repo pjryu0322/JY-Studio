@@ -65,6 +65,7 @@ import {
   type RequirementsStateJson,
   type RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
@@ -764,6 +765,7 @@ export function RequirementsWorkspace({
         readonly fallbackReason?: string;
         readonly promptText?: string;
         readonly promptAtIso?: string;
+        readonly promptTrace?: RequirementsPromptTimelineEntry | null;
       }): Promise<boolean> => {
         const nowIso = new Date().toISOString();
         const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
@@ -786,12 +788,16 @@ export function RequirementsWorkspace({
         const seeded = params.seedWire
           ? problemInterviewStateFromAnalyzerWireInput(params.seedWire, nowIso)
           : emptyProblemInterviewState(nowIso);
+        const existingTimeline = Array.isArray(stateJsonRef.current.promptTimeline) ? stateJsonRef.current.promptTimeline : [];
+        const incomingTimeline: RequirementsPromptTimelineEntry[] = params.promptTrace ? [params.promptTrace] : [];
+        const nextTimeline = [...existingTimeline, ...incomingTimeline].slice(-50);
         try {
           await persistRemote(nextRoom, {}, {
             onboardingShown: true,
             problemInterview: seeded,
             ...(params.promptText ? { lastPromptText: params.promptText } : {}),
             ...(params.promptAtIso ? { lastPromptGeneratedAt: params.promptAtIso } : {}),
+            ...(incomingTimeline.length ? { promptTimeline: nextTimeline } : {}),
           });
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
           return true;
@@ -838,6 +844,31 @@ export function RequirementsWorkspace({
           okReply
             ? undefined
             : [String(json.code ?? "").trim(), String(json.message ?? "").trim(), `HTTP ${res.status}`].filter(Boolean).join(" · ");
+        const coercePromptTrace = (raw: unknown): RequirementsPromptTimelineEntry | null => {
+          if (!raw || typeof raw !== "object") return null;
+          const r = raw as Record<string, unknown>;
+          const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
+          const action = typeof r.action === "string" ? r.action : "";
+          const stage = typeof r.stage === "string" ? r.stage : "";
+          const source = typeof r.source === "string" ? r.source : "";
+          if (!createdAt || !action || !stage || !source) return null;
+          return {
+            stage,
+            action,
+            source,
+            createdAt,
+            ...(typeof r.aiMember === "string" ? { aiMember: r.aiMember } : {}),
+            ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
+            ...(typeof r.responseText === "string" ? { responseText: r.responseText } : {}),
+            ...(typeof r.error === "string" ? { error: r.error } : {}),
+            ...(typeof r.fallbackText === "string" ? { fallbackText: r.fallbackText } : {}),
+            ...(typeof r.model === "string" || r.model === null ? { model: r.model as any } : {}),
+            ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as any } : {}),
+          };
+        };
+        const promptTrace = okReply
+          ? coercePromptTrace((json.data as any)?.promptTrace)
+          : coercePromptTrace((json as any)?.data?.promptTrace);
         const ok = await persistFirstQuestion({
           bodyText,
           seedWire,
@@ -848,6 +879,7 @@ export function RequirementsWorkspace({
                 promptAtIso: String(json.data?.calledAt ?? "").trim() || undefined,
               }
             : { fallbackReason }),
+          promptTrace,
         });
         if (!ok && !cancelled) {
           ideationBootstrapFlightRef.current = null;
@@ -856,6 +888,15 @@ export function RequirementsWorkspace({
             seedWire: null,
             source: "fallback",
             fallbackReason: "persist_failed",
+            promptTrace: {
+              stage: "ideation",
+              action: "bootstrapInterview",
+              aiMember: "AI 기획자",
+              source: "fallback",
+              error: "persist_failed",
+              fallbackText: sanitizeIdeationInterviewFirstQuestion(""),
+              createdAt: new Date().toISOString(),
+            },
           });
         }
       } catch (e) {
@@ -867,6 +908,15 @@ export function RequirementsWorkspace({
           seedWire: null,
           source: "fallback",
           fallbackReason: e instanceof Error ? e.message : "bootstrap_failed",
+          promptTrace: {
+            stage: "ideation",
+            action: "bootstrapInterview",
+            aiMember: "AI 기획자",
+            source: "fallback",
+            error: e instanceof Error ? e.message : "bootstrap_failed",
+            fallbackText: sanitizeIdeationInterviewFirstQuestion(""),
+            createdAt: new Date().toISOString(),
+          },
         });
       }
     })();
@@ -1590,6 +1640,7 @@ export function RequirementsWorkspace({
           lastPromptView={persistedPromptState.lastPromptView ?? null}
           lastPromptText={persistedPromptState.lastPromptText}
           lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
+          promptTimeline={persistedPromptState.promptTimeline ?? null}
           ideationConversationForPromptExport={conversationStatus === "loaded" ? ideationConversationOnly : null}
           exportBaseName={project?.name?.trim() ?? ""}
           summaryModalOpen={summaryModalOpen}

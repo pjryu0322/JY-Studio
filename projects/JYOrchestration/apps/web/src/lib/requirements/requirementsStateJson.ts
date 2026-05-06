@@ -40,6 +40,20 @@ export type RequirementsOrganizePlannerState = {
   } | null;
 };
 
+export type RequirementsPromptTimelineEntry = {
+  stage: "ideation" | "service-flow" | "feature-planning" | string;
+  action: string;
+  aiMember?: string;
+  source: "llm" | "fallback" | "system" | string;
+  promptText?: string;
+  responseText?: string;
+  error?: string;
+  fallbackText?: string;
+  model?: string | null;
+  provider?: string | null;
+  createdAt: string;
+};
+
 export type RequirementsStateJson = {
   lastSavedAt?: string;
   lastOrganizedAt?: string;
@@ -73,6 +87,8 @@ export type RequirementsStateJson = {
   /** 원문 프롬프트(복사·디버그용, 보통 `lastPromptView.copyText`) */
   lastPromptText?: string;
   lastPromptGeneratedAt?: string;
+  /** 요구사항(아이디어 구체화) 부트스트랩 등 프롬프트/응답 타임라인(영구 저장 JSON) */
+  promptTimeline?: RequirementsPromptTimelineEntry[];
   /** 전송 전 입력창 초안(세션 간 복원) */
   lastUserDraftText?: string;
   /** AI 산출물 초안(회의 요약·문제정의서 등), 버전은 유형별로 증가 */
@@ -252,6 +268,34 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const root = unwrapDbJsonField(raw);
   if (!root || typeof root !== "object") return {};
   const o = root as Record<string, unknown>;
+  const promptTimelineRaw = Array.isArray(o.promptTimeline) ? (o.promptTimeline as unknown[]) : null;
+  const promptTimeline: RequirementsPromptTimelineEntry[] | undefined = promptTimelineRaw
+    ? promptTimelineRaw
+        .map((row) => {
+          if (!row || typeof row !== "object") return null;
+          const r = row as Record<string, unknown>;
+          const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
+          const action = typeof r.action === "string" ? r.action : "";
+          const stage = typeof r.stage === "string" ? r.stage : "";
+          const source = typeof r.source === "string" ? r.source : "";
+          if (!createdAt || !action || !stage || !source) return null;
+          return {
+            stage,
+            action,
+            source,
+            createdAt,
+            ...(typeof r.aiMember === "string" ? { aiMember: r.aiMember } : {}),
+            ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
+            ...(typeof r.responseText === "string" ? { responseText: r.responseText } : {}),
+            ...(typeof r.error === "string" ? { error: r.error } : {}),
+            ...(typeof r.fallbackText === "string" ? { fallbackText: r.fallbackText } : {}),
+            ...(typeof r.model === "string" || r.model === null ? { model: r.model as any } : {}),
+            ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as any } : {}),
+          } satisfies RequirementsPromptTimelineEntry;
+        })
+        .filter((x): x is RequirementsPromptTimelineEntry => Boolean(x))
+        .slice(-50)
+    : undefined;
   const lastPromptViewRaw = o.lastPromptView;
   const lastPromptView =
     lastPromptViewRaw === null
@@ -438,6 +482,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(lastPromptView !== undefined ? { lastPromptView } : {}),
     lastPromptText: typeof o.lastPromptText === "string" ? o.lastPromptText : undefined,
     lastPromptGeneratedAt: typeof o.lastPromptGeneratedAt === "string" ? o.lastPromptGeneratedAt : undefined,
+    ...(promptTimeline && promptTimeline.length ? { promptTimeline } : {}),
     lastUserDraftText: typeof o.lastUserDraftText === "string" ? o.lastUserDraftText : undefined,
     deliverableAssets: o.deliverableAssets === null ? null : parseDeliverableAssetsFromState(o.deliverableAssets),
     organizeContext: !("organizeContext" in o)

@@ -8,6 +8,7 @@ import type { RequirementsDraftDoc } from "@/lib/requirements/draftStore";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type RequirementsIdeationDocumentDrawersProps = Readonly<{
   promptDrawerOpen: boolean;
@@ -15,6 +16,7 @@ export type RequirementsIdeationDocumentDrawersProps = Readonly<{
   lastPromptView: RequirementsPromptPresenterView | null;
   lastPromptText?: string | null;
   lastPromptGeneratedAt?: string | null;
+  promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   ideationConversationForPromptExport: readonly RequirementsMessage[] | null;
   exportBaseName: string;
   summaryModalOpen: boolean;
@@ -47,6 +49,7 @@ export function RequirementsIdeationDocumentDrawers({
   lastPromptView,
   lastPromptText,
   lastPromptGeneratedAt,
+  promptTimeline,
   ideationConversationForPromptExport,
   exportBaseName,
   summaryModalOpen,
@@ -80,6 +83,7 @@ export function RequirementsIdeationDocumentDrawers({
         view={lastPromptView}
         lastPromptText={lastPromptText}
         lastPromptGeneratedAt={lastPromptGeneratedAt}
+        promptTimeline={promptTimeline}
         conversationMessages={ideationConversationForPromptExport}
         exportBaseName={exportBaseName}
       />
