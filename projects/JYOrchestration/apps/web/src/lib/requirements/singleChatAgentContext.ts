@@ -191,10 +191,12 @@ export async function resolveSingleChatAgentContext(
     for (const key of catalogKeys) {
       const def = catalog.find((c) => c.id === key);
       const row = graph.find((g) => g.catalogKey === key);
+      const roleFromCatalog = orchestrationRoleFromCatalogKey(key);
       selectedAgents.push({
         source: "catalog",
         catalogKey: key,
         displayName: def?.title ?? key,
+        aiOrchestrationRole: roleFromCatalog,
         enginePreference: row?.enginePreference ?? null,
         aiProvider: row?.aiProvider ?? null,
         aiModelOverride: row?.aiModelOverride ?? null,
@@ -231,6 +233,16 @@ export async function resolveSingleChatAgentContext(
     selectedAgents,
     promptBlock,
   };
+}
+
+function orchestrationRoleFromCatalogKey(key: WorkspaceAiMemberId): string | null {
+  // 서비스 기획 슬롯/라우팅에서 사용하는 내부 역할 문자열로 정규화.
+  if (key === "ideation") return "planner";
+  if (key === "actor_flow") return "service-designer";
+  if (key === "feature_planning") return "spec-reviewer";
+  if (key === "designer") return "spec-reviewer";
+  if (key === "security_reviewer") return "security-reviewer";
+  return null;
 }
 
 /** 단위 테스트·경량 호출: 메모리 그래프로 카탈로그만 해석 */

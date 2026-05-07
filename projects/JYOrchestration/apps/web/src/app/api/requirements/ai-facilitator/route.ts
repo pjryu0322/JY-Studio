@@ -19,6 +19,7 @@ import {
   resolveSingleChatAgentContext,
   type SingleChatSelectedAgentWire,
 } from "@/lib/requirements/singleChatAgentContext";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import {
   isWorkspaceServicePlanningScreenKey,
   parseWorkspaceScreenKey,
@@ -70,7 +71,7 @@ function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {
   return p ?? "requirements_ideation";
 }
 
-const ALL_ORCH_ROLES = new Set(["planner", "service-designer", "domain-expert", "spec-reviewer", "task-reviewer"]);
+const ALL_ORCH_ROLES = new Set(["planner", "service-designer", "domain-expert", "spec-reviewer", "task-reviewer", "security-reviewer"]);
 
 function effectiveOrchestrationRoles(agents: readonly SingleChatSelectedAgentWire[]): Set<string> {
   const raw = activeOrchestrationRolesFromAgents(agents);
@@ -89,11 +90,18 @@ function ensureOrchestrationBaseState(params: {
   return initialOrchestrationStateFromDefinitions(params.definitions, params.nowIso);
 }
 
-function initialOrchestrationPayload(projectName: string, projectDescription: string, projectType: string | null, nowIso: string) {
+function initialOrchestrationPayload(
+  projectName: string,
+  projectDescription: string,
+  projectType: string | null,
+  nowIso: string,
+  servicePlanningCatalogKeys: readonly WorkspaceAiMemberId[] | null
+) {
   const defs = buildDynamicServicePlanningSlotDefinitions({
     projectName,
     projectDescription,
     projectType,
+    servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys ?? [],
   });
   return initialOrchestrationStateFromDefinitions(defs, nowIso);
 }
@@ -170,10 +178,16 @@ export async function POST(request: NextRequest) {
     const workspaceScreenForChat = bootstrapInterview ? workspaceScreenForBootstrap : parseWorkspaceScreenForBody(body.workspaceScreenKey);
 
     const nowIsoInit = new Date().toISOString();
-    const orchInitialForBootstrap =
-      projectId && bootstrapInterview ? initialOrchestrationPayload(projectName, projectDescription, projectType, nowIsoInit) : null;
-
     const orchPlanningCtx = projectId ? await resolveServicePlanningOrchestrationContext(projectId) : null;
+    const servicePlanningCatalogKeys: WorkspaceAiMemberId[] | null = orchPlanningCtx
+      ? orchPlanningCtx.selectedAgents
+          .map((a) => (a.source === "catalog" ? a.catalogKey : undefined))
+          .filter((x): x is WorkspaceAiMemberId => Boolean(String(x ?? "").trim()))
+      : null;
+    const orchInitialForBootstrap =
+      projectId && bootstrapInterview
+        ? initialOrchestrationPayload(projectName, projectDescription, projectType, nowIsoInit, servicePlanningCatalogKeys)
+        : null;
 
     const agentCtxBootstrap =
       projectId && orchPlanningCtx
@@ -204,6 +218,7 @@ export async function POST(request: NextRequest) {
         projectName,
         projectDescription,
         projectType,
+        servicePlanningAgentCatalogKeys: (servicePlanningCatalogKeys ?? []) as WorkspaceAiMemberId[],
       });
       const nowIso = new Date().toISOString();
       const baseState = ensureOrchestrationBaseState({
@@ -314,7 +329,7 @@ export async function POST(request: NextRequest) {
       const orchPayload =
         orchInitialForBootstrap ??
         (projectId
-          ? initialOrchestrationPayload(projectName, projectDescription, projectType, new Date().toISOString())
+          ? initialOrchestrationPayload(projectName, projectDescription, projectType, new Date().toISOString(), servicePlanningCatalogKeys)
           : null);
 
       const plannerChosen = Boolean(orchPlanningCtx && plannerPreferredFromAgents(orchPlanningCtx.selectedAgents));

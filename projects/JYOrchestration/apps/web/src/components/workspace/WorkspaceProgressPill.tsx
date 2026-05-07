@@ -105,7 +105,7 @@ export function WorkspaceProgressPill({
                   <span className={styles.legendItem}>{useOrchestrationGrid ? "□ 미확정" : "□ 미확보"}</span>
                 </div>
                 {useOrchestrationGrid ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div className={styles.slotDetailsScroll} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                     {(interviewUi.orchestrationSlotSections ?? []).map((sec) =>
                       sec.slots.length ? (
                         <div key={sec.sectionTitle}>
@@ -133,12 +133,14 @@ export function WorkspaceProgressPill({
                     )}
                   </div>
                 ) : (
-                  <div className={styles.grid}>
+                  <div className={styles.slotDetailsScroll}>
+                    <div className={styles.grid}>
                     <div className={styles.slotCell} style={{ border: "1px solid #e2e8f0", background: "#f8fafc" }}>
                       <span className={styles.slotLabel}>오케스트레이션 슬롯을 불러오는 중…</span>
                       <span className={styles.slotIcon} style={{ color: "#475569" }}>
                         □
                       </span>
+                    </div>
                     </div>
                   </div>
                 )}

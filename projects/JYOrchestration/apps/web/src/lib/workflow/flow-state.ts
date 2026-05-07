@@ -36,7 +36,7 @@ export type AppFlowStepDef = Readonly<{
 }>;
 
 export const APP_FLOW_STEPS: readonly AppFlowStepDef[] = [
-  { id: "requirements", label: "아이디어 구체화" },
+  { id: "requirements", label: "서비스 기획" },
   { id: "service_flow", label: "액터 및 서비스 흐름 정의" },
   { id: "features", label: "기능 정리" },
   { id: "tasks", label: "작업 정리" },

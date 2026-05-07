@@ -9,12 +9,14 @@ import {
   buildSingleChatPromptTimelineEntry,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { resolveSingleChatAgentContext } from "@/lib/requirements/singleChatAgentContext";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import {
   buildDynamicServicePlanningSlotDefinitions,
   hashSlotDefinitions,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import { parseWorkspaceScreenKey, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
+import { resolveServicePlanningOrchestrationContext } from "@/lib/requirements/singleChatAgentContext";
 
 type Body = {
   projectId?: string;
@@ -79,11 +81,18 @@ export async function POST(request: NextRequest) {
     }
 
     const agentCtx = await resolveSingleChatAgentContext(projectId, workspaceScreen);
+    const servicePlanningAgents = projectId ? await resolveServicePlanningOrchestrationContext(projectId) : null;
+    const servicePlanningCatalogKeys: WorkspaceAiMemberId[] = servicePlanningAgents
+      ? servicePlanningAgents.selectedAgents
+          .map((a) => (a.source === "catalog" ? a.catalogKey : undefined))
+          .filter((x): x is WorkspaceAiMemberId => Boolean(String(x ?? "").trim()))
+      : [];
 
     const defs = buildDynamicServicePlanningSlotDefinitions({
       projectName,
       projectDescription,
       projectType,
+      servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys,
     });
     const orchParsed = parseRequirementsSingleChatOrchestrationV1(body.singleChatOrchestrationV1, defs);
     const orchestrationDigest =

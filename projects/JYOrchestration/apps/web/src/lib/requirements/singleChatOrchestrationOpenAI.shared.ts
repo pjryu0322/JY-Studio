@@ -3,6 +3,7 @@ import type { SlotPatchInput } from "@/lib/requirements/singleChatOrchestrationS
 
 export const FLOW_OWNERS = new Set(["service-designer", "domain-expert"]);
 export const DESIGN_OWNERS = new Set(["spec-reviewer", "task-reviewer"]);
+export const SECURITY_OWNERS = new Set(["security-reviewer"]);
 
 export function safeJsonParse(text: string): unknown {
   try {
