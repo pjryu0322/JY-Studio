@@ -10,7 +10,8 @@ import { parseRequirementsStateJson } from "@/lib/requirements/requirementsState
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 
 function mapRequirementsPromptTimelineToDebugEntries(promptTimeline: unknown, projectId: string): PromptTimelineEntry[] {
-  const state = parseRequirementsStateJson({ promptTimeline });
+  // `proj.requirementsStateJson` 전체를 받아도 promptTimeline을 파싱할 수 있어야 한다.
+  const state = parseRequirementsStateJson(promptTimeline);
   const list = Array.isArray(state.promptTimeline) ? state.promptTimeline : [];
   const out: PromptTimelineEntry[] = [];
   for (const e of list) {
