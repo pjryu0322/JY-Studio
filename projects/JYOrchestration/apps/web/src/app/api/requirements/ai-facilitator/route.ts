@@ -446,6 +446,12 @@ export async function POST(request: NextRequest) {
 
     const plannerChosenOk = Boolean(orchPlanningCtx && plannerPreferredFromAgents(orchPlanningCtx.selectedAgents));
 
+    const bootSug =
+      result.ok && Array.isArray(result.interviewSuggestions) && result.interviewSuggestions.length
+        ? [...result.interviewSuggestions]
+        : undefined;
+    const bootstrapSugSource =
+      bootstrapInterview && result.ok ? (bootSug?.length ? ("llm" as const) : ("empty" as const)) : undefined;
     const bootstrapPromptTrace = buildSingleChatPromptTimelineEntry({
       action: "bootstrapInterview",
       source: "llm",
@@ -462,6 +468,9 @@ export async function POST(request: NextRequest) {
       orchestratorAgent: "planner",
       delegatedAgents: [],
       fallback: false,
+      interviewQuestion: replyTrim,
+      ...(bootSug?.length ? { interviewSuggestions: bootSug } : {}),
+      ...(bootstrapSugSource ? { interviewSuggestionsSource: bootstrapSugSource } : {}),
     });
 
     const facilitatorPromptTrace =
@@ -481,6 +490,10 @@ export async function POST(request: NextRequest) {
           })
         : null;
 
+    const bootInterviewSug =
+      bootstrapInterview && result.ok && Array.isArray(result.interviewSuggestions) && result.interviewSuggestions.length
+        ? [...result.interviewSuggestions]
+        : undefined;
     return NextResponse.json({
       success: true,
       data: {
@@ -493,6 +506,8 @@ export async function POST(request: NextRequest) {
               calledAt: result.calledAt ?? new Date().toISOString(),
               promptTrace: bootstrapPromptTrace,
               ...(orchInitialForBootstrap ? { singleChatOrchestrationV1: orchInitialForBootstrap } : {}),
+              ...(bootInterviewSug?.length ? { interviewSuggestions: bootInterviewSug } : {}),
+              ...(result.ok && result.interviewAllowCustomInput === false ? { interviewAllowCustomInput: false } : {}),
             }
           : {
               promptTrace: facilitatorPromptTrace,

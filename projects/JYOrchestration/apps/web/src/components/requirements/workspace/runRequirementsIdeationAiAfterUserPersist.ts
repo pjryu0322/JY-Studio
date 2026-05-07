@@ -8,6 +8,7 @@ import {
   IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
 } from "@/lib/requirements/ideationInterviewBootstrap";
 import { bumpDraftVersion, type RequirementsDraftDoc } from "@/lib/requirements/draftStore";
+import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
 import {
   applyGlobalDelegationDefaults,
   coerceInterviewAnalyzerPayload,
@@ -87,6 +88,8 @@ type RunRequirementsIdeationAiAfterUserPersistContext = {
   /** SingleChat 화면 키 — AI Agent 절차별 매핑 조회용 (`requirements_ideation` 등) */
   readonly workspaceScreenKey?: string;
   readonly projectType?: string;
+  /** 인터뷰 추천 칩 선택 후 전송 시 한 번 소비 */
+  readonly consumeInterviewSelectedSuggestion?: () => string | null;
 };
 
 export async function runRequirementsIdeationAiAfterUserPersist(
@@ -117,6 +120,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     serviceDesignHarness,
     workspaceScreenKey: workspaceScreenKeyRaw,
     projectType,
+    consumeInterviewSelectedSuggestion,
   } = ctx;
 
   const workspaceScreenKey =
@@ -254,6 +258,16 @@ export async function runRequirementsIdeationAiAfterUserPersist(
                   : []),
               ],
             }) ?? ("painPoint" as ProblemInterviewSlot);
+      const suggestionChips = normalizeLlmInterviewSuggestions(plan.suggestions ?? []);
+      const interviewChipMeta =
+        plan.allowCustomInput === false
+          ? {
+              ...(suggestionChips.length ? { interviewSuggestions: suggestionChips } : {}),
+              interviewAllowCustomInput: false as const,
+            }
+          : suggestionChips.length
+            ? { interviewSuggestions: suggestionChips }
+            : {};
       const asked = withAskedSlot(mergedWithGlobalDelegation, slotForAsked, nowIso);
       const baseMsgs = withCalling.requirementsConversation.messages;
       if (
@@ -291,6 +305,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
               meta: {
                 internalType: IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
                 problemInterviewLastSlot: slotForAsked,
+                ...interviewChipMeta,
               },
             }),
           ],
@@ -385,13 +400,35 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     const nowIso = new Date().toISOString();
     const prevPi = (stateJsonRef.current.problemInterview as ProblemInterviewState | null | undefined) ?? null;
     const seeded = prevPi ?? emptyProblemInterviewState(nowIso);
-    const latestAiTurn = [...msgs].reverse().find((m) => m.role === "ai");
+    const lastUser = msgs.length ? msgs[msgs.length - 1] : null;
+    const replyParentId =
+      lastUser?.role === "user" && typeof lastUser.replyTo === "string" && lastUser.replyTo.trim()
+        ? lastUser.replyTo.trim()
+        : typeof effectiveReplyTo === "string" && effectiveReplyTo.trim()
+          ? effectiveReplyTo.trim()
+          : "";
+    const replyParentMsg = replyParentId ? msgs.find((m) => m.id === replyParentId) ?? null : null;
+    const latestAiTurn =
+      replyParentMsg?.role === "ai"
+        ? replyParentMsg
+        : [...msgs].reverse().find((m) => m.role === "ai") ?? null;
     const latestAiQuestion = String(latestAiTurn?.content ?? "").trim();
+    const replySlotFromUser =
+      lastUser?.meta?.replyToSlotKey && String(lastUser.meta.replyToSlotKey).trim()
+        ? String(lastUser.meta.replyToSlotKey).trim()
+        : undefined;
+    const replyTargetFromUser =
+      lastUser?.meta?.replyTargetSpeakerId && String(lastUser.meta.replyTargetSpeakerId).trim()
+        ? String(lastUser.meta.replyTargetSpeakerId).trim()
+        : undefined;
 
     let outcome: InterviewAnalyzerCallOutcome = { kind: "remote-fail" };
     if (pid) {
       try {
         ideationSendDevLog("analyzer-request", `id=${sendTraceId}`);
+        const orchBody = stateJsonRef.current.singleChatOrchestrationV1;
+        const selectedSuggestionRaw = (consumeInterviewSelectedSuggestion?.() ?? "").trim();
+        const selectedSuggestion = selectedSuggestionRaw || undefined;
         const ar = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.INTERVIEW_ANALYZE, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -399,10 +436,20 @@ export async function runRequirementsIdeationAiAfterUserPersist(
             projectId: pid,
             projectName,
             projectDescription,
+            projectType: projectType ?? "",
             userMessage: text,
             latestAiQuestion,
+            currentSlotKey:
+              typeof latestAiTurn?.meta?.problemInterviewLastSlot === "string" && latestAiTurn.meta.problemInterviewLastSlot.trim()
+                ? latestAiTurn.meta.problemInterviewLastSlot.trim()
+                : undefined,
+            ...(replyParentId ? { replyToMessageId: replyParentId } : {}),
+            ...(replySlotFromUser ? { replyToSlotKey: replySlotFromUser } : {}),
+            ...(replyTargetFromUser ? { replyTargetSpeakerId: replyTargetFromUser } : {}),
             currentInterviewState: problemInterviewStateToAnalyzerWire(seeded),
             workspaceScreenKey,
+            ...(orchBody !== undefined && orchBody !== null ? { singleChatOrchestrationV1: orchBody } : {}),
+            ...(selectedSuggestion ? { selectedSuggestion } : {}),
             ...(serviceDesignHarness
               ? {
                   serviceDesignStage: serviceDesignHarness.serviceDesignStage,

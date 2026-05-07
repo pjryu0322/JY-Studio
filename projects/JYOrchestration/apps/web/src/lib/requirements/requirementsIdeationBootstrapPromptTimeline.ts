@@ -96,7 +96,48 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
           candidateSlots: r.candidateSlots.map((x) => String(x ?? "").trim()).filter(Boolean),
         }
       : {}),
+    ...(typeof r.replyToMessageId === "string" && r.replyToMessageId.trim()
+      ? { replyToMessageId: r.replyToMessageId.trim() }
+      : {}),
+    ...(typeof r.replyToSlotKey === "string" && r.replyToSlotKey.trim()
+      ? { replyToSlotKey: r.replyToSlotKey.trim() }
+      : {}),
+    ...(typeof r.replyTargetSpeakerId === "string" && r.replyTargetSpeakerId.trim()
+      ? { replyTargetSpeakerId: r.replyTargetSpeakerId.trim() }
+      : {}),
+    ...(typeof r.previousQuestion === "string" && r.previousQuestion.trim()
+      ? { previousQuestion: r.previousQuestion.trim() }
+      : {}),
+    ...(typeof r.userAnswer === "string" && r.userAnswer.trim()
+      ? { userAnswer: r.userAnswer.trim() }
+      : {}),
+    ...(typeof r.currentSlotKey === "string" && r.currentSlotKey.trim()
+      ? { currentSlotKey: r.currentSlotKey.trim() }
+      : {}),
+    ...(typeof r.slotAdvanceDecision === "string" && r.slotAdvanceDecision.trim()
+      ? { slotAdvanceDecision: r.slotAdvanceDecision.trim() }
+      : {}),
+    ...(typeof r.shouldAskFollowUp === "boolean" ? { shouldAskFollowUp: r.shouldAskFollowUp } : {}),
+    ...(typeof r.followUpReason === "string" && r.followUpReason.trim()
+      ? { followUpReason: r.followUpReason.trim() }
+      : {}),
+    ...(typeof r.nextQuestionSlotKey === "string" && r.nextQuestionSlotKey.trim()
+      ? { nextQuestionSlotKey: r.nextQuestionSlotKey.trim() }
+      : {}),
     ...(typeof r.slotDependenciesChanged === "boolean" ? { slotDependenciesChanged: r.slotDependenciesChanged } : {}),
+    ...(typeof r.interviewQuestion === "string" && r.interviewQuestion.trim()
+      ? { interviewQuestion: r.interviewQuestion.trim() }
+      : {}),
+    ...(Array.isArray(r.interviewSuggestions)
+      ? {
+          interviewSuggestions: r.interviewSuggestions.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+    ...(r.interviewSuggestionsSource === "llm" ||
+    r.interviewSuggestionsSource === "empty" ||
+    r.interviewSuggestionsSource === "none"
+      ? { interviewSuggestionsSource: r.interviewSuggestionsSource }
+      : {}),
   };
 }
 
@@ -172,6 +213,19 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly confirmedSlots?: readonly string[];
   readonly candidateSlots?: readonly string[];
   readonly slotDependenciesChanged?: boolean;
+  readonly interviewQuestion?: string;
+  readonly interviewSuggestions?: readonly string[];
+  readonly interviewSuggestionsSource?: "llm" | "empty" | "none";
+  readonly replyToMessageId?: string;
+  readonly replyToSlotKey?: string;
+  readonly replyTargetSpeakerId?: string;
+  readonly previousQuestion?: string;
+  readonly userAnswer?: string;
+  readonly currentSlotKey?: string;
+  readonly slotAdvanceDecision?: string;
+  readonly shouldAskFollowUp?: boolean;
+  readonly followUpReason?: string;
+  readonly nextQuestionSlotKey?: string;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -199,6 +253,19 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.confirmedSlots?.length ? { confirmedSlots: [...params.confirmedSlots] } : {}),
     ...(params.candidateSlots?.length ? { candidateSlots: [...params.candidateSlots] } : {}),
     ...(params.slotDependenciesChanged !== undefined ? { slotDependenciesChanged: params.slotDependenciesChanged } : {}),
+    ...(params.interviewQuestion ? { interviewQuestion: params.interviewQuestion } : {}),
+    ...(params.interviewSuggestions?.length ? { interviewSuggestions: [...params.interviewSuggestions] } : {}),
+    ...(params.interviewSuggestionsSource ? { interviewSuggestionsSource: params.interviewSuggestionsSource } : {}),
+    ...(params.replyToMessageId ? { replyToMessageId: params.replyToMessageId } : {}),
+    ...(params.replyToSlotKey ? { replyToSlotKey: params.replyToSlotKey } : {}),
+    ...(params.replyTargetSpeakerId ? { replyTargetSpeakerId: params.replyTargetSpeakerId } : {}),
+    ...(params.previousQuestion ? { previousQuestion: params.previousQuestion } : {}),
+    ...(params.userAnswer ? { userAnswer: params.userAnswer } : {}),
+    ...(params.currentSlotKey ? { currentSlotKey: params.currentSlotKey } : {}),
+    ...(params.slotAdvanceDecision ? { slotAdvanceDecision: params.slotAdvanceDecision } : {}),
+    ...(typeof params.shouldAskFollowUp === "boolean" ? { shouldAskFollowUp: params.shouldAskFollowUp } : {}),
+    ...(params.followUpReason ? { followUpReason: params.followUpReason } : {}),
+    ...(params.nextQuestionSlotKey ? { nextQuestionSlotKey: params.nextQuestionSlotKey } : {}),
   };
 }
 
@@ -210,6 +277,9 @@ export function buildIdeationBootstrapFallbackPromptTrace(params: {
   readonly fallbackText: string;
   readonly createdAtIso?: string;
   readonly routingDecision?: string;
+  readonly interviewQuestion?: string;
+  readonly interviewSuggestions?: readonly string[];
+  readonly interviewSuggestionsSource?: "llm" | "empty" | "none";
 }): RequirementsPromptTimelineEntry {
   return {
     stage: IDEATION_BOOTSTRAP_PROMPT_TIMELINE_STAGE,
@@ -220,6 +290,9 @@ export function buildIdeationBootstrapFallbackPromptTrace(params: {
     fallbackText: params.fallbackText,
     createdAt: params.createdAtIso ?? new Date().toISOString(),
     ...(params.routingDecision ? { routingDecision: params.routingDecision } : { routingDecision: "bootstrap_contextual_fallback" }),
+    ...(params.interviewQuestion ? { interviewQuestion: params.interviewQuestion } : {}),
+    ...(params.interviewSuggestions?.length ? { interviewSuggestions: [...params.interviewSuggestions] } : {}),
+    ...(params.interviewSuggestionsSource ? { interviewSuggestionsSource: params.interviewSuggestionsSource } : {}),
   };
 }
 
@@ -229,6 +302,9 @@ export function buildIdeationBootstrapLlmPromptTrace(params: {
   readonly model?: string | null;
   readonly provider?: string | null;
   readonly createdAtIso?: string;
+  readonly interviewQuestion?: string;
+  readonly interviewSuggestions?: readonly string[];
+  readonly interviewSuggestionsSource?: "llm" | "empty" | "none";
 }): RequirementsPromptTimelineEntry {
   const pt = String(params.promptText ?? "").trim();
   return {
@@ -241,6 +317,9 @@ export function buildIdeationBootstrapLlmPromptTrace(params: {
     ...(params.model !== undefined ? { model: params.model } : {}),
     provider: params.provider ?? "openai",
     createdAt: params.createdAtIso ?? new Date().toISOString(),
+    ...(params.interviewQuestion ? { interviewQuestion: params.interviewQuestion } : {}),
+    ...(params.interviewSuggestions?.length ? { interviewSuggestions: [...params.interviewSuggestions] } : {}),
+    ...(params.interviewSuggestionsSource ? { interviewSuggestionsSource: params.interviewSuggestionsSource } : {}),
   };
 }
 

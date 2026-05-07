@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import { PROBLEM_INTERVIEW_SLOT_TOTAL } from "@/lib/requirements/problemInterview";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
@@ -25,7 +24,6 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   loadError: string | null;
   onClearLoadErrorAndRetry: () => void;
   onGoHome: () => void;
-  serviceDesignStageNav?: ReactNode;
 }>;
 
 export function RequirementsWorkspaceTopChrome({
@@ -46,7 +44,6 @@ export function RequirementsWorkspaceTopChrome({
   loadError,
   onClearLoadErrorAndRetry,
   onGoHome,
-  serviceDesignStageNav,
 }: RequirementsWorkspaceTopChromeProps) {
   const showOrganizeCta =
     Boolean(resolvedProjectIdTrimmed) &&
@@ -62,8 +59,6 @@ export function RequirementsWorkspaceTopChrome({
   return (
     <div className="jyo-requirements-workspace-top-chrome">
       <RequirementsHeader showProjectWorkflowNav={showProjectWorkflowNav} />
-
-      {serviceDesignStageNav}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6, marginBottom: 6 }}>
         <button

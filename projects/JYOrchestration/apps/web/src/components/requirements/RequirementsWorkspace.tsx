@@ -11,7 +11,6 @@ import { RequirementsIdeationDocumentDrawers } from "@/components/requirements/R
 import { RequirementsOrganizeProposalWorkspaceOverlay } from "@/components/requirements/RequirementsOrganizeProposalWorkspaceOverlay";
 import { RequirementsFeaturePlanningStagePanel } from "@/components/requirements/RequirementsFeaturePlanningStagePanel";
 import { RequirementsServiceFlowStagePanel } from "@/components/requirements/RequirementsServiceFlowStagePanel";
-import { RequirementsServiceDesignStageNav } from "@/components/requirements/RequirementsServiceDesignStageNav";
 import { RequirementsWorkspaceErrorBand } from "@/components/requirements/RequirementsWorkspaceErrorBand";
 import { RequirementsWorkspaceTopChrome } from "@/components/requirements/RequirementsWorkspaceTopChrome";
 import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
@@ -21,7 +20,6 @@ import {
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
-import { useWorkspaceSaveToast } from "@/components/workspace/useWorkspaceSaveToast";
 import { resolveParticipantContextKey, useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
 import { useRequirementsServiceFlowDraft } from "@/components/requirements/workspace/useRequirementsServiceFlowDraft";
 import { useRequirementsProjectLoad } from "@/components/requirements/workspace/useRequirementsProjectLoad";
@@ -80,13 +78,13 @@ import {
   buildIdeationBootstrapFallbackPromptTrace,
   coerceBootstrapPromptTrace,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
 import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
 import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailParticipants";
 import { REQUIREMENTS_IDEATION_HTTP, requirementsAiConnectionUrl } from "@/lib/requirements/requirementsIdeationHttp";
 import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
-import { isServiceFlowApprovedForFeaturePlanning } from "@/lib/featurePlanning/featurePlanningServiceFlowGate";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { pickWorkspaceAiHandoffMember } from "@/components/requirements/workspace/pickWorkspaceAiHandoffMember";
 import { useRequirementsStageRouteRedirect } from "@/components/requirements/workspace/useRequirementsStageRouteRedirect";
@@ -205,6 +203,8 @@ export function RequirementsWorkspace({
   /** 전송 핸들러 동시 실행(연타·Enter 이중) 방지 — React `busy`보다 먼저 잠금 */
   const requirementsSendFlightRef = useRef(false);
   const sendDraftRestoreRef = useRef<string | null>(null);
+  /** 인터뷰 추천 칩 선택 후 전송 시 analyzer에 한 번 전달 */
+  const interviewSuggestionPickRef = useRef<string | null>(null);
 
   const [serviceFlow, setServiceFlow] = useState<RequirementsServiceFlowV1 | null>(null);
   const serviceFlowSendRef = useRef<((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null>(null);
@@ -239,7 +239,6 @@ export function RequirementsWorkspace({
   const requirementsWorkspacePrevStageRef = useRef<RequirementsWorkspaceStage>(activeStage);
 
   const { successToast, errorToast, showSuccessToast, showErrorToast } = useRequirementsWorkspaceToasts();
-  const { saveToastVisible } = useWorkspaceSaveToast(saveState);
 
   useEffect(() => {
     if (inIdeationStage) return;
@@ -730,10 +729,6 @@ export function RequirementsWorkspace({
     const ok = new Set(["meeting_summary", "problem_statement", "kpi", "full_plan", "mvp_scope", "feature_list"]);
     return assets.some((a) => ok.has(String(a.type)));
   }, [ideationAssets, goals, targetUsers, success, fetchNonce]);
-  const serviceFlowReadyForFeaturePlanning = useMemo(
-    () => (project ? isServiceFlowApprovedForFeaturePlanning(project.requirementsStateJson) : false),
-    [project?.requirementsStateJson]
-  );
   const ideationReadyNotice = "현재 단계로 이동하려면\n아이디어 구체화 단계에서\n기획 산출물 정리가 필요합니다.";
 
   const appendServiceFlowWorkshopMessages = useCallback(
@@ -826,6 +821,8 @@ export function RequirementsWorkspace({
         readonly promptAtIso?: string;
         readonly promptTrace?: RequirementsPromptTimelineEntry | null;
         readonly singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
+        readonly interviewSuggestions?: readonly string[];
+        readonly interviewAllowCustomInput?: boolean;
       }): Promise<boolean> => {
         const nowIso = new Date().toISOString();
         const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
@@ -842,6 +839,10 @@ export function RequirementsWorkspace({
               ...(params.source === "fallback" && params.fallbackReason
                 ? { fallbackReason: params.fallbackReason }
                 : {}),
+              ...(params.interviewSuggestions?.length
+                ? { interviewSuggestions: [...params.interviewSuggestions] }
+                : {}),
+              ...(params.interviewAllowCustomInput === false ? { interviewAllowCustomInput: false } : {}),
             },
           }),
         ]);
@@ -881,6 +882,31 @@ export function RequirementsWorkspace({
         }
       };
 
+      const fetchBootstrapSuggestionsLlm = async (
+        question: string,
+        projectFields: { projectName: string; projectDescription: string; projectType: string }
+      ): Promise<string[]> => {
+        try {
+          const sg = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.INTERVIEW_BOOTSTRAP_SUGGESTIONS, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId: pid,
+              projectName: projectFields.projectName,
+              projectDescription: projectFields.projectDescription,
+              projectType: projectFields.projectType,
+              interviewQuestion: question,
+              singleChatOrchestrationV1: stateJsonRef.current.singleChatOrchestrationV1 ?? undefined,
+            }),
+          });
+          const sj = (await sg.json()) as { success?: boolean; data?: { suggestions?: unknown } };
+          if (!sg.ok || !sj.success || !Array.isArray(sj.data?.suggestions)) return [];
+          return normalizeLlmInterviewSuggestions(sj.data.suggestions as readonly string[]);
+        } catch {
+          return [];
+        }
+      };
+
       try {
         const res = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.AI_FACILITATOR, {
           method: "POST",
@@ -907,14 +933,17 @@ export function RequirementsWorkspace({
             calledAt?: string;
             promptTrace?: unknown;
             singleChatOrchestrationV1?: unknown;
+            interviewSuggestions?: unknown;
+            interviewAllowCustomInput?: boolean;
           };
           message?: string;
         };
-        const contextualFb = buildIdeationBootstrapContextualFallbackQuestion({
+        const bootCtx = {
           projectName: project.name ?? "",
           projectDescription: project.description ?? "",
           projectType: project.projectType ?? "",
-        });
+        };
+        const contextualFb = buildIdeationBootstrapContextualFallbackQuestion(bootCtx);
         const okReply = res.ok && json.success && String(json.data?.reply ?? "").trim();
         const fallbackReason =
           okReply
@@ -924,24 +953,45 @@ export function RequirementsWorkspace({
         const bodyText = sanitizeIdeationInterviewFirstQuestion(okReply ? raw : contextualFb);
         if (cancelled) return;
         const seedWire = res.ok && json.success ? (json.data?.seedInterviewState ?? null) : null;
-        const rawTrace = okReply ? (json.data as { promptTrace?: unknown }).promptTrace : (json as { data?: { promptTrace?: unknown } }).data?.promptTrace;
-        let promptTrace = coerceBootstrapPromptTrace(rawTrace);
-        if (rawTrace != null && !promptTrace) {
-          console.warn("[PROMPT TRACE DROPPED]", rawTrace);
-        }
-        if (!okReply && !promptTrace) {
-          promptTrace = buildIdeationBootstrapFallbackPromptTrace({
-            error: fallbackReason ?? "bootstrap_http_failed",
-            fallbackText: bodyText,
-            routingDecision: "bootstrap_contextual_fallback_http",
-          });
-        }
-
+        const apiRawSug = json.data?.interviewSuggestions;
         const orchBootstrap = parseRequirementsSingleChatOrchestrationV1(json.data?.singleChatOrchestrationV1);
         if (orchBootstrap) {
           stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
             singleChatOrchestrationV1: orchBootstrap,
           });
+        }
+
+        let bootInterviewChips: string[] = [];
+        if (okReply) {
+          bootInterviewChips = normalizeLlmInterviewSuggestions(
+            Array.isArray(apiRawSug) ? (apiRawSug as unknown[]).map((x) => String(x ?? "")) : []
+          );
+        } else {
+          bootInterviewChips = await fetchBootstrapSuggestionsLlm(bodyText, bootCtx);
+        }
+        const bootSugSource: "llm" | "empty" = bootInterviewChips.length ? "llm" : "empty";
+        const bootAllowCustom = json.data?.interviewAllowCustomInput !== false;
+        const rawTrace = okReply ? (json.data as { promptTrace?: unknown }).promptTrace : (json as { data?: { promptTrace?: unknown } }).data?.promptTrace;
+        let promptTrace = coerceBootstrapPromptTrace(rawTrace);
+        if (rawTrace != null && !promptTrace) {
+          console.warn("[PROMPT TRACE DROPPED]", rawTrace);
+        }
+        if (!promptTrace) {
+          promptTrace = buildIdeationBootstrapFallbackPromptTrace({
+            error: fallbackReason ?? "bootstrap_http_failed",
+            fallbackText: bodyText,
+            routingDecision: "bootstrap_contextual_fallback_http",
+            interviewQuestion: bodyText,
+            interviewSuggestions: bootInterviewChips,
+            interviewSuggestionsSource: bootSugSource,
+          });
+        } else {
+          promptTrace = {
+            ...promptTrace,
+            interviewQuestion: bodyText,
+            ...(bootInterviewChips.length ? { interviewSuggestions: [...bootInterviewChips] } : {}),
+            interviewSuggestionsSource: bootSugSource,
+          };
         }
 
         const ok = await persistFirstQuestion({
@@ -956,36 +1006,44 @@ export function RequirementsWorkspace({
             : { fallbackReason }),
           promptTrace,
           ...(orchBootstrap ? { singleChatOrchestrationV1: orchBootstrap } : {}),
+          interviewSuggestions: bootInterviewChips,
+          ...(okReply && bootAllowCustom === false ? { interviewAllowCustomInput: false } : {}),
         });
         if (!ok && !cancelled) {
           ideationBootstrapFlightRef.current = null;
-          const persistFailCtx = buildIdeationBootstrapContextualFallbackQuestion({
-            projectName: project.name ?? "",
-            projectDescription: project.description ?? "",
-            projectType: project.projectType ?? "",
-          });
+          const persistFailCtx = buildIdeationBootstrapContextualFallbackQuestion(bootCtx);
+          const persistFailBody = sanitizeIdeationInterviewFirstQuestion(persistFailCtx);
+          const persistFailSug = await fetchBootstrapSuggestionsLlm(persistFailBody, bootCtx);
+          const persistFailSugSrc: "llm" | "empty" = persistFailSug.length ? "llm" : "empty";
           await persistFirstQuestion({
-            bodyText: sanitizeIdeationInterviewFirstQuestion(persistFailCtx),
+            bodyText: persistFailBody,
             seedWire: null,
             source: "fallback",
             fallbackReason: "persist_failed",
             promptTrace: buildIdeationBootstrapFallbackPromptTrace({
               error: "persist_failed",
-              fallbackText: sanitizeIdeationInterviewFirstQuestion(persistFailCtx),
+              fallbackText: persistFailBody,
               routingDecision: "bootstrap_contextual_fallback_persist_failed",
+              interviewQuestion: persistFailBody,
+              interviewSuggestions: persistFailSug,
+              interviewSuggestionsSource: persistFailSugSrc,
             }),
+            interviewSuggestions: persistFailSug,
           });
         }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "인터뷰 시작에 실패했습니다.");
         ideationBootstrapFlightRef.current = null;
-        const excCtx = buildIdeationBootstrapContextualFallbackQuestion({
+        const excBootCtx = {
           projectName: project.name ?? "",
           projectDescription: project.description ?? "",
           projectType: project.projectType ?? "",
-        });
+        };
+        const excCtx = buildIdeationBootstrapContextualFallbackQuestion(excBootCtx);
         const bodyText = sanitizeIdeationInterviewFirstQuestion(excCtx);
+        const excSug = await fetchBootstrapSuggestionsLlm(bodyText, excBootCtx);
+        const excSugSrc: "llm" | "empty" = excSug.length ? "llm" : "empty";
         await persistFirstQuestion({
           bodyText,
           seedWire: null,
@@ -995,7 +1053,11 @@ export function RequirementsWorkspace({
             error: e instanceof Error ? e.message : "bootstrap_failed",
             fallbackText: bodyText,
             routingDecision: "bootstrap_contextual_fallback_exception",
+            interviewQuestion: bodyText,
+            interviewSuggestions: excSug,
+            interviewSuggestionsSource: excSugSrc,
           }),
+          interviewSuggestions: excSug,
         });
       }
     })();
@@ -1104,13 +1166,21 @@ export function RequirementsWorkspace({
         setInput("");
       });
       const sendTraceId = newIdeationSendTraceId();
-      const replyMode = Boolean(replyTo?.id?.trim());
+      const replyToIdSnapshot = replyTo?.id ?? null;
+      const replyMode = Boolean(replyToIdSnapshot?.trim());
+      // reply는 "일회성 컨텍스트" — 이번 전송 이후 자동 해제되어야 한다.
+      // UI에서는 전송 시작 즉시 해제해 다음 입력이 자동으로 reply로 묶이지 않게 한다.
+      if (replyMode) setReplyTo(null);
+
+      // suggestion chip 선택도 one-shot: 이번 전송에만 포함하고 즉시 비움
+      const selectedSuggestionSnapshot = interviewSuggestionPickRef.current;
+      interviewSuggestionPickRef.current = null;
       ideationSendDevLog("start", `mode=${replyMode ? "reply" : "normal"}`);
       setServiceFlowDraftBusy(true);
       setError(null);
       const { targets, anyAi, effectiveReplyTo, msgs, turn } = composeIdeationSendUserTurn({
         text,
-        replyToId: replyTo?.id ?? null,
+        replyToId: replyToIdSnapshot,
         conversationMessages,
         ideationConversationOnly,
         participants,
@@ -1164,6 +1234,10 @@ export function RequirementsWorkspace({
             serviceDesignHarness: harnessPayload,
             workspaceScreenKey: requirementsWorkspaceStageToScreenKey(activeStage),
             projectType: project?.projectType ?? "",
+            consumeInterviewSelectedSuggestion: () => {
+              // chip 클릭은 입력 보조만: 자동 전송/강제 reply가 되지 않도록 이번 전송 1회만 포함
+              return selectedSuggestionSnapshot;
+            },
           });
         } finally {
           setAiInvokePending(false);
@@ -1518,6 +1592,10 @@ export function RequirementsWorkspace({
         problemInterviewState={problemInterviewState}
         onForceGeneratePlanNow={onForceGeneratePlanNow}
         onInsertComposerPrompt={insertComposerPrompt}
+        onInterviewSuggestionPick={(label) => {
+          interviewSuggestionPickRef.current = label;
+          insertComposerPrompt(label);
+        }}
         onSetReplyTo={(messageId, preview) => setReplyTo({ id: messageId, preview })}
         openDeliverableDocument={(id) => openDeliverableViewer([id], id)}
         openDeliverableList={(focusId) => openDeliverableList(focusId)}
@@ -1638,7 +1716,6 @@ export function RequirementsWorkspace({
       ) : null}
 
       <WorkspaceSuccessErrorSaveToastHost
-        savePulse={saveToastVisible}
         success={successToast}
         error={errorToast}
       />
@@ -1670,16 +1747,6 @@ export function RequirementsWorkspace({
           setFetchNonce((n) => n + 1);
         }}
         onGoHome={() => router.push("/")}
-        serviceDesignStageNav={
-          resolvedProjectId.trim() ? (
-            <RequirementsServiceDesignStageNav
-              projectId={resolvedProjectId.trim()}
-              activeStage={activeStage}
-              ideationReadyForServiceFlow={ideationReadyForServiceFlow}
-              serviceFlowReadyForFeaturePlanning={serviceFlowReadyForFeaturePlanning}
-            />
-          ) : null
-        }
       />
 
       <div className="jyo-requirements-workspace-body">

@@ -44,7 +44,7 @@ export function augmentDialogueExcerptForReplyParent(
   if (!parentId) return excerpt;
   const parent = messages.find((m) => m.id === parentId);
   if (!parent || parent.role !== "ai") return excerpt;
-  const clip = safeMessageText(parent).trim().slice(0, 1200);
+  const clip = safeMessageText(parent).trim().slice(0, 420);
   const who = parent.speakerName?.trim() || "AI";
   const prefix = `[사용자는 아래 AI 메시지에 이어서 답합니다]\nAI(${who}): ${clip}\n\n---\n`;
   return (prefix + excerpt).slice(-24_000);
