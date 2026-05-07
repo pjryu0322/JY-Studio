@@ -40,8 +40,11 @@ import {
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
   appendIdeationBootstrapPromptTimeline,
+  buildSingleChatPromptTimelineEntry,
   coerceRequirementsPromptTimelineEntry,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import { legacyProblemInterviewFallbackEnabled } from "@/lib/config/publicFeatureFlags";
+import { SINGLE_CHAT_SERVICE_PLANNING_GROUP } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { filterIdeationConversationMessages } from "@/lib/requirements/serviceFlowConversation";
 import {
   formatDialogueExcerpt,
@@ -126,11 +129,35 @@ export async function runRequirementsIdeationAiAfterUserPersist(
   const workspaceScreenKey =
     String(workspaceScreenKeyRaw ?? "requirements_ideation").trim() || "requirements_ideation";
 
+  const legacyFallbackEnabled = legacyProblemInterviewFallbackEnabled();
+
   const absorbPromptTrace = (raw: unknown) => {
     const tr = coerceRequirementsPromptTimelineEntry(raw);
     if (!tr) return;
     stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
       promptTimeline: appendIdeationBootstrapPromptTimeline(stateJsonRef.current.promptTimeline, tr),
+    });
+  };
+
+  const appendAiFacilitatorFailureTrace = (params: {
+    readonly error: string;
+    readonly routingDecision: string;
+    readonly createdAtIso?: string;
+  }) => {
+    const entry = buildSingleChatPromptTimelineEntry({
+      action: "requirementsChatOrchestration",
+      source: "fallback",
+      timelineStage: "requirements",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      workspaceScreenKey,
+      selectedAgents: [],
+      error: params.error,
+      fallback: true,
+      routingDecision: params.routingDecision,
+      createdAtIso: params.createdAtIso,
+    });
+    stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+      promptTimeline: appendIdeationBootstrapPromptTimeline(stateJsonRef.current.promptTimeline, entry),
     });
   };
 
@@ -645,6 +672,10 @@ export async function runRequirementsIdeationAiAfterUserPersist(
         const errMsg = json.message || "응답 생성 실패";
         setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
         showErrorToast(`${IDEATION_AI_DISPLAY_NAME} 응답에 실패했습니다. 다시 시도해 주세요.`);
+        appendAiFacilitatorFailureTrace({
+          error: errMsg,
+          routingDecision: "ai_facilitator_failed",
+        });
         facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
         ideationSendDevLog("return", `facilitator-http id=${sendTraceId}`);
       }
@@ -661,6 +692,10 @@ export async function runRequirementsIdeationAiAfterUserPersist(
       const errMsg = e instanceof Error ? e.message : String(e);
       setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
       showErrorToast(`${IDEATION_AI_DISPLAY_NAME} 응답에 실패했습니다. 다시 시도해 주세요.`);
+      appendAiFacilitatorFailureTrace({
+        error: errMsg,
+        routingDecision: "ai_facilitator_threw",
+      });
       ideationSendDevLog("return", `facilitator-throw id=${sendTraceId}`);
       return { kind: "emergency_fail", tail: { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } } };
     }
@@ -670,7 +705,25 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     // Normal path: always go through LLM orchestration (`/api/requirements/ai-facilitator`).
     // Legacy ProblemInterview pipeline is emergency-only fallback (LLM/parse/orchestration failure).
     const r = await runFacilitatorOrDraftPipeline();
-    if (r.kind === "emergency_fail") return runIdeationProblemInterviewPipeline();
+    if (r.kind === "emergency_fail") {
+      if (legacyFallbackEnabled) {
+        console.warn("[legacy-problem-interview] fallback invoked", {
+          reason: "ai_facilitator_emergency_fail",
+          projectId: pid || null,
+          sendTraceId,
+          workspaceScreenKey,
+          aiFacilitatorFailed: true,
+        });
+        return runIdeationProblemInterviewPipeline();
+      }
+      console.warn("[legacy-problem-interview] fallback blocked (flag disabled)", {
+        projectId: pid || null,
+        sendTraceId,
+        workspaceScreenKey,
+        aiFacilitatorFailed: true,
+      });
+      return r.tail;
+    }
     return r.tail;
   };
 

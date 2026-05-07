@@ -51,7 +51,6 @@ import {
   emptyProblemInterviewState,
   problemInterviewStateFromBootstrapSeedWire,
   problemInterviewStrictFilledCount,
-  PROBLEM_INTERVIEW_SLOT_TOTAL,
   slotStrictlyFilled,
   type ProblemInterviewState,
 } from "@/lib/requirements/problemInterview";
@@ -68,6 +67,7 @@ import {
   buildDynamicServicePlanningSlotDefinitions,
   buildOrchestrationSlotSummarySections,
   hashSlotDefinitions,
+  initialOrchestrationStateFromDefinitions,
   singleChatOrchestrationConfirmedProgress,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
@@ -558,43 +558,44 @@ export function RequirementsWorkspace({
     return orch;
   }, [persistedPromptState.singleChatOrchestrationV1, orchestrationSlotDefsHash]);
 
+  const orchestrationUiState = useMemo(() => {
+    // Source-of-truth: singleChatOrchestrationV1.
+    // If persisted state is missing/misaligned, render an empty orchestration grid (0% progress) instead of legacy 8-slot UI.
+    return (
+      orchestrationAlignedState ??
+      initialOrchestrationStateFromDefinitions(slotDefsForProgress, new Date().toISOString())
+    );
+  }, [orchestrationAlignedState, slotDefsForProgress]);
+
   const orchestrationConfirmedMetrics = useMemo(
-    () => singleChatOrchestrationConfirmedProgress(orchestrationAlignedState),
-    [orchestrationAlignedState]
+    () => singleChatOrchestrationConfirmedProgress(orchestrationUiState),
+    [orchestrationUiState]
   );
 
   const orchestrationSlotSectionsForUi = useMemo(() => {
-    if (!orchestrationAlignedState) return null;
-    return buildOrchestrationSlotSummarySections(slotDefsForProgress, orchestrationAlignedState);
-  }, [orchestrationAlignedState, slotDefsForProgress]);
+    return buildOrchestrationSlotSummarySections(slotDefsForProgress, orchestrationUiState);
+  }, [orchestrationUiState, slotDefsForProgress]);
 
   const problemInterviewStrictFilled = useMemo(
     () => problemInterviewStrictFilledCount(problemInterviewState),
     [problemInterviewState]
   );
-  const baseOrchestrationTotal = useMemo(() => slotDefsForProgress.length, [slotDefsForProgress.length]);
   const proposalReadinessPercentVal = useMemo(() => {
-    if (orchestrationAlignedState) return orchestrationConfirmedMetrics.percent;
-    return 0;
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.percent]);
+    return orchestrationConfirmedMetrics.percent;
+  }, [orchestrationConfirmedMetrics.percent]);
   const problemInterviewCovered = useMemo(() => {
-    if (orchestrationAlignedState) return orchestrationConfirmedMetrics.confirmed;
-    return 0;
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.confirmed]);
+    return orchestrationConfirmedMetrics.confirmed;
+  }, [orchestrationConfirmedMetrics.confirmed]);
   const progressSlotTotal = useMemo(() => {
-    if (orchestrationAlignedState) return orchestrationConfirmedMetrics.total;
-    return baseOrchestrationTotal;
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total, baseOrchestrationTotal]);
+    return orchestrationConfirmedMetrics.total;
+  }, [orchestrationConfirmedMetrics.total]);
   const nextNeededSlot = useMemo(() => {
     // LLM-first orchestration: next slot is not a fixed 8-slot interview concept.
     return null;
   }, []);
   const remainingQuestionsEstimate = useMemo(() => {
-    if (orchestrationAlignedState) {
-      return Math.max(0, orchestrationConfirmedMetrics.total - orchestrationConfirmedMetrics.confirmed);
-    }
-    return Math.max(0, baseOrchestrationTotal);
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total, orchestrationConfirmedMetrics.confirmed, baseOrchestrationTotal]);
+    return Math.max(0, orchestrationConfirmedMetrics.total - orchestrationConfirmedMetrics.confirmed);
+  }, [orchestrationConfirmedMetrics.total, orchestrationConfirmedMetrics.confirmed]);
 
   /**
    * 산출물 뷰어는 "채팅 카드가 가리키는 assetId"와 동일한 소스를 사용해야 합니다.

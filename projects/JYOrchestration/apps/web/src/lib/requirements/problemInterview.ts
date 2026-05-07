@@ -113,6 +113,9 @@ export function emergencyFallbackProblemInterviewFromUserMessageRegex(
   userText: string,
   nowIso: string
 ): ProblemInterviewState {
+  console.warn("[legacy-problem-interview] emergencyFallbackProblemInterviewFromUserMessageRegex invoked", {
+    nowIso,
+  });
   const base = prev ? { ...prev } : emptyProblemInterviewState(nowIso);
   const t = String(userText ?? "").trim();
   if (!t) return { ...base, updatedAt: nowIso };
@@ -821,6 +824,7 @@ const CONTROLLED_SLOT_QUESTIONS: Record<ProblemInterviewSlot, readonly string[]>
 };
 
 export function getControlledQuestionForSlot(slot: ProblemInterviewSlot, turnSeed: number): string {
+  console.warn("[legacy-problem-interview] getControlledQuestionForSlot invoked", { slot });
   const variants = CONTROLLED_SLOT_QUESTIONS[slot];
   const pick = variants[Math.abs(turnSeed) % variants.length] ?? variants[0];
   return pick;
@@ -843,6 +847,10 @@ export function pickNextAskableInterviewSlot(
   hint: ProblemInterviewSlot | null,
   opts?: { avoidSlots?: readonly ProblemInterviewSlot[] | null }
 ): ProblemInterviewSlot | null {
+  console.warn("[legacy-problem-interview] pickNextAskableInterviewSlot invoked", {
+    hint,
+    askedCount: Array.isArray(asked) ? asked.length : 0,
+  });
   const ordered: ProblemInterviewSlot[] = [];
   if (hint && isProblemInterviewSlot(hint) && !slotStrictlyFilled(state, hint)) ordered.push(hint);
   for (const s of PROBLEM_INTERVIEW_QUESTION_PRIORITY) {
