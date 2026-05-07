@@ -23,7 +23,7 @@ import {
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
 import { WorkspaceComposerFooter } from "@/components/workspace/WorkspaceComposerFooter";
 import { WorkspaceMessageList } from "@/components/workspace/WorkspaceMessageList";
-import { WorkspaceProgressPill } from "@/components/workspace/WorkspaceProgressPill";
+import { WorkspaceProgressPill, type WorkspaceIdeationInterviewProgressUi } from "@/components/workspace/WorkspaceProgressPill";
 import { WorkspaceResultCard } from "@/components/workspace/WorkspaceResultCard";
 import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScroll";
@@ -97,18 +97,7 @@ export function RequirementsChatPanel({
   readonly composer: ReactNode;
   /** AI 응답 대기 중 표시(채팅 타임라인에는 저장되지 않음) */
   readonly typingIndicator?: boolean;
-  readonly ideationInterviewUi?: {
-    readonly active: boolean;
-    readonly readinessPercent: number;
-    readonly covered: number;
-    readonly strictFilled: number;
-    readonly total: number;
-    readonly nextSlot: ProblemInterviewSlot | null;
-    readonly remainingQuestionsEstimate: number;
-    readonly slotState: ProblemInterviewState | null;
-    readonly recentAskedSlots: readonly ProblemInterviewSlot[];
-    readonly onForceGeneratePlanNow: () => void;
-  } | null;
+  readonly ideationInterviewUi?: WorkspaceIdeationInterviewProgressUi | null;
   readonly onInsertComposerPrompt?: (text: string) => void;
   /** 답글 달기: replyTo messageId 설정 */
   readonly onSetReplyTo?: (messageId: string, preview: string) => void;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type RefObject } from "react";
+import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   PROBLEM_INTERVIEW_SLOTS,
   interviewSlotLevelFromState,
@@ -21,6 +22,8 @@ export type WorkspaceIdeationInterviewProgressUi = {
   readonly slotState: ProblemInterviewState | null;
   readonly recentAskedSlots: readonly ProblemInterviewSlot[];
   readonly onForceGeneratePlanNow: () => void;
+  /** 오케스트레이션 해시가 현재 슬롯 정의와 일치할 때 역할별 슬롯 그리드 */
+  readonly orchestrationSlotSections?: readonly OrchestrationSlotSummarySection[] | null;
 };
 
 export function WorkspaceProgressPill({
@@ -56,15 +59,17 @@ export function WorkspaceProgressPill({
     return () => document.removeEventListener("mousedown", onDown);
   }, [popoverOpen, headerRef]);
 
+  const useOrchestrationGrid = Boolean(interviewUi.orchestrationSlotSections?.some((s) => s.slots.length));
+
   return (
     <div className={styles.root}>
       <button
         type="button"
         onClick={() => setPopoverOpen((v) => !v)}
         className={styles.trigger}
-        title="아이디어 정리도 상세 보기"
+        title="서비스 기획 진행도 상세 보기"
       >
-        <span className={styles.nowrap}>아이디어 정리도 {interviewUi.readinessPercent}%</span>
+        <span className={styles.nowrap}>서비스 기획 진행도 {interviewUi.readinessPercent}%</span>
         <span className={styles.sep}>·</span>
         <span className={styles.count}>
           {interviewUi.covered}/{interviewUi.total}
@@ -72,10 +77,10 @@ export function WorkspaceProgressPill({
       </button>
 
       {popoverOpen ? (
-        <div role="dialog" aria-label="아이디어 정리도 상세" className={styles.popover}>
+        <div role="dialog" aria-label="서비스 기획 진행도 상세" className={styles.popover}>
           <div className={styles.popoverHeader}>
             <div className={styles.popoverTitle}>
-              아이디어 정리도 {interviewUi.readinessPercent}% · {interviewUi.covered}/{interviewUi.total}
+              서비스 기획 진행도 {interviewUi.readinessPercent}% · {interviewUi.covered}/{interviewUi.total}
             </div>
             <div className={styles.barTrack}>
               <div
@@ -88,7 +93,7 @@ export function WorkspaceProgressPill({
           <div className={styles.popoverBody}>
             <div className={styles.row}>
               <div className={styles.strong}>
-                확보 슬롯: {interviewUi.covered}/{interviewUi.total}
+                {useOrchestrationGrid ? "확정 슬롯" : "확보 슬롯"}: {interviewUi.covered}/{interviewUi.total}
               </div>
               {interviewUi.nextSlot ? (
                 <div className={styles.teal}>다음 필요 정보: {problemInterviewSlotLabelKr(interviewUi.nextSlot)}</div>
@@ -109,27 +114,57 @@ export function WorkspaceProgressPill({
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div className={styles.legend}>
                   <span className={styles.legendLabel}>표시:</span>
-                  <span className={styles.legendItem}>✔ 완료</span>
+                  <span className={styles.legendItem}>{useOrchestrationGrid ? "✔ 확정" : "✔ 완료"}</span>
                   <span className={styles.legendItem}>△ 부분</span>
-                  <span className={styles.legendItem}>□ 미확보</span>
+                  <span className={styles.legendItem}>{useOrchestrationGrid ? "□ 미확정" : "□ 미확보"}</span>
                 </div>
-                <div className={styles.grid}>
-                  {PROBLEM_INTERVIEW_SLOTS.map((slot) => {
-                    const level = interviewUi.slotState ? interviewSlotLevelFromState(interviewUi.slotState, slot) : "empty";
-                    const icon = level === "filled" ? "✔" : level === "partial" ? "△" : "□";
-                    const color = level === "filled" ? "#065f46" : level === "partial" ? "#92400e" : "#475569";
-                    const bg = level === "filled" ? "#ecfdf5" : level === "partial" ? "#fffbeb" : "#f8fafc";
-                    const border = level === "filled" ? "1px solid #a7f3d0" : level === "partial" ? "1px solid #fde68a" : "1px solid #e2e8f0";
-                    return (
-                      <div key={slot} className={styles.slotCell} style={{ border, background: bg }}>
-                        <span className={styles.slotLabel}>{problemInterviewSlotLabelKr(slot)}</span>
-                        <span className={styles.slotIcon} style={{ color }}>
-                          {icon}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                {useOrchestrationGrid ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                    {(interviewUi.orchestrationSlotSections ?? []).map((sec) =>
+                      sec.slots.length ? (
+                        <div key={sec.sectionTitle}>
+                          <div style={{ fontSize: 11.5, fontWeight: 800, color: "#334155", marginBottom: 8 }}>[{sec.sectionTitle}]</div>
+                          <div className={styles.grid}>
+                            {sec.slots.map((cell, idx) => {
+                              const level = cell.level;
+                              const icon = level === "filled" ? "✔" : level === "partial" ? "△" : "□";
+                              const color = level === "filled" ? "#065f46" : level === "partial" ? "#92400e" : "#475569";
+                              const bg = level === "filled" ? "#ecfdf5" : level === "partial" ? "#fffbeb" : "#f8fafc";
+                              const border =
+                                level === "filled" ? "1px solid #a7f3d0" : level === "partial" ? "1px solid #fde68a" : "1px solid #e2e8f0";
+                              return (
+                                <div key={`${sec.sectionTitle}-${idx}-${cell.label}`} className={styles.slotCell} style={{ border, background: bg }}>
+                                  <span className={styles.slotLabel}>{cell.label}</span>
+                                  <span className={styles.slotIcon} style={{ color }}>
+                                    {icon}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null
+                    )}
+                  </div>
+                ) : (
+                  <div className={styles.grid}>
+                    {PROBLEM_INTERVIEW_SLOTS.map((slot) => {
+                      const level = interviewUi.slotState ? interviewSlotLevelFromState(interviewUi.slotState, slot) : "empty";
+                      const icon = level === "filled" ? "✔" : level === "partial" ? "△" : "□";
+                      const color = level === "filled" ? "#065f46" : level === "partial" ? "#92400e" : "#475569";
+                      const bg = level === "filled" ? "#ecfdf5" : level === "partial" ? "#fffbeb" : "#f8fafc";
+                      const border = level === "filled" ? "1px solid #a7f3d0" : level === "partial" ? "1px solid #fde68a" : "1px solid #e2e8f0";
+                      return (
+                        <div key={slot} className={styles.slotCell} style={{ border, background: bg }}>
+                          <span className={styles.slotLabel}>{problemInterviewSlotLabelKr(slot)}</span>
+                          <span className={styles.slotIcon} style={{ color }}>
+                            {icon}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 {interviewUi.recentAskedSlots.length ? (
                   <div className={styles.recentRow}>
                     <span className={styles.recentLabel}>최근 질문:</span>

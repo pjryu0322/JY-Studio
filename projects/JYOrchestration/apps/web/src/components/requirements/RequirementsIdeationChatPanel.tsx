@@ -9,8 +9,8 @@ import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDe
 import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
-import { PROBLEM_INTERVIEW_SLOT_TOTAL } from "@/lib/requirements/problemInterview";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
@@ -26,6 +26,9 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   proposalReadinessPercentVal: number;
   problemInterviewCovered: number;
   problemInterviewStrictFilled: number;
+  /** 진행률 분모(오케스트레이션 정렬 시 전체 슬롯 수) */
+  progressSlotTotal: number;
+  orchestrationSlotSections?: readonly OrchestrationSlotSummarySection[] | null;
   nextNeededSlot: ProblemInterviewSlot | null;
   remainingQuestionsEstimate: number;
   problemInterviewState: ProblemInterviewState | null;
@@ -64,6 +67,8 @@ export function RequirementsIdeationChatPanel({
   proposalReadinessPercentVal,
   problemInterviewCovered,
   problemInterviewStrictFilled,
+  progressSlotTotal,
+  orchestrationSlotSections,
   nextNeededSlot,
   remainingQuestionsEstimate,
   problemInterviewState,
@@ -96,12 +101,13 @@ export function RequirementsIdeationChatPanel({
           readinessPercent: proposalReadinessPercentVal,
           covered: problemInterviewCovered,
           strictFilled: problemInterviewStrictFilled,
-          total: PROBLEM_INTERVIEW_SLOT_TOTAL,
+          total: progressSlotTotal,
           nextSlot: nextNeededSlot,
           remainingQuestionsEstimate,
           slotState: problemInterviewState,
           recentAskedSlots: ((problemInterviewState?.askedSlots ?? []).slice(-8) as unknown) as ProblemInterviewSlot[],
           onForceGeneratePlanNow,
+          orchestrationSlotSections: orchestrationSlotSections ?? null,
         }
       : null;
 

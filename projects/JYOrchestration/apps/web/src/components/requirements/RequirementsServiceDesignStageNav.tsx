@@ -99,17 +99,17 @@ export function RequirementsServiceDesignStageNav({
             router.push(requirementsHref(pid, "service-flow"));
           }}
           style={{
-            padding: "6px 12px",
+            padding: "5px 10px",
             borderRadius: 8,
-            border: `1px solid ${t.borderStrong}`,
-            background: ideationReadyForServiceFlow ? t.bgPage : t.border,
-            fontSize: 12,
-            fontWeight: 700,
+            border: `1px solid ${t.border}`,
+            background: "transparent",
+            fontSize: 11.5,
+            fontWeight: 600,
             cursor: ideationReadyForServiceFlow ? "pointer" : "not-allowed",
-            color: ideationReadyForServiceFlow ? t.textPrimary : t.textMuted,
+            color: ideationReadyForServiceFlow ? t.textSecondary : t.textMuted,
           }}
         >
-          액터/흐름 정의로 이동
+          다음 추천 흐름: 액터/흐름 정의
         </button>
         <button
           type="button"
@@ -119,17 +119,17 @@ export function RequirementsServiceDesignStageNav({
             router.push(requirementsHref(pid, "feature-planning"));
           }}
           style={{
-            padding: "6px 12px",
+            padding: "5px 10px",
             borderRadius: 8,
-            border: `1px solid ${t.borderStrong}`,
-            background: serviceFlowReadyForFeaturePlanning ? t.bgPage : t.border,
-            fontSize: 12,
-            fontWeight: 700,
+            border: `1px solid ${t.border}`,
+            background: "transparent",
+            fontSize: 11.5,
+            fontWeight: 600,
             cursor: serviceFlowReadyForFeaturePlanning ? "pointer" : "not-allowed",
-            color: serviceFlowReadyForFeaturePlanning ? t.textPrimary : t.textMuted,
+            color: serviceFlowReadyForFeaturePlanning ? t.textSecondary : t.textMuted,
           }}
         >
-          기능정리로 이동
+          다음 추천 흐름: 기능 정리
         </button>
       </div>
     </div>

@@ -11,8 +11,8 @@ import {
 import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 import {
+  buildIdeationBootstrapContextualFallbackQuestion,
   buildSingleChatPromptTimelineEntry,
-  IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import {
   resolveServicePlanningOrchestrationContext,
@@ -115,6 +115,13 @@ export async function POST(request: NextRequest) {
     const projectDescription = String(body.projectDescription ?? "");
     const projectTypeRaw = String(body.projectType ?? "").trim();
     const projectType = projectTypeRaw ? projectTypeRaw : null;
+
+    const contextualBootstrapFallbackQuestion = (): string =>
+      buildIdeationBootstrapContextualFallbackQuestion({
+        projectName,
+        projectDescription,
+        projectType,
+      });
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
@@ -179,10 +186,10 @@ export async function POST(request: NextRequest) {
 
     const orchestrationBootstrapInstructions =
       `[오케스트레이션 — 첫 질문]\n` +
-      `- 참여 Agent 중 planner(aiOrchestrationRole)가 있으면 반드시 AI 기획자(진행자·라우터) 페르소나로 첫 질문 한 문장만 출력합니다.\n` +
-      `- planner 역할이 없으면 동일 규칙으로 기본 서비스 기획자 역할을 수행합니다.\n` +
-      `- 질문 주제는 다음 중 하나만 고릅니다: 어떤 서비스를 만들고 싶은지·해결하려는 가장 큰 문제·핵심 사용자.\n` +
-      `- 예시 방향: "어떤 서비스를 만들고 싶으신가요?" / "이 서비스가 해결하려는 가장 큰 문제는 무엇인가요?"\n`;
+      `- 참여 Agent 중 planner(aiOrchestrationRole)가 있으면 AI 기획자(진행자) 페르소나로 첫 질문 한 문장만 출력합니다.\n` +
+      `- planner 가 없어도 동일 규칙으로 서비스 기획 진행자 역할을 수행합니다.\n` +
+      `- 질문에는 반드시 프로젝트명·프로젝트 설명·프로젝트 유형 맥락이 녹아 있어야 합니다.\n` +
+      `- "어떤 서비스를 만들고 싶으신가요?"처럼 프로젝트와 무관한 일반 질문만 출력하는 것은 금지입니다.\n`;
 
     const stage = stageRaw === "requirements" ? "requirements" : "requirements";
 
@@ -277,6 +284,7 @@ export async function POST(request: NextRequest) {
           runRequirementsIdeationInterviewBootstrapOpenAI({
             projectName,
             projectDescription,
+            projectType,
             participatingAgentsPromptBlock: agentCtxBootstrap.promptBlock,
             orchestrationBootstrapInstructions,
           })
@@ -300,7 +308,7 @@ export async function POST(request: NextRequest) {
           model: null,
           ok: false,
           error: `${result.code}: ${result.message}`,
-          fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+          fallbackText: contextualBootstrapFallbackQuestion(),
         });
       }
       const orchPayload =
@@ -327,10 +335,10 @@ export async function POST(request: NextRequest) {
                 workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
                 selectedAgents: agentCtxBootstrap.selectedAgents,
                 error: "NO_AI_PROVIDER",
-                fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+                fallbackText: contextualBootstrapFallbackQuestion(),
                 fallback: true,
                 orchestratorAgent: "planner",
-                routingDecision: plannerChosen ? "bootstrap_planner_entry(NO_KEY)" : "bootstrap_fallback_planner(NO_KEY)",
+                routingDecision: plannerChosen ? "bootstrap_fallback(NO_KEY)" : "bootstrap_fallback(NO_KEY)",
               }),
             },
           },
@@ -353,10 +361,10 @@ export async function POST(request: NextRequest) {
                   workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
                   selectedAgents: agentCtxBootstrap.selectedAgents,
                   error: `${result.code}: ${result.message}`,
-                  fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+                  fallbackText: contextualBootstrapFallbackQuestion(),
                   fallback: true,
                   orchestratorAgent: "planner",
-                  routingDecision: "bootstrap_error",
+                  routingDecision: "bootstrap_contextual_fallback",
                 }),
               },
             }
@@ -388,7 +396,7 @@ export async function POST(request: NextRequest) {
           promptText: result.promptText,
           ok: false,
           error: "EMPTY_REPLY",
-          fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+          fallbackText: contextualBootstrapFallbackQuestion(),
         });
       }
       return NextResponse.json(
@@ -406,10 +414,10 @@ export async function POST(request: NextRequest) {
               workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
               selectedAgents: agentCtxBootstrap.selectedAgents,
               error: "EMPTY_REPLY",
-              fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+              fallbackText: contextualBootstrapFallbackQuestion(),
               fallback: true,
               orchestratorAgent: "planner",
-              routingDecision: "bootstrap_empty_reply",
+              routingDecision: "bootstrap_contextual_fallback_empty_reply",
             }),
           },
         },
@@ -421,6 +429,7 @@ export async function POST(request: NextRequest) {
       ? await runRequirementsIdeationInterviewSeedFromProjectOpenAI({
           projectName,
           projectDescription,
+          projectType,
         })
       : null;
 
@@ -449,7 +458,7 @@ export async function POST(request: NextRequest) {
       model: result.model,
       provider: result.provider ?? "openai",
       createdAtIso: result.calledAt ?? new Date().toISOString(),
-      routingDecision: plannerChosenOk ? "bootstrap_planner_entry" : "bootstrap_default_planner_persona",
+      routingDecision: plannerChosenOk ? "bootstrap_llm_first_question(planner)" : "bootstrap_llm_first_question(default)",
       orchestratorAgent: "planner",
       delegatedAgents: [],
       fallback: false,

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { isWorkspaceAiMemberEnabled } from "@/lib/ai-member/platformAiMembers";
 import {
   readProjectRailParticipantCounts,
   subscribeProjectRailParticipantCounts,
@@ -12,7 +14,8 @@ function emptyParticipantSnapshot(): string {
 }
 
 /**
- * 프로젝트 레일: 단계별 참여 수(세션 캐시 + 이벤트) 및 프로젝트 멤버 수(API).
+ * 프로젝트 레일: 단계별 참여 수(세션 캐시 + 이벤트) 및 멤버 배지 수.
+ * 멤버 배지 = 이해관계자(HUMAN) 수 + AI Agent 탭에 해당하는 활성 워크스페이스 AI 역할 수(메모 제외).
  * 참여 수는 `useSyncExternalStore`로 sessionStorage·커스텀 이벤트와 동기화합니다.
  */
 export function useProjectRailBadges(projectId: string | null): {
@@ -54,14 +57,46 @@ export function useProjectRailBadges(projectId: string | null): {
     void (async () => {
       setMemberCount(0);
       try {
-        const res = await fetch(`/api/project/members?projectId=${encodeURIComponent(pid)}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
-        const json = (await res.json()) as { success?: boolean; data?: unknown[] };
+        const [membersRes, workspaceAiRes] = await Promise.all([
+          fetch(`/api/project/members?projectId=${encodeURIComponent(pid)}`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`/api/project/workspace-ai?projectId=${encodeURIComponent(pid)}`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+        ]);
+
+        const membersJson = (await membersRes.json()) as {
+          success?: boolean;
+          data?: ReadonlyArray<{ memberType?: string }>;
+        };
+        const workspaceJson = (await workspaceAiRes.json()) as {
+          success?: boolean;
+          data?: { members?: ReadonlyArray<{ catalogKey: string; enabled: boolean }> };
+        };
+
         if (cancelled) return;
-        const n = res.ok && json.success && Array.isArray(json.data) ? json.data.length : 0;
-        setMemberCount(Math.max(0, n));
+
+        const rows =
+          membersRes.ok && membersJson.success && Array.isArray(membersJson.data) ? membersJson.data : [];
+        const humanCount = rows.filter((m) => String(m.memberType ?? "").toUpperCase() === "HUMAN").length;
+
+        let aiAgentRoleCount = 0;
+        const graphMembers = workspaceJson.data?.members;
+        if (workspaceAiRes.ok && workspaceJson.success && Array.isArray(graphMembers)) {
+          aiAgentRoleCount = graphMembers.filter(
+            (m) =>
+              m.enabled &&
+              m.catalogKey !== "memo" &&
+              isWorkspaceAiMemberEnabled(m.catalogKey as WorkspaceAiMemberId)
+          ).length;
+        } else {
+          aiAgentRoleCount = rows.filter((m) => String(m.memberType ?? "").toUpperCase() === "AI").length;
+        }
+
+        setMemberCount(Math.max(0, humanCount + aiAgentRoleCount));
       } catch {
         if (!cancelled) setMemberCount(0);
       }
