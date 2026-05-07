@@ -2,19 +2,14 @@
 
 import { useEffect, useState, type RefObject } from "react";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
-import { problemInterviewSlotLabelKr, type ProblemInterviewSlot, type ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import styles from "@/components/workspace/workspaceProgressPill.module.css";
 
 export type WorkspaceIdeationInterviewProgressUi = {
   readonly active: boolean;
   readonly readinessPercent: number;
   readonly covered: number;
-  readonly strictFilled: number;
   readonly total: number;
-  readonly nextSlot: ProblemInterviewSlot | null;
   readonly remainingQuestionsEstimate: number;
-  readonly slotState: ProblemInterviewState | null;
-  readonly recentAskedSlots: readonly ProblemInterviewSlot[];
   readonly onForceGeneratePlanNow: () => void;
   /** 오케스트레이션 해시가 현재 슬롯 정의와 일치할 때 역할별 슬롯 그리드 */
   readonly orchestrationSlotSections?: readonly OrchestrationSlotSummarySection[] | null;
@@ -87,11 +82,8 @@ export function WorkspaceProgressPill({
           <div className={styles.popoverBody}>
             <div className={styles.row}>
               <div className={styles.strong}>
-                {useOrchestrationGrid ? "확정 슬롯" : "확보 슬롯"}: {interviewUi.covered}/{interviewUi.total}
+                확정 슬롯: {interviewUi.covered}/{interviewUi.total}
               </div>
-              {!useOrchestrationGrid && interviewUi.nextSlot ? (
-                <div className={styles.teal}>다음 필요 정보: {problemInterviewSlotLabelKr(interviewUi.nextSlot)}</div>
-              ) : null}
               <div className={styles.muted}>예상 남은 질문: {Math.max(0, interviewUi.remainingQuestionsEstimate)}개</div>
             </div>
 
@@ -150,16 +142,6 @@ export function WorkspaceProgressPill({
                     </div>
                   </div>
                 )}
-                {!useOrchestrationGrid && interviewUi.recentAskedSlots.length ? (
-                  <div className={styles.recentRow}>
-                    <span className={styles.recentLabel}>최근 질문:</span>
-                    {interviewUi.recentAskedSlots.slice(-6).map((s, idx) => (
-                      <span key={`${s}-${idx}`} className={styles.chip}>
-                        {problemInterviewSlotLabelKr(s)}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </div>

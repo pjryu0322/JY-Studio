@@ -10,7 +10,6 @@ import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignCo
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
-import type { ProblemInterviewSlot, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
@@ -25,13 +24,10 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   onOpenMembersModal: () => void;
   proposalReadinessPercentVal: number;
   problemInterviewCovered: number;
-  problemInterviewStrictFilled: number;
   /** 진행률 분모(오케스트레이션 정렬 시 전체 슬롯 수) */
   progressSlotTotal: number;
   orchestrationSlotSections?: readonly OrchestrationSlotSummarySection[] | null;
-  nextNeededSlot: ProblemInterviewSlot | null;
   remainingQuestionsEstimate: number;
-  problemInterviewState: ProblemInterviewState | null;
   onForceGeneratePlanNow: () => void;
   onInsertComposerPrompt: (text: string) => void;
   /** 인터뷰 추천 칩 — 탭 시 입력창 프리필(또는 직접 입력 유도) */
@@ -68,12 +64,9 @@ export function RequirementsIdeationChatPanel({
   onOpenMembersModal,
   proposalReadinessPercentVal,
   problemInterviewCovered,
-  problemInterviewStrictFilled,
   progressSlotTotal,
   orchestrationSlotSections,
-  nextNeededSlot,
   remainingQuestionsEstimate,
-  problemInterviewState,
   onForceGeneratePlanNow,
   onInsertComposerPrompt,
   onInterviewSuggestionPick,
@@ -104,12 +97,8 @@ export function RequirementsIdeationChatPanel({
           active: true,
           readinessPercent: proposalReadinessPercentVal,
           covered: problemInterviewCovered,
-          strictFilled: problemInterviewStrictFilled,
           total: progressSlotTotal,
-          nextSlot: nextNeededSlot,
           remainingQuestionsEstimate,
-          slotState: problemInterviewState,
-          recentAskedSlots: [],
           onForceGeneratePlanNow,
           orchestrationSlotSections: orchestrationSlotSections ?? null,
         }
