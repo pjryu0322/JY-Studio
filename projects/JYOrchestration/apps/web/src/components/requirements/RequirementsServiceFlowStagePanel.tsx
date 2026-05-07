@@ -6,6 +6,7 @@ import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type RequirementsServiceFlowStagePanelProps = Readonly<{
   projectId: string;
@@ -33,6 +34,7 @@ export type RequirementsServiceFlowStagePanelProps = Readonly<{
   serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
   /** SingleChat: 입력 UI는 parent(ServiceDesignComposer)만 사용 */
   singleChatMode?: boolean;
+  onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
 }>;
 
 export function RequirementsServiceFlowStagePanel(props: RequirementsServiceFlowStagePanelProps) {

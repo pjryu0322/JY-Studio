@@ -8,6 +8,7 @@ import { RequirementsServiceFlowStage } from "@/components/requirements/Requirem
 import type { ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 const wrap: CSSProperties = {
   flex: "1 1 0%",
@@ -41,6 +42,7 @@ export function ServiceFlowWorkspace({
   platformScreenAiMemberIds,
   onSendServiceFlow,
   serviceFlowSendRef,
+  onSingleChatPromptTrace,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -63,6 +65,7 @@ export function ServiceFlowWorkspace({
   readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
   readonly onSendServiceFlow?: (payload: ServiceDesignHarnessPayload) => void | Promise<void>;
   readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
+  readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
 }) {
   return (
     <section style={wrap} aria-label="액터 및 서비스 흐름 정의">
@@ -88,6 +91,7 @@ export function ServiceFlowWorkspace({
           platformScreenAiMemberIds={platformScreenAiMemberIds}
           onSendServiceFlow={onSendServiceFlow}
           serviceFlowSendRef={serviceFlowSendRef}
+          onSingleChatPromptTrace={onSingleChatPromptTrace}
         />
       </div>
     </section>

@@ -4,6 +4,11 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { runInterviewAnalyzeOpenAI } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { problemInterviewStateFromAnalyzerWireInput } from "@/lib/requirements/problemInterview";
+import {
+  buildSingleChatPromptTimelineEntry,
+} from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import { resolveSingleChatAgentContext } from "@/lib/requirements/singleChatAgentContext";
+import { parseWorkspaceScreenKey, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
 
 type Body = {
   projectId?: string;
@@ -14,7 +19,14 @@ type Body = {
   currentInterviewState?: unknown;
   serviceDesignStage?: string;
   mentionedAI?: string | null;
+  /** SingleChat 현재 화면 — 절차별 참여 Agent 매핑 조회용 */
+  workspaceScreenKey?: string;
 };
+
+function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {
+  const p = parseWorkspaceScreenKey(raw);
+  return p ?? "requirements_ideation";
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +41,7 @@ export async function POST(request: NextRequest) {
     const latestAiQuestion = String(body.latestAiQuestion ?? "").trim();
     const nowIso = new Date().toISOString();
     const currentInterviewState = problemInterviewStateFromAnalyzerWireInput(body.currentInterviewState, nowIso);
+    const workspaceScreen = parseWorkspaceScreenForBody(body.workspaceScreenKey);
 
     if (!userMessage) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
@@ -44,17 +57,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const agentCtx = await resolveSingleChatAgentContext(projectId, workspaceScreen);
+
     const result = await runInterviewAnalyzeOpenAI({
       projectName,
       projectDescription,
       userMessage,
       latestAiQuestion,
       currentInterviewState,
+      participatingAgentsPromptBlock: agentCtx.promptBlock,
     });
 
     if (!result.ok) {
+      const promptTrace = buildSingleChatPromptTimelineEntry({
+        action: "problemInterviewAnalyze",
+        source: "fallback",
+        timelineStage: agentCtx.timelineStage,
+        stageGroup: agentCtx.stageGroup,
+        workspaceScreenKey: agentCtx.workspaceScreenKey,
+        selectedAgents: agentCtx.selectedAgents,
+        error: `${result.code}: ${result.message}`,
+        fallbackText: "",
+      });
       return NextResponse.json(
-        { success: false, code: result.code, message: result.message },
+        {
+          success: false,
+          code: result.code,
+          message: result.message,
+          meta: { promptTrace, model: null },
+        },
         { status: result.code === "NO_KEY" ? 503 : 502 }
       );
     }
@@ -70,10 +101,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const promptTrace = buildSingleChatPromptTimelineEntry({
+      action: "problemInterviewAnalyze",
+      source: "llm",
+      timelineStage: agentCtx.timelineStage,
+      stageGroup: agentCtx.stageGroup,
+      workspaceScreenKey: agentCtx.workspaceScreenKey,
+      selectedAgents: agentCtx.selectedAgents,
+      responseText: String(result.payload.summary ?? "").trim().slice(0, 2000),
+      model: result.model,
+      provider: "openai",
+      createdAtIso: nowIso,
+    });
+
     return NextResponse.json({
       success: true,
       data: result.payload,
-      meta: { model: result.model },
+      meta: { model: result.model, promptTrace },
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);

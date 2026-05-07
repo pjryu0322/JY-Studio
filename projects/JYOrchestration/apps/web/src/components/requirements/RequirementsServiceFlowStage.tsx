@@ -29,6 +29,7 @@ import {
 import { useWorkNoteComposerInsertControls } from "@/components/worknote/WorkNoteComposerInsertContext";
 import { useServiceFlowStageController, type ServiceFlowStageControllerInput } from "@/components/service-flow/useServiceFlowStageController";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type RequirementsServiceFlowStageProps = ServiceFlowStageControllerInput & {
   readonly ideationReadyNotice: string;
@@ -40,6 +41,7 @@ export type RequirementsServiceFlowStageProps = ServiceFlowStageControllerInput 
   readonly serviceFlowSendRef?: { current: ((payload: ServiceDesignHarnessPayload, text: string) => void | Promise<void>) | null };
   /** SingleChat: 입력 UI는 parent(ServiceDesignComposer)만 사용 */
   readonly singleChatMode?: boolean;
+  readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
 };
 
 export function RequirementsServiceFlowStage({
