@@ -11,6 +11,7 @@ import {
   parseRequirementsOrganizeContextV1,
   type RequirementsOrganizeContextV1,
 } from "@/lib/requirements/requirementsOrganizeContext";
+import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 
 function unwrapDbJsonField(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
@@ -271,28 +272,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const promptTimelineRaw = Array.isArray(o.promptTimeline) ? (o.promptTimeline as unknown[]) : null;
   const promptTimeline: RequirementsPromptTimelineEntry[] | undefined = promptTimelineRaw
     ? promptTimelineRaw
-        .map((row) => {
-          if (!row || typeof row !== "object") return null;
-          const r = row as Record<string, unknown>;
-          const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
-          const action = typeof r.action === "string" ? r.action : "";
-          const stage = typeof r.stage === "string" ? r.stage : "";
-          const source = typeof r.source === "string" ? r.source : "";
-          if (!createdAt || !action || !stage || !source) return null;
-          return {
-            stage,
-            action,
-            source,
-            createdAt,
-            ...(typeof r.aiMember === "string" ? { aiMember: r.aiMember } : {}),
-            ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
-            ...(typeof r.responseText === "string" ? { responseText: r.responseText } : {}),
-            ...(typeof r.error === "string" ? { error: r.error } : {}),
-            ...(typeof r.fallbackText === "string" ? { fallbackText: r.fallbackText } : {}),
-            ...(typeof r.model === "string" || r.model === null ? { model: r.model as any } : {}),
-            ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as any } : {}),
-          } satisfies RequirementsPromptTimelineEntry;
-        })
+        .map((row) => coerceRequirementsPromptTimelineEntry(row))
         .filter((x): x is RequirementsPromptTimelineEntry => Boolean(x))
         .slice(-50)
     : undefined;

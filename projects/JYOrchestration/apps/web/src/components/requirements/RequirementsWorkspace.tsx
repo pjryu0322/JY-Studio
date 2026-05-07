@@ -62,10 +62,15 @@ import {
 import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
+  type RequirementsPromptTimelineEntry,
   type RequirementsStateJson,
   type RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
-import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import {
+  appendIdeationBootstrapPromptTimeline,
+  buildIdeationBootstrapFallbackPromptTrace,
+  coerceBootstrapPromptTrace,
+} from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
 import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
@@ -788,9 +793,8 @@ export function RequirementsWorkspace({
         const seeded = params.seedWire
           ? problemInterviewStateFromAnalyzerWireInput(params.seedWire, nowIso)
           : emptyProblemInterviewState(nowIso);
-        const existingTimeline = Array.isArray(stateJsonRef.current.promptTimeline) ? stateJsonRef.current.promptTimeline : [];
-        const incomingTimeline: RequirementsPromptTimelineEntry[] = params.promptTrace ? [params.promptTrace] : [];
-        const nextTimeline = [...existingTimeline, ...incomingTimeline].slice(-50);
+        const existingTimeline = stateJsonRef.current.promptTimeline;
+        const nextTimeline = appendIdeationBootstrapPromptTimeline(existingTimeline, params.promptTrace ?? null);
         console.debug("[PROMPT TIMELINE]", nextTimeline);
         try {
           await persistRemote(nextRoom, {}, {
@@ -798,14 +802,14 @@ export function RequirementsWorkspace({
             problemInterview: seeded,
             ...(params.promptText ? { lastPromptText: params.promptText } : {}),
             ...(params.promptAtIso ? { lastPromptGeneratedAt: params.promptAtIso } : {}),
-            ...(incomingTimeline.length ? { promptTimeline: nextTimeline } : {}),
+            ...(params.promptTrace ? { promptTimeline: nextTimeline } : {}),
           });
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
           return true;
         } catch (pe) {
           console.error("[PROMPT TIMELINE PERSIST FAIL]", pe);
           // keep in-memory buffer so prompt drawer can still show it even if DB save fails
-          if (incomingTimeline.length) {
+          if (params.promptTrace) {
             stateJsonRef.current = {
               ...stateJsonRef.current,
               promptTimeline: nextTimeline,
@@ -853,48 +857,11 @@ export function RequirementsWorkspace({
           okReply
             ? undefined
             : [String(json.code ?? "").trim(), String(json.message ?? "").trim(), `HTTP ${res.status}`].filter(Boolean).join(" · ");
-        const coercePromptTrace = (raw: unknown): RequirementsPromptTimelineEntry | null => {
-          if (!raw || typeof raw !== "object") {
-            console.warn("[PROMPT TRACE DROPPED]", raw);
-            return null;
-          }
-          const r = raw as Record<string, unknown>;
-          const createdAt = typeof r.createdAt === "string" ? r.createdAt : "";
-          const action = typeof r.action === "string" ? r.action : "";
-          const stage = typeof r.stage === "string" ? r.stage : "";
-          const source = typeof r.source === "string" ? r.source : "";
-          if (!createdAt || !action || !stage || !source) {
-            console.warn("[PROMPT TRACE DROPPED]", raw);
-            return null;
-          }
-          return {
-            stage,
-            action,
-            source,
-            createdAt,
-            ...(typeof r.aiMember === "string" ? { aiMember: r.aiMember } : {}),
-            ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
-            ...(typeof r.responseText === "string" ? { responseText: r.responseText } : {}),
-            ...(typeof r.error === "string" ? { error: r.error } : {}),
-            ...(typeof r.fallbackText === "string" ? { fallbackText: r.fallbackText } : {}),
-            ...(typeof r.model === "string" || r.model === null ? { model: r.model as any } : {}),
-            ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as any } : {}),
-          };
-        };
-        const promptTrace = okReply
-          ? coercePromptTrace((json.data as any)?.promptTrace)
-          : coercePromptTrace((json as any)?.data?.promptTrace);
-
-        const bodyTextFallback = sanitizeIdeationInterviewFirstQuestion("");
-        const fallbackTrace: RequirementsPromptTimelineEntry = {
-          stage: "ideation",
-          action: "bootstrapInterview",
-          aiMember: "AI 기획자",
-          source: "fallback",
-          error: fallbackReason || "bootstrap_failed",
-          fallbackText: okReply ? "" : bodyText,
-          createdAt: new Date().toISOString(),
-        };
+        const rawTrace = okReply ? (json.data as { promptTrace?: unknown }).promptTrace : (json as { data?: { promptTrace?: unknown } }).data?.promptTrace;
+        const promptTrace = coerceBootstrapPromptTrace(rawTrace);
+        if (rawTrace != null && !promptTrace) {
+          console.warn("[PROMPT TRACE DROPPED]", rawTrace);
+        }
 
         const ok = await persistFirstQuestion({
           bodyText,
@@ -915,15 +882,10 @@ export function RequirementsWorkspace({
             seedWire: null,
             source: "fallback",
             fallbackReason: "persist_failed",
-            promptTrace: {
-              stage: "ideation",
-              action: "bootstrapInterview",
-              aiMember: "AI 기획자",
-              source: "fallback",
+            promptTrace: buildIdeationBootstrapFallbackPromptTrace({
               error: "persist_failed",
               fallbackText: sanitizeIdeationInterviewFirstQuestion(""),
-              createdAt: new Date().toISOString(),
-            },
+            }),
           });
         }
       } catch (e) {
@@ -936,15 +898,10 @@ export function RequirementsWorkspace({
           seedWire: null,
           source: "fallback",
           fallbackReason: e instanceof Error ? e.message : "bootstrap_failed",
-          promptTrace: {
-            stage: "ideation",
-            action: "bootstrapInterview",
-            aiMember: "AI 기획자",
-            source: "fallback",
+          promptTrace: buildIdeationBootstrapFallbackPromptTrace({
             error: e instanceof Error ? e.message : "bootstrap_failed",
             fallbackText: bodyText,
-            createdAt: new Date().toISOString(),
-          },
+          }),
         });
       }
     })();

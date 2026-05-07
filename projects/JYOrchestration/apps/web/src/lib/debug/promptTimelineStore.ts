@@ -4,6 +4,7 @@ import type {
   FeaturePlanningPromptPurpose,
 } from "@/lib/debug/featurePlanningPromptPurpose";
 import type { FeaturePlanningPromptMetricsV1, PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
+import { IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 
 const MAX_BODY = 12_000;
 const MAX_PER_PROJECT = 80;
@@ -125,7 +126,7 @@ export function recordIdeationBootstrapOpenAi(input: {
     id: `id_boot_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
     at,
     channel: "openai",
-    label: "아이디어 구체화 · bootstrapInterview",
+    label: `아이디어 구체화 · ${IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION}`,
     model: input.model,
     outbound,
     inbound,
