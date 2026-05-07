@@ -28,12 +28,48 @@ export type SingleChatOrchestrationSlotV1 = Readonly<{
   revision?: number;
 }>;
 
+export type SingleChatDynamicSlotPriority = "high" | "medium" | "low";
+
+/** LLM이 제안한 동적 슬롯 정의(저장·검증 대상) */
+export type SingleChatDynamicSlotDefinitionV1 = Readonly<{
+  /** 반드시 `dyn_` prefix를 포함한 안전 키 */
+  slotKey: string;
+  title: string;
+  description: string;
+  /** 제안 owner(허용: planner|analyst|architect|designer|reviewer|security) */
+  ownerAgent: string;
+  reason?: string | null;
+  priority?: SingleChatDynamicSlotPriority | null;
+  proposalConfidence?: number | null;
+  proposedAt?: string | null;
+}>;
+
+export type SingleChatDynamicSlotValidationRejectionV1 = Readonly<{
+  slotKey: string;
+  reason: string;
+  rejectedAt: string;
+}>;
+
+export type SingleChatDynamicSlotProposalHistoryV1 = Readonly<{
+  proposedAt: string;
+  /** 원문 제안(검증 전) */
+  suggestedSlots: readonly Omit<SingleChatDynamicSlotDefinitionV1, "proposedAt">[];
+  acceptedSlotKeys: readonly string[];
+  rejected: readonly SingleChatDynamicSlotValidationRejectionV1[];
+}>;
+
 /** 프로젝트 `requirementsStateJson.singleChatOrchestrationV1` — 스키마 2 */
 export type RequirementsSingleChatOrchestrationStateV1 = Readonly<{
   version: 1 | 2;
   stageGroup: string;
   slotDefinitionsHash: string;
   slots: Record<string, SingleChatOrchestrationSlotV1>;
+  /** 진행률(분모)용 — base 슬롯 키 목록(동적 슬롯 제외) */
+  baseSlotKeys?: readonly string[];
+  /** 검증 통과해 채택된 동적 슬롯 정의 */
+  dynamicSlots?: Record<string, SingleChatDynamicSlotDefinitionV1>;
+  rejectedDynamicSlots?: readonly SingleChatDynamicSlotValidationRejectionV1[];
+  slotProposalHistory?: readonly SingleChatDynamicSlotProposalHistoryV1[];
   lastOrchestratorAgent?: string | null;
   /** 마지막 턴에서 실제 LLM이 실행된 specialist 역할(플래너 제외) */
   lastDelegatedAgents?: readonly string[];

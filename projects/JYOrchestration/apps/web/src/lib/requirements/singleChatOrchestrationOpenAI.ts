@@ -11,6 +11,8 @@ import { DESIGN_OWNERS, FLOW_OWNERS, SECURITY_OWNERS } from "@/lib/requirements/
 import { runPlannerRouteTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerRoute";
 import { runSpecialistGroupTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.specialist";
 import { runPlannerMergeTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerMerge";
+import { validateDynamicProposedSlots } from "@/lib/requirements/singleChatOrchestrationSlots";
+import type { SingleChatDynamicSlotProposalHistoryV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 
 export type SingleChatOrchestrationTurnMeta = Readonly<{
   routingDecision: string;
@@ -70,18 +72,85 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const promptChunks: string[] = [];
   const executedAgents: string[] = ["planner-route"];
 
+  // Definitions can grow during the turn (hybrid dynamic slots).
+  let definitions = [...input.definitions];
+
   const route = await runPlannerRouteTurnOpenAI(input);
   if (!route.ok) return route;
 
   promptChunks.push(route.promptText);
 
+  // Hybrid: validate + accept suggested dynamic slots (auto-accept for now).
+  let acceptedDynamicSlotKeys: string[] = [];
+  let rejectedDynamicSlots: any[] = [];
+  if (route.suggestedSlots?.length) {
+    const v = validateDynamicProposedSlots({
+      nowIso: calledAt,
+      baseDefinitions: definitions.filter((d) => !String(d.slotKey).startsWith("dyn_")),
+      existingDynamicSlots: input.baseState.dynamicSlots ?? null,
+      suggestedSlots: route.suggestedSlots as any,
+    });
+    acceptedDynamicSlotKeys = v.accepted.map((x) => x.slotKey);
+    rejectedDynamicSlots = v.rejected;
+
+    if (v.accepted.length) {
+      // Persist definitions into state.dynamicSlots and extend slot definitions for runtime merge.
+      const dynMap: Record<string, any> = { ...(input.baseState.dynamicSlots ?? {}) };
+      for (const d of v.accepted) dynMap[d.slotKey] = d;
+
+      // Extend runtime definitions so the rest of the turn can target them.
+      const dynDefs = v.accepted.map((d) => ({
+        slotKey: d.slotKey,
+        label: d.title,
+        ownerAgent: d.ownerAgent, // normalized later when building defs from state; keep raw here
+        stageGroup: (input.definitions[0]?.stageGroup ?? "service-planning"),
+        hints: d.description,
+        dependsOn: [],
+      }));
+      definitions.push(...(dynDefs as any));
+    }
+  }
+
   let state = mergeOrchestrationSlotPatches({
     base: input.baseState,
     patches: route.patches,
     nowIso: calledAt,
-    definitions: input.definitions,
+    definitions,
     propagateStaleFromPlanner: true,
   });
+
+  if (acceptedDynamicSlotKeys.length || rejectedDynamicSlots.length) {
+    const dyn = { ...(state.dynamicSlots ?? {}) } as any;
+    for (const k of acceptedDynamicSlotKeys) {
+      const found = route.suggestedSlots?.find((s) => String((s as any).slotKey ?? "").trim().startsWith(k)) ?? null;
+      // state.dynamicSlots expects validated defs; validateDynamicProposedSlots already normalized.
+    }
+    // Use validated list rather than reusing raw suggested.
+    if (route.suggestedSlots?.length) {
+      const v = validateDynamicProposedSlots({
+        nowIso: calledAt,
+        baseDefinitions: definitions.filter((d) => !String(d.slotKey).startsWith("dyn_")),
+        existingDynamicSlots: state.dynamicSlots ?? null,
+        suggestedSlots: route.suggestedSlots as any,
+      });
+      for (const d of v.accepted) dyn[d.slotKey] = d;
+      const prevRejected = Array.isArray(state.rejectedDynamicSlots) ? [...state.rejectedDynamicSlots] : [];
+      const nextRejected = [...prevRejected, ...v.rejected];
+      const prevHist = Array.isArray(state.slotProposalHistory) ? [...state.slotProposalHistory] : [];
+      const histEntry: SingleChatDynamicSlotProposalHistoryV1 = {
+        proposedAt: calledAt,
+        suggestedSlots: route.suggestedSlots as any,
+        acceptedSlotKeys: v.accepted.map((d) => d.slotKey),
+        rejected: v.rejected,
+      };
+      state = {
+        ...state,
+        dynamicSlots: dyn,
+        rejectedDynamicSlots: nextRejected,
+        slotProposalHistory: [...prevHist, histEntry],
+      };
+    }
+  }
 
   const slotDepsChanged = route.patches.some((p) => {
     const prev = input.baseState.slots[p.slotKey];
@@ -181,7 +250,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     specialistDigest,
     plannerStable,
     participatingAgentsPromptBlock: input.participatingAgentsPromptBlock,
-    definitions: input.definitions,
+    definitions,
   });
 
   if (!merge.ok) {
@@ -196,7 +265,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     base: state,
     patches: merge.patches,
     nowIso: mergeIso,
-    definitions: input.definitions,
+    definitions,
     propagateStaleFromPlanner: false,
   });
 
