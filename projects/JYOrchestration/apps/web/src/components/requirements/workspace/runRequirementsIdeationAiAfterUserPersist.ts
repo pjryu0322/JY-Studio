@@ -512,7 +512,12 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     return commitInterviewPlannerReplyOnce(merged, null, { prevState: seeded, lastAskedSlot: lastSlot });
   };
 
-  const runFacilitatorOrDraftPipeline = async (): Promise<{ ok: boolean; tail: IdeationPlannerTail }> => {
+  type FacilitatorPipelineResult =
+    | { kind: "ok"; tail: IdeationPlannerTail }
+    | { kind: "soft_fail"; tail: IdeationPlannerTail }
+    | { kind: "emergency_fail"; tail: IdeationPlannerTail };
+
+  const runFacilitatorOrDraftPipeline = async (): Promise<FacilitatorPipelineResult> => {
     let facilitatorFinalRoom: RequirementsRoomStateV3;
     try {
       const priorScreenHandoff = pid ? consumeWorkspaceAiScreenHandoff(pid, "ideation") : "";
@@ -643,23 +648,21 @@ export async function runRequirementsIdeationAiAfterUserPersist(
         facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
         ideationSendDevLog("return", `facilitator-http id=${sendTraceId}`);
       }
-      return {
-        ok,
-        tail: {
-          needsTailPersist: true,
-          finalRoom: facilitatorFinalRoom,
-          persistMeta: {
-            ...(orchParsed ? { singleChatOrchestrationV1: orchParsed } : {}),
-            ...(stateJsonRef.current.promptTimeline ? { promptTimeline: stateJsonRef.current.promptTimeline } : {}),
-          },
+      const tail: IdeationPlannerTail = {
+        needsTailPersist: true,
+        finalRoom: facilitatorFinalRoom,
+        persistMeta: {
+          ...(orchParsed ? { singleChatOrchestrationV1: orchParsed } : {}),
+          ...(stateJsonRef.current.promptTimeline ? { promptTimeline: stateJsonRef.current.promptTimeline } : {}),
         },
       };
+      return ok ? { kind: "ok", tail } : { kind: "soft_fail", tail };
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });
       showErrorToast(`${IDEATION_AI_DISPLAY_NAME} 응답에 실패했습니다. 다시 시도해 주세요.`);
       ideationSendDevLog("return", `facilitator-throw id=${sendTraceId}`);
-      return { ok: false, tail: { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } } };
+      return { kind: "emergency_fail", tail: { needsTailPersist: true, finalRoom: { ...withCalling, aiQuestionIndex: turn + 1 } } };
     }
   };
 
@@ -667,7 +670,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     // Normal path: always go through LLM orchestration (`/api/requirements/ai-facilitator`).
     // Legacy ProblemInterview pipeline is emergency-only fallback (LLM/parse/orchestration failure).
     const r = await runFacilitatorOrDraftPipeline();
-    if (!r.ok) return runIdeationProblemInterviewPipeline();
+    if (r.kind === "emergency_fail") return runIdeationProblemInterviewPipeline();
     return r.tail;
   };
 
