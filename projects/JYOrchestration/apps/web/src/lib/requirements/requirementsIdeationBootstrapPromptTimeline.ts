@@ -328,8 +328,9 @@ export function isIdeationBootstrapTimelineEntry(
 ): boolean {
   return Boolean(
     entry &&
-      entry.stage === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_STAGE &&
-      entry.action === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION
+      ((entry.stage === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_STAGE &&
+        entry.action === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION) ||
+        entry.action === "requirementsChatOrchestration")
   );
 }
 

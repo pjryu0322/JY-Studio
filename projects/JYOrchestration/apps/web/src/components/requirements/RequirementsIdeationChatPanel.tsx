@@ -100,7 +100,8 @@ export function RequirementsIdeationChatPanel({
   const ideationInterviewUi =
     inIdeationStage && conversationStatus === "loaded"
       ? {
-          active: Boolean(problemInterviewState && problemInterviewState.active !== false),
+          // Orchestration-first: treat interview UI as active in ideation stage, independent of legacy ProblemInterview state.
+          active: true,
           readinessPercent: proposalReadinessPercentVal,
           covered: problemInterviewCovered,
           strictFilled: problemInterviewStrictFilled,
@@ -108,7 +109,7 @@ export function RequirementsIdeationChatPanel({
           nextSlot: nextNeededSlot,
           remainingQuestionsEstimate,
           slotState: problemInterviewState,
-          recentAskedSlots: ((problemInterviewState?.askedSlots ?? []).slice(-8) as unknown) as ProblemInterviewSlot[],
+          recentAskedSlots: [],
           onForceGeneratePlanNow,
           orchestrationSlotSections: orchestrationSlotSections ?? null,
         }
