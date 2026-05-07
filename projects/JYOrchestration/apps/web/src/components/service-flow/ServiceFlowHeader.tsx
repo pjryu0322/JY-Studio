@@ -5,7 +5,7 @@ import { uiTokens as t } from "@/components/ui/tokens";
 
 export function ServiceFlowHeader(p: {
   readonly progressPercent: number;
-  /** 결정 슬롯 충족 수(아이디어 정리도의 분자·분모 중 분자에 대응) */
+  /** 결정 슬롯 충족 수(진행률 분자에 대응) */
   readonly filledSlotCount: number;
   readonly progressSlotTotal: number;
   readonly onOpenRemaining: () => void;

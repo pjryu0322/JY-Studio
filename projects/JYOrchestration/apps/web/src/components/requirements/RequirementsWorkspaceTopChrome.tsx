@@ -1,7 +1,6 @@
 "use client";
 
 import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
-import { PROBLEM_INTERVIEW_SLOT_TOTAL } from "@/lib/requirements/problemInterview";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { uiTokens as t } from "@/components/ui/tokens";
@@ -50,11 +49,7 @@ export function RequirementsWorkspaceTopChrome({
     inIdeationStage &&
     conversationStatus === "loaded" &&
     ideationComplete &&
-    !(
-      problemInterviewState &&
-      problemInterviewState.active !== false &&
-      problemInterviewStrictFilled < PROBLEM_INTERVIEW_SLOT_TOTAL
-    );
+    true;
 
   return (
     <div className="jyo-requirements-workspace-top-chrome">
