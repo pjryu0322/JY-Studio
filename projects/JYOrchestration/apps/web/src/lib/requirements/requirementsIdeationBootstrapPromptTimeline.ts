@@ -22,7 +22,7 @@ export function buildIdeationBootstrapContextualFallbackQuestion(input: {
   const typeSuffix = input.projectType?.trim() ? ` (${input.projectType.trim()})` : "";
   const snippet = desc.slice(0, 160).trim();
   if (snippet.length >= 12) {
-    return `${name}${typeSuffix} 준비 중이라고 이해했습니다. 우선 이 서비스에서 가장 중요한 사용자 문제를 한 문장으로 설명해 주시겠어요?`;
+    return `${name}${typeSuffix}: 적어 주신 내용을 바탕으로, 핵심 산출물이 생긴 뒤 검토·승인·공동 편집 중 어떤 통제가 필요한지 한 가지만 골라 설명해 주시겠어요?`;
   }
   return `${name}${typeSuffix}에 대해, 어떤 사용자에게 어떤 문제를 해결하려는 서비스인지 한 문장으로 알려주시겠어요?`;
 }
@@ -158,6 +158,38 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
             .filter(Boolean) as Array<{ slotKey: string; reason: string }>,
         }
       : {}),
+    ...(typeof r.detectedDomain === "string" && r.detectedDomain.trim() ? { detectedDomain: r.detectedDomain.trim().slice(0, 120) } : {}),
+    ...(Array.isArray(r.missingInformation)
+      ? {
+          missingInformation: r.missingInformation.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 16),
+        }
+      : {}),
+    ...(typeof r.recommendedFocus === "string" && r.recommendedFocus.trim()
+      ? { recommendedFocus: r.recommendedFocus.trim().slice(0, 200) }
+      : {}),
+    ...(Array.isArray(r.initialOwnershipHints)
+      ? {
+          initialOwnershipHints: r.initialOwnershipHints
+            .map((x) => {
+              if (!x || typeof x !== "object") return null;
+              const o = x as Record<string, unknown>;
+              const slotKey = String(o.slotKey ?? "").trim();
+              const ownerAgent = String(o.ownerAgent ?? "").trim();
+              if (!slotKey || !ownerAgent) return null;
+              return { slotKey: slotKey.slice(0, 160), ownerAgent: ownerAgent.slice(0, 64) };
+            })
+            .filter((x): x is { slotKey: string; ownerAgent: string } => x !== null)
+            .slice(0, 16),
+        }
+      : {}),
+    ...(typeof r.interactionMode === "string" && r.interactionMode.trim()
+      ? { interactionMode: r.interactionMode.trim().slice(0, 120) }
+      : {}),
+    ...(r.bootstrapPhase === 1 || r.bootstrapPhase === 2 || r.bootstrapPhase === 3 ? { bootstrapPhase: r.bootstrapPhase } : {}),
+    ...(typeof r.compactCatalogMode === "boolean" ? { compactCatalogMode: r.compactCatalogMode } : {}),
+    ...(r.slotExpansionPhase === 1 || r.slotExpansionPhase === 2 || r.slotExpansionPhase === 3
+      ? { slotExpansionPhase: r.slotExpansionPhase }
+      : {}),
   };
 }
 
@@ -249,6 +281,14 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly suggestedDynamicSlots?: readonly string[];
   readonly acceptedDynamicSlots?: readonly string[];
   readonly rejectedDynamicSlots?: Array<{ slotKey: string; reason: string }>;
+  readonly detectedDomain?: string | null;
+  readonly missingInformation?: readonly string[];
+  readonly recommendedFocus?: string | null;
+  readonly initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
+  readonly interactionMode?: string | null;
+  readonly bootstrapPhase?: 1 | 2 | 3;
+  readonly compactCatalogMode?: boolean;
+  readonly slotExpansionPhase?: 1 | 2 | 3;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -292,6 +332,14 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.suggestedDynamicSlots?.length ? { suggestedDynamicSlots: [...params.suggestedDynamicSlots] } : {}),
     ...(params.acceptedDynamicSlots?.length ? { acceptedDynamicSlots: [...params.acceptedDynamicSlots] } : {}),
     ...(params.rejectedDynamicSlots?.length ? { rejectedDynamicSlots: [...params.rejectedDynamicSlots] } : {}),
+    ...(params.detectedDomain ? { detectedDomain: params.detectedDomain } : {}),
+    ...(params.missingInformation?.length ? { missingInformation: [...params.missingInformation] } : {}),
+    ...(params.recommendedFocus ? { recommendedFocus: params.recommendedFocus } : {}),
+    ...(params.initialOwnershipHints?.length ? { initialOwnershipHints: [...params.initialOwnershipHints] } : {}),
+    ...(params.interactionMode ? { interactionMode: params.interactionMode } : {}),
+    ...(params.bootstrapPhase !== undefined ? { bootstrapPhase: params.bootstrapPhase } : {}),
+    ...(params.compactCatalogMode !== undefined ? { compactCatalogMode: params.compactCatalogMode } : {}),
+    ...(params.slotExpansionPhase !== undefined ? { slotExpansionPhase: params.slotExpansionPhase } : {}),
   };
 }
 

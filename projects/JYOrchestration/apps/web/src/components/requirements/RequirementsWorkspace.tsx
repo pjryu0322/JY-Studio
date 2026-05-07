@@ -934,31 +934,6 @@ export function RequirementsWorkspace({
         }
       };
 
-      const fetchBootstrapSuggestionsLlm = async (
-        question: string,
-        projectFields: { projectName: string; projectDescription: string; projectType: string }
-      ): Promise<string[]> => {
-        try {
-          const sg = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.INTERVIEW_BOOTSTRAP_SUGGESTIONS, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId: pid,
-              projectName: projectFields.projectName,
-              projectDescription: projectFields.projectDescription,
-              projectType: projectFields.projectType,
-              interviewQuestion: question,
-              singleChatOrchestrationV1: stateJsonRef.current.singleChatOrchestrationV1 ?? undefined,
-            }),
-          });
-          const sj = (await sg.json()) as { success?: boolean; data?: { suggestions?: unknown } };
-          if (!sg.ok || !sj.success || !Array.isArray(sj.data?.suggestions)) return [];
-          return normalizeLlmInterviewSuggestions(sj.data.suggestions as readonly string[]);
-        } catch {
-          return [];
-        }
-      };
-
       try {
         const res = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.AI_FACILITATOR, {
           method: "POST",
@@ -1013,14 +988,10 @@ export function RequirementsWorkspace({
           });
         }
 
-        let bootInterviewChips: string[] = [];
-        if (okReply) {
-          bootInterviewChips = normalizeLlmInterviewSuggestions(
-            Array.isArray(apiRawSug) ? (apiRawSug as unknown[]).map((x) => String(x ?? "")) : []
-          );
-        } else {
-          bootInterviewChips = await fetchBootstrapSuggestionsLlm(bodyText, bootCtx);
-        }
+        // Single-call bootstrap: on failure, do NOT do extra LLM calls for suggestions.
+        const bootInterviewChips = normalizeLlmInterviewSuggestions(
+          Array.isArray(apiRawSug) ? (apiRawSug as unknown[]).map((x) => String(x ?? "")) : []
+        );
         const bootSugSource: "llm" | "empty" = bootInterviewChips.length ? "llm" : "empty";
         const bootAllowCustom = json.data?.interviewAllowCustomInput !== false;
         const rawTrace = okReply ? (json.data as { promptTrace?: unknown }).promptTrace : (json as { data?: { promptTrace?: unknown } }).data?.promptTrace;
@@ -1065,7 +1036,7 @@ export function RequirementsWorkspace({
           ideationBootstrapFlightRef.current = null;
           const persistFailCtx = buildIdeationBootstrapContextualFallbackQuestion(bootCtx);
           const persistFailBody = sanitizeIdeationInterviewFirstQuestion(persistFailCtx);
-          const persistFailSug = await fetchBootstrapSuggestionsLlm(persistFailBody, bootCtx);
+          const persistFailSug: string[] = [];
           const persistFailSugSrc: "llm" | "empty" = persistFailSug.length ? "llm" : "empty";
           await persistFirstQuestion({
             bodyText: persistFailBody,
@@ -1094,7 +1065,7 @@ export function RequirementsWorkspace({
         };
         const excCtx = buildIdeationBootstrapContextualFallbackQuestion(excBootCtx);
         const bodyText = sanitizeIdeationInterviewFirstQuestion(excCtx);
-        const excSug = await fetchBootstrapSuggestionsLlm(bodyText, excBootCtx);
+        const excSug: string[] = [];
         const excSugSrc: "llm" | "empty" = excSug.length ? "llm" : "empty";
         await persistFirstQuestion({
           bodyText,

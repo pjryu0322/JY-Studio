@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { TopRightToolbar } from "@/components/layout/TopRightToolbar";
 import { useProjectRailBadges } from "@/components/layout/useProjectRailBadges";
+import { useProjectWorkNotesRailCount } from "@/components/layout/useProjectWorkNotesRailCount";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ChevronLeftIcon, ChevronRightIcon } from "@/components/layout/platformTopNav/PlatformTopNavChevrons";
 import { ProjectRailSecondaryTools } from "@/components/layout/platformTopNav/ProjectRailSecondaryTools";
@@ -45,6 +46,7 @@ export function PlatformTopNav() {
   );
   const hasProjectContext = Boolean(effectiveProjectId?.trim());
   const { participantCounts, memberCount: projectMembersCount } = useProjectRailBadges(effectiveProjectId);
+  const projectWorkNotesCount = useProjectWorkNotesRailCount(effectiveProjectId);
   const projectName = useProjectNameFromId(projectId);
 
   const expandTabBase = platformRailExpandTabStyle(PLATFORM_RAIL_EXPAND_TAB_W);
@@ -155,6 +157,7 @@ export function PlatformTopNav() {
               compactToolbar={compactToolbar}
               me={me}
               projectMembersCount={projectMembersCount}
+              projectWorkNotesCount={projectWorkNotesCount}
             />
           </div>
         ) : (

@@ -8,7 +8,10 @@ import {
   WORKSPACE_SERVICE_PLANNING_SCREEN_KEYS,
   type WorkspaceScreenKey,
 } from "@/lib/workspace-ai/workspaceScreenKeys";
-import { SINGLE_CHAT_SERVICE_PLANNING_GROUP } from "@/lib/requirements/singleChatOrchestrationSlots";
+import {
+  internalOwnerToLlmExternalRole,
+  SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 
 /** AI Agent 설정 + 오케스트레이션 멤버 집계용 와이어 */
@@ -77,34 +80,57 @@ function formatAgentPromptBlock(params: {
   readonly agents: readonly SingleChatSelectedAgentWire[];
 }): string {
   const lines: string[] = [];
-  lines.push(`현재 절차 그룹: ${params.stageGroup}`);
-  lines.push(`현재 화면: ${params.screenLabel}`);
-  lines.push("");
+  // LLM prompt 용: “실제 참여 AI 목록”만 노출. displayName+외부역할 기준 dedupe 후 한 줄씩.
+  lines.push("[참여 AI]");
   if (!params.agents.length) {
-    lines.push(
-      "참여 Agent(프로젝트 설정): 없음 — 기본 플랫폼 페르소나만 적용됩니다."
-    );
+    lines.push("- (없음)");
   } else {
-    lines.push("참여 Agent(프로젝트 AI Agent 설정·오케스트레이션):");
     for (const a of params.agents) {
+      const roleExternal = internalOwnerToLlmExternalRole(String(a.aiOrchestrationRole ?? ""));
+      const provider = String(a.aiProvider ?? "").trim();
+      const model = String(a.aiModelOverride ?? "").trim();
       const parts = [
         a.displayName,
-        a.source === "catalog" ? `(카탈로그${a.catalogKey ? `:${a.catalogKey}` : ""})` : "(프로젝트 멤버)",
-        a.aiOrchestrationRole ? `역할:${a.aiOrchestrationRole}` : null,
-        a.orchestrationStage ? `단계:${a.orchestrationStage}` : null,
-        a.aiProvider ? `provider:${a.aiProvider}` : null,
-        a.aiAgentKey ? `agentKey:${a.aiAgentKey}` : null,
-        a.aiModelOverride ? `modelOverride:${a.aiModelOverride}` : null,
+        roleExternal ? `역할:${roleExternal}` : null,
+        provider ? `provider:${provider}` : null,
+        model ? `model:${model}` : null,
         a.enginePreference ? `engine:${a.enginePreference}` : null,
       ].filter(Boolean);
       lines.push(`- ${parts.join(" · ")}`);
     }
   }
-  lines.push("");
-  lines.push(
-    "응답 규칙: 위 목록에 나온 Agent 관점·역할 범위 내에서만 답합니다. 목록에 없는 전문 역할(예: 보안 전담·검수자)은 이 절차에 참여한 것으로 가정하지 않습니다."
-  );
   return lines.join("\n");
+}
+
+function agentMetadataRichness(a: SingleChatSelectedAgentWire): number {
+  let s = 0;
+  if (String(a.aiModelOverride ?? "").trim()) s += 4;
+  if (String(a.aiProvider ?? "").trim()) s += 2;
+  if (String(a.aiAgentKey ?? "").trim()) s += 1;
+  if (String(a.enginePreference ?? "").trim()) s += 1;
+  return s;
+}
+
+/**
+ * 동일 displayName + 외부 오케스트레이션 역할이 카탈로그/프로젝트 멤버에서 중복될 때 한 줄로 합친다.
+ * model·provider 등 메타가 더 풍부한 쪽을 남긴다(동점이면 먼저 등장한 항목 유지).
+ */
+export function dedupeParticipatingAgentsForPrompt(agents: readonly SingleChatSelectedAgentWire[]): SingleChatSelectedAgentWire[] {
+  const byKey = new Map<string, SingleChatSelectedAgentWire>();
+  for (const a of agents) {
+    const dn = String(a.displayName ?? "").trim().toLowerCase();
+    const ext = internalOwnerToLlmExternalRole(String(a.aiOrchestrationRole ?? ""));
+    const key = `${dn}\0${ext}`;
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, a);
+      continue;
+    }
+    const rNew = agentMetadataRichness(a);
+    const rOld = agentMetadataRichness(prev);
+    if (rNew > rOld) byKey.set(key, a);
+  }
+  return Array.from(byKey.values());
 }
 
 /**
@@ -146,7 +172,7 @@ export async function resolveServicePlanningOrchestrationContext(projectId: stri
       merged.push(...ctx.selectedAgents);
     }
   }
-  const selectedAgents = mergeAgentWiresUnique(merged);
+  const selectedAgents = dedupeParticipatingAgentsForPrompt(mergeAgentWiresUnique(merged));
   const primaryWorkspaceScreenKey: WorkspaceScreenKey = "requirements_ideation";
   const timelineStage = timelineStageForWorkspaceScreen(primaryWorkspaceScreenKey);
   const stageGroupDisplay = workspaceStageGroupLabel(primaryWorkspaceScreenKey);
@@ -224,13 +250,14 @@ export async function resolveSingleChatAgentContext(
     }
   }
 
-  const promptBlock = formatAgentPromptBlock({ stageGroup, screenLabel, agents: selectedAgents });
+  const deduped = dedupeParticipatingAgentsForPrompt(selectedAgents);
+  const promptBlock = formatAgentPromptBlock({ stageGroup, screenLabel, agents: deduped });
 
   return {
     stageGroup,
     timelineStage,
     workspaceScreenKey,
-    selectedAgents,
+    selectedAgents: deduped,
     promptBlock,
   };
 }
@@ -239,8 +266,8 @@ function orchestrationRoleFromCatalogKey(key: WorkspaceAiMemberId): string | nul
   // 서비스 기획 슬롯/라우팅에서 사용하는 내부 역할 문자열로 정규화.
   if (key === "ideation") return "planner";
   if (key === "actor_flow") return "service-designer";
-  if (key === "feature_planning") return "spec-reviewer";
-  if (key === "designer") return "spec-reviewer";
+  if (key === "feature_planning") return "solution-architect";
+  if (key === "designer") return "ui-designer";
   if (key === "security_reviewer") return "security-reviewer";
   return null;
 }

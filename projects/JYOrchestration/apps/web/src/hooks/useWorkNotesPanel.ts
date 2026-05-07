@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { editorHtmlToNoteRaw, escapeHtmlText, sanitizeWorkNoteHtml } from "@/lib/worknote/workNoteEditorHtml";
 import type { WorkNotesMemoScope } from "@/lib/worknote/workNoteMemoScope";
+import { notifyProjectWorkNotesRailRefresh } from "@/lib/worknote/projectWorkNotesRailEvents";
 
 export type WorkNoteSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -236,6 +237,9 @@ export function useWorkNotesPanel(args: UseWorkNotesPanelArgs) {
       setTitle(dto.title);
       setText(dto.content);
       setSaveState("saved");
+      if (memoScope === "PROJECT" && String(projectId ?? "").trim()) {
+        notifyProjectWorkNotesRailRefresh(String(projectId).trim());
+      }
     } catch (e) {
       setSaveState("error");
       setSaveError(e instanceof Error ? e.message : "메모를 만들지 못했습니다.");
@@ -289,6 +293,9 @@ export function useWorkNotesPanel(args: UseWorkNotesPanelArgs) {
       try {
         const items = await loadNotes();
         setNotes(items);
+        if (memoScope === "PROJECT" && String(projectId ?? "").trim()) {
+          notifyProjectWorkNotesRailRefresh(String(projectId).trim());
+        }
         if (wasActive) {
           if (items.length) {
             const first = items[0];
@@ -307,7 +314,7 @@ export function useWorkNotesPanel(args: UseWorkNotesPanelArgs) {
         setListError(e instanceof Error ? e.message : "목록을 다시 불러오지 못했습니다.");
       }
     },
-    [flushActive, loadNotes]
+    [flushActive, loadNotes, memoScope, projectId]
   );
 
   useEffect(() => {

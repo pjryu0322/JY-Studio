@@ -1,6 +1,7 @@
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
+  computeSlotExpansionPhaseFromState,
   isPlannerStableEnough,
   mergeOrchestrationSlotPatches,
   slotBucketsByStatus,
@@ -58,6 +59,10 @@ export function plannerPreferredFromAgents(agents: readonly SingleChatSelectedAg
   return [...agents].some((a) => String(a.aiOrchestrationRole ?? "").trim().toLowerCase() === "planner");
 }
 
+/**
+ * @deprecated Bootstrap에서는 사용하지 않음 (단일 bootstrap LLM 호출로 통합됨).
+ * 일반 turn 이후(필요 시) 동적 슬롯 제안을 분리 호출할 때만 사용.
+ */
 export async function runHybridSlotProposalBootstrapOpenAI(input: {
   readonly projectName: string;
   readonly projectDescription: string;
@@ -180,7 +185,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   // Definitions can grow during the turn (hybrid dynamic slots).
   let definitions = [...input.definitions];
 
-  const route = await runPlannerRouteTurnOpenAI(input);
+  const slotExpansionPhase = computeSlotExpansionPhaseFromState(input.baseState, input.definitions);
+
+  const route = await runPlannerRouteTurnOpenAI({ ...input, slotExpansionPhase });
   if (!route.ok) return route;
 
   promptChunks.push(route.promptText);
@@ -281,6 +288,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       state,
       activeRoles: input.activeRoles,
       allowedOwners: FLOW_OWNERS,
+      slotExpansionPhase,
     });
     promptChunks.push(sp.promptText);
     if (sp.ok && sp.patches.length) {
@@ -305,6 +313,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       state,
       activeRoles: input.activeRoles,
       allowedOwners: DESIGN_OWNERS,
+      slotExpansionPhase,
     });
     promptChunks.push(sp.promptText);
     if (sp.ok && sp.patches.length) {
@@ -329,6 +338,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       state,
       activeRoles: input.activeRoles,
       allowedOwners: SECURITY_OWNERS,
+      slotExpansionPhase,
     });
     promptChunks.push(sp.promptText);
     if (sp.ok && sp.patches.length) {
@@ -460,12 +470,14 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
   if (/예약|booking|reservation/.test(lower)) {
     const flow = defByOwner("service-designer").find((x) => x.slotKey.includes("serviceFlow"));
     if (flow) bump(flow.slotKey, flow.ownerAgent, "예약 관련 흐름 언급", 0.5, "service-designer", "candidate");
-    const feat = defByOwner("spec-reviewer").find((x) => x.slotKey.includes("coreFeatures"));
-    if (feat) bump(feat.slotKey, feat.ownerAgent, "예약 기능 언급", 0.5, "spec-reviewer", "candidate");
+    const feat = defByOwner("solution-architect").find((x) => x.slotKey.includes("coreFeatures"));
+    if (feat) bump(feat.slotKey, feat.ownerAgent, "예약 기능 언급", 0.5, "solution-architect", "candidate");
   }
   if (/화면|UI|페이지/.test(um)) {
-    const d = defByOwner("spec-reviewer").find((x) => x.slotKey.includes("requiredScreens"));
-    if (d) bump(d.slotKey, d.ownerAgent, "화면/UI 언급", 0.45, "spec-reviewer", "candidate");
+    const d = defByOwner("solution-architect").find((x) => x.slotKey.includes("requiredScreens"));
+    if (d) bump(d.slotKey, d.ownerAgent, "화면/UI 언급", 0.45, "solution-architect", "candidate");
+    const ui = defByOwner("ui-designer").find((x) => x.slotKey.includes(".design."));
+    if (ui) bump(ui.slotKey, ui.ownerAgent, "UI 톤/IA 언급", 0.4, "ui-designer", "candidate");
   }
   if (/우선|priority|mvp|필수\s*기능/.test(lower)) {
     const d = defByOwner("task-reviewer").find((x) => x.slotKey.includes("featurePriority"));

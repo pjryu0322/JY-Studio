@@ -2,7 +2,12 @@ import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import type { RequirementsSingleChatOrchestrationStateV1, SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
-import { plannerSlotKeys, type SlotPatchInput } from "@/lib/requirements/singleChatOrchestrationSlots";
+import {
+  plannerSlotKeys,
+  stringifyPlannerRouteSlotCatalogForLlm,
+  type SlotExpansionPhase,
+  type SlotPatchInput,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
 import { filterDelegatesForActiveRoles, parseUpdatedSlotsRows, safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
 
 export type PlannerRouteTurnOk = Readonly<{
@@ -41,6 +46,8 @@ export async function runPlannerRouteTurnOpenAI(input: {
   readonly mentionTargetsSummary?: string;
   readonly senderSummary?: string;
   readonly priorScreenHandoff?: string;
+  /** 슬롯 정의 JSON 범위·dependsOn 포함 여부. 미지정 시 3(전체). */
+  readonly slotExpansionPhase?: SlotExpansionPhase;
 }): Promise<PlannerRouteTurnResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
@@ -49,16 +56,8 @@ export async function runPlannerRouteTurnOpenAI(input: {
   const plannerKeys = new Set(plannerSlotKeys(input.definitions));
   const allKeys = new Set(input.definitions.map((d) => d.slotKey));
   const excerpt = input.dialogueExcerpt.trim().slice(0, 14_000);
-  const catalogJson = JSON.stringify(
-    input.definitions.map((d) => ({
-      slotKey: d.slotKey,
-      label: d.label,
-      ownerAgent: d.ownerAgent,
-      dependsOn: d.dependsOn ?? [],
-    })),
-    null,
-    0
-  ).slice(0, 20_000);
+  const expansionPhase: SlotExpansionPhase = input.slotExpansionPhase ?? 3;
+  const catalogJson = stringifyPlannerRouteSlotCatalogForLlm(input.definitions, expansionPhase);
 
   const slotsJson = JSON.stringify(input.baseState.slots, null, 0).slice(0, 20_000);
   const rolesLine = [...input.activeRoles].join(", ");
@@ -78,10 +77,12 @@ export async function runPlannerRouteTurnOpenAI(input: {
   const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}
 당신은 SingleChat 내부 **planner 라우터**입니다. 사용자에게 직접 말하지 않습니다. JSON만 출력.
 
+[슬롯 카탈로그 범위] expansionPhase=${expansionPhase} (1=planning, 2=+flow, 3=전체). [슬롯 정의]는 이 범위만 포함할 수 있으나, updatedSlots의 slotKey는 반드시 [현재 슬롯]에 존재하는 전체 키와 일치해야 한다.
+
 역할:
 1) 사용자 발화를 분석해 planner 소유 슬롯만 갱신(updatedSlots의 owner는 planner만).
 2) 액터·흐름·시나리오가 핵심이면 delegatedAgents에 "service-designer" 또는 "domain-expert"를 넣습니다(활성 역할만).
-3) 기능·우선순위·화면·프로토 범위가 핵심이면 "spec-reviewer" 또는 "task-reviewer"를 넣습니다(활성만).
+3) 기능·우선순위·화면·프로토 범위가 핵심이면 "solution-architect" 또는 "task-reviewer"를 넣습니다(활성만).
 4) 보안·프라이버시·인증/권한이 핵심이면 "security-reviewer"를 넣습니다(활성만).
 5) planner 슬롯만 다루면 delegatedAgents는 빈 배열 [].
 6) 복합이면 필요한 역할만 나열. 절대 불필요한 역할을 넣지 마세요.

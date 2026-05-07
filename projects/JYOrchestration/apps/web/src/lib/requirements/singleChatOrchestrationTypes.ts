@@ -64,6 +64,13 @@ export type RequirementsSingleChatOrchestrationStateV1 = Readonly<{
   stageGroup: string;
   slotDefinitionsHash: string;
   slots: Record<string, SingleChatOrchestrationSlotV1>;
+  /** bootstrap initializer 메타(LLM 산출). DB 마이그레이션 없이 optional로 저장 */
+  bootstrapMeta?: {
+    detectedDomain?: string | null;
+    missingInformation?: readonly string[];
+    recommendedFocus?: string | null;
+    initialOwnershipHints?: readonly { slotKey: string; ownerAgent: string }[];
+  } | null;
   /** 진행률(분모)용 — base 슬롯 키 목록(동적 슬롯 제외) */
   baseSlotKeys?: readonly string[];
   /** 검증 통과해 채택된 동적 슬롯 정의 */

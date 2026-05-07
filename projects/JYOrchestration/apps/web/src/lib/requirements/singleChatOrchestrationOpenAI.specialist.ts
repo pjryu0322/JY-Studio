@@ -2,7 +2,11 @@ import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import type { RequirementsSingleChatOrchestrationStateV1, SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
-import type { SlotPatchInput } from "@/lib/requirements/singleChatOrchestrationSlots";
+import {
+  formatSlotDefinitionRowForOrchestrationLlm,
+  type SlotExpansionPhase,
+  type SlotPatchInput,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
 import { parseUpdatedSlotsRows, safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
 
 export async function runSpecialistGroupTurnOpenAI(input: {
@@ -15,6 +19,8 @@ export async function runSpecialistGroupTurnOpenAI(input: {
   readonly state: RequirementsSingleChatOrchestrationStateV1;
   readonly activeRoles: Set<string>;
   readonly allowedOwners: Set<string>;
+  /** phase&lt;3 이면 [대상 슬롯]에서 dependsOn 생략 */
+  readonly slotExpansionPhase?: SlotExpansionPhase;
 }): Promise<
   Readonly<{
     ok: boolean;
@@ -36,8 +42,10 @@ export async function runSpecialistGroupTurnOpenAI(input: {
   }
 
   const slotsJson = JSON.stringify(input.state.slots, null, 0).slice(0, 18_000);
+  const expansionPhase: SlotExpansionPhase = input.slotExpansionPhase ?? 3;
+  const includeDepends = expansionPhase >= 3;
   const targetCatalog = JSON.stringify(
-    targetDefs.map((d) => ({ slotKey: d.slotKey, label: d.label, ownerAgent: d.ownerAgent, dependsOn: d.dependsOn ?? [] })),
+    targetDefs.map((d) => formatSlotDefinitionRowForOrchestrationLlm(d, { includeDependsOn: includeDepends })),
     null,
     0
   );
@@ -46,7 +54,7 @@ export async function runSpecialistGroupTurnOpenAI(input: {
     input.groupLabel === "flow-analyst"
       ? "service-designer 및 domain-expert — 액터·흐름·예외·시나리오 슬롯만 다룹니다."
       : input.groupLabel === "feature-designer"
-        ? "spec-reviewer 및 task-reviewer — 기능·우선순위·화면·프로토 범위 슬롯만 다룹니다."
+        ? "solution-architect 및 task-reviewer 및 ui-designer — 기능·우선순위·화면·프로토·UI 슬롯만 다룹니다."
         : "security-reviewer — 보안·프라이버시·인증/권한 슬롯만 다룹니다.";
 
   const system = `${workspaceAiMemberSystemPrefix(input.groupLabel === "security-reviewer" ? "security_reviewer" : "ideation")}

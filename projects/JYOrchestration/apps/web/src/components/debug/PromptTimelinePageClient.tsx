@@ -1,10 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import type { PromptTimelineChannel, PromptTimelineEntry } from "@/lib/debug/promptTimelineTypes";
+import {
+  buildDebugPromptTimelineMarkdown,
+  downloadDebugPromptTimelineMarkdown,
+  localDateSlug,
+  sanitizeTimelineExportBasename,
+} from "@/lib/debug/promptTimelineMarkdown";
 import { resolveWorkflowProjectContextId } from "@/lib/workflow/flow-state";
 
 type ApiOk = { success: true; data: { entries: PromptTimelineEntry[] } };
@@ -12,6 +19,15 @@ type ApiErr = { success: false; message?: string };
 
 function channelLabel(ch: PromptTimelineChannel): string {
   return ch === "openai" ? "OpenAI" : "Cursor";
+}
+
+function ClipboardGlyph({ size = 16 }: { readonly size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
 }
 
 export function PromptTimelinePageClient() {
@@ -23,6 +39,8 @@ export function PromptTimelinePageClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entries, setEntries] = useState<PromptTimelineEntry[]>([]);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     const id = projectId.trim();
@@ -50,10 +68,103 @@ export function PromptTimelinePageClient() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  const flashCopy = useCallback((message: string) => {
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    setCopyToast(message);
+    copyTimerRef.current = setTimeout(() => {
+      setCopyToast(null);
+      copyTimerRef.current = null;
+    }, 1600);
+  }, []);
+
+  const copyText = useCallback(
+    async (text: string) => {
+      const raw = String(text ?? "");
+      if (!raw.length) return;
+      const ok = await writeClipboardText(raw);
+      flashCopy(ok ? "클립보드에 복사했습니다." : "복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+    },
+    [flashCopy]
+  );
+
+  const onExportMarkdown = useCallback(() => {
+    if (!entries.length || !projectId.trim()) return;
+    const stem = sanitizeTimelineExportBasename(projectId);
+    const md = buildDebugPromptTimelineMarkdown(entries);
+    downloadDebugPromptTimelineMarkdown(`${stem}-prompt-timeline-${localDateSlug()}.md`, md);
+  }, [entries, projectId]);
+
   return (
-    <div style={{ minHeight: "70vh", padding: isNarrow ? "12px 12px 28px" : "18px 16px 44px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+    <div style={{ minHeight: "70vh", padding: isNarrow ? "12px 12px 28px" : "18px 16px 44px", position: "relative" }}>
+      {copyToast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 80,
+            padding: "8px 14px",
+            borderRadius: 10,
+            background: "#0f172a",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.25)",
+            maxWidth: "min(360px, 92vw)",
+            textAlign: "center",
+          }}
+        >
+          {copyToast}
+        </div>
+      ) : null}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: 16, fontWeight: 900, color: t.textPrimary }}>프롬프트 타임라인</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading || !projectId}
+            style={{
+              border: `1px solid ${t.border}`,
+              background: "#fff",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "6px 12px",
+              cursor: loading || !projectId ? "wait" : "pointer",
+              color: t.textSecondary,
+            }}
+          >
+            새로고침
+          </button>
+          <button
+            type="button"
+            onClick={onExportMarkdown}
+            disabled={!entries.length || !projectId}
+            style={{
+              border: `1px solid ${t.border}`,
+              background: entries.length ? "#ecfdf5" : "#f1f5f9",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 700,
+              padding: "6px 12px",
+              cursor: entries.length && projectId ? "pointer" : "not-allowed",
+              color: t.textSecondary,
+              opacity: entries.length && projectId ? 1 : 0.55,
+            }}
+          >
+            MD 저장
+          </button>
+        </div>
       </div>
 
       {!projectId ? (
@@ -69,7 +180,20 @@ export function PromptTimelinePageClient() {
           아직 기록된 호출이 없습니다. OpenAI를 쓰는 작업을 하거나 Cursor 에이전트를 시작하면 여기에 쌓입니다.
         </div>
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+        <ul
+          style={{
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+            maxHeight: "calc(100dvh - 140px)",
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+            paddingRight: 4,
+          }}
+        >
           {entries.map((e) => (
             <li
               key={e.id}
@@ -78,6 +202,7 @@ export function PromptTimelinePageClient() {
                 borderRadius: 12,
                 padding: "12px 12px",
                 background: t.bgCard,
+                flexShrink: 0,
               }}
             >
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 8, rowGap: 6, marginBottom: 8 }}>
@@ -114,46 +239,108 @@ export function PromptTimelinePageClient() {
               </div>
 
               <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>플랫폼 → {channelLabel(e.channel)}</div>
-              <pre
-                style={{
-                  margin: "0 0 10px",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  fontSize: isNarrow ? 10.5 : 11,
-                  lineHeight: 1.45,
-                  color: t.textSecondary,
-                  maxHeight: isNarrow ? 200 : 240,
-                  overflow: "auto",
-                  WebkitOverflowScrolling: "touch",
-                  background: "#fff",
-                  borderRadius: 10,
-                  padding: 10,
-                  border: `1px solid ${t.border}`,
-                }}
-              >
-                {e.outbound}
-              </pre>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10 }}>
+                <pre
+                  style={{
+                    margin: 0,
+                    flex: "1 1 0%",
+                    minWidth: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontSize: isNarrow ? 10.5 : 11,
+                    lineHeight: 1.45,
+                    color: t.textSecondary,
+                    maxHeight: "min(42dvh, 320px)",
+                    overflow: "auto",
+                    WebkitOverflowScrolling: "touch",
+                    background: "#fff",
+                    borderRadius: 10,
+                    padding: 10,
+                    border: `1px solid ${t.border}`,
+                  }}
+                >
+                  {e.outbound}
+                </pre>
+                <button
+                  type="button"
+                  aria-label="플랫폼→모델 프롬프트 복사"
+                  title="이 블록 복사"
+                  disabled={!String(e.outbound ?? "").length}
+                  onClick={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    void copyText(e.outbound);
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 8,
+                    border: `1px solid ${t.border}`,
+                    background: "#fff",
+                    color: t.textSecondary,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: String(e.outbound ?? "").length ? "pointer" : "not-allowed",
+                    opacity: String(e.outbound ?? "").length ? 1 : 0.45,
+                  }}
+                >
+                  <ClipboardGlyph />
+                </button>
+              </div>
 
               <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>{channelLabel(e.channel)} → 플랫폼</div>
-              <pre
-                style={{
-                  margin: 0,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  fontSize: isNarrow ? 10.5 : 11,
-                  lineHeight: 1.45,
-                  color: t.textSecondary,
-                  maxHeight: isNarrow ? 200 : 240,
-                  overflow: "auto",
-                  WebkitOverflowScrolling: "touch",
-                  background: "#fff",
-                  borderRadius: 10,
-                  padding: 10,
-                  border: `1px solid ${t.border}`,
-                }}
-              >
-                {e.inbound}
-              </pre>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <pre
+                  style={{
+                    margin: 0,
+                    flex: "1 1 0%",
+                    minWidth: 0,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontSize: isNarrow ? 10.5 : 11,
+                    lineHeight: 1.45,
+                    color: t.textSecondary,
+                    maxHeight: "min(42dvh, 320px)",
+                    overflow: "auto",
+                    WebkitOverflowScrolling: "touch",
+                    background: "#fff",
+                    borderRadius: 10,
+                    padding: 10,
+                    border: `1px solid ${t.border}`,
+                  }}
+                >
+                  {e.inbound}
+                </pre>
+                <button
+                  type="button"
+                  aria-label="모델→플랫폼 응답 복사"
+                  title="이 블록 복사"
+                  disabled={!String(e.inbound ?? "").length}
+                  onClick={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    void copyText(e.inbound);
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 8,
+                    border: `1px solid ${t.border}`,
+                    background: "#fff",
+                    color: t.textSecondary,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: String(e.inbound ?? "").length ? "pointer" : "not-allowed",
+                    opacity: String(e.inbound ?? "").length ? 1 : 0.45,
+                  }}
+                >
+                  <ClipboardGlyph />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
