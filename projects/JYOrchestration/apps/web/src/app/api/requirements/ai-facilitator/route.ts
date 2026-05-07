@@ -34,8 +34,8 @@ import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requireme
 import {
   activeOrchestrationRolesFromAgents,
   plannerPreferredFromAgents,
+  runSelectiveMultiAgentOrchestrationOpenAI,
   runSingleChatOrchestrationFallbackTurn,
-  runSingleChatOrchestrationTurnOpenAI,
 } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
 type Body = {
@@ -79,21 +79,14 @@ function effectiveOrchestrationRoles(agents: readonly SingleChatSelectedAgentWir
 
 function ensureOrchestrationBaseState(params: {
   readonly raw: unknown;
-  readonly projectName: string;
-  readonly projectDescription: string;
-  readonly projectType: string | null;
+  readonly definitions: ReturnType<typeof buildDynamicServicePlanningSlotDefinitions>;
   readonly nowIso: string;
 }): RequirementsSingleChatOrchestrationStateV1 {
-  const defs = buildDynamicServicePlanningSlotDefinitions({
-    projectName: params.projectName,
-    projectDescription: params.projectDescription,
-    projectType: params.projectType,
-  });
-  const parsed = parseRequirementsSingleChatOrchestrationV1(params.raw);
-  if (parsed && parsed.slotDefinitionsHash === hashSlotDefinitions(defs)) {
+  const parsed = parseRequirementsSingleChatOrchestrationV1(params.raw, params.definitions);
+  if (parsed && parsed.slotDefinitionsHash === hashSlotDefinitions(params.definitions)) {
     return parsed;
   }
-  return initialOrchestrationStateFromDefinitions(defs, params.nowIso);
+  return initialOrchestrationStateFromDefinitions(params.definitions, params.nowIso);
 }
 
 function initialOrchestrationPayload(projectName: string, projectDescription: string, projectType: string | null, nowIso: string) {
@@ -208,14 +201,12 @@ export async function POST(request: NextRequest) {
       const nowIso = new Date().toISOString();
       const baseState = ensureOrchestrationBaseState({
         raw: body.singleChatOrchestrationV1,
-        projectName,
-        projectDescription,
-        projectType,
+        definitions: defs,
         nowIso,
       });
       const effectiveRoles = effectiveOrchestrationRoles(orchPlanningCtx.selectedAgents);
 
-      const orchTry = await runSingleChatOrchestrationTurnOpenAI({
+      const orchTry = await runSelectiveMultiAgentOrchestrationOpenAI({
         projectName,
         projectDescription,
         projectType,
@@ -228,7 +219,6 @@ export async function POST(request: NextRequest) {
         mentionTargetsSummary: mentionTargetsSummary || undefined,
         senderSummary: senderSummary || undefined,
         priorScreenHandoff: priorScreenHandoff || undefined,
-        responseStyle,
       });
 
       let usedFallback = false;
@@ -264,6 +254,11 @@ export async function POST(request: NextRequest) {
         fallback: usedFallback,
         orchestratorAgent: turnOk.meta.orchestratorAgent,
         delegatedAgents: [...turnOk.meta.delegatedAgents],
+        executedAgents: [...turnOk.meta.executedAgents],
+        staleSlots: [...turnOk.meta.staleSlots],
+        confirmedSlots: [...turnOk.meta.confirmedSlots],
+        candidateSlots: [...turnOk.meta.candidateSlots],
+        slotDependenciesChanged: turnOk.meta.slotDependenciesChanged,
         createdAtIso: turnOk.calledAt,
       });
 

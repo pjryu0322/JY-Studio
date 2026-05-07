@@ -60,6 +60,27 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
           delegatedAgents: r.delegatedAgents.map((x) => String(x ?? "").trim()).filter(Boolean),
         }
       : {}),
+    ...(Array.isArray(r.executedAgents)
+      ? {
+          executedAgents: r.executedAgents.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+    ...(Array.isArray(r.staleSlots)
+      ? {
+          staleSlots: r.staleSlots.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+    ...(Array.isArray(r.confirmedSlots)
+      ? {
+          confirmedSlots: r.confirmedSlots.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+    ...(Array.isArray(r.candidateSlots)
+      ? {
+          candidateSlots: r.candidateSlots.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+    ...(typeof r.slotDependenciesChanged === "boolean" ? { slotDependenciesChanged: r.slotDependenciesChanged } : {}),
   };
 }
 
@@ -130,6 +151,11 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly fallback?: boolean;
   readonly orchestratorAgent?: string;
   readonly delegatedAgents?: readonly string[];
+  readonly executedAgents?: readonly string[];
+  readonly staleSlots?: readonly string[];
+  readonly confirmedSlots?: readonly string[];
+  readonly candidateSlots?: readonly string[];
+  readonly slotDependenciesChanged?: boolean;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -152,6 +178,11 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.fallback !== undefined ? { fallback: params.fallback } : {}),
     ...(params.orchestratorAgent ? { orchestratorAgent: params.orchestratorAgent } : {}),
     ...(params.delegatedAgents?.length ? { delegatedAgents: [...params.delegatedAgents] } : {}),
+    ...(params.executedAgents?.length ? { executedAgents: [...params.executedAgents] } : {}),
+    ...(params.staleSlots?.length ? { staleSlots: [...params.staleSlots] } : {}),
+    ...(params.confirmedSlots?.length ? { confirmedSlots: [...params.confirmedSlots] } : {}),
+    ...(params.candidateSlots?.length ? { candidateSlots: [...params.candidateSlots] } : {}),
+    ...(params.slotDependenciesChanged !== undefined ? { slotDependenciesChanged: params.slotDependenciesChanged } : {}),
   };
 }
 

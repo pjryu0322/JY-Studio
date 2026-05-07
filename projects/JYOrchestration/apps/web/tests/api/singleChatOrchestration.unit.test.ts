@@ -1,13 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDynamicServicePlanningSlotDefinitions,
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
   mergeOrchestrationSlotPatches,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
-import { plannerPreferredFromAgents, runSingleChatOrchestrationFallbackTurn } from "@/lib/requirements/singleChatOrchestrationOpenAI";
+import {
+  plannerPreferredFromAgents,
+  runSelectiveMultiAgentOrchestrationOpenAI,
+  runSingleChatOrchestrationFallbackTurn,
+} from "@/lib/requirements/singleChatOrchestrationOpenAI";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatAgentContext";
+
+const { mockPostOpenAi } = vi.hoisted(() => ({
+  mockPostOpenAi: vi.fn(),
+}));
+
+vi.mock("@/lib/ai/openAiChatCompletions", () => ({
+  postOpenAiChatCompletion: (input: unknown) => mockPostOpenAi(input),
+}));
 
 describe("singleChatOrchestration slots", () => {
   it("동적 슬롯에 planner·분석가·설계자 owner 가 분리된다", () => {
@@ -40,8 +52,66 @@ describe("singleChatOrchestration slots", () => {
       patches: [{ slotKey: key!, status: "completed", value: "테스트 목적", confidence: 0.9 }],
       nowIso: ts,
     });
-    expect(next.slots[key!]?.status).toBe("completed");
+    expect(next.slots[key!]?.status).toBe("confirmed");
     expect(next.slots[key!]?.value).toContain("테스트");
+  });
+
+  it("planner 슬롯 값 변경 시 dependsOn 기반 stale 전파", () => {
+    const defs = buildDynamicServicePlanningSlotDefinitions({
+      projectName: "StaleDemo",
+      projectDescription: "",
+      projectType: null,
+    });
+    const ts = "2026-05-07T00:00:00.000Z";
+    const base = initialOrchestrationStateFromDefinitions(defs, ts);
+    const plannerKey = defs.find((d) => d.ownerAgent === "planner" && d.slotKey.includes("servicePurpose"))?.slotKey;
+    const derivedKey = defs.find((d) => d.ownerAgent === "service-designer" && d.slotKey.includes("actors"))?.slotKey;
+    expect(plannerKey).toBeTruthy();
+    expect(derivedKey).toBeTruthy();
+
+    const seeded = mergeOrchestrationSlotPatches({
+      base,
+      patches: [
+        { slotKey: derivedKey!, status: "candidate", value: "임시 기능", confidence: 0.5 },
+        { slotKey: plannerKey!, status: "partial", value: "첫 목적", confidence: 0.6 },
+      ],
+      nowIso: ts,
+    });
+
+    const bumped = mergeOrchestrationSlotPatches({
+      base: seeded,
+      patches: [{ slotKey: plannerKey!, status: "partial", value: "바뀐 서비스 목적", confidence: 0.7 }],
+      nowIso: "2026-05-07T00:01:00.000Z",
+      definitions: defs,
+      propagateStaleFromPlanner: true,
+    });
+
+    expect(bumped.slots[derivedKey!]?.status).toBe("stale");
+    expect(String(bumped.slots[derivedKey!]?.staleReason ?? "")).toContain("upstream");
+  });
+
+  it("stale 슬롯에 새 후보 패치를 적용하면 상태가 갱신된다", () => {
+    const defs = buildDynamicServicePlanningSlotDefinitions({
+      projectName: "Reanalyze",
+      projectDescription: "",
+      projectType: null,
+    });
+    const ts = "2026-05-07T00:00:00.000Z";
+    const base = initialOrchestrationStateFromDefinitions(defs, ts);
+    const k = defs.find((d) => d.slotKey.includes("actors"))?.slotKey;
+    expect(k).toBeTruthy();
+    const staleFirst = mergeOrchestrationSlotPatches({
+      base,
+      patches: [{ slotKey: k!, status: "stale", value: "옛 후보", staleReason: "upstream", confidence: null }],
+      nowIso: ts,
+    });
+    const refreshed = mergeOrchestrationSlotPatches({
+      base: staleFirst,
+      patches: [{ slotKey: k!, status: "candidate", value: "재분석 액터", confidence: 0.72, staleReason: null }],
+      nowIso: "2026-05-07T00:01:00.000Z",
+    });
+    expect(refreshed.slots[k!]?.status).toBe("candidate");
+    expect(refreshed.slots[k!]?.value).toContain("재분석");
   });
 
   it("hashSlotDefinitions 가 정의 변경 시 바뀐다", () => {
@@ -80,7 +150,8 @@ describe("singleChatOrchestration agents & fallback", () => {
       activeRoles,
       nowIso: ts,
     });
-    expect(out.meta.delegatedAgents).toContain("service-designer");
+    expect(out.meta.delegatedAgents).toEqual([]);
+    expect(out.meta.routingDecision).toContain("service-designer");
     expect(out.meta.routingDecision.length).toBeGreaterThan(0);
     expect(out.meta.updatedSlotKeys.length).toBeGreaterThan(0);
     expect(out.assistantMessage.length).toBeGreaterThan(0);
@@ -102,7 +173,8 @@ describe("singleChatOrchestration agents & fallback", () => {
       activeRoles,
       nowIso: ts,
     });
-    expect(out.meta.delegatedAgents).toContain("spec-reviewer");
+    expect(out.meta.delegatedAgents).toEqual([]);
+    expect(out.meta.routingDecision).toContain("spec-reviewer");
   });
 
   it("fallback 시 promptTimeline 연계용 routingDecision 이 비어 있지 않다", () => {
@@ -121,6 +193,7 @@ describe("singleChatOrchestration agents & fallback", () => {
       nowIso: ts,
     });
     expect(out.meta.routingDecision).toMatch(/^E:/);
+    expect(out.meta.executedAgents).toEqual(["planner"]);
   });
 });
 
@@ -134,9 +207,263 @@ describe("singleChatOrchestration parse wire", () => {
     const ts = "2026-05-07T00:00:00.000Z";
     const init = initialOrchestrationStateFromDefinitions(defs, ts);
     const raw = JSON.parse(JSON.stringify(init)) as unknown;
-    const parsed = parseRequirementsSingleChatOrchestrationV1(raw);
-    expect(parsed?.version).toBe(1);
+    const parsed = parseRequirementsSingleChatOrchestrationV1(raw, defs);
+    expect(parsed?.version).toBe(2);
     expect(parsed?.slotDefinitionsHash).toBe(init.slotDefinitionsHash);
     expect(Object.keys(parsed?.slots ?? {}).length).toBe(Object.keys(init.slots).length);
+  });
+});
+
+describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
+  const allRoles = () =>
+    new Set(["planner", "service-designer", "domain-expert", "spec-reviewer", "task-reviewer"] as const);
+
+  const baseInput = () => {
+    const defs = buildDynamicServicePlanningSlotDefinitions({
+      projectName: "MockOrch",
+      projectDescription: "d",
+      projectType: "web",
+    });
+    const ts = "2026-05-07T12:00:00.000Z";
+    return {
+      projectName: "MockOrch",
+      projectDescription: "d",
+      projectType: "web" as string | null,
+      userMessage: "u",
+      dialogueExcerpt: "",
+      definitions: defs,
+      baseState: initialOrchestrationStateFromDefinitions(defs, ts),
+      participatingAgentsPromptBlock: "",
+      activeRoles: allRoles(),
+    };
+  };
+
+  const mergeAssistant = (msg: string) =>
+    JSON.stringify({ assistantMessage: msg, plannerSlotAdjustments: [], derivedPromotions: [] });
+
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = "test-key";
+    mockPostOpenAi.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    delete process.env.OPENAI_API_KEY;
+  });
+
+  it("planner만: OpenAI 2회(route+merge), delegatedAgents 비어 있음", async () => {
+    mockPostOpenAi.mockImplementation(async () => {
+      const n = mockPostOpenAi.mock.calls.length;
+      if (n === 1) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            routingDecision: "A: planner",
+            matchedSlots: [],
+            delegatedAgents: [],
+            updatedSlots: [],
+          }),
+        };
+      }
+      return { ok: true, text: mergeAssistant("한 개의 응답만 드립니다.") };
+    });
+    const input = baseInput();
+    const out = await runSelectiveMultiAgentOrchestrationOpenAI({ ...input, userMessage: "목적만 말함" });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(2);
+    expect(out.meta.delegatedAgents).toEqual([]);
+    expect(out.meta.executedAgents.some((a) => a === "service-designer" || a === "spec-reviewer")).toBe(false);
+    expect(typeof out.assistantMessage).toBe("string");
+    expect(out.assistantMessage).toContain("한 개");
+  });
+
+  it("액터/흐름: service-designer 그룹 1회 추가 호출", async () => {
+    const input = baseInput();
+    const actorsKey = input.definitions.find((d) => d.slotKey.includes("actors"))?.slotKey;
+    expect(actorsKey).toBeTruthy();
+
+    mockPostOpenAi.mockImplementation(async () => {
+      const n = mockPostOpenAi.mock.calls.length;
+      if (n === 1) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            routingDecision: "B: 액터",
+            matchedSlots: [actorsKey],
+            delegatedAgents: ["service-designer"],
+            updatedSlots: [],
+          }),
+        };
+      }
+      if (n === 2) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            updatedSlots: [
+              {
+                slotKey: actorsKey,
+                status: "candidate",
+                value: "관리자·일반 사용자",
+                confidence: 0.82,
+                ownerAgent: "service-designer",
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, text: mergeAssistant("액터를 반영했습니다. 다음 질문 하나.") };
+    });
+
+    const out = await runSelectiveMultiAgentOrchestrationOpenAI({ ...input, userMessage: "관리자와 일반 사용자가 있어요" });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(3);
+    expect(out.meta.delegatedAgents).toContain("service-designer");
+    expect(out.meta.delegatedAgents).not.toContain("spec-reviewer");
+  });
+
+  it("기능: spec-reviewer 그룹만 추가 호출", async () => {
+    const input = baseInput();
+    const featKey = input.definitions.find((d) => d.ownerAgent === "spec-reviewer" && d.slotKey.includes("featureList"))?.slotKey;
+    expect(featKey).toBeTruthy();
+
+    mockPostOpenAi.mockImplementation(async () => {
+      const n = mockPostOpenAi.mock.calls.length;
+      if (n === 1) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            routingDecision: "C: 기능",
+            matchedSlots: [featKey],
+            delegatedAgents: ["spec-reviewer"],
+            updatedSlots: [],
+          }),
+        };
+      }
+      if (n === 2) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            updatedSlots: [
+              {
+                slotKey: featKey,
+                status: "candidate",
+                value: "예약·결제",
+                confidence: 0.77,
+                ownerAgent: "spec-reviewer",
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, text: mergeAssistant("기능을 정리했습니다.") };
+    });
+
+    const out = await runSelectiveMultiAgentOrchestrationOpenAI({ ...input, userMessage: "예약 기능이 필요해요" });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(3);
+    expect(out.meta.delegatedAgents).toContain("spec-reviewer");
+    expect(out.meta.delegatedAgents).not.toContain("service-designer");
+  });
+
+  it("복합: flow·feature 순으로 선택 호출", async () => {
+    const input = baseInput();
+    const actorsKey = input.definitions.find((d) => d.slotKey.includes("actors"))?.slotKey;
+    const featKey = input.definitions.find((d) => d.slotKey.includes("featureList"))?.slotKey;
+    expect(actorsKey && featKey).toBeTruthy();
+
+    mockPostOpenAi.mockImplementation(async () => {
+      const n = mockPostOpenAi.mock.calls.length;
+      if (n === 1) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            routingDecision: "D: 복합",
+            matchedSlots: [actorsKey, featKey],
+            delegatedAgents: ["service-designer", "spec-reviewer"],
+            updatedSlots: [],
+          }),
+        };
+      }
+      if (n === 2) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            updatedSlots: [
+              {
+                slotKey: actorsKey,
+                status: "candidate",
+                value: "두 액터",
+                confidence: 0.7,
+                ownerAgent: "service-designer",
+              },
+            ],
+          }),
+        };
+      }
+      if (n === 3) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            updatedSlots: [
+              {
+                slotKey: featKey,
+                status: "candidate",
+                value: "핵심 기능",
+                confidence: 0.71,
+                ownerAgent: "spec-reviewer",
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, text: mergeAssistant("통합 답변 한 덩어리") };
+    });
+
+    const out = await runSelectiveMultiAgentOrchestrationOpenAI({
+      ...input,
+      userMessage: "관리자 화면에서 예약 승인 기능",
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(4);
+    expect(out.meta.delegatedAgents.sort()).toEqual(["service-designer", "spec-reviewer"].sort());
+  });
+
+  it("route에서 planner 슬롯 값 변경 시 slotDependenciesChanged", async () => {
+    const input = baseInput();
+    const purposeKey = input.definitions.find((d) => d.slotKey.includes("servicePurpose"))?.slotKey;
+    expect(purposeKey).toBeTruthy();
+
+    mockPostOpenAi.mockImplementation(async () => {
+      const n = mockPostOpenAi.mock.calls.length;
+      if (n === 1) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            routingDecision: "A",
+            matchedSlots: [purposeKey],
+            delegatedAgents: [],
+            updatedSlots: [
+              {
+                slotKey: purposeKey,
+                status: "partial",
+                value: "변경된 목적 문장",
+                confidence: 0.66,
+                ownerAgent: "planner",
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, text: mergeAssistant("목적 반영했습니다.") };
+    });
+
+    const out = await runSelectiveMultiAgentOrchestrationOpenAI({ ...input, userMessage: "목적을 바꿀게요" });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.meta.slotDependenciesChanged).toBe(true);
   });
 });
