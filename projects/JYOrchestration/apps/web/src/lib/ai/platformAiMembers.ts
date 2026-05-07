@@ -15,6 +15,8 @@ export type PlatformAiMember = {
   knowledge: string;
   policy: Record<string, unknown>;
   defaultEngine: string;
+  /** 기본 모델(엔진별 기본값 자동 보정). DB 없이 JSON override에서만 관리. */
+  defaultModel?: string;
 };
 
 const DEFAULT_POLICY: Record<string, unknown> = {
@@ -34,6 +36,7 @@ export const PLATFORM_AI_MEMBERS_DEFAULT: readonly PlatformAiMember[] = [
     knowledge: "요구사항 품질 기준: 테스트 가능·추적 가능·모호함 제거. 한국어 우선.",
     policy: { ...DEFAULT_POLICY },
     defaultEngine: "OpenAI",
+    defaultModel: "GPT-5",
   },
   {
     id: "actor_flow",
@@ -45,17 +48,19 @@ export const PLATFORM_AI_MEMBERS_DEFAULT: readonly PlatformAiMember[] = [
     knowledge: "서비스 블루프린트, 액터, 시나리오 용어에 익숙하다.",
     policy: { ...DEFAULT_POLICY },
     defaultEngine: "OpenAI",
+    defaultModel: "GPT-5",
   },
   {
     id: "feature_planning",
-    name: "AI 기능설계자",
-    role: "기능 설계",
+    name: "AI 설계자",
+    role: "설계",
     capability: "LLM",
     persona: "기능 정리·체크리스트로 범위를 확정하는 설계 담당.",
     behaviorRules: "체크리스트 항목은 사용자가 이해할 수 있는 한국어로 제시한다.",
     knowledge: "기능·비기능 요구, 우선순위, 의존성 구분.",
     policy: { ...DEFAULT_POLICY },
     defaultEngine: "OpenAI",
+    defaultModel: "GPT-5",
   },
   {
     id: "prototype_build",
@@ -66,7 +71,8 @@ export const PLATFORM_AI_MEMBERS_DEFAULT: readonly PlatformAiMember[] = [
     behaviorRules: "코드·명령 제안 시 단계와 리스크를 짧게 알린다.",
     knowledge: "프론트/백엔드 기초, Cursor·에이전트 워크플로 가정.",
     policy: { ...DEFAULT_POLICY, requireOptions: true },
-    defaultEngine: "OpenAI",
+    defaultEngine: "Cursor",
+    defaultModel: "cursor-default",
   },
   {
     id: "designer",
@@ -78,6 +84,7 @@ export const PLATFORM_AI_MEMBERS_DEFAULT: readonly PlatformAiMember[] = [
     knowledge: "모바일 퍼스트, WCAG 기본.",
     policy: { ...DEFAULT_POLICY },
     defaultEngine: "OpenAI",
+    defaultModel: "GPT-5",
   },
   {
     id: "prototype_review",
@@ -89,6 +96,7 @@ export const PLATFORM_AI_MEMBERS_DEFAULT: readonly PlatformAiMember[] = [
     knowledge: "UX 리스크, 회귀 포인트.",
     policy: { ...DEFAULT_POLICY },
     defaultEngine: "OpenAI",
+    defaultModel: "GPT-5",
   },
   {
     id: "security_reviewer",
@@ -100,6 +108,7 @@ export const PLATFORM_AI_MEMBERS_DEFAULT: readonly PlatformAiMember[] = [
     knowledge: "OWASP 상위 항목, 시크릿 노출, CORS·CSP 기본.",
     policy: { ...DEFAULT_POLICY, maxQuestionsPerTurn: 2 },
     defaultEngine: "OpenAI",
+    defaultModel: "GPT-5",
   },
   {
     id: "memo",
@@ -111,6 +120,7 @@ export const PLATFORM_AI_MEMBERS_DEFAULT: readonly PlatformAiMember[] = [
     knowledge: "개인 메모·업무 맥락 한국어.",
     policy: { ...DEFAULT_POLICY },
     defaultEngine: "OpenAI",
+    defaultModel: "GPT-5",
   },
 ];
 
@@ -138,11 +148,12 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Partial<T>
 
 /** 부분 오버라이드를 기본 레코드에 합성 */
 export function mergePlatformAiMember(base: PlatformAiMember, patch: Partial<PlatformAiMember>): PlatformAiMember {
-  return {
+  const merged = {
     ...base,
     ...patch,
     policy: patch.policy !== undefined ? deepMerge({ ...base.policy }, patch.policy as Record<string, unknown>) : base.policy,
   };
+  return normalizePlatformAiEngineModel(merged);
 }
 
 const EDITABLE_KEYS: (keyof PlatformAiMember)[] = [
@@ -154,6 +165,7 @@ const EDITABLE_KEYS: (keyof PlatformAiMember)[] = [
   "knowledge",
   "policy",
   "defaultEngine",
+  "defaultModel",
 ];
 
 /** 저장 시 기본값과 다른 필드만 오버라이드로 남긴다 */
@@ -172,3 +184,37 @@ export function diffPlatformAiMemberFromDefault(base: PlatformAiMember, submitte
   }
   return patch;
 }
+
+export const OPENAI_ALLOWED_MODELS = ["GPT-5", "GPT-4.1", "o3"] as const;
+export const CURSOR_ALLOWED_MODELS = ["cursor-default"] as const;
+
+export function normalizePlatformAiEngineModel(member: PlatformAiMember): PlatformAiMember {
+  const requestedEngine = String(member.defaultEngine ?? "").trim();
+  const modelRaw = member.defaultModel === undefined || member.defaultModel === null ? "" : String(member.defaultModel).trim();
+
+  // Cursor는 prototype_build에서만 허용. 레거시/오염 데이터는 자동 보정한다.
+  const forcedToOpenAi = member.id !== "prototype_build" && requestedEngine === "Cursor";
+  const engine = forcedToOpenAi ? "OpenAI" : requestedEngine;
+  const model = forcedToOpenAi ? "" : modelRaw;
+
+  if (engine === "OpenAI") {
+    return {
+      ...member,
+      defaultEngine: "OpenAI",
+      defaultModel: model || "GPT-5",
+    };
+  }
+  if (engine === "Cursor") {
+    return {
+      ...member,
+      defaultEngine: "Cursor",
+      defaultModel: modelRaw || "cursor-default",
+    };
+  }
+  // 기타 엔진(레거시) — model은 강제하지 않음(하위 호환).
+  return {
+    ...member,
+    ...(modelRaw ? { defaultModel: modelRaw } : {}),
+  };
+}
+

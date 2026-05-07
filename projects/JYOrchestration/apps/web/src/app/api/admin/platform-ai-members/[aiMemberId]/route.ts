@@ -5,6 +5,8 @@ import { canAccessPlatformAdminConsole } from "@/lib/admin/platformAdmin";
 import {
   diffPlatformAiMemberFromDefault,
   getPlatformAiMemberById,
+  normalizePlatformAiEngineModel,
+  OPENAI_ALLOWED_MODELS,
   type PlatformAiCapability,
   type PlatformAiMember,
 } from "@/lib/ai/platformAiMembers";
@@ -12,6 +14,8 @@ import { getMergedPlatformAiMemberById } from "@/lib/server/platformAiMembersMer
 import { upsertMemberDiffOverride } from "@/lib/server/platformAiMemberOverridesStore";
 
 const CAPS = new Set<PlatformAiCapability>(["LLM", "CODE", "SECURITY"]);
+const OPENAI_MODELS = new Set<string>(OPENAI_ALLOWED_MODELS);
+const CURSOR_MODELS = new Set<string>(["cursor-default"]);
 
 function validatePayload(base: PlatformAiMember, body: unknown): { ok: true; value: PlatformAiMember } | { ok: false; message: string } {
   if (!body || typeof body !== "object") return { ok: false, message: "본문이 올바르지 않습니다." };
@@ -31,21 +35,33 @@ function validatePayload(base: PlatformAiMember, body: unknown): { ok: true; val
   }
   const defaultEngine = String(o.defaultEngine ?? "").trim();
   if (!defaultEngine) return { ok: false, message: "기본 엔진을 선택하세요." };
+  const defaultModelRaw = o.defaultModel === undefined || o.defaultModel === null ? "" : String(o.defaultModel ?? "").trim();
 
-  return {
-    ok: true,
-    value: {
-      id: base.id,
-      name,
-      role,
-      capability,
-      persona,
-      behaviorRules,
-      knowledge,
-      policy: policy as Record<string, unknown>,
-      defaultEngine,
-    },
-  };
+  const normalized = normalizePlatformAiEngineModel({
+    id: base.id,
+    name,
+    role,
+    capability,
+    persona,
+    behaviorRules,
+    knowledge,
+    policy: policy as Record<string, unknown>,
+    defaultEngine,
+    ...(defaultModelRaw ? { defaultModel: defaultModelRaw } : {}),
+  });
+
+  // 저장 validation (요구사항)
+  if (normalized.id !== "prototype_build" && normalized.defaultEngine === "Cursor") {
+    return { ok: false, message: "Cursor는 AI 개발자(프로토타입 제작)에서만 사용할 수 있습니다." };
+  }
+  if (normalized.defaultEngine === "OpenAI" && (!normalized.defaultModel || !OPENAI_MODELS.has(normalized.defaultModel))) {
+    return { ok: false, message: "OpenAI 모델 선택이 올바르지 않습니다." };
+  }
+  if (normalized.defaultEngine === "Cursor" && normalized.defaultModel !== "cursor-default") {
+    return { ok: false, message: "Cursor 모델 선택이 올바르지 않습니다." };
+  }
+
+  return { ok: true, value: normalized };
 }
 
 export async function GET(

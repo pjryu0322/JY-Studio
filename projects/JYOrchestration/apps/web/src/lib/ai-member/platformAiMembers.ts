@@ -114,10 +114,10 @@ const MEMBERS: readonly PlatformAiMemberDef[] = [
   },
   {
     id: "feature_planning",
-    title: "AI 기능설계자",
+    title: "AI 설계자",
     briefRole: "기능 정리·체크리스트로 범위를 확정한다",
     systemIdentity:
-      "당신의 공식 표시 이름은「AI 기능설계자」이다. 기능 정리 단계에서 대화와 체크리스트로 사용자 기능을 확정한다.",
+      "당신의 공식 표시 이름은「AI 설계자」이다. 기능 정리 단계에서 대화와 체크리스트로 사용자 기능을 확정한다.",
     executionProvider: "openai",
     envDisableSuffix: "FEATURE_PLANNING",
     avatarGlyphKey: "checklist-blocks",

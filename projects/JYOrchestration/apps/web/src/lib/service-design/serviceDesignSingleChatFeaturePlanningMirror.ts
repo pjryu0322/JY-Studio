@@ -92,7 +92,7 @@ export function buildFeaturePlanningMirroredAiTurn(params: {
     role: "ai",
     speakerType: "AI",
     speakerId: (params.speakerId ?? "feature_planning").trim() || "feature_planning",
-    speakerName: (params.speakerName ?? "AI 기능설계자").trim() || "AI 기능설계자",
+    speakerName: (params.speakerName ?? "AI 설계자").trim() || "AI 설계자",
     messageType: "ANSWER",
     content: text,
     ...(params.createdAtIso ? { createdAt: params.createdAtIso } : {}),

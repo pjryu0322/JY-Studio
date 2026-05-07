@@ -70,7 +70,7 @@ describe("feature-planning mirror helpers", () => {
   it("builds mirrored ai turn with stage metadata", () => {
     const msg = buildFeaturePlanningMirroredAiTurn({
       text: "ai reply",
-      speakerName: "AI 기능설계자",
+      speakerName: "AI 설계자",
       createdAtIso: "2026-01-01T00:00:00.000Z",
     });
     expect(msg.role).toBe("ai");

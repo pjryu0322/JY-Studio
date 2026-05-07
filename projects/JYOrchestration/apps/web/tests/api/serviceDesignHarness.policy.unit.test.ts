@@ -9,7 +9,7 @@ describe("buildHarnessResponsePolicy", () => {
   it("maps known AI ids to Korean labels", () => {
     expect(labelAi("planner")).toBe("AI 기획자");
     expect(labelAi("analyst")).toBe("AI 분석가");
-    expect(labelAi("feature_designer")).toBe("AI 기능설계자");
+    expect(labelAi("feature_designer")).toBe("AI 설계자");
     expect(labelAi("unknown_custom")).toBe("unknown_custom");
   });
 

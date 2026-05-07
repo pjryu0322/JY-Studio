@@ -16,6 +16,13 @@ function capLabel(c: string): string {
   return c;
 }
 
+function engineModelLabel(m: PlatformAiMember): string {
+  const engine = String(m.defaultEngine ?? "").trim();
+  const model = String(m.defaultModel ?? "").trim();
+  if (!engine) return "";
+  return model ? `${engine} / ${model}` : engine;
+}
+
 export function PlatformAiMembersAdminListClient() {
   const isNarrow = useMediaQuery(MEDIA_QUERY.workflowNavNarrow);
   const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -106,7 +113,7 @@ export function PlatformAiMembersAdminListClient() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>{m.name}</div>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                    {m.role} · {capLabel(m.capability)} · {m.defaultEngine}
+                    {m.role} · {capLabel(m.capability)} · {engineModelLabel(m)}
                   </div>
                 </div>
               </div>
@@ -139,7 +146,7 @@ export function PlatformAiMembersAdminListClient() {
                 <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>이름</th>
                 <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>역할</th>
                 <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>Capability</th>
-                <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>기본 엔진</th>
+                <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>기본 엔진/모델</th>
                 <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", whiteSpace: "nowrap" }}>작업</th>
               </tr>
             </thead>
@@ -152,7 +159,7 @@ export function PlatformAiMembersAdminListClient() {
                   <td style={{ padding: "10px 12px", fontWeight: 800 }}>{m.name}</td>
                   <td style={{ padding: "10px 12px", color: "#475569" }}>{m.role}</td>
                   <td style={{ padding: "10px 12px", color: "#475569" }}>{capLabel(m.capability)}</td>
-                  <td style={{ padding: "10px 12px", color: "#475569" }}>{m.defaultEngine}</td>
+                  <td style={{ padding: "10px 12px", color: "#475569" }}>{engineModelLabel(m)}</td>
                   <td style={{ padding: "10px 12px" }}>
                     <Link
                       href={`/settings/ai-members/${encodeURIComponent(m.id)}`}

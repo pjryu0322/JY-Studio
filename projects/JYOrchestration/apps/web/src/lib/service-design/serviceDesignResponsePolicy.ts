@@ -13,7 +13,7 @@ export type HarnessResponsePolicy = {
 const LABELS: Record<string, string> = {
   planner: "AI 기획자",
   analyst: "AI 분석가",
-  feature_designer: "AI 기능설계자",
+  feature_designer: "AI 설계자",
   designer: "AI 디자이너",
   security_reviewer: "AI 보안관",
   scm_manager: "AI 형상관리자",

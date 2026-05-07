@@ -65,7 +65,7 @@ JSON 한 개만:
 
 /** 초기 슬롯 생성용 시스템 — JSON 스키마만 다름 */
 export function buildFeaturePlanningV2InitSystemPrompt(): string {
-  const core = `당신은 JYOrchestration의 AI 기능설계자입니다. 기능정리 첫 초안을 만듭니다.
+  const core = `당신은 JYOrchestration의 AI 설계자입니다. 기능정리 첫 초안을 만듭니다.
 
 규칙: 간결 JSON만. 사용자 역할 재질문 금지. 핵심 기능 3~7개. message는 [반영 결과]/[수정 초안]/[질문] 형식.
 
@@ -78,7 +78,7 @@ slots: 5~8개 영역, 항목은 슬롯당 1~3개. 각 sourceRefs 항목은 sourc
 
 /** 서비스 흐름 확정 후 첫 기능정리 분석 — message 본문 형식 고정 */
 export function buildFeaturePlanningFlowEntryAnalyzeSystemPrompt(): string {
-  const core = `당신은 JYOrchestration의 AI 기능설계자다. 액터·서비스 흐름이 확정된 뒤 기능정리 첫 분석을 한다.
+  const core = `당신은 JYOrchestration의 AI 설계자다. 액터·서비스 흐름이 확정된 뒤 기능정리 첫 분석을 한다.
 
 단계 집중: 사용자 프롬프트의 [정리 우선 단계]에 해당하는 서비스 단계만 다룬다. 그 외 단계(예: 업로드 단계인데 변환·화자분리·회의록 생성 등) 기능은 slots 항목·nextQuestion에 절대 넣지 않는다.
 
@@ -110,7 +110,7 @@ const CHAT_CHECKLIST_SYS_MAX = 3600;
  * JSON 최상위: areas[] (+ 선택 openingMessage). slots/message/nextQuestion 필드 금지.
  */
 export function buildFeaturePlanningAnalyzeChecklistSystemPrompt(): string {
-  const core = `당신은 JYOrchestration의 AI 기능설계자다. 입력의 액터·서비스 흐름(및 프로젝트 맥락)만 근거로, **기능정리용 체크리스트**를 설계한다.
+  const core = `당신은 JYOrchestration의 AI 설계자다. 입력의 액터·서비스 흐름(및 프로젝트 맥락)만 근거로, **기능정리용 체크리스트**를 설계한다.
 
 절대 금지:
 - 고정 템플릿·샘플 JSON을 그대로 복사하거나, "업로드면 무조건 file_format/file_size" 같은 일반 패턴을 기계적으로 채우기
@@ -139,7 +139,7 @@ areas[].slots[] 스키마 예시(구조만 참고, 내용은 입력에 맞게 �
 
 /** 체크리스트 모드 planner-turn — QUESTION_QUEUE 없음 */
 export function buildFeaturePlanningV2ChatSystemPromptForChecklist(): string {
-  const core = `역할: AI 기능설계자. [4]의 CHECKLIST_PLANNER_INPUT **미완료 슬롯**만 다룬다. 사용자에게 판단을 떠넘기지 말고, 항상 **선택지+추천**을 제시한다.
+  const core = `역할: AI 설계자. [4]의 CHECKLIST_PLANNER_INPUT **미완료 슬롯**만 다룬다. 사용자에게 판단을 떠넘기지 말고, 항상 **선택지+추천**을 제시한다.
 
 message (사용자에게 보이는 본문, 한국어 한 통, 고정 라벨·'질문:' 반복 금지) **아래 순서를 자연스럽게:**
 1) 직전 답 인정 + 이번 턴 반영·확정 요약(1~2문장, 매 턴 같은 첫문장 금지).
