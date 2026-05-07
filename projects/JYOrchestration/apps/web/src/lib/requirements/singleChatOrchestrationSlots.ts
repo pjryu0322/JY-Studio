@@ -1,5 +1,8 @@
 import type {
   RequirementsSingleChatOrchestrationStateV1,
+  SingleChatDynamicSlotDefinitionV1,
+  SingleChatDynamicSlotProposalHistoryV1,
+  SingleChatDynamicSlotValidationRejectionV1,
   SingleChatOrchestrationSlotDefinition,
   SingleChatOrchestrationSlotStatus,
   SingleChatOrchestrationSlotV1,
@@ -67,7 +70,9 @@ export function singleChatOrchestrationConfirmedProgress(state: RequirementsSing
   if (!state?.slots || typeof state.slots !== "object") {
     return { confirmed: 0, total: 0, percent: 0 };
   }
-  const rows = Object.values(state.slots);
+  const baseKeys =
+    state.baseSlotKeys?.length ? new Set(state.baseSlotKeys.map((k) => String(k ?? "").trim()).filter(Boolean)) : null;
+  const rows = Object.values(state.slots).filter((s) => (baseKeys ? baseKeys.has(String(s.slotKey ?? "")) : true));
   const total = rows.length;
   let confirmed = 0;
   for (const s of rows) {
@@ -148,6 +153,8 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
   readonly projectType?: string | null;
   /** 프로젝트 멤버 > AI Agent > "서비스 기획" 절차에 참여하는 카탈로그 키(중복 제거된 집합). */
   readonly servicePlanningAgentCatalogKeys?: readonly WorkspaceAiMemberId[] | null;
+  /** 검증 통과한 동적 슬롯 정의(단, base 슬롯 제거/키 변경은 금지) */
+  readonly acceptedDynamicSlots?: readonly SingleChatDynamicSlotDefinitionV1[] | null;
 }): readonly SingleChatOrchestrationSlotDefinition[] {
   const pSlug = slugToken(input.projectName || "idea", 32);
   const p = pSlug;
@@ -443,7 +450,113 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     );
   }
 
+  // LLM 제안 → 검증 후 채택된 동적 슬롯을 base defs 뒤에 병합한다.
+  for (const d of input.acceptedDynamicSlots ?? []) {
+    const slotKey = String(d.slotKey ?? "").trim();
+    if (!slotKey) continue;
+    // 슬롯 오너는 런타임 오케스트레이션 역할(ownerAgent)로 정규화되어 저장되어야 한다.
+    defs.push({
+      slotKey,
+      label: String(d.title ?? "").trim().slice(0, 80) || slotKey,
+      ownerAgent: normalizeDynamicOwnerToInternalOwner(String(d.ownerAgent ?? "")),
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: String(d.description ?? "").trim().slice(0, 400),
+      dependsOn: [k.purpose, k.problem],
+    });
+  }
+
   return defs;
+}
+
+const ALLOWED_DYNAMIC_OWNER = new Set(["planner", "analyst", "architect", "designer", "reviewer", "security"]);
+const RESERVED_PREFIXES = ["planning.", "flow.", "design.", "security."] as const;
+
+export function normalizeDynamicOwnerToInternalOwner(ownerRaw: string): string {
+  const o = String(ownerRaw ?? "").trim().toLowerCase();
+  // Hybrid: 외부 ownerAgent(UX) → 내부 오케스트레이션 역할 문자열로 매핑.
+  if (o === "planner") return "planner";
+  if (o === "analyst") return "service-designer";
+  if (o === "architect") return "domain-expert";
+  if (o === "designer") return "spec-reviewer";
+  if (o === "reviewer") return "task-reviewer";
+  if (o === "security") return "security-reviewer";
+  return o;
+}
+
+export function validateDynamicProposedSlots(input: {
+  readonly nowIso: string;
+  readonly baseDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly existingDynamicSlots: Record<string, SingleChatDynamicSlotDefinitionV1> | null | undefined;
+  readonly suggestedSlots: readonly Omit<SingleChatDynamicSlotDefinitionV1, "proposedAt">[];
+}): {
+  accepted: SingleChatDynamicSlotDefinitionV1[];
+  rejected: SingleChatDynamicSlotValidationRejectionV1[];
+} {
+  const baseKeys = new Set(input.baseDefinitions.map((d) => d.slotKey));
+  const existingKeys = new Set(Object.keys(input.existingDynamicSlots ?? {}));
+  const accepted: SingleChatDynamicSlotDefinitionV1[] = [];
+  const rejected: SingleChatDynamicSlotValidationRejectionV1[] = [];
+  const maxAccept = 8;
+
+  function reject(slotKey: string, reason: string) {
+    rejected.push({ slotKey: slotKey || "(empty)", reason, rejectedAt: input.nowIso });
+  }
+
+  for (const s of input.suggestedSlots ?? []) {
+    if (accepted.length >= maxAccept) break;
+    const rawKey = String(s.slotKey ?? "").trim();
+    const slotKey = rawKey.startsWith("dyn_") ? rawKey : rawKey ? `dyn_${rawKey}` : "";
+    if (!slotKey) {
+      reject("", "slotKey_empty");
+      continue;
+    }
+    if (!/^dyn_[a-zA-Z0-9][a-zA-Z0-9_]{2,63}$/.test(slotKey)) {
+      reject(slotKey, "slotKey_invalid_format");
+      continue;
+    }
+    const lowered = slotKey.toLowerCase();
+    if (RESERVED_PREFIXES.some((p) => lowered.includes(p))) {
+      reject(slotKey, "slotKey_reserved_namespace");
+      continue;
+    }
+    if (baseKeys.has(slotKey)) {
+      reject(slotKey, "slotKey_collides_with_base");
+      continue;
+    }
+    if (existingKeys.has(slotKey) || accepted.some((a) => a.slotKey === slotKey)) {
+      reject(slotKey, "slotKey_duplicate");
+      continue;
+    }
+    const title = String(s.title ?? "").trim();
+    const description = String(s.description ?? "").trim();
+    const ownerAgent = String(s.ownerAgent ?? "").trim().toLowerCase();
+    if (!title || title.length > 80) {
+      reject(slotKey, "title_invalid");
+      continue;
+    }
+    if (!description || description.length > 280) {
+      reject(slotKey, "description_invalid");
+      continue;
+    }
+    if (!ALLOWED_DYNAMIC_OWNER.has(ownerAgent)) {
+      reject(slotKey, "ownerAgent_not_allowed");
+      continue;
+    }
+    accepted.push({
+      slotKey,
+      title,
+      description,
+      ownerAgent,
+      reason: typeof s.reason === "string" ? s.reason.slice(0, 200) : null,
+      priority: s.priority ?? null,
+      proposalConfidence:
+        s.proposalConfidence !== null && s.proposalConfidence !== undefined && Number.isFinite(Number(s.proposalConfidence))
+          ? Math.min(1, Math.max(0, Number(s.proposalConfidence)))
+          : null,
+      proposedAt: input.nowIso,
+    });
+  }
+  return { accepted, rejected };
 }
 
 export function hashSlotDefinitions(defs: readonly SingleChatOrchestrationSlotDefinition[]): string {
@@ -488,6 +601,7 @@ export function initialOrchestrationStateFromDefinitions(
     stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
     slotDefinitionsHash: hashSlotDefinitions(defs),
     slots,
+    baseSlotKeys: defs.filter((d) => !String(d.slotKey).startsWith("dyn_")).map((d) => d.slotKey),
     updatedAt: nowIso,
   };
 }

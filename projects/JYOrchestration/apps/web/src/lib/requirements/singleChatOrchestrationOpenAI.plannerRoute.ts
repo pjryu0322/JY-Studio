@@ -11,6 +11,16 @@ export type PlannerRouteTurnOk = Readonly<{
   delegatedAgents: string[];
   matchedSlots: string[];
   patches: SlotPatchInput[];
+  /** Hybrid: LLM이 제안한 동적 슬롯(검증 전) */
+  suggestedSlots?: readonly {
+    slotKey: string;
+    title: string;
+    description: string;
+    ownerAgent: string;
+    reason?: string | null;
+    priority?: "high" | "medium" | "low" | null;
+    proposalConfidence?: number | null;
+  }[];
   promptText: string;
   model: string;
 }>;
@@ -82,6 +92,17 @@ export async function runPlannerRouteTurnOpenAI(input: {
   "routingDecision": "A~E 코드와 한국어 한 줄",
   "matchedSlots": ["slotKey"],
   "delegatedAgents": ["service-designer", ...],
+  "suggestedSlots": [
+    {
+      "slotKey": "dyn_meetingApprovalFlow",
+      "title": "회의 승인 흐름",
+      "description": "회의록 승인/검수 프로세스",
+      "ownerAgent": "security|designer|analyst|architect|reviewer|planner",
+      "reason": "왜 필요한지 한 줄",
+      "priority": "high|medium|low",
+      "proposalConfidence": 0.0
+    }
+  ],
   "updatedSlots": [
     { "slotKey": "...", "status": "empty|partial|candidate|confirmed|stale", "value": "...", "confidence": 0.0, "ownerAgent": "planner" }
   ]
@@ -126,6 +147,31 @@ export async function runPlannerRouteTurnOpenAI(input: {
   const rawSlots = parseUpdatedSlotsRows(parsed.updatedSlots, allKeys, new Set(["planner"]), input.definitions);
   const patches = rawSlots.filter((p) => plannerKeys.has(p.slotKey));
 
+  const suggestedSlots: PlannerRouteTurnOk["suggestedSlots"] = Array.isArray((parsed as any).suggestedSlots)
+    ? ((parsed as any).suggestedSlots as unknown[])
+        .map((x) => {
+          if (!x || typeof x !== "object") return null;
+          const r = x as Record<string, unknown>;
+          const slotKey = String(r.slotKey ?? "").trim();
+          const title = String(r.title ?? "").trim();
+          const description = String(r.description ?? "").trim();
+          const ownerAgent = String(r.ownerAgent ?? "").trim();
+          if (!slotKey || !title || !description || !ownerAgent) return null;
+          const priorityRaw = String(r.priority ?? "").trim().toLowerCase();
+          const priority =
+            priorityRaw === "high" || priorityRaw === "medium" || priorityRaw === "low"
+              ? (priorityRaw as "high" | "medium" | "low")
+              : null;
+          const proposalConfidence =
+            r.proposalConfidence !== null && r.proposalConfidence !== undefined && Number.isFinite(Number(r.proposalConfidence))
+              ? Math.min(1, Math.max(0, Number(r.proposalConfidence)))
+              : null;
+          const reason = typeof r.reason === "string" ? r.reason.slice(0, 200) : r.reason === null ? null : null;
+          return { slotKey, title, description, ownerAgent, reason, priority, proposalConfidence };
+        })
+        .filter((x): x is NonNullable<typeof x> => Boolean(x))
+    : [];
+
   const promptText = `[planner-route]\n[system]\n${system}\n\n[user]\n${user}`;
 
   return {
@@ -134,6 +180,7 @@ export async function runPlannerRouteTurnOpenAI(input: {
     delegatedAgents: delegated,
     matchedSlots,
     patches,
+    ...(suggestedSlots.length ? { suggestedSlots } : {}),
     promptText,
     model,
   };
