@@ -1582,12 +1582,9 @@ export function RequirementsWorkspace({
         onOpenMembersModal={() => setMembersModalOpen(true)}
         proposalReadinessPercentVal={proposalReadinessPercentVal}
         problemInterviewCovered={problemInterviewCovered}
-        problemInterviewStrictFilled={problemInterviewStrictFilled}
         progressSlotTotal={progressSlotTotal}
         orchestrationSlotSections={orchestrationSlotSectionsForUi}
-        nextNeededSlot={nextNeededSlot}
         remainingQuestionsEstimate={remainingQuestionsEstimate}
-        problemInterviewState={problemInterviewState}
         onForceGeneratePlanNow={onForceGeneratePlanNow}
         onInsertComposerPrompt={insertComposerPrompt}
         onInterviewSuggestionPick={(label) => {
