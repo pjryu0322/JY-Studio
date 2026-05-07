@@ -72,9 +72,10 @@ export async function runPlannerRouteTurnOpenAI(input: {
 1) 사용자 발화를 분석해 planner 소유 슬롯만 갱신(updatedSlots의 owner는 planner만).
 2) 액터·흐름·시나리오가 핵심이면 delegatedAgents에 "service-designer" 또는 "domain-expert"를 넣습니다(활성 역할만).
 3) 기능·우선순위·화면·프로토 범위가 핵심이면 "spec-reviewer" 또는 "task-reviewer"를 넣습니다(활성만).
-4) planner 슬롯만 다루면 delegatedAgents는 빈 배열 [].
-5) 복합이면 필요한 역할만 나열. 절대 불필요한 역할을 넣지 마세요.
-6) "planner" 문자열은 delegatedAgents에 넣지 마세요.
+4) 보안·프라이버시·인증/권한이 핵심이면 "security-reviewer"를 넣습니다(활성만).
+5) planner 슬롯만 다루면 delegatedAgents는 빈 배열 [].
+6) 복합이면 필요한 역할만 나열. 절대 불필요한 역할을 넣지 마세요.
+7) "planner" 문자열은 delegatedAgents에 넣지 마세요.
 
 출력 JSON 스키마:
 {

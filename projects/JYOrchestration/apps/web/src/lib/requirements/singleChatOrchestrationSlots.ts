@@ -4,6 +4,7 @@ import type {
   SingleChatOrchestrationSlotStatus,
   SingleChatOrchestrationSlotV1,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 
 export const SINGLE_CHAT_SERVICE_PLANNING_GROUP = "service-planning" as const;
 
@@ -145,6 +146,8 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
   readonly projectName: string;
   readonly projectDescription: string;
   readonly projectType?: string | null;
+  /** 프로젝트 멤버 > AI Agent > "서비스 기획" 절차에 참여하는 카탈로그 키(중복 제거된 집합). */
+  readonly servicePlanningAgentCatalogKeys?: readonly WorkspaceAiMemberId[] | null;
 }): readonly SingleChatOrchestrationSlotDefinition[] {
   const pSlug = slugToken(input.projectName || "idea", 32);
   const p = pSlug;
@@ -186,7 +189,13 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     mvpExclusions: `${p}.design.mvpExclusions`,
   };
 
-  return [
+  const agentKeys = new Set<WorkspaceAiMemberId>(
+    (input.servicePlanningAgentCatalogKeys ?? []).filter(Boolean) as WorkspaceAiMemberId[]
+  );
+  const hasSecurity = agentKeys.has("security_reviewer");
+  const hasDesigner = agentKeys.has("designer");
+
+  const defs: SingleChatOrchestrationSlotDefinition[] = [
     // —— AI 기획자 (planner) ——
     {
       slotKey: k.purpose,
@@ -383,6 +392,58 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       dependsOn: [k.prototypeScope],
     },
   ];
+
+  if (hasDesigner) {
+    defs.push(
+      {
+        slotKey: `${p}.design.uiToneAndStyle`,
+        label: "UI 톤 & 스타일",
+        ownerAgent: "spec-reviewer",
+        stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+        hints: `${domainHint}\nAI 디자이너 참여: 시각 톤/레이아웃 원칙을 짧게 정리.`,
+        dependsOn: [k.requiredScreens],
+      },
+      {
+        slotKey: `${p}.design.informationArchitecture`,
+        label: "정보 구조(IA)",
+        ownerAgent: "spec-reviewer",
+        stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+        hints: `${domainHint}\nAI 디자이너 참여: 화면 간 정보 구조/내비게이션 초안.`,
+        dependsOn: [k.requiredScreens, k.coreUsers],
+      }
+    );
+  }
+
+  if (hasSecurity) {
+    defs.push(
+      {
+        slotKey: `${p}.security.dataSensitivity`,
+        label: "민감 데이터/프라이버시",
+        ownerAgent: "security-reviewer",
+        stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+        hints: `${domainHint}\nAI 보안관 참여: 다루는 데이터의 민감도/보관/노출 리스크를 정리.`,
+        dependsOn: [k.coreUsers, k.coreFeatures],
+      },
+      {
+        slotKey: `${p}.security.authAndAuthorization`,
+        label: "인증/권한 모델",
+        ownerAgent: "security-reviewer",
+        stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+        hints: `${domainHint}\nAI 보안관 참여: 인증 방식/권한 경계/역할 기반 접근을 초안으로.`,
+        dependsOn: [k.permissionRelations, k.coreUsers],
+      },
+      {
+        slotKey: `${p}.security.threatModelingNotes`,
+        label: "위협 모델 메모",
+        ownerAgent: "security-reviewer",
+        stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+        hints: `${domainHint}\nAI 보안관 참여: 주요 위협(오용/남용)과 완화 방향을 짧게.`,
+        dependsOn: [k.coreFeatures, k.externalIntegration],
+      }
+    );
+  }
+
+  return defs;
 }
 
 export function hashSlotDefinitions(defs: readonly SingleChatOrchestrationSlotDefinition[]): string {

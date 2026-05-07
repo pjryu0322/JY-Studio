@@ -12,7 +12,7 @@ export function projectHasFeatureBaseline(project: Project | null): boolean {
   return spec.length > 0 || plan.length > 0;
 }
 
-const REQUIREMENTS_GATE_KR = "먼저 아이디어 구체화를 마쳐야 다음 단계로 진행할 수 있습니다.";
+const REQUIREMENTS_GATE_KR = "먼저 서비스 기획을 마쳐야 다음 단계로 진행할 수 있습니다.";
 
 export function computeFlowGates(input: {
   projectId: string | null;

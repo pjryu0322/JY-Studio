@@ -170,6 +170,12 @@ button.trigger {
   gap: 8px;
 }
 
+.slotDetailsScroll {
+  max-height: min(48vh, 420px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .slotCell {
   border-radius: 12px;
   padding: 8px 10px;

@@ -77,9 +77,7 @@ import {
   coerceBootstrapPromptTrace,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
-import { REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR } from "@/lib/project/requirementsAnalysisGate";
 import { joinSuccessCriteriaAndNfr } from "@/lib/project/requirementsSuccessCriteriaSplit";
-import { isRequirementsPendingWorkflow } from "@/lib/project/projectWorkflowStatus";
 import { publishProjectRailParticipantCount } from "@/lib/layout/projectRailParticipants";
 import { REQUIREMENTS_IDEATION_HTTP, requirementsAiConnectionUrl } from "@/lib/requirements/requirementsIdeationHttp";
 import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
@@ -88,6 +86,7 @@ import { pickWorkspaceAiHandoffMember } from "@/components/requirements/workspac
 import { useRequirementsStageRouteRedirect } from "@/components/requirements/workspace/useRequirementsStageRouteRedirect";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import {
   newChatMessage,
   parseRequirementsRoomState,
@@ -233,6 +232,14 @@ export function RequirementsWorkspace({
   const featurePlanningScreenCatalogIds = useMemo(() => {
     if (!workspaceAiGraph) return undefined;
     return resolveEnabledCatalogKeysForScreen(workspaceAiGraph, "feature_planning");
+  }, [workspaceAiGraph]);
+  const servicePlanningScreenCatalogIds = useMemo(() => {
+    if (!workspaceAiGraph) return undefined;
+    const out = new Set<WorkspaceAiMemberId>();
+    for (const k of ["requirements_ideation", "requirements_service_flow", "feature_planning"] as const) {
+      for (const id of resolveEnabledCatalogKeysForScreen(workspaceAiGraph, k)) out.add(id);
+    }
+    return [...out];
   }, [workspaceAiGraph]);
   const requirementsWorkspacePrevStageRef = useRef<RequirementsWorkspaceStage>(activeStage);
 
@@ -480,14 +487,44 @@ export function RequirementsWorkspace({
     platformMemberActivity,
   });
 
+  const servicePlanningRailParticipantCount = useMemo(() => {
+    // 좌측 레일 "서비스 기획(requirements)" 배지: 서비스 기획 절차(3 화면)의 참여 AI를 합산(중복 제거) + HUMAN(세션 사용자 포함) 합계.
+    const humanUserIdSet = new Set<string>();
+    for (const m of members) {
+      if (m.memberType !== "HUMAN") continue;
+      const uid = String(m.userId ?? "").trim();
+      if (uid) humanUserIdSet.add(uid);
+    }
+    const sid = String(sessionUser?.id ?? "").trim();
+    if (sid) humanUserIdSet.add(sid);
+
+    const aiSet = new Set<string>();
+    if (workspaceAiGraph) {
+      const keys: readonly ("requirements_ideation" | "requirements_service_flow" | "feature_planning")[] = [
+        "requirements_ideation",
+        "requirements_service_flow",
+        "feature_planning",
+      ];
+      for (const k of keys) {
+        const ids = resolveEnabledCatalogKeysForScreen(workspaceAiGraph, k);
+        for (const id of ids) aiSet.add(id);
+      }
+    } else {
+      // 그래프 로드 전: 현재 화면 참여자 수로만 표시(추후 업데이트됨).
+      return participantBadgeCount;
+    }
+    return Math.max(0, humanUserIdSet.size + aiSet.size);
+  }, [members, sessionUser?.id, workspaceAiGraph, participantBadgeCount]);
+
   // 현재 단계의 참여 멤버 수를 프로젝트 레일 배지로 올립니다.
   useEffect(() => {
     const pid = resolvedProjectId.trim();
     if (!pid) return;
     const key =
       inIdeationStage ? "requirements" : activeStage === "feature-planning" ? "features" : "service_flow";
-    publishProjectRailParticipantCount(pid, key, participantBadgeCount);
-  }, [inIdeationStage, activeStage, participantBadgeCount, resolvedProjectId]);
+    const count = key === "requirements" ? servicePlanningRailParticipantCount : participantBadgeCount;
+    publishProjectRailParticipantCount(pid, key, count);
+  }, [inIdeationStage, activeStage, participantBadgeCount, resolvedProjectId, servicePlanningRailParticipantCount]);
 
   useEffect(() => {
     const pid = resolvedProjectId.trim();
@@ -553,8 +590,9 @@ export function RequirementsWorkspace({
         projectName: project?.name ?? "",
         projectDescription: project?.description ?? "",
         projectType: project?.projectType ?? null,
+        servicePlanningAgentCatalogKeys: servicePlanningScreenCatalogIds ?? null,
       }),
-    [project?.name, project?.description, project?.projectType]
+    [project?.name, project?.description, project?.projectType, servicePlanningScreenCatalogIds]
   );
 
   const orchestrationSlotDefsHash = useMemo(() => hashSlotDefinitions(slotDefsForProgress), [slotDefsForProgress]);
@@ -660,9 +698,6 @@ export function RequirementsWorkspace({
     if (!workflowBannerEligible) return null;
     const fromUrl = initialWorkflowNotice.trim();
     if (fromUrl) return fromUrl;
-    if (project && isRequirementsPendingWorkflow(project.workflowStatus)) {
-      return REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR;
-    }
     return null;
   }, [workflowBannerEligible, initialWorkflowNotice, project]);
 
@@ -1100,7 +1135,7 @@ export function RequirementsWorkspace({
     if (remoteLockedLocal) return;
     if (busy || resetConversationBusy) return;
     if (typeof window !== "undefined") {
-      const ok = window.confirm("대화 내역을 모두 삭제하고 아이디어 구체화를 다시 시작할까요? 이 작업은 되돌릴 수 없습니다.");
+      const ok = window.confirm("대화 내역을 모두 삭제하고 서비스 기획을 다시 시작할까요? 이 작업은 되돌릴 수 없습니다.");
       if (!ok) return;
     }
     setResetConversationBusy(true);

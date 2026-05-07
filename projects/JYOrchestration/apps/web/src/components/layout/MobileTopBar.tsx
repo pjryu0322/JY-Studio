@@ -13,8 +13,8 @@ export function MobileTopBar(p: MobileTopBarProps) {
   const titleText = p.title.trim();
   const ideationTooltip =
     "AI 기획자가 사용자와의 대화를 통해 아이디어를 분석하고, 목표 고객·문제 정의·MVP 범위를 정리하여 실행 가능한 기획 초안으로 구체화합니다.";
-  const titleTooltip = titleText === "아이디어 구체화" ? ideationTooltip : undefined;
-  const hideRightAction = titleText === "아이디어 구체화";
+  const titleTooltip = titleText === "서비스 기획" ? ideationTooltip : undefined;
+  const hideRightAction = titleText === "서비스 기획";
   return (
     <header
       style={{

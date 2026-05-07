@@ -34,7 +34,7 @@ export function projectMeetsRequirementsAnalysisComplete(p: RequirementsAnalysis
 }
 
 export const REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR =
-  "먼저 아이디어 구체화를 마쳐야 생성 준비 단계로 진행할 수 있습니다.";
+  "먼저 서비스 기획을 마쳐야 생성 준비 단계로 진행할 수 있습니다.";
 
 export type RequirementsAnalysisCheckItem = { id: string; label: string; done: boolean };
 

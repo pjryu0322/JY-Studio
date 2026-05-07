@@ -83,6 +83,23 @@ export function useWorkspaceParticipants(params: {
         invited,
       });
     }
+
+    // 멤버 API에 아직 반영되지 않은 세션 사용자(로딩 타이밍/권한 캐시 등)도 배지/패널에 포함한다.
+    // - `members`의 HUMAN 중 `userId === sessionUser.id`가 없으면 "나"를 추가.
+    const sid = String(sessionUser?.id ?? "").trim();
+    if (sid) {
+      const hasMe = members.some((m) => m.memberType === "HUMAN" && String(m.userId ?? "").trim() === sid);
+      if (!hasMe) {
+        list.push({
+          id: `session-user:${sid}`,
+          name: (sessionUser?.name || sessionUser?.email || "나").slice(0, 24),
+          kind: "human",
+          onlineHint: true,
+          roleLabel: "나",
+          invited: false,
+        });
+      }
+    }
     const seen = new Set<string>();
     return list.filter((p) => {
       if (seen.has(p.id)) return false;

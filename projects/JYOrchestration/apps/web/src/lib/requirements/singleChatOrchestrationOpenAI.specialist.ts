@@ -6,7 +6,7 @@ import type { SlotPatchInput } from "@/lib/requirements/singleChatOrchestrationS
 import { parseUpdatedSlotsRows, safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
 
 export async function runSpecialistGroupTurnOpenAI(input: {
-  readonly groupLabel: "flow-analyst" | "feature-designer";
+  readonly groupLabel: "flow-analyst" | "feature-designer" | "security-reviewer";
   readonly projectName: string;
   readonly projectDescription: string;
   readonly userMessage: string;
@@ -45,9 +45,11 @@ export async function runSpecialistGroupTurnOpenAI(input: {
   const persona =
     input.groupLabel === "flow-analyst"
       ? "service-designer 및 domain-expert — 액터·흐름·예외·시나리오 슬롯만 다룹니다."
-      : "spec-reviewer 및 task-reviewer — 기능·우선순위·화면·프로토 범위 슬롯만 다룹니다.";
+      : input.groupLabel === "feature-designer"
+        ? "spec-reviewer 및 task-reviewer — 기능·우선순위·화면·프로토 범위 슬롯만 다룹니다."
+        : "security-reviewer — 보안·프라이버시·인증/권한 슬롯만 다룹니다.";
 
-  const system = `${workspaceAiMemberSystemPrefix("ideation")}
+  const system = `${workspaceAiMemberSystemPrefix(input.groupLabel === "security-reviewer" ? "security_reviewer" : "ideation")}
 당신은 SingleChat 내부 **${persona}**
 사용자에게 직접 말하지 않습니다. JSON만 출력.
 규칙:

@@ -7,7 +7,7 @@ import {
   type SlotPatchInput,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatAgentContext";
-import { DESIGN_OWNERS, FLOW_OWNERS } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
+import { DESIGN_OWNERS, FLOW_OWNERS, SECURITY_OWNERS } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
 import { runPlannerRouteTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerRoute";
 import { runSpecialistGroupTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.specialist";
 import { runPlannerMergeTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerMerge";
@@ -91,6 +91,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const delegated = route.delegatedAgents;
   const needFlow = delegated.some((d) => FLOW_OWNERS.has(d) && input.activeRoles.has(d));
   const needDesign = delegated.some((d) => DESIGN_OWNERS.has(d) && input.activeRoles.has(d));
+  const needSecurity = delegated.some((d) => SECURITY_OWNERS.has(d) && input.activeRoles.has(d));
 
   const executedSpecialists: string[] = [];
   let specialistDigest = "";
@@ -141,6 +142,30 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       specialistDigest += `[기능설계]\n${JSON.stringify(sp.patches).slice(0, 2000)}\n`;
     }
     if (sp.ok) executedSpecialists.push(...sp.executedRoles.filter((r) => DESIGN_OWNERS.has(r)));
+  }
+
+  if (needSecurity) {
+    const sp = await runSpecialistGroupTurnOpenAI({
+      groupLabel: "security-reviewer",
+      projectName: input.projectName,
+      projectDescription: input.projectDescription,
+      userMessage: input.userMessage,
+      dialogueExcerpt: input.dialogueExcerpt,
+      definitions: input.definitions,
+      state,
+      activeRoles: input.activeRoles,
+      allowedOwners: SECURITY_OWNERS,
+    });
+    promptChunks.push(sp.promptText);
+    if (sp.ok && sp.patches.length) {
+      state = mergeOrchestrationSlotPatches({
+        base: state,
+        patches: sp.patches,
+        nowIso: new Date().toISOString(),
+      });
+      specialistDigest += `[보안]\n${JSON.stringify(sp.patches).slice(0, 2000)}\n`;
+    }
+    if (sp.ok) executedSpecialists.push(...sp.executedRoles.filter((r) => SECURITY_OWNERS.has(r)));
   }
 
   const uniqSpecialists = [...new Set(executedSpecialists)];
