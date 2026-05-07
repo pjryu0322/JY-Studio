@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { pickIdeationBootstrapPromptTimelineEntries } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -203,13 +204,10 @@ export function RequirementsPromptDocumentDrawer({
   }, [lastPromptGeneratedAt]);
 
   const fullText = (lastPromptText && lastPromptText.trim()) || view?.copyText || "";
-  const ideationBootstrapTimeline = useMemo(() => {
-    const list = Array.isArray(promptTimeline) ? promptTimeline : [];
-    return list
-      .filter((x) => x && x.stage === "ideation" && x.action === "bootstrapInterview")
-      .slice(-10)
-      .reverse();
-  }, [promptTimeline]);
+  const ideationBootstrapTimeline = useMemo(
+    () => pickIdeationBootstrapPromptTimelineEntries(promptTimeline),
+    [promptTimeline]
+  );
 
   const exportStem = useMemo(() => buildExportBasename(exportBaseName), [exportBaseName]);
 

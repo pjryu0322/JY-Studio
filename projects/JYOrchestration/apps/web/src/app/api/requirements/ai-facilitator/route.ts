@@ -10,6 +10,11 @@ import {
 } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
+import {
+  buildIdeationBootstrapFallbackPromptTrace,
+  buildIdeationBootstrapLlmPromptTrace,
+  IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+} from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 
 type Body = {
   projectId?: string;
@@ -125,7 +130,7 @@ export async function POST(request: NextRequest) {
           model: null,
           ok: false,
           error: `${result.code}: ${result.message}`,
-          fallbackText: "무엇을 만들고 싶은가?",
+          fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
         });
       }
       if (bootstrapInterview && result.code === "NO_KEY") {
@@ -135,15 +140,10 @@ export async function POST(request: NextRequest) {
             code: "NO_AI_PROVIDER",
             message: "AI 기획자 호출에 필요한 OpenAI 설정이 없습니다.",
             data: {
-              promptTrace: {
-                stage: "ideation",
-                action: "bootstrapInterview",
-                aiMember: "AI 기획자",
-                source: "fallback",
+              promptTrace: buildIdeationBootstrapFallbackPromptTrace({
                 error: "NO_AI_PROVIDER",
-                fallbackText: "무엇을 만들고 싶은가?",
-                createdAt: new Date().toISOString(),
-              },
+                fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+              }),
             },
           },
           { status: 503 }
@@ -156,15 +156,10 @@ export async function POST(request: NextRequest) {
         ...(bootstrapInterview
           ? {
               data: {
-                promptTrace: {
-                  stage: "ideation",
-                  action: "bootstrapInterview",
-                  aiMember: "AI 기획자",
-                  source: "fallback",
+                promptTrace: buildIdeationBootstrapFallbackPromptTrace({
                   error: `${result.code}: ${result.message}`,
-                  fallbackText: "무엇을 만들고 싶은가?",
-                  createdAt: new Date().toISOString(),
-                },
+                  fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+                }),
               },
             }
           : {}),
@@ -179,7 +174,7 @@ export async function POST(request: NextRequest) {
           promptText: result.promptText,
           ok: false,
           error: "EMPTY_REPLY",
-          fallbackText: "무엇을 만들고 싶은가?",
+          fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
         });
       }
       return NextResponse.json(
@@ -188,15 +183,10 @@ export async function POST(request: NextRequest) {
           code: "EMPTY_REPLY",
           message: "bootstrapInterview 응답이 비어 있습니다.",
           data: {
-            promptTrace: {
-              stage: "ideation",
-              action: "bootstrapInterview",
-              aiMember: "AI 기획자",
-              source: "fallback",
+            promptTrace: buildIdeationBootstrapFallbackPromptTrace({
               error: "EMPTY_REPLY",
-              fallbackText: "무엇을 만들고 싶은가?",
-              createdAt: new Date().toISOString(),
-            },
+              fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+            }),
           },
         },
         { status: 502 }
@@ -231,17 +221,13 @@ export async function POST(request: NextRequest) {
               model: result.model,
               provider: result.provider ?? "openai",
               calledAt: result.calledAt ?? new Date().toISOString(),
-              promptTrace: {
-                stage: "ideation",
-                action: "bootstrapInterview",
-                aiMember: "AI 기획자",
-                source: "llm",
-                promptText: String(result.promptText ?? "").trim() || undefined,
+              promptTrace: buildIdeationBootstrapLlmPromptTrace({
                 responseText: replyTrim,
+                promptText: result.promptText,
                 model: result.model,
                 provider: result.provider ?? "openai",
-                createdAt: result.calledAt ?? new Date().toISOString(),
-              },
+                createdAtIso: result.calledAt ?? new Date().toISOString(),
+              }),
             }
           : {}),
         seedInterviewState: seed && seed.ok ? seed.wire : null,
