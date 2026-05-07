@@ -333,11 +333,11 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       hints: "계정/세션/단계 상태 전이.",
       dependsOn: [k.serviceFlow],
     },
-    // —— AI 설계자 (spec-reviewer / task-reviewer) ——
+    // —— AI 설계자 (solution-architect / task-reviewer) ——
     {
       slotKey: k.coreFeatures,
       label: "핵심 기능",
-      ownerAgent: "spec-reviewer",
+      ownerAgent: "solution-architect",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
       hints: "필수 사용자 기능.",
       dependsOn: [k.serviceFlow, k.actorTypes, k.mvpScope],
@@ -353,7 +353,7 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     {
       slotKey: k.prototypeScope,
       label: "프로토타입 범위",
-      ownerAgent: "spec-reviewer",
+      ownerAgent: "solution-architect",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
       hints: "시연·검증에 넣을 범위.",
       dependsOn: [k.featurePriority, k.coreFeatures],
@@ -361,7 +361,7 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     {
       slotKey: k.requiredScreens,
       label: "필수 화면",
-      ownerAgent: "spec-reviewer",
+      ownerAgent: "solution-architect",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
       hints: "반드시 필요한 화면 목록.",
       dependsOn: [k.coreFeatures, k.actorTypes],
@@ -385,7 +385,7 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     {
       slotKey: k.implRisk,
       label: "구현 위험",
-      ownerAgent: "spec-reviewer",
+      ownerAgent: "solution-architect",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
       hints: "기술·일정·품질 리스크.",
       dependsOn: [k.featureDependencies],
@@ -405,7 +405,7 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       {
         slotKey: `${p}.design.uiToneAndStyle`,
         label: "UI 톤 & 스타일",
-        ownerAgent: "spec-reviewer",
+        ownerAgent: "ui-designer",
         stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
         hints: `${domainHint}\nAI 디자이너 참여: 시각 톤/레이아웃 원칙을 짧게 정리.`,
         dependsOn: [k.requiredScreens],
@@ -413,7 +413,7 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       {
         slotKey: `${p}.design.informationArchitecture`,
         label: "정보 구조(IA)",
-        ownerAgent: "spec-reviewer",
+        ownerAgent: "ui-designer",
         stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
         hints: `${domainHint}\nAI 디자이너 참여: 화면 간 정보 구조/내비게이션 초안.`,
         dependsOn: [k.requiredScreens, k.coreUsers],
@@ -468,6 +468,142 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
   return defs;
 }
 
+/** LLM 프롬프트에만 쓰는 6개 외부 역할. 런타임 슬롯 정의의 ownerAgent(내부)와 구분한다. */
+export const LLM_EXTERNAL_ORCHESTRATION_ROLES = ["planner", "analyst", "architect", "designer", "reviewer", "security"] as const;
+export type LlmExternalOrchestrationRole = (typeof LLM_EXTERNAL_ORCHESTRATION_ROLES)[number];
+
+/** 내부 ownerAgent → LLM용 외부 역할 문자열 */
+export function internalOwnerToLlmExternalRole(internalRaw: string): string {
+  const o = String(internalRaw ?? "").trim().toLowerCase();
+  if (o === "planner") return "planner";
+  if (o === "service-designer" || o === "domain-expert") return "analyst";
+  if (o === "solution-architect") return "architect";
+  if (o === "ui-designer") return "designer";
+  if (o === "task-reviewer") return "reviewer";
+  if (o === "security-reviewer") return "security";
+  if ((LLM_EXTERNAL_ORCHESTRATION_ROLES as readonly string[]).includes(o)) return o;
+  return "planner";
+}
+
+/** Bootstrap LLM에만 넘기는 Phase1 기획·핵심 흐름 슬롯(전체 카탈로그/dependsOn/딥 디자인 제외). */
+const BOOTSTRAP_PHASE1_SLOT_SUFFIXES = [
+  ".planning.servicePurpose",
+  ".planning.problem",
+  ".planning.coreUsers",
+  ".planning.expectedOutcome",
+  ".planning.coreValue",
+  ".flow.serviceFlow",
+] as const;
+
+export function isBootstrapPhase1CatalogSlotKey(slotKey: string): boolean {
+  const k = String(slotKey ?? "").trim();
+  return BOOTSTRAP_PHASE1_SLOT_SUFFIXES.some((s) => k.endsWith(s));
+}
+
+export type SlotExpansionPhase = 1 | 2 | 3;
+
+function slotHasMeaningfulFill(
+  state: RequirementsSingleChatOrchestrationStateV1 | null | undefined,
+  slotKey: string
+): boolean {
+  if (!state?.slots) return false;
+  const row = state.slots[slotKey];
+  if (!row) return false;
+  const v = String(row.value ?? "").trim();
+  if (v.length < 4) return false;
+  const st = normalizeSlotStatus(String(row.status));
+  return st === "partial" || st === "candidate" || st === "confirmed";
+}
+
+/**
+ * 오케스트레이션 진행에 따른 슬롯 확장 단계(메타·향후 프롬프트 확장용).
+ * 1=기획 초기, 2=서비스 플로우 수렴, 3=기능/설계.
+ */
+export function computeSlotExpansionPhaseFromState(
+  state: RequirementsSingleChatOrchestrationStateV1 | null | undefined,
+  definitions: readonly SingleChatOrchestrationSlotDefinition[]
+): SlotExpansionPhase {
+  if (!state?.slots) return 1;
+  const baseDefs = definitions.filter((d) => !String(d.slotKey).startsWith("dyn_"));
+  const anyDesign = baseDefs.some((d) => d.slotKey.includes(".design.") && slotHasMeaningfulFill(state, d.slotKey));
+  if (anyDesign) return 3;
+  const anyFlow = baseDefs.some((d) => d.slotKey.includes(".flow.") && slotHasMeaningfulFill(state, d.slotKey));
+  if (anyFlow || isPlannerStableEnough(state, definitions)) return 2;
+  return 1;
+}
+
+/**
+ * planner-route LLM용: expansion phase에 맞춰 **표시할** 슬롯 정의만 줄인다(파싱·패치는 전체 defs 유지).
+ * 1=`.planning.*`, 2=`planning+flow`, 3=비-dyn 전부(+dyn은 호출부 definitions에 있으면 포함).
+ */
+export function filterSlotDefinitionsForPlannerCatalog(
+  definitions: readonly SingleChatOrchestrationSlotDefinition[],
+  phase: SlotExpansionPhase
+): SingleChatOrchestrationSlotDefinition[] {
+  const nonDyn = definitions.filter((d) => !String(d.slotKey).startsWith("dyn_"));
+  if (phase >= 3) return [...definitions];
+  if (phase === 2) return nonDyn.filter((d) => d.slotKey.includes(".planning.") || d.slotKey.includes(".flow."));
+  return nonDyn.filter((d) => d.slotKey.includes(".planning."));
+}
+
+export function formatSlotDefinitionRowForOrchestrationLlm(
+  d: SingleChatOrchestrationSlotDefinition,
+  opts: { readonly includeDependsOn: boolean }
+): { slotKey: string; label: string; ownerAgent: string; dependsOn?: readonly string[] } {
+  const base = { slotKey: d.slotKey, label: d.label, ownerAgent: d.ownerAgent };
+  if (opts.includeDependsOn && (d.dependsOn?.length ?? 0) > 0) {
+    return { ...base, dependsOn: [...(d.dependsOn ?? [])] };
+  }
+  return base;
+}
+
+/** planner-route `[슬롯 정의]` JSON — phase&lt;3 이면 dependsOn 생략로 토큰 절약 */
+export function stringifyPlannerRouteSlotCatalogForLlm(
+  definitions: readonly SingleChatOrchestrationSlotDefinition[],
+  phase: SlotExpansionPhase
+): string {
+  const subset = filterSlotDefinitionsForPlannerCatalog(definitions, phase);
+  const includeDepends = phase >= 3;
+  const rows = subset.map((d) => formatSlotDefinitionRowForOrchestrationLlm(d, { includeDependsOn: includeDepends }));
+  return JSON.stringify(rows, null, 0).slice(0, 20_000);
+}
+
+export type CompactBootstrapSlotCatalogRow = {
+  /** 짧은 id (예: planning.servicePurpose). 프로젝트 slug 접두 전체 키는 넣지 않는다. */
+  readonly slotId: string;
+  readonly label: string;
+  readonly ownerAgent: string;
+  readonly group: "planning" | "flow";
+};
+
+export function slotKeyToCompactSlotId(slotKey: string): string {
+  const parts = String(slotKey ?? "").trim().split(".").filter(Boolean);
+  if (parts.length >= 2) return `${parts[parts.length - 2]}.${parts[parts.length - 1]}`;
+  return parts.join(".") || "slot";
+}
+
+export function buildCompactBootstrapSlotCatalogForLlm(
+  definitions: readonly SingleChatOrchestrationSlotDefinition[]
+): readonly CompactBootstrapSlotCatalogRow[] {
+  return definitions
+    .filter((d) => !String(d.slotKey).startsWith("dyn_"))
+    .filter((d) => isBootstrapPhase1CatalogSlotKey(d.slotKey))
+    .map((d) => ({
+      slotId: slotKeyToCompactSlotId(d.slotKey),
+      label: d.label,
+      ownerAgent: internalOwnerToLlmExternalRole(d.ownerAgent),
+      group: d.slotKey.includes(".flow.") ? ("flow" as const) : ("planning" as const),
+    }));
+}
+
+/** Bootstrap LLM용: dependsOn·전체 키 계층 없이 compact JSON 한 덩어리. */
+export function stringifyCompactBootstrapSlotCatalogForLlm(
+  definitions: readonly SingleChatOrchestrationSlotDefinition[]
+): string {
+  const slots = buildCompactBootstrapSlotCatalogForLlm(definitions);
+  return JSON.stringify({ mode: "bootstrap_phase1_compact", slots }, null, 0);
+}
+
 const ALLOWED_DYNAMIC_OWNER = new Set(["planner", "analyst", "architect", "designer", "reviewer", "security"]);
 const RESERVED_PREFIXES = ["planning.", "flow.", "design.", "security."] as const;
 
@@ -476,8 +612,8 @@ export function normalizeDynamicOwnerToInternalOwner(ownerRaw: string): string {
   // Hybrid: 외부 ownerAgent(UX) → 내부 오케스트레이션 역할 문자열로 매핑.
   if (o === "planner") return "planner";
   if (o === "analyst") return "service-designer";
-  if (o === "architect") return "domain-expert";
-  if (o === "designer") return "spec-reviewer";
+  if (o === "architect") return "solution-architect";
+  if (o === "designer") return "ui-designer";
   if (o === "reviewer") return "task-reviewer";
   if (o === "security") return "security-reviewer";
   return o;

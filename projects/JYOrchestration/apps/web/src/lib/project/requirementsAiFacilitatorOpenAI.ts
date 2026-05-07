@@ -32,6 +32,47 @@ export type RequirementsFacilitatorOpenAiResult =
     }
   | { ok: false; code: string; message: string };
 
+export type RequirementsSingleChatBootstrapSuggestedSlot = {
+  slotKey: string;
+  title: string;
+  description: string;
+  ownerAgent: "planner" | "analyst" | "architect" | "designer" | "reviewer" | "security";
+  reason?: string | null;
+  priority?: "high" | "medium" | "low" | null;
+  proposalConfidence?: number | null;
+};
+
+export type RequirementsSingleChatBootstrapOpenAIResult =
+  | {
+      ok: true;
+      question: string;
+      suggestions: string[];
+      allowCustomInput: boolean;
+      suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[];
+      orchestrationBootstrap?: {
+        detectedDomain?: string | null;
+        missingInformation?: string[];
+        recommendedFocus?: string | null;
+        interactionMode?: string | null;
+        initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
+      };
+      model: string;
+      promptText: string;
+      provider: string;
+      calledAt: string;
+    }
+  | {
+      ok: false;
+      code: string;
+      message: string;
+      /** 실패해도 추적성을 위해 LLM 호출 메타는 보존한다(호출 자체가 실패한 경우는 비어 있을 수 있음). */
+      model?: string;
+      promptText?: string;
+      provider?: string;
+      calledAt?: string;
+      responseText?: string;
+    };
+
 function facilitatorResponseStyleAddendum(style: RequirementsAiResponseStyle | undefined): string {
   const s = style === "brief" || style === "detailed" ? style : "standard";
   if (s === "standard") return "";
@@ -299,6 +340,249 @@ IMPORTANT:
     calledAt,
     ...(interviewSuggestions?.length ? { interviewSuggestions } : {}),
     interviewAllowCustomInput: allowCustomInput,
+  };
+}
+
+/**
+ * SingleChat bootstrap(단일 호출): 첫 질문 + suggestion chips + dynamic slot proposal.
+ * - bootstrap에서는 절대 LLM을 2회 호출하지 않는다.
+ */
+export async function runRequirementsSingleChatBootstrapOpenAI(input: {
+  projectName: string;
+  projectDescription: string;
+  projectType?: string | null;
+  participatingAgentsPromptBlock?: string;
+  orchestrationBootstrapInstructions?: string;
+  /**
+   * Bootstrap용 슬롯 카탈로그 JSON(Phase1 compact; dependsOn·전체 계층 키 없음).
+   * @see stringifyCompactBootstrapSlotCatalogForLlm
+   */
+  baseSlotCatalogJson: string;
+}): Promise<RequirementsSingleChatBootstrapOpenAIResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  }
+
+  const model = resolveOpenAiModelFromEnv();
+  const pn = input.projectName.trim() || "(이름 없음)";
+  const pd = input.projectDescription.trim() || "(설명 없음)";
+  const pt = String(input.projectType ?? "").trim() || "(유형 미지정)";
+  const baseCatalog = String(input.baseSlotCatalogJson ?? "").trim();
+
+  const agentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
+    ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n\n`
+    : "\n\n";
+
+  const orchInsert = (input.orchestrationBootstrapInstructions ?? "").trim()
+    ? `${String(input.orchestrationBootstrapInstructions).trim()}\n\n`
+    : "";
+
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}${orchInsert}[BOOTSTRAP — orchestration initializer]
+역할: 상태 초기 추론(detectedDomain·missingInformation·recommendedFocus·interactionMode)·workflow 리스크 감지·dyn 슬롯 0~3(필요 시)·첫 질문 1개(question).
+참여 AI 블록의 역할 문자열은 외부 6종(planner/analyst/architect/designer/reviewer/security)만 사용한다.
+
+질문 정책(orchestration-first):
+- 프로젝트 설명·이름·유형에 이미 드러난 사실(예: 이미 서술된 핵심 문제·타깃)은 되물리지 말 것.
+- 공백은 협업·검토/수정·승인·책임 경계·품질 검증·분기 흐름처럼 “다음 설계 판단”에 필요한 정보만 묻는다.
+
+suggestedSlots: base로 커버되는 phase1 충분하면 []. 정말 필요할 때만 dyn_ 0~3. base 슬롯 제거/변경 금지.
+dyn 규칙: slotKey=dyn_* , ownerAgent ∈ {planner,analyst,architect,designer,reviewer,security}, title≤40자, description≤140자, reason 한 줄, priority, proposalConfidence 0~1.
+
+JSON 스키마(마크다운·코드펜스 금지):
+{
+  "question": "한국어 한 문장",
+  "suggestions": ["…","…","…"],
+  "allowCustomInput": true,
+  "orchestrationBootstrap": {
+    "detectedDomain": "…",
+    "missingInformation": ["…"],
+    "recommendedFocus": "…",
+    "interactionMode": "collaborative-review|auto-approve|mixed|unknown",
+    "initialOwnershipHints": [{ "slotId": "planning.servicePurpose", "ownerAgent": "planner" }]
+  },
+  "suggestedSlots": []
+}`;
+
+  const user = `[project]
+name: ${pn}
+type: ${pt}
+description: ${pd.slice(0, 1400)}
+
+[phase1_slot_catalog]
+${baseCatalog.slice(0, 6000)}
+
+위 JSON만 출력.`;
+
+  const calledAt = new Date().toISOString();
+  const promptText = `[system]\n${system}\n\n---\n\n[user]\n${user}`;
+
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.2,
+    maxTokens: 520,
+    responseFormatJsonObject: true,
+  });
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      code: res.code,
+      message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}`,
+      model,
+      promptText,
+      provider: "openai",
+      calledAt,
+    };
+  }
+  const text = res.text;
+  if (!text) {
+    return {
+      ok: false,
+      code: "EMPTY",
+      message: "OpenAI 응답 본문이 비어 있습니다.",
+      model,
+      promptText,
+      provider: "openai",
+      calledAt,
+      responseText: "",
+    };
+  }
+
+  let question = "";
+  let suggestions: string[] = [];
+  let allowCustomInput = true;
+  let suggestedSlots: RequirementsSingleChatBootstrapSuggestedSlot[] = [];
+  let orchestrationBootstrap:
+    | {
+        detectedDomain?: string | null;
+        missingInformation?: string[];
+        recommendedFocus?: string | null;
+        interactionMode?: string | null;
+        initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
+      }
+    | undefined = undefined;
+  try {
+    const raw = stripJsonMarkdownFences(String(text).trim());
+    const j = JSON.parse(raw) as Record<string, unknown>;
+    // 모델이 스키마를 약간 어겨도 최대한 복구한다.
+    // (단, 완전 무관한 텍스트를 억지로 question으로 쓰지는 않는다 — 비어 있으면 상위에서 fallback 처리)
+    question = String(
+      j.question ??
+        j.interviewQuestion ??
+        j.questionText ??
+        j.q ??
+        j.text ??
+        j.reply ??
+        ""
+    ).trim();
+    if (Array.isArray(j.suggestions)) {
+      suggestions = normalizeLlmInterviewSuggestions(j.suggestions.map((x) => String(x ?? "")));
+    }
+    if (j.allowCustomInput === false) allowCustomInput = false;
+    if (Array.isArray(j.suggestedSlots)) {
+      suggestedSlots = (j.suggestedSlots as unknown[])
+        .map((x): RequirementsSingleChatBootstrapSuggestedSlot | null => {
+          if (!x || typeof x !== "object") return null;
+          const r = x as Record<string, unknown>;
+          const slotKey = String(r.slotKey ?? "").trim();
+          const title = String(r.title ?? "").trim();
+          const description = String(r.description ?? "").trim();
+          const ownerAgent = String(r.ownerAgent ?? "").trim().toLowerCase();
+          if (!slotKey || !title || !description || !ownerAgent) return null;
+          const owner =
+            ownerAgent === "planner" ||
+            ownerAgent === "analyst" ||
+            ownerAgent === "architect" ||
+            ownerAgent === "designer" ||
+            ownerAgent === "reviewer" ||
+            ownerAgent === "security"
+              ? (ownerAgent as RequirementsSingleChatBootstrapSuggestedSlot["ownerAgent"])
+              : null;
+          if (!owner) return null;
+          const reason = typeof r.reason === "string" ? r.reason.slice(0, 200) : r.reason === null ? null : null;
+          const priorityRaw = String(r.priority ?? "").trim().toLowerCase();
+          const priority =
+            priorityRaw === "high" || priorityRaw === "medium" || priorityRaw === "low" ? (priorityRaw as any) : null;
+          const proposalConfidence =
+            r.proposalConfidence !== null && r.proposalConfidence !== undefined && Number.isFinite(Number(r.proposalConfidence))
+              ? Math.min(1, Math.max(0, Number(r.proposalConfidence)))
+              : null;
+          return { slotKey, title, description, ownerAgent: owner, reason, priority, proposalConfidence };
+        })
+        .filter((x): x is RequirementsSingleChatBootstrapSuggestedSlot => x !== null);
+    }
+    if (j.orchestrationBootstrap && typeof j.orchestrationBootstrap === "object") {
+      const ob = j.orchestrationBootstrap as Record<string, unknown>;
+      const detectedDomain = typeof ob.detectedDomain === "string" ? ob.detectedDomain.slice(0, 80) : null;
+      const recommendedFocus = typeof ob.recommendedFocus === "string" ? ob.recommendedFocus.slice(0, 120) : null;
+      const interactionMode = typeof ob.interactionMode === "string" ? ob.interactionMode.slice(0, 80) : null;
+      const missingInformation = Array.isArray(ob.missingInformation)
+        ? ob.missingInformation.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 10)
+        : [];
+      const initialOwnershipHints = Array.isArray(ob.initialOwnershipHints)
+        ? ob.initialOwnershipHints
+            .map((x) => {
+              if (!x || typeof x !== "object") return null;
+              const r = x as Record<string, unknown>;
+              const slotKey = String(r.slotKey ?? r.slotId ?? "").trim();
+              const ownerAgent = String(r.ownerAgent ?? "").trim().toLowerCase();
+              if (!slotKey || !ownerAgent) return null;
+              return { slotKey: slotKey.slice(0, 120), ownerAgent: ownerAgent.slice(0, 60) };
+            })
+            .filter((x): x is { slotKey: string; ownerAgent: string } => x !== null)
+            .slice(0, 12)
+        : [];
+      orchestrationBootstrap = {
+        detectedDomain,
+        recommendedFocus,
+        ...(interactionMode ? { interactionMode } : {}),
+        ...(missingInformation.length ? { missingInformation } : {}),
+        ...(initialOwnershipHints.length ? { initialOwnershipHints } : {}),
+      };
+    }
+  } catch {
+    return {
+      ok: false,
+      code: "PARSE",
+      message: "bootstrap JSON 파싱 실패",
+      model,
+      promptText,
+      provider: "openai",
+      calledAt,
+      responseText: String(text).slice(0, 20_000),
+    };
+  }
+
+  if (!question) {
+    return {
+      ok: false,
+      code: "EMPTY",
+      message: "question이 비어 있습니다.",
+      model,
+      promptText,
+      provider: "openai",
+      calledAt,
+      responseText: String(text).slice(0, 20_000),
+    };
+  }
+
+  return {
+    ok: true,
+    question,
+    suggestions,
+    allowCustomInput,
+    suggestedSlots,
+    ...(orchestrationBootstrap ? { orchestrationBootstrap } : {}),
+    model,
+    promptText,
+    provider: "openai",
+    calledAt,
   };
 }
 

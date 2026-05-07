@@ -1,10 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { pickIdeationBootstrapPromptTimelineEntries } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import {
+  isIdeationBootstrapTimelineEntry,
+  pickIdeationBootstrapPromptTimelineEntries,
+} from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -16,17 +20,22 @@ const backdrop: CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
   alignItems: "stretch",
+  minHeight: "100dvh",
 };
 
 const panel: CSSProperties = {
   position: "relative",
   width: "min(960px, 100vw)",
   maxWidth: "100%",
+  height: "100dvh",
+  maxHeight: "100dvh",
+  minHeight: 0,
   background: "#fafbfc",
   boxShadow: "-12px 0 48px rgba(15, 23, 42, 0.18)",
   display: "flex",
   flexDirection: "column",
   borderLeft: "1px solid #e2e8f0",
+  overflow: "hidden",
 };
 
 const docBlock: CSSProperties = {
@@ -133,6 +142,118 @@ function ClipboardIcon({ size = 20 }: { readonly size?: number }) {
   );
 }
 
+const preBoxScroll: CSSProperties = {
+  margin: 0,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontSize: 12.5,
+  lineHeight: 1.5,
+  color: "#0f172a",
+  whiteSpace: "pre-wrap" as const,
+  wordBreak: "break-word" as const,
+  maxHeight: "min(42vh, 420px)",
+  overflow: "auto",
+  padding: "10px 12px",
+  background: "#f8fafc",
+  borderRadius: 8,
+  border: "1px solid #e2e8f0",
+};
+
+function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelineEntry[]): string {
+  const lines: string[] = [];
+  lines.push(`# 프롬프트 타임라인`);
+  lines.push("");
+  lines.push(`생성: ${new Date().toISOString()}`);
+  lines.push("");
+  entries.forEach((row, i) => {
+    const n = i + 1;
+    const when = row.createdAt ? new Date(row.createdAt).toISOString() : "";
+    lines.push(`## ${n}. ${row.action ?? "entry"} · ${when}`);
+    lines.push("");
+    lines.push(`- **source**: ${row.source ?? "—"}`);
+    if (row.stage) lines.push(`- **stage**: ${row.stage}`);
+    if (row.stageGroup) lines.push(`- **stageGroup**: ${row.stageGroup}`);
+    if (row.workspaceScreenKey) lines.push(`- **workspaceScreenKey**: ${row.workspaceScreenKey}`);
+    if (row.model) lines.push(`- **model**: ${row.model}`);
+    if (row.provider) lines.push(`- **provider**: ${row.provider}`);
+    if (row.routingDecision) lines.push(`- **routingDecision**: ${row.routingDecision}`);
+    if (row.orchestratorAgent) lines.push(`- **orchestratorAgent**: ${row.orchestratorAgent}`);
+    if (row.fallback !== undefined) lines.push(`- **fallback**: ${row.fallback}`);
+    if (row.error) lines.push(`- **error**: ${row.error}`);
+    if (row.interviewQuestion) lines.push(`- **interviewQuestion**: ${row.interviewQuestion}`);
+    if (row.interviewSuggestions?.length) lines.push(`- **interviewSuggestions**: ${row.interviewSuggestions.join(" | ")}`);
+    if (row.interviewSuggestionsSource) lines.push(`- **interviewSuggestionsSource**: ${row.interviewSuggestionsSource}`);
+    if (row.detectedDomain) lines.push(`- **detectedDomain**: ${row.detectedDomain}`);
+    if (row.recommendedFocus) lines.push(`- **recommendedFocus**: ${row.recommendedFocus}`);
+    if (row.missingInformation?.length) lines.push(`- **missingInformation**: ${row.missingInformation.join(", ")}`);
+    if (row.suggestedDynamicSlots?.length) lines.push(`- **suggestedDynamicSlots**: ${row.suggestedDynamicSlots.join(", ")}`);
+    if (row.acceptedDynamicSlots?.length) lines.push(`- **acceptedDynamicSlots**: ${row.acceptedDynamicSlots.join(", ")}`);
+    if (row.rejectedDynamicSlots?.length) {
+      lines.push(
+        `- **rejectedDynamicSlots**: ${row.rejectedDynamicSlots.map((r) => `${r.slotKey}(${r.reason})`).join("; ")}`
+      );
+    }
+    lines.push("");
+    lines.push(`### 플랫폼 → OpenAI`);
+    lines.push("");
+    lines.push("```text");
+    lines.push((row.promptText ?? "").trim() || "(없음)");
+    lines.push("```");
+    lines.push("");
+    lines.push(`### OpenAI → 플랫폼`);
+    lines.push("");
+    lines.push("```text");
+    const resp = [row.responseText, row.fallbackText].filter((x) => String(x ?? "").trim()).join("\n\n---\n\n");
+    lines.push(resp.trim() || "(없음)");
+    lines.push("```");
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+  });
+  return lines.join("\n");
+}
+
+function CopyIconButton({
+  ariaLabel,
+  title,
+  disabled,
+  onClick,
+}: {
+  readonly ariaLabel: string;
+  readonly title: string;
+  readonly disabled?: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        border: "1px solid #cbd5e1",
+        background: "#fff",
+        color: "#334155",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.45 : 1,
+        flexShrink: 0,
+      }}
+    >
+      <ClipboardIcon size={18} />
+    </button>
+  );
+}
+
 export function RequirementsPromptDocumentDrawer({
   open,
   onClose,
@@ -156,7 +277,7 @@ export function RequirementsPromptDocumentDrawer({
   const show = useShowScreenLabels();
   const [tab, setTab] = useState<"prompt" | "history">("prompt");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [copyToastVisible, setCopyToastVisible] = useState(false);
+  const [copyToastMessage, setCopyToastMessage] = useState<string | null>(null);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -209,6 +330,15 @@ export function RequirementsPromptDocumentDrawer({
     [promptTimeline]
   );
 
+  /** 서랍에 표시하는 것과 동일 필터 — 시간순(오래된 것부터)으로 MD보내기 */
+  const promptTimelineExportAsc = useMemo(() => {
+    const list = Array.isArray(promptTimeline) ? promptTimeline : [];
+    return list
+      .filter((x) => isIdeationBootstrapTimelineEntry(x))
+      .slice()
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [promptTimeline]);
+
   const exportStem = useMemo(() => buildExportBasename(exportBaseName), [exportBaseName]);
 
   const orderedMessages = conversationMessages ?? [];
@@ -220,25 +350,38 @@ export function RequirementsPromptDocumentDrawer({
     [allMessageIds, selectedIds]
   );
 
-  const showCopyToast = useCallback(() => {
+  const showCopyFeedback = useCallback((message: string) => {
     if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
-    setCopyToastVisible(true);
+    setCopyToastMessage(message);
     copyToastTimerRef.current = setTimeout(() => {
-      setCopyToastVisible(false);
+      setCopyToastMessage(null);
       copyToastTimerRef.current = null;
     }, 2000);
   }, []);
 
   const onCopyPrompt = useCallback(async () => {
-    const t = fullText.trim();
-    if (!t) return;
-    try {
-      await navigator.clipboard.writeText(t);
-      showCopyToast();
-    } catch {
-      /* ignore */
-    }
-  }, [fullText, showCopyToast]);
+    const raw = String(fullText ?? "");
+    if (!raw.trim()) return;
+    const ok = await writeClipboardText(raw);
+    showCopyFeedback(ok ? "클립보드에 복사했습니다." : "복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+  }, [fullText, showCopyFeedback]);
+
+  const copyPlainText = useCallback(
+    async (text: string) => {
+      const raw = String(text ?? "");
+      if (!raw.length) return;
+      const ok = await writeClipboardText(raw);
+      showCopyFeedback(ok ? "클립보드에 복사했습니다." : "복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
+    },
+    [showCopyFeedback]
+  );
+
+  const onDownloadPromptTimelineMarkdown = useCallback(() => {
+    if (!promptTimelineExportAsc.length) return;
+    const md = buildPromptTimelineMarkdown(promptTimelineExportAsc);
+    const date = localDateSlug();
+    downloadTextFile(`${exportStem}-prompt-timeline-${date}.md`, md, "text/markdown;charset=utf-8");
+  }, [exportStem, promptTimelineExportAsc]);
 
   const toggleSelectAll = useCallback(() => {
     if (!orderedMessages.length) return;
@@ -295,7 +438,7 @@ export function RequirementsPromptDocumentDrawer({
     >
       <div style={panel} onMouseDown={(e) => e.stopPropagation()}>
         <ScreenLabel label="요구사항-프롬프트-드로어" visible={show} />
-        {copyToastVisible ? (
+        {copyToastMessage ? (
           <div
             role="status"
             aria-live="polite"
@@ -314,7 +457,7 @@ export function RequirementsPromptDocumentDrawer({
               maxWidth: "min(320px, 90vw)",
             }}
           >
-            프롬프트가 복사되었습니다.
+            {copyToastMessage}
           </div>
         ) : null}
         <div
@@ -364,6 +507,24 @@ export function RequirementsPromptDocumentDrawer({
             >
               대화 기록
             </button>
+            {promptTimelineExportAsc.length > 0 ? (
+              <button
+                type="button"
+                onClick={onDownloadPromptTimelineMarkdown}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  color: "#0f172a",
+                }}
+              >
+                타임라인 MD 저장
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -383,7 +544,7 @@ export function RequirementsPromptDocumentDrawer({
           </div>
         </div>
 
-        <div style={{ flex: 1, overflow: "auto", padding: "20px 22px 28px" }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "20px 22px 28px" }}>
           {tab === "prompt" ? (
             <div style={{ position: "relative" }}>
               {generatedLabel ? (
@@ -423,34 +584,65 @@ export function RequirementsPromptDocumentDrawer({
                 <>
                   {ideationBootstrapTimeline.length ? (
                     <div style={docBlock}>
-                      <div style={labelSm}>BOOTSTRAP TIMELINE</div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        {ideationBootstrapTimeline.map((row) => (
-                          <div key={`${row.createdAt}:${row.source}`} style={{ padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff" }}>
-                            <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>
-                              {row.aiMember ?? "AI"} · {row.source} · {new Date(row.createdAt).toLocaleString("ko-KR")}
-                            </div>
-                            {row.model || row.provider ? (
-                              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                                {row.provider ?? "provider"} {row.model ?? ""}
+                      <div style={labelSm}>프롬프트 타임라인</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                        {ideationBootstrapTimeline.map((row, idx) => {
+                          const hasOut = Boolean(String(row.responseText ?? row.fallbackText ?? "").trim());
+                          const ok = !String(row.error ?? "").trim() && hasOut;
+                          const platformToModel = String(row.promptText ?? "").trim();
+                          const modelToPlatform = [row.responseText, row.fallbackText, row.error ? `[error] ${row.error}` : ""]
+                            .filter((x) => String(x ?? "").trim())
+                            .join("\n\n");
+                          return (
+                            <div
+                              key={`${row.createdAt}:${row.action ?? ""}:${row.source}:${idx}`}
+                              style={{ padding: "14px 14px", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff" }}
+                            >
+                              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                                <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a" }}>
+                                  {row.stage ?? "—"} · {row.action ?? "—"}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    padding: "2px 8px",
+                                    borderRadius: 999,
+                                    background: ok ? "#dcfce7" : "#fee2e2",
+                                    color: ok ? "#166534" : "#991b1b",
+                                  }}
+                                >
+                                  {ok ? "SUCCESS" : "FAILED"}
+                                </span>
+                                <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>
+                                  {row.provider ?? ""} {row.model ?? ""} · {new Date(row.createdAt).toLocaleString("ko-KR")}
+                                </span>
                               </div>
-                            ) : null}
-                            {row.error ? (
-                              <div style={{ fontSize: 12.5, color: "#b91c1c", marginTop: 6, whiteSpace: "pre-wrap" }}>{row.error}</div>
-                            ) : null}
-                            {row.promptText ? (
-                              <pre style={{ margin: "10px 0 0", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12.5, lineHeight: 1.5, color: "#0f172a", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                                {row.promptText}
-                              </pre>
-                            ) : null}
-                            {row.responseText ? (
-                              <div style={{ fontSize: 13, color: "#0f172a", marginTop: 8, whiteSpace: "pre-wrap" }}>{row.responseText}</div>
-                            ) : null}
-                            {row.fallbackText ? (
-                              <div style={{ fontSize: 13, color: "#0f172a", marginTop: 8, whiteSpace: "pre-wrap" }}>{row.fallbackText}</div>
-                            ) : null}
-                          </div>
-                        ))}
+
+                              <div style={{ ...labelSm, marginTop: 4 }}>플랫폼 → OpenAI</div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 12 }}>
+                                <pre style={{ ...preBoxScroll, flex: "1 1 0%", minWidth: 0 }}>{platformToModel || "(없음)"}</pre>
+                                <CopyIconButton
+                                  ariaLabel="플랫폼→OpenAI 프롬프트 복사"
+                                  title="이 블록 복사"
+                                  disabled={!platformToModel}
+                                  onClick={() => void copyPlainText(platformToModel)}
+                                />
+                              </div>
+
+                              <div style={labelSm}>OpenAI → 플랫폼</div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                                <pre style={{ ...preBoxScroll, flex: "1 1 0%", minWidth: 0 }}>{modelToPlatform.trim() || "(없음)"}</pre>
+                                <CopyIconButton
+                                  ariaLabel="OpenAI→플랫폼 응답 복사"
+                                  title="이 블록 복사"
+                                  disabled={!modelToPlatform.trim()}
+                                  onClick={() => void copyPlainText(modelToPlatform)}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}

@@ -108,6 +108,18 @@ export type RequirementsPromptTimelineEntry = {
   suggestedDynamicSlots?: readonly string[];
   acceptedDynamicSlots?: readonly string[];
   rejectedDynamicSlots?: Array<{ slotKey: string; reason: string }>;
+  /** bootstrap orchestration initializer 메타(LLM 산출) */
+  detectedDomain?: string | null;
+  missingInformation?: readonly string[];
+  recommendedFocus?: string | null;
+  initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
+  interactionMode?: string | null;
+  /** bootstrap 단계(1=초기 기획, 2=서비스 플로우, 3=기능·설계) */
+  bootstrapPhase?: 1 | 2 | 3;
+  /** bootstrap LLM에 compact 카탈로그만 전달했는지 */
+  compactCatalogMode?: boolean;
+  /** 슬롯 확장 단계(진행도 스냅샷; bootstrap 시점은 보통 1) */
+  slotExpansionPhase?: 1 | 2 | 3;
 };
 
 export type RequirementsStateJson = {

@@ -13,12 +13,22 @@ type Props = Readonly<{
   compactToolbar: boolean;
   me: PlatformTopNavMeState | null;
   projectMembersCount: number;
+  projectWorkNotesCount: number;
 }>;
 
-export function ProjectRailSecondaryTools({ effectiveProjectId, compactToolbar, me, projectMembersCount }: Props) {
+export function ProjectRailSecondaryTools({
+  effectiveProjectId,
+  compactToolbar,
+  me,
+  projectMembersCount,
+  projectWorkNotesCount,
+}: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: compactToolbar ? 8 : 10, alignItems: "center", flexShrink: 0 }}>
-      <ProjectWorkNoteButton notesProjectId={effectiveProjectId} />
+      <div style={{ position: "relative", display: "inline-flex" }}>
+        <ProjectWorkNoteButton notesProjectId={effectiveProjectId} />
+        <ProjectRailCountBadge count={projectWorkNotesCount} />
+      </div>
       {Boolean(me) ? (
         <Link
           href={projectMembersAdminHref(effectiveProjectId)}

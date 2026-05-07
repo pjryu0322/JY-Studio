@@ -2,7 +2,7 @@ import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/s
 import type { SlotPatchInput } from "@/lib/requirements/singleChatOrchestrationSlots";
 
 export const FLOW_OWNERS = new Set(["service-designer", "domain-expert"]);
-export const DESIGN_OWNERS = new Set(["spec-reviewer", "task-reviewer"]);
+export const DESIGN_OWNERS = new Set(["solution-architect", "task-reviewer", "ui-designer"]);
 export const SECURITY_OWNERS = new Set(["security-reviewer"]);
 
 export function safeJsonParse(text: string): unknown {

@@ -4,8 +4,8 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import {
   runRequirementsFacilitatorOpenAI,
-  runRequirementsIdeationInterviewBootstrapOpenAI,
   runRequirementsIdeationInterviewSeedFromProjectOpenAI,
+  runRequirementsSingleChatBootstrapOpenAI,
   type RequirementsAiResponseStyle,
 } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
@@ -27,23 +27,21 @@ import {
 } from "@/lib/workspace-ai/workspaceScreenKeys";
 import {
   buildDynamicServicePlanningSlotDefinitions,
+  computeSlotExpansionPhaseFromState,
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
+  SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+  stringifyCompactBootstrapSlotCatalogForLlm,
+  validateDynamicProposedSlots,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
-import { SINGLE_CHAT_SERVICE_PLANNING_GROUP } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
   activeOrchestrationRolesFromAgents,
   plannerPreferredFromAgents,
-  runHybridSlotProposalBootstrapOpenAI,
   runSelectiveMultiAgentOrchestrationOpenAI,
   runSingleChatOrchestrationFallbackTurn,
 } from "@/lib/requirements/singleChatOrchestrationOpenAI";
-import {
-  extendOrchestrationStateWithDynamicSlots,
-  validateDynamicProposedSlots,
-} from "@/lib/requirements/singleChatOrchestrationSlots";
 
 type Body = {
   projectId?: string;
@@ -77,7 +75,15 @@ function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {
   return p ?? "requirements_ideation";
 }
 
-const ALL_ORCH_ROLES = new Set(["planner", "service-designer", "domain-expert", "spec-reviewer", "task-reviewer", "security-reviewer"]);
+const ALL_ORCH_ROLES = new Set([
+  "planner",
+  "service-designer",
+  "domain-expert",
+  "solution-architect",
+  "task-reviewer",
+  "ui-designer",
+  "security-reviewer",
+]);
 
 function effectiveOrchestrationRoles(agents: readonly SingleChatSelectedAgentWire[]): Set<string> {
   const raw = activeOrchestrationRolesFromAgents(agents);
@@ -204,12 +210,8 @@ export async function POST(request: NextRequest) {
       ? agentCtxBootstrap
       : await resolveSingleChatAgentContext(projectId, workspaceScreenForChat);
 
-    const orchestrationBootstrapInstructions =
-      `[오케스트레이션 — 첫 질문]\n` +
-      `- 참여 Agent 중 planner(aiOrchestrationRole)가 있으면 AI 기획자(진행자) 페르소나로 첫 질문 한 문장만 출력합니다.\n` +
-      `- planner 가 없어도 동일 규칙으로 서비스 기획 진행자 역할을 수행합니다.\n` +
-      `- 질문에는 반드시 프로젝트명·프로젝트 설명·프로젝트 유형 맥락이 녹아 있어야 합니다.\n` +
-      `- "어떤 서비스를 만들고 싶으신가요?"처럼 프로젝트와 무관한 일반 질문만 출력하는 것은 금지입니다.\n`;
+    /** 상세 정책은 `runRequirementsSingleChatBootstrapOpenAI` 시스템 프롬프트에 통합(중복 방지). */
+    const orchestrationBootstrapInstructions = "";
 
     const stage = stageRaw === "requirements" ? "requirements" : "requirements";
 
@@ -232,6 +234,7 @@ export async function POST(request: NextRequest) {
         definitions: defs,
         nowIso,
       });
+      const orchestrationSlotExpansionPhase = computeSlotExpansionPhaseFromState(baseState, defs);
       const effectiveRoles = effectiveOrchestrationRoles(orchPlanningCtx.selectedAgents);
 
       const orchTry = await runSelectiveMultiAgentOrchestrationOpenAI({
@@ -288,6 +291,7 @@ export async function POST(request: NextRequest) {
         candidateSlots: [...turnOk.meta.candidateSlots],
         slotDependenciesChanged: turnOk.meta.slotDependenciesChanged,
         createdAtIso: turnOk.calledAt,
+        slotExpansionPhase: orchestrationSlotExpansionPhase,
       });
 
       return NextResponse.json({
@@ -301,15 +305,24 @@ export async function POST(request: NextRequest) {
     }
 
     const result = bootstrapInterview
-      ? await runWithPromptTimelineProject(projectId, async () =>
-          runRequirementsIdeationInterviewBootstrapOpenAI({
+      ? await runWithPromptTimelineProject(projectId, async () => {
+          const baseDefs = buildDynamicServicePlanningSlotDefinitions({
+            projectName,
+            projectDescription,
+            projectType,
+            servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys ?? [],
+            acceptedDynamicSlots: null,
+          });
+          const baseSlotCatalogJson = stringifyCompactBootstrapSlotCatalogForLlm(baseDefs);
+          return runRequirementsSingleChatBootstrapOpenAI({
             projectName,
             projectDescription,
             projectType,
             participatingAgentsPromptBlock: agentCtxBootstrap.promptBlock,
             orchestrationBootstrapInstructions,
-          })
-        )
+            baseSlotCatalogJson,
+          });
+        })
       : await runRequirementsFacilitatorOpenAI({
           projectName,
           projectDescription,
@@ -326,10 +339,12 @@ export async function POST(request: NextRequest) {
       if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
         recordIdeationBootstrapOpenAi({
           projectId,
-          model: null,
+          model: (result as any).model ?? null,
           ok: false,
           error: `${result.code}: ${result.message}`,
           fallbackText: contextualBootstrapFallbackQuestion(),
+          promptText: (result as any).promptText,
+          at: (result as any).calledAt,
         });
       }
       const orchPayload =
@@ -381,6 +396,11 @@ export async function POST(request: NextRequest) {
                   stageGroup: agentCtxBootstrap.stageGroup,
                   workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
                   selectedAgents: agentCtxBootstrap.selectedAgents,
+                  promptText: String((result as any).promptText ?? "").trim() || undefined,
+                  responseText: String((result as any).responseText ?? "").trim() || undefined,
+                  model: String((result as any).model ?? "").trim() || undefined,
+                  provider: String((result as any).provider ?? "").trim() || undefined,
+                  createdAtIso: String((result as any).calledAt ?? "").trim() || new Date().toISOString(),
                   error: `${result.code}: ${result.message}`,
                   fallbackText: contextualBootstrapFallbackQuestion(),
                   fallback: true,
@@ -408,7 +428,10 @@ export async function POST(request: NextRequest) {
             }),
       });
     }
-    const replyTrim = String(result.text ?? "").trim();
+    const replyTrim =
+      bootstrapInterview && result.ok
+        ? String((result as any).question ?? "").trim()
+        : String((result as any).text ?? "").trim();
     if (bootstrapInterview && !replyTrim) {
       if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
         recordIdeationBootstrapOpenAi({
@@ -467,78 +490,79 @@ export async function POST(request: NextRequest) {
 
     const plannerChosenOk = Boolean(orchPlanningCtx && plannerPreferredFromAgents(orchPlanningCtx.selectedAgents));
 
-    // Hybrid slots: on first bootstrap, run one LLM call to propose missing dynamic slots.
-    let hybridSuggestedKeys: string[] = [];
-    let hybridAcceptedKeys: string[] = [];
-    let hybridRejected: Array<{ slotKey: string; reason: string }> = [];
-    let orchBootstrapWithDynamic = orchInitialForBootstrap;
-    if (bootstrapInterview && orchBootstrapWithDynamic && orchPlanningCtx) {
-      const alreadyProposed = Array.isArray((orchBootstrapWithDynamic as any).slotProposalHistory) && (orchBootstrapWithDynamic as any).slotProposalHistory.length > 0;
-      if (!alreadyProposed) {
-        const baseDefs = buildDynamicServicePlanningSlotDefinitions({
-          projectName,
-          projectDescription,
-          projectType,
-          servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys ?? [],
-          acceptedDynamicSlots: null,
-        });
-        const baseCatalogJson = JSON.stringify(
-          baseDefs.map((d) => ({ slotKey: d.slotKey, label: d.label, ownerAgent: d.ownerAgent, dependsOn: d.dependsOn ?? [] })),
-          null,
-          0
-        );
-        const propose = await runHybridSlotProposalBootstrapOpenAI({
-          projectName,
-          projectDescription,
-          projectType,
-          participatingAgentsPromptBlock: orchPlanningCtx.promptBlock,
-          baseSlotCatalogJson: baseCatalogJson,
-        });
-        if (propose.ok) {
-          const suggested = propose.suggestedSlots ?? [];
-          hybridSuggestedKeys = suggested.map((s) => String(s.slotKey ?? "").trim()).filter(Boolean);
-          const v = validateDynamicProposedSlots({
-            nowIso: propose.calledAt,
-            baseDefinitions: baseDefs,
-            existingDynamicSlots: (orchBootstrapWithDynamic as any).dynamicSlots ?? null,
-            suggestedSlots: suggested as any,
-          });
-          hybridAcceptedKeys = v.accepted.map((x) => x.slotKey);
-          hybridRejected = v.rejected.map((r) => ({ slotKey: r.slotKey, reason: r.reason }));
+    // Unified bootstrap: 1 LLM call provides question + suggestions + suggestedSlots.
+    let suggestedDynamicSlots: string[] = [];
+    let acceptedDynamicSlots: string[] = [];
+    let rejectedDynamicSlots: Array<{ slotKey: string; reason: string }> = [];
+    let orchPayload = orchInitialForBootstrap;
+    let bootSug: string[] | undefined;
+    let bootAllowCustom = true;
+    let bootstrapMeta:
+      | {
+          detectedDomain?: string | null;
+          missingInformation?: readonly string[];
+          recommendedFocus?: string | null;
+          interactionMode?: string | null;
+          initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
+        }
+      | undefined = undefined;
+    let slotExpansionPhaseForBootstrap: 1 | 2 | 3 = 1;
 
-          const dynMap: Record<string, any> = { ...(((orchBootstrapWithDynamic as any).dynamicSlots ?? {}) as Record<string, any>) };
-          for (const d of v.accepted) dynMap[d.slotKey] = d;
-          const prevRejected = Array.isArray((orchBootstrapWithDynamic as any).rejectedDynamicSlots)
-            ? ([...((orchBootstrapWithDynamic as any).rejectedDynamicSlots)] as any[])
-            : [];
-          const prevHist = Array.isArray((orchBootstrapWithDynamic as any).slotProposalHistory)
-            ? ([...((orchBootstrapWithDynamic as any).slotProposalHistory)] as any[])
-            : [];
-          const histEntry = {
-            proposedAt: propose.calledAt,
-            suggestedSlots: suggested,
+    if (bootstrapInterview && result.ok) {
+      // `runRequirementsSingleChatBootstrapOpenAI`
+      const r = result as any;
+      bootSug = Array.isArray(r.suggestions) ? (r.suggestions as string[]) : [];
+      bootAllowCustom = r.allowCustomInput !== false;
+      bootstrapMeta = r.orchestrationBootstrap && typeof r.orchestrationBootstrap === "object" ? r.orchestrationBootstrap : undefined;
+      const suggestedSlots = Array.isArray(r.suggestedSlots) ? (r.suggestedSlots as any[]) : [];
+      suggestedDynamicSlots = suggestedSlots.map((s) => String(s?.slotKey ?? "").trim()).filter(Boolean);
+
+      const baseDefs = buildDynamicServicePlanningSlotDefinitions({
+        projectName,
+        projectDescription,
+        projectType,
+        servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys ?? [],
+        acceptedDynamicSlots: null,
+      });
+      const v = validateDynamicProposedSlots({
+        nowIso: r.calledAt ?? new Date().toISOString(),
+        baseDefinitions: baseDefs,
+        existingDynamicSlots: null,
+        suggestedSlots,
+      });
+      acceptedDynamicSlots = v.accepted.map((d) => d.slotKey);
+      rejectedDynamicSlots = v.rejected.map((x) => ({ slotKey: x.slotKey, reason: x.reason }));
+
+      const defsFinal = buildDynamicServicePlanningSlotDefinitions({
+        projectName,
+        projectDescription,
+        projectType,
+        servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys ?? [],
+        acceptedDynamicSlots: v.accepted,
+      });
+      const dynMap: Record<string, any> = {};
+      for (const d of v.accepted) dynMap[d.slotKey] = d;
+      orchPayload = initialOrchestrationStateFromDefinitions(defsFinal, r.calledAt ?? new Date().toISOString());
+      orchPayload = {
+        ...(orchPayload as any),
+        ...(bootstrapMeta ? { bootstrapMeta: { ...bootstrapMeta } } : {}),
+        dynamicSlots: dynMap,
+        rejectedDynamicSlots: v.rejected,
+        slotProposalHistory: [
+          {
+            proposedAt: r.calledAt ?? new Date().toISOString(),
+            suggestedSlots,
             acceptedSlotKeys: v.accepted.map((d) => d.slotKey),
             rejected: v.rejected,
-          };
-          orchBootstrapWithDynamic = extendOrchestrationStateWithDynamicSlots({
-            base: {
-              ...(orchBootstrapWithDynamic as any),
-              dynamicSlots: dynMap,
-              rejectedDynamicSlots: [...prevRejected, ...v.rejected],
-              slotProposalHistory: [...prevHist, histEntry],
-            },
-            accepted: v.accepted,
-            nowIso: propose.calledAt,
-            stageGroup: (orchBootstrapWithDynamic as any).stageGroup ?? SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-          });
-        }
-      }
+          },
+        ],
+      };
+      slotExpansionPhaseForBootstrap = computeSlotExpansionPhaseFromState(
+        orchPayload as RequirementsSingleChatOrchestrationStateV1,
+        defsFinal
+      );
     }
 
-    const bootSug =
-      result.ok && Array.isArray(result.interviewSuggestions) && result.interviewSuggestions.length
-        ? [...result.interviewSuggestions]
-        : undefined;
     const bootstrapSugSource =
       bootstrapInterview && result.ok ? (bootSug?.length ? ("llm" as const) : ("empty" as const)) : undefined;
     const bootstrapPromptTrace = buildSingleChatPromptTimelineEntry({
@@ -548,11 +572,11 @@ export async function POST(request: NextRequest) {
       stageGroup: agentCtxBootstrap.stageGroup,
       workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
       selectedAgents: agentCtxBootstrap.selectedAgents,
-      promptText: result.promptText,
+      promptText: (result as any).promptText,
       responseText: replyTrim,
-      model: result.model,
-      provider: result.provider ?? "openai",
-      createdAtIso: result.calledAt ?? new Date().toISOString(),
+      model: (result as any).model,
+      provider: (result as any).provider ?? "openai",
+      createdAtIso: (result as any).calledAt ?? new Date().toISOString(),
       routingDecision: plannerChosenOk ? "bootstrap_llm_first_question(planner)" : "bootstrap_llm_first_question(default)",
       orchestratorAgent: "planner",
       delegatedAgents: [],
@@ -560,9 +584,23 @@ export async function POST(request: NextRequest) {
       interviewQuestion: replyTrim,
       ...(bootSug?.length ? { interviewSuggestions: bootSug } : {}),
       ...(bootstrapSugSource ? { interviewSuggestionsSource: bootstrapSugSource } : {}),
-      ...(hybridSuggestedKeys.length ? { suggestedDynamicSlots: hybridSuggestedKeys } : {}),
-      ...(hybridAcceptedKeys.length ? { acceptedDynamicSlots: hybridAcceptedKeys } : {}),
-      ...(hybridRejected.length ? { rejectedDynamicSlots: hybridRejected } : {}),
+      ...(suggestedDynamicSlots.length ? { suggestedDynamicSlots } : {}),
+      ...(acceptedDynamicSlots.length ? { acceptedDynamicSlots } : {}),
+      ...(rejectedDynamicSlots.length ? { rejectedDynamicSlots } : {}),
+      ...(bootstrapMeta?.detectedDomain ? { detectedDomain: bootstrapMeta.detectedDomain } : {}),
+      ...(bootstrapMeta?.missingInformation?.length ? { missingInformation: [...bootstrapMeta.missingInformation] } : {}),
+      ...(bootstrapMeta?.recommendedFocus ? { recommendedFocus: bootstrapMeta.recommendedFocus } : {}),
+      ...(bootstrapMeta?.initialOwnershipHints?.length
+        ? { initialOwnershipHints: [...bootstrapMeta.initialOwnershipHints] }
+        : {}),
+      ...(bootstrapMeta?.interactionMode ? { interactionMode: bootstrapMeta.interactionMode } : {}),
+      ...(bootstrapInterview && result.ok
+        ? {
+            bootstrapPhase: 1 as const,
+            compactCatalogMode: true,
+            slotExpansionPhase: slotExpansionPhaseForBootstrap,
+          }
+        : {}),
     });
 
     const facilitatorPromptTrace =
@@ -583,8 +621,8 @@ export async function POST(request: NextRequest) {
         : null;
 
     const bootInterviewSug =
-      bootstrapInterview && result.ok && Array.isArray(result.interviewSuggestions) && result.interviewSuggestions.length
-        ? [...result.interviewSuggestions]
+      bootstrapInterview && result.ok && Array.isArray((result as any).suggestions) && (result as any).suggestions.length
+        ? ([...(result as any).suggestions] as string[])
         : undefined;
     return NextResponse.json({
       success: true,
@@ -597,9 +635,9 @@ export async function POST(request: NextRequest) {
               provider: result.provider ?? "openai",
               calledAt: result.calledAt ?? new Date().toISOString(),
               promptTrace: bootstrapPromptTrace,
-              ...(orchBootstrapWithDynamic ? { singleChatOrchestrationV1: orchBootstrapWithDynamic } : {}),
+              ...(orchPayload ? { singleChatOrchestrationV1: orchPayload } : {}),
               ...(bootInterviewSug?.length ? { interviewSuggestions: bootInterviewSug } : {}),
-              ...(result.ok && result.interviewAllowCustomInput === false ? { interviewAllowCustomInput: false } : {}),
+              ...(bootstrapInterview && result.ok && bootAllowCustom === false ? { interviewAllowCustomInput: false } : {}),
             }
           : {
               promptTrace: facilitatorPromptTrace,

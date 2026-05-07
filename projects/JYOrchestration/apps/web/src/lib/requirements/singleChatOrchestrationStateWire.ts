@@ -93,6 +93,36 @@ export function parseRequirementsSingleChatOrchestrationV1(
     lastDelegatedAgents = o.lastDelegatedAgents.map((x) => String(x ?? "").trim()).filter(Boolean);
   }
 
+  const bootstrapMeta =
+    o.bootstrapMeta && typeof o.bootstrapMeta === "object"
+      ? (() => {
+          const b = o.bootstrapMeta as Record<string, unknown>;
+          const detectedDomain = typeof b.detectedDomain === "string" ? b.detectedDomain.slice(0, 80) : null;
+          const recommendedFocus = typeof b.recommendedFocus === "string" ? b.recommendedFocus.slice(0, 120) : null;
+          const missingInformation = Array.isArray(b.missingInformation)
+            ? b.missingInformation.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 10)
+            : [];
+          const initialOwnershipHints = Array.isArray(b.initialOwnershipHints)
+            ? b.initialOwnershipHints
+                .map((x) => {
+                  if (!x || typeof x !== "object") return null;
+                  const r = x as Record<string, unknown>;
+                  const slotKey = String(r.slotKey ?? "").trim();
+                  const ownerAgent = String(r.ownerAgent ?? "").trim();
+                  if (!slotKey || !ownerAgent) return null;
+                  return { slotKey, ownerAgent };
+                })
+                .filter(Boolean) as Array<{ slotKey: string; ownerAgent: string }>
+            : [];
+          return {
+            ...(detectedDomain ? { detectedDomain } : {}),
+            ...(missingInformation.length ? { missingInformation } : {}),
+            ...(recommendedFocus ? { recommendedFocus } : {}),
+            ...(initialOwnershipHints.length ? { initialOwnershipHints } : {}),
+          };
+        })()
+      : undefined;
+
   const baseSlotKeys = parseStringArray(o.baseSlotKeys) ?? undefined;
 
   const dynamicSlotsRaw = o.dynamicSlots && typeof o.dynamicSlots === "object" ? (o.dynamicSlots as Record<string, unknown>) : null;
@@ -197,6 +227,7 @@ export function parseRequirementsSingleChatOrchestrationV1(
     stageGroup,
     slotDefinitionsHash,
     slots,
+    ...(bootstrapMeta ? { bootstrapMeta } : {}),
     ...(baseSlotKeys ? { baseSlotKeys } : {}),
     ...(dynamicSlots ? { dynamicSlots } : {}),
     ...(rejectedDynamicSlots ? { rejectedDynamicSlots } : {}),
