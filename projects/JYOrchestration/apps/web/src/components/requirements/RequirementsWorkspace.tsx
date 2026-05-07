@@ -52,7 +52,7 @@ import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE, sanitizeIdeationInterviewFi
 import {
   emptyProblemInterviewState,
   pickNextAskableInterviewSlot,
-  problemInterviewStateFromAnalyzerWireInput,
+  problemInterviewStateFromBootstrapSeedWire,
   problemInterviewStrictFilledCount,
   proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
@@ -69,7 +69,14 @@ import {
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
+  buildDynamicServicePlanningSlotDefinitions,
+  buildOrchestrationSlotSummarySections,
+  hashSlotDefinitions,
+  singleChatOrchestrationConfirmedProgress,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import {
   appendIdeationBootstrapPromptTimeline,
+  buildIdeationBootstrapContextualFallbackQuestion,
   buildIdeationBootstrapFallbackPromptTrace,
   coerceBootstrapPromptTrace,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
@@ -526,36 +533,72 @@ export function RequirementsWorkspace({
   );
   const ideationComplete = useMemo(() => ideationChecklistComplete(ideationSlice), [ideationSlice]);
 
-  const problemInterviewState = useMemo(
-    () => parseRequirementsStateJson(project?.requirementsStateJson).problemInterview ?? null,
+  const persistedPromptState = useMemo(
+    () => parseRequirementsStateJson(project?.requirementsStateJson),
     [project?.requirementsStateJson]
   );
+
+  const problemInterviewState = useMemo(
+    () => persistedPromptState.problemInterview ?? null,
+    [persistedPromptState.problemInterview]
+  );
+
+  const slotDefsForProgress = useMemo(
+    () =>
+      buildDynamicServicePlanningSlotDefinitions({
+        projectName: project?.name ?? "",
+        projectDescription: project?.description ?? "",
+        projectType: project?.projectType ?? null,
+      }),
+    [project?.name, project?.description, project?.projectType]
+  );
+
+  const orchestrationSlotDefsHash = useMemo(() => hashSlotDefinitions(slotDefsForProgress), [slotDefsForProgress]);
+
+  const orchestrationAlignedState = useMemo(() => {
+    const orch = persistedPromptState.singleChatOrchestrationV1 ?? null;
+    if (!orch || orch.slotDefinitionsHash !== orchestrationSlotDefsHash) return null;
+    return orch;
+  }, [persistedPromptState.singleChatOrchestrationV1, orchestrationSlotDefsHash]);
+
+  const orchestrationConfirmedMetrics = useMemo(
+    () => singleChatOrchestrationConfirmedProgress(orchestrationAlignedState),
+    [orchestrationAlignedState]
+  );
+
+  const orchestrationSlotSectionsForUi = useMemo(() => {
+    if (!orchestrationAlignedState) return null;
+    return buildOrchestrationSlotSummarySections(slotDefsForProgress, orchestrationAlignedState);
+  }, [orchestrationAlignedState, slotDefsForProgress]);
+
   const problemInterviewStrictFilled = useMemo(
     () => problemInterviewStrictFilledCount(problemInterviewState),
     [problemInterviewState]
   );
-  const proposalReadinessPercentVal = useMemo(
-    () => proposalInterviewReadinessPercent(problemInterviewState),
-    [problemInterviewState]
-  );
-  const problemInterviewCovered = useMemo(
-    () => problemInterviewStrictFilled,
-    [problemInterviewStrictFilled]
-  );
+  const proposalReadinessPercentVal = useMemo(() => {
+    if (orchestrationAlignedState) return orchestrationConfirmedMetrics.percent;
+    return proposalInterviewReadinessPercent(problemInterviewState);
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.percent, problemInterviewState]);
+  const problemInterviewCovered = useMemo(() => {
+    if (orchestrationAlignedState) return orchestrationConfirmedMetrics.confirmed;
+    return problemInterviewStrictFilled;
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.confirmed, problemInterviewStrictFilled]);
+  const progressSlotTotal = useMemo(() => {
+    if (orchestrationAlignedState) return orchestrationConfirmedMetrics.total;
+    return PROBLEM_INTERVIEW_SLOT_TOTAL;
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total]);
   const nextNeededSlot = useMemo(() => {
     const base = problemInterviewState ?? emptyProblemInterviewState("");
     return pickNextAskableInterviewSlot(base, base.askedSlots, null);
   }, [problemInterviewState]);
   const remainingQuestionsEstimate = useMemo(() => {
+    if (orchestrationAlignedState) {
+      return Math.max(0, orchestrationConfirmedMetrics.total - orchestrationConfirmedMetrics.confirmed);
+    }
     const base = problemInterviewState ?? emptyProblemInterviewState("");
     const strict = problemInterviewStrictFilledCount(base);
     return Math.max(0, PROBLEM_INTERVIEW_SLOT_TOTAL - strict);
-  }, [problemInterviewState]);
-
-  const persistedPromptState = useMemo(
-    () => parseRequirementsStateJson(project?.requirementsStateJson),
-    [project?.requirementsStateJson]
-  );
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total, orchestrationConfirmedMetrics.confirmed, problemInterviewState]);
 
   /**
    * 산출물 뷰어는 "채팅 카드가 가리키는 assetId"와 동일한 소스를 사용해야 합니다.
@@ -803,7 +846,7 @@ export function RequirementsWorkspace({
           }),
         ]);
         const seeded = params.seedWire
-          ? problemInterviewStateFromAnalyzerWireInput(params.seedWire, nowIso)
+          ? problemInterviewStateFromBootstrapSeedWire(params.seedWire, nowIso)
           : emptyProblemInterviewState(nowIso);
         const existingTimeline = stateJsonRef.current.promptTimeline;
         const nextTimeline = appendIdeationBootstrapPromptTimeline(existingTimeline, params.promptTrace ?? null);
@@ -867,19 +910,31 @@ export function RequirementsWorkspace({
           };
           message?: string;
         };
+        const contextualFb = buildIdeationBootstrapContextualFallbackQuestion({
+          projectName: project.name ?? "",
+          projectDescription: project.description ?? "",
+          projectType: project.projectType ?? "",
+        });
         const okReply = res.ok && json.success && String(json.data?.reply ?? "").trim();
-        const raw = okReply ? String(json.data?.reply) : "";
-        const bodyText = sanitizeIdeationInterviewFirstQuestion(raw);
-        if (cancelled) return;
-        const seedWire = res.ok && json.success ? (json.data?.seedInterviewState ?? null) : null;
         const fallbackReason =
           okReply
             ? undefined
             : [String(json.code ?? "").trim(), String(json.message ?? "").trim(), `HTTP ${res.status}`].filter(Boolean).join(" · ");
+        const raw = okReply ? String(json.data?.reply) : "";
+        const bodyText = sanitizeIdeationInterviewFirstQuestion(okReply ? raw : contextualFb);
+        if (cancelled) return;
+        const seedWire = res.ok && json.success ? (json.data?.seedInterviewState ?? null) : null;
         const rawTrace = okReply ? (json.data as { promptTrace?: unknown }).promptTrace : (json as { data?: { promptTrace?: unknown } }).data?.promptTrace;
-        const promptTrace = coerceBootstrapPromptTrace(rawTrace);
+        let promptTrace = coerceBootstrapPromptTrace(rawTrace);
         if (rawTrace != null && !promptTrace) {
           console.warn("[PROMPT TRACE DROPPED]", rawTrace);
+        }
+        if (!okReply && !promptTrace) {
+          promptTrace = buildIdeationBootstrapFallbackPromptTrace({
+            error: fallbackReason ?? "bootstrap_http_failed",
+            fallbackText: bodyText,
+            routingDecision: "bootstrap_contextual_fallback_http",
+          });
         }
 
         const orchBootstrap = parseRequirementsSingleChatOrchestrationV1(json.data?.singleChatOrchestrationV1);
@@ -904,14 +959,20 @@ export function RequirementsWorkspace({
         });
         if (!ok && !cancelled) {
           ideationBootstrapFlightRef.current = null;
+          const persistFailCtx = buildIdeationBootstrapContextualFallbackQuestion({
+            projectName: project.name ?? "",
+            projectDescription: project.description ?? "",
+            projectType: project.projectType ?? "",
+          });
           await persistFirstQuestion({
-            bodyText: sanitizeIdeationInterviewFirstQuestion(""),
+            bodyText: sanitizeIdeationInterviewFirstQuestion(persistFailCtx),
             seedWire: null,
             source: "fallback",
             fallbackReason: "persist_failed",
             promptTrace: buildIdeationBootstrapFallbackPromptTrace({
               error: "persist_failed",
-              fallbackText: sanitizeIdeationInterviewFirstQuestion(""),
+              fallbackText: sanitizeIdeationInterviewFirstQuestion(persistFailCtx),
+              routingDecision: "bootstrap_contextual_fallback_persist_failed",
             }),
           });
         }
@@ -919,7 +980,12 @@ export function RequirementsWorkspace({
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "인터뷰 시작에 실패했습니다.");
         ideationBootstrapFlightRef.current = null;
-        const bodyText = sanitizeIdeationInterviewFirstQuestion("");
+        const excCtx = buildIdeationBootstrapContextualFallbackQuestion({
+          projectName: project.name ?? "",
+          projectDescription: project.description ?? "",
+          projectType: project.projectType ?? "",
+        });
+        const bodyText = sanitizeIdeationInterviewFirstQuestion(excCtx);
         await persistFirstQuestion({
           bodyText,
           seedWire: null,
@@ -928,6 +994,7 @@ export function RequirementsWorkspace({
           promptTrace: buildIdeationBootstrapFallbackPromptTrace({
             error: e instanceof Error ? e.message : "bootstrap_failed",
             fallbackText: bodyText,
+            routingDecision: "bootstrap_contextual_fallback_exception",
           }),
         });
       }
@@ -1444,6 +1511,8 @@ export function RequirementsWorkspace({
         proposalReadinessPercentVal={proposalReadinessPercentVal}
         problemInterviewCovered={problemInterviewCovered}
         problemInterviewStrictFilled={problemInterviewStrictFilled}
+        progressSlotTotal={progressSlotTotal}
+        orchestrationSlotSections={orchestrationSlotSectionsForUi}
         nextNeededSlot={nextNeededSlot}
         remainingQuestionsEstimate={remainingQuestionsEstimate}
         problemInterviewState={problemInterviewState}

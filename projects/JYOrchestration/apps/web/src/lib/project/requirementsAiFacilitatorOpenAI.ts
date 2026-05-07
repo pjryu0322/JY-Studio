@@ -168,6 +168,7 @@ ${input.userMessage.trim()}${mentionBlock}${senderBlock}`;
 export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
   projectName: string;
   projectDescription: string;
+  projectType?: string | null;
   participatingAgentsPromptBlock?: string;
   /** SingleChat 오케스트레이션 — planner 우선 첫 질문 규칙 */
   orchestrationBootstrapInstructions?: string;
@@ -180,6 +181,7 @@ export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
   const model = resolveOpenAiModelFromEnv();
   const pn = input.projectName.trim() || "(이름 없음)";
   const pd = input.projectDescription.trim() || "(설명 없음)";
+  const pt = String(input.projectType ?? "").trim() || "(유형 미지정)";
 
   const agentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
     ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n\n`
@@ -201,13 +203,16 @@ ${pn}
 프로젝트 설명:
 ${pd}
 
+프로젝트 유형:
+${pt}
+
 지시사항:
-1. 프로젝트 내용을 해석하라.
+1. 위 세 필드를 반드시 반영해 프로젝트를 한 줄로 요약한 뒤(본문 출력 금지 — 내부 추론만), 사용자에게 필요한 정보를 묻는다.
 2. 부족한 핵심 정보를 찾으라.
 3. 가장 중요한 질문 1개만 하라.
 4. 여러 질문 동시 금지.
 5. 답변 후 후속 질문으로 좁혀가라.
-6. 질문은 맞춤형이어야 한다.
+6. 질문은 반드시 프로젝트명·설명·유형에 구체적으로 연결된 맞춤형이어야 한다. "어떤 서비스를 만들고 싶으신가요?" 같은 일반 질문만 출력하는 것은 금지다.
 7. 최종적으로 아래가 모두 드러나도록 순차적으로 물어라(한 번에 다 묻지 말 것):
 
 - 무엇을 만들고 싶은가(serviceIdea)
@@ -283,6 +288,7 @@ export type IdeationInterviewSeedWire = Readonly<{
 export async function runRequirementsIdeationInterviewSeedFromProjectOpenAI(input: {
   projectName: string;
   projectDescription: string;
+  projectType?: string | null;
 }): Promise<{ ok: true; wire: IdeationInterviewSeedWire; model: string } | { ok: false; code: string; message: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -291,6 +297,7 @@ export async function runRequirementsIdeationInterviewSeedFromProjectOpenAI(inpu
   const model = resolveOpenAiModelFromEnv();
   const pn = input.projectName.trim() || "(이름 없음)";
   const pd = input.projectDescription.trim() || "(설명 없음)";
+  const pt = String(input.projectType ?? "").trim() || "—";
 
   const res = await postOpenAiChatCompletion({
     apiKey,
@@ -302,11 +309,12 @@ export async function runRequirementsIdeationInterviewSeedFromProjectOpenAI(inpu
       },
       {
         role: "user",
-        content: `프로젝트명/설명만 보고, 아래 8개 슬롯의 초기 채움 정도를 추정해라.
+        content: `프로젝트명/설명/유형만 보고, 아래 8개 슬롯의 초기 채움 정도를 추정해라.
 
 [프로젝트]
 - 이름: ${pn}
 - 설명: ${pd}
+- 유형: ${pt}
 
 [슬롯]
 - serviceIdea: 무엇을 만들고 싶은가(서비스 아이디어 한 문장)

@@ -88,7 +88,7 @@ export function problemInterviewCoveredCount(state: ProblemInterviewState | null
   return n;
 }
 
-/** filled 슬롯 수(아이디어 정리도 분모와 동일 기준). partial은 filled로 세지 않는다. */
+/** filled 슬롯 수(레거시 8슬롯 인터뷰 진행 분모와 동일 기준). partial은 filled로 세지 않는다. */
 export function proposalInterviewFilledCount(state: ProblemInterviewState | null | undefined): number {
   return problemInterviewCoveredCount(state);
 }
@@ -555,6 +555,29 @@ export function problemInterviewStateFromAnalyzerWireInput(raw: unknown, nowIso:
   if (typeof o.active === "boolean") st.active = o.active;
   if (typeof o.updatedAt === "string") st.updatedAt = o.updatedAt;
   return st;
+}
+
+/**
+ * 부트스트랩 시드(LLM이 프로젝트 텍스트만 보고 채운 상태)는 **진행률(strict filled)** 에 포함하면 안 된다.
+ * 시드에서 `filled`로 온 슬롯도 모두 미확정(partial 힌트)으로만 반영한다.
+ */
+export function problemInterviewStateFromBootstrapSeedWire(raw: unknown, nowIso: string): ProblemInterviewState {
+  const parsed = problemInterviewStateFromAnalyzerWireInput(raw, nowIso);
+  const partial = { ...(parsed.partial ?? {}) } as Partial<Record<ProblemInterviewSlot, boolean>>;
+  const next: ProblemInterviewState = {
+    ...parsed,
+    partial,
+    askedSlots: [...(parsed.askedSlots ?? [])],
+  };
+  const row = next as unknown as Record<string, boolean>;
+  for (const slot of PROBLEM_INTERVIEW_SLOTS) {
+    if (row[slot] === true) {
+      row[slot] = false;
+      partial[slot] = true;
+    }
+  }
+  next.partial = Object.keys(partial).length ? partial : {};
+  return next;
 }
 
 /** 플랫폼 상태 → 분석 API에 보낼 `currentInterviewState` (슬롯 레벨 + notes 배열 + askedSlots). */

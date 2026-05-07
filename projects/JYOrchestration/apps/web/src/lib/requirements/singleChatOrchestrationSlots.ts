@@ -48,7 +48,68 @@ export function isPlannerStableEnough(
       coreConfirmed++;
     }
   }
-  return coreConfirmed >= 2 || filled >= 3;
+  return coreConfirmed >= 2 || filled >= 4;
+}
+
+/** 오케스트레이션 슬롯 요약 패널 섹션(역할 구역) */
+export type OrchestrationSlotSummarySection = {
+  readonly sectionTitle: string;
+  readonly slots: readonly { readonly label: string; readonly level: "filled" | "partial" | "empty" }[];
+};
+
+/** 진행률 UI: confirmed 만 분모 대비 반영 (empty/partial/candidate/stale 제외) */
+export function singleChatOrchestrationConfirmedProgress(state: RequirementsSingleChatOrchestrationStateV1 | null | undefined): {
+  confirmed: number;
+  total: number;
+  percent: number;
+} {
+  if (!state?.slots || typeof state.slots !== "object") {
+    return { confirmed: 0, total: 0, percent: 0 };
+  }
+  const rows = Object.values(state.slots);
+  const total = rows.length;
+  let confirmed = 0;
+  for (const s of rows) {
+    if (normalizeSlotStatus(String(s.status)) === "confirmed") confirmed += 1;
+  }
+  const percent = total > 0 ? Math.min(100, Math.round((100 * confirmed) / total)) : 0;
+  return { confirmed, total, percent };
+}
+
+function orchestrationSlotDisplayLevel(statusRaw: string): "filled" | "partial" | "empty" {
+  const st = normalizeSlotStatus(statusRaw);
+  if (st === "confirmed") return "filled";
+  if (st === "partial" || st === "candidate") return "partial";
+  return "empty";
+}
+
+/** 슬롯 요약 패널 — 기획 / 분석 / 설계 역할 구역 */
+export function buildOrchestrationSlotSummarySections(
+  definitions: readonly SingleChatOrchestrationSlotDefinition[],
+  state: RequirementsSingleChatOrchestrationStateV1 | null | undefined
+): readonly OrchestrationSlotSummarySection[] {
+  if (!state?.slots) return [];
+  const sectionOrder = ["기획", "분석", "설계"] as const;
+  const ownerToSection = (owner: string): (typeof sectionOrder)[number] => {
+    if (owner === PLANNER_AGENT) return "기획";
+    if (owner === "service-designer" || owner === "domain-expert") return "분석";
+    return "설계";
+  };
+  const buckets: Record<(typeof sectionOrder)[number], { label: string; level: "filled" | "partial" | "empty" }[]> = {
+    기획: [],
+    분석: [],
+    설계: [],
+  };
+  for (const d of definitions) {
+    const row = state.slots[d.slotKey];
+    if (!row) continue;
+    const sec = ownerToSection(d.ownerAgent);
+    buckets[sec].push({
+      label: d.label,
+      level: orchestrationSlotDisplayLevel(String(row.status)),
+    });
+  }
+  return sectionOrder.map((sectionTitle) => ({ sectionTitle, slots: buckets[sectionTitle] }));
 }
 
 export function plannerSlotKeys(definitions: readonly SingleChatOrchestrationSlotDefinition[]): string[] {
@@ -102,25 +163,37 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     purpose: `${p}.planning.servicePurpose`,
     problem: `${p}.planning.problem`,
     coreUsers: `${p}.planning.coreUsers`,
+    mvpScope: `${p}.planning.mvpScope`,
     outcome: `${p}.planning.expectedOutcome`,
-    mvp: `${p}.planning.mvpGoal`,
-    actors: `${p}.flow.actors`,
-    journey: `${p}.flow.userJourney`,
-    exceptions: `${p}.flow.exceptions`,
-    scenario: `${p}.flow.scenario`,
-    features: `${p}.design.featureList`,
-    priority: `${p}.design.priority`,
-    screens: `${p}.design.screens`,
-    proto: `${p}.design.prototypeScope`,
+    coreValue: `${p}.planning.coreValue`,
+    resolvePriority: `${p}.planning.resolvePriority`,
+    successCriteria: `${p}.planning.successCriteria`,
+    actorTypes: `${p}.flow.actorTypes`,
+    permissionRelations: `${p}.flow.permissionRelations`,
+    serviceFlow: `${p}.flow.serviceFlow`,
+    externalIntegration: `${p}.flow.externalIntegration`,
+    exceptionFlow: `${p}.flow.exceptionFlow`,
+    operationsFlow: `${p}.flow.operationsFlow`,
+    approvalFlow: `${p}.flow.approvalFlow`,
+    userStateChange: `${p}.flow.userStateChange`,
+    coreFeatures: `${p}.design.coreFeatures`,
+    featurePriority: `${p}.design.featurePriority`,
+    prototypeScope: `${p}.design.prototypeScope`,
+    requiredScreens: `${p}.design.requiredScreens`,
+    featureDependencies: `${p}.design.featureDependencies`,
+    dataFlow: `${p}.design.dataFlow`,
+    implRisk: `${p}.design.implementationRisk`,
+    mvpExclusions: `${p}.design.mvpExclusions`,
   };
 
   return [
+    // —— AI 기획자 (planner) ——
     {
       slotKey: k.purpose,
       label: "서비스 목적",
       ownerAgent: PLANNER_AGENT,
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: `${plannerBase}\n무엇을 위해 만드는 서비스인지 한 문장 목적.`,
+      hints: `${plannerBase}\n무엇을 위해 만드는 서비스인지 한 문장.`,
       dependsOn: [],
     },
     {
@@ -140,6 +213,14 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       dependsOn: [k.purpose],
     },
     {
+      slotKey: k.mvpScope,
+      label: "MVP 범위",
+      ownerAgent: PLANNER_AGENT,
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: plannerBase,
+      dependsOn: [k.purpose, k.problem],
+    },
+    {
       slotKey: k.outcome,
       label: "기대 효과",
       ownerAgent: PLANNER_AGENT,
@@ -148,76 +229,158 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
       dependsOn: [k.problem],
     },
     {
-      slotKey: k.mvp,
-      label: "MVP 목표",
+      slotKey: k.coreValue,
+      label: "핵심 가치",
       ownerAgent: PLANNER_AGENT,
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
       hints: plannerBase,
-      dependsOn: [k.purpose, k.problem],
+      dependsOn: [k.purpose],
     },
     {
-      slotKey: k.actors,
-      label: "액터·역할",
+      slotKey: k.resolvePriority,
+      label: "해결 우선순위",
+      ownerAgent: PLANNER_AGENT,
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: plannerBase,
+      dependsOn: [k.problem, k.coreUsers],
+    },
+    {
+      slotKey: k.successCriteria,
+      label: "성공 기준",
+      ownerAgent: PLANNER_AGENT,
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: plannerBase,
+      dependsOn: [k.outcome],
+    },
+    // —— AI 분석가 (service-designer / domain-expert) ——
+    {
+      slotKey: k.actorTypes,
+      label: "액터 유형",
       ownerAgent: "service-designer",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "관리자/일반 사용자 등 행위 주체와 역할 구분.",
+      hints: "사람/시스템 등 행위 주체 유형.",
       dependsOn: [k.purpose, k.problem, k.coreUsers],
     },
     {
-      slotKey: k.journey,
-      label: "사용자 흐름",
+      slotKey: k.permissionRelations,
+      label: "권한 관계",
       ownerAgent: "service-designer",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "주요 단계·순서.",
-      dependsOn: [k.actors, k.purpose],
+      hints: "역할 간 권한·제약.",
+      dependsOn: [k.actorTypes],
     },
     {
-      slotKey: k.exceptions,
+      slotKey: k.serviceFlow,
+      label: "서비스 흐름",
+      ownerAgent: "service-designer",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "핵심 단계·순서.",
+      dependsOn: [k.actorTypes, k.purpose],
+    },
+    {
+      slotKey: k.externalIntegration,
+      label: "외부 연동",
+      ownerAgent: "service-designer",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "외부 시스템·API 연계.",
+      dependsOn: [k.serviceFlow],
+    },
+    {
+      slotKey: k.exceptionFlow,
       label: "예외 흐름",
       ownerAgent: "domain-expert",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "취소/반려/재시도 등 예외.",
-      dependsOn: [k.journey, k.actors],
+      hints: "취소/실패/재시도 등.",
+      dependsOn: [k.serviceFlow, k.actorTypes],
     },
     {
-      slotKey: k.scenario,
-      label: "서비스 시나리오",
+      slotKey: k.operationsFlow,
+      label: "운영 흐름",
       ownerAgent: "domain-expert",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "대표 시나리오 한 줄 요약.",
-      dependsOn: [k.journey, k.mvp],
+      hints: "모니터링·백오피스·지원.",
+      dependsOn: [k.serviceFlow],
     },
     {
-      slotKey: k.features,
-      label: "기능 목록",
+      slotKey: k.approvalFlow,
+      label: "승인 흐름",
+      ownerAgent: "domain-expert",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "검토·승인 단계.",
+      dependsOn: [k.permissionRelations, k.serviceFlow],
+    },
+    {
+      slotKey: k.userStateChange,
+      label: "사용자 상태 변화",
+      ownerAgent: "domain-expert",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "계정/세션/단계 상태 전이.",
+      dependsOn: [k.serviceFlow],
+    },
+    // —— AI 설계자 (spec-reviewer / task-reviewer) ——
+    {
+      slotKey: k.coreFeatures,
+      label: "핵심 기능",
       ownerAgent: "spec-reviewer",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "필요 기능 불릿.",
-      dependsOn: [k.journey, k.actors, k.mvp],
+      hints: "필수 사용자 기능.",
+      dependsOn: [k.serviceFlow, k.actorTypes, k.mvpScope],
     },
     {
-      slotKey: k.priority,
+      slotKey: k.featurePriority,
       label: "기능 우선순위",
       ownerAgent: "task-reviewer",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "MVP 대비 우선순위.",
-      dependsOn: [k.features, k.mvp],
+      hints: "MVP 대비 순위.",
+      dependsOn: [k.coreFeatures, k.mvpScope],
     },
     {
-      slotKey: k.screens,
-      label: "화면 기능",
+      slotKey: k.prototypeScope,
+      label: "프로토타입 범위",
       ownerAgent: "spec-reviewer",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "주요 화면별 기능.",
-      dependsOn: [k.features, k.actors],
+      hints: "시연·검증에 넣을 범위.",
+      dependsOn: [k.featurePriority, k.coreFeatures],
     },
     {
-      slotKey: k.proto,
-      label: "프로토타입 기능 범위",
+      slotKey: k.requiredScreens,
+      label: "필수 화면",
+      ownerAgent: "spec-reviewer",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "반드시 필요한 화면 목록.",
+      dependsOn: [k.coreFeatures, k.actorTypes],
+    },
+    {
+      slotKey: k.featureDependencies,
+      label: "기능 의존성",
       ownerAgent: "task-reviewer",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
-      hints: "프로토타입에 넣을 기능 경계.",
-      dependsOn: [k.priority, k.features],
+      hints: "선행·후행 기능 관계.",
+      dependsOn: [k.coreFeatures],
+    },
+    {
+      slotKey: k.dataFlow,
+      label: "데이터 흐름",
+      ownerAgent: "task-reviewer",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "입력·저장·노출 경로.",
+      dependsOn: [k.coreFeatures],
+    },
+    {
+      slotKey: k.implRisk,
+      label: "구현 위험",
+      ownerAgent: "spec-reviewer",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "기술·일정·품질 리스크.",
+      dependsOn: [k.featureDependencies],
+    },
+    {
+      slotKey: k.mvpExclusions,
+      label: "MVP 제외 범위",
+      ownerAgent: "task-reviewer",
+      stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+      hints: "이번 범위에서 제외할 것.",
+      dependsOn: [k.prototypeScope],
     },
   ];
 }

@@ -794,13 +794,60 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
             <p style={{ color: "#64748b", fontSize: 14 }}>AI 설정이 없습니다.</p>
           ) : (
             <>
-              <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", marginBottom: 12 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 520 }}>
+              <div
+                style={{
+                  overflowX: isNarrow ? "hidden" : "auto",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  background: "#fff",
+                  marginBottom: 12,
+                }}
+              >
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: isNarrow ? 12 : 13,
+                    tableLayout: "fixed",
+                  }}
+                >
+                  <colgroup>
+                    <col style={{ width: isNarrow ? "34%" : "36%" }} />
+                    <col style={{ width: isNarrow ? "33%" : "32%" }} />
+                    <col style={{ width: isNarrow ? "33%" : "32%" }} />
+                  </colgroup>
                   <thead>
                     <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                      <th style={{ padding: "10px 8px", fontWeight: 800, color: "#64748b", width: 150, fontSize: 11 }}>Agent</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", fontSize: 11 }}>엔진</th>
-                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", fontSize: 11 }}>모델</th>
+                      <th
+                        style={{
+                          padding: isNarrow ? "8px 4px" : "10px 8px",
+                          fontWeight: 800,
+                          color: "#64748b",
+                          fontSize: isNarrow ? 10 : 11,
+                        }}
+                      >
+                        Agent
+                      </th>
+                      <th
+                        style={{
+                          padding: isNarrow ? "8px 4px" : "10px 8px",
+                          fontWeight: 800,
+                          color: "#64748b",
+                          fontSize: isNarrow ? 10 : 11,
+                        }}
+                      >
+                        엔진
+                      </th>
+                      <th
+                        style={{
+                          padding: isNarrow ? "8px 4px" : "10px 8px",
+                          fontWeight: 800,
+                          color: "#64748b",
+                          fontSize: isNarrow ? 10 : 11,
+                        }}
+                      >
+                        모델
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -819,19 +866,22 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                             ? ["cursor-default"]
                             : [...PROJECT_AI_OPENAI_MODELS];
                       const agentTitle = uiRow.title;
-                      const selectStyle = {
-                        width: "auto",
-                        maxWidth: 132,
-                        padding: "2px 6px",
+                      const cellPad = isNarrow ? "8px 4px" : "10px 8px";
+                      const selectStyle: CSSProperties = {
+                        width: "100%",
+                        maxWidth: "100%",
+                        minWidth: 0,
+                        boxSizing: "border-box",
+                        padding: isNarrow ? "2px 4px" : "2px 6px",
                         borderRadius: 8,
                         border: "1px solid #cbd5e1",
-                        fontSize: 11,
+                        fontSize: isNarrow ? 10 : 11,
                         fontWeight: 600,
                         background: "#fff",
-                      } as const;
+                      };
                       return (
                         <tr key={primaryId} style={{ borderTop: "1px solid #f1f5f9" }}>
-                          <td style={{ padding: "10px 8px", verticalAlign: "middle" }}>
+                          <td style={{ padding: cellPad, verticalAlign: "middle", wordBreak: "keep-all" }}>
                             <button
                               type="button"
                               onClick={() => setAiDetailMemberId(primaryId)}
@@ -844,23 +894,47 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                                 margin: 0,
                                 fontWeight: 900,
                                 color: "#0f172a",
-                                whiteSpace: "nowrap",
                                 cursor: "pointer",
-                                display: "inline-flex",
+                                display: "flex",
                                 alignItems: "center",
-                                gap: 8,
+                                gap: isNarrow ? 6 : 8,
+                                width: "100%",
+                                minWidth: 0,
+                                textAlign: "left",
                               }}
                             >
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{agentTitle}</span>
-                              <WorkspaceAiMemberAvatar memberId={primaryId} size={22} />
+                              <span
+                                style={{
+                                  flex: "1 1 auto",
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  fontSize: isNarrow ? 12 : 13,
+                                }}
+                              >
+                                {agentTitle}
+                              </span>
+                              <span style={{ flexShrink: 0 }}>
+                                <WorkspaceAiMemberAvatar memberId={primaryId} size={isNarrow ? 18 : 22} />
+                              </span>
                             </button>
                             {draft?.cursorPolicyWarn ? (
-                              <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700, color: "#b45309", maxWidth: 220, lineHeight: 1.35 }}>
+                              <div
+                                style={{
+                                  marginTop: 6,
+                                  fontSize: 9,
+                                  fontWeight: 700,
+                                  color: "#b45309",
+                                  maxWidth: "100%",
+                                  lineHeight: 1.35,
+                                }}
+                              >
                                 Cursor는 개발자 Agent에서만 사용할 수 있습니다. 저장 시 OpenAI로 보정됩니다.
                               </div>
                             ) : null}
                           </td>
-                          <td style={{ padding: "10px 10px", color: "#475569", minWidth: 112, verticalAlign: "middle" }}>
+                          <td style={{ padding: cellPad, color: "#475569", verticalAlign: "middle" }}>
                             {canAdminWorkspaceAi ? (
                               <select
                                 value={uiEngine}
@@ -876,10 +950,12 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                                 ))}
                               </select>
                             ) : (
-                              <span style={{ fontWeight: 600, fontSize: 11 }}>{uiEngineLabel(uiEngine)}</span>
+                              <span style={{ fontWeight: 600, fontSize: isNarrow ? 10 : 11, wordBreak: "break-word" }}>
+                                {uiEngineLabel(uiEngine)}
+                              </span>
                             )}
                           </td>
-                          <td style={{ padding: "10px 10px", color: "#475569", minWidth: 112, verticalAlign: "middle" }}>
+                          <td style={{ padding: cellPad, color: "#475569", verticalAlign: "middle" }}>
                             {canAdminWorkspaceAi ? (
                               <select
                                 value={modelOpts.includes(uiModel) ? uiModel : modelOpts[0]}
@@ -895,7 +971,9 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                                 ))}
                               </select>
                             ) : (
-                              <span style={{ fontWeight: 600, fontSize: 11 }}>{uiModelLabel(uiModel)}</span>
+                              <span style={{ fontWeight: 600, fontSize: isNarrow ? 10 : 11, wordBreak: "break-word" }}>
+                                {uiModelLabel(uiModel)}
+                              </span>
                             )}
                           </td>
                         </tr>

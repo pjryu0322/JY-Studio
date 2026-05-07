@@ -4,6 +4,7 @@ import {
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
   mergeOrchestrationSlotPatches,
+  singleChatOrchestrationConfirmedProgress,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   plannerPreferredFromAgents,
@@ -65,7 +66,7 @@ describe("singleChatOrchestration slots", () => {
     const ts = "2026-05-07T00:00:00.000Z";
     const base = initialOrchestrationStateFromDefinitions(defs, ts);
     const plannerKey = defs.find((d) => d.ownerAgent === "planner" && d.slotKey.includes("servicePurpose"))?.slotKey;
-    const derivedKey = defs.find((d) => d.ownerAgent === "service-designer" && d.slotKey.includes("actors"))?.slotKey;
+    const derivedKey = defs.find((d) => d.ownerAgent === "service-designer" && d.slotKey.includes("actorTypes"))?.slotKey;
     expect(plannerKey).toBeTruthy();
     expect(derivedKey).toBeTruthy();
 
@@ -98,7 +99,7 @@ describe("singleChatOrchestration slots", () => {
     });
     const ts = "2026-05-07T00:00:00.000Z";
     const base = initialOrchestrationStateFromDefinitions(defs, ts);
-    const k = defs.find((d) => d.slotKey.includes("actors"))?.slotKey;
+    const k = defs.find((d) => d.slotKey.includes("actorTypes"))?.slotKey;
     expect(k).toBeTruthy();
     const staleFirst = mergeOrchestrationSlotPatches({
       base,
@@ -118,6 +119,24 @@ describe("singleChatOrchestration slots", () => {
     const a = buildDynamicServicePlanningSlotDefinitions({ projectName: "A", projectDescription: "", projectType: null });
     const b = buildDynamicServicePlanningSlotDefinitions({ projectName: "B", projectDescription: "", projectType: null });
     expect(hashSlotDefinitions(a)).not.toBe(hashSlotDefinitions(b));
+  });
+
+  it("초기 스캐폴드(empty/candidate)만 있으면 confirmed 진행률은 0%", () => {
+    const defs = buildDynamicServicePlanningSlotDefinitions({
+      projectName: "P",
+      projectDescription: "",
+      projectType: null,
+    });
+    const ts = "2026-05-07T00:00:00.000Z";
+    const base = initialOrchestrationStateFromDefinitions(defs, ts);
+    const withHints = mergeOrchestrationSlotPatches({
+      base,
+      patches: [{ slotKey: defs[0]!.slotKey, status: "candidate", value: "힌트만", confidence: 0.4 }],
+      nowIso: ts,
+    });
+    const pr = singleChatOrchestrationConfirmedProgress(withHints);
+    expect(pr.confirmed).toBe(0);
+    expect(pr.percent).toBe(0);
   });
 });
 
@@ -280,7 +299,7 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
 
   it("액터/흐름: service-designer 그룹 1회 추가 호출", async () => {
     const input = baseInput();
-    const actorsKey = input.definitions.find((d) => d.slotKey.includes("actors"))?.slotKey;
+    const actorsKey = input.definitions.find((d) => d.slotKey.includes("actorTypes"))?.slotKey;
     expect(actorsKey).toBeTruthy();
 
     mockPostOpenAi.mockImplementation(async () => {
@@ -325,7 +344,7 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
 
   it("기능: spec-reviewer 그룹만 추가 호출", async () => {
     const input = baseInput();
-    const featKey = input.definitions.find((d) => d.ownerAgent === "spec-reviewer" && d.slotKey.includes("featureList"))?.slotKey;
+    const featKey = input.definitions.find((d) => d.ownerAgent === "spec-reviewer" && d.slotKey.includes("coreFeatures"))?.slotKey;
     expect(featKey).toBeTruthy();
 
     mockPostOpenAi.mockImplementation(async () => {
@@ -370,8 +389,8 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
 
   it("복합: flow·feature 순으로 선택 호출", async () => {
     const input = baseInput();
-    const actorsKey = input.definitions.find((d) => d.slotKey.includes("actors"))?.slotKey;
-    const featKey = input.definitions.find((d) => d.slotKey.includes("featureList"))?.slotKey;
+    const actorsKey = input.definitions.find((d) => d.slotKey.includes("actorTypes"))?.slotKey;
+    const featKey = input.definitions.find((d) => d.slotKey.includes("coreFeatures"))?.slotKey;
     expect(actorsKey && featKey).toBeTruthy();
 
     mockPostOpenAi.mockImplementation(async () => {

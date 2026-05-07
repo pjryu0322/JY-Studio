@@ -251,25 +251,25 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
   const defByOwner = (role: string) => input.definitions.filter((d) => d.ownerAgent === role);
 
   if (/관리자|admin|운영자/.test(um)) {
-    const d = defByOwner("service-designer").find((x) => x.slotKey.includes("actors"));
+    const d = defByOwner("service-designer").find((x) => x.slotKey.includes("actorTypes"));
     if (d) bump(d.slotKey, d.ownerAgent, "관리자 액터 언급", 0.55, "service-designer", "candidate");
   }
   if (/일반\s*사용자|고객|이용자|user/.test(lower)) {
-    const d = defByOwner("service-designer").find((x) => x.slotKey.includes("actors"));
+    const d = defByOwner("service-designer").find((x) => x.slotKey.includes("actorTypes"));
     if (d && !matched.includes(d.slotKey)) bump(d.slotKey, d.ownerAgent, "일반 사용자 액터 언급", 0.55, "service-designer", "candidate");
   }
   if (/예약|booking|reservation/.test(lower)) {
-    const flow = defByOwner("service-designer").find((x) => x.slotKey.includes("userJourney"));
+    const flow = defByOwner("service-designer").find((x) => x.slotKey.includes("serviceFlow"));
     if (flow) bump(flow.slotKey, flow.ownerAgent, "예약 관련 흐름 언급", 0.5, "service-designer", "candidate");
-    const feat = defByOwner("spec-reviewer").find((x) => x.slotKey.includes("featureList"));
+    const feat = defByOwner("spec-reviewer").find((x) => x.slotKey.includes("coreFeatures"));
     if (feat) bump(feat.slotKey, feat.ownerAgent, "예약 기능 언급", 0.5, "spec-reviewer", "candidate");
   }
   if (/화면|UI|페이지/.test(um)) {
-    const d = defByOwner("spec-reviewer").find((x) => x.slotKey.includes("screens"));
+    const d = defByOwner("spec-reviewer").find((x) => x.slotKey.includes("requiredScreens"));
     if (d) bump(d.slotKey, d.ownerAgent, "화면/UI 언급", 0.45, "spec-reviewer", "candidate");
   }
   if (/우선|priority|mvp|필수\s*기능/.test(lower)) {
-    const d = defByOwner("task-reviewer").find((x) => x.slotKey.includes("priority"));
+    const d = defByOwner("task-reviewer").find((x) => x.slotKey.includes("featurePriority"));
     if (d) bump(d.slotKey, d.ownerAgent, "우선순위/MVP 언급", 0.45, "task-reviewer", "candidate");
   }
   if (/목적|만들고\s*싶|서비스\s*아이디어|무엇을/.test(um)) {
