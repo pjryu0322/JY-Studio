@@ -971,22 +971,41 @@ export function planNextInterviewTurn(
         };
   }
 
-  const hint = analyzer?.nextBestSlot ?? null;
-  const slot = pickNextAskableInterviewSlot(mergedState, asked, hint, { avoidSlots: opts?.avoidNextSlot ?? null });
-  if (!slot) {
-    return { kind: "clarification", question: INTERVIEW_CLARIFICATION_QUESTION_KR, summary };
+  /**
+   * LLM-first: analyzer가 명시한 slot/질문을 우선한다.
+   * - 정상 경로에서는 플랫폼의 고정 우선순위/controlled question으로 다음 슬롯을 고르지 않는다.
+   * - analyzer가 다음 질문 슬롯을 주지 못한 경우에는 clarification으로 되돌린다.
+   */
+  if (analyzer) {
+    const nextSlot =
+      analyzer.nextQuestionSlotKey && isProblemInterviewSlot(String(analyzer.nextQuestionSlotKey))
+        ? analyzer.nextQuestionSlotKey
+        : analyzer.nextBestSlot;
+    const q = (analyzer?.nextInterviewQuestion && String(analyzer.nextInterviewQuestion).trim()) || "";
+    const rawSug = analyzer?.nextInterviewSuggestions?.length ? [...analyzer.nextInterviewSuggestions] : undefined;
+    if (!nextSlot || !q) {
+      return {
+        kind: "clarification",
+        question: q || INTERVIEW_CLARIFICATION_QUESTION_KR,
+        summary,
+        ...(rawSug ? { suggestions: rawSug } : {}),
+        allowCustomInput: analyzer?.allowCustomInput !== false,
+      };
+    }
+    return {
+      kind: "slot",
+      slot: nextSlot,
+      question: q,
+      summary,
+      ...(rawSug ? { suggestions: rawSug } : {}),
+      allowCustomInput: analyzer?.allowCustomInput !== false,
+    };
   }
-  const controlled = getControlledQuestionForSlot(slot, turnSeed);
-  const q = (analyzer?.nextInterviewQuestion && String(analyzer.nextInterviewQuestion).trim()) || controlled;
-  const rawSug = analyzer?.nextInterviewSuggestions?.length ? [...analyzer.nextInterviewSuggestions] : undefined;
-  return {
-    kind: "slot",
-    slot,
-    question: q,
-    summary,
-    ...(rawSug ? { suggestions: rawSug } : {}),
-    allowCustomInput: analyzer?.allowCustomInput !== false,
-  };
+
+  // Emergency-only fallback (no analyzer): keep legacy slot priority + controlled question.
+  const slot = pickNextAskableInterviewSlot(mergedState, asked, null, { avoidSlots: opts?.avoidNextSlot ?? null });
+  if (!slot) return { kind: "clarification", question: INTERVIEW_CLARIFICATION_QUESTION_KR, summary };
+  return { kind: "slot", slot, question: getControlledQuestionForSlot(slot, turnSeed), summary };
 }
 
 export function composeInterviewPlannerReply(summary: string, question: string): string {
