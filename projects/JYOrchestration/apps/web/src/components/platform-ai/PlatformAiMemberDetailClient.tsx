@@ -7,7 +7,38 @@ import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { MEDIA_QUERY } from "@/components/ui/breakpoints";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 
-const ENGINES = ["OpenAI", "Claude", "Gemini"] as const;
+const OPENAI_MODELS = ["GPT-5", "GPT-4.1", "o3"] as const;
+const CURSOR_MODELS = ["cursor-default"] as const;
+
+const ENGINE_OPENAI = "OpenAI" as const;
+const ENGINE_CURSOR = "Cursor" as const;
+
+function normalizeEngineModel(input: Pick<PlatformAiMember, "defaultEngine" | "defaultModel">): {
+  defaultEngine: string;
+  defaultModel: string | undefined;
+} {
+  const engine = String(input.defaultEngine ?? "").trim();
+  const model = input.defaultModel === undefined || input.defaultModel === null ? "" : String(input.defaultModel).trim();
+  if (engine === ENGINE_OPENAI) return { defaultEngine: ENGINE_OPENAI, defaultModel: model || "GPT-5" };
+  if (engine === ENGINE_CURSOR) return { defaultEngine: ENGINE_CURSOR, defaultModel: model || "cursor-default" };
+  return { defaultEngine: engine, defaultModel: model || undefined };
+}
+
+function allowedEnginesForMember(memberId: string): readonly string[] {
+  return memberId === "prototype_build" ? [ENGINE_CURSOR, ENGINE_OPENAI] : [ENGINE_OPENAI];
+}
+
+function allowedModelsForEngine(engine: string): readonly string[] {
+  if (engine === ENGINE_OPENAI) return OPENAI_MODELS;
+  if (engine === ENGINE_CURSOR) return CURSOR_MODELS;
+  return [];
+}
+
+function engineHelp(engine: string): string {
+  if (engine === ENGINE_OPENAI) return "OpenAI: 기획/분석/설계/검수 중심 AI 엔진";
+  if (engine === ENGINE_CURSOR) return "Cursor: 실제 프로토타입 소스 생성/커밋/푸시 실행 엔진";
+  return "";
+}
 
 export function PlatformAiMemberDetailClient({ aiMemberId }: { readonly aiMemberId: string }) {
   const isNarrow = useMediaQuery(MEDIA_QUERY.workflowNavNarrow);
@@ -36,7 +67,8 @@ export function PlatformAiMemberDetailClient({ aiMemberId }: { readonly aiMember
         return;
       }
       setAllowed(true);
-      setDraft(json.data.member);
+      const normalized = normalizeEngineModel(json.data.member);
+      setDraft({ ...json.data.member, ...normalized });
       setPolicyText(JSON.stringify(json.data.member.policy ?? {}, null, 2));
     } catch {
       setAllowed(false);
@@ -60,7 +92,22 @@ export function PlatformAiMemberDetailClient({ aiMemberId }: { readonly aiMember
       setBanner({ tone: "err", text: "정책(JSON) 형식이 올바르지 않습니다." });
       return;
     }
-    const payload: PlatformAiMember = { ...draft, policy };
+    const normalized = normalizeEngineModel(draft);
+    const payload: PlatformAiMember = { ...draft, ...normalized, policy };
+
+    // validation (요구사항)
+    if (payload.id !== "prototype_build" && payload.defaultEngine === ENGINE_CURSOR) {
+      setBanner({ tone: "err", text: "Cursor는 AI 개발자(프로토타입 제작)에서만 사용할 수 있습니다." });
+      return;
+    }
+    if (payload.defaultEngine === ENGINE_OPENAI && (!payload.defaultModel || !OPENAI_MODELS.includes(payload.defaultModel as never))) {
+      setBanner({ tone: "err", text: "OpenAI 모델 선택이 올바르지 않습니다." });
+      return;
+    }
+    if (payload.defaultEngine === ENGINE_CURSOR && payload.defaultModel !== "cursor-default") {
+      setBanner({ tone: "err", text: "Cursor 모델 선택이 올바르지 않습니다." });
+      return;
+    }
     setSaving(true);
     setBanner(null);
     try {
@@ -208,14 +255,37 @@ export function PlatformAiMemberDetailClient({ aiMemberId }: { readonly aiMember
       <textarea value={policyText} onChange={(e) => setPolicyText(e.target.value)} style={{ ...ta({ minHeight: 120 }), fontFamily: "ui-monospace, monospace", fontSize: 13 }} />
 
       <h2 style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", margin: "24px 0 12px" }}>기본 엔진</h2>
+      <p style={{ margin: "0 0 10px", fontSize: 13, color: "#64748b", lineHeight: 1.55 }}>
+        {engineHelp(draft.defaultEngine)}
+      </p>
       <select
         value={draft.defaultEngine}
-        onChange={(e) => setDraft({ ...draft, defaultEngine: e.target.value })}
+        onChange={(e) => {
+          const nextEngine = e.target.value;
+          const next = normalizeEngineModel({ defaultEngine: nextEngine, defaultModel: draft.defaultModel });
+          // 엔진이 바뀌면 모델은 해당 엔진 기본값으로 자동 보정
+          const models = allowedModelsForEngine(next.defaultEngine);
+          const modelOk = next.defaultModel && models.includes(next.defaultModel as never);
+          setDraft({ ...draft, defaultEngine: next.defaultEngine, defaultModel: modelOk ? next.defaultModel : models[0] });
+        }}
         style={{ ...ta({ minHeight: 44 }), fontSize: 16 }}
       >
-        {ENGINES.map((e) => (
+        {allowedEnginesForMember(draft.id).map((e) => (
           <option key={e} value={e}>
             {e}
+          </option>
+        ))}
+      </select>
+
+      <h2 style={{ fontSize: 15, fontWeight: 900, color: "#0f172a", margin: "18px 0 12px" }}>기본 모델</h2>
+      <select
+        value={String(draft.defaultModel ?? "")}
+        onChange={(e) => setDraft({ ...draft, defaultModel: e.target.value })}
+        style={{ ...ta({ minHeight: 44 }), fontSize: 16 }}
+      >
+        {allowedModelsForEngine(draft.defaultEngine).map((m) => (
+          <option key={m} value={m}>
+            {m}
           </option>
         ))}
       </select>
