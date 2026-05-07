@@ -11,38 +11,98 @@ import {
 import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 import {
-  buildIdeationBootstrapFallbackPromptTrace,
-  buildIdeationBootstrapLlmPromptTrace,
+  buildSingleChatPromptTimelineEntry,
   IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import {
+  resolveServicePlanningOrchestrationContext,
+  resolveSingleChatAgentContext,
+  type SingleChatSelectedAgentWire,
+} from "@/lib/requirements/singleChatAgentContext";
+import {
+  isWorkspaceServicePlanningScreenKey,
+  parseWorkspaceScreenKey,
+  type WorkspaceScreenKey,
+} from "@/lib/workspace-ai/workspaceScreenKeys";
+import {
+  buildDynamicServicePlanningSlotDefinitions,
+  hashSlotDefinitions,
+  initialOrchestrationStateFromDefinitions,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
+import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import {
+  activeOrchestrationRolesFromAgents,
+  plannerPreferredFromAgents,
+  runSingleChatOrchestrationFallbackTurn,
+  runSingleChatOrchestrationTurnOpenAI,
+} from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
 type Body = {
   projectId?: string;
   projectName?: string;
   projectDescription?: string;
+  projectType?: string;
   stage?: string;
   userMessage?: string;
   dialogueExcerpt?: string;
   aiResponseStyle?: string;
-  /** 질문 대상 멤버 id·이름 */
   targets?: Array<{ id?: string; name?: string }>;
-  /** 발신자 */
   sender?: { id?: string; name?: string };
-  /** 답글(스레드)용: 어떤 메시지에 대한 reply인지 */
   replyTo?: string | null;
-  /** 대화 비어 있을 때 인터뷰 첫 질문만 생성(별도 시스템 프롬프트) */
   bootstrapInterview?: boolean;
-  /** 직전 화면 전환 시 클라이언트가 1회 전달하는 맥락 */
   priorScreenHandoff?: string;
-  /** 클라이언트 Harness 메타(서버 로직 미연동 시 무시) */
   serviceDesignStage?: string;
   mentionedAI?: string | null;
+  workspaceScreenKey?: string;
+  /** 클라이언트 저장 오케스트레이션 스냅샷 */
+  singleChatOrchestrationV1?: unknown;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
   const s = String(raw ?? "").trim().toLowerCase();
   if (s === "brief" || s === "detailed" || s === "standard") return s;
   return undefined;
+}
+
+function parseWorkspaceScreenForBody(raw: unknown): WorkspaceScreenKey {
+  const p = parseWorkspaceScreenKey(raw);
+  return p ?? "requirements_ideation";
+}
+
+const ALL_ORCH_ROLES = new Set(["planner", "service-designer", "domain-expert", "spec-reviewer", "task-reviewer"]);
+
+function effectiveOrchestrationRoles(agents: readonly SingleChatSelectedAgentWire[]): Set<string> {
+  const raw = activeOrchestrationRolesFromAgents(agents);
+  return raw.size ? raw : ALL_ORCH_ROLES;
+}
+
+function ensureOrchestrationBaseState(params: {
+  readonly raw: unknown;
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly projectType: string | null;
+  readonly nowIso: string;
+}): RequirementsSingleChatOrchestrationStateV1 {
+  const defs = buildDynamicServicePlanningSlotDefinitions({
+    projectName: params.projectName,
+    projectDescription: params.projectDescription,
+    projectType: params.projectType,
+  });
+  const parsed = parseRequirementsSingleChatOrchestrationV1(params.raw);
+  if (parsed && parsed.slotDefinitionsHash === hashSlotDefinitions(defs)) {
+    return parsed;
+  }
+  return initialOrchestrationStateFromDefinitions(defs, params.nowIso);
+}
+
+function initialOrchestrationPayload(projectName: string, projectDescription: string, projectType: string | null, nowIso: string) {
+  const defs = buildDynamicServicePlanningSlotDefinitions({
+    projectName,
+    projectDescription,
+    projectType,
+  });
+  return initialOrchestrationStateFromDefinitions(defs, nowIso);
 }
 
 /**
@@ -60,6 +120,8 @@ export async function POST(request: NextRequest) {
     const projectId = String(body.projectId ?? "").trim();
     const projectName = String(body.projectName ?? "").trim();
     const projectDescription = String(body.projectDescription ?? "");
+    const projectTypeRaw = String(body.projectType ?? "").trim();
+    const projectType = projectTypeRaw ? projectTypeRaw : null;
     const stageRaw = String(body.stage ?? "requirements").trim().toLowerCase();
     const userMessage = String(body.userMessage ?? "").trim();
     const dialogueExcerpt = String(body.dialogueExcerpt ?? "");
@@ -104,12 +166,124 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const workspaceScreenForBootstrap = parseWorkspaceScreenForBody(body.workspaceScreenKey);
+    const workspaceScreenForChat = bootstrapInterview ? workspaceScreenForBootstrap : parseWorkspaceScreenForBody(body.workspaceScreenKey);
+
+    const nowIsoInit = new Date().toISOString();
+    const orchInitialForBootstrap =
+      projectId && bootstrapInterview ? initialOrchestrationPayload(projectName, projectDescription, projectType, nowIsoInit) : null;
+
+    const orchPlanningCtx = projectId ? await resolveServicePlanningOrchestrationContext(projectId) : null;
+
+    const agentCtxBootstrap =
+      projectId && orchPlanningCtx
+        ? orchPlanningCtx
+        : await resolveSingleChatAgentContext(projectId, workspaceScreenForBootstrap);
+
+    const agentCtxChat = bootstrapInterview
+      ? agentCtxBootstrap
+      : await resolveSingleChatAgentContext(projectId, workspaceScreenForChat);
+
+    const orchestrationBootstrapInstructions =
+      `[오케스트레이션 — 첫 질문]\n` +
+      `- 참여 Agent 중 planner(aiOrchestrationRole)가 있으면 반드시 AI 기획자(진행자·라우터) 페르소나로 첫 질문 한 문장만 출력합니다.\n` +
+      `- planner 역할이 없으면 동일 규칙으로 기본 서비스 기획자 역할을 수행합니다.\n` +
+      `- 질문 주제는 다음 중 하나만 고릅니다: 어떤 서비스를 만들고 싶은지·해결하려는 가장 큰 문제·핵심 사용자.\n` +
+      `- 예시 방향: "어떤 서비스를 만들고 싶으신가요?" / "이 서비스가 해결하려는 가장 큰 문제는 무엇인가요?"\n`;
+
     const stage = stageRaw === "requirements" ? "requirements" : "requirements";
+
+    const useIdeationOrchestration =
+      Boolean(projectId) &&
+      !bootstrapInterview &&
+      workspaceScreenForChat === "requirements_ideation" &&
+      isWorkspaceServicePlanningScreenKey(workspaceScreenForChat);
+
+    if (useIdeationOrchestration && orchPlanningCtx) {
+      const defs = buildDynamicServicePlanningSlotDefinitions({
+        projectName,
+        projectDescription,
+        projectType,
+      });
+      const nowIso = new Date().toISOString();
+      const baseState = ensureOrchestrationBaseState({
+        raw: body.singleChatOrchestrationV1,
+        projectName,
+        projectDescription,
+        projectType,
+        nowIso,
+      });
+      const effectiveRoles = effectiveOrchestrationRoles(orchPlanningCtx.selectedAgents);
+
+      const orchTry = await runSingleChatOrchestrationTurnOpenAI({
+        projectName,
+        projectDescription,
+        projectType,
+        userMessage,
+        dialogueExcerpt,
+        definitions: defs,
+        baseState,
+        participatingAgentsPromptBlock: orchPlanningCtx.promptBlock,
+        activeRoles: effectiveRoles,
+        mentionTargetsSummary: mentionTargetsSummary || undefined,
+        senderSummary: senderSummary || undefined,
+        priorScreenHandoff: priorScreenHandoff || undefined,
+        responseStyle,
+      });
+
+      let usedFallback = false;
+      const turnOk =
+        orchTry.ok === true
+          ? orchTry
+          : (() => {
+              usedFallback = true;
+              return runSingleChatOrchestrationFallbackTurn({
+                userMessage,
+                definitions: defs,
+                baseState,
+                activeRoles: effectiveRoles,
+                nowIso: new Date().toISOString(),
+              });
+            })();
+
+      const replyTrim = String(turnOk.assistantMessage ?? "").trim();
+      const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
+        action: "requirementsChatOrchestration",
+        source: usedFallback ? "fallback" : "llm",
+        timelineStage: orchPlanningCtx.timelineStage,
+        stageGroup: orchPlanningCtx.stageGroup,
+        workspaceScreenKey: orchPlanningCtx.workspaceScreenKey,
+        selectedAgents: orchPlanningCtx.selectedAgents,
+        promptText: turnOk.promptText,
+        responseText: replyTrim,
+        model: turnOk.model,
+        provider: turnOk.provider,
+        routingDecision: turnOk.meta.routingDecision,
+        matchedSlots: [...turnOk.meta.matchedSlots],
+        updatedSlots: [...turnOk.meta.updatedSlotKeys],
+        fallback: usedFallback,
+        orchestratorAgent: turnOk.meta.orchestratorAgent,
+        delegatedAgents: [...turnOk.meta.delegatedAgents],
+        createdAtIso: turnOk.calledAt,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          reply: replyTrim,
+          singleChatOrchestrationV1: turnOk.nextState,
+          promptTrace: facilitatorPromptTrace,
+        },
+      });
+    }
+
     const result = bootstrapInterview
       ? await runWithPromptTimelineProject(projectId, async () =>
           runRequirementsIdeationInterviewBootstrapOpenAI({
             projectName,
             projectDescription,
+            participatingAgentsPromptBlock: agentCtxBootstrap.promptBlock,
+            orchestrationBootstrapInstructions,
           })
         )
       : await runRequirementsFacilitatorOpenAI({
@@ -122,6 +296,7 @@ export async function POST(request: NextRequest) {
           mentionTargetsSummary: mentionTargetsSummary || undefined,
           senderSummary: senderSummary || undefined,
           priorScreenHandoff: priorScreenHandoff || undefined,
+          participatingAgentsPromptBlock: agentCtxChat.promptBlock,
         });
     if (!result.ok) {
       if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
@@ -133,6 +308,14 @@ export async function POST(request: NextRequest) {
           fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
         });
       }
+      const orchPayload =
+        orchInitialForBootstrap ??
+        (projectId
+          ? initialOrchestrationPayload(projectName, projectDescription, projectType, new Date().toISOString())
+          : null);
+
+      const plannerChosen = Boolean(orchPlanningCtx && plannerPreferredFromAgents(orchPlanningCtx.selectedAgents));
+
       if (bootstrapInterview && result.code === "NO_KEY") {
         return NextResponse.json(
           {
@@ -140,9 +323,19 @@ export async function POST(request: NextRequest) {
             code: "NO_AI_PROVIDER",
             message: "AI 기획자 호출에 필요한 OpenAI 설정이 없습니다.",
             data: {
-              promptTrace: buildIdeationBootstrapFallbackPromptTrace({
+              ...(orchPayload ? { singleChatOrchestrationV1: orchPayload } : {}),
+              promptTrace: buildSingleChatPromptTimelineEntry({
+                action: "bootstrapInterview",
+                source: "fallback",
+                timelineStage: agentCtxBootstrap.timelineStage,
+                stageGroup: agentCtxBootstrap.stageGroup,
+                workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
+                selectedAgents: agentCtxBootstrap.selectedAgents,
                 error: "NO_AI_PROVIDER",
                 fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+                fallback: true,
+                orchestratorAgent: "planner",
+                routingDecision: plannerChosen ? "bootstrap_planner_entry(NO_KEY)" : "bootstrap_fallback_planner(NO_KEY)",
               }),
             },
           },
@@ -156,13 +349,39 @@ export async function POST(request: NextRequest) {
         ...(bootstrapInterview
           ? {
               data: {
-                promptTrace: buildIdeationBootstrapFallbackPromptTrace({
+                ...(orchPayload ? { singleChatOrchestrationV1: orchPayload } : {}),
+                promptTrace: buildSingleChatPromptTimelineEntry({
+                  action: "bootstrapInterview",
+                  source: "fallback",
+                  timelineStage: agentCtxBootstrap.timelineStage,
+                  stageGroup: agentCtxBootstrap.stageGroup,
+                  workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
+                  selectedAgents: agentCtxBootstrap.selectedAgents,
                   error: `${result.code}: ${result.message}`,
                   fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+                  fallback: true,
+                  orchestratorAgent: "planner",
+                  routingDecision: "bootstrap_error",
                 }),
               },
             }
-          : {}),
+          : {
+              data: {
+                promptTrace: buildSingleChatPromptTimelineEntry({
+                  action: "requirementsChat",
+                  source: "fallback",
+                  timelineStage: agentCtxChat.timelineStage,
+                  stageGroup: agentCtxChat.stageGroup,
+                  workspaceScreenKey: agentCtxChat.workspaceScreenKey,
+                  selectedAgents: agentCtxChat.selectedAgents,
+                  error: `${result.code}: ${result.message}`,
+                  fallbackText: "",
+                  fallback: true,
+                  orchestratorAgent: "planner",
+                  routingDecision: "facilitator_error",
+                }),
+              },
+            }),
       });
     }
     const replyTrim = String(result.text ?? "").trim();
@@ -183,9 +402,19 @@ export async function POST(request: NextRequest) {
           code: "EMPTY_REPLY",
           message: "bootstrapInterview 응답이 비어 있습니다.",
           data: {
-            promptTrace: buildIdeationBootstrapFallbackPromptTrace({
+            ...(orchInitialForBootstrap ? { singleChatOrchestrationV1: orchInitialForBootstrap } : {}),
+            promptTrace: buildSingleChatPromptTimelineEntry({
+              action: "bootstrapInterview",
+              source: "fallback",
+              timelineStage: agentCtxBootstrap.timelineStage,
+              stageGroup: agentCtxBootstrap.stageGroup,
+              workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
+              selectedAgents: agentCtxBootstrap.selectedAgents,
               error: "EMPTY_REPLY",
               fallbackText: IDEATION_BOOTSTRAP_DEFAULT_FALLBACK_FIRST_QUESTION,
+              fallback: true,
+              orchestratorAgent: "planner",
+              routingDecision: "bootstrap_empty_reply",
             }),
           },
         },
@@ -211,6 +440,43 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const plannerChosenOk = Boolean(orchPlanningCtx && plannerPreferredFromAgents(orchPlanningCtx.selectedAgents));
+
+    const bootstrapPromptTrace = buildSingleChatPromptTimelineEntry({
+      action: "bootstrapInterview",
+      source: "llm",
+      timelineStage: agentCtxBootstrap.timelineStage,
+      stageGroup: agentCtxBootstrap.stageGroup,
+      workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
+      selectedAgents: agentCtxBootstrap.selectedAgents,
+      promptText: result.promptText,
+      responseText: replyTrim,
+      model: result.model,
+      provider: result.provider ?? "openai",
+      createdAtIso: result.calledAt ?? new Date().toISOString(),
+      routingDecision: plannerChosenOk ? "bootstrap_planner_entry" : "bootstrap_default_planner_persona",
+      orchestratorAgent: "planner",
+      delegatedAgents: [],
+      fallback: false,
+    });
+
+    const facilitatorPromptTrace =
+      !bootstrapInterview && result.ok
+        ? buildSingleChatPromptTimelineEntry({
+            action: "requirementsChat",
+            source: "llm",
+            timelineStage: agentCtxChat.timelineStage,
+            stageGroup: agentCtxChat.stageGroup,
+            workspaceScreenKey: agentCtxChat.workspaceScreenKey,
+            selectedAgents: agentCtxChat.selectedAgents,
+            promptText: result.promptText,
+            responseText: replyTrim,
+            model: result.model,
+            provider: result.provider ?? "openai",
+            createdAtIso: result.calledAt ?? new Date().toISOString(),
+          })
+        : null;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -221,15 +487,12 @@ export async function POST(request: NextRequest) {
               model: result.model,
               provider: result.provider ?? "openai",
               calledAt: result.calledAt ?? new Date().toISOString(),
-              promptTrace: buildIdeationBootstrapLlmPromptTrace({
-                responseText: replyTrim,
-                promptText: result.promptText,
-                model: result.model,
-                provider: result.provider ?? "openai",
-                createdAtIso: result.calledAt ?? new Date().toISOString(),
-              }),
+              promptTrace: bootstrapPromptTrace,
+              ...(orchInitialForBootstrap ? { singleChatOrchestrationV1: orchInitialForBootstrap } : {}),
             }
-          : {}),
+          : {
+              promptTrace: facilitatorPromptTrace,
+            }),
         seedInterviewState: seed && seed.ok ? seed.wire : null,
       },
     });

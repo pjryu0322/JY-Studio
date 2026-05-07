@@ -1,4 +1,8 @@
-import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import type {
+  RequirementsPromptTimelineAgentRef,
+  RequirementsPromptTimelineEntry,
+} from "@/lib/requirements/requirementsStateJson";
+import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatAgentContext";
 
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER = "AI 기획자" as const;
 export const IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION = "bootstrapInterview" as const;
@@ -22,18 +26,132 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
   const stage = typeof r.stage === "string" ? r.stage : "";
   const source = typeof r.source === "string" ? r.source : "";
   if (!createdAt || !action || !stage || !source) return null;
+  const selectedAgents = parsePromptTimelineSelectedAgents(r.selectedAgents);
   return {
     stage,
     action,
     source,
     createdAt,
     ...(typeof r.aiMember === "string" ? { aiMember: r.aiMember } : {}),
+    ...(typeof r.stageGroup === "string" ? { stageGroup: r.stageGroup } : {}),
+    ...(typeof r.workspaceScreenKey === "string" ? { workspaceScreenKey: r.workspaceScreenKey } : {}),
+    ...(selectedAgents.length ? { selectedAgents } : {}),
     ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
     ...(typeof r.responseText === "string" ? { responseText: r.responseText } : {}),
     ...(typeof r.error === "string" ? { error: r.error } : {}),
     ...(typeof r.fallbackText === "string" ? { fallbackText: r.fallbackText } : {}),
     ...(typeof r.model === "string" || r.model === null ? { model: r.model as string | null } : {}),
     ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as string | null } : {}),
+    ...(typeof r.routingDecision === "string" ? { routingDecision: r.routingDecision } : {}),
+    ...(Array.isArray(r.matchedSlots)
+      ? {
+          matchedSlots: r.matchedSlots.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+    ...(Array.isArray(r.updatedSlots)
+      ? {
+          updatedSlots: r.updatedSlots.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+    ...(typeof r.fallback === "boolean" ? { fallback: r.fallback } : {}),
+    ...(typeof r.orchestratorAgent === "string" ? { orchestratorAgent: r.orchestratorAgent } : {}),
+    ...(Array.isArray(r.delegatedAgents)
+      ? {
+          delegatedAgents: r.delegatedAgents.map((x) => String(x ?? "").trim()).filter(Boolean),
+        }
+      : {}),
+  };
+}
+
+function parsePromptTimelineSelectedAgents(raw: unknown): readonly RequirementsPromptTimelineAgentRef[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RequirementsPromptTimelineAgentRef[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const a = item as Record<string, unknown>;
+    const displayName = typeof a.displayName === "string" ? a.displayName : "";
+    if (!displayName.trim()) continue;
+    out.push({
+      ...(typeof a.source === "string" ? { source: a.source } : {}),
+      ...(typeof a.catalogKey === "string" ? { catalogKey: a.catalogKey } : {}),
+      displayName,
+      ...(typeof a.aiOrchestrationRole === "string" || a.aiOrchestrationRole === null
+        ? { aiOrchestrationRole: a.aiOrchestrationRole as string | null }
+        : {}),
+      ...(typeof a.orchestrationStage === "string" || a.orchestrationStage === null
+        ? { orchestrationStage: a.orchestrationStage as string | null }
+        : {}),
+      ...(typeof a.aiProvider === "string" || a.aiProvider === null ? { aiProvider: a.aiProvider as string | null } : {}),
+      ...(typeof a.aiAgentKey === "string" || a.aiAgentKey === null ? { aiAgentKey: a.aiAgentKey as string | null } : {}),
+      ...(typeof a.aiModelOverride === "string" || a.aiModelOverride === null
+        ? { aiModelOverride: a.aiModelOverride as string | null }
+        : {}),
+      ...(typeof a.enginePreference === "string" || a.enginePreference === null
+        ? { enginePreference: a.enginePreference as string | null }
+        : {}),
+    });
+  }
+  return out;
+}
+
+export function selectedAgentsForTimeline(
+  agents: readonly SingleChatSelectedAgentWire[]
+): readonly RequirementsPromptTimelineAgentRef[] {
+  return agents.map((a) => ({
+    source: a.source,
+    ...(a.catalogKey ? { catalogKey: a.catalogKey } : {}),
+    displayName: a.displayName,
+    ...(a.aiOrchestrationRole !== undefined ? { aiOrchestrationRole: a.aiOrchestrationRole } : {}),
+    ...(a.orchestrationStage !== undefined ? { orchestrationStage: a.orchestrationStage } : {}),
+    ...(a.aiProvider !== undefined ? { aiProvider: a.aiProvider } : {}),
+    ...(a.aiAgentKey !== undefined ? { aiAgentKey: a.aiAgentKey } : {}),
+    ...(a.aiModelOverride !== undefined ? { aiModelOverride: a.aiModelOverride } : {}),
+    ...(a.enginePreference !== undefined ? { enginePreference: a.enginePreference } : {}),
+  }));
+}
+
+export function buildSingleChatPromptTimelineEntry(params: {
+  readonly action: string;
+  readonly source: "llm" | "fallback";
+  readonly timelineStage: string;
+  readonly stageGroup: string;
+  readonly workspaceScreenKey: string;
+  readonly selectedAgents: readonly SingleChatSelectedAgentWire[];
+  readonly promptText?: string;
+  readonly responseText?: string;
+  readonly error?: string;
+  readonly fallbackText?: string;
+  readonly model?: string | null;
+  readonly provider?: string | null;
+  readonly createdAtIso?: string;
+  readonly routingDecision?: string;
+  readonly matchedSlots?: readonly string[];
+  readonly updatedSlots?: readonly string[];
+  readonly fallback?: boolean;
+  readonly orchestratorAgent?: string;
+  readonly delegatedAgents?: readonly string[];
+}): RequirementsPromptTimelineEntry {
+  const agents = selectedAgentsForTimeline(params.selectedAgents);
+  return {
+    stage: params.timelineStage,
+    stageGroup: params.stageGroup,
+    workspaceScreenKey: params.workspaceScreenKey,
+    ...(agents.length ? { selectedAgents: agents } : {}),
+    action: params.action,
+    source: params.source,
+    createdAt: params.createdAtIso ?? new Date().toISOString(),
+    ...(params.promptText ? { promptText: params.promptText } : {}),
+    ...(params.responseText ? { responseText: params.responseText } : {}),
+    ...(params.error ? { error: params.error } : {}),
+    ...(params.fallbackText ? { fallbackText: params.fallbackText } : {}),
+    ...(params.model !== undefined ? { model: params.model } : {}),
+    ...(params.provider !== undefined ? { provider: params.provider } : {}),
+    ...(params.routingDecision ? { routingDecision: params.routingDecision } : {}),
+    ...(params.matchedSlots?.length ? { matchedSlots: [...params.matchedSlots] } : {}),
+    ...(params.updatedSlots?.length ? { updatedSlots: [...params.updatedSlots] } : {}),
+    ...(params.fallback !== undefined ? { fallback: params.fallback } : {}),
+    ...(params.orchestratorAgent ? { orchestratorAgent: params.orchestratorAgent } : {}),
+    ...(params.delegatedAgents?.length ? { delegatedAgents: [...params.delegatedAgents] } : {}),
   };
 }
 

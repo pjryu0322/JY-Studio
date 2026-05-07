@@ -17,7 +17,14 @@ import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/li
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
 
 export type RequirementsFacilitatorOpenAiResult =
-  | { ok: true; text: string; model: string; promptText?: string; provider?: string; calledAt?: string }
+  | {
+      ok: true;
+      text: string;
+      model: string;
+      promptText?: string;
+      provider?: string;
+      calledAt?: string;
+    }
   | { ok: false; code: string; message: string };
 
 function facilitatorResponseStyleAddendum(style: RequirementsAiResponseStyle | undefined): string {
@@ -72,6 +79,8 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   responseStyle?: RequirementsAiResponseStyle;
   /** 직전 화면 전환 시 넘겨받은 맥락(세션에서 1회 소비) */
   priorScreenHandoff?: string;
+  /** AI Agent 설정 절차별 참여 Agent 블록(서버에서 생성) */
+  participatingAgentsPromptBlock?: string;
 }): Promise<RequirementsFacilitatorOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -92,23 +101,19 @@ export async function runRequirementsFacilitatorOpenAI(input: {
     ? `\n\n[이전 화면에서 넘어온 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 4000)}`
     : "";
 
-  const res = await postOpenAiChatCompletion({
-    apiKey,
-    model,
-    messages: [
-      {
-        role: "system",
-        content: `${workspaceAiMemberSystemPrefix("ideation")}역할: 범위·모호함·누락·역할·기능/비기능 요구를 짧게 질문하고, 확인 가능한 요구사항으로 수렴시키세요.
+  const agentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
+    ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n`
+    : "";
+
+  const systemContent = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}역할: 범위·모호함·누락·역할·기능/비기능 요구를 짧게 질문하고, 확인 가능한 요구사항으로 수렴시키세요.
 규칙:
 - 한국어로 답합니다.
 - 1회 응답은 8문장 이내, 불필요한 서론·마크다운 제목 없이 대화체로 작성합니다.
 - (아이디어 구체화) 이번 응답에는 확인 질문을 정확히 1개만 넣습니다. 둘째 이후 질문·번호 목록·여러 물음표 나열은 금지입니다.
 - 가능하면 1~2문장으로 핵심 이해를 짧게 쓴 뒤, 질문 1개만 제시합니다. 짧은 이유는 최대 한 문장까지 선택입니다.
-- 사용자가 특정 참가자에게 질문한 맥락이 있으면 그에 맞춰 답합니다.${facilitatorResponseStyleAddendum(input.responseStyle)}`,
-      },
-      {
-        role: "user",
-        content: `다음 정보를 알고 있다고 가정하고 답하세요. "어떤 프로젝트인가요?"처럼 프로젝트를 모르는 질문은 금지합니다.
+- 사용자가 특정 참가자에게 질문한 맥락이 있으면 그에 맞춰 답합니다.${facilitatorResponseStyleAddendum(input.responseStyle)}`;
+
+  const userContent = `다음 정보를 알고 있다고 가정하고 답하세요. "어떤 프로젝트인가요?"처럼 프로젝트를 모르는 질문은 금지합니다.
 
 [프로젝트]
 - 이름: ${projectName || "(이름 없음)"}
@@ -121,7 +126,19 @@ export async function runRequirementsFacilitatorOpenAI(input: {
 ${excerpt || "(이전 메시지 없음)"}
 
 [이번 사용자 메시지]
-${input.userMessage.trim()}${mentionBlock}${senderBlock}`,
+${input.userMessage.trim()}${mentionBlock}${senderBlock}`;
+
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      {
+        role: "system",
+        content: systemContent,
+      },
+      {
+        role: "user",
+        content: userContent,
       },
     ],
     temperature: 0.35,
@@ -140,7 +157,8 @@ ${input.userMessage.trim()}${mentionBlock}${senderBlock}`,
     return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
   }
 
-  return { ok: true, text, model };
+  const promptText = `[system]\n${systemContent}\n\n---\n\n[user]\n${userContent}`;
+  return { ok: true, text, model, promptText, provider: "openai", calledAt: new Date().toISOString() };
 }
 
 /**
@@ -150,6 +168,9 @@ ${input.userMessage.trim()}${mentionBlock}${senderBlock}`,
 export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
   projectName: string;
   projectDescription: string;
+  participatingAgentsPromptBlock?: string;
+  /** SingleChat 오케스트레이션 — planner 우선 첫 질문 규칙 */
+  orchestrationBootstrapInstructions?: string;
 }): Promise<RequirementsFacilitatorOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -160,7 +181,15 @@ export async function runRequirementsIdeationInterviewBootstrapOpenAI(input: {
   const pn = input.projectName.trim() || "(이름 없음)";
   const pd = input.projectDescription.trim() || "(설명 없음)";
 
-  const system = `${workspaceAiMemberSystemPrefix("ideation")}당신은 숙련된 서비스 기획자입니다.
+  const agentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
+    ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n\n`
+    : "\n\n";
+
+  const orchInsert = (input.orchestrationBootstrapInstructions ?? "").trim()
+    ? `${String(input.orchestrationBootstrapInstructions).trim()}\n\n`
+    : "";
+
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}${orchInsert}당신은 숙련된 서비스 기획자입니다.
 
 목표:
 사용자의 프로젝트 아이디어를 구체화하기 위해
@@ -699,6 +728,7 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
   recentMessages: string;
   latestAiQuestion: string;
   priorScreenHandoff?: string;
+  participatingAgentsPromptBlock?: string;
 }): Promise<ServiceFlowAnalyzeOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -722,7 +752,11 @@ export async function runServiceFlowAnalyzeOpenAI(input: {
     ? `\n\n[이전 화면에서 넘어온 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 4000)}`
     : "";
 
-  const system = `${workspaceAiMemberSystemPrefix("actor_flow")}이 단계의 실제 목적은 "아이디어 구체화 결과 기반의 서비스 흐름 검증/보정/담당 확정"이다.
+  const sfAgentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
+    ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n`
+    : "";
+
+  const system = `${workspaceAiMemberSystemPrefix("actor_flow")}${sfAgentInsert}이 단계의 실제 목적은 "아이디어 구체화 결과 기반의 서비스 흐름 검증/보정/담당 확정"이다.
 중요: 이 단계에서 "이제 흐름을 정의해볼까요?"처럼 백지 디스커버리를 다시 시작하면 실패다.
 
 목표:
@@ -894,6 +928,7 @@ export async function runInterviewAnalyzeOpenAI(input: {
   userMessage: string;
   latestAiQuestion: string;
   currentInterviewState: ProblemInterviewState;
+  participatingAgentsPromptBlock?: string;
 }): Promise<InterviewAnalyzeOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -902,7 +937,11 @@ export async function runInterviewAnalyzeOpenAI(input: {
   const model = resolveOpenAiModelFromEnv();
   const stateJson = interviewStateJsonForAnalyzer(input.currentInterviewState);
 
-  const system = `${workspaceAiMemberSystemPrefix("ideation")}당신은 아이디어 구체화 단계(고수준 디스커버리) 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
+  const iaAgentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
+    ? `\n\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n`
+    : "";
+
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}${iaAgentInsert}당신은 아이디어 구체화 단계(고수준 디스커버리) 전용 "상태 분석기"입니다. 사용자와 대화하지 않습니다.
 역할:
 1) 사용자의 최신 답변을 읽고, 아래 8개 슬롯에 정보가 얼마나 담겼는지 분류합니다.
 2) 사용자의 답변 intent를 분류합니다(질문에 직접 답하지 않아도 "AI에게 판단을 위임"이면 delegate_to_ai).

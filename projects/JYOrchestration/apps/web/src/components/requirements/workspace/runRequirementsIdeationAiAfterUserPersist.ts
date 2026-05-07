@@ -32,7 +32,15 @@ import {
 import { augmentDialogueExcerptForReplyParent } from "@/lib/requirements/requirementsAnswerContext";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementMemberRef } from "@/lib/requirements/requirementsTargets";
-import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  mergeRequirementsStateJson,
+  type RequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
+import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
+import {
+  appendIdeationBootstrapPromptTimeline,
+  coerceRequirementsPromptTimelineEntry,
+} from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { filterIdeationConversationMessages } from "@/lib/requirements/serviceFlowConversation";
 import {
   formatDialogueExcerpt,
@@ -50,7 +58,7 @@ import {
 } from "@/lib/project/requirementsRoomState";
 
 export type IdeationPlannerTail =
-  | { needsTailPersist: true; finalRoom: RequirementsRoomStateV3 }
+  | { needsTailPersist: true; finalRoom: RequirementsRoomStateV3; persistMeta?: Partial<RequirementsStateJson> }
   | { needsTailPersist: false };
 
 type RunRequirementsIdeationAiAfterUserPersistContext = {
@@ -76,6 +84,9 @@ type RunRequirementsIdeationAiAfterUserPersistContext = {
   readonly setReplyTo: (v: { id: string; preview: string } | null) => void;
   readonly showErrorToast: (message: string) => void;
   readonly serviceDesignHarness?: ServiceDesignHarnessPayload | null;
+  /** SingleChat 화면 키 — AI Agent 절차별 매핑 조회용 (`requirements_ideation` 등) */
+  readonly workspaceScreenKey?: string;
+  readonly projectType?: string;
 };
 
 export async function runRequirementsIdeationAiAfterUserPersist(
@@ -104,7 +115,20 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     setReplyTo,
     showErrorToast,
     serviceDesignHarness,
+    workspaceScreenKey: workspaceScreenKeyRaw,
+    projectType,
   } = ctx;
+
+  const workspaceScreenKey =
+    String(workspaceScreenKeyRaw ?? "requirements_ideation").trim() || "requirements_ideation";
+
+  const absorbPromptTrace = (raw: unknown) => {
+    const tr = coerceRequirementsPromptTimelineEntry(raw);
+    if (!tr) return;
+    stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+      promptTimeline: appendIdeationBootstrapPromptTimeline(stateJsonRef.current.promptTimeline, tr),
+    });
+  };
 
   const msgsIdeationOnly = filterIdeationConversationMessages(msgs);
   const excerpt = augmentDialogueExcerptForReplyParent(
@@ -378,6 +402,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
             userMessage: text,
             latestAiQuestion,
             currentInterviewState: problemInterviewStateToAnalyzerWire(seeded),
+            workspaceScreenKey,
             ...(serviceDesignHarness
               ? {
                   serviceDesignStage: serviceDesignHarness.serviceDesignStage,
@@ -387,7 +412,8 @@ export async function runRequirementsIdeationAiAfterUserPersist(
               : {}),
           }),
         });
-        const aj = (await ar.json()) as { success?: boolean; data?: unknown };
+        const aj = (await ar.json()) as { success?: boolean; data?: unknown; meta?: { promptTrace?: unknown } };
+        absorbPromptTrace(aj.meta?.promptTrace);
         const remotePayloadOk = ar.ok && Boolean(aj.success) && aj.data != null;
         if (remotePayloadOk) {
           const parsed = coerceInterviewAnalyzerPayload(aj.data);
@@ -447,6 +473,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           ...(pid ? { projectId: pid } : {}),
           projectName,
           projectDescription,
+          ...(projectType !== undefined ? { projectType } : {}),
           stage: "requirements",
           userMessage: text,
           dialogueExcerpt: excerpt,
@@ -454,6 +481,11 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           sender: { id: sessionUserId, name: sessionUserName },
           replyTo: effectiveReplyTo ?? null,
           ...(priorScreenHandoff ? { priorScreenHandoff } : {}),
+          workspaceScreenKey,
+          ...(stateJsonRef.current.singleChatOrchestrationV1 !== undefined &&
+          stateJsonRef.current.singleChatOrchestrationV1 !== null
+            ? { singleChatOrchestrationV1: stateJsonRef.current.singleChatOrchestrationV1 }
+            : {}),
           ...(serviceDesignHarness
             ? {
                 serviceDesignStage: serviceDesignHarness.serviceDesignStage,
@@ -478,8 +510,20 @@ export async function runRequirementsIdeationAiAfterUserPersist(
             successCriteria: string[];
             openIssues: string[];
           };
+          promptTrace?: unknown;
+          singleChatOrchestrationV1?: unknown;
         };
       };
+      absorbPromptTrace(json.data?.promptTrace);
+      const orchParsed =
+        json.data?.singleChatOrchestrationV1 !== undefined && json.data?.singleChatOrchestrationV1 !== null
+          ? parseRequirementsSingleChatOrchestrationV1(json.data.singleChatOrchestrationV1)
+          : null;
+      if (orchParsed) {
+        stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+          singleChatOrchestrationV1: orchParsed,
+        });
+      }
       if (res.ok && json.success && (json.data?.reply || json.data?.draft)) {
         setAiLastInvoke({ ok: true, at: new Date().toISOString() });
         const createdDraft = json.data?.draft ?? null;
@@ -548,7 +592,11 @@ export async function runRequirementsIdeationAiAfterUserPersist(
         facilitatorFinalRoom = { ...withCalling, aiQuestionIndex: turn + 1 };
         ideationSendDevLog("return", `facilitator-http id=${sendTraceId}`);
       }
-      return { needsTailPersist: true, finalRoom: facilitatorFinalRoom };
+      return {
+        needsTailPersist: true,
+        finalRoom: facilitatorFinalRoom,
+        ...(orchParsed ? { persistMeta: { singleChatOrchestrationV1: orchParsed } } : {}),
+      };
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
       setAiLastInvoke({ ok: false, at: new Date().toISOString(), detail: errMsg });

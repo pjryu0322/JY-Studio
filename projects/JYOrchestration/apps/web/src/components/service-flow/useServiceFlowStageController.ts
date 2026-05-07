@@ -13,6 +13,7 @@ import {
 import { serviceFlowSidebarParticipants, type ServiceFlowProjectMember } from "@/components/service-flow/serviceFlowWorkshopBridge";
 import { useServiceFlowWorkshopChat, type ServiceFlowWorkspaceMode } from "@/components/service-flow/useServiceFlowWorkshopChat";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type {
   RequirementsServiceFlowStepV1,
@@ -39,6 +40,8 @@ export type ServiceFlowStageControllerInput = {
   ) => Promise<readonly RequirementsMessage[]>;
   /** 서비스 흐름 화면에 참여하는 플랫폼 AI(복수) */
   readonly platformScreenAiMemberIds?: readonly WorkspaceAiMemberId[];
+  /** SingleChat promptTimeline — 서버 promptTrace 동기화 */
+  readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
 };
 
 export function useServiceFlowStageController(p: ServiceFlowStageControllerInput) {
@@ -76,6 +79,7 @@ export function useServiceFlowStageController(p: ServiceFlowStageControllerInput
     setWorkspaceMode,
     structureLockedAt: p.flow?.structureLockedAt,
     derivedSlotsForDraftBootstrap: derivedApproval.slots,
+    onSingleChatPromptTrace: p.onSingleChatPromptTrace,
   });
 
   const { callAnalyze, jumpToResolveSlot } = workshop;

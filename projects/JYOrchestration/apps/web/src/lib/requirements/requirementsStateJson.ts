@@ -12,6 +12,8 @@ import {
   type RequirementsOrganizeContextV1,
 } from "@/lib/requirements/requirementsOrganizeContext";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 
 function unwrapDbJsonField(raw: unknown): unknown {
   if (typeof raw !== "string") return raw;
@@ -41,8 +43,25 @@ export type RequirementsOrganizePlannerState = {
   } | null;
 };
 
+/** promptTimeline에 기록되는 참여 Agent (SingleChat·설정 UI와 동기) */
+export type RequirementsPromptTimelineAgentRef = {
+  readonly source?: string;
+  readonly catalogKey?: string;
+  readonly displayName?: string;
+  readonly aiOrchestrationRole?: string | null;
+  readonly orchestrationStage?: string | null;
+  readonly aiProvider?: string | null;
+  readonly aiAgentKey?: string | null;
+  readonly aiModelOverride?: string | null;
+  readonly enginePreference?: string | null;
+};
+
 export type RequirementsPromptTimelineEntry = {
   stage: "ideation" | "service-flow" | "feature-planning" | string;
+  /** 사용자 표시 절차 그룹(예: 서비스 기획) */
+  stageGroup?: string;
+  workspaceScreenKey?: string;
+  selectedAgents?: readonly RequirementsPromptTimelineAgentRef[];
   action: string;
   aiMember?: string;
   source: "llm" | "fallback" | "system" | string;
@@ -53,6 +72,14 @@ export type RequirementsPromptTimelineEntry = {
   model?: string | null;
   provider?: string | null;
   createdAt: string;
+  /** SingleChat 내부 오케스트레이션 메타(UX 비노출) */
+  routingDecision?: string;
+  matchedSlots?: readonly string[];
+  updatedSlots?: readonly string[];
+  /** 명시적 fallback 플래그(source와 함께 사용) */
+  fallback?: boolean;
+  orchestratorAgent?: string;
+  delegatedAgents?: readonly string[];
 };
 
 export type RequirementsStateJson = {
@@ -118,6 +145,8 @@ export type RequirementsStateJson = {
   featurePlanningSlotsV1?: FeaturePlanningSlotsArtifactV1 | null;
   /** 기능 정리 워크스페이스 대화(요구사항 채팅과 분리) */
   featurePlanningWorkspaceChatV1?: FeaturePlanningWorkspaceChatV1 | null;
+  /** SingleChat AI 멤버 슬롯 오케스트레이션 상태(서비스 기획 그룹) */
+  singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
 };
 
 export type PrototypeWorkspaceTimelineCardV1 = Readonly<{
@@ -426,6 +455,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     featurePlanningWorkspaceChatV1 = parsed ?? { messages: [] };
   }
 
+  const orchRaw = "singleChatOrchestrationV1" in o ? (o.singleChatOrchestrationV1 as unknown) : undefined;
+  let singleChatOrchestrationV1: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  if (orchRaw === undefined) singleChatOrchestrationV1 = undefined;
+  else if (orchRaw === null) singleChatOrchestrationV1 = null;
+  else {
+    singleChatOrchestrationV1 = parseRequirementsSingleChatOrchestrationV1(orchRaw) ?? null;
+  }
+
   return {
     lastSavedAt: typeof o.lastSavedAt === "string" ? o.lastSavedAt : undefined,
     lastOrganizedAt: typeof o.lastOrganizedAt === "string" ? o.lastOrganizedAt : undefined,
@@ -479,6 +516,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),
+    ...(singleChatOrchestrationV1 !== undefined ? { singleChatOrchestrationV1 } : {}),
   };
 }
 

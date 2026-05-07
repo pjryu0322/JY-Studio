@@ -16,6 +16,8 @@ export type ServiceFlowAnalyzeRequestBody = {
   readonly serviceDesignStage?: RequirementsWorkspaceStage;
   readonly mentionedAI?: string | null;
   readonly responsePolicy?: unknown;
+  /** SingleChat 절차별 Agent 매핑 — 서버에서 requirements_service_flow 등으로 해석 */
+  readonly workspaceScreenKey?: string;
 };
 
 export type ServiceFlowAnalyzeSuccessData = {
@@ -26,24 +28,33 @@ export type ServiceFlowAnalyzeSuccessData = {
   readiness?: { score?: number; readyForNext?: boolean } | null;
 };
 
+export type ServiceFlowAnalyzeMeta = {
+  readonly model?: string | null;
+  readonly promptTrace?: unknown;
+};
+
 export type ServiceFlowAnalyzeResponse =
-  | { readonly ok: true; readonly status: number; readonly data: ServiceFlowAnalyzeSuccessData }
+  | { readonly ok: true; readonly status: number; readonly data: ServiceFlowAnalyzeSuccessData; readonly meta?: ServiceFlowAnalyzeMeta }
   | { readonly ok: false; readonly status: number; readonly json: unknown };
 
 export async function postServiceFlowAnalyze(body: ServiceFlowAnalyzeRequestBody): Promise<ServiceFlowAnalyzeResponse> {
   const res = await fetch("/api/requirements/service-flow-analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...body,
+      workspaceScreenKey: body.workspaceScreenKey ?? "requirements_service_flow",
+    }),
   });
   const json = (await res.json()) as {
     success?: boolean;
     data?: ServiceFlowAnalyzeSuccessData;
+    meta?: ServiceFlowAnalyzeMeta;
     code?: string;
     message?: string;
   };
   if (!res.ok || !json.success) {
     return { ok: false, status: res.status, json };
   }
-  return { ok: true, status: res.status, data: json.data ?? {} };
+  return { ok: true, status: res.status, data: json.data ?? {}, meta: json.meta };
 }

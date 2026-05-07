@@ -16,6 +16,8 @@ import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import { postServiceFlowAnalyze } from "@/lib/requirements/serviceFlowAnalyzeClient";
+import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { consumeWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHandoff";
 import {
   buildServiceDesignHarnessPayload,
@@ -53,6 +55,7 @@ export function useServiceFlowWorkshopChat({
   setWorkspaceMode,
   structureLockedAt,
   derivedSlotsForDraftBootstrap,
+  onSingleChatPromptTrace,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -72,6 +75,7 @@ export function useServiceFlowWorkshopChat({
   readonly setWorkspaceMode: (m: ServiceFlowWorkspaceMode) => void;
   readonly structureLockedAt: string | null | undefined;
   readonly derivedSlotsForDraftBootstrap: Record<ServiceFlowStageSlotKey, boolean>;
+  readonly onSingleChatPromptTrace?: (entry: RequirementsPromptTimelineEntry) => void;
 }) {
   const aiDisplayName = displayedWorkspaceAiTitle("actor_flow");
   const displayMessages = useMemo(
@@ -91,6 +95,15 @@ export function useServiceFlowWorkshopChat({
 
   const onAppendRef = useRef(onAppendPersistedServiceFlowMessages);
   const onChangeFlowRef = useRef(onChangeFlow);
+  const onSingleChatPromptTraceRef = useRef(onSingleChatPromptTrace);
+  useEffect(() => {
+    onSingleChatPromptTraceRef.current = onSingleChatPromptTrace;
+  }, [onSingleChatPromptTrace]);
+
+  const emitPromptTrace = useCallback((raw: unknown) => {
+    const tr = coerceRequirementsPromptTimelineEntry(raw);
+    if (tr) onSingleChatPromptTraceRef.current?.(tr);
+  }, []);
   useEffect(() => {
     onAppendRef.current = onAppendPersistedServiceFlowMessages;
   }, [onAppendPersistedServiceFlowMessages]);
@@ -199,6 +212,13 @@ export function useServiceFlowWorkshopChat({
             ...(responsePolicy ? { responsePolicy } : {}),
           });
 
+          if (result.ok) {
+            emitPromptTrace(result.meta?.promptTrace);
+          } else {
+            const fj = result.json as { meta?: { promptTrace?: unknown } };
+            emitPromptTrace(fj?.meta?.promptTrace);
+          }
+
           if (!result.ok || !result.data.updatedFlow) {
             autoScrollPendingRef.current = true;
             const errSlice = await onAppendRef.current([
@@ -261,6 +281,7 @@ export function useServiceFlowWorkshopChat({
       projectDescription,
       ideationAssets,
       takeActorFlowHandoff,
+      emitPromptTrace,
     ],
   );
 
@@ -336,6 +357,12 @@ export function useServiceFlowWorkshopChat({
           mentionedAI: harness.mentionedAI,
           responsePolicy: harness.responsePolicy,
         });
+        if (result.ok) {
+          emitPromptTrace(result.meta?.promptTrace);
+        } else {
+          const fj = result.json as { meta?: { promptTrace?: unknown } };
+          emitPromptTrace(fj?.meta?.promptTrace);
+        }
         if (!result.ok || !result.data.updatedFlow) {
           const errSlice = await onAppendRef.current([
             buildServiceFlowAiPersist("지금은 자동 반영에 실패했습니다. 다시 시도해 주세요."),
@@ -378,6 +405,7 @@ export function useServiceFlowWorkshopChat({
     aiDisplayName,
     setWorkspaceMode,
     takeActorFlowHandoff,
+    emitPromptTrace,
   ]);
 
   useEffect(() => {

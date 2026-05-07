@@ -66,6 +66,8 @@ import {
   type RequirementsStateJson,
   type RequirementsServiceFlowV1,
 } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
   appendIdeationBootstrapPromptTimeline,
   buildIdeationBootstrapFallbackPromptTrace,
@@ -628,6 +630,15 @@ export function RequirementsWorkspace({
     onboardingKey,
   });
 
+  const appendSingleChatPromptTimeline = useCallback(
+    (entry: RequirementsPromptTimelineEntry) => {
+      void persistStateJsonOnly({
+        promptTimeline: appendIdeationBootstrapPromptTimeline(stateJsonRef.current.promptTimeline, entry),
+      });
+    },
+    [persistStateJsonOnly]
+  );
+
   useRequirementsProjectLoad({
     resolvedProjectId,
     fetchNonce,
@@ -771,6 +782,7 @@ export function RequirementsWorkspace({
         readonly promptText?: string;
         readonly promptAtIso?: string;
         readonly promptTrace?: RequirementsPromptTimelineEntry | null;
+        readonly singleChatOrchestrationV1?: RequirementsSingleChatOrchestrationStateV1 | null;
       }): Promise<boolean> => {
         const nowIso = new Date().toISOString();
         const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
@@ -803,6 +815,9 @@ export function RequirementsWorkspace({
             ...(params.promptText ? { lastPromptText: params.promptText } : {}),
             ...(params.promptAtIso ? { lastPromptGeneratedAt: params.promptAtIso } : {}),
             ...(params.promptTrace ? { promptTimeline: nextTimeline } : {}),
+            ...(params.singleChatOrchestrationV1 !== undefined && params.singleChatOrchestrationV1 !== null
+              ? { singleChatOrchestrationV1: params.singleChatOrchestrationV1 }
+              : {}),
           });
           if (!cancelled) setOnboardingAppliedKey(onboardingKey);
           return true;
@@ -831,8 +846,10 @@ export function RequirementsWorkspace({
             projectId: pid,
             projectName: project.name ?? "",
             projectDescription: project.description ?? "",
+            projectType: project.projectType ?? "",
             stage: "requirements",
             bootstrapInterview: true,
+            workspaceScreenKey: "requirements_ideation",
           }),
         });
         const json = (await res.json()) as {
@@ -845,6 +862,8 @@ export function RequirementsWorkspace({
             model?: string;
             provider?: string;
             calledAt?: string;
+            promptTrace?: unknown;
+            singleChatOrchestrationV1?: unknown;
           };
           message?: string;
         };
@@ -863,6 +882,13 @@ export function RequirementsWorkspace({
           console.warn("[PROMPT TRACE DROPPED]", rawTrace);
         }
 
+        const orchBootstrap = parseRequirementsSingleChatOrchestrationV1(json.data?.singleChatOrchestrationV1);
+        if (orchBootstrap) {
+          stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+            singleChatOrchestrationV1: orchBootstrap,
+          });
+        }
+
         const ok = await persistFirstQuestion({
           bodyText,
           seedWire,
@@ -874,6 +900,7 @@ export function RequirementsWorkspace({
               }
             : { fallbackReason }),
           promptTrace,
+          ...(orchBootstrap ? { singleChatOrchestrationV1: orchBootstrap } : {}),
         });
         if (!ok && !cancelled) {
           ideationBootstrapFlightRef.current = null;
@@ -1068,12 +1095,17 @@ export function RequirementsWorkspace({
             setReplyTo,
             showErrorToast,
             serviceDesignHarness: harnessPayload,
+            workspaceScreenKey: requirementsWorkspaceStageToScreenKey(activeStage),
+            projectType: project?.projectType ?? "",
           });
         } finally {
           setAiInvokePending(false);
         }
         if (plannerTail.needsTailPersist) {
-          await persistRemote(plannerTail.finalRoom, {}, { lastUserDraftText: "" });
+          await persistRemote(plannerTail.finalRoom, {}, {
+            lastUserDraftText: "",
+            ...(plannerTail.persistMeta ?? {}),
+          });
         }
         sendDraftRestoreRef.current = null;
         setReplyTo(null);
@@ -1111,6 +1143,8 @@ export function RequirementsWorkspace({
     draftDoc,
     replyTo,
     showErrorToast,
+    activeStage,
+    project?.projectType,
   ]);
 
   const runServiceFlowSend = useCallback(
@@ -1507,6 +1541,7 @@ export function RequirementsWorkspace({
       platformScreenAiMemberIds={serviceFlowScreenCatalogIds}
       onSendServiceFlow={runServiceFlowSend}
       serviceFlowSendRef={serviceFlowSendRef}
+      onSingleChatPromptTrace={appendSingleChatPromptTimeline}
       singleChatMode
     />
   );
