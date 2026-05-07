@@ -701,6 +701,35 @@ export function mergeOrchestrationSlotPatches(params: {
   };
 }
 
+export function extendOrchestrationStateWithDynamicSlots(params: {
+  readonly base: RequirementsSingleChatOrchestrationStateV1;
+  readonly accepted: readonly SingleChatDynamicSlotDefinitionV1[];
+  readonly nowIso: string;
+  readonly stageGroup: string;
+}): RequirementsSingleChatOrchestrationStateV1 {
+  if (!params.accepted.length) return params.base;
+  const nextSlots = { ...params.base.slots };
+  for (const d of params.accepted) {
+    const key = String(d.slotKey ?? "").trim();
+    if (!key || nextSlots[key]) continue;
+    nextSlots[key] = {
+      slotKey: key,
+      ownerAgent: normalizeDynamicOwnerToInternalOwner(d.ownerAgent),
+      stageGroup: params.stageGroup,
+      label: String(d.title ?? "").trim().slice(0, 80) || key,
+      status: "empty",
+      value: null,
+      confidence: null,
+      updatedAt: params.nowIso,
+      dependsOn: [],
+      derivedFrom: "dynamic-proposal-bootstrap",
+      staleReason: null,
+      revision: 0,
+    };
+  }
+  return { ...params.base, slots: nextSlots, updatedAt: params.nowIso };
+}
+
 export function slotBucketsByStatus(state: RequirementsSingleChatOrchestrationStateV1): {
   stale: string[];
   candidate: string[];
