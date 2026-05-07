@@ -49,10 +49,8 @@ import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE, sanitizeIdeationInterviewFirstQuestion } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
   emptyProblemInterviewState,
-  pickNextAskableInterviewSlot,
   problemInterviewStateFromBootstrapSeedWire,
   problemInterviewStrictFilledCount,
-  proposalInterviewReadinessPercent,
   PROBLEM_INTERVIEW_SLOT_TOTAL,
   slotStrictlyFilled,
   type ProblemInterviewState,
@@ -574,30 +572,29 @@ export function RequirementsWorkspace({
     () => problemInterviewStrictFilledCount(problemInterviewState),
     [problemInterviewState]
   );
+  const baseOrchestrationTotal = useMemo(() => slotDefsForProgress.length, [slotDefsForProgress.length]);
   const proposalReadinessPercentVal = useMemo(() => {
     if (orchestrationAlignedState) return orchestrationConfirmedMetrics.percent;
-    return proposalInterviewReadinessPercent(problemInterviewState);
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.percent, problemInterviewState]);
+    return 0;
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.percent]);
   const problemInterviewCovered = useMemo(() => {
     if (orchestrationAlignedState) return orchestrationConfirmedMetrics.confirmed;
-    return problemInterviewStrictFilled;
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.confirmed, problemInterviewStrictFilled]);
+    return 0;
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.confirmed]);
   const progressSlotTotal = useMemo(() => {
     if (orchestrationAlignedState) return orchestrationConfirmedMetrics.total;
-    return PROBLEM_INTERVIEW_SLOT_TOTAL;
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total]);
+    return baseOrchestrationTotal;
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total, baseOrchestrationTotal]);
   const nextNeededSlot = useMemo(() => {
-    const base = problemInterviewState ?? emptyProblemInterviewState("");
-    return pickNextAskableInterviewSlot(base, base.askedSlots, null);
-  }, [problemInterviewState]);
+    // LLM-first orchestration: next slot is not a fixed 8-slot interview concept.
+    return null;
+  }, []);
   const remainingQuestionsEstimate = useMemo(() => {
     if (orchestrationAlignedState) {
       return Math.max(0, orchestrationConfirmedMetrics.total - orchestrationConfirmedMetrics.confirmed);
     }
-    const base = problemInterviewState ?? emptyProblemInterviewState("");
-    const strict = problemInterviewStrictFilledCount(base);
-    return Math.max(0, PROBLEM_INTERVIEW_SLOT_TOTAL - strict);
-  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total, orchestrationConfirmedMetrics.confirmed, problemInterviewState]);
+    return Math.max(0, baseOrchestrationTotal);
+  }, [orchestrationAlignedState, orchestrationConfirmedMetrics.total, orchestrationConfirmedMetrics.confirmed, baseOrchestrationTotal]);
 
   /**
    * 산출물 뷰어는 "채팅 카드가 가리키는 assetId"와 동일한 소스를 사용해야 합니다.
