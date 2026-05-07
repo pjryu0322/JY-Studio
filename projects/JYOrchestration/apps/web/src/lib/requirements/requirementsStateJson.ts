@@ -80,6 +80,12 @@ export type RequirementsPromptTimelineEntry = {
   fallback?: boolean;
   orchestratorAgent?: string;
   delegatedAgents?: readonly string[];
+  /** 실제 LLM 호출 순서(라우트·전문가·병합 등) */
+  executedAgents?: readonly string[];
+  staleSlots?: readonly string[];
+  confirmedSlots?: readonly string[];
+  candidateSlots?: readonly string[];
+  slotDependenciesChanged?: boolean;
 };
 
 export type RequirementsStateJson = {
