@@ -850,6 +850,14 @@ export function RequirementsWorkspace({
         const existingTimeline = stateJsonRef.current.promptTimeline;
         const nextTimeline = appendIdeationBootstrapPromptTimeline(existingTimeline, params.promptTrace ?? null);
         console.debug("[PROMPT TIMELINE]", nextTimeline);
+        // Keep in-memory state in sync immediately so the prompt timeline drawer updates
+        // even if the project JSON refresh lags behind the persist call.
+        stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+          ...(params.promptTrace ? { promptTimeline: nextTimeline } : {}),
+          ...(params.singleChatOrchestrationV1 !== undefined && params.singleChatOrchestrationV1 !== null
+            ? { singleChatOrchestrationV1: params.singleChatOrchestrationV1 }
+            : {}),
+        });
         try {
           await persistRemote(nextRoom, {}, {
             onboardingShown: true,
@@ -865,13 +873,6 @@ export function RequirementsWorkspace({
           return true;
         } catch (pe) {
           console.error("[PROMPT TIMELINE PERSIST FAIL]", pe);
-          // keep in-memory buffer so prompt drawer can still show it even if DB save fails
-          if (params.promptTrace) {
-            stateJsonRef.current = {
-              ...stateJsonRef.current,
-              promptTimeline: nextTimeline,
-            };
-          }
           if (!cancelled) {
             setError(pe instanceof Error ? pe.message : "저장에 실패했습니다.");
             ideationBootstrapFlightRef.current = null;
@@ -1098,7 +1099,18 @@ export function RequirementsWorkspace({
       setInput("");
       setOnboardingAppliedKey(null);
       ideationBootstrapFlightRef.current = null;
-      await persistRemote(nextRoom, {}, { onboardingShown: false, problemInterview: emptyProblemInterviewState(nowIso), lastUserDraftText: "" });
+      // Clear prompt timeline + orchestration state so the next bootstrap turn starts clean.
+      stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+        promptTimeline: [],
+        singleChatOrchestrationV1: null,
+      });
+      await persistRemote(nextRoom, {}, {
+        onboardingShown: false,
+        problemInterview: emptyProblemInterviewState(nowIso),
+        lastUserDraftText: "",
+        promptTimeline: [],
+        singleChatOrchestrationV1: null,
+      });
     } finally {
       setResetConversationBusy(false);
     }
