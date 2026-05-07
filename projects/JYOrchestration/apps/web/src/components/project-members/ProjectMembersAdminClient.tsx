@@ -17,7 +17,12 @@ import {
   type WorkspaceAiEnginePreferenceKey,
 } from "@/lib/workspace-ai/workspaceAiEnginePreference";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
-import { allCatalogMemberIds, WORKSPACE_SCREEN_KEYS, WORKSPACE_SCREEN_LABEL, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
+import {
+  allCatalogMemberIds,
+  WORKSPACE_AI_AGENT_PROCEDURE_TABLE_ROWS,
+  WORKSPACE_SCREEN_LABEL,
+  type WorkspaceScreenKey,
+} from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import { WorkspaceAiMemberDetailModal, WorkspaceAiPersonaPromptModal } from "@/components/project-members/WorkspaceAiMemberPersonaDialogs";
 import { MEDIA_QUERY } from "@/components/ui/breakpoints";
@@ -269,6 +274,35 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
         : prev
     );
   }, []);
+
+  const toggleCatalogOnPlanningGroup = useCallback(
+    (catalogKey: WorkspaceAiMemberId, screenKeys: readonly WorkspaceScreenKey[], checked: boolean) => {
+      setAiDirty(true);
+      setAiDraft((prev) =>
+        prev
+          ? prev.map((r) => {
+              if (r.catalogKey !== catalogKey) return r;
+              let nextKeys = [...r.screenKeys];
+              const nextAuto = { ...r.screenAutoRun } as Partial<Record<WorkspaceScreenKey, boolean>>;
+              if (checked) {
+                for (const sk of screenKeys) {
+                  if (!nextKeys.includes(sk)) nextKeys.push(sk);
+                  nextAuto[sk] = true;
+                }
+              } else {
+                const drop = new Set(screenKeys);
+                nextKeys = nextKeys.filter((k) => !drop.has(k));
+                for (const sk of screenKeys) {
+                  delete nextAuto[sk];
+                }
+              }
+              return { ...r, screenKeys: nextKeys, screenAutoRun: nextAuto };
+            })
+          : prev
+      );
+    },
+    []
+  );
 
   const toggleScreenAutoRun = useCallback((catalogKey: WorkspaceAiMemberId, screenKey: WorkspaceScreenKey, autoRun: boolean) => {
     setAiDirty(true);
@@ -835,65 +869,143 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                     </tr>
                   </thead>
                   <tbody>
-                    {WORKSPACE_SCREEN_KEYS.map((screenKey) => {
+                    {WORKSPACE_AI_AGENT_PROCEDURE_TABLE_ROWS.map((procedureRow) => {
+                      if (procedureRow.type === "group") {
+                        const keys = procedureRow.screenKeys;
+                        return (
+                          <tr key={procedureRow.rowKey} style={{ borderTop: "1px solid #f1f5f9" }}>
+                            <td
+                              style={{
+                                padding: "8px 10px",
+                                fontWeight: 700,
+                                color: "#334155",
+                                whiteSpace: "nowrap",
+                                position: "sticky",
+                                left: 0,
+                                background: "#fff",
+                                zIndex: 1,
+                              }}
+                            >
+                              {procedureRow.label}
+                            </td>
+                            {uiAiCatalog.map((uiRow) => {
+                              const memberIds = uiRow.memberIds;
+                              const present = keys.map((sk) =>
+                                memberIds.some((id) => aiDraft.find((r) => r.catalogKey === id)?.screenKeys.includes(sk))
+                              );
+                              const all = present.length > 0 && present.every(Boolean);
+                              const some = present.some(Boolean);
+                              const disabled = !canAdminWorkspaceAi || !isWorkspaceAiMemberEnabled(uiRow.uiId);
+                              const cb = isNarrow ? 20 : 16;
+                              const labelStyle: CSSProperties = {
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 4,
+                                cursor: disabled ? "not-allowed" : "pointer",
+                                fontSize: isNarrow ? 12 : 11,
+                                fontWeight: 600,
+                                color: "#334155",
+                                userSelect: "none",
+                              };
+                              return (
+                                <td
+                                  key={uiRow.uiId}
+                                  style={{ padding: isNarrow ? "6px 4px" : "6px 4px", textAlign: "center", verticalAlign: "middle" }}
+                                >
+                                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                                    <label
+                                      title="아이디어 구체화·액터/서비스 흐름·기능 정리 화면에 동시에 참여합니다."
+                                      style={labelStyle}
+                                    >
+                                      <input
+                                        ref={(el) => {
+                                          if (el) el.indeterminate = some && !all;
+                                        }}
+                                        type="checkbox"
+                                        checked={all}
+                                        disabled={disabled}
+                                        onChange={(e) => {
+                                          toggleCatalogOnPlanningGroup(uiRow.uiId, keys, e.target.checked);
+                                        }}
+                                        style={{
+                                          width: cb,
+                                          height: cb,
+                                          accentColor: "#0d9488",
+                                          cursor: disabled ? "not-allowed" : "pointer",
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      }
+                      const screenKey = procedureRow.screenKey;
                       const screenLabel = WORKSPACE_SCREEN_LABEL[screenKey];
-                      if (screenLabel === "작업 메모") return null;
                       return (
                         <tr key={screenKey} style={{ borderTop: "1px solid #f1f5f9" }}>
-                        <td
-                          style={{
-                            padding: "8px 10px",
-                            fontWeight: 700,
-                            color: "#334155",
-                            whiteSpace: "nowrap",
-                            position: "sticky",
-                            left: 0,
-                            background: "#fff",
-                            zIndex: 1,
-                          }}
-                        >
-                          {screenLabel}
-                        </td>
-                        {uiAiCatalog.map((uiRow) => {
-                          const memberIds = uiRow.memberIds;
-                          const checked = memberIds.some((id) => aiDraft.find((r) => r.catalogKey === id)?.screenKeys.includes(screenKey));
-                          const disabled = !canAdminWorkspaceAi || !isWorkspaceAiMemberEnabled(uiRow.uiId);
-                          const cb = isNarrow ? 20 : 16;
-                          const labelStyle: CSSProperties = {
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            cursor: disabled ? "not-allowed" : "pointer",
-                            fontSize: isNarrow ? 12 : 11,
-                            fontWeight: 600,
-                            color: "#334155",
-                            userSelect: "none",
-                          };
-                          return (
-                            <td key={uiRow.uiId} style={{ padding: isNarrow ? "6px 4px" : "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                                <label title="참여 시 자동실행을 포함합니다." style={labelStyle}>
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={disabled}
-                                    onChange={(e) => {
-                                      toggleCatalogOnScreen(uiRow.uiId, screenKey, e.target.checked);
-                                    }}
-                                    style={{
-                                      width: cb,
-                                      height: cb,
-                                      accentColor: "#0d9488",
-                                      cursor: disabled ? "not-allowed" : "pointer",
-                                      flexShrink: 0,
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
+                          <td
+                            style={{
+                              padding: "8px 10px",
+                              fontWeight: 700,
+                              color: "#334155",
+                              whiteSpace: "nowrap",
+                              position: "sticky",
+                              left: 0,
+                              background: "#fff",
+                              zIndex: 1,
+                            }}
+                          >
+                            {screenLabel}
+                          </td>
+                          {uiAiCatalog.map((uiRow) => {
+                            const memberIds = uiRow.memberIds;
+                            const checked = memberIds.some((id) =>
+                              aiDraft.find((r) => r.catalogKey === id)?.screenKeys.includes(screenKey)
+                            );
+                            const disabled = !canAdminWorkspaceAi || !isWorkspaceAiMemberEnabled(uiRow.uiId);
+                            const cb = isNarrow ? 20 : 16;
+                            const labelStyle: CSSProperties = {
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              cursor: disabled ? "not-allowed" : "pointer",
+                              fontSize: isNarrow ? 12 : 11,
+                              fontWeight: 600,
+                              color: "#334155",
+                              userSelect: "none",
+                            };
+                            return (
+                              <td
+                                key={uiRow.uiId}
+                                style={{ padding: isNarrow ? "6px 4px" : "6px 4px", textAlign: "center", verticalAlign: "middle" }}
+                              >
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                                  <label title="참여 시 자동실행을 포함합니다." style={labelStyle}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={disabled}
+                                      onChange={(e) => {
+                                        toggleCatalogOnScreen(uiRow.uiId, screenKey, e.target.checked);
+                                      }}
+                                      style={{
+                                        width: cb,
+                                        height: cb,
+                                        accentColor: "#0d9488",
+                                        cursor: disabled ? "not-allowed" : "pointer",
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
                     })}
                   </tbody>
