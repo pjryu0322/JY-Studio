@@ -13,11 +13,10 @@ export type WorkflowStepMeta = {
 export const workflowStepMeta: readonly WorkflowStepMeta[] = [
   {
     stepId: "requirements",
-    label: "아이디어 구체화",
+    // SingleChat 통합: 서비스 기획 진입점은 하나로 유지한다.
+    label: "서비스 기획",
     screenLabel: "공통-상단내비-워크플로우-요구사항",
   },
-  { stepId: "service_flow", label: "액터 및 서비스 흐름 정의", screenLabel: "공통-상단내비-워크플로우-서비스흐름" },
-  { stepId: "features", label: "기능 정리", screenLabel: "공통-상단내비-워크플로우-기능" },
   { stepId: "execution", label: "프로토타입 생성", screenLabel: "공통-상단내비-워크플로우-실행" },
   { stepId: "prototype_review", label: "프로토타입 검토", screenLabel: "공통-상단내비-워크플로우-프로토타입검토" },
 ] as const;
