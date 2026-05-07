@@ -138,6 +138,26 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     r.interviewSuggestionsSource === "none"
       ? { interviewSuggestionsSource: r.interviewSuggestionsSource }
       : {}),
+    ...(Array.isArray(r.suggestedDynamicSlots)
+      ? { suggestedDynamicSlots: r.suggestedDynamicSlots.map((x) => String(x ?? "").trim()).filter(Boolean) }
+      : {}),
+    ...(Array.isArray(r.acceptedDynamicSlots)
+      ? { acceptedDynamicSlots: r.acceptedDynamicSlots.map((x) => String(x ?? "").trim()).filter(Boolean) }
+      : {}),
+    ...(Array.isArray(r.rejectedDynamicSlots)
+      ? {
+          rejectedDynamicSlots: r.rejectedDynamicSlots
+            .map((x) => {
+              if (!x || typeof x !== "object") return null;
+              const o = x as Record<string, unknown>;
+              const slotKey = String(o.slotKey ?? "").trim();
+              const reason = String(o.reason ?? "").trim();
+              if (!slotKey || !reason) return null;
+              return { slotKey, reason };
+            })
+            .filter(Boolean) as Array<{ slotKey: string; reason: string }>,
+        }
+      : {}),
   };
 }
 
@@ -226,6 +246,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly shouldAskFollowUp?: boolean;
   readonly followUpReason?: string;
   readonly nextQuestionSlotKey?: string;
+  readonly suggestedDynamicSlots?: readonly string[];
+  readonly acceptedDynamicSlots?: readonly string[];
+  readonly rejectedDynamicSlots?: Array<{ slotKey: string; reason: string }>;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -266,6 +289,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(typeof params.shouldAskFollowUp === "boolean" ? { shouldAskFollowUp: params.shouldAskFollowUp } : {}),
     ...(params.followUpReason ? { followUpReason: params.followUpReason } : {}),
     ...(params.nextQuestionSlotKey ? { nextQuestionSlotKey: params.nextQuestionSlotKey } : {}),
+    ...(params.suggestedDynamicSlots?.length ? { suggestedDynamicSlots: [...params.suggestedDynamicSlots] } : {}),
+    ...(params.acceptedDynamicSlots?.length ? { acceptedDynamicSlots: [...params.acceptedDynamicSlots] } : {}),
+    ...(params.rejectedDynamicSlots?.length ? { rejectedDynamicSlots: [...params.rejectedDynamicSlots] } : {}),
   };
 }
 

@@ -104,6 +104,10 @@ export type RequirementsPromptTimelineEntry = {
   shouldAskFollowUp?: boolean;
   followUpReason?: string;
   nextQuestionSlotKey?: string;
+  /** Hybrid slot orchestration: 동적 슬롯 제안/채택/거절 기록 */
+  suggestedDynamicSlots?: readonly string[];
+  acceptedDynamicSlots?: readonly string[];
+  rejectedDynamicSlots?: Array<{ slotKey: string; reason: string }>;
 };
 
 export type RequirementsStateJson = {

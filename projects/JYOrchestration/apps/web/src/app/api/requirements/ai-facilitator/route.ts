@@ -30,14 +30,20 @@ import {
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
+import { SINGLE_CHAT_SERVICE_PLANNING_GROUP } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
   activeOrchestrationRolesFromAgents,
   plannerPreferredFromAgents,
+  runHybridSlotProposalBootstrapOpenAI,
   runSelectiveMultiAgentOrchestrationOpenAI,
   runSingleChatOrchestrationFallbackTurn,
 } from "@/lib/requirements/singleChatOrchestrationOpenAI";
+import {
+  extendOrchestrationStateWithDynamicSlots,
+  validateDynamicProposedSlots,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
 
 type Body = {
   projectId?: string;
@@ -461,6 +467,74 @@ export async function POST(request: NextRequest) {
 
     const plannerChosenOk = Boolean(orchPlanningCtx && plannerPreferredFromAgents(orchPlanningCtx.selectedAgents));
 
+    // Hybrid slots: on first bootstrap, run one LLM call to propose missing dynamic slots.
+    let hybridSuggestedKeys: string[] = [];
+    let hybridAcceptedKeys: string[] = [];
+    let hybridRejected: Array<{ slotKey: string; reason: string }> = [];
+    let orchBootstrapWithDynamic = orchInitialForBootstrap;
+    if (bootstrapInterview && orchBootstrapWithDynamic && orchPlanningCtx) {
+      const alreadyProposed = Array.isArray((orchBootstrapWithDynamic as any).slotProposalHistory) && (orchBootstrapWithDynamic as any).slotProposalHistory.length > 0;
+      if (!alreadyProposed) {
+        const baseDefs = buildDynamicServicePlanningSlotDefinitions({
+          projectName,
+          projectDescription,
+          projectType,
+          servicePlanningAgentCatalogKeys: servicePlanningCatalogKeys ?? [],
+          acceptedDynamicSlots: null,
+        });
+        const baseCatalogJson = JSON.stringify(
+          baseDefs.map((d) => ({ slotKey: d.slotKey, label: d.label, ownerAgent: d.ownerAgent, dependsOn: d.dependsOn ?? [] })),
+          null,
+          0
+        );
+        const propose = await runHybridSlotProposalBootstrapOpenAI({
+          projectName,
+          projectDescription,
+          projectType,
+          participatingAgentsPromptBlock: orchPlanningCtx.promptBlock,
+          baseSlotCatalogJson: baseCatalogJson,
+        });
+        if (propose.ok) {
+          const suggested = propose.suggestedSlots ?? [];
+          hybridSuggestedKeys = suggested.map((s) => String(s.slotKey ?? "").trim()).filter(Boolean);
+          const v = validateDynamicProposedSlots({
+            nowIso: propose.calledAt,
+            baseDefinitions: baseDefs,
+            existingDynamicSlots: (orchBootstrapWithDynamic as any).dynamicSlots ?? null,
+            suggestedSlots: suggested as any,
+          });
+          hybridAcceptedKeys = v.accepted.map((x) => x.slotKey);
+          hybridRejected = v.rejected.map((r) => ({ slotKey: r.slotKey, reason: r.reason }));
+
+          const dynMap: Record<string, any> = { ...(((orchBootstrapWithDynamic as any).dynamicSlots ?? {}) as Record<string, any>) };
+          for (const d of v.accepted) dynMap[d.slotKey] = d;
+          const prevRejected = Array.isArray((orchBootstrapWithDynamic as any).rejectedDynamicSlots)
+            ? ([...((orchBootstrapWithDynamic as any).rejectedDynamicSlots)] as any[])
+            : [];
+          const prevHist = Array.isArray((orchBootstrapWithDynamic as any).slotProposalHistory)
+            ? ([...((orchBootstrapWithDynamic as any).slotProposalHistory)] as any[])
+            : [];
+          const histEntry = {
+            proposedAt: propose.calledAt,
+            suggestedSlots: suggested,
+            acceptedSlotKeys: v.accepted.map((d) => d.slotKey),
+            rejected: v.rejected,
+          };
+          orchBootstrapWithDynamic = extendOrchestrationStateWithDynamicSlots({
+            base: {
+              ...(orchBootstrapWithDynamic as any),
+              dynamicSlots: dynMap,
+              rejectedDynamicSlots: [...prevRejected, ...v.rejected],
+              slotProposalHistory: [...prevHist, histEntry],
+            },
+            accepted: v.accepted,
+            nowIso: propose.calledAt,
+            stageGroup: (orchBootstrapWithDynamic as any).stageGroup ?? SINGLE_CHAT_SERVICE_PLANNING_GROUP,
+          });
+        }
+      }
+    }
+
     const bootSug =
       result.ok && Array.isArray(result.interviewSuggestions) && result.interviewSuggestions.length
         ? [...result.interviewSuggestions]
@@ -486,6 +560,9 @@ export async function POST(request: NextRequest) {
       interviewQuestion: replyTrim,
       ...(bootSug?.length ? { interviewSuggestions: bootSug } : {}),
       ...(bootstrapSugSource ? { interviewSuggestionsSource: bootstrapSugSource } : {}),
+      ...(hybridSuggestedKeys.length ? { suggestedDynamicSlots: hybridSuggestedKeys } : {}),
+      ...(hybridAcceptedKeys.length ? { acceptedDynamicSlots: hybridAcceptedKeys } : {}),
+      ...(hybridRejected.length ? { rejectedDynamicSlots: hybridRejected } : {}),
     });
 
     const facilitatorPromptTrace =
@@ -520,7 +597,7 @@ export async function POST(request: NextRequest) {
               provider: result.provider ?? "openai",
               calledAt: result.calledAt ?? new Date().toISOString(),
               promptTrace: bootstrapPromptTrace,
-              ...(orchInitialForBootstrap ? { singleChatOrchestrationV1: orchInitialForBootstrap } : {}),
+              ...(orchBootstrapWithDynamic ? { singleChatOrchestrationV1: orchBootstrapWithDynamic } : {}),
               ...(bootInterviewSug?.length ? { interviewSuggestions: bootInterviewSug } : {}),
               ...(result.ok && result.interviewAllowCustomInput === false ? { interviewAllowCustomInput: false } : {}),
             }

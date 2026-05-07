@@ -13,6 +13,10 @@ import { runSpecialistGroupTurnOpenAI } from "@/lib/requirements/singleChatOrche
 import { runPlannerMergeTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerMerge";
 import { validateDynamicProposedSlots } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { SingleChatDynamicSlotProposalHistoryV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
+import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
+import { safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
 
 export type SingleChatOrchestrationTurnMeta = Readonly<{
   routingDecision: string;
@@ -52,6 +56,107 @@ export function activeOrchestrationRolesFromAgents(agents: readonly SingleChatSe
 
 export function plannerPreferredFromAgents(agents: readonly SingleChatSelectedAgentWire[]): boolean {
   return [...agents].some((a) => String(a.aiOrchestrationRole ?? "").trim().toLowerCase() === "planner");
+}
+
+export async function runHybridSlotProposalBootstrapOpenAI(input: {
+  readonly projectName: string;
+  readonly projectDescription: string;
+  readonly projectType?: string | null;
+  readonly participatingAgentsPromptBlock: string;
+  readonly baseSlotCatalogJson: string;
+}): Promise<
+  Readonly<
+    | { ok: true; suggestedSlots: Array<{ slotKey: string; title: string; description: string; ownerAgent: string; reason?: string | null; priority?: "high" | "medium" | "low" | null; proposalConfidence?: number | null }>; promptText: string; model: string; provider: string; calledAt: string }
+    | { ok: false; code: string; message: string }
+  >
+> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  const model = resolveOpenAiModelFromEnv();
+  const calledAt = new Date().toISOString();
+  const agentInsert = input.participatingAgentsPromptBlock?.trim() ? `\n${input.participatingAgentsPromptBlock.trim()}\n` : "";
+
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}
+당신은 SingleChat의 "Hybrid Slot Orchestration" 슬롯 설계자입니다.
+역할: Stable Base Schema는 유지하고, 프로젝트 특성에 필요한 추가 슬롯만 제안합니다.
+
+규칙:
+- base 슬롯을 제거/수정/이름변경 제안 금지.
+- 완전 자유 생성 금지: slotKey는 반드시 "dyn_" prefix 사용.
+- 도메인/서비스 특성에 직접 연관된 슬롯만 0~6개 제안.
+- ownerAgent는 다음 중 하나: planner | analyst | architect | designer | reviewer | security
+- title <= 40자, description <= 140자.
+- reason은 한 줄.
+- priority: high|medium|low.
+
+출력(JSON 1개, 마크다운 금지):
+{
+  "suggestedSlots": [
+    {
+      "slotKey": "dyn_meetingApprovalFlow",
+      "title": "회의 승인 흐름",
+      "description": "회의록 승인/검수 프로세스",
+      "ownerAgent": "reviewer",
+      "reason": "승인/검수 요구가 핵심 리스크",
+      "priority": "high",
+      "proposalConfidence": 0.8
+    }
+  ]
+}`;
+
+  const user = `[프로젝트]
+name: ${input.projectName}
+type: ${String(input.projectType ?? "").trim() || "—"}
+description: ${input.projectDescription.trim().slice(0, 900)}
+
+[base slot catalog]
+${input.baseSlotCatalogJson.slice(0, 12000)}
+
+위 정보를 기반으로 suggestedSlots만 출력하라.`;
+
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.22,
+    responseFormatJsonObject: true,
+  });
+  if (!res.ok) return { ok: false, code: res.code, message: res.message.slice(0, 400) };
+  const text = res.text?.trim() ?? "";
+  const parsed = safeJsonParse(text) as Record<string, unknown> | null;
+  const raw = parsed && Array.isArray(parsed.suggestedSlots) ? (parsed.suggestedSlots as unknown[]) : [];
+  const suggestedSlots = raw
+    .map((x) => {
+      if (!x || typeof x !== "object") return null;
+      const r = x as Record<string, unknown>;
+      const slotKey = String(r.slotKey ?? "").trim();
+      const title = String(r.title ?? "").trim();
+      const description = String(r.description ?? "").trim();
+      const ownerAgent = String(r.ownerAgent ?? "").trim();
+      if (!slotKey || !title || !description || !ownerAgent) return null;
+      const priorityRaw = String(r.priority ?? "").trim().toLowerCase();
+      const priority =
+        priorityRaw === "high" || priorityRaw === "medium" || priorityRaw === "low" ? (priorityRaw as any) : null;
+      const proposalConfidence =
+        r.proposalConfidence !== null && r.proposalConfidence !== undefined && Number.isFinite(Number(r.proposalConfidence))
+          ? Math.min(1, Math.max(0, Number(r.proposalConfidence)))
+          : null;
+      const reason = typeof r.reason === "string" ? r.reason.slice(0, 200) : r.reason === null ? null : null;
+      return { slotKey, title, description, ownerAgent, reason, priority, proposalConfidence };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+  return {
+    ok: true,
+    suggestedSlots,
+    promptText: `[slot-proposal-bootstrap]\n[system]\n${system}\n\n[user]\n${user}\n\n[raw]\n${text}`,
+    model,
+    provider: "openai",
+    calledAt,
+  };
 }
 
 export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
