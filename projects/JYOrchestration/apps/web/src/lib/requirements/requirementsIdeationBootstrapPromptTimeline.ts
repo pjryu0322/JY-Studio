@@ -328,8 +328,9 @@ export function isIdeationBootstrapTimelineEntry(
 ): boolean {
   return Boolean(
     entry &&
-      ((entry.stage === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_STAGE &&
-        entry.action === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION) ||
+      // Drawer should show bootstrap + orchestration traces regardless of stage naming,
+      // since some server routes emit `stage: "requirements"` for bootstrap turns.
+      (entry.action === IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION ||
         entry.action === "requirementsChatOrchestration")
   );
 }
