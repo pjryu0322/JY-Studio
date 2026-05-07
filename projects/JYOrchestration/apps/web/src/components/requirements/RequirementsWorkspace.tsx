@@ -647,14 +647,24 @@ export function RequirementsWorkspace({
     return [...list].sort((a, b) => b.version - a.version)[0] ?? null;
   }, [deliverableAssetsFromProject]);
 
+  const workflowBannerEligible = useMemo(() => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) return false;
+    if (conversationStatus !== "loaded") return false;
+    if (!project) return false;
+    if (loadedConversationProjectId !== pid) return false;
+    return true;
+  }, [resolvedProjectId, conversationStatus, project, loadedConversationProjectId]);
+
   const workflowGuidanceBanner = useMemo(() => {
+    if (!workflowBannerEligible) return null;
     const fromUrl = initialWorkflowNotice.trim();
     if (fromUrl) return fromUrl;
     if (project && isRequirementsPendingWorkflow(project.workflowStatus)) {
       return REQUIREMENTS_ANALYSIS_INCOMPLETE_REDIRECT_MESSAGE_KR;
     }
     return null;
-  }, [initialWorkflowNotice, project]);
+  }, [workflowBannerEligible, initialWorkflowNotice, project]);
 
   const { persistStateJsonOnly, persistServiceFlow, persistRemote } = useRequirementsSpecWorkspacePersist({
     resolvedProjectId,
