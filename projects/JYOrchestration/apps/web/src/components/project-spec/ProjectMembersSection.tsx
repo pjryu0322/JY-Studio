@@ -6,6 +6,11 @@ import type { GitChangeRequestItem, TaskPromptItem } from "@/components/task/Tas
 import type { ProjectRole } from "@/lib/auth/roles";
 import type { AiMemberActionTypeId } from "@/lib/ai-member/aiMemberActionTypes";
 import {
+  mapInviteOrchestrationUiStageToDbStage,
+  orchestrationStageDbToUiSelectValue,
+  orchestrationStageUiSelectToDbForSave,
+  orchestrationStageUserFacingLabel,
+  ORCHESTRATION_STAGE_UI_SERVICE_PLANNING,
   parseAiMemberRole,
   resolveEffectiveReviewerModel,
   reviewerModelDisplayLabel,
@@ -100,13 +105,23 @@ const AI_ORCHESTRATION_ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "scm-manager", label: "scm-manager (PR/merge)" },
 ];
 
-const ORCHESTRATION_STAGE_OPTIONS: { value: string; label: string }[] = [
+/** 오케스트레이션 단계 UI — DB 값은 spec/service-flow/task·execution-review·scm-manager 유지 */
+const ORCHESTRATION_STAGE_UI_SELECT_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "(스테이지 없음)" },
+  { value: ORCHESTRATION_STAGE_UI_SERVICE_PLANNING, label: "서비스 기획" },
+  { value: "execution-review", label: orchestrationStageUserFacingLabel("execution-review") },
+  { value: "scm-manager", label: orchestrationStageUserFacingLabel("scm-manager") },
+];
+
+/** 역할 카드 · 고급 설정(details) 안에서만 spec/service-flow/task 등 내부 값을 직접 고를 때 */
+const ORCHESTRATION_STAGE_ADVANCED_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "(스테이지 없음)" },
+  { value: ORCHESTRATION_STAGE_UI_SERVICE_PLANNING, label: "서비스 기획 (통합)" },
   { value: "spec", label: "spec" },
-  { value: "service-flow", label: "service-flow (액터·서비스 흐름)" },
+  { value: "service-flow", label: "service-flow" },
   { value: "task", label: "task" },
-  { value: "execution-review", label: "execution-review (Cursor 실행 후)" },
-  { value: "scm-manager", label: "scm-manager (PR/merge)" },
+  { value: "execution-review", label: "execution-review" },
+  { value: "scm-manager", label: "scm-manager" },
 ];
 
 const ORCH_ROLE_LABELS: Record<string, { title: string; description: string }> = {
@@ -152,9 +167,8 @@ const EXECUTION_REVIEW_ROLES_UI = ["reviewer", "security-reviewer", "quality-rev
 const PLANNING_ROLES_UI = ["planner", "spec-reviewer", "task-reviewer"] as const;
 
 function stageLabel(v: string | null | undefined): string {
-  if (!v?.trim()) return "—";
-  const o = ORCHESTRATION_STAGE_OPTIONS.find((x) => x.value === v);
-  return o?.label ?? v;
+  if (!String(v ?? "").trim()) return "—";
+  return orchestrationStageUserFacingLabel(v);
 }
 
 const ACTIVE_ORCH_HINT = (
@@ -308,6 +322,7 @@ function AiOrchestrationControls({
   layout = "inline",
   canRemove = false,
   onRemove,
+  orchestrationStageSelectVariant = "public",
 }: {
   member: ProjectMemberUiRow;
   disabled: boolean;
@@ -317,18 +332,29 @@ function AiOrchestrationControls({
   layout?: "inline" | "card";
   canRemove?: boolean;
   onRemove?: () => void;
+  /** public: 서비스 기획·실행 검토 등 사용자 라벨만. advanced: 내부 stage 문자열 선택 가능 */
+  orchestrationStageSelectVariant?: "public" | "advanced";
 }) {
   const [role, setRole] = useState(member.aiOrchestrationRole ?? "");
-  const [stage, setStage] = useState(member.orchestrationStage ?? "");
+  const [stage, setStage] = useState("");
   const [model, setModel] = useState(member.aiModelOverride ?? "");
   const [enabled, setEnabled] = useState(member.orchestrationEnabled !== false);
   const [saving, setSaving] = useState(false);
   const [modelPanelOpen, setModelPanelOpen] = useState(false);
   const [customModelPicked, setCustomModelPicked] = useState(false);
 
+  const stageSelectOptions =
+    orchestrationStageSelectVariant === "advanced"
+      ? ORCHESTRATION_STAGE_ADVANCED_OPTIONS
+      : ORCHESTRATION_STAGE_UI_SELECT_OPTIONS;
+
   useEffect(() => {
     setRole(member.aiOrchestrationRole ?? "");
-    setStage(member.orchestrationStage ?? "");
+    setStage(
+      orchestrationStageSelectVariant === "advanced"
+        ? String(member.orchestrationStage ?? "").trim()
+        : orchestrationStageDbToUiSelectValue(member.orchestrationStage)
+    );
     setModel(member.aiModelOverride ?? "");
     setEnabled(member.orchestrationEnabled !== false);
     setCustomModelPicked(false);
@@ -338,6 +364,7 @@ function AiOrchestrationControls({
     member.orchestrationStage,
     member.aiModelOverride,
     member.orchestrationEnabled,
+    orchestrationStageSelectVariant,
   ]);
 
   const orchRole = parseAiMemberRole(role);
@@ -367,7 +394,7 @@ function AiOrchestrationControls({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           aiOrchestrationRole: role.trim() ? role : null,
-          orchestrationStage: stage.trim() ? stage : null,
+          orchestrationStage: orchestrationStageUiSelectToDbForSave(stage, member.orchestrationStage),
           aiModelOverride: trimModel ? trimModel : null,
           orchestrationEnabled: enabled,
         }),
@@ -613,7 +640,7 @@ function AiOrchestrationControls({
             style={{ fontSize: 12, padding: "6px 8px", borderRadius: 8, border: "1px solid #cbd5e1" }}
             aria-label="orchestration-stage"
           >
-            {ORCHESTRATION_STAGE_OPTIONS.map((o) => (
+            {stageSelectOptions.map((o) => (
               <option key={o.value || "none"} value={o.value}>
                 {o.label}
               </option>
@@ -678,7 +705,7 @@ function AiOrchestrationControls({
         style={{ fontSize: 12 }}
         aria-label="orchestration-stage"
       >
-        {ORCHESTRATION_STAGE_OPTIONS.map((o) => (
+        {stageSelectOptions.map((o) => (
           <option key={o.value || "none"} value={o.value}>
             {o.label}
           </option>
@@ -1178,7 +1205,15 @@ export function ProjectMembersSection({
               aiProvider: inviteAiProvider.trim() || null,
               aiAgentKey: inviteAiAgentKey.trim() || null,
               ...(inviteOrchRole.trim()
-                ? { aiOrchestrationRole: inviteOrchRole.trim(), orchestrationStage: inviteOrchStage.trim() || undefined }
+                ? {
+                    aiOrchestrationRole: inviteOrchRole.trim(),
+                    orchestrationStage: (() => {
+                      const ui = inviteOrchStage.trim();
+                      if (!ui) return undefined;
+                      const db = mapInviteOrchestrationUiStageToDbStage(ui, inviteOrchRole.trim());
+                      return db || undefined;
+                    })(),
+                  }
                 : {}),
               ...(inviteOrchModel.trim() ? { aiModelOverride: inviteOrchModel.trim() } : {}),
               orchestrationEnabled: inviteOrchEnabled,
@@ -1303,7 +1338,7 @@ export function ProjectMembersSection({
         : orchKey === "task-reviewer"
           ? "task"
           : "spec";
-    setInviteOrchStage(st);
+    setInviteOrchStage(orchestrationStageDbToUiSelectValue(st));
     const label = ORCH_ROLE_LABELS[orchKey]?.title ?? orchKey;
     setInviteDisplayName((prev) => (prev.trim() ? prev : label));
   }
@@ -1610,6 +1645,7 @@ export function ProjectMembersSection({
                     <div style={{ marginTop: 8 }}>
                       <AiOrchestrationControls
                         layout="card"
+                        orchestrationStageSelectVariant="advanced"
                         member={m}
                         disabled={busyMemberId === m.memberId}
                         onError={(msg) => setError(msg)}
@@ -1818,7 +1854,7 @@ export function ProjectMembersSection({
                     onChange={(e) => setInviteOrchStage(e.target.value)}
                     style={{ fontSize: 12 }}
                   >
-                    {ORCHESTRATION_STAGE_OPTIONS.filter((o) => o.value).map((o) => (
+                    {ORCHESTRATION_STAGE_UI_SELECT_OPTIONS.filter((o) => o.value).map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
                       </option>

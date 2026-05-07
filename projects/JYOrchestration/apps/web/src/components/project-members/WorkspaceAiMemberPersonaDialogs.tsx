@@ -11,7 +11,7 @@ import {
   getWorkspaceAiPersonaPromptParts,
   type WorkspaceAiPersonaPromptParts,
 } from "@/lib/ai-member/workspaceAiPersonaPromptCatalog";
-import { WORKSPACE_SCREEN_LABEL, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
+import { formatWorkspaceScreenKeysForDisplay, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
 
 const overlayStyle: CSSProperties = {
   position: "fixed",
@@ -121,8 +121,7 @@ export function WorkspaceAiMemberDetailModal(props: {
 
   if (!open) return null;
 
-  const screens =
-    screenKeys.length > 0 ? screenKeys.map((k) => WORKSPACE_SCREEN_LABEL[k]).filter(Boolean).join(" · ") : "—";
+  const screens = formatWorkspaceScreenKeysForDisplay(screenKeys);
   const promptParts = getWorkspaceAiPersonaPromptParts(catalog.id);
 
   return (

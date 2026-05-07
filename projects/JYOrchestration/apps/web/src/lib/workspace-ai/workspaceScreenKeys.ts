@@ -14,6 +14,43 @@ export const WORKSPACE_SCREEN_KEYS = [
 
 export type WorkspaceScreenKey = (typeof WORKSPACE_SCREEN_KEYS)[number];
 
+/** SingleChat 통합 흐름에 대응하는 사용자 절차 그룹(저장 시 화면 키 3개는 그대로 유지) */
+export const WORKSPACE_SERVICE_PLANNING_SCREEN_KEYS = [
+  "requirements_ideation",
+  "requirements_service_flow",
+  "feature_planning",
+] as const satisfies readonly WorkspaceScreenKey[];
+
+export function isWorkspaceServicePlanningScreenKey(key: WorkspaceScreenKey): boolean {
+  return (WORKSPACE_SERVICE_PLANNING_SCREEN_KEYS as readonly string[]).includes(key);
+}
+
+export type WorkspaceAiAgentProcedureRow =
+  | {
+      readonly type: "group";
+      readonly rowKey: "service_planning";
+      readonly label: string;
+      readonly screenKeys: readonly WorkspaceScreenKey[];
+    }
+  | { readonly type: "single"; readonly screenKey: WorkspaceScreenKey };
+
+const _procedureRows: WorkspaceAiAgentProcedureRow[] = [
+  {
+    type: "group",
+    rowKey: "service_planning",
+    label: "서비스 기획",
+    screenKeys: WORKSPACE_SERVICE_PLANNING_SCREEN_KEYS,
+  },
+];
+for (const screenKey of WORKSPACE_SCREEN_KEYS) {
+  if (screenKey === "work_note") continue;
+  if (isWorkspaceServicePlanningScreenKey(screenKey)) continue;
+  _procedureRows.push({ type: "single", screenKey });
+}
+
+/** AI Agent 설정 — 절차 별 참여 AI 테이블 행(내부 screenKey는 변경 없음) */
+export const WORKSPACE_AI_AGENT_PROCEDURE_TABLE_ROWS: readonly WorkspaceAiAgentProcedureRow[] = _procedureRows;
+
 export const WORKSPACE_SCREEN_LABEL: Record<WorkspaceScreenKey, string> = {
   requirements_ideation: "아이디어 구체화",
   requirements_service_flow: "액터 및 서비스 흐름 정의",
@@ -51,6 +88,29 @@ export function defaultScreenKeysForCatalogMember(catalogKey: WorkspaceAiMemberI
 
 export function allCatalogMemberIds(): readonly WorkspaceAiMemberId[] {
   return WORKSPACE_AI_MEMBER_KEYS;
+}
+
+/** 상세 모달 등: 서비스 기획 3화면을 한 라벨로 묶어 표시 */
+export function formatWorkspaceScreenKeysForDisplay(keys: readonly WorkspaceScreenKey[]): string {
+  if (!keys.length) return "—";
+  const set = new Set(keys);
+  const parts: string[] = [];
+  const hasAllPlanning = WORKSPACE_SERVICE_PLANNING_SCREEN_KEYS.every((k) => set.has(k));
+  if (hasAllPlanning) {
+    parts.push("서비스 기획");
+    for (const k of WORKSPACE_SERVICE_PLANNING_SCREEN_KEYS) set.delete(k);
+  } else {
+    for (const k of WORKSPACE_SERVICE_PLANNING_SCREEN_KEYS) {
+      if (set.has(k)) {
+        parts.push(WORKSPACE_SCREEN_LABEL[k]);
+        set.delete(k);
+      }
+    }
+  }
+  for (const k of WORKSPACE_SCREEN_KEYS) {
+    if (set.has(k)) parts.push(WORKSPACE_SCREEN_LABEL[k]);
+  }
+  return parts.length ? parts.join(" · ") : "—";
 }
 
 /** 레거시 1:1 기본 — 특정 화면에 매핑된 카탈로그 키(빌드 플래그 무관) */
