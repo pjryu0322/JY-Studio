@@ -534,6 +534,13 @@ export function RequirementsWorkspace({
     () => parseRequirementsStateJson(project?.requirementsStateJson),
     [project?.requirementsStateJson]
   );
+  const [promptTimelineUi, setPromptTimelineUi] = useState<RequirementsPromptTimelineEntry[] | null>(null);
+
+  useEffect(() => {
+    // Drive the prompt timeline drawer from a React state so it updates immediately
+    // when we append bootstrap/fallback traces (without waiting for project JSON refresh).
+    setPromptTimelineUi((persistedPromptState.promptTimeline ?? null) as RequirementsPromptTimelineEntry[] | null);
+  }, [persistedPromptState.promptTimeline]);
 
   const problemInterviewState = useMemo(
     () => persistedPromptState.problemInterview ?? null,
@@ -858,6 +865,7 @@ export function RequirementsWorkspace({
             ? { singleChatOrchestrationV1: params.singleChatOrchestrationV1 }
             : {}),
         });
+        if (params.promptTrace) setPromptTimelineUi(nextTimeline);
         try {
           await persistRemote(nextRoom, {}, {
             onboardingShown: true,
@@ -1104,6 +1112,7 @@ export function RequirementsWorkspace({
         promptTimeline: [],
         singleChatOrchestrationV1: null,
       });
+      setPromptTimelineUi([]);
       await persistRemote(nextRoom, {}, {
         onboardingShown: false,
         problemInterview: emptyProblemInterviewState(nowIso),
@@ -1803,7 +1812,7 @@ export function RequirementsWorkspace({
           lastPromptView={persistedPromptState.lastPromptView ?? null}
           lastPromptText={persistedPromptState.lastPromptText}
           lastPromptGeneratedAt={persistedPromptState.lastPromptGeneratedAt}
-          promptTimeline={persistedPromptState.promptTimeline ?? null}
+          promptTimeline={promptTimelineUi ?? null}
           ideationConversationForPromptExport={conversationStatus === "loaded" ? ideationConversationOnly : null}
           exportBaseName={project?.name?.trim() ?? ""}
           summaryModalOpen={summaryModalOpen}
