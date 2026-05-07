@@ -1,16 +1,16 @@
-import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
-import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
-import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
   isPlannerStableEnough,
   mergeOrchestrationSlotPatches,
-  plannerSlotKeys,
   slotBucketsByStatus,
   type SlotPatchInput,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { SingleChatSelectedAgentWire } from "@/lib/requirements/singleChatAgentContext";
+import { DESIGN_OWNERS, FLOW_OWNERS } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
+import { runPlannerRouteTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerRoute";
+import { runSpecialistGroupTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.specialist";
+import { runPlannerMergeTurnOpenAI } from "@/lib/requirements/singleChatOrchestrationOpenAI.plannerMerge";
 
 export type SingleChatOrchestrationTurnMeta = Readonly<{
   routingDecision: string;
@@ -50,400 +50,6 @@ export function activeOrchestrationRolesFromAgents(agents: readonly SingleChatSe
 
 export function plannerPreferredFromAgents(agents: readonly SingleChatSelectedAgentWire[]): boolean {
   return [...agents].some((a) => String(a.aiOrchestrationRole ?? "").trim().toLowerCase() === "planner");
-}
-
-function filterDelegatesForActiveRoles(delegated: readonly string[], active: Set<string>): string[] {
-  return delegated
-    .map((d) => String(d ?? "").trim().toLowerCase())
-    .filter((d) => d && d !== "planner" && active.has(d));
-}
-
-function safeJsonParse(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function parseUpdatedSlotsRows(
-  raw: unknown,
-  validKeys: Set<string>,
-  allowedOwners: Set<string> | null,
-  definitions: readonly SingleChatOrchestrationSlotDefinition[]
-): SlotPatchInput[] {
-  if (!Array.isArray(raw)) return [];
-  const defOwner = new Map(definitions.map((d) => [d.slotKey, d.ownerAgent]));
-  const out: SlotPatchInput[] = [];
-  for (const row of raw) {
-    if (!row || typeof row !== "object") continue;
-    const r = row as Record<string, unknown>;
-    const slotKey = String(r.slotKey ?? "").trim();
-    if (!slotKey || !validKeys.has(slotKey)) continue;
-    const canonical = defOwner.get(slotKey) ?? "";
-    if (allowedOwners && !allowedOwners.has(canonical)) continue;
-    const ownerRaw = String(r.ownerAgent ?? "").trim().toLowerCase();
-    if (ownerRaw && ownerRaw !== canonical && canonical) continue;
-    out.push({
-      slotKey,
-      status: String(r.status ?? ""),
-      value: r.value === null || r.value === undefined ? null : String(r.value).slice(0, 4000),
-      confidence: r.confidence === null || r.confidence === undefined ? null : Number(r.confidence),
-      ownerAgent: canonical || undefined,
-    });
-  }
-  return out;
-}
-
-const FLOW_OWNERS = new Set(["service-designer", "domain-expert"]);
-const DESIGN_OWNERS = new Set(["spec-reviewer", "task-reviewer"]);
-
-/** 1단계: 라우팅 + planner 슬롯만 갱신(JSON). 사용자 메시지 없음. */
-async function runPlannerRouteTurnOpenAI(input: {
-  readonly projectName: string;
-  readonly projectDescription: string;
-  readonly projectType?: string | null;
-  readonly userMessage: string;
-  readonly dialogueExcerpt: string;
-  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
-  readonly baseState: RequirementsSingleChatOrchestrationStateV1;
-  readonly participatingAgentsPromptBlock: string;
-  readonly activeRoles: Set<string>;
-  readonly mentionTargetsSummary?: string;
-  readonly senderSummary?: string;
-  readonly priorScreenHandoff?: string;
-}): Promise<
-  | Readonly<{
-      ok: true;
-      routingDecision: string;
-      delegatedAgents: string[];
-      matchedSlots: string[];
-      patches: SlotPatchInput[];
-      promptText: string;
-      model: string;
-    }>
-  | Readonly<{ ok: false; code: string; message: string }>
-> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
-
-  const model = resolveOpenAiModelFromEnv();
-  const plannerKeys = new Set(plannerSlotKeys(input.definitions));
-  const allKeys = new Set(input.definitions.map((d) => d.slotKey));
-  const excerpt = input.dialogueExcerpt.trim().slice(0, 14_000);
-  const catalogJson = JSON.stringify(
-    input.definitions.map((d) => ({
-      slotKey: d.slotKey,
-      label: d.label,
-      ownerAgent: d.ownerAgent,
-      dependsOn: d.dependsOn ?? [],
-    })),
-    null,
-    0
-  ).slice(0, 20_000);
-
-  const slotsJson = JSON.stringify(input.baseState.slots, null, 0).slice(0, 20_000);
-  const rolesLine = [...input.activeRoles].join(", ");
-
-  const agentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
-    ? `\n${(input.participatingAgentsPromptBlock ?? "").trim()}\n`
-    : "";
-
-  const mentionBlock = (input.mentionTargetsSummary ?? "").trim()
-    ? `\n[질문 대상 멤버]\n${(input.mentionTargetsSummary ?? "").trim()}`
-    : "";
-  const senderBlock = (input.senderSummary ?? "").trim() ? `\n[발신]\n${(input.senderSummary ?? "").trim()}` : "";
-  const handoffBlock = (input.priorScreenHandoff ?? "").trim()
-    ? `\n[이전 화면 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 3000)}`
-    : "";
-
-  const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}
-당신은 SingleChat 내부 **planner 라우터**입니다. 사용자에게 직접 말하지 않습니다. JSON만 출력.
-
-역할:
-1) 사용자 발화를 분석해 planner 소유 슬롯만 갱신(updatedSlots의 owner는 planner만).
-2) 액터·흐름·시나리오가 핵심이면 delegatedAgents에 "service-designer" 또는 "domain-expert"를 넣습니다(활성 역할만).
-3) 기능·우선순위·화면·프로토 범위가 핵심이면 "spec-reviewer" 또는 "task-reviewer"를 넣습니다(활성만).
-4) planner 슬롯만 다루면 delegatedAgents는 빈 배열 [].
-5) 복합이면 필요한 역할만 나열. 절대 불필요한 역할을 넣지 마세요.
-6) "planner" 문자열은 delegatedAgents에 넣지 마세요.
-
-출력 JSON 스키마:
-{
-  "routingDecision": "A~E 코드와 한국어 한 줄",
-  "matchedSlots": ["slotKey"],
-  "delegatedAgents": ["service-designer", ...],
-  "updatedSlots": [
-    { "slotKey": "...", "status": "empty|partial|candidate|confirmed|stale", "value": "...", "confidence": 0.0, "ownerAgent": "planner" }
-  ]
-}`;
-
-  const user = `[프로젝트] ${input.projectName.trim()} / ${input.projectDescription.trim().slice(0, 600)}
-유형: ${String(input.projectType ?? "").trim() || "—"}${handoffBlock}
-[활성 역할] ${rolesLine}
-[슬롯 정의] ${catalogJson}
-[현재 슬롯] ${slotsJson}
-[대화 발췌] ${excerpt || "—"}
-[사용자 발화] ${input.userMessage.trim()}${mentionBlock}${senderBlock}`;
-
-  const res = await postOpenAiChatCompletion({
-    apiKey,
-    model,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    temperature: 0.22,
-    responseFormatJsonObject: true,
-  });
-
-  if (!res.ok) return { ok: false, code: res.code, message: res.message.slice(0, 400) };
-  const text = res.text?.trim() ?? "";
-  if (!text) return { ok: false, code: "EMPTY", message: "planner-route 응답 비어 있음" };
-
-  const parsed = safeJsonParse(text) as Record<string, unknown> | null;
-  if (!parsed) return { ok: false, code: "PARSE", message: "planner-route JSON 실패" };
-
-  const routingDecision = String(parsed.routingDecision ?? "").trim().slice(0, 500) || "routing_unknown";
-  const matchedSlots = Array.isArray(parsed.matchedSlots)
-    ? parsed.matchedSlots.map((x) => String(x ?? "").trim()).filter(Boolean)
-    : [];
-
-  let delegated = Array.isArray(parsed.delegatedAgents)
-    ? parsed.delegatedAgents.map((x) => String(x ?? "").trim().toLowerCase()).filter(Boolean)
-    : [];
-  delegated = filterDelegatesForActiveRoles(delegated, input.activeRoles);
-
-  const rawSlots = parseUpdatedSlotsRows(parsed.updatedSlots, allKeys, new Set(["planner"]), input.definitions);
-  const patches = rawSlots.filter((p) => plannerKeys.has(p.slotKey));
-
-  const promptText = `[planner-route]\n[system]\n${system}\n\n[user]\n${user}`;
-
-  return {
-    ok: true,
-    routingDecision,
-    delegatedAgents: delegated,
-    matchedSlots,
-    patches,
-    promptText,
-    model,
-  };
-}
-
-async function runSpecialistGroupTurnOpenAI(input: {
-  readonly groupLabel: "flow-analyst" | "feature-designer";
-  readonly projectName: string;
-  readonly projectDescription: string;
-  readonly userMessage: string;
-  readonly dialogueExcerpt: string;
-  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
-  readonly state: RequirementsSingleChatOrchestrationStateV1;
-  readonly participatingAgentsPromptBlock: string;
-  readonly activeRoles: Set<string>;
-  readonly allowedOwners: Set<string>;
-}): Promise<
-  Readonly<{
-    ok: boolean;
-    patches: SlotPatchInput[];
-    promptText: string;
-    executedRoles: string[];
-  }>
-> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    return { ok: false, patches: [], promptText: "[specialist:skip_no_key]", executedRoles: [] };
-  }
-
-  const model = resolveOpenAiModelFromEnv();
-  const allKeys = new Set(input.definitions.map((d) => d.slotKey));
-  const targetDefs = input.definitions.filter((d) => input.allowedOwners.has(d.ownerAgent));
-  if (!targetDefs.length) {
-    return { ok: true, patches: [], promptText: "[specialist:skip_no_defs]", executedRoles: [] };
-  }
-
-  const slotsJson = JSON.stringify(input.state.slots, null, 0).slice(0, 18_000);
-  const targetCatalog = JSON.stringify(
-    targetDefs.map((d) => ({ slotKey: d.slotKey, label: d.label, ownerAgent: d.ownerAgent, dependsOn: d.dependsOn ?? [] })),
-    null,
-    0
-  );
-
-  const persona =
-    input.groupLabel === "flow-analyst"
-      ? "service-designer 및 domain-expert — 액터·흐름·예외·시나리오 슬롯만 다룹니다."
-      : "spec-reviewer 및 task-reviewer — 기능·우선순위·화면·프로토 범위 슬롯만 다룹니다.";
-
-  const system = `${workspaceAiMemberSystemPrefix("ideation")}
-당신은 SingleChat 내부 **${persona}**
-사용자에게 직접 말하지 않습니다. JSON만 출력.
-규칙:
-- 오직 위 목록의 슬롯만 updatedSlots에 포함.
-- status는 반드시 "candidate" (planner 확정 전). 값·근거를 value에 한국어로 짧게.
-- planner 슬롯은 수정 금지.
-
-출력: { "updatedSlots": [ { "slotKey", "status": "candidate", "value", "confidence", "ownerAgent" } ] }`;
-
-  const user = `[프로젝트] ${input.projectName.trim()}
-[대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
-[사용자] ${input.userMessage.trim()}
-[대상 슬롯] ${targetCatalog}
-[현재 상태] ${slotsJson}`;
-
-  const res = await postOpenAiChatCompletion({
-    apiKey,
-    model,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    temperature: 0.25,
-    responseFormatJsonObject: true,
-  });
-
-  if (!res.ok) {
-    return {
-      ok: false,
-      patches: [],
-      promptText: `[specialist:${input.groupLabel}:fail:${res.code}]`,
-      executedRoles: [],
-    };
-  }
-
-  const parsed = safeJsonParse(res.text ?? "") as Record<string, unknown> | null;
-  const rawPatches = parseUpdatedSlotsRows(parsed?.updatedSlots, allKeys, input.allowedOwners, input.definitions);
-  const patches: SlotPatchInput[] = rawPatches.map((p) => ({
-    ...p,
-    status: "candidate",
-    derivedFrom: `specialist:${input.groupLabel}`,
-    staleReason: null,
-  }));
-
-  const defByKey = new Map(input.definitions.map((d) => [d.slotKey, d]));
-  const executedRoles = [
-    ...new Set(
-      patches
-        .map((p) => defByKey.get(p.slotKey)?.ownerAgent ?? "")
-        .filter((o) => o && input.activeRoles.has(o) && input.allowedOwners.has(o))
-    ),
-  ];
-
-  return {
-    ok: true,
-    patches,
-    promptText: `[specialist:${input.groupLabel}]\n[system]\n${system}\n\n[user]\n${user}`,
-    executedRoles,
-  };
-}
-
-async function runPlannerMergeTurnOpenAI(input: {
-  readonly projectName: string;
-  readonly projectDescription: string;
-  readonly userMessage: string;
-  readonly dialogueExcerpt: string;
-  readonly state: RequirementsSingleChatOrchestrationStateV1;
-  readonly specialistDigest: string;
-  readonly plannerStable: boolean;
-  readonly participatingAgentsPromptBlock: string;
-  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
-}): Promise<
-  | Readonly<{ ok: true; assistantMessage: string; patches: SlotPatchInput[]; promptText: string; model: string }>
-  | Readonly<{ ok: false; code: string; message: string }>
-> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return { ok: false, code: "NO_KEY", message: "NO_KEY" };
-
-  const model = resolveOpenAiModelFromEnv();
-  const allKeys = new Set(input.definitions.map((d) => d.slotKey));
-  const slotsJson = JSON.stringify(input.state.slots, null, 0).slice(0, 18_000);
-
-  const agentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
-    ? `\n${input.participatingAgentsPromptBlock.trim()}\n`
-    : "";
-
-  const stableLine = input.plannerStable
-    ? "planner 슬롯이 충분히 안정화됨 → 후보(candidate) 슬롯 중 일부를 confirmed로 올릴 수 있음(신중히)."
-    : "planner 미안정 → 후보 슬롯은 confirmed 금지. planner 슬롯만 partial/confirmed 조정 가능.";
-
-  const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}
-당신은 **planner**입니다. 사용자에게 보이는 **단일 한국어 응답** assistantMessage 한 개를 만듭니다.
-내부 분석가/설계자의 후보는 사용자에게 노출하지 말고 자연스럽게 통합하세요. "여러 AI" 언급 금지.
-확인 질문은 원칙적으로 1개만.
-
-${stableLine}
-
-추가 JSON 필드:
-- plannerSlotAdjustments: planner 소유 슬롯만 { slotKey, status, value?, confidence? }
-- derivedPromotions: (planner 안정 시만) 비-planner 슬롯을 confirmed로 승격할 slotKey 배열
-
-출력 JSON:
-{
-  "assistantMessage": "...",
-  "plannerSlotAdjustments": [...],
-  "derivedPromotions": ["slotKey"]
-}`;
-
-  const user = `[프로젝트] ${input.projectName}
-[사용자] ${input.userMessage.trim()}
-[발췌] ${input.dialogueExcerpt.trim().slice(0, 6000)}
-[전문가 요약(내부)] ${input.specialistDigest.slice(0, 4000) || "(없음)"}
-[슬롯 스냅샷] ${slotsJson}`;
-
-  const res = await postOpenAiChatCompletion({
-    apiKey,
-    model,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-    temperature: 0.32,
-    responseFormatJsonObject: true,
-  });
-
-  if (!res.ok) return { ok: false, code: res.code, message: res.message.slice(0, 400) };
-  const parsed = safeJsonParse(res.text ?? "") as Record<string, unknown> | null;
-  if (!parsed) return { ok: false, code: "PARSE", message: "merge parse" };
-
-  const assistantMessage = String(parsed.assistantMessage ?? "").trim();
-  if (!assistantMessage) return { ok: false, code: "SCHEMA", message: "assistantMessage 없음" };
-
-  const patches: SlotPatchInput[] = [];
-  const plannerAdj = Array.isArray(parsed.plannerSlotAdjustments) ? parsed.plannerSlotAdjustments : [];
-  for (const row of plannerAdj) {
-    if (!row || typeof row !== "object") continue;
-    const r = row as Record<string, unknown>;
-    const slotKey = String(r.slotKey ?? "").trim();
-    if (!allKeys.has(slotKey)) continue;
-    const def = input.definitions.find((d) => d.slotKey === slotKey);
-    if (!def || def.ownerAgent !== "planner") continue;
-    patches.push({
-      slotKey,
-      status: String(r.status ?? "partial"),
-      value: r.value === undefined ? undefined : r.value === null ? null : String(r.value).slice(0, 4000),
-      confidence: r.confidence === undefined ? undefined : Number(r.confidence),
-      ownerAgent: "planner",
-      derivedFrom: null,
-    });
-  }
-
-  const promotions = Array.isArray(parsed.derivedPromotions) ? parsed.derivedPromotions : [];
-  if (input.plannerStable) {
-    for (const x of promotions) {
-      const slotKey = String(x ?? "").trim();
-      if (!allKeys.has(slotKey)) continue;
-      const def = input.definitions.find((d) => d.slotKey === slotKey);
-      if (!def || def.ownerAgent === "planner") continue;
-      patches.push({
-        slotKey,
-        status: "confirmed",
-        derivedFrom: null,
-        staleReason: null,
-      });
-    }
-  }
-
-  const promptText = `[planner-merge]\n[system]\n${system}\n\n[user]\n${user}`;
-
-  return { ok: true, assistantMessage, patches, promptText, model };
 }
 
 export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
@@ -498,7 +104,6 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       dialogueExcerpt: input.dialogueExcerpt,
       definitions: input.definitions,
       state,
-      participatingAgentsPromptBlock: input.participatingAgentsPromptBlock,
       activeRoles: input.activeRoles,
       allowedOwners: FLOW_OWNERS,
     });
@@ -523,7 +128,6 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       dialogueExcerpt: input.dialogueExcerpt,
       definitions: input.definitions,
       state,
-      participatingAgentsPromptBlock: input.participatingAgentsPromptBlock,
       activeRoles: input.activeRoles,
       allowedOwners: DESIGN_OWNERS,
     });
@@ -681,7 +285,9 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
     propagateStaleFromPlanner: true,
   });
 
-  const delegatedList = filterDelegatesForActiveRoles([...delegatedIntent], input.activeRoles);
+  const delegatedList = [...delegatedIntent]
+    .map((d) => String(d ?? "").trim().toLowerCase())
+    .filter((d) => d && d !== "planner" && input.activeRoles.has(d));
 
   const routingDecision =
     patches.length === 0
