@@ -6,20 +6,13 @@ import { normalizeRequirementsMessageText } from "@/lib/requirements/requirement
 import { formatTargetNamesForUi, getMessageTargets } from "@/lib/requirements/requirementsTargets";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import { IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
-import {
-  IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE,
-  IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE,
-} from "@/lib/requirements/ideationInterviewBootstrap";
+import { IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE } from "@/lib/requirements/ideationInterviewBootstrap";
 import {
   IDEATION_DELIVERABLE_RESULT_INTERNAL_TYPE,
   parseIdeationDeliverableChatPayload,
 } from "@/lib/requirements/ideationDeliverables";
-import {
-  PROBLEM_INTERVIEW_SLOTS,
-  problemInterviewSlotLabelKr,
-  type ProblemInterviewSlot,
-  type ProblemInterviewState,
-} from "@/lib/requirements/problemInterview";
+import type { ProblemInterviewState } from "@/lib/requirements/problemInterview";
+import { formatSingleChatReplyReferenceLine } from "@/lib/requirements/singleChatReplyReference";
 import { RequirementsChatHeaderRow } from "@/components/requirements/RequirementsChatHeaderRow";
 import { WorkspaceComposerFooter } from "@/components/workspace/WorkspaceComposerFooter";
 import { WorkspaceMessageList } from "@/components/workspace/WorkspaceMessageList";
@@ -84,6 +77,7 @@ export function RequirementsChatPanel({
   typingIndicator,
   ideationInterviewUi,
   onInsertComposerPrompt,
+  onInterviewSuggestionPick,
   onSetReplyTo,
   onOpenDeliverableDocument,
   onOpenDeliverableList,
@@ -99,6 +93,8 @@ export function RequirementsChatPanel({
   readonly typingIndicator?: boolean;
   readonly ideationInterviewUi?: WorkspaceIdeationInterviewProgressUi | null;
   readonly onInsertComposerPrompt?: (text: string) => void;
+  /** SingleChat 인터뷰 추천 칩 선택 */
+  readonly onInterviewSuggestionPick?: (label: string) => void;
   /** 답글 달기: replyTo messageId 설정 */
   readonly onSetReplyTo?: (messageId: string, preview: string) => void;
   readonly onOpenDeliverableDocument?: (assetId: string) => void;
@@ -241,7 +237,54 @@ export function RequirementsChatPanel({
     []
   );
 
+  const interviewSecondaryHoverBtn = useMemo(
+    () =>
+      ({
+        ...hoverActionBtn,
+        padding: "5px 8px",
+        fontSize: 11,
+        fontWeight: 600,
+        color: "#64748b",
+        boxShadow: "none",
+        opacity: 0.92,
+      }) satisfies CSSProperties,
+    [hoverActionBtn]
+  );
+
+  const headerActionBtn = useMemo(
+    () =>
+      ({
+        ...interviewSecondaryHoverBtn,
+        padding: "4px 8px",
+        fontSize: 11,
+        fontWeight: 700,
+        borderRadius: 999,
+        background: "rgba(255,255,255,0.75)",
+      }) satisfies CSSProperties,
+    [interviewSecondaryHoverBtn]
+  );
+
+  const interviewChipBtn = useMemo(
+    () =>
+      ({
+        border: "1px solid #e2e8f0",
+        background: "#f8fafc",
+        borderRadius: 999,
+        padding: "8px 12px",
+        fontSize: 12.5,
+        fontWeight: 700,
+        color: "#0f172a",
+        cursor: "pointer",
+        lineHeight: 1.25,
+        maxWidth: "100%",
+        textAlign: "left" as const,
+      }) satisfies CSSProperties,
+    []
+  );
+
   const interviewUi = ideationInterviewUi ?? null;
+  /** 아이디어 SingleChat 인터뷰 — 메시지 카드는 대화 위주, 디버그·질문하기 최소화 */
+  const interviewMode = Boolean(interviewUi);
   const membersUi = memberControls ?? null;
 
   const topChrome =
@@ -278,23 +321,31 @@ export function RequirementsChatPanel({
               (tg.length > 1 || tg.some((t) => t.id !== VIRTUAL_AI_PLANNER_ID));
             const replyToId = typeof m.replyTo === "string" && m.replyTo.trim() ? m.replyTo.trim() : null;
             const replied = replyToId ? messageById.get(replyToId) ?? null : null;
-            const replyPreview = replied ? quoteTextFor(replied.content) : "";
             const replies = repliesByParentId.get(m.id) ?? [];
             const timeStr = new Date(m.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 
+            const compactReplyLabel =
+              replyToId && replied
+                ? formatSingleChatReplyReferenceLine(replied)
+                : replyToId
+                  ? "↪ 메시지에 답글"
+                  : "";
             const replyContextLine =
-              replyToId ? (
-                <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 8 }} title={replyToId}>
-                  <span>↪ 답글</span>
-                  {replied ? (
-                    <span style={{ fontWeight: 700, color: t.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {" "}
-                      · {replied.speakerName ? `${replied.speakerName} · ` : ""}
-                      {replyPreview || replyToId}
-                    </span>
-                  ) : (
-                    <span style={{ fontWeight: 700, color: t.textMuted }}> · {replyToId}</span>
-                  )}
+              compactReplyLabel ? (
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: t.textMuted,
+                    marginBottom: 8,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={compactReplyLabel}
+                >
+                  {compactReplyLabel}
                 </div>
               ) : null;
 
@@ -310,6 +361,26 @@ export function RequirementsChatPanel({
                 </button>
               ) : null;
 
+            const headerActions =
+              canReply || true ? (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {canReply ? (
+                    <button
+                      type="button"
+                      onClick={() => onSetReplyTo?.(m.id, formatSingleChatReplyReferenceLine(m))}
+                      style={headerActionBtn}
+                      title="이 메시지에 답글"
+                    >
+                      답글
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={() => void copyToClipboard(normalizeRequirementsMessageText(m.content))} style={headerActionBtn} title="복사">
+                    복사
+                  </button>
+                  {repliesNavBtn}
+                </div>
+              ) : repliesNavBtn;
+
             if (mine) {
               const text = normalizeRequirementsMessageText(m.content);
               return (
@@ -322,7 +393,9 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ justifySelf: "end", maxWidth: "78%", width: "fit-content", minWidth: 0 }}
+                  style={{ justifySelf: "end", maxWidth: "78%", width: "fit-content", minWidth: 0, position: "relative" }}
+                  onMouseEnter={() => setHoveredId(m.id)}
+                  onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
                 >
                   <div style={workspaceStandardChatBubbleShell("user")}>
                     {stageBadge ? <StageBadgePill label={stageBadge} /> : null}
@@ -333,7 +406,7 @@ export function RequirementsChatPanel({
                         {showToMeta ? <span style={{ fontWeight: 600, color: t.textMuted }}> · To: {targetLine}</span> : null}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </span>
-                      {repliesNavBtn}
+                      {headerActions}
                     </div>
                     <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
                   </div>
@@ -354,7 +427,9 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0 }}
+                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0, position: "relative" }}
+                  onMouseEnter={() => setHoveredId(m.id)}
+                  onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
                 >
                   <div style={workspaceStandardChatBubbleShell("member")}>
                     {replyContextLine}
@@ -363,7 +438,7 @@ export function RequirementsChatPanel({
                         멤버 · {memberName}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </span>
-                      {repliesNavBtn}
+                      {headerActions}
                     </div>
                     <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
                   </div>
@@ -374,17 +449,10 @@ export function RequirementsChatPanel({
             if (m.role === "ai") {
               const text = normalizeRequirementsMessageText(m.content);
               const isErr = m.messageType === "FRIENDLY_ERROR";
-              const interviewLastSlotRaw = String(m.meta?.problemInterviewLastSlot ?? "").trim();
-              const interviewLastSlot: ProblemInterviewSlot | null =
-                interviewLastSlotRaw && (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(interviewLastSlotRaw)
-                  ? (interviewLastSlotRaw as ProblemInterviewSlot)
-                  : null;
               const isInterviewTurn =
                 m.speakerId === VIRTUAL_AI_PLANNER_ID &&
                 (m.meta?.internalType === IDEATION_PROBLEM_INTERVIEW_TURN_INTERNAL_TYPE ||
                   m.meta?.internalType === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE);
-              const isInterviewCompleteNotice =
-                m.speakerId === VIRTUAL_AI_PLANNER_ID && m.meta?.internalType === IDEATION_PROBLEM_INTERVIEW_COMPLETE_INTERNAL_TYPE;
               const deliverPayload =
                 !isErr &&
                 m.messageType === "NOTICE" &&
@@ -393,33 +461,17 @@ export function RequirementsChatPanel({
                   : null;
               const tone = isErr ? "error" : m.messageType === "NOTICE" ? "notice" : "default";
               const showHoverActions = m.messageType === "ANSWER" && !isErr;
-              const interviewPurposeBadge =
-                !deliverPayload && !isErr && (isInterviewTurn || isInterviewCompleteNotice) && interviewUi ? (
-                  <div
-                    style={{
-                      margin: "6px 0 0",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      borderRadius: 999,
-                      border: "1px solid rgba(226,232,240,0.95)",
-                      background: "rgba(255,255,255,0.92)",
-                      backdropFilter: "blur(6px)",
-                      padding: "4px 10px",
-                      fontSize: 11,
-                      fontWeight: 900,
-                      color: "#334155",
-                    }}
-                  >
-                    <span>
-                      {interviewLastSlot ? `${problemInterviewSlotLabelKr(interviewLastSlot)} 확인 중` : "인터뷰 진행 중"}
-                    </span>
-                    <span style={{ color: "#94a3b8" }}>|</span>
-                    <span>
-                      {interviewUi.covered}/{interviewUi.total}
-                    </span>
-                  </div>
-                ) : null;
+              const interviewSuggestionsRaw = m.meta?.interviewSuggestions;
+              const interviewSuggestions =
+                Array.isArray(interviewSuggestionsRaw) && interviewSuggestionsRaw.length
+                  ? interviewSuggestionsRaw.map((x) => String(x ?? "").trim()).filter(Boolean)
+                  : [];
+              const showInterviewChips =
+                Boolean(onInterviewSuggestionPick) &&
+                interviewSuggestions.length > 0 &&
+                !deliverPayload &&
+                !isErr &&
+                isInterviewTurn;
               const aiBody = deliverPayload ? (
                 <WorkspaceResultCard
                   payload={deliverPayload}
@@ -458,61 +510,34 @@ export function RequirementsChatPanel({
                     {stageBadge ? <StageBadgePill label={stageBadge} /> : null}
                     {replyContextLine}
                     <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
-                      <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId} trailing={repliesNavBtn}>
-                        AI · {aiSpeakerLine}
+                      <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId} trailing={headerActions}>
+                        {aiSpeakerLine}
                         <span style={{ fontWeight: 700, color: t.textMuted }}> · {timeStr}</span>
                       </WorkspaceAiHeaderWithAvatar>
                     </div>
-                    {interviewPurposeBadge}
-                    <div style={{ ...WORKSPACE_STANDARD_CHAT_BODY_STYLE, marginTop: interviewPurposeBadge ? 6 : 0 }}>{aiBody}</div>
-                    {showHoverActions && hoveredId === m.id ? (
+                    <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{aiBody}</div>
+                    {showInterviewChips ? (
                       <div
                         style={{
-                          position: "absolute",
-                          right: 8,
-                          top: 8,
+                          marginTop: 12,
                           display: "flex",
+                          flexWrap: "wrap",
                           gap: 8,
                           alignItems: "center",
-                          zIndex: 2,
+                          width: "100%",
                         }}
-                        aria-label="메시지 액션"
+                        aria-label="답변 힌트(선택 사항)"
                       >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!canQuote) return;
-                            const q = quoteTextFor(m.content);
-                            if (!q) return;
-                            onInsertComposerPrompt?.(`[인용: ${q}]\n`);
-                          }}
-                          style={hoverActionBtn}
-                          disabled={!canQuote}
-                          title="질문하기(인용 삽입)"
-                        >
-                          ↩ 질문하기
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!canReply) return;
-                            const q = quoteTextFor(m.content);
-                            onSetReplyTo?.(m.id, q);
-                          }}
-                          style={hoverActionBtn}
-                          disabled={!canReply}
-                          title="답글달기(스레드)"
-                        >
-                          💬 답글달기
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void copyToClipboard(text)}
-                          style={hoverActionBtn}
-                          title="복사"
-                        >
-                          📋 복사
-                        </button>
+                        {interviewSuggestions.map((label) => (
+                          <button
+                            key={`${m.id}-${label}`}
+                            type="button"
+                            onClick={() => onInterviewSuggestionPick?.(label)}
+                            style={interviewChipBtn}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
                     ) : null}
                   </div>
@@ -556,7 +581,7 @@ export function RequirementsChatPanel({
               <div style={aiCardShell("notice")}>
                 <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
                   <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId}>
-                    AI · {displayedWorkspaceAiTitle(screenAiMemberId)}
+                    {displayedWorkspaceAiTitle(screenAiMemberId)}
                     <span style={{ fontWeight: 700, color: t.textMuted }}>
                       {" "}
                       · {new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}

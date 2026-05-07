@@ -86,6 +86,24 @@ export type RequirementsPromptTimelineEntry = {
   confirmedSlots?: readonly string[];
   candidateSlots?: readonly string[];
   slotDependenciesChanged?: boolean;
+  /** 인터뷰 질문(한 문장) — 유도형 선택지와 함께 기록 */
+  interviewQuestion?: string;
+  /** 인터뷰 추천 선택지(참고용, 강제 아님) */
+  interviewSuggestions?: readonly string[];
+  /** 인터뷰 추천 칩: LLM 생성 여부(감사·디버그) */
+  interviewSuggestionsSource?: "llm" | "empty" | "none";
+  /** 인터뷰 분석 요청 시 사용자 답글 대상(선택) */
+  replyToMessageId?: string;
+  replyToSlotKey?: string;
+  replyTargetSpeakerId?: string;
+  /** SingleChat 인터뷰: 다음 질문 생성 판단(감사·디버그) */
+  previousQuestion?: string;
+  userAnswer?: string;
+  currentSlotKey?: string;
+  slotAdvanceDecision?: string;
+  shouldAskFollowUp?: boolean;
+  followUpReason?: string;
+  nextQuestionSlotKey?: string;
 };
 
 export type RequirementsStateJson = {

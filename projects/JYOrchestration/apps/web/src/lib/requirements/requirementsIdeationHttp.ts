@@ -3,6 +3,7 @@ export const REQUIREMENTS_IDEATION_HTTP = {
   AI_CONNECTION: "/api/requirements/ai-connection",
   AI_FACILITATOR: "/api/requirements/ai-facilitator",
   INTERVIEW_ANALYZE: "/api/requirements/interview-analyze",
+  INTERVIEW_BOOTSTRAP_SUGGESTIONS: "/api/requirements/interview-bootstrap-suggestions",
   DELIVERABLES_GENERATE: "/api/requirements/deliverables-generate",
 } as const;
 

@@ -8,8 +8,12 @@ export const BASE_URL = (process.env.TEST_BASE_URL ?? "http://127.0.0.1:3000").r
 export const SEED_OWNER_EMAIL = "owner@jyo.local";
 export const SEED_OWNER_PASSWORD = "JyoTest!123";
 export const SEED_EDITOR_EMAIL = "editor@jyo.local";
+/** 시드 스크립트에서 모든 테스트 사용자에 동일 비밀번호 부여 */
+export const SEED_EDITOR_PASSWORD = SEED_OWNER_PASSWORD;
 export const SEED_REVIEWER_EMAIL = "reviewer@jyo.local";
+export const SEED_REVIEWER_PASSWORD = SEED_OWNER_PASSWORD;
 export const SEED_VIEWER_EMAIL = "viewer@jyo.local";
+export const SEED_VIEWER_PASSWORD = SEED_OWNER_PASSWORD;
 export const SEED_PROJECT_NAME = "Web Meeting MVP";
 
 export function cookieHeaderFromResponse(res: Response): string {

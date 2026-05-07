@@ -6,6 +6,7 @@ import {
   getSeedProjectId,
   SEED_OWNER_EMAIL,
   SEED_OWNER_PASSWORD,
+  SEED_PROJECT_NAME,
 } from "./helpers";
 
 describe("spec workspace API", () => {
@@ -18,7 +19,8 @@ describe("spec workspace API", () => {
       cookie,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: `Workspace Source Test ${Date.now()}`,
+        // 시드 프로젝트 이름을 바꾸면 다른 API 테스트(PRJ-002 등)가 연쇄 실패함
+        name: SEED_PROJECT_NAME,
         description: "workspace saved description",
         projectType: "web-service",
         specCoreGoals: "workspace goal",
@@ -62,7 +64,9 @@ describe("spec workspace API", () => {
     expect(Array.isArray(wsJson.data?.prompts)).toBe(true);
     expect((wsJson.data?.prompts?.length ?? 0) > 0).toBe(true);
     const latestPrompt = wsJson.data?.prompts?.[0]?.promptText ?? "";
-    expect(latestPrompt).toContain("workspace goal");
+    // 저장된 스펙 워크스페이스 필드가 프롬프트에 반영되는지(클라이언트가 보낸 악성 문자열은 미사용)
+    expect(latestPrompt).toContain("workspace saved description");
+    expect(latestPrompt).toContain("step for spec workspace test");
     expect(latestPrompt).not.toContain("MALICIOUS_CLIENT_PROMPT_SHOULD_NOT_BE_USED");
     expect(latestPrompt).not.toContain("MALICIOUS_CLIENT_CONTENT_SHOULD_NOT_BE_USED");
   });

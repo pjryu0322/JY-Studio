@@ -34,6 +34,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   problemInterviewState: ProblemInterviewState | null;
   onForceGeneratePlanNow: () => void;
   onInsertComposerPrompt: (text: string) => void;
+  /** 인터뷰 추천 칩 — 탭 시 입력창 프리필(또는 직접 입력 유도) */
+  onInterviewSuggestionPick?: (label: string) => void;
   onSetReplyTo: (messageId: string, preview: string) => void;
   openDeliverableDocument: (id: string) => void;
   openDeliverableList: (focusId: string | null) => void;
@@ -74,6 +76,7 @@ export function RequirementsIdeationChatPanel({
   problemInterviewState,
   onForceGeneratePlanNow,
   onInsertComposerPrompt,
+  onInterviewSuggestionPick,
   onSetReplyTo,
   openDeliverableDocument,
   openDeliverableList,
@@ -126,7 +129,9 @@ export function RequirementsIdeationChatPanel({
               whiteSpace: "nowrap",
             }}
           >
-            답글 대상: <span style={{ fontWeight: 700, color: "#0f172a" }}>{replyTo.preview || replyTo.id}</span>
+            <span style={{ fontWeight: 700, color: "#0f172a" }} title={replyTo.preview || replyTo.id}>
+              {replyTo.preview || "답글 작성 중"}
+            </span>
           </div>
           <button
             type="button"
@@ -179,6 +184,7 @@ export function RequirementsIdeationChatPanel({
         memberControls={inIdeationStage ? null : { count: participantBadgeCount, onOpen: onOpenMembersModal }}
         ideationInterviewUi={ideationInterviewUi}
         onInsertComposerPrompt={onInsertComposerPrompt}
+        onInterviewSuggestionPick={onInterviewSuggestionPick}
         onSetReplyTo={(messageId, preview) => {
           onSetReplyTo(messageId, preview);
           window.setTimeout(() => composerTextAreaRef.current?.focus(), 0);

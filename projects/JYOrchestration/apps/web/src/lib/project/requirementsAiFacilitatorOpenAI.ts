@@ -4,6 +4,7 @@ import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers
 import type { IdeationDeliverableType } from "@/lib/requirements/ideationDeliverables";
 import type { InterviewAnalyzerPayload, ProblemInterviewState } from "@/lib/requirements/problemInterview";
 import { parseInterviewAnalyzerPayloadFromModelText, problemInterviewStateToAnalyzerWire } from "@/lib/requirements/problemInterview";
+import { isProblemInterviewSlot } from "@/lib/requirements/problemInterview";
 import type { RequirementsServiceFlowV1 } from "@/lib/requirements/requirementsStateJson";
 import {
   buildIdeationDeliverableBasePrompt,
@@ -11,6 +12,7 @@ import {
   extractIdeationDeliverableOutputsFromRoot,
   stripJsonMarkdownFences,
 } from "@/lib/requirements/ideationDeliverables";
+import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSuggestionChips";
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
 
@@ -24,6 +26,9 @@ export type RequirementsFacilitatorOpenAiResult =
       promptText?: string;
       provider?: string;
       calledAt?: string;
+      /** 인터뷰 유도형 선택지(참고용) */
+      interviewSuggestions?: string[];
+      interviewAllowCustomInput?: boolean;
     }
   | { ok: false; code: string; message: string };
 
@@ -227,14 +232,17 @@ ${pt}
 지금 첫 질문을 시작하라.
 
 IMPORTANT:
-Only ask ONE question.
-The entire response must contain exactly one question mark (?).
+- question 필드에는 질문 한 문장만(? 하나).
+- suggestions는 3~6개, 프로젝트명·설명·유형과 직접 연관된 짧은 선택지(참고용, 강제 아님).
+- 프로젝트와 무관한 업종/역할(예: 배달 기사, 쇼핑몰 관리자)을 임의로 넣지 마라.
 
-[출력 형식 — 반드시 준수]
-- 이번 응답은 질문 한 문장만 출력한다.
-- 인사·설명·부연·마크다운·목록·머리글·번호 매기기(1. 2. 등) 금지.
-- 문장 끝은 반드시 물음표(?)로 끝낸다.`;
-  const user = "한국어로 질문 한 문장만 출력하라. 물음표는 하나만.";
+[출력 — JSON 한 개만, 마크다운·코드펜스 금지]
+{
+  "question": "한국어 질문 한 문장",
+  "suggestions": ["선택지1", "선택지2"],
+  "allowCustomInput": true
+}`;
+  const user = "위 JSON만 출력하라.";
   const calledAt = new Date().toISOString();
   const promptText = `[system]\n${system}\n\n---\n\n[user]\n${user}`;
 
@@ -246,7 +254,8 @@ The entire response must contain exactly one question mark (?).
       { role: "user", content: user },
     ],
     temperature: 0.2,
-    maxTokens: 72,
+    maxTokens: 220,
+    responseFormatJsonObject: true,
   });
 
   if (!res.ok) {
@@ -262,7 +271,132 @@ The entire response must contain exactly one question mark (?).
     return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
   }
 
-  return { ok: true, text, model, promptText, provider: "openai", calledAt };
+  let questionOut = "";
+  let interviewSuggestions: string[] | undefined;
+  let allowCustomInput = true;
+  try {
+    const raw = stripJsonMarkdownFences(String(text).trim());
+    const j = JSON.parse(raw) as Record<string, unknown>;
+    questionOut = String(j.question ?? "").trim();
+    if (Array.isArray(j.suggestions)) {
+      const s = normalizeLlmInterviewSuggestions(j.suggestions.map((x) => String(x ?? "")));
+      if (s.length) interviewSuggestions = s;
+    }
+    if (j.allowCustomInput === false) allowCustomInput = false;
+  } catch {
+    questionOut = String(text).trim();
+  }
+  if (!questionOut) {
+    return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
+  }
+
+  return {
+    ok: true,
+    text: questionOut,
+    model,
+    promptText,
+    provider: "openai",
+    calledAt,
+    ...(interviewSuggestions?.length ? { interviewSuggestions } : {}),
+    interviewAllowCustomInput: allowCustomInput,
+  };
+}
+
+export type InterviewBootstrapSuggestionsOnlyResult =
+  | { ok: true; suggestions: string[]; model: string; promptText: string; provider: string; calledAt: string }
+  | { ok: false; code: string; message: string };
+
+/**
+ * 부트스트랩 질문이 이미 정해졌을 때(HTTP 실패 등), 같은 맥락에서 선택지만 LLM으로 보강한다.
+ * 실패 시 suggestions는 빈 배열.
+ */
+export async function runInterviewBootstrapSuggestionsOnlyOpenAI(input: {
+  projectName: string;
+  projectDescription: string;
+  projectType?: string | null;
+  interviewQuestion: string;
+  orchestrationDigest?: string;
+}): Promise<InterviewBootstrapSuggestionsOnlyResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+  }
+  const model = resolveOpenAiModelFromEnv();
+  const pn = input.projectName.trim() || "(이름 없음)";
+  const pd = input.projectDescription.trim() || "(설명 없음)";
+  const pt = String(input.projectType ?? "").trim() || "(유형 미지정)";
+  const q = String(input.interviewQuestion ?? "").trim().slice(0, 800);
+  const digest = (input.orchestrationDigest ?? "").trim();
+  const digestBlock = digest ? `\n[오케스트레이션 슬롯 스냅샷(요약)]\n${digest.slice(0, 4000)}` : "";
+
+  const system = `${workspaceAiMemberSystemPrefix("ideation")}당신은 서비스 기획 인터뷰용 "유도형 선택지 생성기"입니다.
+사용자에게 직접 말하지 않습니다. 오직 JSON 한 개만 출력합니다.
+
+프로젝트:
+- 이름: ${pn}
+- 설명: ${pd}
+- 유형: ${pt}${digestBlock}
+
+아래 질문에 답할 때 사용자가 참고할 수 있는 짧은 선택지 3~6개를 제안하세요.
+
+규칙:
+- 선택지는 위 프로젝트 정보·슬롯 스냅샷·질문 문장에만 근거합니다.
+- 프로젝트와 무관한 업종/역할을 임의로 넣지 마세요.
+- suggestions만 출력합니다.
+- 선택지는 강제가 아님 — 사용자는 항상 다른 답을 쓸 수 있습니다.
+
+[지금 묻는 질문]
+${q || "(질문 없음)"}
+
+[출력 — JSON 한 개만, 마크다운·코드펜스 금지]
+{ "suggestions": ["선택지1", "선택지2"] }`;
+
+  const user = "위 JSON만 출력하라.";
+  const calledAt = new Date().toISOString();
+  const promptText = `[system]\n${system}\n\n---\n\n[user]\n${user}`;
+
+  const res = await postOpenAiChatCompletion({
+    apiKey,
+    model,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.2,
+    maxTokens: 200,
+    responseFormatJsonObject: true,
+  });
+
+  if (!res.ok) {
+    return { ok: false, code: res.code, message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}` };
+  }
+  const text = res.text;
+  if (!text) {
+    return { ok: false, code: "EMPTY", message: "OpenAI 응답 본문이 비어 있습니다." };
+  }
+
+  let suggestions: string[] = [];
+  try {
+    const raw = stripJsonMarkdownFences(String(text).trim());
+    const j = JSON.parse(raw) as Record<string, unknown>;
+    if (Array.isArray(j.suggestions)) {
+      suggestions = j.suggestions
+        .map((x) => String(x ?? "").trim())
+        .filter(Boolean)
+        .slice(0, 6);
+    }
+  } catch {
+    return { ok: false, code: "PARSE", message: "JSON 파싱 실패" };
+  }
+
+  return {
+    ok: true,
+    suggestions: normalizeLlmInterviewSuggestions(suggestions),
+    model,
+    promptText,
+    provider: "openai",
+    calledAt,
+  };
 }
 
 export type IdeationInterviewSeedWire = Readonly<{
@@ -933,10 +1067,21 @@ ${input.userMessage.trim()}
 export async function runInterviewAnalyzeOpenAI(input: {
   projectName: string;
   projectDescription: string;
+  projectType?: string | null;
   userMessage: string;
   latestAiQuestion: string;
   currentInterviewState: ProblemInterviewState;
   participatingAgentsPromptBlock?: string;
+  /** SingleChat 슬롯 요약(텍스트) */
+  orchestrationDigest?: string;
+  /** 직전 턴에서 사용자가 탭한 추천 칩 문구(선택) */
+  selectedSuggestion?: string | null;
+  /** 사용자가 UI에서 답글로 지정한 부모 메시지(맥락) */
+  replyToMessageId?: string | null;
+  replyToSlotKey?: string | null;
+  replyTargetSpeakerId?: string | null;
+  /** 직전 질문의 슬롯 키(클라이언트 추정) */
+  currentSlotKey?: string | null;
 }): Promise<InterviewAnalyzeOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -992,6 +1137,17 @@ export async function runInterviewAnalyzeOpenAI(input: {
 - nextBestSlot은 아직 filled가 아니면서 이번 답으로 가장 보강해야 할 슬롯 하나(없으면 null).
 - confidence는 0~1 실수(모델 확신도).
 - notes에는 해당 슬롯에서 뽑은 짧은 근거 불릿(한국어) 문자열만 배열로 넣는다.
+- nextInterviewQuestion / nextInterviewSuggestions 는 **다음 사용자 턴에 보여줄** 질문·유도형 선택지다(선택지는 강제가 아님).
+- nextInterviewSuggestions: 3~6개, 프로젝트명·설명·유형·슬롯 스냅샷과 직접 연관된 짧은 문구만. 무관 업종/역할 금지.
+- allowCustomInput 은 기본 true.
+
+추가 정책(다음 질문 생성):
+- currentSlotKey가 주어지면, 사용자의 답변이 해당 슬롯을 얼마나 채웠는지 먼저 판단한다.
+- slotAdvanceDecision:
+  - stay_current_slot: 답변이 불충분/모호/짧음/신뢰도 낮음이면 같은 슬롯 후속 질문을 한다.
+  - advance_next_slot: 현재 슬롯이 충분히 partial 이상으로 확보되었다고 판단되면 다음 슬롯으로 이동한다.
+- shouldAskFollowUp / followUpReason를 함께 출력해라.
+- nextQuestionSlotKey는 다음 질문이 겨냥하는 슬롯 키이다(현재 유지면 currentSlotKey, 이동이면 nextBestSlot 또는 우선순위).
 
 JSON 스키마(키 이름·형식 엄수):
 {
@@ -1015,21 +1171,50 @@ JSON 스키마(키 이름·형식 엄수):
     "roughActors": [], "roughFlow": [], "mustHaveFeatures": [], "constraints": []
   },
   "nextBestSlot": "serviceIdea" | "targetUser" | "coreProblem" | "expectedOutcome" | "roughActors" | "roughFlow" | "mustHaveFeatures" | "constraints" | null,
-  "confidence": 0.0
+  "confidence": 0.0,
+  "currentSlotKey": "serviceIdea" | "targetUser" | "coreProblem" | "expectedOutcome" | "roughActors" | "roughFlow" | "mustHaveFeatures" | "constraints" | null,
+  "slotAdvanceDecision": "stay_current_slot" | "advance_next_slot",
+  "shouldAskFollowUp": true|false,
+  "followUpReason": "한 줄 이유(짧게)",
+  "nextQuestionSlotKey": "serviceIdea" | "targetUser" | "coreProblem" | "expectedOutcome" | "roughActors" | "roughFlow" | "mustHaveFeatures" | "constraints" | null,
+  "nextInterviewQuestion": "한국어 질문 한 문장(? 하나만)",
+  "nextInterviewSuggestions": ["선택지1", "선택지2"],
+  "allowCustomInput": true
 }`;
+
+  const sugLine = (input.selectedSuggestion ?? "").trim()
+    ? `\n[사용자가 참고한 추천 선택지]\n${(input.selectedSuggestion ?? "").trim()}`
+    : "";
+  const digest = (input.orchestrationDigest ?? "").trim();
+  const digestBlock = digest ? `\n[오케스트레이션 슬롯 스냅샷(요약)]\n${digest.slice(0, 6000)}` : "";
+  const pt = String(input.projectType ?? "").trim() || "—";
+  const rid = (input.replyToMessageId ?? "").trim();
+  const rSlot = (input.replyToSlotKey ?? "").trim();
+  const rSpk = (input.replyTargetSpeakerId ?? "").trim();
+  const curSlot = String(input.currentSlotKey ?? "").trim();
+  const replyCtx =
+    rid || rSlot || rSpk
+      ? `\n[사용자 답글 대상(지정됨)]
+messageId: ${rid || "—"}
+interviewSlot(추정): ${rSlot || "—"}
+parentSpeakerId: ${rSpk || "—"}`
+      : "";
+  const curSlotBlock = curSlot ? `\n[현재 질문 슬롯(클라이언트 추정)]\n${curSlot}` : "";
 
   const userBlock = `[프로젝트]
 이름: ${input.projectName.trim() || "(이름 없음)"}
 설명: ${input.projectDescription.trim() || "(설명 없음)"}
+유형: ${pt}${digestBlock}
 
 [직전 AI 질문(맥락)]
 ${input.latestAiQuestion.trim() || "(없음)"}
+${replyCtx}${curSlotBlock}
 
 [현재 인터뷰 상태 JSON]
 ${stateJson}
 
 [사용자 최신 답변]
-${input.userMessage.trim()}`;
+${input.userMessage.trim()}${sugLine}`;
 
   const callOnce = async (repair: string) => {
     const res = await postOpenAiChatCompletion({
@@ -1060,7 +1245,12 @@ ${input.userMessage.trim()}`;
     r = await callOnce("retry");
   }
   if (!r.ok) return r;
-  return { ok: true, payload: r.payload, model: r.model };
+  const cur = String(input.currentSlotKey ?? "").trim();
+  const patched: InterviewAnalyzerPayload =
+    cur && isProblemInterviewSlot(cur) && !r.payload.currentSlotKey
+      ? { ...r.payload, currentSlotKey: cur }
+      : r.payload;
+  return { ok: true, payload: patched, model: r.model };
 }
 
 /** API 키 유효성·네트워크를 가볍게 확인합니다. */

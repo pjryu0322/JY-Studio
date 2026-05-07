@@ -20,12 +20,20 @@ export type RequirementsMessageMeta = {
   fallbackReason?: string;
   /** 문제정의 인터뷰에서 직전에 물은 슬롯(반복 질문 방지·복원용) */
   problemInterviewLastSlot?: string;
+  /** 인터뷰 유도형 선택지(참고용, 강제 아님) */
+  interviewSuggestions?: readonly string[];
+  /** 기본 true — 항상 자유 입력 가능 */
+  interviewAllowCustomInput?: boolean;
   /** Service Design SingleChat: stage tag (no DB schema change; JSON payload field) */
   serviceDesignStage?: RequirementsWorkspaceStage;
   /** Service Design SingleChat: mention routing hint */
   mentionedAI?: string | null;
   /** Service Design SingleChat: mirrored role hint (for adapters/debug) */
   mirroredRole?: "user" | "ai";
+  /** 사용자 답글: 대상 메시지가 인터뷰 질문이었을 때 슬롯 키(오케스트레이션 맥락) */
+  replyToSlotKey?: string;
+  /** 사용자 답글: 대상 메시지 발화자(speakerId) */
+  replyTargetSpeakerId?: string;
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */

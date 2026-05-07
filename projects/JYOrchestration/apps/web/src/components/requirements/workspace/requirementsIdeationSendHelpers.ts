@@ -1,6 +1,6 @@
 import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
 import { inferRecentAiQuestionReplyParentId } from "@/lib/requirements/requirementsAnswerContext";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { RequirementsMessage, RequirementsMessageMeta } from "@/lib/requirements/requirementsMessage";
 import { computedTargetsFromInput, dedupeMemberRefs, type RequirementMemberRef } from "@/lib/requirements/requirementsTargets";
 import { newChatMessage, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 
@@ -36,6 +36,21 @@ export function composeIdeationSendUserTurn(params: {
   const anyAi = targets.some((t) => params.isAiTarget(t.id));
   const effectiveReplyTo = inferRecentAiQuestionReplyParentId(params.ideationConversationOnly, params.replyToId);
 
+  const replyParent =
+    effectiveReplyTo && params.ideationConversationOnly.length
+      ? params.ideationConversationOnly.find((m) => m.id === effectiveReplyTo)
+      : undefined;
+  const replyMeta: Partial<RequirementsMessageMeta> =
+    replyParent && effectiveReplyTo
+      ? {
+          ...(typeof replyParent.meta?.problemInterviewLastSlot === "string" &&
+          replyParent.meta.problemInterviewLastSlot.trim()
+            ? { replyToSlotKey: replyParent.meta.problemInterviewLastSlot.trim() }
+            : {}),
+          ...(replyParent.speakerId?.trim() ? { replyTargetSpeakerId: replyParent.speakerId.trim() } : {}),
+        }
+      : {};
+
   const userMsg = newChatMessage({
     role: "user",
     body: params.text,
@@ -45,6 +60,7 @@ export function composeIdeationSendUserTurn(params: {
     speakerName: params.sessionUserName,
     speakerType: "USER",
     messageType: targets.length ? "QUESTION" : "STATEMENT",
+    ...(Object.keys(replyMeta).length ? { meta: replyMeta } : {}),
   });
 
   return {

@@ -329,6 +329,19 @@ export type InterviewAnalyzerPayload = {
   notes: Partial<Record<ProblemInterviewSlot, string[]>>;
   nextBestSlot: ProblemInterviewSlot | null;
   confidence: number;
+  /** 직전 질문(플랫폼 추정) 기준 현재 슬롯 키(선택) */
+  currentSlotKey?: ProblemInterviewSlot | null;
+  /** 다음 질문 전환 판단 */
+  slotAdvanceDecision?: "stay_current_slot" | "advance_next_slot";
+  shouldAskFollowUp?: boolean;
+  followUpReason?: string;
+  nextQuestionSlotKey?: ProblemInterviewSlot | null;
+  /** 다음 인터뷰 질문(한 문장). 없으면 플랫폼 고정 질문을 쓴다. */
+  nextInterviewQuestion?: string | null;
+  /** 유도형 선택지(강제 아님). */
+  nextInterviewSuggestions?: readonly string[];
+  /** 기본 true — 사용자는 항상 자유 입력 가능 */
+  allowCustomInput?: boolean;
 };
 
 /** 인터뷰 완료 시 채팅에 한 번 보여줄 고정 안내(플랫폼 문구). */
@@ -352,7 +365,7 @@ export const INTERVIEW_ANALYZER_CONFIDENCE_THRESHOLD = 0.55;
 export const INTERVIEW_CLARIFICATION_QUESTION_KR =
   "말씀하신 내용을 이해했습니다.\n가장 큰 문제(불편)를 한 문장으로만 알려주실 수 있을까요?";
 
-function isProblemInterviewSlot(s: string): s is ProblemInterviewSlot {
+export function isProblemInterviewSlot(s: string): s is ProblemInterviewSlot {
   return (PROBLEM_INTERVIEW_SLOTS as readonly string[]).includes(s);
 }
 
@@ -876,8 +889,21 @@ export function proposalInterviewCoachingHintLine(
 }
 
 export type InterviewQuestionPlan =
-  | { kind: "slot"; slot: ProblemInterviewSlot; question: string; summary: string }
-  | { kind: "clarification"; question: string; summary: string };
+  | {
+      kind: "slot";
+      slot: ProblemInterviewSlot;
+      question: string;
+      summary: string;
+      suggestions?: readonly string[];
+      allowCustomInput?: boolean;
+    }
+  | {
+      kind: "clarification";
+      question: string;
+      summary: string;
+      suggestions?: readonly string[];
+      allowCustomInput?: boolean;
+    };
 
 /**
  * 병합된 상태 + 분석기 결과로 사용자에게 보여줄 한 턴을 결정한다.
@@ -912,8 +938,37 @@ export function planNextInterviewTurn(
     Number.isFinite(analyzer.confidence) &&
     analyzer.confidence < confidenceThreshold;
 
-  if (useClarification) {
-    return { kind: "clarification", question: INTERVIEW_CLARIFICATION_QUESTION_KR, summary };
+  // Analyzer가 "현재 슬롯 유지"를 명시하면, 다음 슬롯으로 이동하지 않는다.
+  const stayOnCurrent =
+    analyzer?.slotAdvanceDecision === "stay_current_slot" || analyzer?.shouldAskFollowUp === true;
+
+  if (useClarification || stayOnCurrent) {
+    const q =
+      (analyzer?.nextInterviewQuestion && String(analyzer.nextInterviewQuestion).trim()) || INTERVIEW_CLARIFICATION_QUESTION_KR;
+    const rawSug = analyzer?.nextInterviewSuggestions?.length ? [...analyzer.nextInterviewSuggestions] : undefined;
+    const cur =
+      analyzer?.currentSlotKey && isProblemInterviewSlot(String(analyzer.currentSlotKey))
+        ? analyzer.currentSlotKey
+        : analyzer?.nextQuestionSlotKey && isProblemInterviewSlot(String(analyzer.nextQuestionSlotKey))
+          ? analyzer.nextQuestionSlotKey
+          : null;
+    // 슬롯이 명확하면 slot 질문으로 유지(askedSlots/반복 방지용), 아니면 clarification로 둔다.
+    return cur
+      ? {
+          kind: "slot",
+          slot: cur,
+          question: q,
+          summary,
+          ...(rawSug ? { suggestions: rawSug } : {}),
+          allowCustomInput: analyzer?.allowCustomInput !== false,
+        }
+      : {
+          kind: "clarification",
+          question: q,
+          summary,
+          ...(rawSug ? { suggestions: rawSug } : {}),
+          allowCustomInput: analyzer?.allowCustomInput !== false,
+        };
   }
 
   const hint = analyzer?.nextBestSlot ?? null;
@@ -921,11 +976,16 @@ export function planNextInterviewTurn(
   if (!slot) {
     return { kind: "clarification", question: INTERVIEW_CLARIFICATION_QUESTION_KR, summary };
   }
+  const controlled = getControlledQuestionForSlot(slot, turnSeed);
+  const q = (analyzer?.nextInterviewQuestion && String(analyzer.nextInterviewQuestion).trim()) || controlled;
+  const rawSug = analyzer?.nextInterviewSuggestions?.length ? [...analyzer.nextInterviewSuggestions] : undefined;
   return {
     kind: "slot",
     slot,
-    question: getControlledQuestionForSlot(slot, turnSeed),
+    question: q,
     summary,
+    ...(rawSug ? { suggestions: rawSug } : {}),
+    allowCustomInput: analyzer?.allowCustomInput !== false,
   };
 }
 
@@ -1016,7 +1076,53 @@ export function parseInterviewAnalyzerPayloadFromModelText(raw: string): Intervi
   if (allModelFilled) nextBestSlot = null;
   if (nextBestSlot && slots[nextBestSlot] === "filled") nextBestSlot = null;
 
-  return { summary, intent, delegatedSlot, delegatedDefault, globalDelegation, slots, notes, nextBestSlot, confidence };
+  // optional follow-up/advance decision fields
+  const curSlotRaw = typeof o.currentSlotKey === "string" ? o.currentSlotKey.trim() : "";
+  const currentSlotKey = curSlotRaw && isProblemInterviewSlot(curSlotRaw) ? (curSlotRaw as ProblemInterviewSlot) : null;
+
+  const decRaw = typeof o.slotAdvanceDecision === "string" ? o.slotAdvanceDecision.trim() : "";
+  const slotAdvanceDecision =
+    decRaw === "stay_current_slot" || decRaw === "advance_next_slot" ? (decRaw as "stay_current_slot" | "advance_next_slot") : undefined;
+  const shouldAskFollowUp = o.shouldAskFollowUp === true ? true : o.shouldAskFollowUp === false ? false : undefined;
+  const followUpReason = typeof o.followUpReason === "string" ? o.followUpReason.trim().slice(0, 280) : "";
+  const nextQSlotRaw = typeof o.nextQuestionSlotKey === "string" ? o.nextQuestionSlotKey.trim() : "";
+  const nextQuestionSlotKey =
+    nextQSlotRaw && isProblemInterviewSlot(nextQSlotRaw) ? (nextQSlotRaw as ProblemInterviewSlot) : null;
+
+  const nextInterviewQuestion =
+    typeof o.nextInterviewQuestion === "string" && o.nextInterviewQuestion.trim()
+      ? o.nextInterviewQuestion.trim().slice(0, 480)
+      : null;
+  let nextInterviewSuggestions: string[] | undefined;
+  const sugRaw = o.nextInterviewSuggestions;
+  if (Array.isArray(sugRaw)) {
+    nextInterviewSuggestions = sugRaw
+      .map((x) => String(x ?? "").trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    if (!nextInterviewSuggestions.length) nextInterviewSuggestions = undefined;
+  }
+  const allowCustomInput = o.allowCustomInput === false ? false : true;
+
+  return {
+    summary,
+    intent,
+    delegatedSlot,
+    delegatedDefault,
+    globalDelegation,
+    slots,
+    notes,
+    nextBestSlot,
+    confidence,
+    ...(currentSlotKey ? { currentSlotKey } : {}),
+    ...(slotAdvanceDecision ? { slotAdvanceDecision } : {}),
+    ...(shouldAskFollowUp !== undefined ? { shouldAskFollowUp } : {}),
+    ...(followUpReason ? { followUpReason } : {}),
+    ...(nextQuestionSlotKey ? { nextQuestionSlotKey } : {}),
+    ...(nextInterviewQuestion ? { nextInterviewQuestion } : {}),
+    ...(nextInterviewSuggestions?.length ? { nextInterviewSuggestions } : {}),
+    allowCustomInput,
+  };
 }
 
 /** API 응답 객체를 분석 페이로드로 정규화한다. */
