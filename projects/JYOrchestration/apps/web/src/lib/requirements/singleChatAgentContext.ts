@@ -1,6 +1,6 @@
 import { listPlatformAiMemberCatalog, type WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { listProjectMembers } from "@/lib/service/projectMemberService";
-import { getEnabledCatalogKeysForScreen, getWorkspaceAiGraphForProject } from "@/lib/service/workspaceAiMemberGraphService";
+import { getEnabledCatalogKeysForScreen, getWorkspaceAiGraphWireWithMemberPrefs } from "@/lib/service/workspaceAiMemberGraphService";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import {
   resolveEnabledCatalogKeysForScreen,
@@ -185,7 +185,7 @@ export async function resolveSingleChatAgentContext(
 
   if (pid) {
     const catalogKeys = await getEnabledCatalogKeysForScreen(pid, workspaceScreenKey);
-    const graph = await getWorkspaceAiGraphForProject(pid);
+    const graph = await getWorkspaceAiGraphWireWithMemberPrefs(pid);
     const catalog = listPlatformAiMemberCatalog();
 
     for (const key of catalogKeys) {
@@ -196,6 +196,8 @@ export async function resolveSingleChatAgentContext(
         catalogKey: key,
         displayName: def?.title ?? key,
         enginePreference: row?.enginePreference ?? null,
+        aiProvider: row?.aiProvider ?? null,
+        aiModelOverride: row?.aiModelOverride ?? null,
       });
     }
 
