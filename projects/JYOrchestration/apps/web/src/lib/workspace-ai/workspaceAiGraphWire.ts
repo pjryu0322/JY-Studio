@@ -27,6 +27,12 @@ export type WorkspaceAiGraphMemberWire = {
   readonly screens: readonly WorkspaceAiScreenMappingWire[];
   /** USER_DEFAULT | OPENAI | ANTHROPIC | GEMINI | CURSOR — 사용자 기본은 USER_DEFAULT */
   readonly enginePreference: string | null;
+  /**
+   * 카탈로그 키와 매칭되는 `project_members`(AI, aiAgentKey)에서 병합 — SingleChat·타임라인 표시용.
+   * 행이 없으면 null.
+   */
+  readonly aiProvider: string | null;
+  readonly aiModelOverride: string | null;
   /** 이 멤버가 사용하는 Integrations capability(LLM vs CODE_AGENT 등) */
   readonly integrationCapability: WorkspaceAiIntegrationCapability;
   /**

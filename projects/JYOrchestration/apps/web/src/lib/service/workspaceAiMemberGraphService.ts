@@ -189,6 +189,34 @@ async function createWorkspaceScreenMappingRow(
  * 관리 UI·보내기용 전체 그래프(카탈로그 전 행 보장).
  * DB에 `workspace_ai_member`가 하나도 없으면 레거시 기본 스크린만 채워 synthetic 행으로 반환.
  */
+/**
+ * 워크스페이스 그래프 + `project_members.aiAgentKey`와 매칭되는 AI 행의 provider/model(표시·타임라인용).
+ */
+export async function getWorkspaceAiGraphWireWithMemberPrefs(projectId: string): Promise<WorkspaceAiGraphMemberWire[]> {
+  const graph = await getWorkspaceAiGraphForProject(projectId);
+  const pid = projectId.trim();
+  if (!pid) return graph;
+  const keys = allCatalogMemberIds();
+  const rows = await prisma.projectMember.findMany({
+    where: { projectId: pid, memberType: "AI", aiAgentKey: { in: [...keys] } },
+    select: { aiAgentKey: true, aiProvider: true, aiModelOverride: true },
+  });
+  const byKey = new Map<string, { aiProvider: string | null; aiModelOverride: string | null }>();
+  for (const r of rows) {
+    const k = String(r.aiAgentKey ?? "").trim();
+    if (!k) continue;
+    byKey.set(k, { aiProvider: r.aiProvider, aiModelOverride: r.aiModelOverride });
+  }
+  return graph.map((g) => {
+    const hit = byKey.get(g.catalogKey);
+    return {
+      ...g,
+      aiProvider: hit?.aiProvider ?? null,
+      aiModelOverride: hit?.aiModelOverride ?? null,
+    };
+  });
+}
+
 export async function getWorkspaceAiGraphForProject(projectId: string): Promise<WorkspaceAiGraphMemberWire[]> {
   const pid = projectId.trim();
   if (!pid) return [];
@@ -234,6 +262,8 @@ export async function getWorkspaceAiGraphForProject(projectId: string): Promise<
         screenKeys,
         screens,
         enginePreference,
+        aiProvider: null,
+        aiModelOverride: null,
         integrationCapability: cap,
         pinnedUserIntegrationId: pin,
       };
@@ -247,6 +277,8 @@ export async function getWorkspaceAiGraphForProject(projectId: string): Promise<
       screenKeys: defSk,
       screens: defScreens,
       enginePreference: "USER_DEFAULT",
+      aiProvider: null,
+      aiModelOverride: null,
       integrationCapability: cap,
       pinnedUserIntegrationId: null,
     };

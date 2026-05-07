@@ -8,14 +8,17 @@ import { WorkspaceAiMemberAvatar } from "@/components/ai-member/WorkspaceAiMembe
 import {
   isWorkspaceAiMemberEnabled,
   listPlatformAiMemberCatalog,
-  primaryIntegrationCapabilityForCatalogMember,
   type WorkspaceAiMemberId,
 } from "@/lib/ai-member/platformAiMembers";
 import {
-  engineChoicesForCapability,
-  enginePreferenceLabel,
-  type WorkspaceAiEnginePreferenceKey,
-} from "@/lib/workspace-ai/workspaceAiEnginePreference";
+  PROJECT_AI_OPENAI_MODELS,
+  deriveProjectAiAgentUiState,
+  persistPrefsFromUi,
+  projectAiAgentEngineChoices,
+  projectAiAgentModelWhenEngineChanges,
+  type ProjectAiAgentUiEngine,
+  type ProjectAiAgentUiModel,
+} from "@/lib/workspace-ai/projectAiAgentEngineModel";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import {
   allCatalogMemberIds,
@@ -33,12 +36,22 @@ type AiDraftMemberRow = {
   enabled: boolean;
   screenKeys: WorkspaceScreenKey[];
   screenAutoRun: Partial<Record<WorkspaceScreenKey, boolean>>;
-  enginePreference: string;
+  uiEngine: ProjectAiAgentUiEngine;
+  uiModel: ProjectAiAgentUiModel;
+  /** 저장된 값이 비정상(Cursor on non-개발자)일 때 */
+  cursorPolicyWarn: boolean;
 };
 
-function engineLabelForUi(key: WorkspaceAiEnginePreferenceKey): string {
-  if (key === "USER_DEFAULT") return "User Default";
-  return enginePreferenceLabel(key);
+function uiEngineLabel(e: ProjectAiAgentUiEngine): string {
+  if (e === "USER_DEFAULT") return "User Default";
+  if (e === "OPENAI") return "OpenAI";
+  return "Cursor";
+}
+
+function uiModelLabel(m: ProjectAiAgentUiModel): string {
+  if (m === "USER_DEFAULT") return "User Default";
+  if (m === "cursor-default") return "cursor-default";
+  return m;
 }
 
 function agentTitleForUi(rawTitle: string): string {
@@ -215,12 +228,20 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           for (const s of m.screens ?? []) {
             screenAutoRun[s.screenKey] = s.autoRun;
           }
+          const st = deriveProjectAiAgentUiState({
+            catalogKey: m.catalogKey,
+            graphEnginePreference: m.enginePreference,
+            memberAiProvider: m.aiProvider,
+            memberAiModelOverride: m.aiModelOverride,
+          });
           return {
             catalogKey: m.catalogKey,
             enabled: m.enabled,
             screenKeys: [...m.screenKeys],
             screenAutoRun,
-            enginePreference: m.enginePreference ?? "USER_DEFAULT",
+            uiEngine: st.uiEngine,
+            uiModel: st.uiModel,
+            cursorPolicyWarn: st.invalidCursorOnNonDeveloper,
           };
         })
       );
@@ -244,9 +265,24 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
     );
   }, []);
 
-  const setEnginePreference = useCallback((catalogKey: WorkspaceAiMemberId, enginePreference: string) => {
+  const setUiEngine = useCallback((catalogKey: WorkspaceAiMemberId, uiEngine: ProjectAiAgentUiEngine) => {
     setAiDirty(true);
-    setAiDraft((prev) => (prev ? prev.map((r) => (r.catalogKey === catalogKey ? { ...r, enginePreference } : r)) : prev));
+    setAiDraft((prev) =>
+      prev
+        ? prev.map((r) => {
+            if (r.catalogKey !== catalogKey) return r;
+            const uiModel = projectAiAgentModelWhenEngineChanges(catalogKey, uiEngine, r.uiModel);
+            return { ...r, uiEngine, uiModel, cursorPolicyWarn: false };
+          })
+        : prev
+    );
+  }, []);
+
+  const setUiModel = useCallback((catalogKey: WorkspaceAiMemberId, uiModel: ProjectAiAgentUiModel) => {
+    setAiDirty(true);
+    setAiDraft((prev) =>
+      prev ? prev.map((r) => (r.catalogKey === catalogKey ? { ...r, uiModel, cursorPolicyWarn: false } : r)) : prev
+    );
   }, []);
 
   const toggleCatalogOnScreen = useCallback((catalogKey: WorkspaceAiMemberId, screenKey: WorkspaceScreenKey, checked: boolean) => {
@@ -335,11 +371,15 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           autoRun: true,
         }));
         const forcedEnabled = catalogKey === "memo" ? true : (row?.enabled ?? true);
+        const uiEngine = row?.uiEngine ?? "USER_DEFAULT";
+        const uiModel = row?.uiModel ?? "USER_DEFAULT";
+        const persisted = persistPrefsFromUi({ catalogKey, uiEngine, uiModel });
         return {
           catalogKey,
           enabled: forcedEnabled,
           screens,
-          enginePreference: row?.enginePreference ?? "USER_DEFAULT",
+          enginePreference: persisted.graphEnginePreference,
+          agentUi: { engine: uiEngine, model: uiModel },
         };
       });
       const res = await credentialsIncludeFetch("/api/project/workspace-ai", {
@@ -754,83 +794,119 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
             <p style={{ color: "#64748b", fontSize: 14 }}>AI 설정이 없습니다.</p>
           ) : (
             <>
-              <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", marginBottom: 22 }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 420 }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc", textAlign: "left" }}>
-                        <th style={{ padding: "10px 8px", fontWeight: 800, color: "#64748b", width: 150, fontSize: 11 }}>Agent</th>
-                        <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b" }}>엔진</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {uiAiCatalog.map((uiRow) => {
-                        const primaryId = uiRow.uiId;
-                        const memberIds = uiRow.memberIds;
-                        const draftRows = memberIds.map((id) => aiDraft.find((r) => r.catalogKey === id)).filter(Boolean) as AiDraftMemberRow[];
-                        const cap = primaryIntegrationCapabilityForCatalogMember(primaryId);
-                        const engineOpts = engineChoicesForCapability(cap);
-                        const engineKey = ((draftRows[0]?.enginePreference ?? "USER_DEFAULT") as WorkspaceAiEnginePreferenceKey) ?? "USER_DEFAULT";
-                        const agentTitle = uiRow.title;
-                        return (
-                          <tr key={primaryId} style={{ borderTop: "1px solid #f1f5f9" }}>
-                            <td style={{ padding: "10px 8px", verticalAlign: "middle" }}>
-                              <button
-                                type="button"
-                                onClick={() => setAiDetailMemberId(primaryId)}
-                                title={agentTitle}
-                                aria-label={`${agentTitle} 상세보기`}
-                                style={{
-                                  border: 0,
-                                  background: "transparent",
-                                  padding: 0,
-                                  margin: 0,
-                                  fontWeight: 900,
-                                  color: "#0f172a",
-                                  whiteSpace: "nowrap",
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 8,
+              <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", marginBottom: 12 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 520 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                      <th style={{ padding: "10px 8px", fontWeight: 800, color: "#64748b", width: 150, fontSize: 11 }}>Agent</th>
+                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", fontSize: 11 }}>엔진</th>
+                      <th style={{ padding: "10px 12px", fontWeight: 800, color: "#64748b", fontSize: 11 }}>모델</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uiAiCatalog.map((uiRow) => {
+                      const primaryId = uiRow.uiId;
+                      const memberIds = uiRow.memberIds;
+                      const draftRows = memberIds.map((id) => aiDraft.find((r) => r.catalogKey === id)).filter(Boolean) as AiDraftMemberRow[];
+                      const draft = draftRows[0];
+                      const uiEngine = draft?.uiEngine ?? "USER_DEFAULT";
+                      const uiModel = draft?.uiModel ?? "USER_DEFAULT";
+                      const engineOpts = projectAiAgentEngineChoices(primaryId);
+                      const modelOpts: ProjectAiAgentUiModel[] =
+                        uiEngine === "USER_DEFAULT"
+                          ? ["USER_DEFAULT"]
+                          : uiEngine === "CURSOR"
+                            ? ["cursor-default"]
+                            : [...PROJECT_AI_OPENAI_MODELS];
+                      const agentTitle = uiRow.title;
+                      const selectStyle = {
+                        width: "auto",
+                        maxWidth: 132,
+                        padding: "2px 6px",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        background: "#fff",
+                      } as const;
+                      return (
+                        <tr key={primaryId} style={{ borderTop: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "10px 8px", verticalAlign: "middle" }}>
+                            <button
+                              type="button"
+                              onClick={() => setAiDetailMemberId(primaryId)}
+                              title={agentTitle}
+                              aria-label={`${agentTitle} 상세보기`}
+                              style={{
+                                border: 0,
+                                background: "transparent",
+                                padding: 0,
+                                margin: 0,
+                                fontWeight: 900,
+                                color: "#0f172a",
+                                whiteSpace: "nowrap",
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{agentTitle}</span>
+                              <WorkspaceAiMemberAvatar memberId={primaryId} size={22} />
+                            </button>
+                            {draft?.cursorPolicyWarn ? (
+                              <div style={{ marginTop: 6, fontSize: 10, fontWeight: 700, color: "#b45309", maxWidth: 220, lineHeight: 1.35 }}>
+                                Cursor는 개발자 Agent에서만 사용할 수 있습니다. 저장 시 OpenAI로 보정됩니다.
+                              </div>
+                            ) : null}
+                          </td>
+                          <td style={{ padding: "10px 10px", color: "#475569", minWidth: 112, verticalAlign: "middle" }}>
+                            {canAdminWorkspaceAi ? (
+                              <select
+                                value={uiEngine}
+                                onChange={(e) => {
+                                  setUiEngine(primaryId, e.target.value as ProjectAiAgentUiEngine);
                                 }}
+                                style={selectStyle}
                               >
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{agentTitle}</span>
-                                <WorkspaceAiMemberAvatar memberId={primaryId} size={22} />
-                              </button>
-                            </td>
-                            <td style={{ padding: "10px 10px", color: "#475569", minWidth: 112, verticalAlign: "middle" }}>
-                              {canAdminWorkspaceAi ? (
-                                <select
-                                  value={engineKey}
-                                  onChange={(e) => {
-                                    setEnginePreference(primaryId, e.target.value);
-                                  }}
-                                  style={{
-                                    width: "auto",
-                                    maxWidth: 132,
-                                    padding: "2px 6px",
-                                    borderRadius: 8,
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: 11,
-                                    fontWeight: 600,
-                                    background: "#fff",
-                                  }}
-                                >
-                                  {engineOpts.map((ek) => (
-                                    <option key={ek} value={ek}>
-                                      {engineLabelForUi(ek as WorkspaceAiEnginePreferenceKey)}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <span style={{ fontWeight: 600, fontSize: 11 }}>{engineLabelForUi(engineKey)}</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                {engineOpts.map((ek) => (
+                                  <option key={ek} value={ek}>
+                                    {uiEngineLabel(ek)}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span style={{ fontWeight: 600, fontSize: 11 }}>{uiEngineLabel(uiEngine)}</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "10px 10px", color: "#475569", minWidth: 112, verticalAlign: "middle" }}>
+                            {canAdminWorkspaceAi ? (
+                              <select
+                                value={modelOpts.includes(uiModel) ? uiModel : modelOpts[0]}
+                                onChange={(e) => {
+                                  setUiModel(primaryId, e.target.value as ProjectAiAgentUiModel);
+                                }}
+                                style={selectStyle}
+                              >
+                                {modelOpts.map((mk) => (
+                                  <option key={mk} value={mk}>
+                                    {uiModelLabel(mk)}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span style={{ fontWeight: 600, fontSize: 11 }}>{uiModelLabel(uiModel)}</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
+              <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 22px", lineHeight: 1.55 }}>
+                엔진은 실행 Provider, 모델은 해당 엔진에서 사용할 기본 모델입니다.
+              </p>
 
               <h2 style={{ fontSize: isNarrow ? 15 : 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>절차 별 참여 AI</h2>
               <div

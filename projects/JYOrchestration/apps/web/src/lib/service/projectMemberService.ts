@@ -3,6 +3,7 @@ import type { ProjectRole } from "@/lib/auth/roles";
 import { prisma } from "@/lib/prisma";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
+import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { platformUserDisplayName } from "@/lib/user/platformProfile";
 
@@ -219,6 +220,7 @@ export async function updateProjectMember(input: {
   memberId: string;
   role?: ProjectRole;
   displayName?: string | null;
+  aiProvider?: string | null;
   aiOrchestrationRole?: string | null;
   orchestrationStage?: string | null;
   aiModelOverride?: string | null;
@@ -229,6 +231,7 @@ export async function updateProjectMember(input: {
   const data: {
     role?: ProjectRole;
     displayName?: string | null;
+    aiProvider?: string | null;
     aiOrchestrationRole?: string | null;
     orchestrationStage?: string | null;
     aiModelOverride?: string | null;
@@ -238,6 +241,9 @@ export async function updateProjectMember(input: {
   } = {};
   if (input.role) data.role = input.role;
   if (input.displayName !== undefined) data.displayName = input.displayName?.trim() || null;
+  if (input.aiProvider !== undefined) {
+    data.aiProvider = input.aiProvider?.trim() || null;
+  }
   if (input.aiOrchestrationRole !== undefined) {
     data.aiOrchestrationRole = input.aiOrchestrationRole?.trim() || null;
   }
@@ -264,4 +270,51 @@ export async function deleteProjectMember(input: { memberId: string }) {
   return prisma.projectMember.delete({
     where: { id: input.memberId },
   });
+}
+
+/** AI Agent 탭 저장 시 카탈로그 키별 provider/model — `aiAgentKey`로 1행 upsert */
+export async function upsertCatalogKeyedAiMemberProviderPrefs(input: {
+  readonly projectId: string;
+  readonly invitedByUserId: string;
+  readonly rows: readonly {
+    readonly catalogKey: WorkspaceAiMemberId;
+    readonly aiProvider: string | null;
+    readonly aiModelOverride: string | null;
+  }[];
+}): Promise<void> {
+  const pid = input.projectId.trim();
+  if (!pid) return;
+  const inv = input.invitedByUserId.trim();
+  if (!inv) return;
+
+  for (const row of input.rows) {
+    const existing = await prisma.projectMember.findFirst({
+      where: { projectId: pid, memberType: "AI", aiAgentKey: row.catalogKey },
+      select: { id: true },
+    });
+    const title = getWorkspaceAiMember(row.catalogKey)?.title ?? row.catalogKey;
+    if (existing) {
+      await prisma.projectMember.update({
+        where: { id: existing.id },
+        data: {
+          aiProvider: row.aiProvider,
+          aiModelOverride: row.aiModelOverride,
+        },
+      });
+    } else {
+      await prisma.projectMember.create({
+        data: {
+          projectId: pid,
+          memberType: "AI",
+          role: "EDITOR",
+          displayName: title,
+          aiAgentKey: row.catalogKey,
+          aiProvider: row.aiProvider,
+          aiModelOverride: row.aiModelOverride,
+          orchestrationEnabled: true,
+          invitedByUserId: inv,
+        },
+      });
+    }
+  }
 }

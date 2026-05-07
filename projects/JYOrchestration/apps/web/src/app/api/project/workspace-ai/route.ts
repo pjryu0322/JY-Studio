@@ -6,12 +6,20 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { prisma } from "@/lib/prisma";
 import {
-  getWorkspaceAiGraphForProject,
+  getWorkspaceAiGraphWireWithMemberPrefs,
   getWorkspaceAiOwnerIntegrationPicklists,
   replaceWorkspaceAiGraph,
   type WorkspaceAiGraphSaveMemberInput,
 } from "@/lib/service/workspaceAiMemberGraphService";
+import { upsertCatalogKeyedAiMemberProviderPrefs } from "@/lib/service/projectMemberService";
 import { allCatalogMemberIds, parseWorkspaceScreenKey, type WorkspaceScreenKey } from "@/lib/workspace-ai/workspaceScreenKeys";
+import {
+  deriveProjectAiAgentUiState,
+  persistPrefsFromUi,
+  type ProjectAiAgentUiEngine,
+  type ProjectAiAgentUiModel,
+} from "@/lib/workspace-ai/projectAiAgentEngineModel";
+import { parseEnginePreferenceKey } from "@/lib/workspace-ai/workspaceAiEnginePreference";
 
 type PutMember = {
   catalogKey?: string;
@@ -20,7 +28,47 @@ type PutMember = {
   screens?: readonly { screenKey?: string; autoRun?: boolean }[];
   enginePreference?: string | null;
   pinnedUserIntegrationId?: string | null;
+  /** 신규 클라이언트: 엔진·모델 UI 상태(검증 후 그래프+project_members에 반영) */
+  agentUi?: { engine?: string; model?: string };
 };
+
+function parseAgentUiEngine(raw: unknown): ProjectAiAgentUiEngine | null {
+  const u = String(raw ?? "").trim().toUpperCase();
+  if (u === "USER_DEFAULT") return "USER_DEFAULT";
+  if (u === "OPENAI") return "OPENAI";
+  if (u === "CURSOR") return "CURSOR";
+  return null;
+}
+
+function parseAgentUiModel(raw: unknown): ProjectAiAgentUiModel | null {
+  const t = String(raw ?? "").trim();
+  if (t === "USER_DEFAULT") return "USER_DEFAULT";
+  if (t === "GPT-5") return "GPT-5";
+  if (t === "GPT-4.1") return "GPT-4.1";
+  if (t === "o3") return "o3";
+  if (t === "cursor-default") return "cursor-default";
+  return null;
+}
+
+function persistPrefsForPutMember(catalogKey: WorkspaceAiMemberId, row: PutMember) {
+  const ue = parseAgentUiEngine(row.agentUi?.engine);
+  const um = parseAgentUiModel(row.agentUi?.model);
+  if (ue && um) {
+    return persistPrefsFromUi({ catalogKey, uiEngine: ue, uiModel: um });
+  }
+  const ge = parseEnginePreferenceKey(row.enginePreference ?? "USER_DEFAULT") ?? "USER_DEFAULT";
+  const inferred = deriveProjectAiAgentUiState({
+    catalogKey,
+    graphEnginePreference: ge,
+    memberAiProvider: null,
+    memberAiModelOverride: null,
+  });
+  return persistPrefsFromUi({
+    catalogKey,
+    uiEngine: inferred.uiEngine,
+    uiModel: inferred.uiModel,
+  });
+}
 
 function parseCatalogKey(raw: string): WorkspaceAiMemberId | null {
   const k = String(raw ?? "").trim();
@@ -47,7 +95,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [members, proj] = await Promise.all([
-      getWorkspaceAiGraphForProject(projectId),
+      getWorkspaceAiGraphWireWithMemberPrefs(projectId),
       prisma.project.findUnique({ where: { id: projectId }, select: { ownerUserId: true } }),
     ]);
     const ownerUserId = String(proj?.ownerUserId ?? "").trim();
@@ -81,7 +129,19 @@ export async function PUT(request: NextRequest) {
       throw error;
     }
 
+    const projRow = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerUserId: true },
+    });
+    const ownerUserIdForSync = String(projRow?.ownerUserId ?? "").trim();
+    if (!ownerUserIdForSync) {
+      return NextResponse.json({ success: false, message: "프로젝트 소유자를 찾을 수 없습니다." }, { status: 400 });
+    }
+
     const members: WorkspaceAiGraphSaveMemberInput[] = [];
+    const memberPrefRows: { catalogKey: WorkspaceAiMemberId; aiProvider: string | null; aiModelOverride: string | null }[] =
+      [];
+
     for (const row of rawMembers) {
       const catalogKey = parseCatalogKey(String(row.catalogKey ?? ""));
       if (!catalogKey) {
@@ -107,17 +167,19 @@ export async function PUT(request: NextRequest) {
         : row.pinnedUserIntegrationId === null || row.pinnedUserIntegrationId === ""
           ? null
           : String(row.pinnedUserIntegrationId).trim() || null;
-      const hasEngine = Object.prototype.hasOwnProperty.call(row, "enginePreference");
-      const enginePreference = !hasEngine
-        ? undefined
-        : row.enginePreference === null || row.enginePreference === ""
-          ? "USER_DEFAULT"
-          : String(row.enginePreference).trim().toUpperCase();
+
+      const persisted = persistPrefsForPutMember(catalogKey, row);
+      memberPrefRows.push({
+        catalogKey,
+        aiProvider: persisted.aiProvider,
+        aiModelOverride: persisted.aiModelOverride,
+      });
+
       members.push({
         catalogKey,
         enabled,
         ...(screens?.length ? { screens } : { screenKeys }),
-        ...(hasEngine ? { enginePreference } : {}),
+        enginePreference: persisted.graphEnginePreference,
         pinnedUserIntegrationId,
       });
     }
@@ -131,7 +193,12 @@ export async function PUT(request: NextRequest) {
     }
 
     await replaceWorkspaceAiGraph(projectId, members);
-    const next = await getWorkspaceAiGraphForProject(projectId);
+    await upsertCatalogKeyedAiMemberProviderPrefs({
+      projectId,
+      invitedByUserId: ownerUserIdForSync,
+      rows: memberPrefRows,
+    });
+    const next = await getWorkspaceAiGraphWireWithMemberPrefs(projectId);
     return NextResponse.json({ success: true, data: { members: next } });
   } catch (error) {
     const denied = rbacErrorResponse(error);
