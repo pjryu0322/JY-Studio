@@ -250,14 +250,11 @@ export async function runRequirementsIdeationAiAfterUserPersist(
       const slotForAsked =
         plan.kind === "slot"
           ? plan.slot
-          : pickNextAskableInterviewSlot(mergedWithGlobalDelegation, mergedWithGlobalDelegation.askedSlots, null, {
-              avoidSlots: [
-                ...(avoidSlotsForNext ?? []),
-                ...(autoAppliedDelegationDefault && (delegatedSlot ?? lastAskedSlot)
-                  ? [((delegatedSlot ?? lastAskedSlot) as ProblemInterviewSlot)]
-                  : []),
-              ],
-            }) ?? ("painPoint" as ProblemInterviewSlot);
+          : analyzerForPlan?.nextQuestionSlotKey ??
+            analyzerForPlan?.currentSlotKey ??
+            analyzerForPlan?.nextBestSlot ??
+            lastAskedSlot ??
+            ("serviceIdea" as ProblemInterviewSlot);
       const suggestionChips = normalizeLlmInterviewSuggestions(plan.suggestions ?? []);
       const interviewChipMeta =
         plan.allowCustomInput === false
@@ -280,7 +277,10 @@ export async function runRequirementsIdeationAiAfterUserPersist(
         })
       ) {
         ideationSendDevLog("dedupe-ai-skip", `id=${sendTraceId}`);
-        await persistRemote(withCalling, {}, { problemInterview: asked });
+        await persistRemote(withCalling, {}, {
+          problemInterview: asked,
+          ...(stateJsonRef.current.promptTimeline ? { promptTimeline: stateJsonRef.current.promptTimeline } : {}),
+        });
         setAiLastInvoke({ ok: true, at: new Date().toISOString() });
         ideationSendDevLog("return", `interview-dedupe-no-ai id=${sendTraceId}`);
         setInput("");
@@ -314,6 +314,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
       await persistRemote(interviewNextRoom, {}, {
         problemInterview: asked,
         ...(globalDelegation ? { globalDelegation: true } : {}),
+        ...(stateJsonRef.current.promptTimeline ? { promptTimeline: stateJsonRef.current.promptTimeline } : {}),
       });
       setAiLastInvoke({ ok: true, at: new Date().toISOString() });
       ideationSendDevLog("return", `interview-next ok=${Boolean(analyzerForPlan)} id=${sendTraceId}`);
@@ -355,6 +356,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
       await persistRemote(interviewNextRoom, {}, {
         problemInterview: asked,
         ...(globalDelegation ? { globalDelegation: true } : {}),
+        ...(stateJsonRef.current.promptTimeline ? { promptTimeline: stateJsonRef.current.promptTimeline } : {}),
       });
       setAiLastInvoke({ ok: true, at: new Date().toISOString() });
       ideationSendDevLog("return", `interview-gated-next id=${sendTraceId}`);
@@ -388,6 +390,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     await persistRemote(blockedRoom, {}, {
       problemInterview: blockedState,
       ...(globalDelegation ? { globalDelegation: true } : {}),
+      ...(stateJsonRef.current.promptTimeline ? { promptTimeline: stateJsonRef.current.promptTimeline } : {}),
     });
     setAiLastInvoke({ ok: true, at: new Date().toISOString() });
     ideationSendDevLog("return", `interview-gated-block id=${sendTraceId}`);
@@ -642,7 +645,10 @@ export async function runRequirementsIdeationAiAfterUserPersist(
       return {
         needsTailPersist: true,
         finalRoom: facilitatorFinalRoom,
-        ...(orchParsed ? { persistMeta: { singleChatOrchestrationV1: orchParsed } } : {}),
+        persistMeta: {
+          ...(orchParsed ? { singleChatOrchestrationV1: orchParsed } : {}),
+          ...(stateJsonRef.current.promptTimeline ? { promptTimeline: stateJsonRef.current.promptTimeline } : {}),
+        },
       };
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : String(e);
