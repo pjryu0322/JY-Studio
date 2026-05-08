@@ -25,7 +25,7 @@ import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
 import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
-import { displayedWorkspaceAiTitle, showInternalAgents } from "@/lib/ai-member/visibleAiOrchestrator";
+import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { uiTokens as t } from "@/components/ui/tokens";
 import {
   WORKSPACE_STANDARD_CHAT_BODY_STYLE,
@@ -75,6 +75,8 @@ export function RequirementsChatPanel({
   messages,
   composer,
   typingIndicator,
+  typingIndicatorSpeakerLine,
+  typingIndicatorResolvedSpeakerSource,
   ideationInterviewUi,
   onInsertComposerPrompt,
   onInterviewSuggestionPick,
@@ -91,6 +93,10 @@ export function RequirementsChatPanel({
   readonly composer: ReactNode;
   /** AI 응답 대기 중 표시(채팅 타임라인에는 저장되지 않음) */
   readonly typingIndicator?: boolean;
+  /** typing bubble 표시용 speaker 라인(있으면 screenAiMemberId 기본 타이틀보다 우선) */
+  readonly typingIndicatorSpeakerLine?: string | null;
+  /** typing bubble speaker 결정 출처(진단용) */
+  readonly typingIndicatorResolvedSpeakerSource?: string | null;
   readonly ideationInterviewUi?: WorkspaceIdeationInterviewProgressUi | null;
   readonly onInsertComposerPrompt?: (text: string) => void;
   /** SingleChat 인터뷰 추천 칩 선택 */
@@ -126,6 +132,10 @@ export function RequirementsChatPanel({
 
   const canQuote = Boolean(onInsertComposerPrompt);
   const canReply = Boolean(onSetReplyTo);
+
+  const shouldLogSpeakerBinding = useMemo(() => {
+    return process.env.NODE_ENV !== "production" || String(process.env.NEXT_PUBLIC_JY_SPEAKER_BIND_LOG ?? "").trim() === "1";
+  }, []);
 
   const messageById = useMemo(() => {
     const map = new Map<string, RequirementsMessage>();
@@ -486,9 +496,18 @@ export function RequirementsChatPanel({
               );
 
               const defaultAiTitle = displayedWorkspaceAiTitle(screenAiMemberId);
-              const aiSpeakerLine = !showInternalAgents
-                ? defaultAiTitle
-                : String(m.speakerName ?? "").trim() || defaultAiTitle;
+              const speakerFromMessage = String(m.speakerName ?? "").trim();
+              const aiSpeakerLine = speakerFromMessage || defaultAiTitle;
+              const resolvedSpeakerSource = speakerFromMessage ? "message.speakerName" : "screenAiMemberId_fallback";
+              if (shouldLogSpeakerBinding) {
+                console.debug("[speaker-binding]", {
+                  kind: "message",
+                  messageId: m.id,
+                  resolvedSpeakerSource,
+                  speakerLine: aiSpeakerLine,
+                  speakerId: m.speakerId ?? null,
+                });
+              }
 
               return (
                 <div
@@ -581,7 +600,7 @@ export function RequirementsChatPanel({
               <div style={aiCardShell("notice")}>
                 <div style={WORKSPACE_STANDARD_CHAT_HEADER_STYLE}>
                   <WorkspaceAiHeaderWithAvatar memberId={screenAiMemberId}>
-                    {displayedWorkspaceAiTitle(screenAiMemberId)}
+                    {String(typingIndicatorSpeakerLine ?? "").trim() || displayedWorkspaceAiTitle(screenAiMemberId)}
                     <span style={{ fontWeight: 700, color: t.textMuted }}>
                       {" "}
                       · {new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}

@@ -90,6 +90,7 @@ import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { formatDialogueExcerpt } from "@/lib/requirements/requirementsWorkspaceHelpers";
+import { detectOwnerHintFromText, speakerNameForOwner } from "@/lib/requirements/orchestrationSpeakerUi";
 import {
   newChatMessage,
   parseRequirementsRoomState,
@@ -186,6 +187,8 @@ export function RequirementsWorkspace({
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
   const [aiInvokePending, setAiInvokePending] = useState(false);
+  const [typingIndicatorSpeakerLine, setTypingIndicatorSpeakerLine] = useState<string | null>(null);
+  const [typingIndicatorResolvedSpeakerSource, setTypingIndicatorResolvedSpeakerSource] = useState<string | null>(null);
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
   const [replyTo, setReplyTo] = useState<{ id: string; preview: string } | null>(null);
   const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
@@ -1284,6 +1287,14 @@ export function RequirementsWorkspace({
           persistRemote,
         });
         ideationSendDevLog("user-appended", `id=${sendTraceId}`);
+        const ownerHint = detectOwnerHintFromText(text);
+        if (ownerHint) {
+          setTypingIndicatorSpeakerLine(speakerNameForOwner(ownerHint));
+          setTypingIndicatorResolvedSpeakerSource("explicit_role_mention(client)");
+        } else {
+          setTypingIndicatorSpeakerLine(null);
+          setTypingIndicatorResolvedSpeakerSource("screenAiMemberId_fallback");
+        }
         setAiInvokePending(true);
         let plannerTail: IdeationPlannerTail;
         try {
@@ -1319,6 +1330,8 @@ export function RequirementsWorkspace({
           });
         } finally {
           setAiInvokePending(false);
+          setTypingIndicatorSpeakerLine(null);
+          setTypingIndicatorResolvedSpeakerSource(null);
         }
         if (plannerTail.needsTailPersist) {
           await persistRemote(plannerTail.finalRoom, {}, {
@@ -1814,6 +1827,8 @@ export function RequirementsWorkspace({
         replyTo={replyTo}
         onClearReplyTo={() => setReplyTo(null)}
         composerTextAreaRef={composerTextAreaRef}
+        typingIndicatorSpeakerLine={typingIndicatorSpeakerLine}
+        typingIndicatorResolvedSpeakerSource={typingIndicatorResolvedSpeakerSource}
         input={input}
         onInputChange={setInput}
         onSendIdeation={handleServiceDesignComposerSend}
