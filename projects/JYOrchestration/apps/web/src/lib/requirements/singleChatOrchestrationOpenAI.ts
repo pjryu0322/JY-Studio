@@ -42,8 +42,22 @@ export type SingleChatOrchestrationTurnMeta = Readonly<{
   questionGeneratedBy?: string | null;
   /** 소유권 선택 근거(진단용) */
   ownershipReason?: string | null;
+  /** 이전 conversation owner (persistence; optional) */
+  previousConversationOwner?: string | null;
+  /** active owner (persistence; optional) */
+  activeConversationOwner?: string | null;
+  /** owner persistence reason (persistence; optional) */
+  ownerPersistenceReason?: string | null;
+  /** remaining sticky turns (persistence; optional) */
+  stickyTurnsRemaining?: number | null;
   /** 이번 턴의 지배적 결정 축(진단/라우팅용) */
   decisionAxis?: string | null;
+  /** 이전 decision axis (persistence; optional) */
+  previousDecisionAxis?: string | null;
+  /** decision axis source (persistence; optional) */
+  decisionAxisSource?: string | null;
+  /** owner-axis mismatch detected (UX/diagnostic) */
+  ownerAxisMismatch?: boolean | null;
   /** merge coordinator 역할(진단용; tone contamination 방지) */
   mergeCoordinator?: string | null;
   /** 내부 specialist contributor(진단용) */
@@ -456,6 +470,17 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   type DecisionAxisCandidate = { axis: DecisionAxis; score: number };
 
+  const detectContextDependentFollowup = (userMessage: string): boolean => {
+    const raw = String(userMessage ?? "").trim();
+    if (!raw) return false;
+    // explicit owner/role mention should not be treated as generic follow-up
+    if (/(디자이너|설계자|분석가|보안|리뷰어|기획자|@@)/i.test(raw)) return false;
+    // short, context-dependent utterances
+    if (raw.length <= 14 && /(예시|더\s*설명|구체화|자세히|다시\s*정리|정리해줘|한\s*번\s*더)/i.test(raw)) return true;
+    if (raw.length <= 10 && /(그래서\?|그럼\?|그럼|그렇다면|오케이|좋아|맞아|응|네)/i.test(raw)) return true;
+    return false;
+  };
+
   const inferDecisionAxisFromUserIntent = (userMessage: string): DecisionAxis => {
     const s = String(userMessage ?? "").trim().toLowerCase();
     if (!s) return "unknown";
@@ -468,9 +493,22 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     return "unknown";
   };
 
-  const resolveDecisionAxisCandidatesFromUserIntent = (userMessage: string): DecisionAxisCandidate[] => {
+  const resolveDecisionAxisCandidatesFromUserIntent = (
+    userMessage: string,
+    prevCandidates?: readonly { axis: string; score: number }[] | null
+  ): { candidates: DecisionAxisCandidate[]; source: "currentMessage" | "previousContext" | "fallback" } => {
     const s = String(userMessage ?? "").trim().toLowerCase();
-    if (!s) return [{ axis: "unknown", score: 0.4 }];
+    if (!s) {
+      if (Array.isArray(prevCandidates) && prevCandidates.length) {
+        const prev = prevCandidates
+          .map((c) => ({ axis: String((c as any).axis ?? "").trim() as DecisionAxis, score: Number((c as any).score) }))
+          .filter((c) => Boolean(c.axis) && Number.isFinite(c.score))
+          .map((c) => ({ axis: c.axis, score: Math.max(0, Math.min(1, Number(c.score.toFixed(3)))) }))
+          .slice(0, 5);
+        if (prev.length) return { candidates: prev, source: "previousContext" };
+      }
+      return { candidates: [{ axis: "unknown", score: 0.4 }], source: "fallback" };
+    }
     const hit = (re: RegExp) => (re.test(s) ? 1 : 0);
     const candidates: DecisionAxisCandidate[] = [
       { axis: "ux_direction", score: 0.75 + 0.15 * hit(/(디자이너|ui|ux|편집기|ia|정보구조|톤\s*&?\s*스타일|리뷰\s*경험)/i) },
@@ -486,8 +524,26 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       .map((c) => ({ ...c, score: Math.max(0, Math.min(1, Number(c.score.toFixed(3)))) }))
       .filter((c) => c.score >= 0.64)
       .sort((a, b) => b.score - a.score);
-    if (!ranked.length) return [{ axis: inferDecisionAxisFromUserIntent(userMessage), score: 0.66 }];
-    return ranked.slice(0, 5);
+    const contextDependent = detectContextDependentFollowup(userMessage);
+    if (contextDependent && Array.isArray(prevCandidates) && prevCandidates.length) {
+      const blended = new Map<DecisionAxis, number>();
+      for (const p of prevCandidates) {
+        const ax = String((p as any).axis ?? "").trim() as DecisionAxis;
+        const sc = Number((p as any).score);
+        if (!ax || !Number.isFinite(sc)) continue;
+        blended.set(ax, Math.max(blended.get(ax) ?? 0, Math.max(0, Math.min(1, Number((sc * 0.92).toFixed(3))))));
+      }
+      for (const c of ranked.slice(0, 3)) {
+        blended.set(c.axis, Math.max(blended.get(c.axis) ?? 0, Math.max(0, Math.min(1, Number((c.score * 0.75).toFixed(3))))));
+      }
+      const out = [...blended.entries()]
+        .map(([axis, score]) => ({ axis, score: Math.max(0, Math.min(1, Number(score.toFixed(3)))) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+      if (out.length) return { candidates: out, source: "previousContext" };
+    }
+    if (!ranked.length) return { candidates: [{ axis: inferDecisionAxisFromUserIntent(userMessage), score: 0.66 }], source: "fallback" };
+    return { candidates: ranked.slice(0, 5), source: "currentMessage" };
   };
 
   const ownerForAxis = (axis: DecisionAxis): NextOwner => {
@@ -521,6 +577,10 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     // security-reviewer
     if (has(/(보안|개인정보|접근\s*제어|권한\s*경계|감사|로그\s*보관)/i)) {
       return { owner: "security", reason: "explicit_role_mention(security-reviewer)" };
+    }
+    // planner
+    if (has(/(기획자|플래너|planner|정리해줘|요약해줘)/i)) {
+      return { owner: "planner", reason: "explicit_role_mention(planner)" };
     }
     // task-reviewer
     if (has(/(리뷰|검토|검수|품질|테스트|우선순위|리스크)/i)) {
@@ -665,12 +725,78 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const momentumWeights: Record<NextOwner, number> = { ...decayedMomentum };
   for (const k of Object.keys(momentumWeights) as NextOwner[]) momentumWeights[k] = Math.min(MAX_OWNER_STICKINESS, Number((momentumWeights[k] * 0.3).toFixed(3)));
 
-  const decisionAxisCandidates = resolveDecisionAxisCandidatesFromUserIntent(input.userMessage);
+  const previousConversationOwner =
+    typeof (state as any).lastConversationOwner === "string" ? String((state as any).lastConversationOwner).trim() : null;
+  const activeConversationOwnerRaw =
+    typeof (state as any).activeConversationOwner === "string" ? String((state as any).activeConversationOwner).trim().toLowerCase() : "";
+  const stickyTurnsRemainingPrev =
+    typeof (state as any).stickyTurnsRemaining === "number" && Number.isFinite((state as any).stickyTurnsRemaining)
+      ? Math.max(0, Math.min(4, Math.floor((state as any).stickyTurnsRemaining)))
+      : 0;
+  const previousDecisionAxis =
+    typeof (state as any).lastDecisionAxis === "string" ? String((state as any).lastDecisionAxis).trim() : null;
+  const previousDecisionAxisCandidates =
+    Array.isArray((state as any).lastDecisionAxisCandidates) ? ((state as any).lastDecisionAxisCandidates as any) : null;
+
+  const axisResolved = resolveDecisionAxisCandidatesFromUserIntent(input.userMessage, previousDecisionAxisCandidates);
+  const decisionAxisCandidates = axisResolved.candidates;
+  const decisionAxisSource = axisResolved.source;
   const decisionAxis = decisionAxisCandidates[0]?.axis ?? inferDecisionAxisFromUserIntent(input.userMessage);
+
+  const explicitOwner = resolveExplicitOwnerFromUserIntent(input.userMessage);
+
+  // Owner persistence state
+  let activeConversationOwner: NextOwner | null =
+    activeConversationOwnerRaw === "planner" ||
+    activeConversationOwnerRaw === "analyst" ||
+    activeConversationOwnerRaw === "architect" ||
+    activeConversationOwnerRaw === "designer" ||
+    activeConversationOwnerRaw === "security"
+      ? (activeConversationOwnerRaw as NextOwner)
+      : null;
+  let stickyTurnsRemaining = stickyTurnsRemainingPrev;
+
   const resolvedOwner = resolveNextConversationOwner(phaseOwner, decisionAxisCandidates, momentumWeights);
-  const nextOwner = resolvedOwner.owner;
+  let nextOwner = resolvedOwner.owner;
   const ownershipReason = resolvedOwner.reason;
   const ownershipScoreBreakdown = resolvedOwner.breakdown;
+
+  let ownerPersistenceReason: string | null = null;
+  const shouldKeepActiveOwner = (): boolean => {
+    if (!activeConversationOwner || stickyTurnsRemaining <= 0) return false;
+    if (explicitOwner) return false;
+    const top = decisionAxisCandidates[0];
+    if (top && top.score >= 0.82) {
+      const axisOwner = ownerForAxis(top.axis);
+      const gap = top.score - Number(decisionAxisCandidates[1]?.score ?? 0);
+      if (axisOwner !== activeConversationOwner && gap >= 0.25) return false;
+    }
+    return true;
+  };
+
+  if (explicitOwner) {
+    activeConversationOwner = explicitOwner.owner;
+    stickyTurnsRemaining = 2;
+    nextOwner = explicitOwner.owner;
+    ownerPersistenceReason = `explicit_sticky(owner=${explicitOwner.owner},turns=2)`;
+  } else if (shouldKeepActiveOwner()) {
+    nextOwner = activeConversationOwner!;
+    stickyTurnsRemaining = Math.max(0, stickyTurnsRemaining - 1);
+    ownerPersistenceReason = `sticky_keep(owner=${nextOwner},remaining=${stickyTurnsRemaining})`;
+  } else if (!explicitOwner && activeConversationOwner && stickyTurnsRemaining > 0) {
+    ownerPersistenceReason = `sticky_break(owner=${activeConversationOwner},remaining=${stickyTurnsRemaining})`;
+    stickyTurnsRemaining = Math.max(0, stickyTurnsRemaining - 1);
+  } else {
+    if (nextOwner !== "planner") {
+      activeConversationOwner = nextOwner;
+      stickyTurnsRemaining = 1;
+      ownerPersistenceReason = `soft_sticky(owner=${nextOwner},turns=1)`;
+    } else {
+      activeConversationOwner = null;
+      stickyTurnsRemaining = 0;
+      ownerPersistenceReason = `no_sticky`;
+    }
+  }
   const ownerMomentumNext: Record<NextOwner, number> = { ...decayedMomentum };
   ownerMomentumNext[nextOwner] = Number(Math.min(1.2, ownerMomentumNext[nextOwner] + 0.35).toFixed(3));
   console.info("[orchestration-owner]", {
@@ -686,6 +812,15 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const top2 = decisionAxisCandidates[1] ?? null;
   const conflictSignals: string[] = [];
   const explicitMentionChosen = String(ownershipReason ?? "").startsWith("explicit_role_mention");
+  const ownerLocked =
+    typeof ownerPersistenceReason === "string" &&
+    (ownerPersistenceReason.startsWith("explicit_sticky") || ownerPersistenceReason.startsWith("sticky_keep"));
+  const axisOwner = ownerForAxis(decisionAxis as any);
+  const ownerAxisMismatch =
+    Boolean(decisionAxis && decisionAxis !== "unknown") &&
+    Boolean(nextOwner && nextOwner !== "planner") &&
+    axisOwner !== nextOwner;
+  if (ownerAxisMismatch) conflictSignals.push(`owner_axis_mismatch(owner=${nextOwner},axis=${decisionAxis})`);
   const conflictDetected =
     Boolean(top1 && top2) &&
     Number(top1?.score ?? 0) >= 0.7 &&
@@ -693,7 +828,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     ownerForAxis(top1!.axis) !== ownerForAxis(top2!.axis) &&
     Math.abs(Number(top1!.score) - Number(top2!.score)) <= 0.12 &&
     // explicit role mention must win over conflict mediation
-    !explicitMentionChosen;
+    !explicitMentionChosen &&
+    // owner persistence must win over conflict mediation
+    !ownerLocked;
   if (conflictDetected && top1 && top2) {
     conflictSignals.push(`axis_conflict(${top1.axis}:${top1.score.toFixed(2)} vs ${top2.axis}:${top2.score.toFixed(2)})`);
   }
@@ -942,6 +1079,13 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     questionGeneratedBy,
     ownershipReason,
     decisionAxis,
+    ...(previousConversationOwner ? { previousConversationOwner } : {}),
+    ...(activeConversationOwner ? { activeConversationOwner } : {}),
+    ...(typeof stickyTurnsRemaining === "number" ? { stickyTurnsRemaining } : {}),
+    ...(ownerPersistenceReason ? { ownerPersistenceReason } : {}),
+    ...(previousDecisionAxis ? { previousDecisionAxis } : {}),
+    ...(typeof decisionAxisSource === "string" ? { decisionAxisSource } : {}),
+    ...(typeof ownerAxisMismatch === "boolean" ? { ownerAxisMismatch } : {}),
     mergeCoordinator: "merge-coordinator",
     specialistContributors: uniqSpecialists,
     decisionAxisCandidates: decisionAxisCandidates.map((c) => ({ axis: c.axis, score: c.score })),
@@ -976,9 +1120,14 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     nextState: {
       ...state,
       lastOrchestratorAgent: conversationOwner,
+      lastConversationOwner: conversationOwner,
+      activeConversationOwner: activeConversationOwner ?? null,
+      stickyTurnsRemaining,
       lastDelegatedAgents: uniqSpecialists,
       lastRoutingDecision: `orchestration_turn(${conversationOwner})`,
       ownerMomentum: ownerMomentumNext,
+      lastDecisionAxis: decisionAxis,
+      lastDecisionAxisCandidates: decisionAxisCandidates.map((c) => ({ axis: c.axis, score: c.score })),
     },
     meta,
     promptText: promptChunks.join("\n\n---\n\n"),

@@ -104,6 +104,39 @@ export function parseRequirementsSingleChatOrchestrationV1(
         )
       : null;
 
+  const lastConversationOwner =
+    typeof o.lastConversationOwner === "string" ? o.lastConversationOwner.trim() : o.lastConversationOwner === null ? null : undefined;
+  const activeConversationOwner =
+    typeof o.activeConversationOwner === "string"
+      ? o.activeConversationOwner.trim()
+      : o.activeConversationOwner === null
+        ? null
+        : undefined;
+  const stickyTurnsRemainingRaw =
+    typeof o.stickyTurnsRemaining === "number" && Number.isFinite(o.stickyTurnsRemaining)
+      ? Math.max(0, Math.min(4, Math.floor(o.stickyTurnsRemaining)))
+      : o.stickyTurnsRemaining === null
+        ? null
+        : undefined;
+
+  const lastDecisionAxis =
+    typeof o.lastDecisionAxis === "string" ? o.lastDecisionAxis.trim() : o.lastDecisionAxis === null ? null : undefined;
+  const lastDecisionAxisCandidates: Array<{ axis: string; score: number }> | undefined =
+    Array.isArray(o.lastDecisionAxisCandidates)
+      ? (o.lastDecisionAxisCandidates
+          .map((x) => {
+            if (!x || typeof x !== "object") return null;
+            const r = x as Record<string, unknown>;
+            const axis = String(r.axis ?? "").trim();
+            const score = Number(r.score);
+            if (!axis || !Number.isFinite(score)) return null;
+            return { axis: axis.slice(0, 80), score: Math.max(0, Math.min(1, Number(score.toFixed(3)))) };
+          })
+          .filter(Boolean) as Array<{ axis: string; score: number }>)
+      : o.lastDecisionAxisCandidates === null
+        ? []
+        : undefined;
+
   const bootstrapMeta =
     o.bootstrapMeta && typeof o.bootstrapMeta === "object"
       ? (() => {
@@ -252,7 +285,12 @@ export function parseRequirementsSingleChatOrchestrationV1(
     ...(rejectedDynamicSlots ? { rejectedDynamicSlots } : {}),
     ...(slotProposalHistory ? { slotProposalHistory } : {}),
     ...(lastOrchestratorAgent !== undefined ? { lastOrchestratorAgent } : {}),
+    ...(lastConversationOwner !== undefined ? { lastConversationOwner } : {}),
+    ...(activeConversationOwner !== undefined ? { activeConversationOwner } : {}),
+    ...(stickyTurnsRemainingRaw !== undefined ? { stickyTurnsRemaining: stickyTurnsRemainingRaw } : {}),
     ...(ownerMomentum !== null ? { ownerMomentum } : {}),
+    ...(lastDecisionAxis !== undefined ? { lastDecisionAxis } : {}),
+    ...(lastDecisionAxisCandidates !== undefined ? { lastDecisionAxisCandidates } : {}),
     ...(lastRoutingDecision !== undefined ? { lastRoutingDecision } : {}),
     ...(lastDelegatedAgents !== undefined ? { lastDelegatedAgents } : {}),
     updatedAt,

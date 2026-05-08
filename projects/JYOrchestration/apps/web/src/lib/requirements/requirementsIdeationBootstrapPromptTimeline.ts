@@ -73,6 +73,18 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.conversationOwner === "string" && r.conversationOwner.trim()
       ? { conversationOwner: r.conversationOwner.trim().slice(0, 40) }
       : {}),
+    ...(typeof r.previousConversationOwner === "string" && r.previousConversationOwner.trim()
+      ? { previousConversationOwner: r.previousConversationOwner.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.activeConversationOwner === "string" && r.activeConversationOwner.trim()
+      ? { activeConversationOwner: r.activeConversationOwner.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.ownerPersistenceReason === "string" && r.ownerPersistenceReason.trim()
+      ? { ownerPersistenceReason: r.ownerPersistenceReason.trim().slice(0, 200) }
+      : {}),
+    ...(typeof r.stickyTurnsRemaining === "number" && Number.isFinite(r.stickyTurnsRemaining)
+      ? { stickyTurnsRemaining: Math.max(0, Math.min(4, Math.floor(r.stickyTurnsRemaining))) }
+      : {}),
     ...(typeof r.questionGeneratedBy === "string" && r.questionGeneratedBy.trim()
       ? { questionGeneratedBy: r.questionGeneratedBy.trim().slice(0, 40) }
       : {}),
@@ -81,6 +93,23 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       : {}),
     ...(typeof r.decisionAxis === "string" && r.decisionAxis.trim()
       ? { decisionAxis: r.decisionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.previousDecisionAxis === "string" && r.previousDecisionAxis.trim()
+      ? { previousDecisionAxis: r.previousDecisionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.decisionAxisSource === "string" && r.decisionAxisSource.trim()
+      ? { decisionAxisSource: r.decisionAxisSource.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.contextHint === "string" && r.contextHint.trim() ? { contextHint: r.contextHint.trim().slice(0, 80) } : {}),
+    ...(typeof r.contextHintSource === "string" && r.contextHintSource.trim()
+      ? { contextHintSource: r.contextHintSource.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.ownerAxisMismatch === "boolean" ? { ownerAxisMismatch: r.ownerAxisMismatch } : {}),
+    ...(typeof r.resolvedSpeaker === "string" && r.resolvedSpeaker.trim()
+      ? { resolvedSpeaker: r.resolvedSpeaker.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.resolvedSpeakerSource === "string" && r.resolvedSpeakerSource.trim()
+      ? { resolvedSpeakerSource: r.resolvedSpeakerSource.trim().slice(0, 80) }
       : {}),
     ...(typeof r.mergeCoordinator === "string" && r.mergeCoordinator.trim()
       ? { mergeCoordinator: r.mergeCoordinator.trim().slice(0, 40) }
@@ -425,9 +454,20 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly currentPhase?: 1 | 2 | 3 | 4 | 5;
   readonly nextOwnerAgent?: string;
   readonly conversationOwner?: string;
+  readonly previousConversationOwner?: string;
+  readonly activeConversationOwner?: string;
+  readonly ownerPersistenceReason?: string;
+  readonly stickyTurnsRemaining?: number;
   readonly questionGeneratedBy?: string;
   readonly ownershipReason?: string;
   readonly decisionAxis?: string;
+  readonly previousDecisionAxis?: string;
+  readonly decisionAxisSource?: RequirementsPromptTimelineEntry["decisionAxisSource"];
+  readonly contextHint?: string;
+  readonly contextHintSource?: RequirementsPromptTimelineEntry["contextHintSource"];
+  readonly ownerAxisMismatch?: boolean;
+  readonly resolvedSpeaker?: string;
+  readonly resolvedSpeakerSource?: string;
   readonly mergeCoordinator?: string;
   readonly specialistContributors?: readonly string[];
   readonly decisionAxisCandidates?: readonly { axis: string; score: number }[];
@@ -521,6 +561,18 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(typeof params.conversationOwner === "string" && params.conversationOwner.trim()
       ? { conversationOwner: params.conversationOwner.trim().slice(0, 40) }
       : {}),
+    ...(typeof params.previousConversationOwner === "string" && params.previousConversationOwner.trim()
+      ? { previousConversationOwner: params.previousConversationOwner.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.activeConversationOwner === "string" && params.activeConversationOwner.trim()
+      ? { activeConversationOwner: params.activeConversationOwner.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.ownerPersistenceReason === "string" && params.ownerPersistenceReason.trim()
+      ? { ownerPersistenceReason: params.ownerPersistenceReason.trim().slice(0, 200) }
+      : {}),
+    ...(typeof params.stickyTurnsRemaining === "number" && Number.isFinite(params.stickyTurnsRemaining)
+      ? { stickyTurnsRemaining: Math.max(0, Math.min(4, Math.floor(params.stickyTurnsRemaining))) }
+      : {}),
     ...(typeof params.questionGeneratedBy === "string" && params.questionGeneratedBy.trim()
       ? { questionGeneratedBy: params.questionGeneratedBy.trim().slice(0, 40) }
       : {}),
@@ -529,6 +581,25 @@ export function buildSingleChatPromptTimelineEntry(params: {
       : {}),
     ...(typeof params.decisionAxis === "string" && params.decisionAxis.trim()
       ? { decisionAxis: params.decisionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof params.previousDecisionAxis === "string" && params.previousDecisionAxis.trim()
+      ? { previousDecisionAxis: params.previousDecisionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof params.decisionAxisSource === "string" && params.decisionAxisSource.trim()
+      ? { decisionAxisSource: params.decisionAxisSource.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.contextHint === "string" && params.contextHint.trim()
+      ? { contextHint: params.contextHint.trim().slice(0, 80) }
+      : {}),
+    ...(typeof params.contextHintSource === "string" && params.contextHintSource.trim()
+      ? { contextHintSource: params.contextHintSource.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.ownerAxisMismatch === "boolean" ? { ownerAxisMismatch: params.ownerAxisMismatch } : {}),
+    ...(typeof params.resolvedSpeaker === "string" && params.resolvedSpeaker.trim()
+      ? { resolvedSpeaker: params.resolvedSpeaker.trim().slice(0, 80) }
+      : {}),
+    ...(typeof params.resolvedSpeakerSource === "string" && params.resolvedSpeakerSource.trim()
+      ? { resolvedSpeakerSource: params.resolvedSpeakerSource.trim().slice(0, 80) }
       : {}),
     ...(typeof params.mergeCoordinator === "string" && params.mergeCoordinator.trim()
       ? { mergeCoordinator: params.mergeCoordinator.trim().slice(0, 40) }

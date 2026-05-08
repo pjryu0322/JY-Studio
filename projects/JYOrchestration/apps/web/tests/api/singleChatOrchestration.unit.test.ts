@@ -218,6 +218,113 @@ describe("singleChatOrchestration agents & fallback", () => {
     expect(out.meta.routingDecision).toMatch(/^E:/);
     expect(out.meta.executedAgents).toEqual(["planner"]);
   });
+
+  it("explicit owner mention 후 stickyTurns=2로 owner가 최소 1~2턴 유지된다", async () => {
+    const defs = buildDynamicServicePlanningSlotDefinitions({
+      projectName: "Persist",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+    });
+    const ts = "2026-05-08T00:00:00.000Z";
+    const base = initialOrchestrationStateFromDefinitions(defs, ts);
+
+    // mock OpenAI for question generation path (return minimal valid JSON)
+    mockPostOpenAi.mockResolvedValue({ ok: true, text: JSON.stringify({ assistantMessage: "질문인가요?" }) });
+
+    const first = await runSelectiveMultiAgentOrchestrationOpenAI({
+      projectName: "Persist",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+      userMessage: "디자이너가 UX 방향 제안해줘",
+      dialogueExcerpt: "[u] ...",
+      baseState: base,
+      activeRoles: new Set(LLM_EXTERNAL_ORCHESTRATION_ROLES),
+      selectedAgents: [],
+      participatingAgentsPromptBlock: "",
+      definitions: defs,
+      orchPlanningCtx: null,
+      orchestrationWakeupReason: "test",
+      orchestrationLazyInit: true,
+    } as any);
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      expect(first.meta.conversationOwner).toBe("designer");
+      expect((first.nextState as any).activeConversationOwner).toBe("designer");
+      expect((first.nextState as any).stickyTurnsRemaining).toBe(2);
+    }
+
+    const second = await runSelectiveMultiAgentOrchestrationOpenAI({
+      projectName: "Persist",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+      userMessage: "상호작용 방식에 대해서 예시를 들어줘",
+      dialogueExcerpt: "[u] ...",
+      baseState: first.ok ? first.nextState : base,
+      activeRoles: new Set(LLM_EXTERNAL_ORCHESTRATION_ROLES),
+      selectedAgents: [],
+      participatingAgentsPromptBlock: "",
+      definitions: defs,
+      orchPlanningCtx: null,
+      orchestrationWakeupReason: "test",
+      orchestrationLazyInit: true,
+    } as any);
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.meta.conversationOwner).toBe("designer");
+      expect((second.nextState as any).stickyTurnsRemaining).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("context-dependent followup은 previous decisionAxis를 유지한다", async () => {
+    const defs = buildDynamicServicePlanningSlotDefinitions({
+      projectName: "AxisPersist",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+    });
+    const ts = "2026-05-08T00:00:00.000Z";
+    const base = initialOrchestrationStateFromDefinitions(defs, ts);
+    mockPostOpenAi.mockResolvedValue({ ok: true, text: JSON.stringify({ assistantMessage: "질문인가요?" }) });
+
+    const first = await runSelectiveMultiAgentOrchestrationOpenAI({
+      projectName: "AxisPersist",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+      userMessage: "디자이너가 UX 방향 제안해줘",
+      dialogueExcerpt: "[u] ...",
+      baseState: base,
+      activeRoles: new Set(LLM_EXTERNAL_ORCHESTRATION_ROLES),
+      selectedAgents: [],
+      participatingAgentsPromptBlock: "",
+      definitions: defs,
+      orchPlanningCtx: null,
+      orchestrationWakeupReason: "test",
+      orchestrationLazyInit: true,
+    } as any);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.meta.decisionAxis).toBeTruthy();
+
+    const second = await runSelectiveMultiAgentOrchestrationOpenAI({
+      projectName: "AxisPersist",
+      projectDescription: "회의록 정리",
+      projectType: "web",
+      userMessage: "예시를 들어줘",
+      dialogueExcerpt: "[u] ...",
+      baseState: first.nextState,
+      activeRoles: new Set(LLM_EXTERNAL_ORCHESTRATION_ROLES),
+      selectedAgents: [],
+      participatingAgentsPromptBlock: "",
+      definitions: defs,
+      orchPlanningCtx: null,
+      orchestrationWakeupReason: "test",
+      orchestrationLazyInit: true,
+    } as any);
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.meta.decisionAxisSource).toBe("previousContext");
+      expect(second.meta.decisionAxis).toBe(first.meta.decisionAxis);
+    }
+  });
 });
 
 describe("singleChatOrchestration parse wire", () => {

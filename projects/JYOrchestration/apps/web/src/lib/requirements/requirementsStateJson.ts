@@ -96,12 +96,34 @@ export type RequirementsPromptTimelineEntry = {
   nextOwnerAgent?: string;
   /** Diagnostic: resolved conversation owner */
   conversationOwner?: string;
+  /** Persistence: previous conversation owner */
+  previousConversationOwner?: string;
+  /** Persistence: active conversation owner (sticky) */
+  activeConversationOwner?: string;
+  /** Persistence: why owner was persisted / switched */
+  ownerPersistenceReason?: string;
+  /** Persistence: remaining sticky turns */
+  stickyTurnsRemaining?: number;
   /** Diagnostic: who generated the next question */
   questionGeneratedBy?: string;
   /** Diagnostic: why ownership was chosen */
   ownershipReason?: string;
   /** Diagnostic: dominant decision axis */
   decisionAxis?: string;
+  /** Persistence: previous decision axis */
+  previousDecisionAxis?: string;
+  /** Persistence: decision axis source */
+  decisionAxisSource?: "explicitMention" | "currentMessage" | "previousContext" | "fallback" | string;
+  /** UI: context hint subtitle (speaker suffix) */
+  contextHint?: string;
+  /** UI: context hint source */
+  contextHintSource?: "owner_axis" | "owner_fallback" | "axis_only" | "unknown" | string;
+  /** UI: owner/axis mismatch detected */
+  ownerAxisMismatch?: boolean;
+  /** UI: final resolved speaker line */
+  resolvedSpeaker?: string;
+  /** UI: how speaker was resolved */
+  resolvedSpeakerSource?: string;
   /** Diagnostic: merge coordinator role */
   mergeCoordinator?: string;
   /** Diagnostic: specialist contributors */
