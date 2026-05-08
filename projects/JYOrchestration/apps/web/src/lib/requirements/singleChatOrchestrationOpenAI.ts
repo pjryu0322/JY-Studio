@@ -30,9 +30,14 @@ export type SingleChatOrchestrationTurnMeta = Readonly<{
   routingDecision: string;
   matchedSlots: readonly string[];
   updatedSlotKeys: readonly string[];
+  updatedSlotCount: number;
   /** 실제 LLM이 실행된 specialist 역할만 */
   delegatedAgents: readonly string[];
   orchestratorAgent: string;
+  /** 다음 질문을 생성한 ownerAgent(표시용; planner 독점 방지 추적) */
+  nextQuestionOwnerAgent?: string | null;
+  /** 오케스트레이션 단계(UX/추적용) */
+  currentPhase?: 1 | 2 | 3 | 4 | 5;
   executedAgents: readonly string[];
   staleSlots: readonly string[];
   confirmedSlots: readonly string[];
@@ -392,12 +397,120 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     ...merge.patches.map((p) => p.slotKey),
   ];
 
+  const ownerLabelFromInternal = (owner: string): "planner" | "analyst" | "architect" | "designer" | "reviewer" | "security" => {
+    const o = String(owner ?? "").trim().toLowerCase();
+    if (o === "planner") return "planner";
+    if (o === "service-designer" || o === "domain-expert") return "analyst";
+    if (o === "solution-architect") return "architect";
+    if (o === "ui-designer") return "designer";
+    if (o === "task-reviewer") return "reviewer";
+    if (o === "security-reviewer") return "security";
+    return "planner";
+  };
+
+  const inferPhase = (): 1 | 2 | 3 | 4 | 5 => {
+    // Heuristic phases: keep simple and stable — phase reflects which slot groups still have the biggest gap.
+    const baseKeys = state.baseSlotKeys?.length ? new Set(state.baseSlotKeys.map((k) => String(k ?? "").trim()).filter(Boolean)) : null;
+    const rows = Object.values(state.slots ?? {}).filter((s) => (baseKeys ? baseKeys.has(String((s as any).slotKey ?? "")) : true));
+    const emptyBy: Record<string, number> = { planner: 0, analyst: 0, architect: 0, designer: 0, reviewer: 0, security: 0 };
+    for (const r of rows) {
+      const st = String((r as any).status ?? "");
+      if (st && st.toLowerCase() !== "empty" && st.toLowerCase() !== "stale") continue;
+      const label = ownerLabelFromInternal(String((r as any).ownerAgent ?? ""));
+      emptyBy[label] += 1;
+    }
+    const plannerStable = isPlannerStableEnough(state, definitions);
+    if (!plannerStable) return 1;
+    const flow = emptyBy.analyst;
+    const arch = emptyBy.architect;
+    const design = emptyBy.designer;
+    const reviewSec = emptyBy.reviewer + emptyBy.security;
+    const max = Math.max(flow, arch, design, reviewSec);
+    if (max === 0) return 5;
+    if (max === flow) return 2;
+    if (max === arch) return 3;
+    if (max === design) return 4;
+    return 5;
+  };
+
+  const pickNextOwner = (phase: 1 | 2 | 3 | 4 | 5): "planner" | "analyst" | "architect" | "designer" | "reviewer" | "security" => {
+    if (phase === 1) return "planner";
+    if (phase === 2) return "analyst";
+    if (phase === 3) return "architect";
+    if (phase === 4) return "designer";
+    // Phase 5: alternate security/reviewer to avoid one-sided audits.
+    return state.lastOrchestratorAgent === "security" ? "reviewer" : "security";
+  };
+
+  const phase = inferPhase();
+  const nextOwner = pickNextOwner(phase);
+
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  let nextQuestion = merge.assistantMessage;
+  if (apiKey) {
+    const model = resolveOpenAiModelFromEnv();
+    const slotsJson = JSON.stringify(state.slots, null, 0).slice(0, 18_000);
+    const keyHints = definitions
+      .filter((d) => ownerLabelFromInternal(d.ownerAgent) === nextOwner)
+      .slice(0, 10)
+      .map((d) => `- ${d.label} (${d.slotKey})`)
+      .join("\n");
+    const persona =
+      nextOwner === "planner"
+        ? "planner(기획): 목적·범위·가치·협업 흐름"
+        : nextOwner === "analyst"
+          ? "analyst(분석): 액터·승인·예외·운영·권한 관계"
+          : nextOwner === "architect"
+            ? "architect(설계): 자동화 수준·구조·실시간/배치·연동·품질 검증·MVP 경계"
+            : nextOwner === "designer"
+              ? "designer(UX): 사용자 상호작용·화면 흐름·편집/피드백 UX"
+              : nextOwner === "security"
+                ? "security(보안): 개인정보·권한 경계·보관·접근제어"
+                : "reviewer(리뷰): 범위/우선순위·리스크·검증 기준";
+    const system = `${workspaceAiMemberSystemPrefix("ideation")}
+당신은 SingleChat의 **다음 질문 생성기**입니다. 사용자에게 보이는 응답은 오직 질문 1문장만.
+현재 당신의 관점은 ${persona} 입니다.
+규칙:
+- 질문은 한국어 1문장, 물음표 1개.
+- 내부 슬롯 키/ownerAgent/phase 같은 용어를 절대 쓰지 마라.
+- 사용자가 방금 말한 내용은 존중하되, 다음으로 필요한 결정 1개만 묻는다.
+출력(JSON 1개): { "assistantMessage": "질문 한 문장" }`;
+    const user = `[프로젝트] ${input.projectName.trim()}
+[최근 사용자 발화] ${input.userMessage.trim().slice(0, 1600)}
+[대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
+[이 역할이 담당하는 슬롯(참고)]\n${keyHints || "- (없음)"}
+[현재 슬롯 스냅샷] ${slotsJson}`;
+    const resQ = await postOpenAiChatCompletion({
+      apiKey,
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      temperature: 0.25,
+      responseFormatJsonObject: true,
+      maxTokens: 160,
+    });
+    if (resQ.ok) {
+      const parsed = safeJsonParse(resQ.text ?? "") as Record<string, unknown> | null;
+      const msg = String(parsed?.assistantMessage ?? "").trim();
+      if (msg) {
+        nextQuestion = msg;
+        promptChunks.push(`[next-question:${nextOwner}]\n[system]\n${system}\n\n[user]\n${user}\n\n[raw]\n${String(resQ.text ?? "").slice(0, 4000)}`);
+        executedAgents.push(`question:${nextOwner}`);
+      }
+    }
+  }
+
   const meta: SingleChatOrchestrationTurnMeta = {
-    routingDecision: route.routingDecision,
+    routingDecision: `orchestration_turn(${nextOwner})`,
     matchedSlots: route.matchedSlots,
     updatedSlotKeys: [...new Set(allUpdated)],
+    updatedSlotCount: [...new Set(allUpdated)].length,
     delegatedAgents: uniqSpecialists,
-    orchestratorAgent: "planner",
+    orchestratorAgent: nextOwner,
+    nextQuestionOwnerAgent: nextOwner,
+    currentPhase: phase,
     executedAgents: [...new Set(executedAgents)],
     staleSlots: buckets.stale,
     confirmedSlots: buckets.confirmed,
@@ -414,12 +527,12 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   return {
     ok: true,
-    assistantMessage: merge.assistantMessage,
+    assistantMessage: nextQuestion,
     nextState: {
       ...state,
-      lastOrchestratorAgent: "planner",
+      lastOrchestratorAgent: nextOwner,
       lastDelegatedAgents: uniqSpecialists,
-      lastRoutingDecision: route.routingDecision,
+      lastRoutingDecision: `orchestration_turn(${nextOwner})`,
     },
     meta,
     promptText: promptChunks.join("\n\n---\n\n"),

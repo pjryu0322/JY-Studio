@@ -293,6 +293,11 @@ export async function POST(request: NextRequest) {
         routingDecision: turnOk.meta.routingDecision,
         matchedSlots: [...turnOk.meta.matchedSlots],
         updatedSlots: [...turnOk.meta.updatedSlotKeys],
+        ...(typeof (turnOk.meta as any).updatedSlotCount === "number" ? { updatedSlotCount: (turnOk.meta as any).updatedSlotCount } : {}),
+        ...(typeof (turnOk.meta as any).currentPhase === "number" ? { currentPhase: (turnOk.meta as any).currentPhase } : {}),
+        ...(typeof (turnOk.meta as any).nextQuestionOwnerAgent === "string"
+          ? { nextOwnerAgent: (turnOk.meta as any).nextQuestionOwnerAgent }
+          : {}),
         fallback: usedFallback,
         orchestratorAgent: turnOk.meta.orchestratorAgent,
         delegatedAgents: [...turnOk.meta.delegatedAgents],
