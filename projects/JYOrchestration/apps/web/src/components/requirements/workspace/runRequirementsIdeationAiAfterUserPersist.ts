@@ -105,14 +105,31 @@ export async function runRequirementsIdeationAiAfterUserPersist(
 
   const legacyFallbackEnabled = legacyProblemInterviewFallbackEnabled();
 
-  const speakerForOrchestratorAgent = (agent: string | null | undefined): { id: string; name: string } => {
+  const speakerForOrchestratorAgent = (
+    agent: string | null | undefined,
+    hintAxis?: string | null,
+  ): { id: string; name: string } => {
     const a = String(agent ?? "").trim().toLowerCase();
-    if (a === "analyst") return { id: "virtual:ai-analyst", name: "AI 분석가" };
-    if (a === "architect") return { id: "virtual:ai-architect", name: "AI 설계자" };
-    if (a === "designer") return { id: "virtual:ai-designer", name: "AI 디자이너" };
-    if (a === "security") return { id: "virtual:ai-security", name: "AI 보안관" };
-    if (a === "reviewer") return { id: "virtual:ai-reviewer", name: "AI 리뷰어" };
-    return { id: VIRTUAL_AI_PLANNER_ID, name: IDEATION_AI_DISPLAY_NAME };
+    const axis = String(hintAxis ?? "").trim();
+    const subtitle =
+      axis === "ux_direction" || axis === "mobile_experience"
+        ? "편집 UX 검토 중"
+        : axis === "automation_latency" || axis === "processing_pipeline"
+          ? "처리 구조 검토 중"
+          : axis === "permissions_approval" || axis === "collaboration_flow"
+            ? "권한·승인 흐름 분석 중"
+            : axis === "security_risk"
+              ? "보안·보관 정책 검토 중"
+              : axis === "scope_value"
+                ? "목표·범위 정리 중"
+                : "";
+    const suffix = subtitle ? ` (${subtitle})` : "";
+    if (a === "analyst") return { id: "virtual:ai-analyst", name: `AI 분석가${suffix}` };
+    if (a === "architect") return { id: "virtual:ai-architect", name: `AI 설계자${suffix}` };
+    if (a === "designer") return { id: "virtual:ai-designer", name: `AI 디자이너${suffix}` };
+    if (a === "security") return { id: "virtual:ai-security", name: `AI 보안관${suffix}` };
+    if (a === "reviewer") return { id: "virtual:ai-reviewer", name: `AI 리뷰어${suffix}` };
+    return { id: VIRTUAL_AI_PLANNER_ID, name: `${IDEATION_AI_DISPLAY_NAME}${suffix}` };
   };
 
   const absorbPromptTrace = (raw: unknown) => {
@@ -273,7 +290,11 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           ideationSendDevLog("return", `facilitator-dedupe id=${sendTraceId}`);
         } else {
           ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=facilitator`);
-          const speaker = speakerForOrchestratorAgent(promptTraceParsed?.orchestratorAgent);
+          const axisTop =
+            Array.isArray((promptTraceParsed as any)?.decisionAxisCandidates) && (promptTraceParsed as any).decisionAxisCandidates.length
+              ? String((promptTraceParsed as any).decisionAxisCandidates[0]?.axis ?? "").trim()
+              : String((promptTraceParsed as any)?.decisionAxis ?? "").trim();
+          const speaker = speakerForOrchestratorAgent(promptTraceParsed?.orchestratorAgent, axisTop || null);
           facilitatorFinalRoom = {
             ...withCalling,
             aiQuestionIndex: turn + 1,

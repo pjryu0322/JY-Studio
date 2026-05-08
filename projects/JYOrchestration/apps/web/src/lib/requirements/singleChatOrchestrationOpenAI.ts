@@ -42,6 +42,32 @@ export type SingleChatOrchestrationTurnMeta = Readonly<{
   questionGeneratedBy?: string | null;
   /** 소유권 선택 근거(진단용) */
   ownershipReason?: string | null;
+  /** 이번 턴의 지배적 결정 축(진단/라우팅용) */
+  decisionAxis?: string | null;
+  /** merge coordinator 역할(진단용; tone contamination 방지) */
+  mergeCoordinator?: string | null;
+  /** 내부 specialist contributor(진단용) */
+  specialistContributors?: readonly string[];
+  /** decision axis candidates (ranked; replay-friendly) */
+  decisionAxisCandidates?: readonly { axis: string; score: number }[];
+  /** ownership score breakdown (traceable) */
+  ownershipScoreBreakdown?: Record<
+    string,
+    {
+      unresolvedSlotWeight?: number;
+      decisionAxisWeight?: number;
+      momentumWeight?: number;
+      explicitRoleMentionWeight?: number;
+      orchestrationPhaseWeight?: number;
+      totalScore?: number;
+    }
+  >;
+  /** momentum contribution snapshot (per owner) */
+  momentumContribution?: Record<string, number>;
+  /** conflict signals (if any) */
+  conflictSignals?: readonly string[];
+  /** slot state transitions (patched keys only) */
+  slotStateTransitions?: readonly { slotKey: string; from: string; to: string; reason?: string }[];
   /** 오케스트레이션 단계(UX/추적용) */
   currentPhase?: 1 | 2 | 3 | 4 | 5;
   executedAgents: readonly string[];
@@ -416,6 +442,62 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   type NextOwner = "planner" | "analyst" | "architect" | "designer" | "reviewer" | "security";
 
+  type DecisionAxis =
+    | "ux_direction"
+    | "mobile_experience"
+    | "automation_latency"
+    | "processing_pipeline"
+    | "permissions_approval"
+    | "collaboration_flow"
+    | "scope_value"
+    | "security_risk"
+    | "unknown";
+
+  type DecisionAxisCandidate = { axis: DecisionAxis; score: number };
+
+  const inferDecisionAxisFromUserIntent = (userMessage: string): DecisionAxis => {
+    const s = String(userMessage ?? "").trim().toLowerCase();
+    if (!s) return "unknown";
+    if (/(디자이너|ui|ux|화면|편집기|ia|정보구조|톤\s*&?\s*스타일|톤앤매너|모바일|리뷰\s*경험)/i.test(s)) return "ux_direction";
+    if (/(바로|즉시|실시간|지연|latency|배치|처리\s*속도|업로드\s*직후|파이프라인|연동|api|확장|성능)/i.test(s)) return "automation_latency";
+    if (/(권한|역할|참석자|작성자|검토자|승인|확정|검수|접근\s*제어|편집\s*권한)/i.test(s)) return "permissions_approval";
+    if (/(협업|공동\s*편집|코멘트|댓글|수정\s*요청|히스토리|버전|워크플로우|흐름|프로세스)/i.test(s)) return "collaboration_flow";
+    if (/(목적|가치|범위|mvp|우선순위|대상\s*사용자|성공\s*기준|kpi)/i.test(s)) return "scope_value";
+    if (/(보안|개인정보|민감|저장|보관|감사|로그\s*보관|컴플라이언스)/i.test(s)) return "security_risk";
+    return "unknown";
+  };
+
+  const resolveDecisionAxisCandidatesFromUserIntent = (userMessage: string): DecisionAxisCandidate[] => {
+    const s = String(userMessage ?? "").trim().toLowerCase();
+    if (!s) return [{ axis: "unknown", score: 0.4 }];
+    const hit = (re: RegExp) => (re.test(s) ? 1 : 0);
+    const candidates: DecisionAxisCandidate[] = [
+      { axis: "ux_direction", score: 0.75 + 0.15 * hit(/(디자이너|ui|ux|편집기|ia|정보구조|톤\s*&?\s*스타일|리뷰\s*경험)/i) },
+      { axis: "mobile_experience", score: 0.62 + 0.18 * hit(/(모바일|작은\s*화면|폰|태블릿|터치)/i) },
+      { axis: "automation_latency", score: 0.7 + 0.2 * hit(/(실시간|바로|즉시|지연|latency|업로드\s*직후)/i) },
+      { axis: "processing_pipeline", score: 0.58 + 0.22 * hit(/(파이프라인|처리\s*구조|배치|큐|비동기|연동|api|확장|성능)/i) },
+      { axis: "permissions_approval", score: 0.7 + 0.2 * hit(/(권한|승인|확정|검토자|참석자별|역할)/i) },
+      { axis: "collaboration_flow", score: 0.62 + 0.18 * hit(/(협업|공동\s*편집|댓글|코멘트|버전|히스토리)/i) },
+      { axis: "scope_value", score: 0.62 + 0.18 * hit(/(목적|가치|범위|mvp|우선순위|kpi|성공\s*기준)/i) },
+      { axis: "security_risk", score: 0.62 + 0.2 * hit(/(보안|개인정보|감사|보관|컴플라이언스)/i) },
+    ];
+    const ranked = candidates
+      .map((c) => ({ ...c, score: Math.max(0, Math.min(1, Number(c.score.toFixed(3)))) }))
+      .filter((c) => c.score >= 0.64)
+      .sort((a, b) => b.score - a.score);
+    if (!ranked.length) return [{ axis: inferDecisionAxisFromUserIntent(userMessage), score: 0.66 }];
+    return ranked.slice(0, 5);
+  };
+
+  const ownerForAxis = (axis: DecisionAxis): NextOwner => {
+    if (axis === "ux_direction" || axis === "mobile_experience") return "designer";
+    if (axis === "automation_latency" || axis === "processing_pipeline") return "architect";
+    if (axis === "permissions_approval" || axis === "collaboration_flow") return "analyst";
+    if (axis === "scope_value") return "planner";
+    if (axis === "security_risk") return "security";
+    return "planner";
+  };
+
   const resolveExplicitOwnerFromUserIntent = (userMessage: string): { owner: NextOwner; reason: string } | null => {
     const s = String(userMessage ?? "").trim().toLowerCase();
     if (!s) return null;
@@ -446,41 +528,90 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     return null;
   };
 
-  const resolveDominantUnresolvedOwnerFromSlots = (phaseOwner: NextOwner): { owner: NextOwner; reason: string } => {
-    // Prefer non-planner owner if their unresolved load is dominant.
-    const unresolvedBy: Record<NextOwner, number> = {
-      planner: 0,
-      analyst: 0,
-      architect: 0,
-      designer: 0,
-      reviewer: 0,
-      security: 0,
-    };
+  const computeUnresolvedScoreByOwner = (): Record<NextOwner, number> => {
+    const score: Record<NextOwner, number> = { planner: 0, analyst: 0, architect: 0, designer: 0, reviewer: 0, security: 0 };
     const rows = Object.values(state.slots ?? {});
     for (const r of rows) {
       const st = String((r as any).status ?? "").trim().toLowerCase();
       const conf = Number((r as any).confidence ?? 0);
-      const isUnresolved = st === "empty" || st === "stale" || st === "candidate" || (st === "partial" && conf < 0.8);
-      if (!isUnresolved) continue;
       const label = ownerLabelFromInternal(String((r as any).ownerAgent ?? ""));
-      unresolvedBy[label] += 1;
+      if (st === "empty") score[label] += 1.0;
+      else if (st === "stale") score[label] += 0.75;
+      else if (st === "candidate") score[label] += 0.55;
+      else if (st === "partial") score[label] += conf >= 0.8 ? 0.15 : 0.35;
+      else if (st === "conflicted") score[label] += 0.9;
+      else if (st === "blocked") score[label] += 0.6;
     }
-    const entries = (Object.keys(unresolvedBy) as NextOwner[])
-      .map((k) => ({ owner: k, count: unresolvedBy[k] }))
-      .sort((a, b) => b.count - a.count);
-    const top = entries[0];
-    const second = entries[1];
-    if (!top || top.count <= 0) return { owner: phaseOwner, reason: `phase_default(${phaseOwner})` };
-    // If phaseOwner already matches top, keep it.
-    if (top.owner === phaseOwner) return { owner: phaseOwner, reason: `dominant_unresolved(${phaseOwner}:${top.count})` };
-    // Require a meaningful gap to switch away from phaseOwner unless phaseOwner is planner.
-    const gap = top.count - (second?.count ?? 0);
-    const switchingAwayFromPlanner = phaseOwner === "planner" && top.owner !== "planner" && top.count >= 1;
-    const switchingBetweenSpecialists = phaseOwner !== "planner" && gap >= 1;
-    if (switchingAwayFromPlanner || switchingBetweenSpecialists) {
-      return { owner: top.owner, reason: `dominant_unresolved(${top.owner}:${top.count})` };
+    return score;
+  };
+
+  const ownerBoostFromDecisionAxisCandidates = (
+    candidates: readonly DecisionAxisCandidate[]
+  ): Partial<Record<NextOwner, number>> => {
+    const boost: Partial<Record<NextOwner, number>> = {};
+    for (const c of candidates.slice(0, 3)) {
+      const o = ownerForAxis(c.axis);
+      const w = c.score >= 0.85 ? 0.95 : c.score >= 0.75 ? 0.7 : 0.45;
+      boost[o] = (boost[o] ?? 0) + w;
     }
-    return { owner: phaseOwner, reason: `phase_default(${phaseOwner})` };
+    return boost;
+  };
+
+  const resolveNextConversationOwner = (
+    phaseOwner: NextOwner,
+    axisCandidates: readonly DecisionAxisCandidate[],
+    momentumWeights: Record<NextOwner, number>
+  ): { owner: NextOwner; reason: string; breakdown: SingleChatOrchestrationTurnMeta["ownershipScoreBreakdown"] } => {
+    const explicit = resolveExplicitOwnerFromUserIntent(input.userMessage);
+    if (explicit) {
+      const breakdown: any = {
+        [explicit.owner]: {
+          unresolvedSlotWeight: 0,
+          decisionAxisWeight: 0,
+          momentumWeight: 0,
+          explicitRoleMentionWeight: 2.0,
+          orchestrationPhaseWeight: explicit.owner === phaseOwner ? 0.35 : 0,
+          totalScore: 2.0,
+        },
+      };
+      return { owner: explicit.owner, reason: explicit.reason, breakdown };
+    }
+
+    const unresolved = computeUnresolvedScoreByOwner();
+    const axisBoost = ownerBoostFromDecisionAxisCandidates(axisCandidates);
+
+    const score: Record<NextOwner, number> = { planner: 0, analyst: 0, architect: 0, designer: 0, reviewer: 0, security: 0 };
+    const breakdown: Record<string, any> = {};
+    for (const k of Object.keys(score) as NextOwner[]) {
+      const unresolvedSlotWeight = unresolved[k] * 1.0;
+      const decisionAxisWeight = typeof axisBoost[k] === "number" ? (axisBoost[k] as number) : 0;
+      const orchestrationPhaseWeight = k === phaseOwner ? 0.35 : 0;
+      const momentumWeight = momentumWeights[k] ?? 0;
+      const explicitRoleMentionWeight = 0;
+      const totalScore = unresolvedSlotWeight + decisionAxisWeight + orchestrationPhaseWeight + momentumWeight;
+      breakdown[k] = {
+        unresolvedSlotWeight: Number(unresolvedSlotWeight.toFixed(3)),
+        decisionAxisWeight: Number(decisionAxisWeight.toFixed(3)),
+        momentumWeight: Number(momentumWeight.toFixed(3)),
+        explicitRoleMentionWeight,
+        orchestrationPhaseWeight: Number(orchestrationPhaseWeight.toFixed(3)),
+        totalScore: Number(totalScore.toFixed(3)),
+      };
+      score[k] = totalScore;
+    }
+
+    const ranked = (Object.keys(score) as NextOwner[])
+      .map((k) => ({ owner: k, score: Number(score[k].toFixed(3)) }))
+      .sort((a, b) => b.score - a.score);
+    const top = ranked[0];
+    const second = ranked[1];
+    if (!top) return { owner: phaseOwner, reason: `phase_default(${phaseOwner})`, breakdown };
+    const gap = top.score - (second?.score ?? 0);
+    const switchingAwayFromPlanner = phaseOwner === "planner" && top.owner !== "planner" && gap >= 0.15;
+    const switchingBetweenSpecialists = phaseOwner !== "planner" && gap >= 0.25;
+    const chosen = switchingAwayFromPlanner || switchingBetweenSpecialists ? top.owner : phaseOwner;
+    const reason = chosen === phaseOwner ? `weighted_keep_phase(${phaseOwner})` : `weighted_owner(${top.owner})`;
+    return { owner: chosen, reason: `${reason}; axisTop=${axisCandidates[0]?.axis ?? "unknown"}; gap=${gap.toFixed(2)}`, breakdown };
   };
 
   const inferPhase = (): 1 | 2 | 3 | 4 | 5 => {
@@ -519,59 +650,197 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   const phase = inferPhase();
   const phaseOwner = pickNextOwner(phase);
-  const explicit = resolveExplicitOwnerFromUserIntent(input.userMessage);
-  const dominant = resolveDominantUnresolvedOwnerFromSlots(phaseOwner);
-  const resolvedOwner = explicit ?? dominant;
+  const MOMENTUM_DECAY = 0.85;
+  const MAX_OWNER_STICKINESS = 0.35;
+  const ownerMomentumPrev =
+    (state.ownerMomentum ?? null) && typeof state.ownerMomentum === "object" ? (state.ownerMomentum as Record<string, number>) : {};
+  const baseMomentum: Record<NextOwner, number> = { planner: 0, analyst: 0, architect: 0, designer: 0, reviewer: 0, security: 0 };
+  for (const k of Object.keys(baseMomentum) as NextOwner[]) {
+    const v = Number(ownerMomentumPrev[k] ?? 0);
+    baseMomentum[k] = Number.isFinite(v) ? Math.max(0, Math.min(1.2, v)) : 0;
+  }
+  const decayedMomentum: Record<NextOwner, number> = { ...baseMomentum };
+  for (const k of Object.keys(decayedMomentum) as NextOwner[]) decayedMomentum[k] = Number((decayedMomentum[k] * MOMENTUM_DECAY).toFixed(3));
+  const momentumWeights: Record<NextOwner, number> = { ...decayedMomentum };
+  for (const k of Object.keys(momentumWeights) as NextOwner[]) momentumWeights[k] = Math.min(MAX_OWNER_STICKINESS, Number((momentumWeights[k] * 0.3).toFixed(3)));
+
+  const decisionAxisCandidates = resolveDecisionAxisCandidatesFromUserIntent(input.userMessage);
+  const decisionAxis = decisionAxisCandidates[0]?.axis ?? inferDecisionAxisFromUserIntent(input.userMessage);
+  const resolvedOwner = resolveNextConversationOwner(phaseOwner, decisionAxisCandidates, momentumWeights);
   const nextOwner = resolvedOwner.owner;
   const ownershipReason = resolvedOwner.reason;
+  const ownershipScoreBreakdown = resolvedOwner.breakdown;
+  const ownerMomentumNext: Record<NextOwner, number> = { ...decayedMomentum };
+  ownerMomentumNext[nextOwner] = Number(Math.min(1.2, ownerMomentumNext[nextOwner] + 0.35).toFixed(3));
   console.info("[orchestration-owner]", {
     conversationOwner: nextOwner,
     questionGeneratedBy: nextOwner,
     ownershipReason,
+    decisionAxis,
     phase,
     phaseOwner,
   });
 
+  const top1 = decisionAxisCandidates[0] ?? null;
+  const top2 = decisionAxisCandidates[1] ?? null;
+  const conflictSignals: string[] = [];
+  const conflictDetected =
+    Boolean(top1 && top2) &&
+    Number(top1?.score ?? 0) >= 0.7 &&
+    Number(top2?.score ?? 0) >= 0.66 &&
+    ownerForAxis(top1!.axis) !== ownerForAxis(top2!.axis) &&
+    Math.abs(Number(top1!.score) - Number(top2!.score)) <= 0.12;
+  if (conflictDetected && top1 && top2) {
+    conflictSignals.push(`axis_conflict(${top1.axis}:${top1.score.toFixed(2)} vs ${top2.axis}:${top2.score.toFixed(2)})`);
+  }
+
+  // Conflict mediation: override conversation owner to a neutral reviewer when top axes compete.
+  const conversationOwner: NextOwner = conflictDetected ? "reviewer" : nextOwner;
+  const questionGeneratedBy: NextOwner = conversationOwner;
+
   const apiKey = process.env.OPENAI_API_KEY?.trim();
-  let nextQuestion = merge.assistantMessage;
+  const buildOwnerFallbackQuestion = (): string => {
+    // Ensure owner voice even without LLM.
+    if (nextOwner === "designer") return "회의록 검토/수정 화면은 문서 편집기 스타일과 댓글 기반 검토 중 어떤 흐름이 더 자연스럽나요?";
+    if (nextOwner === "architect") return "업로드 후 결과는 실시간에 가깝게 즉시 나와야 하나요, 아니면 배치 처리도 허용되나요?";
+    if (nextOwner === "analyst") return "참석자는 회의록 전체를 수정하나요, 아니면 자신의 발언만 수정하나요?";
+    if (nextOwner === "security") return "녹취/전사 데이터는 어느 기간 보관하고, 누가 접근할 수 있어야 하나요?";
+    if (nextOwner === "reviewer") return "첫 버전에서 꼭 확정해야 할 품질 기준(예: 화자 분리 정확도/요약 품질)은 무엇인가요?";
+    return "이 서비스의 첫 버전에서 반드시 해결해야 할 핵심 목표를 한 문장으로 정리해 주실래요?";
+  };
+  const buildConflictMediationQuestion = (): string => {
+    const label = (a: DecisionAxis): string => {
+      if (a === "ux_direction" || a === "mobile_experience") return "검토·편집 UX";
+      if (a === "automation_latency" || a === "processing_pipeline") return "처리 구조/속도";
+      if (a === "permissions_approval" || a === "collaboration_flow") return "권한·협업 흐름";
+      if (a === "security_risk") return "보안·데이터 보관";
+      if (a === "scope_value") return "범위·가치";
+      return "우선순위";
+    };
+    const a1 = top1?.axis ?? "unknown";
+    const a2 = top2?.axis ?? "unknown";
+    return `지금은 ${label(a1)}과 ${label(a2)} 중 어느 쪽을 먼저 확정하는 게 더 중요할까요?`;
+  };
+
+  let nextQuestion = conflictDetected ? buildConflictMediationQuestion() : buildOwnerFallbackQuestion();
+
+  // Conflict slot marking (replay + routing safety): mark representative slots for competing owners as conflicted.
+  const conflictPatchedKeys: string[] = [];
+  if (conflictDetected && top1 && top2) {
+    const owners = [ownerForAxis(top1.axis), ownerForAxis(top2.axis)];
+    for (const o of owners) {
+      const def = definitions.find((d) => ownerLabelFromInternal(d.ownerAgent) === o);
+      if (!def) continue;
+      const row = state.slots[def.slotKey];
+      if (!row) continue;
+      const st = String(row.status ?? "empty").trim().toLowerCase();
+      if (st === "confirmed") continue;
+      state = mergeOrchestrationSlotPatches({
+        base: state,
+        patches: [
+          {
+            slotKey: def.slotKey,
+            status: "conflicted",
+            staleReason: "axis_conflict",
+            derivedFrom: row.derivedFrom ?? null,
+          } as any,
+        ],
+        nowIso: new Date().toISOString(),
+        definitions,
+        propagateStaleFromPlanner: false,
+      });
+      conflictPatchedKeys.push(def.slotKey);
+    }
+    if (conflictPatchedKeys.length) {
+      conflictSignals.push(`conflicted_slots(${conflictPatchedKeys.slice(0, 4).join(",")})`);
+    }
+  }
   if (apiKey) {
     const model = resolveOpenAiModelFromEnv();
     const slotsJson = JSON.stringify(state.slots, null, 0).slice(0, 18_000);
     const keyHints = definitions
-      .filter((d) => ownerLabelFromInternal(d.ownerAgent) === nextOwner)
+      .filter((d) => ownerLabelFromInternal(d.ownerAgent) === conversationOwner)
       .slice(0, 10)
       .map((d) => `- ${d.label} (${d.slotKey})`)
       .join("\n");
-    const persona =
-      nextOwner === "planner"
-        ? "planner(기획): 목적·범위·가치·협업 흐름"
-        : nextOwner === "analyst"
-          ? "analyst(분석): 액터·승인·예외·운영·권한 관계"
-          : nextOwner === "architect"
-            ? "architect(설계): 자동화 수준·구조·실시간/배치·연동·품질 검증·MVP 경계"
-            : nextOwner === "designer"
-              ? "designer(UX): 사용자 상호작용·화면 흐름·편집/피드백 UX"
-              : nextOwner === "security"
-                ? "security(보안): 개인정보·권한 경계·보관·접근제어"
-                : "reviewer(리뷰): 범위/우선순위·리스크·검증 기준";
-    const system = `${workspaceAiMemberSystemPrefix("ideation")}
-당신은 SingleChat의 **다음 질문 생성기**입니다. 사용자에게 보이는 응답은 오직 질문 1문장만.
-현재 당신의 관점은 ${persona} 입니다.
-규칙:
-- 질문은 한국어 1문장, 물음표 1개.
-- 내부 슬롯 키/ownerAgent/phase 같은 용어를 절대 쓰지 마라.
-- 사용자가 방금 말한 내용은 존중하되, 다음으로 필요한 결정 1개만 묻는다.
-출력(JSON 1개): { "assistantMessage": "질문 한 문장" }`;
+    const baseRules = [
+      "당신은 SingleChat의 다음 대화 진행자(conversation owner)다.",
+      "출력은 사용자에게 보이는 질문 1문장만 생성한다(물음표 1개).",
+      "‘구체적인 요구사항이 있을까요?’ 같은 기획자 톤의 일반론 질문 금지.",
+      "내부 슬롯 키/ownerAgent/phase/오케스트레이션 용어 금지.",
+      "사용자가 방금 한 말의 방향을 이어서, 결정을 전진시키는 질문 1개만 묻는다.",
+      '출력(JSON 1개): { "assistantMessage": "질문 한 문장" }',
+    ].join("\n");
+
+    const roleSystem =
+      conflictDetected
+        ? [
+            `${workspaceAiMemberSystemPrefix("ideation")}`,
+            "당신은 여러 specialist 관점을 조정하는 중립적 조정자(mediator)다.",
+            "목표는 상충되는 요구를 조정하기 위한 '선택 질문'을 1문장으로 만드는 것이다.",
+            "질문은 트레이드오프를 명확히 드러내되, 기획자식 일반론 질문은 금지한다.",
+            baseRules,
+          ].join("\n")
+        :
+      conversationOwner === "designer"
+        ? [
+            `${workspaceAiMemberSystemPrefix("ideation")}`,
+            "당신은 숙련된 UX/UI 디자이너다. 대화를 리드하면서 사용자의 검토/수정 경험을 구체화한다.",
+            "초점: 편집 UX, 리뷰 UX(댓글/승인), 문서 IA, 모바일 사용성, 톤&스타일.",
+            "질문 예시 톤: ‘검토 화면은 문서 편집기 스타일과 댓글 기반 중 어떤 흐름이 더 자연스럽나요?’",
+            baseRules,
+          ].join("\n")
+        : conversationOwner === "architect"
+          ? [
+              `${workspaceAiMemberSystemPrefix("ideation")}`,
+              "당신은 시스템/자동화 구조를 설계하는 AI 설계자다. 처리 구조와 성능/연동 경계를 리드한다.",
+              "초점: 실시간 vs 배치, 자동화 경계, 처리 파이프라인, 연동/API, 확장성/비용.",
+              "질문 예시 톤: ‘업로드 직후 처리해야 하나요, 배치 처리도 허용되나요?’",
+              baseRules,
+            ].join("\n")
+          : conversationOwner === "analyst"
+            ? [
+                `${workspaceAiMemberSystemPrefix("ideation")}`,
+                "당신은 서비스 흐름/권한/승인을 분석하는 AI 분석가다. 역할과 운영 흐름을 리드한다.",
+                "초점: 액터 책임, 승인/확정 흐름, 협업/공동편집, 권한(누가 무엇을), 예외/운영.",
+                "질문 예시 톤: ‘참석자는 전체를 고치나요, 자기 발언만 고치나요?’",
+                baseRules,
+              ].join("\n")
+            : conversationOwner === "security"
+              ? [
+                  `${workspaceAiMemberSystemPrefix("ideation")}`,
+                  "당신은 보안/개인정보 관점의 AI 보안 리뷰어다. 데이터/권한/보관 정책 리스크를 리드한다.",
+                  "초점: 개인정보/민감정보, 접근 제어, 보관 기간, 감사 로그, 공유 범위.",
+                  "질문 예시 톤: ‘녹취/전사 데이터는 누가 볼 수 있고 얼마나 보관하나요?’",
+                  baseRules,
+                ].join("\n")
+              : conversationOwner === "reviewer"
+                ? [
+                    `${workspaceAiMemberSystemPrefix("ideation")}`,
+                    "당신은 범위/리스크/검증기준을 점검하는 AI 리뷰어다. 우선순위와 성공 기준을 리드한다.",
+                    "초점: MVP 범위, 품질 기준, 검증 방법, 리스크/트레이드오프.",
+                    "질문 예시 톤: ‘첫 버전에서 어떤 품질 기준을 반드시 만족해야 하나요?’",
+                    baseRules,
+                  ].join("\n")
+                : [
+                    `${workspaceAiMemberSystemPrefix("ideation")}`,
+                    "당신은 제품 기획자(planner)다. 비즈니스 가치/범위/목표 정렬을 리드한다.",
+                    "초점: 목적/핵심가치, 범위/MVP, 이해관계자 정렬, 협업 방향.",
+                    "질문 예시 톤: ‘첫 버전에서 가장 중요한 성공 기준은 무엇인가요?’",
+                    baseRules,
+                  ].join("\n");
+
     const user = `[프로젝트] ${input.projectName.trim()}
 [최근 사용자 발화] ${input.userMessage.trim().slice(0, 1600)}
 [대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
 [이 역할이 담당하는 슬롯(참고)]\n${keyHints || "- (없음)"}
-[현재 슬롯 스냅샷] ${slotsJson}`;
+[현재 슬롯 스냅샷] ${slotsJson}
+[결정 축] ${decisionAxis}`;
     const resQ = await postOpenAiChatCompletion({
       apiKey,
       model,
       messages: [
-        { role: "system", content: system },
+        { role: "system", content: roleSystem },
         { role: "user", content: user },
       ],
       temperature: 0.25,
@@ -583,23 +852,49 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       const msg = String(parsed?.assistantMessage ?? "").trim();
       if (msg) {
         nextQuestion = msg;
-        promptChunks.push(`[next-question:${nextOwner}]\n[system]\n${system}\n\n[user]\n${user}\n\n[raw]\n${String(resQ.text ?? "").slice(0, 4000)}`);
-        executedAgents.push(`question:${nextOwner}`);
+        promptChunks.push(`[next-question:${conversationOwner}]\n[system]\n${roleSystem}\n\n[user]\n${user}\n\n[raw]\n${String(resQ.text ?? "").slice(0, 4000)}`);
+        executedAgents.push(`question:${conversationOwner}`);
       }
     }
   }
 
+  const patchedKeys = [...new Set([...allUpdated, ...conflictPatchedKeys])];
+  const slotStateTransitions = patchedKeys
+    .map((k) => {
+      const prev = input.baseState.slots?.[k];
+      const next = state.slots?.[k];
+      const from = String(prev?.status ?? "").trim();
+      const to = String(next?.status ?? "").trim();
+      if (!from || !to || from === to) return null;
+      const reason =
+        typeof next?.staleReason === "string" && next.staleReason.trim()
+          ? next.staleReason.trim()
+          : typeof next?.derivedFrom === "string" && next.derivedFrom.trim()
+            ? next.derivedFrom.trim()
+            : undefined;
+      return { slotKey: k, from, to, ...(reason ? { reason: reason.slice(0, 120) } : {}) };
+    })
+    .filter(Boolean) as Array<{ slotKey: string; from: string; to: string; reason?: string }>;
+
   const meta: SingleChatOrchestrationTurnMeta = {
-    routingDecision: `orchestration_turn(${nextOwner})`,
+    routingDecision: `orchestration_turn(${conversationOwner})`,
     matchedSlots: route.matchedSlots,
     updatedSlotKeys: [...new Set(allUpdated)],
     updatedSlotCount: [...new Set(allUpdated)].length,
     delegatedAgents: uniqSpecialists,
-    orchestratorAgent: nextOwner,
-    nextQuestionOwnerAgent: nextOwner,
-    conversationOwner: nextOwner,
-    questionGeneratedBy: nextOwner,
+    orchestratorAgent: conversationOwner,
+    nextQuestionOwnerAgent: conversationOwner,
+    conversationOwner,
+    questionGeneratedBy,
     ownershipReason,
+    decisionAxis,
+    mergeCoordinator: "merge-coordinator",
+    specialistContributors: uniqSpecialists,
+    decisionAxisCandidates: decisionAxisCandidates.map((c) => ({ axis: c.axis, score: c.score })),
+    ownershipScoreBreakdown,
+    momentumContribution: momentumWeights,
+    ...(conflictSignals.length ? { conflictSignals } : {}),
+    ...(slotStateTransitions.length ? { slotStateTransitions } : {}),
     currentPhase: phase,
     executedAgents: [...new Set(executedAgents)],
     staleSlots: buckets.stale,
@@ -620,9 +915,10 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     assistantMessage: nextQuestion,
     nextState: {
       ...state,
-      lastOrchestratorAgent: nextOwner,
+      lastOrchestratorAgent: conversationOwner,
       lastDelegatedAgents: uniqSpecialists,
-      lastRoutingDecision: `orchestration_turn(${nextOwner})`,
+      lastRoutingDecision: `orchestration_turn(${conversationOwner})`,
+      ownerMomentum: ownerMomentumNext,
     },
     meta,
     promptText: promptChunks.join("\n\n---\n\n"),
