@@ -94,6 +94,12 @@ export type RequirementsPromptTimelineEntry = {
   currentPhase?: 1 | 2 | 3 | 4 | 5;
   /** Next/actual owner agent for next question (planner/analyst/architect/designer/reviewer/security) */
   nextOwnerAgent?: string;
+  /** Diagnostic: resolved conversation owner */
+  conversationOwner?: string;
+  /** Diagnostic: who generated the next question */
+  questionGeneratedBy?: string;
+  /** Diagnostic: why ownership was chosen */
+  ownershipReason?: string;
   /** Convenience: updated slot count */
   updatedSlotCount?: number;
   /** 인터뷰 질문(한 문장) — 유도형 선택지와 함께 기록 */

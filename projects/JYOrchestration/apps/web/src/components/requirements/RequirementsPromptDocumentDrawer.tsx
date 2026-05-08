@@ -712,6 +712,21 @@ export function RequirementsPromptDocumentDrawer({
                                     <strong>nextOwnerAgent</strong>: {String((row as any).nextOwnerAgent)}
                                   </div>
                                 ) : null}
+                                {(row as any).conversationOwner ? (
+                                  <div>
+                                    <strong>conversationOwner</strong>: {String((row as any).conversationOwner)}
+                                  </div>
+                                ) : null}
+                                {(row as any).questionGeneratedBy ? (
+                                  <div>
+                                    <strong>questionGeneratedBy</strong>: {String((row as any).questionGeneratedBy)}
+                                  </div>
+                                ) : null}
+                                {(row as any).ownershipReason ? (
+                                  <div>
+                                    <strong>ownershipReason</strong>: {String((row as any).ownershipReason)}
+                                  </div>
+                                ) : null}
                                 {typeof (row as any).updatedSlotCount === "number" ? (
                                   <div>
                                     <strong>updatedSlotCount</strong>: {(row as any).updatedSlotCount}

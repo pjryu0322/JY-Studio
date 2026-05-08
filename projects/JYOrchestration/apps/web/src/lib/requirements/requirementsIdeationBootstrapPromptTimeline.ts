@@ -70,6 +70,15 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.nextOwnerAgent === "string" && r.nextOwnerAgent.trim()
       ? { nextOwnerAgent: r.nextOwnerAgent.trim().slice(0, 40) }
       : {}),
+    ...(typeof r.conversationOwner === "string" && r.conversationOwner.trim()
+      ? { conversationOwner: r.conversationOwner.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.questionGeneratedBy === "string" && r.questionGeneratedBy.trim()
+      ? { questionGeneratedBy: r.questionGeneratedBy.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.ownershipReason === "string" && r.ownershipReason.trim()
+      ? { ownershipReason: r.ownershipReason.trim().slice(0, 200) }
+      : {}),
     ...(typeof r.updatedSlotCount === "number" && Number.isFinite(r.updatedSlotCount)
       ? { updatedSlotCount: Math.max(0, Math.floor(r.updatedSlotCount)) }
       : {}),
@@ -355,6 +364,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly routingDecision?: string;
   readonly currentPhase?: 1 | 2 | 3 | 4 | 5;
   readonly nextOwnerAgent?: string;
+  readonly conversationOwner?: string;
+  readonly questionGeneratedBy?: string;
+  readonly ownershipReason?: string;
   readonly updatedSlotCount?: number;
   readonly matchedSlots?: readonly string[];
   readonly updatedSlots?: readonly string[];
@@ -433,6 +445,15 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(typeof params.currentPhase === "number" ? { currentPhase: params.currentPhase } : {}),
     ...(typeof params.nextOwnerAgent === "string" && params.nextOwnerAgent.trim()
       ? { nextOwnerAgent: params.nextOwnerAgent.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.conversationOwner === "string" && params.conversationOwner.trim()
+      ? { conversationOwner: params.conversationOwner.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.questionGeneratedBy === "string" && params.questionGeneratedBy.trim()
+      ? { questionGeneratedBy: params.questionGeneratedBy.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.ownershipReason === "string" && params.ownershipReason.trim()
+      ? { ownershipReason: params.ownershipReason.trim().slice(0, 200) }
       : {}),
     ...(typeof params.updatedSlotCount === "number" && Number.isFinite(params.updatedSlotCount)
       ? { updatedSlotCount: Math.max(0, Math.floor(params.updatedSlotCount)) }

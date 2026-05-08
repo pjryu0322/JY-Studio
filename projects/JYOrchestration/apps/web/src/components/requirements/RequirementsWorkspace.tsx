@@ -119,6 +119,13 @@ import { publishWorkspaceAiScreenHandoff } from "@/lib/ai-member/workspaceAiHand
 import { requirementsWorkspaceStageToScreenKey } from "@/lib/requirements/requirementsWorkspaceScreenBridge";
 import { resolveEnabledCatalogKeysForScreen } from "@/lib/workspace-ai/workspaceScreenKeys";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
+
+type ConversationAiInsight = Readonly<{
+  summary: string;
+  requestType: string;
+  priority: string;
+  priorityReason?: string;
+}>;
 import {
   buildFeaturePlanningMirroredUserTurn,
   buildFeaturePlanningMirroredAiTurn,
@@ -790,12 +797,13 @@ export function RequirementsWorkspace({
   const composerPlaceholder = "메시지를 입력하세요";
 
   const targetPickerItems = useMemo<readonly RequirementsComposerTargetPickerItem[]>(() => {
-    return participants.map((p) => ({
+    // `@@` 멘션은 "현재 화면 참여자"가 아니라 서비스 기획 전 단계(아이디어/흐름/기능정리) 전체 참여자를 대상으로 한다.
+    return servicePlanningParticipants.map((p) => ({
       id: `picker:participant:${p.id}`,
       label: p.invited ? `${p.name} (초대됨)` : p.name,
       targets: [{ id: p.id, name: p.name }],
     }));
-  }, [participants]);
+  }, [servicePlanningParticipants]);
 
   const ideationAssets = useMemo(() => stateJsonRef.current.deliverableAssets ?? [], [fetchNonce, project?.requirementsStateJson]);
   const ideationReadyForServiceFlow = useMemo(() => {
@@ -1675,59 +1683,78 @@ export function RequirementsWorkspace({
   }, [conversationMessages, ideationConversationOnly, project?.name, resolvedProjectId]);
 
   const [aiSummaryBusy, setAiSummaryBusy] = useState(false);
+  const [conversationAiInsight, setConversationAiInsight] = useState<ConversationAiInsight | null>(null);
+  const [conversationAiSummaryError, setConversationAiSummaryError] = useState<string | null>(null);
+
+  const buildConversationHtmlForSummary = useCallback((): string => {
+    const list = ideationConversationOnly.length ? ideationConversationOnly : conversationMessages;
+    const escape = (s: string) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    const lines: string[] = [];
+    lines.push(`<div>`);
+    for (const m of list.slice(-80)) {
+      const who =
+        m.role === "user"
+          ? "사용자"
+          : m.role === "ai"
+            ? m.speakerName
+              ? `AI(${escape(String(m.speakerName))})`
+              : "AI"
+            : m.role === "human"
+              ? m.speakerName
+                ? `멤버(${escape(String(m.speakerName))})`
+                : "멤버"
+              : "시스템";
+      const body = escape(String(m.content ?? "").trim());
+      if (!body) continue;
+      lines.push(`<div><strong>${who}</strong>: ${body.replace(/\n/g, "<br/>")}</div>`);
+    }
+    lines.push(`</div>`);
+    return lines.join("\n");
+  }, [conversationMessages, ideationConversationOnly]);
+
   const onSummarizeConversation = useCallback(async () => {
     const pid = resolvedProjectId.trim();
     if (!pid || busy || remoteLocked || aiSummaryBusy) return;
     setAiSummaryBusy(true);
+    setConversationAiSummaryError(null);
     try {
-      const excerpt = formatDialogueExcerpt(ideationConversationOnly.length ? ideationConversationOnly : conversationMessages, 12000);
-      const res = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.AI_FACILITATOR, {
+      const contentHtml = buildConversationHtmlForSummary();
+      const res = await credentialsIncludeFetch("/api/work-notes/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId: pid,
-          projectName: project?.name ?? "",
-          projectDescription: project?.description ?? "",
-          projectType: project?.projectType ?? "",
-          stage: "requirements",
-          summaryOnly: true,
-          dialogueExcerpt: excerpt,
-          workspaceScreenKey: "requirements_ideation",
+          scope: "project",
+          contentHtml,
         }),
       });
-      const json = (await res.json()) as { success?: boolean; message?: string; data?: { reply?: string; promptTrace?: unknown } };
-      if (!res.ok || !json.success || !json.data?.reply) {
+      const json = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { summary?: string; requestType?: string; priority?: string; priorityReason?: string };
+      };
+      if (!res.ok || !json.success) {
         throw new Error(json.message || `HTTP ${res.status}`);
       }
-      const reply = String(json.data.reply).trim();
-      const nowIso = new Date().toISOString();
-      const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [
-        ...roomRef.current.requirementsConversation.messages,
-        newChatMessage({
-          role: "ai",
-          body: reply,
-          speakerType: "AI",
-          speakerId: "virtual:ai-summarizer",
-          speakerName: "AI 요약",
-          messageType: "NOTICE",
-          meta: { internalType: "conversation_summary" },
-        }),
-      ]);
-      setRoom(nextRoom);
-      let tr: RequirementsPromptTimelineEntry | null = null;
-      try {
-        tr = coerceRequirementsPromptTimelineEntry(json.data.promptTrace);
-      } catch {
-        tr = null;
-      }
-      if (tr) {
-        const nextTimeline = appendIdeationBootstrapPromptTimeline(stateJsonRef.current.promptTimeline, tr);
-        stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, { promptTimeline: nextTimeline });
-        setPromptTimelineUi(nextTimeline);
-        await persistStateJsonOnly({ promptTimeline: nextTimeline });
-      }
+      const summary = typeof json.data?.summary === "string" ? json.data.summary.trim() : "";
+      if (!summary) throw new Error("요약 결과가 비어 있습니다.");
+      setConversationAiInsight({
+        summary,
+        requestType: typeof json.data?.requestType === "string" ? json.data.requestType.trim() || "기타" : "기타",
+        priority: typeof json.data?.priority === "string" ? json.data.priority.trim().toUpperCase() || "P2" : "P2",
+        ...(typeof json.data?.priorityReason === "string" && json.data.priorityReason.trim()
+          ? { priorityReason: json.data.priorityReason.trim() }
+          : {}),
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "요약 실패";
+      setConversationAiSummaryError(msg);
       showErrorToast(`AI 요약에 실패했습니다. (${msg})`);
     } finally {
       setAiSummaryBusy(false);
@@ -1735,16 +1762,26 @@ export function RequirementsWorkspace({
   }, [
     aiSummaryBusy,
     busy,
-    conversationMessages,
-    ideationConversationOnly,
-    project?.description,
-    project?.name,
-    project?.projectType,
+    buildConversationHtmlForSummary,
     remoteLocked,
     resolvedProjectId,
     showErrorToast,
-    persistStateJsonOnly,
   ]);
+
+  const applyConversationSummary = useCallback(() => {
+    const insight = conversationAiInsight;
+    if (!insight) return;
+    const meta = [
+      `요청 분류 ${insight.requestType}`,
+      `우선순위 추천 ${insight.priority}`,
+      ...(insight.priorityReason ? [`근거 ${insight.priorityReason}`] : []),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    insertComposerPrompt(`AI 요약\n\n${insight.summary}\n\n${meta}`.trim());
+    setConversationAiInsight(null);
+    setConversationAiSummaryError(null);
+  }, [conversationAiInsight, insertComposerPrompt]);
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
       <RequirementsIdeationChatPanel
@@ -1923,6 +1960,102 @@ export function RequirementsWorkspace({
         }}
         onGoHome={() => router.push("/")}
       />
+
+      {conversationAiInsight || conversationAiSummaryError ? (
+        <div
+          role="status"
+          aria-label="대화 AI 요약 결과"
+          style={{
+            position: "fixed",
+            zIndex: 70,
+            left: "max(12px, env(safe-area-inset-left, 0px))",
+            right: "max(12px, env(safe-area-inset-right, 0px))",
+            bottom: "max(12px, env(safe-area-inset-bottom, 0px))",
+            margin: "0 auto",
+            maxWidth: 860,
+            background: "#fff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 14,
+            boxShadow: "0 22px 70px -32px rgba(15, 23, 42, 0.45)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc" }}>
+            <div style={{ fontSize: 16, fontWeight: 900, color: "#0f172a" }}>AI 요약</div>
+          </div>
+          <div style={{ padding: "12px 14px", fontSize: 14, lineHeight: 1.6, color: "#0f172a", whiteSpace: "pre-wrap" }}>
+            {conversationAiInsight ? (
+              <>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>요약 결과</div>
+                <div>{conversationAiInsight.summary}</div>
+                <div style={{ marginTop: 10, fontSize: 13, color: "#334155" }}>
+                  요청 분류 {conversationAiInsight.requestType}{"\n"}우선순위 추천 {conversationAiInsight.priority}
+                  {conversationAiInsight.priorityReason ? `\n근거 ${conversationAiInsight.priorityReason}` : ""}
+                </div>
+              </>
+            ) : (
+              <div style={{ color: "#991b1b", fontWeight: 800 }}>AI 요약에 실패했습니다.\n{conversationAiSummaryError}</div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", padding: "12px 14px 14px" }}>
+            <button
+              type="button"
+              disabled={aiSummaryBusy}
+              onClick={() => void onSummarizeConversation()}
+              style={{
+                border: "1px solid #cbd5e1",
+                background: "#fff",
+                borderRadius: 10,
+                padding: "9px 12px",
+                fontSize: 13,
+                fontWeight: 900,
+                cursor: aiSummaryBusy ? "not-allowed" : "pointer",
+                opacity: aiSummaryBusy ? 0.6 : 1,
+                color: "#334155",
+              }}
+            >
+              {aiSummaryBusy ? "요약 중…" : "AI 요약"}
+            </button>
+            <button
+              type="button"
+              disabled={!conversationAiInsight}
+              onClick={applyConversationSummary}
+              style={{
+                border: "2px solid #2563eb",
+                background: "#2563eb",
+                borderRadius: 10,
+                padding: "9px 12px",
+                fontSize: 13,
+                fontWeight: 900,
+                cursor: conversationAiInsight ? "pointer" : "not-allowed",
+                opacity: conversationAiInsight ? 1 : 0.55,
+                color: "#fff",
+              }}
+            >
+              요약본 반영
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConversationAiInsight(null);
+                setConversationAiSummaryError(null);
+              }}
+              style={{
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                borderRadius: 10,
+                padding: "9px 12px",
+                fontSize: 13,
+                fontWeight: 900,
+                cursor: "pointer",
+                color: "#334155",
+              }}
+            >
+              요약 닫기
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="jyo-requirements-workspace-body">
         <div style={requirementsWorkspaceMainRowStyle} className="jyo-requirements-workspace-main">
