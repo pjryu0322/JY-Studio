@@ -128,7 +128,8 @@ export async function runRequirementsIdeationAiAfterUserPersist(
     if (a === "architect") return { id: "virtual:ai-architect", name: `AI 설계자${suffix}` };
     if (a === "designer") return { id: "virtual:ai-designer", name: `AI 디자이너${suffix}` };
     if (a === "security") return { id: "virtual:ai-security", name: `AI 보안관${suffix}` };
-    if (a === "reviewer") return { id: "virtual:ai-reviewer", name: `AI 리뷰어${suffix}` };
+    // reviewer는 별도 참여 멤버가 아니라, 기획자가 중재 역할을 수행한다.
+    if (a === "reviewer") return { id: VIRTUAL_AI_PLANNER_ID, name: `${IDEATION_AI_DISPLAY_NAME}${suffix}` };
     return { id: VIRTUAL_AI_PLANNER_ID, name: `${IDEATION_AI_DISPLAY_NAME}${suffix}` };
   };
 

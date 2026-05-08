@@ -1,5 +1,4 @@
 import { IDEATION_AI_DISPLAY_NAME } from "@/lib/requirements/ideationAiDisplayName";
-import { inferRecentAiQuestionReplyParentId } from "@/lib/requirements/requirementsAnswerContext";
 import type { RequirementsMessage, RequirementsMessageMeta } from "@/lib/requirements/requirementsMessage";
 import { computedTargetsFromInput, dedupeMemberRefs, type RequirementMemberRef } from "@/lib/requirements/requirementsTargets";
 import { newChatMessage, VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
@@ -34,7 +33,9 @@ export function composeIdeationSendUserTurn(params: {
     fromMentions.length ? fromMentions : [{ id: VIRTUAL_AI_PLANNER_ID, name: IDEATION_AI_DISPLAY_NAME }]
   );
   const anyAi = targets.some((t) => params.isAiTarget(t.id));
-  const effectiveReplyTo = inferRecentAiQuestionReplyParentId(params.ideationConversationOnly, params.replyToId);
+  // replyTo는 사용자가 "답글"을 눌렀을 때만 표시한다.
+  const effectiveReplyTo =
+    typeof params.replyToId === "string" && params.replyToId.trim() ? params.replyToId.trim() : null;
 
   const replyParent =
     effectiveReplyTo && params.ideationConversationOnly.length

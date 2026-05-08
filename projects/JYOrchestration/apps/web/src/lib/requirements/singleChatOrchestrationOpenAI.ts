@@ -435,7 +435,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     if (o === "service-designer" || o === "domain-expert") return "analyst";
     if (o === "solution-architect") return "architect";
     if (o === "ui-designer") return "designer";
-    if (o === "task-reviewer") return "reviewer";
+    // reviewer는 별도 참여 멤버가 아니라, 기획자가 중재 역할을 수행한다.
+    if (o === "task-reviewer") return "planner";
     if (o === "security-reviewer") return "security";
     return "planner";
   };
@@ -523,7 +524,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     }
     // task-reviewer
     if (has(/(리뷰|검토|검수|품질|테스트|우선순위|리스크)/i)) {
-      return { owner: "reviewer", reason: "explicit_role_mention(task-reviewer)" };
+      return { owner: "planner", reason: "explicit_role_mention(task-reviewer→planner_mediator)" };
     }
     return null;
   };
@@ -645,7 +646,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     if (phase === 3) return "architect";
     if (phase === 4) return "designer";
     // Phase 5: alternate security/reviewer to avoid one-sided audits.
-    return state.lastOrchestratorAgent === "security" ? "reviewer" : "security";
+    return state.lastOrchestratorAgent === "security" ? "planner" : "security";
   };
 
   const phase = inferPhase();
@@ -684,18 +685,21 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const top1 = decisionAxisCandidates[0] ?? null;
   const top2 = decisionAxisCandidates[1] ?? null;
   const conflictSignals: string[] = [];
+  const explicitMentionChosen = String(ownershipReason ?? "").startsWith("explicit_role_mention");
   const conflictDetected =
     Boolean(top1 && top2) &&
     Number(top1?.score ?? 0) >= 0.7 &&
     Number(top2?.score ?? 0) >= 0.66 &&
     ownerForAxis(top1!.axis) !== ownerForAxis(top2!.axis) &&
-    Math.abs(Number(top1!.score) - Number(top2!.score)) <= 0.12;
+    Math.abs(Number(top1!.score) - Number(top2!.score)) <= 0.12 &&
+    // explicit role mention must win over conflict mediation
+    !explicitMentionChosen;
   if (conflictDetected && top1 && top2) {
     conflictSignals.push(`axis_conflict(${top1.axis}:${top1.score.toFixed(2)} vs ${top2.axis}:${top2.score.toFixed(2)})`);
   }
 
-  // Conflict mediation: override conversation owner to a neutral reviewer when top axes compete.
-  const conversationOwner: NextOwner = conflictDetected ? "reviewer" : nextOwner;
+  // Conflict mediation: 기획자가 중재 역할로 발화한다(리뷰어는 별도 멤버로 노출하지 않음).
+  const conversationOwner: NextOwner = conflictDetected ? "planner" : nextOwner;
   const questionGeneratedBy: NextOwner = conversationOwner;
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -778,7 +782,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       conflictDetected
         ? [
             `${workspaceAiMemberSystemPrefix("ideation")}`,
-            "당신의 공식 표시 이름은「AI 리뷰어」이다.",
+            "당신의 공식 표시 이름은「AI 기획자」이다.",
             "당신은 여러 specialist 관점을 조정하는 중립적 조정자(mediator)다.",
             "목표는 상충되는 요구를 조정하기 위한 '선택 질문'을 1문장으로 만드는 것이다.",
             "질문은 트레이드오프를 명확히 드러내되, 기획자식 일반론 질문은 금지한다.",
