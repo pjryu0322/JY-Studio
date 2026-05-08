@@ -49,6 +49,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   busy: boolean;
   composerPlaceholder: string;
   targetPickerItems: readonly RequirementsComposerTargetPickerItem[];
+  typingIndicatorSpeakerLine?: string | null;
+  typingIndicatorResolvedSpeakerSource?: string | null;
   onOrganizeRequirements: () => void | Promise<void>;
   organizeDisabled: boolean;
   draftDocTruthy: boolean;
@@ -88,6 +90,8 @@ export function RequirementsIdeationChatPanel({
   busy,
   composerPlaceholder,
   targetPickerItems,
+  typingIndicatorSpeakerLine,
+  typingIndicatorResolvedSpeakerSource,
   onOrganizeRequirements,
   organizeDisabled,
   draftDocTruthy,
@@ -175,6 +179,8 @@ export function RequirementsIdeationChatPanel({
         messages={conversationStatus === "loaded" ? ideationConversationOnly : null}
         screenAiMemberId={participantAiMemberId}
         typingIndicator={aiInvokePending}
+        typingIndicatorSpeakerLine={typingIndicatorSpeakerLine}
+        typingIndicatorResolvedSpeakerSource={typingIndicatorResolvedSpeakerSource}
         memberControls={inIdeationStage ? null : { count: participantBadgeCount, onOpen: onOpenMembersModal }}
         ideationInterviewUi={ideationInterviewUi}
         onInsertComposerPrompt={onInsertComposerPrompt}
