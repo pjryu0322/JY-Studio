@@ -10,6 +10,7 @@ import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignCo
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
+import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
@@ -27,6 +28,7 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   /** 진행률 분모(오케스트레이션 정렬 시 전체 슬롯 수) */
   progressSlotTotal: number;
   orchestrationSlotSections?: readonly OrchestrationSlotSummarySection[] | null;
+  orchestrationStatusCounts?: SingleChatOrchestrationStatusCounts | null;
   remainingQuestionsEstimate: number;
   onForceGeneratePlanNow: () => void;
   onInsertComposerPrompt: (text: string) => void;
@@ -66,6 +68,7 @@ export function RequirementsIdeationChatPanel({
   problemInterviewCovered,
   progressSlotTotal,
   orchestrationSlotSections,
+  orchestrationStatusCounts,
   remainingQuestionsEstimate,
   onForceGeneratePlanNow,
   onInsertComposerPrompt,
@@ -98,6 +101,7 @@ export function RequirementsIdeationChatPanel({
           readinessPercent: proposalReadinessPercentVal,
           covered: problemInterviewCovered,
           total: progressSlotTotal,
+          statusCounts: orchestrationStatusCounts ?? null,
           remainingQuestionsEstimate,
           onForceGeneratePlanNow,
           orchestrationSlotSections: orchestrationSlotSections ?? null,

@@ -69,6 +69,7 @@ import {
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
   singleChatOrchestrationConfirmedProgress,
+  singleChatOrchestrationStatusCounts,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   appendIdeationBootstrapPromptTimeline,
@@ -614,6 +615,10 @@ export function RequirementsWorkspace({
 
   const orchestrationConfirmedMetrics = useMemo(
     () => singleChatOrchestrationConfirmedProgress(orchestrationUiState),
+    [orchestrationUiState]
+  );
+  const orchestrationStatusCounts = useMemo(
+    () => singleChatOrchestrationStatusCounts(orchestrationUiState),
     [orchestrationUiState]
   );
 
@@ -1625,6 +1630,7 @@ export function RequirementsWorkspace({
         problemInterviewCovered={problemInterviewCovered}
         progressSlotTotal={progressSlotTotal}
         orchestrationSlotSections={orchestrationSlotSectionsForUi}
+        orchestrationStatusCounts={orchestrationStatusCounts}
         remainingQuestionsEstimate={remainingQuestionsEstimate}
         onForceGeneratePlanNow={onForceGeneratePlanNow}
         onInsertComposerPrompt={insertComposerPrompt}

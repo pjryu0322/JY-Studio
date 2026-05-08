@@ -9,6 +9,13 @@ export type WorkspaceIdeationInterviewProgressUi = {
   readonly readinessPercent: number;
   readonly covered: number;
   readonly total: number;
+  readonly statusCounts?: Readonly<{
+    confirmed: number;
+    partial: number;
+    candidate: number;
+    stale: number;
+    empty: number;
+  }> | null;
   readonly remainingQuestionsEstimate: number;
   readonly onForceGeneratePlanNow: () => void;
   /** 오케스트레이션 해시가 현재 슬롯 정의와 일치할 때 역할별 슬롯 그리드 */
@@ -56,7 +63,7 @@ export function WorkspaceProgressPill({
         type="button"
         onClick={() => setPopoverOpen((v) => !v)}
         className={styles.trigger}
-        title="서비스 기획 진행도 상세 보기"
+        title="서비스 기획 진행도 상세 보기 (확정 슬롯 기준)"
       >
         <span className={styles.nowrap}>서비스 기획 진행도 {interviewUi.readinessPercent}%</span>
         <span className={styles.sep}>·</span>
@@ -82,10 +89,27 @@ export function WorkspaceProgressPill({
           <div className={styles.popoverBody}>
             <div className={styles.row}>
               <div className={styles.strong}>
-                확정 슬롯: {interviewUi.covered}/{interviewUi.total}
+                확정 {interviewUi.covered} / 전체 {interviewUi.total}
               </div>
               <div className={styles.muted}>예상 남은 질문: {Math.max(0, interviewUi.remainingQuestionsEstimate)}개</div>
             </div>
+            <div className={styles.row}>
+              <div className={styles.muted}>
+                진행도는 <strong>확정(confirmed)</strong> 슬롯만 반영됩니다. 답변이 분석되면 일부 슬롯은 먼저 <strong>확보 중(partial)</strong> 또는{" "}
+                <strong>후보(candidate)</strong>로 표시될 수 있어요.
+              </div>
+            </div>
+
+            {interviewUi.statusCounts ? (
+              <div className={styles.row} style={{ alignItems: "flex-start" }}>
+                <div className={styles.muted} style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <span>확보 중 {interviewUi.statusCounts.partial}</span>
+                  <span>· 후보 {interviewUi.statusCounts.candidate}</span>
+                  <span>· stale {interviewUi.statusCounts.stale}</span>
+                  <span>· 미확보 {interviewUi.statusCounts.empty}</span>
+                </div>
+              </div>
+            ) : null}
 
             <div className={styles.btnRow}>
               <button type="button" onClick={() => setSlotDetailsOpen((v) => !v)} className={styles.btnGhost}>
