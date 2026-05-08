@@ -195,8 +195,8 @@ export function RequirementsWorkspaceTopChrome({
         ) : null}
         {onSummarizeConversation ? (
           <IconButton
-            title="대화 내역 AI 요약(정리 요청)"
-            ariaLabel="대화 내역 AI 요약(정리 요청)"
+            title="대화 내역 AI 요약"
+            ariaLabel="대화 내역 AI 요약"
             disabled={busy || remoteLocked}
             onClick={() => onSummarizeConversation()}
           >

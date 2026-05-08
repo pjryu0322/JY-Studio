@@ -489,6 +489,30 @@ export function RequirementsWorkspace({
     platformMemberActivity,
   });
 
+  const servicePlanningParticipantContextKeys = useMemo(() => {
+    if (!workspaceAiGraph) return null;
+    const out = new Set<WorkspaceAiMemberId>();
+    const keys: readonly ("requirements_ideation" | "requirements_service_flow" | "feature_planning")[] = [
+      "requirements_ideation",
+      "requirements_service_flow",
+      "feature_planning",
+    ];
+    for (const k of keys) {
+      for (const id of resolveEnabledCatalogKeysForScreen(workspaceAiGraph, k)) out.add(id);
+    }
+    return [...out];
+  }, [workspaceAiGraph]);
+
+  const { participants: servicePlanningParticipants } = useWorkspaceParticipants({
+    members,
+    sessionUser,
+    activeStage,
+    aiPlannerStatusLabel,
+    participantContextKeys: servicePlanningParticipantContextKeys ?? undefined,
+    participantContextKey: participantAiMemberId,
+    platformMemberActivity,
+  });
+
   const servicePlanningRailParticipantCount = useMemo(() => {
     // 좌측 레일 "서비스 기획(requirements)" 배지: 서비스 기획 절차(3 화면)의 참여 AI를 합산(중복 제거) + HUMAN(세션 사용자 포함) 합계.
     const humanUserIdSet = new Set<string>();
@@ -1648,6 +1672,73 @@ export function RequirementsWorkspace({
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 5000);
   }, [conversationMessages, ideationConversationOnly, project?.name, resolvedProjectId]);
+
+  const [aiSummaryBusy, setAiSummaryBusy] = useState(false);
+  const onSummarizeConversation = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid || busy || remoteLocked || aiSummaryBusy) return;
+    setAiSummaryBusy(true);
+    try {
+      const excerpt = formatDialogueExcerpt(ideationConversationOnly.length ? ideationConversationOnly : conversationMessages, 12000);
+      const res = await credentialsIncludeFetch(REQUIREMENTS_IDEATION_HTTP.AI_FACILITATOR, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: pid,
+          projectName: project?.name ?? "",
+          projectDescription: project?.description ?? "",
+          projectType: project?.projectType ?? "",
+          stage: "requirements",
+          summaryOnly: true,
+          dialogueExcerpt: excerpt,
+          workspaceScreenKey: "requirements_ideation",
+        }),
+      });
+      const json = (await res.json()) as { success?: boolean; message?: string; data?: { reply?: string; promptTrace?: unknown } };
+      if (!res.ok || !json.success || !json.data?.reply) {
+        throw new Error(json.message || `HTTP ${res.status}`);
+      }
+      const reply = String(json.data.reply).trim();
+      const nowIso = new Date().toISOString();
+      const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [
+        ...roomRef.current.requirementsConversation.messages,
+        newChatMessage({
+          role: "ai",
+          body: reply,
+          speakerType: "AI",
+          speakerId: "virtual:ai-summarizer",
+          speakerName: "AI 요약",
+          messageType: "NOTICE",
+          meta: { internalType: "conversation_summary" },
+        }),
+      ]);
+      setRoom(nextRoom);
+      const tr = coerceRequirementsPromptTimelineEntry(json.data.promptTrace);
+      if (tr) {
+        const nextTimeline = appendIdeationBootstrapPromptTimeline(stateJsonRef.current.promptTimeline, tr);
+        stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, { promptTimeline: nextTimeline });
+        setPromptTimelineUi(nextTimeline);
+        await persistStateJsonOnly({ promptTimeline: nextTimeline });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "요약 실패";
+      showErrorToast(`AI 요약에 실패했습니다. (${msg})`);
+    } finally {
+      setAiSummaryBusy(false);
+    }
+  }, [
+    aiSummaryBusy,
+    busy,
+    conversationMessages,
+    ideationConversationOnly,
+    project?.description,
+    project?.name,
+    project?.projectType,
+    remoteLocked,
+    resolvedProjectId,
+    showErrorToast,
+    persistStateJsonOnly,
+  ]);
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
       <RequirementsIdeationChatPanel
@@ -1808,9 +1899,9 @@ export function RequirementsWorkspace({
         remoteLocked={remoteLocked}
         onOrganizeRequirements={() => void onOrganizeRequirements()}
         onResetConversation={() => void onResetConversation()}
-        memberControls={{ count: servicePlanningRailParticipantCount, onOpen: () => setMembersModalOpen(true) }}
+        memberControls={{ count: servicePlanningParticipants.length, onOpen: () => setMembersModalOpen(true) }}
         onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}
-        onSummarizeConversation={() => void onOrganizeRequirements()}
+        onSummarizeConversation={() => void onSummarizeConversation()}
         resetConversationDisabled={
           remoteLocked ||
           busy ||
@@ -1861,7 +1952,7 @@ export function RequirementsWorkspace({
       <WorkspaceParticipantsModal
         open={membersModalOpen}
         onClose={() => setMembersModalOpen(false)}
-        participants={participants}
+        participants={servicePlanningParticipants}
         showInvite={Boolean(resolvedProjectId.trim())}
         inviteDisabled={remoteLocked}
         onInviteClick={() => setInviteOpen(true)}
