@@ -2,6 +2,26 @@ import { DEFAULT_OPENAI_MODEL } from "@/lib/ai/openAiEnv";
 
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
+/** OpenAI HTTP 오류 본문 요약(프롬프트 전체는 넣지 않음) */
+export function summarizeOpenAiHttpErrorBody(status: number, rawText: string): string {
+  const slice = String(rawText ?? "").trim().slice(0, 500);
+  try {
+    const j = JSON.parse(rawText) as { error?: { message?: string; type?: string; code?: string | number } };
+    const e = j?.error;
+    if (e && typeof e.message === "string") {
+      const parts = [
+        `type=${String(e.type ?? "?")}`,
+        typeof e.code !== "undefined" ? `code=${String(e.code)}` : null,
+        e.message.trim().slice(0, 400),
+      ].filter(Boolean);
+      return `HTTP ${status} · ${parts.join(" · ")}`.slice(0, 800);
+    }
+  } catch {
+    /* ignore */
+  }
+  return `HTTP ${status} · ${slice || "(empty body)"}`.slice(0, 800);
+}
+
 export type OpenAiChatRole = "system" | "user" | "assistant";
 
 export type OpenAiChatMessage = Readonly<{
@@ -60,21 +80,30 @@ export async function postOpenAiChatCompletion(
     body.max_tokens = Math.floor(input.maxTokens);
   }
 
-  const res = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const reqMeta = `model=${model} responseFormatJsonObject=${input.responseFormatJsonObject === true} maxTokens=${typeof input.maxTokens === "number" && Number.isFinite(input.maxTokens) ? Math.floor(input.maxTokens) : "(default)"}`;
 
-  const rawText = await res.text().catch(() => "");
+  let res: Response;
+  let rawText: string;
+  try {
+    res = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    rawText = await res.text().catch(() => "");
+  } catch (e) {
+    const net = e instanceof Error ? e.message : String(e);
+    return { ok: false, code: "NETWORK", message: `fetch failed (${net.slice(0, 240)}) · ${reqMeta}`.slice(0, 800) };
+  }
+
   if (!res.ok) {
     return {
       ok: false,
       code: `HTTP_${res.status}`,
-      message: rawText.slice(0, 500) || `HTTP ${res.status}`,
+      message: `${summarizeOpenAiHttpErrorBody(res.status, rawText)} · ${reqMeta}`.slice(0, 1200),
     };
   }
 

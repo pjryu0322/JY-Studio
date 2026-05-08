@@ -133,6 +133,19 @@ export function dedupeParticipatingAgentsForPrompt(agents: readonly SingleChatSe
   return Array.from(byKey.values());
 }
 
+/** 워크스페이스에 설정된 모델 오버라이드(플래너 우선) — bootstrap 실제 호출 모델과 비교용 */
+export function pickConfiguredModelOverrideFromAgents(agents: readonly SingleChatSelectedAgentWire[]): string | null {
+  const roleLo = (r: string | null | undefined) => String(r ?? "").trim().toLowerCase();
+  const planner = agents.find((a) => roleLo(a.aiOrchestrationRole) === "planner");
+  const fromPlanner = String(planner?.aiModelOverride ?? "").trim();
+  if (fromPlanner) return fromPlanner;
+  for (const a of agents) {
+    const m = String(a.aiModelOverride ?? "").trim();
+    if (m) return m;
+  }
+  return null;
+}
+
 /**
  * SingleChat LLM 호출 전 컨텍스트 — AI Agent 탭의 절차별 매핑(workspace 그래프) +
  * 동일 하위 단계(spec/service-flow/task)의 오케스트레이션 AI 멤버.

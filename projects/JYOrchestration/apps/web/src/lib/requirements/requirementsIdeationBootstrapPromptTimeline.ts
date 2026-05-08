@@ -17,16 +17,15 @@ export function buildIdeationBootstrapContextualFallbackQuestion(input: {
   readonly projectDescription: string;
   readonly projectType?: string | null;
 }): string {
-  const name = input.projectName.trim() || "이 프로젝트";
   const desc = input.projectDescription.trim().replace(/\s+/g, " ");
   const snippet = desc.slice(0, 220).trim();
   const anchor =
     ["회의록", "녹취", "요약", "산출물", "초안"].find((w) => snippet.includes(w)) ?? (snippet.length >= 8 ? "초안" : "초안");
   if (snippet.length >= 12) {
-    const thing = anchor === "초안" ? "초안" : `${anchor} 초안`;
-    return `${name}에서 ${thing}이 나온 뒤, 작성자만 확인·확정하면 될까요, 아니면 참석자도 함께 검토·수정할 수 있어야 할까요?`;
+    const thing = anchor === "초안" ? "문서 초안" : `${anchor} 초안`;
+    return `AI가 정리한 ${thing}은 작성자만 확인하면 될까요, 아니면 참석자도 함께 검토·수정할 수 있어야 할까요?`;
   }
-  return `${name}에서 AI가 만든 초안은 누가 확인하고 확정하면 될까요?`;
+  return "AI가 만든 초안은 누가 최종 확인하고 확정하면 좋을까요?";
 }
 
 const MAX_PROMPT_TIMELINE = 50;
@@ -59,6 +58,10 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.error === "string" ? { error: r.error } : {}),
     ...(typeof r.fallbackText === "string" ? { fallbackText: r.fallbackText } : {}),
     ...(typeof r.model === "string" || r.model === null ? { model: r.model as string | null } : {}),
+    ...(typeof r.actualModel === "string" || r.actualModel === null ? { actualModel: r.actualModel as string | null } : {}),
+    ...(typeof r.configuredModelOverride === "string" || r.configuredModelOverride === null
+      ? { configuredModelOverride: r.configuredModelOverride as string | null }
+      : {}),
     ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as string | null } : {}),
     ...(typeof r.routingDecision === "string" ? { routingDecision: r.routingDecision } : {}),
     ...(typeof r.fallbackReason === "string" && r.fallbackReason.trim()
@@ -273,6 +276,7 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       ? { userFacingQuestionStyle: r.userFacingQuestionStyle.trim().slice(0, 80) }
       : {}),
     ...(typeof r.userLanguageTransformApplied === "boolean" ? { userLanguageTransformApplied: r.userLanguageTransformApplied } : {}),
+    ...(typeof r.fallbackGeneratedSuggestions === "boolean" ? { fallbackGeneratedSuggestions: r.fallbackGeneratedSuggestions } : {}),
   };
 }
 
@@ -335,6 +339,8 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly error?: string;
   readonly fallbackText?: string;
   readonly model?: string | null;
+  readonly actualModel?: string | null;
+  readonly configuredModelOverride?: string | null;
   readonly provider?: string | null;
   readonly createdAtIso?: string;
   readonly routingDecision?: string;
@@ -392,6 +398,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly retryPromptText?: string;
   readonly retryRawResponseText?: string;
   readonly finalQuestionBeforeFallback?: string;
+  readonly fallbackGeneratedSuggestions?: boolean;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -407,6 +414,8 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.error ? { error: params.error } : {}),
     ...(params.fallbackText ? { fallbackText: params.fallbackText } : {}),
     ...(params.model !== undefined ? { model: params.model } : {}),
+    ...(params.actualModel !== undefined ? { actualModel: params.actualModel } : {}),
+    ...(params.configuredModelOverride !== undefined ? { configuredModelOverride: params.configuredModelOverride } : {}),
     ...(params.provider !== undefined ? { provider: params.provider } : {}),
     ...(params.routingDecision ? { routingDecision: params.routingDecision } : {}),
     ...(params.matchedSlots?.length ? { matchedSlots: [...params.matchedSlots] } : {}),
@@ -465,6 +474,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.retryPromptText ? { retryPromptText: params.retryPromptText.slice(0, 4000) } : {}),
     ...(params.retryRawResponseText ? { retryRawResponseText: params.retryRawResponseText.slice(0, 4000) } : {}),
     ...(params.finalQuestionBeforeFallback ? { finalQuestionBeforeFallback: params.finalQuestionBeforeFallback.slice(0, 600) } : {}),
+    ...(typeof params.fallbackGeneratedSuggestions === "boolean"
+      ? { fallbackGeneratedSuggestions: params.fallbackGeneratedSuggestions }
+      : {}),
   };
 }
 

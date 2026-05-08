@@ -260,7 +260,11 @@ export function buildBootstrapQuestionRetryUserPayload(input: {
 export function filterBootstrapInterviewSuggestions(input: {
   readonly suggestions: readonly string[];
   readonly question: string;
-}): { readonly suggestions: readonly string[]; readonly issues: readonly string[] } {
+}): {
+  readonly suggestions: readonly string[];
+  readonly issues: readonly string[];
+  readonly fallbackGeneratedSuggestions: boolean;
+} {
   const issues: string[] = [];
   const q = String(input.question ?? "").trim();
   const out: string[] = [];
@@ -292,13 +296,19 @@ export function filterBootstrapInterviewSuggestions(input: {
   }
 
   let merged = [...new Set(out)].slice(0, 6);
+  let fallbackGeneratedSuggestions = false;
   if (reviewish && merged.length < 3) {
+    const before = merged.length;
     for (const c of defaultReviewChips) {
       if (merged.length >= 4) break;
       if (!merged.includes(c)) merged.push(c);
     }
     merged = merged.slice(0, 6);
+    if (merged.length > before) {
+      fallbackGeneratedSuggestions = true;
+      issues.push("fallback_generated_suggestions:workflow_chips");
+    }
   }
 
-  return { suggestions: merged, issues };
+  return { suggestions: merged, issues, fallbackGeneratedSuggestions };
 }
