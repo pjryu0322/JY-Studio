@@ -23,7 +23,8 @@ export function buildIdeationBootstrapContextualFallbackQuestion(input: {
   const anchor =
     ["회의록", "녹취", "요약", "산출물", "초안"].find((w) => snippet.includes(w)) ?? (snippet.length >= 8 ? "초안" : "초안");
   if (snippet.length >= 12) {
-    return `${name}에서 ${anchor}이(가) 만들어진 뒤, 작성자만 확인·확정하면 될까요, 아니면 참석자도 함께 검토·수정할 수 있어야 할까요?`;
+    const thing = anchor === "초안" ? "초안" : `${anchor} 초안`;
+    return `${name}에서 ${thing}이 나온 뒤, 작성자만 확인·확정하면 될까요, 아니면 참석자도 함께 검토·수정할 수 있어야 할까요?`;
   }
   return `${name}에서 AI가 만든 초안은 누가 확인하고 확정하면 될까요?`;
 }
@@ -473,6 +474,8 @@ export const coerceBootstrapPromptTrace = coerceRequirementsPromptTimelineEntry;
 export function buildIdeationBootstrapFallbackPromptTrace(params: {
   readonly error: string;
   readonly fallbackText: string;
+  readonly fallbackReason?: string;
+  readonly provider?: string | null;
   readonly createdAtIso?: string;
   readonly routingDecision?: string;
   readonly interviewQuestion?: string;
@@ -484,10 +487,12 @@ export function buildIdeationBootstrapFallbackPromptTrace(params: {
     action: IDEATION_BOOTSTRAP_PROMPT_TIMELINE_ACTION,
     aiMember: IDEATION_BOOTSTRAP_PROMPT_TIMELINE_AI_MEMBER,
     source: "fallback",
+    provider: params.provider ?? "fallback",
     error: params.error,
     fallbackText: params.fallbackText,
     createdAt: params.createdAtIso ?? new Date().toISOString(),
     ...(params.routingDecision ? { routingDecision: params.routingDecision } : { routingDecision: "bootstrap_contextual_fallback" }),
+    ...(params.fallbackReason ? { fallbackReason: params.fallbackReason } : {}),
     ...(params.interviewQuestion ? { interviewQuestion: params.interviewQuestion } : {}),
     ...(params.interviewSuggestions?.length ? { interviewSuggestions: [...params.interviewSuggestions] } : {}),
     ...(params.interviewSuggestionsSource ? { interviewSuggestionsSource: params.interviewSuggestionsSource } : {}),

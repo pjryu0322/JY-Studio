@@ -603,9 +603,24 @@ export function RequirementsPromptDocumentDrawer({
                       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                         {ideationBootstrapTimeline.map((row, idx) => {
                           const hasOut = Boolean(String(row.responseText ?? row.fallbackText ?? "").trim());
-                          const ok = !String(row.error ?? "").trim() && hasOut;
+                          const isFallback = row.source === "fallback" || row.fallback === true;
+                          const ok = !isFallback && !String(row.error ?? "").trim() && hasOut;
                           const platformToModel = String(row.promptText ?? "").trim();
-                          const modelToPlatform = [row.responseText, row.fallbackText, row.error ? `[error] ${row.error}` : ""]
+                          const modelToPlatform = [
+                            row.responseText,
+                            row.fallbackText,
+                            row.error ? `[error] ${row.error}` : "",
+                            row.fallbackReason ? `[fallbackReason] ${row.fallbackReason}` : "",
+                            row.questionQualityStatus ? `[questionQualityStatus] ${row.questionQualityStatus}` : "",
+                            typeof row.questionQualityRetryCount === "number" ? `[retryCount] ${row.questionQualityRetryCount}` : "",
+                            row.finalQuestionSource ? `[finalQuestionSource] ${row.finalQuestionSource}` : "",
+                            row.rawResponseText ? `\n[rawResponseText]\n${row.rawResponseText}` : "",
+                            row.parseError ? `\n[parseError]\n${row.parseError}` : "",
+                            row.parsedJsonPreview ? `\n[parsedJsonPreview]\n${row.parsedJsonPreview}` : "",
+                            row.retryPromptText ? `\n[retryPromptText]\n${row.retryPromptText}` : "",
+                            row.retryRawResponseText ? `\n[retryRawResponseText]\n${row.retryRawResponseText}` : "",
+                            row.finalQuestionBeforeFallback ? `\n[finalQuestionBeforeFallback]\n${row.finalQuestionBeforeFallback}` : "",
+                          ]
                             .filter((x) => String(x ?? "").trim())
                             .join("\n\n");
                           return (
@@ -623,12 +638,15 @@ export function RequirementsPromptDocumentDrawer({
                                     fontWeight: 800,
                                     padding: "2px 8px",
                                     borderRadius: 999,
-                                    background: ok ? "#dcfce7" : "#fee2e2",
-                                    color: ok ? "#166534" : "#991b1b",
+                                    background: ok ? "#dcfce7" : isFallback ? "#ffedd5" : "#fee2e2",
+                                    color: ok ? "#166534" : isFallback ? "#9a3412" : "#991b1b",
                                   }}
                                 >
-                                  {ok ? "SUCCESS" : "FAILED"}
+                                  {ok ? "SUCCESS" : isFallback ? "FALLBACK" : "FAILED"}
                                 </span>
+                                {isFallback && row.fallbackReason ? (
+                                  <span style={{ fontSize: 12, fontWeight: 800, color: "#9a3412" }}>Fallback Reason: {row.fallbackReason}</span>
+                                ) : null}
                                 <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>
                                   {row.provider ?? ""} {row.model ?? ""} · {new Date(row.createdAt).toLocaleString("ko-KR")}
                                 </span>
