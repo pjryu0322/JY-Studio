@@ -134,6 +134,7 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
         | "OPENAI_API_ERROR"
         | "EMPTY_RESPONSE"
         | "JSON_PARSE_FAILED"
+        | "MODEL_RETURNED_SLOT_CATALOG"
         | "MISSING_QUESTION"
         | "QUESTION_QUALITY_REJECTED"
         | "RETRY_FAILED"
@@ -167,6 +168,19 @@ function shouldLogBootstrapDiagnosisSteps(): boolean {
 function logBootstrapDiagnosis(step: string, payload: Record<string, unknown>): void {
   if (!shouldLogBootstrapDiagnosisSteps()) return;
   console.info("[bootstrap-diagnosis]", { step, ...payload });
+}
+
+function logBootstrapParseResult(payload: Record<string, unknown>): void {
+  if (!shouldLogBootstrapDiagnosisSteps()) return;
+  console.info("[bootstrap-parse-result]", payload);
+}
+
+export function isModelReturnedSlotCatalogPayload(parsed: Record<string, unknown>): boolean {
+  const mode = typeof parsed.mode === "string" ? parsed.mode.trim() : "";
+  const slots = (parsed as any).slots;
+  const hasSlots = Array.isArray(slots) && slots.length > 0;
+  const hasQuestion = Boolean(String((parsed as any).question ?? "").trim());
+  return !hasQuestion && hasSlots && /bootstrap_phase1_compact/i.test(mode);
 }
 
 function tryExtractFirstJsonObjectSubstring(raw: string): string | null {
@@ -764,7 +778,8 @@ JSON 스키마(마크다운·코드펜스 금지 — 예시 문장은 도메인 
   "suggestedSlots": []
 }`;
 
-  const axisBlock = formatBootstrapAxisRotationBlock({ projectName: pn, projectDescription: pd });
+  // Bootstrap 안정성 우선: prompt 충돌·과잉 규칙을 줄이기 위해 힌트 블록은 짧게만 포함한다.
+  const axisBlock = formatBootstrapAxisRotationBlock({ projectName: pn, projectDescription: pd }).slice(0, 600);
 
   const user = `[project]
 name: ${pn}
@@ -774,9 +789,12 @@ description: ${pd.slice(0, 1400)}
 ${axisBlock}
 
 [phase1_slot_catalog]
-${baseCatalog.slice(0, 6000)}
+${baseCatalog.slice(0, 2500)}
 
-위 JSON만 출력.`;
+출력은 반드시 위 [JSON 스키마] 형태의 "결과 JSON 오브젝트 1개"만.
+- phase1_slot_catalog JSON(위 블록)을 그대로 재출력하지 마라.
+- question/suggestions/allowCustomInput 키는 반드시 포함하라(최소 스키마).
+- slot catalog 원문을 복사하지 마라.`;
 
   const calledAt = new Date().toISOString();
   const promptText = `[system]\n${system}\n\n---\n\n[user]\n${user}`;
@@ -854,6 +872,14 @@ ${baseCatalog.slice(0, 6000)}
   if (!parsedPack.ok) {
     logBootstrapDiagnosis("parse_failed", { parseError: parsedPack.parseError });
     logBootstrapDiagnosis("return_fail", { fallbackReason: "JSON_PARSE_FAILED" });
+    logBootstrapParseResult({
+      parsedKeys: [],
+      hasQuestion: false,
+      hasSuggestions: false,
+      hasSlots: false,
+      mode: null,
+      fallbackReason: "JSON_PARSE_FAILED",
+    });
     return {
       ok: false,
       code: "PARSE",
@@ -875,12 +901,29 @@ ${baseCatalog.slice(0, 6000)}
   let payload = extractSingleChatBootstrapFromJson(parsedPack.parsed);
 
   if (!payload.question) {
+    const parsedKeys = Object.keys(parsedPack.parsed ?? {}).slice(0, 24);
+    const mode = typeof (parsedPack.parsed as any).mode === "string" ? String((parsedPack.parsed as any).mode).trim() : null;
+    const hasSlots = Array.isArray((parsedPack.parsed as any).slots) && (parsedPack.parsed as any).slots.length > 0;
+    const fallbackReason = isModelReturnedSlotCatalogPayload(parsedPack.parsed)
+      ? ("MODEL_RETURNED_SLOT_CATALOG" as const)
+      : ("MISSING_QUESTION" as const);
+    logBootstrapParseResult({
+      parsedKeys,
+      hasQuestion: false,
+      hasSuggestions: Array.isArray((parsedPack.parsed as any).suggestions) && (parsedPack.parsed as any).suggestions.length > 0,
+      hasSlots,
+      mode,
+      fallbackReason,
+    });
     logBootstrapDiagnosis("question_missing", {});
     logBootstrapDiagnosis("return_fail", { fallbackReason: "MISSING_QUESTION" });
     return {
       ok: false,
       code: "EMPTY",
-      message: "question이 비어 있습니다.",
+      message:
+        fallbackReason === "MODEL_RETURNED_SLOT_CATALOG"
+          ? "모델이 결과 JSON 대신 phase1_slot_catalog(슬롯 목록) JSON을 반환했습니다."
+          : "question이 비어 있습니다.",
       ...baseFail,
       responseText: truncateForTimeline(String(text), 20_000),
       rawResponseText: truncateForTimeline(String(text), 4000),
@@ -889,10 +932,18 @@ ${baseCatalog.slice(0, 6000)}
       questionQualityRetryCount: 0,
       questionQualityIssues: [],
       finalQuestionBeforeFallback: "",
-      fallbackReason: "MISSING_QUESTION",
+      fallbackReason,
     };
   }
   logBootstrapDiagnosis("question_extracted", { questionPreview: payload.question.slice(0, 120) });
+  logBootstrapParseResult({
+    parsedKeys: Object.keys(parsedPack.parsed ?? {}).slice(0, 24),
+    hasQuestion: true,
+    hasSuggestions: payload.suggestions.length > 0,
+    hasSlots: Array.isArray((parsedPack.parsed as any).slots) && (parsedPack.parsed as any).slots.length > 0,
+    mode: typeof (parsedPack.parsed as any).mode === "string" ? String((parsedPack.parsed as any).mode).trim() : null,
+    fallbackReason: null,
+  });
 
   let promptTextOut = promptText;
   let questionQualityRetryCount = 0;

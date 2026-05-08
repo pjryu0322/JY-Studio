@@ -125,6 +125,10 @@ function initialOrchestrationPayload(
   return initialOrchestrationStateFromDefinitions(defs, nowIso);
 }
 
+function shouldLogBootstrapRouteResult(): boolean {
+  return process.env.NODE_ENV !== "production" || String(process.env.JY_BOOTSTRAP_SERVER_LOG ?? "").trim() === "1";
+}
+
 /**
  * 요구사항 협의실: 아이디어 구체화 전담 AI 응답(OpenAI). projectId가 있으면 프로젝트 조회 권한 필요.
  */
@@ -389,6 +393,15 @@ export async function POST(request: NextRequest) {
       });
     }
     if (!result.ok) {
+      if (bootstrapInterview && shouldLogBootstrapRouteResult()) {
+        console.info("[bootstrap-route-result]", {
+          ok: false,
+          fallbackReason: String((result as any).fallbackReason ?? "").trim() || String((result as any).code ?? "") || "UNKNOWN_BOOTSTRAP_ERROR",
+          hasQuestion: false,
+          source: "fallback",
+          routingDecision: "bootstrap_contextual_fallback",
+        });
+      }
       if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
         recordIdeationBootstrapOpenAi({
           projectId,
@@ -745,6 +758,15 @@ export async function POST(request: NextRequest) {
         ? { fallbackGeneratedSuggestions: true }
         : {}),
     });
+    if (bootstrapInterview && shouldLogBootstrapRouteResult()) {
+      console.info("[bootstrap-route-result]", {
+        ok: Boolean(result.ok),
+        fallbackReason: (result as any).fallbackReason ?? null,
+        hasQuestion: Boolean(String((result as any).question ?? "").trim()),
+        source: bootstrapPromptTrace.source,
+        routingDecision: bootstrapPromptTrace.routingDecision,
+      });
+    }
 
     const facilitatorPromptTrace =
       !bootstrapInterview && result.ok

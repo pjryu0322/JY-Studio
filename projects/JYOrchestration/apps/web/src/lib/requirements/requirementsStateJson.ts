@@ -148,6 +148,7 @@ export type RequirementsPromptTimelineEntry = {
     | "OPENAI_API_ERROR"
     | "EMPTY_RESPONSE"
     | "JSON_PARSE_FAILED"
+    | "MODEL_RETURNED_SLOT_CATALOG"
     | "MISSING_QUESTION"
     | "QUESTION_QUALITY_REJECTED"
     | "RETRY_FAILED"

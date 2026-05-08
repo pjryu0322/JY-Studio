@@ -220,7 +220,7 @@ function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelin
     const resp = [
       row.responseText,
       row.fallbackText,
-      row.rawResponseText ? `\n[rawResponseText]\n${row.rawResponseText}` : "",
+      row.rawResponseText ? `\n[rawResponsePreview]\n${row.rawResponseText}` : "",
       row.parseError ? `\n[parseError]\n${row.parseError}` : "",
       row.parsedJsonPreview ? `\n[parsedJsonPreview]\n${row.parsedJsonPreview}` : "",
       row.retryPromptText ? `\n[retryPromptText]\n${row.retryPromptText}` : "",
@@ -627,7 +627,7 @@ export function RequirementsPromptDocumentDrawer({
                             row.questionQualityStatus ? `[questionQualityStatus] ${row.questionQualityStatus}` : "",
                             typeof row.questionQualityRetryCount === "number" ? `[retryCount] ${row.questionQualityRetryCount}` : "",
                             row.finalQuestionSource ? `[finalQuestionSource] ${row.finalQuestionSource}` : "",
-                            row.rawResponseText ? `\n[rawResponseText]\n${row.rawResponseText}` : "",
+                            row.rawResponseText ? `\n[rawResponsePreview]\n${row.rawResponseText}` : "",
                             row.parseError ? `\n[parseError]\n${row.parseError}` : "",
                             row.parsedJsonPreview ? `\n[parsedJsonPreview]\n${row.parsedJsonPreview}` : "",
                             row.retryPromptText ? `\n[retryPromptText]\n${row.retryPromptText}` : "",

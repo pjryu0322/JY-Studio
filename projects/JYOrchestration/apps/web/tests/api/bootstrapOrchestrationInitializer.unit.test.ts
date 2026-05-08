@@ -13,6 +13,7 @@ import {
   stringifyPlannerRouteSlotCatalogForLlm,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { buildIdeationBootstrapContextualFallbackQuestion } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import { isModelReturnedSlotCatalogPayload } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 
 describe("bootstrap orchestration initializer", () => {
   it("dedupe: 동일 displayName+외부 역할이면 provider/model이 풍부한 한 줄만 남긴다", () => {
@@ -125,5 +126,21 @@ describe("bootstrap orchestration initializer", () => {
     });
     expect(q).not.toMatch(/주요 문제 정의/);
     expect(q.length).toBeGreaterThan(10);
+  });
+
+  it("classifies slots-only bootstrap response as MODEL_RETURNED_SLOT_CATALOG", () => {
+    expect(
+      isModelReturnedSlotCatalogPayload({
+        mode: "bootstrap_phase1_compact",
+        slots: [{ slotKey: "planning.servicePurpose", label: "서비스 목적" }],
+      })
+    ).toBe(true);
+    expect(
+      isModelReturnedSlotCatalogPayload({
+        question: "누가 최종 확정하나요?",
+        mode: "bootstrap_phase1_compact",
+        slots: [{ slotKey: "planning.servicePurpose", label: "서비스 목적" }],
+      })
+    ).toBe(false);
   });
 });
