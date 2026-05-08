@@ -145,6 +145,13 @@ export function parseRequirementsSingleChatOrchestrationV1(
           : null;
       const proposedAt = typeof r.proposedAt === "string" ? r.proposedAt : null;
       const reason = typeof r.reason === "string" ? r.reason : r.reason === null ? null : null;
+      const externalProposedOwnerRaw = r.externalProposedOwner;
+      const externalProposedOwner =
+        typeof externalProposedOwnerRaw === "string"
+          ? externalProposedOwnerRaw.trim().toLowerCase()
+          : externalProposedOwnerRaw === null
+            ? null
+            : undefined;
       dynamicSlots[slotKey] = {
         slotKey,
         title,
@@ -154,6 +161,7 @@ export function parseRequirementsSingleChatOrchestrationV1(
         proposalConfidence,
         proposedAt,
         reason,
+        ...(externalProposedOwner !== undefined ? { externalProposedOwner } : {}),
       };
     }
   }

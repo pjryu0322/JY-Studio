@@ -1,7 +1,11 @@
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
-import type { RequirementsSingleChatOrchestrationStateV1, SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
+import type {
+  RequirementsSingleChatOrchestrationStateV1,
+  SingleChatDynamicSlotProposalWireV1,
+  SingleChatOrchestrationSlotDefinition,
+} from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
   plannerSlotKeys,
   stringifyPlannerRouteSlotCatalogForLlm,
@@ -16,16 +20,8 @@ export type PlannerRouteTurnOk = Readonly<{
   delegatedAgents: string[];
   matchedSlots: string[];
   patches: SlotPatchInput[];
-  /** Hybrid: LLM이 제안한 동적 슬롯(검증 전) */
-  suggestedSlots?: readonly {
-    slotKey: string;
-    title: string;
-    description: string;
-    ownerAgent: string;
-    reason?: string | null;
-    priority?: "high" | "medium" | "low" | null;
-    proposalConfidence?: number | null;
-  }[];
+  /** Hybrid: LLM이 제안한 동적 슬롯(검증 전, 외부 owner 네임스페이스) */
+  suggestedSlots?: readonly SingleChatDynamicSlotProposalWireV1[];
   promptText: string;
   model: string;
 }>;
@@ -148,30 +144,29 @@ export async function runPlannerRouteTurnOpenAI(input: {
   const rawSlots = parseUpdatedSlotsRows(parsed.updatedSlots, allKeys, new Set(["planner"]), input.definitions);
   const patches = rawSlots.filter((p) => plannerKeys.has(p.slotKey));
 
-  const suggestedSlots: PlannerRouteTurnOk["suggestedSlots"] = Array.isArray((parsed as any).suggestedSlots)
-    ? ((parsed as any).suggestedSlots as unknown[])
-        .map((x) => {
-          if (!x || typeof x !== "object") return null;
-          const r = x as Record<string, unknown>;
-          const slotKey = String(r.slotKey ?? "").trim();
-          const title = String(r.title ?? "").trim();
-          const description = String(r.description ?? "").trim();
-          const ownerAgent = String(r.ownerAgent ?? "").trim();
-          if (!slotKey || !title || !description || !ownerAgent) return null;
-          const priorityRaw = String(r.priority ?? "").trim().toLowerCase();
-          const priority =
-            priorityRaw === "high" || priorityRaw === "medium" || priorityRaw === "low"
-              ? (priorityRaw as "high" | "medium" | "low")
-              : null;
-          const proposalConfidence =
-            r.proposalConfidence !== null && r.proposalConfidence !== undefined && Number.isFinite(Number(r.proposalConfidence))
-              ? Math.min(1, Math.max(0, Number(r.proposalConfidence)))
-              : null;
-          const reason = typeof r.reason === "string" ? r.reason.slice(0, 200) : r.reason === null ? null : null;
-          return { slotKey, title, description, ownerAgent, reason, priority, proposalConfidence };
-        })
-        .filter((x): x is NonNullable<typeof x> => Boolean(x))
-    : [];
+  const rawSuggested = Array.isArray(parsed.suggestedSlots) ? parsed.suggestedSlots : [];
+  const suggestedSlots: PlannerRouteTurnOk["suggestedSlots"] = rawSuggested
+    .map((x) => {
+      if (!x || typeof x !== "object") return null;
+      const r = x as Record<string, unknown>;
+      const slotKey = String(r.slotKey ?? "").trim();
+      const title = String(r.title ?? "").trim();
+      const description = String(r.description ?? "").trim();
+      const ownerAgent = String(r.ownerAgent ?? "").trim();
+      if (!slotKey || !title || !description || !ownerAgent) return null;
+      const priorityRaw = String(r.priority ?? "").trim().toLowerCase();
+      const priority =
+        priorityRaw === "high" || priorityRaw === "medium" || priorityRaw === "low"
+          ? (priorityRaw as "high" | "medium" | "low")
+          : null;
+      const proposalConfidence =
+        r.proposalConfidence !== null && r.proposalConfidence !== undefined && Number.isFinite(Number(r.proposalConfidence))
+          ? Math.min(1, Math.max(0, Number(r.proposalConfidence)))
+          : null;
+      const reason = typeof r.reason === "string" ? r.reason.slice(0, 200) : r.reason === null ? null : null;
+      return { slotKey, title, description, ownerAgent, reason, priority, proposalConfidence };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x));
 
   const promptText = `[planner-route]\n[system]\n${system}\n\n[user]\n${user}`;
 

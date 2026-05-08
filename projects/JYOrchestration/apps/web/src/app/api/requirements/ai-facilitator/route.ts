@@ -6,6 +6,7 @@ import {
   runRequirementsFacilitatorOpenAI,
   runRequirementsIdeationInterviewSeedFromProjectOpenAI,
   runRequirementsSingleChatBootstrapOpenAI,
+  type OrchestrationBootstrapInitializerWire,
   type RequirementsAiResponseStyle,
 } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib/debug/promptTimelineDebug";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/workspace-ai/workspaceScreenKeys";
 import {
   buildDynamicServicePlanningSlotDefinitions,
+  cloneDynamicSlotProposalsFromPlannerRoute,
   computeSlotExpansionPhaseFromState,
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
@@ -35,7 +37,10 @@ import {
   validateDynamicProposedSlots,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
-import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import type {
+  RequirementsSingleChatOrchestrationStateV1,
+  SingleChatDynamicSlotProposalWireV1,
+} from "@/lib/requirements/singleChatOrchestrationTypes";
 import {
   activeOrchestrationRolesFromAgents,
   plannerPreferredFromAgents,
@@ -292,6 +297,20 @@ export async function POST(request: NextRequest) {
         slotDependenciesChanged: turnOk.meta.slotDependenciesChanged,
         createdAtIso: turnOk.calledAt,
         slotExpansionPhase: orchestrationSlotExpansionPhase,
+        ...(turnOk.meta.suggestedDynamicSlots?.length
+          ? { suggestedDynamicSlots: [...turnOk.meta.suggestedDynamicSlots] }
+          : {}),
+        ...(turnOk.meta.acceptedDynamicSlotKeys?.length
+          ? { acceptedDynamicSlots: [...turnOk.meta.acceptedDynamicSlotKeys] }
+          : {}),
+        ...(turnOk.meta.rejectedDynamicSlots?.length
+          ? {
+              rejectedDynamicSlots: turnOk.meta.rejectedDynamicSlots.map((x) => ({
+                slotKey: x.slotKey,
+                reason: x.reason,
+              })),
+            }
+          : {}),
       });
 
       return NextResponse.json({
@@ -497,15 +516,7 @@ export async function POST(request: NextRequest) {
     let orchPayload = orchInitialForBootstrap;
     let bootSug: string[] | undefined;
     let bootAllowCustom = true;
-    let bootstrapMeta:
-      | {
-          detectedDomain?: string | null;
-          missingInformation?: readonly string[];
-          recommendedFocus?: string | null;
-          interactionMode?: string | null;
-          initialOwnershipHints?: Array<{ slotKey: string; ownerAgent: string }>;
-        }
-      | undefined = undefined;
+    let bootstrapMeta: OrchestrationBootstrapInitializerWire | undefined = undefined;
     let slotExpansionPhaseForBootstrap: 1 | 2 | 3 = 1;
 
     if (bootstrapInterview && result.ok) {
@@ -514,8 +525,11 @@ export async function POST(request: NextRequest) {
       bootSug = Array.isArray(r.suggestions) ? (r.suggestions as string[]) : [];
       bootAllowCustom = r.allowCustomInput !== false;
       bootstrapMeta = r.orchestrationBootstrap && typeof r.orchestrationBootstrap === "object" ? r.orchestrationBootstrap : undefined;
-      const suggestedSlots = Array.isArray(r.suggestedSlots) ? (r.suggestedSlots as any[]) : [];
-      suggestedDynamicSlots = suggestedSlots.map((s) => String(s?.slotKey ?? "").trim()).filter(Boolean);
+      const suggestedSlotsRaw = Array.isArray(r.suggestedSlots) ? r.suggestedSlots : [];
+      const suggestedSnapshot = cloneDynamicSlotProposalsFromPlannerRoute(
+        suggestedSlotsRaw.filter((x) => x && typeof x === "object") as readonly SingleChatDynamicSlotProposalWireV1[]
+      );
+      suggestedDynamicSlots = suggestedSnapshot.map((s) => s.slotKey).filter(Boolean);
 
       const baseDefs = buildDynamicServicePlanningSlotDefinitions({
         projectName,
@@ -528,7 +542,7 @@ export async function POST(request: NextRequest) {
         nowIso: r.calledAt ?? new Date().toISOString(),
         baseDefinitions: baseDefs,
         existingDynamicSlots: null,
-        suggestedSlots,
+        suggestedSlots: suggestedSnapshot,
       });
       acceptedDynamicSlots = v.accepted.map((d) => d.slotKey);
       rejectedDynamicSlots = v.rejected.map((x) => ({ slotKey: x.slotKey, reason: x.reason }));
@@ -551,7 +565,7 @@ export async function POST(request: NextRequest) {
         slotProposalHistory: [
           {
             proposedAt: r.calledAt ?? new Date().toISOString(),
-            suggestedSlots,
+            suggestedSlots: suggestedSnapshot,
             acceptedSlotKeys: v.accepted.map((d) => d.slotKey),
             rejected: v.rejected,
           },
@@ -599,6 +613,46 @@ export async function POST(request: NextRequest) {
             bootstrapPhase: 1 as const,
             compactCatalogMode: true,
             slotExpansionPhase: slotExpansionPhaseForBootstrap,
+          }
+        : {}),
+      ...(bootstrapMeta?.primaryDecisionAxis ? { primaryDecisionAxis: bootstrapMeta.primaryDecisionAxis } : {}),
+      ...(bootstrapMeta?.selectedQuestionAxis ? { selectedQuestionAxis: bootstrapMeta.selectedQuestionAxis } : {}),
+      ...(bootstrapMeta?.reasoningContributors?.length ? { reasoningContributors: [...bootstrapMeta.reasoningContributors] } : {}),
+      ...(bootstrapMeta?.riskSignals?.length ? { riskSignals: [...bootstrapMeta.riskSignals] } : {}),
+      ...(bootstrapInterview &&
+      result.ok &&
+      Array.isArray((result as { suggestedSlotReasons?: readonly { slotKey: string; reason: string }[] }).suggestedSlotReasons) &&
+      (result as { suggestedSlotReasons?: readonly unknown[] }).suggestedSlotReasons!.length
+        ? {
+            suggestedSlotReasons: [
+              ...((result as { suggestedSlotReasons: readonly { slotKey: string; reason: string }[] }).suggestedSlotReasons),
+            ],
+          }
+        : {}),
+      ...(bootstrapInterview &&
+      result.ok &&
+      typeof (result as { questionQualityStatus?: string }).questionQualityStatus === "string"
+        ? {
+            questionQualityStatus: (result as { questionQualityStatus: "pass" | "retry_passed" | "retry_failed_repaired" })
+              .questionQualityStatus,
+            questionQualityIssues: [
+              ...(((result as { questionQualityIssues?: readonly string[] }).questionQualityIssues ?? []) as string[]),
+            ],
+            questionQualityRetryCount: Number(
+              (result as { questionQualityRetryCount?: number }).questionQualityRetryCount ?? 0
+            ),
+            finalQuestionSource: (result as { finalQuestionSource: "llm" | "llm_retry" | "repaired_context" })
+              .finalQuestionSource,
+          }
+        : {}),
+      ...(bootstrapInterview &&
+      result.ok &&
+      Array.isArray((result as { suggestionQualityIssues?: readonly string[] }).suggestionQualityIssues) &&
+      (result as { suggestionQualityIssues?: readonly string[] }).suggestionQualityIssues!.length
+        ? {
+            suggestionQualityIssues: [
+              ...((result as { suggestionQualityIssues: readonly string[] }).suggestionQualityIssues as string[]),
+            ],
           }
         : {}),
     });

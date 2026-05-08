@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as orchestrationSlots from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   buildDynamicServicePlanningSlotDefinitions,
   hashSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
+  LLM_EXTERNAL_ORCHESTRATION_ROLES,
   mergeOrchestrationSlotPatches,
   singleChatOrchestrationConfirmedProgress,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
@@ -486,5 +488,91 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
     expect(out.ok).toBe(true);
     if (!out.ok) return;
     expect(out.meta.slotDependenciesChanged).toBe(true);
+  });
+
+  it("동적 슬롯 제안 시 validateDynamicProposedSlots는 1회만 호출", async () => {
+    const spy = vi.spyOn(orchestrationSlots, "validateDynamicProposedSlots");
+    try {
+      const input = baseInput();
+      mockPostOpenAi.mockImplementation(async () => {
+        const n = mockPostOpenAi.mock.calls.length;
+        if (n === 1) {
+          return {
+            ok: true,
+            text: JSON.stringify({
+              routingDecision: "A",
+              matchedSlots: [],
+              delegatedAgents: [],
+              updatedSlots: [],
+              suggestedSlots: [
+                {
+                  slotKey: "dyn_onceValidate",
+                  title: "한번 검증",
+                  description: "검증 호출 횟수를 확인하기 위한 충분히 긴 설명 필드입니다.",
+                  ownerAgent: "planner",
+                  reason: "테스트",
+                  priority: "low",
+                  proposalConfidence: 0.5,
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, text: mergeAssistant("병합.") };
+      });
+      const out = await runSelectiveMultiAgentOrchestrationOpenAI(input);
+      expect(out.ok).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("accepted 동적 슬롯은 내부 owner·slots 행·dynamicSlots·히스토리·meta가 검증 결과와 일치", async () => {
+    const input = baseInput();
+    const dynKey = "dyn_extraSlot";
+    mockPostOpenAi.mockImplementation(async () => {
+      const n = mockPostOpenAi.mock.calls.length;
+      if (n === 1) {
+        return {
+          ok: true,
+          text: JSON.stringify({
+            routingDecision: "A",
+            matchedSlots: [],
+            delegatedAgents: [],
+            updatedSlots: [],
+            suggestedSlots: [
+              {
+                slotKey: dynKey,
+                title: "추가 슬롯",
+                description: "프로젝트 특화 추가 조사 항목을 채웁니다.",
+                ownerAgent: "architect",
+                reason: "설계 보강",
+                priority: "low",
+                proposalConfidence: 0.6,
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, text: mergeAssistant("ok") };
+    });
+    const out = await runSelectiveMultiAgentOrchestrationOpenAI(input);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    const row = out.nextState.slots[dynKey];
+    expect(row?.ownerAgent).toBe("solution-architect");
+    expect((LLM_EXTERNAL_ORCHESTRATION_ROLES as readonly string[]).includes(String(row?.ownerAgent ?? ""))).toBe(false);
+    expect(row?.status).toBe("empty");
+    expect(row?.confidence).toBe(0);
+    expect(String(row?.value ?? "")).toBe("");
+    expect(out.nextState.dynamicSlots?.[dynKey]?.ownerAgent).toBe("solution-architect");
+    const hist = out.nextState.slotProposalHistory?.at(-1);
+    expect(hist?.acceptedSlotKeys).toEqual([dynKey]);
+    expect(hist?.suggestedSlots?.[0]?.ownerAgent).toBe("architect");
+    expect(hist?.rejected?.length ?? 0).toBe(0);
+    expect(out.meta.suggestedDynamicSlots).toEqual([dynKey]);
+    expect(out.meta.acceptedDynamicSlotKeys).toEqual([dynKey]);
+    expect(out.meta.rejectedDynamicSlots?.length ?? 0).toBe(0);
   });
 });

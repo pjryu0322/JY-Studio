@@ -30,14 +30,32 @@ export type SingleChatOrchestrationSlotV1 = Readonly<{
 
 export type SingleChatDynamicSlotPriority = "high" | "medium" | "low";
 
-/** LLM이 제안한 동적 슬롯 정의(저장·검증 대상) */
+/**
+ * 검증 전 LLM/planner-route 제안 스냅샷.
+ * `ownerAgent`는 프롬프트 전용 외부 네임스페이스(planner|analyst|architect|designer|reviewer|security).
+ */
+export type SingleChatDynamicSlotProposalWireV1 = Readonly<{
+  slotKey: string;
+  title: string;
+  description: string;
+  ownerAgent: string;
+  reason?: string | null;
+  priority?: SingleChatDynamicSlotPriority | null;
+  proposalConfidence?: number | null;
+}>;
+
+/**
+ * 검증 통과 후 저장되는 동적 슬롯 정의.
+ * `ownerAgent`는 런타임 오케스트레이션 내부 역할(planner|service-designer|…).
+ */
 export type SingleChatDynamicSlotDefinitionV1 = Readonly<{
   /** 반드시 `dyn_` prefix를 포함한 안전 키 */
   slotKey: string;
   title: string;
   description: string;
-  /** 제안 owner(허용: planner|analyst|architect|designer|reviewer|security) */
   ownerAgent: string;
+  /** 제안 시 LLM 외부 역할(감사·UI용, 선택) */
+  externalProposedOwner?: string | null;
   reason?: string | null;
   priority?: SingleChatDynamicSlotPriority | null;
   proposalConfidence?: number | null;
@@ -52,8 +70,8 @@ export type SingleChatDynamicSlotValidationRejectionV1 = Readonly<{
 
 export type SingleChatDynamicSlotProposalHistoryV1 = Readonly<{
   proposedAt: string;
-  /** 원문 제안(검증 전) */
-  suggestedSlots: readonly Omit<SingleChatDynamicSlotDefinitionV1, "proposedAt">[];
+  /** 검증에 사용한 제안 스냅샷(외부 owner 네임스페이스) */
+  suggestedSlots: readonly SingleChatDynamicSlotProposalWireV1[];
   acceptedSlotKeys: readonly string[];
   rejected: readonly SingleChatDynamicSlotValidationRejectionV1[];
 }>;

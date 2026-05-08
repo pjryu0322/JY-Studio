@@ -26,6 +26,10 @@ import {
   WORKSPACE_SCREEN_LABEL,
   type WorkspaceScreenKey,
 } from "@/lib/workspace-ai/workspaceScreenKeys";
+import {
+  buildWorkspaceAiSlotDefinitionPreview,
+  slotPreviewRowsForCatalogMember,
+} from "@/lib/workspace-ai/workspaceAiCatalogSlotPreview";
 import type { WorkspaceAiGraphMemberWire } from "@/lib/workspace-ai/workspaceAiGraphWire";
 import { WorkspaceAiMemberDetailModal, WorkspaceAiPersonaPromptModal } from "@/components/project-members/WorkspaceAiMemberPersonaDialogs";
 import { MEDIA_QUERY } from "@/components/ui/breakpoints";
@@ -58,6 +62,18 @@ function agentTitleForUi(rawTitle: string): string {
   const base = String(rawTitle || "").replace(/^AI\s*/i, "").trim();
   if (base === "기능설계자") return "설계자";
   return base;
+}
+
+function SlotPreviewGlyph({ active }: { readonly active: boolean }) {
+  const stroke = active ? "#0d9488" : "#64748b";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="2" aria-hidden>
+      <rect x="3" y="3" width="7" height="7" rx="1.2" />
+      <rect x="14" y="3" width="7" height="7" rx="1.2" />
+      <rect x="3" y="14" width="7" height="7" rx="1.2" />
+      <rect x="14" y="14" width="7" height="7" rx="1.2" />
+    </svg>
+  );
 }
 
 type ApiProjectMember = {
@@ -110,6 +126,8 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
   const [aiPromptMemberId, setAiPromptMemberId] = useState<WorkspaceAiMemberId | null>(null);
   const [aiDirty, setAiDirty] = useState(false);
   const [aiAutoSaveTick, setAiAutoSaveTick] = useState(0);
+  /** AI Agent 탭: 카탈로그 멤버별 서비스 기획 슬롯 미리보기(절차 표 위) */
+  const [aiSlotPreviewCatalogId, setAiSlotPreviewCatalogId] = useState<WorkspaceAiMemberId | null>(null);
 
   /** SSR/CSR 동일 문자열 — 전체 URL은 복사 시에만 붙여 하이드레이션 불일치를 막습니다. */
   const joinPath = useMemo(() => {
@@ -414,6 +432,17 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
         catalog: m,
       }));
   }, []);
+
+  const aiSlotDefinitionPreview = useMemo(() => buildWorkspaceAiSlotDefinitionPreview(), []);
+
+  const aiSlotPreviewRows = useMemo(() => {
+    if (!aiSlotPreviewCatalogId) return [];
+    return slotPreviewRowsForCatalogMember(aiSlotPreviewCatalogId, aiSlotDefinitionPreview);
+  }, [aiSlotPreviewCatalogId, aiSlotDefinitionPreview]);
+
+  useEffect(() => {
+    if (tab !== "ai") setAiSlotPreviewCatalogId(null);
+  }, [tab]);
 
   // 변경 즉시 자동 저장 (디바운스)
   useEffect(() => {
@@ -793,7 +822,17 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
           ) : !aiDraft ? (
             <p style={{ color: "#64748b", fontSize: 14 }}>AI 설정이 없습니다.</p>
           ) : (
-            <>
+            <div
+              style={{
+                maxHeight: "calc(100dvh - 220px)",
+                minHeight: 0,
+                overflowY: "auto",
+                overflowX: "hidden",
+                WebkitOverflowScrolling: "touch",
+                overscrollBehavior: "contain",
+                paddingBottom: 4,
+              }}
+            >
               <div
                 style={{
                   overflowX: isNarrow ? "hidden" : "auto",
@@ -882,43 +921,77 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                       return (
                         <tr key={primaryId} style={{ borderTop: "1px solid #f1f5f9" }}>
                           <td style={{ padding: cellPad, verticalAlign: "middle", wordBreak: "keep-all" }}>
-                            <button
-                              type="button"
-                              onClick={() => setAiDetailMemberId(primaryId)}
-                              title={agentTitle}
-                              aria-label={`${agentTitle} 상세보기`}
+                            <div
                               style={{
-                                border: 0,
-                                background: "transparent",
-                                padding: 0,
-                                margin: 0,
-                                fontWeight: 900,
-                                color: "#0f172a",
-                                cursor: "pointer",
                                 display: "flex",
                                 alignItems: "center",
-                                gap: isNarrow ? 6 : 8,
-                                width: "100%",
+                                gap: isNarrow ? 4 : 6,
                                 minWidth: 0,
-                                textAlign: "left",
                               }}
                             >
-                              <span
+                              <button
+                                type="button"
+                                onClick={() => setAiDetailMemberId(primaryId)}
+                                title={agentTitle}
+                                aria-label={`${agentTitle} 상세보기`}
                                 style={{
+                                  border: 0,
+                                  background: "transparent",
+                                  padding: 0,
+                                  margin: 0,
+                                  fontWeight: 900,
+                                  color: "#0f172a",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: isNarrow ? 6 : 8,
                                   flex: "1 1 auto",
                                   minWidth: 0,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                  fontSize: isNarrow ? 12 : 13,
+                                  textAlign: "left",
                                 }}
                               >
-                                {agentTitle}
-                              </span>
-                              <span style={{ flexShrink: 0 }}>
-                                <WorkspaceAiMemberAvatar memberId={primaryId} size={isNarrow ? 18 : 22} />
-                              </span>
-                            </button>
+                                <span
+                                  style={{
+                                    flex: "1 1 auto",
+                                    minWidth: 0,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    fontSize: isNarrow ? 12 : 13,
+                                  }}
+                                >
+                                  {agentTitle}
+                                </span>
+                                <span style={{ flexShrink: 0 }}>
+                                  <WorkspaceAiMemberAvatar memberId={primaryId} size={isNarrow ? 18 : 22} />
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                title="서비스 기획 슬롯 보기"
+                                aria-label={`${agentTitle} 서비스 기획 슬롯 보기`}
+                                aria-expanded={aiSlotPreviewCatalogId === primaryId}
+                                aria-controls="workspace-ai-slot-preview"
+                                onClick={() =>
+                                  setAiSlotPreviewCatalogId((cur) => (cur === primaryId ? null : primaryId))
+                                }
+                                style={{
+                                  flexShrink: 0,
+                                  width: isNarrow ? 34 : 36,
+                                  height: isNarrow ? 34 : 36,
+                                  borderRadius: 10,
+                                  border: aiSlotPreviewCatalogId === primaryId ? "2px solid #0d9488" : "1px solid #cbd5e1",
+                                  background: aiSlotPreviewCatalogId === primaryId ? "#ecfdf5" : "#fff",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "pointer",
+                                  padding: 0,
+                                }}
+                              >
+                                <SlotPreviewGlyph active={aiSlotPreviewCatalogId === primaryId} />
+                              </button>
+                            </div>
                             {draft?.cursorPolicyWarn ? (
                               <div
                                 style={{
@@ -985,6 +1058,107 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
               <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 22px", lineHeight: 1.55 }}>
                 엔진은 실행 Provider, 모델은 해당 엔진에서 사용할 기본 모델입니다.
               </p>
+
+              {aiSlotPreviewCatalogId ? (
+                <div
+                  id="workspace-ai-slot-preview"
+                  role="region"
+                  aria-label="서비스 기획 슬롯 미리보기"
+                  style={{
+                    marginBottom: 16,
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 12,
+                    background: "#fff",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: "#475569",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    서비스 기획 슬롯 —{" "}
+                    {uiAiCatalog.find((r) => r.uiId === aiSlotPreviewCatalogId)?.title ?? aiSlotPreviewCatalogId}
+                  </div>
+                  <div
+                    style={{
+                      overflowX: "auto",
+                      maxHeight: Math.min(48 * 8, 320),
+                      WebkitOverflowScrolling: "touch",
+                    }}
+                  >
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: isNarrow ? 11 : 12 }}>
+                      <thead>
+                        <tr style={{ background: "#fff", textAlign: "left" }}>
+                          <th
+                            style={{
+                              padding: "8px 12px",
+                              fontWeight: 800,
+                              color: "#64748b",
+                              width: "28%",
+                              borderBottom: "1px solid #f1f5f9",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            슬롯 이름
+                          </th>
+                          <th
+                            style={{
+                              padding: "8px 12px",
+                              fontWeight: 800,
+                              color: "#64748b",
+                              borderBottom: "1px solid #f1f5f9",
+                            }}
+                          >
+                            슬롯 설명
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aiSlotPreviewRows.length ? (
+                          aiSlotPreviewRows.map((row, idx) => (
+                            <tr key={`${row.label}:${idx}`} style={{ borderTop: idx === 0 ? undefined : "1px solid #f8fafc" }}>
+                              <td
+                                style={{
+                                  padding: "8px 12px",
+                                  fontWeight: 700,
+                                  color: "#0f172a",
+                                  verticalAlign: "top",
+                                  wordBreak: "keep-all",
+                                }}
+                              >
+                                {row.label}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "8px 12px",
+                                  color: "#475569",
+                                  verticalAlign: "top",
+                                  lineHeight: 1.45,
+                                  wordBreak: "break-word",
+                                }}
+                              >
+                                {row.description}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={2} style={{ padding: "12px 12px", color: "#64748b", textAlign: "center" }}>
+                              이 Agent에 매핑된 서비스 기획 슬롯이 없습니다.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
 
               <h2 style={{ fontSize: isNarrow ? 15 : 16, fontWeight: 900, color: "#0f172a", margin: "0 0 10px" }}>절차 별 참여 AI</h2>
               <div
@@ -1165,7 +1339,7 @@ export function ProjectMembersAdminClient({ initialProjectId }: { readonly initi
                   </tbody>
                 </table>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
