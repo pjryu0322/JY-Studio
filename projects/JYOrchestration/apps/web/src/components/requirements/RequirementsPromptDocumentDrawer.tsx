@@ -191,6 +191,11 @@ function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelin
     if (typeof row.questionQualityRetryCount === "number") lines.push(`- **retryCount**: ${row.questionQualityRetryCount}`);
     if (row.finalQuestionSource) lines.push(`- **finalQuestionSource**: ${row.finalQuestionSource}`);
     if (row.fallbackGeneratedSuggestions) lines.push(`- **fallbackGeneratedSuggestions**: true`);
+    if (row.matchedSlots?.length) lines.push(`- **matchedSlots**: ${row.matchedSlots.join(", ")}`);
+    if (row.updatedSlots?.length) lines.push(`- **updatedSlots**: ${row.updatedSlots.join(", ")}`);
+    if (row.currentSlotKey) lines.push(`- **currentSlotKey**: ${row.currentSlotKey}`);
+    if (row.slotAdvanceDecision) lines.push(`- **slotAdvanceDecision**: ${row.slotAdvanceDecision}`);
+    if (typeof row.shouldAskFollowUp === "boolean") lines.push(`- **shouldAskFollowUp**: ${row.shouldAskFollowUp}`);
     if (row.orchestratorAgent) lines.push(`- **orchestratorAgent**: ${row.orchestratorAgent}`);
     if (row.fallback !== undefined) lines.push(`- **fallback**: ${row.fallback}`);
     if (row.error) lines.push(`- **error**: ${row.error}`);
@@ -624,6 +629,11 @@ export function RequirementsPromptDocumentDrawer({
                             isFallback || row.fallbackReason
                               ? `[fallbackReason] ${isFallback ? row.fallbackReason?.trim() || "UNKNOWN_BOOTSTRAP_ERROR" : row.fallbackReason}`
                               : "",
+                            row.matchedSlots?.length ? `[matchedSlots] ${row.matchedSlots.join(", ")}` : "",
+                            row.updatedSlots?.length ? `[updatedSlots] ${row.updatedSlots.join(", ")}` : "",
+                            row.currentSlotKey ? `[currentSlotKey] ${row.currentSlotKey}` : "",
+                            row.slotAdvanceDecision ? `[slotAdvanceDecision] ${row.slotAdvanceDecision}` : "",
+                            typeof row.shouldAskFollowUp === "boolean" ? `[shouldAskFollowUp] ${row.shouldAskFollowUp}` : "",
                             row.questionQualityStatus ? `[questionQualityStatus] ${row.questionQualityStatus}` : "",
                             typeof row.questionQualityRetryCount === "number" ? `[retryCount] ${row.questionQualityRetryCount}` : "",
                             row.finalQuestionSource ? `[finalQuestionSource] ${row.finalQuestionSource}` : "",

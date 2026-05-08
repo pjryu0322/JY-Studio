@@ -61,6 +61,15 @@ export type OrchestrationSlotSummarySection = {
   readonly slots: readonly { readonly label: string; readonly level: "filled" | "partial" | "empty" }[];
 };
 
+export type SingleChatOrchestrationStatusCounts = Readonly<{
+  confirmed: number;
+  partial: number;
+  candidate: number;
+  stale: number;
+  empty: number;
+  total: number;
+}>;
+
 /** 진행률 UI: confirmed 만 분모 대비 반영 (empty/partial/candidate/stale 제외) */
 export function singleChatOrchestrationConfirmedProgress(state: RequirementsSingleChatOrchestrationStateV1 | null | undefined): {
   confirmed: number;
@@ -80,6 +89,28 @@ export function singleChatOrchestrationConfirmedProgress(state: RequirementsSing
   }
   const percent = total > 0 ? Math.min(100, Math.round((100 * confirmed) / total)) : 0;
   return { confirmed, total, percent };
+}
+
+/** 진행률 UI 보조: 상태별 카운트(confirmed/partial/candidate/stale/empty) */
+export function singleChatOrchestrationStatusCounts(
+  state: RequirementsSingleChatOrchestrationStateV1 | null | undefined
+): SingleChatOrchestrationStatusCounts {
+  if (!state?.slots || typeof state.slots !== "object") {
+    return { confirmed: 0, partial: 0, candidate: 0, stale: 0, empty: 0, total: 0 };
+  }
+  const baseKeys =
+    state.baseSlotKeys?.length ? new Set(state.baseSlotKeys.map((k) => String(k ?? "").trim()).filter(Boolean)) : null;
+  const rows = Object.values(state.slots).filter((s) => (baseKeys ? baseKeys.has(String(s.slotKey ?? "")) : true));
+  const out = { confirmed: 0, partial: 0, candidate: 0, stale: 0, empty: 0, total: rows.length };
+  for (const s of rows) {
+    const st = normalizeSlotStatus(String(s.status));
+    if (st === "confirmed") out.confirmed += 1;
+    else if (st === "partial") out.partial += 1;
+    else if (st === "candidate") out.candidate += 1;
+    else if (st === "stale") out.stale += 1;
+    else out.empty += 1;
+  }
+  return out;
 }
 
 function orchestrationSlotDisplayLevel(statusRaw: string): "filled" | "partial" | "empty" {
