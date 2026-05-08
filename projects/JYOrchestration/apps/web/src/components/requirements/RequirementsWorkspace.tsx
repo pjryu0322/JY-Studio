@@ -88,6 +88,7 @@ import { useRequirementsStageRouteRedirect } from "@/components/requirements/wor
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
+import { formatDialogueExcerpt } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import {
   newChatMessage,
   parseRequirementsRoomState,
@@ -1615,6 +1616,38 @@ export function RequirementsWorkspace({
         : !project
           ? "불러오는 중…"
           : "이름 미설정";
+
+  const onDownloadConversationMarkdown = useCallback(() => {
+    const pid = resolvedProjectId.trim();
+    const projectLabel = (project?.name ?? "").trim() || "서비스기획";
+    const lines: string[] = [];
+    lines.push(`# 서비스 기획 대화 내역`);
+    lines.push("");
+    lines.push(`- projectId: ${pid || "(미연결)"}`);
+    lines.push(`- exportedAt: ${new Date().toISOString()}`);
+    lines.push("");
+    const list = ideationConversationOnly.length ? ideationConversationOnly : conversationMessages;
+    for (const m of list) {
+      const who = m.role === "user" ? "사용자" : m.role === "ai" ? (m.speakerName ? `AI(${m.speakerName})` : "AI") : m.role === "human" ? (m.speakerName ? `멤버(${m.speakerName})` : "멤버") : "시스템";
+      lines.push(`## ${who} · ${new Date(m.createdAt).toISOString()}`);
+      lines.push("");
+      lines.push(String(m.content ?? "").trim() || "(빈 메시지)");
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+    }
+    const md = lines.join("\n");
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeName = projectLabel.replace(/[^\p{L}\p{N}\-_ ]/gu, "").trim().replace(/\s+/g, "_").slice(0, 48) || "service_planning";
+    a.download = `${safeName}_conversation.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }, [conversationMessages, ideationConversationOnly, project?.name, resolvedProjectId]);
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
       <RequirementsIdeationChatPanel
@@ -1775,6 +1808,9 @@ export function RequirementsWorkspace({
         remoteLocked={remoteLocked}
         onOrganizeRequirements={() => void onOrganizeRequirements()}
         onResetConversation={() => void onResetConversation()}
+        memberControls={{ count: servicePlanningRailParticipantCount, onOpen: () => setMembersModalOpen(true) }}
+        onDownloadConversationMarkdown={() => void onDownloadConversationMarkdown()}
+        onSummarizeConversation={() => void onOrganizeRequirements()}
         resetConversationDisabled={
           remoteLocked ||
           busy ||
