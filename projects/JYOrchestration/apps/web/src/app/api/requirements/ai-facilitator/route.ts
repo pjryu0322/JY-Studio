@@ -69,6 +69,8 @@ type Body = {
   workspaceScreenKey?: string;
   /** 클라이언트 저장 오케스트레이션 스냅샷 */
   singleChatOrchestrationV1?: unknown;
+  /** 대화 요약 전용(슬롯/오케스트레이션 업데이트 없이 요약만 생성) */
+  summaryOnly?: boolean;
 };
 
 function parseAiResponseStyle(raw: unknown): RequirementsAiResponseStyle | undefined {
@@ -174,7 +176,7 @@ export async function POST(request: NextRequest) {
         ? `${String(sender.name ?? "").trim() || "발신"}${String(sender.id ?? "").trim() ? ` · ${String(sender.id).trim()}` : ""}`
         : "";
 
-    if (!bootstrapInterview && !userMessage) {
+    if (!bootstrapInterview && !userMessage && body.summaryOnly !== true) {
       return NextResponse.json({ success: false, message: "userMessage가 필요합니다." }, { status: 400 });
     }
 
@@ -225,6 +227,46 @@ export async function POST(request: NextRequest) {
     const orchestrationBootstrapInstructions = "";
 
     const stage = stageRaw === "requirements" ? "requirements" : "requirements";
+
+    if (!bootstrapInterview && body.summaryOnly === true) {
+      const summaryPrompt = `아래 대화 내용을 읽고, 서비스 기획 관점에서 핵심만 간단히 요약해 주세요.\n\n규칙:\n- 한국어\n- 6~10줄\n- 결정된 내용 / 미결정(추가 질문 필요) / 다음 단계 제안 3섹션\n- 과장/추측 금지\n\n[대화]\n${dialogueExcerpt || "(대화 없음)"}`;
+      const sum = await runRequirementsFacilitatorOpenAI({
+        projectName,
+        projectDescription,
+        stage,
+        userMessage: summaryPrompt,
+        dialogueExcerpt: dialogueExcerpt || "",
+        responseStyle: "brief",
+        priorScreenHandoff: priorScreenHandoff || undefined,
+        participatingAgentsPromptBlock: agentCtxChat.promptBlock,
+      });
+      if (!sum.ok) {
+        return NextResponse.json({ success: false, code: sum.code, message: sum.message }, { status: 502 });
+      }
+      const replyTrim = String(sum.text ?? "").trim();
+      const trace = buildSingleChatPromptTimelineEntry({
+        action: "requirementsChatSummary",
+        source: "llm",
+        timelineStage: agentCtxChat.timelineStage,
+        stageGroup: agentCtxChat.stageGroup,
+        workspaceScreenKey: agentCtxChat.workspaceScreenKey,
+        selectedAgents: agentCtxChat.selectedAgents,
+        promptText: sum.promptText,
+        responseText: replyTrim,
+        model: sum.model,
+        provider: sum.provider ?? "openai",
+        createdAtIso: sum.calledAt ?? new Date().toISOString(),
+        routingDecision: "conversation_summary",
+        orchestratorAgent: "summarizer",
+      });
+      return NextResponse.json({
+        success: true,
+        data: {
+          reply: replyTrim,
+          promptTrace: trace,
+        },
+      });
+    }
 
     const useIdeationOrchestration =
       Boolean(projectId) &&
