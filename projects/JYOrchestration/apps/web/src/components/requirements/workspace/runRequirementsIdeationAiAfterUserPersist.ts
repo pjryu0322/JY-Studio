@@ -105,6 +105,16 @@ export async function runRequirementsIdeationAiAfterUserPersist(
 
   const legacyFallbackEnabled = legacyProblemInterviewFallbackEnabled();
 
+  const speakerForOrchestratorAgent = (agent: string | null | undefined): { id: string; name: string } => {
+    const a = String(agent ?? "").trim().toLowerCase();
+    if (a === "analyst") return { id: "virtual:ai-analyst", name: "AI 분석가" };
+    if (a === "architect") return { id: "virtual:ai-architect", name: "AI 설계자" };
+    if (a === "designer") return { id: "virtual:ai-designer", name: "AI 디자이너" };
+    if (a === "security") return { id: "virtual:ai-security", name: "AI 보안관" };
+    if (a === "reviewer") return { id: "virtual:ai-reviewer", name: "AI 리뷰어" };
+    return { id: VIRTUAL_AI_PLANNER_ID, name: IDEATION_AI_DISPLAY_NAME };
+  };
+
   const absorbPromptTrace = (raw: unknown) => {
     const tr = coerceRequirementsPromptTimelineEntry(raw);
     if (!tr) return;
@@ -212,6 +222,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
         };
       };
       absorbPromptTrace(json.data?.promptTrace);
+      const promptTraceParsed = coerceRequirementsPromptTimelineEntry(json.data?.promptTrace);
       const orchParsed =
         json.data?.singleChatOrchestrationV1 !== undefined && json.data?.singleChatOrchestrationV1 !== null
           ? parseRequirementsSingleChatOrchestrationV1(json.data.singleChatOrchestrationV1)
@@ -262,6 +273,7 @@ export async function runRequirementsIdeationAiAfterUserPersist(
           ideationSendDevLog("return", `facilitator-dedupe id=${sendTraceId}`);
         } else {
           ideationSendDevLog("ai-appended", `id=${sendTraceId} kind=facilitator`);
+          const speaker = speakerForOrchestratorAgent(promptTraceParsed?.orchestratorAgent);
           facilitatorFinalRoom = {
             ...withCalling,
             aiQuestionIndex: turn + 1,
@@ -273,8 +285,8 @@ export async function runRequirementsIdeationAiAfterUserPersist(
                   role: "ai",
                   body: aiReply,
                   speakerType: "AI",
-                  speakerId: primaryId,
-                  speakerName: aiName,
+                  speakerId: speaker.id || primaryId,
+                  speakerName: speaker.name || aiName,
                   messageType: "ANSWER",
                 }),
               ],

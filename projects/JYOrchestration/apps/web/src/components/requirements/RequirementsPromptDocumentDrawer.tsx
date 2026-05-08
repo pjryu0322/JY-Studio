@@ -702,6 +702,21 @@ export function RequirementsPromptDocumentDrawer({
                                     <strong>questionQualityStatus</strong>: {row.questionQualityStatus}
                                   </div>
                                 ) : null}
+                                {typeof (row as any).currentPhase === "number" ? (
+                                  <div>
+                                    <strong>currentPhase</strong>: {(row as any).currentPhase}
+                                  </div>
+                                ) : null}
+                                {(row as any).nextOwnerAgent ? (
+                                  <div>
+                                    <strong>nextOwnerAgent</strong>: {String((row as any).nextOwnerAgent)}
+                                  </div>
+                                ) : null}
+                                {typeof (row as any).updatedSlotCount === "number" ? (
+                                  <div>
+                                    <strong>updatedSlotCount</strong>: {(row as any).updatedSlotCount}
+                                  </div>
+                                ) : null}
                                 {typeof row.questionQualityRetryCount === "number" ? (
                                   <div>
                                     <strong>retryCount</strong>: {row.questionQualityRetryCount}

@@ -90,6 +90,12 @@ export type RequirementsPromptTimelineEntry = {
   confirmedSlots?: readonly string[];
   candidateSlots?: readonly string[];
   slotDependenciesChanged?: boolean;
+  /** Orchestration runtime phase (1..5) */
+  currentPhase?: 1 | 2 | 3 | 4 | 5;
+  /** Next/actual owner agent for next question (planner/analyst/architect/designer/reviewer/security) */
+  nextOwnerAgent?: string;
+  /** Convenience: updated slot count */
+  updatedSlotCount?: number;
   /** 인터뷰 질문(한 문장) — 유도형 선택지와 함께 기록 */
   interviewQuestion?: string;
   /** 인터뷰 추천 선택지(참고용, 강제 아님) */

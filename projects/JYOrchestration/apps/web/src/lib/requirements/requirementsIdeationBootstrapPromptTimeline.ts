@@ -64,6 +64,15 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
       : {}),
     ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as string | null } : {}),
     ...(typeof r.routingDecision === "string" ? { routingDecision: r.routingDecision } : {}),
+    ...(typeof r.currentPhase === "number" && Number.isFinite(r.currentPhase)
+      ? { currentPhase: Math.max(1, Math.min(5, Math.floor(r.currentPhase))) as 1 | 2 | 3 | 4 | 5 }
+      : {}),
+    ...(typeof r.nextOwnerAgent === "string" && r.nextOwnerAgent.trim()
+      ? { nextOwnerAgent: r.nextOwnerAgent.trim().slice(0, 40) }
+      : {}),
+    ...(typeof r.updatedSlotCount === "number" && Number.isFinite(r.updatedSlotCount)
+      ? { updatedSlotCount: Math.max(0, Math.floor(r.updatedSlotCount)) }
+      : {}),
     ...(typeof r.fallbackReason === "string" && r.fallbackReason.trim()
       ? { fallbackReason: r.fallbackReason.trim().slice(0, 80) }
       : {}),
@@ -344,6 +353,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly provider?: string | null;
   readonly createdAtIso?: string;
   readonly routingDecision?: string;
+  readonly currentPhase?: 1 | 2 | 3 | 4 | 5;
+  readonly nextOwnerAgent?: string;
+  readonly updatedSlotCount?: number;
   readonly matchedSlots?: readonly string[];
   readonly updatedSlots?: readonly string[];
   readonly fallback?: boolean;
@@ -418,6 +430,13 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.configuredModelOverride !== undefined ? { configuredModelOverride: params.configuredModelOverride } : {}),
     ...(params.provider !== undefined ? { provider: params.provider } : {}),
     ...(params.routingDecision ? { routingDecision: params.routingDecision } : {}),
+    ...(typeof params.currentPhase === "number" ? { currentPhase: params.currentPhase } : {}),
+    ...(typeof params.nextOwnerAgent === "string" && params.nextOwnerAgent.trim()
+      ? { nextOwnerAgent: params.nextOwnerAgent.trim().slice(0, 40) }
+      : {}),
+    ...(typeof params.updatedSlotCount === "number" && Number.isFinite(params.updatedSlotCount)
+      ? { updatedSlotCount: Math.max(0, Math.floor(params.updatedSlotCount)) }
+      : {}),
     ...(params.matchedSlots?.length ? { matchedSlots: [...params.matchedSlots] } : {}),
     ...(params.updatedSlots?.length ? { updatedSlots: [...params.updatedSlots] } : {}),
     ...(params.fallback !== undefined ? { fallback: params.fallback } : {}),

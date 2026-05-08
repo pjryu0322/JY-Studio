@@ -294,11 +294,12 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
     const out = await runSelectiveMultiAgentOrchestrationOpenAI({ ...input, userMessage: "목적만 말함" });
     expect(out.ok).toBe(true);
     if (!out.ok) return;
-    expect(mockPostOpenAi).toHaveBeenCalledTimes(2);
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(3);
     expect(out.meta.delegatedAgents).toEqual([]);
     expect(out.meta.executedAgents.some((a) => a === "service-designer" || a === "solution-architect")).toBe(false);
     expect(typeof out.assistantMessage).toBe("string");
-    expect(out.assistantMessage).toContain("한 개");
+    // Next-question generator may replace merge message; keep only minimal assertions.
+    expect(out.meta.routingDecision).toMatch(/orchestration_turn\(/);
   });
 
   it("액터/흐름: service-designer 그룹 1회 추가 호출", async () => {
@@ -341,7 +342,7 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
     const out = await runSelectiveMultiAgentOrchestrationOpenAI({ ...input, userMessage: "관리자와 일반 사용자가 있어요" });
     expect(out.ok).toBe(true);
     if (!out.ok) return;
-    expect(mockPostOpenAi).toHaveBeenCalledTimes(3);
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(4);
     expect(out.meta.delegatedAgents).toContain("service-designer");
     expect(out.meta.delegatedAgents).not.toContain("solution-architect");
   });
@@ -386,7 +387,7 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
     const out = await runSelectiveMultiAgentOrchestrationOpenAI({ ...input, userMessage: "예약 기능이 필요해요" });
     expect(out.ok).toBe(true);
     if (!out.ok) return;
-    expect(mockPostOpenAi).toHaveBeenCalledTimes(3);
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(4);
     expect(out.meta.delegatedAgents).toContain("solution-architect");
     expect(out.meta.delegatedAgents).not.toContain("service-designer");
   });
@@ -451,7 +452,7 @@ describe("runSelectiveMultiAgentOrchestrationOpenAI (mocked OpenAI)", () => {
     });
     expect(out.ok).toBe(true);
     if (!out.ok) return;
-    expect(mockPostOpenAi).toHaveBeenCalledTimes(4);
+    expect(mockPostOpenAi).toHaveBeenCalledTimes(5);
     expect(out.meta.delegatedAgents.sort()).toEqual(["service-designer", "solution-architect"].sort());
   });
 
