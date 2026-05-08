@@ -138,6 +138,30 @@ export type RequirementsPromptTimelineEntry = {
   userFacingQuestionStyle?: string | null;
   /** 최종 question이 내부 오케스트레이션 어휘 없이 사용자 업무 언어로 정리되었는지 */
   userLanguageTransformApplied?: boolean;
+  /** bootstrap fallback 원인 분류(원인 추적용; source=fallback이면 필수 권장) */
+  fallbackReason?:
+    | "NO_KEY"
+    | "OPENAI_API_ERROR"
+    | "EMPTY_RESPONSE"
+    | "JSON_PARSE_FAILED"
+    | "MISSING_QUESTION"
+    | "QUESTION_QUALITY_REJECTED"
+    | "RETRY_FAILED"
+    | "REPAIRED_CONTEXT_USED"
+    | "UNKNOWN_BOOTSTRAP_ERROR"
+    | string;
+  /** 원문 LLM 응답(트렁케이트) — 파싱 실패 분석용 */
+  rawResponseText?: string;
+  /** JSON 파싱 에러 요약 */
+  parseError?: string;
+  /** 파싱 성공 시 미리보기(트렁케이트) */
+  parsedJsonPreview?: string;
+  /** 리트라이 user payload(트렁케이트) */
+  retryPromptText?: string;
+  /** 리트라이 raw 응답(트렁케이트) */
+  retryRawResponseText?: string;
+  /** fallback 직전 최종 후보 question(있으면 보존) */
+  finalQuestionBeforeFallback?: string;
 };
 
 export type RequirementsStateJson = {

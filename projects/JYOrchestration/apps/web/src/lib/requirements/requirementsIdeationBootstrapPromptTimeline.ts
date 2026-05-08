@@ -19,12 +19,13 @@ export function buildIdeationBootstrapContextualFallbackQuestion(input: {
 }): string {
   const name = input.projectName.trim() || "이 프로젝트";
   const desc = input.projectDescription.trim().replace(/\s+/g, " ");
-  const typeSuffix = input.projectType?.trim() ? ` (${input.projectType.trim()})` : "";
-  const snippet = desc.slice(0, 160).trim();
+  const snippet = desc.slice(0, 220).trim();
+  const anchor =
+    ["회의록", "녹취", "요약", "산출물", "초안"].find((w) => snippet.includes(w)) ?? (snippet.length >= 8 ? "초안" : "초안");
   if (snippet.length >= 12) {
-    return `${name}${typeSuffix}: 적어 주신 내용을 바탕으로, 핵심 산출물이 생긴 뒤 검토·승인·공동 편집 중 어떤 통제가 필요한지 한 가지만 골라 설명해 주시겠어요?`;
+    return `${name}에서 ${anchor}이(가) 만들어진 뒤, 작성자만 확인·확정하면 될까요, 아니면 참석자도 함께 검토·수정할 수 있어야 할까요?`;
   }
-  return `${name}${typeSuffix}에 대해, 어떤 사용자에게 어떤 문제를 해결하려는 서비스인지 한 문장으로 알려주시겠어요?`;
+  return `${name}에서 AI가 만든 초안은 누가 확인하고 확정하면 될까요?`;
 }
 
 const MAX_PROMPT_TIMELINE = 50;
@@ -59,6 +60,21 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.model === "string" || r.model === null ? { model: r.model as string | null } : {}),
     ...(typeof r.provider === "string" || r.provider === null ? { provider: r.provider as string | null } : {}),
     ...(typeof r.routingDecision === "string" ? { routingDecision: r.routingDecision } : {}),
+    ...(typeof r.fallbackReason === "string" && r.fallbackReason.trim()
+      ? { fallbackReason: r.fallbackReason.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.rawResponseText === "string" ? { rawResponseText: r.rawResponseText.slice(0, 4000) } : {}),
+    ...(typeof r.parseError === "string" && r.parseError.trim() ? { parseError: r.parseError.trim().slice(0, 400) } : {}),
+    ...(typeof r.parsedJsonPreview === "string" && r.parsedJsonPreview.trim()
+      ? { parsedJsonPreview: r.parsedJsonPreview.trim().slice(0, 4000) }
+      : {}),
+    ...(typeof r.retryPromptText === "string" && r.retryPromptText.trim()
+      ? { retryPromptText: r.retryPromptText.trim().slice(0, 4000) }
+      : {}),
+    ...(typeof r.retryRawResponseText === "string" ? { retryRawResponseText: r.retryRawResponseText.slice(0, 4000) } : {}),
+    ...(typeof r.finalQuestionBeforeFallback === "string" && r.finalQuestionBeforeFallback.trim()
+      ? { finalQuestionBeforeFallback: r.finalQuestionBeforeFallback.trim().slice(0, 600) }
+      : {}),
     ...(Array.isArray(r.matchedSlots)
       ? {
           matchedSlots: r.matchedSlots.map((x) => String(x ?? "").trim()).filter(Boolean),
@@ -365,6 +381,16 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly reasoningContributors?: readonly string[];
   readonly riskSignals?: readonly string[];
   readonly suggestedSlotReasons?: ReadonlyArray<{ slotKey: string; reason: string }>;
+  readonly internalAxis?: string | null;
+  readonly userFacingQuestionStyle?: string | null;
+  readonly userLanguageTransformApplied?: boolean;
+  readonly fallbackReason?: string;
+  readonly rawResponseText?: string;
+  readonly parseError?: string;
+  readonly parsedJsonPreview?: string;
+  readonly retryPromptText?: string;
+  readonly retryRawResponseText?: string;
+  readonly finalQuestionBeforeFallback?: string;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -431,6 +457,13 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(typeof params.userLanguageTransformApplied === "boolean"
       ? { userLanguageTransformApplied: params.userLanguageTransformApplied }
       : {}),
+    ...(params.fallbackReason ? { fallbackReason: params.fallbackReason } : {}),
+    ...(params.rawResponseText ? { rawResponseText: params.rawResponseText.slice(0, 4000) } : {}),
+    ...(params.parseError ? { parseError: params.parseError.slice(0, 400) } : {}),
+    ...(params.parsedJsonPreview ? { parsedJsonPreview: params.parsedJsonPreview.slice(0, 4000) } : {}),
+    ...(params.retryPromptText ? { retryPromptText: params.retryPromptText.slice(0, 4000) } : {}),
+    ...(params.retryRawResponseText ? { retryRawResponseText: params.retryRawResponseText.slice(0, 4000) } : {}),
+    ...(params.finalQuestionBeforeFallback ? { finalQuestionBeforeFallback: params.finalQuestionBeforeFallback.slice(0, 600) } : {}),
   };
 }
 
