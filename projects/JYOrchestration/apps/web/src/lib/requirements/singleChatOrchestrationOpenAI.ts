@@ -723,6 +723,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   };
 
   let nextQuestion = conflictDetected ? buildConflictMediationQuestion() : buildOwnerFallbackQuestion();
+  let personaValidationReason: string | null = null;
+  let personaValidationRetry = 0;
 
   // Conflict slot marking (replay + routing safety): mark representative slots for competing owners as conflicted.
   const conflictPatchedKeys: string[] = [];
@@ -776,6 +778,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       conflictDetected
         ? [
             `${workspaceAiMemberSystemPrefix("ideation")}`,
+            "당신의 공식 표시 이름은「AI 리뷰어」이다.",
             "당신은 여러 specialist 관점을 조정하는 중립적 조정자(mediator)다.",
             "목표는 상충되는 요구를 조정하기 위한 '선택 질문'을 1문장으로 만드는 것이다.",
             "질문은 트레이드오프를 명확히 드러내되, 기획자식 일반론 질문은 금지한다.",
@@ -785,6 +788,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       conversationOwner === "designer"
         ? [
             `${workspaceAiMemberSystemPrefix("ideation")}`,
+            "당신의 공식 표시 이름은「AI 디자이너」이다.",
             "당신은 숙련된 UX/UI 디자이너다. 대화를 리드하면서 사용자의 검토/수정 경험을 구체화한다.",
             "초점: 편집 UX, 리뷰 UX(댓글/승인), 문서 IA, 모바일 사용성, 톤&스타일.",
             "질문 예시 톤: ‘검토 화면은 문서 편집기 스타일과 댓글 기반 중 어떤 흐름이 더 자연스럽나요?’",
@@ -793,6 +797,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
         : conversationOwner === "architect"
           ? [
               `${workspaceAiMemberSystemPrefix("ideation")}`,
+              "당신의 공식 표시 이름은「AI 설계자」이다.",
               "당신은 시스템/자동화 구조를 설계하는 AI 설계자다. 처리 구조와 성능/연동 경계를 리드한다.",
               "초점: 실시간 vs 배치, 자동화 경계, 처리 파이프라인, 연동/API, 확장성/비용.",
               "질문 예시 톤: ‘업로드 직후 처리해야 하나요, 배치 처리도 허용되나요?’",
@@ -801,6 +806,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
           : conversationOwner === "analyst"
             ? [
                 `${workspaceAiMemberSystemPrefix("ideation")}`,
+                "당신의 공식 표시 이름은「AI 분석가」이다.",
                 "당신은 서비스 흐름/권한/승인을 분석하는 AI 분석가다. 역할과 운영 흐름을 리드한다.",
                 "초점: 액터 책임, 승인/확정 흐름, 협업/공동편집, 권한(누가 무엇을), 예외/운영.",
                 "질문 예시 톤: ‘참석자는 전체를 고치나요, 자기 발언만 고치나요?’",
@@ -809,6 +815,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
             : conversationOwner === "security"
               ? [
                   `${workspaceAiMemberSystemPrefix("ideation")}`,
+                  "당신의 공식 표시 이름은「AI 보안관」이다.",
                   "당신은 보안/개인정보 관점의 AI 보안 리뷰어다. 데이터/권한/보관 정책 리스크를 리드한다.",
                   "초점: 개인정보/민감정보, 접근 제어, 보관 기간, 감사 로그, 공유 범위.",
                   "질문 예시 톤: ‘녹취/전사 데이터는 누가 볼 수 있고 얼마나 보관하나요?’",
@@ -817,6 +824,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
               : conversationOwner === "reviewer"
                 ? [
                     `${workspaceAiMemberSystemPrefix("ideation")}`,
+                    "당신의 공식 표시 이름은「AI 리뷰어」이다.",
                     "당신은 범위/리스크/검증기준을 점검하는 AI 리뷰어다. 우선순위와 성공 기준을 리드한다.",
                     "초점: MVP 범위, 품질 기준, 검증 방법, 리스크/트레이드오프.",
                     "질문 예시 톤: ‘첫 버전에서 어떤 품질 기준을 반드시 만족해야 하나요?’",
@@ -824,6 +832,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
                   ].join("\n")
                 : [
                     `${workspaceAiMemberSystemPrefix("ideation")}`,
+                    "당신의 공식 표시 이름은「AI 기획자」이다.",
                     "당신은 제품 기획자(planner)다. 비즈니스 가치/범위/목표 정렬을 리드한다.",
                     "초점: 목적/핵심가치, 범위/MVP, 이해관계자 정렬, 협업 방향.",
                     "질문 예시 톤: ‘첫 버전에서 가장 중요한 성공 기준은 무엇인가요?’",
@@ -851,9 +860,50 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       const parsed = safeJsonParse(resQ.text ?? "") as Record<string, unknown> | null;
       const msg = String(parsed?.assistantMessage ?? "").trim();
       if (msg) {
-        nextQuestion = msg;
-        promptChunks.push(`[next-question:${conversationOwner}]\n[system]\n${roleSystem}\n\n[user]\n${user}\n\n[raw]\n${String(resQ.text ?? "").slice(0, 4000)}`);
-        executedAgents.push(`question:${conversationOwner}`);
+        const validate = (owner: NextOwner, q: string): { ok: boolean; reason?: string } => {
+          const qq = String(q ?? "").trim();
+          if (!qq) return { ok: false, reason: "empty_question" };
+          const forbidCommon = /(추가\s*요구사항|구체적인\s*요구사항|원하시나요|원하나요)/i;
+          if (forbidCommon.test(qq)) return { ok: false, reason: "forbidden_generic_phrase" };
+          if (owner === "designer" && /(기능|요소|요구사항|스펙)/i.test(qq)) return { ok: false, reason: "designer_planner_tone_leak" };
+          if (owner === "architect" && /(디자인|톤앤매너|ui|ux)/i.test(qq)) return { ok: false, reason: "architect_focus_leak" };
+          if (owner === "analyst" && /(성능|지연|파이프라인|실시간|배치)/i.test(qq)) return { ok: false, reason: "analyst_focus_leak" };
+          return { ok: true };
+        };
+
+        const v1 = validate(conversationOwner, msg);
+        if (v1.ok) {
+          nextQuestion = msg;
+          promptChunks.push(`[next-question:${conversationOwner}]\n[system]\n${roleSystem}\n\n[user]\n${user}\n\n[raw]\n${String(resQ.text ?? "").slice(0, 4000)}`);
+          executedAgents.push(`question:${conversationOwner}`);
+        } else {
+          personaValidationReason = v1.reason ?? "persona_validation_failed";
+          personaValidationRetry = 1;
+          const retrySystem = `${roleSystem}\n\n[persona-validation]\n이전 질문은 ${personaValidationReason} 로 거절되었습니다. 금지어/톤을 피하고, 역할 관점에 맞는 질문 1문장만 다시 생성하세요.`;
+          const resRetry = await postOpenAiChatCompletion({
+            apiKey,
+            model,
+            messages: [
+              { role: "system", content: retrySystem },
+              { role: "user", content: user },
+            ],
+            temperature: 0.22,
+            responseFormatJsonObject: true,
+            maxTokens: 160,
+          });
+          if (resRetry.ok) {
+            const parsed2 = safeJsonParse(resRetry.text ?? "") as Record<string, unknown> | null;
+            const msg2 = String(parsed2?.assistantMessage ?? "").trim();
+            const v2 = validate(conversationOwner, msg2);
+            if (msg2 && v2.ok) {
+              nextQuestion = msg2;
+              promptChunks.push(
+                `[next-question:${conversationOwner}:retry]\n[system]\n${retrySystem}\n\n[user]\n${user}\n\n[raw]\n${String(resRetry.text ?? "").slice(0, 4000)}`
+              );
+              executedAgents.push(`question:${conversationOwner}:retry`);
+            }
+          }
+        }
       }
     }
   }
@@ -895,6 +945,12 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     momentumContribution: momentumWeights,
     ...(conflictSignals.length ? { conflictSignals } : {}),
     ...(slotStateTransitions.length ? { slotStateTransitions } : {}),
+    ...(typeof input.orchestrationWakeupReason === "string" && input.orchestrationWakeupReason.trim()
+      ? { orchestrationWakeupReason: input.orchestrationWakeupReason.trim().slice(0, 120) }
+      : {}),
+    ...(typeof input.orchestrationLazyInit === "boolean" ? { orchestrationLazyInit: input.orchestrationLazyInit } : {}),
+    ...(personaValidationReason ? { personaValidationReason } : {}),
+    ...(typeof personaValidationRetry === "number" ? { personaValidationRetry } : {}),
     currentPhase: phase,
     executedAgents: [...new Set(executedAgents)],
     staleSlots: buckets.stale,
@@ -1008,6 +1064,17 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
     .map((d) => String(d ?? "").trim().toLowerCase())
     .filter((d) => d && d !== "planner" && input.activeRoles.has(d));
 
+  const detectExplicitOwner = (): "planner" | "analyst" | "architect" | "designer" | "reviewer" | "security" | null => {
+    const s = um.toLowerCase();
+    if (/(디자이너|ui|ux)/i.test(s)) return "designer";
+    if (/(설계자|아키텍트|개발자\s*관점|실시간|배치|파이프라인|연동)/i.test(s)) return "architect";
+    if (/(분석가|도메인\s*전문가|승인|권한|협업|흐름)/i.test(s)) return "analyst";
+    if (/(보안|개인정보|감사|보관)/i.test(s)) return "security";
+    if (/(리뷰어|검토|검수|우선순위|리스크)/i.test(s)) return "reviewer";
+    return null;
+  };
+  const explicitOwner = detectExplicitOwner();
+
   const routingDecision =
     patches.length === 0
       ? "E: 슬롯 미충족 — 후속 질문 필요 (fallback, planner-only)"
@@ -1017,10 +1084,18 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
           ? `B/C: 후보 슬롯 (fallback) — ${delegatedList[0]}`
           : "A: planner 영역 (fallback)";
 
-  const msg =
-    patches.length === 0
-      ? "말씀해 주신 내용을 바탕으로 조금만 더 구체화하고 싶습니다. 가장 먼저 해결하려는 사용자의 문제를 한 문장으로 알려주실 수 있을까요?"
-      : `좋습니다. 현재 답변을 반영해 필요한 정보를 정리했습니다.\n\n한 가지만 더 알려주세요. 지금 단계에서 가장 불확실한 부분은 무엇인가요?`;
+  const roleFallbackQuestion = (owner: NonNullable<typeof explicitOwner> | "planner"): string => {
+    if (owner === "designer") return "회의록 검토/수정 화면은 문서 편집기 스타일과 댓글 기반 검토 중 어떤 흐름이 더 자연스럽나요?";
+    if (owner === "architect") return "업로드 후 결과는 실시간에 가깝게 즉시 나와야 하나요, 아니면 배치 처리도 허용되나요?";
+    if (owner === "analyst") return "참석자는 회의록 전체를 수정하나요, 아니면 자신의 발언만 수정하나요?";
+    if (owner === "security") return "녹취/전사 데이터는 어느 기간 보관하고, 누가 접근할 수 있어야 하나요?";
+    if (owner === "reviewer") return "첫 버전에서 꼭 확정해야 할 품질 기준(예: 화자 분리 정확도/요약 품질)은 무엇인가요?";
+    return "이 서비스의 첫 버전에서 반드시 해결해야 할 핵심 목표를 한 문장으로 정리해 주실래요?";
+  };
+
+  const msg = explicitOwner ? roleFallbackQuestion(explicitOwner) : patches.length === 0
+    ? "말씀해 주신 내용을 바탕으로 조금만 더 구체화하고 싶습니다. 가장 먼저 해결하려는 사용자의 문제를 한 문장으로 알려주실 수 있을까요?"
+    : `좋습니다. 현재 답변을 반영해 필요한 정보를 정리했습니다.\n\n한 가지만 더 알려주세요. 지금 단계에서 가장 불확실한 부분은 무엇인가요?`;
 
   const buckets = slotBucketsByStatus(nextState);
 
@@ -1029,8 +1104,11 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
     matchedSlots: matched,
     updatedSlotKeys: patches.map((p) => p.slotKey),
     delegatedAgents: [],
-    orchestratorAgent: "planner",
-    executedAgents: ["planner"],
+    orchestratorAgent: explicitOwner ?? "planner",
+    conversationOwner: explicitOwner ?? "planner",
+    questionGeneratedBy: explicitOwner ?? "planner",
+    ownershipReason: explicitOwner ? "explicit_role_mention(fallback)" : "fallback_no_llm",
+    executedAgents: [explicitOwner ? `fallback:${explicitOwner}` : "planner"],
     staleSlots: buckets.stale,
     confirmedSlots: buckets.confirmed,
     candidateSlots: buckets.candidate,
@@ -1039,7 +1117,7 @@ export function runSingleChatOrchestrationFallbackTurn(input: {
 
   nextState = {
     ...nextState,
-    lastOrchestratorAgent: "planner",
+    lastOrchestratorAgent: explicitOwner ?? "planner",
     lastDelegatedAgents: [],
     lastRoutingDecision: routingDecision,
   };

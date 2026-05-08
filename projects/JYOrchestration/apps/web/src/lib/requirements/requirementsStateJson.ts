@@ -126,6 +126,14 @@ export type RequirementsPromptTimelineEntry = {
   conflictSignals?: readonly string[];
   /** Replay: slot state transitions */
   slotStateTransitions?: readonly { slotKey: string; from: string; to: string; reason?: string }[];
+  /** Orchestration: wake-up reason (explicit role mention, lazy-init, etc.) */
+  orchestrationWakeupReason?: string;
+  /** Orchestration: whether lazy-init was used */
+  orchestrationLazyInit?: boolean;
+  /** Next-question: persona validation failure reason (if retried) */
+  personaValidationReason?: string;
+  /** Next-question: persona validation retry count */
+  personaValidationRetry?: number;
   /** Convenience: updated slot count */
   updatedSlotCount?: number;
   /** 인터뷰 질문(한 문장) — 유도형 선택지와 함께 기록 */
