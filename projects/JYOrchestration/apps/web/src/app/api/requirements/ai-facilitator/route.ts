@@ -394,6 +394,8 @@ export async function POST(request: NextRequest) {
                 fallback: true,
                 orchestratorAgent: "planner",
                 routingDecision: plannerChosen ? "bootstrap_fallback(NO_KEY)" : "bootstrap_fallback(NO_KEY)",
+                fallbackReason: "NO_KEY",
+                provider: "fallback",
               }),
             },
           },
@@ -418,13 +420,32 @@ export async function POST(request: NextRequest) {
                   promptText: String((result as any).promptText ?? "").trim() || undefined,
                   responseText: String((result as any).responseText ?? "").trim() || undefined,
                   model: String((result as any).model ?? "").trim() || undefined,
-                  provider: String((result as any).provider ?? "").trim() || undefined,
+                  provider: String((result as any).provider ?? "").trim() || "openai",
                   createdAtIso: String((result as any).calledAt ?? "").trim() || new Date().toISOString(),
                   error: `${result.code}: ${result.message}`,
                   fallbackText: contextualBootstrapFallbackQuestion(),
                   fallback: true,
                   orchestratorAgent: "planner",
                   routingDecision: "bootstrap_contextual_fallback",
+                  fallbackReason: String((result as any).fallbackReason ?? "") || String(result.code ?? "") || "UNKNOWN_BOOTSTRAP_ERROR",
+                  rawResponseText: String((result as any).rawResponseText ?? "") || undefined,
+                  parseError: String((result as any).parseError ?? "") || undefined,
+                  parsedJsonPreview: String((result as any).parsedJsonPreview ?? "") || undefined,
+                  retryPromptText: String((result as any).retryPromptText ?? "") || undefined,
+                  retryRawResponseText: String((result as any).retryRawResponseText ?? "") || undefined,
+                  finalQuestionBeforeFallback: String((result as any).finalQuestionBeforeFallback ?? "") || undefined,
+                  ...(typeof (result as any).questionQualityStatus === "string"
+                    ? { questionQualityStatus: (result as any).questionQualityStatus }
+                    : {}),
+                  ...(Array.isArray((result as any).questionQualityIssues)
+                    ? { questionQualityIssues: [...(result as any).questionQualityIssues] }
+                    : {}),
+                  ...(typeof (result as any).questionQualityRetryCount === "number"
+                    ? { questionQualityRetryCount: (result as any).questionQualityRetryCount }
+                    : {}),
+                  ...(typeof (result as any).finalQuestionSource === "string"
+                    ? { finalQuestionSource: (result as any).finalQuestionSource }
+                    : {}),
                 }),
               },
             }
@@ -481,6 +502,7 @@ export async function POST(request: NextRequest) {
               fallback: true,
               orchestratorAgent: "planner",
               routingDecision: "bootstrap_contextual_fallback_empty_reply",
+              fallbackReason: "EMPTY_RESPONSE",
             }),
           },
         },
@@ -619,6 +641,11 @@ export async function POST(request: NextRequest) {
       ...(bootstrapMeta?.selectedQuestionAxis ? { selectedQuestionAxis: bootstrapMeta.selectedQuestionAxis } : {}),
       ...(bootstrapMeta?.reasoningContributors?.length ? { reasoningContributors: [...bootstrapMeta.reasoningContributors] } : {}),
       ...(bootstrapMeta?.riskSignals?.length ? { riskSignals: [...bootstrapMeta.riskSignals] } : {}),
+      ...(bootstrapMeta?.primaryDecisionAxis ? { internalAxis: bootstrapMeta.primaryDecisionAxis } : {}),
+      ...(bootstrapMeta?.userFacingQuestionStyle ? { userFacingQuestionStyle: bootstrapMeta.userFacingQuestionStyle } : {}),
+      ...(bootstrapInterview && result.ok && typeof (result as any).userLanguageTransformApplied === "boolean"
+        ? { userLanguageTransformApplied: Boolean((result as any).userLanguageTransformApplied) }
+        : {}),
       ...(bootstrapInterview &&
       result.ok &&
       Array.isArray((result as { suggestedSlotReasons?: readonly { slotKey: string; reason: string }[] }).suggestedSlotReasons) &&
@@ -654,6 +681,15 @@ export async function POST(request: NextRequest) {
               ...((result as { suggestionQualityIssues: readonly string[] }).suggestionQualityIssues as string[]),
             ],
           }
+        : {}),
+      ...(bootstrapInterview && result.ok && typeof (result as any).rawResponseText === "string" && String((result as any).rawResponseText).trim()
+        ? { rawResponseText: String((result as any).rawResponseText).slice(0, 4000) }
+        : {}),
+      ...(bootstrapInterview && result.ok && typeof (result as any).retryPromptText === "string" && String((result as any).retryPromptText).trim()
+        ? { retryPromptText: String((result as any).retryPromptText).slice(0, 4000) }
+        : {}),
+      ...(bootstrapInterview && result.ok && typeof (result as any).retryRawResponseText === "string" && String((result as any).retryRawResponseText).trim()
+        ? { retryRawResponseText: String((result as any).retryRawResponseText).slice(0, 4000) }
         : {}),
     });
 

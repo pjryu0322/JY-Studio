@@ -16,6 +16,7 @@ import { normalizeLlmInterviewSuggestions } from "@/lib/requirements/interviewSu
 import {
   analyzeBootstrapQuestionQuality,
   buildBootstrapQuestionRetryUserPayload,
+  detectInternalOrchestrationVocabInUserQuestion,
   filterBootstrapInterviewSuggestions,
   repairBootstrapQuestionFromContext,
 } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
@@ -83,6 +84,18 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       questionQualityRetryCount: number;
       finalQuestionSource: "llm" | "llm_retry" | "repaired_context";
       suggestionQualityIssues?: readonly string[];
+      /** 원문 LLM 응답(트렁케이트; 원인 추적) */
+      rawResponseText?: string;
+      /** retry user payload(트렁케이트; 원인 추적) */
+      retryPromptText?: string;
+      /** retry 응답(트렁케이트; 원인 추적) */
+      retryRawResponseText?: string;
+      /** 내부 축 id(primaryDecisionAxis와 동일 의미로 기록 가능) */
+      internalAxis?: string | null;
+      /** 사용자 대면 질문 스타일 태그(메타) */
+      userFacingQuestionStyle?: string | null;
+      /** 내부 오케스트레이션 어휘 없이 사용자 업무 언어로 정리되었는지 */
+      userLanguageTransformApplied?: boolean;
     }
   | {
       ok: false;
@@ -94,7 +107,112 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       provider?: string;
       calledAt?: string;
       responseText?: string;
+      /** 원문 LLM 응답(트렁케이트) */
+      rawResponseText?: string;
+      /** JSON 파싱 실패 시 에러 요약 */
+      parseError?: string;
+      /** 파싱 성공 시(또는 부분 복구 성공 시) JSON 미리보기 */
+      parsedJsonPreview?: string;
+      /** quality retry user payload(트렁케이트) */
+      retryPromptText?: string;
+      /** retry 응답(트렁케이트) */
+      retryRawResponseText?: string;
+      /** fallback 직전 후보 question */
+      finalQuestionBeforeFallback?: string;
+      /** fallback reason 분류(서버 timeline 기록용) */
+      fallbackReason?:
+        | "NO_KEY"
+        | "OPENAI_API_ERROR"
+        | "EMPTY_RESPONSE"
+        | "JSON_PARSE_FAILED"
+        | "MISSING_QUESTION"
+        | "QUESTION_QUALITY_REJECTED"
+        | "RETRY_FAILED"
+        | "REPAIRED_CONTEXT_USED"
+        | "UNKNOWN_BOOTSTRAP_ERROR"
+        | string;
+      /** question 품질 이슈(가능하면) */
+      questionQualityIssues?: readonly string[];
+      /** retry count(가능하면) */
+      questionQualityRetryCount?: number;
+      /** final question source(가능하면) */
+      finalQuestionSource?: "llm" | "llm_retry" | "repaired_context";
     };
+
+function truncateForTimeline(s: string, max: number): string {
+  const t = String(s ?? "");
+  if (t.length <= max) return t;
+  return `${t.slice(0, max)}…`;
+}
+
+function tryExtractFirstJsonObjectSubstring(raw: string): string | null {
+  const s = String(raw ?? "");
+  const start = s.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inStr) {
+      if (esc) {
+        esc = false;
+      } else if (ch === "\\\\") {
+        esc = true;
+      } else if (ch === "\"") {
+        inStr = false;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inStr = true;
+      continue;
+    }
+    if (ch === "{") depth++;
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+export function parseBootstrapInitializerJsonFromModelText(rawText: string): {
+  ok: true;
+  jsonText: string;
+  parsed: Record<string, unknown>;
+  parsedJsonPreview: string;
+} | {
+  ok: false;
+  parseError: string;
+  rawResponseText: string;
+  attemptedJsonText?: string;
+} {
+  const raw = String(rawText ?? "").trim();
+  const rawNoFence = stripJsonMarkdownFences(raw);
+  const attempts: string[] = [];
+  attempts.push(rawNoFence);
+  const sub = tryExtractFirstJsonObjectSubstring(rawNoFence);
+  if (sub) attempts.push(sub);
+
+  let lastErr = "unknown";
+  for (const candidate of attempts) {
+    const c = String(candidate ?? "").trim();
+    if (!c) continue;
+    try {
+      const parsed = JSON.parse(c) as Record<string, unknown>;
+      return { ok: true, jsonText: c, parsed, parsedJsonPreview: truncateForTimeline(c, 4000) };
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
+  }
+  return {
+    ok: false,
+    parseError: truncateForTimeline(lastErr, 360),
+    rawResponseText: truncateForTimeline(raw, 4000),
+    attemptedJsonText: sub ? truncateForTimeline(sub, 4000) : undefined,
+  };
+}
 
 function extractSingleChatBootstrapFromJson(j: Record<string, unknown>): {
   question: string;
@@ -260,7 +378,13 @@ export async function runRequirementsFacilitatorOpenAI(input: {
 }): Promise<RequirementsFacilitatorOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+    return {
+      ok: false,
+      code: "NO_KEY",
+      message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다.",
+      fallbackReason: "NO_KEY",
+      provider: "openai",
+    };
   }
 
   const model = resolveOpenAiModelFromEnv();
@@ -617,6 +741,7 @@ ${baseCatalog.slice(0, 6000)}
       promptText,
       provider: "openai",
       calledAt,
+      fallbackReason: "OPENAI_API_ERROR",
     };
   }
   const text = res.text;
@@ -630,16 +755,13 @@ ${baseCatalog.slice(0, 6000)}
       provider: "openai",
       calledAt,
       responseText: "",
+      rawResponseText: "",
+      fallbackReason: "EMPTY_RESPONSE",
     };
   }
 
-  let assistantRaw: string;
-  let payload: ReturnType<typeof extractSingleChatBootstrapFromJson>;
-  try {
-    assistantRaw = stripJsonMarkdownFences(String(text).trim());
-    const j = JSON.parse(assistantRaw) as Record<string, unknown>;
-    payload = extractSingleChatBootstrapFromJson(j);
-  } catch {
+  const parsedPack = parseBootstrapInitializerJsonFromModelText(String(text));
+  if (!parsedPack.ok) {
     return {
       ok: false,
       code: "PARSE",
@@ -648,9 +770,16 @@ ${baseCatalog.slice(0, 6000)}
       promptText,
       provider: "openai",
       calledAt,
-      responseText: String(text).slice(0, 20_000),
+      responseText: truncateForTimeline(String(text), 20_000),
+      rawResponseText: parsedPack.rawResponseText,
+      parseError: parsedPack.parseError,
+      parsedJsonPreview: parsedPack.attemptedJsonText,
+      fallbackReason: "JSON_PARSE_FAILED",
     };
   }
+
+  let assistantRaw = parsedPack.jsonText;
+  let payload = extractSingleChatBootstrapFromJson(parsedPack.parsed);
 
   if (!payload.question) {
     return {
@@ -661,7 +790,12 @@ ${baseCatalog.slice(0, 6000)}
       promptText,
       provider: "openai",
       calledAt,
-      responseText: String(text).slice(0, 20_000),
+      responseText: truncateForTimeline(String(text), 20_000),
+      rawResponseText: truncateForTimeline(String(text), 4000),
+      parsedJsonPreview: parsedPack.parsedJsonPreview,
+      parseError: "",
+      fallbackReason: "MISSING_QUESTION",
+      finalQuestionBeforeFallback: "",
     };
   }
 
@@ -670,6 +804,9 @@ ${baseCatalog.slice(0, 6000)}
   let questionQualityStatus: BootstrapQuestionQualityStatus;
   let questionQualityIssues: string[] = [];
   let finalQuestionSource: "llm" | "llm_retry" | "repaired_context" = "llm";
+  const rawResponseText = truncateForTimeline(String(text), 4000);
+  let retryPromptText: string | undefined = undefined;
+  let retryRawResponseText: string | undefined = undefined;
 
   const q0 = analyzeBootstrapQuestionQuality({ question: payload.question, projectDescription: pd });
   if (q0.ok) {
@@ -682,6 +819,7 @@ ${baseCatalog.slice(0, 6000)}
       issues: q0.issues,
       rejectedQuestion: payload.question,
     });
+    retryPromptText = truncateForTimeline(retryUser, 4000);
     promptTextOut = `${promptText}\n\n--- bootstrap_question_retry ---\n${retryUser}`;
 
     const res2 = await postOpenAiChatCompletion({
@@ -699,10 +837,11 @@ ${baseCatalog.slice(0, 6000)}
     });
 
     if (res2.ok && res2.text) {
+      retryRawResponseText = truncateForTimeline(String(res2.text), 4000);
       try {
-        const raw2 = stripJsonMarkdownFences(String(res2.text).trim());
-        const j2 = JSON.parse(raw2) as Record<string, unknown>;
-        const p2 = extractSingleChatBootstrapFromJson(j2);
+        const parsed2 = parseBootstrapInitializerJsonFromModelText(String(res2.text));
+        const raw2 = parsed2.ok ? parsed2.jsonText : stripJsonMarkdownFences(String(res2.text).trim());
+        const p2 = parsed2.ok ? extractSingleChatBootstrapFromJson(parsed2.parsed) : extractSingleChatBootstrapFromJson(JSON.parse(raw2));
         if (p2.question) {
           assistantRaw = raw2;
           payload = {
@@ -743,6 +882,11 @@ ${baseCatalog.slice(0, 6000)}
     question: payload.question,
   });
 
+  const internalAxis = String(payload.orchestrationBootstrap?.primaryDecisionAxis ?? "").trim() || null;
+  const userFacingQuestionStyle =
+    String(payload.orchestrationBootstrap?.userFacingQuestionStyle ?? "").trim() || null;
+  const userLanguageTransformApplied = payload.question ? !detectInternalOrchestrationVocabInUserQuestion(payload.question) : false;
+
   return {
     ok: true,
     question: payload.question,
@@ -760,6 +904,13 @@ ${baseCatalog.slice(0, 6000)}
     questionQualityRetryCount,
     finalQuestionSource,
     ...(sugPack.issues.length ? { suggestionQualityIssues: sugPack.issues } : {}),
+    // timeline/debug fields are recorded in route.ts via result + bootstrapMeta; keep raw/retry snippets available
+    rawResponseText,
+    ...(retryPromptText ? { retryPromptText } : {}),
+    ...(retryRawResponseText ? { retryRawResponseText } : {}),
+    ...(internalAxis ? { internalAxis } : {}),
+    ...(userFacingQuestionStyle ? { userFacingQuestionStyle } : {}),
+    userLanguageTransformApplied,
   };
 }
 

@@ -176,6 +176,10 @@ function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelin
     if (row.model) lines.push(`- **model**: ${row.model}`);
     if (row.provider) lines.push(`- **provider**: ${row.provider}`);
     if (row.routingDecision) lines.push(`- **routingDecision**: ${row.routingDecision}`);
+    if (row.fallbackReason) lines.push(`- **fallbackReason**: ${row.fallbackReason}`);
+    if (row.questionQualityStatus) lines.push(`- **questionQualityStatus**: ${row.questionQualityStatus}`);
+    if (typeof row.questionQualityRetryCount === "number") lines.push(`- **retryCount**: ${row.questionQualityRetryCount}`);
+    if (row.finalQuestionSource) lines.push(`- **finalQuestionSource**: ${row.finalQuestionSource}`);
     if (row.orchestratorAgent) lines.push(`- **orchestratorAgent**: ${row.orchestratorAgent}`);
     if (row.fallback !== undefined) lines.push(`- **fallback**: ${row.fallback}`);
     if (row.error) lines.push(`- **error**: ${row.error}`);
@@ -202,7 +206,18 @@ function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelin
     lines.push(`### OpenAI → 플랫폼`);
     lines.push("");
     lines.push("```text");
-    const resp = [row.responseText, row.fallbackText].filter((x) => String(x ?? "").trim()).join("\n\n---\n\n");
+    const resp = [
+      row.responseText,
+      row.fallbackText,
+      row.rawResponseText ? `\n[rawResponseText]\n${row.rawResponseText}` : "",
+      row.parseError ? `\n[parseError]\n${row.parseError}` : "",
+      row.parsedJsonPreview ? `\n[parsedJsonPreview]\n${row.parsedJsonPreview}` : "",
+      row.retryPromptText ? `\n[retryPromptText]\n${row.retryPromptText}` : "",
+      row.retryRawResponseText ? `\n[retryRawResponseText]\n${row.retryRawResponseText}` : "",
+      row.finalQuestionBeforeFallback ? `\n[finalQuestionBeforeFallback]\n${row.finalQuestionBeforeFallback}` : "",
+    ]
+      .filter((x) => String(x ?? "").trim())
+      .join("\n\n---\n\n");
     lines.push(resp.trim() || "(없음)");
     lines.push("```");
     lines.push("");

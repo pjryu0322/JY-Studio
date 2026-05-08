@@ -6,6 +6,7 @@ import {
 } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { formatBootstrapAxisRotationBlock, pickBootstrapDecisionAxisRotation } from "@/lib/requirements/requirementsBootstrapOrchestrationHints";
 import { repairBootstrapQuestionFromContext } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
+import { parseBootstrapInitializerJsonFromModelText } from "@/lib/project/requirementsAiFacilitatorOpenAI";
 
 describe("bootstrap multi-agent orchestration", () => {
   it("phase1 compact catalog에 planner·analyst·architect·design 그룹이 함께 노출된다", () => {
@@ -67,5 +68,15 @@ describe("bootstrap multi-agent orchestration", () => {
     });
     expect(qAuto.includes("실시간") || qAuto.includes("배치") || qAuto.includes("자동")).toBe(true);
     expect(qCollab.includes("협업") || qCollab.includes("책임")).toBe(true);
+  });
+
+  it("bootstrap JSON parse는 fence/prefix/suffix가 있어도 복구한다", () => {
+    const raw = `아래는 결과입니다.\n\n\`\`\`json\n{ \"question\": \"회의록은 누가 최종 확인하나요?\", \"suggestions\": [\"작성자만\"], \"allowCustomInput\": true, \"suggestedSlots\": [] }\n\`\`\`\n감사합니다.`;
+    const p = parseBootstrapInitializerJsonFromModelText(raw);
+    expect(p.ok).toBe(true);
+    if (p.ok) {
+      expect(typeof p.parsed.question).toBe("string");
+      expect(String(p.parsed.question)).toContain("회의록");
+    }
   });
 });

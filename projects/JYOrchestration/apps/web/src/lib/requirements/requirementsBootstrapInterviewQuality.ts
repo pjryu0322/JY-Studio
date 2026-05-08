@@ -211,13 +211,13 @@ export function repairBootstrapQuestionFromContext(input: {
     return `${lead}어디까지는 자동으로 돌리고, 어디부터는 사람이 확인하면 좋을까요?`;
   }
   if (axis.includes("collaboration") || axis.includes("workflow")) {
-    return `${lead}여러 사람이 동시에 고치거나 함께 검토하는 흐름이 필요할까요, 아니면 작성자 중심으로 가면 될까요?`;
+    return `${lead}협업으로 같이 검토·수정하는 흐름이 필요할까요, 아니면 작성자가 주도해서 정리하면 될까요?`;
   }
   if (axis.includes("prototype") || axis.includes("boundary")) {
     return `${lead}첫 버전에서는 어디까지 만들어 두면 될까요?`;
   }
 
-  return `${lead}AI가 만든 초안은 누가 최종 확인하고 확정하면 될까요?`;
+  return `${lead}AI가 만든 초안은 누가 주도해서 최종 확인·확정하면 될까요?`;
 }
 
 export function buildBootstrapQuestionRetryUserPayload(input: {
