@@ -40,7 +40,7 @@ const linkMgmt = (active: boolean): CSSProperties => ({
  * 프로젝트 컨텍스트가 있을 때만: 워크플로 단계(및 확장 시 프로젝트 관리 링크).
  * 프로젝트 영역(요구사항 헤더·워크플로 페이지 등)에 배치합니다.
  */
-function ProjectWorkflowNavInner() {
+function ProjectWorkflowNavInner({ hideCompactTitle }: { readonly hideCompactTitle?: boolean }) {
   const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const showScreenLabels = useShowScreenLabels();
@@ -77,6 +77,7 @@ function ProjectWorkflowNavInner() {
   const workflowTrailing = null;
 
   if (compactWorkflowNav) {
+    if (hideCompactTitle) return null;
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6, width: "100%" }}>
         <ScreenLabel label={WORKFLOW_NAV_STRIP_SCREEN_LABEL} visible={showScreenLabels} />
@@ -139,10 +140,10 @@ function ProjectWorkflowNavInner() {
   );
 }
 
-export function ProjectWorkflowNav() {
+export function ProjectWorkflowNav({ hideCompactTitle }: { readonly hideCompactTitle?: boolean }) {
   return (
     <Suspense fallback={null}>
-      <ProjectWorkflowNavInner />
+      <ProjectWorkflowNavInner hideCompactTitle={hideCompactTitle} />
     </Suspense>
   );
 }
