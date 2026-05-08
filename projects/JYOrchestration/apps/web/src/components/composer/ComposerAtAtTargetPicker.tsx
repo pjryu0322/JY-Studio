@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
 
 const DEFAULT_Z = 200;
@@ -13,8 +14,33 @@ export function ComposerAtAtTargetPicker(p: {
 }) {
   if (!p.open || !p.items.length) return null;
   const z = p.zIndex ?? DEFAULT_Z;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!p.open) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const root = rootRef.current;
+      const t = e.target as Node | null;
+      if (!root || !t) return;
+      if (root.contains(t)) return;
+      p.onClose();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") p.onClose();
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [p.open, p.onClose]);
+
   return (
     <div
+      ref={rootRef}
       role="dialog"
       aria-label="질문 대상 선택"
       style={{
@@ -55,23 +81,6 @@ export function ComposerAtAtTargetPicker(p: {
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
           </button>
         ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-        <button
-          type="button"
-          onClick={p.onClose}
-          style={{
-            border: "none",
-            background: "transparent",
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: 800,
-            color: "#475569",
-            padding: "6px 8px",
-          }}
-        >
-          닫기
-        </button>
       </div>
     </div>
   );

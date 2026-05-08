@@ -340,6 +340,15 @@ export async function POST(request: NextRequest) {
         ...(typeof (turnOk.meta as any).nextQuestionOwnerAgent === "string"
           ? { nextOwnerAgent: (turnOk.meta as any).nextQuestionOwnerAgent }
           : {}),
+        ...(typeof (turnOk.meta as any).conversationOwner === "string"
+          ? { conversationOwner: (turnOk.meta as any).conversationOwner }
+          : {}),
+        ...(typeof (turnOk.meta as any).questionGeneratedBy === "string"
+          ? { questionGeneratedBy: (turnOk.meta as any).questionGeneratedBy }
+          : {}),
+        ...(typeof (turnOk.meta as any).ownershipReason === "string"
+          ? { ownershipReason: (turnOk.meta as any).ownershipReason }
+          : {}),
         fallback: usedFallback,
         orchestratorAgent: turnOk.meta.orchestratorAgent,
         delegatedAgents: [...turnOk.meta.delegatedAgents],

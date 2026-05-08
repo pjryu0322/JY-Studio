@@ -36,6 +36,12 @@ export type SingleChatOrchestrationTurnMeta = Readonly<{
   orchestratorAgent: string;
   /** 다음 질문을 생성한 ownerAgent(표시용; planner 독점 방지 추적) */
   nextQuestionOwnerAgent?: string | null;
+  /** 대화 소유권(UX/진단용) */
+  conversationOwner?: string | null;
+  /** 다음 질문 생성 주체(진단용; conversationOwner와 동일할 수 있음) */
+  questionGeneratedBy?: string | null;
+  /** 소유권 선택 근거(진단용) */
+  ownershipReason?: string | null;
   /** 오케스트레이션 단계(UX/추적용) */
   currentPhase?: 1 | 2 | 3 | 4 | 5;
   executedAgents: readonly string[];
@@ -408,6 +414,75 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     return "planner";
   };
 
+  type NextOwner = "planner" | "analyst" | "architect" | "designer" | "reviewer" | "security";
+
+  const resolveExplicitOwnerFromUserIntent = (userMessage: string): { owner: NextOwner; reason: string } | null => {
+    const s = String(userMessage ?? "").trim().toLowerCase();
+    if (!s) return null;
+    // `@@` mention text is already in the user input (e.g. "@@AI 디자이너"), so plain substring checks work.
+    // Priority: direct role naming > general keywords.
+    const has = (re: RegExp) => re.test(s);
+
+    // ui-designer
+    if (has(/(디자이너|ui|ux|화면|편집기|ia|정보구조|톤\s*&?\s*스타일|톤앤매너|리뷰\s*경험)/i)) {
+      return { owner: "designer", reason: "explicit_role_mention(ui-designer)" };
+    }
+    // solution-architect
+    if (has(/(설계자|아키텍트|개발자\s*관점|구조|처리\s*구조|성능|확장|배치|실시간|연동|api|feasibility|가능성)/i)) {
+      return { owner: "architect", reason: "explicit_role_mention(solution-architect)" };
+    }
+    // service-designer / domain-expert
+    if (has(/(서비스\s*디자이너|도메인\s*전문가|분석가|액터|승인|협업|권한|운영|예외\s*처리|흐름|프로세스)/i)) {
+      return { owner: "analyst", reason: "explicit_role_mention(service-designer)" };
+    }
+    // security-reviewer
+    if (has(/(보안|개인정보|접근\s*제어|권한\s*경계|감사|로그\s*보관)/i)) {
+      return { owner: "security", reason: "explicit_role_mention(security-reviewer)" };
+    }
+    // task-reviewer
+    if (has(/(리뷰|검토|검수|품질|테스트|우선순위|리스크)/i)) {
+      return { owner: "reviewer", reason: "explicit_role_mention(task-reviewer)" };
+    }
+    return null;
+  };
+
+  const resolveDominantUnresolvedOwnerFromSlots = (phaseOwner: NextOwner): { owner: NextOwner; reason: string } => {
+    // Prefer non-planner owner if their unresolved load is dominant.
+    const unresolvedBy: Record<NextOwner, number> = {
+      planner: 0,
+      analyst: 0,
+      architect: 0,
+      designer: 0,
+      reviewer: 0,
+      security: 0,
+    };
+    const rows = Object.values(state.slots ?? {});
+    for (const r of rows) {
+      const st = String((r as any).status ?? "").trim().toLowerCase();
+      const conf = Number((r as any).confidence ?? 0);
+      const isUnresolved = st === "empty" || st === "stale" || st === "candidate" || (st === "partial" && conf < 0.8);
+      if (!isUnresolved) continue;
+      const label = ownerLabelFromInternal(String((r as any).ownerAgent ?? ""));
+      unresolvedBy[label] += 1;
+    }
+    const entries = (Object.keys(unresolvedBy) as NextOwner[])
+      .map((k) => ({ owner: k, count: unresolvedBy[k] }))
+      .sort((a, b) => b.count - a.count);
+    const top = entries[0];
+    const second = entries[1];
+    if (!top || top.count <= 0) return { owner: phaseOwner, reason: `phase_default(${phaseOwner})` };
+    // If phaseOwner already matches top, keep it.
+    if (top.owner === phaseOwner) return { owner: phaseOwner, reason: `dominant_unresolved(${phaseOwner}:${top.count})` };
+    // Require a meaningful gap to switch away from phaseOwner unless phaseOwner is planner.
+    const gap = top.count - (second?.count ?? 0);
+    const switchingAwayFromPlanner = phaseOwner === "planner" && top.owner !== "planner" && top.count >= 1;
+    const switchingBetweenSpecialists = phaseOwner !== "planner" && gap >= 1;
+    if (switchingAwayFromPlanner || switchingBetweenSpecialists) {
+      return { owner: top.owner, reason: `dominant_unresolved(${top.owner}:${top.count})` };
+    }
+    return { owner: phaseOwner, reason: `phase_default(${phaseOwner})` };
+  };
+
   const inferPhase = (): 1 | 2 | 3 | 4 | 5 => {
     // Heuristic phases: keep simple and stable — phase reflects which slot groups still have the biggest gap.
     const baseKeys = state.baseSlotKeys?.length ? new Set(state.baseSlotKeys.map((k) => String(k ?? "").trim()).filter(Boolean)) : null;
@@ -433,7 +508,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     return 5;
   };
 
-  const pickNextOwner = (phase: 1 | 2 | 3 | 4 | 5): "planner" | "analyst" | "architect" | "designer" | "reviewer" | "security" => {
+  const pickNextOwner = (phase: 1 | 2 | 3 | 4 | 5): NextOwner => {
     if (phase === 1) return "planner";
     if (phase === 2) return "analyst";
     if (phase === 3) return "architect";
@@ -443,7 +518,19 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   };
 
   const phase = inferPhase();
-  const nextOwner = pickNextOwner(phase);
+  const phaseOwner = pickNextOwner(phase);
+  const explicit = resolveExplicitOwnerFromUserIntent(input.userMessage);
+  const dominant = resolveDominantUnresolvedOwnerFromSlots(phaseOwner);
+  const resolvedOwner = explicit ?? dominant;
+  const nextOwner = resolvedOwner.owner;
+  const ownershipReason = resolvedOwner.reason;
+  console.info("[orchestration-owner]", {
+    conversationOwner: nextOwner,
+    questionGeneratedBy: nextOwner,
+    ownershipReason,
+    phase,
+    phaseOwner,
+  });
 
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   let nextQuestion = merge.assistantMessage;
@@ -510,6 +597,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     delegatedAgents: uniqSpecialists,
     orchestratorAgent: nextOwner,
     nextQuestionOwnerAgent: nextOwner,
+    conversationOwner: nextOwner,
+    questionGeneratedBy: nextOwner,
+    ownershipReason,
     currentPhase: phase,
     executedAgents: [...new Set(executedAgents)],
     staleSlots: buckets.stale,
