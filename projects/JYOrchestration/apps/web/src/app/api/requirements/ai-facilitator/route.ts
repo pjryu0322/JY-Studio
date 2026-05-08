@@ -16,10 +16,12 @@ import {
   buildSingleChatPromptTimelineEntry,
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import {
+  pickConfiguredModelOverrideFromAgents,
   resolveServicePlanningOrchestrationContext,
   resolveSingleChatAgentContext,
   type SingleChatSelectedAgentWire,
 } from "@/lib/requirements/singleChatAgentContext";
+import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import {
   isWorkspaceServicePlanningScreenKey,
@@ -323,8 +325,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = bootstrapInterview
-      ? await runWithPromptTimelineProject(projectId, async () => {
+    const configuredModelOverrideBoot = pickConfiguredModelOverrideFromAgents(agentCtxBootstrap.selectedAgents);
+
+    let result:
+      | Awaited<ReturnType<typeof runRequirementsFacilitatorOpenAI>>
+      | Awaited<ReturnType<typeof runRequirementsSingleChatBootstrapOpenAI>>;
+    if (bootstrapInterview) {
+      try {
+        result = await runWithPromptTimelineProject(projectId, async () => {
           const baseDefs = buildDynamicServicePlanningSlotDefinitions({
             projectName,
             projectDescription,
@@ -340,20 +348,46 @@ export async function POST(request: NextRequest) {
             participatingAgentsPromptBlock: agentCtxBootstrap.promptBlock,
             orchestrationBootstrapInstructions,
             baseSlotCatalogJson,
+            diagnosticMeta: {
+              projectId: projectId || null,
+              configuredModelOverride: configuredModelOverrideBoot,
+            },
           });
-        })
-      : await runRequirementsFacilitatorOpenAI({
-          projectName,
-          projectDescription,
-          stage,
-          userMessage,
-          dialogueExcerpt,
-          responseStyle,
-          mentionTargetsSummary: mentionTargetsSummary || undefined,
-          senderSummary: senderSummary || undefined,
-          priorScreenHandoff: priorScreenHandoff || undefined,
-          participatingAgentsPromptBlock: agentCtxChat.promptBlock,
         });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        result = {
+          ok: false,
+          code: "ROUTE",
+          message: `bootstrap 라우트 예외: ${msg.slice(0, 400)}`,
+          fallbackReason: "ROUTE_HANDLING_ERROR",
+          provider: "openai",
+          model: resolveOpenAiModelFromEnv(),
+          actualModel: resolveOpenAiModelFromEnv(),
+          configuredModelOverride: configuredModelOverrideBoot,
+          calledAt: new Date().toISOString(),
+          responseText: "",
+          rawResponseText: "",
+          parseError: msg.slice(0, 400),
+          questionQualityRetryCount: 0,
+          questionQualityIssues: [],
+          finalQuestionBeforeFallback: "",
+        };
+      }
+    } else {
+      result = await runRequirementsFacilitatorOpenAI({
+        projectName,
+        projectDescription,
+        stage,
+        userMessage,
+        dialogueExcerpt,
+        responseStyle,
+        mentionTargetsSummary: mentionTargetsSummary || undefined,
+        senderSummary: senderSummary || undefined,
+        priorScreenHandoff: priorScreenHandoff || undefined,
+        participatingAgentsPromptBlock: agentCtxChat.promptBlock,
+      });
+    }
     if (!result.ok) {
       if (bootstrapInterview && isPromptTimelineDebugServer() && projectId) {
         recordIdeationBootstrapOpenAi({
@@ -396,6 +430,9 @@ export async function POST(request: NextRequest) {
                 routingDecision: plannerChosen ? "bootstrap_fallback(NO_KEY)" : "bootstrap_fallback(NO_KEY)",
                 fallbackReason: "NO_KEY",
                 provider: "fallback",
+                model: resolveOpenAiModelFromEnv(),
+                actualModel: resolveOpenAiModelFromEnv(),
+                configuredModelOverride: configuredModelOverrideBoot,
               }),
             },
           },
@@ -419,7 +456,9 @@ export async function POST(request: NextRequest) {
                   selectedAgents: agentCtxBootstrap.selectedAgents,
                   promptText: String((result as any).promptText ?? "").trim() || undefined,
                   responseText: String((result as any).responseText ?? "").trim() || undefined,
-                  model: String((result as any).model ?? "").trim() || undefined,
+                  model: String((result as any).model ?? "").trim() || resolveOpenAiModelFromEnv(),
+                  actualModel: String((result as any).model ?? "").trim() || resolveOpenAiModelFromEnv(),
+                  configuredModelOverride: configuredModelOverrideBoot,
                   provider: String((result as any).provider ?? "").trim() || "openai",
                   createdAtIso: String((result as any).calledAt ?? "").trim() || new Date().toISOString(),
                   error: `${result.code}: ${result.message}`,
@@ -427,7 +466,7 @@ export async function POST(request: NextRequest) {
                   fallback: true,
                   orchestratorAgent: "planner",
                   routingDecision: "bootstrap_contextual_fallback",
-                  fallbackReason: String((result as any).fallbackReason ?? "") || String(result.code ?? "") || "UNKNOWN_BOOTSTRAP_ERROR",
+                  fallbackReason: String((result as any).fallbackReason ?? "").trim() || String(result.code ?? "") || "UNKNOWN_BOOTSTRAP_ERROR",
                   rawResponseText: String((result as any).rawResponseText ?? "") || undefined,
                   parseError: String((result as any).parseError ?? "") || undefined,
                   parsedJsonPreview: String((result as any).parsedJsonPreview ?? "") || undefined,
@@ -503,6 +542,9 @@ export async function POST(request: NextRequest) {
               orchestratorAgent: "planner",
               routingDecision: "bootstrap_contextual_fallback_empty_reply",
               fallbackReason: "EMPTY_RESPONSE",
+              model: String((result as any).model ?? "").trim() || resolveOpenAiModelFromEnv(),
+              actualModel: String((result as any).model ?? "").trim() || resolveOpenAiModelFromEnv(),
+              configuredModelOverride: configuredModelOverrideBoot,
             }),
           },
         },
@@ -601,10 +643,9 @@ export async function POST(request: NextRequest) {
 
     const bootstrapSugSource =
       bootstrapInterview && result.ok ? (bootSug?.length ? ("llm" as const) : ("empty" as const)) : undefined;
-    const usedRepair = bootstrapInterview && result.ok && (result as any).finalQuestionSource === "repaired_context";
     const bootstrapPromptTrace = buildSingleChatPromptTimelineEntry({
       action: "bootstrapInterview",
-      source: usedRepair ? "fallback" : "llm",
+      source: "llm",
       timelineStage: agentCtxBootstrap.timelineStage,
       stageGroup: agentCtxBootstrap.stageGroup,
       workspaceScreenKey: agentCtxBootstrap.workspaceScreenKey,
@@ -612,13 +653,14 @@ export async function POST(request: NextRequest) {
       promptText: (result as any).promptText,
       responseText: replyTrim,
       model: (result as any).model,
+      actualModel: String((result as any).actualModel ?? (result as any).model ?? "").trim() || undefined,
+      configuredModelOverride: (result as any).configuredModelOverride ?? configuredModelOverrideBoot ?? undefined,
       provider: (result as any).provider ?? "openai",
       createdAtIso: (result as any).calledAt ?? new Date().toISOString(),
       routingDecision: plannerChosenOk ? "bootstrap_llm_first_question(planner)" : "bootstrap_llm_first_question(default)",
       orchestratorAgent: "planner",
       delegatedAgents: [],
-      fallback: usedRepair ? true : false,
-      ...(usedRepair ? { fallbackReason: "REPAIRED_CONTEXT_USED" } : {}),
+      fallback: false,
       interviewQuestion: replyTrim,
       ...(bootSug?.length ? { interviewSuggestions: bootSug } : {}),
       ...(bootstrapSugSource ? { interviewSuggestionsSource: bootstrapSugSource } : {}),
@@ -692,6 +734,15 @@ export async function POST(request: NextRequest) {
         : {}),
       ...(bootstrapInterview && result.ok && typeof (result as any).retryRawResponseText === "string" && String((result as any).retryRawResponseText).trim()
         ? { retryRawResponseText: String((result as any).retryRawResponseText).slice(0, 4000) }
+        : {}),
+      ...(bootstrapInterview &&
+      result.ok &&
+      typeof (result as any).finalQuestionBeforeFallback === "string" &&
+      String((result as any).finalQuestionBeforeFallback).trim()
+        ? { finalQuestionBeforeFallback: String((result as any).finalQuestionBeforeFallback).slice(0, 600) }
+        : {}),
+      ...(bootstrapInterview && result.ok && (result as any).fallbackGeneratedSuggestions === true
+        ? { fallbackGeneratedSuggestions: true }
         : {}),
     });
 

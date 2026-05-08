@@ -23,6 +23,7 @@ import {
 import { formatBootstrapAxisRotationBlock } from "@/lib/requirements/requirementsBootstrapOrchestrationHints";
 import type { OrganizeMemoryFacts } from "@/lib/requirements/requirementsOrganizeContext";
 import { formatMandatoryReminderForModel, formatMemoryFactsForModel } from "@/lib/requirements/requirementsOrganizeContext";
+import { pickConfiguredModelOverrideFromAgents } from "@/lib/requirements/singleChatAgentContext";
 
 export type RequirementsAiResponseStyle = "brief" | "standard" | "detailed";
 
@@ -96,6 +97,14 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
       userFacingQuestionStyle?: string | null;
       /** 내부 오케스트레이션 어휘 없이 사용자 업무 언어로 정리되었는지 */
       userLanguageTransformApplied?: boolean;
+      /** Chat Completions에 실제 사용된 모델 id */
+      actualModel?: string;
+      /** 워크스페이스 멤버 설정의 모델 오버라이드(호출에 미반영일 수 있음) */
+      configuredModelOverride?: string | null;
+      /** repair 적용 전 LLM question(품질 미달 시) */
+      finalQuestionBeforeFallback?: string;
+      /** 서버가 workflow 칩을 보강했는지 */
+      fallbackGeneratedSuggestions?: boolean;
     }
   | {
       ok: false;
@@ -129,8 +138,10 @@ export type RequirementsSingleChatBootstrapOpenAIResult =
         | "QUESTION_QUALITY_REJECTED"
         | "RETRY_FAILED"
         | "REPAIRED_CONTEXT_USED"
+        | "ROUTE_HANDLING_ERROR"
         | "UNKNOWN_BOOTSTRAP_ERROR"
         | string;
+      fallbackText?: string;
       /** question 품질 이슈(가능하면) */
       questionQualityIssues?: readonly string[];
       /** retry count(가능하면) */
@@ -143,6 +154,19 @@ function truncateForTimeline(s: string, max: number): string {
   const t = String(s ?? "");
   if (t.length <= max) return t;
   return `${t.slice(0, max)}…`;
+}
+
+function logBootstrapLlmCall(payload: Record<string, unknown>): void {
+  console.info("[bootstrap-llm-call]", payload);
+}
+
+function shouldLogBootstrapDiagnosisSteps(): boolean {
+  return process.env.NODE_ENV !== "production" || String(process.env.JY_BOOTSTRAP_SERVER_LOG ?? "").trim() === "1";
+}
+
+function logBootstrapDiagnosis(step: string, payload: Record<string, unknown>): void {
+  if (!shouldLogBootstrapDiagnosisSteps()) return;
+  console.info("[bootstrap-diagnosis]", { step, ...payload });
 }
 
 function tryExtractFirstJsonObjectSubstring(raw: string): string | null {
@@ -612,13 +636,50 @@ export async function runRequirementsSingleChatBootstrapOpenAI(input: {
    * @see stringifyCompactBootstrapSlotCatalogForLlm
    */
   baseSlotCatalogJson: string;
+  /** 서버 진단: projectId·UI 모델 오버라이드(실제 호출 모델과 다를 수 있음) */
+  diagnosticMeta?: Readonly<{
+    projectId?: string | null;
+    configuredModelOverride?: string | null;
+  }>;
 }): Promise<RequirementsSingleChatBootstrapOpenAIResult> {
+  const model = resolveOpenAiModelFromEnv();
+  const configuredOverride = String(input.diagnosticMeta?.configuredModelOverride ?? "").trim() || null;
+  const projectIdDiag = String(input.diagnosticMeta?.projectId ?? "").trim() || null;
   const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const calledAtNoKey = new Date().toISOString();
   if (!apiKey) {
-    return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
+    logBootstrapDiagnosis("return_fail", {
+      model,
+      provider: "openai",
+      fallbackReason: "NO_KEY",
+      configuredModelOverride: configuredOverride,
+      projectId: projectIdDiag,
+    });
+    return {
+      ok: false,
+      code: "NO_KEY",
+      message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다.",
+      fallbackReason: "NO_KEY",
+      model,
+      provider: "openai",
+      calledAt: calledAtNoKey,
+      promptText: undefined,
+      responseText: "",
+      rawResponseText: "",
+      parseError: "",
+      questionQualityIssues: [],
+      questionQualityRetryCount: 0,
+      finalQuestionBeforeFallback: "",
+      fallbackText: "",
+    };
   }
 
-  const model = resolveOpenAiModelFromEnv();
+  logBootstrapDiagnosis("call_started", {
+    projectId: projectIdDiag,
+    model,
+    configuredModelOverride: configuredOverride,
+    hasApiKey: true,
+  });
   const pn = input.projectName.trim() || "(이름 없음)";
   const pd = input.projectDescription.trim() || "(설명 없음)";
   const pt = String(input.projectType ?? "").trim() || "(유형 미지정)";
@@ -719,6 +780,7 @@ ${baseCatalog.slice(0, 6000)}
 
   const calledAt = new Date().toISOString();
   const promptText = `[system]\n${system}\n\n---\n\n[user]\n${user}`;
+  const maxBootTokens = 520;
 
   const res = await postOpenAiChatCompletion({
     apiKey,
@@ -728,76 +790,109 @@ ${baseCatalog.slice(0, 6000)}
       { role: "user", content: user },
     ],
     temperature: 0.2,
-    maxTokens: 520,
+    maxTokens: maxBootTokens,
     responseFormatJsonObject: true,
   });
 
+  logBootstrapLlmCall({
+    projectId: projectIdDiag,
+    phase: "initial",
+    model,
+    hasApiKey: true,
+    responseFormatJsonObject: true,
+    maxTokens: maxBootTokens,
+    ok: res.ok,
+    code: res.ok ? null : res.code,
+    message: res.ok ? null : String(res.message).slice(0, 400),
+    textLength: res.ok ? String(res.text ?? "").length : 0,
+  });
+  logBootstrapDiagnosis(res.ok ? "openai_ok" : "openai_failed", {
+    model,
+    configuredModelOverride: configuredOverride,
+    code: res.ok ? null : res.code,
+  });
+
+  const baseFail = { model, promptText, provider: "openai" as const, calledAt };
+
   if (!res.ok) {
+    logBootstrapDiagnosis("return_fail", { fallbackReason: "OPENAI_API_ERROR", code: res.code });
     return {
       ok: false,
       code: res.code,
       message: `OpenAI API 오류(${res.code}): ${res.message.slice(0, 400)}`,
-      model,
-      promptText,
-      provider: "openai",
-      calledAt,
+      ...baseFail,
       fallbackReason: "OPENAI_API_ERROR",
+      responseText: "",
+      rawResponseText: "",
+      parseError: "",
+      questionQualityRetryCount: 0,
+      questionQualityIssues: [],
+      finalQuestionBeforeFallback: "",
     };
   }
   const text = res.text;
+  logBootstrapDiagnosis("raw_response_received", { rawResponseLength: String(text ?? "").length });
   if (!text) {
+    logBootstrapDiagnosis("return_fail", { fallbackReason: "EMPTY_RESPONSE" });
     return {
       ok: false,
       code: "EMPTY",
       message: "OpenAI 응답 본문이 비어 있습니다.",
-      model,
-      promptText,
-      provider: "openai",
-      calledAt,
+      ...baseFail,
       responseText: "",
       rawResponseText: "",
+      parseError: "",
+      questionQualityRetryCount: 0,
+      questionQualityIssues: [],
+      finalQuestionBeforeFallback: "",
       fallbackReason: "EMPTY_RESPONSE",
     };
   }
 
+  logBootstrapDiagnosis("parse_started", {});
   const parsedPack = parseBootstrapInitializerJsonFromModelText(String(text));
   if (!parsedPack.ok) {
+    logBootstrapDiagnosis("parse_failed", { parseError: parsedPack.parseError });
+    logBootstrapDiagnosis("return_fail", { fallbackReason: "JSON_PARSE_FAILED" });
     return {
       ok: false,
       code: "PARSE",
       message: "bootstrap JSON 파싱 실패",
-      model,
-      promptText,
-      provider: "openai",
-      calledAt,
+      ...baseFail,
       responseText: truncateForTimeline(String(text), 20_000),
       rawResponseText: parsedPack.rawResponseText,
       parseError: parsedPack.parseError,
       parsedJsonPreview: parsedPack.attemptedJsonText,
+      questionQualityRetryCount: 0,
+      questionQualityIssues: [],
+      finalQuestionBeforeFallback: "",
       fallbackReason: "JSON_PARSE_FAILED",
     };
   }
+  logBootstrapDiagnosis("parse_success", { parsedPreviewLen: parsedPack.parsedJsonPreview.length });
 
   let assistantRaw = parsedPack.jsonText;
   let payload = extractSingleChatBootstrapFromJson(parsedPack.parsed);
 
   if (!payload.question) {
+    logBootstrapDiagnosis("question_missing", {});
+    logBootstrapDiagnosis("return_fail", { fallbackReason: "MISSING_QUESTION" });
     return {
       ok: false,
       code: "EMPTY",
       message: "question이 비어 있습니다.",
-      model,
-      promptText,
-      provider: "openai",
-      calledAt,
+      ...baseFail,
       responseText: truncateForTimeline(String(text), 20_000),
       rawResponseText: truncateForTimeline(String(text), 4000),
       parsedJsonPreview: parsedPack.parsedJsonPreview,
       parseError: "",
-      fallbackReason: "MISSING_QUESTION",
+      questionQualityRetryCount: 0,
+      questionQualityIssues: [],
       finalQuestionBeforeFallback: "",
+      fallbackReason: "MISSING_QUESTION",
     };
   }
+  logBootstrapDiagnosis("question_extracted", { questionPreview: payload.question.slice(0, 120) });
 
   let promptTextOut = promptText;
   let questionQualityRetryCount = 0;
@@ -807,13 +902,20 @@ ${baseCatalog.slice(0, 6000)}
   const rawResponseText = truncateForTimeline(String(text), 4000);
   let retryPromptText: string | undefined = undefined;
   let retryRawResponseText: string | undefined = undefined;
+  let finalQuestionBeforeRepair: string | undefined = undefined;
 
+  logBootstrapDiagnosis("quality_check_started", {});
   const q0 = analyzeBootstrapQuestionQuality({ question: payload.question, projectDescription: pd });
   if (q0.ok) {
     questionQualityStatus = "pass";
     questionQualityIssues = [];
   } else {
     const firstIssues = q0.issues.map(String);
+    logBootstrapDiagnosis("quality_check_failed", {
+      fallbackReason: "QUESTION_QUALITY_REJECTED",
+      issues: firstIssues,
+      questionPreview: payload.question.slice(0, 120),
+    });
     questionQualityRetryCount = 1;
     const retryUser = buildBootstrapQuestionRetryUserPayload({
       issues: q0.issues,
@@ -822,6 +924,7 @@ ${baseCatalog.slice(0, 6000)}
     retryPromptText = truncateForTimeline(retryUser, 4000);
     promptTextOut = `${promptText}\n\n--- bootstrap_question_retry ---\n${retryUser}`;
 
+    logBootstrapDiagnosis("retry_started", { questionQualityRetryCount: 1 });
     const res2 = await postOpenAiChatCompletion({
       apiKey,
       model,
@@ -832,18 +935,32 @@ ${baseCatalog.slice(0, 6000)}
         { role: "user", content: retryUser },
       ],
       temperature: 0.2,
-      maxTokens: 520,
+      maxTokens: maxBootTokens,
       responseFormatJsonObject: true,
     });
+    logBootstrapLlmCall({
+      projectId: projectIdDiag,
+      phase: "retry",
+      model,
+      hasApiKey: true,
+      responseFormatJsonObject: true,
+      maxTokens: maxBootTokens,
+      ok: res2.ok,
+      code: res2.ok ? null : res2.code,
+      message: res2.ok ? null : String(res2.message).slice(0, 400),
+      textLength: res2.ok ? String(res2.text ?? "").length : 0,
+    });
+    if (!res2.ok) {
+      logBootstrapDiagnosis("openai_failed", { phase: "retry", code: res2.code });
+    }
 
     if (res2.ok && res2.text) {
       retryRawResponseText = truncateForTimeline(String(res2.text), 4000);
-      try {
-        const parsed2 = parseBootstrapInitializerJsonFromModelText(String(res2.text));
-        const raw2 = parsed2.ok ? parsed2.jsonText : stripJsonMarkdownFences(String(res2.text).trim());
-        const p2 = parsed2.ok ? extractSingleChatBootstrapFromJson(parsed2.parsed) : extractSingleChatBootstrapFromJson(JSON.parse(raw2));
+      const parsed2 = parseBootstrapInitializerJsonFromModelText(String(res2.text));
+      if (parsed2.ok) {
+        const p2 = extractSingleChatBootstrapFromJson(parsed2.parsed);
         if (p2.question) {
-          assistantRaw = raw2;
+          assistantRaw = parsed2.jsonText;
           payload = {
             ...p2,
             orchestrationBootstrap: {
@@ -851,10 +968,15 @@ ${baseCatalog.slice(0, 6000)}
               ...(p2.orchestrationBootstrap ?? {}),
             },
           };
+          logBootstrapDiagnosis("retry_success", { questionPreview: p2.question.slice(0, 120) });
+        } else {
+          logBootstrapDiagnosis("retry_question_missing", {});
         }
-      } catch {
-        /* keep first payload */
+      } else {
+        logBootstrapDiagnosis("retry_parse_failed", { parseError: parsed2.parseError });
       }
+    } else {
+      logBootstrapDiagnosis("retry_openai_no_body", { ok: res2.ok });
     }
 
     const q1 = analyzeBootstrapQuestionQuality({ question: payload.question, projectDescription: pd });
@@ -862,7 +984,9 @@ ${baseCatalog.slice(0, 6000)}
       questionQualityStatus = "retry_passed";
       questionQualityIssues = firstIssues;
       finalQuestionSource = "llm_retry";
+      logBootstrapDiagnosis("retry_passed_quality", {});
     } else {
+      finalQuestionBeforeRepair = payload.question;
       payload = {
         ...payload,
         question: repairBootstrapQuestionFromContext({
@@ -874,6 +998,11 @@ ${baseCatalog.slice(0, 6000)}
       questionQualityStatus = "retry_failed_repaired";
       questionQualityIssues = [...new Set([...firstIssues, ...q1.issues.map(String)])];
       finalQuestionSource = "repaired_context";
+      logBootstrapDiagnosis("repair_used", {
+        questionPreview: payload.question.slice(0, 120),
+        finalQuestionBeforeFallback: String(finalQuestionBeforeRepair ?? "").slice(0, 120),
+      });
+      logBootstrapDiagnosis("retry_failed", { fallbackReason: "RETRY_FAILED", issues: questionQualityIssues });
     }
   }
 
@@ -887,6 +1016,13 @@ ${baseCatalog.slice(0, 6000)}
     String(payload.orchestrationBootstrap?.userFacingQuestionStyle ?? "").trim() || null;
   const userLanguageTransformApplied = payload.question ? !detectInternalOrchestrationVocabInUserQuestion(payload.question) : false;
 
+  logBootstrapDiagnosis("return_ok", {
+    finalQuestionSource,
+    questionQualityStatus,
+    questionQualityRetryCount,
+    fallbackGeneratedSuggestions: sugPack.fallbackGeneratedSuggestions,
+  });
+
   return {
     ok: true,
     question: payload.question,
@@ -896,6 +1032,8 @@ ${baseCatalog.slice(0, 6000)}
     ...(payload.orchestrationBootstrap ? { orchestrationBootstrap: payload.orchestrationBootstrap } : {}),
     ...(payload.suggestedSlotReasons.length ? { suggestedSlotReasons: [...payload.suggestedSlotReasons] } : {}),
     model,
+    actualModel: model,
+    configuredModelOverride: configuredOverride,
     promptText: promptTextOut,
     provider: "openai",
     calledAt,
@@ -904,13 +1042,16 @@ ${baseCatalog.slice(0, 6000)}
     questionQualityRetryCount,
     finalQuestionSource,
     ...(sugPack.issues.length ? { suggestionQualityIssues: sugPack.issues } : {}),
-    // timeline/debug fields are recorded in route.ts via result + bootstrapMeta; keep raw/retry snippets available
+    ...(sugPack.fallbackGeneratedSuggestions ? { fallbackGeneratedSuggestions: true } : {}),
     rawResponseText,
     ...(retryPromptText ? { retryPromptText } : {}),
     ...(retryRawResponseText ? { retryRawResponseText } : {}),
     ...(internalAxis ? { internalAxis } : {}),
     ...(userFacingQuestionStyle ? { userFacingQuestionStyle } : {}),
     userLanguageTransformApplied,
+    ...(finalQuestionSource === "repaired_context" && finalQuestionBeforeRepair
+      ? { finalQuestionBeforeFallback: finalQuestionBeforeRepair }
+      : {}),
   };
 }
 

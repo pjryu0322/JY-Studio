@@ -70,6 +70,10 @@ export type RequirementsPromptTimelineEntry = {
   error?: string;
   fallbackText?: string;
   model?: string | null;
+  /** bootstrap 등: 실제 Chat Completions에 사용된 모델(환경 변수 기준일 수 있음) */
+  actualModel?: string | null;
+  /** 워크스페이스 AI 멤버에 설정된 모델 오버라이드(호출에 반영되지 않을 수 있음) */
+  configuredModelOverride?: string | null;
   provider?: string | null;
   createdAt: string;
   /** SingleChat 내부 오케스트레이션 메타(UX 비노출) */
@@ -148,8 +152,11 @@ export type RequirementsPromptTimelineEntry = {
     | "QUESTION_QUALITY_REJECTED"
     | "RETRY_FAILED"
     | "REPAIRED_CONTEXT_USED"
+    | "ROUTE_HANDLING_ERROR"
     | "UNKNOWN_BOOTSTRAP_ERROR"
     | string;
+  /** suggestions를 서버가 UX 보호용으로 보강한 경우 */
+  fallbackGeneratedSuggestions?: boolean;
   /** 원문 LLM 응답(트렁케이트) — 파싱 실패 분석용 */
   rawResponseText?: string;
   /** JSON 파싱 에러 요약 */

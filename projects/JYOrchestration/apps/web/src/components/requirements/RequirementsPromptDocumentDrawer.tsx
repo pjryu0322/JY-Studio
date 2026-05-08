@@ -158,6 +158,10 @@ const preBoxScroll: CSSProperties = {
   border: "1px solid #e2e8f0",
 };
 
+function isPromptTimelineFallbackRow(row: RequirementsPromptTimelineEntry): boolean {
+  return row.source === "fallback" || row.fallback === true;
+}
+
 function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelineEntry[]): string {
   const lines: string[] = [];
   lines.push(`# 프롬프트 타임라인`);
@@ -174,12 +178,19 @@ function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelin
     if (row.stageGroup) lines.push(`- **stageGroup**: ${row.stageGroup}`);
     if (row.workspaceScreenKey) lines.push(`- **workspaceScreenKey**: ${row.workspaceScreenKey}`);
     if (row.model) lines.push(`- **model**: ${row.model}`);
-    if (row.provider) lines.push(`- **provider**: ${row.provider}`);
+    lines.push(`- **provider**: ${row.provider ?? "—"}`);
+    lines.push(`- **actualModel**: ${String(row.actualModel ?? row.model ?? "").trim() || "—"}`);
+    lines.push(`- **configuredModelOverride**: ${String(row.configuredModelOverride ?? "").trim() || "—"}`);
     if (row.routingDecision) lines.push(`- **routingDecision**: ${row.routingDecision}`);
-    if (row.fallbackReason) lines.push(`- **fallbackReason**: ${row.fallbackReason}`);
+    if (isPromptTimelineFallbackRow(row)) {
+      lines.push(`- **fallbackReason**: ${row.fallbackReason?.trim() || "UNKNOWN_BOOTSTRAP_ERROR"}`);
+    } else if (row.fallbackReason?.trim()) {
+      lines.push(`- **fallbackReason**: ${row.fallbackReason.trim()}`);
+    }
     if (row.questionQualityStatus) lines.push(`- **questionQualityStatus**: ${row.questionQualityStatus}`);
     if (typeof row.questionQualityRetryCount === "number") lines.push(`- **retryCount**: ${row.questionQualityRetryCount}`);
     if (row.finalQuestionSource) lines.push(`- **finalQuestionSource**: ${row.finalQuestionSource}`);
+    if (row.fallbackGeneratedSuggestions) lines.push(`- **fallbackGeneratedSuggestions**: true`);
     if (row.orchestratorAgent) lines.push(`- **orchestratorAgent**: ${row.orchestratorAgent}`);
     if (row.fallback !== undefined) lines.push(`- **fallback**: ${row.fallback}`);
     if (row.error) lines.push(`- **error**: ${row.error}`);
@@ -603,14 +614,16 @@ export function RequirementsPromptDocumentDrawer({
                       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                         {ideationBootstrapTimeline.map((row, idx) => {
                           const hasOut = Boolean(String(row.responseText ?? row.fallbackText ?? "").trim());
-                          const isFallback = row.source === "fallback" || row.fallback === true;
+                          const isFallback = isPromptTimelineFallbackRow(row);
                           const ok = !isFallback && !String(row.error ?? "").trim() && hasOut;
                           const platformToModel = String(row.promptText ?? "").trim();
                           const modelToPlatform = [
                             row.responseText,
                             row.fallbackText,
                             row.error ? `[error] ${row.error}` : "",
-                            row.fallbackReason ? `[fallbackReason] ${row.fallbackReason}` : "",
+                            isFallback || row.fallbackReason
+                              ? `[fallbackReason] ${isFallback ? row.fallbackReason?.trim() || "UNKNOWN_BOOTSTRAP_ERROR" : row.fallbackReason}`
+                              : "",
                             row.questionQualityStatus ? `[questionQualityStatus] ${row.questionQualityStatus}` : "",
                             typeof row.questionQualityRetryCount === "number" ? `[retryCount] ${row.questionQualityRetryCount}` : "",
                             row.finalQuestionSource ? `[finalQuestionSource] ${row.finalQuestionSource}` : "",
@@ -644,12 +657,56 @@ export function RequirementsPromptDocumentDrawer({
                                 >
                                   {ok ? "SUCCESS" : isFallback ? "FALLBACK" : "FAILED"}
                                 </span>
-                                {isFallback && row.fallbackReason ? (
-                                  <span style={{ fontSize: 12, fontWeight: 800, color: "#9a3412" }}>Fallback Reason: {row.fallbackReason}</span>
+                                {isFallback ? (
+                                  <span style={{ fontSize: 12, fontWeight: 800, color: "#9a3412" }}>
+                                    Fallback Reason: {row.fallbackReason?.trim() || "UNKNOWN_BOOTSTRAP_ERROR"}
+                                  </span>
                                 ) : null}
                                 <span style={{ fontSize: 12, color: "#64748b", marginLeft: "auto" }}>
-                                  {row.provider ?? ""} {row.model ?? ""} · {new Date(row.createdAt).toLocaleString("ko-KR")}
+                                  {new Date(row.createdAt).toLocaleString("ko-KR")}
                                 </span>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: "#475569",
+                                  lineHeight: 1.5,
+                                  marginBottom: 10,
+                                  padding: "8px 10px",
+                                  background: "#f8fafc",
+                                  borderRadius: 8,
+                                  border: "1px solid #e2e8f0",
+                                }}
+                              >
+                                <div>
+                                  <strong>source</strong>: {row.source ?? "—"} · <strong>provider</strong>: {row.provider ?? "—"}
+                                </div>
+                                <div>
+                                  <strong>actualModel</strong>: {String(row.actualModel ?? row.model ?? "").trim() || "—"}
+                                </div>
+                                <div>
+                                  <strong>configuredModelOverride</strong>: {String(row.configuredModelOverride ?? "").trim() || "—"}
+                                </div>
+                                {row.questionQualityStatus ? (
+                                  <div>
+                                    <strong>questionQualityStatus</strong>: {row.questionQualityStatus}
+                                  </div>
+                                ) : null}
+                                {typeof row.questionQualityRetryCount === "number" ? (
+                                  <div>
+                                    <strong>retryCount</strong>: {row.questionQualityRetryCount}
+                                  </div>
+                                ) : null}
+                                {row.finalQuestionSource ? (
+                                  <div>
+                                    <strong>finalQuestionSource</strong>: {row.finalQuestionSource}
+                                  </div>
+                                ) : null}
+                                {row.fallbackGeneratedSuggestions ? (
+                                  <div>
+                                    <strong>fallbackGeneratedSuggestions</strong>: true
+                                  </div>
+                                ) : null}
                               </div>
 
                               <div style={{ ...labelSm, marginTop: 4 }}>플랫폼 → OpenAI</div>
