@@ -349,6 +349,30 @@ export async function POST(request: NextRequest) {
         ...(typeof (turnOk.meta as any).ownershipReason === "string"
           ? { ownershipReason: (turnOk.meta as any).ownershipReason }
           : {}),
+        ...(typeof (turnOk.meta as any).decisionAxis === "string"
+          ? { decisionAxis: (turnOk.meta as any).decisionAxis }
+          : {}),
+        ...(typeof (turnOk.meta as any).mergeCoordinator === "string"
+          ? { mergeCoordinator: (turnOk.meta as any).mergeCoordinator }
+          : {}),
+        ...(Array.isArray((turnOk.meta as any).specialistContributors)
+          ? { specialistContributors: (turnOk.meta as any).specialistContributors }
+          : {}),
+        ...(Array.isArray((turnOk.meta as any).decisionAxisCandidates)
+          ? { decisionAxisCandidates: (turnOk.meta as any).decisionAxisCandidates }
+          : {}),
+        ...((turnOk.meta as any).ownershipScoreBreakdown && typeof (turnOk.meta as any).ownershipScoreBreakdown === "object"
+          ? { ownershipScoreBreakdown: (turnOk.meta as any).ownershipScoreBreakdown }
+          : {}),
+        ...((turnOk.meta as any).momentumContribution && typeof (turnOk.meta as any).momentumContribution === "object"
+          ? { momentumContribution: (turnOk.meta as any).momentumContribution }
+          : {}),
+        ...(Array.isArray((turnOk.meta as any).conflictSignals)
+          ? { conflictSignals: (turnOk.meta as any).conflictSignals }
+          : {}),
+        ...(Array.isArray((turnOk.meta as any).slotStateTransitions)
+          ? { slotStateTransitions: (turnOk.meta as any).slotStateTransitions }
+          : {}),
         fallback: usedFallback,
         orchestratorAgent: turnOk.meta.orchestratorAgent,
         delegatedAgents: [...turnOk.meta.delegatedAgents],

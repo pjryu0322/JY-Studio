@@ -93,6 +93,17 @@ export function parseRequirementsSingleChatOrchestrationV1(
     lastDelegatedAgents = o.lastDelegatedAgents.map((x) => String(x ?? "").trim()).filter(Boolean);
   }
 
+  const ownerMomentumRaw = o.ownerMomentum && typeof o.ownerMomentum === "object" ? (o.ownerMomentum as Record<string, unknown>) : null;
+  const ownerMomentum =
+    ownerMomentumRaw
+      ? Object.fromEntries(
+          Object.entries(ownerMomentumRaw)
+            .map(([k, v]) => [String(k).trim(), Number(v)])
+            .filter(([k, v]) => Boolean(k) && Number.isFinite(v))
+            .map(([k, v]) => [k, Math.max(0, Math.min(2.0, v))])
+        )
+      : null;
+
   const bootstrapMeta =
     o.bootstrapMeta && typeof o.bootstrapMeta === "object"
       ? (() => {
@@ -241,6 +252,7 @@ export function parseRequirementsSingleChatOrchestrationV1(
     ...(rejectedDynamicSlots ? { rejectedDynamicSlots } : {}),
     ...(slotProposalHistory ? { slotProposalHistory } : {}),
     ...(lastOrchestratorAgent !== undefined ? { lastOrchestratorAgent } : {}),
+    ...(ownerMomentum !== null ? { ownerMomentum } : {}),
     ...(lastRoutingDecision !== undefined ? { lastRoutingDecision } : {}),
     ...(lastDelegatedAgents !== undefined ? { lastDelegatedAgents } : {}),
     updatedAt,

@@ -36,19 +36,18 @@ export async function runPlannerMergeTurnOpenAI(input: {
     : "planner 미안정 → 후보 슬롯은 confirmed 금지. planner 슬롯만 partial/confirmed 조정 가능.";
 
   const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}
-당신은 **planner**입니다. 사용자에게 보이는 **단일 한국어 응답** assistantMessage 한 개를 만듭니다.
-내부 분석가/설계자의 후보는 사용자에게 노출하지 말고 자연스럽게 통합하세요. "여러 AI" 언급 금지.
-확인 질문은 원칙적으로 1개만.
+당신은 SingleChat의 **merge coordinator**입니다.
+목표는 "대화 품질"이 아니라 **오케스트레이션 상태(state) 업데이트**입니다.
+사용자에게 보이는 문장/톤/질문을 만들지 마라. assistantMessage는 쓰지 않는다.
 
 ${stableLine}
 
-추가 JSON 필드:
+출력 JSON 필드:
 - plannerSlotAdjustments: planner 소유 슬롯만 { slotKey, status, value?, confidence? }
 - derivedPromotions: (planner 안정 시만) 비-planner 슬롯을 confirmed로 승격할 slotKey 배열
 
 출력 JSON:
 {
-  "assistantMessage": "...",
   "plannerSlotAdjustments": [...],
   "derivedPromotions": ["slotKey"]
 }`;
@@ -74,8 +73,8 @@ ${stableLine}
   const parsed = safeJsonParse(res.text ?? "") as Record<string, unknown> | null;
   if (!parsed) return { ok: false, code: "PARSE", message: "merge parse" };
 
-  const assistantMessage = String(parsed.assistantMessage ?? "").trim();
-  if (!assistantMessage) return { ok: false, code: "SCHEMA", message: "assistantMessage 없음" };
+  // merge coordinator는 user-facing assistantMessage를 만들지 않는다.
+  const assistantMessage = "";
 
   const patches: SlotPatchInput[] = [];
   const plannerAdj = Array.isArray(parsed.plannerSlotAdjustments) ? parsed.plannerSlotAdjustments : [];

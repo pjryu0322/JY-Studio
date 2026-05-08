@@ -8,6 +8,10 @@ export type SingleChatOrchestrationSlotStatus =
   | "confirmed"
   /** 상위 슬롯 변경 등으로 재검토 필요 */
   | "stale"
+  /** 외부 의존/정책 확정 전 잠금(진행 차단) */
+  | "blocked"
+  /** specialist 간 상충/트레이드오프 존재(조정 필요) */
+  | "conflicted"
   /** 하위 호환: 저장된 completed → 파싱 시 confirmed 로 정규화 */
   | "completed";
 
@@ -96,6 +100,8 @@ export type RequirementsSingleChatOrchestrationStateV1 = Readonly<{
   rejectedDynamicSlots?: readonly SingleChatDynamicSlotValidationRejectionV1[];
   slotProposalHistory?: readonly SingleChatDynamicSlotProposalHistoryV1[];
   lastOrchestratorAgent?: string | null;
+  /** owner momentum (stabilization; optional for backward compatibility) */
+  ownerMomentum?: Record<string, number> | null;
   /** 마지막 턴에서 실제 LLM이 실행된 specialist 역할(플래너 제외) */
   lastDelegatedAgents?: readonly string[];
   lastRoutingDecision?: string | null;

@@ -727,6 +727,37 @@ export function RequirementsPromptDocumentDrawer({
                                     <strong>ownershipReason</strong>: {String((row as any).ownershipReason)}
                                   </div>
                                 ) : null}
+                                {(row as any).decisionAxis ? (
+                                  <div>
+                                    <strong>decisionAxis</strong>: {String((row as any).decisionAxis)}
+                                  </div>
+                                ) : null}
+                                {(row as any).mergeCoordinator ? (
+                                  <div>
+                                    <strong>mergeCoordinator</strong>: {String((row as any).mergeCoordinator)}
+                                  </div>
+                                ) : null}
+                                {Array.isArray((row as any).specialistContributors) && (row as any).specialistContributors.length ? (
+                                  <div>
+                                    <strong>specialistContributors</strong>: {String((row as any).specialistContributors.join(", "))}
+                                  </div>
+                                ) : null}
+                                {Array.isArray((row as any).decisionAxisCandidates) && (row as any).decisionAxisCandidates.length ? (
+                                  <div>
+                                    <strong>decisionAxisCandidates</strong>:{" "}
+                                    {String(
+                                      (row as any).decisionAxisCandidates
+                                        .slice(0, 4)
+                                        .map((x: any) => `${String(x?.axis ?? "")}(${Number(x?.score ?? 0).toFixed(2)})`)
+                                        .join(" · ")
+                                    )}
+                                  </div>
+                                ) : null}
+                                {Array.isArray((row as any).conflictSignals) && (row as any).conflictSignals.length ? (
+                                  <div>
+                                    <strong>conflictSignals</strong>: {String((row as any).conflictSignals.join(" · "))}
+                                  </div>
+                                ) : null}
                                 {typeof (row as any).updatedSlotCount === "number" ? (
                                   <div>
                                     <strong>updatedSlotCount</strong>: {(row as any).updatedSlotCount}

@@ -100,6 +100,32 @@ export type RequirementsPromptTimelineEntry = {
   questionGeneratedBy?: string;
   /** Diagnostic: why ownership was chosen */
   ownershipReason?: string;
+  /** Diagnostic: dominant decision axis */
+  decisionAxis?: string;
+  /** Diagnostic: merge coordinator role */
+  mergeCoordinator?: string;
+  /** Diagnostic: specialist contributors */
+  specialistContributors?: readonly string[];
+  /** Replay: decision axis candidates (ranked) */
+  decisionAxisCandidates?: readonly { axis: string; score: number }[];
+  /** Replay: ownership score breakdown (traceable tuning) */
+  ownershipScoreBreakdown?: Record<
+    string,
+    {
+      unresolvedSlotWeight?: number;
+      decisionAxisWeight?: number;
+      momentumWeight?: number;
+      explicitRoleMentionWeight?: number;
+      orchestrationPhaseWeight?: number;
+      totalScore?: number;
+    }
+  >;
+  /** Replay: momentum contribution snapshot */
+  momentumContribution?: Record<string, number>;
+  /** Replay: conflict signals */
+  conflictSignals?: readonly string[];
+  /** Replay: slot state transitions */
+  slotStateTransitions?: readonly { slotKey: string; from: string; to: string; reason?: string }[];
   /** Convenience: updated slot count */
   updatedSlotCount?: number;
   /** 인터뷰 질문(한 문장) — 유도형 선택지와 함께 기록 */

@@ -79,6 +79,56 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.ownershipReason === "string" && r.ownershipReason.trim()
       ? { ownershipReason: r.ownershipReason.trim().slice(0, 200) }
       : {}),
+    ...(typeof r.decisionAxis === "string" && r.decisionAxis.trim()
+      ? { decisionAxis: r.decisionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof r.mergeCoordinator === "string" && r.mergeCoordinator.trim()
+      ? { mergeCoordinator: r.mergeCoordinator.trim().slice(0, 40) }
+      : {}),
+    ...(Array.isArray(r.specialistContributors)
+      ? { specialistContributors: r.specialistContributors.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 10) }
+      : {}),
+    ...(Array.isArray(r.decisionAxisCandidates)
+      ? {
+          decisionAxisCandidates: r.decisionAxisCandidates
+            .map((x) => {
+              if (!x || typeof x !== "object") return null;
+              const o = x as Record<string, unknown>;
+              const axis = String(o.axis ?? "").trim();
+              const score = Number(o.score);
+              if (!axis || !Number.isFinite(score)) return null;
+              return { axis: axis.slice(0, 80), score: Math.max(0, Math.min(1, Number(score.toFixed(3)))) };
+            })
+            .filter(Boolean)
+            .slice(0, 8) as Array<{ axis: string; score: number }>,
+        }
+      : {}),
+    ...(r.ownershipScoreBreakdown && typeof r.ownershipScoreBreakdown === "object"
+      ? { ownershipScoreBreakdown: r.ownershipScoreBreakdown as any }
+      : {}),
+    ...(r.momentumContribution && typeof r.momentumContribution === "object"
+      ? { momentumContribution: r.momentumContribution as any }
+      : {}),
+    ...(Array.isArray(r.conflictSignals)
+      ? { conflictSignals: r.conflictSignals.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 10) }
+      : {}),
+    ...(Array.isArray(r.slotStateTransitions)
+      ? {
+          slotStateTransitions: r.slotStateTransitions
+            .map((x) => {
+              if (!x || typeof x !== "object") return null;
+              const o = x as Record<string, unknown>;
+              const slotKey = String(o.slotKey ?? "").trim();
+              const from = String(o.from ?? "").trim();
+              const to = String(o.to ?? "").trim();
+              const reason = typeof o.reason === "string" ? o.reason.trim().slice(0, 120) : undefined;
+              if (!slotKey || !from || !to) return null;
+              return { slotKey: slotKey.slice(0, 160), from: from.slice(0, 24), to: to.slice(0, 24), ...(reason ? { reason } : {}) };
+            })
+            .filter(Boolean)
+            .slice(0, 40) as any,
+        }
+      : {}),
     ...(typeof r.updatedSlotCount === "number" && Number.isFinite(r.updatedSlotCount)
       ? { updatedSlotCount: Math.max(0, Math.floor(r.updatedSlotCount)) }
       : {}),
@@ -367,6 +417,14 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly conversationOwner?: string;
   readonly questionGeneratedBy?: string;
   readonly ownershipReason?: string;
+  readonly decisionAxis?: string;
+  readonly mergeCoordinator?: string;
+  readonly specialistContributors?: readonly string[];
+  readonly decisionAxisCandidates?: readonly { axis: string; score: number }[];
+  readonly ownershipScoreBreakdown?: RequirementsPromptTimelineEntry["ownershipScoreBreakdown"];
+  readonly momentumContribution?: RequirementsPromptTimelineEntry["momentumContribution"];
+  readonly conflictSignals?: readonly string[];
+  readonly slotStateTransitions?: readonly { slotKey: string; from: string; to: string; reason?: string }[];
   readonly updatedSlotCount?: number;
   readonly matchedSlots?: readonly string[];
   readonly updatedSlots?: readonly string[];
@@ -455,6 +513,20 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(typeof params.ownershipReason === "string" && params.ownershipReason.trim()
       ? { ownershipReason: params.ownershipReason.trim().slice(0, 200) }
       : {}),
+    ...(typeof params.decisionAxis === "string" && params.decisionAxis.trim()
+      ? { decisionAxis: params.decisionAxis.trim().slice(0, 80) }
+      : {}),
+    ...(typeof params.mergeCoordinator === "string" && params.mergeCoordinator.trim()
+      ? { mergeCoordinator: params.mergeCoordinator.trim().slice(0, 40) }
+      : {}),
+    ...(params.specialistContributors?.length
+      ? { specialistContributors: [...params.specialistContributors].map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 10) }
+      : {}),
+    ...(params.decisionAxisCandidates?.length ? { decisionAxisCandidates: [...params.decisionAxisCandidates].slice(0, 8) } : {}),
+    ...(params.ownershipScoreBreakdown ? { ownershipScoreBreakdown: params.ownershipScoreBreakdown } : {}),
+    ...(params.momentumContribution ? { momentumContribution: params.momentumContribution } : {}),
+    ...(params.conflictSignals?.length ? { conflictSignals: [...params.conflictSignals].slice(0, 10) } : {}),
+    ...(params.slotStateTransitions?.length ? { slotStateTransitions: [...params.slotStateTransitions].slice(0, 60) } : {}),
     ...(typeof params.updatedSlotCount === "number" && Number.isFinite(params.updatedSlotCount)
       ? { updatedSlotCount: Math.max(0, Math.floor(params.updatedSlotCount)) }
       : {}),

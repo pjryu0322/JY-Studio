@@ -26,7 +26,7 @@ function slugToken(s: string, max = 48): string {
 export function normalizeSlotStatus(raw: string): SingleChatOrchestrationSlotStatus {
   const s = String(raw ?? "").trim().toLowerCase();
   if (s === "completed") return "confirmed";
-  if (s === "partial" || s === "candidate" || s === "confirmed" || s === "stale") return s;
+  if (s === "partial" || s === "candidate" || s === "confirmed" || s === "stale" || s === "blocked" || s === "conflicted") return s;
   return "empty";
 }
 
