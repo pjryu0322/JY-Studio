@@ -7,9 +7,12 @@ import { uiTokens as t } from "@/components/ui/tokens";
 
 export function RequirementsHeader({
   showProjectWorkflowNav,
+  hideCompactWorkflowTitle,
 }: {
   /** 프로젝트가 열려 있을 때 워크플로·멤버/설정 탭을 헤더 하단에 표시 */
   readonly showProjectWorkflowNav: boolean;
+  /** 모바일(컴팩트)에서 단계 라벨(예: "서비스 기획") 한 줄만 뜨는 것을 숨김 */
+  readonly hideCompactWorkflowTitle?: boolean;
 }) {
   const showScreenLabels = useShowScreenLabels();
 
@@ -27,7 +30,7 @@ export function RequirementsHeader({
     >
       <div className="relative" style={{ position: "relative", width: "100%" }}>
         <ScreenLabel label="요구사항-헤더-프로젝트정보" visible={showScreenLabels} />
-        <ProjectWorkflowNav />
+        <ProjectWorkflowNav hideCompactTitle={hideCompactWorkflowTitle} />
       </div>
     </header>
   );

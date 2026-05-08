@@ -169,7 +169,7 @@ export function RequirementsWorkspaceTopChrome({
 
   return (
     <div className="jyo-requirements-workspace-top-chrome">
-      <RequirementsHeader showProjectWorkflowNav={showProjectWorkflowNav} />
+      <RequirementsHeader showProjectWorkflowNav={showProjectWorkflowNav} hideCompactWorkflowTitle />
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6, marginBottom: 6, gap: 8 }}>
         {memberControls ? (
